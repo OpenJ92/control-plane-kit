@@ -56,6 +56,7 @@ from control_plane_kit.implementations import (
     LocalSourceImplementation,
     PlanOnlyImplementation,
 )
+from control_plane_kit.servers import BlockControlState, create_block_control_app
 from control_plane_kit.planner import (
     Activity,
     ActivityPlan,
@@ -80,6 +81,8 @@ __all__ = [
     "SWITCHABLE",
     "TARGET_MUTABLE",
     "Capability",
+    "BlockControlState",
+    "create_block_control_app",
     "CapabilityName",
     "capability_named",
     "COMMON_STATUS_ROUTES",
