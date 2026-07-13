@@ -4,15 +4,13 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "control-plane-kit"
-version = "0.1.0"
-description = "A small graph algebra for deployment control planes."
+version = "0.2.0"
+description = "A small algebra for deployment control planes, socket wiring, and runtime interpretation."
 readme = "README.md"
 requires-python = ">=3.11"
 license = {text = "MIT"}
-authors = [
-  {name = "Control Plane Kit Contributors"}
-]
-keywords = ["deployment", "control-plane", "graph", "topology", "infrastructure"]
+authors = [{name = "Control Plane Kit Contributors"}]
+keywords = ["deployment", "control-plane", "graph", "topology", "sockets"]
 classifiers = [
   "Development Status :: 2 - Pre-Alpha",
   "Intended Audience :: Developers",

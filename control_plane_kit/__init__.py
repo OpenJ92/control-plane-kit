@@ -1,32 +1,75 @@
-"""Public entry points for control-plane-kit.
+"""Public API for control-plane-kit."""
 
-The package is intentionally small at the top level.  Most applications only
-need graph values, graph comparison, and a migration planner.  Runtime-specific
-interpreters live under :mod:`control_plane_kit.runtimes`.
-"""
-
-from control_plane_kit.core.activities import (
+from control_plane_kit.algebra import (
+    AppSpec,
+    ApplicationBlock,
+    DataBlock,
+    DataSpec,
+    DeploymentRecipe,
+    DockerRuntime,
+    ExternalRuntime,
+    ProxyBlock,
+    ProxySpec,
+    RoleInputSocket,
+    RoleOutputSocket,
+    RoleSockets,
+    RuntimeContext,
+    SocketConnection,
+)
+from control_plane_kit.compiler import compile_recipe
+from control_plane_kit.graph import DeploymentGraph, Edge, Endpoint, Node, RuntimeRecord
+from control_plane_kit.implementations import (
+    DockerImageImplementation,
+    DockerPostgresImplementation,
+    ExternalHttpImplementation,
+    ExternalPostgresImplementation,
+    ExternalTcpImplementation,
+    LocalSourceImplementation,
+    PlanOnlyImplementation,
+)
+from control_plane_kit.planner import (
     Activity,
     ActivityPlan,
-    StartNode,
-    StopNode,
-    SwitchEdge,
+    GraphDiff,
+    diff_graphs,
+    plan_migration,
 )
-from control_plane_kit.core.diff import GraphDiff, diff_graphs
-from control_plane_kit.core.graph import DeploymentGraph, Edge, Endpoint, Node
-from control_plane_kit.core.planner import plan_migration
+from control_plane_kit.types import EndpointScope, Protocol, RuntimeKind
 
 __all__ = [
     "Activity",
     "ActivityPlan",
+    "AppSpec",
+    "ApplicationBlock",
+    "DataBlock",
+    "DataSpec",
     "DeploymentGraph",
+    "DeploymentRecipe",
+    "DockerImageImplementation",
+    "DockerPostgresImplementation",
+    "DockerRuntime",
     "Edge",
     "Endpoint",
+    "EndpointScope",
+    "ExternalHttpImplementation",
+    "ExternalPostgresImplementation",
+    "ExternalRuntime",
+    "ExternalTcpImplementation",
     "GraphDiff",
+    "LocalSourceImplementation",
     "Node",
-    "StartNode",
-    "StopNode",
-    "SwitchEdge",
+    "PlanOnlyImplementation",
+    "Protocol",
+    "ProxyBlock",
+    "ProxySpec",
+    "RoleInputSocket",
+    "RoleOutputSocket",
+    "RoleSockets",
+    "RuntimeContext",
+    "RuntimeKind",
+    "RuntimeRecord",
+    "SocketConnection",
+    "compile_recipe",
     "diff_graphs",
     "plan_migration",
 ]

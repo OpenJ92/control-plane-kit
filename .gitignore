@@ -4,8 +4,7 @@ __pycache__/
 .mypy_cache/
 .ruff_cache/
 .venv/
-dist/
 build/
+dist/
 *.egg-info/
-.run/
 .DS_Store
