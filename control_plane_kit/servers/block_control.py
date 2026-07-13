@@ -83,6 +83,26 @@ class BlockControlState:
             self.active_target = ""
         return self.targets_payload()
 
+    def set_target(self, target_id: str, url: str) -> dict[str, object]:
+        """Add or replace one downstream target without changing the active target."""
+
+        if not target_id:
+            raise ValueError("target_id is required")
+        if not url:
+            raise ValueError("url is required")
+        self.targets[target_id] = url
+        return self.targets_payload()
+
+    def remove_target(self, target_id: str) -> dict[str, object]:
+        """Remove one downstream target and clear active target if needed."""
+
+        if target_id not in self.targets:
+            raise KeyError("unknown target")
+        del self.targets[target_id]
+        if self.active_target == target_id:
+            self.active_target = ""
+        return self.targets_payload()
+
     def set_active_target(self, target_id: str) -> dict[str, str]:
         """Set the active target or raise ``KeyError`` for unknown targets."""
 
@@ -110,23 +130,17 @@ class BlockControlState:
         return self.observers_payload()
 
 
-def create_block_control_app(
+def add_block_control_routes(
+    app,
     state: BlockControlState,
     *,
     token: str = "",
     control_prefix: str = DEFAULT_CONTROL_PREFIX,
 ):
-    """Return a FastAPI app implementing common block control routes.
+    """Attach common block control routes to an existing FastAPI app."""
 
-    When ``token`` is non-empty, all protocol routes require either
-    ``Authorization: Bearer <token>`` or ``X-Control-Plane-Token: <token>``.
-    The adapter only defines control routes; application traffic should be
-    mounted or implemented separately by concrete block servers.
-    """
-
-    Depends, FastAPI, Header, HTTPException, _Request = require_fastapi()
+    Depends, _FastAPI, Header, HTTPException, _Request = require_fastapi()
     prefix = control_prefix.rstrip("/")
-    app = FastAPI(title=f"Control Plane Kit Block: {state.block_id}", version="0.1.0")
 
     def require_control_token(
         authorization: str | None = Header(default=None),
@@ -186,3 +200,27 @@ def create_block_control_app(
         return state.replace_observers(observers)
 
     return app
+
+
+def create_block_control_app(
+    state: BlockControlState,
+    *,
+    token: str = "",
+    control_prefix: str = DEFAULT_CONTROL_PREFIX,
+):
+    """Return a FastAPI app implementing common block control routes.
+
+    When ``token`` is non-empty, all protocol routes require either
+    ``Authorization: Bearer <token>`` or ``X-Control-Plane-Token: <token>``.
+    The adapter only defines control routes; application traffic should be
+    mounted or implemented separately by concrete block servers.
+    """
+
+    _Depends, FastAPI, _Header, _HTTPException, _Request = require_fastapi()
+    app = FastAPI(title=f"Control Plane Kit Block: {state.block_id}", version="0.1.0")
+    return add_block_control_routes(
+        app,
+        state,
+        token=token,
+        control_prefix=control_prefix,
+    )

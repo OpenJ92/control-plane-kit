@@ -8,8 +8,10 @@ from control_plane_kit.algebra import (
     DeployBlock,
     DeploymentExpr,
     DeploymentRecipe,
+    EnvironmentRequirementSocket,
     ProxyBlock,
     RuntimeContext,
+    RuntimeRequirementSocket,
     SocketConnection,
 )
 from control_plane_kit.capabilities import capability_named
@@ -92,35 +94,50 @@ def _spec_metadata(block: DeployBlock) -> dict[str, object]:
 def _apply_connection(graph: DeploymentGraph, connection: SocketConnection) -> DeploymentGraph:
     provider = graph.node(connection.provider_role)
     consumer = graph.node(connection.consumer_role)
-    output = provider.output_socket(connection.output_socket)
-    input_socket = consumer.input_socket(connection.input_socket)
-    protocol = connection.protocol or output.protocol
-    if output.protocol is not protocol:
+    provider_socket = provider.provider_socket(connection.provider_socket)
+    requirement_socket = consumer.requirement_socket(connection.requirement_socket)
+    protocol = connection.protocol or provider_socket.protocol
+    if provider_socket.protocol is not protocol:
         raise ValueError(
-            f"provider {provider.node_id}.{output.name} is {output.protocol.value}, "
+            f"provider {provider.node_id}.{provider_socket.name} is {provider_socket.protocol.value}, "
             f"connection requested {protocol.value}"
         )
-    if input_socket.protocol is not protocol:
+    if requirement_socket.protocol is not protocol:
         raise ValueError(
-            f"consumer {consumer.node_id}.{input_socket.name} expects {input_socket.protocol.value}, "
+            f"consumer {consumer.node_id}.{requirement_socket.name} expects {requirement_socket.protocol.value}, "
             f"connection provides {protocol.value}"
         )
-    endpoint = provider.endpoint(output.name)
-    assignments = {env_var: endpoint.url for env_var in input_socket.env_bindings}
-    edge = Edge(
-        edge_id=connection.edge_id or _edge_id(connection),
-        provider_role=provider.node_id,
-        output_socket=output.name,
-        consumer_role=consumer.node_id,
-        input_socket=input_socket.name,
-        protocol=protocol,
-        env_assignments=assignments,
-    )
-    return graph.update_node(consumer.with_environment(assignments)).add_edge(edge)
+    endpoint = provider.endpoint(provider_socket.name)
+    edge_id = connection.edge_id or _edge_id(connection)
+    match requirement_socket:
+        case EnvironmentRequirementSocket(env_bindings=env_bindings):
+            assignments = {env_var: endpoint.url for env_var in env_bindings}
+            edge = Edge(
+                edge_id=edge_id,
+                provider_role=provider.node_id,
+                provider_socket=provider_socket.name,
+                consumer_role=consumer.node_id,
+                requirement_socket=requirement_socket.name,
+                protocol=protocol,
+                env_assignments=assignments,
+            )
+            return graph.update_node(consumer.with_environment(assignments)).add_edge(edge)
+        case RuntimeRequirementSocket(route_set=route_set):
+            edge = Edge(
+                edge_id=edge_id,
+                provider_role=provider.node_id,
+                provider_socket=provider_socket.name,
+                consumer_role=consumer.node_id,
+                requirement_socket=requirement_socket.name,
+                protocol=protocol,
+                runtime_assignments={provider.node_id: endpoint.url},
+                control_route_set=route_set.value,
+            )
+            return graph.add_edge(edge)
 
 
 def _edge_id(connection: SocketConnection) -> str:
     return (
-        f"{connection.provider_role}.{connection.output_socket}"
-        f"-to-{connection.consumer_role}.{connection.input_socket}"
+        f"{connection.provider_role}.{connection.provider_socket}"
+        f"-to-{connection.consumer_role}.{connection.requirement_socket}"
     )

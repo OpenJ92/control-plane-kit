@@ -1,6 +1,18 @@
 from unittest import TestCase, main
 
-from control_plane_kit import Protocol, SocketConnection, compile_recipe
+from control_plane_kit import (
+    AppSpec,
+    ApplicationBlock,
+    DockerImageImplementation,
+    DeploymentRecipe,
+    DockerRuntime,
+    Protocol,
+    ProviderSocket,
+    RoleSockets,
+    SocketConnection,
+    compile_recipe,
+    http_active_router_block,
+)
 from examples.app_with_postgres import recipe as app_recipe
 from examples.split_service import recipe as split_recipe
 
@@ -26,6 +38,29 @@ class CompileTests(TestCase):
         postgres = graph.node("postgres")
         self.assertEqual(api.environment["INVENTORY_SERVICE_URL"], inventory.endpoint("internal").url)
         self.assertEqual(inventory.environment["DATABASE_URL"], postgres.endpoint("internal").url)
+
+    def test_runtime_requirement_connection_records_control_route_assignment(self):
+        hello = ApplicationBlock(
+            AppSpec("hello-v2"),
+            DockerImageImplementation("hello:v2", ports={"internal": 8000}),
+            sockets=RoleSockets(providers=(ProviderSocket("internal", Protocol.HTTP),)),
+        )
+        graph = compile_recipe(
+            DeploymentRecipe(
+                "router-target-demo",
+                DockerRuntime(children=(
+                    hello,
+                    http_active_router_block("api-router"),
+                    SocketConnection("hello-v2", "internal", "api-router", "targets"),
+                )),
+            )
+        )
+
+        router = graph.node("api-router")
+        self.assertNotIn("hello-v2", router.environment)
+        edge = graph.edges["hello-v2.internal-to-api-router.targets"]
+        self.assertEqual(edge.runtime_assignments, {"hello-v2": graph.node("hello-v2").endpoint("internal").url})
+        self.assertEqual(edge.control_route_set, "targets")
 
     def test_protocol_mismatch_fails(self):
         source = app_recipe()

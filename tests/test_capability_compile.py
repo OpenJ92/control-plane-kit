@@ -7,7 +7,7 @@ from control_plane_kit import (
     Protocol,
     ProxyBlock,
     ProxySpec,
-    RoleOutputSocket,
+    ProviderSocket,
     RoleSockets,
     compile_recipe,
     DeploymentRecipe,
@@ -27,7 +27,7 @@ class CapabilityCompileTests(TestCase):
                 ),
             ),
             implementation=PlanOnlyImplementation(kind="plan-router"),
-            sockets=RoleSockets(outputs=(RoleOutputSocket("internal", Protocol.HTTP),)),
+            sockets=RoleSockets(providers=(ProviderSocket("internal", Protocol.HTTP),)),
         )
         graph = compile_recipe(DeploymentRecipe("capability-demo", DockerRuntime(children=(router,))))
 

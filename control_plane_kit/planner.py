@@ -99,13 +99,19 @@ def plan_migration(current: DeploymentGraph, desired: DeploymentGraph) -> Activi
         activities.append(Activity("StartNode", node_id))
         activities.append(Activity("HealthCheck", node_id, "if node advertises health"))
     for edge_id in diff.added_edges:
-        activities.append(Activity("AddSocketConnection", edge_id))
+        activities.append(_edge_activity("AddSocketBinding", "RegisterRuntimeTarget", desired.edges[edge_id]))
     for edge_id in diff.changed_edges:
-        activities.append(Activity("SwitchSocketConnection", edge_id))
+        activities.append(_edge_activity("UpdateSocketBinding", "SwitchRuntimeTarget", desired.edges[edge_id]))
     for edge_id in diff.removed_edges:
-        activities.append(Activity("RemoveSocketConnection", edge_id))
+        activities.append(_edge_activity("RemoveSocketBinding", "RemoveRuntimeTarget", current.edges[edge_id]))
     for node_id in diff.changed_nodes:
         activities.append(Activity("ReconcileNode", node_id))
     for node_id in diff.removed_nodes:
         activities.append(Activity("StopNode", node_id, "after verification"))
     return ActivityPlan(tuple(activities))
+
+
+def _edge_activity(environment_action: str, runtime_action: str, edge) -> Activity:
+    if edge.control_route_set:
+        return Activity(runtime_action, edge.edge_id, f"via {edge.control_route_set} control routes")
+    return Activity(environment_action, edge.edge_id)
