@@ -17,6 +17,21 @@ from control_plane_kit.algebra import (
     SocketConnection,
 )
 from control_plane_kit.compiler import compile_recipe
+from control_plane_kit.control_routes import (
+    COMMON_STATUS_ROUTES,
+    CONTROL_ROUTE_SETS,
+    DEFAULT_CONTROL_PREFIX,
+    LOG_ROUTES,
+    OBSERVER_ROUTES,
+    TARGET_ROUTES,
+    ControlRoute,
+    ControlRouteMethod,
+    ControlRouteScope,
+    ControlRouteSet,
+    ControlRouteSetName,
+    control_path,
+    route_set_named,
+)
 from control_plane_kit.graph import DeploymentGraph, Edge, Endpoint, Node, RuntimeRecord
 from control_plane_kit.implementations import (
     DockerImageImplementation,
@@ -41,6 +56,19 @@ __all__ = [
     "ActivityPlan",
     "AppSpec",
     "ApplicationBlock",
+    "COMMON_STATUS_ROUTES",
+    "CONTROL_ROUTE_SETS",
+    "DEFAULT_CONTROL_PREFIX",
+    "LOG_ROUTES",
+    "OBSERVER_ROUTES",
+    "TARGET_ROUTES",
+    "ControlRoute",
+    "ControlRouteMethod",
+    "ControlRouteScope",
+    "ControlRouteSet",
+    "ControlRouteSetName",
+    "control_path",
+    "route_set_named",
     "DataBlock",
     "DataSpec",
     "DeploymentGraph",
