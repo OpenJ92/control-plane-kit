@@ -162,6 +162,35 @@ The first implementation is deliberately small:
 
 The package also includes graph diffing and a conservative activity planner.
 
+The optional server adapters require FastAPI:
+
+```bash
+pip install control-plane-kit[server]
+```
+
+They expose control protocol routes for package-provided block servers while
+leaving application traffic to concrete block implementations.
+
+## Docker
+
+The project Docker image uses Python 3.14 by default:
+
+```bash
+docker build -t control-plane-kit:local .
+```
+
+Run the container smoke check:
+
+```bash
+docker run --rm control-plane-kit:local
+```
+
+Run the Docker test target, including optional FastAPI adapter tests:
+
+```bash
+docker build --target test -t control-plane-kit:test .
+```
+
 ## Design Boundary
 
 This package is not Terraform, Kubernetes, Docker Compose, or a secret manager.
