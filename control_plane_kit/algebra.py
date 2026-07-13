@@ -5,6 +5,7 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from typing import Protocol as TypingProtocol, TypeAlias
 
+from control_plane_kit.capabilities import CapabilityName
 from control_plane_kit.types import Protocol, RuntimeKind
 
 
@@ -63,6 +64,7 @@ class AppSpec:
     role_id: str
     display_name: str | None = None
     health_path: str | None = "/health"
+    capabilities: tuple[CapabilityName, ...] = ()
     metadata: dict[str, str] = field(default_factory=dict)
 
 
@@ -73,6 +75,7 @@ class DataSpec:
     role_id: str
     display_name: str | None = None
     database_name: str | None = None
+    capabilities: tuple[CapabilityName, ...] = ()
     metadata: dict[str, str] = field(default_factory=dict)
 
 
@@ -83,6 +86,7 @@ class ProxySpec:
     role_id: str
     display_name: str | None = None
     behavior: str = "active-target"
+    capabilities: tuple[CapabilityName, ...] = ()
     metadata: dict[str, str] = field(default_factory=dict)
 
 

@@ -1,5 +1,19 @@
 """Public API for control-plane-kit."""
 
+from control_plane_kit.capabilities import (
+    CAPABILITIES,
+    DRAINABLE,
+    HEALTH_CHECKABLE,
+    LOG_READABLE,
+    METRICS_READABLE,
+    OBSERVER_MUTABLE,
+    RESTARTABLE,
+    SWITCHABLE,
+    TARGET_MUTABLE,
+    Capability,
+    CapabilityName,
+    capability_named,
+)
 from control_plane_kit.algebra import (
     AppSpec,
     ApplicationBlock,
@@ -56,6 +70,18 @@ __all__ = [
     "ActivityPlan",
     "AppSpec",
     "ApplicationBlock",
+    "CAPABILITIES",
+    "DRAINABLE",
+    "HEALTH_CHECKABLE",
+    "LOG_READABLE",
+    "METRICS_READABLE",
+    "OBSERVER_MUTABLE",
+    "RESTARTABLE",
+    "SWITCHABLE",
+    "TARGET_MUTABLE",
+    "Capability",
+    "CapabilityName",
+    "capability_named",
     "COMMON_STATUS_ROUTES",
     "CONTROL_ROUTE_SETS",
     "DEFAULT_CONTROL_PREFIX",
