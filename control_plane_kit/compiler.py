@@ -12,6 +12,7 @@ from control_plane_kit.algebra import (
     RuntimeContext,
     SocketConnection,
 )
+from control_plane_kit.capabilities import capability_named
 from control_plane_kit.graph import DeploymentGraph, Edge, Node, RuntimeRecord
 
 
@@ -79,6 +80,11 @@ def _spec_metadata(block: DeployBlock) -> dict[str, object]:
     }
     if hasattr(spec, "health_path") and spec.health_path is not None:
         metadata["health_path"] = spec.health_path
+    if hasattr(spec, "capabilities") and spec.capabilities:
+        metadata["capabilities"] = [
+            capability_named(capability).as_descriptor()
+            for capability in spec.capabilities
+        ]
     metadata.update(spec.metadata)
     return metadata
 

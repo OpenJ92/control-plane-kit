@@ -124,6 +124,27 @@ A visual editor can render output sockets on one side of a block and input
 sockets on the other. Dragging from a provider output to a consumer input creates
 a `SocketConnection`.
 
+## Capabilities
+
+Blocks may advertise operator capabilities independently from their application
+traffic sockets. A capability says what the control plane or UI may ask a
+running block to do. When a capability is backed by protocol routes, it points
+at a route set such as `common-status`, `logs`, `targets`, or `observers`.
+
+```python
+ProxySpec(
+    role_id="api-router",
+    capabilities=(
+        CapabilityName.HEALTH_CHECKABLE,
+        CapabilityName.TARGET_MUTABLE,
+        CapabilityName.SWITCHABLE,
+    ),
+)
+```
+
+The compiled node descriptor then exposes JSON-friendly capability descriptors
+for inspectors and graph editors.
+
 ## Included Blocks and Implementations
 
 The first implementation is deliberately small:
