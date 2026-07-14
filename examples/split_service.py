@@ -1,9 +1,8 @@
 """A monolith split into API plus extracted service."""
 
 from control_plane_kit import (
-    AppSpec,
     ApplicationBlock,
-    DataSpec,
+    BlockSpec,
     DataBlock,
     DeploymentRecipe,
     DockerImageImplementation,
@@ -19,7 +18,7 @@ from control_plane_kit import (
 
 def recipe() -> DeploymentRecipe:
     api = ApplicationBlock(
-        spec=AppSpec("api", "Main API"),
+        spec=BlockSpec("api", "Main API"),
         implementation=DockerImageImplementation("api:latest", ports={"internal": 8000}),
         sockets=RoleSockets(
             inputs=(
@@ -30,7 +29,7 @@ def recipe() -> DeploymentRecipe:
         ),
     )
     inventory = ApplicationBlock(
-        spec=AppSpec("inventory-service", "Inventory Service"),
+        spec=BlockSpec("inventory-service", "Inventory Service"),
         implementation=DockerImageImplementation("inventory:latest", ports={"internal": 8015}),
         sockets=RoleSockets(
             inputs=(RoleInputSocket("DATABASE_URL", Protocol.POSTGRES, ("DATABASE_URL",)),),
@@ -38,7 +37,7 @@ def recipe() -> DeploymentRecipe:
         ),
     )
     postgres = DataBlock(
-        spec=DataSpec("postgres", database_name="pottery"),
+        spec=BlockSpec("postgres"),
         implementation=DockerPostgresImplementation(database="pottery"),
         sockets=RoleSockets(outputs=(RoleOutputSocket("internal", Protocol.POSTGRES),)),
     )

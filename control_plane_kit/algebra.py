@@ -58,34 +58,12 @@ class RoleSockets:
 
 
 @dataclass(frozen=True)
-class AppSpec:
-    """Identity and display metadata for application code."""
+class BlockSpec:
+    """Shared identity and display metadata for any deployable block."""
 
     role_id: str
     display_name: str | None = None
-    health_path: str | None = "/health"
-    capabilities: tuple[CapabilityName, ...] = ()
-    metadata: dict[str, str] = field(default_factory=dict)
-
-
-@dataclass(frozen=True)
-class DataSpec:
-    """Identity and metadata for data infrastructure."""
-
-    role_id: str
-    display_name: str | None = None
-    database_name: str | None = None
-    capabilities: tuple[CapabilityName, ...] = ()
-    metadata: dict[str, str] = field(default_factory=dict)
-
-
-@dataclass(frozen=True)
-class ProxySpec:
-    """Identity and behavior metadata for proxy/router blocks."""
-
-    role_id: str
-    display_name: str | None = None
-    behavior: str = "active-target"
+    health_path: str | None = None
     capabilities: tuple[CapabilityName, ...] = ()
     metadata: dict[str, str] = field(default_factory=dict)
 
@@ -103,7 +81,7 @@ class RuntimeImplementation(TypingProtocol):
 class ApplicationBlock:
     """User or package supplied application/server code."""
 
-    spec: AppSpec
+    spec: BlockSpec
     implementation: RuntimeImplementation
     sockets: RoleSockets
 
@@ -116,7 +94,7 @@ class ApplicationBlock:
 class DataBlock:
     """Database, queue, cache, or other data-bearing infrastructure."""
 
-    spec: DataSpec
+    spec: BlockSpec
     implementation: RuntimeImplementation
     sockets: RoleSockets
 
@@ -129,7 +107,7 @@ class DataBlock:
 class ProxyBlock:
     """Reusable proxy/router/control block."""
 
-    spec: ProxySpec
+    spec: BlockSpec
     implementation: RuntimeImplementation
     sockets: RoleSockets
 
