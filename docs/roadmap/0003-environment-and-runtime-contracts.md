@@ -165,6 +165,25 @@ use graph descriptors as a secret-safe control surface. Future graph descriptor
 work should add explicit redacted views before real secret-bearing environment
 assignments are displayed, persisted, or exposed through MCP/control routes.
 
+## Example Migration Pattern
+
+Package-provided example servers should use the same contracts that users are
+expected to adopt. The examples now show both halves of the model:
+
+- `examples.hello_runtime.HelloEnvironment` declares startup env values, and
+  the Docker implementation receives `HELLO_MESSAGE` from the contract. The
+  command reads from process env. Runtime plan descriptors redact the value;
+  graph descriptors remain under the separate graph-redaction caveat above.
+- `BlockControlState` stores mutable target, active-target, and observer state
+  through a `RuntimeContract`. The public control adapter still exposes the
+  same protocol methods, but its state is no longer an ad hoc dictionary.
+- `examples.router_runtime.RouterRuntimeState` shows how router examples can
+  select topology through runtime state while socket connections still compile
+  into ordinary graph edges.
+
+This is the model future home-made blocks should follow: declare the contract,
+load it at the boundary, and access values through lookup at the point of use.
+
 ## Validation
 
 - Missing required values produce structured errors.

@@ -6,11 +6,20 @@ from collections.abc import Callable, Mapping
 from dataclasses import dataclass, field
 
 from control_plane_kit.capabilities import CapabilityName, capability_named
+from control_plane_kit.contracts import RuntimeContract, RuntimeMapVariable, RuntimeValueVariable
 from control_plane_kit.control_routes import DEFAULT_CONTROL_PREFIX
 from control_plane_kit.servers._fastapi import require_fastapi
 
 StatusProvider = Callable[[], Mapping[str, object]]
 LogProvider = Callable[[], list[str]]
+
+
+class BlockControlRuntime(RuntimeContract):
+    """Runtime contract for common block-control mutable state."""
+
+    targets = RuntimeMapVariable("targets")
+    active_target = RuntimeValueVariable("active_target")
+    observers = RuntimeMapVariable("observers")
 
 
 @dataclass
@@ -30,6 +39,14 @@ class BlockControlState:
     observers: dict[str, str] = field(default_factory=dict)
     status_provider: StatusProvider | None = None
     log_provider: LogProvider | None = None
+    runtime: BlockControlRuntime = field(init=False)
+
+    def __post_init__(self) -> None:
+        self.runtime = BlockControlRuntime.from_mapping({
+            "targets": self.targets,
+            "active_target": self.active_target,
+            "observers": self.observers,
+        })
 
     def capabilities_payload(self) -> dict[str, object]:
         """Return JSON-friendly capability descriptors."""
@@ -54,9 +71,9 @@ class BlockControlState:
             return dict(self.status_provider())
         return {
             "block_id": self.block_id,
-            "active_target": self.active_target,
-            "target_count": len(self.targets),
-            "observer_count": len(self.observers),
+            "active_target": self.runtime.get("active_target") or "",
+            "target_count": len(self.runtime.get("targets") or {}),
+            "observer_count": len(self.runtime.get("observers") or {}),
         }
 
     def logs_payload(self) -> dict[str, object]:
@@ -71,42 +88,50 @@ class BlockControlState:
 
         return {
             "block_id": self.block_id,
-            "active_target": self.active_target,
-            "targets": dict(sorted(self.targets.items())),
+            "active_target": self.runtime.get("active_target") or "",
+            "targets": dict(sorted((self.runtime.get("targets") or {}).items())),
         }
 
     def replace_targets(self, targets: Mapping[str, str]) -> dict[str, object]:
         """Replace downstream targets and clear stale active target state."""
 
-        self.targets = dict(targets)
-        if self.active_target and self.active_target not in self.targets:
-            self.active_target = ""
+        next_targets = dict(targets)
+        active_target = self.runtime.get("active_target") or ""
+        patch: dict[str, object] = {"targets": next_targets}
+        if active_target and active_target not in next_targets:
+            patch["active_target"] = ""
+        self.runtime.apply_patch(patch)
+        self.targets = dict(self.runtime.get("targets") or {})
+        self.active_target = str(self.runtime.get("active_target") or "")
         return self.targets_payload()
 
     def set_active_target(self, target_id: str) -> dict[str, str]:
         """Set the active target or raise ``KeyError`` for unknown targets."""
 
-        if target_id not in self.targets:
+        targets = self.runtime.get("targets") or {}
+        if target_id not in targets:
             raise KeyError("unknown target")
-        self.active_target = target_id
+        self.runtime.apply_patch({"active_target": target_id})
+        self.active_target = str(self.runtime.get("active_target") or "")
         return {"block_id": self.block_id, "active_target": self.active_target}
 
     def drain_target(self, target_id: str) -> dict[str, str]:
         """Return drain intent or raise ``KeyError`` for unknown targets."""
 
-        if target_id not in self.targets:
+        if target_id not in (self.runtime.get("targets") or {}):
             raise KeyError("unknown target")
         return {"block_id": self.block_id, "draining_target": target_id}
 
     def observers_payload(self) -> dict[str, object]:
         """Return observer side-channel targets in deterministic order."""
 
-        return {"block_id": self.block_id, "observers": dict(sorted(self.observers.items()))}
+        return {"block_id": self.block_id, "observers": dict(sorted((self.runtime.get("observers") or {}).items()))}
 
     def replace_observers(self, observers: Mapping[str, str]) -> dict[str, object]:
         """Replace observer side-channel targets."""
 
-        self.observers = dict(observers)
+        self.runtime.apply_patch({"observers": dict(observers)})
+        self.observers = dict(self.runtime.get("observers") or {})
         return self.observers_payload()
 
 
