@@ -1,7 +1,9 @@
 # Roadmap 0003: Environment And Runtime Contracts
 
-Status: Draft
+Status: In progress
 Depends on: Roadmap 0001, Roadmap 0002
+Parent issue: OpenJ92/control-plane-kit#19
+Roadmap branch: `roadmap/0003-environment-runtime-contracts`
 
 ## Motivation
 
@@ -42,28 +44,13 @@ Access is always lookup.
 
 ## Suggested Issue Topology
 
-1. Add `ControlVariable` base protocol and descriptor shape.
-2. Add concrete variable types:
-   - text,
-   - HTTP,
-   - TCP,
-   - Postgres,
-   - secret,
-   - runtime value,
-   - runtime map.
-3. Add `EnvironmentContract` declaration and runtime instance.
-4. Add `from_mapping`, `from_process`, `get`, `set`, `validate_patch`,
-   `apply_patch`.
-5. Add redacted descriptors and secret presence semantics.
-6. Add reload policies:
-   - live,
-   - restart-required,
-   - drain-required,
-   - immutable,
-   - custom-handler.
-7. Add derived resource support.
-8. Add optional `RuntimeContract` if router/runtime maps become awkward inside
-   `EnvironmentContract`.
+1. #46: Add control variable protocol and reload policy.
+2. #47: Add concrete environment and runtime variable types.
+3. #45: Add `EnvironmentContract` loading, lookup, and patching.
+4. #48: Add redacted contract descriptors and graph handoff.
+5. #49: Add derived resources and reload policy behavior.
+6. #50: Add `RuntimeContract` for mutable runtime state.
+7. #51: Add contract-backed hello/router examples and roadmap documentation.
 
 ## Target API
 
