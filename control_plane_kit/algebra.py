@@ -124,9 +124,9 @@ class SocketConnection:
     """Provider socket connected to a consumer requirement socket."""
 
     provider_role: str
-    output_socket: str
+    provider_socket: str
     consumer_role: str
-    input_socket: str
+    requirement_socket: str
     protocol: Protocol | None = None
     edge_id: str | None = None
 

@@ -18,6 +18,20 @@ class CompileTests(TestCase):
         edge = graph.edges["postgres.internal-to-orders-api.DATABASE_URL"]
         self.assertEqual(edge.protocol, Protocol.POSTGRES)
 
+    def test_graph_descriptor_uses_provider_requirement_vocabulary(self):
+        descriptor = compile_recipe(app_recipe()).descriptor()
+
+        api = descriptor["nodes"]["orders-api"]
+        postgres = descriptor["nodes"]["postgres"]
+        edge = descriptor["edges"]["postgres.internal-to-orders-api.DATABASE_URL"]
+
+        self.assertIn("requirements", api)
+        self.assertIn("providers", postgres)
+        self.assertNotIn("inputs", api)
+        self.assertNotIn("outputs", postgres)
+        self.assertEqual(edge["provider"], {"role": "postgres", "socket": "internal"})
+        self.assertEqual(edge["consumer"], {"role": "orders-api", "requirement": "DATABASE_URL"})
+
     def test_split_service_wires_http_and_postgres(self):
         graph = compile_recipe(split_recipe())
 
