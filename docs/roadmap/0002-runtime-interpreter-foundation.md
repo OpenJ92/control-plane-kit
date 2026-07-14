@@ -1,7 +1,9 @@
 # Roadmap 0002: Runtime Interpreter Foundation
 
-Status: Draft
+Status: In progress
 Depends on: Roadmap 0001
+Parent issue: OpenJ92/control-plane-kit#17
+Roadmap branch: `roadmap/0002-runtime-interpreter-foundation`
 
 ## Motivation
 
@@ -36,14 +38,12 @@ hello server, an active router, and optionally Postgres.
 
 ## Suggested Issue Topology
 
-1. Add `RuntimeInterpreter` protocol and `RuntimeState` records.
-2. Add Docker activity primitives for network/container lifecycle.
-3. Implement Docker interpreter for simple HTTP blocks.
-4. Add Postgres container support through existing Postgres implementation
-   descriptors.
-5. Move hello/router live demo onto the interpreter.
-6. Add cleanup policy and idempotent stop behavior.
-7. Document unsupported cross-runtime behavior.
+1. #32: Define runtime interpreter protocol and state records.
+2. #37: Add Docker planning activities without Docker side effects.
+3. #33: Implement Docker runtime executor lifecycle.
+4. #34: Run hello HTTP blocks through Docker interpreter.
+5. #35: Add Postgres and router runtime examples.
+6. #36: Document cleanup policy and unsupported runtime boundaries.
 
 ## Target API
 
