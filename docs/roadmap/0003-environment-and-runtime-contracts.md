@@ -101,6 +101,35 @@ engine = env.derived(
   cross-variable invariants.
 - If code caches values outside the contract, it owns invalidation.
 
+## Derived Resource Policy
+
+Derived resources are contract-owned caches produced from one or more declared
+variables. They preserve the core law that access is always lookup: application
+code asks the contract for the current value or current derived resource instead
+of keeping an untracked cache.
+
+A patch only rebuilds derived resources automatically when all touched variables
+use reload policies declared safe for automatic rebuild, currently `live` and
+`custom-handler` by default. Values with `drain-required`, `restart-required`,
+or `immutable` policy mark dependent resources stale instead of silently swapping
+under running application code. The owner can then explicitly rebuild after the
+external orchestration step has made that safe.
+
+```python
+engine = env.derived(
+    name="database_engine",
+    from_var="database_url",
+    build=lambda contract: create_engine(contract.get("database_url")),
+    dispose=lambda engine: engine.dispose(),
+)
+
+result = env.apply_patch({"database_url": "postgresql+psycopg://db-v2/app"})
+assert result.stale_resources == ("database_engine",)
+
+# After drain/cutover orchestration:
+env.rebuild_derived("database_engine")
+```
+
 ## Descriptor Redaction Boundary
 
 Contract descriptors are the safe surface for control-variable state. They must
