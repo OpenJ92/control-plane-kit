@@ -24,7 +24,7 @@ from control_plane_kit.algebra import (
     ProxyBlock,
     RequirementSocket,
     ProviderSocket,
-    RoleSockets,
+    BlockSockets,
     RuntimeContext,
     SocketConnection,
 )
@@ -117,7 +117,7 @@ __all__ = [
     "ProxyBlock",
     "RequirementSocket",
     "ProviderSocket",
-    "RoleSockets",
+    "BlockSockets",
     "RuntimeContext",
     "RuntimeKind",
     "RuntimeRecord",

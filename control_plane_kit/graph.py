@@ -5,7 +5,7 @@ from __future__ import annotations
 from dataclasses import dataclass, field, replace
 from typing import Mapping
 
-from control_plane_kit.algebra import RoleSockets
+from control_plane_kit.algebra import BlockSockets
 from control_plane_kit.types import EndpointScope, Protocol, RuntimeKind
 
 
@@ -28,16 +28,16 @@ class Node:
     node_id: str
     kind: str
     runtime_id: str
-    sockets: RoleSockets
+    sockets: BlockSockets
     endpoints: Mapping[str, Endpoint] = field(default_factory=dict)
     environment: Mapping[str, str] = field(default_factory=dict)
     metadata: Mapping[str, object] = field(default_factory=dict)
 
     def input_socket(self, name: str):
-        return self.sockets.input(name)
+        return self.sockets.requirement(name)
 
     def output_socket(self, name: str):
-        return self.sockets.output(name)
+        return self.sockets.provider(name)
 
     def endpoint(self, name: str) -> Endpoint:
         try:
@@ -62,11 +62,11 @@ class Node:
                     "env_bindings": list(socket.env_bindings),
                     "required": socket.required,
                 }
-                for socket in self.sockets.inputs
+                for socket in self.sockets.requirements
             },
             "outputs": {
                 socket.name: {"protocol": socket.protocol.value}
-                for socket in self.sockets.outputs
+                for socket in self.sockets.providers
             },
             "metadata": dict(self.metadata),
         }

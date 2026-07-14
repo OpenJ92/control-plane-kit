@@ -474,10 +474,10 @@ RequirementSocket
 ProviderSocket
 ```
 
-The container still uses the older `RoleSockets` name until Roadmap 0001.3:
+The container still uses the older `BlockSockets` name until Roadmap 0001.3:
 
 ```text
-RoleSockets
+BlockSockets
 ```
 
 The intended semantic vocabulary is:
@@ -488,7 +488,7 @@ ProviderSocket: an endpoint/value exposed for other blocks to consume.
 BlockSockets: the communication boundary of one block.
 ```
 
-Do not perform the `RoleSockets` -> `BlockSockets` rename opportunistically
+Do not perform the `BlockSockets` -> `BlockSockets` rename opportunistically
 inside unrelated issues. If we rename it, do it as the dedicated Roadmap 0001.3
 refactor before more server block APIs depend on the current name.
 

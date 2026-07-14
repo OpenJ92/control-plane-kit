@@ -26,12 +26,12 @@ DeployBlock = BlockSpec x RuntimeImplementation x BlockSockets
 Current concrete families are:
 
 ```text
-ApplicationBlock = BlockSpec x RuntimeImplementation x RoleSockets
-DataBlock        = BlockSpec x RuntimeImplementation x RoleSockets
-ProxyBlock       = BlockSpec x RuntimeImplementation x RoleSockets
+ApplicationBlock = BlockSpec x RuntimeImplementation x BlockSockets
+DataBlock        = BlockSpec x RuntimeImplementation x BlockSockets
+ProxyBlock       = BlockSpec x RuntimeImplementation x BlockSockets
 ```
 
-`RoleSockets` is the current public name. The intended semantic name is
+`BlockSockets` is the current public name. The intended semantic name is
 `BlockSockets`; see `AGENTS.md` for the planned vocabulary cleanup.
 
 Specialized specs should only be introduced when a block family has distinct
