@@ -5,6 +5,7 @@ from __future__ import annotations
 from control_plane_kit.algebra import ApplicationBlock, BlockSockets, BlockSpec, ProviderSocket
 from control_plane_kit.contracts import EnvironmentContract, TextVariable
 from control_plane_kit.implementations import DockerImageImplementation
+from control_plane_kit.servers._templates import render_python_command
 from control_plane_kit.types import Protocol
 
 
@@ -43,18 +44,4 @@ def hello_server_block(
 def hello_command() -> tuple[str, ...]:
     """Return the tiny stdlib HTTP server command for the hello block."""
 
-    lines = [
-        "import os",
-        "from http.server import BaseHTTPRequestHandler, HTTPServer",
-        "BODY = os.environ['HELLO_MESSAGE'].encode()",
-        "class Handler(BaseHTTPRequestHandler):",
-        "    def do_GET(self):",
-        "        self.send_response(200)",
-        "        self.send_header('content-type', 'text/plain')",
-        "        self.end_headers()",
-        "        self.wfile.write(BODY)",
-        "    def log_message(self, format, *args):",
-        "        pass",
-        "HTTPServer(('0.0.0.0', 8000), Handler).serve_forever()",
-    ]
-    return ("python", "-c", chr(10).join(lines))
+    return render_python_command("hello.py.j2", message_env="HELLO_MESSAGE", port=8000)

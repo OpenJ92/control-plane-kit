@@ -9,6 +9,7 @@ from control_plane_kit.algebra import BlockSockets, BlockSpec, ProviderSocket, P
 from control_plane_kit.capabilities import CapabilityName
 from control_plane_kit.contracts import RuntimeContract, RuntimeMapVariable, RuntimeValueVariable
 from control_plane_kit.implementations import DockerImageImplementation
+from control_plane_kit.servers._templates import render_python_command
 from control_plane_kit.servers.http_messages import HttpHandler, HttpRequest, HttpResponse
 from control_plane_kit.types import Protocol
 
@@ -110,36 +111,10 @@ def http_multiplexer_block(
 def http_multiplexer_command() -> tuple[str, ...]:
     """Return a tiny stdlib HTTP multiplexer command for Docker examples."""
 
-    lines = [
-        "import os, urllib.error, urllib.request",
-        "from http.server import BaseHTTPRequestHandler, HTTPServer",
-        "PRIMARY = os.environ['MULTIPLEXER_PRIMARY_URL'].rstrip('/')",
-        "OBSERVERS = [value.rstrip('/') for value in (os.environ.get('MULTIPLEXER_OBSERVER_A_URL'), os.environ.get('MULTIPLEXER_OBSERVER_B_URL')) if value]",
-        "class Handler(BaseHTTPRequestHandler):",
-        "    def _request(self, target, body, headers):",
-        "        return urllib.request.Request(target + self.path, data=body or None, headers=headers, method=self.command)",
-        "    def _forward(self):",
-        "        body = self.rfile.read(int(self.headers.get('content-length', '0') or '0'))",
-        "        headers = {key: value for key, value in self.headers.items() if key.lower() != 'host'}",
-        "        with urllib.request.urlopen(self._request(PRIMARY, body, headers)) as response:",
-        "            payload = response.read()",
-        "            status = response.status",
-        "            response_headers = [(key, value) for key, value in response.headers.items() if key.lower() not in {'transfer-encoding', 'connection'}]",
-        "        for observer in OBSERVERS:",
-        "            try:",
-        "                urllib.request.urlopen(self._request(observer, body, headers), timeout=1).read()",
-        "            except Exception:",
-        "                pass",
-        "        self.send_response(status)",
-        "        for key, value in response_headers:",
-        "            self.send_header(key, value)",
-        "        self.end_headers()",
-        "        self.wfile.write(payload)",
-        "    def do_GET(self): self._forward()",
-        "    def do_POST(self): self._forward()",
-        "    def do_PUT(self): self._forward()",
-        "    def do_DELETE(self): self._forward()",
-        "    def log_message(self, format, *args): pass",
-        "HTTPServer(('0.0.0.0', 8080), Handler).serve_forever()",
-    ]
-    return ("python", "-c", chr(10).join(lines))
+    return render_python_command(
+        "http_multiplexer.py.j2",
+        primary_env="MULTIPLEXER_PRIMARY_URL",
+        observer_a_env="MULTIPLEXER_OBSERVER_A_URL",
+        observer_b_env="MULTIPLEXER_OBSERVER_B_URL",
+        port=8080,
+    )

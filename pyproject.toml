@@ -19,6 +19,9 @@ classifiers = [
   "Topic :: Software Development :: Build Tools",
   "Topic :: System :: Systems Administration",
 ]
+dependencies = [
+  "Jinja2>=3.1",
+]
 
 [project.urls]
 Homepage = "https://github.com/OpenJ92/control-plane-kit"
@@ -26,6 +29,9 @@ Homepage = "https://github.com/OpenJ92/control-plane-kit"
 [tool.setuptools.packages.find]
 where = ["."]
 include = ["control_plane_kit*"]
+
+[tool.setuptools.package-data]
+"control_plane_kit.servers" = ["templates/*.py.j2"]
 
 [project.optional-dependencies]
 server = [

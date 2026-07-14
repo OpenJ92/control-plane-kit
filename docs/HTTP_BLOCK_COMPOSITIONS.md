@@ -182,6 +182,11 @@ or cluster-wide counters.
 These server blocks are deliberately small. Their stdlib Docker commands are
 for local examples and topology exercises.
 
+The command scripts are rendered from packaged Jinja2 templates under
+`control_plane_kit/servers/templates/`. Block modules should pass template
+context, not build Python source from raw string lists. This keeps generated
+server code reviewable and gives future block implementations a clear precedent.
+
 They are not production replacements for hardened infrastructure such as nginx,
 Envoy, HAProxy, Cloudflare, Kubernetes Services, managed load balancers, or
 distributed rate-limit systems.

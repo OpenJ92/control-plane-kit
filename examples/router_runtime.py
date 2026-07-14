@@ -2,24 +2,16 @@
 
 from __future__ import annotations
 
-import json
-
 from control_plane_kit import (
-    ApplicationBlock,
-    BlockSpec,
-    BlockSockets,
     DeploymentRecipe,
-    DockerImageImplementation,
     DockerRuntime,
-    Protocol,
-    ProviderSocket,
     SocketConnection,
     compile_recipe,
 )
 from control_plane_kit.docker_runtime import DockerClient, DockerRuntimeInterpreter
 from control_plane_kit.graph import DeploymentGraph
 from control_plane_kit.runtimes import RuntimePlan, RuntimeState
-from control_plane_kit.servers import HttpActiveRouterRuntime, http_active_router_block
+from control_plane_kit.servers import HttpActiveRouterRuntime, hello_server_block, http_active_router_block
 
 
 def router_recipe(active: str = "api-v1") -> DeploymentRecipe:
@@ -33,8 +25,8 @@ def router_recipe(active: str = "api-v1") -> DeploymentRecipe:
     if active_target not in state.get("targets"):
         raise ValueError(f"unknown active target {active_target!r}")
 
-    api_v1 = _hello_api("api-v1", "Hello from v1")
-    api_v2 = _hello_api("api-v2", "Hello from v2")
+    api_v1 = hello_server_block("api-v1", message="Hello from v1")
+    api_v2 = hello_server_block("api-v2", message="Hello from v2")
     router = http_active_router_block("api-router", display_name="API Router")
     return DeploymentRecipe(
         f"router-runtime-{active}",
@@ -66,32 +58,3 @@ def run_router_with_client(client: DockerClient, active: str = "api-v1") -> Runt
 
     interpreter = DockerRuntimeInterpreter(project_name="router-demo", client=client)
     return interpreter.up(router_graph(active), "docker")
-
-
-def _hello_api(block_id: str, message: str) -> ApplicationBlock:
-    return ApplicationBlock(
-        BlockSpec(block_id, block_id),
-        DockerImageImplementation(
-            image="python:3.13-alpine",
-            command=_hello_command(message),
-            ports={"internal": 8000},
-        ),
-        BlockSockets(providers=(ProviderSocket("internal", Protocol.HTTP),)),
-    )
-
-
-def _hello_command(message: str) -> tuple[str, ...]:
-    body = json.dumps(message)
-    lines = [
-        "from http.server import BaseHTTPRequestHandler, HTTPServer",
-        f"BODY = {body!r}.encode()",
-        "class Handler(BaseHTTPRequestHandler):",
-        "    def do_GET(self):",
-        "        self.send_response(200)",
-        "        self.send_header('content-type', 'text/plain')",
-        "        self.end_headers()",
-        "        self.wfile.write(BODY)",
-        "    def log_message(self, format, *args): pass",
-        "HTTPServer(('0.0.0.0', 8000), Handler).serve_forever()",
-    ]
-    return ("python", "-c", chr(10).join(lines))
