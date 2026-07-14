@@ -47,8 +47,7 @@ Make the public vocabulary match the intended model:
 ## Suggested Issue Topology
 
 1. Rename public spec examples to `BlockSpec`.
-2. Decide whether code should rename existing `AppSpec`/specialized specs to
-   `BlockSpec`.
+2. Replace existing `AppSpec`/specialized specs with `BlockSpec`.
 3. Rename socket vocabulary from `RoleInputSocket`/`RoleOutputSocket` to
    `RequirementSocket`/`ProviderSocket`, if still present.
 4. Rename `RoleSockets` to `BlockSockets`, if still present.
@@ -92,4 +91,3 @@ from control_plane_kit import (
 
 The next vertical, runtime interpretation, depends on stable names. Do not start
 runtime interpreter work while socket or spec vocabulary is half-renamed.
-

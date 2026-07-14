@@ -1,9 +1,8 @@
 """Single application wired to one Postgres provider."""
 
 from control_plane_kit import (
-    AppSpec,
     ApplicationBlock,
-    DataSpec,
+    BlockSpec,
     DataBlock,
     DeploymentRecipe,
     DockerImageImplementation,
@@ -19,7 +18,7 @@ from control_plane_kit import (
 
 def recipe() -> DeploymentRecipe:
     app = ApplicationBlock(
-        spec=AppSpec("orders-api", "Orders API"),
+        spec=BlockSpec("orders-api", "Orders API"),
         implementation=DockerImageImplementation(
             image="orders-api:latest",
             command=("python", "-m", "orders_api"),
@@ -31,7 +30,7 @@ def recipe() -> DeploymentRecipe:
         ),
     )
     postgres = DataBlock(
-        spec=DataSpec("postgres", "Orders Postgres", database_name="orders"),
+        spec=BlockSpec("postgres", "Orders Postgres"),
         implementation=DockerPostgresImplementation(database="orders"),
         sockets=RoleSockets(outputs=(RoleOutputSocket("internal", Protocol.POSTGRES),)),
     )

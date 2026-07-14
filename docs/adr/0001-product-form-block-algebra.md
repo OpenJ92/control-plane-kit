@@ -20,19 +20,23 @@ would mix unrelated axes: what a node is, how it runs, and how it communicates.
 Represent deployable blocks as product values:
 
 ```text
-DeployBlock = Spec x RuntimeImplementation x BlockSockets
+DeployBlock = BlockSpec x RuntimeImplementation x BlockSockets
 ```
 
 Current concrete families are:
 
 ```text
-ApplicationBlock = AppSpec x RuntimeImplementation x RoleSockets
-DataBlock        = DataSpec x RuntimeImplementation x RoleSockets
-ProxyBlock       = ProxySpec x RuntimeImplementation x RoleSockets
+ApplicationBlock = BlockSpec x RuntimeImplementation x RoleSockets
+DataBlock        = BlockSpec x RuntimeImplementation x RoleSockets
+ProxyBlock       = BlockSpec x RuntimeImplementation x RoleSockets
 ```
 
 `RoleSockets` is the current public name. The intended semantic name is
 `BlockSockets`; see `AGENTS.md` for the planned vocabulary cleanup.
+
+Specialized specs should only be introduced when a block family has distinct
+metadata that cannot live in `BlockSpec.metadata` or the runtime implementation
+descriptor.
 
 ## Consequences
 
