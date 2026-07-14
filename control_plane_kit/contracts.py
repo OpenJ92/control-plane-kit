@@ -104,3 +104,179 @@ class ControlVariableSpec:
 
     def _error(self, code: str, message: str) -> ControlVariableError:
         return ControlVariableError(ValidationErrorDetail(self.name, code, message))
+
+
+@dataclass(frozen=True)
+class TextVariable(ControlVariableSpec):
+    """Plain text control variable."""
+
+    def __init__(
+        self,
+        name: str,
+        *,
+        mutable: bool = True,
+        required: bool = True,
+        reload_policy: ReloadPolicy = ReloadPolicy.LIVE,
+        description: str | None = None,
+        metadata: Mapping[str, str] | None = None,
+    ):
+        super().__init__(name, ControlValueKind.TEXT, mutable, required, reload_policy, description, metadata or {})
+
+    def validate(self, value: Any) -> str | None:
+        value = super().validate(value)
+        if value is None:
+            return None
+        if not isinstance(value, str):
+            raise self._error("type", f"{self.name} must be text")
+        return value
+
+
+@dataclass(frozen=True)
+class HttpVariable(ControlVariableSpec):
+    """HTTP/HTTPS URL control variable."""
+
+    def __init__(
+        self,
+        name: str,
+        *,
+        mutable: bool = True,
+        required: bool = True,
+        reload_policy: ReloadPolicy = ReloadPolicy.LIVE,
+        description: str | None = None,
+        metadata: Mapping[str, str] | None = None,
+    ):
+        super().__init__(name, ControlValueKind.HTTP, mutable, required, reload_policy, description, metadata or {})
+
+    def validate(self, value: Any) -> str | None:
+        value = _require_text(self, super().validate(value))
+        if value is None:
+            return None
+        if not value.startswith(("http://", "https://")):
+            raise self._error("url-scheme", f"{self.name} must start with http:// or https://")
+        return value
+
+
+@dataclass(frozen=True)
+class TcpVariable(ControlVariableSpec):
+    """TCP endpoint control variable."""
+
+    def __init__(
+        self,
+        name: str,
+        *,
+        mutable: bool = True,
+        required: bool = True,
+        reload_policy: ReloadPolicy = ReloadPolicy.LIVE,
+        description: str | None = None,
+        metadata: Mapping[str, str] | None = None,
+    ):
+        super().__init__(name, ControlValueKind.TCP, mutable, required, reload_policy, description, metadata or {})
+
+    def validate(self, value: Any) -> str | None:
+        value = _require_text(self, super().validate(value))
+        if value is None:
+            return None
+        if ":" not in value:
+            raise self._error("tcp-address", f"{self.name} must include host:port")
+        host, port = value.rsplit(":", 1)
+        if not host or not port.isdigit():
+            raise self._error("tcp-address", f"{self.name} must include host:port")
+        return value
+
+
+@dataclass(frozen=True)
+class PostgresVariable(ControlVariableSpec):
+    """Postgres connection-string control variable."""
+
+    def __init__(
+        self,
+        name: str,
+        *,
+        mutable: bool = True,
+        required: bool = True,
+        reload_policy: ReloadPolicy = ReloadPolicy.DRAIN_REQUIRED,
+        description: str | None = None,
+        metadata: Mapping[str, str] | None = None,
+    ):
+        super().__init__(name, ControlValueKind.POSTGRES, mutable, required, reload_policy, description, metadata or {})
+
+    def validate(self, value: Any) -> str | None:
+        value = _require_text(self, super().validate(value))
+        if value is None:
+            return None
+        if not value.startswith(("postgres://", "postgresql://", "postgresql+psycopg://")):
+            raise self._error("postgres-url", f"{self.name} must be a Postgres connection string")
+        return value
+
+
+@dataclass(frozen=True)
+class SecretVariable(ControlVariableSpec):
+    """Secret control variable that never describes raw values."""
+
+    def __init__(
+        self,
+        name: str,
+        *,
+        mutable: bool = True,
+        required: bool = True,
+        reload_policy: ReloadPolicy = ReloadPolicy.LIVE,
+        description: str | None = None,
+        metadata: Mapping[str, str] | None = None,
+    ):
+        super().__init__(name, ControlValueKind.SECRET, mutable, required, reload_policy, description, metadata or {})
+
+    def validate(self, value: Any) -> str | None:
+        return _require_text(self, super().validate(value))
+
+    def describe_value(self, value: Any) -> dict[str, object]:
+        return {"present": value is not None and value != "", "redacted": True}
+
+
+@dataclass(frozen=True)
+class RuntimeValueVariable(ControlVariableSpec):
+    """Runtime-only value that is not backed by an environment variable."""
+
+    def __init__(
+        self,
+        name: str,
+        *,
+        mutable: bool = True,
+        required: bool = False,
+        reload_policy: ReloadPolicy = ReloadPolicy.LIVE,
+        description: str | None = None,
+        metadata: Mapping[str, str] | None = None,
+    ):
+        super().__init__(name, ControlValueKind.RUNTIME_VALUE, mutable, required, reload_policy, description, metadata or {})
+
+
+@dataclass(frozen=True)
+class RuntimeMapVariable(ControlVariableSpec):
+    """Runtime-only mapping value."""
+
+    def __init__(
+        self,
+        name: str,
+        *,
+        mutable: bool = True,
+        required: bool = False,
+        reload_policy: ReloadPolicy = ReloadPolicy.LIVE,
+        description: str | None = None,
+        metadata: Mapping[str, str] | None = None,
+    ):
+        super().__init__(name, ControlValueKind.RUNTIME_MAP, mutable, required, reload_policy, description, metadata or {})
+
+    def validate(self, value: Any) -> Mapping[str, object] | None:
+        value = super().validate(value)
+        if value is None:
+            return None
+        if not isinstance(value, Mapping):
+            raise self._error("type", f"{self.name} must be a mapping")
+        return dict(value)
+
+
+def _require_text(variable: ControlVariableSpec, value: Any) -> str | None:
+    if value is None:
+        return None
+    if not isinstance(value, str):
+        raise variable._error("type", f"{variable.name} must be text")
+    return value
