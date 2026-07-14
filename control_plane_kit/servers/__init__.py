@@ -9,6 +9,12 @@ from control_plane_kit.servers.http_active_router import (
     http_active_router_command,
 )
 from control_plane_kit.servers.http_messages import HttpHandler, HttpRequest, HttpResponse
+from control_plane_kit.servers.http_multiplexer import (
+    HttpMultiplexerRuntime,
+    HttpMultiplexerServer,
+    http_multiplexer_block,
+    http_multiplexer_command,
+)
 from control_plane_kit.servers.http_proxy import HttpProxyRuntime, HttpProxyServer, http_proxy_block, http_proxy_command
 from control_plane_kit.servers.http_weighted_balancer import (
     HttpWeightedLoadBalancerRuntime,
@@ -23,6 +29,8 @@ __all__ = [
     "HttpActiveRouterRuntime",
     "HttpActiveRouterServer",
     "HttpHandler",
+    "HttpMultiplexerRuntime",
+    "HttpMultiplexerServer",
     "HttpProxyRuntime",
     "HttpProxyServer",
     "HttpRequest",
@@ -34,6 +42,8 @@ __all__ = [
     "hello_server_block",
     "http_active_router_block",
     "http_active_router_command",
+    "http_multiplexer_block",
+    "http_multiplexer_command",
     "http_proxy_block",
     "http_proxy_command",
     "http_weighted_load_balancer_block",
