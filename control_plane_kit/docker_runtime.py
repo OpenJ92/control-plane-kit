@@ -2,16 +2,91 @@
 
 from __future__ import annotations
 
-from dataclasses import dataclass, field
-from typing import Mapping
+import subprocess
+from dataclasses import dataclass, field, replace
+from typing import Mapping, Protocol
 
 from control_plane_kit.graph import DeploymentGraph, Node
-from control_plane_kit.runtimes import CleanupPolicy, RuntimeActivity, RuntimePlan, RuntimeState
+from control_plane_kit.runtimes import CleanupPolicy, RuntimeActivity, RuntimeNodeState, RuntimePlan, RuntimeState
 from control_plane_kit.types import RuntimeKind
 
 
 class UnsupportedDockerRuntimeFeature(ValueError):
     """Raised when a graph cannot be realized by the Docker interpreter yet."""
+
+
+class DockerClient(Protocol):
+    """Small Docker capability surface used by the runtime executor."""
+
+    def ensure_network(self, name: str) -> None:
+        """Create the network if needed."""
+
+    def start_container(
+        self,
+        *,
+        name: str,
+        image: str,
+        network: str,
+        environment: Mapping[str, str],
+        command: tuple[str, ...],
+    ) -> None:
+        """Start a detached container."""
+
+    def stop_container(self, name: str) -> None:
+        """Stop a container if it is running."""
+
+    def remove_container(self, name: str) -> None:
+        """Remove a container if it exists."""
+
+    def remove_network(self, name: str) -> None:
+        """Remove a network if it exists."""
+
+
+@dataclass(frozen=True)
+class DockerCliClient:
+    """Docker client backed by the local `docker` CLI."""
+
+    docker: str = "docker"
+
+    def ensure_network(self, name: str) -> None:
+        result = self._run("network", "inspect", name, check=False)
+        if result.returncode != 0:
+            self._run("network", "create", name)
+
+    def start_container(
+        self,
+        *,
+        name: str,
+        image: str,
+        network: str,
+        environment: Mapping[str, str],
+        command: tuple[str, ...],
+    ) -> None:
+        self.remove_container(name)
+        args = ["run", "-d", "--name", name, "--network", network]
+        for key, value in sorted(environment.items()):
+            args.extend(("-e", f"{key}={value}"))
+        args.append(image)
+        args.extend(command)
+        self._run(*args)
+
+    def stop_container(self, name: str) -> None:
+        self._run("stop", name, check=False)
+
+    def remove_container(self, name: str) -> None:
+        self._run("rm", "-f", name, check=False)
+
+    def remove_network(self, name: str) -> None:
+        self._run("network", "rm", name, check=False)
+
+    def _run(self, *args: str, check: bool = True) -> subprocess.CompletedProcess[str]:
+        return subprocess.run(
+            (self.docker, *args),
+            check=check,
+            text=True,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+        )
 
 
 @dataclass(frozen=True)
@@ -78,16 +153,29 @@ class StopDockerContainer:
 
 
 @dataclass(frozen=True)
-class DockerRuntimeInterpreter:
-    """Effect-free Docker runtime planner.
+class RemoveDockerNetwork:
+    """Plan activity for removing an owned Docker network."""
 
-    Execution is intentionally left to a later child issue.  This class proves
-    that Docker consumes a compiled graph and produces runtime activity values
-    without changing the graph model.
-    """
+    runtime_id: str
+    network_name: str
+    cleanup_policy: CleanupPolicy
+
+    def descriptor(self) -> dict[str, object]:
+        return {
+            "type": "remove-docker-network",
+            "runtime_id": self.runtime_id,
+            "network_name": self.network_name,
+            "cleanup_policy": self.cleanup_policy.value,
+        }
+
+
+@dataclass(frozen=True)
+class DockerRuntimeInterpreter:
+    """Docker runtime planner/executor for one compiled runtime context."""
 
     project_name: str = "control-plane-kit"
     cleanup_policy: CleanupPolicy = CleanupPolicy.REMOVE_ON_STOP
+    client: DockerClient = field(default_factory=DockerCliClient)
 
     def plan_start(self, graph: DeploymentGraph, runtime_id: str) -> RuntimePlan:
         runtime = _docker_runtime(graph, runtime_id)
@@ -101,7 +189,45 @@ class DockerRuntimeInterpreter:
         return RuntimePlan(runtime_id=runtime_id, action="start", activities=tuple(activities))
 
     def up(self, graph: DeploymentGraph, runtime_id: str) -> RuntimeState:
-        raise NotImplementedError("Docker execution is introduced after effect-free planning")
+        runtime = _docker_runtime(graph, runtime_id)
+        plan = self.plan_start(graph, runtime_id)
+        network_name = _network_name(runtime_id, runtime.metadata)
+        nodes: dict[str, RuntimeNodeState] = {}
+        for activity in plan.activities:
+            match activity:
+                case EnsureDockerNetwork(network_name=name):
+                    self.client.ensure_network(name)
+                case StartDockerContainer() as start:
+                    self.client.start_container(
+                        name=start.container_name,
+                        image=start.image,
+                        network=start.network_name,
+                        environment=start.environment,
+                        command=start.command,
+                    )
+                    graph_node = graph.node(start.node_id)
+                    nodes[start.node_id] = RuntimeNodeState(
+                        node_id=start.node_id,
+                        kind=graph_node.kind,
+                        runtime_id=runtime_id,
+                        healthy=True,
+                        environment=graph_node.environment,
+                        endpoints=graph_node.endpoints,
+                        metadata={
+                            "container_name": start.container_name,
+                            "image": start.image,
+                            "network_name": start.network_name,
+                        },
+                    )
+                case _:
+                    raise UnsupportedDockerRuntimeFeature(f"unknown Docker start activity {activity!r}")
+        return RuntimeState(
+            runtime_id=runtime_id,
+            kind=runtime.kind,
+            cleanup_policy=self.cleanup_policy,
+            nodes=nodes,
+            metadata={"network_name": network_name, "interpreter": "docker"},
+        )
 
     def plan_stop(self, state: RuntimeState) -> RuntimePlan:
         activities: list[RuntimeActivity] = []
@@ -115,10 +241,32 @@ class DockerRuntimeInterpreter:
                     cleanup_policy=state.cleanup_policy,
                 )
             )
+        network_name = state.metadata.get("network_name")
+        if isinstance(network_name, str):
+            activities.append(
+                RemoveDockerNetwork(
+                    runtime_id=state.runtime_id,
+                    network_name=network_name,
+                    cleanup_policy=state.cleanup_policy,
+                )
+            )
         return RuntimePlan(runtime_id=state.runtime_id, action="stop", activities=tuple(activities))
 
     def down(self, state: RuntimeState) -> RuntimeState:
-        raise NotImplementedError("Docker execution is introduced after effect-free planning")
+        plan = self.plan_stop(state)
+        for activity in plan.activities:
+            match activity:
+                case StopDockerContainer(container_name=name):
+                    self.client.stop_container(name)
+                    if state.cleanup_policy is CleanupPolicy.REMOVE_ON_STOP:
+                        self.client.remove_container(name)
+                case RemoveDockerNetwork(network_name=name):
+                    if state.cleanup_policy is CleanupPolicy.REMOVE_ON_STOP:
+                        self.client.remove_network(name)
+                case _:
+                    raise UnsupportedDockerRuntimeFeature(f"unknown Docker stop activity {activity!r}")
+        nodes = {} if state.cleanup_policy is CleanupPolicy.REMOVE_ON_STOP else state.nodes
+        return replace(state, nodes=nodes, metadata={**state.metadata, "stopped": True})
 
 
 def _docker_runtime(graph: DeploymentGraph, runtime_id: str):
