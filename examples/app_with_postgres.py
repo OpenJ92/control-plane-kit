@@ -9,8 +9,8 @@ from control_plane_kit import (
     DockerPostgresImplementation,
     DockerRuntime,
     Protocol,
-    RoleInputSocket,
-    RoleOutputSocket,
+    RequirementSocket,
+    ProviderSocket,
     RoleSockets,
     SocketConnection,
 )
@@ -25,14 +25,14 @@ def recipe() -> DeploymentRecipe:
             ports={"internal": 8000},
         ),
         sockets=RoleSockets(
-            inputs=(RoleInputSocket("DATABASE_URL", Protocol.POSTGRES, ("DATABASE_URL",)),),
-            outputs=(RoleOutputSocket("internal", Protocol.HTTP),),
+            inputs=(RequirementSocket("DATABASE_URL", Protocol.POSTGRES, ("DATABASE_URL",)),),
+            outputs=(ProviderSocket("internal", Protocol.HTTP),),
         ),
     )
     postgres = DataBlock(
         spec=BlockSpec("postgres", "Orders Postgres"),
         implementation=DockerPostgresImplementation(database="orders"),
-        sockets=RoleSockets(outputs=(RoleOutputSocket("internal", Protocol.POSTGRES),)),
+        sockets=RoleSockets(outputs=(ProviderSocket("internal", Protocol.POSTGRES),)),
     )
     return DeploymentRecipe(
         "app-with-postgres",

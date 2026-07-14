@@ -467,11 +467,16 @@ expanding the abstraction.
 
 ## Vocabulary
 
-Current public socket names still use the older `Role*Socket` vocabulary:
+Current endpoint socket names use the intended provider/requirement vocabulary:
 
 ```text
-RoleInputSocket
-RoleOutputSocket
+RequirementSocket
+ProviderSocket
+```
+
+The container still uses the older `RoleSockets` name until Roadmap 0001.3:
+
+```text
 RoleSockets
 ```
 
@@ -483,9 +488,9 @@ ProviderSocket: an endpoint/value exposed for other blocks to consume.
 BlockSockets: the communication boundary of one block.
 ```
 
-Do not perform this rename opportunistically inside unrelated issues. If we
-rename it, do it as a small compatibility-aware refactor before more server block
-APIs depend on the current names.
+Do not perform the `RoleSockets` -> `BlockSockets` rename opportunistically
+inside unrelated issues. If we rename it, do it as the dedicated Roadmap 0001.3
+refactor before more server block APIs depend on the current name.
 
 ## Issue Handoff
 

@@ -10,7 +10,7 @@ from control_plane_kit.types import Protocol, RuntimeKind
 
 
 @dataclass(frozen=True)
-class RoleInputSocket:
+class RequirementSocket:
     """An env-backed requirement on a consumer node."""
 
     name: str
@@ -20,11 +20,11 @@ class RoleInputSocket:
 
     def __post_init__(self) -> None:
         if not self.env_bindings:
-            raise ValueError(f"input socket {self.name!r} needs at least one env binding")
+            raise ValueError(f"requirement socket {self.name!r} needs at least one env binding")
 
 
 @dataclass(frozen=True)
-class RoleOutputSocket:
+class ProviderSocket:
     """An endpoint provided by a node."""
 
     name: str
@@ -35,16 +35,16 @@ class RoleOutputSocket:
 class RoleSockets:
     """The full communication surface of a block."""
 
-    inputs: tuple[RoleInputSocket, ...] = ()
-    outputs: tuple[RoleOutputSocket, ...] = ()
+    inputs: tuple[RequirementSocket, ...] = ()
+    outputs: tuple[ProviderSocket, ...] = ()
 
-    def input(self, name: str) -> RoleInputSocket:
+    def input(self, name: str) -> RequirementSocket:
         for socket in self.inputs:
             if socket.name == name:
                 return socket
         raise KeyError(f"no input socket {name!r}; available: {self.input_names()}")
 
-    def output(self, name: str) -> RoleOutputSocket:
+    def output(self, name: str) -> ProviderSocket:
         for socket in self.outputs:
             if socket.name == name:
                 return socket
@@ -121,7 +121,7 @@ DeployBlock: TypeAlias = ApplicationBlock | DataBlock | ProxyBlock
 
 @dataclass(frozen=True)
 class SocketConnection:
-    """Provider output socket connected to consumer input socket."""
+    """Provider socket connected to a consumer requirement socket."""
 
     provider_role: str
     output_socket: str
