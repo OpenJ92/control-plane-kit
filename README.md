@@ -22,7 +22,7 @@ Block
 
 A developer brings ordinary server code. The code listens on a port and reads
 unknown addresses from environment variables. `control-plane-kit` gives those
-unknown addresses meaning by wiring provider output sockets into consumer input
+unknown addresses meaning by wiring provider sockets into consumer requirement
 sockets.
 
 ## Developer Contract
@@ -45,8 +45,8 @@ from control_plane_kit import (
     DockerPostgresImplementation,
     DockerRuntime,
     Protocol,
-    RoleInputSocket,
-    RoleOutputSocket,
+    RequirementSocket,
+    ProviderSocket,
     RoleSockets,
     SocketConnection,
     compile_recipe,
@@ -61,17 +61,17 @@ api = ApplicationBlock(
     ),
     sockets=RoleSockets(
         inputs=(
-            RoleInputSocket("DATABASE_URL", Protocol.POSTGRES, ("DATABASE_URL",)),
-            RoleInputSocket("PAYMENTS_BASE_URL", Protocol.HTTP, ("PAYMENTS_BASE_URL",)),
+            RequirementSocket("DATABASE_URL", Protocol.POSTGRES, ("DATABASE_URL",)),
+            RequirementSocket("PAYMENTS_BASE_URL", Protocol.HTTP, ("PAYMENTS_BASE_URL",)),
         ),
-        outputs=(RoleOutputSocket("internal", Protocol.HTTP),),
+        outputs=(ProviderSocket("internal", Protocol.HTTP),),
     ),
 )
 
 postgres = ApplicationBlock(
     spec=BlockSpec(role_id="postgres"),
     implementation=DockerPostgresImplementation(database="orders"),
-    sockets=RoleSockets(outputs=(RoleOutputSocket("internal", Protocol.POSTGRES),)),
+    sockets=RoleSockets(outputs=(ProviderSocket("internal", Protocol.POSTGRES),)),
 )
 
 recipe = DeploymentRecipe(
@@ -106,7 +106,7 @@ DeployBlock
   sockets: what it needs and what it exposes
 
 SocketConnection
-  provider output socket -> consumer input socket
+  provider socket -> consumer requirement socket
 ```
 
 A runtime is ambient. A Docker image implementation does not create Docker; it
@@ -118,14 +118,14 @@ Kubernetes, ECS, or a dry-run runtime.
 
 Sockets are the UI/editor boundary.
 
-- Output sockets are provided endpoints: HTTP base URLs, Postgres connection
+- Provider sockets are provided endpoints: HTTP base URLs, Postgres connection
   strings, TCP addresses.
-- Input sockets are environment expectations: env vars that need to be filled
-  from a compatible provider output.
+- Requirement sockets are environment expectations: env vars that need to be
+  filled from a compatible provider.
 
-A visual editor can render output sockets on one side of a block and input
-sockets on the other. Dragging from a provider output to a consumer input creates
-a `SocketConnection`.
+A visual editor can render provider sockets on one side of a block and
+requirement sockets on the other. Dragging from a provider to a requirement
+creates a `SocketConnection`.
 
 ## Capabilities
 

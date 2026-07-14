@@ -9,8 +9,8 @@ from control_plane_kit import (
     DockerPostgresImplementation,
     DockerRuntime,
     Protocol,
-    RoleInputSocket,
-    RoleOutputSocket,
+    RequirementSocket,
+    ProviderSocket,
     RoleSockets,
     SocketConnection,
 )
@@ -22,24 +22,24 @@ def recipe() -> DeploymentRecipe:
         implementation=DockerImageImplementation("api:latest", ports={"internal": 8000}),
         sockets=RoleSockets(
             inputs=(
-                RoleInputSocket("DATABASE_URL", Protocol.POSTGRES, ("DATABASE_URL",)),
-                RoleInputSocket("INVENTORY_SERVICE_URL", Protocol.HTTP, ("INVENTORY_SERVICE_URL",)),
+                RequirementSocket("DATABASE_URL", Protocol.POSTGRES, ("DATABASE_URL",)),
+                RequirementSocket("INVENTORY_SERVICE_URL", Protocol.HTTP, ("INVENTORY_SERVICE_URL",)),
             ),
-            outputs=(RoleOutputSocket("internal", Protocol.HTTP),),
+            outputs=(ProviderSocket("internal", Protocol.HTTP),),
         ),
     )
     inventory = ApplicationBlock(
         spec=BlockSpec("inventory-service", "Inventory Service"),
         implementation=DockerImageImplementation("inventory:latest", ports={"internal": 8015}),
         sockets=RoleSockets(
-            inputs=(RoleInputSocket("DATABASE_URL", Protocol.POSTGRES, ("DATABASE_URL",)),),
-            outputs=(RoleOutputSocket("internal", Protocol.HTTP),),
+            inputs=(RequirementSocket("DATABASE_URL", Protocol.POSTGRES, ("DATABASE_URL",)),),
+            outputs=(ProviderSocket("internal", Protocol.HTTP),),
         ),
     )
     postgres = DataBlock(
         spec=BlockSpec("postgres"),
         implementation=DockerPostgresImplementation(database="pottery"),
-        sockets=RoleSockets(outputs=(RoleOutputSocket("internal", Protocol.POSTGRES),)),
+        sockets=RoleSockets(outputs=(ProviderSocket("internal", Protocol.POSTGRES),)),
     )
     return DeploymentRecipe(
         "split-service",
