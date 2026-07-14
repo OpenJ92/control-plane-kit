@@ -29,6 +29,14 @@ from control_plane_kit.algebra import (
     SocketConnection,
 )
 from control_plane_kit.compiler import compile_recipe
+from control_plane_kit.contracts import (
+    ControlValueKind,
+    ControlVariable,
+    ControlVariableError,
+    ControlVariableSpec,
+    ReloadPolicy,
+    ValidationErrorDetail,
+)
 from control_plane_kit.control_routes import (
     COMMON_STATUS_ROUTES,
     CONTROL_ROUTE_SETS,
@@ -111,6 +119,10 @@ __all__ = [
     "OBSERVER_ROUTES",
     "TARGET_ROUTES",
     "ControlRoute",
+    "ControlValueKind",
+    "ControlVariable",
+    "ControlVariableError",
+    "ControlVariableSpec",
     "ControlRouteMethod",
     "ControlRouteScope",
     "ControlRouteSet",
@@ -144,6 +156,7 @@ __all__ = [
     "ProxyBlock",
     "RequirementSocket",
     "ProviderSocket",
+    "ReloadPolicy",
     "BlockSockets",
     "RemoveDockerNetwork",
     "RuntimeActivity",
@@ -158,6 +171,7 @@ __all__ = [
     "StartDockerContainer",
     "StopDockerContainer",
     "UnsupportedDockerRuntimeFeature",
+    "ValidationErrorDetail",
     "compile_recipe",
     "diff_graphs",
     "plan_migration",
