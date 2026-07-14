@@ -16,6 +16,12 @@ from control_plane_kit.servers.http_multiplexer import (
     http_multiplexer_command,
 )
 from control_plane_kit.servers.http_proxy import HttpProxyRuntime, HttpProxyServer, http_proxy_block, http_proxy_command
+from control_plane_kit.servers.http_rate_limiter import (
+    HttpRateLimiterRuntime,
+    HttpRateLimiterServer,
+    http_rate_limiter_block,
+    http_rate_limiter_command,
+)
 from control_plane_kit.servers.http_weighted_balancer import (
     HttpWeightedLoadBalancerRuntime,
     HttpWeightedLoadBalancerServer,
@@ -33,6 +39,8 @@ __all__ = [
     "HttpMultiplexerServer",
     "HttpProxyRuntime",
     "HttpProxyServer",
+    "HttpRateLimiterRuntime",
+    "HttpRateLimiterServer",
     "HttpRequest",
     "HttpResponse",
     "HttpWeightedLoadBalancerRuntime",
@@ -46,6 +54,8 @@ __all__ = [
     "http_multiplexer_command",
     "http_proxy_block",
     "http_proxy_command",
+    "http_rate_limiter_block",
+    "http_rate_limiter_command",
     "http_weighted_load_balancer_block",
     "http_weighted_load_balancer_command",
 ]
