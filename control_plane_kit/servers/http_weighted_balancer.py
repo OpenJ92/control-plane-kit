@@ -9,6 +9,7 @@ from control_plane_kit.algebra import BlockSockets, BlockSpec, ProviderSocket, P
 from control_plane_kit.capabilities import CapabilityName
 from control_plane_kit.contracts import RuntimeContract, RuntimeMapVariable
 from control_plane_kit.implementations import DockerImageImplementation
+from control_plane_kit.servers._templates import render_python_command
 from control_plane_kit.servers.http_messages import HttpHandler, HttpRequest, HttpResponse
 from control_plane_kit.types import Protocol
 
@@ -113,31 +114,9 @@ def http_weighted_load_balancer_block(
 def http_weighted_load_balancer_command() -> tuple[str, ...]:
     """Return a tiny stdlib two-target HTTP load-balancer command."""
 
-    lines = [
-        "import itertools, os, urllib.request",
-        "from http.server import BaseHTTPRequestHandler, HTTPServer",
-        "TARGETS = [os.environ['BALANCER_TARGET_A_URL'].rstrip('/'), os.environ['BALANCER_TARGET_B_URL'].rstrip('/')]",
-        "CYCLE = itertools.cycle(TARGETS)",
-        "class Handler(BaseHTTPRequestHandler):",
-        "    def _forward(self):",
-        "        body = self.rfile.read(int(self.headers.get('content-length', '0') or '0'))",
-        "        target = next(CYCLE)",
-        "        url = target + self.path",
-        "        headers = {key: value for key, value in self.headers.items() if key.lower() != 'host'}",
-        "        request = urllib.request.Request(url, data=body or None, headers=headers, method=self.command)",
-        "        with urllib.request.urlopen(request) as response:",
-        "            payload = response.read()",
-        "            self.send_response(response.status)",
-        "            for key, value in response.headers.items():",
-        "                if key.lower() not in {'transfer-encoding', 'connection'}:",
-        "                    self.send_header(key, value)",
-        "            self.end_headers()",
-        "            self.wfile.write(payload)",
-        "    def do_GET(self): self._forward()",
-        "    def do_POST(self): self._forward()",
-        "    def do_PUT(self): self._forward()",
-        "    def do_DELETE(self): self._forward()",
-        "    def log_message(self, format, *args): pass",
-        "HTTPServer(('0.0.0.0', 8080), Handler).serve_forever()",
-    ]
-    return ("python", "-c", chr(10).join(lines))
+    return render_python_command(
+        "http_weighted_balancer.py.j2",
+        target_a_env="BALANCER_TARGET_A_URL",
+        target_b_env="BALANCER_TARGET_B_URL",
+        port=8080,
+    )

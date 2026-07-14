@@ -1,3 +1,4 @@
 #!/usr/bin/env bash
 set -euo pipefail
-python3 -m unittest discover -s tests -v
+: "${PYTHON:=python3}"
+"$PYTHON" -m unittest discover -s tests -v
