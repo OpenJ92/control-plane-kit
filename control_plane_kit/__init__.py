@@ -83,7 +83,20 @@ from control_plane_kit.implementations import (
     LocalSourceImplementation,
     PlanOnlyImplementation,
 )
-from control_plane_kit.servers import BlockControlState, HelloEnvironment, create_block_control_app, hello_command, hello_server_block
+from control_plane_kit.servers import (
+    BlockControlState,
+    HelloEnvironment,
+    HttpHandler,
+    HttpProxyRuntime,
+    HttpProxyServer,
+    HttpRequest,
+    HttpResponse,
+    create_block_control_app,
+    hello_command,
+    hello_server_block,
+    http_proxy_block,
+    http_proxy_command,
+)
 from control_plane_kit.planner import (
     Activity,
     ActivityPlan,
@@ -121,9 +134,16 @@ __all__ = [
     "CleanupPolicy",
     "BlockControlState",
     "HelloEnvironment",
+    "HttpHandler",
+    "HttpProxyRuntime",
+    "HttpProxyServer",
+    "HttpRequest",
+    "HttpResponse",
     "create_block_control_app",
     "hello_command",
     "hello_server_block",
+    "http_proxy_block",
+    "http_proxy_command",
     "CapabilityName",
     "capability_named",
     "COMMON_STATUS_ROUTES",
