@@ -5,7 +5,7 @@ from __future__ import annotations
 import os
 from dataclasses import dataclass, field, replace
 from enum import StrEnum
-from typing import Any, Mapping, Protocol
+from typing import Any, Callable, Iterable, Mapping, Protocol
 
 
 class ReloadPolicy(StrEnum):
@@ -288,9 +288,53 @@ class ContractPatchResult:
     """Result of applying one or more local contract value changes."""
 
     changed: Mapping[str, ReloadPolicy]
+    rebuilt_resources: tuple[str, ...] = ()
+    stale_resources: tuple[str, ...] = ()
 
-    def descriptor(self) -> dict[str, str]:
-        return {name: policy.value for name, policy in sorted(self.changed.items())}
+    def descriptor(self) -> dict[str, object]:
+        descriptor: dict[str, object] = {name: policy.value for name, policy in sorted(self.changed.items())}
+        if self.rebuilt_resources:
+            descriptor["rebuilt_resources"] = sorted(self.rebuilt_resources)
+        if self.stale_resources:
+            descriptor["stale_resources"] = sorted(self.stale_resources)
+        return descriptor
+
+
+@dataclass(frozen=True)
+class DerivedResourceSpec:
+    """Contract-owned resource derived from one or more control variables."""
+
+    name: str
+    variables: tuple[str, ...]
+    build: Callable[["EnvironmentContract"], Any]
+    dispose: Callable[[Any], None] | None = None
+    rebuild_policies: tuple[ReloadPolicy, ...] = (ReloadPolicy.LIVE, ReloadPolicy.CUSTOM_HANDLER)
+
+    @classmethod
+    def from_variables(
+        cls,
+        name: str,
+        variables: str | Iterable[str],
+        build: Callable[["EnvironmentContract"], Any],
+        *,
+        dispose: Callable[[Any], None] | None = None,
+        rebuild_policies: Iterable[ReloadPolicy] = (ReloadPolicy.LIVE, ReloadPolicy.CUSTOM_HANDLER),
+    ) -> "DerivedResourceSpec":
+        if isinstance(variables, str):
+            variable_names = (variables,)
+        else:
+            variable_names = tuple(variables)
+        if not variable_names:
+            raise ValueError("derived resource must depend on at least one variable")
+        return cls(name, variable_names, build, dispose, tuple(rebuild_policies))
+
+    def descriptor(self, *, stale: bool) -> dict[str, object]:
+        return {
+            "name": self.name,
+            "variables": list(self.variables),
+            "rebuild_policies": [policy.value for policy in self.rebuild_policies],
+            "stale": stale,
+        }
 
 
 class EnvironmentContract:
@@ -303,6 +347,9 @@ class EnvironmentContract:
     def __init__(self, values: Mapping[str, Any]):
         declarations = self.declarations()
         self._values: dict[str, Any] = {}
+        self._derived_specs: dict[str, DerivedResourceSpec] = {}
+        self._derived_values: dict[str, Any] = {}
+        self._stale_derived: set[str] = set()
         for name, variable in declarations.items():
             raw = values.get(name)
             if raw is None:
@@ -356,7 +403,77 @@ class EnvironmentContract:
             if self._values.get(name) != value:
                 self._values[name] = value
                 changed[name] = declarations[name].reload_policy
-        return ContractPatchResult(changed)
+        rebuilt, stale = self._apply_derived_resource_policy(changed)
+        return ContractPatchResult(changed, tuple(rebuilt), tuple(stale))
+
+    def derived(
+        self,
+        name: str,
+        from_var: str | Iterable[str],
+        build: Callable[["EnvironmentContract"], Any],
+        *,
+        dispose: Callable[[Any], None] | None = None,
+        rebuild_policies: Iterable[ReloadPolicy] = (ReloadPolicy.LIVE, ReloadPolicy.CUSTOM_HANDLER),
+    ) -> Any:
+        spec = DerivedResourceSpec.from_variables(
+            name,
+            from_var,
+            build,
+            dispose=dispose,
+            rebuild_policies=rebuild_policies,
+        )
+        self._validate_derived_spec(spec)
+        self._derived_specs[name] = spec
+        self._derived_values[name] = spec.build(self)
+        self._stale_derived.discard(name)
+        return self._derived_values[name]
+
+    def get_derived(self, name: str) -> Any:
+        if name not in self._derived_values:
+            raise KeyError(f"unknown derived resource {name!r}")
+        return self._derived_values[name]
+
+    def is_derived_stale(self, name: str) -> bool:
+        if name not in self._derived_specs:
+            raise KeyError(f"unknown derived resource {name!r}")
+        return name in self._stale_derived
+
+    def rebuild_derived(self, name: str) -> Any:
+        if name not in self._derived_specs:
+            raise KeyError(f"unknown derived resource {name!r}")
+        spec = self._derived_specs[name]
+        old_value = self._derived_values.get(name)
+        new_value = spec.build(self)
+        self._derived_values[name] = new_value
+        self._stale_derived.discard(name)
+        if old_value is not None and spec.dispose is not None:
+            spec.dispose(old_value)
+        return new_value
+
+    def _validate_derived_spec(self, spec: DerivedResourceSpec) -> None:
+        declarations = self.declarations()
+        for variable in spec.variables:
+            if variable not in declarations:
+                raise KeyError(f"unknown contract variable {variable!r}")
+
+    def _apply_derived_resource_policy(self, changed: Mapping[str, ReloadPolicy]) -> tuple[list[str], list[str]]:
+        rebuilt: list[str] = []
+        stale: list[str] = []
+        changed_names = set(changed)
+        if not changed_names:
+            return rebuilt, stale
+        for name, spec in self._derived_specs.items():
+            touched = changed_names.intersection(spec.variables)
+            if not touched:
+                continue
+            policies = {changed[variable] for variable in touched}
+            if policies.issubset(set(spec.rebuild_policies)):
+                self.rebuild_derived(name)
+                rebuilt.append(name)
+            else:
+                self._stale_derived.add(name)
+                stale.append(name)
+        return rebuilt, stale
 
     def descriptor(self) -> dict[str, object]:
         return self.redacted_descriptor()
@@ -366,7 +483,8 @@ class EnvironmentContract:
             "variables": {
                 name: _redacted_variable_descriptor(variable, self._values.get(name))
                 for name, variable in sorted(self.declarations().items())
-            }
+            },
+            "derived_resources": self._derived_descriptor(),
         }
 
     def unsafe_descriptor(self) -> dict[str, object]:
@@ -375,7 +493,14 @@ class EnvironmentContract:
                 name: variable.descriptor(self._values.get(name), include_value=True)
                 for name, variable in sorted(self.declarations().items())
             },
+            "derived_resources": self._derived_descriptor(),
             "unsafe": True,
+        }
+
+    def _derived_descriptor(self) -> dict[str, object]:
+        return {
+            name: spec.descriptor(stale=name in self._stale_derived)
+            for name, spec in sorted(self._derived_specs.items())
         }
 
 

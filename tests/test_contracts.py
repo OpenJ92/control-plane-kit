@@ -199,5 +199,83 @@ class ContractDescriptorRedactionTests(TestCase):
         self.assertNotIn("SG.secret", str(descriptor))
 
 
+class DerivedResourceTests(TestCase):
+    def test_live_patch_rebuilds_and_disposes_derived_resource(self):
+        disposed: list[str] = []
+
+        class ApiEnvironment(EnvironmentContract):
+            storage_base_url = HttpVariable("storage_base_url")
+
+        env = ApiEnvironment.from_mapping({"storage_base_url": "https://storage-v1.internal"})
+        first = env.derived(
+            "storage_client",
+            "storage_base_url",
+            lambda contract: f"client:{contract.get('storage_base_url')}",
+            dispose=disposed.append,
+        )
+
+        result = env.apply_patch({"storage_base_url": "https://storage-v2.internal"})
+
+        self.assertEqual(first, "client:https://storage-v1.internal")
+        self.assertEqual(env.get_derived("storage_client"), "client:https://storage-v2.internal")
+        self.assertEqual(disposed, ["client:https://storage-v1.internal"])
+        self.assertEqual(result.rebuilt_resources, ("storage_client",))
+        self.assertFalse(env.is_derived_stale("storage_client"))
+
+    def test_drain_required_patch_marks_derived_resource_stale(self):
+        disposed: list[str] = []
+
+        class ApiEnvironment(EnvironmentContract):
+            database_url = PostgresVariable("database_url")
+
+        env = ApiEnvironment.from_mapping({"database_url": "postgresql+psycopg://db-v1:5432/app"})
+        env.derived(
+            "database_engine",
+            "database_url",
+            lambda contract: f"engine:{contract.get('database_url')}",
+            dispose=disposed.append,
+        )
+
+        result = env.apply_patch({"database_url": "postgresql+psycopg://db-v2:5432/app"})
+
+        self.assertEqual(env.get_derived("database_engine"), "engine:postgresql+psycopg://db-v1:5432/app")
+        self.assertEqual(disposed, [])
+        self.assertEqual(result.stale_resources, ("database_engine",))
+        self.assertTrue(env.is_derived_stale("database_engine"))
+
+    def test_explicit_rebuild_refreshes_stale_resource(self):
+        disposed: list[str] = []
+
+        class ApiEnvironment(EnvironmentContract):
+            database_url = PostgresVariable("database_url")
+
+        env = ApiEnvironment.from_mapping({"database_url": "postgresql+psycopg://db-v1:5432/app"})
+        env.derived(
+            "database_engine",
+            "database_url",
+            lambda contract: f"engine:{contract.get('database_url')}",
+            dispose=disposed.append,
+        )
+        env.apply_patch({"database_url": "postgresql+psycopg://db-v2:5432/app"})
+
+        rebuilt = env.rebuild_derived("database_engine")
+
+        self.assertEqual(rebuilt, "engine:postgresql+psycopg://db-v2:5432/app")
+        self.assertEqual(disposed, ["engine:postgresql+psycopg://db-v1:5432/app"])
+        self.assertFalse(env.is_derived_stale("database_engine"))
+
+    def test_descriptor_reports_derived_resource_status_without_resource_value(self):
+        class ApiEnvironment(EnvironmentContract):
+            storage_base_url = HttpVariable("storage_base_url")
+
+        env = ApiEnvironment.from_mapping({"storage_base_url": "https://storage.internal"})
+        env.derived("storage_client", "storage_base_url", lambda contract: "resource-object")
+
+        descriptor = env.descriptor()
+
+        self.assertEqual(descriptor["derived_resources"]["storage_client"]["variables"], ["storage_base_url"])
+        self.assertNotIn("resource-object", str(descriptor))
+
+
 if __name__ == "__main__":
     main()
