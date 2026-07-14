@@ -50,7 +50,7 @@ Make the public vocabulary match the intended model:
 2. Replace existing `AppSpec`/specialized specs with `BlockSpec`.
 3. Rename socket vocabulary from role input/output names to
    `RequirementSocket`/`ProviderSocket`, if still present.
-4. Rename `RoleSockets` to `BlockSockets`, if still present.
+4. Rename `BlockSockets` to `BlockSockets`, if still present.
 5. Update examples and tests to use the new vocabulary.
 6. Update architecture docs, README, and ADRs to agree.
 

@@ -11,7 +11,7 @@ from control_plane_kit import (
     ProxyBlock,
     RequirementSocket,
     ProviderSocket,
-    RoleSockets,
+    BlockSockets,
     SocketConnection,
 )
 
@@ -20,19 +20,19 @@ def recipe(active: str = "api-v1") -> DeploymentRecipe:
     api_v1 = ApplicationBlock(
         BlockSpec("api-v1"),
         DockerImageImplementation("api:v1", ports={"internal": 8000}),
-        RoleSockets(outputs=(ProviderSocket("internal", Protocol.HTTP),)),
+        BlockSockets(providers=(ProviderSocket("internal", Protocol.HTTP),)),
     )
     api_v2 = ApplicationBlock(
         BlockSpec("api-v2"),
         DockerImageImplementation("api:v2", ports={"internal": 8000}),
-        RoleSockets(outputs=(ProviderSocket("internal", Protocol.HTTP),)),
+        BlockSockets(providers=(ProviderSocket("internal", Protocol.HTTP),)),
     )
     router = ProxyBlock(
         BlockSpec("api-router", metadata={"behavior": "active-target"}),
         PlanOnlyImplementation("http-router", {"internal": "http://api-router:8080"}),
-        RoleSockets(
-            inputs=(RequirementSocket("active", Protocol.HTTP, ("ACTIVE_TARGET_URL",)),),
-            outputs=(ProviderSocket("internal", Protocol.HTTP),),
+        BlockSockets(
+            requirements=(RequirementSocket("active", Protocol.HTTP, ("ACTIVE_TARGET_URL",)),),
+            providers=(ProviderSocket("internal", Protocol.HTTP),),
         ),
     )
     return DeploymentRecipe(

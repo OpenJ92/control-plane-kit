@@ -32,29 +32,29 @@ class ProviderSocket:
 
 
 @dataclass(frozen=True)
-class RoleSockets:
+class BlockSockets:
     """The full communication surface of a block."""
 
-    inputs: tuple[RequirementSocket, ...] = ()
-    outputs: tuple[ProviderSocket, ...] = ()
+    requirements: tuple[RequirementSocket, ...] = ()
+    providers: tuple[ProviderSocket, ...] = ()
 
-    def input(self, name: str) -> RequirementSocket:
-        for socket in self.inputs:
+    def requirement(self, name: str) -> RequirementSocket:
+        for socket in self.requirements:
             if socket.name == name:
                 return socket
-        raise KeyError(f"no input socket {name!r}; available: {self.input_names()}")
+        raise KeyError(f"no requirement socket {name!r}; available: {self.requirement_names()}")
 
-    def output(self, name: str) -> ProviderSocket:
-        for socket in self.outputs:
+    def provider(self, name: str) -> ProviderSocket:
+        for socket in self.providers:
             if socket.name == name:
                 return socket
-        raise KeyError(f"no output socket {name!r}; available: {self.output_names()}")
+        raise KeyError(f"no provider socket {name!r}; available: {self.provider_names()}")
 
-    def input_names(self) -> tuple[str, ...]:
-        return tuple(socket.name for socket in self.inputs)
+    def requirement_names(self) -> tuple[str, ...]:
+        return tuple(socket.name for socket in self.requirements)
 
-    def output_names(self) -> tuple[str, ...]:
-        return tuple(socket.name for socket in self.outputs)
+    def provider_names(self) -> tuple[str, ...]:
+        return tuple(socket.name for socket in self.providers)
 
 
 @dataclass(frozen=True)
@@ -73,7 +73,7 @@ class RuntimeImplementation(TypingProtocol):
 
     kind: str
 
-    def materialize(self, block_id: str, sockets: RoleSockets, runtime: RuntimeContext) -> object:
+    def materialize(self, block_id: str, sockets: BlockSockets, runtime: RuntimeContext) -> object:
         """Return implementation-specific materialization data."""
 
 
@@ -83,7 +83,7 @@ class ApplicationBlock:
 
     spec: BlockSpec
     implementation: RuntimeImplementation
-    sockets: RoleSockets
+    sockets: BlockSockets
 
     @property
     def block_id(self) -> str:
@@ -96,7 +96,7 @@ class DataBlock:
 
     spec: BlockSpec
     implementation: RuntimeImplementation
-    sockets: RoleSockets
+    sockets: BlockSockets
 
     @property
     def block_id(self) -> str:
@@ -109,7 +109,7 @@ class ProxyBlock:
 
     spec: BlockSpec
     implementation: RuntimeImplementation
-    sockets: RoleSockets
+    sockets: BlockSockets
 
     @property
     def block_id(self) -> str:

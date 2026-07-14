@@ -8,16 +8,16 @@ and hand the result to a runtime interpreter.
 The central equation is:
 
 ```text
-DeployBlock = BlockSpec x RuntimeImplementation x RoleSockets
+DeployBlock = BlockSpec x RuntimeImplementation x BlockSockets
 ```
 
 The block variant carries the domain distinction:
 
 ```text
 Block
-  = ApplicationBlock(BlockSpec, RuntimeImplementation, RoleSockets)
-  | DataBlock(BlockSpec, RuntimeImplementation, RoleSockets)
-  | ProxyBlock(BlockSpec, RuntimeImplementation, RoleSockets)
+  = ApplicationBlock(BlockSpec, RuntimeImplementation, BlockSockets)
+  | DataBlock(BlockSpec, RuntimeImplementation, BlockSockets)
+  | ProxyBlock(BlockSpec, RuntimeImplementation, BlockSockets)
 ```
 
 A developer brings ordinary server code. The code listens on a port and reads
@@ -47,7 +47,7 @@ from control_plane_kit import (
     Protocol,
     RequirementSocket,
     ProviderSocket,
-    RoleSockets,
+    BlockSockets,
     SocketConnection,
     compile_recipe,
 )
@@ -59,19 +59,19 @@ api = ApplicationBlock(
         command=("java", "-jar", "orders.jar"),
         ports={"internal": 8080},
     ),
-    sockets=RoleSockets(
-        inputs=(
+    sockets=BlockSockets(
+        requirements=(
             RequirementSocket("DATABASE_URL", Protocol.POSTGRES, ("DATABASE_URL",)),
             RequirementSocket("PAYMENTS_BASE_URL", Protocol.HTTP, ("PAYMENTS_BASE_URL",)),
         ),
-        outputs=(ProviderSocket("internal", Protocol.HTTP),),
+        providers=(ProviderSocket("internal", Protocol.HTTP),),
     ),
 )
 
 postgres = ApplicationBlock(
     spec=BlockSpec(role_id="postgres"),
     implementation=DockerPostgresImplementation(database="orders"),
-    sockets=RoleSockets(outputs=(ProviderSocket("internal", Protocol.POSTGRES),)),
+    sockets=BlockSockets(providers=(ProviderSocket("internal", Protocol.POSTGRES),)),
 )
 
 recipe = DeploymentRecipe(

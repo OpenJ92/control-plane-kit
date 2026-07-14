@@ -232,16 +232,16 @@ Prefer product forms and small interpreters over deep inheritance trees.
 The central block equation is:
 
 ```text
-DeployBlock = BlockSpec x RuntimeImplementation x RoleSockets
+DeployBlock = BlockSpec x RuntimeImplementation x BlockSockets
 ```
 
 The block variant is the meaningful distinction:
 
 ```text
 Block
-  = ApplicationBlock(BlockSpec, RuntimeImplementation, RoleSockets)
-  | DataBlock(BlockSpec, RuntimeImplementation, RoleSockets)
-  | ProxyBlock(BlockSpec, RuntimeImplementation, RoleSockets)
+  = ApplicationBlock(BlockSpec, RuntimeImplementation, BlockSockets)
+  | DataBlock(BlockSpec, RuntimeImplementation, BlockSockets)
+  | ProxyBlock(BlockSpec, RuntimeImplementation, BlockSockets)
 ```
 
 `BlockSpec` carries shared identity and descriptive metadata. Specialized specs
@@ -363,7 +363,7 @@ ProxyBlock
 ProviderSocket
 EnvironmentRequirementSocket
 RuntimeRequirementSocket
-RoleSockets
+BlockSockets
 SocketConnection
 ```
 
@@ -397,7 +397,7 @@ from control_plane_kit import (
     EnvironmentRequirementSocket,
     Protocol,
     ProviderSocket,
-    RoleSockets,
+    BlockSockets,
     SocketConnection,
 )
 
@@ -411,7 +411,7 @@ api = ApplicationBlock(
         command=("uvicorn", "orders.main:app", "--host", "0.0.0.0"),
         ports={"internal": 8000},
     ),
-    sockets=RoleSockets(
+    sockets=BlockSockets(
         providers=(
             ProviderSocket("internal", Protocol.HTTP),
         ),
@@ -433,7 +433,7 @@ api = ApplicationBlock(
 postgres = ApplicationBlock(
     spec=BlockSpec(role_id="postgres", display_name="Postgres"),
     implementation=DockerPostgresImplementation(database="orders"),
-    sockets=RoleSockets(
+    sockets=BlockSockets(
         providers=(
             ProviderSocket("internal", Protocol.POSTGRES),
         ),
@@ -699,7 +699,7 @@ The intended full architecture has five layers.
 
 ```text
 Layer 1: Algebra
-  DeploymentRecipe, RuntimeContext, DeployBlock, RoleSockets, SocketConnection
+  DeploymentRecipe, RuntimeContext, DeployBlock, BlockSockets, SocketConnection
 
 Layer 2: Graph
   DeploymentGraph, RuntimeRecord, Node, Edge, Endpoint, descriptors
@@ -1101,7 +1101,7 @@ Python shape:
 api = ApplicationBlock(
     spec=BlockSpec(role_id="api"),
     implementation=DockerImageImplementation(...),
-    sockets=RoleSockets(
+    sockets=BlockSockets(
         requirements=(
             EnvironmentRequirementSocket(
                 name="database_url",
@@ -1118,7 +1118,7 @@ api = ApplicationBlock(
 postgres = DataBlock(
     spec=BlockSpec(role_id="postgres"),
     implementation=DockerPostgresImplementation(database="app"),
-    sockets=RoleSockets(
+    sockets=BlockSockets(
         providers=(
             ProviderSocket("internal", Protocol.POSTGRES),
         ),
