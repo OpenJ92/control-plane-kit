@@ -79,14 +79,14 @@ class ExternalHttpImplementation:
     """Observe an already-running HTTP service."""
 
     url: str
-    output_socket: str = "internal"
+    provider_socket: str = "internal"
     kind: str = "external-http"
 
     def materialize(self, block_id: str, sockets: BlockSockets, runtime: RuntimeContext) -> MaterializedNode:
-        sockets.provider(self.output_socket)
+        sockets.provider(self.provider_socket)
         return MaterializedNode(
             kind=self.kind,
-            endpoints={self.output_socket: Endpoint(self.url, Protocol.HTTP, EndpointScope.PUBLIC)},
+            endpoints={self.provider_socket: Endpoint(self.url, Protocol.HTTP, EndpointScope.PUBLIC)},
             metadata={"owned": False},
         )
 
@@ -96,14 +96,14 @@ class ExternalTcpImplementation:
     """Observe an already-running TCP service."""
 
     address: str
-    output_socket: str = "internal"
+    provider_socket: str = "internal"
     kind: str = "external-tcp"
 
     def materialize(self, block_id: str, sockets: BlockSockets, runtime: RuntimeContext) -> MaterializedNode:
-        sockets.provider(self.output_socket)
+        sockets.provider(self.provider_socket)
         return MaterializedNode(
             kind=self.kind,
-            endpoints={self.output_socket: Endpoint(self.address, Protocol.TCP, EndpointScope.PUBLIC)},
+            endpoints={self.provider_socket: Endpoint(self.address, Protocol.TCP, EndpointScope.PUBLIC)},
             metadata={"owned": False},
         )
 
@@ -113,14 +113,14 @@ class ExternalPostgresImplementation:
     """Observe an already-running Postgres provider."""
 
     url: str
-    output_socket: str = "internal"
+    provider_socket: str = "internal"
     kind: str = "external-postgres"
 
     def materialize(self, block_id: str, sockets: BlockSockets, runtime: RuntimeContext) -> MaterializedNode:
-        sockets.provider(self.output_socket)
+        sockets.provider(self.provider_socket)
         return MaterializedNode(
             kind=self.kind,
-            endpoints={self.output_socket: Endpoint(self.url, Protocol.POSTGRES, EndpointScope.PRIVATE)},
+            endpoints={self.provider_socket: Endpoint(self.url, Protocol.POSTGRES, EndpointScope.PRIVATE)},
             metadata={"owned": False},
         )
 
@@ -132,19 +132,19 @@ class DockerPostgresImplementation:
     database: str = "app"
     username: str = "postgres"
     password: str = "postgres"
-    output_socket: str = "internal"
+    provider_socket: str = "internal"
     port: int = 5432
     image: str = "postgres:16-alpine"
     kind: str = "docker-postgres"
 
     def materialize(self, block_id: str, sockets: BlockSockets, runtime: RuntimeContext) -> MaterializedNode:
         _require_runtime(runtime, RuntimeKind.DOCKER, self.kind)
-        sockets.provider(self.output_socket)
+        sockets.provider(self.provider_socket)
         host = f"{runtime.runtime_id}-{block_id}"
         url = f"postgresql+psycopg://{self.username}:{self.password}@{host}:{self.port}/{self.database}"
         return MaterializedNode(
             kind=self.kind,
-            endpoints={self.output_socket: Endpoint(url, Protocol.POSTGRES)},
+            endpoints={self.provider_socket: Endpoint(url, Protocol.POSTGRES)},
             metadata={"image": self.image, "database": self.database},
         )
 

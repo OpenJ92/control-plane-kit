@@ -82,9 +82,9 @@ recipe = DeploymentRecipe(
             postgres,
             SocketConnection(
                 provider_role="postgres",
-                output_socket="internal",
+                provider_socket="internal",
                 consumer_role="orders-api",
-                input_socket="DATABASE_URL",
+                requirement_socket="DATABASE_URL",
             ),
         ),
     ),
