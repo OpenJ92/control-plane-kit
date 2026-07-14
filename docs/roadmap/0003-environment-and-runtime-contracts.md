@@ -101,6 +101,17 @@ engine = env.derived(
   cross-variable invariants.
 - If code caches values outside the contract, it owns invalidation.
 
+## Descriptor Redaction Boundary
+
+Contract descriptors are the safe surface for control-variable state. They must
+redact values by default and must never expose raw secret values.
+
+Roadmap 0002 left a separate graph-level concern: `DeploymentGraph` descriptors
+can still include environment assignments because graphs model wiring. Do not
+use graph descriptors as a secret-safe control surface. Future graph descriptor
+work should add explicit redacted views before real secret-bearing environment
+assignments are displayed, persisted, or exposed through MCP/control routes.
+
 ## Validation
 
 - Missing required values produce structured errors.

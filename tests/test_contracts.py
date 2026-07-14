@@ -163,5 +163,41 @@ class EnvironmentContractTests(TestCase):
         self.assertEqual(raised.exception.detail.code, "required")
 
 
+class ContractDescriptorRedactionTests(TestCase):
+    def test_contract_descriptor_redacts_secret_and_non_secret_values(self):
+        class ApiEnvironment(EnvironmentContract):
+            storage_base_url = HttpVariable("storage_base_url")
+            sendgrid_key = SecretVariable("sendgrid_key")
+
+        env = ApiEnvironment.from_mapping({
+            "storage_base_url": "https://storage.internal",
+            "sendgrid_key": "SG.secret",
+        })
+
+        descriptor = env.descriptor()
+
+        self.assertEqual(descriptor["variables"]["storage_base_url"]["value"], {"present": True, "redacted": True})
+        self.assertEqual(descriptor["variables"]["sendgrid_key"]["value"], {"present": True, "redacted": True})
+        self.assertNotIn("https://storage.internal", str(descriptor))
+        self.assertNotIn("SG.secret", str(descriptor))
+
+    def test_unsafe_descriptor_is_explicit_and_still_redacts_secrets(self):
+        class ApiEnvironment(EnvironmentContract):
+            storage_base_url = HttpVariable("storage_base_url")
+            sendgrid_key = SecretVariable("sendgrid_key")
+
+        env = ApiEnvironment.from_mapping({
+            "storage_base_url": "https://storage.internal",
+            "sendgrid_key": "SG.secret",
+        })
+
+        descriptor = env.unsafe_descriptor()
+
+        self.assertTrue(descriptor["unsafe"])
+        self.assertEqual(descriptor["variables"]["storage_base_url"]["value"], "https://storage.internal")
+        self.assertEqual(descriptor["variables"]["sendgrid_key"]["value"], {"present": True, "redacted": True})
+        self.assertNotIn("SG.secret", str(descriptor))
+
+
 if __name__ == "__main__":
     main()
