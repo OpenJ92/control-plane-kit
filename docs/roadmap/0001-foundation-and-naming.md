@@ -47,10 +47,10 @@ Make the public vocabulary match the intended model:
 ## Suggested Issue Topology
 
 1. Rename public spec examples to `BlockSpec`.
-2. Replace existing `AppSpec`/specialized specs with `BlockSpec`.
+2. Replace existing specialized specs with `BlockSpec`.
 3. Rename socket vocabulary from role input/output names to
    `RequirementSocket`/`ProviderSocket`, if still present.
-4. Rename `BlockSockets` to `BlockSockets`, if still present.
+4. Complete the `BlockSockets` container rename, if still present.
 5. Update examples and tests to use the new vocabulary.
 6. Update architecture docs, README, and ADRs to agree.
 
@@ -71,7 +71,7 @@ from control_plane_kit import (
     DeploymentRecipe,
     DockerImageImplementation,
     DockerRuntime,
-    EnvironmentRequirementSocket,
+    RequirementSocket,
     ProviderSocket,
     SocketConnection,
 )
