@@ -101,6 +101,30 @@ engine = env.derived(
   cross-variable invariants.
 - If code caches values outside the contract, it owns invalidation.
 
+## Runtime Contract Boundary
+
+`RuntimeContract` uses the same declaration and patch model as
+`EnvironmentContract`, but it represents mutable runtime state rather than
+startup/process environment. It deliberately does not read from `os.environ`.
+
+This is the correct home for values such as router target registries, active
+target IDs, observer lists, sampling weights, circuit-breaker thresholds, or
+other in-process control state that can be changed after startup. Like
+environment descriptors, runtime descriptors redact values by default.
+
+```python
+class RouterState(RuntimeContract):
+    active_target = RuntimeValueVariable("active_target", required=True)
+    targets = RuntimeMapVariable("targets", required=True)
+
+state = RouterState.from_mapping({
+    "active_target": "v1",
+    "targets": {"v1": "http://api-v1.internal"},
+})
+
+state.apply_patch({"active_target": "v2"})
+```
+
 ## Derived Resource Policy
 
 Derived resources are contract-owned caches produced from one or more declared

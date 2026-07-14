@@ -504,6 +504,38 @@ class EnvironmentContract:
         }
 
 
+class RuntimeContract(EnvironmentContract):
+    """Runtime holder for mutable process state that is not env-backed.
+
+    The class body is the declaration. Instances hold validated runtime values.
+    Access is always lookup through `get`. Unlike `EnvironmentContract`, this
+    holder never falls back to `os.environ`.
+    """
+
+    def __init__(self, values: Mapping[str, Any]):
+        declarations = self.declarations()
+        self._values: dict[str, Any] = {}
+        self._derived_specs: dict[str, DerivedResourceSpec] = {}
+        self._derived_values: dict[str, Any] = {}
+        self._stale_derived: set[str] = set()
+        for name, variable in declarations.items():
+            self._values[name] = variable.validate(values.get(name))
+
+    @classmethod
+    def from_process(cls) -> "RuntimeContract":
+        raise TypeError("RuntimeContract values must be supplied explicitly")
+
+    def descriptor(self) -> dict[str, object]:
+        descriptor = self.redacted_descriptor()
+        descriptor["runtime"] = True
+        return descriptor
+
+    def unsafe_descriptor(self) -> dict[str, object]:
+        descriptor = super().unsafe_descriptor()
+        descriptor["runtime"] = True
+        return descriptor
+
+
 def _named_variable(name: str, variable: ControlVariableSpec) -> ControlVariableSpec:
     if variable.name == name:
         return variable
