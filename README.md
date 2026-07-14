@@ -174,6 +174,60 @@ pip install control-plane-kit[server]
 They expose control protocol routes for package-provided block servers while
 leaving application traffic to concrete block implementations.
 
+
+## Runtime Interpreters
+
+A compiled graph is still only topology. A runtime interpreter is the boundary
+where topology becomes effects:
+
+```python
+from control_plane_kit import CleanupPolicy, DockerRuntimeInterpreter, compile_recipe
+from examples.hello_runtime import hello_recipe
+
+graph = compile_recipe(hello_recipe("Hello, runtime!"))
+interpreter = DockerRuntimeInterpreter(
+    project_name="hello-demo",
+    cleanup_policy=CleanupPolicy.REMOVE_ON_STOP,
+)
+
+state = interpreter.up(graph, runtime_id="docker")
+try:
+    assert state.node("hello").healthy
+finally:
+    interpreter.down(state)
+```
+
+The Docker interpreter operates on one `RuntimeRecord` at a time. It consumes
+`DeploymentGraph` values, produces inspectable `RuntimePlan` values, and records
+live facts in `RuntimeState`. Container names, cleanup metadata, and health
+belong to runtime state; they do not belong to the graph.
+
+Current Docker support is intentionally narrow:
+
+- supported: one Docker runtime at a time,
+- supported: Docker image blocks and Docker Postgres blocks,
+- supported: fake-client tests that do not require Docker,
+- supported: default cleanup that removes owned containers and network,
+- supported: preserve cleanup that stops containers but keeps resources,
+- unsupported: cross-runtime Docker realization,
+- unsupported: host port publishing and host health checks,
+- unsupported: Kubernetes, ECS, EC2, RDS, and Cloudflare interpreters.
+
+Activity descriptors redact environment values. The executor still receives the
+real environment map because containers need those values to start.
+
+### Runtime Examples
+
+The example ladder is:
+
+- `examples/hello_runtime.py`: one HTTP application block through Docker.
+- `examples/postgres_runtime.py`: an application wired to Docker Postgres.
+- `examples/router_runtime.py`: two HTTP backends behind a Docker-backed active
+  router.
+
+Graph-only examples such as `examples/app_with_postgres.py` and
+`examples/router_swap.py` remain useful when you want to stop at topology.
+
 ## Docker
 
 The project Docker image uses Python 3.14 by default:

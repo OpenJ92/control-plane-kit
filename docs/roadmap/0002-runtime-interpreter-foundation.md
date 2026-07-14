@@ -53,7 +53,7 @@ graph = compile_recipe(recipe)
 
 interpreter = DockerRuntimeInterpreter(
     project_name="control-plane-kit-demo",
-    cleanup_policy=CleanupPolicy.ON_STOP,
+    cleanup_policy=CleanupPolicy.REMOVE_ON_STOP,
 )
 
 state = interpreter.up(graph, runtime_id="local-docker")
@@ -73,6 +73,42 @@ finally:
 - Unsupported graph features should fail before partial startup when possible.
 - Cross-runtime edges should remain in the graph even when Docker cannot realize
   them yet.
+
+
+## Completed Runtime Shape
+
+Roadmap 0002 produced the first runtime interpreter pipeline:
+
+```text
+DeploymentRecipe
+  -> compile_recipe
+  -> DeploymentGraph
+  -> DockerRuntimeInterpreter.plan_start
+  -> RuntimePlan
+  -> DockerRuntimeInterpreter.up
+  -> RuntimeState
+  -> DockerRuntimeInterpreter.down
+```
+
+The Docker interpreter keeps Docker-specific resource identity in activity and
+state values. The graph remains a pure description of blocks, sockets,
+connections, and runtime contexts.
+
+Cleanup policy is explicit:
+
+- `CleanupPolicy.REMOVE_ON_STOP` stops/removes owned containers and removes the
+  owned Docker network.
+- `CleanupPolicy.PRESERVE_ON_STOP` stops containers but does not remove
+  containers or the network.
+
+Unsupported boundaries are explicit:
+
+- Cross-runtime edges are graph-valid but Docker realization rejects them before
+  startup.
+- Host port publishing and host health checks are not implemented yet.
+- Live Docker smoke tests are optional; ordinary validation uses fake clients.
+- Environment values are redacted in Docker activity descriptors but still
+  delivered to the Docker client for execution.
 
 ## Validation
 
