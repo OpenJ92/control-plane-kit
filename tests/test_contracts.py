@@ -8,7 +8,9 @@ from control_plane_kit import (
     HttpVariable,
     PostgresVariable,
     ReloadPolicy,
+    RuntimeContract,
     RuntimeMapVariable,
+    RuntimeValueVariable,
     TextVariable,
     SecretVariable,
     TcpVariable,
@@ -275,6 +277,52 @@ class DerivedResourceTests(TestCase):
 
         self.assertEqual(descriptor["derived_resources"]["storage_client"]["variables"], ["storage_base_url"])
         self.assertNotIn("resource-object", str(descriptor))
+
+
+class RuntimeContractTests(TestCase):
+    def test_runtime_contract_loads_explicit_runtime_state(self):
+        class RouterState(RuntimeContract):
+            active_target = RuntimeValueVariable("active_target")
+            targets = RuntimeMapVariable("targets")
+
+        state = RouterState.from_mapping({
+            "active_target": "v1",
+            "targets": {"v1": "http://api-v1"},
+        })
+
+        self.assertEqual(state.get("active_target"), "v1")
+        self.assertEqual(state.get("targets"), {"v1": "http://api-v1"})
+
+    def test_runtime_contract_patch_updates_holder(self):
+        class RouterState(RuntimeContract):
+            active_target = RuntimeValueVariable("active_target")
+
+        state = RouterState.from_mapping({"active_target": "v1"})
+        result = state.apply_patch({"active_target": "v2"})
+
+        self.assertEqual(state.get("active_target"), "v2")
+        self.assertEqual(result.descriptor(), {"active_target": "live"})
+
+    def test_runtime_contract_descriptor_redacts_values(self):
+        class RouterState(RuntimeContract):
+            active_target = RuntimeValueVariable("active_target")
+
+        state = RouterState.from_mapping({"active_target": "http://private-target"})
+
+        descriptor = state.descriptor()
+
+        self.assertTrue(descriptor["runtime"])
+        self.assertEqual(descriptor["variables"]["active_target"]["value"], {"present": True, "redacted": True})
+        self.assertNotIn("http://private-target", str(descriptor))
+
+    def test_runtime_contract_does_not_read_process_environment(self):
+        class RouterState(RuntimeContract):
+            active_target = RuntimeValueVariable("active_target", required=True)
+
+        with self.assertRaises(ControlVariableError):
+            RouterState.from_mapping({})
+        with self.assertRaises(TypeError):
+            RouterState.from_process()
 
 
 if __name__ == "__main__":
