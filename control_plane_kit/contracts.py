@@ -358,12 +358,24 @@ class EnvironmentContract:
                 changed[name] = declarations[name].reload_policy
         return ContractPatchResult(changed)
 
-    def descriptor(self, *, include_values: bool = False) -> dict[str, object]:
+    def descriptor(self) -> dict[str, object]:
+        return self.redacted_descriptor()
+
+    def redacted_descriptor(self) -> dict[str, object]:
         return {
             "variables": {
-                name: variable.descriptor(self._values.get(name), include_value=include_values)
+                name: _redacted_variable_descriptor(variable, self._values.get(name))
                 for name, variable in sorted(self.declarations().items())
             }
+        }
+
+    def unsafe_descriptor(self) -> dict[str, object]:
+        return {
+            "variables": {
+                name: variable.descriptor(self._values.get(name), include_value=True)
+                for name, variable in sorted(self.declarations().items())
+            },
+            "unsafe": True,
         }
 
 
@@ -375,3 +387,9 @@ def _named_variable(name: str, variable: ControlVariableSpec) -> ControlVariable
 
 def _env_name(variable: ControlVariableSpec) -> str:
     return variable.metadata.get("env", variable.name.upper())
+
+
+def _redacted_variable_descriptor(variable: ControlVariableSpec, value: Any) -> dict[str, object]:
+    descriptor = variable.descriptor(value, include_value=False)
+    descriptor["value"] = variable.describe_value(value) if isinstance(variable, SecretVariable) else {"present": value is not None, "redacted": True}
+    return descriptor
