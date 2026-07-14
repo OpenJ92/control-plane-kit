@@ -62,6 +62,16 @@ from control_plane_kit.planner import (
     diff_graphs,
     plan_migration,
 )
+from control_plane_kit.runtimes import (
+    CleanupPolicy,
+    DryRunActivity,
+    DryRunRuntime,
+    RuntimeActivity,
+    RuntimeInterpreter,
+    RuntimeNodeState,
+    RuntimePlan,
+    RuntimeState,
+)
 from control_plane_kit.types import EndpointScope, Protocol, RuntimeKind
 
 __all__ = [
@@ -79,6 +89,7 @@ __all__ = [
     "SWITCHABLE",
     "TARGET_MUTABLE",
     "Capability",
+    "CleanupPolicy",
     "BlockControlState",
     "create_block_control_app",
     "CapabilityName",
@@ -99,6 +110,8 @@ __all__ = [
     "DataBlock",
     "DeploymentGraph",
     "DeploymentRecipe",
+    "DryRunActivity",
+    "DryRunRuntime",
     "DockerImageImplementation",
     "DockerPostgresImplementation",
     "DockerRuntime",
@@ -118,9 +131,14 @@ __all__ = [
     "RequirementSocket",
     "ProviderSocket",
     "BlockSockets",
+    "RuntimeActivity",
     "RuntimeContext",
+    "RuntimeInterpreter",
     "RuntimeKind",
+    "RuntimeNodeState",
+    "RuntimePlan",
     "RuntimeRecord",
+    "RuntimeState",
     "SocketConnection",
     "compile_recipe",
     "diff_graphs",
