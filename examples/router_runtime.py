@@ -15,6 +15,9 @@ from control_plane_kit import (
     ProxyBlock,
     ProviderSocket,
     RequirementSocket,
+    RuntimeContract,
+    RuntimeMapVariable,
+    RuntimeValueVariable,
     SocketConnection,
     compile_recipe,
 )
@@ -23,8 +26,23 @@ from control_plane_kit.graph import DeploymentGraph
 from control_plane_kit.runtimes import RuntimePlan, RuntimeState
 
 
+class RouterRuntimeState(RuntimeContract):
+    """Runtime contract for the active-router example."""
+
+    active_target = RuntimeValueVariable("active_target", required=True)
+    targets = RuntimeMapVariable("targets", required=True)
+
+
 def router_recipe(active: str = "api-v1") -> DeploymentRecipe:
     """Return two hello backends behind a Docker-backed active router."""
+
+    state = RouterRuntimeState.from_mapping({
+        "active_target": active,
+        "targets": {"api-v1": "api-v1", "api-v2": "api-v2"},
+    })
+    active_target = state.get("active_target")
+    if active_target not in state.get("targets"):
+        raise ValueError(f"unknown active target {active_target!r}")
 
     api_v1 = _hello_api("api-v1", "Hello from v1")
     api_v2 = _hello_api("api-v2", "Hello from v2")
@@ -47,7 +65,7 @@ def router_recipe(active: str = "api-v1") -> DeploymentRecipe:
                 api_v1,
                 api_v2,
                 router,
-                SocketConnection(active, "internal", "api-router", "active", edge_id="api-router.active"),
+                SocketConnection(active_target, "internal", "api-router", "active", edge_id="api-router.active"),
             )
         ),
     )

@@ -2,8 +2,6 @@
 
 from __future__ import annotations
 
-import json
-
 from control_plane_kit import (
     ApplicationBlock,
     BlockSpec,
@@ -11,8 +9,10 @@ from control_plane_kit import (
     DeploymentRecipe,
     DockerImageImplementation,
     DockerRuntime,
+    EnvironmentContract,
     Protocol,
     ProviderSocket,
+    TextVariable,
     compile_recipe,
 )
 from control_plane_kit.docker_runtime import DockerClient, DockerRuntimeInterpreter
@@ -20,8 +20,16 @@ from control_plane_kit.graph import DeploymentGraph
 from control_plane_kit.runtimes import RuntimePlan, RuntimeState
 
 
+class HelloEnvironment(EnvironmentContract):
+    """Startup environment contract for the tiny hello server."""
+
+    message = TextVariable("message", metadata={"env": "HELLO_MESSAGE"})
+
+
 def hello_recipe(message: str = "Hello, world!") -> DeploymentRecipe:
     """Return a tiny Docker-backed HTTP deployment recipe."""
+
+    env = HelloEnvironment.from_mapping({"message": message})
 
     return DeploymentRecipe(
         "hello-runtime",
@@ -31,8 +39,9 @@ def hello_recipe(message: str = "Hello, world!") -> DeploymentRecipe:
                     BlockSpec("hello", "Hello HTTP", health_path="/"),
                     DockerImageImplementation(
                         image="python:3.13-alpine",
-                        command=_hello_command(message),
+                        command=_hello_command(),
                         ports={"internal": 8000},
+                        environment={"HELLO_MESSAGE": env.get("message")},
                     ),
                     BlockSockets(providers=(ProviderSocket("internal", Protocol.HTTP),)),
                 ),
@@ -60,11 +69,11 @@ def run_hello_with_client(client: DockerClient, message: str = "Hello, world!") 
     return interpreter.up(hello_graph(message), "docker")
 
 
-def _hello_command(message: str) -> tuple[str, ...]:
-    body = json.dumps(message)
+def _hello_command() -> tuple[str, ...]:
     script = (
+        "import os; "
         "from http.server import BaseHTTPRequestHandler, HTTPServer; "
-        f"BODY = {body!r}.encode(); "
+        "BODY = os.environ['HELLO_MESSAGE'].encode(); "
         "class Handler(BaseHTTPRequestHandler):\n"
         "    def do_GET(self):\n"
         "        self.send_response(200)\n"

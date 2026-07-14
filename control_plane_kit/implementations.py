@@ -25,6 +25,7 @@ class DockerImageImplementation:
     image: str
     command: tuple[str, ...] = ()
     ports: dict[str, int] = field(default_factory=dict)
+    environment: dict[str, str] = field(default_factory=dict)
     kind: str = "docker-image"
 
     def materialize(self, block_id: str, sockets: BlockSockets, runtime: RuntimeContext) -> MaterializedNode:
@@ -41,7 +42,11 @@ class DockerImageImplementation:
         return MaterializedNode(
             kind=self.kind,
             endpoints=endpoints,
-            metadata={"image": self.image, "command": list(self.command)},
+            metadata={
+                "image": self.image,
+                "command": list(self.command),
+                "environment": dict(self.environment),
+            },
         )
 
 

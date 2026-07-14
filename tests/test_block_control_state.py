@@ -54,6 +54,22 @@ class BlockControlStateTests(TestCase):
         self.assertEqual(payload, {"block_id": "mux", "observers": {"logger": "http://logger"}})
         self.assertEqual(state.observers, {"logger": "http://logger"})
 
+    def test_control_state_is_backed_by_runtime_contract(self):
+        state = BlockControlState(
+            "router",
+            targets={"api-v1": "http://api-v1"},
+            active_target="api-v1",
+        )
+
+        state.set_active_target("api-v1")
+
+        self.assertEqual(state.runtime.get("active_target"), "api-v1")
+        self.assertEqual(state.runtime.get("targets"), {"api-v1": "http://api-v1"})
+        self.assertEqual(state.runtime.descriptor()["variables"]["active_target"]["value"], {
+            "present": True,
+            "redacted": True,
+        })
+
     def test_status_and_log_providers_are_used_when_present(self):
         state = BlockControlState(
             "logger",

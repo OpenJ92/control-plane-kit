@@ -304,13 +304,18 @@ def _start_activity(node: Node, runtime_id: str, network_name: str, project_name
                 for socket_name, endpoint in node.endpoints.items()
             }
             container_name = _container_name(project_name, runtime_id, node.node_id)
+            static_environment = node.metadata.get("environment", {})
+            if not isinstance(static_environment, Mapping):
+                raise UnsupportedDockerRuntimeFeature(
+                    f"node {node.node_id!r} metadata environment must be a mapping"
+                )
             return StartDockerContainer(
                 runtime_id=runtime_id,
                 node_id=node.node_id,
                 container_name=container_name,
                 image=image,
                 network_name=network_name,
-                environment=node.environment,
+                environment={**dict(static_environment), **node.environment},
                 command=command,
                 ports=ports,
                 metadata={"kind": node.kind},
