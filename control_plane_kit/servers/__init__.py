@@ -10,6 +10,12 @@ from control_plane_kit.servers.http_active_router import (
 )
 from control_plane_kit.servers.http_messages import HttpHandler, HttpRequest, HttpResponse
 from control_plane_kit.servers.http_proxy import HttpProxyRuntime, HttpProxyServer, http_proxy_block, http_proxy_command
+from control_plane_kit.servers.http_weighted_balancer import (
+    HttpWeightedLoadBalancerRuntime,
+    HttpWeightedLoadBalancerServer,
+    http_weighted_load_balancer_block,
+    http_weighted_load_balancer_command,
+)
 
 __all__ = [
     "BlockControlState",
@@ -21,6 +27,8 @@ __all__ = [
     "HttpProxyServer",
     "HttpRequest",
     "HttpResponse",
+    "HttpWeightedLoadBalancerRuntime",
+    "HttpWeightedLoadBalancerServer",
     "create_block_control_app",
     "hello_command",
     "hello_server_block",
@@ -28,4 +36,6 @@ __all__ = [
     "http_active_router_command",
     "http_proxy_block",
     "http_proxy_command",
+    "http_weighted_load_balancer_block",
+    "http_weighted_load_balancer_command",
 ]
