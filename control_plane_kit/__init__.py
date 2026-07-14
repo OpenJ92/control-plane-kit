@@ -45,8 +45,11 @@ from control_plane_kit.control_routes import (
     route_set_named,
 )
 from control_plane_kit.docker_runtime import (
+    DockerCliClient,
+    DockerClient,
     DockerRuntimeInterpreter,
     EnsureDockerNetwork,
+    RemoveDockerNetwork,
     StartDockerContainer,
     StopDockerContainer,
     UnsupportedDockerRuntimeFeature,
@@ -119,6 +122,8 @@ __all__ = [
     "DeploymentRecipe",
     "DryRunActivity",
     "DryRunRuntime",
+    "DockerClient",
+    "DockerCliClient",
     "DockerImageImplementation",
     "DockerPostgresImplementation",
     "DockerRuntime",
@@ -140,6 +145,7 @@ __all__ = [
     "RequirementSocket",
     "ProviderSocket",
     "BlockSockets",
+    "RemoveDockerNetwork",
     "RuntimeActivity",
     "RuntimeContext",
     "RuntimeInterpreter",
