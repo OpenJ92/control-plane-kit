@@ -6,12 +6,13 @@ from dataclasses import dataclass, field
 from typing import Protocol as TypingProtocol, TypeAlias
 
 from control_plane_kit.capabilities import CapabilityName
+from control_plane_kit.control_routes import ControlRouteSetName
 from control_plane_kit.types import Protocol, RuntimeKind
 
 
 @dataclass(frozen=True)
-class RoleInputSocket:
-    """An env-backed requirement on a consumer node."""
+class EnvironmentRequirementSocket:
+    """A startup requirement fulfilled by environment variable bindings."""
 
     name: str
     protocol: Protocol
@@ -20,12 +21,25 @@ class RoleInputSocket:
 
     def __post_init__(self) -> None:
         if not self.env_bindings:
-            raise ValueError(f"input socket {self.name!r} needs at least one env binding")
+            raise ValueError(f"environment requirement {self.name!r} needs at least one env binding")
 
 
 @dataclass(frozen=True)
-class RoleOutputSocket:
-    """An endpoint provided by a node."""
+class RuntimeRequirementSocket:
+    """A live requirement fulfilled through a control route after startup."""
+
+    name: str
+    protocol: Protocol
+    route_set: ControlRouteSetName
+    required: bool = True
+
+
+RequirementSocket: TypeAlias = EnvironmentRequirementSocket | RuntimeRequirementSocket
+
+
+@dataclass(frozen=True)
+class ProviderSocket:
+    """An endpoint or capability provided by a node for other nodes to consume."""
 
     name: str
     protocol: Protocol
@@ -35,26 +49,26 @@ class RoleOutputSocket:
 class RoleSockets:
     """The full communication surface of a block."""
 
-    inputs: tuple[RoleInputSocket, ...] = ()
-    outputs: tuple[RoleOutputSocket, ...] = ()
+    requirements: tuple[RequirementSocket, ...] = ()
+    providers: tuple[ProviderSocket, ...] = ()
 
-    def input(self, name: str) -> RoleInputSocket:
-        for socket in self.inputs:
+    def requirement(self, name: str) -> RequirementSocket:
+        for socket in self.requirements:
             if socket.name == name:
                 return socket
-        raise KeyError(f"no input socket {name!r}; available: {self.input_names()}")
+        raise KeyError(f"no requirement socket {name!r}; available: {self.requirement_names()}")
 
-    def output(self, name: str) -> RoleOutputSocket:
-        for socket in self.outputs:
+    def provider(self, name: str) -> ProviderSocket:
+        for socket in self.providers:
             if socket.name == name:
                 return socket
-        raise KeyError(f"no output socket {name!r}; available: {self.output_names()}")
+        raise KeyError(f"no provider socket {name!r}; available: {self.provider_names()}")
 
-    def input_names(self) -> tuple[str, ...]:
-        return tuple(socket.name for socket in self.inputs)
+    def requirement_names(self) -> tuple[str, ...]:
+        return tuple(socket.name for socket in self.requirements)
 
-    def output_names(self) -> tuple[str, ...]:
-        return tuple(socket.name for socket in self.outputs)
+    def provider_names(self) -> tuple[str, ...]:
+        return tuple(socket.name for socket in self.providers)
 
 
 @dataclass(frozen=True)
@@ -143,12 +157,12 @@ DeployBlock: TypeAlias = ApplicationBlock | DataBlock | ProxyBlock
 
 @dataclass(frozen=True)
 class SocketConnection:
-    """Provider output socket connected to consumer input socket."""
+    """Provider socket connected to a consumer requirement socket."""
 
     provider_role: str
-    output_socket: str
+    provider_socket: str
     consumer_role: str
-    input_socket: str
+    requirement_socket: str
     protocol: Protocol | None = None
     edge_id: str | None = None
 

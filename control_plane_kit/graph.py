@@ -5,13 +5,13 @@ from __future__ import annotations
 from dataclasses import dataclass, field, replace
 from typing import Mapping
 
-from control_plane_kit.algebra import RoleSockets
+from control_plane_kit.algebra import EnvironmentRequirementSocket, RuntimeRequirementSocket, RoleSockets
 from control_plane_kit.types import EndpointScope, Protocol, RuntimeKind
 
 
 @dataclass(frozen=True)
 class Endpoint:
-    """Concrete address provided by a compiled node output socket."""
+    """Concrete address provided by a compiled node provider socket."""
 
     url: str
     protocol: Protocol
@@ -33,11 +33,11 @@ class Node:
     environment: Mapping[str, str] = field(default_factory=dict)
     metadata: Mapping[str, object] = field(default_factory=dict)
 
-    def input_socket(self, name: str):
-        return self.sockets.input(name)
+    def requirement_socket(self, name: str):
+        return self.sockets.requirement(name)
 
-    def output_socket(self, name: str):
-        return self.sockets.output(name)
+    def provider_socket(self, name: str):
+        return self.sockets.provider(name)
 
     def endpoint(self, name: str) -> Endpoint:
         try:
@@ -56,41 +56,56 @@ class Node:
             "runtime_id": self.runtime_id,
             "endpoints": {key: value.descriptor() for key, value in sorted(self.endpoints.items())},
             "environment": dict(sorted(self.environment.items())),
-            "inputs": {
-                socket.name: {
-                    "protocol": socket.protocol.value,
-                    "env_bindings": list(socket.env_bindings),
-                    "required": socket.required,
-                }
-                for socket in self.sockets.inputs
-            },
-            "outputs": {
+            "requirements": {socket.name: _requirement_descriptor(socket) for socket in self.sockets.requirements},
+            "providers": {
                 socket.name: {"protocol": socket.protocol.value}
-                for socket in self.sockets.outputs
+                for socket in self.sockets.providers
             },
             "metadata": dict(self.metadata),
         }
 
 
+def _requirement_descriptor(socket: EnvironmentRequirementSocket | RuntimeRequirementSocket) -> dict[str, object]:
+    match socket:
+        case EnvironmentRequirementSocket(env_bindings=env_bindings, required=required):
+            return {
+                "kind": "environment",
+                "protocol": socket.protocol.value,
+                "env_bindings": list(env_bindings),
+                "required": required,
+            }
+        case RuntimeRequirementSocket(route_set=route_set, required=required):
+            return {
+                "kind": "runtime",
+                "protocol": socket.protocol.value,
+                "route_set": route_set.value,
+                "required": required,
+            }
+
+
 @dataclass(frozen=True)
 class Edge:
-    """Compiled provider-output to consumer-input connection."""
+    """Compiled provider socket to requirement socket connection."""
 
     edge_id: str
     provider_role: str
-    output_socket: str
+    provider_socket: str
     consumer_role: str
-    input_socket: str
+    requirement_socket: str
     protocol: Protocol
     env_assignments: Mapping[str, str] = field(default_factory=dict)
+    runtime_assignments: Mapping[str, str] = field(default_factory=dict)
+    control_route_set: str | None = None
 
     def descriptor(self) -> dict[str, object]:
         return {
             "edge_id": self.edge_id,
-            "provider": {"role": self.provider_role, "socket": self.output_socket},
-            "consumer": {"role": self.consumer_role, "socket": self.input_socket},
+            "provider": {"role": self.provider_role, "socket": self.provider_socket},
+            "consumer": {"role": self.consumer_role, "socket": self.requirement_socket},
             "protocol": self.protocol.value,
             "env_assignments": dict(sorted(self.env_assignments.items())),
+            "runtime_assignments": dict(sorted(self.runtime_assignments.items())),
+            "control_route_set": self.control_route_set,
         }
 
 

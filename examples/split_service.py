@@ -10,8 +10,8 @@ from control_plane_kit import (
     DockerPostgresImplementation,
     DockerRuntime,
     Protocol,
-    RoleInputSocket,
-    RoleOutputSocket,
+    EnvironmentRequirementSocket,
+    ProviderSocket,
     RoleSockets,
     SocketConnection,
 )
@@ -22,25 +22,25 @@ def recipe() -> DeploymentRecipe:
         spec=AppSpec("api", "Main API"),
         implementation=DockerImageImplementation("api:latest", ports={"internal": 8000}),
         sockets=RoleSockets(
-            inputs=(
-                RoleInputSocket("DATABASE_URL", Protocol.POSTGRES, ("DATABASE_URL",)),
-                RoleInputSocket("INVENTORY_SERVICE_URL", Protocol.HTTP, ("INVENTORY_SERVICE_URL",)),
+            requirements=(
+                EnvironmentRequirementSocket("DATABASE_URL", Protocol.POSTGRES, ("DATABASE_URL",)),
+                EnvironmentRequirementSocket("INVENTORY_SERVICE_URL", Protocol.HTTP, ("INVENTORY_SERVICE_URL",)),
             ),
-            outputs=(RoleOutputSocket("internal", Protocol.HTTP),),
+            providers=(ProviderSocket("internal", Protocol.HTTP),),
         ),
     )
     inventory = ApplicationBlock(
         spec=AppSpec("inventory-service", "Inventory Service"),
         implementation=DockerImageImplementation("inventory:latest", ports={"internal": 8015}),
         sockets=RoleSockets(
-            inputs=(RoleInputSocket("DATABASE_URL", Protocol.POSTGRES, ("DATABASE_URL",)),),
-            outputs=(RoleOutputSocket("internal", Protocol.HTTP),),
+            requirements=(EnvironmentRequirementSocket("DATABASE_URL", Protocol.POSTGRES, ("DATABASE_URL",)),),
+            providers=(ProviderSocket("internal", Protocol.HTTP),),
         ),
     )
     postgres = DataBlock(
         spec=DataSpec("postgres", database_name="pottery"),
         implementation=DockerPostgresImplementation(database="pottery"),
-        sockets=RoleSockets(outputs=(RoleOutputSocket("internal", Protocol.POSTGRES),)),
+        sockets=RoleSockets(providers=(ProviderSocket("internal", Protocol.POSTGRES),)),
     )
     return DeploymentRecipe(
         "split-service",

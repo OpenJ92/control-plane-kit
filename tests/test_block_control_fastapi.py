@@ -1,14 +1,10 @@
-from unittest import TestCase, main, skipUnless
+from unittest import TestCase, main
 
 from control_plane_kit import BlockControlState, CapabilityName, create_block_control_app
 
-try:
-    from fastapi.testclient import TestClient
-except ModuleNotFoundError:
-    TestClient = None
+from fastapi.testclient import TestClient
 
 
-@skipUnless(TestClient is not None, "FastAPI optional dependency is not installed")
 class BlockControlFastAPITests(TestCase):
     def test_control_routes_can_be_called_without_token_when_unconfigured(self):
         app = create_block_control_app(

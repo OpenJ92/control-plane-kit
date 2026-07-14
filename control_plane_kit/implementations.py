@@ -30,13 +30,13 @@ class DockerImageImplementation:
     def materialize(self, block_id: str, sockets: RoleSockets, runtime: RuntimeContext) -> MaterializedNode:
         _require_runtime(runtime, RuntimeKind.DOCKER, self.kind)
         endpoints: dict[str, Endpoint] = {}
-        for output in sockets.outputs:
-            port = self.ports.get(output.name)
+        for provider in sockets.providers:
+            port = self.ports.get(provider.name)
             if port is None:
-                raise ValueError(f"Docker image block {block_id!r} needs port for output {output.name!r}")
-            endpoints[output.name] = Endpoint(
-                url=_url(output.protocol, host=f"{runtime.runtime_id}-{block_id}", port=port),
-                protocol=output.protocol,
+                raise ValueError(f"Docker image block {block_id!r} needs port for provider {provider.name!r}")
+            endpoints[provider.name] = Endpoint(
+                url=_url(provider.protocol, host=f"{runtime.runtime_id}-{block_id}", port=port),
+                protocol=provider.protocol,
             )
         return MaterializedNode(
             kind=self.kind,
@@ -57,12 +57,12 @@ class LocalSourceImplementation:
 
     def materialize(self, block_id: str, sockets: RoleSockets, runtime: RuntimeContext) -> MaterializedNode:
         endpoints: dict[str, Endpoint] = {}
-        for output in sockets.outputs:
-            port = self.ports.get(output.name)
+        for provider in sockets.providers:
+            port = self.ports.get(provider.name)
             if port is None:
-                raise ValueError(f"local source block {block_id!r} needs port for output {output.name!r}")
+                raise ValueError(f"local source block {block_id!r} needs port for provider {provider.name!r}")
             host = "127.0.0.1" if runtime.kind is RuntimeKind.DRY_RUN else f"{runtime.runtime_id}-{block_id}"
-            endpoints[output.name] = Endpoint(_url(output.protocol, host, port), output.protocol)
+            endpoints[provider.name] = Endpoint(_url(provider.protocol, host, port), provider.protocol)
         return MaterializedNode(
             kind=self.kind,
             endpoints=endpoints,
@@ -79,14 +79,14 @@ class ExternalHttpImplementation:
     """Observe an already-running HTTP service."""
 
     url: str
-    output_socket: str = "internal"
+    provider_socket: str = "internal"
     kind: str = "external-http"
 
     def materialize(self, block_id: str, sockets: RoleSockets, runtime: RuntimeContext) -> MaterializedNode:
-        sockets.output(self.output_socket)
+        sockets.provider(self.provider_socket)
         return MaterializedNode(
             kind=self.kind,
-            endpoints={self.output_socket: Endpoint(self.url, Protocol.HTTP, EndpointScope.PUBLIC)},
+            endpoints={self.provider_socket: Endpoint(self.url, Protocol.HTTP, EndpointScope.PUBLIC)},
             metadata={"owned": False},
         )
 
@@ -96,14 +96,14 @@ class ExternalTcpImplementation:
     """Observe an already-running TCP service."""
 
     address: str
-    output_socket: str = "internal"
+    provider_socket: str = "internal"
     kind: str = "external-tcp"
 
     def materialize(self, block_id: str, sockets: RoleSockets, runtime: RuntimeContext) -> MaterializedNode:
-        sockets.output(self.output_socket)
+        sockets.provider(self.provider_socket)
         return MaterializedNode(
             kind=self.kind,
-            endpoints={self.output_socket: Endpoint(self.address, Protocol.TCP, EndpointScope.PUBLIC)},
+            endpoints={self.provider_socket: Endpoint(self.address, Protocol.TCP, EndpointScope.PUBLIC)},
             metadata={"owned": False},
         )
 
@@ -113,14 +113,14 @@ class ExternalPostgresImplementation:
     """Observe an already-running Postgres provider."""
 
     url: str
-    output_socket: str = "internal"
+    provider_socket: str = "internal"
     kind: str = "external-postgres"
 
     def materialize(self, block_id: str, sockets: RoleSockets, runtime: RuntimeContext) -> MaterializedNode:
-        sockets.output(self.output_socket)
+        sockets.provider(self.provider_socket)
         return MaterializedNode(
             kind=self.kind,
-            endpoints={self.output_socket: Endpoint(self.url, Protocol.POSTGRES, EndpointScope.PRIVATE)},
+            endpoints={self.provider_socket: Endpoint(self.url, Protocol.POSTGRES, EndpointScope.PRIVATE)},
             metadata={"owned": False},
         )
 
@@ -132,19 +132,19 @@ class DockerPostgresImplementation:
     database: str = "app"
     username: str = "postgres"
     password: str = "postgres"
-    output_socket: str = "internal"
+    provider_socket: str = "internal"
     port: int = 5432
     image: str = "postgres:16-alpine"
     kind: str = "docker-postgres"
 
     def materialize(self, block_id: str, sockets: RoleSockets, runtime: RuntimeContext) -> MaterializedNode:
         _require_runtime(runtime, RuntimeKind.DOCKER, self.kind)
-        sockets.output(self.output_socket)
+        sockets.provider(self.provider_socket)
         host = f"{runtime.runtime_id}-{block_id}"
         url = f"postgresql+psycopg://{self.username}:{self.password}@{host}:{self.port}/{self.database}"
         return MaterializedNode(
             kind=self.kind,
-            endpoints={self.output_socket: Endpoint(url, Protocol.POSTGRES)},
+            endpoints={self.provider_socket: Endpoint(url, Protocol.POSTGRES)},
             metadata={"image": self.image, "database": self.database},
         )
 
@@ -154,14 +154,14 @@ class PlanOnlyImplementation:
     """Materialize a node only in the planned graph."""
 
     kind: str
-    output_urls: dict[str, str] = field(default_factory=dict)
+    provider_urls: dict[str, str] = field(default_factory=dict)
 
     def materialize(self, block_id: str, sockets: RoleSockets, runtime: RuntimeContext) -> MaterializedNode:
         endpoints: dict[str, Endpoint] = {}
-        for output in sockets.outputs:
-            endpoints[output.name] = Endpoint(
-                self.output_urls.get(output.name, f"plan://{block_id}/{output.name}"),
-                output.protocol,
+        for provider in sockets.providers:
+            endpoints[provider.name] = Endpoint(
+                self.provider_urls.get(provider.name, f"plan://{block_id}/{provider.name}"),
+                provider.protocol,
             )
         return MaterializedNode(kind=self.kind, endpoints=endpoints, metadata={"planned": True})
 
