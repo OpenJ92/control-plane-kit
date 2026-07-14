@@ -126,7 +126,7 @@ class StartDockerContainer:
             "container_name": self.container_name,
             "image": self.image,
             "network_name": self.network_name,
-            "environment": dict(sorted(self.environment.items())),
+            "environment": _redacted_environment(self.environment),
             "command": list(self.command),
             "ports": dict(sorted(self.ports.items())),
             "metadata": dict(self.metadata),
@@ -319,6 +319,10 @@ def _start_activity(node: Node, runtime_id: str, network_name: str, project_name
             raise UnsupportedDockerRuntimeFeature(
                 f"node {node.node_id!r} has kind {node.kind!r}; Docker planner needs a Docker-backed implementation"
             )
+
+
+def _redacted_environment(environment: Mapping[str, str]) -> dict[str, str]:
+    return {key: "<redacted>" for key in sorted(environment)}
 
 
 def _required_metadata(node: Node, key: str) -> str:
