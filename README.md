@@ -8,13 +8,16 @@ and hand the result to a runtime interpreter.
 The central equation is:
 
 ```text
-DeployBlock = Spec x RuntimeImplementation x RoleSockets
+DeployBlock = BlockSpec x RuntimeImplementation x RoleSockets
 ```
 
-For application code this becomes:
+The block variant carries the domain distinction:
 
 ```text
-ApplicationBlock = AppSpec x RuntimeImplementation x RoleSockets
+Block
+  = ApplicationBlock(BlockSpec, RuntimeImplementation, RoleSockets)
+  | DataBlock(BlockSpec, RuntimeImplementation, RoleSockets)
+  | ProxyBlock(BlockSpec, RuntimeImplementation, RoleSockets)
 ```
 
 A developer brings ordinary server code. The code listens on a port and reads
@@ -35,8 +38,8 @@ The deployment graph declares how those values are fulfilled:
 
 ```python
 from control_plane_kit import (
-    AppSpec,
     ApplicationBlock,
+    BlockSpec,
     DeploymentRecipe,
     DockerImageImplementation,
     DockerPostgresImplementation,
@@ -50,7 +53,7 @@ from control_plane_kit import (
 )
 
 api = ApplicationBlock(
-    spec=AppSpec(role_id="orders-api", display_name="Orders API"),
+    spec=BlockSpec(role_id="orders-api", display_name="Orders API"),
     implementation=DockerImageImplementation(
         image="orders-api:latest",
         command=("java", "-jar", "orders.jar"),
@@ -66,7 +69,7 @@ api = ApplicationBlock(
 )
 
 postgres = ApplicationBlock(
-    spec=AppSpec(role_id="postgres"),
+    spec=BlockSpec(role_id="postgres"),
     implementation=DockerPostgresImplementation(database="orders"),
     sockets=RoleSockets(outputs=(RoleOutputSocket("internal", Protocol.POSTGRES),)),
 )
@@ -132,7 +135,7 @@ running block to do. When a capability is backed by protocol routes, it points
 at a route set such as `common-status`, `logs`, `targets`, or `observers`.
 
 ```python
-ProxySpec(
+BlockSpec(
     role_id="api-router",
     capabilities=(
         CapabilityName.HEALTH_CHECKABLE,
@@ -199,3 +202,10 @@ Docker, Kubernetes, AWS, Cloudflare, or any other substrate.
 
 The graph owns topology. Runtime interpreters own effects. Application code
 stays ordinary application code.
+
+## Design Documents
+
+- [Operating Model](docs/OPERATING_MODEL.md)
+- [Control Plane Kit Architecture Design](docs/design/0001-control-plane-kit-architecture.md)
+- [Mathematical Design Preference](docs/design/0002-mathematical-design-preference.md)
+- [Control Plane Kit Roadmap](docs/roadmap/README.md)
