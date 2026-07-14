@@ -1,7 +1,9 @@
 # Roadmap 0002: Runtime Interpreter Foundation
 
-Status: Draft
+Status: In progress
 Depends on: Roadmap 0001
+Parent issue: OpenJ92/control-plane-kit#17
+Roadmap branch: `roadmap/0002-runtime-interpreter-foundation`
 
 ## Motivation
 
@@ -36,14 +38,12 @@ hello server, an active router, and optionally Postgres.
 
 ## Suggested Issue Topology
 
-1. Add `RuntimeInterpreter` protocol and `RuntimeState` records.
-2. Add Docker activity primitives for network/container lifecycle.
-3. Implement Docker interpreter for simple HTTP blocks.
-4. Add Postgres container support through existing Postgres implementation
-   descriptors.
-5. Move hello/router live demo onto the interpreter.
-6. Add cleanup policy and idempotent stop behavior.
-7. Document unsupported cross-runtime behavior.
+1. #32: Define runtime interpreter protocol and state records.
+2. #37: Add Docker planning activities without Docker side effects.
+3. #33: Implement Docker runtime executor lifecycle.
+4. #34: Run hello HTTP blocks through Docker interpreter.
+5. #35: Add Postgres and router runtime examples.
+6. #36: Document cleanup policy and unsupported runtime boundaries.
 
 ## Target API
 
@@ -53,7 +53,7 @@ graph = compile_recipe(recipe)
 
 interpreter = DockerRuntimeInterpreter(
     project_name="control-plane-kit-demo",
-    cleanup_policy=CleanupPolicy.ON_STOP,
+    cleanup_policy=CleanupPolicy.REMOVE_ON_STOP,
 )
 
 state = interpreter.up(graph, runtime_id="local-docker")
@@ -73,6 +73,42 @@ finally:
 - Unsupported graph features should fail before partial startup when possible.
 - Cross-runtime edges should remain in the graph even when Docker cannot realize
   them yet.
+
+
+## Completed Runtime Shape
+
+Roadmap 0002 produced the first runtime interpreter pipeline:
+
+```text
+DeploymentRecipe
+  -> compile_recipe
+  -> DeploymentGraph
+  -> DockerRuntimeInterpreter.plan_start
+  -> RuntimePlan
+  -> DockerRuntimeInterpreter.up
+  -> RuntimeState
+  -> DockerRuntimeInterpreter.down
+```
+
+The Docker interpreter keeps Docker-specific resource identity in activity and
+state values. The graph remains a pure description of blocks, sockets,
+connections, and runtime contexts.
+
+Cleanup policy is explicit:
+
+- `CleanupPolicy.REMOVE_ON_STOP` stops/removes owned containers and removes the
+  owned Docker network.
+- `CleanupPolicy.PRESERVE_ON_STOP` stops containers but does not remove
+  containers or the network.
+
+Unsupported boundaries are explicit:
+
+- Cross-runtime edges are graph-valid but Docker realization rejects them before
+  startup.
+- Host port publishing and host health checks are not implemented yet.
+- Live Docker smoke tests are optional; ordinary validation uses fake clients.
+- Environment values are redacted in Docker activity descriptors but still
+  delivered to the Docker client for execution.
 
 ## Validation
 

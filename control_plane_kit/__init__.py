@@ -44,6 +44,16 @@ from control_plane_kit.control_routes import (
     control_path,
     route_set_named,
 )
+from control_plane_kit.docker_runtime import (
+    DockerCliClient,
+    DockerClient,
+    DockerRuntimeInterpreter,
+    EnsureDockerNetwork,
+    RemoveDockerNetwork,
+    StartDockerContainer,
+    StopDockerContainer,
+    UnsupportedDockerRuntimeFeature,
+)
 from control_plane_kit.graph import DeploymentGraph, Edge, Endpoint, Node, RuntimeRecord
 from control_plane_kit.implementations import (
     DockerImageImplementation,
@@ -62,6 +72,16 @@ from control_plane_kit.planner import (
     diff_graphs,
     plan_migration,
 )
+from control_plane_kit.runtimes import (
+    CleanupPolicy,
+    DryRunActivity,
+    DryRunRuntime,
+    RuntimeActivity,
+    RuntimeInterpreter,
+    RuntimeNodeState,
+    RuntimePlan,
+    RuntimeState,
+)
 from control_plane_kit.types import EndpointScope, Protocol, RuntimeKind
 
 __all__ = [
@@ -79,6 +99,7 @@ __all__ = [
     "SWITCHABLE",
     "TARGET_MUTABLE",
     "Capability",
+    "CleanupPolicy",
     "BlockControlState",
     "create_block_control_app",
     "CapabilityName",
@@ -99,12 +120,18 @@ __all__ = [
     "DataBlock",
     "DeploymentGraph",
     "DeploymentRecipe",
+    "DryRunActivity",
+    "DryRunRuntime",
+    "DockerClient",
+    "DockerCliClient",
     "DockerImageImplementation",
     "DockerPostgresImplementation",
     "DockerRuntime",
+    "DockerRuntimeInterpreter",
     "Edge",
     "Endpoint",
     "EndpointScope",
+    "EnsureDockerNetwork",
     "ExternalHttpImplementation",
     "ExternalPostgresImplementation",
     "ExternalRuntime",
@@ -118,10 +145,19 @@ __all__ = [
     "RequirementSocket",
     "ProviderSocket",
     "BlockSockets",
+    "RemoveDockerNetwork",
+    "RuntimeActivity",
     "RuntimeContext",
+    "RuntimeInterpreter",
     "RuntimeKind",
+    "RuntimeNodeState",
+    "RuntimePlan",
     "RuntimeRecord",
+    "RuntimeState",
     "SocketConnection",
+    "StartDockerContainer",
+    "StopDockerContainer",
+    "UnsupportedDockerRuntimeFeature",
     "compile_recipe",
     "diff_graphs",
     "plan_migration",
