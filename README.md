@@ -8,18 +8,21 @@ and hand the result to a runtime interpreter.
 The central equation is:
 
 ```text
-DeployBlock = Spec x RuntimeImplementation x RoleSockets
+DeployBlock = BlockSpec x RuntimeImplementation x BlockSockets
 ```
 
-For application code this becomes:
+The block variant carries the domain distinction:
 
 ```text
-ApplicationBlock = AppSpec x RuntimeImplementation x RoleSockets
+Block
+  = ApplicationBlock(BlockSpec, RuntimeImplementation, BlockSockets)
+  | DataBlock(BlockSpec, RuntimeImplementation, BlockSockets)
+  | ProxyBlock(BlockSpec, RuntimeImplementation, BlockSockets)
 ```
 
 A developer brings ordinary server code. The code listens on a port and reads
 unknown addresses from environment variables. `control-plane-kit` gives those
-unknown addresses meaning by wiring provider output sockets into consumer input
+unknown addresses meaning by wiring provider sockets into consumer requirement
 sockets.
 
 ## Developer Contract
@@ -35,40 +38,40 @@ The deployment graph declares how those values are fulfilled:
 
 ```python
 from control_plane_kit import (
-    AppSpec,
     ApplicationBlock,
+    BlockSpec,
     DeploymentRecipe,
     DockerImageImplementation,
     DockerPostgresImplementation,
     DockerRuntime,
     Protocol,
-    RoleInputSocket,
-    RoleOutputSocket,
-    RoleSockets,
+    RequirementSocket,
+    ProviderSocket,
+    BlockSockets,
     SocketConnection,
     compile_recipe,
 )
 
 api = ApplicationBlock(
-    spec=AppSpec(role_id="orders-api", display_name="Orders API"),
+    spec=BlockSpec(role_id="orders-api", display_name="Orders API"),
     implementation=DockerImageImplementation(
         image="orders-api:latest",
         command=("java", "-jar", "orders.jar"),
         ports={"internal": 8080},
     ),
-    sockets=RoleSockets(
-        inputs=(
-            RoleInputSocket("DATABASE_URL", Protocol.POSTGRES, ("DATABASE_URL",)),
-            RoleInputSocket("PAYMENTS_BASE_URL", Protocol.HTTP, ("PAYMENTS_BASE_URL",)),
+    sockets=BlockSockets(
+        requirements=(
+            RequirementSocket("DATABASE_URL", Protocol.POSTGRES, ("DATABASE_URL",)),
+            RequirementSocket("PAYMENTS_BASE_URL", Protocol.HTTP, ("PAYMENTS_BASE_URL",)),
         ),
-        outputs=(RoleOutputSocket("internal", Protocol.HTTP),),
+        providers=(ProviderSocket("internal", Protocol.HTTP),),
     ),
 )
 
 postgres = ApplicationBlock(
-    spec=AppSpec(role_id="postgres"),
+    spec=BlockSpec(role_id="postgres"),
     implementation=DockerPostgresImplementation(database="orders"),
-    sockets=RoleSockets(outputs=(RoleOutputSocket("internal", Protocol.POSTGRES),)),
+    sockets=BlockSockets(providers=(ProviderSocket("internal", Protocol.POSTGRES),)),
 )
 
 recipe = DeploymentRecipe(
@@ -79,9 +82,9 @@ recipe = DeploymentRecipe(
             postgres,
             SocketConnection(
                 provider_role="postgres",
-                output_socket="internal",
+                provider_socket="internal",
                 consumer_role="orders-api",
-                input_socket="DATABASE_URL",
+                requirement_socket="DATABASE_URL",
             ),
         ),
     ),
@@ -103,7 +106,7 @@ DeployBlock
   sockets: what it needs and what it exposes
 
 SocketConnection
-  provider output socket -> consumer input socket
+  provider socket -> consumer requirement socket
 ```
 
 A runtime is ambient. A Docker image implementation does not create Docker; it
@@ -115,14 +118,14 @@ Kubernetes, ECS, or a dry-run runtime.
 
 Sockets are the UI/editor boundary.
 
-- Output sockets are provided endpoints: HTTP base URLs, Postgres connection
+- Provider sockets are provided endpoints: HTTP base URLs, Postgres connection
   strings, TCP addresses.
-- Input sockets are environment expectations: env vars that need to be filled
-  from a compatible provider output.
+- Requirement sockets are environment expectations: env vars that need to be
+  filled from a compatible provider.
 
-A visual editor can render output sockets on one side of a block and input
-sockets on the other. Dragging from a provider output to a consumer input creates
-a `SocketConnection`.
+A visual editor can render provider sockets on one side of a block and
+requirement sockets on the other. Dragging from a provider to a requirement
+creates a `SocketConnection`.
 
 ## Capabilities
 
@@ -132,7 +135,7 @@ running block to do. When a capability is backed by protocol routes, it points
 at a route set such as `common-status`, `logs`, `targets`, or `observers`.
 
 ```python
-ProxySpec(
+BlockSpec(
     role_id="api-router",
     capabilities=(
         CapabilityName.HEALTH_CHECKABLE,
@@ -199,3 +202,10 @@ Docker, Kubernetes, AWS, Cloudflare, or any other substrate.
 
 The graph owns topology. Runtime interpreters own effects. Application code
 stays ordinary application code.
+
+## Design Documents
+
+- [Operating Model](docs/OPERATING_MODEL.md)
+- [Control Plane Kit Architecture Design](docs/design/0001-control-plane-kit-architecture.md)
+- [Mathematical Design Preference](docs/design/0002-mathematical-design-preference.md)
+- [Control Plane Kit Roadmap](docs/roadmap/README.md)

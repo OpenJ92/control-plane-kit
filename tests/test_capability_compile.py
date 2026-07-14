@@ -1,14 +1,14 @@
 from unittest import TestCase, main
 
 from control_plane_kit import (
+    BlockSpec,
     CapabilityName,
     DockerRuntime,
     PlanOnlyImplementation,
     Protocol,
     ProxyBlock,
-    ProxySpec,
-    RoleOutputSocket,
-    RoleSockets,
+    ProviderSocket,
+    BlockSockets,
     compile_recipe,
     DeploymentRecipe,
 )
@@ -17,7 +17,7 @@ from control_plane_kit import (
 class CapabilityCompileTests(TestCase):
     def test_proxy_block_advertises_capabilities_in_compiled_metadata(self):
         router = ProxyBlock(
-            spec=ProxySpec(
+            spec=BlockSpec(
                 role_id="api-router",
                 display_name="API Router",
                 capabilities=(
@@ -27,7 +27,7 @@ class CapabilityCompileTests(TestCase):
                 ),
             ),
             implementation=PlanOnlyImplementation(kind="plan-router"),
-            sockets=RoleSockets(outputs=(RoleOutputSocket("internal", Protocol.HTTP),)),
+            sockets=BlockSockets(providers=(ProviderSocket("internal", Protocol.HTTP),)),
         )
         graph = compile_recipe(DeploymentRecipe("capability-demo", DockerRuntime(children=(router,))))
 

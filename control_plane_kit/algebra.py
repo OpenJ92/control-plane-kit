@@ -10,7 +10,7 @@ from control_plane_kit.types import Protocol, RuntimeKind
 
 
 @dataclass(frozen=True)
-class RoleInputSocket:
+class RequirementSocket:
     """An env-backed requirement on a consumer node."""
 
     name: str
@@ -20,11 +20,11 @@ class RoleInputSocket:
 
     def __post_init__(self) -> None:
         if not self.env_bindings:
-            raise ValueError(f"input socket {self.name!r} needs at least one env binding")
+            raise ValueError(f"requirement socket {self.name!r} needs at least one env binding")
 
 
 @dataclass(frozen=True)
-class RoleOutputSocket:
+class ProviderSocket:
     """An endpoint provided by a node."""
 
     name: str
@@ -32,60 +32,38 @@ class RoleOutputSocket:
 
 
 @dataclass(frozen=True)
-class RoleSockets:
+class BlockSockets:
     """The full communication surface of a block."""
 
-    inputs: tuple[RoleInputSocket, ...] = ()
-    outputs: tuple[RoleOutputSocket, ...] = ()
+    requirements: tuple[RequirementSocket, ...] = ()
+    providers: tuple[ProviderSocket, ...] = ()
 
-    def input(self, name: str) -> RoleInputSocket:
-        for socket in self.inputs:
+    def requirement(self, name: str) -> RequirementSocket:
+        for socket in self.requirements:
             if socket.name == name:
                 return socket
-        raise KeyError(f"no input socket {name!r}; available: {self.input_names()}")
+        raise KeyError(f"no requirement socket {name!r}; available: {self.requirement_names()}")
 
-    def output(self, name: str) -> RoleOutputSocket:
-        for socket in self.outputs:
+    def provider(self, name: str) -> ProviderSocket:
+        for socket in self.providers:
             if socket.name == name:
                 return socket
-        raise KeyError(f"no output socket {name!r}; available: {self.output_names()}")
+        raise KeyError(f"no provider socket {name!r}; available: {self.provider_names()}")
 
-    def input_names(self) -> tuple[str, ...]:
-        return tuple(socket.name for socket in self.inputs)
+    def requirement_names(self) -> tuple[str, ...]:
+        return tuple(socket.name for socket in self.requirements)
 
-    def output_names(self) -> tuple[str, ...]:
-        return tuple(socket.name for socket in self.outputs)
-
-
-@dataclass(frozen=True)
-class AppSpec:
-    """Identity and display metadata for application code."""
-
-    role_id: str
-    display_name: str | None = None
-    health_path: str | None = "/health"
-    capabilities: tuple[CapabilityName, ...] = ()
-    metadata: dict[str, str] = field(default_factory=dict)
+    def provider_names(self) -> tuple[str, ...]:
+        return tuple(socket.name for socket in self.providers)
 
 
 @dataclass(frozen=True)
-class DataSpec:
-    """Identity and metadata for data infrastructure."""
+class BlockSpec:
+    """Shared identity and display metadata for any deployable block."""
 
     role_id: str
     display_name: str | None = None
-    database_name: str | None = None
-    capabilities: tuple[CapabilityName, ...] = ()
-    metadata: dict[str, str] = field(default_factory=dict)
-
-
-@dataclass(frozen=True)
-class ProxySpec:
-    """Identity and behavior metadata for proxy/router blocks."""
-
-    role_id: str
-    display_name: str | None = None
-    behavior: str = "active-target"
+    health_path: str | None = None
     capabilities: tuple[CapabilityName, ...] = ()
     metadata: dict[str, str] = field(default_factory=dict)
 
@@ -95,7 +73,7 @@ class RuntimeImplementation(TypingProtocol):
 
     kind: str
 
-    def materialize(self, block_id: str, sockets: RoleSockets, runtime: RuntimeContext) -> object:
+    def materialize(self, block_id: str, sockets: BlockSockets, runtime: RuntimeContext) -> object:
         """Return implementation-specific materialization data."""
 
 
@@ -103,9 +81,9 @@ class RuntimeImplementation(TypingProtocol):
 class ApplicationBlock:
     """User or package supplied application/server code."""
 
-    spec: AppSpec
+    spec: BlockSpec
     implementation: RuntimeImplementation
-    sockets: RoleSockets
+    sockets: BlockSockets
 
     @property
     def block_id(self) -> str:
@@ -116,9 +94,9 @@ class ApplicationBlock:
 class DataBlock:
     """Database, queue, cache, or other data-bearing infrastructure."""
 
-    spec: DataSpec
+    spec: BlockSpec
     implementation: RuntimeImplementation
-    sockets: RoleSockets
+    sockets: BlockSockets
 
     @property
     def block_id(self) -> str:
@@ -129,9 +107,9 @@ class DataBlock:
 class ProxyBlock:
     """Reusable proxy/router/control block."""
 
-    spec: ProxySpec
+    spec: BlockSpec
     implementation: RuntimeImplementation
-    sockets: RoleSockets
+    sockets: BlockSockets
 
     @property
     def block_id(self) -> str:
@@ -143,12 +121,12 @@ DeployBlock: TypeAlias = ApplicationBlock | DataBlock | ProxyBlock
 
 @dataclass(frozen=True)
 class SocketConnection:
-    """Provider output socket connected to consumer input socket."""
+    """Provider socket connected to a consumer requirement socket."""
 
     provider_role: str
-    output_socket: str
+    provider_socket: str
     consumer_role: str
-    input_socket: str
+    requirement_socket: str
     protocol: Protocol | None = None
     edge_id: str | None = None
 

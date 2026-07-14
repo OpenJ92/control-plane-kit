@@ -1,21 +1,21 @@
 from unittest import TestCase, main
 
-from control_plane_kit import Protocol, RoleInputSocket, RoleOutputSocket, RoleSockets
+from control_plane_kit import Protocol, RequirementSocket, ProviderSocket, BlockSockets
 
 
 class AlgebraTests(TestCase):
     def test_socket_names_are_accessible(self):
-        sockets = RoleSockets(
-            inputs=(RoleInputSocket("DATABASE_URL", Protocol.POSTGRES, ("DATABASE_URL",)),),
-            outputs=(RoleOutputSocket("internal", Protocol.HTTP),),
+        sockets = BlockSockets(
+            requirements=(RequirementSocket("DATABASE_URL", Protocol.POSTGRES, ("DATABASE_URL",)),),
+            providers=(ProviderSocket("internal", Protocol.HTTP),),
         )
 
-        self.assertEqual(sockets.input("DATABASE_URL").protocol, Protocol.POSTGRES)
-        self.assertEqual(sockets.output("internal").protocol, Protocol.HTTP)
+        self.assertEqual(sockets.requirement("DATABASE_URL").protocol, Protocol.POSTGRES)
+        self.assertEqual(sockets.provider("internal").protocol, Protocol.HTTP)
 
-    def test_input_socket_requires_env_binding(self):
+    def test_requirement_socket_requires_env_binding(self):
         with self.assertRaises(ValueError):
-            RoleInputSocket("database", Protocol.POSTGRES, ())
+            RequirementSocket("database", Protocol.POSTGRES, ())
 
 
 if __name__ == "__main__":

@@ -5,13 +5,13 @@ from __future__ import annotations
 from dataclasses import dataclass, field, replace
 from typing import Mapping
 
-from control_plane_kit.algebra import RoleSockets
+from control_plane_kit.algebra import BlockSockets
 from control_plane_kit.types import EndpointScope, Protocol, RuntimeKind
 
 
 @dataclass(frozen=True)
 class Endpoint:
-    """Concrete address provided by a compiled node output socket."""
+    """Concrete address provided by a compiled provider socket."""
 
     url: str
     protocol: Protocol
@@ -28,16 +28,16 @@ class Node:
     node_id: str
     kind: str
     runtime_id: str
-    sockets: RoleSockets
+    sockets: BlockSockets
     endpoints: Mapping[str, Endpoint] = field(default_factory=dict)
     environment: Mapping[str, str] = field(default_factory=dict)
     metadata: Mapping[str, object] = field(default_factory=dict)
 
-    def input_socket(self, name: str):
-        return self.sockets.input(name)
+    def requirement_socket(self, name: str):
+        return self.sockets.requirement(name)
 
-    def output_socket(self, name: str):
-        return self.sockets.output(name)
+    def provider_socket(self, name: str):
+        return self.sockets.provider(name)
 
     def endpoint(self, name: str) -> Endpoint:
         try:
@@ -56,17 +56,17 @@ class Node:
             "runtime_id": self.runtime_id,
             "endpoints": {key: value.descriptor() for key, value in sorted(self.endpoints.items())},
             "environment": dict(sorted(self.environment.items())),
-            "inputs": {
+            "requirements": {
                 socket.name: {
                     "protocol": socket.protocol.value,
                     "env_bindings": list(socket.env_bindings),
                     "required": socket.required,
                 }
-                for socket in self.sockets.inputs
+                for socket in self.sockets.requirements
             },
-            "outputs": {
+            "providers": {
                 socket.name: {"protocol": socket.protocol.value}
-                for socket in self.sockets.outputs
+                for socket in self.sockets.providers
             },
             "metadata": dict(self.metadata),
         }
@@ -74,21 +74,21 @@ class Node:
 
 @dataclass(frozen=True)
 class Edge:
-    """Compiled provider-output to consumer-input connection."""
+    """Compiled provider-to-requirement socket connection."""
 
     edge_id: str
     provider_role: str
-    output_socket: str
+    provider_socket: str
     consumer_role: str
-    input_socket: str
+    requirement_socket: str
     protocol: Protocol
     env_assignments: Mapping[str, str] = field(default_factory=dict)
 
     def descriptor(self) -> dict[str, object]:
         return {
             "edge_id": self.edge_id,
-            "provider": {"role": self.provider_role, "socket": self.output_socket},
-            "consumer": {"role": self.consumer_role, "socket": self.input_socket},
+            "provider": {"role": self.provider_role, "socket": self.provider_socket},
+            "consumer": {"role": self.consumer_role, "requirement": self.requirement_socket},
             "protocol": self.protocol.value,
             "env_assignments": dict(sorted(self.env_assignments.items())),
         }
