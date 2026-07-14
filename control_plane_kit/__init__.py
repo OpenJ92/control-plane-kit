@@ -44,6 +44,13 @@ from control_plane_kit.control_routes import (
     control_path,
     route_set_named,
 )
+from control_plane_kit.docker_runtime import (
+    DockerRuntimeInterpreter,
+    EnsureDockerNetwork,
+    StartDockerContainer,
+    StopDockerContainer,
+    UnsupportedDockerRuntimeFeature,
+)
 from control_plane_kit.graph import DeploymentGraph, Edge, Endpoint, Node, RuntimeRecord
 from control_plane_kit.implementations import (
     DockerImageImplementation,
@@ -115,9 +122,11 @@ __all__ = [
     "DockerImageImplementation",
     "DockerPostgresImplementation",
     "DockerRuntime",
+    "DockerRuntimeInterpreter",
     "Edge",
     "Endpoint",
     "EndpointScope",
+    "EnsureDockerNetwork",
     "ExternalHttpImplementation",
     "ExternalPostgresImplementation",
     "ExternalRuntime",
@@ -140,6 +149,9 @@ __all__ = [
     "RuntimeRecord",
     "RuntimeState",
     "SocketConnection",
+    "StartDockerContainer",
+    "StopDockerContainer",
+    "UnsupportedDockerRuntimeFeature",
     "compile_recipe",
     "diff_graphs",
     "plan_migration",

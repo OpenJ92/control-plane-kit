@@ -9,6 +9,7 @@ from control_plane_kit.algebra import (
     DeploymentExpr,
     DeploymentRecipe,
     ProxyBlock,
+    DockerRuntime,
     RuntimeContext,
     SocketConnection,
 )
@@ -52,10 +53,17 @@ def _compile_runtime(
             runtime_id=runtime.runtime_id,
             kind=runtime.kind,
             children=tuple(child_nodes),
-            metadata=runtime.metadata,
+            metadata=_runtime_metadata(runtime),
         )
     )
     return next_graph, tuple(connections)
+
+
+def _runtime_metadata(runtime: RuntimeContext) -> dict[str, str]:
+    metadata = dict(runtime.metadata)
+    if isinstance(runtime, DockerRuntime):
+        metadata.setdefault("network_name", runtime.network_name)
+    return metadata
 
 
 def _materialize_block(block: DeployBlock, runtime: RuntimeContext) -> Node:
