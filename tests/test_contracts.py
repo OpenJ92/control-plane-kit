@@ -2,12 +2,14 @@ from unittest import TestCase, main
 
 from control_plane_kit import (
     ControlValueKind,
+    EnvironmentContract,
     ControlVariableError,
     ControlVariableSpec,
     HttpVariable,
     PostgresVariable,
     ReloadPolicy,
     RuntimeMapVariable,
+    TextVariable,
     SecretVariable,
     TcpVariable,
 )
@@ -101,6 +103,64 @@ class ConcreteControlVariableTests(TestCase):
         self.assertEqual(variable.validate({"v1": "http://api-v1"}), {"v1": "http://api-v1"})
         with self.assertRaises(ControlVariableError):
             variable.validate("http://api-v1")
+
+
+class EnvironmentContractTests(TestCase):
+    def test_from_mapping_loads_declared_values_by_variable_name(self):
+        class ApiEnvironment(EnvironmentContract):
+            storage_base_url = HttpVariable("storage_base_url")
+
+        env = ApiEnvironment.from_mapping({"storage_base_url": "https://storage.internal"})
+
+        self.assertEqual(env.get("storage_base_url"), "https://storage.internal")
+
+    def test_from_mapping_loads_declared_values_by_env_metadata(self):
+        class ApiEnvironment(EnvironmentContract):
+            database_url = PostgresVariable("database_url", metadata={"env": "DATABASE_URL"})
+
+        env = ApiEnvironment.from_mapping({"DATABASE_URL": "postgresql+psycopg://db:5432/app"})
+
+        self.assertEqual(env.get("database_url"), "postgresql+psycopg://db:5432/app")
+
+    def test_apply_patch_updates_holder_not_process_environment(self):
+        class ApiEnvironment(EnvironmentContract):
+            storage_base_url = HttpVariable("storage_base_url", metadata={"env": "STORAGE_BASE_URL"})
+
+        env = ApiEnvironment.from_mapping({"STORAGE_BASE_URL": "https://storage-v1.internal"})
+        result = env.apply_patch({"storage_base_url": "https://storage-v2.internal"})
+
+        self.assertEqual(env.get("storage_base_url"), "https://storage-v2.internal")
+        self.assertEqual(result.descriptor(), {"storage_base_url": "live"})
+        self.assertNotEqual(__import__("os").environ.get("STORAGE_BASE_URL"), "https://storage-v2.internal")
+
+    def test_immutable_value_rejects_patch(self):
+        class ApiEnvironment(EnvironmentContract):
+            name = TextVariable("name", mutable=False)
+
+        env = ApiEnvironment.from_mapping({"name": "api-v1"})
+
+        with self.assertRaises(ControlVariableError):
+            env.apply_patch({"name": "api-v2"})
+
+    def test_access_is_always_lookup(self):
+        class ApiEnvironment(EnvironmentContract):
+            message = TextVariable("message")
+
+        env = ApiEnvironment.from_mapping({"message": "before"})
+        first = env.get("message")
+        env.set("message", "after")
+
+        self.assertEqual(first, "before")
+        self.assertEqual(env.get("message"), "after")
+
+    def test_missing_required_value_fails_structurally(self):
+        class ApiEnvironment(EnvironmentContract):
+            database_url = PostgresVariable("database_url")
+
+        with self.assertRaises(ControlVariableError) as raised:
+            ApiEnvironment.from_mapping({})
+
+        self.assertEqual(raised.exception.detail.code, "required")
 
 
 if __name__ == "__main__":

@@ -2,7 +2,8 @@
 
 from __future__ import annotations
 
-from dataclasses import dataclass, field
+import os
+from dataclasses import dataclass, field, replace
 from enum import StrEnum
 from typing import Any, Mapping, Protocol
 
@@ -280,3 +281,97 @@ def _require_text(variable: ControlVariableSpec, value: Any) -> str | None:
     if not isinstance(value, str):
         raise variable._error("type", f"{variable.name} must be text")
     return value
+
+
+@dataclass(frozen=True)
+class ContractPatchResult:
+    """Result of applying one or more local contract value changes."""
+
+    changed: Mapping[str, ReloadPolicy]
+
+    def descriptor(self) -> dict[str, str]:
+        return {name: policy.value for name, policy in sorted(self.changed.items())}
+
+
+class EnvironmentContract:
+    """Runtime holder for environment-backed control variables.
+
+    The class body is the declaration. Instances hold validated values. Access
+    is always lookup through `get`.
+    """
+
+    def __init__(self, values: Mapping[str, Any]):
+        declarations = self.declarations()
+        self._values: dict[str, Any] = {}
+        for name, variable in declarations.items():
+            raw = values.get(name)
+            if raw is None:
+                env_name = _env_name(variable)
+                if env_name in values:
+                    raw = values[env_name]
+            self._values[name] = variable.validate(raw)
+
+    @classmethod
+    def declarations(cls) -> dict[str, ControlVariableSpec]:
+        declarations: dict[str, ControlVariableSpec] = {}
+        for base in reversed(cls.__mro__):
+            for name, value in vars(base).items():
+                if isinstance(value, ControlVariableSpec):
+                    declarations[name] = _named_variable(name, value)
+        return declarations
+
+    @classmethod
+    def from_mapping(cls, values: Mapping[str, Any]) -> "EnvironmentContract":
+        return cls(values)
+
+    @classmethod
+    def from_process(cls) -> "EnvironmentContract":
+        return cls.from_mapping(os.environ)
+
+    def get(self, name: str) -> Any:
+        if name not in self._values:
+            raise KeyError(f"unknown contract variable {name!r}")
+        return self._values[name]
+
+    def set(self, name: str, value: Any) -> ContractPatchResult:
+        return self.apply_patch({name: value})
+
+    def validate_patch(self, patch: Mapping[str, Any]) -> dict[str, Any]:
+        declarations = self.declarations()
+        validated: dict[str, Any] = {}
+        for name, value in patch.items():
+            if name not in declarations:
+                raise KeyError(f"unknown contract variable {name!r}")
+            variable = declarations[name]
+            if not variable.mutable or variable.reload_policy is ReloadPolicy.IMMUTABLE:
+                raise variable._error("immutable", f"{name} is immutable")
+            validated[name] = variable.validate(value)
+        return validated
+
+    def apply_patch(self, patch: Mapping[str, Any]) -> ContractPatchResult:
+        validated = self.validate_patch(patch)
+        declarations = self.declarations()
+        changed: dict[str, ReloadPolicy] = {}
+        for name, value in validated.items():
+            if self._values.get(name) != value:
+                self._values[name] = value
+                changed[name] = declarations[name].reload_policy
+        return ContractPatchResult(changed)
+
+    def descriptor(self, *, include_values: bool = False) -> dict[str, object]:
+        return {
+            "variables": {
+                name: variable.descriptor(self._values.get(name), include_value=include_values)
+                for name, variable in sorted(self.declarations().items())
+            }
+        }
+
+
+def _named_variable(name: str, variable: ControlVariableSpec) -> ControlVariableSpec:
+    if variable.name == name:
+        return variable
+    return replace(variable, name=name)
+
+
+def _env_name(variable: ControlVariableSpec) -> str:
+    return variable.metadata.get("env", variable.name.upper())
