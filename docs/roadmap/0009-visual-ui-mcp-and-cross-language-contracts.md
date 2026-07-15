@@ -23,6 +23,19 @@ A user should be able to:
 - inspect activity history,
 - and observe runtime state.
 
+The UI deliberately hides a recursive implementation law:
+
+```text
+DeploymentInstance = ControlPlaneInstance[DeployBlock]
+ControlPlaneHub     = ControlPlaneInstance[ControlPlaneInstance]
+```
+
+The Hub is the same control-plane object configured to admit only child
+control-plane instances.  It adds ownership, registry, lifecycle, and proxy
+capabilities.  The frontend speaks to the Hub, and the Hub authenticates,
+selects, and proxies to the chosen child instance API.  The child remains the
+authority for its own workspace.
+
 Python is first-class, but the topology model should not be Python-only. Other
 languages should participate through descriptors, declared sockets, environment
 requirements, control-route contracts, and capability payloads.
@@ -132,6 +145,8 @@ This roadmap should provide:
 Hub screen
   visible control-plane instances
   lifecycle controls
+  create/wake/select child instance
+  authenticated proxy to selected child API
 
 Workspace screen
   runtime context boxes
@@ -144,6 +159,13 @@ Workspace screen
   approval panel
   observed-state panel
 ```
+
+The editor should present this as a simple navigation hierarchy, not an
+infinite recursive canvas.  Internally, however, Hub children are typed
+`ControlPlaneInstance` nodes with provider/control APIs, lifecycle
+capabilities, and observable state.  This allows the same descriptors and
+capability-driven UI machinery to represent both Hub-managed instances and
+ordinary controllable deployment blocks.
 
 The user action:
 
@@ -218,6 +240,10 @@ production topology without approval."
 - Capability descriptors decide which controls are shown.
 - Keep control routes separate from user traffic routes.
 - Keep graph descriptors redacted.
+- Keep the Hub/child distinction capability- and admissibility-driven rather
+  than implementing an unrelated Hub object hierarchy.
+- The Hub may proxy authenticated frontend requests to a selected child, but
+  it must not duplicate or absorb child workspace semantics.
 
 ## Validation
 

@@ -24,7 +24,7 @@ observed running system
 
 The package needs a backend structure that preserves that distinction.
 
-The agreed high-level shape is:
+The agreed user-facing shape is:
 
 ```text
 Hub
@@ -36,6 +36,21 @@ ControlPlaneInstance
 Deployed application graph
   contains the actual servers, databases, blocks, runtimes, and control routes
 ```
+
+The implementation model is recursive rather than three unrelated classes:
+
+```text
+ControlPlaneInstance[A]
+
+DeploymentInstance = ControlPlaneInstance[DeployBlock]
+ControlPlaneHub     = ControlPlaneInstance[ControlPlaneInstance]
+```
+
+The Hub is an instance restricted to spawning and managing child control-plane
+instances.  Its additional configured capabilities are identity/ownership,
+instance registry, child lifecycle, endpoint discovery, and authenticated
+frontend proxying.  It does not directly manage arbitrary application blocks
+inside a child's deployment graph.
 
 The most important repository law for this roadmap is the Pottery Factory
 ownership law:
@@ -262,10 +277,18 @@ ownership taxonomy and the earliest truth/workflow/policy contracts.
 - Do not model graph topology as normalized Postgres tables in the first pass.
 - Do use proper relational normalization for session/action/approval/run/event
   data.
-- Treat `ControlPlaneInstance` as an orchestration/API boundary over imported
-  modules, not as the place where every rule accumulates.
-- Treat the Hub as light: access, registry, lifecycle, and session granting.
-- Treat the Instance as heavy: workspace graph/activity/state authority.
+- Treat `ControlPlaneInstance[A]` as the shared recursive orchestration/API
+  boundary over imported modules, not as the place where every rule
+  accumulates.
+- Treat the Hub as the `ControlPlaneInstance[ControlPlaneInstance]` profile:
+  access, registry, child lifecycle, session delegation, and authenticated
+  frontend proxying.
+- Restrict Hub-managed graph children to control-plane instances.  A Hub must
+  not directly mutate application blocks inside a child's workspace.
+- Treat a deployment instance as the `ControlPlaneInstance[DeployBlock]`
+  profile: workspace graph/activity/state authority.
+- Require child instances to advertise an authenticated control API so the Hub
+  can discover, observe, and manage them like other controllable blocks.
 - Keep source-of-truth modules separate from workflow/session modules even when
   they share one physical Postgres database.
 

@@ -923,6 +923,66 @@ ControlPlaneInstance
   -> executes approved topology mutations against runtimes and blocks
 ```
 
+### Resolved Recursive Identity Law
+
+The Hub and a user-selected control plane are not fundamentally different
+objects.  Both are control-plane instances.  Their distinction is the type of
+graph they are permitted to manage and the capabilities configured around that
+graph.
+
+In type-like notation:
+
+```text
+ControlPlaneInstance[A]
+
+DeploymentInstance = ControlPlaneInstance[DeployBlock]
+ControlPlaneHub     = ControlPlaneInstance[ControlPlaneInstance]
+```
+
+An ordinary deployment instance admits application, data, proxy, and runtime
+blocks according to its deployment grammar.  A Hub admits only child
+`ControlPlaneInstance` nodes.  It must not directly spawn or mutate arbitrary
+application blocks belonging to a child's managed deployment.
+
+The Hub profile adds modules and capabilities for:
+
+- user identity and ownership,
+- the child-instance registry,
+- child-instance lifecycle planning and execution,
+- discovery of child instance API endpoints,
+- delegated credentials or sessions,
+- and authenticated proxying from the frontend to a selected child instance.
+
+Those additions do not make the Hub a separate architectural species.  They
+are the capabilities of an instance whose managed subjects are instances.
+
+Each child instance exposes a typed control API in the same broad sense that a
+router or load balancer exposes a typed control API.  The parent Hub can query
+health and capabilities, start or stop the child through its runtime, and proxy
+authorized instance-specific requests.  The child still owns its workspace,
+plans, approvals, execution, and history; proxying does not transfer that truth
+to the Hub.
+
+```text
+Frontend
+  -> Hub instance API
+      authenticate user
+      select owned child instance
+      proxy authorized request
+        -> Child ControlPlaneInstance API
+            -> child workspace / graph / activity authority
+```
+
+This recursion is intentionally hidden in the ordinary user experience.  The
+UI presents a Hub screen followed by a selected deployment workspace.  The
+algebra and runtime interpreters retain the recursive identity so the Hub can
+deploy, wake, stop, archive, reconstruct, and observe child instances through
+the same planning machinery used elsewhere.
+
+There is one unavoidable bootstrap boundary: the first root Hub must be
+started by an external bootstrap recipe or an already-running parent.  After
+bootstrap, its child-instance lifecycle is ordinary control-plane work.
+
 The hub is expected to be long-lived.  It is the registry and entry point.  It
 may itself be deployable by the same kind of graph machinery, but conceptually
 it is the outer home server.
@@ -957,17 +1017,19 @@ One control-plane instance should own one deployment workspace.  Multiple
 instances pointing at the same realized deployment is treated as unsafe unless a
 future design introduces explicit locking or leader election.
 
-The hub is intentionally lighter than the instance.  The current intuition is:
+The Hub profile is intentionally lighter with respect to each child's internal
+deployment semantics.  The responsibility distinction is:
 
 ```text
-Hub = access panel + registry + lifecycle coordinator
-Instance = heavy operator + graph/workspace/activity authority
+Hub profile = instance registry + ownership + lifecycle + authenticated proxy
+Child profile = child workspace + graph/activity authority
 ```
 
-The hub should not become the place where deployment graph semantics live.  It
-may hold an instance ID, owner/grant records, lifecycle state, endpoint/wake
-metadata, and enough retained recovery metadata to recreate or reconnect an
-instance.  The instance owns the operational graph and activity machinery.
+The Hub should not absorb a child's deployment graph semantics merely because
+it is itself a control-plane instance.  It may hold an instance ID,
+owner/grant records, lifecycle state, endpoint/wake metadata, and enough
+retained recovery metadata to recreate or reconnect a child.  The child owns
+its operational graph and activity machinery.
 
 In graph-language terms, a control-plane instance can itself be thought of as a
 small deployment graph:
@@ -1311,23 +1373,34 @@ These are not raw logs.  They should be bounded and safe to query.
 
 ## Open Questions For Discussion
 
-### Hub And Instance
+### Hub And Instance: Resolved Direction And Remaining Questions
 
-1. Is `ControlPlaneHub` the right name?
-2. Is `ControlPlaneInstance` the right name?
-3. Is one instance always attached to one deployment workspace, or can it manage
-   multiple deployments?
-4. Does the hub store graph snapshots, or only references to instance-owned
-   graph stores?
-5. Are control-plane instances serverless/wakeable by default?
-6. Does the hub create instances, wake existing instances, or both?
+Resolved:
 
-Discussion note:
+- `ControlPlaneHub` is a user-facing profile/name for a
+  `ControlPlaneInstance[ControlPlaneInstance]`.
+- A normal deployment workspace is managed by a
+  `ControlPlaneInstance[DeployBlock]`.
+- One child instance owns one deployment workspace.
+- The Hub can create, wake, pause, stop, archive, deconstruct, and reconstruct
+  child instances through activity planning and execution.
+- The Hub is the authenticated frontend proxy to child instance APIs.
+- The Hub may only admit control-plane instance children; it does not directly
+  manage their application blocks.
 
-The open conceptual knot is what a control-plane instance server really is.
-It is not merely a bearer-token holder, although bearer-token custody is one of
-its responsibilities.  It appears to be the authority and execution boundary for
-one deployment workspace:
+Remaining questions:
+
+1. Does the Hub retain full child graph/activity snapshots, recovery metadata,
+   or only references to child-owned stores?
+2. Which child lifecycle states physically remove runtime resources, and which
+   retain durable stores?
+3. What is the delegated credential/session format between Hub and child?
+4. Which protocol advertises child capabilities and endpoints to the Hub?
+5. What bootstrap recipe starts the first root Hub?
+
+A control-plane instance is not merely a bearer-token holder, although
+credential custody is one of its responsibilities.  It is the authority and
+execution boundary for one managed graph:
 
 ```text
 ControlPlaneInstance =
