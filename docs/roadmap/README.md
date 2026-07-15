@@ -33,13 +33,16 @@ The intended order is:
 2. [Runtime Interpreter Foundation](0002-runtime-interpreter-foundation.md)
 3. [Environment And Runtime Contracts](0003-environment-and-runtime-contracts.md)
 4. [Package Server Blocks](0004-package-server-blocks.md)
-5. [Control Plane Interfaces](0005-control-plane-interfaces.md)
-6. [Activity Planning And Execution](0006-activity-planning-and-execution.md)
-7. [Visual UI And Cross-Language Contracts](0007-visual-ui-and-cross-language-contracts.md)
+5. [Control Plane Backend Topology](0005-control-plane-backend-topology.md)
+6. [Control Plane Read Interfaces](0006-control-plane-read-interfaces.md)
+7. [Activity Sessions And Planning](0007-activity-sessions-and-planning.md)
+8. [Activity Execution And Runtime Mutation](0008-activity-execution-and-runtime-mutation.md)
+9. [Visual UI, MCP, And Cross-Language Contracts](0009-visual-ui-mcp-and-cross-language-contracts.md)
 
 This order is deliberately conservative. The package is easier to reason about
-when its pure algebra is stable before runtime effects, and runtime effects are
-stable before live mutation.
+when its pure algebra is stable before runtime effects, runtime effects are
+behind explicit source-of-truth and workflow boundaries, and live mutation is
+planned, approved, executed, and observed as durable activity.
 
 ## Definition Of Done For A Roadmap Vertical
 
@@ -76,6 +79,9 @@ These constraints should survive every roadmap vertical:
 
 - `DeploymentRecipe -> DeploymentGraph -> ActivityPlan -> Executor` remains the
   pipeline.
+- Source-of-truth modules are built before workflow/session modules.
+- Workflow/session modules are built before planning and execution.
+- Interface adapters expose the model; they do not define the model.
 - Graph construction stays close to the future UI gesture: choose nodes, connect
   sockets.
 - Docker is an interpreter target, not the topology model.
@@ -83,6 +89,8 @@ These constraints should survive every roadmap vertical:
 - Application code can remain ordinary application code.
 - Live mutation is opt-in through contracts and reload policies.
 - Secrets can be set and checked, not read.
+- Store-local transitions use transactions; cross-boundary transitions use
+  activity/saga workflows with visible partial failure.
 - MCP, UI, and CLI are peer interfaces over the same control plane semantics.
 
 ## Relationship To Design Documents And ADRs
@@ -92,6 +100,7 @@ Read these before implementing a roadmap vertical:
 - [Operating Model](../OPERATING_MODEL.md)
 - [Architecture Design](../design/0001-control-plane-kit-architecture.md)
 - [Mathematical Design Preference](../design/0002-mathematical-design-preference.md)
+- [Control Plane Backend Topology Discussion](../design/0003-control-plane-backend-topology-discussion.md)
 - [ADR 0001: Product Form Block Algebra](../adr/0001-product-form-block-algebra.md)
 - [ADR 0002: Control Route Protocol](../adr/0002-control-route-protocol.md)
 - [ADR 0003: Capability Descriptors](../adr/0003-capability-descriptors.md)
@@ -99,6 +108,7 @@ Read these before implementing a roadmap vertical:
 - [ADR 0005: Security Review In Every Loop](../adr/0005-security-review-in-every-loop.md)
 - [ADR 0006: Activity History And Operational Observability](../adr/0006-activity-history-and-operational-observability.md)
 - [ADR 0007: Operational Reliability And Examples In Every Roadmap](../adr/0007-operational-reliability-and-examples.md)
+- [ADR 0008: Transactional Data Engineering Policy](../adr/0008-transactional-data-engineering-policy.md)
 
 When a roadmap vertical changes a durable architectural decision, write or
 update an ADR. Do not bury durable decisions only in pull request text.
