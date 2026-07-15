@@ -409,6 +409,32 @@ class PostgresActivityHistoryStore:
             metadata=row[7],
         )
 
+    def update_session(self, record: OperationSessionRecord) -> OperationSessionRecord:
+        self._connection.execute(
+            """
+            UPDATE cpk_operation_sessions
+            SET workspace_id = %s,
+                actor_id = %s,
+                title = %s,
+                status = %s,
+                created_at = %s,
+                closed_at = %s,
+                metadata = %s::jsonb
+            WHERE session_id = %s
+            """,
+            (
+                record.workspace_id,
+                record.actor_id,
+                record.title,
+                record.status,
+                record.created_at,
+                record.closed_at,
+                _json(record.metadata),
+                record.session_id,
+            ),
+        )
+        return record
+
     def add_action(self, record: OperationActionRecord) -> OperationActionRecord:
         self._connection.execute(
             """

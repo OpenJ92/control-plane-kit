@@ -109,6 +109,12 @@ class InMemoryActivityHistoryStore:
         except KeyError as exc:
             raise _missing("session", session_id) from exc
 
+    def update_session(self, record: OperationSessionRecord) -> OperationSessionRecord:
+        if record.session_id not in self._sessions:
+            raise _missing("session", record.session_id)
+        self._sessions[record.session_id] = record
+        return record
+
     def add_action(self, record: OperationActionRecord) -> OperationActionRecord:
         if record.action_id in self._actions:
             raise _duplicate("action", record.action_id)
