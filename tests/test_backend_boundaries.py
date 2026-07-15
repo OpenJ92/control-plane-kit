@@ -4,12 +4,10 @@ from control_plane_kit.graph import DeploymentGraph
 from control_plane_kit.policies import ApprovalPolicy, DestructiveActivityPolicy
 from control_plane_kit.stores import (
     GraphVersionRecord,
-    InMemoryActivityHistoryStore,
-    InMemoryGraphTopologyStore,
-    InMemoryWorkspaceStore,
     WorkspaceRecord,
 )
 from control_plane_kit.workflows import OperationActionService, OperationSessionService
+from tests.postgres_case import PostgresStoreTestCase
 
 
 class Sequence:
@@ -20,10 +18,10 @@ class Sequence:
         return self.values.pop(0)
 
 
-class BackendBoundaryTests(unittest.TestCase):
+class BackendBoundaryTests(PostgresStoreTestCase):
     def test_workspace_and_graph_truth_are_owned_by_stores(self):
-        workspaces = InMemoryWorkspaceStore()
-        graphs = InMemoryGraphTopologyStore()
+        workspaces = self.stores.workspace
+        graphs = self.stores.graph_topology
         workspaces.create(WorkspaceRecord(workspace_id="workspace-a", name="Demo"))
         graphs.save(
             GraphVersionRecord.from_graph(
@@ -42,7 +40,8 @@ class BackendBoundaryTests(unittest.TestCase):
         self.assertEqual(graphs.latest_for_workspace("workspace-a").graph_descriptor["name"], "current")
 
     def test_workflow_records_intent_without_writing_graph_truth(self):
-        graphs = InMemoryGraphTopologyStore()
+        self.stores.workspace.create(WorkspaceRecord(workspace_id="workspace-a", name="Demo"))
+        graphs = self.stores.graph_topology
         graphs.save(
             GraphVersionRecord.from_graph(
                 graph_id="graph-current",
@@ -53,7 +52,7 @@ class BackendBoundaryTests(unittest.TestCase):
                 created_at="2026-07-15T00:00:00Z",
             )
         )
-        history = InMemoryActivityHistoryStore()
+        history = self.stores.activity_history
         session = OperationSessionService(
             history,
             clock=Sequence(["2026-07-15T00:01:00Z"]),
@@ -75,7 +74,7 @@ class BackendBoundaryTests(unittest.TestCase):
         self.assertEqual(history.actions_for_session("session-a")[0].action_type, "propose_desired_graph")
 
     def test_policy_decisions_do_not_create_workflow_records(self):
-        history = InMemoryActivityHistoryStore()
+        history = self.stores.activity_history
         decision = ApprovalPolicy().can_approve_plan(["plan:approve"])
 
         self.assertTrue(decision.allowed)

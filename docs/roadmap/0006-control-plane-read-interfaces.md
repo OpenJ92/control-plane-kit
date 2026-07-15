@@ -188,7 +188,7 @@ Mutation tools remain absent.
 
 ## Validation
 
-- Read services return deterministic payloads from in-memory stores.
+- Read services return deterministic payloads from Postgres-backed test stores.
 - FastAPI routes delegate to read services.
 - Unauthorized reads are rejected when auth is configured.
 - Secret values do not appear in graph, event, contract, or MCP payloads.

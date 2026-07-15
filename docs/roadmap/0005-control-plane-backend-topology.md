@@ -59,6 +59,7 @@ This roadmap should leave the package with:
 - clear Hub / ControlPlaneInstance / deployed graph boundaries,
 - explicit module taxonomy and package folders,
 - source-of-truth store protocols,
+- an explicit Postgres unit-of-work boundary owned by API/application services,
 - workflow/session service boundaries,
 - policy/authorization service boundaries,
 - planner/effect/projection boundary definitions,
@@ -108,7 +109,17 @@ the rest.
    - Add modules or packages for stores/repositories.
    - Define protocols for workspace, graph topology, activity history,
      observed state, instance registry, and secret references.
-   - Keep implementations minimal or in-memory at first.
+   - Keep implementations minimal, but use Docker-backed Postgres for durable
+     persistence behavior rather than a fake store.
+
+2a. Define the Postgres unit-of-work boundary.
+   - Add a transaction boundary object or protocol owned by API/use-case code.
+   - Repositories must participate in the caller's transaction context.
+   - Repository methods must not independently commit multi-table operator
+     commands.
+   - The design law is: one operator command equals one explicit transaction
+     boundary.
+   - Document that this mirrors the Pottery Factory API unit-of-work shape.
 
 3. Define `WorkspaceStore` and `GraphTopologyStore` contracts.
    - `WorkspaceStore` owns workspace identity, lifecycle, current graph pointer,
@@ -146,6 +157,8 @@ the rest.
    - `ActivityRunService`.
    - These services should record intent and workflow state, not own graph or
      runtime truth.
+   - Multi-repository writes in these services must run inside the shared
+     unit-of-work boundary defined above.
 
 8. Define policy/authorization services.
    - `HubAccessPolicy`.
@@ -165,7 +178,7 @@ the rest.
     - Hub will eventually use Postgres.
     - Local instance persistence should prefer Postgres-backed relational
       adapters over SQLite for durable work.
-    - In-memory stores remain valid for tests.
+    - Local tests should use Docker-backed Postgres for persistence behavior.
     - Graph topology remains adapter-backed and graph-database-ready.
 
 11. Add module service/adaptor law to `AGENTS.md` or an equivalent design
@@ -176,7 +189,7 @@ the rest.
 12. Add tests for ownership boundaries.
     - Workflow services cannot mutate graph truth directly.
     - Policy modules return decisions rather than performing effects.
-    - Store protocols can be satisfied by in-memory test implementations.
+   - Store protocols can be satisfied by Postgres-backed local test implementations.
 
 ## Target Package Shape
 
@@ -239,7 +252,12 @@ ownership taxonomy and the earliest truth/workflow/policy contracts.
 ## Implementation Notes
 
 - Prefer protocols and small dataclasses before concrete databases.
-- Keep in-memory implementations for tests.
+- Use Docker-backed Postgres for store/workflow tests.
+- Put transaction ownership in API/application-service/use-case code. Stores
+  and repositories expose operations over a provided transaction; they do not
+  decide the commit boundary for whole commands.
+- Use sagas only for cross-boundary effects after durable intent/request state
+  has been committed.
 - Do not bake JSON descriptor storage into the public graph-store API.
 - Do not model graph topology as normalized Postgres tables in the first pass.
 - Do use proper relational normalization for session/action/approval/run/event
@@ -253,7 +271,9 @@ ownership taxonomy and the earliest truth/workflow/policy contracts.
 
 ## Validation
 
-- Store protocols have in-memory implementations.
+- Store protocols are exercised through Docker-backed Postgres.
+- Unit-of-work tests prove related multi-repository writes commit together or
+  roll back together.
 - Workflow services can record sessions/actions without mutating graph truth.
 - Policy services can approve/reject operations without executing effects.
 - Lifecycle states and retention behavior are documented and represented.

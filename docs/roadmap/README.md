@@ -89,7 +89,8 @@ These constraints should survive every roadmap vertical:
 - Application code can remain ordinary application code.
 - Live mutation is opt-in through contracts and reload policies.
 - Secrets can be set and checked, not read.
-- Store-local transitions use transactions; cross-boundary transitions use
+- Store-local transitions use explicit Postgres unit-of-work transactions owned
+  by API/application-service/use-case code; cross-boundary transitions use
   activity/saga workflows with visible partial failure.
 - MCP, UI, and CLI are peer interfaces over the same control plane semantics.
 

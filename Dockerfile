@@ -22,5 +22,6 @@ FROM package AS test
 COPY examples ./examples
 COPY tests ./tests
 
-RUN python -m pip install ".[test-server]" \
-    && python -m unittest discover -s tests -v
+RUN python -m pip install ".[test-server]"
+
+CMD ["python", "-m", "unittest", "discover", "-s", "tests", "-v"]

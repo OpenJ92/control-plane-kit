@@ -41,4 +41,5 @@ server = [
 test-server = [
   "fastapi>=0.115",
   "httpx>=0.27",
+  "psycopg[binary]>=3.2",
 ]

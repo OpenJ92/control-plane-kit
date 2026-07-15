@@ -174,6 +174,19 @@ pip install control-plane-kit[server]
 They expose control protocol routes for package-provided block servers while
 leaving application traffic to concrete block implementations.
 
+## Testing
+
+The test suite is Docker-first because the control-plane stores use real
+Postgres.  Run:
+
+```bash
+./test.sh
+```
+
+The script builds the test image, starts a Postgres container, installs the
+control-plane schema, runs the tests, and removes the containers/volumes on
+exit.
+
 
 ## Runtime Interpreters
 

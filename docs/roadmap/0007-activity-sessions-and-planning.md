@@ -38,6 +38,17 @@ OperationSession
 This roadmap builds the session and planning side of mutation. It should not
 execute runtime effects yet.
 
+Because this roadmap writes related session, graph-version, plan, and approval
+records, it must use the ADR 0008 unit-of-work policy:
+
+```text
+one operator command = one explicit Postgres transaction boundary
+```
+
+The transaction boundary belongs in the API/application-service/use-case layer.
+Individual stores and repositories participate in that boundary; they do not
+commit independently.
+
 ## Goal
 
 Implement operation sessions, operation actions, desired graph edits, graph
@@ -88,6 +99,7 @@ Execution comes later.
    - Reject stale base versions or require explicit rebase.
    - Save new desired graph version.
    - Record the edit as an operation action.
+   - Save the action and graph version inside one unit of work.
 
 4. Add graph validation workflow.
    - Validate socket compatibility.
@@ -111,12 +123,16 @@ Execution comes later.
    - Compile graph diff into activity plan.
    - Represent start/stop/register/switch/drain/wait/patch candidates.
    - Mark activities that cannot be planned safely.
+   - Persist plan metadata and related operation action inside one unit of
+     work.
 
 8. Add approval policy and approval records.
    - Plan approval.
    - Destructive approval.
    - Actor/scope/comment/timestamp.
    - Approval cannot be inferred from UI state.
+   - Approval request/decision records must be committed atomically with the
+     command that creates or changes their workflow state.
 
 9. Add recovery planning scaffold.
    - Represent `plan(B, A)` as recovery transition, not mathematical inverse.
@@ -201,6 +217,11 @@ The UI can make the danger visible, but the backend owns the approval boundary.
 
 - Follow ADR 0008 for transactions, idempotency, graph-version concurrency, and
   auditability.
+- API/application services own transaction boundaries; repositories do not
+  independently commit multi-table session, graph, plan, or approval commands.
+- Sagas are not used for this roadmap's store-local work. They begin in the
+  execution roadmap when approved plans cross into Docker, block control routes,
+  cloud providers, or other external effects.
 - Graph edits should be idempotent.
 - Plan requests should be idempotent.
 - Approval records belong in activity history from day one.
@@ -212,6 +233,11 @@ The UI can make the danger visible, but the backend owns the approval boundary.
 ## Validation
 
 - Session creation is transactional.
+- Desired graph edit plus operation action commit together or roll back
+  together.
+- Plan creation plus plan-request action commit together or roll back together.
+- Approval request/decision plus related workflow state commit together or roll
+  back together.
 - Operation actions preserve ordering.
 - Stale graph edits are rejected.
 - Graph diff does not mutate stores.
