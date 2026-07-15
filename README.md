@@ -224,6 +224,9 @@ The example ladder is:
 - `examples/postgres_runtime.py`: an application wired to Docker Postgres.
 - `examples/router_runtime.py`: two HTTP backends behind a Docker-backed active
   router.
+- `examples/http_block_compositions.py`: graph-level compositions of the
+  package-provided HTTP proxy, router, weighted balancer, multiplexer, and rate
+  limiter blocks.
 
 Graph-only examples such as `examples/app_with_postgres.py` and
 `examples/router_swap.py` remain useful when you want to stop at topology.
@@ -260,6 +263,7 @@ stays ordinary application code.
 ## Design Documents
 
 - [Operating Model](docs/OPERATING_MODEL.md)
+- [HTTP Block Compositions](docs/HTTP_BLOCK_COMPOSITIONS.md)
 - [Control Plane Kit Architecture Design](docs/design/0001-control-plane-kit-architecture.md)
 - [Mathematical Design Preference](docs/design/0002-mathematical-design-preference.md)
 - [Control Plane Kit Roadmap](docs/roadmap/README.md)

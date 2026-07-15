@@ -2,41 +2,22 @@
 
 from __future__ import annotations
 
-import json
-
 from control_plane_kit import (
-    ApplicationBlock,
-    BlockSpec,
-    BlockSockets,
     DeploymentRecipe,
-    DockerImageImplementation,
     DockerRuntime,
-    Protocol,
-    ProxyBlock,
-    ProviderSocket,
-    RequirementSocket,
-    RuntimeContract,
-    RuntimeMapVariable,
-    RuntimeValueVariable,
     SocketConnection,
     compile_recipe,
 )
 from control_plane_kit.docker_runtime import DockerClient, DockerRuntimeInterpreter
 from control_plane_kit.graph import DeploymentGraph
 from control_plane_kit.runtimes import RuntimePlan, RuntimeState
-
-
-class RouterRuntimeState(RuntimeContract):
-    """Runtime contract for the active-router example."""
-
-    active_target = RuntimeValueVariable("active_target", required=True)
-    targets = RuntimeMapVariable("targets", required=True)
+from control_plane_kit.servers import HttpActiveRouterRuntime, hello_server_block, http_active_router_block
 
 
 def router_recipe(active: str = "api-v1") -> DeploymentRecipe:
     """Return two hello backends behind a Docker-backed active router."""
 
-    state = RouterRuntimeState.from_mapping({
+    state = HttpActiveRouterRuntime.from_mapping({
         "active_target": active,
         "targets": {"api-v1": "api-v1", "api-v2": "api-v2"},
     })
@@ -44,20 +25,9 @@ def router_recipe(active: str = "api-v1") -> DeploymentRecipe:
     if active_target not in state.get("targets"):
         raise ValueError(f"unknown active target {active_target!r}")
 
-    api_v1 = _hello_api("api-v1", "Hello from v1")
-    api_v2 = _hello_api("api-v2", "Hello from v2")
-    router = ProxyBlock(
-        BlockSpec("api-router", "API Router", metadata={"behavior": "active-target"}),
-        DockerImageImplementation(
-            image="python:3.13-alpine",
-            command=_router_command(),
-            ports={"internal": 8080},
-        ),
-        BlockSockets(
-            requirements=(RequirementSocket("active", Protocol.HTTP, ("ACTIVE_TARGET_URL",)),),
-            providers=(ProviderSocket("internal", Protocol.HTTP),),
-        ),
-    )
+    api_v1 = hello_server_block("api-v1", message="Hello from v1")
+    api_v2 = hello_server_block("api-v2", message="Hello from v2")
+    router = http_active_router_block("api-router", display_name="API Router")
     return DeploymentRecipe(
         f"router-runtime-{active}",
         DockerRuntime(
@@ -88,52 +58,3 @@ def run_router_with_client(client: DockerClient, active: str = "api-v1") -> Runt
 
     interpreter = DockerRuntimeInterpreter(project_name="router-demo", client=client)
     return interpreter.up(router_graph(active), "docker")
-
-
-def _hello_api(block_id: str, message: str) -> ApplicationBlock:
-    return ApplicationBlock(
-        BlockSpec(block_id, block_id),
-        DockerImageImplementation(
-            image="python:3.13-alpine",
-            command=_hello_command(message),
-            ports={"internal": 8000},
-        ),
-        BlockSockets(providers=(ProviderSocket("internal", Protocol.HTTP),)),
-    )
-
-
-def _hello_command(message: str) -> tuple[str, ...]:
-    body = json.dumps(message)
-    script = (
-        "from http.server import BaseHTTPRequestHandler, HTTPServer; "
-        f"BODY = {body!r}.encode(); "
-        "class Handler(BaseHTTPRequestHandler):\n"
-        "    def do_GET(self):\n"
-        "        self.send_response(200)\n"
-        "        self.send_header('content-type', 'text/plain')\n"
-        "        self.end_headers()\n"
-        "        self.wfile.write(BODY)\n"
-        "    def log_message(self, format, *args):\n"
-        "        pass\n"
-        "HTTPServer(('0.0.0.0', 8000), Handler).serve_forever()"
-    )
-    return ("python", "-c", script)
-
-
-def _router_command() -> tuple[str, ...]:
-    script = (
-        "import os, urllib.request; "
-        "from http.server import BaseHTTPRequestHandler, HTTPServer; "
-        "TARGET = os.environ['ACTIVE_TARGET_URL']; "
-        "class Handler(BaseHTTPRequestHandler):\n"
-        "    def do_GET(self):\n"
-        "        with urllib.request.urlopen(TARGET + self.path) as response:\n"
-        "            body = response.read()\n"
-        "        self.send_response(200)\n"
-        "        self.end_headers()\n"
-        "        self.wfile.write(body)\n"
-        "    def log_message(self, format, *args):\n"
-        "        pass\n"
-        "HTTPServer(('0.0.0.0', 8080), Handler).serve_forever()"
-    )
-    return ("python", "-c", script)
