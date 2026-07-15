@@ -3,12 +3,6 @@ import unittest
 from control_plane_kit.graph import DeploymentGraph
 from control_plane_kit.stores import (
     GraphVersionRecord,
-    InMemoryActivityHistoryStore,
-    InMemoryGraphTopologyStore,
-    InMemoryInstanceRegistryStore,
-    InMemoryObservedStateStore,
-    InMemorySecretReferenceStore,
-    InMemoryWorkspaceStore,
     InstanceRecord,
     ObservationRecord,
     OperationActionRecord,
@@ -18,11 +12,12 @@ from control_plane_kit.stores import (
     WorkspaceLifecycle,
     WorkspaceRecord,
 )
+from tests.postgres_case import PostgresStoreTestCase
 
 
-class StoreContractTests(unittest.TestCase):
+class StoreContractTests(PostgresStoreTestCase):
     def test_workspace_tracks_current_and_desired_graph_pointers(self):
-        store = InMemoryWorkspaceStore()
+        store = self.stores.workspace
         store.create(WorkspaceRecord(workspace_id="workspace-a", name="Demo"))
 
         store.set_current_graph("workspace-a", "graph-current")
@@ -32,7 +27,8 @@ class StoreContractTests(unittest.TestCase):
         self.assertEqual(record.desired_graph_id, "graph-desired")
 
     def test_graph_topology_store_keeps_latest_workspace_version(self):
-        store = InMemoryGraphTopologyStore()
+        self.stores.workspace.create(WorkspaceRecord(workspace_id="workspace-a", name="Demo"))
+        store = self.stores.graph_topology
         first = GraphVersionRecord(
             graph_id="graph-1",
             workspace_id="workspace-a",
@@ -58,7 +54,7 @@ class StoreContractTests(unittest.TestCase):
         self.assertEqual(latest.graph_id, "graph-2")
 
     def test_activity_history_preserves_action_order(self):
-        store = InMemoryActivityHistoryStore()
+        store = self.stores.activity_history
         store.add_session(
             OperationSessionRecord(
                 session_id="session-a",
@@ -94,7 +90,7 @@ class StoreContractTests(unittest.TestCase):
         )
 
     def test_observed_state_is_separate_from_graph_truth(self):
-        store = InMemoryObservedStateStore()
+        store = self.stores.observed_state
         store.put(
             ObservationRecord(
                 observation_id="obs-1",
@@ -120,7 +116,7 @@ class StoreContractTests(unittest.TestCase):
         self.assertTrue(latest.stale)
 
     def test_instance_registry_lists_by_owner_and_updates_lifecycle(self):
-        store = InMemoryInstanceRegistryStore()
+        store = self.stores.instance_registry
         store.register(
             InstanceRecord(
                 instance_id="instance-a",
@@ -134,7 +130,7 @@ class StoreContractTests(unittest.TestCase):
         self.assertEqual([record.instance_id for record in store.list_for_owner("jacob")], ["instance-a"])
 
     def test_secret_reference_store_never_accepts_secret_values(self):
-        store = InMemorySecretReferenceStore()
+        store = self.stores.secret_references
         record = store.assign(
             SecretReferenceRecord(
                 secret_ref="secret://cloudflare-token",

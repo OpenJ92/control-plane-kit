@@ -1,0 +1,22 @@
+services:
+  postgres:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_DB: cpk
+      POSTGRES_USER: cpk
+      POSTGRES_PASSWORD: cpk
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U cpk -d cpk"]
+      interval: 1s
+      timeout: 5s
+      retries: 30
+
+  tests:
+    build:
+      context: .
+      target: test
+    environment:
+      CPK_TEST_DATABASE_URL: postgresql://cpk:cpk@postgres:5432/cpk
+    depends_on:
+      postgres:
+        condition: service_healthy

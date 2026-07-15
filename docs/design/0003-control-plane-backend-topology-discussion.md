@@ -628,7 +628,7 @@ graph topology adapter
   Neo4j/Memgraph-backed later
 ```
 
-The first implementation can still use in-memory stores for tests, but local
+The first implementation should use Docker-backed Postgres for tests, but local
 durable development should prefer Postgres-backed adapters over baking the
 application model around SQLite.  Application code should depend on store
 protocols, not on a particular database.
@@ -988,7 +988,7 @@ because it contains the meaningful graph/workspace/activity semantics.  The hub
 can begin as a small registry/login shell.
 
 The graph store should be behind a protocol/interface.  The first adapters may
-be in-memory and JSON-backed, but the API should be shaped so a future Neo4j or
+be descriptor/JSON-backed, but the API should be shaped so a future Neo4j or
 Memgraph adapter does not force application-level rewrites.
 
 The desired store law is:

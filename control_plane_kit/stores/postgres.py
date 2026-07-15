@@ -3,7 +3,8 @@
 The first implementation is intentionally direct: each store owns explicit
 tables and transactions are supplied by the caller through the connection.  The
 module does not import a Postgres driver at import time, so the base package can
-still be used for algebra and in-memory tests without a database dependency.
+still be used for algebra without a database dependency.  Store tests run
+against a real Postgres service.
 """
 
 from __future__ import annotations

@@ -3,8 +3,7 @@ import unittest
 from control_plane_kit.graph import DeploymentGraph
 from control_plane_kit.stores import (
     GraphVersionRecord,
-    InMemoryActivityHistoryStore,
-    InMemoryGraphTopologyStore,
+    WorkspaceRecord,
 )
 from control_plane_kit.workflows import (
     ActivityRunService,
@@ -12,6 +11,7 @@ from control_plane_kit.workflows import (
     OperationActionService,
     OperationSessionService,
 )
+from tests.postgres_case import PostgresStoreTestCase
 
 
 class Sequence:
@@ -22,9 +22,9 @@ class Sequence:
         return self.values.pop(0)
 
 
-class WorkflowServiceTests(unittest.TestCase):
+class WorkflowServiceTests(PostgresStoreTestCase):
     def test_session_service_starts_and_closes_sessions(self):
-        history = InMemoryActivityHistoryStore()
+        history = self.stores.activity_history
         clock = Sequence(["2026-07-15T00:00:00Z", "2026-07-15T00:01:00Z"])
         ids = Sequence(["session-a"])
         service = OperationSessionService(history, clock=clock, id_factory=ids)
@@ -37,7 +37,7 @@ class WorkflowServiceTests(unittest.TestCase):
         self.assertEqual(closed.closed_at, "2026-07-15T00:01:00Z")
 
     def test_action_service_preserves_session_action_order(self):
-        history = InMemoryActivityHistoryStore()
+        history = self.stores.activity_history
         OperationSessionService(
             history,
             clock=Sequence(["2026-07-15T00:00:00Z"]),
@@ -58,10 +58,15 @@ class WorkflowServiceTests(unittest.TestCase):
         )
 
     def test_approval_service_records_decision_without_execution(self):
-        history = InMemoryActivityHistoryStore()
-        approval = ApprovalWorkflowService(
+        history = self.stores.activity_history
+        OperationSessionService(
             history,
             clock=Sequence(["2026-07-15T00:00:00Z"]),
+            id_factory=Sequence(["session-a"]),
+        ).start(workspace_id="workspace-a", actor_id="jacob", title="Approve plan")
+        approval = ApprovalWorkflowService(
+            history,
+            clock=Sequence(["2026-07-15T00:01:00Z"]),
             id_factory=Sequence(["approval-a"]),
         ).decide(
             session_id="session-a",
@@ -76,10 +81,15 @@ class WorkflowServiceTests(unittest.TestCase):
         self.assertEqual(history.approvals_for_session("session-a")[0].target_id, "plan-a")
 
     def test_activity_run_service_records_plan_and_run_without_effects(self):
-        history = InMemoryActivityHistoryStore()
+        history = self.stores.activity_history
+        OperationSessionService(
+            history,
+            clock=Sequence(["2026-07-15T00:00:00Z"]),
+            id_factory=Sequence(["session-a"]),
+        ).start(workspace_id="workspace-a", actor_id="jacob", title="Plan run")
         service = ActivityRunService(
             history,
-            clock=Sequence(["2026-07-15T00:00:00Z", "2026-07-15T00:01:00Z"]),
+            clock=Sequence(["2026-07-15T00:01:00Z", "2026-07-15T00:02:00Z"]),
             id_factory=Sequence(["plan-a", "run-a"]),
         )
 
@@ -95,7 +105,8 @@ class WorkflowServiceTests(unittest.TestCase):
         self.assertEqual(run.status, "open")
 
     def test_workflow_services_do_not_mutate_graph_truth(self):
-        graph_store = InMemoryGraphTopologyStore()
+        self.stores.workspace.create(WorkspaceRecord(workspace_id="workspace-a", name="Demo"))
+        graph_store = self.stores.graph_topology
         graph_store.save(
             GraphVersionRecord.from_graph(
                 graph_id="graph-current",
@@ -106,7 +117,12 @@ class WorkflowServiceTests(unittest.TestCase):
                 created_at="2026-07-15T00:00:00Z",
             )
         )
-        history = InMemoryActivityHistoryStore()
+        history = self.stores.activity_history
+        OperationSessionService(
+            history,
+            clock=Sequence(["2026-07-15T00:00:30Z"]),
+            id_factory=Sequence(["session-a"]),
+        ).start(workspace_id="workspace-a", actor_id="jacob", title="Prepare graph edit")
         OperationActionService(
             history,
             clock=Sequence(["2026-07-15T00:01:00Z"]),

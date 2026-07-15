@@ -1,13 +1,5 @@
 """Source-of-truth store contracts for control-plane backend state."""
 
-from control_plane_kit.stores.memory import (
-    InMemoryActivityHistoryStore,
-    InMemoryGraphTopologyStore,
-    InMemoryInstanceRegistryStore,
-    InMemoryObservedStateStore,
-    InMemorySecretReferenceStore,
-    InMemoryWorkspaceStore,
-)
 from control_plane_kit.stores.postgres import (
     POSTGRES_SCHEMA,
     PostgresActivityHistoryStore,
@@ -50,12 +42,6 @@ __all__ = [
     "ApprovalRecord",
     "GraphTopologyStore",
     "GraphVersionRecord",
-    "InMemoryActivityHistoryStore",
-    "InMemoryGraphTopologyStore",
-    "InMemoryInstanceRegistryStore",
-    "InMemoryObservedStateStore",
-    "InMemorySecretReferenceStore",
-    "InMemoryWorkspaceStore",
     "InstanceRecord",
     "InstanceRegistryStore",
     "ObservationRecord",

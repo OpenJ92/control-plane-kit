@@ -165,7 +165,7 @@ the rest.
     - Hub will eventually use Postgres.
     - Local instance persistence should prefer Postgres-backed relational
       adapters over SQLite for durable work.
-    - In-memory stores remain valid for tests.
+    - Local tests should use Docker-backed Postgres for persistence behavior.
     - Graph topology remains adapter-backed and graph-database-ready.
 
 11. Add module service/adaptor law to `AGENTS.md` or an equivalent design
@@ -176,7 +176,7 @@ the rest.
 12. Add tests for ownership boundaries.
     - Workflow services cannot mutate graph truth directly.
     - Policy modules return decisions rather than performing effects.
-    - Store protocols can be satisfied by in-memory test implementations.
+   - Store protocols can be satisfied by Postgres-backed local test implementations.
 
 ## Target Package Shape
 
@@ -239,7 +239,7 @@ ownership taxonomy and the earliest truth/workflow/policy contracts.
 ## Implementation Notes
 
 - Prefer protocols and small dataclasses before concrete databases.
-- Keep in-memory implementations for tests.
+- Use Docker-backed Postgres for store/workflow tests.
 - Do not bake JSON descriptor storage into the public graph-store API.
 - Do not model graph topology as normalized Postgres tables in the first pass.
 - Do use proper relational normalization for session/action/approval/run/event
