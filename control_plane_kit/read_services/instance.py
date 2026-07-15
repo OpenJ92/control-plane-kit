@@ -7,6 +7,7 @@ from control_plane_kit.projections import (
     ActivityPlanTimelineReadModel,
     ActivityRunTimelineReadModel,
     ActivityTimelineReadModel,
+    ControlSurfaceReadModel,
     GraphVersionReadModel,
     ObservationReadModel,
     ObservedStateReadModel,
@@ -14,6 +15,7 @@ from control_plane_kit.projections import (
     OperationSessionTimelineReadModel,
     WorkspaceReadModel,
     approval_descriptor,
+    project_control_surface_descriptor,
     project_operator_graph_descriptor,
 )
 from control_plane_kit.stores import ActivityHistoryStore, GraphTopologyStore, ObservedStateStore, WorkspaceStore
@@ -87,6 +89,19 @@ class InstanceReadService:
                 ObservationReadModel.from_record(record)
                 for record in self._observed_state_store.latest_for_workspace(workspace_id, limit=limit)
             ),
+        )
+
+    def control_surface(self, workspace_id: str) -> ControlSurfaceReadModel | None:
+        """Return declared capabilities, contracts, and control routes for the current graph."""
+
+        workspace = self._workspace_store.get(workspace_id)
+        graph = self._graph_by_id(workspace.current_graph_id)
+        if graph is None:
+            return None
+        return project_control_surface_descriptor(
+            workspace_id=workspace_id,
+            graph_id=graph.graph_id,
+            graph_descriptor=graph.graph_descriptor,
         )
 
     def _graph_by_id(self, graph_id: str | None) -> GraphVersionRecord | None:
