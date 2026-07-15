@@ -2,6 +2,8 @@ import unittest
 
 from control_plane_kit.graph import DeploymentGraph
 from control_plane_kit.stores import (
+    ActivityPlanRecord,
+    ActivityRunRecord,
     GraphVersionRecord,
     InstanceRecord,
     ObservationRecord,
@@ -89,6 +91,54 @@ class StoreContractTests(PostgresStoreTestCase):
             ["action-a", "action-b"],
         )
 
+    def test_activity_history_supports_workspace_timeline_queries(self):
+        store = self.stores.activity_history
+        store.add_session(
+            OperationSessionRecord(
+                session_id="session-a",
+                workspace_id="workspace-a",
+                actor_id="jacob",
+                title="Swap API",
+                status="open",
+                created_at="2026-07-15T00:00:00Z",
+            )
+        )
+        store.add_session(
+            OperationSessionRecord(
+                session_id="session-b",
+                workspace_id="workspace-b",
+                actor_id="jacob",
+                title="Other workspace",
+                status="open",
+                created_at="2026-07-15T00:01:00Z",
+            )
+        )
+        store.add_plan(
+            ActivityPlanRecord(
+                plan_id="plan-a",
+                session_id="session-a",
+                base_graph_id="graph-a",
+                desired_graph_id="graph-b",
+                status="planned",
+                created_at="2026-07-15T00:02:00Z",
+            )
+        )
+        store.add_run(
+            ActivityRunRecord(
+                run_id="run-a",
+                plan_id="plan-a",
+                status="running",
+                started_at="2026-07-15T00:03:00Z",
+            )
+        )
+
+        self.assertEqual(
+            [record.session_id for record in store.sessions_for_workspace("workspace-a")],
+            ["session-a"],
+        )
+        self.assertEqual([record.plan_id for record in store.plans_for_session("session-a")], ["plan-a"])
+        self.assertEqual([record.run_id for record in store.runs_for_plan("plan-a")], ["run-a"])
+
     def test_observed_state_is_separate_from_graph_truth(self):
         store = self.stores.observed_state
         store.put(
@@ -114,6 +164,42 @@ class StoreContractTests(PostgresStoreTestCase):
         latest = store.latest("workspace-a", "api")
         self.assertIsNotNone(latest)
         self.assertTrue(latest.stale)
+
+    def test_observed_state_lists_latest_per_workspace_subject(self):
+        store = self.stores.observed_state
+        store.put(
+            ObservationRecord(
+                observation_id="obs-api-1",
+                workspace_id="workspace-a",
+                subject_id="api",
+                status="starting",
+                observed_at="2026-07-15T00:00:00Z",
+            )
+        )
+        store.put(
+            ObservationRecord(
+                observation_id="obs-api-2",
+                workspace_id="workspace-a",
+                subject_id="api",
+                status="healthy",
+                observed_at="2026-07-15T00:01:00Z",
+            )
+        )
+        store.put(
+            ObservationRecord(
+                observation_id="obs-router",
+                workspace_id="workspace-a",
+                subject_id="router",
+                status="stale",
+                observed_at="2026-07-15T00:02:00Z",
+                stale=True,
+            )
+        )
+
+        self.assertEqual(
+            [(record.subject_id, record.status, record.stale) for record in store.latest_for_workspace("workspace-a")],
+            [("api", "healthy", False), ("router", "stale", True)],
+        )
 
     def test_instance_registry_lists_by_owner_and_updates_lifecycle(self):
         store = self.stores.instance_registry

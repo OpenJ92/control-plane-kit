@@ -2,7 +2,17 @@ from unittest import main
 
 from control_plane_kit.graph import DeploymentGraph
 from control_plane_kit.read_services import InstanceReadService, ReadModelError
-from control_plane_kit.stores import GraphVersionRecord, WorkspaceRecord
+from control_plane_kit.stores import (
+    ActivityEventRecord,
+    ActivityPlanRecord,
+    ActivityRunRecord,
+    ApprovalRecord,
+    GraphVersionRecord,
+    ObservationRecord,
+    OperationActionRecord,
+    OperationSessionRecord,
+    WorkspaceRecord,
+)
 from examples.app_with_postgres import recipe
 from tests.postgres_case import PostgresStoreTestCase
 from control_plane_kit import compile_recipe
@@ -76,6 +86,48 @@ class InstanceReadServiceTests(PostgresStoreTestCase):
         with self.assertRaisesRegex(ReadModelError, "unknown graph pointer 'future'"):
             service.operator_graph("workspace-a", pointer="future")
 
+    def test_activity_timeline_is_bounded_and_redacted(self):
+        service = self._service_with_activity()
+
+        payload = service.activity_timeline("workspace-a", limit=1).descriptor()
+
+        self.assertEqual(payload["limit"], 1)
+        self.assertEqual(len(payload["sessions"]), 1)
+        session = payload["sessions"][0]
+        self.assertEqual([action["action_id"] for action in session["actions"]], ["action-a"])
+        self.assertEqual(session["actions"][0]["payload"]["api_token"], "<redacted>")
+        self.assertEqual(session["plans"][0]["payload"]["target_url"], "<redacted>")
+        self.assertEqual(session["plans"][0]["runs"][0]["events"][0]["payload"]["password"], "<redacted>")
+
+    def test_activity_timeline_rejects_invalid_limits(self):
+        service = self._service_with_activity()
+
+        with self.assertRaisesRegex(ReadModelError, "limit must be positive, got 0"):
+            service.activity_timeline("workspace-a", limit=0)
+
+    def test_activity_timeline_requires_workspace_truth(self):
+        service = InstanceReadService(
+            workspace_store=self.stores.workspace,
+            graph_topology_store=self.stores.graph_topology,
+            activity_history_store=self.stores.activity_history,
+            observed_state_store=self.stores.observed_state,
+        )
+
+        with self.assertRaisesRegex(ReadModelError, "missing workspace 'missing'"):
+            service.activity_timeline("missing")
+
+    def test_observed_state_reports_latest_and_stale_markers(self):
+        service = self._service_with_observations()
+
+        payload = service.observed_state("workspace-a").descriptor()
+
+        self.assertEqual(
+            [(record["subject_id"], record["status"], record["stale"]) for record in payload["observations"]],
+            [("api", "healthy", False), ("router", "unknown", True)],
+        )
+        self.assertEqual(payload["observations"][0]["payload"]["token"], "<redacted>")
+        self.assertEqual(payload["observations"][1]["payload"]["details"], "not checked yet")
+
     def _service_with_workspace_and_graphs(self) -> InstanceReadService:
         self.stores.workspace.create(WorkspaceRecord(workspace_id="workspace-a", name="Demo"))
         current = GraphVersionRecord.from_graph(
@@ -101,6 +153,129 @@ class InstanceReadServiceTests(PostgresStoreTestCase):
         return InstanceReadService(
             workspace_store=self.stores.workspace,
             graph_topology_store=self.stores.graph_topology,
+            activity_history_store=self.stores.activity_history,
+            observed_state_store=self.stores.observed_state,
+        )
+
+    def _service_with_activity(self) -> InstanceReadService:
+        self.stores.workspace.create(WorkspaceRecord(workspace_id="workspace-a", name="Demo"))
+        self.stores.activity_history.add_session(
+            OperationSessionRecord(
+                session_id="session-a",
+                workspace_id="workspace-a",
+                actor_id="jacob",
+                title="Swap API",
+                status="open",
+                created_at="2026-07-15T00:00:00Z",
+            )
+        )
+        self.stores.activity_history.add_action(
+            OperationActionRecord(
+                action_id="action-a",
+                session_id="session-a",
+                ordinal=1,
+                action_type="patch_variable",
+                actor_id="jacob",
+                payload={"api_token": "secret", "note": "visible"},
+                created_at="2026-07-15T00:01:00Z",
+            )
+        )
+        self.stores.activity_history.add_action(
+            OperationActionRecord(
+                action_id="action-b",
+                session_id="session-a",
+                ordinal=2,
+                action_type="check_health",
+                actor_id="jacob",
+                payload={"note": "bounded away"},
+                created_at="2026-07-15T00:02:00Z",
+            )
+        )
+        self.stores.activity_history.add_approval(
+            ApprovalRecord(
+                approval_id="approval-a",
+                session_id="session-a",
+                target_id="plan-a",
+                actor_id="manager",
+                decision="approved",
+                scope="admin",
+                decided_at="2026-07-15T00:02:30Z",
+            )
+        )
+        self.stores.activity_history.add_plan(
+            ActivityPlanRecord(
+                plan_id="plan-a",
+                session_id="session-a",
+                base_graph_id="graph-a",
+                desired_graph_id="graph-b",
+                status="planned",
+                created_at="2026-07-15T00:03:00Z",
+                payload={"target_url": "http://private"},
+            )
+        )
+        self.stores.activity_history.add_run(
+            ActivityRunRecord(
+                run_id="run-a",
+                plan_id="plan-a",
+                status="running",
+                started_at="2026-07-15T00:04:00Z",
+                metadata={"worker_token": "secret"},
+            )
+        )
+        self.stores.activity_history.add_event(
+            ActivityEventRecord(
+                event_id="event-a",
+                run_id="run-a",
+                ordinal=1,
+                event_type="step",
+                occurred_at="2026-07-15T00:05:00Z",
+                payload={"password": "secret"},
+            )
+        )
+        return InstanceReadService(
+            workspace_store=self.stores.workspace,
+            graph_topology_store=self.stores.graph_topology,
+            activity_history_store=self.stores.activity_history,
+            observed_state_store=self.stores.observed_state,
+        )
+
+    def _service_with_observations(self) -> InstanceReadService:
+        self.stores.workspace.create(WorkspaceRecord(workspace_id="workspace-a", name="Demo"))
+        self.stores.observed_state.put(
+            ObservationRecord(
+                observation_id="obs-api-old",
+                workspace_id="workspace-a",
+                subject_id="api",
+                status="starting",
+                observed_at="2026-07-15T00:00:00Z",
+            )
+        )
+        self.stores.observed_state.put(
+            ObservationRecord(
+                observation_id="obs-api-new",
+                workspace_id="workspace-a",
+                subject_id="api",
+                status="healthy",
+                observed_at="2026-07-15T00:01:00Z",
+                payload={"token": "secret"},
+            )
+        )
+        self.stores.observed_state.put(
+            ObservationRecord(
+                observation_id="obs-router",
+                workspace_id="workspace-a",
+                subject_id="router",
+                status="unknown",
+                observed_at="2026-07-15T00:01:00Z",
+                payload={"details": "not checked yet"},
+                stale=True,
+            )
+        )
+        return InstanceReadService(
+            workspace_store=self.stores.workspace,
+            graph_topology_store=self.stores.graph_topology,
+            activity_history_store=self.stores.activity_history,
+            observed_state_store=self.stores.observed_state,
         )
 
 
