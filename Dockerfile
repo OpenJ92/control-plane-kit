@@ -25,3 +25,13 @@ COPY tests ./tests
 RUN python -m pip install ".[test-server]"
 
 CMD ["python", "-m", "unittest", "discover", "-s", "tests", "-v"]
+
+FROM package AS demo
+
+COPY examples ./examples
+
+RUN python -m pip install "psycopg[binary]>=3.2"
+
+EXPOSE 8010
+
+CMD ["uvicorn", "examples.read_interface_demo_server:create_app_from_environment", "--factory", "--host", "0.0.0.0", "--port", "8010"]

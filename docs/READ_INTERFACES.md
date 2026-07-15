@@ -258,3 +258,65 @@ The Docker-first suite covers:
 - CLI command/query generation,
 - MCP-shaped tool descriptors and fail-closed behavior,
 - and adapter consistency over `InstanceReadService`.
+
+## Local Docker Demo
+
+The Roadmap 0006 read API can be tried locally with a small demo server:
+
+```bash
+docker compose -f docker-compose.read-demo.yml up --build
+```
+
+It starts Postgres, installs the control-plane schema, seeds one workspace, and
+serves the FastAPI read routes on:
+
+```text
+http://localhost:8010
+```
+
+If port `8010` is already in use, choose another host port:
+
+```bash
+CPK_DEMO_HOST_PORT=8011 docker compose -f docker-compose.read-demo.yml up --build
+```
+
+The demo workspace is:
+
+```text
+demo-workspace
+```
+
+The demo token is:
+
+```text
+demo-token
+```
+
+Try the routes directly:
+
+```bash
+curl -H "Authorization: Bearer demo-token" \
+  http://localhost:8010/workspaces/demo-workspace
+
+curl -H "Authorization: Bearer demo-token" \
+  http://localhost:8010/workspaces/demo-workspace/operator-graph
+
+curl -H "Authorization: Bearer demo-token" \
+  http://localhost:8010/workspaces/demo-workspace/control-surface
+
+curl -H "Authorization: Bearer demo-token" \
+  "http://localhost:8010/workspaces/demo-workspace/activity?limit=5"
+```
+
+Or point the CLI at the live server:
+
+```bash
+control-plane-kit \
+  --base-url http://localhost:8010 \
+  --token demo-token \
+  workspace demo-workspace
+```
+
+This is not the future hub, not a production instance server, and not a real
+MCP host. It is a small live harness for the read model implemented in Roadmap
+0006.
