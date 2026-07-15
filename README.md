@@ -165,6 +165,26 @@ The first implementation is deliberately small:
 
 The package also includes graph diffing and a conservative activity planner.
 
+## Control Plane Reads
+
+The first control-plane instance read surfaces are available through one shared
+service boundary:
+
+```text
+Postgres-backed stores
+  -> InstanceReadService
+    -> FastAPI read routes
+    -> CLI read commands
+    -> MCP-shaped read adapter
+```
+
+Read interfaces are intentionally non-mutating. They expose workspace summaries,
+current/desired graph descriptors, operator graph projections, activity
+timelines, observed state, and declared control surfaces.
+
+See [Control Plane Read Interfaces](docs/READ_INTERFACES.md) for route, CLI,
+and MCP-shaped examples.
+
 The optional server adapters require FastAPI:
 
 ```bash
