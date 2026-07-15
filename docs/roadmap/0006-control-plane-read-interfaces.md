@@ -1,6 +1,6 @@
 # Roadmap 0006: Control Plane Read Interfaces
 
-Status: Draft
+Status: Implemented on Roadmap PR 0006 v2
 Depends on: Roadmap 0005
 
 ## Motivation
@@ -204,3 +204,8 @@ Mutation tools remain absent.
 Roadmap 0007 will add operation sessions, desired graph edits, planning, and
 approval. Keep read-model descriptors stable enough that plans and approval
 workflows can refer to them without reworking all query routes.
+
+Implementation notes and examples now live in
+[Control Plane Read Interfaces](../READ_INTERFACES.md). The second execution
+learning document is
+[Roadmap 0006 Run 0002 Learning](../learning/roadmap-0006/run-0002.md).
