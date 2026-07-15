@@ -107,15 +107,50 @@ When the user asks to execute a roadmap item, use this outer loop:
 7. Create one PR per child issue unless the user explicitly asks for a larger
    batch.
 8. Review the PR before moving on.
-9. Leave handoff comments from completed child issues to dependent child issues.
-10. Summarize the roadmap node on the parent issue when complete.
-11. Move to the next roadmap node only after the current node is coherent on
+9. Run explicit hardening passes when the roadmap surface is broad enough to
+   warrant them.
+10. Leave handoff comments from completed child issues to dependent child issues.
+11. Summarize the roadmap node on the parent issue when complete.
+12. Move to the next roadmap node only after the current node is coherent on
     develop.
 ```
 
 This is recursive. If a child issue is still too large, split it into a smaller
 issue topology before implementing. Do not push through an issue that has become
 too broad to review.
+
+Hardening is part of the roadmap loop, not an afterthought. A hardening pass
+should become its own issue and PR when an implementation creates a broad
+interface, persistence, security, runtime, or adapter surface. Prefer
+per-issue or per-module hardening PRs over one vague final cleanup. The normal
+shape is:
+
+```text
+child issue implementation PR
+  -> review pass
+    -> hardening pass PR
+      -> final roadmap integration validation
+```
+
+Hardening passes should look for:
+
+- boundary cases and negative cases that happy-path tests missed;
+- inconsistent behavior across adapters over the same service;
+- missing source-of-truth validation;
+- security leaks, secret leaks, address leaks, or unbounded payloads;
+- transaction or unit-of-work drift;
+- runtime cleanup/retry/idempotency gaps;
+- descriptor instability;
+- and documentation or handoff claims that are no longer true.
+
+Record learning from substantial roadmap runs under:
+
+```text
+docs/learning/<roadmap-id>/run-<nnnn>.md
+```
+
+Those documents are the memory layer for future roadmap executions. Read the
+relevant learning documents before retrying or extending a roadmap.
 
 ## Issue Execution Loop
 
@@ -132,9 +167,12 @@ For each child issue, use this inner loop:
 8. Run validation.
 9. Open a PR into develop.
 10. Perform a code-review pass on the PR.
-11. Leave a PR decision log.
-12. Merge only when checks pass and the result is coherent.
-13. Leave handoff comments for dependent issues.
+11. Add a hardening PR when review shows the implementation surface needs
+    additional edge tests, security checks, data checks, or adapter consistency
+    checks.
+12. Leave a PR decision log.
+13. Merge only when checks pass and the result is coherent.
+14. Leave handoff comments for dependent issues.
 ```
 
 The issue loop should preserve topological order. If issue B depends on a
