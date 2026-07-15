@@ -30,6 +30,19 @@ ObservedState
 Execution must not be a hidden side effect of saving a graph. It must be an
 approved, claimed, event-emitting workflow.
 
+Execution has two different data-engineering regimes:
+
+```text
+ActivityRun / ActivityEvent / ObservedState writes
+  -> ordinary Postgres unit-of-work transactions owned by execution services
+
+Docker, block control routes, cloud APIs, filesystem state, and secrets
+  -> saga/external-effect steps with durable progress events
+```
+
+Sagas do not replace the Postgres unit of work. They coordinate effects that no
+single database transaction can protect.
+
 ## Goal
 
 Implement the first executable activity pipeline.
@@ -70,6 +83,8 @@ This roadmap should provide:
    - Idempotency key.
    - Approved plan reference.
    - Actor identity.
+   - The request must be written in the same unit of work as the command that
+     asks for execution.
 
 3. Add activity run lifecycle.
    - `queued`, `claimed`, `running`, `paused`, `succeeded`, `failed`,
@@ -77,6 +92,8 @@ This roadmap should provide:
    - Guarded status transitions.
    - Prevent duplicate concurrent runs for the same plan unless explicitly
      retrying.
+   - Guard status transitions with Postgres transactions and row-level locking
+     or equivalent compare-and-set semantics.
 
 4. Add executor interface.
    - Claim approved plan.
@@ -84,6 +101,9 @@ This roadmap should provide:
    - Execute activities.
    - Emit events.
    - Update observed state.
+   - Open small explicit transactions for claim/run/event state changes.
+   - Keep external effects outside those transactions, with durable events on
+     both sides of each effect.
 
 5. Add activity event writer.
    - Step started.
@@ -93,6 +113,8 @@ This roadmap should provide:
    - Compensation succeeded/failed.
    - Run paused/resumed.
    - Run completed.
+   - Each event append must participate in an explicit transaction owned by the
+     execution service.
 
 6. Add runtime executor capabilities.
    - Start node.
@@ -182,6 +204,8 @@ Some activities may be non-compensatable. They must say so.
 ## Implementation Notes
 
 - Follow ADR 0008 strictly.
+- Store-local execution state uses normal Postgres unit-of-work transactions.
+- Saga steps only wrap external effects that cannot be made ACID by Postgres.
 - Execution claims need locking or guarded status transitions.
 - Effects happen after durable execution request.
 - Every external effect emits an event.

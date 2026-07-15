@@ -47,6 +47,35 @@ retries, compensation, and visible partial failure
 The package must not hide distributed partial failure behind a helper that
 pretends a multi-system operation is a single transaction.
 
+When the relevant durable state lives in one Postgres database, the API or
+application-service layer owns the transaction boundary. Repository/store
+methods participate in that boundary; they do not independently decide commit
+or rollback for a whole operator command.
+
+The controlling law is:
+
+```text
+one operator command = one explicit transaction boundary
+```
+
+For this package, that usually means:
+
+```text
+FastAPI route
+  -> application service / use-case
+      -> UnitOfWork opens Postgres transaction
+          -> workspace repository
+          -> graph topology repository
+          -> activity history repository
+          -> approval repository
+          -> outbox/execution request repository
+      -> commit or rollback
+```
+
+Sagas do not replace this store-local unit of work. Sagas begin when the work
+crosses the database boundary into Docker, block control routes, Cloudflare,
+AWS, secret stores, filesystem state, or another external system.
+
 ## Store-Local Atomicity
 
 When a transition is contained inside one relational store, it must use a real
@@ -65,11 +94,30 @@ claim a queued execution request
 Rules:
 
 - Related writes must share an explicit transaction boundary.
+- The transaction boundary belongs at the API/application-service/use-case
+  layer, where the complete operator command is known.
+- Repository/store methods should accept or use the caller's transaction
+  context. They should not commit independently when participating in a larger
+  command.
 - Route handlers must not write several tables independently.
 - Services must not mutate durable state through hidden side effects outside
   their repository/store boundary.
-- Transaction boundaries should be visible in service or unit-of-work code.
+- Transaction boundaries should be visible in service or unit-of-work code,
+  with the same spirit as the Pottery Factory API unit-of-work boundary.
 - Failed transactions must leave no half-written workflow state.
+
+Example:
+
+```text
+submit graph edit
+  writes OperationAction
+  writes desired GraphVersion
+  writes ActivityPlan
+  writes ApprovalRequest when required
+```
+
+Those writes must commit together or roll back together. No repository involved
+in that command owns enough context to safely commit by itself.
 
 ## Cross-Boundary Effects
 
@@ -107,6 +155,22 @@ Partial failure is a first-class state.
 
 The package should prefer recoverable workflow records over pretending that
 external effects can be rolled back automatically.
+
+The store transaction records the durable truth about intent, approval, plan,
+claim, and event history. The saga executor performs external effects after
+that truth exists and then records bounded progress back through explicit
+transactions.
+
+```text
+Postgres transaction:
+  protect our truth about the operation
+
+Saga:
+  execute and compensate external effects that Postgres cannot make atomic
+```
+
+This means a saga step may open many small transactions to append events or
+advance run status, but the saga itself is not a database transaction.
 
 ## Idempotency
 
@@ -193,6 +257,10 @@ worker:
 
 This prevents the system from committing an approval or graph edit, crashing,
 and losing the fact that execution still needed to happen.
+
+The same unit-of-work that records approval should record the execution request
+or outbox event. Execution workers then claim durable work using guarded
+transitions or row locks, not by trusting volatile process memory.
 
 ## Approval And Destructive Operations
 
