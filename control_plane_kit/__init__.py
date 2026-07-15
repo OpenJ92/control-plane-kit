@@ -122,8 +122,10 @@ from control_plane_kit.planner import (
 )
 from control_plane_kit.read_services import (
     ActivityTimelineReadModel,
+    ControlSurfaceReadModel,
     GraphPointerReadModel,
     InstanceReadService,
+    NodeControlSurfaceReadModel,
     ObservedStateReadModel,
     ReadModelError,
     WorkspaceReadModel,
@@ -210,6 +212,7 @@ __all__ = [
     "ControlRouteScope",
     "ControlRouteSet",
     "ControlRouteSetName",
+    "ControlSurfaceReadModel",
     "control_path",
     "route_set_named",
     "DataBlock",
@@ -235,6 +238,7 @@ __all__ = [
     "GraphPointerReadModel",
     "LocalSourceImplementation",
     "Node",
+    "NodeControlSurfaceReadModel",
     "PlanOnlyImplementation",
     "Protocol",
     "ProxyBlock",
