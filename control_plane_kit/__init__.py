@@ -121,8 +121,10 @@ from control_plane_kit.planner import (
     plan_migration,
 )
 from control_plane_kit.read_services import (
+    ActivityTimelineReadModel,
     GraphPointerReadModel,
     InstanceReadService,
+    ObservedStateReadModel,
     ReadModelError,
     WorkspaceReadModel,
     WorkspaceSummary,
@@ -142,6 +144,7 @@ from control_plane_kit.types import EndpointScope, Protocol, RuntimeKind
 __all__ = [
     "Activity",
     "ActivityPlan",
+    "ActivityTimelineReadModel",
     "ApplicationBlock",
     "BlockSpec",
     "CAPABILITIES",
@@ -150,6 +153,7 @@ __all__ = [
     "LOG_READABLE",
     "METRICS_READABLE",
     "OBSERVER_MUTABLE",
+    "ObservedStateReadModel",
     "RESTARTABLE",
     "SWITCHABLE",
     "TARGET_MUTABLE",

@@ -8,8 +8,8 @@ from typing import Mapping
 from control_plane_kit.algebra import BlockSockets, ProviderSocket, RequirementSocket
 from control_plane_kit.graph import DeploymentGraph, Edge, Endpoint, Node, RuntimeRecord
 from control_plane_kit.projections import project_operator_graph
-from control_plane_kit.stores.protocols import GraphTopologyStore, WorkspaceStore
-from control_plane_kit.stores.records import GraphVersionRecord, WorkspaceRecord
+from control_plane_kit.stores.protocols import ActivityHistoryStore, GraphTopologyStore, ObservedStateStore, WorkspaceStore
+from control_plane_kit.stores.records import GraphVersionRecord, ObservationRecord, WorkspaceRecord
 from control_plane_kit.types import EndpointScope, Protocol, RuntimeKind
 
 _REDACTED = "<redacted>"
@@ -86,6 +86,36 @@ class WorkspaceReadModel:
         }
 
 
+@dataclass(frozen=True)
+class ActivityTimelineReadModel:
+    """Bounded activity-history summary for a workspace."""
+
+    workspace_id: str
+    limit: int
+    sessions: tuple[Mapping[str, object], ...]
+
+    def descriptor(self) -> dict[str, object]:
+        return {
+            "workspace_id": self.workspace_id,
+            "limit": self.limit,
+            "sessions": [dict(session) for session in self.sessions],
+        }
+
+
+@dataclass(frozen=True)
+class ObservedStateReadModel:
+    """Latest observed state by subject for a workspace."""
+
+    workspace_id: str
+    observations: tuple[Mapping[str, object], ...]
+
+    def descriptor(self) -> dict[str, object]:
+        return {
+            "workspace_id": self.workspace_id,
+            "observations": [dict(observation) for observation in self.observations],
+        }
+
+
 class InstanceReadService:
     """Composes source-of-truth stores into read-only instance views."""
 
@@ -94,9 +124,13 @@ class InstanceReadService:
         *,
         workspace_store: WorkspaceStore,
         graph_topology_store: GraphTopologyStore,
+        activity_history_store: ActivityHistoryStore | None = None,
+        observed_state_store: ObservedStateStore | None = None,
     ) -> None:
         self._workspace_store = workspace_store
         self._graph_topology_store = graph_topology_store
+        self._activity_history_store = activity_history_store
+        self._observed_state_store = observed_state_store
 
     def workspace(self, workspace_id: str) -> WorkspaceReadModel:
         """Return the workspace summary and graph pointer read models."""
@@ -131,11 +165,44 @@ class InstanceReadService:
             return self._graph_pointer("desired", workspace.desired_graph_id, include_operator_graph=True)
         raise ReadModelError(f"unknown graph pointer {pointer!r}")
 
+    def activity_timeline(self, workspace_id: str, *, limit: int = 50) -> ActivityTimelineReadModel:
+        """Return a bounded activity timeline for one workspace."""
+
+        limit = _positive_limit(limit)
+        self._workspace(workspace_id)
+        store = self._activity_history()
+        sessions = store.sessions_for_workspace(workspace_id)[:limit]
+        return ActivityTimelineReadModel(
+            workspace_id=workspace_id,
+            limit=limit,
+            sessions=tuple(_session_descriptor(store, session, limit=limit) for session in sessions),
+        )
+
+    def observed_state(self, workspace_id: str) -> ObservedStateReadModel:
+        """Return latest observed state per subject for one workspace."""
+
+        self._workspace(workspace_id)
+        observations = tuple(
+            _observation_descriptor(record)
+            for record in self._observed_state().latest_for_workspace(workspace_id)
+        )
+        return ObservedStateReadModel(workspace_id=workspace_id, observations=observations)
+
     def _workspace(self, workspace_id: str) -> WorkspaceRecord:
         try:
             return self._workspace_store.get(workspace_id)
         except KeyError as exc:
             raise ReadModelError(f"missing workspace {workspace_id!r}") from exc
+
+    def _activity_history(self) -> ActivityHistoryStore:
+        if self._activity_history_store is None:
+            raise ReadModelError("activity history store is not configured")
+        return self._activity_history_store
+
+    def _observed_state(self) -> ObservedStateStore:
+        if self._observed_state_store is None:
+            raise ReadModelError("observed state store is not configured")
+        return self._observed_state_store
 
     def _graph_pointer(
         self,
@@ -272,6 +339,120 @@ def _metadata_mapping(value: object) -> dict[str, object]:
     return {str(key): child for key, child in _mapping(value).items()}
 
 
+def _session_descriptor(store: ActivityHistoryStore, session: object, *, limit: int) -> dict[str, object]:
+    session_id = getattr(session, "session_id")
+    plans = store.plans_for_session(session_id)[:limit]
+    return {
+        "session_id": session_id,
+        "workspace_id": getattr(session, "workspace_id"),
+        "actor_id": getattr(session, "actor_id"),
+        "title": getattr(session, "title"),
+        "status": getattr(session, "status"),
+        "created_at": getattr(session, "created_at"),
+        "closed_at": getattr(session, "closed_at"),
+        "metadata": _redact_descriptor_value("metadata", getattr(session, "metadata")),
+        "actions": [
+            _action_descriptor(action)
+            for action in store.actions_for_session(session_id)[:limit]
+        ],
+        "approvals": [
+            _approval_descriptor(approval)
+            for approval in store.approvals_for_session(session_id)[:limit]
+        ],
+        "plans": [
+            _plan_descriptor(store, plan, limit=limit)
+            for plan in plans
+        ],
+    }
+
+
+def _action_descriptor(action: object) -> dict[str, object]:
+    return {
+        "action_id": getattr(action, "action_id"),
+        "session_id": getattr(action, "session_id"),
+        "ordinal": getattr(action, "ordinal"),
+        "action_type": getattr(action, "action_type"),
+        "actor_id": getattr(action, "actor_id"),
+        "payload": _redact_descriptor_value("payload", getattr(action, "payload")),
+        "created_at": getattr(action, "created_at"),
+    }
+
+
+def _approval_descriptor(approval: object) -> dict[str, object]:
+    return {
+        "approval_id": getattr(approval, "approval_id"),
+        "session_id": getattr(approval, "session_id"),
+        "target_id": getattr(approval, "target_id"),
+        "actor_id": getattr(approval, "actor_id"),
+        "decision": getattr(approval, "decision"),
+        "scope": getattr(approval, "scope"),
+        "decided_at": getattr(approval, "decided_at"),
+        "comment": getattr(approval, "comment"),
+    }
+
+
+def _plan_descriptor(store: ActivityHistoryStore, plan: object, *, limit: int) -> dict[str, object]:
+    plan_id = getattr(plan, "plan_id")
+    return {
+        "plan_id": plan_id,
+        "session_id": getattr(plan, "session_id"),
+        "base_graph_id": getattr(plan, "base_graph_id"),
+        "desired_graph_id": getattr(plan, "desired_graph_id"),
+        "status": getattr(plan, "status"),
+        "created_at": getattr(plan, "created_at"),
+        "payload": _redact_descriptor_value("payload", getattr(plan, "payload")),
+        "runs": [
+            _run_descriptor(store, run, limit=limit)
+            for run in store.runs_for_plan(plan_id)[:limit]
+        ],
+    }
+
+
+def _run_descriptor(store: ActivityHistoryStore, run: object, *, limit: int) -> dict[str, object]:
+    run_id = getattr(run, "run_id")
+    return {
+        "run_id": run_id,
+        "plan_id": getattr(run, "plan_id"),
+        "status": getattr(run, "status"),
+        "started_at": getattr(run, "started_at"),
+        "finished_at": getattr(run, "finished_at"),
+        "metadata": _redact_descriptor_value("metadata", getattr(run, "metadata")),
+        "events": [
+            _event_descriptor(event)
+            for event in store.events_for_run(run_id)[:limit]
+        ],
+    }
+
+
+def _event_descriptor(event: object) -> dict[str, object]:
+    return {
+        "event_id": getattr(event, "event_id"),
+        "run_id": getattr(event, "run_id"),
+        "ordinal": getattr(event, "ordinal"),
+        "event_type": getattr(event, "event_type"),
+        "occurred_at": getattr(event, "occurred_at"),
+        "payload": _redact_descriptor_value("payload", getattr(event, "payload")),
+    }
+
+
+def _observation_descriptor(record: ObservationRecord) -> dict[str, object]:
+    return {
+        "observation_id": record.observation_id,
+        "workspace_id": record.workspace_id,
+        "subject_id": record.subject_id,
+        "status": record.status,
+        "observed_at": record.observed_at,
+        "stale": record.stale,
+        "payload": _redact_descriptor_value("payload", record.payload),
+    }
+
+
+def _positive_limit(limit: int) -> int:
+    if limit < 1:
+        raise ReadModelError(f"limit must be positive, got {limit}")
+    return limit
+
+
 def _redact_graph_descriptor(descriptor: Mapping[str, object]) -> dict[str, object]:
     return {
         str(key): _redact_descriptor_value(str(key), value)
@@ -296,4 +477,8 @@ def _redact_descriptor_value(key: str, value: object) -> object:
 
 def _looks_sensitive_key(key: str) -> bool:
     normalized = key.lower().replace("-", "_")
-    return normalized in _ADDRESS_KEYS or any(marker in normalized for marker in _SECRET_MARKERS)
+    return (
+        normalized in _ADDRESS_KEYS
+        or ("." not in normalized and normalized.endswith("_url"))
+        or any(marker in normalized for marker in _SECRET_MARKERS)
+    )
