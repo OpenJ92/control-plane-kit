@@ -22,7 +22,8 @@ Interfaces expose the model; they do not define the model.
 
 The first meaningful server should be the `ControlPlaneInstance` read API.
 Roadmap 0009 will reuse that same server shape for root and parent instances,
-adding recursive registry/read projections rather than a separate Hub shell.
+adding selectable-instance projections over ordinary graph blocks rather than
+a separate Hub shell or topology registry.
 
 ## Goal
 

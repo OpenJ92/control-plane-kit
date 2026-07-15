@@ -37,15 +37,16 @@ The intended order is:
 6. [Control Plane Read Interfaces](0006-control-plane-read-interfaces.md)
 7. [Activity Sessions And Planning](0007-activity-sessions-and-planning.md)
 8. [Activity Execution And Runtime Mutation](0008-activity-execution-and-runtime-mutation.md)
-9. [Recursive Control Plane Instances And Root Hub](0009-recursive-control-plane-instances-and-root-hub.md)
+9. [Control Plane Instance Block And Recursive Navigation](0009-control-plane-instance-block-and-recursive-navigation.md)
 10. [Visual UI, MCP, And Cross-Language Contracts](0010-visual-ui-mcp-and-cross-language-contracts.md)
 
 This order is deliberately conservative. The package is easier to reason about
 when its pure algebra is stable before runtime effects, runtime effects are
 behind explicit source-of-truth and workflow boundaries, and live mutation is
-planned, approved, executed, and observed as durable activity. Recursive
-instance composition follows executable lifecycle machinery; visual interfaces
-then consume the stable recursive model rather than defining it.
+planned, approved, executed, and observed as durable activity. The control-plane
+instance server is then packaged as an ordinary deployable application block;
+visual interfaces consume recursive navigation projections without requiring a
+second Hub model.
 
 ## Definition Of Done For A Roadmap Vertical
 

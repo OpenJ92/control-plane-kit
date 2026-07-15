@@ -232,9 +232,10 @@ Some activities may be non-compensatable. They must say so.
 
 ## Handoff
 
-Roadmap 0009 will use this executor to make child control-plane instance
-lifecycle ordinary approved activity work. The handoff must include stable
+Roadmap 0009 will package the control-plane instance server as an ordinary
+`ApplicationBlock` and use this executor to make its lifecycle ordinary
+approved activity work. The handoff must include stable
 activity-run/event descriptors, idempotent execution requests, saga boundaries,
 runtime provisioning capabilities, capability-route expectations, and which
 blocks are demo-only versus durable protocol. Roadmap 0009 must not create a
-second Hub executor or mutate child registries outside this pipeline.
+Hub-specific executor or a special control-plane-instance node path.

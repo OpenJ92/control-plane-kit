@@ -37,20 +37,22 @@ Deployed application graph
   contains the actual servers, databases, blocks, runtimes, and control routes
 ```
 
-The implementation model is recursive rather than three unrelated classes or
-two disjoint generic specializations:
+The later design resolution is simpler than three unrelated classes or a
+recursive graph-node sum:
 
 ```text
-ManagedNode = DeployBlockNode | ControlPlaneInstanceNode
-ControlPlaneInstance = control plane over Graph[ManagedNode]
+ControlPlaneInstanceBlock : DeployBlock
+
+parent graph contains ControlPlaneInstanceBlock(child)
+child application owns another DeploymentGraph[DeployBlock]
 ```
 
-The Hub is the user-facing root profile of this same instance. Child admission
-policy may restrict an instance to deploy blocks, child instances, or permit a
-mixed graph. Identity/ownership, instance registry, child lifecycle, endpoint
-discovery, delegation, and authenticated proxying are reusable instance
-capabilities. They are not a separate Hub domain model. A parent never directly
-manages application blocks inside a child's opaque deployment graph.
+The Hub is the user-facing name for the externally bootstrapped instance. The
+child control plane is an ordinary application server block in the parent's
+graph; its application owns an opaque graph of its own. Identity, access,
+lifecycle, endpoint discovery, delegation, and authenticated proxying remain
+important capabilities, but they do not create another Hub domain model or
+another graph node species.
 
 The most important repository law for this roadmap is the Pottery Factory
 ownership law:
@@ -160,11 +162,14 @@ the rest.
    - No secret values.
 
 6. Define `InstanceRegistryStore` contracts.
-   - Hub-visible control-plane instance records.
+   - Entry-instance-visible control-plane instance records.
    - Owner/grant references.
    - Lifecycle status.
    - Endpoint/wake metadata.
    - Retention metadata.
+   - Roadmap 0009 must narrow this legacy registry: graph topology owns which
+     child instance blocks exist; only independently authoritative access,
+     lifecycle-history, endpoint-history, and recovery facts may remain here.
 
 7. Define workflow/session services.
    - `OperationSessionService`.
@@ -182,6 +187,8 @@ the rest.
    - `ApprovalPolicy`.
    - `DestructiveActivityPolicy`.
    - Keep policy mostly pure and testable.
+   - Roadmap 0009 should replace the root/child naming split with reusable
+     graph-scoped and workspace-scoped instance authorization.
 
 9. Define control-plane lifecycle states and retention laws.
    - Suggested states:
@@ -278,15 +285,14 @@ ownership taxonomy and the earliest truth/workflow/policy contracts.
 - Do not model graph topology as normalized Postgres tables in the first pass.
 - Do use proper relational normalization for session/action/approval/run/event
   data.
-- Treat `ControlPlaneInstance` as the shared recursive orchestration/API
-  boundary over a graph of the closed `ManagedNode` sum, not as the place where
-  every rule accumulates.
-- Treat Hub as the root presentation/configuration of that object, not another
-  implementation.
-- Express `DeployBlocksOnly`, `InstancesOnly`, and `Mixed` as explicit child
-  admission policies. Do not encode them as separate class hierarchies.
-- Make access, registry, child lifecycle, session delegation, and authenticated
-  proxying reusable instance capabilities.
+- Treat the control-plane instance server as a package-provided
+  `ApplicationBlock`, and therefore an ordinary `DeployBlock`.
+- Treat Hub as the UI name for the externally bootstrapped instance, not
+  another implementation or domain type.
+- Derive child topology from ordinary graph nodes. Do not create a parallel Hub
+  registry as another source of topology truth.
+- Make access, lifecycle, session delegation, and authenticated proxying
+  reusable instance capabilities.
 - A parent instance must not directly mutate application blocks or persistence
   inside a child's workspace.
 - Require child instances to advertise an authenticated control API so the Hub

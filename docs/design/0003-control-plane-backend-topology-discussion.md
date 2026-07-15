@@ -261,7 +261,8 @@ ObservedStateStore
   owns the latest observed runtime evidence and historical observations
 
 InstanceRegistryStore
-  owns hub-visible control-plane instance records and lifecycle metadata
+  historical name for entry-visible access, lifecycle, endpoint, and recovery
+  records; Roadmap 0009 must prevent it from duplicating graph topology
 
 SecretReferenceStore
   owns secret references and write-only secret assignment metadata
@@ -333,7 +334,8 @@ Likely policy/authorization modules:
 
 ```text
 HubAccessPolicy
-  decides which instances an operator may see or wake
+  historical root-profile name for deciding which instance blocks an operator
+  may see or wake; Roadmap 0009 should generalize this policy
 
 InstanceAccessPolicy
   decides what an operator may do inside one workspace
@@ -923,48 +925,53 @@ ControlPlaneInstance
   -> executes approved topology mutations against runtimes and blocks
 ```
 
-### Resolved Recursive Identity And Capability Law
+### Resolved Control Plane Instance Block Law
 
 The Hub and a user-selected control plane are not fundamentally different
-objects. Both are control-plane instances, and child-management functionality
-is not intrinsically Hub-only. Their distinction is configuration, position in
-the ownership tree, admission policy, and enabled capabilities.
-
-In type-like notation:
+objects. Both are running instances of the same control-plane application. The
+algebraic simplification goes further: that application server is itself an
+ordinary deployable block.
 
 ```text
-ManagedNode
-  = DeployBlockNode
-  | ControlPlaneInstanceNode
+ControlPlaneInstanceBlock : DeployBlock
 
-ChildAdmission
-  = DeployBlocksOnly
-  | InstancesOnly
-  | Mixed
-
-ControlPlaneInstance
-  = control plane over Graph[ManagedNode]
+DeployBlock
+  = ApplicationBlock
+  | DataBlock
+  | ProxyBlock
 ```
 
-An ordinary leaf deployment instance commonly uses `DeployBlocksOnly`. A root
-Hub commonly uses `InstancesOnly`. A composite instance may use `Mixed` and
-manage both its own deployment blocks and subordinate control-plane instances.
-These are policies over the same object, not separate implementations. A parent
-must not directly mutate arbitrary application blocks belonging to a child's
-managed deployment.
+No `ManagedNode` sum or `ChildAdmission` algebra is required. A parent graph
+contains an ordinary `ControlPlaneInstanceBlock`. The application running in
+that block owns and interprets another ordinary `DeploymentGraph[DeployBlock]`.
 
-Reusable instance modules and capabilities include:
+```text
+parent graph G0
+  contains ControlPlaneInstanceBlock(child-a)
 
-- user identity and ownership,
-- the child-instance registry,
-- child-instance lifecycle planning and execution,
-- discovery of child instance API endpoints,
+child-a application
+  owns graph G1
+    which may contain ControlPlaneInstanceBlock(child-a-1)
+```
+
+The recursion occurs between running application boundaries, not by inlining a
+child graph into a parent graph value. From the parent's perspective, the child
+is an opaque application block with sockets, capabilities, health, and control
+routes. From the child's perspective, it is a complete control plane.
+
+"Hub" is the positional UI name for the first externally bootstrapped instance.
+It is not a class, server species, graph grammar, or source-of-truth module. The
+entry instance may discover and proxy to selectable child instance blocks using
+the same capabilities available to every instance.
+
+Reusable instance capabilities include:
+
+- operator identity and graph-scoped access,
+- child-instance discovery as a graph projection,
+- ordinary block lifecycle planning and execution,
+- discovery of observed child API endpoints,
 - delegated credentials or sessions,
-- and authenticated proxying from the frontend to a selected child instance.
-
-Any instance may receive those capabilities when its policy permits child
-management. The root Hub adds public entry-point and root identity concerns,
-but not a new control-plane species.
+- and authenticated proxying to a selected child instance.
 
 Each child instance exposes a typed control API in the same broad sense that a
 router or load balancer exposes a typed control API. The parent instance can query
@@ -983,19 +990,21 @@ Frontend
             -> child workspace / graph / activity authority
 ```
 
-This recursion is intentionally hidden in the ordinary user experience.  The
-UI presents a Hub screen followed by a selected deployment workspace.  The
-algebra and runtime interpreters retain the recursive identity so the Hub can
-deploy, wake, stop, archive, reconstruct, and observe child instances through
-the same planning machinery used elsewhere.
+This recursion is intentionally simplified in the ordinary user experience.
+The UI presents an entry screen followed by a selected deployment workspace.
+The algebra does not need to know about recursion: it deploys an application
+block normally. The running instance application provides recursive discovery
+and navigation.
 
 There is one unavoidable bootstrap boundary: the first root Hub must be
 started by an external bootstrap recipe or an already-running parent.  After
 bootstrap, its child-instance lifecycle is ordinary control-plane work.
 
-The hub is expected to be long-lived.  It is the registry and entry point.  It
-may itself be deployable by the same kind of graph machinery, but conceptually
-it is the outer home server.
+The bootstrapped instance is expected to be long-lived as the public entry
+point. Its graph is the source of immediate child topology; observed state
+supplies endpoints and health; authorization records determine which children
+an operator may select. A parallel Hub registry must not become a second source
+of graph truth.
 
 A control-plane instance is expected to be recoverable.  It may be running,
 sleeping, paused, stopped, archived, or deconstructed.  Deconstructing the
@@ -1009,14 +1018,14 @@ instance runtime can disappear
 instance durable record should remain
 ```
 
-At minimum, the hub should retain enough instance metadata to reconstruct or
-reconnect to the workspace later.  There are two possible levels:
+At minimum, retained stores should contain enough state to reconstruct or
+reconnect to the workspace later. There are two possible levels:
 
 1. Final-state recovery:
-   the hub or backing store keeps the latest graph snapshot and enough metadata
+   the instance backing store keeps the latest graph snapshot and enough metadata
    to recreate the instance.
 2. Full-history recovery:
-   the hub or backing store preserves graph versions, operation sessions,
+   the instance backing store preserves graph versions, operation sessions,
    activity plans, activity runs, events, and observed-state snapshots.
 
 The stronger design preference is full-history recovery, but it may not be the
@@ -1027,19 +1036,20 @@ One control-plane instance should own one deployment workspace.  Multiple
 instances pointing at the same realized deployment is treated as unsafe unless a
 future design introduces explicit locking or leader election.
 
-An instance acting as a parent is intentionally lighter with respect to each
-child's internal deployment semantics. The responsibility distinction is:
+An instance acting as a parent is intentionally opaque to each child's internal
+deployment semantics. The responsibility distinction is:
 
 ```text
-parent capabilities = instance registry + ownership + lifecycle + authenticated proxy
+parent truth = child block topology + observed endpoint/health + access grants
 child self authority = child workspace + graph/activity authority
 ```
 
 The parent should not absorb a child's deployment graph semantics merely because
-it is itself a control-plane instance. It may hold an instance ID,
-owner/grant records, lifecycle state, endpoint/wake metadata, and enough
-retained recovery metadata to recreate or reconnect a child.  The child owns
-its operational graph and activity machinery.
+it is itself a control-plane instance. It owns the graph node and activity
+history by which it deployed the child block. The child owns its internal graph
+and activity machinery. Access grants, delegated sessions, endpoint history,
+and recovery metadata may be relational records, but they are not another
+topology registry.
 
 In graph-language terms, a control-plane instance can itself be thought of as a
 small deployment graph:
@@ -1055,9 +1065,10 @@ This is not necessarily how the first implementation is physically split, but
 it is useful for understanding that an instance is not a magical singleton.  It
 is a deployable service with authority over one workspace.
 
-The first real server should probably be the control-plane instance server,
-because it contains the meaningful graph/workspace/activity semantics.  The hub
-can begin as a small registry/login shell.
+The first real server remains the control-plane instance server because it
+contains the meaningful graph/workspace/activity semantics. There is no
+separate Hub registry/login server to implement; the externally bootstrapped
+instance is the entry server.
 
 The graph store should be behind a protocol/interface.  The first adapters may
 be descriptor/JSON-backed, but the API should be shaped so a future Neo4j or
@@ -1383,17 +1394,19 @@ These are not raw logs.  They should be bounded and safe to query.
 
 ## Open Questions For Discussion
 
-### Hub And Instance: Resolved Direction And Remaining Questions
+### Instance Block And Recursive Navigation: Resolved Direction And Remaining Questions
 
 Resolved:
 
-- `ControlPlaneHub` is a user-facing root profile/name for the same
-  `ControlPlaneInstance` object used at every level.
-- `ManagedNode` is the closed sum of deploy blocks and child instance nodes.
-- Child admission is explicit: deploy blocks only, child instances only, or a
-  mixed graph.
-- Access, registry, child lifecycle, delegation, and proxying are reusable
-  instance capabilities rather than Hub-only functionality.
+- `ControlPlaneInstanceBlock` is a package-provided `ApplicationBlock`, and
+  therefore an ordinary `DeployBlock`.
+- `DeploymentGraph` needs no new node alternative for a control-plane instance.
+- "Hub" is the user-facing name for the externally bootstrapped entry instance,
+  not another domain object.
+- Immediate child topology is derived from ordinary graph nodes; observed state
+  supplies endpoints and health; authorization records filter visibility.
+- Access, lifecycle, delegation, and proxying are reusable instance
+  capabilities rather than Hub-only functionality.
 - One child instance owns one deployment workspace.
 - A parent instance can create, wake, pause, stop, archive, deconstruct, and reconstruct
   child instances through activity planning and execution.
@@ -1403,12 +1416,13 @@ Resolved:
 
 Remaining questions:
 
-1. Does the parent retain full child graph/activity snapshots, recovery metadata,
-   or only references to child-owned stores?
+1. Which existing instance-registry records remain independently authoritative
+   access/recovery data, and which duplicate graph topology and should retire?
 2. Which child lifecycle states physically remove runtime resources, and which
    retain durable stores?
-3. What is the delegated credential/session format between Hub and child?
-4. Which protocol advertises child capabilities and endpoints to the Hub?
+3. What is the delegated credential/session format between parent and child?
+4. Which typed specification or capability identifies an instance block without
+   relying on display metadata?
 5. What bootstrap recipe starts the first root instance?
 
 A control-plane instance is not merely a bearer-token holder, although
@@ -1765,14 +1779,14 @@ may be:
 
 ```text
 0005 Control Plane Backend Topology
-  Define Hub / Instance / DeployedGraph boundaries.
+  Define entry Instance / selected Instance / DeployedGraph boundaries.
   Define persistence ownership.
   Define lifecycle states.
   Define auth/session shape.
   Mostly design + core types.
 
 0006 Control Plane Read Interfaces
-  Hub read routes.
+  Entry-instance read routes.
   Instance read routes.
   Graph/workspace/capability/status/event query surfaces.
   CLI/MCP read-only adapters.
@@ -1792,11 +1806,11 @@ may be:
   ActivityRun / ActivityEvent recording.
   Pause/resume/failure behavior.
 
-0009 Recursive Control Plane Instances And Root Hub
-  Represent child instances as managed nodes.
-  Generalize registry, lifecycle, authorization, and proxy capabilities.
-  Compile child lifecycle through the approved activity executor.
-  Preserve parent registry truth separately from child workspace truth.
+0009 Control Plane Instance Block And Recursive Navigation
+  Package the instance server as an ordinary ApplicationBlock.
+  Derive child discovery from graph, observed state, and authorization.
+  Use ordinary graph diff and activity execution for instance lifecycle.
+  Add authenticated recursive navigation without a Hub implementation.
 
 0010 Operator UI / MCP / Cross-Language Contracts
   Existing visual UI and cross-language concerns consume the recursive model.
@@ -1819,11 +1833,9 @@ should change.
 
 The tentative objects are:
 
-- `ControlPlaneHub`
 - `ControlPlaneInstance`
-- `ManagedNode`
-- `ChildAdmission`
-- `InstanceRelationship`
+- `ControlPlaneInstanceBlock`
+- `SelectableInstance`
 - `DeploymentWorkspace`
 - `DeploymentGraph`
 - `GraphVersion`

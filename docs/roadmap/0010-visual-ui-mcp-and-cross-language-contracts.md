@@ -23,20 +23,22 @@ A user should be able to:
 - inspect activity history,
 - and observe runtime state.
 
-The UI deliberately simplifies a recursive implementation law:
+The UI deliberately simplifies an operational recursion law:
 
 ```text
-ManagedNode = DeployBlockNode | ControlPlaneInstanceNode
-ControlPlaneInstance = control plane over Graph[ManagedNode]
+ControlPlaneInstanceBlock : DeployBlock
+
+parent graph contains ControlPlaneInstanceBlock(child)
+child application owns another DeploymentGraph[DeployBlock]
 ```
 
-The Hub is the same control-plane object configured as the root and normally
-admitted to manage child control-plane instances. Ownership, registry,
-lifecycle, delegation, and proxying are reusable instance capabilities rather
-than Hub-only semantics. An ordinary instance may manage deploy blocks, child
-instances, or both when its admission policy permits it. The frontend speaks to
-the root, and the root authenticates, selects, and proxies to a chosen child
-instance API. The child remains the authority for its own workspace.
+The Hub is simply the externally bootstrapped control-plane instance through
+which the user entered. A child instance is an ordinary package-provided
+`ApplicationBlock` in that instance's deployment graph. Its running application
+owns another deployment graph. The frontend speaks to the entry instance, which
+authenticates, discovers selectable child blocks from graph projections, and
+proxies to a chosen child API. The child remains the authority for its own
+workspace.
 
 Python is first-class, but the topology model should not be Python-only. Other
 languages should participate through descriptors, declared sockets, environment
@@ -242,8 +244,10 @@ production topology without approval."
 - Capability descriptors decide which controls are shown.
 - Keep control routes separate from user traffic routes.
 - Keep graph descriptors redacted.
-- Keep root/child presentation capability- and admissibility-driven rather than
-  implementing Hub and Instance as unrelated object hierarchies.
+- Keep root/child presentation capability-driven rather than implementing Hub
+  and Instance as unrelated object hierarchies.
+- Do not introduce a special UI node type when the child is already represented
+  by an ordinary application block plus instance capabilities.
 - Any authorized parent instance may proxy authenticated requests to a selected
   child, but it must not duplicate or absorb child workspace semantics.
 
