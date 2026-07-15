@@ -28,6 +28,7 @@ from control_plane_kit.servers.http_weighted_balancer import (
     http_weighted_load_balancer_block,
     http_weighted_load_balancer_command,
 )
+from control_plane_kit.servers.instance_read import create_instance_read_app
 
 __all__ = [
     "BlockControlState",
@@ -46,6 +47,7 @@ __all__ = [
     "HttpWeightedLoadBalancerRuntime",
     "HttpWeightedLoadBalancerServer",
     "create_block_control_app",
+    "create_instance_read_app",
     "hello_command",
     "hello_server_block",
     "http_active_router_block",
