@@ -185,6 +185,17 @@ timelines, observed state, and declared control surfaces.
 See [Control Plane Read Interfaces](docs/READ_INTERFACES.md) for route, CLI,
 and MCP-shaped examples.
 
+Run the local read demo with:
+
+```bash
+docker compose -f docker-compose.read-demo.yml up --build
+```
+
+Then query `http://localhost:8010/workspaces/demo-workspace` with bearer token
+`demo-token`.
+
+If `8010` is busy, set `CPK_DEMO_HOST_PORT=8011` before running compose.
+
 The optional server adapters require FastAPI:
 
 ```bash
