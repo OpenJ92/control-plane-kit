@@ -83,6 +83,7 @@ from control_plane_kit.implementations import (
     LocalSourceImplementation,
     PlanOnlyImplementation,
 )
+from control_plane_kit.interfaces import McpToolDescriptor, ReadOnlyMcpAdapter
 from control_plane_kit.servers import (
     BlockControlState,
     HelloEnvironment,
@@ -250,6 +251,7 @@ __all__ = [
     "ExternalTcpImplementation",
     "GraphDiff",
     "LocalSourceImplementation",
+    "McpToolDescriptor",
     "Node",
     "NodeControlSurfaceReadModel",
     "PlanOnlyImplementation",
@@ -267,6 +269,7 @@ __all__ = [
     "ProviderSocket",
     "ProviderContractReadModel",
     "RequirementContractReadModel",
+    "ReadOnlyMcpAdapter",
     "ReloadPolicy",
     "BlockSockets",
     "RemoveDockerNetwork",
