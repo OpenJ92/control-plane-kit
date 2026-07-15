@@ -159,16 +159,35 @@ def project_operator_graph(
 ) -> OperatorGraphProjection:
     """Project compiled topology into an operator-facing read model."""
 
+    return project_operator_graph_descriptor(
+        graph.descriptor(),
+        include_addresses=include_addresses,
+    )
+
+
+def project_operator_graph_descriptor(
+    graph_descriptor: Mapping[str, object],
+    *,
+    include_addresses: bool = False,
+) -> OperatorGraphProjection:
+    """Project a stored graph descriptor into an operator-facing read model."""
+
+    runtimes = _mapping(graph_descriptor.get("runtimes"))
+    nodes = _mapping(graph_descriptor.get("nodes"))
+    edges = _mapping(graph_descriptor.get("edges"))
     return OperatorGraphProjection(
-        name=graph.name,
-        runtimes=tuple(_runtime_projection(runtime) for _, runtime in sorted(graph.runtimes.items())),
+        name=str(graph_descriptor.get("name") or ""),
+        runtimes=tuple(
+            _runtime_descriptor_projection(runtime_id, _mapping(runtime))
+            for runtime_id, runtime in sorted(runtimes.items())
+        ),
         nodes=tuple(
-            _node_projection(node, include_addresses=include_addresses)
-            for _, node in sorted(graph.nodes.items())
+            _node_descriptor_projection(node_id, _mapping(node), include_addresses=include_addresses)
+            for node_id, node in sorted(nodes.items())
         ),
         edges=tuple(
-            _edge_projection(edge, graph, include_addresses=include_addresses)
-            for _, edge in sorted(graph.edges.items())
+            _edge_descriptor_projection(edge_id, _mapping(edge), nodes, include_addresses=include_addresses)
+            for edge_id, edge in sorted(edges.items())
         ),
     )
 
@@ -179,6 +198,18 @@ def _runtime_projection(runtime: RuntimeRecord) -> OperatorRuntimeProjection:
         kind=runtime.kind.value,
         children=tuple(runtime.children),
         metadata=runtime.metadata,
+    )
+
+
+def _runtime_descriptor_projection(
+    runtime_id: str,
+    runtime: Mapping[str, object],
+) -> OperatorRuntimeProjection:
+    return OperatorRuntimeProjection(
+        runtime_id=runtime_id,
+        kind=str(runtime.get("kind") or ""),
+        children=_string_tuple(runtime.get("children")),
+        metadata=_string_mapping(runtime.get("metadata")),
     )
 
 
@@ -225,6 +256,45 @@ def _node_projection(
     )
 
 
+def _node_descriptor_projection(
+    node_id: str,
+    node: Mapping[str, object],
+    *,
+    include_addresses: bool,
+) -> OperatorNodeProjection:
+    metadata = _mapping(node.get("metadata"))
+    safe_metadata = {
+        key: value
+        for key, value in metadata.items()
+        if key not in {"capabilities", "block_family", "display_name"}
+    }
+    return OperatorNodeProjection(
+        node_id=node_id,
+        kind=str(node.get("kind") or ""),
+        runtime_id=str(node.get("runtime_id") or ""),
+        display_name=str(metadata.get("display_name") or node_id),
+        block_family=_optional_string(metadata.get("block_family")),
+        providers=tuple(
+            OperatorSocketProjection(
+                name=socket_id,
+                direction="provider",
+                protocol=str(_mapping(socket).get("protocol") or ""),
+            )
+            for socket_id, socket in sorted(_mapping(node.get("providers")).items())
+        ),
+        requirements=tuple(
+            _requirement_descriptor_projection(socket_id, _mapping(socket))
+            for socket_id, socket in sorted(_mapping(node.get("requirements")).items())
+        ),
+        endpoints=tuple(
+            _endpoint_descriptor_projection(endpoint_id, _mapping(endpoint), include_addresses=include_addresses)
+            for endpoint_id, endpoint in sorted(_mapping(node.get("endpoints")).items())
+        ),
+        capabilities=tuple(_mapping_tuple(metadata.get("capabilities"))),
+        metadata=safe_metadata,
+    )
+
+
 def _edge_projection(
     edge: Edge,
     graph: DeploymentGraph,
@@ -245,6 +315,29 @@ def _edge_projection(
     )
 
 
+def _edge_descriptor_projection(
+    edge_id: str,
+    edge: Mapping[str, object],
+    nodes: Mapping[str, object],
+    *,
+    include_addresses: bool,
+) -> OperatorEdgeProjection:
+    provider = _mapping(edge.get("provider"))
+    consumer = _mapping(edge.get("consumer"))
+    consumer_node_id = str(consumer.get("role") or consumer.get("node_id") or "")
+    requirement_socket = str(consumer.get("requirement") or consumer.get("socket") or "")
+    return OperatorEdgeProjection(
+        edge_id=edge_id,
+        provider_node_id=str(provider.get("role") or provider.get("node_id") or ""),
+        provider_socket=str(provider.get("socket") or ""),
+        consumer_node_id=consumer_node_id,
+        requirement_socket=requirement_socket,
+        protocol=str(edge.get("protocol") or ""),
+        env_bindings=_descriptor_env_bindings(nodes, consumer_node_id, requirement_socket),
+        env_assignments=_string_mapping(edge.get("env_assignments")) if include_addresses else {},
+    )
+
+
 def _endpoint_projection(
     name: str,
     endpoint: Endpoint,
@@ -260,6 +353,45 @@ def _endpoint_projection(
     )
 
 
+def _endpoint_descriptor_projection(
+    name: str,
+    endpoint: Mapping[str, object],
+    *,
+    include_addresses: bool,
+) -> OperatorEndpointProjection:
+    url = _optional_string(endpoint.get("url"))
+    return OperatorEndpointProjection(
+        name=name,
+        protocol=str(endpoint.get("protocol") or ""),
+        scope=str(endpoint.get("scope") or ""),
+        address_available=bool(url),
+        url=url if include_addresses else None,
+    )
+
+
+def _requirement_descriptor_projection(
+    name: str,
+    socket: Mapping[str, object],
+) -> OperatorSocketProjection:
+    return OperatorSocketProjection(
+        name=name,
+        direction="requirement",
+        protocol=str(socket.get("protocol") or ""),
+        required=bool(socket.get("required", True)),
+        env_bindings=_string_tuple(socket.get("env_bindings")),
+    )
+
+
+def _descriptor_env_bindings(
+    nodes: Mapping[str, object],
+    consumer_node_id: str,
+    requirement_socket: str,
+) -> tuple[str, ...]:
+    consumer = _mapping(nodes.get(consumer_node_id))
+    requirement = _mapping(_mapping(consumer.get("requirements")).get(requirement_socket))
+    return _string_tuple(requirement.get("env_bindings"))
+
+
 def _mapping_tuple(value: object) -> tuple[Mapping[str, object], ...]:
     if not isinstance(value, tuple | list):
         return ()
@@ -268,3 +400,19 @@ def _mapping_tuple(value: object) -> tuple[Mapping[str, object], ...]:
 
 def _optional_string(value: object) -> str | None:
     return value if isinstance(value, str) else None
+
+
+def _mapping(value: object) -> Mapping[str, object]:
+    return value if isinstance(value, Mapping) else {}
+
+
+def _string_mapping(value: object) -> Mapping[str, str]:
+    if not isinstance(value, Mapping):
+        return {}
+    return {str(key): str(item) for key, item in value.items()}
+
+
+def _string_tuple(value: object) -> tuple[str, ...]:
+    if not isinstance(value, tuple | list):
+        return ()
+    return tuple(str(item) for item in value)

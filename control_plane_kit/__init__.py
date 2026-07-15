@@ -127,8 +127,12 @@ from control_plane_kit.projections import (
     OperatorNodeProjection,
     OperatorRuntimeProjection,
     OperatorSocketProjection,
+    GraphVersionReadModel,
+    WorkspaceReadModel,
     project_operator_graph,
+    project_operator_graph_descriptor,
 )
+from control_plane_kit.read_services import InstanceReadService
 from control_plane_kit.runtimes import (
     CleanupPolicy,
     DryRunActivity,
@@ -172,6 +176,7 @@ __all__ = [
     "HttpResponse",
     "HttpWeightedLoadBalancerRuntime",
     "HttpWeightedLoadBalancerServer",
+    "InstanceReadService",
     "create_block_control_app",
     "hello_command",
     "hello_server_block",
@@ -235,12 +240,14 @@ __all__ = [
     "PlanOnlyImplementation",
     "Protocol",
     "ProxyBlock",
+    "GraphVersionReadModel",
     "OperatorEdgeProjection",
     "OperatorEndpointProjection",
     "OperatorGraphProjection",
     "OperatorNodeProjection",
     "OperatorRuntimeProjection",
     "OperatorSocketProjection",
+    "WorkspaceReadModel",
     "RequirementSocket",
     "ProviderSocket",
     "ReloadPolicy",
@@ -268,4 +275,5 @@ __all__ = [
     "diff_graphs",
     "plan_migration",
     "project_operator_graph",
+    "project_operator_graph_descriptor",
 ]
