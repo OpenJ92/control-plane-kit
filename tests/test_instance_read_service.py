@@ -7,12 +7,12 @@ from control_plane_kit import (
 from control_plane_kit.stores import GraphVersionRecord, WorkspaceRecord
 from control_plane_kit.stores.records import (
     ActivityEventRecord,
+    ActivityPlanRecord,
     ActivityRunRecord,
     ApprovalRecord,
+    ObservationRecord,
     OperationActionRecord,
     OperationSessionRecord,
-    ActivityPlanRecord,
-    ObservationRecord,
 )
 from examples.app_with_postgres import recipe as app_recipe
 from examples.http_block_compositions import active_router_recipe
@@ -136,6 +136,82 @@ class InstanceReadServiceTests(PostgresStoreTestCase):
         }["postgres"]
         self.assertIn("url", postgres["endpoints"][0])
         self.assertIn("env_assignments", operator_graph["edges"][0])
+
+    def test_control_surface_expands_capability_route_sets(self):
+        self.stores.workspace.create(WorkspaceRecord(workspace_id="workspace-a", name="Demo"))
+        graph = GraphVersionRecord.from_graph(
+            graph_id="graph-current",
+            workspace_id="workspace-a",
+            version=1,
+            graph=compile_recipe(active_router_recipe()),
+            created_by="jacob",
+            created_at="2026-07-15T00:00:00Z",
+        )
+        self.stores.graph_topology.save(graph)
+        self.stores.workspace.set_current_graph("workspace-a", "graph-current")
+
+        descriptor = InstanceReadService(
+            workspace_store=self.stores.workspace,
+            graph_store=self.stores.graph_topology,
+        ).control_surface("workspace-a").descriptor()
+
+        router = {
+            node["node_id"]: node
+            for node in descriptor["nodes"]
+        }["router"]
+        capabilities = {
+            capability["name"]: capability
+            for capability in router["capabilities"]
+        }
+        self.assertEqual(capabilities["switchable"]["route_set"], "targets")
+        route_names = {
+            route["name"]
+            for route in capabilities["switchable"]["control_routes"]["routes"]
+        }
+        self.assertIn("active-target", route_names)
+        self.assertIn("drain-target", route_names)
+
+    def test_control_surface_summarizes_contracts_without_urls(self):
+        self.stores.workspace.create(WorkspaceRecord(workspace_id="workspace-a", name="Demo"))
+        graph = GraphVersionRecord.from_graph(
+            graph_id="graph-current",
+            workspace_id="workspace-a",
+            version=1,
+            graph=compile_recipe(active_router_recipe()),
+            created_by="jacob",
+            created_at="2026-07-15T00:00:00Z",
+        )
+        self.stores.graph_topology.save(graph)
+        self.stores.workspace.set_current_graph("workspace-a", "graph-current")
+
+        descriptor = InstanceReadService(
+            workspace_store=self.stores.workspace,
+            graph_store=self.stores.graph_topology,
+        ).control_surface("workspace-a").descriptor()
+
+        router = {
+            node["node_id"]: node
+            for node in descriptor["nodes"]
+        }["router"]
+        self.assertEqual(
+            router["providers"],
+            [{"name": "internal", "protocol": "http", "endpoint_available": True}],
+        )
+        self.assertEqual(
+            router["requirements"],
+            [
+                {
+                    "name": "active",
+                    "protocol": "http",
+                    "required": True,
+                    "env_bindings": ["ACTIVE_TARGET_URL"],
+                    "fulfilled": True,
+                    "provider": {"node_id": "app-v1", "socket": "internal"},
+                }
+            ],
+        )
+        self.assertNotIn("http://", str(descriptor))
+        self.assertNotIn("postgresql://", str(descriptor))
 
     def test_activity_timeline_is_bounded_and_structured(self):
         history = self.stores.activity_history

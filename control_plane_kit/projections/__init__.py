@@ -21,6 +21,16 @@ from control_plane_kit.projections.activity import (
     OperationSessionTimelineReadModel,
     approval_descriptor,
 )
+from control_plane_kit.projections.control_surface import (
+    CapabilityReadModel,
+    ControlRouteReadModel,
+    ControlRouteSetReadModel,
+    ControlSurfaceReadModel,
+    NodeControlSurfaceReadModel,
+    ProviderContractReadModel,
+    RequirementContractReadModel,
+    project_control_surface_descriptor,
+)
 from control_plane_kit.projections.workspace import (
     GraphVersionReadModel,
     WorkspaceReadModel,
@@ -31,7 +41,12 @@ __all__ = [
     "ActivityPlanTimelineReadModel",
     "ActivityRunTimelineReadModel",
     "ActivityTimelineReadModel",
+    "CapabilityReadModel",
+    "ControlRouteReadModel",
+    "ControlRouteSetReadModel",
+    "ControlSurfaceReadModel",
     "GraphVersionReadModel",
+    "NodeControlSurfaceReadModel",
     "ObservationReadModel",
     "ObservedStateReadModel",
     "OperatorEdgeProjection",
@@ -42,8 +57,11 @@ __all__ = [
     "OperatorSocketProjection",
     "OperationActionReadModel",
     "OperationSessionTimelineReadModel",
+    "ProviderContractReadModel",
+    "RequirementContractReadModel",
     "WorkspaceReadModel",
     "approval_descriptor",
+    "project_control_surface_descriptor",
     "project_operator_graph",
     "project_operator_graph_descriptor",
 ]
