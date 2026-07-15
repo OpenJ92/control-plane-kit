@@ -33,6 +33,9 @@ def main(argv: Sequence[str] | None = None) -> int:
     except KeyError as exc:
         print(f"cpk-read: {exc}", file=sys.stderr)
         return 1
+    except ValueError as exc:
+        print(f"cpk-read: {exc}", file=sys.stderr)
+        return 2
     except RuntimeError as exc:
         print(f"cpk-read: {exc}", file=sys.stderr)
         return 2
@@ -115,9 +118,9 @@ def _dispatch(
         case "desired-graph":
             return service.desired_graph(workspace_id)
         case "activity":
-            return service.activity_timeline(workspace_id, limit=limit or 50)
+            return service.activity_timeline(workspace_id, limit=50 if limit is None else limit)
         case "observed-state":
-            return service.observed_state(workspace_id, limit=limit or 100)
+            return service.observed_state(workspace_id, limit=100 if limit is None else limit)
         case "control-surface":
             return service.control_surface(workspace_id)
         case _:

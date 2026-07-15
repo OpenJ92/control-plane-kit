@@ -70,6 +70,8 @@ def create_instance_read_app(
             return read_service.activity_timeline(workspace_id, limit=limit).descriptor()
         except KeyError as exc:
             raise not_found(exc) from exc
+        except ValueError as exc:
+            raise HTTPException(status_code=422, detail=str(exc)) from exc
 
     @app.get(f"{prefix}/{{workspace_id}}/observed-state", dependencies=[Depends(require_read_token)])
     def observed_state(workspace_id: str, limit: int = 100) -> dict[str, object]:
@@ -77,6 +79,8 @@ def create_instance_read_app(
             return read_service.observed_state(workspace_id, limit=limit).descriptor()
         except KeyError as exc:
             raise not_found(exc) from exc
+        except ValueError as exc:
+            raise HTTPException(status_code=422, detail=str(exc)) from exc
 
     @app.get(f"{prefix}/{{workspace_id}}/control-surface", dependencies=[Depends(require_read_token)])
     def control_surface(workspace_id: str) -> dict[str, object]:

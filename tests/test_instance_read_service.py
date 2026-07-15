@@ -1,6 +1,8 @@
 from unittest import main
 
 from control_plane_kit import (
+    DeploymentRecipe,
+    DockerRuntime,
     InstanceReadService,
     compile_recipe,
 )
@@ -14,6 +16,7 @@ from control_plane_kit.stores.records import (
     OperationActionRecord,
     OperationSessionRecord,
 )
+from control_plane_kit.servers import http_proxy_block
 from examples.app_with_postgres import recipe as app_recipe
 from examples.http_block_compositions import active_router_recipe
 from tests.postgres_case import PostgresStoreTestCase
@@ -213,7 +216,48 @@ class InstanceReadServiceTests(PostgresStoreTestCase):
         self.assertNotIn("http://", str(descriptor))
         self.assertNotIn("postgresql://", str(descriptor))
 
+    def test_control_surface_marks_dangling_requirements_unfulfilled(self):
+        self.stores.workspace.create(WorkspaceRecord(workspace_id="workspace-a", name="Demo"))
+        graph = GraphVersionRecord.from_graph(
+            graph_id="graph-current",
+            workspace_id="workspace-a",
+            version=1,
+            graph=compile_recipe(
+                DeploymentRecipe(
+                    "dangling-proxy",
+                    DockerRuntime(children=(http_proxy_block("proxy"),)),
+                )
+            ),
+            created_by="jacob",
+            created_at="2026-07-15T00:00:00Z",
+        )
+        self.stores.graph_topology.save(graph)
+        self.stores.workspace.set_current_graph("workspace-a", "graph-current")
+
+        descriptor = InstanceReadService(
+            workspace_store=self.stores.workspace,
+            graph_store=self.stores.graph_topology,
+        ).control_surface("workspace-a").descriptor()
+
+        proxy = {
+            node["node_id"]: node
+            for node in descriptor["nodes"]
+        }["proxy"]
+        self.assertEqual(
+            proxy["requirements"],
+            [
+                {
+                    "name": "target",
+                    "protocol": "http",
+                    "required": True,
+                    "env_bindings": ["PROXY_TARGET_URL"],
+                    "fulfilled": False,
+                }
+            ],
+        )
+
     def test_activity_timeline_is_bounded_and_structured(self):
+        self.stores.workspace.create(WorkspaceRecord(workspace_id="workspace-a", name="Demo"))
         history = self.stores.activity_history
         for index in range(3):
             history.add_session(
@@ -290,7 +334,22 @@ class InstanceReadServiceTests(PostgresStoreTestCase):
         self.assertEqual(newest["approvals"][0]["decision"], "approved")
         self.assertEqual(newest["plans"][0]["runs"][0]["events"][0]["event_type"], "step-started")
 
+    def test_activity_timeline_requires_existing_workspace_and_positive_limit(self):
+        service = InstanceReadService(
+            workspace_store=self.stores.workspace,
+            graph_store=self.stores.graph_topology,
+            activity_history_store=self.stores.activity_history,
+        )
+
+        with self.assertRaises(KeyError):
+            service.activity_timeline("missing-workspace")
+
+        self.stores.workspace.create(WorkspaceRecord(workspace_id="workspace-a", name="Demo"))
+        with self.assertRaises(ValueError):
+            service.activity_timeline("workspace-a", limit=0)
+
     def test_observed_state_reads_latest_subject_state(self):
+        self.stores.workspace.create(WorkspaceRecord(workspace_id="workspace-a", name="Demo"))
         observed = self.stores.observed_state
         observed.put(
             ObservationRecord(
@@ -335,6 +394,20 @@ class InstanceReadServiceTests(PostgresStoreTestCase):
         self.assertEqual(observations["api"]["status"], "healthy")
         self.assertEqual(observations["api"]["payload"], {"health_path": "/health"})
         self.assertTrue(observations["router"]["stale"])
+
+    def test_observed_state_requires_existing_workspace_and_positive_limit(self):
+        service = InstanceReadService(
+            workspace_store=self.stores.workspace,
+            graph_store=self.stores.graph_topology,
+            observed_state_store=self.stores.observed_state,
+        )
+
+        with self.assertRaises(KeyError):
+            service.observed_state("missing-workspace")
+
+        self.stores.workspace.create(WorkspaceRecord(workspace_id="workspace-a", name="Demo"))
+        with self.assertRaises(ValueError):
+            service.observed_state("workspace-a", limit=-1)
 
 
 if __name__ == "__main__":

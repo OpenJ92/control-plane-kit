@@ -62,6 +62,26 @@ class InstanceReadFastAPITests(PostgresStoreTestCase):
         self.assertEqual(observed.status_code, 200)
         self.assertEqual(observed.json(), {"workspace_id": "workspace-a", "limit": 3, "observations": []})
 
+    def test_activity_and_observed_state_routes_validate_limits(self):
+        client = self._client()
+
+        activity = client.get("/instances/workspace-a/activity?limit=0")
+        observed = client.get("/instances/workspace-a/observed-state?limit=-1")
+
+        self.assertEqual(activity.status_code, 422)
+        self.assertEqual(activity.json()["detail"], "limit must be a positive integer")
+        self.assertEqual(observed.status_code, 422)
+        self.assertEqual(observed.json()["detail"], "limit must be a positive integer")
+
+    def test_activity_and_observed_state_routes_reject_unknown_workspace(self):
+        client = self._client()
+
+        activity = client.get("/instances/missing-workspace/activity")
+        observed = client.get("/instances/missing-workspace/observed-state")
+
+        self.assertEqual(activity.status_code, 404)
+        self.assertEqual(observed.status_code, 404)
+
     def test_control_surface_route_returns_declared_routes(self):
         client = self._client()
 

@@ -68,6 +68,8 @@ class InstanceReadService:
     def activity_timeline(self, workspace_id: str, *, limit: int = 50) -> ActivityTimelineReadModel:
         """Return a bounded activity timeline for one workspace."""
 
+        _positive_limit(limit)
+        self._workspace_store.get(workspace_id)
         if self._activity_history_store is None:
             return ActivityTimelineReadModel(workspace_id=workspace_id, limit=limit)
         sessions = self._activity_history_store.sessions_for_workspace(workspace_id, limit=limit)
@@ -80,6 +82,8 @@ class InstanceReadService:
     def observed_state(self, workspace_id: str, *, limit: int = 100) -> ObservedStateReadModel:
         """Return latest observed state summaries for one workspace."""
 
+        _positive_limit(limit)
+        self._workspace_store.get(workspace_id)
         if self._observed_state_store is None:
             return ObservedStateReadModel(workspace_id=workspace_id, limit=limit)
         return ObservedStateReadModel(
@@ -155,3 +159,8 @@ class InstanceReadService:
                 for event in self._activity_history_store.events_for_run(run.run_id, limit=100)
             ),
         )
+
+
+def _positive_limit(limit: int) -> None:
+    if limit < 1:
+        raise ValueError("limit must be a positive integer")
