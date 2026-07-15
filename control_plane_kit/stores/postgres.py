@@ -410,6 +410,31 @@ class PostgresActivityHistoryStore:
             metadata=row[7],
         )
 
+    def sessions_for_workspace(self, workspace_id: str, *, limit: int = 50) -> tuple[OperationSessionRecord, ...]:
+        rows = self._connection.execute(
+            """
+            SELECT session_id, workspace_id, actor_id, title, status, created_at, closed_at, metadata
+            FROM cpk_operation_sessions
+            WHERE workspace_id = %s
+            ORDER BY created_at DESC, session_id ASC
+            LIMIT %s
+            """,
+            (workspace_id, limit),
+        ).fetchall()
+        return tuple(
+            OperationSessionRecord(
+                session_id=row[0],
+                workspace_id=row[1],
+                actor_id=row[2],
+                title=row[3],
+                status=row[4],
+                created_at=row[5],
+                closed_at=row[6],
+                metadata=row[7],
+            )
+            for row in rows
+        )
+
     def update_session(self, record: OperationSessionRecord) -> OperationSessionRecord:
         self._connection.execute(
             """
@@ -559,6 +584,29 @@ class PostgresActivityHistoryStore:
             payload=row[6],
         )
 
+    def plans_for_session(self, session_id: str) -> tuple[ActivityPlanRecord, ...]:
+        rows = self._connection.execute(
+            """
+            SELECT plan_id, session_id, base_graph_id, desired_graph_id, status, created_at, payload
+            FROM cpk_activity_plans
+            WHERE session_id = %s
+            ORDER BY created_at ASC, plan_id ASC
+            """,
+            (session_id,),
+        ).fetchall()
+        return tuple(
+            ActivityPlanRecord(
+                plan_id=row[0],
+                session_id=row[1],
+                base_graph_id=row[2],
+                desired_graph_id=row[3],
+                status=row[4],
+                created_at=row[5],
+                payload=row[6],
+            )
+            for row in rows
+        )
+
     def add_run(self, record: ActivityRunRecord) -> ActivityRunRecord:
         self._connection.execute(
             """
@@ -569,6 +617,28 @@ class PostgresActivityHistoryStore:
             (record.run_id, record.plan_id, record.status, record.started_at, record.finished_at, _json(record.metadata)),
         )
         return record
+
+    def runs_for_plan(self, plan_id: str) -> tuple[ActivityRunRecord, ...]:
+        rows = self._connection.execute(
+            """
+            SELECT run_id, plan_id, status, started_at, finished_at, metadata
+            FROM cpk_activity_runs
+            WHERE plan_id = %s
+            ORDER BY started_at ASC, run_id ASC
+            """,
+            (plan_id,),
+        ).fetchall()
+        return tuple(
+            ActivityRunRecord(
+                run_id=row[0],
+                plan_id=row[1],
+                status=row[2],
+                started_at=row[3],
+                finished_at=row[4],
+                metadata=row[5],
+            )
+            for row in rows
+        )
 
     def add_event(self, record: ActivityEventRecord) -> ActivityEventRecord:
         self._connection.execute(
@@ -581,14 +651,23 @@ class PostgresActivityHistoryStore:
         )
         return record
 
-    def events_for_run(self, run_id: str) -> tuple[ActivityEventRecord, ...]:
-        rows = self._connection.execute(
-            """
-            SELECT event_id, run_id, ordinal, event_type, occurred_at, payload
-            FROM cpk_activity_events WHERE run_id = %s ORDER BY ordinal ASC
-            """,
-            (run_id,),
-        ).fetchall()
+    def events_for_run(self, run_id: str, *, limit: int | None = None) -> tuple[ActivityEventRecord, ...]:
+        if limit is None:
+            rows = self._connection.execute(
+                """
+                SELECT event_id, run_id, ordinal, event_type, occurred_at, payload
+                FROM cpk_activity_events WHERE run_id = %s ORDER BY ordinal ASC
+                """,
+                (run_id,),
+            ).fetchall()
+        else:
+            rows = self._connection.execute(
+                """
+                SELECT event_id, run_id, ordinal, event_type, occurred_at, payload
+                FROM cpk_activity_events WHERE run_id = %s ORDER BY ordinal ASC LIMIT %s
+                """,
+                (run_id, limit),
+            ).fetchall()
         return tuple(
             ActivityEventRecord(
                 event_id=row[0],
@@ -638,6 +717,24 @@ class PostgresObservedStateStore:
             (workspace_id, subject_id),
         ).fetchone()
         return self._observation(row) if row is not None else None
+
+    def latest_for_workspace(self, workspace_id: str, *, limit: int = 100) -> tuple[ObservationRecord, ...]:
+        rows = self._connection.execute(
+            """
+            SELECT observation_id, workspace_id, subject_id, status, observed_at, payload, stale
+            FROM (
+              SELECT DISTINCT ON (subject_id)
+                observation_id, workspace_id, subject_id, status, observed_at, payload, stale
+              FROM cpk_observations
+              WHERE workspace_id = %s
+              ORDER BY subject_id ASC, observed_at DESC, observation_id ASC
+            ) latest_observations
+            ORDER BY observed_at DESC, subject_id ASC
+            LIMIT %s
+            """,
+            (workspace_id, limit),
+        ).fetchall()
+        return tuple(self._observation(row) for row in rows)
 
     def history(self, workspace_id: str, subject_id: str) -> tuple[ObservationRecord, ...]:
         rows = self._connection.execute(
