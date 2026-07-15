@@ -116,6 +116,24 @@ class InstanceReadServiceTests(PostgresStoreTestCase):
         with self.assertRaisesRegex(ReadModelError, "missing workspace 'missing'"):
             service.activity_timeline("missing")
 
+    def test_activity_timeline_requires_configured_activity_store(self):
+        self.stores.workspace.create(WorkspaceRecord(workspace_id="workspace-a", name="Demo"))
+        service = InstanceReadService(
+            workspace_store=self.stores.workspace,
+            graph_topology_store=self.stores.graph_topology,
+        )
+
+        with self.assertRaisesRegex(ReadModelError, "activity history store is not configured"):
+            service.activity_timeline("workspace-a")
+
+    def test_activity_timeline_does_not_cross_workspace_boundary(self):
+        service = self._service_with_activity()
+
+        payload = service.activity_timeline("workspace-a", limit=10).descriptor()
+
+        self.assertEqual([session["session_id"] for session in payload["sessions"]], ["session-a"])
+        self.assertNotIn("session-other", str(payload))
+
     def test_observed_state_reports_latest_and_stale_markers(self):
         service = self._service_with_observations()
 
@@ -127,6 +145,34 @@ class InstanceReadServiceTests(PostgresStoreTestCase):
         )
         self.assertEqual(payload["observations"][0]["payload"]["token"], "<redacted>")
         self.assertEqual(payload["observations"][1]["payload"]["details"], "not checked yet")
+
+    def test_observed_state_requires_configured_observed_state_store(self):
+        self.stores.workspace.create(WorkspaceRecord(workspace_id="workspace-a", name="Demo"))
+        service = InstanceReadService(
+            workspace_store=self.stores.workspace,
+            graph_topology_store=self.stores.graph_topology,
+        )
+
+        with self.assertRaisesRegex(ReadModelError, "observed state store is not configured"):
+            service.observed_state("workspace-a")
+
+    def test_observed_state_does_not_cross_workspace_boundary(self):
+        service = self._service_with_observations()
+
+        payload = service.observed_state("workspace-a").descriptor()
+
+        self.assertNotIn("workspace-b", str(payload))
+        self.assertNotIn("other-api", str(payload))
+
+    def test_nested_payload_redaction_reaches_lists_and_mappings(self):
+        service = self._service_with_nested_payloads()
+
+        payload = service.activity_timeline("workspace-a").descriptor()
+
+        event_payload = payload["sessions"][0]["plans"][0]["runs"][0]["events"][0]["payload"]
+        self.assertEqual(event_payload["nested"]["client_secret"], "<redacted>")
+        self.assertEqual(event_payload["items"][0]["callback_url"], "<redacted>")
+        self.assertEqual(event_payload["items"][0]["label"], "visible")
 
     def _service_with_workspace_and_graphs(self) -> InstanceReadService:
         self.stores.workspace.create(WorkspaceRecord(workspace_id="workspace-a", name="Demo"))
@@ -159,6 +205,7 @@ class InstanceReadServiceTests(PostgresStoreTestCase):
 
     def _service_with_activity(self) -> InstanceReadService:
         self.stores.workspace.create(WorkspaceRecord(workspace_id="workspace-a", name="Demo"))
+        self.stores.workspace.create(WorkspaceRecord(workspace_id="workspace-b", name="Other"))
         self.stores.activity_history.add_session(
             OperationSessionRecord(
                 session_id="session-a",
@@ -167,6 +214,16 @@ class InstanceReadServiceTests(PostgresStoreTestCase):
                 title="Swap API",
                 status="open",
                 created_at="2026-07-15T00:00:00Z",
+            )
+        )
+        self.stores.activity_history.add_session(
+            OperationSessionRecord(
+                session_id="session-other",
+                workspace_id="workspace-b",
+                actor_id="jacob",
+                title="Other workspace",
+                status="open",
+                created_at="2026-07-15T00:00:01Z",
             )
         )
         self.stores.activity_history.add_action(
@@ -241,6 +298,7 @@ class InstanceReadServiceTests(PostgresStoreTestCase):
 
     def _service_with_observations(self) -> InstanceReadService:
         self.stores.workspace.create(WorkspaceRecord(workspace_id="workspace-a", name="Demo"))
+        self.stores.workspace.create(WorkspaceRecord(workspace_id="workspace-b", name="Other"))
         self.stores.observed_state.put(
             ObservationRecord(
                 observation_id="obs-api-old",
@@ -269,6 +327,65 @@ class InstanceReadServiceTests(PostgresStoreTestCase):
                 observed_at="2026-07-15T00:01:00Z",
                 payload={"details": "not checked yet"},
                 stale=True,
+            )
+        )
+        self.stores.observed_state.put(
+            ObservationRecord(
+                observation_id="obs-other",
+                workspace_id="workspace-b",
+                subject_id="other-api",
+                status="healthy",
+                observed_at="2026-07-15T00:02:00Z",
+            )
+        )
+        return InstanceReadService(
+            workspace_store=self.stores.workspace,
+            graph_topology_store=self.stores.graph_topology,
+            activity_history_store=self.stores.activity_history,
+            observed_state_store=self.stores.observed_state,
+        )
+
+    def _service_with_nested_payloads(self) -> InstanceReadService:
+        self.stores.workspace.create(WorkspaceRecord(workspace_id="workspace-a", name="Demo"))
+        self.stores.activity_history.add_session(
+            OperationSessionRecord(
+                session_id="session-a",
+                workspace_id="workspace-a",
+                actor_id="jacob",
+                title="Nested",
+                status="open",
+                created_at="2026-07-15T00:00:00Z",
+            )
+        )
+        self.stores.activity_history.add_plan(
+            ActivityPlanRecord(
+                plan_id="plan-a",
+                session_id="session-a",
+                base_graph_id="graph-a",
+                desired_graph_id="graph-b",
+                status="planned",
+                created_at="2026-07-15T00:01:00Z",
+            )
+        )
+        self.stores.activity_history.add_run(
+            ActivityRunRecord(
+                run_id="run-a",
+                plan_id="plan-a",
+                status="running",
+                started_at="2026-07-15T00:02:00Z",
+            )
+        )
+        self.stores.activity_history.add_event(
+            ActivityEventRecord(
+                event_id="event-a",
+                run_id="run-a",
+                ordinal=1,
+                event_type="nested",
+                occurred_at="2026-07-15T00:03:00Z",
+                payload={
+                    "nested": {"client_secret": "secret"},
+                    "items": [{"callback_url": "http://private", "label": "visible"}],
+                },
             )
         )
         return InstanceReadService(
