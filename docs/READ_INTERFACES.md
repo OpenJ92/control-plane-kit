@@ -264,20 +264,21 @@ The Docker-first suite covers:
 The Roadmap 0006 read API can be tried locally with a small demo server:
 
 ```bash
-docker compose -f docker-compose.read-demo.yml up --build
+./scripts/read-demo-up.sh
 ```
 
-It starts Postgres, installs the control-plane schema, seeds one workspace, and
-serves the FastAPI read routes on:
+It builds the demo image, creates a Docker network, starts Postgres, installs
+the control-plane schema, seeds one workspace, and serves the FastAPI read
+routes on:
 
 ```text
-http://localhost:8010
+http://localhost:8011
 ```
 
-If port `8010` is already in use, choose another host port:
+If port `8011` is already in use, choose another host port:
 
 ```bash
-CPK_DEMO_HOST_PORT=8011 docker compose -f docker-compose.read-demo.yml up --build
+CPK_DEMO_HOST_PORT=8012 ./scripts/read-demo-up.sh
 ```
 
 The demo workspace is:
@@ -296,23 +297,23 @@ Try the routes directly:
 
 ```bash
 curl -H "Authorization: Bearer demo-token" \
-  http://localhost:8010/workspaces/demo-workspace
+  http://localhost:8011/workspaces/demo-workspace
 
 curl -H "Authorization: Bearer demo-token" \
-  http://localhost:8010/workspaces/demo-workspace/operator-graph
+  http://localhost:8011/workspaces/demo-workspace/operator-graph
 
 curl -H "Authorization: Bearer demo-token" \
-  http://localhost:8010/workspaces/demo-workspace/control-surface
+  http://localhost:8011/workspaces/demo-workspace/control-surface
 
 curl -H "Authorization: Bearer demo-token" \
-  "http://localhost:8010/workspaces/demo-workspace/activity?limit=5"
+  "http://localhost:8011/workspaces/demo-workspace/activity?limit=5"
 ```
 
 Or point the CLI at the live server:
 
 ```bash
 control-plane-kit \
-  --base-url http://localhost:8010 \
+  --base-url http://localhost:8011 \
   --token demo-token \
   workspace demo-workspace
 ```
@@ -320,3 +321,9 @@ control-plane-kit \
 This is not the future hub, not a production instance server, and not a real
 MCP host. It is a small live harness for the read model implemented in Roadmap
 0006.
+
+Stop and remove the demo containers with:
+
+```bash
+./scripts/read-demo-down.sh
+```

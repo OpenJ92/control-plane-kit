@@ -188,13 +188,19 @@ and MCP-shaped examples.
 Run the local read demo with:
 
 ```bash
-docker compose -f docker-compose.read-demo.yml up --build
+./scripts/read-demo-up.sh
 ```
 
-Then query `http://localhost:8010/workspaces/demo-workspace` with bearer token
+Then query `http://localhost:8011/workspaces/demo-workspace` with bearer token
 `demo-token`.
 
-If `8010` is busy, set `CPK_DEMO_HOST_PORT=8011` before running compose.
+If `8011` is busy, set `CPK_DEMO_HOST_PORT` before running the script.
+
+Stop it with:
+
+```bash
+./scripts/read-demo-down.sh
+```
 
 The optional server adapters require FastAPI:
 
