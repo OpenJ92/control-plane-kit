@@ -1,5 +1,19 @@
 from unittest import main
 
+from control_plane_kit import (
+    BlockSockets,
+    BlockSpec,
+    CapabilityName,
+    DeploymentRecipe,
+    DockerRuntime,
+    PlanOnlyImplementation,
+    Protocol,
+    ProxyBlock,
+    ProviderSocket,
+    RequirementSocket,
+    SocketConnection,
+    compile_recipe,
+)
 from control_plane_kit.graph import DeploymentGraph
 from control_plane_kit.read_services import InstanceReadService, ReadModelError
 from control_plane_kit.stores import (
@@ -15,7 +29,6 @@ from control_plane_kit.stores import (
 )
 from examples.app_with_postgres import recipe
 from tests.postgres_case import PostgresStoreTestCase
-from control_plane_kit import compile_recipe
 
 
 class InstanceReadServiceTests(PostgresStoreTestCase):
@@ -173,6 +186,77 @@ class InstanceReadServiceTests(PostgresStoreTestCase):
         self.assertEqual(event_payload["nested"]["client_secret"], "<redacted>")
         self.assertEqual(event_payload["items"][0]["callback_url"], "<redacted>")
         self.assertEqual(event_payload["items"][0]["label"], "visible")
+
+    def test_control_surface_lists_declared_capabilities_routes_and_sockets(self):
+        service = self._service_with_control_surface()
+
+        payload = service.control_surface("workspace-a").descriptor()
+
+        self.assertTrue(payload["assigned"])
+        router = _node(payload, "api-router")
+        self.assertEqual(router["display_name"], "API Router")
+        self.assertEqual(
+            [capability["name"] for capability in router["capabilities"]],
+            ["health-checkable", "target-mutable", "switchable", "drainable"],
+        )
+        self.assertEqual(
+            [route_set["name"] for route_set in router["control_route_sets"]],
+            ["common-status", "targets"],
+        )
+        target_routes = _route_set(router, "targets")["routes"]
+        self.assertIn(
+            {
+                "name": "active-target",
+                "method": "POST",
+                "path": "/__deploy/active-target",
+                "scope": "signal:send",
+                "description": "Switch the active downstream target.",
+            },
+            target_routes,
+        )
+        self.assertEqual(router["providers"]["internal"]["protocol"], "http")
+        self.assertEqual(
+            router["requirements"]["active"],
+            {"protocol": "http", "env_bindings": ["ACTIVE_TARGET_URL"], "required": True},
+        )
+
+    def test_control_surface_redacts_address_metadata_but_keeps_labels(self):
+        service = self._service_with_control_surface()
+
+        router = _node(service.control_surface("workspace-a").descriptor(), "api-router")
+
+        self.assertEqual(router["metadata"]["dashboard_url"], "<redacted>")
+        self.assertEqual(router["metadata"]["label"], "visible")
+        self.assertNotIn("http://private", str(router))
+
+    def test_control_surface_warns_on_unknown_route_sets(self):
+        service = self._service_with_control_surface_descriptor(_control_surface_descriptor_with_unknown_route_set())
+
+        router = _node(service.control_surface("workspace-a").descriptor(), "api-router")
+
+        self.assertEqual(router["warnings"], ["unknown control route set 'legacy-magic'"])
+        self.assertEqual(
+            [route_set["name"] for route_set in router["control_route_sets"]],
+            ["common-status", "targets"],
+        )
+
+    def test_control_surface_unassigned_pointer_is_explicit(self):
+        self.stores.workspace.create(WorkspaceRecord(workspace_id="workspace-a", name="Demo"))
+        service = InstanceReadService(
+            workspace_store=self.stores.workspace,
+            graph_topology_store=self.stores.graph_topology,
+        )
+
+        payload = service.control_surface("workspace-a").descriptor()
+
+        self.assertFalse(payload["assigned"])
+        self.assertEqual(payload["nodes"], [])
+
+    def test_control_surface_rejects_unknown_pointer(self):
+        service = self._service_with_control_surface()
+
+        with self.assertRaisesRegex(ReadModelError, "unknown graph pointer 'future'"):
+            service.control_surface("workspace-a", pointer="future")
 
     def _service_with_workspace_and_graphs(self) -> InstanceReadService:
         self.stores.workspace.create(WorkspaceRecord(workspace_id="workspace-a", name="Demo"))
@@ -395,6 +479,29 @@ class InstanceReadServiceTests(PostgresStoreTestCase):
             observed_state_store=self.stores.observed_state,
         )
 
+    def _service_with_control_surface(self) -> InstanceReadService:
+        return self._service_with_control_surface_descriptor(_control_surface_graph().descriptor())
+
+    def _service_with_control_surface_descriptor(self, graph_descriptor: dict[str, object]) -> InstanceReadService:
+        self.stores.workspace.create(WorkspaceRecord(workspace_id="workspace-a", name="Demo"))
+        self.stores.graph_topology.save(
+            GraphVersionRecord(
+                graph_id="graph-current",
+                workspace_id="workspace-a",
+                version=1,
+                graph_descriptor=graph_descriptor,
+                created_by="jacob",
+                created_at="2026-07-15T00:00:00Z",
+            )
+        )
+        self.stores.workspace.set_current_graph("workspace-a", "graph-current")
+        return InstanceReadService(
+            workspace_store=self.stores.workspace,
+            graph_topology_store=self.stores.graph_topology,
+            activity_history_store=self.stores.activity_history,
+            observed_state_store=self.stores.observed_state,
+        )
+
 
 def _compiled_graph_named(name: str) -> DeploymentGraph:
     graph = compile_recipe(recipe())
@@ -404,6 +511,74 @@ def _compiled_graph_named(name: str) -> DeploymentGraph:
         edges=graph.edges,
         runtimes=graph.runtimes,
     )
+
+
+def _control_surface_graph() -> DeploymentGraph:
+    target = ProxyBlock(
+        spec=BlockSpec("api-v1", display_name="API v1"),
+        implementation=PlanOnlyImplementation(kind="plan-api", output_urls={"internal": "http://api-v1:8080"}),
+        sockets=BlockSockets(providers=(ProviderSocket("internal", Protocol.HTTP),)),
+    )
+    router = ProxyBlock(
+        spec=BlockSpec(
+            "api-router",
+            display_name="API Router",
+            capabilities=(
+                CapabilityName.HEALTH_CHECKABLE,
+                CapabilityName.TARGET_MUTABLE,
+                CapabilityName.SWITCHABLE,
+                CapabilityName.DRAINABLE,
+            ),
+            metadata={"dashboard_url": "http://private-dashboard", "label": "visible"},
+        ),
+        implementation=PlanOnlyImplementation(kind="plan-router", output_urls={"internal": "http://router:8080"}),
+        sockets=BlockSockets(
+            requirements=(RequirementSocket("active", Protocol.HTTP, ("ACTIVE_TARGET_URL",)),),
+            providers=(ProviderSocket("internal", Protocol.HTTP),),
+        ),
+    )
+    return compile_recipe(
+        DeploymentRecipe(
+            "control-surface",
+            DockerRuntime(
+                children=(
+                    target,
+                    router,
+                    SocketConnection("api-v1", "internal", "api-router", "active"),
+                )
+            ),
+        )
+    )
+
+
+def _control_surface_descriptor_with_unknown_route_set() -> dict[str, object]:
+    descriptor = _control_surface_graph().descriptor()
+    router = descriptor["nodes"]["api-router"]
+    metadata = router["metadata"]
+    metadata["capabilities"] = [
+        *metadata["capabilities"],
+        {
+            "name": "legacy",
+            "label": "Legacy",
+            "description": "Old descriptor data from a previous package version.",
+            "route_set": "legacy-magic",
+        },
+    ]
+    return descriptor
+
+
+def _node(payload: dict[str, object], node_id: str) -> dict[str, object]:
+    for node in payload["nodes"]:
+        if node["node_id"] == node_id:
+            return node
+    raise AssertionError(f"missing node {node_id!r}")
+
+
+def _route_set(node: dict[str, object], name: str) -> dict[str, object]:
+    for route_set in node["control_route_sets"]:
+        if route_set["name"] == name:
+            return route_set
+    raise AssertionError(f"missing route set {name!r}")
 
 
 if __name__ == "__main__":

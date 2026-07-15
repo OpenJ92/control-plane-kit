@@ -6,6 +6,7 @@ from dataclasses import dataclass, field
 from typing import Mapping
 
 from control_plane_kit.algebra import BlockSockets, ProviderSocket, RequirementSocket
+from control_plane_kit.control_routes import route_set_named
 from control_plane_kit.graph import DeploymentGraph, Edge, Endpoint, Node, RuntimeRecord
 from control_plane_kit.projections import project_operator_graph
 from control_plane_kit.stores.protocols import ActivityHistoryStore, GraphTopologyStore, ObservedStateStore, WorkspaceStore
@@ -116,6 +117,58 @@ class ObservedStateReadModel:
         }
 
 
+@dataclass(frozen=True)
+class NodeControlSurfaceReadModel:
+    """Operator-facing declared control surface for one graph node."""
+
+    node_id: str
+    display_name: str
+    kind: str
+    runtime_id: str
+    capabilities: tuple[Mapping[str, object], ...]
+    control_route_sets: tuple[Mapping[str, object], ...]
+    providers: Mapping[str, object]
+    requirements: Mapping[str, object]
+    metadata: Mapping[str, object] = field(default_factory=dict)
+    warnings: tuple[str, ...] = ()
+
+    def descriptor(self) -> dict[str, object]:
+        return {
+            "node_id": self.node_id,
+            "display_name": self.display_name,
+            "kind": self.kind,
+            "runtime_id": self.runtime_id,
+            "capabilities": [dict(capability) for capability in self.capabilities],
+            "control_route_sets": [dict(route_set) for route_set in self.control_route_sets],
+            "providers": dict(self.providers),
+            "requirements": dict(self.requirements),
+            "metadata": dict(self.metadata),
+            "warnings": list(self.warnings),
+        }
+
+
+@dataclass(frozen=True)
+class ControlSurfaceReadModel:
+    """Declared capability, control-route, and socket view for a graph pointer."""
+
+    workspace_id: str
+    pointer: str
+    assigned: bool
+    graph_id: str | None = None
+    graph_name: str | None = None
+    nodes: tuple[NodeControlSurfaceReadModel, ...] = ()
+
+    def descriptor(self) -> dict[str, object]:
+        return {
+            "workspace_id": self.workspace_id,
+            "pointer": self.pointer,
+            "assigned": self.assigned,
+            "graph_id": self.graph_id,
+            "graph_name": self.graph_name,
+            "nodes": [node.descriptor() for node in self.nodes],
+        }
+
+
 class InstanceReadService:
     """Composes source-of-truth stores into read-only instance views."""
 
@@ -188,6 +241,28 @@ class InstanceReadService:
         )
         return ObservedStateReadModel(workspace_id=workspace_id, observations=observations)
 
+    def control_surface(self, workspace_id: str, *, pointer: str = "current") -> ControlSurfaceReadModel:
+        """Return declared capabilities, control routes, and socket contracts."""
+
+        workspace = self._workspace(workspace_id)
+        graph_id = _graph_id_for_pointer(workspace, pointer)
+        if graph_id is None:
+            return ControlSurfaceReadModel(workspace_id=workspace_id, pointer=pointer, assigned=False)
+        record = self._graph_topology_store.get(graph_id)
+        descriptor = _redact_graph_descriptor(record.graph_descriptor)
+        nodes = _mapping(descriptor.get("nodes", {}))
+        return ControlSurfaceReadModel(
+            workspace_id=workspace_id,
+            pointer=pointer,
+            assigned=True,
+            graph_id=record.graph_id,
+            graph_name=str(record.graph_descriptor.get("name", record.graph_id)),
+            nodes=tuple(
+                _node_control_surface(str(node_id), _mapping(node_descriptor))
+                for node_id, node_descriptor in sorted(nodes.items())
+            ),
+        )
+
     def _workspace(self, workspace_id: str) -> WorkspaceRecord:
         try:
             return self._workspace_store.get(workspace_id)
@@ -231,6 +306,14 @@ def _workspace_summary(record: WorkspaceRecord) -> WorkspaceSummary:
     )
 
 
+def _graph_id_for_pointer(workspace: WorkspaceRecord, pointer: str) -> str | None:
+    if pointer == "current":
+        return workspace.current_graph_id
+    if pointer == "desired":
+        return workspace.desired_graph_id
+    raise ReadModelError(f"unknown graph pointer {pointer!r}")
+
+
 def _graph_pointer_read_model(
     pointer: str,
     record: GraphVersionRecord,
@@ -246,6 +329,55 @@ def _graph_pointer_read_model(
         graph_descriptor=_redact_graph_descriptor(record.graph_descriptor),
         operator_graph=operator_graph,
     )
+
+
+def _node_control_surface(node_id: str, descriptor: Mapping[str, object]) -> NodeControlSurfaceReadModel:
+    metadata = _mapping(descriptor.get("metadata", {}))
+    capabilities = tuple(_capability_descriptor(value) for value in _list(metadata.get("capabilities", ())))
+    route_sets, warnings = _route_sets_for_capabilities(capabilities)
+    return NodeControlSurfaceReadModel(
+        node_id=node_id,
+        display_name=str(metadata.get("display_name", node_id)),
+        kind=str(descriptor["kind"]),
+        runtime_id=str(descriptor["runtime_id"]),
+        capabilities=capabilities,
+        control_route_sets=route_sets,
+        providers=_mapping(descriptor.get("providers", {})),
+        requirements=_mapping(descriptor.get("requirements", {})),
+        metadata=_control_metadata(metadata),
+        warnings=warnings,
+    )
+
+
+def _capability_descriptor(value: object) -> Mapping[str, object]:
+    if not isinstance(value, Mapping):
+        return {}
+    return {str(key): child for key, child in sorted(value.items())}
+
+
+def _route_sets_for_capabilities(
+    capabilities: tuple[Mapping[str, object], ...]
+) -> tuple[tuple[Mapping[str, object], ...], tuple[str, ...]]:
+    descriptors: dict[str, Mapping[str, object]] = {}
+    warnings: list[str] = []
+    for capability in capabilities:
+        route_set_name = capability.get("route_set")
+        if route_set_name is None:
+            continue
+        try:
+            descriptors[str(route_set_name)] = route_set_named(str(route_set_name)).as_descriptor()
+        except KeyError:
+            warnings.append(f"unknown control route set {route_set_name!r}")
+    return tuple(descriptors[name] for name in sorted(descriptors)), tuple(sorted(warnings))
+
+
+def _control_metadata(metadata: Mapping[str, object]) -> Mapping[str, object]:
+    omitted = {"capabilities"}
+    return {
+        str(key): _redact_descriptor_value(str(key), value)
+        for key, value in sorted(metadata.items())
+        if str(key) not in omitted
+    }
 
 
 def _graph_from_descriptor(descriptor: Mapping[str, object]) -> DeploymentGraph:
@@ -329,6 +461,14 @@ def _mapping(value: object) -> Mapping[str, object]:
     if not isinstance(value, Mapping):
         raise ReadModelError("expected mapping in graph descriptor")
     return value
+
+
+def _list(value: object) -> list[object]:
+    if isinstance(value, list):
+        return value
+    if isinstance(value, tuple):
+        return list(value)
+    return []
 
 
 def _string_mapping(value: object) -> dict[str, str]:
