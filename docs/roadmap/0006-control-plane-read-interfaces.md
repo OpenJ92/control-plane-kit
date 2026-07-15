@@ -1,6 +1,6 @@
 # Roadmap 0006: Control Plane Read Interfaces
 
-Status: Draft
+Status: Implemented on roadmap branch
 Depends on: Roadmap 0005
 
 ## Motivation
@@ -43,6 +43,74 @@ This roadmap should provide:
 
 The route layer must stay thin. It should call read-model services and should
 not own graph, workflow, activity, or policy truth.
+
+## Delivered Shape
+
+Roadmap 0006 delivered the read surfaces described in
+[`docs/CONTROL_PLANE_READ_INTERFACES.md`](../CONTROL_PLANE_READ_INTERFACES.md).
+
+The implementation now has this shape:
+
+```text
+Postgres-backed stores
+  -> projection read models
+    -> InstanceReadService
+      -> FastAPI read routes
+      -> CLI read commands
+      -> read-only MCP-shaped adapter
+```
+
+The important boundary is that every adapter delegates to the read service.
+Adapters do not define graph semantics, create transactions, mutate stores, or
+contact live control routes.
+
+Implemented artifacts:
+
+- `control_plane_kit/projections/operator_graph.py`
+- `control_plane_kit/projections/workspace.py`
+- `control_plane_kit/projections/activity.py`
+- `control_plane_kit/projections/control_surface.py`
+- `control_plane_kit/read_services/instance.py`
+- `control_plane_kit/servers/instance_read.py`
+- `control_plane_kit/cli/read.py`
+- `control_plane_kit/interfaces/mcp.py`
+
+The FastAPI route set is:
+
+```text
+GET /instances/{workspace_id}/workspace
+GET /instances/{workspace_id}/graphs/current
+GET /instances/{workspace_id}/graphs/desired
+GET /instances/{workspace_id}/activity
+GET /instances/{workspace_id}/observed-state
+GET /instances/{workspace_id}/control-surface
+```
+
+The CLI command entry point is:
+
+```text
+cpk-read
+```
+
+The MCP adapter is intentionally transport-neutral:
+
+```python
+from control_plane_kit import ReadOnlyMcpAdapter
+
+adapter = ReadOnlyMcpAdapter(read_service)
+adapter.call_tool("get_workspace", {"workspace_id": "workspace-a"})
+```
+
+It exposes only read tools:
+
+```text
+get_workspace
+get_current_graph
+get_desired_graph
+get_activity_timeline
+get_observed_state
+get_control_surface
+```
 
 ## Non-Goals
 
@@ -122,9 +190,9 @@ not own graph, workflow, activity, or policy truth.
     - Show capability read.
     - Show activity timeline read.
 
-## Target Instance Read API
+## Original Target Instance Read API
 
-The exact routes may change, but the target shape is:
+The original target shape was:
 
 ```text
 GET /health
@@ -142,19 +210,24 @@ GET /control/blocks
 GET /control/control-routes
 ```
 
-The corresponding service should be usable without HTTP:
+The implemented route shape became instance-scoped under `/instances` because
+the read API now receives `workspace_id` explicitly. That fits the backend
+topology decision that the control-plane instance owns workspaces and graph
+state, while adapters merely expose selected projections.
+
+The corresponding service is usable without HTTP:
 
 ```python
-read_model = InstanceReadService(...)
+read_service = InstanceReadService(...)
 
-workspace = read_model.workspace()
-operator_graph = read_model.operator_graph()
-timeline = read_model.activity_timeline(limit=100)
+workspace = read_service.workspace("workspace-a")
+operator_graph = read_service.current_graph("workspace-a")
+timeline = read_service.activity_timeline("workspace-a", limit=100)
 ```
 
-## Target MCP Tools
+## MCP Tools
 
-Read-only first:
+The original MCP target was broader:
 
 ```python
 get_workspace()
@@ -172,7 +245,21 @@ get_recent_events(limit=100)
 validate_graph(candidate_graph)
 ```
 
-Mutation tools remain absent.
+Roadmap 0006 intentionally implemented the stable subset only:
+
+```text
+get_workspace()
+get_current_graph()
+get_desired_graph()
+get_activity_timeline(limit=50)
+get_observed_state(limit=100)
+get_control_surface()
+```
+
+This was a deliberate reduction. The concrete MCP server process, validation
+tooling, node-specific tools, and event/log-specific tools should come after
+the control-plane server and authorization topology are more mature. Mutation
+tools remain absent.
 
 ## Implementation Notes
 
@@ -193,14 +280,28 @@ Mutation tools remain absent.
 - Unauthorized reads are rejected when auth is configured.
 - Secret values do not appear in graph, event, contract, or MCP payloads.
 - Activity timeline is bounded.
-- Observed-state payloads can represent unknown/stale state.
-- MCP tools, if implemented, are read-only.
-- `./test.sh`
-- `python3 -m compileall control_plane_kit tests`
-- `git diff --check`
+- Observed-state payloads can represent latest known state without mutating
+  graph truth.
+- MCP tools are read-only.
+- `./test.sh` passed on each child PR.
+- `git diff --check` passed on each child PR.
 
 ## Handoff
 
 Roadmap 0007 will add operation sessions, desired graph edits, planning, and
 approval. Keep read-model descriptors stable enough that plans and approval
 workflows can refer to them without reworking all query routes.
+
+Roadmap 0007 should treat Roadmap 0006 descriptors as the review lens for
+operator edits:
+
+```text
+desired graph edit
+  -> projected read model
+    -> activity plan preview
+      -> approval workflow
+```
+
+Do not duplicate projection logic inside planning. Planning may refer to these
+read descriptors, but graph truth and workflow truth should remain owned by
+their stores and services.

@@ -127,3 +127,9 @@ The roadmap is allowed to change. When reality teaches us something, update the
 relevant roadmap document before or during the issue vertical. The purpose is
 not prediction theater. The purpose is to keep future work aligned, bounded, and
 reviewable.
+
+## Roadmap Closeouts
+
+Completed roadmap closeouts:
+
+- [Roadmap 0006 Closeout](0006-closeout.md)
