@@ -26,6 +26,9 @@ dependencies = [
 [project.urls]
 Homepage = "https://github.com/OpenJ92/control-plane-kit"
 
+[project.scripts]
+cpk-read = "control_plane_kit.cli.read:main"
+
 [tool.setuptools.packages.find]
 where = ["."]
 include = ["control_plane_kit*"]
@@ -37,6 +40,9 @@ include = ["control_plane_kit*"]
 server = [
   "fastapi>=0.115",
   "uvicorn>=0.30",
+]
+postgres = [
+  "psycopg[binary]>=3.2",
 ]
 test-server = [
   "fastapi>=0.115",
