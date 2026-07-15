@@ -226,6 +226,43 @@ Before merging a PR, do a review pass from a code-review stance:
 - descriptor stability,
 - and future issue handoff.
 
+## Module Ownership Law
+
+Backend modules should be separable enough that a future service boundary is
+obvious.  Use this source-of-truth order when adding backend behavior:
+
+```text
+stores
+  own durable facts and valid mutations
+
+workflows
+  own grouped operator intent and session state
+
+policies
+  return authorization/approval/destructive-action decisions
+
+planners
+  interpret current truth plus desired intent into activity values
+
+effects
+  call runtime providers or block control routes after approval
+
+projections/interfaces
+  expose read or command surfaces without defining core semantics
+```
+
+Review every backend PR with these questions:
+
+- What truth does this own?
+- What intent does this record?
+- What capability does this call?
+- What projection does this expose?
+- Is it accidentally owning another module's truth?
+
+If a module might become an HTTP, MCP, or worker boundary later, keep its
+service contract visible now.  Do not let route handlers, CLI commands, or UI
+payloads become the place where durable semantics are invented.
+
 If the PR is documentation-only, review for:
 
 - architectural consistency,
