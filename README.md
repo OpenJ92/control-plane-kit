@@ -165,6 +165,43 @@ The first implementation is deliberately small:
 
 The package also includes graph diffing and a conservative activity planner.
 
+## Control Plane Reads
+
+The first control-plane instance read surfaces are available through one shared
+service boundary:
+
+```text
+Postgres-backed stores
+  -> InstanceReadService
+    -> FastAPI read routes
+    -> CLI read commands
+    -> MCP-shaped read adapter
+```
+
+Read interfaces are intentionally non-mutating. They expose workspace summaries,
+current/desired graph descriptors, operator graph projections, activity
+timelines, observed state, and declared control surfaces.
+
+See [Control Plane Read Interfaces](docs/READ_INTERFACES.md) for route, CLI,
+and MCP-shaped examples.
+
+Run the local read demo with:
+
+```bash
+./scripts/read-demo-up.sh
+```
+
+Then query `http://localhost:8011/workspaces/demo-workspace` with bearer token
+`demo-token`.
+
+If `8011` is busy, set `CPK_DEMO_HOST_PORT` before running the script.
+
+Stop it with:
+
+```bash
+./scripts/read-demo-down.sh
+```
+
 The optional server adapters require FastAPI:
 
 ```bash
