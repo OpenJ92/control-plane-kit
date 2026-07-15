@@ -57,6 +57,13 @@ class ReadOnlyMcpAdapterTests(PostgresStoreTestCase):
 
         self.assertEqual(descriptor, {"workspace_id": "workspace-a", "limit": 3, "sessions": []})
 
+    def test_limit_tools_reject_non_positive_limit(self):
+        with self.assertRaises(ValueError):
+            self.adapter.call_tool("get_activity_timeline", {"workspace_id": "workspace-a", "limit": 0})
+
+        with self.assertRaises(ValueError):
+            self.adapter.call_tool("get_observed_state", {"workspace_id": "workspace-a", "limit": -1})
+
     def test_get_control_surface_returns_declared_capabilities(self):
         descriptor = self.adapter.call_tool("get_control_surface", {"workspace_id": "workspace-a"})
         router = {
@@ -70,6 +77,10 @@ class ReadOnlyMcpAdapterTests(PostgresStoreTestCase):
     def test_unknown_tool_fails_loudly(self):
         with self.assertRaises(KeyError):
             self.adapter.call_tool("switch_router", {"workspace_id": "workspace-a"})
+
+    def test_unassigned_graph_tool_fails_loudly(self):
+        with self.assertRaises(KeyError):
+            self.adapter.call_tool("get_desired_graph", {"workspace_id": "workspace-a"})
 
     def test_missing_workspace_argument_fails_structurally(self):
         with self.assertRaises(ValueError):

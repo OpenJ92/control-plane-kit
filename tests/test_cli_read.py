@@ -43,6 +43,13 @@ class ReadCliTests(PostgresStoreTestCase):
         self.assertNotIn("http://", stdout)
         self.assertNotIn("env_assignments", stdout)
 
+    def test_current_graph_command_includes_addresses_only_when_requested(self):
+        code, stdout, _stderr = self._run("--include-addresses", "current-graph", "workspace-a")
+
+        self.assertEqual(code, 0)
+        self.assertIn("http://", stdout)
+        self.assertIn("env_assignments", stdout)
+
     def test_control_surface_command_prints_declared_routes(self):
         code, stdout, _stderr = self._run("control-surface", "workspace-a")
 
@@ -63,6 +70,12 @@ class ReadCliTests(PostgresStoreTestCase):
 
         self.assertEqual(code, 1)
         self.assertIn("desired-graph is not assigned", stderr)
+
+    def test_invalid_limit_returns_user_error(self):
+        code, _stdout, stderr = self._run("activity", "workspace-a", "--limit", "0")
+
+        self.assertEqual(code, 2)
+        self.assertIn("limit must be a positive integer", stderr)
 
     def _run(self, *args: str) -> tuple[int, str, str]:
         stdout = io.StringIO()
