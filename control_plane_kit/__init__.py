@@ -120,6 +120,15 @@ from control_plane_kit.planner import (
     diff_graphs,
     plan_migration,
 )
+from control_plane_kit.projections import (
+    OperatorEdgeProjection,
+    OperatorEndpointProjection,
+    OperatorGraphProjection,
+    OperatorNodeProjection,
+    OperatorRuntimeProjection,
+    OperatorSocketProjection,
+    project_operator_graph,
+)
 from control_plane_kit.runtimes import (
     CleanupPolicy,
     DryRunActivity,
@@ -226,6 +235,12 @@ __all__ = [
     "PlanOnlyImplementation",
     "Protocol",
     "ProxyBlock",
+    "OperatorEdgeProjection",
+    "OperatorEndpointProjection",
+    "OperatorGraphProjection",
+    "OperatorNodeProjection",
+    "OperatorRuntimeProjection",
+    "OperatorSocketProjection",
     "RequirementSocket",
     "ProviderSocket",
     "ReloadPolicy",
@@ -252,4 +267,5 @@ __all__ = [
     "compile_recipe",
     "diff_graphs",
     "plan_migration",
+    "project_operator_graph",
 ]
