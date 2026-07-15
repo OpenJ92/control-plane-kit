@@ -120,6 +120,8 @@ def _http_error_message(error: HTTPError) -> str:
         payload = json.loads(error.read().decode("utf-8"))
     except (json.JSONDecodeError, OSError, UnicodeDecodeError):
         return f"request failed with HTTP {error.code}"
+    finally:
+        error.close()
     detail = payload.get("detail") if isinstance(payload, dict) else None
     if detail:
         return f"request failed with HTTP {error.code}: {detail}"

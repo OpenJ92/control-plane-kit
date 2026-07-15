@@ -83,6 +83,7 @@ from control_plane_kit.implementations import (
     LocalSourceImplementation,
     PlanOnlyImplementation,
 )
+from control_plane_kit.mcp_read import McpReadError, McpToolDescriptor, ReadOnlyMcpAdapter
 from control_plane_kit.servers import (
     BlockControlState,
     HelloEnvironment,
@@ -239,12 +240,15 @@ __all__ = [
     "GraphDiff",
     "GraphPointerReadModel",
     "LocalSourceImplementation",
+    "McpReadError",
+    "McpToolDescriptor",
     "Node",
     "NodeControlSurfaceReadModel",
     "PlanOnlyImplementation",
     "Protocol",
     "ProxyBlock",
     "ReadModelError",
+    "ReadOnlyMcpAdapter",
     "RequirementSocket",
     "ProviderSocket",
     "ReloadPolicy",
