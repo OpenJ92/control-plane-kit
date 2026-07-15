@@ -120,6 +120,13 @@ from control_plane_kit.planner import (
     diff_graphs,
     plan_migration,
 )
+from control_plane_kit.read_services import (
+    GraphPointerReadModel,
+    InstanceReadService,
+    ReadModelError,
+    WorkspaceReadModel,
+    WorkspaceSummary,
+)
 from control_plane_kit.runtimes import (
     CleanupPolicy,
     DryRunActivity,
@@ -221,11 +228,13 @@ __all__ = [
     "ExternalRuntime",
     "ExternalTcpImplementation",
     "GraphDiff",
+    "GraphPointerReadModel",
     "LocalSourceImplementation",
     "Node",
     "PlanOnlyImplementation",
     "Protocol",
     "ProxyBlock",
+    "ReadModelError",
     "RequirementSocket",
     "ProviderSocket",
     "ReloadPolicy",
@@ -249,6 +258,9 @@ __all__ = [
     "TextVariable",
     "UnsupportedDockerRuntimeFeature",
     "ValidationErrorDetail",
+    "InstanceReadService",
+    "WorkspaceReadModel",
+    "WorkspaceSummary",
     "compile_recipe",
     "diff_graphs",
     "plan_migration",
