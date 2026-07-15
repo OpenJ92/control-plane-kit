@@ -923,28 +923,37 @@ ControlPlaneInstance
   -> executes approved topology mutations against runtimes and blocks
 ```
 
-### Resolved Recursive Identity Law
+### Resolved Recursive Identity And Capability Law
 
 The Hub and a user-selected control plane are not fundamentally different
-objects.  Both are control-plane instances.  Their distinction is the type of
-graph they are permitted to manage and the capabilities configured around that
-graph.
+objects. Both are control-plane instances, and child-management functionality
+is not intrinsically Hub-only. Their distinction is configuration, position in
+the ownership tree, admission policy, and enabled capabilities.
 
 In type-like notation:
 
 ```text
-ControlPlaneInstance[A]
+ManagedNode
+  = DeployBlockNode
+  | ControlPlaneInstanceNode
 
-DeploymentInstance = ControlPlaneInstance[DeployBlock]
-ControlPlaneHub     = ControlPlaneInstance[ControlPlaneInstance]
+ChildAdmission
+  = DeployBlocksOnly
+  | InstancesOnly
+  | Mixed
+
+ControlPlaneInstance
+  = control plane over Graph[ManagedNode]
 ```
 
-An ordinary deployment instance admits application, data, proxy, and runtime
-blocks according to its deployment grammar.  A Hub admits only child
-`ControlPlaneInstance` nodes.  It must not directly spawn or mutate arbitrary
-application blocks belonging to a child's managed deployment.
+An ordinary leaf deployment instance commonly uses `DeployBlocksOnly`. A root
+Hub commonly uses `InstancesOnly`. A composite instance may use `Mixed` and
+manage both its own deployment blocks and subordinate control-plane instances.
+These are policies over the same object, not separate implementations. A parent
+must not directly mutate arbitrary application blocks belonging to a child's
+managed deployment.
 
-The Hub profile adds modules and capabilities for:
+Reusable instance modules and capabilities include:
 
 - user identity and ownership,
 - the child-instance registry,
@@ -953,19 +962,20 @@ The Hub profile adds modules and capabilities for:
 - delegated credentials or sessions,
 - and authenticated proxying from the frontend to a selected child instance.
 
-Those additions do not make the Hub a separate architectural species.  They
-are the capabilities of an instance whose managed subjects are instances.
+Any instance may receive those capabilities when its policy permits child
+management. The root Hub adds public entry-point and root identity concerns,
+but not a new control-plane species.
 
 Each child instance exposes a typed control API in the same broad sense that a
-router or load balancer exposes a typed control API.  The parent Hub can query
+router or load balancer exposes a typed control API. The parent instance can query
 health and capabilities, start or stop the child through its runtime, and proxy
-authorized instance-specific requests.  The child still owns its workspace,
+authorized instance-specific requests. The child still owns its workspace,
 plans, approvals, execution, and history; proxying does not transfer that truth
-to the Hub.
+to the parent.
 
 ```text
 Frontend
-  -> Hub instance API
+  -> Root instance API
       authenticate user
       select owned child instance
       proxy authorized request
@@ -1017,16 +1027,16 @@ One control-plane instance should own one deployment workspace.  Multiple
 instances pointing at the same realized deployment is treated as unsafe unless a
 future design introduces explicit locking or leader election.
 
-The Hub profile is intentionally lighter with respect to each child's internal
-deployment semantics.  The responsibility distinction is:
+An instance acting as a parent is intentionally lighter with respect to each
+child's internal deployment semantics. The responsibility distinction is:
 
 ```text
-Hub profile = instance registry + ownership + lifecycle + authenticated proxy
-Child profile = child workspace + graph/activity authority
+parent capabilities = instance registry + ownership + lifecycle + authenticated proxy
+child self authority = child workspace + graph/activity authority
 ```
 
-The Hub should not absorb a child's deployment graph semantics merely because
-it is itself a control-plane instance.  It may hold an instance ID,
+The parent should not absorb a child's deployment graph semantics merely because
+it is itself a control-plane instance. It may hold an instance ID,
 owner/grant records, lifecycle state, endpoint/wake metadata, and enough
 retained recovery metadata to recreate or reconnect a child.  The child owns
 its operational graph and activity machinery.
@@ -1377,26 +1387,29 @@ These are not raw logs.  They should be bounded and safe to query.
 
 Resolved:
 
-- `ControlPlaneHub` is a user-facing profile/name for a
-  `ControlPlaneInstance[ControlPlaneInstance]`.
-- A normal deployment workspace is managed by a
-  `ControlPlaneInstance[DeployBlock]`.
+- `ControlPlaneHub` is a user-facing root profile/name for the same
+  `ControlPlaneInstance` object used at every level.
+- `ManagedNode` is the closed sum of deploy blocks and child instance nodes.
+- Child admission is explicit: deploy blocks only, child instances only, or a
+  mixed graph.
+- Access, registry, child lifecycle, delegation, and proxying are reusable
+  instance capabilities rather than Hub-only functionality.
 - One child instance owns one deployment workspace.
-- The Hub can create, wake, pause, stop, archive, deconstruct, and reconstruct
+- A parent instance can create, wake, pause, stop, archive, deconstruct, and reconstruct
   child instances through activity planning and execution.
-- The Hub is the authenticated frontend proxy to child instance APIs.
-- The Hub may only admit control-plane instance children; it does not directly
-  manage their application blocks.
+- The root instance is the authenticated frontend proxy to child instance APIs.
+- A parent does not directly manage application blocks inside a child's opaque
+  workspace.
 
 Remaining questions:
 
-1. Does the Hub retain full child graph/activity snapshots, recovery metadata,
+1. Does the parent retain full child graph/activity snapshots, recovery metadata,
    or only references to child-owned stores?
 2. Which child lifecycle states physically remove runtime resources, and which
    retain durable stores?
 3. What is the delegated credential/session format between Hub and child?
 4. Which protocol advertises child capabilities and endpoints to the Hub?
-5. What bootstrap recipe starts the first root Hub?
+5. What bootstrap recipe starts the first root instance?
 
 A control-plane instance is not merely a bearer-token holder, although
 credential custody is one of its responsibilities.  It is the authority and
@@ -1779,8 +1792,14 @@ may be:
   ActivityRun / ActivityEvent recording.
   Pause/resume/failure behavior.
 
-0009 Operator UI / MCP / Cross-Language Contracts
-  Existing visual UI and cross-language concerns move later.
+0009 Recursive Control Plane Instances And Root Hub
+  Represent child instances as managed nodes.
+  Generalize registry, lifecycle, authorization, and proxy capabilities.
+  Compile child lifecycle through the approved activity executor.
+  Preserve parent registry truth separately from child workspace truth.
+
+0010 Operator UI / MCP / Cross-Language Contracts
+  Existing visual UI and cross-language concerns consume the recursive model.
 ```
 
 This provisional split should be tested against the construction law:
@@ -1802,6 +1821,9 @@ The tentative objects are:
 
 - `ControlPlaneHub`
 - `ControlPlaneInstance`
+- `ManagedNode`
+- `ChildAdmission`
+- `InstanceRelationship`
 - `DeploymentWorkspace`
 - `DeploymentGraph`
 - `GraphVersion`

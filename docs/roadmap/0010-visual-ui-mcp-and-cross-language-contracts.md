@@ -1,7 +1,7 @@
-# Roadmap 0009: Visual UI, MCP, And Cross-Language Contracts
+# Roadmap 0010: Visual UI, MCP, And Cross-Language Contracts
 
 Status: Draft
-Depends on: Roadmap 0001 through Roadmap 0008
+Depends on: Roadmap 0001 through Roadmap 0009
 
 ## Motivation
 
@@ -23,18 +23,20 @@ A user should be able to:
 - inspect activity history,
 - and observe runtime state.
 
-The UI deliberately hides a recursive implementation law:
+The UI deliberately simplifies a recursive implementation law:
 
 ```text
-DeploymentInstance = ControlPlaneInstance[DeployBlock]
-ControlPlaneHub     = ControlPlaneInstance[ControlPlaneInstance]
+ManagedNode = DeployBlockNode | ControlPlaneInstanceNode
+ControlPlaneInstance = control plane over Graph[ManagedNode]
 ```
 
-The Hub is the same control-plane object configured to admit only child
-control-plane instances.  It adds ownership, registry, lifecycle, and proxy
-capabilities.  The frontend speaks to the Hub, and the Hub authenticates,
-selects, and proxies to the chosen child instance API.  The child remains the
-authority for its own workspace.
+The Hub is the same control-plane object configured as the root and normally
+admitted to manage child control-plane instances. Ownership, registry,
+lifecycle, delegation, and proxying are reusable instance capabilities rather
+than Hub-only semantics. An ordinary instance may manage deploy blocks, child
+instances, or both when its admission policy permits it. The frontend speaks to
+the root, and the root authenticates, selects, and proxies to a chosen child
+instance API. The child remains the authority for its own workspace.
 
 Python is first-class, but the topology model should not be Python-only. Other
 languages should participate through descriptors, declared sockets, environment
@@ -161,10 +163,10 @@ Workspace screen
 ```
 
 The editor should present this as a simple navigation hierarchy, not an
-infinite recursive canvas.  Internally, however, Hub children are typed
+infinite recursive canvas. Internally, however, child instances are typed
 `ControlPlaneInstance` nodes with provider/control APIs, lifecycle
-capabilities, and observable state.  This allows the same descriptors and
-capability-driven UI machinery to represent both Hub-managed instances and
+capabilities, and observable state. This allows the same descriptors and
+capability-driven UI machinery to represent both parent-managed instances and
 ordinary controllable deployment blocks.
 
 The user action:
@@ -240,10 +242,10 @@ production topology without approval."
 - Capability descriptors decide which controls are shown.
 - Keep control routes separate from user traffic routes.
 - Keep graph descriptors redacted.
-- Keep the Hub/child distinction capability- and admissibility-driven rather
-  than implementing an unrelated Hub object hierarchy.
-- The Hub may proxy authenticated frontend requests to a selected child, but
-  it must not duplicate or absorb child workspace semantics.
+- Keep root/child presentation capability- and admissibility-driven rather than
+  implementing Hub and Instance as unrelated object hierarchies.
+- Any authorized parent instance may proxy authenticated requests to a selected
+  child, but it must not duplicate or absorb child workspace semantics.
 
 ## Validation
 
@@ -262,5 +264,5 @@ production topology without approval."
 
 After this vertical, the package should be ready for a separate UI project or a
 thin demo UI without changing core backend topology. Further roadmap work can
-then focus on richer runtimes, cloud providers, graph database adapters, and the
-Hub server as a production-grade registry.
+then focus on richer runtimes, cloud providers, graph database adapters, and
+production hardening of recursive instance registries and lifecycle providers.

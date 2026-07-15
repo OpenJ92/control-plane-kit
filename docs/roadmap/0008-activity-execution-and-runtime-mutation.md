@@ -232,6 +232,9 @@ Some activities may be non-compensatable. They must say so.
 
 ## Handoff
 
-Roadmap 0009 will make UI/MCP/cross-language surfaces richer. The handoff must
-include stable activity-run/event descriptors, capability route expectations,
-and which blocks are demo-only versus durable protocol.
+Roadmap 0009 will use this executor to make child control-plane instance
+lifecycle ordinary approved activity work. The handoff must include stable
+activity-run/event descriptors, idempotent execution requests, saga boundaries,
+runtime provisioning capabilities, capability-route expectations, and which
+blocks are demo-only versus durable protocol. Roadmap 0009 must not create a
+second Hub executor or mutate child registries outside this pipeline.

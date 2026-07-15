@@ -76,7 +76,8 @@ Execution comes later.
 - Do not promise perfect undo.
 - Do not bypass approval for consequential activities.
 - Do not make every graph edit executable.
-- Do not implement the full Hub yet.
+- Do not implement recursive child-instance management yet; Roadmap 0009 will
+  compile it through these same session, planning, and approval boundaries.
 
 ## Canonical Issue Topology
 

@@ -37,20 +37,20 @@ Deployed application graph
   contains the actual servers, databases, blocks, runtimes, and control routes
 ```
 
-The implementation model is recursive rather than three unrelated classes:
+The implementation model is recursive rather than three unrelated classes or
+two disjoint generic specializations:
 
 ```text
-ControlPlaneInstance[A]
-
-DeploymentInstance = ControlPlaneInstance[DeployBlock]
-ControlPlaneHub     = ControlPlaneInstance[ControlPlaneInstance]
+ManagedNode = DeployBlockNode | ControlPlaneInstanceNode
+ControlPlaneInstance = control plane over Graph[ManagedNode]
 ```
 
-The Hub is an instance restricted to spawning and managing child control-plane
-instances.  Its additional configured capabilities are identity/ownership,
-instance registry, child lifecycle, endpoint discovery, and authenticated
-frontend proxying.  It does not directly manage arbitrary application blocks
-inside a child's deployment graph.
+The Hub is the user-facing root profile of this same instance. Child admission
+policy may restrict an instance to deploy blocks, child instances, or permit a
+mixed graph. Identity/ownership, instance registry, child lifecycle, endpoint
+discovery, delegation, and authenticated proxying are reusable instance
+capabilities. They are not a separate Hub domain model. A parent never directly
+manages application blocks inside a child's opaque deployment graph.
 
 The most important repository law for this roadmap is the Pottery Factory
 ownership law:
@@ -100,7 +100,8 @@ the rest.
 
 ## Non-Goals
 
-- Do not build the full Hub server in this vertical.
+- Do not build recursive child-instance lifecycle and proxy behavior in this
+  vertical; Roadmap 0009 adds it to the shared instance server.
 - Do not build full runtime execution in this vertical.
 - Do not expose mutation routes in this vertical.
 - Do not build the MCP adapter in this vertical.
@@ -277,16 +278,17 @@ ownership taxonomy and the earliest truth/workflow/policy contracts.
 - Do not model graph topology as normalized Postgres tables in the first pass.
 - Do use proper relational normalization for session/action/approval/run/event
   data.
-- Treat `ControlPlaneInstance[A]` as the shared recursive orchestration/API
-  boundary over imported modules, not as the place where every rule
-  accumulates.
-- Treat the Hub as the `ControlPlaneInstance[ControlPlaneInstance]` profile:
-  access, registry, child lifecycle, session delegation, and authenticated
-  frontend proxying.
-- Restrict Hub-managed graph children to control-plane instances.  A Hub must
-  not directly mutate application blocks inside a child's workspace.
-- Treat a deployment instance as the `ControlPlaneInstance[DeployBlock]`
-  profile: workspace graph/activity/state authority.
+- Treat `ControlPlaneInstance` as the shared recursive orchestration/API
+  boundary over a graph of the closed `ManagedNode` sum, not as the place where
+  every rule accumulates.
+- Treat Hub as the root presentation/configuration of that object, not another
+  implementation.
+- Express `DeployBlocksOnly`, `InstancesOnly`, and `Mixed` as explicit child
+  admission policies. Do not encode them as separate class hierarchies.
+- Make access, registry, child lifecycle, session delegation, and authenticated
+  proxying reusable instance capabilities.
+- A parent instance must not directly mutate application blocks or persistence
+  inside a child's workspace.
 - Require child instances to advertise an authenticated control API so the Hub
   can discover, observe, and manage them like other controllable blocks.
 - Keep source-of-truth modules separate from workflow/session modules even when
