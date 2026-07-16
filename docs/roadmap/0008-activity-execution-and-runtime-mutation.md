@@ -56,6 +56,9 @@ This roadmap should provide:
 - dependency-aware multi-node activity planning,
 - block control client interface,
 - Docker-backed safe activities,
+- explicit host-port publication for intentionally exposed local endpoints,
+- real health/readiness observation rather than optimistic started-is-healthy
+  state,
 - control-route-backed safe activities,
 - activity events,
 - observed-state updates,
@@ -121,7 +124,8 @@ This roadmap should provide:
    - Start node.
    - Stop node.
    - Restart node.
-   - Wait for health.
+   - Wait for health using bounded timeout, interval, and failure policy.
+   - Distinguish process/container start from application readiness.
    - Drain node as advisory first.
    - Keep provider interface narrow.
 
@@ -146,6 +150,12 @@ This roadmap should provide:
 
 9. Add Docker local runtime executor.
    - Safe start/stop for local demo nodes.
+   - Publish declared host ports only when the topology/runtime policy requests
+     them; do not expose every provider socket by default.
+   - Preserve container-private provider addresses separately from
+     host-observed addresses.
+   - Probe declared health paths and report unknown/unhealthy instead of marking
+     every started container healthy.
    - Retained Postgres handling where needed.
    - No accidental deletion of retained data.
 
@@ -170,7 +180,9 @@ This roadmap should provide:
 13. Add live local smoke example.
     - Use package-provided blocks.
     - Demonstrate a safe switch or replacement.
-    - Record activity events.
+   - Record activity events.
+   - Exercise an intentionally host-published endpoint with real HTTP health
+     evidence so Roadmap 0009 can reuse the same mechanism for CPI.
 
 ## Target Execution Flow
 
@@ -235,6 +247,12 @@ Some activities may be non-compensatable. They must say so.
 - Executor emits events for each step.
 - Multi-node plans honor declared readiness dependencies and reject unresolved
   cycles.
+- Docker start does not imply health; declared health checks produce observed
+  healthy, unhealthy, timeout, or unknown state.
+- Host ports are published only by explicit policy and remain distinct from
+  Docker-private endpoint addresses.
+- Socket-derived environment assignments reach the started container without
+  appearing unredacted in activity descriptors or events.
 - Failure records partial state.
 - Compensation runs in reverse completion order where possible.
 - Compensation failure is visible.
@@ -251,5 +269,20 @@ Roadmap 0009 will package the control-plane instance server as an ordinary
 approved activity work. The handoff must include stable
 activity-run/event descriptors, idempotent execution requests, saga boundaries,
 runtime provisioning capabilities, capability-route expectations, and which
-blocks are demo-only versus durable protocol. Roadmap 0009 must not create a
-Hub-specific executor or a special control-plane-instance node path.
+blocks are demo-only versus durable protocol.
+
+The handoff must specifically prove that Roadmap 0009 can:
+
+```text
+start Postgres
+wait for Postgres readiness
+start an ApplicationBlock with socket-derived environment
+publish one explicitly requested host endpoint
+wait on the application's declared health path
+record the private and public observations separately
+retain Postgres across application replacement where policy requires
+```
+
+Roadmap 0009 must not repair those generic Docker/runtime behaviors with a CPI
+startup script, a Hub-specific executor, or a special control-plane-instance
+node path.

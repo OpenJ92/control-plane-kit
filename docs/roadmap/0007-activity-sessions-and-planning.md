@@ -64,7 +64,10 @@ This roadmap should make it possible to:
 - produce an inspectable activity plan,
 - classify dangerous activities,
 - request and record approvals,
-- and expose read models for pending sessions/plans.
+- expose read models for pending sessions/plans,
+- and hand Roadmap 0009 transport-neutral command/planning application services
+  that a composed FastAPI CPI server can call without rebuilding workflow
+  semantics in route handlers.
 
 Execution comes later.
 
@@ -100,6 +103,12 @@ not: `0007.5` is issue #138 while `0007.6` is #137, and `0007.9` is #142 while
    - `0007.3.2` Desired graph descriptor reconstruction boundary (#148).
    - `0007.3.3` Desired graph command workflow (#149).
    - `0007.3.4` Idempotency and concurrency hardening (#150).
+   - Preserve authored block-specification type information through graph
+     descriptor persistence and reconstruction. Do not collapse future closed
+     specification variants into untyped metadata strings.
+   - Keep the descriptor codec extensible so Roadmap 0009 can add a package
+     `ControlPlaneInstanceSpec` variant without rebuilding graph-edit workflow
+     semantics.
 
 4. `0007.4` Pure graph validation workflow (#136).
 
@@ -126,6 +135,11 @@ not: `0007.5` is issue #138 while `0007.6` is #137, and `0007.9` is #142 while
     - `0007.10.4` Security and edge hardening (#160).
 
 11. `0007.11` Docs, examples, hardening, and closeout (#143).
+    - Curate the command/planning service constructors, typed request/result
+      values, stable error mapping, UnitOfWork ownership, and security policies
+      that Roadmap 0009 must compose behind HTTP.
+    - Do not build the final CPI FastAPI application here; make its service
+      dependencies explicit and injectable.
 
 The executable dependency chain is:
 
@@ -234,6 +248,10 @@ The UI can make the danger visible, but the backend owns the approval boundary.
 - Activity plans are persisted and renderable.
 - Destructive activities require stronger approval metadata.
 - Approval decisions are recorded.
+- Command and planning services can be constructed independently of FastAPI and
+  called through one explicit UnitOfWork per operator command.
+- Their request/result/error descriptors are stable enough for Roadmap 0009 to
+  expose without inventing durable semantics in route handlers.
 - No execution happens.
 - `./test.sh`
 - `python3 -m compileall control_plane_kit tests`
@@ -244,3 +262,22 @@ The UI can make the danger visible, but the backend owns the approval boundary.
 Roadmap 0008 will execute approved plans. The handoff must include stable
 activity plan descriptors, approval records, idempotency expectations, and
 which activity kinds are safe to execute first.
+
+Roadmap 0009 will compose these workflows into the real CPI server. The 0007
+handoff must therefore identify:
+
+```text
+session command service
+desired-graph command service
+planning service
+approval service
+read projections
+typed request/result/error values
+UnitOfWork factory and transaction ownership
+authorization policy inputs
+typed block-spec descriptor/reconstruction extension point
+```
+
+Roadmap 0009 may add FastAPI adapters around these services, but it must not
+reimplement session ordering, graph concurrency, planning, approval, or commit
+behavior in HTTP handlers.

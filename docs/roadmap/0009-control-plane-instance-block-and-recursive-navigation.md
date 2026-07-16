@@ -57,8 +57,9 @@ selectable child instance blocks in its own graph.
 ## Goal
 
 Make the control-plane instance server available as an ordinary package server
-block and make recursive instance navigation a projection over existing graph,
-observed-state, authorization, and control-route machinery.
+block and make recursive child discovery plus direct navigation a projection
+over existing graph, observed-state, authorization, and control-route
+machinery.
 
 This roadmap should provide:
 
@@ -101,7 +102,99 @@ Roadmap 0008
 
 Roadmap 0009 must first compose the completed read, command, planning,
 execution, health, capability, and control surfaces into one application
-factory:
+factory. The detailed composition appears below. The services remain imported
+modules with their own truth and workflow boundaries; the FastAPI application
+only composes them and owns the HTTP transaction boundary.
+
+### Prerequisite Contract From Roadmaps 0007 And 0008
+
+Roadmap 0009 must consume completed lower-level boundaries rather than quietly
+finishing them inside the CPI server.
+
+Roadmap 0007 must hand off transport-neutral, injectable services for:
+
+```text
+operation sessions and ordered actions
+desired graph editing and optimistic concurrency
+pure validation and diffing
+activity planning
+approval request and decision
+session/plan read projections
+Postgres UnitOfWork construction
+stable request/result/error descriptors
+```
+
+Roadmap 0008 must hand off generic execution machinery capable of:
+
+```text
+claiming one approved plan idempotently
+starting Docker-backed DataBlock and ApplicationBlock values
+injecting socket-derived environment values
+publishing explicitly requested host endpoints
+waiting for declared provider readiness and HTTP health
+recording ActivityRun, ActivityEvent, and ObservedState truth
+retaining Postgres according to cleanup policy
+compensating completed external steps where safe
+```
+
+If either handoff is absent, Roadmap 0009 stops and repairs the prerequisite
+roadmap. It must not add a CPI-specific transaction manager, activity executor,
+Docker startup script, or optimistic `started == healthy` shortcut.
+
+### Server Package Boundary
+
+The CPI's server composition belongs under `control_plane_kit/servers/`, beside
+the existing package-provided server blocks. Its durable and workflow modules
+do not move there.
+
+```text
+control_plane_kit/
+  servers/
+    control_plane_instance/
+      __init__.py       # curated public server exports
+      app.py            # compose the complete FastAPI application
+      block.py          # control_plane_instance_block(...)
+      environment.py    # ControlPlaneInstanceEnvironment
+      entrypoint.py     # create_app_from_environment() for Uvicorn
+      routes/
+        __init__.py
+        reads.py        # transport adapter over read services
+        commands.py     # transport adapter over Roadmap 0007 services
+        execution.py    # transport adapter over Roadmap 0008 services
+        control.py      # CPI control/capability routes
+        health.py       # bounded liveness/readiness projections
+
+  stores/               # durable truth and Postgres adapters remain here
+  read_services/        # read semantics remain here
+  workflows/            # command/session semantics remain here
+  policies/             # authz/approval/destructive policy remains here
+  projections/          # operator-facing projections remain here
+```
+
+The existing `servers/instance_read.py` is an early transport adapter. During
+this roadmap it should become the read-router portion of the composed server,
+with imports and tests moved deliberately rather than retained as a second CPI
+application. No compatibility wrapper is required merely to preserve an
+unreleased internal module path.
+
+The root `Dockerfile` should gain a named CPI image target whose command points
+at the real package entrypoint. The server package should not receive a second,
+independent Docker build system unless runtime evidence demonstrates a need.
+
+```dockerfile
+FROM package AS control-plane-instance
+
+EXPOSE 8010
+
+CMD ["uvicorn", \
+     "control_plane_kit.servers.control_plane_instance.entrypoint:create_app_from_environment", \
+     "--factory", "--host", "0.0.0.0", "--port", "8010"]
+```
+
+### Composition, Not Ownership Collapse
+
+The FastAPI layer assembles services and owns HTTP transaction boundaries; it
+does not absorb their semantics:
 
 ```python
 def create_control_plane_instance_app(
@@ -113,12 +206,67 @@ def create_control_plane_instance_app(
     app.include_router(command_router(services.commands, security.command_policy))
     app.include_router(execution_router(services.execution, security.execution_policy))
     app.include_router(instance_control_router(services.control, security.control_policy))
+    app.include_router(health_router(services.health))
     return app
 ```
 
-This is conceptual target code. The services remain imported modules with their
-own truth and workflow boundaries; the FastAPI application only composes them
-and owns the HTTP transaction boundary.
+Each mutating route calls one application-service command. That command opens
+one Postgres UnitOfWork. Repositories may add or flush, but only the UnitOfWork
+commits. Docker, Cloudflare, runtime-agent, or child HTTP effects occur after
+durable intent and outside the database transaction through Roadmap 0008.
+
+### CPI Environment Contract
+
+The CPI declares startup requirements using the existing typed contract system.
+Access remains lookup so a future runtime patch or derived-resource rebuild can
+be represented honestly.
+
+```python
+from control_plane_kit.contracts import (
+    EnvironmentContract,
+    HttpVariable,
+    PostgresVariable,
+    ReloadPolicy,
+    SecretVariable,
+    TextVariable,
+)
+
+
+class ControlPlaneInstanceEnvironment(EnvironmentContract):
+    instance_id = TextVariable(
+        "instance_id",
+        mutable=False,
+        reload_policy=ReloadPolicy.IMMUTABLE,
+        metadata={"env": "CONTROL_PLANE_INSTANCE_ID"},
+    )
+    workspace_id = TextVariable(
+        "workspace_id",
+        mutable=False,
+        reload_policy=ReloadPolicy.IMMUTABLE,
+        metadata={"env": "CONTROL_PLANE_WORKSPACE_ID"},
+    )
+    database_url = PostgresVariable(
+        "database_url",
+        reload_policy=ReloadPolicy.DRAIN_REQUIRED,
+        metadata={"env": "CONTROL_PLANE_DATABASE_URL"},
+    )
+    runtime_authority_url = HttpVariable(
+        "runtime_authority_url",
+        required=False,
+        reload_policy=ReloadPolicy.RESTART_REQUIRED,
+        metadata={"env": "CONTROL_PLANE_RUNTIME_URL"},
+    )
+    control_token = SecretVariable(
+        "control_token",
+        reload_policy=ReloadPolicy.RESTART_REQUIRED,
+        metadata={"env": "CONTROL_PLANE_CONTROL_TOKEN"},
+    )
+```
+
+Database clients derived from `database_url` must either be rebuilt under an
+allowed policy or be reported stale. Secret-bearing settings use secret
+contracts/references and are never emitted in graph, activity, log, or MCP
+descriptors.
 
 The first Roadmap 0009 implementation slice is therefore:
 
@@ -129,6 +277,10 @@ compose real CPI FastAPI application
   -> run through DockerRuntime
   -> prove real health/read behavior
 ```
+
+That slice ends in a required reassessment before Auth, public entry, or child
+spawning proceeds. The review must compare the live implementation against this
+roadmap and record any necessary issue-topology changes.
 
 ## Central Algebra
 
@@ -147,10 +299,13 @@ DeploymentGraph
 The instance is one inhabitant of `ApplicationBlock`:
 
 ```python
+from dataclasses import dataclass
+
 from control_plane_kit import (
     ApplicationBlock,
     BlockSockets,
     BlockSpec,
+    CapabilityName,
     DockerImageImplementation,
     Protocol,
     ProviderSocket,
@@ -158,24 +313,42 @@ from control_plane_kit import (
 )
 
 
+@dataclass(frozen=True)
+class ControlPlaneInstanceSpec(BlockSpec):
+    """Closed specification type identifying a CPI application block."""
+
+
 def control_plane_instance_block(
     block_id: str,
     *,
+    workspace_id: str | None = None,
     image: str = "control-plane-kit-instance:latest",
 ) -> ApplicationBlock:
     """Describe one deployable control-plane instance server."""
 
     return ApplicationBlock(
-        spec=BlockSpec(
+        spec=ControlPlaneInstanceSpec(
             role_id=block_id,
             display_name="Control Plane Instance",
             health_path="/health",
-            metadata={"server_kind": "control-plane-instance"},
+            capabilities=(CapabilityName.HEALTH_CHECKABLE,),
         ),
         implementation=DockerImageImplementation(
             image=image,
-            command=("python", "-m", "control_plane_kit.servers.instance"),
-            ports={"instance-api": 8000, "control-api": 8001},
+            command=(
+                "uvicorn",
+                "control_plane_kit.servers.control_plane_instance.entrypoint:create_app_from_environment",
+                "--factory",
+                "--host",
+                "0.0.0.0",
+                "--port",
+                "8010",
+            ),
+            ports={"internal": 8010},
+            environment={
+                "CONTROL_PLANE_INSTANCE_ID": block_id,
+                "CONTROL_PLANE_WORKSPACE_ID": workspace_id or block_id,
+            },
         ),
         sockets=BlockSockets(
             requirements=(
@@ -184,11 +357,14 @@ def control_plane_instance_block(
                     Protocol.POSTGRES,
                     ("CONTROL_PLANE_DATABASE_URL",),
                 ),
+                RequirementSocket(
+                    "runtime-authority",
+                    Protocol.HTTP,
+                    ("CONTROL_PLANE_RUNTIME_URL",),
+                    required=False,
+                ),
             ),
-            providers=(
-                ProviderSocket("instance-api", Protocol.HTTP),
-                ProviderSocket("control-api", Protocol.HTTP),
-            ),
+            providers=(ProviderSocket("internal", Protocol.HTTP),),
         ),
     )
 ```
@@ -199,6 +375,59 @@ during implementation. The law may not:
 ```text
 The instance is constructed through the existing block product form.
 ```
+
+The first implementation intentionally advertises one HTTP provider. Reads,
+commands, execution, health, and `__control` routes are route families on one
+FastAPI listener, not separate network services. A second provider socket is
+added only if the implementation later creates a genuinely separate listener
+with an independently meaningful address.
+
+This provider is the CPI's runtime-local service address. It is not the public
+URL shown to users. Auth consumes the CPI provider; a public-entry block fronts
+Auth and advertises the user-facing address.
+
+The runtime-authority socket is optional only so the same server can run in an
+explicit read/planning-only mode. Mutation endpoints must report authority as
+unavailable and may not fall back to host Docker access. A CPI that advertises
+or accepts execution capability must have this requirement connected.
+
+Discovery must pattern-match the closed `ControlPlaneInstanceSpec` type. It may
+not infer CPI identity from display names, image names, route strings, or a
+free-form metadata discriminator.
+
+The compiler must therefore preserve authored specification identity in the
+compiled node rather than flattening it entirely into metadata:
+
+```python
+@dataclass(frozen=True)
+class Node:
+    node_id: str
+    spec: BlockSpec
+    implementation: MaterializedImplementation
+    runtime_id: str
+    sockets: BlockSockets
+    # endpoints, environment, and observations remain compiled/runtime values
+```
+
+This sketch is a design requirement, not a demand for those exact field names.
+The important laws are:
+
+```text
+authoring spec type survives compilation in memory
+descriptor boundary encodes a stable closed variant tag
+descriptor decoder reconstructs the same spec variant
+core graph/compiler does not import CPI server implementation code
+projection may match ControlPlaneInstanceSpec without reading metadata strings
+```
+
+Roadmap 0007 must leave graph descriptor reconstruction extensible enough for
+this variant. Roadmap 0009 owns adding and round-tripping the CPI variant.
+
+The initial snippet advertises only health because `/health` is part of the
+first slice. Logging, restart, planning, execution, and child-management
+capabilities are added only with their real route sets and authorization
+policies. A capability may not be advertised merely because the roadmap intends
+to implement it later.
 
 ## Ordinary Graph Construction
 
@@ -245,6 +474,117 @@ recipe = DeploymentRecipe(
 )
 ```
 
+## Deployment Recipe Ladder And Reassessment Gate
+
+Roadmap 0009 should not attempt the recursive demonstration in one jump. It
+must accrue executable examples in three stages.
+
+### Stage A: CPI Packaging Smoke
+
+The first recipe contains only CPI and Postgres. The runtime-authority
+requirement is intentionally unconnected, so the server runs in
+read/planning-only mode:
+
+```python
+def control_plane_instance_core_recipe() -> DeploymentRecipe:
+    postgres = control_plane_postgres_block("cpi-postgres", database="control_plane")
+    cpi = control_plane_instance_block("cpi")
+
+    return DeploymentRecipe(
+        name="control-plane-instance-core",
+        root=DockerRuntime(
+            runtime_id="cpi-core",
+            children=(
+                postgres,
+                cpi,
+                SocketConnection(
+                    provider_role="cpi-postgres",
+                    provider_socket="internal",
+                    consumer_role="cpi",
+                    requirement_socket="database",
+                ),
+            ),
+        ),
+    )
+```
+
+This recipe must compile through the ordinary graph compiler, start through the
+ordinary Docker interpreter, publish an explicitly requested development port,
+answer `/health`, and answer at least one real read route against Postgres.
+Execution routes must report runtime authority unavailable rather than reaching
+Docker implicitly.
+
+Until the operational bootstrap issue is complete, Stage A may use a clearly
+named test provisioning fixture to install the Postgres schema and seed one
+workspace. The fixture must use the real Postgres adapters and migrations, be
+visible in the example/test setup, and never be presented as the production
+bootstrap mechanism. The later bootstrap issue replaces it with the idempotent
+`BootstrapInstance` program used by real deployments.
+
+### Stage B: Operational CPI Core
+
+The second recipe adds the first reviewed runtime-authority block:
+
+```text
+Postgres.internal -> CPI.database
+DockerRuntimeAgent.control -> CPI.runtime-authority
+CPI.internal -> host-published development observation
+```
+
+It proves that an approved harmless plan can pass from CPI to the runtime
+authority, produce activity events, and update observed state. It still omits
+Auth, public entry, and recursive spawning so failures remain attributable.
+
+### Mandatory Reassessment Gate
+
+After Stages A and B pass live Docker validation, stop and review Roadmap 0009
+before implementing the selectable-instance stack. Record findings in the
+Roadmap 0009 learning document and update child issues where needed.
+
+The review must answer:
+
+```text
+Does one CPI HTTP provider correctly represent the running server?
+Do command and execution routes preserve API-owned UnitOfWork boundaries?
+Are database and runtime URLs supplied only through RequirementSockets?
+Does Docker distinguish started, ready, healthy, unhealthy, and unknown?
+Are private Docker endpoints distinct from host-observed endpoints?
+Can Postgres survive CPI replacement under retained-state policy?
+Are activity events sufficient to explain partial startup or execution?
+Does the image target package the real server without demo-only wiring?
+Did any CPI-specific behavior leak into compiler or runtime interpreters?
+```
+
+Only after this review may the roadmap proceed to the full selectable stack.
+
+### Stage C: Selectable CPI Stack
+
+The complete fragment adds Auth and public entry around the proven operational
+core:
+
+```text
+Postgres.internal -> CPI.database
+DockerRuntimeAgent.control -> CPI.runtime-authority
+CPI.internal -> Auth.upstream
+Auth.internal -> PublicEntry.upstream
+PublicEntry.public -> Auth.public-entry-url
+```
+
+The last two connections express different facts:
+
+```text
+Auth.internal -> PublicEntry.upstream
+  traffic flow: public entry forwards requests to Auth
+
+PublicEntry.public -> Auth.public-entry-url
+  configuration flow: Auth learns its externally observed issuer/base URL
+```
+
+This is a communication/configuration cycle but not an arbitrary startup cycle.
+Roadmap 0008 readiness policy and Roadmap 0009 phased execution must allow the
+public-entry provider to establish or reveal its URL before Auth becomes ready,
+then verify end-to-end public traffic after Auth starts.
+
 The two-node example proves the algebra, but it is not the complete selectable
 instance deployment. The operational unit presented by authoring helpers and
 the future UI is an ordinary recipe fragment:
@@ -279,9 +619,20 @@ def control_plane_instance_deployment(
         postgres,
         runtime_authority,
         SocketConnection(postgres.block_id, "internal", instance.block_id, "database"),
-        SocketConnection(runtime_authority.block_id, "control", instance.block_id, "runtime"),
-        SocketConnection(instance.block_id, "instance-api", auth.block_id, "upstream"),
-        SocketConnection(public_entry.block_id, "public", auth.block_id, "public-entry"),
+        SocketConnection(
+            runtime_authority.block_id,
+            "control",
+            instance.block_id,
+            "runtime-authority",
+        ),
+        SocketConnection(instance.block_id, "internal", auth.block_id, "upstream"),
+        SocketConnection(auth.block_id, "internal", public_entry.block_id, "upstream"),
+        SocketConnection(
+            public_entry.block_id,
+            "public",
+            auth.block_id,
+            "public-entry-url",
+        ),
     )
     return children
 ```
@@ -380,11 +731,13 @@ def selectable_instances(
     grants: AccessGrants,
     actor: Actor,
 ) -> tuple[SelectableInstance, ...]:
-    children = (
-        node
-        for node in graph.nodes
-        if node.metadata.get("server_kind") == "control-plane-instance"
-    )
+    children = []
+    for node in graph.nodes:
+        match node.spec:
+            case ControlPlaneInstanceSpec():
+                children.append(node)
+            case _:
+                pass
     return tuple(
         project_selectable_instance(node, observed, grants)
         for node in children
@@ -392,9 +745,9 @@ def selectable_instances(
     )
 ```
 
-The implementation should replace metadata string inspection with the package's
-eventual typed block/specification form. The snippet demonstrates the
-projection boundary, not the final discriminator.
+The projection consumes the preserved specification value. JSON persistence may
+encode the closed variant with a textual descriptor tag, but that string belongs
+only at the serialization boundary and must be decoded before domain matching.
 
 Relational data may still be needed for operator visibility grants, endpoint
 history, lifecycle events, and recovery metadata. Those records do not
@@ -525,16 +878,36 @@ AuthBlock
     -> AUTH_ISSUER_URL where required
 ```
 
-Conceptually:
+Using the existing contract vocabulary, Auth declares the environment values it
+reads and its public-entry requirement fills them from one provider URL:
 
 ```python
-PublicEntryUrl = EnvironmentContract[str](
-    name="public_entry_url",
-    env_bindings=(
+class ControlPlaneAuthEnvironment(EnvironmentContract):
+    public_url = HttpVariable(
+        "public_url",
+        reload_policy=ReloadPolicy.RESTART_REQUIRED,
+        metadata={"env": "CONTROL_PLANE_PUBLIC_URL"},
+    )
+    auth_base_url = HttpVariable(
+        "auth_base_url",
+        reload_policy=ReloadPolicy.RESTART_REQUIRED,
+        metadata={"env": "AUTH_PUBLIC_BASE_URL"},
+    )
+    issuer_url = HttpVariable(
+        "issuer_url",
+        reload_policy=ReloadPolicy.RESTART_REQUIRED,
+        metadata={"env": "AUTH_ISSUER_URL"},
+    )
+
+
+public_entry_requirement = RequirementSocket(
+    "public-entry-url",
+    Protocol.HTTP,
+    (
         "CONTROL_PLANE_PUBLIC_URL",
         "AUTH_PUBLIC_BASE_URL",
+        "AUTH_ISSUER_URL",
     ),
-    secret=False,
 )
 ```
 
@@ -656,24 +1029,38 @@ approval/execution pipeline.
    - Define recursion as one application block owning another deployment graph.
    - Define the root as externally bootstrapped position, not a new type.
    - Preserve child opacity and independent truth ownership.
+   - Define `ControlPlaneInstanceSpec` as a closed authored specification type
+     and require that compilation plus descriptor round-trip preserve it.
+   - Reject metadata-string, display-name, image-name, and route-name inference
+     for CPI discovery.
 
 2. Compose the real control-plane instance FastAPI application.
+   - Create the `servers/control_plane_instance/` package and route subpackage
+     exactly as described in the server-package boundary above.
+   - Move the existing read adapter into that composition deliberately; do not
+     leave a second seeded CPI application behind.
    - Combine Roadmap 0006 reads, Roadmap 0007 commands/planning, Roadmap 0008
      execution, health, capabilities, and instance control routes.
    - Keep route handlers thin and preserve the API-owned UnitOfWork boundary.
+   - Add `ControlPlaneInstanceEnvironment` and construct services from typed
+     startup requirements and secret references.
    - Replace the seeded demo entry point as the definition of the CPI process.
    - Add app-factory tests for read, command, execution-policy, and health
      composition.
 
 3. Package the CPI as a real Docker application block.
    - Build an executable CPI image rather than a generated toy server command.
-   - Add `control_plane_instance_block()` in `servers/` following the router and
+   - Add `control_plane_instance_block()` in
+     `servers/control_plane_instance/block.py` following the router and
      package-server factory pattern.
-   - Declare instance API, control API, health, Postgres, and runtime-authority
-     sockets.
+   - Declare one internal HTTP provider, required Postgres, optional explicit
+     runtime authority for read/planning-only mode, health, and capabilities.
+   - Carry `ControlPlaneInstanceSpec` through compiled nodes and descriptor
+     reconstruction without coupling the core compiler to server behavior.
    - Advertise typed capabilities without relying on display metadata.
-   - Prove ordinary `DockerRuntime` compilation and health/read behavior without
-     adding a new graph node case.
+   - Add the Stage A `control-plane-instance-core` recipe.
+   - Prove ordinary `DockerRuntime` compilation, explicit host publication, real
+     health, and a Postgres-backed read without adding a new graph node case.
 
 4. Define and implement the first Docker runtime-authority path.
    - Record the runtime-authority contract and threat model.
@@ -683,12 +1070,21 @@ approval/execution pipeline.
      shell execution.
    - Connect the agent provider to the CPI runtime requirement normally.
    - Test authorization, scope restrictions, and unavailable-agent behavior.
+   - Add the Stage B operational CPI recipe and execute one approved harmless
+     activity through the agent.
+   - Stop for the mandatory live reassessment, record a learning document, and
+     update the remaining Roadmap 0009 issue topology before proceeding.
 
 5. Package the control-plane Auth and public-entry boundary.
    - Provide an ordinary Auth application block in front of CPI.
-   - Connect CPI's instance API provider to Auth's upstream requirement.
+   - Connect CPI's `internal` provider to Auth's upstream requirement.
    - Define `PublicEntryUrl` as a typed EnvironmentContract supplied by the
      public-entry provider and consumed by Auth.
+   - Model `CPI.internal -> Auth.upstream`, `Auth.internal ->
+     PublicEntry.upstream`, and `PublicEntry.public -> Auth.public-entry-url` as
+     distinct socket connections.
+   - Keep traffic forwarding distinct from public issuer/base-URL
+     configuration even though both concern the same Auth boundary.
    - Support stable preconfigured URLs and observed ephemeral URLs through
      explicit reload/restart policy.
    - Keep Auth signing/session secrets in secret providers and descriptors
@@ -701,6 +1097,8 @@ approval/execution pipeline.
    - Return ordinary `DeploymentExpr` values rather than introducing a capsule
      graph node or new persistence aggregate.
    - Support several disconnected instance fragments in one workspace.
+   - Add the Stage C selectable CPI stack recipe using only ordinary blocks and
+     connections.
    - Add compilation fixtures for named Cloudflare, ephemeral Cloudflare, and
      host-published development entry providers.
 
@@ -708,6 +1106,8 @@ approval/execution pipeline.
    - Consume the readiness/dependency semantics delivered by Roadmap 0008.
    - Start stores, runtime authority, CPI, public-entry endpoint, and Auth in the
      declared phased order with endpoint and health gates.
+   - Resolve the deliberate Auth/public-entry communication/configuration cycle
+     through typed readiness phases rather than arbitrary graph order.
    - Compensate partial startup in reverse completed order where safe.
    - Reject any implementation that uses a hand-authored instance startup
      script or a child-specific executor.
@@ -829,9 +1229,21 @@ persist approved desired graph
 
 - `ControlPlaneInstanceBlock` is an ordinary `ApplicationBlock` and therefore a
   `DeployBlock`.
+- `ControlPlaneInstanceSpec` survives recipe compilation, descriptor
+  persistence, and reconstruction as a closed specification variant.
+- Child discovery pattern-matches that type and does not inspect free-form
+  metadata strings.
 - Existing recipe, graph, diff, and execution code accepts it without a new node
   alternative.
 - Socket connections supply its Postgres and HTTP requirements normally.
+- The Stage A core recipe runs the real CPI image with Postgres, an intentionally
+  published development endpoint, truthful health, and a real read route.
+- With runtime authority absent, Stage A remains explicitly read/planning-only
+  and execution fails closed.
+- The Stage B operational recipe executes one approved harmless activity through
+  the reviewed runtime authority and records events plus observed state.
+- The mandatory Stage A/B reassessment is recorded before Auth/public-entry
+  implementation begins.
 - One ordinary recipe fragment expands into public entry, Auth, CPI, stores,
   runtime authority, and connections.
 - Dependency-aware execution starts that fragment in readiness order without a
@@ -866,6 +1278,13 @@ Roadmap 0009 is complete when:
 - the package provides a deployable control-plane instance server block,
 - the CPI block runs the composed read/command/planning/execution FastAPI
   application rather than the seeded read demo,
+- the CPI server composition lives under
+  `control_plane_kit/servers/control_plane_instance/` while truth, workflow,
+  policy, and projection ownership remains in their existing modules,
+- the package has live-validated Stage A and Stage B recipes and a documented
+  reassessment of the remaining roadmap,
+- CPI identity is represented and reconstructed as a closed specification type,
+  not inferred from strings,
 - no Hub-specific server implementation is needed,
 - no special recursive graph node or compiler case is needed,
 - the bootstrapped instance can deploy a child through the ordinary graph edit,
