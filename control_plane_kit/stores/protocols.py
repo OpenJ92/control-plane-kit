@@ -4,15 +4,17 @@ from __future__ import annotations
 
 from typing import Protocol
 
-from control_plane_kit.stores.records import (
+from control_plane_kit.execution import (
     ActivityEventRecord,
-    ActivityPlanRecord,
     ActivityRunRecord,
+    ObservationRecord,
+)
+from control_plane_kit.stores.records import (
+    ActivityPlanRecord,
     ApprovalDecisionRecord,
     ApprovalRequestRecord,
     GraphVersionRecord,
     InstanceRecord,
-    ObservationRecord,
     OperationActionRecord,
     OperationSessionRecord,
     SecretReferenceRecord,

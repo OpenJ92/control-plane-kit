@@ -1,6 +1,11 @@
 import unittest
 
-from control_plane_kit import ActivityPlan
+from control_plane_kit import (
+    ActivityPlan,
+    ActivityRunStatus,
+    ObservationFreshness,
+    ObservationStatus,
+)
 from control_plane_kit.topology.graph import DeploymentGraph
 from control_plane_kit.stores import (
     ActivityPlanRecord,
@@ -131,7 +136,7 @@ class StoreContractTests(PostgresStoreTestCase):
             ActivityRunRecord(
                 run_id="run-a",
                 plan_id="plan-a",
-                status="running",
+                status=ActivityRunStatus.RUNNING,
                 started_at="2026-07-15T00:03:00Z",
             )
         )
@@ -150,7 +155,7 @@ class StoreContractTests(PostgresStoreTestCase):
                 observation_id="obs-1",
                 workspace_id="workspace-a",
                 subject_id="api",
-                status="healthy",
+                status=ObservationStatus.HEALTHY,
                 observed_at="2026-07-15T00:00:00Z",
             )
         )
@@ -159,15 +164,15 @@ class StoreContractTests(PostgresStoreTestCase):
                 observation_id="obs-2",
                 workspace_id="workspace-a",
                 subject_id="api",
-                status="stale",
+                status=ObservationStatus.UNKNOWN,
                 observed_at="2026-07-15T00:01:00Z",
-                stale=True,
+                freshness=ObservationFreshness.STALE,
             )
         )
 
         latest = store.latest("workspace-a", "api")
         self.assertIsNotNone(latest)
-        self.assertTrue(latest.stale)
+        self.assertIs(latest.freshness, ObservationFreshness.STALE)
 
     def test_observed_state_lists_latest_per_workspace_subject(self):
         store = self.stores.observed_state
@@ -176,7 +181,7 @@ class StoreContractTests(PostgresStoreTestCase):
                 observation_id="obs-api-1",
                 workspace_id="workspace-a",
                 subject_id="api",
-                status="starting",
+                status=ObservationStatus.STARTING,
                 observed_at="2026-07-15T00:00:00Z",
             )
         )
@@ -185,7 +190,7 @@ class StoreContractTests(PostgresStoreTestCase):
                 observation_id="obs-api-2",
                 workspace_id="workspace-a",
                 subject_id="api",
-                status="healthy",
+                status=ObservationStatus.HEALTHY,
                 observed_at="2026-07-15T00:01:00Z",
             )
         )
@@ -194,15 +199,18 @@ class StoreContractTests(PostgresStoreTestCase):
                 observation_id="obs-router",
                 workspace_id="workspace-a",
                 subject_id="router",
-                status="stale",
+                status=ObservationStatus.UNKNOWN,
                 observed_at="2026-07-15T00:02:00Z",
-                stale=True,
+                freshness=ObservationFreshness.STALE,
             )
         )
 
         self.assertEqual(
-            [(record.subject_id, record.status, record.stale) for record in store.latest_for_workspace("workspace-a")],
-            [("api", "healthy", False), ("router", "stale", True)],
+            [
+                (record.subject_id, record.status.value, record.freshness.value)
+                for record in store.latest_for_workspace("workspace-a")
+            ],
+            [("api", "healthy", "fresh"), ("router", "unknown", "stale")],
         )
 
     def test_instance_registry_lists_by_owner_and_updates_lifecycle(self):

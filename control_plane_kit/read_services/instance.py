@@ -21,10 +21,10 @@ from control_plane_kit.stores.protocols import (
     ObservedStateStore,
     WorkspaceStore,
 )
+from control_plane_kit.execution import ObservationRecord
 from control_plane_kit.stores.records import (
     ActivityPlanRecord,
     GraphVersionRecord,
-    ObservationRecord,
     OperationSessionRecord,
     OperationSessionStatus,
     WorkspaceRecord,
@@ -696,10 +696,10 @@ def _run_descriptor(store: ActivityHistoryStore, run: object, *, limit: int) -> 
     return {
         "run_id": run_id,
         "plan_id": getattr(run, "plan_id"),
-        "status": getattr(run, "status"),
+        "status": getattr(run, "status").value,
         "started_at": getattr(run, "started_at"),
         "finished_at": getattr(run, "finished_at"),
-        "metadata": _redact_descriptor_value("metadata", getattr(run, "metadata")),
+        "metadata": _redact_descriptor_value("metadata", getattr(run, "metadata").descriptor()),
         "events": [
             _event_descriptor(event)
             for event in store.events_for_run(run_id)[:limit]
@@ -712,9 +712,10 @@ def _event_descriptor(event: object) -> dict[str, object]:
         "event_id": getattr(event, "event_id"),
         "run_id": getattr(event, "run_id"),
         "ordinal": getattr(event, "ordinal"),
-        "event_type": getattr(event, "event_type"),
+        "event_type": getattr(event, "kind").value,
         "occurred_at": getattr(event, "occurred_at"),
-        "payload": _redact_descriptor_value("payload", getattr(event, "payload")),
+        "activity_id": getattr(event, "activity_id"),
+        "payload": _redact_descriptor_value("payload", getattr(event, "evidence").descriptor()),
     }
 
 
@@ -723,10 +724,10 @@ def _observation_descriptor(record: ObservationRecord) -> dict[str, object]:
         "observation_id": record.observation_id,
         "workspace_id": record.workspace_id,
         "subject_id": record.subject_id,
-        "status": record.status,
+        "status": record.status.value,
         "observed_at": record.observed_at,
-        "stale": record.stale,
-        "payload": _redact_descriptor_value("payload", record.payload),
+        "stale": record.freshness.value == "stale",
+        "payload": _redact_descriptor_value("payload", record.evidence.descriptor()),
     }
 
 

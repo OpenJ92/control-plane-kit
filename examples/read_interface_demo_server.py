@@ -16,11 +16,14 @@ from control_plane_kit import (
     BlockSockets,
     BlockSpec,
     CapabilityName,
+    BoundedEvidence,
     DataBlock,
     DeploymentRecipe,
     DockerPostgresImplementation,
     DockerRuntime,
     InstanceReadService,
+    ObservationFreshness,
+    ObservationStatus,
     PlanOnlyImplementation,
     Protocol,
     ProxyBlock,
@@ -167,9 +170,9 @@ def seed_demo_data(stores: PostgresStoreBundle) -> None:
             observation_id="demo-observation-router",
             workspace_id=DEMO_WORKSPACE_ID,
             subject_id="api-router",
-            status="healthy",
+            status=ObservationStatus.HEALTHY,
             observed_at="2026-07-15T00:12:00Z",
-            payload={"source": "demo-seed"},
+            evidence=BoundedEvidence.from_mapping({"source": "demo-seed"}),
         )
     )
     stores.observed_state.put(
@@ -177,10 +180,10 @@ def seed_demo_data(stores: PostgresStoreBundle) -> None:
             observation_id="demo-observation-api",
             workspace_id=DEMO_WORKSPACE_ID,
             subject_id="api",
-            status="unknown",
+            status=ObservationStatus.UNKNOWN,
             observed_at="2026-07-15T00:12:30Z",
-            payload={"source": "demo-seed"},
-            stale=True,
+            evidence=BoundedEvidence.from_mapping({"source": "demo-seed"}),
+            freshness=ObservationFreshness.STALE,
         )
     )
 
