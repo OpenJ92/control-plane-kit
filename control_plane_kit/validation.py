@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from collections import Counter
 from dataclasses import dataclass
 from enum import StrEnum
 
@@ -29,6 +30,10 @@ class ValidationCode(StrEnum):
     EDGE_REFERENCE = "edge-reference"
     EDGE_PROTOCOL = "edge-protocol"
     CONTROL_ROUTE_SET = "control-route-set"
+    DUPLICATE_PROVIDER_SOCKET = "duplicate-provider-socket"
+    DUPLICATE_REQUIREMENT_SOCKET = "duplicate-requirement-socket"
+    EDGE_ENV_BINDINGS = "edge-env-bindings"
+    CONSUMER_ENVIRONMENT = "consumer-environment"
 
 
 class SocketDirection(StrEnum):
@@ -169,8 +174,10 @@ def validate_graph(graph: DeploymentGraph) -> ValidatedGraph:
             (edge.consumer_role, edge.requirement_socket), []
         ).append(edge_id)
         try:
-            provider = graph.node(edge.provider_role).provider_socket(edge.provider_socket)
-            requirement = graph.node(edge.consumer_role).requirement_socket(
+            provider_node = graph.node(edge.provider_role)
+            consumer_node = graph.node(edge.consumer_role)
+            provider = provider_node.provider_socket(edge.provider_socket)
+            requirement = consumer_node.requirement_socket(
                 edge.requirement_socket
             )
         except KeyError as error:
@@ -184,6 +191,37 @@ def validate_graph(graph: DeploymentGraph) -> ValidatedGraph:
                     ValidationCode.EDGE_PROTOCOL,
                     EdgeSubject(edge_id),
                     "edge protocol does not match both connected sockets",
+                )
+            )
+        expected_keys = set(requirement.env_bindings)
+        if set(edge.env_assignments) != expected_keys:
+            findings.append(
+                _error(
+                    ValidationCode.EDGE_ENV_BINDINGS,
+                    EdgeSubject(edge_id),
+                    "edge assignments must exactly cover requirement environment bindings",
+                )
+            )
+        endpoint = provider_node.endpoints.get(provider.name)
+        if endpoint is not None and any(
+            value != endpoint.url for value in edge.env_assignments.values()
+        ):
+            findings.append(
+                _error(
+                    ValidationCode.EDGE_ENV_BINDINGS,
+                    EdgeSubject(edge_id),
+                    "edge assignment values must equal the provider endpoint address",
+                )
+            )
+        if any(
+            consumer_node.environment.get(name) != value
+            for name, value in edge.env_assignments.items()
+        ):
+            findings.append(
+                _error(
+                    ValidationCode.CONSUMER_ENVIRONMENT,
+                    EdgeSubject(edge_id),
+                    "consumer environment must contain the edge assignments",
                 )
             )
 
@@ -204,7 +242,29 @@ def validate_graph(graph: DeploymentGraph) -> ValidatedGraph:
                     "node must belong to exactly its declared runtime",
                 )
             )
-        provider_names = set(node.sockets.provider_names())
+        provider_name_counts = Counter(node.sockets.provider_names())
+        requirement_name_counts = Counter(node.sockets.requirement_names())
+        for socket_name in sorted(
+            name for name, count in provider_name_counts.items() if count > 1
+        ):
+            findings.append(
+                _error(
+                    ValidationCode.DUPLICATE_PROVIDER_SOCKET,
+                    SocketSubject(node_id, socket_name, SocketDirection.PROVIDER),
+                    "provider socket name must be unique within its node",
+                )
+            )
+        for socket_name in sorted(
+            name for name, count in requirement_name_counts.items() if count > 1
+        ):
+            findings.append(
+                _error(
+                    ValidationCode.DUPLICATE_REQUIREMENT_SOCKET,
+                    SocketSubject(node_id, socket_name, SocketDirection.REQUIREMENT),
+                    "requirement socket name must be unique within its node",
+                )
+            )
+        provider_names = set(provider_name_counts)
         for endpoint_name in sorted(set(node.endpoints) - provider_names):
             findings.append(
                 _error(

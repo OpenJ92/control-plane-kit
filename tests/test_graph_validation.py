@@ -137,6 +137,69 @@ class GraphValidationTests(unittest.TestCase):
             {finding.code for finding in result.errors},
         )
 
+    def test_duplicate_socket_names_are_rejected(self):
+        graph = graph_with_requirement()
+        provider = graph.node("provider")
+        consumer = graph.node("consumer")
+        provider_socket = provider.sockets.providers[0]
+        requirement_socket = consumer.sockets.requirements[0]
+        malformed = graph.update_node(
+            replace(
+                provider,
+                sockets=BlockSockets(
+                    providers=(provider_socket, provider_socket),
+                ),
+            )
+        ).update_node(
+            replace(
+                consumer,
+                sockets=BlockSockets(
+                    requirements=(requirement_socket, requirement_socket),
+                ),
+            )
+        )
+
+        result = validate_graph(malformed)
+
+        self.assertIn(
+            ValidationCode.DUPLICATE_PROVIDER_SOCKET,
+            {finding.code for finding in result.errors},
+        )
+        self.assertIn(
+            ValidationCode.DUPLICATE_REQUIREMENT_SOCKET,
+            {finding.code for finding in result.errors},
+        )
+
+    def test_edge_assignments_must_match_requirement_and_provider(self):
+        graph = graph_with_requirement()
+        edge_id, edge = next(iter(graph.edges.items()))
+        wrong_key = replace(edge, env_assignments={"WRONG_URL": "http://provider"})
+        wrong_value = replace(edge, env_assignments={"UPSTREAM_URL": "http://wrong"})
+
+        key_result = validate_graph(replace(graph, edges={edge_id: wrong_key}))
+        value_result = validate_graph(replace(graph, edges={edge_id: wrong_value}))
+
+        self.assertIn(
+            ValidationCode.EDGE_ENV_BINDINGS,
+            {finding.code for finding in key_result.errors},
+        )
+        self.assertIn(
+            ValidationCode.EDGE_ENV_BINDINGS,
+            {finding.code for finding in value_result.errors},
+        )
+
+    def test_consumer_environment_must_retain_edge_assignments(self):
+        graph = graph_with_requirement()
+        consumer = graph.node("consumer")
+        malformed = graph.update_node(replace(consumer, environment={}))
+
+        result = validate_graph(malformed)
+
+        self.assertIn(
+            ValidationCode.CONSUMER_ENVIRONMENT,
+            {finding.code for finding in result.errors},
+        )
+
     def test_findings_are_deterministic_and_renderable(self):
         graph = graph_with_requirement(connected=False)
 
