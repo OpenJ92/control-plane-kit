@@ -75,7 +75,43 @@ This roadmap should provide:
 - Do not require a graph database.
 - Do not hide partial failure.
 
-## Suggested Issue Topology
+## Canonical Issue Topology
+
+The source-level dry run after Roadmap 0007 replaced the initial equal-sized
+brainstorm with the following ordered topology:
+
+```text
+#211 typed execution values and codecs
+  -> #212 Postgres execution schema and stores
+    -> #213 claim/event/transition concurrency hardening
+      -> #214 execution request and approval admission
+        -> #215 claimed ActivityRun lifecycle
+
+#211 -> #216 generic saga adaptation
+          -> #217 resumable dependency scheduler
+            -> #218 runtime/control effect protocols
+
+#215 + #218 -> #219 durable execution coordinator with fake effects
+#218 -> #220 authenticated block-control client
+#218 -> #221 activity-level Docker effects
+#219 + #220 + #221 -> #222 truthful health and observations
+  -> #223 pause/resume/failure/compensation
+    -> #224 execution scenario corpus
+      -> #225 live Docker router switch
+        -> #226 security/data/operational hardening
+          -> #227 closeout and Roadmap 0009 handoff
+```
+
+Parent issue: #210.
+
+The ordering is intentional. Docker and HTTP mutation are not foundations.
+They are concrete interpretations added only after durable admission, claims,
+run lifecycle, scheduling, and effect protocols exist.
+
+## Initial Issue Brainstorm (Superseded By Canonical Topology)
+
+The following list is retained as design motivation. Use the canonical issue
+numbers above for execution order.
 
 1. Review and adapt saga grammar.
    - Compare `pottery-factory-saga` with control-plane execution needs.
