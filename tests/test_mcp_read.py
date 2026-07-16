@@ -183,6 +183,7 @@ class McpReadAdapterTests(PostgresStoreTestCase):
             workspace_store=self.stores.workspace,
             graph_topology_store=self.stores.graph_topology,
             activity_history_store=self.stores.activity_history,
+            execution_store=self.stores.execution,
             observed_state_store=self.stores.observed_state,
         )
 

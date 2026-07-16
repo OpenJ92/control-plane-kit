@@ -14,16 +14,24 @@ from dataclasses import replace
 from typing import Any, Protocol
 
 from control_plane_kit.execution import (
+    AdmittedRun,
     ActivityEventKind,
     ActivityEventRecord,
     ActivityRunRecord,
     ActivityRunStatus,
     BoundedEvidence,
+    ClaimIdentity,
+    ExecutionIdempotency,
+    ExecutionRequestIdentity,
+    ExecutionRequestRecord,
+    ExecutionRequestStatus,
     FailureCategory,
     FailureEvidence,
+    LegacyImportedRun,
     ObservationFreshness,
     ObservationRecord,
     ObservationStatus,
+    RetryIdentity,
 )
 from control_plane_kit.planning.activity_plan import RiskLevel
 from control_plane_kit.planning.codec import DEFAULT_ACTIVITY_PLAN_CODEC
@@ -127,13 +135,46 @@ CREATE TABLE IF NOT EXISTS cpk_approval_decisions (
   intent_fingerprint text
 );
 
+CREATE TABLE IF NOT EXISTS cpk_execution_requests (
+  request_id text PRIMARY KEY,
+  workspace_id text NOT NULL REFERENCES cpk_workspaces(workspace_id),
+  session_id text NOT NULL REFERENCES cpk_operation_sessions(session_id),
+  plan_id text NOT NULL REFERENCES cpk_activity_plans(plan_id),
+  status text NOT NULL,
+  requested_by text NOT NULL,
+  requested_at text NOT NULL,
+  approval_request_id text NOT NULL REFERENCES cpk_approval_requests(request_id),
+  approval_decision_id text NOT NULL REFERENCES cpk_approval_decisions(decision_id),
+  idempotency_key text NOT NULL,
+  intent_fingerprint text NOT NULL,
+  claim_worker_id text,
+  claimed_at text,
+  lease_expires_at text,
+  CONSTRAINT cpk_execution_requests_status_check
+    CHECK (status IN ('queued', 'claimed', 'cancelled')),
+  CONSTRAINT cpk_execution_requests_claim_check
+    CHECK (
+      (status = 'claimed' AND claim_worker_id IS NOT NULL
+        AND claimed_at IS NOT NULL AND lease_expires_at IS NOT NULL)
+      OR
+      (status <> 'claimed' AND claim_worker_id IS NULL
+        AND claimed_at IS NULL AND lease_expires_at IS NULL)
+    ),
+  UNIQUE (workspace_id, idempotency_key)
+);
+
 CREATE TABLE IF NOT EXISTS cpk_activity_runs (
   run_id text PRIMARY KEY,
   plan_id text NOT NULL REFERENCES cpk_activity_plans(plan_id),
+  request_id text REFERENCES cpk_execution_requests(request_id),
+  attempt integer NOT NULL DEFAULT 1,
+  prior_run_id text REFERENCES cpk_activity_runs(run_id),
   status text NOT NULL,
-  started_at text NOT NULL,
+  created_at text,
+  started_at text,
   finished_at text,
-  metadata jsonb NOT NULL DEFAULT '{}'::jsonb
+  metadata jsonb NOT NULL DEFAULT '{}'::jsonb,
+  legacy_imported boolean NOT NULL DEFAULT false
 );
 
 CREATE TABLE IF NOT EXISTS cpk_activity_events (
@@ -196,6 +237,190 @@ CREATE UNIQUE INDEX IF NOT EXISTS cpk_approval_requests_idempotency
 CREATE UNIQUE INDEX IF NOT EXISTS cpk_approval_decisions_idempotency
   ON cpk_approval_decisions (request_id, idempotency_key)
   WHERE idempotency_key IS NOT NULL;
+
+ALTER TABLE cpk_activity_runs
+  ADD COLUMN IF NOT EXISTS request_id text REFERENCES cpk_execution_requests(request_id),
+  ADD COLUMN IF NOT EXISTS attempt integer NOT NULL DEFAULT 1,
+  ADD COLUMN IF NOT EXISTS prior_run_id text REFERENCES cpk_activity_runs(run_id),
+  ADD COLUMN IF NOT EXISTS created_at text,
+  ADD COLUMN IF NOT EXISTS legacy_imported boolean;
+
+UPDATE cpk_activity_runs
+SET created_at = COALESCE(created_at, started_at),
+    legacy_imported = COALESCE(legacy_imported, true)
+WHERE created_at IS NULL OR legacy_imported IS NULL;
+
+ALTER TABLE cpk_activity_runs
+  ALTER COLUMN created_at SET NOT NULL,
+  ALTER COLUMN legacy_imported SET DEFAULT false,
+  ALTER COLUMN legacy_imported SET NOT NULL,
+  ALTER COLUMN started_at DROP NOT NULL;
+
+DO $$
+BEGIN
+  IF NOT EXISTS (
+    SELECT 1 FROM pg_constraint
+    WHERE conrelid = 'cpk_operation_sessions'::regclass
+      AND conname = 'cpk_operation_sessions_workspace_identity'
+  ) THEN
+    ALTER TABLE cpk_operation_sessions
+      ADD CONSTRAINT cpk_operation_sessions_workspace_identity
+      UNIQUE (session_id, workspace_id);
+  END IF;
+  IF NOT EXISTS (
+    SELECT 1 FROM pg_constraint
+    WHERE conrelid = 'cpk_activity_plans'::regclass
+      AND conname = 'cpk_activity_plans_session_identity'
+  ) THEN
+    ALTER TABLE cpk_activity_plans
+      ADD CONSTRAINT cpk_activity_plans_session_identity
+      UNIQUE (plan_id, session_id);
+  END IF;
+  IF NOT EXISTS (
+    SELECT 1 FROM pg_constraint
+    WHERE conrelid = 'cpk_approval_decisions'::regclass
+      AND conname = 'cpk_approval_decisions_request_identity'
+  ) THEN
+    ALTER TABLE cpk_approval_decisions
+      ADD CONSTRAINT cpk_approval_decisions_request_identity
+      UNIQUE (decision_id, request_id);
+  END IF;
+  IF NOT EXISTS (
+    SELECT 1 FROM pg_constraint
+    WHERE conrelid = 'cpk_execution_requests'::regclass
+      AND conname = 'cpk_execution_requests_plan_identity'
+  ) THEN
+    ALTER TABLE cpk_execution_requests
+      ADD CONSTRAINT cpk_execution_requests_plan_identity
+      UNIQUE (request_id, plan_id);
+  END IF;
+  IF NOT EXISTS (
+    SELECT 1 FROM pg_constraint
+    WHERE conrelid = 'cpk_execution_requests'::regclass
+      AND conname = 'cpk_execution_requests_workspace_session_fk'
+  ) THEN
+    ALTER TABLE cpk_execution_requests
+      ADD CONSTRAINT cpk_execution_requests_workspace_session_fk
+      FOREIGN KEY (session_id, workspace_id)
+      REFERENCES cpk_operation_sessions(session_id, workspace_id);
+  END IF;
+  IF NOT EXISTS (
+    SELECT 1 FROM pg_constraint
+    WHERE conrelid = 'cpk_execution_requests'::regclass
+      AND conname = 'cpk_execution_requests_plan_session_fk'
+  ) THEN
+    ALTER TABLE cpk_execution_requests
+      ADD CONSTRAINT cpk_execution_requests_plan_session_fk
+      FOREIGN KEY (plan_id, session_id)
+      REFERENCES cpk_activity_plans(plan_id, session_id);
+  END IF;
+  IF NOT EXISTS (
+    SELECT 1 FROM pg_constraint
+    WHERE conrelid = 'cpk_execution_requests'::regclass
+      AND conname = 'cpk_execution_requests_approval_identity_fk'
+  ) THEN
+    ALTER TABLE cpk_execution_requests
+      ADD CONSTRAINT cpk_execution_requests_approval_identity_fk
+      FOREIGN KEY (approval_decision_id, approval_request_id)
+      REFERENCES cpk_approval_decisions(decision_id, request_id);
+  END IF;
+  IF NOT EXISTS (
+    SELECT 1 FROM pg_constraint
+    WHERE conrelid = 'cpk_activity_runs'::regclass
+      AND conname = 'cpk_activity_runs_request_plan_fk'
+  ) THEN
+    ALTER TABLE cpk_activity_runs
+      ADD CONSTRAINT cpk_activity_runs_request_plan_fk
+      FOREIGN KEY (request_id, plan_id)
+      REFERENCES cpk_execution_requests(request_id, plan_id) NOT VALID;
+  END IF;
+  IF NOT EXISTS (
+    SELECT 1 FROM pg_constraint
+    WHERE conrelid = 'cpk_observations'::regclass
+      AND conname = 'cpk_observations_workspace_fk'
+  ) THEN
+    ALTER TABLE cpk_observations
+      ADD CONSTRAINT cpk_observations_workspace_fk
+      FOREIGN KEY (workspace_id) REFERENCES cpk_workspaces(workspace_id) NOT VALID;
+  END IF;
+  IF NOT EXISTS (
+    SELECT 1 FROM pg_constraint
+    WHERE conrelid = 'cpk_activity_runs'::regclass
+      AND conname = 'cpk_activity_runs_status_check'
+  ) THEN
+    ALTER TABLE cpk_activity_runs
+      ADD CONSTRAINT cpk_activity_runs_status_check
+      CHECK (status IN (
+        'claimed', 'running', 'paused', 'succeeded', 'failed',
+        'compensating', 'compensated', 'partially_failed', 'cancelled'
+      )) NOT VALID;
+  END IF;
+  IF NOT EXISTS (
+    SELECT 1 FROM pg_constraint
+    WHERE conrelid = 'cpk_activity_runs'::regclass
+      AND conname = 'cpk_activity_runs_admission_check'
+  ) THEN
+    ALTER TABLE cpk_activity_runs
+      ADD CONSTRAINT cpk_activity_runs_admission_check
+      CHECK (
+        (legacy_imported AND request_id IS NULL)
+        OR (NOT legacy_imported AND request_id IS NOT NULL)
+      ) NOT VALID;
+  END IF;
+  IF NOT EXISTS (
+    SELECT 1 FROM pg_constraint
+    WHERE conrelid = 'cpk_activity_runs'::regclass
+      AND conname = 'cpk_activity_runs_attempt_check'
+  ) THEN
+    ALTER TABLE cpk_activity_runs
+      ADD CONSTRAINT cpk_activity_runs_attempt_check
+      CHECK (
+        attempt > 0
+        AND ((attempt = 1 AND prior_run_id IS NULL)
+          OR (attempt > 1 AND prior_run_id IS NOT NULL))
+        AND prior_run_id IS DISTINCT FROM run_id
+      ) NOT VALID;
+  END IF;
+  IF NOT EXISTS (
+    SELECT 1 FROM pg_constraint
+    WHERE conrelid = 'cpk_activity_events'::regclass
+      AND conname = 'cpk_activity_events_kind_check'
+  ) THEN
+    ALTER TABLE cpk_activity_events
+      ADD CONSTRAINT cpk_activity_events_kind_check
+      CHECK (event_type IN (
+        'request_admitted', 'request_claimed', 'run_started', 'run_paused',
+        'run_resumed', 'step_started', 'step_succeeded', 'step_failed',
+        'step_uncertain', 'compensation_started', 'compensation_succeeded',
+        'compensation_failed', 'run_succeeded', 'run_failed', 'run_cancelled'
+      )) NOT VALID;
+  END IF;
+  IF NOT EXISTS (
+    SELECT 1 FROM pg_constraint
+    WHERE conrelid = 'cpk_observations'::regclass
+      AND conname = 'cpk_observations_status_check'
+  ) THEN
+    ALTER TABLE cpk_observations
+      ADD CONSTRAINT cpk_observations_status_check
+      CHECK (status IN (
+        'starting', 'process_started', 'reachable', 'healthy', 'unhealthy',
+        'timed_out', 'unknown'
+      )) NOT VALID;
+  END IF;
+END $$;
+
+CREATE UNIQUE INDEX IF NOT EXISTS cpk_execution_requests_active_plan
+  ON cpk_execution_requests (plan_id)
+  WHERE status IN ('queued', 'claimed');
+
+CREATE UNIQUE INDEX IF NOT EXISTS cpk_activity_runs_active_request
+  ON cpk_activity_runs (request_id)
+  WHERE request_id IS NOT NULL
+    AND status IN ('claimed', 'running', 'paused', 'compensating');
+
+CREATE UNIQUE INDEX IF NOT EXISTS cpk_activity_runs_request_attempt
+  ON cpk_activity_runs (request_id, attempt)
+  WHERE request_id IS NOT NULL;
 """
 
 
@@ -495,6 +720,7 @@ class PostgresStoreBundle:
         self.workspace = PostgresWorkspaceStore(connection)
         self.graph_topology = PostgresGraphTopologyStore(connection)
         self.activity_history = PostgresActivityHistoryStore(connection)
+        self.execution = PostgresExecutionStore(connection)
         self.observed_state = PostgresObservedStateStore(connection)
         self.instance_registry = PostgresInstanceRegistryStore(connection)
         self.secret_references = PostgresSecretReferenceStore(connection)
@@ -880,38 +1106,120 @@ class PostgresActivityHistoryStore:
             for row in rows
         )
 
+class PostgresExecutionStore:
+    """Postgres execution truth on a caller-owned UnitOfWork connection."""
+
+    def __init__(self, connection: PostgresConnection) -> None:
+        self._connection = connection
+
+    def add_request(self, record: ExecutionRequestRecord) -> ExecutionRequestRecord:
+        claim = record.claim
+        self._connection.execute(
+            """
+            INSERT INTO cpk_execution_requests
+              (request_id, workspace_id, session_id, plan_id, status,
+               requested_by, requested_at, approval_request_id,
+               approval_decision_id, idempotency_key, intent_fingerprint,
+               claim_worker_id, claimed_at, lease_expires_at)
+            VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+            """,
+            (
+                record.identity.request_id,
+                record.identity.workspace_id,
+                record.identity.session_id,
+                record.identity.plan_id,
+                record.status.value,
+                record.requested_by,
+                record.requested_at,
+                record.approval_request_id,
+                record.approval_decision_id,
+                record.idempotency.key,
+                record.idempotency.intent_fingerprint,
+                None if claim is None else claim.worker_id,
+                None if claim is None else claim.claimed_at,
+                None if claim is None else claim.lease_expires_at,
+            ),
+        )
+        return record
+
+    def get_request(self, request_id: str) -> ExecutionRequestRecord:
+        row = _record(
+            self._connection.execute(
+                """
+                SELECT request_id, workspace_id, session_id, plan_id, status,
+                       requested_by, requested_at, approval_request_id,
+                       approval_decision_id, idempotency_key, intent_fingerprint,
+                       claim_worker_id, claimed_at, lease_expires_at
+                FROM cpk_execution_requests WHERE request_id = %s
+                """,
+                (request_id,),
+            ).fetchone(),
+            "execution request",
+            request_id,
+        )
+        return _execution_request(row)
+
+    def request_for_idempotency(
+        self, workspace_id: str, idempotency_key: str
+    ) -> ExecutionRequestRecord | None:
+        row = self._connection.execute(
+            """
+            SELECT request_id, workspace_id, session_id, plan_id, status,
+                   requested_by, requested_at, approval_request_id,
+                   approval_decision_id, idempotency_key, intent_fingerprint,
+                   claim_worker_id, claimed_at, lease_expires_at
+            FROM cpk_execution_requests
+            WHERE workspace_id = %s AND idempotency_key = %s
+            """,
+            (workspace_id, idempotency_key),
+        ).fetchone()
+        return None if row is None else _execution_request(row)
+
     def add_run(self, record: ActivityRunRecord) -> ActivityRunRecord:
+        if not isinstance(record.admission, AdmittedRun):
+            raise ValueError("new execution runs require durable admission")
         self._connection.execute(
             """
             INSERT INTO cpk_activity_runs
-              (run_id, plan_id, status, started_at, finished_at, metadata)
-            VALUES (%s, %s, %s, %s, %s, %s::jsonb)
+              (run_id, plan_id, request_id, attempt, prior_run_id, status,
+               created_at, started_at, finished_at, metadata, legacy_imported)
+            VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s::jsonb, false)
             """,
-            (record.run_id, record.plan_id, record.status.value, record.started_at, record.finished_at, _json(record.metadata.descriptor())),
+            (
+                record.run_id,
+                record.plan_id,
+                record.admission.request_id,
+                record.retry.attempt,
+                record.retry.prior_run_id,
+                record.status.value,
+                record.created_at,
+                record.started_at,
+                record.finished_at,
+                _json(record.metadata.descriptor()),
+            ),
         )
         return record
 
     def runs_for_plan(self, plan_id: str) -> tuple[ActivityRunRecord, ...]:
+        return self._runs("plan_id", plan_id, "created_at ASC, run_id ASC")
+
+    def runs_for_request(self, request_id: str) -> tuple[ActivityRunRecord, ...]:
+        return self._runs("request_id", request_id, "attempt ASC, run_id ASC")
+
+    def _runs(
+        self, column: str, identity: str, ordering: str
+    ) -> tuple[ActivityRunRecord, ...]:
+        if column not in {"plan_id", "request_id"}:
+            raise ValueError("unsupported run lookup")
         rows = self._connection.execute(
-            """
-            SELECT run_id, plan_id, status, started_at, finished_at, metadata
-            FROM cpk_activity_runs
-            WHERE plan_id = %s
-            ORDER BY started_at ASC, run_id ASC
+            f"""
+            SELECT run_id, plan_id, request_id, attempt, prior_run_id, status,
+                   created_at, started_at, finished_at, metadata, legacy_imported
+            FROM cpk_activity_runs WHERE {column} = %s ORDER BY {ordering}
             """,
-            (plan_id,),
+            (identity,),
         ).fetchall()
-        return tuple(
-            ActivityRunRecord(
-                run_id=row[0],
-                plan_id=row[1],
-                status=ActivityRunStatus(row[2]),
-                started_at=row[3],
-                finished_at=row[4],
-                metadata=BoundedEvidence.from_mapping(row[5]),
-            )
-            for row in rows
-        )
+        return tuple(_activity_run(row) for row in rows)
 
     def add_event(self, record: ActivityEventRecord) -> ActivityEventRecord:
         self._connection.execute(
@@ -954,6 +1262,37 @@ class PostgresActivityHistoryStore:
             )
             for row in rows
         )
+
+
+def _execution_request(row: tuple[Any, ...]) -> ExecutionRequestRecord:
+    claim = None
+    if row[11] is not None:
+        claim = ClaimIdentity(row[11], row[12], row[13])
+    return ExecutionRequestRecord(
+        identity=ExecutionRequestIdentity(row[0], row[1], row[2], row[3]),
+        status=ExecutionRequestStatus(row[4]),
+        requested_by=row[5],
+        requested_at=row[6],
+        approval_request_id=row[7],
+        approval_decision_id=row[8],
+        idempotency=ExecutionIdempotency(row[9], row[10]),
+        claim=claim,
+    )
+
+
+def _activity_run(row: tuple[Any, ...]) -> ActivityRunRecord:
+    admission = LegacyImportedRun() if row[10] else AdmittedRun(row[2])
+    return ActivityRunRecord(
+        run_id=row[0],
+        plan_id=row[1],
+        admission=admission,
+        retry=RetryIdentity(row[3], row[4]),
+        status=ActivityRunStatus(row[5]),
+        created_at=row[6],
+        started_at=row[7],
+        finished_at=row[8],
+        metadata=BoundedEvidence.from_mapping(row[9]),
+    )
 
 
 def _failure_evidence(value: object) -> FailureEvidence | None:

@@ -151,6 +151,30 @@ class RetryIdentity:
 
 
 @dataclass(frozen=True)
+class AdmittedRun:
+    """Run ownership by one durable execution request."""
+
+    request_id: str
+
+    def __post_init__(self) -> None:
+        _require_text_fields(self)
+
+
+@dataclass(frozen=True)
+class LegacyImportedRun:
+    """Truthful marker for pre-admission Roadmap 0007 history."""
+
+    schema_version: int = 7
+
+    def __post_init__(self) -> None:
+        if self.schema_version != 7:
+            raise ExecutionValueError("only Roadmap 0007 run history may be imported")
+
+
+RunAdmission: TypeAlias = AdmittedRun | LegacyImportedRun
+
+
+@dataclass(frozen=True)
 class BoundedEvidence:
     """Canonical bounded JSON evidence safe for durable descriptors.
 
@@ -228,6 +252,7 @@ class ExecutionRequestRecord:
     approval_request_id: str
     approval_decision_id: str
     idempotency: ExecutionIdempotency
+    claim: ClaimIdentity | None = None
 
     def __post_init__(self) -> None:
         if not isinstance(self.identity, ExecutionRequestIdentity):
@@ -236,10 +261,15 @@ class ExecutionRequestRecord:
             raise TypeError("execution request status must be ExecutionRequestStatus")
         _require_text_fields(
             self,
-            excluded={"identity", "status", "idempotency"},
+            excluded={"identity", "status", "idempotency", "claim"},
         )
         if not isinstance(self.idempotency, ExecutionIdempotency):
             raise TypeError("execution request idempotency must be typed")
+        if self.status is ExecutionRequestStatus.CLAIMED:
+            if not isinstance(self.claim, ClaimIdentity):
+                raise ExecutionValueError("claimed execution request requires claim identity")
+        elif self.claim is not None:
+            raise ExecutionValueError("only a claimed execution request may carry a claim")
 
 
 @dataclass(frozen=True)
@@ -248,15 +278,34 @@ class ActivityRunRecord:
 
     run_id: str
     plan_id: str
+    admission: RunAdmission
+    retry: RetryIdentity
     status: ActivityRunStatus
-    started_at: str
+    created_at: str
+    started_at: str | None = None
     finished_at: str | None = None
     metadata: BoundedEvidence = field(default_factory=BoundedEvidence)
 
     def __post_init__(self) -> None:
-        _require_text_fields(self, excluded={"status", "finished_at", "metadata"})
+        _require_text_fields(
+            self,
+            excluded={
+                "admission",
+                "retry",
+                "status",
+                "started_at",
+                "finished_at",
+                "metadata",
+            },
+        )
+        if not isinstance(self.admission, (AdmittedRun, LegacyImportedRun)):
+            raise TypeError("activity run admission must be typed")
+        if not isinstance(self.retry, RetryIdentity):
+            raise TypeError("activity run retry identity must be typed")
         if not isinstance(self.status, ActivityRunStatus):
             raise TypeError("activity run status must be ActivityRunStatus")
+        if self.started_at is not None and not _is_text(self.started_at):
+            raise ExecutionValueError("started_at must be non-empty text when present")
         if self.finished_at is not None and not _is_text(self.finished_at):
             raise ExecutionValueError("finished_at must be non-empty text when present")
         if not isinstance(self.metadata, BoundedEvidence):
@@ -322,6 +371,8 @@ ExecutionDescriptorValue: TypeAlias = (
     | ObservationRecord
     | ClaimIdentity
     | RetryIdentity
+    | AdmittedRun
+    | LegacyImportedRun
     | FailureEvidence
 )
 

@@ -4,6 +4,7 @@ from control_plane_kit import (
     ActivityPlan,
     ActivityEventKind,
     ActivityRunStatus,
+    AdmittedRun,
     BoundedEvidence,
     BlockSockets,
     BlockSpec,
@@ -13,6 +14,11 @@ from control_plane_kit import (
     PlanOnlyImplementation,
     ObservationFreshness,
     ObservationStatus,
+    ExecutionIdempotency,
+    ExecutionRequestIdentity,
+    ExecutionRequestRecord,
+    ExecutionRequestStatus,
+    RetryIdentity,
     Protocol,
     ProxyBlock,
     ProviderSocket,
@@ -139,6 +145,7 @@ class InstanceReadServiceTests(PostgresStoreTestCase):
             workspace_store=self.stores.workspace,
             graph_topology_store=self.stores.graph_topology,
             activity_history_store=self.stores.activity_history,
+            execution_store=self.stores.execution,
             observed_state_store=self.stores.observed_state,
         )
 
@@ -303,6 +310,7 @@ class InstanceReadServiceTests(PostgresStoreTestCase):
             workspace_store=self.stores.workspace,
             graph_topology_store=self.stores.graph_topology,
             activity_history_store=self.stores.activity_history,
+            execution_store=self.stores.execution,
             observed_state_store=self.stores.observed_state,
         )
 
@@ -384,16 +392,32 @@ class InstanceReadServiceTests(PostgresStoreTestCase):
                 decided_at="2026-07-15T00:02:30Z",
             )
         )
-        self.stores.activity_history.add_run(
+        self.stores.execution.add_request(
+            ExecutionRequestRecord(
+                identity=ExecutionRequestIdentity(
+                    "execution-request-a", "workspace-a", "session-a", "plan-a"
+                ),
+                status=ExecutionRequestStatus.QUEUED,
+                requested_by="jacob",
+                requested_at="2026-07-15T00:03:00Z",
+                approval_request_id="approval-request-a",
+                approval_decision_id="approval-decision-a",
+                idempotency=ExecutionIdempotency("execute-a", "fingerprint-a"),
+            )
+        )
+        self.stores.execution.add_run(
             ActivityRunRecord(
                 run_id="run-a",
                 plan_id="plan-a",
+                admission=AdmittedRun("execution-request-a"),
+                retry=RetryIdentity(1),
                 status=ActivityRunStatus.RUNNING,
+                created_at="2026-07-15T00:04:00Z",
                 started_at="2026-07-15T00:04:00Z",
                 metadata=BoundedEvidence.from_mapping({"worker": "agent-a"}),
             )
         )
-        self.stores.activity_history.add_event(
+        self.stores.execution.add_event(
             ActivityEventRecord(
                 event_id="event-a",
                 run_id="run-a",
@@ -407,6 +431,7 @@ class InstanceReadServiceTests(PostgresStoreTestCase):
             workspace_store=self.stores.workspace,
             graph_topology_store=self.stores.graph_topology,
             activity_history_store=self.stores.activity_history,
+            execution_store=self.stores.execution,
             observed_state_store=self.stores.observed_state,
         )
 
@@ -460,6 +485,7 @@ class InstanceReadServiceTests(PostgresStoreTestCase):
             workspace_store=self.stores.workspace,
             graph_topology_store=self.stores.graph_topology,
             activity_history_store=self.stores.activity_history,
+            execution_store=self.stores.execution,
             observed_state_store=self.stores.observed_state,
         )
 
@@ -486,15 +512,53 @@ class InstanceReadServiceTests(PostgresStoreTestCase):
                 plan=ActivityPlan(()),
             )
         )
-        self.stores.activity_history.add_run(
+        self.stores.activity_history.add_approval_request(
+            ApprovalRequestRecord(
+                request_id="approval-request-a",
+                session_id="session-a",
+                plan_id="plan-a",
+                requested_by="jacob",
+                requested_at="2026-07-15T00:01:15Z",
+                required_scope="plan:approve",
+                max_risk=RiskLevel.LOW,
+                destructive=False,
+            )
+        )
+        self.stores.activity_history.add_approval_decision(
+            ApprovalDecisionRecord(
+                decision_id="approval-decision-a",
+                request_id="approval-request-a",
+                actor_id="manager",
+                decision=ApprovalDecisionKind.APPROVED,
+                scope="plan:approve",
+                decided_at="2026-07-15T00:01:30Z",
+            )
+        )
+        self.stores.execution.add_request(
+            ExecutionRequestRecord(
+                identity=ExecutionRequestIdentity(
+                    "execution-request-a", "workspace-a", "session-a", "plan-a"
+                ),
+                status=ExecutionRequestStatus.QUEUED,
+                requested_by="jacob",
+                requested_at="2026-07-15T00:01:45Z",
+                approval_request_id="approval-request-a",
+                approval_decision_id="approval-decision-a",
+                idempotency=ExecutionIdempotency("execute-a", "fingerprint-a"),
+            )
+        )
+        self.stores.execution.add_run(
             ActivityRunRecord(
                 run_id="run-a",
                 plan_id="plan-a",
+                admission=AdmittedRun("execution-request-a"),
+                retry=RetryIdentity(1),
                 status=ActivityRunStatus.RUNNING,
+                created_at="2026-07-15T00:02:00Z",
                 started_at="2026-07-15T00:02:00Z",
             )
         )
-        self.stores.activity_history.add_event(
+        self.stores.execution.add_event(
             ActivityEventRecord(
                 event_id="event-a",
                 run_id="run-a",
@@ -511,6 +575,7 @@ class InstanceReadServiceTests(PostgresStoreTestCase):
             workspace_store=self.stores.workspace,
             graph_topology_store=self.stores.graph_topology,
             activity_history_store=self.stores.activity_history,
+            execution_store=self.stores.execution,
             observed_state_store=self.stores.observed_state,
         )
 
@@ -534,6 +599,7 @@ class InstanceReadServiceTests(PostgresStoreTestCase):
             workspace_store=self.stores.workspace,
             graph_topology_store=self.stores.graph_topology,
             activity_history_store=self.stores.activity_history,
+            execution_store=self.stores.execution,
             observed_state_store=self.stores.observed_state,
         )
 
