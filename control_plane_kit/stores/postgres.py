@@ -239,11 +239,20 @@ class PostgresWorkspaceStore:
         return record
 
     def get(self, workspace_id: str) -> WorkspaceRecord:
+        return self._get(workspace_id, for_update=False)
+
+    def get_for_update(self, workspace_id: str) -> WorkspaceRecord:
+        """Lock one workspace truth row for the caller-owned transaction."""
+
+        return self._get(workspace_id, for_update=True)
+
+    def _get(self, workspace_id: str, *, for_update: bool) -> WorkspaceRecord:
+        lock = " FOR UPDATE" if for_update else ""
         row = _record(
             self._connection.execute(
-                """
+                f"""
                 SELECT workspace_id, name, lifecycle, current_graph_id, desired_graph_id, metadata
-                FROM cpk_workspaces WHERE workspace_id = %s
+                FROM cpk_workspaces WHERE workspace_id = %s{lock}
                 """,
                 (workspace_id,),
             ).fetchone(),
@@ -353,6 +362,19 @@ class PostgresGraphTopologyStore:
             created_at=row[5],
             metadata=row[6],
         )
+
+    def next_version_for_workspace(self, workspace_id: str) -> int:
+        """Allocate the next version while the command holds the workspace row lock."""
+
+        row = self._connection.execute(
+            """
+            SELECT COALESCE(MAX(version), 0) + 1
+            FROM cpk_graph_versions
+            WHERE workspace_id = %s
+            """,
+            (workspace_id,),
+        ).fetchone()
+        return int(row[0])
 
 
 class PostgresSecretReferenceStore:
