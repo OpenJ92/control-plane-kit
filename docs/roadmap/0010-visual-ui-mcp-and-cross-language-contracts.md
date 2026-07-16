@@ -100,6 +100,8 @@ This roadmap should provide:
 4. Add UI fixture descriptors.
    - Simple local deployment.
    - Router-backed backend swap.
+   - Bootstrapped instance with multiple disconnected Auth/CPI/store fragments.
+   - Root -> child -> grandchild navigation breadcrumbs.
    - Runtime context boxes.
    - Pending approval.
    - Failed/partial activity run.
@@ -165,11 +167,22 @@ Workspace screen
 ```
 
 The editor should present this as a simple navigation hierarchy, not an
-infinite recursive canvas. Internally, however, child instances are typed
-`ControlPlaneInstance` nodes with provider/control APIs, lifecycle
-capabilities, and observable state. This allows the same descriptors and
-capability-driven UI machinery to represent both parent-managed instances and
-ordinary controllable deployment blocks.
+infinite recursive canvas. Internally, however, child instances are ordinary
+`ApplicationBlock` nodes advertising control-plane-instance capabilities. This
+allows the same block descriptors and capability-driven UI machinery to
+represent both selectable child instances and other controllable deployment
+blocks without introducing a special UI node species.
+
+Navigation should preserve a stable instance identity path rather than mounting
+runtime URLs directly:
+
+```text
+root / child-a / child-a-1
+```
+
+The frontend sends that path to the bootstrapped instance. Recursive proxy
+resolution and delegated authorization remain backend concerns delivered by
+Roadmap 0009.
 
 The user action:
 

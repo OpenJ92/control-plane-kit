@@ -91,6 +91,12 @@ These constraints should survive every roadmap vertical:
 - Docker is an interpreter target, not the topology model.
 - Runtime contexts are graph topology.
 - Application code can remain ordinary application code.
+- `ControlPlaneInstanceBlock` is an ordinary `ApplicationBlock`; recursion must
+  not introduce another graph node species.
+- "Hub" is the positional name for the externally bootstrapped instance, not a
+  separate backend implementation.
+- Selectable child instances are projected from graph topology, observed state,
+  and authorization rather than persisted in a competing registry.
 - Live mutation is opt-in through contracts and reload policies.
 - Secrets can be set and checked, not read.
 - Store-local transitions use explicit Postgres unit-of-work transactions owned

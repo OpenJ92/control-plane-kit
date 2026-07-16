@@ -53,6 +53,7 @@ This roadmap should provide:
 - activity run lifecycle,
 - saga/compensation grammar,
 - runtime executor interface,
+- dependency-aware multi-node activity planning,
 - block control client interface,
 - Docker-backed safe activities,
 - control-route-backed safe activities,
@@ -124,7 +125,18 @@ This roadmap should provide:
    - Drain node as advisory first.
    - Keep provider interface narrow.
 
-7. Add block control client capabilities.
+7. Add dependency-aware multi-node activity planning.
+   - Distinguish communication edges from explicit startup/readiness
+     dependencies.
+   - Compile provider-before-consumer ordering where blocks declare it.
+   - Wait for required provider readiness before starting dependent consumers.
+   - Detect dependency cycles and require an explicit simultaneous/deferred
+     policy rather than choosing an arbitrary order.
+   - Plan reverse-order compensation or stop where safe.
+   - Keep the scheduler generic; it must not know about CPI, Auth, or Postgres
+     domain names.
+
+8. Add block control client capabilities.
    - Read block capabilities.
    - Register target.
    - Switch target.
@@ -132,30 +144,30 @@ This roadmap should provide:
    - Query health/status.
    - Respect control-route auth.
 
-8. Add Docker local runtime executor.
+9. Add Docker local runtime executor.
    - Safe start/stop for local demo nodes.
    - Retained Postgres handling where needed.
    - No accidental deletion of retained data.
 
-9. Add control-route-backed router switch example.
+10. Add control-route-backed router switch example.
    - Start candidate service.
    - Wait for health.
    - Register target.
    - Switch router.
    - Record events.
 
-10. Add failure and compensation behavior.
+11. Add failure and compensation behavior.
     - Failed step records partial state.
     - Completed compensatable steps run compensation in reverse completion
       order.
     - Compensation failures are recorded.
 
-11. Add observed-state updates.
+12. Add observed-state updates.
     - Record runtime evidence after execution.
     - Mark stale/unknown where appropriate.
     - Do not silently rewrite desired topology from observed state.
 
-12. Add live local smoke example.
+13. Add live local smoke example.
     - Use package-provided blocks.
     - Demonstrate a safe switch or replacement.
     - Record activity events.
@@ -221,6 +233,8 @@ Some activities may be non-compensatable. They must say so.
 - Unapproved plan cannot execute.
 - Duplicate execution request is idempotent.
 - Executor emits events for each step.
+- Multi-node plans honor declared readiness dependencies and reject unresolved
+  cycles.
 - Failure records partial state.
 - Compensation runs in reverse completion order where possible.
 - Compensation failure is visible.
