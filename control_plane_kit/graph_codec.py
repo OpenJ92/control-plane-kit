@@ -132,6 +132,17 @@ class GraphDescriptorCodec:
             ) from error
         return dict(codec.encode(spec))
 
+    def supports_same_block_specs_as(self, other: GraphDescriptorCodec) -> bool:
+        """Return whether two codecs admit the same closed spec variants and types."""
+
+        return {
+            variant: (codec.spec_type, type(codec))
+            for variant, codec in self._by_variant.items()
+        } == {
+            variant: (codec.spec_type, type(codec))
+            for variant, codec in other._by_variant.items()
+        }
+
     def decode(self, descriptor: Mapping[str, object]) -> DeploymentGraph:
         top = _mapping(descriptor, "graph")
         graph = DeploymentGraph(_text(top, "name"))

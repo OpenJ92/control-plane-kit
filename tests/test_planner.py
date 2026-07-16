@@ -1,6 +1,12 @@
 from unittest import TestCase, main
 
-from control_plane_kit import compile_recipe, diff_graphs, plan_migration
+from control_plane_kit import (
+    EdgeSubject,
+    compile_recipe,
+    diff_graphs,
+    plan_migration,
+    validate_graph,
+)
 from examples.router_swap import recipe
 
 
@@ -9,9 +15,16 @@ class PlannerTests(TestCase):
         current = compile_recipe(recipe("api-v1"))
         desired = compile_recipe(recipe("api-v2"))
 
-        diff = diff_graphs(current, desired)
-        self.assertIn("api-router.active", diff.changed_edges)
-        plan = plan_migration(current, desired)
+        diff = diff_graphs(validate_graph(current), validate_graph(desired))
+        self.assertIn(
+            "api-router.active",
+            {
+                change.subject.edge_id
+                for change in diff.changes
+                if isinstance(change.subject, EdgeSubject)
+            },
+        )
+        plan = plan_migration(diff)
         self.assertIn("SwitchSocketConnection(api-router.active)", plan.to_text())
 
 
