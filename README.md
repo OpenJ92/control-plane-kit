@@ -189,6 +189,10 @@ Mutation command services use an explicit caller-owned Postgres transaction.
 See [Postgres Unit Of Work](docs/POSTGRES_UNIT_OF_WORK.md) for the connection,
 store, commit, rollback, and saga boundaries.
 
+Operation sessions, desired graph edits, typed activity planning, approvals,
+recovery candidates, and focused workflow reads are documented in
+[Activity Sessions And Planning](docs/ACTIVITY_PLANNING.md).
+
 Run the local read demo with:
 
 ```bash

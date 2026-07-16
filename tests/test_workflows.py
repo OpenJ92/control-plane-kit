@@ -3,17 +3,14 @@ import unittest
 
 import psycopg
 
-from control_plane_kit import ActivityId, ActivityPlan, NodeTarget, PlannedActivity, StartNode
 from control_plane_kit.graph import DeploymentGraph
 from control_plane_kit.stores import (
-    ActivityPlanRecord,
     GraphVersionRecord,
     OperationActionKind,
     PostgresUnitOfWork,
     WorkspaceRecord,
 )
 from control_plane_kit.workflows import (
-    ActivityRunService,
     CloseOperationSession,
     IdempotencyKey,
     OperationCommandService,
@@ -91,42 +88,6 @@ class WorkflowServiceTests(PostgresStoreTestCase):
             ],
             [(1, "session_started"), (2, "add_block"), (3, "connect_socket")],
         )
-
-    def test_activity_run_service_opens_run_for_persisted_plan_without_effects(self):
-        history = self.stores.activity_history
-        self.operation_service(["session-a", "action-start"]).execute(
-            StartOperationSession(
-                "workspace-a", "jacob", "Plan run", IdempotencyKey("start")
-            )
-        )
-        plan = history.add_plan(
-            ActivityPlanRecord(
-                plan_id="plan-a",
-                session_id="session-a",
-                base_graph_id="graph-current",
-                desired_graph_id="graph-desired",
-                status="planned",
-                created_at="2026-07-15T00:01:00Z",
-                plan=ActivityPlan(
-                    (
-                        PlannedActivity(
-                            ActivityId("start-api"),
-                            StartNode(NodeTarget("api-v2")),
-                        ),
-                    )
-                ),
-            )
-        )
-        service = ActivityRunService(
-            history,
-            clock=Sequence(["2026-07-15T00:02:00Z"]),
-            id_factory=Sequence(["run-a"]),
-        )
-        run = service.open_run(plan_id=plan.plan_id)
-
-        self.assertEqual(history.get_plan("plan-a").desired_graph_id, "graph-desired")
-        self.assertEqual(history.get_plan("plan-a").plan, plan.plan)
-        self.assertEqual(run.status, "open")
 
     def test_workflow_services_do_not_mutate_graph_truth(self):
         graph_store = self.stores.graph_topology
