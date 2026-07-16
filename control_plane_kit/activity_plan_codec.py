@@ -71,25 +71,36 @@ class ActivityPlanDescriptorCodec:
         return json.dumps(self.encode(plan), sort_keys=True, separators=(",", ":"))
 
     def decode(self, descriptor: Mapping[str, object]) -> ActivityPlan:
-        top = _mapping(descriptor, "activity plan")
-        if _text(top, "schema") != ACTIVITY_PLAN_SCHEMA:
-            raise UnknownActivityPlanVariant("unknown activity plan schema")
-        version = top.get("version")
-        if type(version) is not int:
-            raise MalformedActivityPlanDescriptor("activity plan version must be an integer")
-        if version != ACTIVITY_PLAN_VERSION:
-            raise UnknownActivityPlanVariant(f"unsupported activity plan version {version!r}")
-        plan = ActivityPlan(
-            tuple(
-                self._decode_activity(_mapping(value, "activity"))
-                for value in _list(top.get("activities"), "activities")
+        try:
+            top = _mapping(descriptor, "activity plan")
+            if _text(top, "schema") != ACTIVITY_PLAN_SCHEMA:
+                raise UnknownActivityPlanVariant("unknown activity plan schema")
+            version = top.get("version")
+            if type(version) is not int:
+                raise MalformedActivityPlanDescriptor(
+                    "activity plan version must be an integer"
+                )
+            if version != ACTIVITY_PLAN_VERSION:
+                raise UnknownActivityPlanVariant(
+                    f"unsupported activity plan version {version!r}"
+                )
+            plan = ActivityPlan(
+                tuple(
+                    self._decode_activity(_mapping(value, "activity"))
+                    for value in _list(top.get("activities"), "activities")
+                )
             )
-        )
-        if self.encode(plan) != _json_value(top):
-            raise LossyActivityPlanDescriptor(
-                "activity plan descriptor does not round-trip through the typed codec"
-            )
-        return plan
+            if self.encode(plan) != _json_value(top):
+                raise LossyActivityPlanDescriptor(
+                    "activity plan descriptor does not round-trip through the typed codec"
+                )
+            return plan
+        except ActivityPlanDescriptorError:
+            raise
+        except (TypeError, ValueError) as error:
+            raise MalformedActivityPlanDescriptor(
+                f"invalid typed activity plan: {error}"
+            ) from error
 
     def _encode_activity(self, activity: PlannedActivity) -> dict[str, object]:
         return {

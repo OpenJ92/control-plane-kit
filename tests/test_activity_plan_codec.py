@@ -10,16 +10,29 @@ from control_plane_kit import (
     ActivityPlan,
     ActivityPlanDescriptorCodec,
     ChangeTarget,
+    EdgeSubject,
     FieldSubject,
     GraphSubject,
     LossyActivityPlanDescriptor,
     MalformedActivityPlanDescriptor,
     NodeTarget,
+    NodeSubject,
     PlannedActivity,
     ReviewChange,
     ReviewReason,
     RiskLevel,
+    RuntimeSubject,
     StartNode,
+    StartRuntime,
+    StopNode,
+    StopRuntime,
+    AddSocketConnection,
+    ReconcileNode,
+    ReconcileRuntime,
+    RemoveSocketConnection,
+    RuntimeTarget,
+    SocketConnectionTarget,
+    SwitchSocketConnection,
     StructuralField,
     UnknownActivityPlanVariant,
     WaitForHealthy,
@@ -124,6 +137,174 @@ class ActivityPlanDescriptorCodecTests(unittest.TestCase):
                 created_at="2026-07-16T00:00:00Z",
                 plan={"activities": ["StartNode(api)"]},
             )
+
+    def test_every_closed_operation_and_target_variant_round_trips(self):
+        operations = (
+            StartNode(NodeTarget("api")),
+            StopNode(NodeTarget("api")),
+            WaitForHealthy(NodeTarget("api")),
+            AddSocketConnection(SocketConnectionTarget("auth-api")),
+            SwitchSocketConnection(SocketConnectionTarget("auth-api")),
+            RemoveSocketConnection(SocketConnectionTarget("auth-api")),
+            ReconcileNode(NodeTarget("api")),
+            ReconcileRuntime(RuntimeTarget("docker")),
+            StartRuntime(RuntimeTarget("docker")),
+            StopRuntime(RuntimeTarget("docker")),
+        )
+        for ordinal, operation in enumerate(operations):
+            with self.subTest(operation=type(operation).__name__):
+                plan = ActivityPlan(
+                    (PlannedActivity(ActivityId(f"activity-{ordinal}"), operation),)
+                )
+                self.assertEqual(self.codec.decode(self.codec.encode(plan)), plan)
+
+    def test_every_review_subject_variant_round_trips(self):
+        subjects = (
+            GraphSubject(),
+            RuntimeSubject("docker"),
+            NodeSubject("api"),
+            EdgeSubject("auth-api"),
+            FieldSubject(GraphSubject(), StructuralField.GRAPH_NAME),
+            FieldSubject(
+                RuntimeSubject("docker"),
+                StructuralField.RUNTIME_METADATA,
+                "region",
+            ),
+            FieldSubject(
+                NodeSubject("api"),
+                StructuralField.ENVIRONMENT,
+                "DATABASE_URL",
+            ),
+        )
+        for ordinal, subject in enumerate(subjects):
+            with self.subTest(subject=subject):
+                plan = ActivityPlan(
+                    (
+                        PlannedActivity(
+                            ActivityId(f"review-{ordinal}"),
+                            ReviewChange(
+                                ChangeTarget(subject),
+                                ReviewReason.AMBIGUOUS_CHANGE,
+                            ),
+                            risk=RiskLevel.HIGH,
+                        ),
+                    )
+                )
+                self.assertEqual(self.codec.decode(self.codec.encode(plan)), plan)
+
+    def test_dependency_and_activity_permutations_have_one_descriptor(self):
+        first = PlannedActivity(ActivityId("a"), StartNode(NodeTarget("api")))
+        second = PlannedActivity(ActivityId("b"), StartNode(NodeTarget("auth")))
+        joined_ab = PlannedActivity(
+            ActivityId("c"),
+            WaitForHealthy(NodeTarget("auth")),
+            (
+                ActivityDependency(first.activity_id),
+                ActivityDependency(second.activity_id),
+            ),
+        )
+        joined_ba = PlannedActivity(
+            ActivityId("c"),
+            WaitForHealthy(NodeTarget("auth")),
+            (
+                ActivityDependency(second.activity_id),
+                ActivityDependency(first.activity_id),
+            ),
+        )
+
+        descriptors = {
+            self.codec.dumps(ActivityPlan(activities))
+            for activities in (
+                (first, second, joined_ab),
+                (joined_ab, second, first),
+                (second, joined_ba, first),
+            )
+        }
+
+        self.assertEqual(len(descriptors), 1)
+
+    def test_invalid_dag_and_target_shapes_are_descriptor_errors(self):
+        descriptor = self.codec.encode(
+            ActivityPlan((PlannedActivity(ActivityId("a"), StartNode(NodeTarget("api"))),))
+        )
+        descriptor["activities"][0]["dependencies"] = ["missing"]
+        with self.assertRaisesRegex(
+            MalformedActivityPlanDescriptor,
+            "depends on missing activity",
+        ):
+            self.codec.decode(descriptor)
+
+        descriptor = self.codec.encode(
+            ActivityPlan((PlannedActivity(ActivityId("a"), StartNode(NodeTarget("api"))),))
+        )
+        descriptor["activities"][0]["operation"]["target"] = {
+            "kind": "runtime",
+            "runtime_id": "docker",
+        }
+        with self.assertRaisesRegex(MalformedActivityPlanDescriptor, "expected 'node' target"):
+            self.codec.decode(descriptor)
+
+        descriptor = self.codec.encode(
+            ActivityPlan((PlannedActivity(ActivityId("a"), StartNode(NodeTarget("api"))),))
+        )
+        del descriptor["activities"][0]["operation"]["target"]
+        with self.assertRaisesRegex(MalformedActivityPlanDescriptor, "operation.target"):
+            self.codec.decode(descriptor)
+
+        start = PlannedActivity(ActivityId("a"), StartNode(NodeTarget("api")))
+        wait = PlannedActivity(
+            ActivityId("b"),
+            WaitForHealthy(NodeTarget("api")),
+            (ActivityDependency(start.activity_id),),
+        )
+        descriptor = self.codec.encode(ActivityPlan((start, wait)))
+        descriptor["activities"][1]["dependencies"] = ["a", "a"]
+        with self.assertRaisesRegex(
+            MalformedActivityPlanDescriptor,
+            "repeats a dependency edge",
+        ):
+            self.codec.decode(descriptor)
+
+    def test_risk_and_destructive_markers_survive_the_descriptor_boundary(self):
+        plan = ActivityPlan(
+            (
+                PlannedActivity(
+                    ActivityId("stop-api"),
+                    StopNode(NodeTarget("api")),
+                    risk=RiskLevel.CRITICAL,
+                    impact=ActivityImpact.DESTRUCTIVE,
+                ),
+            )
+        )
+
+        descriptor = self.codec.encode(plan)
+
+        self.assertEqual(descriptor["activities"][0]["risk"], "critical")
+        self.assertEqual(descriptor["activities"][0]["impact"], "destructive")
+        self.assertEqual(self.codec.decode(descriptor), plan)
+
+    def test_unknown_review_reason_and_non_json_values_fail_closed(self):
+        plan = ActivityPlan(
+            (
+                PlannedActivity(
+                    ActivityId("review"),
+                    ReviewChange(
+                        ChangeTarget(GraphSubject()),
+                        ReviewReason.UNSUPPORTED_CHANGE,
+                    ),
+                    risk=RiskLevel.HIGH,
+                ),
+            )
+        )
+        descriptor = self.codec.encode(plan)
+        descriptor["activities"][0]["operation"]["reason"] = "operator-feeling"
+        with self.assertRaises(UnknownActivityPlanVariant):
+            self.codec.decode(descriptor)
+
+        descriptor = self.codec.encode(ActivityPlan(()))
+        descriptor["extra"] = object()
+        with self.assertRaises(MalformedActivityPlanDescriptor):
+            self.codec.decode(descriptor)
 
 
 if __name__ == "__main__":
