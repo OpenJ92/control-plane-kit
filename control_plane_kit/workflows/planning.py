@@ -16,6 +16,7 @@ from control_plane_kit.graph_codec import (
 )
 from control_plane_kit.graph_diff import diff_graphs
 from control_plane_kit.stores import (
+    ActivityHistoryStore,
     ActivityPlanRecord,
     GraphTopologyStore,
     GraphVersionRecord,
@@ -122,6 +123,10 @@ class ActivityPlanningGraphInvalid(ActivityPlanningError):
     """Raised when durable graph data cannot enter the typed planning pipeline."""
 
 
+class ActivityPlanningIdempotencyConflict(ActivityPlanningError):
+    """Raised when an idempotency key is reused for different planning intent."""
+
+
 Clock = Callable[[], str]
 IdFactory = Callable[[], str]
 UnitOfWorkFactory = Callable[[], PostgresUnitOfWork]
@@ -167,6 +172,12 @@ class ActivityPlanningCommandService:
                 raise ActivityPlanningSessionConflict(
                     "operation session and plan must belong to the same workspace"
                 )
+            replay = stores.activity_history.action_for_idempotency(
+                command.session_id,
+                command.idempotency_key.value,
+            )
+            if replay is not None:
+                return _planning_replay(stores.activity_history, replay, fingerprint)
             if session.status is not OperationSessionStatus.OPEN:
                 raise ActivityPlanningSessionConflict(
                     f"operation session {command.session_id!r} is not open"
@@ -203,6 +214,17 @@ class ActivityPlanningCommandService:
                 raise ActivityPlanningGraphInvalid(str(error)) from error
             plan = compile_activity_plan(diff)
             ordinal = stores.activity_history.next_action_ordinal(command.session_id)
+            locked_session = stores.activity_history.get_session(command.session_id)
+            replay = stores.activity_history.action_for_idempotency(
+                command.session_id,
+                command.idempotency_key.value,
+            )
+            if replay is not None:
+                return _planning_replay(stores.activity_history, replay, fingerprint)
+            if locked_session.status is not OperationSessionStatus.OPEN:
+                raise ActivityPlanningSessionConflict(
+                    f"operation session {command.session_id!r} is not open"
+                )
             created_at = self._clock()
             plan_record = stores.activity_history.add_plan(
                 ActivityPlanRecord(
@@ -271,3 +293,28 @@ def _fingerprint(command: RequestActivityPlan) -> str:
         separators=(",", ":"),
     ).encode("utf-8")
     return hashlib.sha256(encoded).hexdigest()
+
+
+def _planning_replay(
+    history: ActivityHistoryStore,
+    action: OperationActionRecord,
+    fingerprint: str,
+) -> ActivityPlanningResult:
+    if action.action_type is not OperationActionKind.PLAN_REQUESTED:
+        raise ActivityPlanningIdempotencyConflict(
+            "idempotency key was already used for another operation action"
+        )
+    if action.intent_fingerprint != fingerprint:
+        raise ActivityPlanningIdempotencyConflict(
+            "idempotency key was already used for different planning intent"
+        )
+    plan_id = action.payload.get("plan_id")
+    if not isinstance(plan_id, str):
+        raise ActivityPlanningError("planning action evidence has no typed plan reference")
+    try:
+        plan = history.get_plan(plan_id)
+    except KeyError as error:
+        raise ActivityPlanningError(
+            "planning action references missing durable plan truth"
+        ) from error
+    return ActivityPlanningResult(plan, action, replayed=True)
