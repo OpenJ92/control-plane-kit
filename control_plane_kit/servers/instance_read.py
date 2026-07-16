@@ -68,6 +68,78 @@ def create_instance_read_app(
         except ReadModelError as exc:
             raise _http_error(exc, HTTPException) from exc
 
+    @app.get(
+        f"{prefix}/workspaces/{{workspace_id}}/sessions",
+        dependencies=[Depends(require_read_token)],
+    )
+    def open_sessions(
+        workspace_id: str,
+        limit: int = 50,
+        offset: int = 0,
+    ) -> dict[str, object]:
+        try:
+            return service.open_sessions(
+                workspace_id,
+                limit=limit,
+                offset=offset,
+            ).descriptor()
+        except ReadModelError as exc:
+            raise _http_error(exc, HTTPException) from exc
+
+    @app.get(
+        f"{prefix}/workspaces/{{workspace_id}}/sessions/{{session_id}}",
+        dependencies=[Depends(require_read_token)],
+    )
+    def session_detail(
+        workspace_id: str,
+        session_id: str,
+        limit: int = 50,
+    ) -> dict[str, object]:
+        try:
+            return service.session_detail(
+                workspace_id,
+                session_id,
+                limit=limit,
+            ).descriptor()
+        except ReadModelError as exc:
+            raise _http_error(exc, HTTPException) from exc
+
+    @app.get(
+        f"{prefix}/workspaces/{{workspace_id}}/plans/{{plan_id}}",
+        dependencies=[Depends(require_read_token)],
+    )
+    def plan_detail(
+        workspace_id: str,
+        plan_id: str,
+        limit: int = 50,
+    ) -> dict[str, object]:
+        try:
+            return service.plan_detail(
+                workspace_id,
+                plan_id,
+                limit=limit,
+            ).descriptor()
+        except ReadModelError as exc:
+            raise _http_error(exc, HTTPException) from exc
+
+    @app.get(
+        f"{prefix}/workspaces/{{workspace_id}}/approvals/pending",
+        dependencies=[Depends(require_read_token)],
+    )
+    def pending_approvals(
+        workspace_id: str,
+        limit: int = 50,
+        offset: int = 0,
+    ) -> dict[str, object]:
+        try:
+            return service.pending_approvals(
+                workspace_id,
+                limit=limit,
+                offset=offset,
+            ).descriptor()
+        except ReadModelError as exc:
+            raise _http_error(exc, HTTPException) from exc
+
     @app.get(f"{prefix}/workspaces/{{workspace_id}}/observed-state", dependencies=[Depends(require_read_token)])
     def observed_state(workspace_id: str) -> dict[str, object]:
         try:
@@ -88,8 +160,14 @@ def create_instance_read_app(
 def _http_error(error: ReadModelError, http_exception):
     message = str(error)
     status_code = 400
-    if message.startswith("missing workspace"):
+    if message.startswith(("missing workspace", "missing session", "missing plan")):
         status_code = 404
     elif "store is not configured" in message:
         status_code = 503
+    elif (
+        "references missing graph truth" in message
+        or "references graph truth outside workspace" in message
+        or "invalid recovery graph truth" in message
+    ):
+        status_code = 409
     return http_exception(status_code=status_code, detail=message)
