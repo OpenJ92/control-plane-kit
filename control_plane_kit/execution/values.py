@@ -55,6 +55,7 @@ class ActivityEventKind(StrEnum):
 
     REQUEST_ADMITTED = "request_admitted"
     REQUEST_CLAIMED = "request_claimed"
+    RUN_OPENED = "run_opened"
     RUN_STARTED = "run_started"
     RUN_PAUSED = "run_paused"
     RUN_RESUMED = "run_resumed"

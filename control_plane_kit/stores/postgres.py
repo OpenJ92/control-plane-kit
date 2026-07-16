@@ -389,7 +389,7 @@ BEGIN
     ALTER TABLE cpk_activity_events
       ADD CONSTRAINT cpk_activity_events_kind_check
       CHECK (event_type IN (
-        'request_admitted', 'request_claimed', 'run_started', 'run_paused',
+        'request_admitted', 'request_claimed', 'run_opened', 'run_started', 'run_paused',
         'run_resumed', 'step_started', 'step_succeeded', 'step_failed',
         'step_uncertain', 'compensation_started', 'compensation_succeeded',
         'compensation_failed', 'run_succeeded', 'run_failed', 'run_cancelled'
@@ -408,6 +408,20 @@ BEGIN
       )) NOT VALID;
   END IF;
 END $$;
+
+-- Event vocabulary is a closed sum. Rebuild the check so forward migrations
+-- admit newly introduced constructors without weakening the closed boundary.
+ALTER TABLE cpk_activity_events
+  DROP CONSTRAINT IF EXISTS cpk_activity_events_kind_check;
+ALTER TABLE cpk_activity_events
+  ADD CONSTRAINT cpk_activity_events_kind_check
+  CHECK (event_type IN (
+    'request_admitted', 'request_claimed', 'run_opened', 'run_started',
+    'run_paused', 'run_resumed', 'step_started', 'step_succeeded',
+    'step_failed', 'step_uncertain', 'compensation_started',
+    'compensation_succeeded', 'compensation_failed', 'run_succeeded',
+    'run_failed', 'run_cancelled'
+  )) NOT VALID;
 
 CREATE UNIQUE INDEX IF NOT EXISTS cpk_execution_requests_active_plan
   ON cpk_execution_requests (plan_id)
@@ -1159,6 +1173,25 @@ class PostgresExecutionStore:
         )
         return _execution_request(row)
 
+    def get_request_for_update(self, request_id: str) -> ExecutionRequestRecord:
+        row = _record(
+            self._connection.execute(
+                """
+                SELECT request_id, workspace_id, session_id, plan_id, status,
+                       requested_by, requested_at, approval_request_id,
+                       approval_decision_id, idempotency_key, intent_fingerprint,
+                       claim_worker_id, claimed_at, lease_expires_at
+                FROM cpk_execution_requests
+                WHERE request_id = %s
+                FOR UPDATE
+                """,
+                (request_id,),
+            ).fetchone(),
+            "execution request",
+            request_id,
+        )
+        return _execution_request(row)
+
     def request_for_idempotency(
         self, workspace_id: str, idempotency_key: str
     ) -> ExecutionRequestRecord | None:
@@ -1232,6 +1265,26 @@ class PostgresExecutionStore:
         )
         return row.rowcount == 1
 
+    def cancel_claimed_request(
+        self, request_id: str, *, worker_id: str
+    ) -> ExecutionRequestRecord | None:
+        row = self._connection.execute(
+            """
+            UPDATE cpk_execution_requests
+            SET status = 'cancelled', claim_worker_id = NULL,
+                claimed_at = NULL, lease_expires_at = NULL
+            WHERE request_id = %s
+              AND status = 'claimed'
+              AND claim_worker_id = %s
+            RETURNING request_id, workspace_id, session_id, plan_id, status,
+                      requested_by, requested_at, approval_request_id,
+                      approval_decision_id, idempotency_key, intent_fingerprint,
+                      claim_worker_id, claimed_at, lease_expires_at
+            """,
+            (request_id, worker_id),
+        ).fetchone()
+        return None if row is None else _execution_request(row)
+
     def add_run(self, record: ActivityRunRecord) -> ActivityRunRecord:
         if not isinstance(record.admission, AdmittedRun):
             raise ValueError("new execution runs require durable admission")
@@ -1272,6 +1325,23 @@ class PostgresExecutionStore:
         )
         return _activity_run(row)
 
+    def get_run_for_update(self, run_id: str) -> ActivityRunRecord:
+        row = _record(
+            self._connection.execute(
+                """
+                SELECT run_id, plan_id, request_id, attempt, prior_run_id, status,
+                       created_at, started_at, finished_at, metadata, legacy_imported
+                FROM cpk_activity_runs
+                WHERE run_id = %s
+                FOR UPDATE
+                """,
+                (run_id,),
+            ).fetchone(),
+            "activity run",
+            run_id,
+        )
+        return _activity_run(row)
+
     def compare_and_set_run_status(
         self,
         run_id: str,
@@ -1280,13 +1350,17 @@ class PostgresExecutionStore:
         replacement: ActivityRunStatus,
         started_at: str | None = None,
         finished_at: str | None = None,
+        clear_finished_at: bool = False,
     ) -> ActivityRunRecord | None:
         row = self._connection.execute(
             """
             UPDATE cpk_activity_runs
             SET status = %s,
                 started_at = COALESCE(%s, started_at),
-                finished_at = COALESCE(%s, finished_at)
+                finished_at = CASE
+                  WHEN %s THEN NULL
+                  ELSE COALESCE(%s, finished_at)
+                END
             WHERE run_id = %s AND status = %s AND NOT legacy_imported
             RETURNING run_id, plan_id, request_id, attempt, prior_run_id, status,
                       created_at, started_at, finished_at, metadata, legacy_imported
@@ -1294,6 +1368,7 @@ class PostgresExecutionStore:
             (
                 replacement.value,
                 started_at,
+                clear_finished_at,
                 finished_at,
                 run_id,
                 expected.value,
@@ -1342,6 +1417,20 @@ class PostgresExecutionStore:
         )
         return record
 
+    def get_event(self, event_id: str) -> ActivityEventRecord:
+        row = _record(
+            self._connection.execute(
+                """
+                SELECT event_id, run_id, ordinal, event_type, occurred_at, payload
+                FROM cpk_activity_events WHERE event_id = %s
+                """,
+                (event_id,),
+            ).fetchone(),
+            "activity event",
+            event_id,
+        )
+        return _activity_event(row)
+
     def next_event_ordinal(self, run_id: str) -> int:
         locked = self._connection.execute(
             "SELECT run_id FROM cpk_activity_runs WHERE run_id = %s FOR UPDATE",
@@ -1366,19 +1455,7 @@ class PostgresExecutionStore:
             """,
             (run_id,),
         ).fetchall()
-        return tuple(
-            ActivityEventRecord(
-                event_id=row[0],
-                run_id=row[1],
-                ordinal=row[2],
-                kind=ActivityEventKind(row[3]),
-                occurred_at=row[4],
-                activity_id=row[5].get("activity_id"),
-                evidence=BoundedEvidence.from_mapping(row[5].get("evidence", {})),
-                failure=_failure_evidence(row[5].get("failure")),
-            )
-            for row in rows
-        )
+        return tuple(_activity_event(row) for row in rows)
 
 
 def _execution_request(row: tuple[Any, ...]) -> ExecutionRequestRecord:
@@ -1409,6 +1486,19 @@ def _activity_run(row: tuple[Any, ...]) -> ActivityRunRecord:
         started_at=row[7],
         finished_at=row[8],
         metadata=BoundedEvidence.from_mapping(row[9]),
+    )
+
+
+def _activity_event(row: tuple[Any, ...]) -> ActivityEventRecord:
+    return ActivityEventRecord(
+        event_id=row[0],
+        run_id=row[1],
+        ordinal=row[2],
+        kind=ActivityEventKind(row[3]),
+        occurred_at=row[4],
+        activity_id=row[5].get("activity_id"),
+        evidence=BoundedEvidence.from_mapping(row[5].get("evidence", {})),
+        failure=_failure_evidence(row[5].get("failure")),
     )
 
 

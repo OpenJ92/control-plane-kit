@@ -50,6 +50,7 @@ class OperationActionKind(StrEnum):
     APPROVAL_REQUESTED = "approval_requested"
     APPROVAL_DECIDED = "approval_decided"
     EXECUTION_REQUESTED = "execution_requested"
+    EXECUTION_RUN_TRANSITIONED = "execution_run_transitioned"
     RECOVERY_REQUESTED = "recovery_requested"
 
 
