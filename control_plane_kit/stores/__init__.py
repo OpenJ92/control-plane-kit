@@ -8,6 +8,7 @@ from control_plane_kit.execution import (
 from control_plane_kit.stores.postgres import (
     POSTGRES_SCHEMA,
     PostgresActivityHistoryStore,
+    PostgresExecutionStore,
     PostgresGraphTopologyStore,
     PostgresInstanceRegistryStore,
     PostgresObservedStateStore,
@@ -39,6 +40,7 @@ from control_plane_kit.stores.records import (
 )
 from control_plane_kit.stores.protocols import (
     ActivityHistoryStore,
+    ExecutionStore,
     GraphTopologyStore,
     InstanceRegistryStore,
     ObservedStateStore,
@@ -51,6 +53,7 @@ __all__ = [
     "ActivityHistoryStore",
     "ActivityPlanRecord",
     "ActivityRunRecord",
+    "ExecutionStore",
     "ApprovalDecisionKind",
     "ApprovalDecisionRecord",
     "ApprovalRequestRecord",
@@ -66,6 +69,7 @@ __all__ = [
     "OperationSessionStatus",
     "POSTGRES_SCHEMA",
     "PostgresActivityHistoryStore",
+    "PostgresExecutionStore",
     "PostgresGraphTopologyStore",
     "PostgresInstanceRegistryStore",
     "PostgresObservedStateStore",

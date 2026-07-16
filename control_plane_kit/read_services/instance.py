@@ -17,11 +17,12 @@ from control_plane_kit.projections import project_operator_graph
 from control_plane_kit.planning.recovery import plan_recovery_transition
 from control_plane_kit.stores.protocols import (
     ActivityHistoryStore,
+    ExecutionStore,
     GraphTopologyStore,
     ObservedStateStore,
     WorkspaceStore,
 )
-from control_plane_kit.execution import ObservationRecord
+from control_plane_kit.execution import DEFAULT_EXECUTION_CODEC, ObservationRecord
 from control_plane_kit.stores.records import (
     ActivityPlanRecord,
     GraphVersionRecord,
@@ -236,12 +237,14 @@ class InstanceReadService:
         workspace_store: WorkspaceStore,
         graph_topology_store: GraphTopologyStore,
         activity_history_store: ActivityHistoryStore | None = None,
+        execution_store: ExecutionStore | None = None,
         observed_state_store: ObservedStateStore | None = None,
         graph_codec: GraphDescriptorCodec = DEFAULT_GRAPH_CODEC,
     ) -> None:
         self._workspace_store = workspace_store
         self._graph_topology_store = graph_topology_store
         self._activity_history_store = activity_history_store
+        self._execution_store = execution_store
         self._observed_state_store = observed_state_store
         self._graph_codec = graph_codec
 
@@ -284,11 +287,15 @@ class InstanceReadService:
         limit = _positive_limit(limit)
         self._workspace(workspace_id)
         store = self._activity_history()
+        execution = self._execution()
         sessions = store.sessions_for_workspace(workspace_id)[:limit]
         return ActivityTimelineReadModel(
             workspace_id=workspace_id,
             limit=limit,
-            sessions=tuple(_session_descriptor(store, session, limit=limit) for session in sessions),
+            sessions=tuple(
+                _session_descriptor(store, execution, session, limit=limit)
+                for session in sessions
+            ),
         )
 
     def open_sessions(
@@ -335,7 +342,11 @@ class InstanceReadService:
         return FocusedDetailReadModel(
             workspace_id=workspace_id,
             kind="session-detail",
-            payload={"session": _session_descriptor(store, session, limit=limit)},
+            payload={
+                "session": _session_descriptor(
+                    store, self._execution(), session, limit=limit
+                )
+            },
         )
 
     def plan_detail(
@@ -351,7 +362,7 @@ class InstanceReadService:
         self._workspace(workspace_id)
         store = self._activity_history()
         plan = _plan_in_workspace(store, workspace_id, plan_id)
-        payload = _plan_descriptor(store, plan, limit=limit)
+        payload = _plan_descriptor(store, self._execution(), plan, limit=limit)
         payload["risk_summary"] = _risk_summary(plan)
         payload["recovery"] = self._recovery_for_plan(workspace_id, plan)
         return FocusedDetailReadModel(
@@ -434,6 +445,11 @@ class InstanceReadService:
         if self._activity_history_store is None:
             raise ReadModelError("activity history store is not configured")
         return self._activity_history_store
+
+    def _execution(self) -> ExecutionStore:
+        if self._execution_store is None:
+            raise ReadModelError("execution store is not configured")
+        return self._execution_store
 
     def _observed_state(self) -> ObservedStateStore:
         if self._observed_state_store is None:
@@ -606,6 +622,7 @@ def _session_summary_descriptor(session: OperationSessionRecord) -> dict[str, ob
 
 def _session_descriptor(
     store: ActivityHistoryStore,
+    execution: ExecutionStore,
     session: OperationSessionRecord,
     *,
     limit: int,
@@ -623,7 +640,7 @@ def _session_descriptor(
             for approval in store.approval_requests_for_session(session_id)[:limit]
         ],
         "plans": [
-            _plan_descriptor(store, plan, limit=limit)
+            _plan_descriptor(store, execution, plan, limit=limit)
             for plan in plans
         ],
     }
@@ -671,6 +688,7 @@ def _approval_descriptor(
 
 def _plan_descriptor(
     store: ActivityHistoryStore,
+    execution: ExecutionStore,
     plan: ActivityPlanRecord,
     *,
     limit: int,
@@ -685,18 +703,21 @@ def _plan_descriptor(
         "created_at": plan.created_at,
         "payload": DEFAULT_ACTIVITY_PLAN_CODEC.encode(plan.plan),
         "runs": [
-            _run_descriptor(store, run, limit=limit)
-            for run in store.runs_for_plan(plan_id)[:limit]
+            _run_descriptor(execution, run, limit=limit)
+            for run in execution.runs_for_plan(plan_id)[:limit]
         ],
     }
 
 
-def _run_descriptor(store: ActivityHistoryStore, run: object, *, limit: int) -> dict[str, object]:
+def _run_descriptor(store: ExecutionStore, run: object, *, limit: int) -> dict[str, object]:
     run_id = getattr(run, "run_id")
     return {
         "run_id": run_id,
         "plan_id": getattr(run, "plan_id"),
+        "admission": DEFAULT_EXECUTION_CODEC.encode(getattr(run, "admission")),
+        "retry": DEFAULT_EXECUTION_CODEC.encode(getattr(run, "retry")),
         "status": getattr(run, "status").value,
+        "created_at": getattr(run, "created_at"),
         "started_at": getattr(run, "started_at"),
         "finished_at": getattr(run, "finished_at"),
         "metadata": _redact_descriptor_value("metadata", getattr(run, "metadata").descriptor()),

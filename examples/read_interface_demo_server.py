@@ -100,6 +100,7 @@ def create_demo_app(settings: DemoSettings):
         workspace_store=stores.workspace,
         graph_topology_store=stores.graph_topology,
         activity_history_store=stores.activity_history,
+        execution_store=stores.execution,
         observed_state_store=stores.observed_state,
     )
     app = create_instance_read_app(service, token=settings.token)

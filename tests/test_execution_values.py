@@ -7,6 +7,7 @@ from control_plane_kit.execution import (
     ActivityEventRecord,
     ActivityRunRecord,
     ActivityRunStatus,
+    AdmittedRun,
     BoundedEvidence,
     ClaimIdentity,
     ExecutionIdempotency,
@@ -17,6 +18,7 @@ from control_plane_kit.execution import (
     FailureCategory,
     FailureEvidence,
     LossyExecutionDescriptor,
+    LegacyImportedRun,
     MAX_EVIDENCE_BYTES,
     MalformedExecutionDescriptor,
     ObservationFreshness,
@@ -42,6 +44,15 @@ class ExecutionValueTests(unittest.TestCase):
                         approval_request_id="approval-request-a",
                         approval_decision_id="approval-decision-a",
                         idempotency=ExecutionIdempotency("execute-a", "fingerprint-a"),
+                        claim=(
+                            ClaimIdentity(
+                                "worker-a",
+                                "2026-07-16T00:00:00Z",
+                                "2026-07-16T00:01:00Z",
+                            )
+                            if status is ExecutionRequestStatus.CLAIMED
+                            else None
+                        ),
                     )
                 )
 
@@ -52,7 +63,10 @@ class ExecutionValueTests(unittest.TestCase):
                     ActivityRunRecord(
                         run_id="run-a",
                         plan_id="plan-a",
+                        admission=AdmittedRun("request-a"),
+                        retry=RetryIdentity(1),
                         status=status,
+                        created_at="2026-07-16T00:00:00Z",
                         started_at="2026-07-16T00:00:00Z",
                         metadata=BoundedEvidence.from_mapping({"worker": "agent-a"}),
                     )
@@ -105,6 +119,8 @@ class ExecutionValueTests(unittest.TestCase):
                 "2026-07-16T00:01:00Z",
             ),
             RetryIdentity(2, "run-a"),
+            AdmittedRun("request-a"),
+            LegacyImportedRun(),
         ]
         values.extend(
             FailureEvidence(
@@ -136,7 +152,10 @@ class ExecutionValueTests(unittest.TestCase):
             ActivityRunRecord(
                 run_id="run-a",
                 plan_id="plan-a",
+                admission=LegacyImportedRun(),
+                retry=RetryIdentity(1),
                 status="running",  # type: ignore[arg-type]
+                created_at="2026-07-16T00:00:00Z",
                 started_at="2026-07-16T00:00:00Z",
             )
         with self.assertRaisesRegex(TypeError, "ObservationStatus"):

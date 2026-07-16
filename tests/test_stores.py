@@ -2,14 +2,12 @@ import unittest
 
 from control_plane_kit import (
     ActivityPlan,
-    ActivityRunStatus,
     ObservationFreshness,
     ObservationStatus,
 )
 from control_plane_kit.topology.graph import DeploymentGraph
 from control_plane_kit.stores import (
     ActivityPlanRecord,
-    ActivityRunRecord,
     GraphVersionRecord,
     InstanceRecord,
     ObservationRecord,
@@ -132,21 +130,11 @@ class StoreContractTests(PostgresStoreTestCase):
                 plan=ActivityPlan(()),
             )
         )
-        store.add_run(
-            ActivityRunRecord(
-                run_id="run-a",
-                plan_id="plan-a",
-                status=ActivityRunStatus.RUNNING,
-                started_at="2026-07-15T00:03:00Z",
-            )
-        )
-
         self.assertEqual(
             [record.session_id for record in store.sessions_for_workspace("workspace-a")],
             ["session-a"],
         )
         self.assertEqual([record.plan_id for record in store.plans_for_session("session-a")], ["plan-a"])
-        self.assertEqual([record.run_id for record in store.runs_for_plan("plan-a")], ["run-a"])
 
     def test_observed_state_is_separate_from_graph_truth(self):
         self.stores.workspace.create(

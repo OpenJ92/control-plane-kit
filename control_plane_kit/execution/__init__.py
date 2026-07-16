@@ -20,6 +20,7 @@ from control_plane_kit.execution.values import (
     ActivityEventRecord,
     ActivityRunRecord,
     ActivityRunStatus,
+    AdmittedRun,
     BoundedEvidence,
     ClaimIdentity,
     ExecutionDescriptorValue,
@@ -30,10 +31,12 @@ from control_plane_kit.execution.values import (
     ExecutionValueError,
     FailureCategory,
     FailureEvidence,
+    LegacyImportedRun,
     ObservationFreshness,
     ObservationRecord,
     ObservationStatus,
     RetryIdentity,
+    RunAdmission,
 )
 
 __all__ = [
@@ -41,6 +44,7 @@ __all__ = [
     "ActivityEventRecord",
     "ActivityRunRecord",
     "ActivityRunStatus",
+    "AdmittedRun",
     "BoundedEvidence",
     "ClaimIdentity",
     "DEFAULT_EXECUTION_CODEC",
@@ -57,6 +61,7 @@ __all__ = [
     "ExecutionValueError",
     "FailureCategory",
     "FailureEvidence",
+    "LegacyImportedRun",
     "LossyExecutionDescriptor",
     "MAX_EVIDENCE_BYTES",
     "MAX_EVIDENCE_DEPTH",
@@ -67,5 +72,6 @@ __all__ = [
     "ObservationRecord",
     "ObservationStatus",
     "RetryIdentity",
+    "RunAdmission",
     "UnknownExecutionVariant",
 ]
