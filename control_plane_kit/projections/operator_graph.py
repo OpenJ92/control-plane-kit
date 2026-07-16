@@ -10,7 +10,7 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from typing import Mapping
 
-from control_plane_kit.graph import DeploymentGraph, Edge, Node, RuntimeRecord
+from control_plane_kit.topology.graph import DeploymentGraph, Edge, Node, RuntimeRecord
 
 _SECRET_MARKERS = ("secret", "token", "password", "private_key", "credential", "api_key")
 _REDACTED = "<redacted>"

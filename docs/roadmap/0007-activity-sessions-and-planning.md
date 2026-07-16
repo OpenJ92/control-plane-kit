@@ -1,6 +1,6 @@
 # Roadmap 0007: Activity Sessions And Planning
 
-Status: Draft
+Status: Implementation complete on roadmap branch; integration PR pending
 Depends on: Roadmap 0005, Roadmap 0006
 
 ## Motivation
@@ -64,7 +64,10 @@ This roadmap should make it possible to:
 - produce an inspectable activity plan,
 - classify dangerous activities,
 - request and record approvals,
-- and expose read models for pending sessions/plans.
+- expose read models for pending sessions/plans,
+- and hand Roadmap 0009 transport-neutral command/planning application services
+  that a composed FastAPI CPI server can call without rebuilding workflow
+  semantics in route handlers.
 
 Execution comes later.
 
@@ -76,79 +79,80 @@ Execution comes later.
 - Do not promise perfect undo.
 - Do not bypass approval for consequential activities.
 - Do not make every graph edit executable.
-- Do not implement the full Hub yet.
+- Do not implement recursive child-instance management yet; Roadmap 0009 will
+  compile it through these same session, planning, and approval boundaries.
 
-## Suggested Issue Topology
+## Canonical Issue Topology
 
-1. Add operation session model and service.
-   - Create session.
-   - Close session.
-   - Mark session status.
-   - Attach actor/operator identity.
-   - Persist via `ActivityHistoryStore`.
+The semantic roadmap number defines execution order. GitHub issue numbers do
+not: `0007.5` is issue #138 while `0007.6` is #137, and `0007.9` is #142 while
+`0007.10` is #141.
 
-2. Add operation action model and service.
-   - Record graph edit intent.
-   - Record plan request.
-   - Record approval request.
-   - Record cancellation.
-   - Preserve action ordering inside a session.
+1. `0007.1` Postgres UnitOfWork command boundary (#133).
+   - `0007.1.1` Postgres UnitOfWork primitive (#144).
+   - `0007.1.2` Transaction fixture and rollback hardening (#145).
+   - `0007.1.3` UnitOfWork docs and store adapter contract (#146).
 
-3. Add desired graph edit workflow.
-   - Edit from a named base graph version.
-   - Reject stale base versions or require explicit rebase.
-   - Save new desired graph version.
-   - Record the edit as an operation action.
-   - Save the action and graph version inside one unit of work.
+2. `0007.2` Operation session and action commands (#134).
+   - Create, close, and cancel sessions.
+   - Record ordered actions with concurrency-safe ordinals.
+   - Compose every command through UnitOfWork.
 
-4. Add graph validation workflow.
-   - Validate socket compatibility.
-   - Validate runtime context containment.
-   - Validate required connections.
-   - Validate control-route descriptor shape.
-   - Return structured validation results.
+3. `0007.3` Desired graph edit workflow (#135).
+   - `0007.3.1` Desired graph edit request/result data (#147).
+   - `0007.3.2` Desired graph descriptor reconstruction boundary (#148).
+   - `0007.3.3` Desired graph command workflow (#149).
+   - `0007.3.4` Idempotency and concurrency hardening (#150).
+   - Preserve authored block-specification type information through graph
+     descriptor persistence and reconstruction. Do not collapse future closed
+     specification variants into untyped metadata strings.
+   - Keep the descriptor codec extensible so Roadmap 0009 can add a package
+     `ControlPlaneInstanceSpec` variant without rebuilding graph-edit workflow
+     semantics.
 
-5. Add graph diff service.
-   - Compare current and desired graph versions.
-   - Return typed diff records.
-   - Keep diff pure and effect-free.
+4. `0007.4` Pure graph validation workflow (#136).
 
-6. Add activity plan model.
-   - Activities must be typed enough to render, approve, and eventually execute.
-   - Include dependency edges.
-   - Include risk/destructive markers.
-   - Include target node/edge references.
+5. `0007.5` Typed, deterministic graph diff service (#138).
 
-7. Add activity planner service.
-   - Compile graph diff into activity plan.
-   - Represent start/stop/register/switch/drain/wait/patch candidates.
-   - Mark activities that cannot be planned safely.
-   - Persist plan metadata and related operation action inside one unit of
-     work.
+6. `0007.6` Activity plan records and descriptors (#137).
+   - `0007.6.1` Activity plan algebra (#151).
+   - `0007.6.2` Descriptors and persistence payloads (#152).
+   - `0007.6.3` Descriptor hardening (#153).
 
-8. Add approval policy and approval records.
-   - Plan approval.
-   - Destructive approval.
-   - Actor/scope/comment/timestamp.
-   - Approval cannot be inferred from UI state.
-   - Approval request/decision records must be committed atomically with the
-     command that creates or changes their workflow state.
+7. `0007.7` Activity planner command workflow (#139).
+   - `0007.7.1` Pure diff-to-plan compiler (#154).
+   - `0007.7.2` UnitOfWork-backed planner command service (#155).
+   - `0007.7.3` Idempotency and failure hardening (#156).
 
-9. Add recovery planning scaffold.
-   - Represent `plan(B, A)` as recovery transition, not mathematical inverse.
-   - Represent `plan(null, A)` as reconstruction candidate.
-   - Mark irreversible or compensation-required activities.
+8. `0007.8` Approval request and decision workflow (#140).
 
-10. Add session/plan read projections.
-    - Pending sessions.
-    - Pending approvals.
-    - Plan details.
-    - Risk/destructive activity summaries.
+9. `0007.9` Recovery planning scaffold (#142).
 
-11. Add docs and examples.
-    - Example backend swap session.
-    - Example stale graph edit rejection.
-    - Example approval-required plan.
+10. `0007.10` Session and plan read projections (#141).
+    - `0007.10.1` Core projections (#157).
+    - `0007.10.2` FastAPI read routes (#158).
+    - `0007.10.3` CLI and MCP read adapters (#159).
+    - `0007.10.4` Security and edge hardening (#160).
+
+11. `0007.11` Docs, examples, hardening, and closeout (#143).
+    - Curate the command/planning service constructors, typed request/result
+      values, stable error mapping, UnitOfWork ownership, and security policies
+      that Roadmap 0009 must compose behind HTTP.
+    - Do not build the final CPI FastAPI application here; make its service
+      dependencies explicit and injectable.
+
+The executable dependency chain is:
+
+```text
+#144 -> #145 -> #146 -> #134
+  -> #147 -> #148 -> #149 -> #150
+  -> #136 -> #138
+  -> #151 -> #152 -> #153
+  -> #154 -> #155 -> #156
+  -> #140 -> #142
+  -> #157 -> #158 -> #159 -> #160
+  -> #143
+```
 
 ## Target Workflow
 
@@ -244,6 +248,10 @@ The UI can make the danger visible, but the backend owns the approval boundary.
 - Activity plans are persisted and renderable.
 - Destructive activities require stronger approval metadata.
 - Approval decisions are recorded.
+- Command and planning services can be constructed independently of FastAPI and
+  called through one explicit UnitOfWork per operator command.
+- Their request/result/error descriptors are stable enough for Roadmap 0009 to
+  expose without inventing durable semantics in route handlers.
 - No execution happens.
 - `./test.sh`
 - `python3 -m compileall control_plane_kit tests`
@@ -254,3 +262,33 @@ The UI can make the danger visible, but the backend owns the approval boundary.
 Roadmap 0008 will execute approved plans. The handoff must include stable
 activity plan descriptors, approval records, idempotency expectations, and
 which activity kinds are safe to execute first.
+
+Roadmap 0009 will compose these workflows into the real CPI server. The 0007
+handoff must therefore identify:
+
+```text
+session command service
+desired-graph command service
+planning service
+approval service
+read projections
+typed request/result/error values
+UnitOfWork factory and transaction ownership
+authorization policy inputs
+typed block-spec descriptor/reconstruction extension point
+```
+
+## Closeout Result
+
+Roadmap 0007 is implemented as a non-executing, Postgres-backed planning
+pipeline. The capstone example is `examples/backend_swap_planning.py`; the
+operator guide is `docs/ACTIVITY_PLANNING.md`; and implementation learning is
+recorded in `docs/learning/roadmap-0007/run-0001.md`.
+
+The final implementation deliberately stops at a pending or decided approval.
+It does not create an `ActivityRun`, call a runtime interpreter, or signal a
+block control route. Those effects remain Roadmap 0008 work.
+
+Roadmap 0009 may add FastAPI adapters around these services, but it must not
+reimplement session ordering, graph concurrency, planning, approval, or commit
+behavior in HTTP handlers.

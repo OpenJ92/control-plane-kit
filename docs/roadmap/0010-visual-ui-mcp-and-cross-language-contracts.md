@@ -1,7 +1,7 @@
-# Roadmap 0009: Visual UI, MCP, And Cross-Language Contracts
+# Roadmap 0010: Visual UI, MCP, And Cross-Language Contracts
 
 Status: Draft
-Depends on: Roadmap 0001 through Roadmap 0008
+Depends on: Roadmap 0001 through Roadmap 0009
 
 ## Motivation
 
@@ -22,6 +22,23 @@ A user should be able to:
 - execute approved plans,
 - inspect activity history,
 - and observe runtime state.
+
+The UI deliberately simplifies an operational recursion law:
+
+```text
+ControlPlaneInstanceBlock : DeployBlock
+
+parent graph contains ControlPlaneInstanceBlock(child)
+child application owns another DeploymentGraph[DeployBlock]
+```
+
+The Hub is simply the externally bootstrapped control-plane instance through
+which the user entered. A child instance is an ordinary package-provided
+`ApplicationBlock` in that instance's deployment graph. Its running application
+owns another deployment graph. The frontend speaks to the entry instance, which
+authenticates, discovers selectable child blocks from graph projections, and
+proxies to a chosen child API. The child remains the authority for its own
+workspace.
 
 Python is first-class, but the topology model should not be Python-only. Other
 languages should participate through descriptors, declared sockets, environment
@@ -83,6 +100,8 @@ This roadmap should provide:
 4. Add UI fixture descriptors.
    - Simple local deployment.
    - Router-backed backend swap.
+   - Bootstrapped instance with multiple disconnected Auth/CPI/store fragments.
+   - Root -> child -> grandchild navigation breadcrumbs.
    - Runtime context boxes.
    - Pending approval.
    - Failed/partial activity run.
@@ -132,6 +151,8 @@ This roadmap should provide:
 Hub screen
   visible control-plane instances
   lifecycle controls
+  create/wake/select child instance
+  open selected child public Auth entry
 
 Workspace screen
   runtime context boxes
@@ -144,6 +165,26 @@ Workspace screen
   approval panel
   observed-state panel
 ```
+
+The editor should present this as a simple navigation hierarchy, not an
+infinite recursive canvas. Internally, however, child instances are ordinary
+`ApplicationBlock` nodes advertising control-plane-instance capabilities. This
+allows the same block descriptors and capability-driven UI machinery to
+represent both selectable child instances and other controllable deployment
+blocks without introducing a special UI node species.
+
+Navigation should preserve stable spawning provenance while using the selected
+instance's observed public entry for communication:
+
+```text
+root / child-a / child-a-1
+```
+
+The frontend uses that path for breadcrumbs and selection history. It resolves
+the selected instance's observed public Auth entry URL, changes its active
+server/base URL, and authenticates directly there. Roadmap 0009 deliberately
+does not place the bootstrapped instance or any ancestor in the selected
+instance's request path.
 
 The user action:
 
@@ -218,6 +259,13 @@ production topology without approval."
 - Capability descriptors decide which controls are shown.
 - Keep control routes separate from user traffic routes.
 - Keep graph descriptors redacted.
+- Keep root/child presentation capability-driven rather than implementing Hub
+  and Instance as unrelated object hierarchies.
+- Do not introduce a special UI node type when the child is already represented
+  by an ordinary application block plus instance capabilities.
+- An authorized instance may advertise selectable children, but clients connect
+  directly to each selected child's public Auth entry and keep sessions scoped
+  to that instance origin.
 
 ## Validation
 
@@ -236,5 +284,5 @@ production topology without approval."
 
 After this vertical, the package should be ready for a separate UI project or a
 thin demo UI without changing core backend topology. Further roadmap work can
-then focus on richer runtimes, cloud providers, graph database adapters, and the
-Hub server as a production-grade registry.
+then focus on richer runtimes, cloud providers, graph database adapters, and
+production hardening of recursive instance registries and lifecycle providers.

@@ -8,7 +8,7 @@ connections.
 from __future__ import annotations
 
 from control_plane_kit import DeploymentRecipe, DockerRuntime, SocketConnection, compile_recipe
-from control_plane_kit.graph import DeploymentGraph
+from control_plane_kit.topology.graph import DeploymentGraph
 from control_plane_kit.servers import (
     hello_server_block,
     http_active_router_block,

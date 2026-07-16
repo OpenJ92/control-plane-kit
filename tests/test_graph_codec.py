@@ -1,0 +1,170 @@
+import unittest
+from dataclasses import dataclass, replace
+from typing import Mapping
+
+from control_plane_kit import (
+    ApplicationBlock,
+    BlockFamily,
+    BlockSockets,
+    BlockSpec,
+    DeploymentRecipe,
+    DockerRuntime,
+    Endpoint,
+    GraphDescriptorCodec,
+    InvalidGraphReference,
+    LiteralAddress,
+    LossyGraphDescriptor,
+    MalformedGraphDescriptor,
+    PlanOnlyImplementation,
+    Protocol,
+    ProviderSocket,
+    SecretReferenceAddress,
+    UnknownGraphVariant,
+    compile_recipe,
+)
+from examples.app_with_postgres import recipe
+
+
+@dataclass(frozen=True)
+class ExampleInstanceSpec(BlockSpec):
+    public_provider: str = "public"
+
+
+class ExampleInstanceSpecCodec:
+    variant = "example-instance"
+    spec_type = ExampleInstanceSpec
+
+    def encode(self, spec: BlockSpec) -> Mapping[str, object]:
+        if not isinstance(spec, ExampleInstanceSpec):
+            raise TypeError("expected ExampleInstanceSpec")
+        return {
+            "variant": self.variant,
+            "role_id": spec.role_id,
+            "display_name": spec.display_name,
+            "health_path": spec.health_path,
+            "capabilities": [capability.value for capability in spec.capabilities],
+            "metadata": dict(sorted(spec.metadata.items())),
+            "public_provider": spec.public_provider,
+        }
+
+    def decode(self, descriptor: Mapping[str, object]) -> BlockSpec:
+        return ExampleInstanceSpec(
+            role_id=str(descriptor["role_id"]),
+            display_name=_optional_text(descriptor.get("display_name")),
+            health_path=_optional_text(descriptor.get("health_path")),
+            metadata={str(key): str(value) for key, value in _mapping(descriptor["metadata"]).items()},
+            public_provider=str(descriptor["public_provider"]),
+        )
+
+
+class GraphDescriptorCodecTests(unittest.TestCase):
+    def test_generic_graph_round_trip_preserves_typed_block_identity(self):
+        graph = compile_recipe(recipe())
+        codec = GraphDescriptorCodec()
+
+        restored = codec.decode(codec.encode(graph))
+
+        self.assertEqual(restored, graph)
+        self.assertIs(restored.node("orders-api").block_family, BlockFamily.APPLICATION)
+        self.assertEqual(restored.node("orders-api").block_spec, graph.node("orders-api").block_spec)
+
+    def test_registered_spec_variant_round_trips_without_string_inference(self):
+        app = ApplicationBlock(
+            spec=ExampleInstanceSpec("instance-a", public_provider="operator"),
+            implementation=PlanOnlyImplementation("instance"),
+            sockets=BlockSockets(providers=(ProviderSocket("operator", Protocol.HTTP),)),
+        )
+        graph = compile_recipe(
+            DeploymentRecipe("instance", DockerRuntime(children=(app,)))
+        )
+        codec = GraphDescriptorCodec(spec_codecs=(ExampleInstanceSpecCodec(),))
+
+        restored = codec.decode(codec.encode(graph))
+
+        self.assertEqual(restored.node("instance-a").block_spec, app.spec)
+        self.assertIsInstance(restored.node("instance-a").block_spec, ExampleInstanceSpec)
+
+    def test_secret_reference_address_round_trips_without_secret_resolution(self):
+        graph = compile_recipe(recipe())
+        postgres = graph.node("postgres")
+        secret_endpoint = Endpoint(
+            SecretReferenceAddress("secret://workspace-a/postgres-url"),
+            Protocol.POSTGRES,
+        )
+        graph = graph.update_node(
+            replace(postgres, endpoints={"internal": secret_endpoint})
+        )
+        codec = GraphDescriptorCodec()
+
+        descriptor = codec.encode(graph)
+        restored = codec.decode(descriptor)
+
+        self.assertEqual(
+            descriptor["nodes"]["postgres"]["endpoints"]["internal"]["address"],
+            {
+                "kind": "secret-reference",
+                "secret_ref": "secret://workspace-a/postgres-url",
+            },
+        )
+        self.assertEqual(restored.node("postgres").endpoint("internal"), secret_endpoint)
+
+    def test_literal_addresses_reject_embedded_credentials(self):
+        with self.assertRaisesRegex(ValueError, "must not contain credentials"):
+            LiteralAddress("postgresql://operator:secret@database/app")
+
+    def test_unknown_closed_variants_fail_loudly(self):
+        descriptor = GraphDescriptorCodec().encode(compile_recipe(recipe()))
+        descriptor["nodes"]["orders-api"]["block_spec"]["variant"] = "future"
+
+        with self.assertRaisesRegex(UnknownGraphVariant, "block spec variant"):
+            GraphDescriptorCodec().decode(descriptor)
+
+    def test_missing_runtime_ownership_fails_loudly(self):
+        descriptor = GraphDescriptorCodec().encode(compile_recipe(recipe()))
+        descriptor["runtimes"]["docker"]["children"].remove("orders-api")
+
+        with self.assertRaisesRegex(InvalidGraphReference, "not owned"):
+            GraphDescriptorCodec().decode(descriptor)
+
+    def test_missing_edge_socket_fails_loudly(self):
+        descriptor = GraphDescriptorCodec().encode(compile_recipe(recipe()))
+        edge = descriptor["edges"]["postgres.internal-to-orders-api.DATABASE_URL"]
+        edge["consumer"]["requirement"] = "missing"
+
+        with self.assertRaises(InvalidGraphReference):
+            GraphDescriptorCodec().decode(descriptor)
+
+    def test_unknown_fields_are_rejected_as_lossy(self):
+        descriptor = GraphDescriptorCodec().encode(compile_recipe(recipe()))
+        descriptor["future"] = {"meaning": "unknown"}
+
+        with self.assertRaises(LossyGraphDescriptor):
+            GraphDescriptorCodec().decode(descriptor)
+
+    def test_tuple_input_is_semantically_equivalent_to_json_list(self):
+        descriptor = GraphDescriptorCodec().encode(compile_recipe(recipe()))
+        descriptor["runtimes"]["docker"]["children"] = tuple(
+            descriptor["runtimes"]["docker"]["children"]
+        )
+
+        restored = GraphDescriptorCodec().decode(descriptor)
+
+        self.assertEqual(restored.runtimes["docker"].children, ("orders-api", "postgres"))
+
+    def test_malformed_top_level_shape_fails_with_typed_error(self):
+        with self.assertRaises(MalformedGraphDescriptor):
+            GraphDescriptorCodec().decode({"name": "broken", "nodes": []})
+
+
+def _mapping(value: object) -> Mapping[str, object]:
+    if not isinstance(value, Mapping):
+        raise TypeError("expected mapping")
+    return value
+
+
+def _optional_text(value: object) -> str | None:
+    return None if value is None else str(value)
+
+
+if __name__ == "__main__":
+    unittest.main()

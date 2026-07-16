@@ -20,8 +20,10 @@ The central law:
 Interfaces expose the model; they do not define the model.
 ```
 
-The first meaningful server should be the `ControlPlaneInstance` read API. The
-Hub can begin later as a light registry/read shell.
+The first meaningful server should be the `ControlPlaneInstance` read API.
+Roadmap 0009 will reuse that same server shape for root and parent instances,
+adding selectable-instance projections over ordinary graph blocks rather than
+a separate Hub shell or topology registry.
 
 ## Goal
 
@@ -48,7 +50,8 @@ not own graph, workflow, activity, or policy truth.
 
 - Do not expose graph mutation routes.
 - Do not expose activity execution routes.
-- Do not build full Hub lifecycle management yet.
+- Do not build recursive child-instance lifecycle management yet; Roadmap 0009
+  adds it to the shared `ControlPlaneInstance` shape.
 - Do not make MCP mutation tools.
 - Do not let MCP shell out to discover topology.
 - Do not make read models Docker-specific.

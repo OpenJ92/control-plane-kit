@@ -24,7 +24,7 @@ observed running system
 
 The package needs a backend structure that preserves that distinction.
 
-The agreed high-level shape is:
+The agreed user-facing shape is:
 
 ```text
 Hub
@@ -36,6 +36,23 @@ ControlPlaneInstance
 Deployed application graph
   contains the actual servers, databases, blocks, runtimes, and control routes
 ```
+
+The later design resolution is simpler than three unrelated classes or a
+recursive graph-node sum:
+
+```text
+ControlPlaneInstanceBlock : DeployBlock
+
+parent graph contains ControlPlaneInstanceBlock(child)
+child application owns another DeploymentGraph[DeployBlock]
+```
+
+The Hub is the user-facing name for the externally bootstrapped instance. The
+child control plane is an ordinary application server block in the parent's
+graph; its application owns an opaque graph of its own. Identity, access,
+lifecycle, endpoint discovery, delegation, and authenticated proxying remain
+important capabilities, but they do not create another Hub domain model or
+another graph node species.
 
 The most important repository law for this roadmap is the Pottery Factory
 ownership law:
@@ -85,7 +102,8 @@ the rest.
 
 ## Non-Goals
 
-- Do not build the full Hub server in this vertical.
+- Do not build recursive child-instance lifecycle and proxy behavior in this
+  vertical; Roadmap 0009 adds it to the shared instance server.
 - Do not build full runtime execution in this vertical.
 - Do not expose mutation routes in this vertical.
 - Do not build the MCP adapter in this vertical.
@@ -144,11 +162,14 @@ the rest.
    - No secret values.
 
 6. Define `InstanceRegistryStore` contracts.
-   - Hub-visible control-plane instance records.
+   - Entry-instance-visible control-plane instance records.
    - Owner/grant references.
    - Lifecycle status.
    - Endpoint/wake metadata.
    - Retention metadata.
+   - Roadmap 0009 must narrow this legacy registry: graph topology owns which
+     child instance blocks exist; only independently authoritative access,
+     lifecycle-history, endpoint-history, and recovery facts may remain here.
 
 7. Define workflow/session services.
    - `OperationSessionService`.
@@ -166,6 +187,8 @@ the rest.
    - `ApprovalPolicy`.
    - `DestructiveActivityPolicy`.
    - Keep policy mostly pure and testable.
+   - Roadmap 0009 should replace the root/child naming split with reusable
+     graph-scoped and workspace-scoped instance authorization.
 
 9. Define control-plane lifecycle states and retention laws.
    - Suggested states:
@@ -262,10 +285,18 @@ ownership taxonomy and the earliest truth/workflow/policy contracts.
 - Do not model graph topology as normalized Postgres tables in the first pass.
 - Do use proper relational normalization for session/action/approval/run/event
   data.
-- Treat `ControlPlaneInstance` as an orchestration/API boundary over imported
-  modules, not as the place where every rule accumulates.
-- Treat the Hub as light: access, registry, lifecycle, and session granting.
-- Treat the Instance as heavy: workspace graph/activity/state authority.
+- Treat the control-plane instance server as a package-provided
+  `ApplicationBlock`, and therefore an ordinary `DeployBlock`.
+- Treat Hub as the UI name for the externally bootstrapped instance, not
+  another implementation or domain type.
+- Derive child topology from ordinary graph nodes. Do not create a parallel Hub
+  registry as another source of topology truth.
+- Make access, lifecycle, session delegation, and authenticated proxying
+  reusable instance capabilities.
+- A parent instance must not directly mutate application blocks or persistence
+  inside a child's workspace.
+- Require child instances to advertise an authenticated control API so the Hub
+  can discover, observe, and manage them like other controllable blocks.
 - Keep source-of-truth modules separate from workflow/session modules even when
   they share one physical Postgres database.
 

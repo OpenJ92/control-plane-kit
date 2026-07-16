@@ -1,14 +1,17 @@
 import unittest
 
-from control_plane_kit.graph import DeploymentGraph
+from control_plane_kit import ActivityPlan
+from control_plane_kit.topology.graph import DeploymentGraph
 from control_plane_kit.stores import (
     ActivityPlanRecord,
     ActivityRunRecord,
     GraphVersionRecord,
     InstanceRecord,
     ObservationRecord,
+    OperationActionKind,
     OperationActionRecord,
     OperationSessionRecord,
+    OperationSessionStatus,
     POSTGRES_SCHEMA,
     SecretReferenceRecord,
     WorkspaceLifecycle,
@@ -63,7 +66,7 @@ class StoreContractTests(PostgresStoreTestCase):
                 workspace_id="workspace-a",
                 actor_id="jacob",
                 title="Swap API",
-                status="open",
+                status=OperationSessionStatus.OPEN,
                 created_at="2026-07-15T00:00:00Z",
             )
         )
@@ -72,7 +75,7 @@ class StoreContractTests(PostgresStoreTestCase):
                 action_id="action-b",
                 session_id="session-a",
                 ordinal=2,
-                action_type="connect_socket",
+                action_type=OperationActionKind.CONNECT_SOCKET,
                 actor_id="jacob",
             )
         )
@@ -81,7 +84,7 @@ class StoreContractTests(PostgresStoreTestCase):
                 action_id="action-a",
                 session_id="session-a",
                 ordinal=1,
-                action_type="add_block",
+                action_type=OperationActionKind.ADD_BLOCK,
                 actor_id="jacob",
             )
         )
@@ -99,7 +102,7 @@ class StoreContractTests(PostgresStoreTestCase):
                 workspace_id="workspace-a",
                 actor_id="jacob",
                 title="Swap API",
-                status="open",
+                status=OperationSessionStatus.OPEN,
                 created_at="2026-07-15T00:00:00Z",
             )
         )
@@ -109,7 +112,7 @@ class StoreContractTests(PostgresStoreTestCase):
                 workspace_id="workspace-b",
                 actor_id="jacob",
                 title="Other workspace",
-                status="open",
+                status=OperationSessionStatus.OPEN,
                 created_at="2026-07-15T00:01:00Z",
             )
         )
@@ -121,6 +124,7 @@ class StoreContractTests(PostgresStoreTestCase):
                 desired_graph_id="graph-b",
                 status="planned",
                 created_at="2026-07-15T00:02:00Z",
+                plan=ActivityPlan(()),
             )
         )
         store.add_run(

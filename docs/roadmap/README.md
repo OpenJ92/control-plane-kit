@@ -37,12 +37,16 @@ The intended order is:
 6. [Control Plane Read Interfaces](0006-control-plane-read-interfaces.md)
 7. [Activity Sessions And Planning](0007-activity-sessions-and-planning.md)
 8. [Activity Execution And Runtime Mutation](0008-activity-execution-and-runtime-mutation.md)
-9. [Visual UI, MCP, And Cross-Language Contracts](0009-visual-ui-mcp-and-cross-language-contracts.md)
+9. [Control Plane Instance Block, Recursive Spawning, And Direct Navigation](0009-control-plane-instance-block-and-recursive-navigation.md)
+10. [Visual UI, MCP, And Cross-Language Contracts](0010-visual-ui-mcp-and-cross-language-contracts.md)
 
 This order is deliberately conservative. The package is easier to reason about
 when its pure algebra is stable before runtime effects, runtime effects are
 behind explicit source-of-truth and workflow boundaries, and live mutation is
-planned, approved, executed, and observed as durable activity.
+planned, approved, executed, and observed as durable activity. The control-plane
+instance server is then packaged as an ordinary deployable application block;
+visual interfaces consume selectable-instance projections, switch directly to
+advertised public entries, and do not require a second Hub model.
 
 ## Definition Of Done For A Roadmap Vertical
 
@@ -87,6 +91,16 @@ These constraints should survive every roadmap vertical:
 - Docker is an interpreter target, not the topology model.
 - Runtime contexts are graph topology.
 - Application code can remain ordinary application code.
+- `ControlPlaneInstanceBlock` is an ordinary `ApplicationBlock`; recursion must
+  not introduce another graph node species.
+- Recursive spawning records deployment provenance; it does not create a
+  recursive network route.
+- Every selectable control-plane instance advertises a typed public Auth entry
+  URL, and clients authenticate directly with the selected instance.
+- "Hub" is the positional name for the externally bootstrapped instance, not a
+  separate backend implementation.
+- Selectable child instances are projected from graph topology, observed state,
+  and authorization rather than persisted in a competing registry.
 - Live mutation is opt-in through contracts and reload policies.
 - Secrets can be set and checked, not read.
 - Store-local transitions use explicit Postgres unit-of-work transactions owned

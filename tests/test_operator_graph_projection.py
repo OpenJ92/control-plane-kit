@@ -21,7 +21,7 @@ from control_plane_kit.projections import project_operator_graph
 def _recipe_with_dangling_requirement() -> DeploymentRecipe:
     postgres = DataBlock(
         BlockSpec("postgres", display_name="Postgres", metadata={"admin_token": "secret"}),
-        DockerPostgresImplementation(password="not-for-output"),
+        DockerPostgresImplementation(),
         BlockSockets(providers=(ProviderSocket("internal", Protocol.POSTGRES),)),
     )
     api = ApplicationBlock(

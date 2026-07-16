@@ -13,16 +13,22 @@ import json
 from dataclasses import replace
 from typing import Any, Protocol
 
+from control_plane_kit.planning.activity_plan import RiskLevel
+from control_plane_kit.planning.codec import DEFAULT_ACTIVITY_PLAN_CODEC
 from control_plane_kit.stores.records import (
     ActivityEventRecord,
     ActivityPlanRecord,
     ActivityRunRecord,
-    ApprovalRecord,
+    ApprovalDecisionKind,
+    ApprovalDecisionRecord,
+    ApprovalRequestRecord,
     GraphVersionRecord,
     InstanceRecord,
     ObservationRecord,
+    OperationActionKind,
     OperationActionRecord,
     OperationSessionRecord,
+    OperationSessionStatus,
     SecretReferenceRecord,
     WorkspaceLifecycle,
     WorkspaceRecord,
@@ -58,7 +64,9 @@ CREATE TABLE IF NOT EXISTS cpk_operation_sessions (
   status text NOT NULL,
   created_at text NOT NULL,
   closed_at text,
-  metadata jsonb NOT NULL DEFAULT '{}'::jsonb
+  metadata jsonb NOT NULL DEFAULT '{}'::jsonb,
+  idempotency_key text,
+  intent_fingerprint text
 );
 
 CREATE TABLE IF NOT EXISTS cpk_operation_actions (
@@ -69,18 +77,9 @@ CREATE TABLE IF NOT EXISTS cpk_operation_actions (
   actor_id text NOT NULL,
   payload jsonb NOT NULL DEFAULT '{}'::jsonb,
   created_at text NOT NULL,
+  idempotency_key text,
+  intent_fingerprint text,
   UNIQUE (session_id, ordinal)
-);
-
-CREATE TABLE IF NOT EXISTS cpk_approvals (
-  approval_id text PRIMARY KEY,
-  session_id text NOT NULL REFERENCES cpk_operation_sessions(session_id),
-  target_id text NOT NULL,
-  actor_id text NOT NULL,
-  decision text NOT NULL,
-  scope text NOT NULL,
-  decided_at text NOT NULL,
-  comment text
 );
 
 CREATE TABLE IF NOT EXISTS cpk_activity_plans (
@@ -91,6 +90,32 @@ CREATE TABLE IF NOT EXISTS cpk_activity_plans (
   status text NOT NULL,
   created_at text NOT NULL,
   payload jsonb NOT NULL DEFAULT '{}'::jsonb
+);
+
+CREATE TABLE IF NOT EXISTS cpk_approval_requests (
+  request_id text PRIMARY KEY,
+  session_id text NOT NULL REFERENCES cpk_operation_sessions(session_id),
+  plan_id text NOT NULL REFERENCES cpk_activity_plans(plan_id),
+  requested_by text NOT NULL,
+  requested_at text NOT NULL,
+  required_scope text NOT NULL,
+  max_risk text NOT NULL,
+  destructive boolean NOT NULL,
+  comment text,
+  idempotency_key text,
+  intent_fingerprint text
+);
+
+CREATE TABLE IF NOT EXISTS cpk_approval_decisions (
+  decision_id text PRIMARY KEY,
+  request_id text NOT NULL UNIQUE REFERENCES cpk_approval_requests(request_id),
+  actor_id text NOT NULL,
+  decision text NOT NULL,
+  scope text NOT NULL,
+  decided_at text NOT NULL,
+  comment text,
+  idempotency_key text,
+  intent_fingerprint text
 );
 
 CREATE TABLE IF NOT EXISTS cpk_activity_runs (
@@ -138,6 +163,30 @@ CREATE TABLE IF NOT EXISTS cpk_secret_references (
   assigned_at text NOT NULL,
   metadata jsonb NOT NULL DEFAULT '{}'::jsonb
 );
+
+ALTER TABLE cpk_operation_sessions
+  ADD COLUMN IF NOT EXISTS idempotency_key text,
+  ADD COLUMN IF NOT EXISTS intent_fingerprint text;
+
+ALTER TABLE cpk_operation_actions
+  ADD COLUMN IF NOT EXISTS idempotency_key text,
+  ADD COLUMN IF NOT EXISTS intent_fingerprint text;
+
+CREATE UNIQUE INDEX IF NOT EXISTS cpk_operation_sessions_idempotency
+  ON cpk_operation_sessions (workspace_id, idempotency_key)
+  WHERE idempotency_key IS NOT NULL;
+
+CREATE UNIQUE INDEX IF NOT EXISTS cpk_operation_actions_idempotency
+  ON cpk_operation_actions (session_id, idempotency_key)
+  WHERE idempotency_key IS NOT NULL;
+
+CREATE UNIQUE INDEX IF NOT EXISTS cpk_approval_requests_idempotency
+  ON cpk_approval_requests (session_id, idempotency_key)
+  WHERE idempotency_key IS NOT NULL;
+
+CREATE UNIQUE INDEX IF NOT EXISTS cpk_approval_decisions_idempotency
+  ON cpk_approval_decisions (request_id, idempotency_key)
+  WHERE idempotency_key IS NOT NULL;
 """
 
 
@@ -161,6 +210,65 @@ def _record(row: tuple[Any, ...] | None, kind: str, key: str) -> tuple[Any, ...]
     if row is None:
         raise KeyError(f"missing {kind} {key!r}")
     return row
+
+
+def _session_record(row: tuple[Any, ...]) -> OperationSessionRecord:
+    return OperationSessionRecord(
+        session_id=row[0],
+        workspace_id=row[1],
+        actor_id=row[2],
+        title=row[3],
+        status=OperationSessionStatus(row[4]),
+        created_at=row[5],
+        closed_at=row[6],
+        metadata=row[7],
+        idempotency_key=row[8],
+        intent_fingerprint=row[9],
+    )
+
+
+def _action_record(row: tuple[Any, ...]) -> OperationActionRecord:
+    return OperationActionRecord(
+        action_id=row[0],
+        session_id=row[1],
+        ordinal=row[2],
+        action_type=OperationActionKind(row[3]),
+        actor_id=row[4],
+        payload=row[5],
+        created_at=row[6],
+        idempotency_key=row[7],
+        intent_fingerprint=row[8],
+    )
+
+
+def _approval_request_record(row: tuple[Any, ...]) -> ApprovalRequestRecord:
+    return ApprovalRequestRecord(
+        request_id=row[0],
+        session_id=row[1],
+        plan_id=row[2],
+        requested_by=row[3],
+        requested_at=row[4],
+        required_scope=row[5],
+        max_risk=RiskLevel(row[6]),
+        destructive=row[7],
+        comment=row[8],
+        idempotency_key=row[9],
+        intent_fingerprint=row[10],
+    )
+
+
+def _approval_decision_record(row: tuple[Any, ...]) -> ApprovalDecisionRecord:
+    return ApprovalDecisionRecord(
+        decision_id=row[0],
+        request_id=row[1],
+        actor_id=row[2],
+        decision=ApprovalDecisionKind(row[3]),
+        scope=row[4],
+        decided_at=row[5],
+        comment=row[6],
+        idempotency_key=row[7],
+        intent_fingerprint=row[8],
+    )
 
 
 class PostgresWorkspaceStore:
@@ -188,11 +296,20 @@ class PostgresWorkspaceStore:
         return record
 
     def get(self, workspace_id: str) -> WorkspaceRecord:
+        return self._get(workspace_id, for_update=False)
+
+    def get_for_update(self, workspace_id: str) -> WorkspaceRecord:
+        """Lock one workspace truth row for the caller-owned transaction."""
+
+        return self._get(workspace_id, for_update=True)
+
+    def _get(self, workspace_id: str, *, for_update: bool) -> WorkspaceRecord:
+        lock = " FOR UPDATE" if for_update else ""
         row = _record(
             self._connection.execute(
-                """
+                f"""
                 SELECT workspace_id, name, lifecycle, current_graph_id, desired_graph_id, metadata
-                FROM cpk_workspaces WHERE workspace_id = %s
+                FROM cpk_workspaces WHERE workspace_id = %s{lock}
                 """,
                 (workspace_id,),
             ).fetchone(),
@@ -303,6 +420,19 @@ class PostgresGraphTopologyStore:
             metadata=row[6],
         )
 
+    def next_version_for_workspace(self, workspace_id: str) -> int:
+        """Allocate the next version while the command holds the workspace row lock."""
+
+        row = self._connection.execute(
+            """
+            SELECT COALESCE(MAX(version), 0) + 1
+            FROM cpk_graph_versions
+            WHERE workspace_id = %s
+            """,
+            (workspace_id,),
+        ).fetchone()
+        return int(row[0])
+
 
 class PostgresSecretReferenceStore:
     """Postgres-backed secret reference store with no secret-value column."""
@@ -371,27 +501,39 @@ class PostgresActivityHistoryStore:
         self._connection.execute(
             """
             INSERT INTO cpk_operation_sessions
-              (session_id, workspace_id, actor_id, title, status, created_at, closed_at, metadata)
-            VALUES (%s, %s, %s, %s, %s, %s, %s, %s::jsonb)
+              (session_id, workspace_id, actor_id, title, status, created_at, closed_at,
+               metadata, idempotency_key, intent_fingerprint)
+            VALUES (%s, %s, %s, %s, %s, %s, %s, %s::jsonb, %s, %s)
             """,
             (
                 record.session_id,
                 record.workspace_id,
                 record.actor_id,
                 record.title,
-                record.status,
+                record.status.value,
                 record.created_at,
                 record.closed_at,
                 _json(record.metadata),
+                record.idempotency_key,
+                record.intent_fingerprint,
             ),
         )
         return record
+
+    def lock_session_idempotency(self, workspace_id: str, idempotency_key: str) -> None:
+        """Serialize starts before a session row exists in this transaction."""
+
+        self._connection.execute(
+            "SELECT pg_advisory_xact_lock(hashtextextended(%s, 0))",
+            (f"operation-session:{workspace_id}:{idempotency_key}",),
+        )
 
     def get_session(self, session_id: str) -> OperationSessionRecord:
         row = _record(
             self._connection.execute(
                 """
-                SELECT session_id, workspace_id, actor_id, title, status, created_at, closed_at, metadata
+                SELECT session_id, workspace_id, actor_id, title, status, created_at, closed_at,
+                       metadata, idempotency_key, intent_fingerprint
                 FROM cpk_operation_sessions WHERE session_id = %s
                 """,
                 (session_id,),
@@ -404,16 +546,33 @@ class PostgresActivityHistoryStore:
             workspace_id=row[1],
             actor_id=row[2],
             title=row[3],
-            status=row[4],
+            status=OperationSessionStatus(row[4]),
             created_at=row[5],
             closed_at=row[6],
             metadata=row[7],
+            idempotency_key=row[8],
+            intent_fingerprint=row[9],
         )
+
+    def session_for_idempotency(
+        self, workspace_id: str, idempotency_key: str
+    ) -> OperationSessionRecord | None:
+        row = self._connection.execute(
+            """
+            SELECT session_id, workspace_id, actor_id, title, status, created_at, closed_at,
+                   metadata, idempotency_key, intent_fingerprint
+            FROM cpk_operation_sessions
+            WHERE workspace_id = %s AND idempotency_key = %s
+            """,
+            (workspace_id, idempotency_key),
+        ).fetchone()
+        return None if row is None else _session_record(row)
 
     def sessions_for_workspace(self, workspace_id: str) -> tuple[OperationSessionRecord, ...]:
         rows = self._connection.execute(
             """
-            SELECT session_id, workspace_id, actor_id, title, status, created_at, closed_at, metadata
+            SELECT session_id, workspace_id, actor_id, title, status, created_at, closed_at,
+                   metadata, idempotency_key, intent_fingerprint
             FROM cpk_operation_sessions
             WHERE workspace_id = %s
             ORDER BY created_at ASC, session_id ASC
@@ -421,16 +580,7 @@ class PostgresActivityHistoryStore:
             (workspace_id,),
         ).fetchall()
         return tuple(
-            OperationSessionRecord(
-                session_id=row[0],
-                workspace_id=row[1],
-                actor_id=row[2],
-                title=row[3],
-                status=row[4],
-                created_at=row[5],
-                closed_at=row[6],
-                metadata=row[7],
-            )
+            _session_record(row)
             for row in rows
         )
 
@@ -451,7 +601,7 @@ class PostgresActivityHistoryStore:
                 record.workspace_id,
                 record.actor_id,
                 record.title,
-                record.status,
+                record.status.value,
                 record.created_at,
                 record.closed_at,
                 _json(record.metadata),
@@ -464,83 +614,198 @@ class PostgresActivityHistoryStore:
         self._connection.execute(
             """
             INSERT INTO cpk_operation_actions
-              (action_id, session_id, ordinal, action_type, actor_id, payload, created_at)
-            VALUES (%s, %s, %s, %s, %s, %s::jsonb, %s)
+              (action_id, session_id, ordinal, action_type, actor_id, payload, created_at,
+               idempotency_key, intent_fingerprint)
+            VALUES (%s, %s, %s, %s, %s, %s::jsonb, %s, %s, %s)
             """,
             (
                 record.action_id,
                 record.session_id,
                 record.ordinal,
-                record.action_type,
+                record.action_type.value,
                 record.actor_id,
                 _json(record.payload),
                 record.created_at,
+                record.idempotency_key,
+                record.intent_fingerprint,
             ),
         )
         return record
 
+    def action_for_idempotency(
+        self, session_id: str, idempotency_key: str
+    ) -> OperationActionRecord | None:
+        row = self._connection.execute(
+            """
+            SELECT action_id, session_id, ordinal, action_type, actor_id, payload, created_at,
+                   idempotency_key, intent_fingerprint
+            FROM cpk_operation_actions
+            WHERE session_id = %s AND idempotency_key = %s
+            """,
+            (session_id, idempotency_key),
+        ).fetchone()
+        return None if row is None else _action_record(row)
+
+    def next_action_ordinal(self, session_id: str) -> int:
+        """Serialize one session's writers on the caller-managed transaction."""
+
+        session = self._connection.execute(
+            "SELECT session_id FROM cpk_operation_sessions WHERE session_id = %s FOR UPDATE",
+            (session_id,),
+        ).fetchone()
+        if session is None:
+            raise KeyError(f"missing session {session_id!r}")
+        row = self._connection.execute(
+            "SELECT COALESCE(MAX(ordinal), 0) + 1 FROM cpk_operation_actions WHERE session_id = %s",
+            (session_id,),
+        ).fetchone()
+        return int(row[0])
+
     def actions_for_session(self, session_id: str) -> tuple[OperationActionRecord, ...]:
         rows = self._connection.execute(
             """
-            SELECT action_id, session_id, ordinal, action_type, actor_id, payload, created_at
+            SELECT action_id, session_id, ordinal, action_type, actor_id, payload, created_at,
+                   idempotency_key, intent_fingerprint
             FROM cpk_operation_actions WHERE session_id = %s ORDER BY ordinal ASC
             """,
             (session_id,),
         ).fetchall()
         return tuple(
-            OperationActionRecord(
-                action_id=row[0],
-                session_id=row[1],
-                ordinal=row[2],
-                action_type=row[3],
-                actor_id=row[4],
-                payload=row[5],
-                created_at=row[6],
-            )
+            _action_record(row)
             for row in rows
         )
 
-    def add_approval(self, record: ApprovalRecord) -> ApprovalRecord:
+    def add_approval_request(
+        self,
+        record: ApprovalRequestRecord,
+    ) -> ApprovalRequestRecord:
         self._connection.execute(
             """
-            INSERT INTO cpk_approvals
-              (approval_id, session_id, target_id, actor_id, decision, scope, decided_at, comment)
-            VALUES (%s, %s, %s, %s, %s, %s, %s, %s)
+            INSERT INTO cpk_approval_requests
+              (request_id, session_id, plan_id, requested_by, requested_at,
+               required_scope, max_risk, destructive, comment,
+               idempotency_key, intent_fingerprint)
+            VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
             """,
             (
-                record.approval_id,
+                record.request_id,
                 record.session_id,
-                record.target_id,
-                record.actor_id,
-                record.decision,
-                record.scope,
-                record.decided_at,
+                record.plan_id,
+                record.requested_by,
+                record.requested_at,
+                record.required_scope,
+                record.max_risk.value,
+                record.destructive,
                 record.comment,
+                record.idempotency_key,
+                record.intent_fingerprint,
             ),
         )
         return record
 
-    def approvals_for_session(self, session_id: str) -> tuple[ApprovalRecord, ...]:
+    def get_approval_request(self, request_id: str) -> ApprovalRequestRecord:
+        row = _record(
+            self._connection.execute(
+                """
+                SELECT request_id, session_id, plan_id, requested_by, requested_at,
+                       required_scope, max_risk, destructive, comment,
+                       idempotency_key, intent_fingerprint
+                FROM cpk_approval_requests WHERE request_id = %s
+                """,
+                (request_id,),
+            ).fetchone(),
+            "approval request",
+            request_id,
+        )
+        return _approval_request_record(row)
+
+    def approval_request_for_idempotency(
+        self,
+        session_id: str,
+        idempotency_key: str,
+    ) -> ApprovalRequestRecord | None:
+        row = self._connection.execute(
+            """
+            SELECT request_id, session_id, plan_id, requested_by, requested_at,
+                   required_scope, max_risk, destructive, comment,
+                   idempotency_key, intent_fingerprint
+            FROM cpk_approval_requests
+            WHERE session_id = %s AND idempotency_key = %s
+            """,
+            (session_id, idempotency_key),
+        ).fetchone()
+        return None if row is None else _approval_request_record(row)
+
+    def approval_requests_for_session(
+        self,
+        session_id: str,
+    ) -> tuple[ApprovalRequestRecord, ...]:
         rows = self._connection.execute(
             """
-            SELECT approval_id, session_id, target_id, actor_id, decision, scope, decided_at, comment
-            FROM cpk_approvals WHERE session_id = %s ORDER BY decided_at ASC
+            SELECT request_id, session_id, plan_id, requested_by, requested_at,
+                   required_scope, max_risk, destructive, comment,
+                   idempotency_key, intent_fingerprint
+            FROM cpk_approval_requests
+            WHERE session_id = %s ORDER BY requested_at ASC, request_id ASC
             """,
             (session_id,),
         ).fetchall()
-        return tuple(
-            ApprovalRecord(
-                approval_id=row[0],
-                session_id=row[1],
-                target_id=row[2],
-                actor_id=row[3],
-                decision=row[4],
-                scope=row[5],
-                decided_at=row[6],
-                comment=row[7],
-            )
-            for row in rows
+        return tuple(_approval_request_record(row) for row in rows)
+
+    def add_approval_decision(
+        self,
+        record: ApprovalDecisionRecord,
+    ) -> ApprovalDecisionRecord:
+        self._connection.execute(
+            """
+            INSERT INTO cpk_approval_decisions
+              (decision_id, request_id, actor_id, decision, scope, decided_at,
+               comment, idempotency_key, intent_fingerprint)
+            VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s)
+            """,
+            (
+                record.decision_id,
+                record.request_id,
+                record.actor_id,
+                record.decision.value,
+                record.scope,
+                record.decided_at,
+                record.comment,
+                record.idempotency_key,
+                record.intent_fingerprint,
+            ),
         )
+        return record
+
+    def approval_decision_for_request(
+        self,
+        request_id: str,
+    ) -> ApprovalDecisionRecord | None:
+        row = self._connection.execute(
+            """
+            SELECT decision_id, request_id, actor_id, decision, scope, decided_at,
+                   comment, idempotency_key, intent_fingerprint
+            FROM cpk_approval_decisions WHERE request_id = %s
+            """,
+            (request_id,),
+        ).fetchone()
+        return None if row is None else _approval_decision_record(row)
+
+    def approval_decision_for_idempotency(
+        self,
+        request_id: str,
+        idempotency_key: str,
+    ) -> ApprovalDecisionRecord | None:
+        row = self._connection.execute(
+            """
+            SELECT decision_id, request_id, actor_id, decision, scope, decided_at,
+                   comment, idempotency_key, intent_fingerprint
+            FROM cpk_approval_decisions
+            WHERE request_id = %s AND idempotency_key = %s
+            """,
+            (request_id, idempotency_key),
+        ).fetchone()
+        return None if row is None else _approval_decision_record(row)
 
     def add_plan(self, record: ActivityPlanRecord) -> ActivityPlanRecord:
         self._connection.execute(
@@ -556,7 +821,7 @@ class PostgresActivityHistoryStore:
                 record.desired_graph_id,
                 record.status,
                 record.created_at,
-                _json(record.payload),
+                DEFAULT_ACTIVITY_PLAN_CODEC.dumps(record.plan),
             ),
         )
         return record
@@ -580,7 +845,7 @@ class PostgresActivityHistoryStore:
             desired_graph_id=row[3],
             status=row[4],
             created_at=row[5],
-            payload=row[6],
+            plan=DEFAULT_ACTIVITY_PLAN_CODEC.decode(row[6]),
         )
 
     def plans_for_session(self, session_id: str) -> tuple[ActivityPlanRecord, ...]:
@@ -601,7 +866,7 @@ class PostgresActivityHistoryStore:
                 desired_graph_id=row[3],
                 status=row[4],
                 created_at=row[5],
-                payload=row[6],
+                plan=DEFAULT_ACTIVITY_PLAN_CODEC.decode(row[6]),
             )
             for row in rows
         )

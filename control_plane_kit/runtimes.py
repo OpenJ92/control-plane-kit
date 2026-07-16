@@ -6,7 +6,7 @@ from dataclasses import dataclass, field, replace
 from enum import StrEnum
 from typing import Mapping, Protocol
 
-from control_plane_kit.graph import DeploymentGraph, Endpoint, RuntimeRecord
+from control_plane_kit.topology.graph import DeploymentGraph, Endpoint, RuntimeRecord
 from control_plane_kit.types import RuntimeKind
 
 

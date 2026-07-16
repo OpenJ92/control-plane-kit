@@ -9,6 +9,8 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import Iterable
 
+from control_plane_kit.planning.activity_plan import ActivityImpact, ActivityPlan, RiskLevel
+
 
 @dataclass(frozen=True)
 class PolicyDecision:
@@ -50,10 +52,42 @@ class InstanceAccessPolicy:
 class ApprovalPolicy:
     """Checks approval authority for plans and destructive plans."""
 
+    def can_request_plan(self, actor_scopes: Iterable[str]) -> PolicyDecision:
+        return _require_scope(actor_scopes, "plan:request")
+
     def can_approve_plan(self, actor_scopes: Iterable[str], *, destructive: bool = False) -> PolicyDecision:
         if destructive:
             return _require_scope(actor_scopes, "plan:approve-destructive")
         return _require_scope(actor_scopes, "plan:approve")
+
+    def requirement_for(self, plan: ActivityPlan) -> "ApprovalRequirement":
+        """Derive immutable approval evidence from canonical plan data."""
+
+        max_risk = max(
+            (activity.risk for activity in plan.activities),
+            key=_RISK_ORDER.__getitem__,
+            default=RiskLevel.INFORMATIONAL,
+        )
+        destructive = any(
+            activity.impact is ActivityImpact.DESTRUCTIVE
+            for activity in plan.activities
+        )
+        return ApprovalRequirement(
+            required_scope=(
+                "plan:approve-destructive" if destructive else "plan:approve"
+            ),
+            max_risk=max_risk,
+            destructive=destructive,
+        )
+
+
+@dataclass(frozen=True)
+class ApprovalRequirement:
+    """Policy-derived authority and risk evidence for one canonical plan."""
+
+    required_scope: str
+    max_risk: RiskLevel
+    destructive: bool
 
 
 class DestructiveActivityPolicy:
@@ -84,3 +118,12 @@ def _require_scope(actor_scopes: Iterable[str], required: str) -> PolicyDecision
     if required in scopes:
         return PolicyDecision.allow(f"scope {required!r} is present")
     return PolicyDecision.deny(f"scope {required!r} is missing", required_scope=required)
+
+
+_RISK_ORDER = {
+    RiskLevel.INFORMATIONAL: 0,
+    RiskLevel.LOW: 1,
+    RiskLevel.MEDIUM: 2,
+    RiskLevel.HIGH: 3,
+    RiskLevel.CRITICAL: 4,
+}

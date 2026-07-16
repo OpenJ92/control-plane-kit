@@ -16,7 +16,13 @@ from control_plane_kit import (
     compile_recipe,
     create_instance_read_app,
 )
-from control_plane_kit.stores import GraphVersionRecord, OperationSessionRecord, WorkspaceRecord
+from control_plane_kit.read_services import ReadModelError
+from control_plane_kit.stores import (
+    GraphVersionRecord,
+    OperationSessionRecord,
+    OperationSessionStatus,
+    WorkspaceRecord,
+)
 from tests.postgres_case import PostgresStoreTestCase
 
 try:
@@ -74,7 +80,7 @@ class InstanceReadFastAPITests(PostgresStoreTestCase):
                 workspace_id="workspace-a",
                 actor_id="jacob",
                 title="Inspect",
-                status="open",
+                status=OperationSessionStatus.OPEN,
                 created_at="2026-07-15T00:00:00Z",
             )
         )
@@ -112,6 +118,72 @@ class InstanceReadFastAPITests(PostgresStoreTestCase):
 
         self.assertEqual(response.status_code, 503)
         self.assertEqual(response.json()["detail"], "activity history store is not configured")
+
+    def test_focused_routes_delegate_with_explicit_bounds(self):
+        service = FocusedReadService()
+        client = TestClient(create_instance_read_app(service))
+
+        sessions = client.get(
+            "/workspaces/workspace-a/sessions?limit=10&offset=2"
+        ).json()
+        detail = client.get(
+            "/workspaces/workspace-a/sessions/session-a?limit=11"
+        ).json()
+        plan = client.get(
+            "/workspaces/workspace-a/plans/plan-a?limit=12"
+        ).json()
+        approvals = client.get(
+            "/workspaces/workspace-a/approvals/pending?limit=13&offset=3"
+        ).json()
+
+        self.assertEqual(sessions["call"], ["open_sessions", "workspace-a", 10, 2])
+        self.assertEqual(detail["call"], ["session_detail", "workspace-a", "session-a", 11])
+        self.assertEqual(plan["call"], ["plan_detail", "workspace-a", "plan-a", 12])
+        self.assertEqual(approvals["call"], ["pending_approvals", "workspace-a", 13, 3])
+
+    def test_focused_routes_share_auth_and_workspace_safe_errors(self):
+        client = TestClient(
+            create_instance_read_app(FocusedReadService(fail=True), token="secret")
+        )
+
+        unauthorized = client.get("/workspaces/workspace-a/sessions")
+        missing = client.get(
+            "/workspaces/workspace-a/plans/foreign",
+            headers={"Authorization": "Bearer secret"},
+        )
+
+        self.assertEqual(unauthorized.status_code, 401)
+        self.assertEqual(missing.status_code, 404)
+        self.assertEqual(
+            missing.json()["detail"],
+            "missing plan 'foreign' in workspace 'workspace-a'",
+        )
+
+    def test_instance_read_app_exposes_no_workflow_mutation_routes(self):
+        app = create_instance_read_app(FocusedReadService())
+        workflow_paths = {
+            route.path: route.methods
+            for route in app.routes
+            if route.path.startswith("/workspaces/")
+        }
+
+        self.assertTrue(workflow_paths)
+        self.assertTrue(
+            all(methods == {"GET"} for methods in workflow_paths.values())
+        )
+
+    def test_stale_recovery_graph_truth_maps_to_conflict(self):
+        client = TestClient(
+            create_instance_read_app(
+                FocusedReadService(
+                    plan_error="plan 'plan-a' references graph truth outside workspace"
+                )
+            )
+        )
+
+        response = client.get("/workspaces/workspace-a/plans/plan-a")
+
+        self.assertEqual(response.status_code, 409)
 
     def _service_with_graph(self) -> InstanceReadService:
         self._save_graph_workspace()
@@ -168,6 +240,47 @@ def _node(payload: dict[str, object], node_id: str) -> dict[str, object]:
         if node["node_id"] == node_id:
             return node
     raise AssertionError(f"missing node {node_id!r}")
+
+
+class DescriptorResult:
+    def __init__(self, payload: dict[str, object]) -> None:
+        self._payload = payload
+
+    def descriptor(self) -> dict[str, object]:
+        return self._payload
+
+
+class FocusedReadService:
+    def __init__(
+        self,
+        *,
+        fail: bool = False,
+        plan_error: str | None = None,
+    ) -> None:
+        self._fail = fail
+        self._plan_error = plan_error
+
+    def open_sessions(self, workspace_id: str, *, limit: int, offset: int):
+        return DescriptorResult({"call": ["open_sessions", workspace_id, limit, offset]})
+
+    def session_detail(self, workspace_id: str, session_id: str, *, limit: int):
+        return DescriptorResult(
+            {"call": ["session_detail", workspace_id, session_id, limit]}
+        )
+
+    def plan_detail(self, workspace_id: str, plan_id: str, *, limit: int):
+        if self._plan_error is not None:
+            raise ReadModelError(self._plan_error)
+        if self._fail:
+            raise ReadModelError(
+                f"missing plan {plan_id!r} in workspace {workspace_id!r}"
+            )
+        return DescriptorResult({"call": ["plan_detail", workspace_id, plan_id, limit]})
+
+    def pending_approvals(self, workspace_id: str, *, limit: int, offset: int):
+        return DescriptorResult(
+            {"call": ["pending_approvals", workspace_id, limit, offset]}
+        )
 
 
 if __name__ == "__main__":

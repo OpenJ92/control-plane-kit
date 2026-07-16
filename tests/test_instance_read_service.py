@@ -1,6 +1,7 @@
 from unittest import main
 
 from control_plane_kit import (
+    ActivityPlan,
     BlockSockets,
     BlockSpec,
     CapabilityName,
@@ -11,20 +12,25 @@ from control_plane_kit import (
     ProxyBlock,
     ProviderSocket,
     RequirementSocket,
+    RiskLevel,
     SocketConnection,
     compile_recipe,
 )
-from control_plane_kit.graph import DeploymentGraph
+from control_plane_kit.topology.graph import DeploymentGraph
 from control_plane_kit.read_services import InstanceReadService, ReadModelError
 from control_plane_kit.stores import (
     ActivityEventRecord,
     ActivityPlanRecord,
     ActivityRunRecord,
-    ApprovalRecord,
+    ApprovalDecisionKind,
+    ApprovalDecisionRecord,
+    ApprovalRequestRecord,
     GraphVersionRecord,
     ObservationRecord,
+    OperationActionKind,
     OperationActionRecord,
     OperationSessionRecord,
+    OperationSessionStatus,
     WorkspaceRecord,
 )
 from examples.app_with_postgres import recipe
@@ -52,7 +58,7 @@ class InstanceReadServiceTests(PostgresStoreTestCase):
         postgres = descriptor["nodes"]["postgres"]
         api = descriptor["nodes"]["orders-api"]
         edge = descriptor["edges"]["postgres.internal-to-orders-api.DATABASE_URL"]
-        self.assertEqual(postgres["endpoints"]["internal"]["url"], "<redacted>")
+        self.assertEqual(postgres["endpoints"]["internal"]["address"], "<redacted>")
         self.assertEqual(api["environment"], "<redacted>")
         self.assertEqual(edge["env_assignments"], "<redacted>")
         self.assertNotIn("postgres:postgres", str(descriptor))
@@ -109,7 +115,10 @@ class InstanceReadServiceTests(PostgresStoreTestCase):
         session = payload["sessions"][0]
         self.assertEqual([action["action_id"] for action in session["actions"]], ["action-a"])
         self.assertEqual(session["actions"][0]["payload"]["api_token"], "<redacted>")
-        self.assertEqual(session["plans"][0]["payload"]["target_url"], "<redacted>")
+        self.assertEqual(
+            session["plans"][0]["payload"]["schema"],
+            "control-plane-kit.activity-plan",
+        )
         self.assertEqual(session["plans"][0]["runs"][0]["events"][0]["payload"]["password"], "<redacted>")
 
     def test_activity_timeline_rejects_invalid_limits(self):
@@ -296,7 +305,7 @@ class InstanceReadServiceTests(PostgresStoreTestCase):
                 workspace_id="workspace-a",
                 actor_id="jacob",
                 title="Swap API",
-                status="open",
+                status=OperationSessionStatus.OPEN,
                 created_at="2026-07-15T00:00:00Z",
             )
         )
@@ -306,7 +315,7 @@ class InstanceReadServiceTests(PostgresStoreTestCase):
                 workspace_id="workspace-b",
                 actor_id="jacob",
                 title="Other workspace",
-                status="open",
+                status=OperationSessionStatus.OPEN,
                 created_at="2026-07-15T00:00:01Z",
             )
         )
@@ -315,7 +324,7 @@ class InstanceReadServiceTests(PostgresStoreTestCase):
                 action_id="action-a",
                 session_id="session-a",
                 ordinal=1,
-                action_type="patch_variable",
+                action_type=OperationActionKind.PATCH_VARIABLE,
                 actor_id="jacob",
                 payload={"api_token": "secret", "note": "visible"},
                 created_at="2026-07-15T00:01:00Z",
@@ -326,21 +335,10 @@ class InstanceReadServiceTests(PostgresStoreTestCase):
                 action_id="action-b",
                 session_id="session-a",
                 ordinal=2,
-                action_type="check_health",
+                action_type=OperationActionKind.CHECK_HEALTH,
                 actor_id="jacob",
                 payload={"note": "bounded away"},
                 created_at="2026-07-15T00:02:00Z",
-            )
-        )
-        self.stores.activity_history.add_approval(
-            ApprovalRecord(
-                approval_id="approval-a",
-                session_id="session-a",
-                target_id="plan-a",
-                actor_id="manager",
-                decision="approved",
-                scope="admin",
-                decided_at="2026-07-15T00:02:30Z",
             )
         )
         self.stores.activity_history.add_plan(
@@ -351,7 +349,29 @@ class InstanceReadServiceTests(PostgresStoreTestCase):
                 desired_graph_id="graph-b",
                 status="planned",
                 created_at="2026-07-15T00:03:00Z",
-                payload={"target_url": "http://private"},
+                plan=ActivityPlan(()),
+            )
+        )
+        self.stores.activity_history.add_approval_request(
+            ApprovalRequestRecord(
+                request_id="approval-request-a",
+                session_id="session-a",
+                plan_id="plan-a",
+                requested_by="jacob",
+                requested_at="2026-07-15T00:02:15Z",
+                required_scope="plan:approve",
+                max_risk=RiskLevel.LOW,
+                destructive=False,
+            )
+        )
+        self.stores.activity_history.add_approval_decision(
+            ApprovalDecisionRecord(
+                decision_id="approval-decision-a",
+                request_id="approval-request-a",
+                actor_id="manager",
+                decision=ApprovalDecisionKind.APPROVED,
+                scope="plan:approve",
+                decided_at="2026-07-15T00:02:30Z",
             )
         )
         self.stores.activity_history.add_run(
@@ -437,7 +457,7 @@ class InstanceReadServiceTests(PostgresStoreTestCase):
                 workspace_id="workspace-a",
                 actor_id="jacob",
                 title="Nested",
-                status="open",
+                status=OperationSessionStatus.OPEN,
                 created_at="2026-07-15T00:00:00Z",
             )
         )
@@ -449,6 +469,7 @@ class InstanceReadServiceTests(PostgresStoreTestCase):
                 desired_graph_id="graph-b",
                 status="planned",
                 created_at="2026-07-15T00:01:00Z",
+                plan=ActivityPlan(()),
             )
         )
         self.stores.activity_history.add_run(

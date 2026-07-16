@@ -1,12 +1,22 @@
+import os
 import unittest
 
-from control_plane_kit.graph import DeploymentGraph
+import psycopg
+
+from control_plane_kit.topology.graph import DeploymentGraph
 from control_plane_kit.policies import ApprovalPolicy, DestructiveActivityPolicy
 from control_plane_kit.stores import (
     GraphVersionRecord,
+    OperationActionKind,
+    PostgresUnitOfWork,
     WorkspaceRecord,
 )
-from control_plane_kit.workflows import OperationActionService, OperationSessionService
+from control_plane_kit.workflows import (
+    IdempotencyKey,
+    OperationCommandService,
+    RecordOperationAction,
+    StartOperationSession,
+)
 from tests.postgres_case import PostgresStoreTestCase
 
 
@@ -19,10 +29,21 @@ class Sequence:
 
 
 class BackendBoundaryTests(PostgresStoreTestCase):
+    def setUp(self) -> None:
+        super().setUp()
+        self.stores.workspace.create(WorkspaceRecord("workspace-a", "Demo"))
+
+    def operation_service(self, ids):
+        database_url = os.environ["CPK_TEST_DATABASE_URL"]
+        return OperationCommandService(
+            lambda: PostgresUnitOfWork(lambda: psycopg.connect(database_url)),
+            clock=lambda: "2026-07-15T00:01:00Z",
+            id_factory=Sequence(ids),
+        )
+
     def test_workspace_and_graph_truth_are_owned_by_stores(self):
         workspaces = self.stores.workspace
         graphs = self.stores.graph_topology
-        workspaces.create(WorkspaceRecord(workspace_id="workspace-a", name="Demo"))
         graphs.save(
             GraphVersionRecord.from_graph(
                 graph_id="graph-a",
@@ -40,7 +61,6 @@ class BackendBoundaryTests(PostgresStoreTestCase):
         self.assertEqual(graphs.latest_for_workspace("workspace-a").graph_descriptor["name"], "current")
 
     def test_workflow_records_intent_without_writing_graph_truth(self):
-        self.stores.workspace.create(WorkspaceRecord(workspace_id="workspace-a", name="Demo"))
         graphs = self.stores.graph_topology
         graphs.save(
             GraphVersionRecord.from_graph(
@@ -53,25 +73,28 @@ class BackendBoundaryTests(PostgresStoreTestCase):
             )
         )
         history = self.stores.activity_history
-        session = OperationSessionService(
-            history,
-            clock=Sequence(["2026-07-15T00:01:00Z"]),
-            id_factory=Sequence(["session-a"]),
-        ).start(workspace_id="workspace-a", actor_id="jacob", title="Prepare graph edit")
+        service = self.operation_service(["session-a", "action-start", "action-a"])
+        session = service.execute(
+            StartOperationSession(
+                "workspace-a", "jacob", "Prepare graph edit", IdempotencyKey("start")
+            )
+        ).session
 
-        OperationActionService(
-            history,
-            clock=Sequence(["2026-07-15T00:02:00Z"]),
-            id_factory=Sequence(["action-a"]),
-        ).record(
-            session_id=session.session_id,
-            action_type="propose_desired_graph",
-            actor_id="jacob",
-            payload={"desired_graph_id": "graph-desired"},
+        service.execute(
+            RecordOperationAction(
+                session_id=session.session_id,
+                action_type=OperationActionKind.PROPOSE_DESIRED_GRAPH,
+                actor_id="jacob",
+                idempotency_key=IdempotencyKey("propose"),
+                payload={"desired_graph_id": "graph-desired"},
+            )
         )
 
         self.assertEqual(graphs.latest_for_workspace("workspace-a").graph_id, "graph-current")
-        self.assertEqual(history.actions_for_session("session-a")[0].action_type, "propose_desired_graph")
+        self.assertEqual(
+            history.actions_for_session("session-a")[-1].action_type.value,
+            "propose_desired_graph",
+        )
 
     def test_policy_decisions_do_not_create_workflow_records(self):
         history = self.stores.activity_history

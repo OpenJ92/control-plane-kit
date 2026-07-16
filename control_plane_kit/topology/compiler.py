@@ -14,7 +14,8 @@ from control_plane_kit.algebra import (
     SocketConnection,
 )
 from control_plane_kit.capabilities import capability_named
-from control_plane_kit.graph import DeploymentGraph, Edge, Node, RuntimeRecord
+from control_plane_kit.topology.graph import DeploymentGraph, Edge, Node, RuntimeRecord
+from control_plane_kit.types import BlockFamily
 
 
 def compile_recipe(recipe: DeploymentRecipe) -> DeploymentGraph:
@@ -72,12 +73,24 @@ def _materialize_block(block: DeployBlock, runtime: RuntimeContext) -> Node:
     metadata.update(materialized.metadata)
     return Node(
         node_id=block.block_id,
+        block_family=_block_family(block),
+        block_spec=block.spec,
         kind=materialized.kind,
         runtime_id=runtime.runtime_id,
         sockets=block.sockets,
         endpoints=materialized.endpoints,
         metadata=metadata,
     )
+
+
+def _block_family(block: DeployBlock) -> BlockFamily:
+    match block:
+        case ApplicationBlock():
+            return BlockFamily.APPLICATION
+        case DataBlock():
+            return BlockFamily.DATA
+        case ProxyBlock():
+            return BlockFamily.PROXY
 
 
 def _spec_metadata(block: DeployBlock) -> dict[str, object]:
