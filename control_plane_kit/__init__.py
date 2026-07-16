@@ -94,7 +94,7 @@ from control_plane_kit.graph_codec import (
     MalformedGraphDescriptor,
     UnknownGraphVariant,
 )
-from control_plane_kit.graph_diff import (
+from control_plane_kit.graph_changes import (
     AddedChange,
     AmbiguityReason,
     AmbiguousChange,
@@ -118,8 +118,8 @@ from control_plane_kit.graph_diff import (
     TextValue,
     UnsupportedChange,
     UnsupportedReason,
-    diff_graphs,
 )
+from control_plane_kit.graph_diff import diff_graphs
 from control_plane_kit.implementations import (
     DockerImageImplementation,
     DockerPostgresImplementation,
