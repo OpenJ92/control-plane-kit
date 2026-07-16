@@ -9,7 +9,11 @@ from enum import StrEnum
 from control_plane_kit.capabilities import capability_named
 from control_plane_kit.control_routes import route_set_named
 from control_plane_kit.graph import DeploymentGraph
-from control_plane_kit.graph_codec import DEFAULT_GRAPH_CODEC, GraphDescriptorError
+from control_plane_kit.graph_codec import (
+    DEFAULT_GRAPH_CODEC,
+    GraphDescriptorCodec,
+    GraphDescriptorError,
+)
 
 
 class ValidationSeverity(StrEnum):
@@ -109,6 +113,7 @@ class ValidationFinding:
 class ValidatedGraph:
     graph: DeploymentGraph
     findings: tuple[ValidationFinding, ...]
+    codec: GraphDescriptorCodec = DEFAULT_GRAPH_CODEC
 
     @property
     def valid(self) -> bool:
@@ -151,7 +156,11 @@ class GraphValidationError(ValueError):
         super().__init__(f"graph {result.graph.name!r} has {len(result.errors)} validation errors")
 
 
-def validate_graph(graph: DeploymentGraph) -> ValidatedGraph:
+def validate_graph(
+    graph: DeploymentGraph,
+    *,
+    codec: GraphDescriptorCodec = DEFAULT_GRAPH_CODEC,
+) -> ValidatedGraph:
     """Return deterministic findings without mutating topology or external state."""
 
     findings: list[ValidationFinding] = []
@@ -342,7 +351,7 @@ def validate_graph(graph: DeploymentGraph) -> ValidatedGraph:
                 )
 
     try:
-        DEFAULT_GRAPH_CODEC.decode(DEFAULT_GRAPH_CODEC.encode(graph))
+        codec.decode(codec.encode(graph))
     except (GraphDescriptorError, KeyError) as error:
         findings.append(
             _error(
@@ -351,7 +360,11 @@ def validate_graph(graph: DeploymentGraph) -> ValidatedGraph:
                 str(error),
             )
         )
-    return ValidatedGraph(graph, tuple(sorted(findings, key=_finding_key)))
+    return ValidatedGraph(
+        graph,
+        tuple(sorted(findings, key=_finding_key)),
+        codec,
+    )
 
 
 def _error(
