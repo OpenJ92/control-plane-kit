@@ -13,18 +13,27 @@ import json
 from dataclasses import replace
 from typing import Any, Protocol
 
+from control_plane_kit.execution import (
+    ActivityEventKind,
+    ActivityEventRecord,
+    ActivityRunRecord,
+    ActivityRunStatus,
+    BoundedEvidence,
+    FailureCategory,
+    FailureEvidence,
+    ObservationFreshness,
+    ObservationRecord,
+    ObservationStatus,
+)
 from control_plane_kit.planning.activity_plan import RiskLevel
 from control_plane_kit.planning.codec import DEFAULT_ACTIVITY_PLAN_CODEC
 from control_plane_kit.stores.records import (
-    ActivityEventRecord,
     ActivityPlanRecord,
-    ActivityRunRecord,
     ApprovalDecisionKind,
     ApprovalDecisionRecord,
     ApprovalRequestRecord,
     GraphVersionRecord,
     InstanceRecord,
-    ObservationRecord,
     OperationActionKind,
     OperationActionRecord,
     OperationSessionRecord,
@@ -878,7 +887,7 @@ class PostgresActivityHistoryStore:
               (run_id, plan_id, status, started_at, finished_at, metadata)
             VALUES (%s, %s, %s, %s, %s, %s::jsonb)
             """,
-            (record.run_id, record.plan_id, record.status, record.started_at, record.finished_at, _json(record.metadata)),
+            (record.run_id, record.plan_id, record.status.value, record.started_at, record.finished_at, _json(record.metadata.descriptor())),
         )
         return record
 
@@ -896,10 +905,10 @@ class PostgresActivityHistoryStore:
             ActivityRunRecord(
                 run_id=row[0],
                 plan_id=row[1],
-                status=row[2],
+                status=ActivityRunStatus(row[2]),
                 started_at=row[3],
                 finished_at=row[4],
-                metadata=row[5],
+                metadata=BoundedEvidence.from_mapping(row[5]),
             )
             for row in rows
         )
@@ -911,7 +920,16 @@ class PostgresActivityHistoryStore:
               (event_id, run_id, ordinal, event_type, occurred_at, payload)
             VALUES (%s, %s, %s, %s, %s, %s::jsonb)
             """,
-            (record.event_id, record.run_id, record.ordinal, record.event_type, record.occurred_at, _json(record.payload)),
+            (record.event_id, record.run_id, record.ordinal, record.kind.value, record.occurred_at, _json({
+                "activity_id": record.activity_id,
+                "evidence": record.evidence.descriptor(),
+                "failure": None if record.failure is None else {
+                    "category": record.failure.category.value,
+                    "code": record.failure.code,
+                    "message": record.failure.message,
+                    "details": record.failure.details.descriptor(),
+                },
+            })),
         )
         return record
 
@@ -928,12 +946,27 @@ class PostgresActivityHistoryStore:
                 event_id=row[0],
                 run_id=row[1],
                 ordinal=row[2],
-                event_type=row[3],
+                kind=ActivityEventKind(row[3]),
                 occurred_at=row[4],
-                payload=row[5],
+                activity_id=row[5].get("activity_id"),
+                evidence=BoundedEvidence.from_mapping(row[5].get("evidence", {})),
+                failure=_failure_evidence(row[5].get("failure")),
             )
             for row in rows
         )
+
+
+def _failure_evidence(value: object) -> FailureEvidence | None:
+    if value is None:
+        return None
+    if not isinstance(value, dict):
+        raise ValueError("persisted activity failure must be an object")
+    return FailureEvidence(
+        category=FailureCategory(value["category"]),
+        code=value["code"],
+        message=value["message"],
+        details=BoundedEvidence.from_mapping(value.get("details", {})),
+    )
 
 
 class PostgresObservedStateStore:
@@ -953,10 +986,10 @@ class PostgresObservedStateStore:
                 record.observation_id,
                 record.workspace_id,
                 record.subject_id,
-                record.status,
+                record.status.value,
                 record.observed_at,
-                _json(record.payload),
-                record.stale,
+                _json(record.evidence.descriptor()),
+                record.freshness is ObservationFreshness.STALE,
             ),
         )
         return record
@@ -1003,10 +1036,14 @@ class PostgresObservedStateStore:
             observation_id=row[0],
             workspace_id=row[1],
             subject_id=row[2],
-            status=row[3],
+            status=ObservationStatus(row[3]),
             observed_at=row[4],
-            payload=row[5],
-            stale=row[6],
+            evidence=BoundedEvidence.from_mapping(row[5]),
+            freshness=(
+                ObservationFreshness.STALE
+                if row[6]
+                else ObservationFreshness.FRESH
+            ),
         )
 
 

@@ -205,43 +205,6 @@ class ActivityPlanRecord:
 
 
 @dataclass(frozen=True)
-class ActivityRunRecord:
-    """Execution attempt for an approved activity plan."""
-
-    run_id: str
-    plan_id: str
-    status: str
-    started_at: str
-    finished_at: str | None = None
-    metadata: Mapping[str, str] = field(default_factory=dict)
-
-
-@dataclass(frozen=True)
-class ActivityEventRecord:
-    """Structured operational memory for an activity run."""
-
-    event_id: str
-    run_id: str
-    ordinal: int
-    event_type: str
-    occurred_at: str
-    payload: Mapping[str, object] = field(default_factory=dict)
-
-
-@dataclass(frozen=True)
-class ObservationRecord:
-    """Observed runtime evidence, separate from desired topology."""
-
-    observation_id: str
-    workspace_id: str
-    subject_id: str
-    status: str
-    observed_at: str
-    payload: Mapping[str, object] = field(default_factory=dict)
-    stale: bool = False
-
-
-@dataclass(frozen=True)
 class InstanceRecord:
     """Hub-visible control-plane instance metadata."""
 

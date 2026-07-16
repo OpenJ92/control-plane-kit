@@ -2,12 +2,17 @@ from unittest import main
 
 from control_plane_kit import (
     ActivityPlan,
+    ActivityEventKind,
+    ActivityRunStatus,
+    BoundedEvidence,
     BlockSockets,
     BlockSpec,
     CapabilityName,
     DeploymentRecipe,
     DockerRuntime,
     PlanOnlyImplementation,
+    ObservationFreshness,
+    ObservationStatus,
     Protocol,
     ProxyBlock,
     ProviderSocket,
@@ -119,7 +124,9 @@ class InstanceReadServiceTests(PostgresStoreTestCase):
             session["plans"][0]["payload"]["schema"],
             "control-plane-kit.activity-plan",
         )
-        self.assertEqual(session["plans"][0]["runs"][0]["events"][0]["payload"]["password"], "<redacted>")
+        event_payload = session["plans"][0]["runs"][0]["events"][0]["payload"]
+        self.assertEqual(event_payload["target"], "api")
+        self.assertNotIn("password", event_payload)
 
     def test_activity_timeline_rejects_invalid_limits(self):
         service = self._service_with_activity()
@@ -165,7 +172,10 @@ class InstanceReadServiceTests(PostgresStoreTestCase):
             [(record["subject_id"], record["status"], record["stale"]) for record in payload["observations"]],
             [("api", "healthy", False), ("router", "unknown", True)],
         )
-        self.assertEqual(payload["observations"][0]["payload"]["token"], "<redacted>")
+        self.assertEqual(
+            payload["observations"][0]["payload"]["callback_url"],
+            "<redacted>",
+        )
         self.assertEqual(payload["observations"][1]["payload"]["details"], "not checked yet")
 
     def test_observed_state_requires_configured_observed_state_store(self):
@@ -192,7 +202,7 @@ class InstanceReadServiceTests(PostgresStoreTestCase):
         payload = service.activity_timeline("workspace-a").descriptor()
 
         event_payload = payload["sessions"][0]["plans"][0]["runs"][0]["events"][0]["payload"]
-        self.assertEqual(event_payload["nested"]["client_secret"], "<redacted>")
+        self.assertEqual(event_payload["nested"]["label"], "visible")
         self.assertEqual(event_payload["items"][0]["callback_url"], "<redacted>")
         self.assertEqual(event_payload["items"][0]["label"], "visible")
 
@@ -378,9 +388,9 @@ class InstanceReadServiceTests(PostgresStoreTestCase):
             ActivityRunRecord(
                 run_id="run-a",
                 plan_id="plan-a",
-                status="running",
+                status=ActivityRunStatus.RUNNING,
                 started_at="2026-07-15T00:04:00Z",
-                metadata={"worker_token": "secret"},
+                metadata=BoundedEvidence.from_mapping({"worker": "agent-a"}),
             )
         )
         self.stores.activity_history.add_event(
@@ -388,9 +398,9 @@ class InstanceReadServiceTests(PostgresStoreTestCase):
                 event_id="event-a",
                 run_id="run-a",
                 ordinal=1,
-                event_type="step",
+                kind=ActivityEventKind.STEP_STARTED,
                 occurred_at="2026-07-15T00:05:00Z",
-                payload={"password": "secret"},
+                evidence=BoundedEvidence.from_mapping({"target": "api"}),
             )
         )
         return InstanceReadService(
@@ -408,7 +418,7 @@ class InstanceReadServiceTests(PostgresStoreTestCase):
                 observation_id="obs-api-old",
                 workspace_id="workspace-a",
                 subject_id="api",
-                status="starting",
+                status=ObservationStatus.STARTING,
                 observed_at="2026-07-15T00:00:00Z",
             )
         )
@@ -417,9 +427,11 @@ class InstanceReadServiceTests(PostgresStoreTestCase):
                 observation_id="obs-api-new",
                 workspace_id="workspace-a",
                 subject_id="api",
-                status="healthy",
+                status=ObservationStatus.HEALTHY,
                 observed_at="2026-07-15T00:01:00Z",
-                payload={"token": "secret"},
+                evidence=BoundedEvidence.from_mapping(
+                    {"callback_url": "http://private"}
+                ),
             )
         )
         self.stores.observed_state.put(
@@ -427,10 +439,12 @@ class InstanceReadServiceTests(PostgresStoreTestCase):
                 observation_id="obs-router",
                 workspace_id="workspace-a",
                 subject_id="router",
-                status="unknown",
+                status=ObservationStatus.UNKNOWN,
                 observed_at="2026-07-15T00:01:00Z",
-                payload={"details": "not checked yet"},
-                stale=True,
+                evidence=BoundedEvidence.from_mapping(
+                    {"details": "not checked yet"}
+                ),
+                freshness=ObservationFreshness.STALE,
             )
         )
         self.stores.observed_state.put(
@@ -438,7 +452,7 @@ class InstanceReadServiceTests(PostgresStoreTestCase):
                 observation_id="obs-other",
                 workspace_id="workspace-b",
                 subject_id="other-api",
-                status="healthy",
+                status=ObservationStatus.HEALTHY,
                 observed_at="2026-07-15T00:02:00Z",
             )
         )
@@ -476,7 +490,7 @@ class InstanceReadServiceTests(PostgresStoreTestCase):
             ActivityRunRecord(
                 run_id="run-a",
                 plan_id="plan-a",
-                status="running",
+                status=ActivityRunStatus.RUNNING,
                 started_at="2026-07-15T00:02:00Z",
             )
         )
@@ -485,12 +499,12 @@ class InstanceReadServiceTests(PostgresStoreTestCase):
                 event_id="event-a",
                 run_id="run-a",
                 ordinal=1,
-                event_type="nested",
+                kind=ActivityEventKind.STEP_SUCCEEDED,
                 occurred_at="2026-07-15T00:03:00Z",
-                payload={
-                    "nested": {"client_secret": "secret"},
+                evidence=BoundedEvidence.from_mapping({
+                    "nested": {"label": "visible"},
                     "items": [{"callback_url": "http://private", "label": "visible"}],
-                },
+                }),
             )
         )
         return InstanceReadService(
