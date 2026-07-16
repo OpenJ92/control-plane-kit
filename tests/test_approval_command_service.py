@@ -2,7 +2,9 @@
 
 from __future__ import annotations
 
+import concurrent.futures
 import os
+import threading
 import unittest
 
 import psycopg
@@ -29,6 +31,7 @@ from control_plane_kit.workflows import (
     ApprovalCommandService,
     ApprovalIdempotencyConflict,
     ApprovalStateConflict,
+    CloseOperationSession,
     DecidePlanApproval,
     IdempotencyKey,
     OperationCommandService,
@@ -238,6 +241,157 @@ class ApprovalCommandServiceTests(PostgresStoreTestCase):
         self.assertIsNone(
             self.stores.activity_history.approval_decision_for_request("request-a")
         )
+
+    def test_concurrent_identical_requests_converge_on_one_request(self):
+        barrier = threading.Barrier(2)
+
+        def submit(ids: tuple[str, str]):
+            barrier.wait(timeout=5)
+            return self._service(*ids).execute(self._request())
+
+        with concurrent.futures.ThreadPoolExecutor(max_workers=2) as executor:
+            results = tuple(
+                executor.map(
+                    submit,
+                    (("request-a", "action-a"), ("request-b", "action-b")),
+                )
+            )
+
+        request_ids = {result.request.request_id for result in results}
+        self.assertEqual(len(request_ids), 1)
+        self.assertTrue(request_ids <= {"request-a", "request-b"})
+        self.assertEqual(len({result.action.action_id for result in results}), 1)
+        self.assertEqual(sum(result.replayed for result in results), 1)
+        self.assertEqual(
+            len(self.stores.activity_history.approval_requests_for_session("session-a")),
+            1,
+        )
+
+    def test_concurrent_identical_decisions_converge_on_one_decision(self):
+        self._service("request-a", "request-action").execute(self._request())
+        barrier = threading.Barrier(2)
+
+        def submit(ids: tuple[str, str]):
+            barrier.wait(timeout=5)
+            return self._service(*ids).execute(self._decision())
+
+        with concurrent.futures.ThreadPoolExecutor(max_workers=2) as executor:
+            results = tuple(
+                executor.map(
+                    submit,
+                    (("decision-a", "action-a"), ("decision-b", "action-b")),
+                )
+            )
+
+        decision_ids = {result.decision.decision_id for result in results}
+        self.assertEqual(len(decision_ids), 1)
+        self.assertTrue(decision_ids <= {"decision-a", "decision-b"})
+        self.assertEqual(len({result.action.action_id for result in results}), 1)
+        self.assertEqual(sum(result.replayed for result in results), 1)
+
+    def test_concurrent_competing_decisions_publish_exactly_one_fact(self):
+        self._service("request-a", "request-action").execute(self._request())
+        barrier = threading.Barrier(2)
+
+        def decide(decision: ApprovalDecisionKind, ids: tuple[str, str], key: str):
+            barrier.wait(timeout=5)
+            try:
+                return self._service(*ids).execute(
+                    self._decision(decision=decision, key=key)
+                )
+            except ApprovalStateConflict as error:
+                return error
+
+        with concurrent.futures.ThreadPoolExecutor(max_workers=2) as executor:
+            approved = executor.submit(
+                decide,
+                ApprovalDecisionKind.APPROVED,
+                ("approved", "approved-action"),
+                "approve",
+            )
+            rejected = executor.submit(
+                decide,
+                ApprovalDecisionKind.REJECTED,
+                ("rejected", "rejected-action"),
+                "reject",
+            )
+            outcomes = (approved.result(), rejected.result())
+
+        self.assertEqual(sum(isinstance(value, ApprovalStateConflict) for value in outcomes), 1)
+        persisted = self.stores.activity_history.approval_decision_for_request(
+            "request-a"
+        )
+        self.assertIsNotNone(persisted)
+        self.assertIn(
+            persisted.decision,
+            (ApprovalDecisionKind.APPROVED, ApprovalDecisionKind.REJECTED),
+        )
+        self.assertEqual(
+            len(
+                [
+                    action
+                    for action in self.stores.activity_history.actions_for_session(
+                        "session-a"
+                    )
+                    if action.action_type is OperationActionKind.APPROVAL_DECIDED
+                ]
+            ),
+            1,
+        )
+
+    def test_concurrent_request_and_close_serialize_without_partial_approval(self):
+        barrier = threading.Barrier(2)
+
+        def request():
+            barrier.wait(timeout=5)
+            try:
+                return self._service("request-a", "request-action").execute(
+                    self._request()
+                )
+            except ApprovalStateConflict as error:
+                return error
+
+        def close():
+            barrier.wait(timeout=5)
+            return self._operation_service("close-action").execute(
+                CloseOperationSession(
+                    "session-a",
+                    "jacob",
+                    IdempotencyKey("close"),
+                )
+            )
+
+        with concurrent.futures.ThreadPoolExecutor(max_workers=2) as executor:
+            request_future = executor.submit(request)
+            close_future = executor.submit(close)
+            request_outcome = request_future.result()
+            close_future.result()
+
+        actions = self.stores.activity_history.actions_for_session("session-a")
+        kinds = tuple(action.action_type for action in actions)
+        if isinstance(request_outcome, ApprovalStateConflict):
+            self.assertEqual(
+                kinds,
+                (
+                    OperationActionKind.SESSION_STARTED,
+                    OperationActionKind.SESSION_CLOSED,
+                ),
+            )
+            self.assertEqual(
+                self.stores.activity_history.approval_requests_for_session(
+                    "session-a"
+                ),
+                (),
+            )
+        else:
+            self.assertEqual(
+                kinds,
+                (
+                    OperationActionKind.SESSION_STARTED,
+                    OperationActionKind.APPROVAL_REQUESTED,
+                    OperationActionKind.SESSION_CLOSED,
+                ),
+            )
 
 
 def _safe_plan() -> ActivityPlan:

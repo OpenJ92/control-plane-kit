@@ -16,6 +16,7 @@ from control_plane_kit.stores import (
     ApprovalRequestRecord,
     OperationActionKind,
     OperationActionRecord,
+    OperationSessionRecord,
     OperationSessionStatus,
     PostgresUnitOfWork,
 )
@@ -341,7 +342,10 @@ class ApprovalCommandService:
             return ApprovalDecisionResult(request, decision, action)
 
 
-def _session(history: ActivityHistoryStore, session_id: str):
+def _session(
+    history: ActivityHistoryStore,
+    session_id: str,
+) -> OperationSessionRecord:
     try:
         return history.get_session(session_id)
     except KeyError as error:
@@ -350,8 +354,8 @@ def _session(history: ActivityHistoryStore, session_id: str):
         ) from error
 
 
-def _require_open(session: object) -> None:
-    if getattr(session, "status") is not OperationSessionStatus.OPEN:
+def _require_open(session: OperationSessionRecord) -> None:
+    if session.status is not OperationSessionStatus.OPEN:
         raise ApprovalStateConflict("approval commands require an open operation session")
 
 
