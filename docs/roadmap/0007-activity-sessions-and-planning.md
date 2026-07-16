@@ -1,6 +1,6 @@
 # Roadmap 0007: Activity Sessions And Planning
 
-Status: Draft
+Status: Implementation complete on roadmap branch; integration PR pending
 Depends on: Roadmap 0005, Roadmap 0006
 
 ## Motivation
@@ -277,6 +277,17 @@ UnitOfWork factory and transaction ownership
 authorization policy inputs
 typed block-spec descriptor/reconstruction extension point
 ```
+
+## Closeout Result
+
+Roadmap 0007 is implemented as a non-executing, Postgres-backed planning
+pipeline. The capstone example is `examples/backend_swap_planning.py`; the
+operator guide is `docs/ACTIVITY_PLANNING.md`; and implementation learning is
+recorded in `docs/learning/roadmap-0007/run-0001.md`.
+
+The final implementation deliberately stops at a pending or decided approval.
+It does not create an `ActivityRun`, call a runtime interpreter, or signal a
+block control route. Those effects remain Roadmap 0008 work.
 
 Roadmap 0009 may add FastAPI adapters around these services, but it must not
 reimplement session ordering, graph concurrency, planning, approval, or commit

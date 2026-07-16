@@ -15,7 +15,6 @@ from control_plane_kit.workflows.commands import (
     StartOperationSession,
 )
 
-from control_plane_kit.workflows.services import ActivityRunService
 from control_plane_kit.workflows.approvals import (
     ApprovalAuthorizationDenied,
     ApprovalCommandService,
@@ -53,7 +52,6 @@ from control_plane_kit.workflows.planning import (
 )
 
 __all__ = [
-    "ActivityRunService",
     "ActivityPlanningCommandService",
     "ActivityPlanningError",
     "ActivityPlanningGraphInvalid",
