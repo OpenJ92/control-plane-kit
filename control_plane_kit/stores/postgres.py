@@ -441,6 +441,14 @@ class PostgresActivityHistoryStore:
         )
         return record
 
+    def lock_session_idempotency(self, workspace_id: str, idempotency_key: str) -> None:
+        """Serialize starts before a session row exists in this transaction."""
+
+        self._connection.execute(
+            "SELECT pg_advisory_xact_lock(hashtextextended(%s, 0))",
+            (f"operation-session:{workspace_id}:{idempotency_key}",),
+        )
+
     def get_session(self, session_id: str) -> OperationSessionRecord:
         row = _record(
             self._connection.execute(

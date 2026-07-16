@@ -10,6 +10,7 @@ from control_plane_kit.workflows.commands import (
     OperationIdempotencyConflict,
     OperationSessionNotFound,
     OperationSessionStateConflict,
+    OperationWorkspaceNotFound,
     RecordOperationAction,
     StartOperationSession,
 )
@@ -17,9 +18,8 @@ from control_plane_kit.workflows.commands import (
 from control_plane_kit.workflows.services import (
     ActivityRunService,
     ApprovalWorkflowService,
-    OperationActionService,
-    OperationSessionService,
 )
+from control_plane_kit.workflows.command_service import OperationCommandService
 
 __all__ = [
     "ActivityRunService",
@@ -31,10 +31,10 @@ __all__ = [
     "OperationCommandError",
     "OperationCommandResult",
     "OperationIdempotencyConflict",
-    "OperationActionService",
+    "OperationCommandService",
     "OperationSessionNotFound",
-    "OperationSessionService",
     "OperationSessionStateConflict",
+    "OperationWorkspaceNotFound",
     "RecordOperationAction",
     "StartOperationSession",
 ]
