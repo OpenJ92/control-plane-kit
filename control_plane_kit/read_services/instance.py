@@ -5,9 +5,8 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from typing import Mapping
 
-from control_plane_kit.algebra import BlockSockets, ProviderSocket, RequirementSocket
 from control_plane_kit.control_routes import route_set_named
-from control_plane_kit.graph import DeploymentGraph, Edge, Endpoint, Node, RuntimeRecord
+from control_plane_kit.graph_codec import DEFAULT_GRAPH_CODEC, GraphDescriptorError
 from control_plane_kit.projections import project_operator_graph
 from control_plane_kit.stores.protocols import ActivityHistoryStore, GraphTopologyStore, ObservedStateStore, WorkspaceStore
 from control_plane_kit.stores.records import GraphVersionRecord, ObservationRecord, WorkspaceRecord
@@ -15,7 +14,7 @@ from control_plane_kit.types import EndpointScope, Protocol, RuntimeKind
 
 _REDACTED = "<redacted>"
 _SECRET_MARKERS = ("secret", "token", "password", "private_key", "credential", "api_key")
-_ADDRESS_KEYS = ("url", "environment", "env_assignments")
+_ADDRESS_KEYS = ("address", "url", "environment", "env_assignments")
 
 
 class ReadModelError(ValueError):
@@ -291,7 +290,11 @@ class InstanceReadService:
         record = self._graph_topology_store.get(graph_id)
         operator_graph: Mapping[str, object] | None = None
         if include_operator_graph:
-            operator_graph = project_operator_graph(_graph_from_descriptor(record.graph_descriptor)).descriptor()
+            try:
+                graph = DEFAULT_GRAPH_CODEC.decode(record.graph_descriptor)
+            except GraphDescriptorError as exc:
+                raise ReadModelError(f"invalid stored graph descriptor: {exc}") from exc
+            operator_graph = project_operator_graph(graph).descriptor()
         return _graph_pointer_read_model(pointer, record, operator_graph=operator_graph)
 
 
@@ -380,83 +383,6 @@ def _control_metadata(metadata: Mapping[str, object]) -> Mapping[str, object]:
     }
 
 
-def _graph_from_descriptor(descriptor: Mapping[str, object]) -> DeploymentGraph:
-    """Rehydrate a stored graph descriptor for pure projection interpreters."""
-
-    graph = DeploymentGraph(str(descriptor["name"]))
-    runtimes = descriptor.get("runtimes", {})
-    nodes = descriptor.get("nodes", {})
-    edges = descriptor.get("edges", {})
-    if not isinstance(runtimes, Mapping) or not isinstance(nodes, Mapping) or not isinstance(edges, Mapping):
-        raise ReadModelError("graph descriptor has invalid top-level shape")
-    for runtime_id, runtime_descriptor in sorted(runtimes.items()):
-        graph = graph.add_runtime(_runtime_from_descriptor(str(runtime_id), _mapping(runtime_descriptor)))
-    for node_id, node_descriptor in sorted(nodes.items()):
-        graph = graph.add_node(_node_from_descriptor(str(node_id), _mapping(node_descriptor)))
-    for edge_id, edge_descriptor in sorted(edges.items()):
-        graph = graph.add_edge(_edge_from_descriptor(str(edge_id), _mapping(edge_descriptor)))
-    return graph
-
-
-def _runtime_from_descriptor(runtime_id: str, descriptor: Mapping[str, object]) -> RuntimeRecord:
-    return RuntimeRecord(
-        runtime_id=runtime_id,
-        kind=RuntimeKind(str(descriptor["kind"])),
-        children=tuple(str(child) for child in descriptor.get("children", ())),
-        metadata=_string_mapping(descriptor.get("metadata", {})),
-    )
-
-
-def _node_from_descriptor(node_id: str, descriptor: Mapping[str, object]) -> Node:
-    requirements = tuple(
-        RequirementSocket(
-            name=str(name),
-            protocol=Protocol(str(socket_descriptor["protocol"])),
-            env_bindings=tuple(str(value) for value in socket_descriptor.get("env_bindings", ())),
-            required=bool(socket_descriptor.get("required", True)),
-        )
-        for name, socket_descriptor in sorted(_mapping(descriptor.get("requirements", {})).items())
-        if isinstance(socket_descriptor, Mapping)
-    )
-    providers = tuple(
-        ProviderSocket(name=str(name), protocol=Protocol(str(socket_descriptor["protocol"])))
-        for name, socket_descriptor in sorted(_mapping(descriptor.get("providers", {})).items())
-        if isinstance(socket_descriptor, Mapping)
-    )
-    endpoints = {
-        str(name): Endpoint(
-            url=str(endpoint_descriptor["url"]),
-            protocol=Protocol(str(endpoint_descriptor["protocol"])),
-            scope=EndpointScope(str(endpoint_descriptor.get("scope", EndpointScope.PRIVATE.value))),
-        )
-        for name, endpoint_descriptor in sorted(_mapping(descriptor.get("endpoints", {})).items())
-        if isinstance(endpoint_descriptor, Mapping)
-    }
-    return Node(
-        node_id=node_id,
-        kind=str(descriptor["kind"]),
-        runtime_id=str(descriptor["runtime_id"]),
-        sockets=BlockSockets(requirements=requirements, providers=providers),
-        endpoints=endpoints,
-        environment=_string_mapping(descriptor.get("environment", {})),
-        metadata=_metadata_mapping(descriptor.get("metadata", {})),
-    )
-
-
-def _edge_from_descriptor(edge_id: str, descriptor: Mapping[str, object]) -> Edge:
-    provider = _mapping(descriptor["provider"])
-    consumer = _mapping(descriptor["consumer"])
-    return Edge(
-        edge_id=edge_id,
-        provider_role=str(provider["role"]),
-        provider_socket=str(provider["socket"]),
-        consumer_role=str(consumer["role"]),
-        requirement_socket=str(consumer["requirement"]),
-        protocol=Protocol(str(descriptor["protocol"])),
-        env_assignments=_string_mapping(descriptor.get("env_assignments", {})),
-    )
-
-
 def _mapping(value: object) -> Mapping[str, object]:
     if not isinstance(value, Mapping):
         raise ReadModelError("expected mapping in graph descriptor")
@@ -469,14 +395,6 @@ def _list(value: object) -> list[object]:
     if isinstance(value, tuple):
         return list(value)
     return []
-
-
-def _string_mapping(value: object) -> dict[str, str]:
-    return {str(key): str(child) for key, child in _mapping(value).items()}
-
-
-def _metadata_mapping(value: object) -> dict[str, object]:
-    return {str(key): child for key, child in _mapping(value).items()}
 
 
 def _session_descriptor(store: ActivityHistoryStore, session: object, *, limit: int) -> dict[str, object]:

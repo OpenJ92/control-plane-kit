@@ -29,3 +29,11 @@ class RuntimeKind(StrEnum):
     DRY_RUN = "dry-run"
     AWS = "aws"
     KUBERNETES = "kubernetes"
+
+
+class BlockFamily(StrEnum):
+    """Closed authoring roles retained by compiled graph nodes."""
+
+    APPLICATION = "application"
+    DATA = "data"
+    PROXY = "proxy"

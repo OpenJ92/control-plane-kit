@@ -7,6 +7,7 @@ from enum import StrEnum
 from typing import Mapping
 
 from control_plane_kit.graph import DeploymentGraph
+from control_plane_kit.graph_codec import DEFAULT_GRAPH_CODEC
 
 
 class WorkspaceLifecycle(StrEnum):
@@ -80,7 +81,7 @@ class GraphVersionRecord:
             graph_id=graph_id,
             workspace_id=workspace_id,
             version=version,
-            graph_descriptor=graph.descriptor(),
+            graph_descriptor=DEFAULT_GRAPH_CODEC.encode(graph),
             created_by=created_by,
             created_at=created_at,
             metadata=metadata or {},
