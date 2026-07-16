@@ -8,6 +8,7 @@ from control_plane_kit.execution import (
     ActivityEventRecord,
     ActivityRunRecord,
     ExecutionRequestRecord,
+    ActivityRunStatus,
     ObservationRecord,
 )
 from control_plane_kit.stores.records import (
@@ -93,10 +94,29 @@ class ExecutionStore(Protocol):
     def request_for_idempotency(
         self, workspace_id: str, idempotency_key: str
     ) -> ExecutionRequestRecord | None: ...
+    def claim_request(
+        self,
+        request_id: str,
+        worker_id: str,
+        claimed_at: str,
+        lease_expires_at: str,
+    ) -> ExecutionRequestRecord | None: ...
+    def release_expired_claim(self, request_id: str, *, as_of: str) -> bool: ...
     def add_run(self, record: ActivityRunRecord) -> ActivityRunRecord: ...
+    def get_run(self, run_id: str) -> ActivityRunRecord: ...
+    def compare_and_set_run_status(
+        self,
+        run_id: str,
+        *,
+        expected: ActivityRunStatus,
+        replacement: ActivityRunStatus,
+        started_at: str | None = None,
+        finished_at: str | None = None,
+    ) -> ActivityRunRecord | None: ...
     def runs_for_plan(self, plan_id: str) -> tuple[ActivityRunRecord, ...]: ...
     def runs_for_request(self, request_id: str) -> tuple[ActivityRunRecord, ...]: ...
     def add_event(self, record: ActivityEventRecord) -> ActivityEventRecord: ...
+    def next_event_ordinal(self, run_id: str) -> int: ...
     def events_for_run(self, run_id: str) -> tuple[ActivityEventRecord, ...]: ...
 
 
