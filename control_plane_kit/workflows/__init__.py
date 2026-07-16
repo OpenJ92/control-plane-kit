@@ -50,6 +50,18 @@ from control_plane_kit.workflows.planning import (
     ActivityPlanningWorkspaceNotFound,
     RequestActivityPlan,
 )
+from control_plane_kit.workflows.execution_admission import (
+    ExecutionAdmissionCommandService,
+    ExecutionAdmissionConflict,
+    ExecutionAdmissionDenied,
+    ExecutionAdmissionError,
+    ExecutionAdmissionIdempotencyConflict,
+    ExecutionAdmissionNotFound,
+    ExecutionAdmissionResult,
+    ExecutionReadinessRequired,
+    ExternalReadinessAttestation,
+    RequestPlanExecution,
+)
 
 __all__ = [
     "ActivityPlanningCommandService",
@@ -91,6 +103,16 @@ __all__ = [
     "SetDesiredGraph",
     "StaleDesiredGraph",
     "DesiredGraphWorkspaceNotFound",
+    "ExecutionAdmissionCommandService",
+    "ExecutionAdmissionConflict",
+    "ExecutionAdmissionDenied",
+    "ExecutionAdmissionError",
+    "ExecutionAdmissionIdempotencyConflict",
+    "ExecutionAdmissionNotFound",
+    "ExecutionAdmissionResult",
+    "ExecutionReadinessRequired",
+    "ExternalReadinessAttestation",
     "DecidePlanApproval",
     "RequestPlanApproval",
+    "RequestPlanExecution",
 ]

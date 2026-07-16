@@ -49,6 +49,7 @@ class OperationActionKind(StrEnum):
     PLAN_REQUESTED = "plan_requested"
     APPROVAL_REQUESTED = "approval_requested"
     APPROVAL_DECIDED = "approval_decided"
+    EXECUTION_REQUESTED = "execution_requested"
     RECOVERY_REQUESTED = "recovery_requested"
 
 
