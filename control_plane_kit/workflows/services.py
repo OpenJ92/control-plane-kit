@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-from dataclasses import replace
 from typing import Callable, Mapping
 from uuid import uuid4
 
@@ -11,10 +10,6 @@ from control_plane_kit.stores import (
     ActivityPlanRecord,
     ActivityRunRecord,
     ApprovalRecord,
-    OperationActionKind,
-    OperationActionRecord,
-    OperationSessionRecord,
-    OperationSessionStatus,
 )
 
 
@@ -24,85 +19,6 @@ IdFactory = Callable[[], str]
 
 def _uuid() -> str:
     return uuid4().hex
-
-
-class OperationSessionService:
-    """Records the lifecycle of one grouped operator task."""
-
-    def __init__(
-        self,
-        history: ActivityHistoryStore,
-        *,
-        clock: Clock,
-        id_factory: IdFactory = _uuid,
-    ) -> None:
-        self._history = history
-        self._clock = clock
-        self._id_factory = id_factory
-
-    def start(
-        self,
-        *,
-        workspace_id: str,
-        actor_id: str,
-        title: str,
-        metadata: Mapping[str, str] | None = None,
-    ) -> OperationSessionRecord:
-        record = OperationSessionRecord(
-            session_id=self._id_factory(),
-            workspace_id=workspace_id,
-            actor_id=actor_id,
-            title=title,
-            status=OperationSessionStatus.OPEN,
-            created_at=self._clock(),
-            metadata=metadata or {},
-        )
-        return self._history.add_session(record)
-
-    def close(
-        self,
-        session_id: str,
-        *,
-        status: OperationSessionStatus = OperationSessionStatus.CLOSED,
-    ) -> OperationSessionRecord:
-        existing = self._history.get_session(session_id)
-        closed = replace(existing, status=status, closed_at=self._clock())
-        return self._history.update_session(closed)
-
-
-class OperationActionService:
-    """Records ordered operator actions inside an operation session."""
-
-    def __init__(
-        self,
-        history: ActivityHistoryStore,
-        *,
-        clock: Clock,
-        id_factory: IdFactory = _uuid,
-    ) -> None:
-        self._history = history
-        self._clock = clock
-        self._id_factory = id_factory
-
-    def record(
-        self,
-        *,
-        session_id: str,
-        action_type: OperationActionKind,
-        actor_id: str,
-        payload: Mapping[str, object] | None = None,
-    ) -> OperationActionRecord:
-        ordinal = len(self._history.actions_for_session(session_id)) + 1
-        record = OperationActionRecord(
-            action_id=self._id_factory(),
-            session_id=session_id,
-            ordinal=ordinal,
-            action_type=action_type,
-            actor_id=actor_id,
-            payload=payload or {},
-            created_at=self._clock(),
-        )
-        return self._history.add_action(record)
 
 
 class ApprovalWorkflowService:

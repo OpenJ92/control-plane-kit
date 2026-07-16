@@ -10,6 +10,19 @@ one operator command = one explicit Postgres transaction boundary
 
 ## Ownership
 
+Database ownership is per deployed control-plane server:
+
+```text
+Hub server                  -> Hub database
+ControlPlaneInstance A      -> Instance A database
+ControlPlaneInstance B      -> Instance B database
+```
+
+Instances do not share one application database. Each server composition
+injects a connection factory for that server's own database. The
+`PostgresUnitOfWork` opens transactions only through that injected factory; it
+does not discover instances or select among global database URLs.
+
 ```text
 application command service
   owns PostgresUnitOfWork

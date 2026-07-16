@@ -1,17 +1,23 @@
+import os
 import unittest
+
+import psycopg
 
 from control_plane_kit.graph import DeploymentGraph
 from control_plane_kit.stores import (
     GraphVersionRecord,
     OperationActionKind,
-    OperationSessionStatus,
+    PostgresUnitOfWork,
     WorkspaceRecord,
 )
 from control_plane_kit.workflows import (
     ActivityRunService,
     ApprovalWorkflowService,
-    OperationActionService,
-    OperationSessionService,
+    CloseOperationSession,
+    IdempotencyKey,
+    OperationCommandService,
+    RecordOperationAction,
+    StartOperationSession,
 )
 from tests.postgres_case import PostgresStoreTestCase
 
@@ -25,47 +31,73 @@ class Sequence:
 
 
 class WorkflowServiceTests(PostgresStoreTestCase):
-    def test_session_service_starts_and_closes_sessions(self):
-        history = self.stores.activity_history
-        clock = Sequence(["2026-07-15T00:00:00Z", "2026-07-15T00:01:00Z"])
-        ids = Sequence(["session-a"])
-        service = OperationSessionService(history, clock=clock, id_factory=ids)
+    def setUp(self) -> None:
+        super().setUp()
+        self.stores.workspace.create(WorkspaceRecord("workspace-a", "Demo"))
 
-        session = service.start(workspace_id="workspace-a", actor_id="jacob", title="Swap API")
-        closed = service.close(session.session_id)
-
-        self.assertEqual(session.status, OperationSessionStatus.OPEN)
-        self.assertEqual(closed.status, OperationSessionStatus.CLOSED)
-        self.assertEqual(closed.closed_at, "2026-07-15T00:01:00Z")
-
-    def test_action_service_preserves_session_action_order(self):
-        history = self.stores.activity_history
-        OperationSessionService(
-            history,
-            clock=Sequence(["2026-07-15T00:00:00Z"]),
-            id_factory=Sequence(["session-a"]),
-        ).start(workspace_id="workspace-a", actor_id="jacob", title="Swap API")
-        actions = OperationActionService(
-            history,
-            clock=Sequence(["2026-07-15T00:01:00Z", "2026-07-15T00:02:00Z"]),
-            id_factory=Sequence(["action-a", "action-b"]),
+    def operation_service(self, ids):
+        database_url = os.environ["CPK_TEST_DATABASE_URL"]
+        return OperationCommandService(
+            lambda: PostgresUnitOfWork(lambda: psycopg.connect(database_url)),
+            clock=lambda: "2026-07-15T00:00:00Z",
+            id_factory=Sequence(ids),
         )
 
-        actions.record(session_id="session-a", action_type=OperationActionKind.ADD_BLOCK, actor_id="jacob")
-        actions.record(session_id="session-a", action_type=OperationActionKind.CONNECT_SOCKET, actor_id="jacob")
+    def test_session_service_starts_and_closes_sessions(self):
+        service = self.operation_service(["session-a", "action-start", "action-close"])
+
+        session = service.execute(
+            StartOperationSession(
+                "workspace-a", "jacob", "Swap API", IdempotencyKey("start")
+            )
+        ).session
+        closed = service.execute(
+            CloseOperationSession("session-a", "jacob", IdempotencyKey("close"))
+        ).session
+
+        self.assertEqual(session.status.value, "open")
+        self.assertEqual(closed.status.value, "closed")
+        self.assertEqual(closed.closed_at, "2026-07-15T00:00:00Z")
+
+    def test_action_service_preserves_session_action_order(self):
+        service = self.operation_service(
+            ["session-a", "action-start", "action-a", "action-b"]
+        )
+        service.execute(
+            StartOperationSession(
+                "workspace-a", "jacob", "Swap API", IdempotencyKey("start")
+            )
+        )
+
+        service.execute(
+            RecordOperationAction(
+                "session-a", "jacob", OperationActionKind.ADD_BLOCK, IdempotencyKey("add")
+            )
+        )
+        service.execute(
+            RecordOperationAction(
+                "session-a",
+                "jacob",
+                OperationActionKind.CONNECT_SOCKET,
+                IdempotencyKey("connect"),
+            )
+        )
 
         self.assertEqual(
-            [(record.ordinal, record.action_type) for record in history.actions_for_session("session-a")],
-            [(1, "add_block"), (2, "connect_socket")],
+            [
+                (record.ordinal, record.action_type.value)
+                for record in self.stores.activity_history.actions_for_session("session-a")
+            ],
+            [(1, "session_started"), (2, "add_block"), (3, "connect_socket")],
         )
 
     def test_approval_service_records_decision_without_execution(self):
         history = self.stores.activity_history
-        OperationSessionService(
-            history,
-            clock=Sequence(["2026-07-15T00:00:00Z"]),
-            id_factory=Sequence(["session-a"]),
-        ).start(workspace_id="workspace-a", actor_id="jacob", title="Approve plan")
+        self.operation_service(["session-a", "action-start"]).execute(
+            StartOperationSession(
+                "workspace-a", "jacob", "Approve plan", IdempotencyKey("start")
+            )
+        )
         approval = ApprovalWorkflowService(
             history,
             clock=Sequence(["2026-07-15T00:01:00Z"]),
@@ -84,11 +116,11 @@ class WorkflowServiceTests(PostgresStoreTestCase):
 
     def test_activity_run_service_records_plan_and_run_without_effects(self):
         history = self.stores.activity_history
-        OperationSessionService(
-            history,
-            clock=Sequence(["2026-07-15T00:00:00Z"]),
-            id_factory=Sequence(["session-a"]),
-        ).start(workspace_id="workspace-a", actor_id="jacob", title="Plan run")
+        self.operation_service(["session-a", "action-start"]).execute(
+            StartOperationSession(
+                "workspace-a", "jacob", "Plan run", IdempotencyKey("start")
+            )
+        )
         service = ActivityRunService(
             history,
             clock=Sequence(["2026-07-15T00:01:00Z", "2026-07-15T00:02:00Z"]),
@@ -107,7 +139,6 @@ class WorkflowServiceTests(PostgresStoreTestCase):
         self.assertEqual(run.status, "open")
 
     def test_workflow_services_do_not_mutate_graph_truth(self):
-        self.stores.workspace.create(WorkspaceRecord(workspace_id="workspace-a", name="Demo"))
         graph_store = self.stores.graph_topology
         graph_store.save(
             GraphVersionRecord.from_graph(
@@ -120,20 +151,20 @@ class WorkflowServiceTests(PostgresStoreTestCase):
             )
         )
         history = self.stores.activity_history
-        OperationSessionService(
-            history,
-            clock=Sequence(["2026-07-15T00:00:30Z"]),
-            id_factory=Sequence(["session-a"]),
-        ).start(workspace_id="workspace-a", actor_id="jacob", title="Prepare graph edit")
-        OperationActionService(
-            history,
-            clock=Sequence(["2026-07-15T00:01:00Z"]),
-            id_factory=Sequence(["action-a"]),
-        ).record(
-            session_id="session-a",
-            action_type=OperationActionKind.REQUEST_GRAPH_EDIT,
-            actor_id="jacob",
-            payload={"desired_graph_id": "graph-desired"},
+        service = self.operation_service(["session-a", "action-start", "action-a"])
+        service.execute(
+            StartOperationSession(
+                "workspace-a", "jacob", "Prepare graph edit", IdempotencyKey("start")
+            )
+        )
+        service.execute(
+            RecordOperationAction(
+                session_id="session-a",
+                action_type=OperationActionKind.REQUEST_GRAPH_EDIT,
+                actor_id="jacob",
+                idempotency_key=IdempotencyKey("edit"),
+                payload={"desired_graph_id": "graph-desired"},
+            )
         )
 
         self.assertEqual(graph_store.latest_for_workspace("workspace-a").graph_id, "graph-current")

@@ -24,6 +24,10 @@ class OperationSessionNotFound(OperationCommandError):
     """Raised when a command targets an unknown operation session."""
 
 
+class OperationWorkspaceNotFound(OperationCommandError):
+    """Raised when a command targets an unknown workspace."""
+
+
 class OperationSessionStateConflict(OperationCommandError):
     """Raised when a command is invalid for the current session state."""
 
@@ -57,6 +61,7 @@ class StartOperationSession:
         _required("actor_id", self.actor_id)
         _required("title", self.title)
         _string_mapping("metadata", self.metadata)
+        _reject_secret_values("metadata", self.metadata)
 
     def descriptor(self) -> dict[str, object]:
         return {
@@ -111,6 +116,7 @@ class RecordOperationAction:
         if not isinstance(self.action_type, OperationActionKind):
             raise InvalidOperationCommand("action_type must be OperationActionKind")
         _string_keys("payload", self.payload)
+        _reject_secret_values("payload", self.payload)
 
     def descriptor(self) -> dict[str, object]:
         return {
@@ -162,6 +168,28 @@ def _redacted_mapping(value: Mapping[str, object]) -> dict[str, str]:
     """Describe command shape without publishing operator-supplied values."""
 
     return {key: "<redacted>" for key in sorted(value)}
+
+
+_SECRET_MARKERS = ("secret", "token", "password", "private_key", "credential", "api_key")
+
+
+def _reject_secret_values(path: str, value: object) -> None:
+    """Permit secret references while rejecting secret-shaped evidence values."""
+
+    if isinstance(value, Mapping):
+        for key, child in value.items():
+            normalized = str(key).lower()
+            child_path = f"{path}.{key}"
+            if any(marker in normalized for marker in _SECRET_MARKERS) and not normalized.endswith(
+                "_ref"
+            ):
+                raise InvalidOperationCommand(
+                    f"{child_path} cannot contain a secret value; persist a secret reference"
+                )
+            _reject_secret_values(child_path, child)
+    elif isinstance(value, (list, tuple)):
+        for index, child in enumerate(value):
+            _reject_secret_values(f"{path}[{index}]", child)
 
 
 def _transition_descriptor(

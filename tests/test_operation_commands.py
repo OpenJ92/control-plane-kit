@@ -94,21 +94,43 @@ class OperationCommandVocabularyTests(unittest.TestCase):
             actor_id="jacob",
             title="Rotate credentials",
             idempotency_key=IdempotencyKey("request-a"),
-            metadata={"token": "do-not-publish"},
+            metadata={"deployment_label": "do-not-publish"},
         )
         action = RecordOperationAction(
             session_id="session-a",
             actor_id="jacob",
             action_type=OperationActionKind.PATCH_VARIABLE,
             idempotency_key=IdempotencyKey("request-b"),
-            payload={"DATABASE_URL": "postgresql://secret"},
+            payload={"database_address": "postgresql://internal"},
         )
 
-        self.assertEqual(start.descriptor()["metadata"], {"token": "<redacted>"})
+        self.assertEqual(
+            start.descriptor()["metadata"],
+            {"deployment_label": "<redacted>"},
+        )
         self.assertEqual(
             action.descriptor()["payload"],
-            {"DATABASE_URL": "<redacted>"},
+            {"database_address": "<redacted>"},
         )
+
+    def test_command_evidence_accepts_secret_references_but_rejects_secret_values(self):
+        accepted = RecordOperationAction(
+            session_id="session-a",
+            actor_id="jacob",
+            action_type=OperationActionKind.PATCH_VARIABLE,
+            idempotency_key=IdempotencyKey("request-a"),
+            payload={"database_secret_ref": "vault://database/a"},
+        )
+
+        self.assertEqual(accepted.payload["database_secret_ref"], "vault://database/a")
+        with self.assertRaisesRegex(InvalidOperationCommand, "secret reference"):
+            RecordOperationAction(
+                session_id="session-a",
+                actor_id="jacob",
+                action_type=OperationActionKind.PATCH_VARIABLE,
+                idempotency_key=IdempotencyKey("request-b"),
+                payload={"nested": {"api_token": "do-not-store"}},
+            )
 
     def test_durable_records_reject_untyped_lifecycle_and_action_values(self):
         with self.assertRaisesRegex(TypeError, "OperationSessionStatus"):
