@@ -22,8 +22,14 @@ from control_plane_kit.workflows.services import (
 from control_plane_kit.workflows.command_service import OperationCommandService
 from control_plane_kit.workflows.graph_edits import (
     DesiredGraphEdit,
+    DesiredGraphCommandError,
+    DesiredGraphCommandService,
     DesiredGraphEditResult,
+    DesiredGraphIdempotencyConflict,
+    DesiredGraphSessionConflict,
     SetDesiredGraph,
+    StaleDesiredGraph,
+    DesiredGraphWorkspaceNotFound,
 )
 
 __all__ = [
@@ -32,7 +38,11 @@ __all__ = [
     "CancelOperationSession",
     "CloseOperationSession",
     "DesiredGraphEdit",
+    "DesiredGraphCommandError",
+    "DesiredGraphCommandService",
     "DesiredGraphEditResult",
+    "DesiredGraphIdempotencyConflict",
+    "DesiredGraphSessionConflict",
     "IdempotencyKey",
     "InvalidOperationCommand",
     "OperationCommandError",
@@ -45,4 +55,6 @@ __all__ = [
     "RecordOperationAction",
     "StartOperationSession",
     "SetDesiredGraph",
+    "StaleDesiredGraph",
+    "DesiredGraphWorkspaceNotFound",
 ]
