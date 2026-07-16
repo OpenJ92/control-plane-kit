@@ -6,7 +6,7 @@ import subprocess
 from dataclasses import dataclass, field, replace
 from typing import Mapping, Protocol
 
-from control_plane_kit.graph import DeploymentGraph, Node
+from control_plane_kit.topology.graph import DeploymentGraph, Node
 from control_plane_kit.runtimes import CleanupPolicy, RuntimeActivity, RuntimeNodeState, RuntimePlan, RuntimeState
 from control_plane_kit.types import RuntimeKind
 

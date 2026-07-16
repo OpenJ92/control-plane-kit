@@ -5,16 +5,16 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from typing import Mapping
 
-from control_plane_kit.activity_plan import ActivityImpact, ReviewChange, RiskLevel
-from control_plane_kit.activity_plan_codec import DEFAULT_ACTIVITY_PLAN_CODEC
+from control_plane_kit.planning.activity_plan import ActivityImpact, ReviewChange, RiskLevel
+from control_plane_kit.planning.codec import DEFAULT_ACTIVITY_PLAN_CODEC
 from control_plane_kit.control_routes import route_set_named
-from control_plane_kit.graph_codec import (
+from control_plane_kit.topology.codec import (
     DEFAULT_GRAPH_CODEC,
     GraphDescriptorCodec,
     GraphDescriptorError,
 )
 from control_plane_kit.projections import project_operator_graph
-from control_plane_kit.recovery import plan_recovery_transition
+from control_plane_kit.planning.recovery import plan_recovery_transition
 from control_plane_kit.stores.protocols import (
     ActivityHistoryStore,
     GraphTopologyStore,
@@ -29,7 +29,7 @@ from control_plane_kit.stores.records import (
     OperationSessionStatus,
     WorkspaceRecord,
 )
-from control_plane_kit.validation import GraphValidationError, validate_graph
+from control_plane_kit.topology.validation import GraphValidationError, validate_graph
 from control_plane_kit.types import EndpointScope, Protocol, RuntimeKind
 
 _REDACTED = "<redacted>"

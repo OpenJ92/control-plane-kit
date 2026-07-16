@@ -8,8 +8,8 @@ from enum import StrEnum
 
 from control_plane_kit.capabilities import capability_named
 from control_plane_kit.control_routes import route_set_named
-from control_plane_kit.graph import DeploymentGraph
-from control_plane_kit.graph_codec import (
+from control_plane_kit.topology.graph import DeploymentGraph
+from control_plane_kit.topology.codec import (
     DEFAULT_GRAPH_CODEC,
     GraphDescriptorCodec,
     GraphDescriptorError,

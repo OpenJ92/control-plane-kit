@@ -16,7 +16,7 @@ from control_plane_kit import (
     SocketConnection,
     compile_recipe,
 )
-from control_plane_kit.graph import DeploymentGraph
+from control_plane_kit.topology.graph import DeploymentGraph
 from control_plane_kit.read_services import InstanceReadService, ReadModelError
 from control_plane_kit.stores import (
     ActivityEventRecord,

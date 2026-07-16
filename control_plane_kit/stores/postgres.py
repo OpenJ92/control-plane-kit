@@ -13,8 +13,8 @@ import json
 from dataclasses import replace
 from typing import Any, Protocol
 
-from control_plane_kit.activity_plan import RiskLevel
-from control_plane_kit.activity_plan_codec import DEFAULT_ACTIVITY_PLAN_CODEC
+from control_plane_kit.planning.activity_plan import RiskLevel
+from control_plane_kit.planning.codec import DEFAULT_ACTIVITY_PLAN_CODEC
 from control_plane_kit.stores.records import (
     ActivityEventRecord,
     ActivityPlanRecord,

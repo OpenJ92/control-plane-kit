@@ -8,13 +8,13 @@ from collections.abc import Callable
 from dataclasses import dataclass
 from uuid import uuid4
 
-from control_plane_kit.activity_plan_compiler import compile_activity_plan
-from control_plane_kit.graph_codec import (
+from control_plane_kit.planning.compiler import compile_activity_plan
+from control_plane_kit.topology.codec import (
     DEFAULT_GRAPH_CODEC,
     GraphDescriptorCodec,
     GraphDescriptorError,
 )
-from control_plane_kit.graph_diff import diff_graphs
+from control_plane_kit.topology.diff import diff_graphs
 from control_plane_kit.stores import (
     ActivityHistoryStore,
     ActivityPlanRecord,
@@ -25,7 +25,7 @@ from control_plane_kit.stores import (
     OperationSessionStatus,
     PostgresUnitOfWork,
 )
-from control_plane_kit.validation import GraphValidationError, validate_graph
+from control_plane_kit.topology.validation import GraphValidationError, validate_graph
 from control_plane_kit.workflows.commands import IdempotencyKey, InvalidOperationCommand
 
 

@@ -6,7 +6,7 @@ from fastapi.testclient import TestClient
 
 from control_plane_kit import ActivityPlan, RiskLevel
 from control_plane_kit.cli import run as run_cli
-from control_plane_kit.graph import DeploymentGraph
+from control_plane_kit.topology.graph import DeploymentGraph
 from control_plane_kit.mcp_read import McpReadError, ReadOnlyMcpAdapter
 from control_plane_kit.read_services import InstanceReadService, ReadModelError
 from control_plane_kit.servers import create_instance_read_app

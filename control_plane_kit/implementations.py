@@ -5,7 +5,7 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 
 from control_plane_kit.algebra import BlockSockets, RuntimeContext
-from control_plane_kit.graph import Endpoint, EndpointAddress, LiteralAddress
+from control_plane_kit.topology.graph import Endpoint, EndpointAddress, LiteralAddress
 from control_plane_kit.types import EndpointScope, Protocol, RuntimeKind
 
 

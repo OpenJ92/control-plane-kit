@@ -228,6 +228,10 @@ Some activities may be non-compensatable. They must say so.
 ## Implementation Notes
 
 - Follow ADR 0008 strictly.
+- Import desired-state graph concepts from `control_plane_kit.topology` and
+  activity-plan concepts from `control_plane_kit.planning`.
+- Do not place execution, runtime mutation, workflow persistence, or store code
+  inside either pure algebra package.
 - Store-local execution state uses normal Postgres unit-of-work transactions.
 - Saga steps only wrap external effects that cannot be made ACID by Postgres.
 - Execution claims need locking or guarded status transitions.

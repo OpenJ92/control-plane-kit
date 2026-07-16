@@ -12,7 +12,7 @@ from control_plane_kit.algebra import (
     RequirementSocket,
 )
 from control_plane_kit.capabilities import CapabilityName
-from control_plane_kit.graph import (
+from control_plane_kit.topology.graph import (
     DeploymentGraph,
     Edge,
     Endpoint,

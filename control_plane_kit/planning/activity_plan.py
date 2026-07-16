@@ -6,7 +6,7 @@ from dataclasses import dataclass
 from enum import StrEnum
 from typing import TypeAlias
 
-from control_plane_kit.graph_changes import DiffSubject
+from control_plane_kit.topology.changes import DiffSubject
 
 
 @dataclass(frozen=True, order=True)
