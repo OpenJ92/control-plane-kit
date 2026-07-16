@@ -5,6 +5,8 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from typing import Mapping
 
+from control_plane_kit.activity_plan_codec import DEFAULT_ACTIVITY_PLAN_CODEC
+
 from control_plane_kit.control_routes import route_set_named
 from control_plane_kit.graph_codec import DEFAULT_GRAPH_CODEC, GraphDescriptorError
 from control_plane_kit.projections import project_operator_graph
@@ -458,7 +460,7 @@ def _plan_descriptor(store: ActivityHistoryStore, plan: object, *, limit: int) -
         "desired_graph_id": getattr(plan, "desired_graph_id"),
         "status": getattr(plan, "status"),
         "created_at": getattr(plan, "created_at"),
-        "payload": _redact_descriptor_value("payload", getattr(plan, "payload")),
+        "payload": DEFAULT_ACTIVITY_PLAN_CODEC.encode(getattr(plan, "plan")),
         "runs": [
             _run_descriptor(store, run, limit=limit)
             for run in store.runs_for_plan(plan_id)[:limit]

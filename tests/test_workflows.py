@@ -3,6 +3,7 @@ import unittest
 
 import psycopg
 
+from control_plane_kit import ActivityId, ActivityPlan, NodeTarget, PlannedActivity, StartNode
 from control_plane_kit.graph import DeploymentGraph
 from control_plane_kit.stores import (
     GraphVersionRecord,
@@ -131,11 +132,14 @@ class WorkflowServiceTests(PostgresStoreTestCase):
             session_id="session-a",
             base_graph_id="graph-current",
             desired_graph_id="graph-desired",
-            payload={"activities": ["StartNode(api-v2)"]},
+            plan=ActivityPlan(
+                (PlannedActivity(ActivityId("start-api"), StartNode(NodeTarget("api-v2"))),)
+            ),
         )
         run = service.open_run(plan_id=plan.plan_id)
 
         self.assertEqual(history.get_plan("plan-a").desired_graph_id, "graph-desired")
+        self.assertEqual(history.get_plan("plan-a").plan, plan.plan)
         self.assertEqual(run.status, "open")
 
     def test_workflow_services_do_not_mutate_graph_truth(self):
