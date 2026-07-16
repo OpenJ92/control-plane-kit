@@ -5,6 +5,7 @@ from __future__ import annotations
 from typing import Callable, Mapping
 from uuid import uuid4
 
+from control_plane_kit.activity_plan import ActivityPlan
 from control_plane_kit.stores import (
     ActivityHistoryStore,
     ActivityPlanRecord,
@@ -78,7 +79,7 @@ class ActivityRunService:
         session_id: str,
         base_graph_id: str,
         desired_graph_id: str,
-        payload: Mapping[str, object] | None = None,
+        plan: ActivityPlan,
     ) -> ActivityPlanRecord:
         record = ActivityPlanRecord(
             plan_id=self._id_factory(),
@@ -87,7 +88,7 @@ class ActivityRunService:
             desired_graph_id=desired_graph_id,
             status="planned",
             created_at=self._clock(),
-            payload=payload or {},
+            plan=plan,
         )
         return self._history.add_plan(record)
 

@@ -6,6 +6,7 @@ from dataclasses import dataclass, field
 from enum import StrEnum
 from typing import Mapping
 
+from control_plane_kit.activity_plan import ActivityPlan
 from control_plane_kit.graph import DeploymentGraph
 from control_plane_kit.graph_codec import DEFAULT_GRAPH_CODEC
 
@@ -163,7 +164,11 @@ class ActivityPlanRecord:
     desired_graph_id: str
     status: str
     created_at: str
-    payload: Mapping[str, object] = field(default_factory=dict)
+    plan: ActivityPlan
+
+    def __post_init__(self) -> None:
+        if not isinstance(self.plan, ActivityPlan):
+            raise TypeError("activity plan record requires a typed ActivityPlan")
 
 
 @dataclass(frozen=True)

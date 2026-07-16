@@ -1,5 +1,6 @@
 import unittest
 
+from control_plane_kit import ActivityPlan
 from control_plane_kit.graph import DeploymentGraph
 from control_plane_kit.stores import (
     ActivityPlanRecord,
@@ -123,6 +124,7 @@ class StoreContractTests(PostgresStoreTestCase):
                 desired_graph_id="graph-b",
                 status="planned",
                 created_at="2026-07-15T00:02:00Z",
+                plan=ActivityPlan(()),
             )
         )
         store.add_run(

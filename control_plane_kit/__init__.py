@@ -56,6 +56,16 @@ from control_plane_kit.activity_plan import (
     SwitchSocketConnection,
     WaitForHealthy,
 )
+from control_plane_kit.activity_plan_codec import (
+    ACTIVITY_PLAN_SCHEMA,
+    ACTIVITY_PLAN_VERSION,
+    DEFAULT_ACTIVITY_PLAN_CODEC,
+    ActivityPlanDescriptorCodec,
+    ActivityPlanDescriptorError,
+    LossyActivityPlanDescriptor,
+    MalformedActivityPlanDescriptor,
+    UnknownActivityPlanVariant,
+)
 from control_plane_kit.compiler import compile_recipe
 from control_plane_kit.contracts import (
     ControlValueKind,

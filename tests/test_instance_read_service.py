@@ -1,6 +1,7 @@
 from unittest import main
 
 from control_plane_kit import (
+    ActivityPlan,
     BlockSockets,
     BlockSpec,
     CapabilityName,
@@ -111,7 +112,10 @@ class InstanceReadServiceTests(PostgresStoreTestCase):
         session = payload["sessions"][0]
         self.assertEqual([action["action_id"] for action in session["actions"]], ["action-a"])
         self.assertEqual(session["actions"][0]["payload"]["api_token"], "<redacted>")
-        self.assertEqual(session["plans"][0]["payload"]["target_url"], "<redacted>")
+        self.assertEqual(
+            session["plans"][0]["payload"]["schema"],
+            "control-plane-kit.activity-plan",
+        )
         self.assertEqual(session["plans"][0]["runs"][0]["events"][0]["payload"]["password"], "<redacted>")
 
     def test_activity_timeline_rejects_invalid_limits(self):
@@ -353,7 +357,7 @@ class InstanceReadServiceTests(PostgresStoreTestCase):
                 desired_graph_id="graph-b",
                 status="planned",
                 created_at="2026-07-15T00:03:00Z",
-                payload={"target_url": "http://private"},
+                plan=ActivityPlan(()),
             )
         )
         self.stores.activity_history.add_run(
@@ -451,6 +455,7 @@ class InstanceReadServiceTests(PostgresStoreTestCase):
                 desired_graph_id="graph-b",
                 status="planned",
                 created_at="2026-07-15T00:01:00Z",
+                plan=ActivityPlan(()),
             )
         )
         self.stores.activity_history.add_run(

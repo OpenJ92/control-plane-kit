@@ -3,6 +3,7 @@ import unittest
 
 import psycopg
 
+from control_plane_kit import ActivityPlan
 from control_plane_kit.graph import DeploymentGraph
 from control_plane_kit.stores import (
     ActivityPlanRecord,
@@ -229,6 +230,7 @@ class PostgresUnitOfWorkIntegrationTests(PostgresStoreTestCase):
             desired_graph_id="graph-a",
             status="planned",
             created_at="2026-07-15T00:00:03Z",
+            plan=ActivityPlan(()),
         )
 
 

@@ -13,6 +13,7 @@ import json
 from dataclasses import replace
 from typing import Any, Protocol
 
+from control_plane_kit.activity_plan_codec import DEFAULT_ACTIVITY_PLAN_CODEC
 from control_plane_kit.stores.records import (
     ActivityEventRecord,
     ActivityPlanRecord,
@@ -674,7 +675,7 @@ class PostgresActivityHistoryStore:
                 record.desired_graph_id,
                 record.status,
                 record.created_at,
-                _json(record.payload),
+                DEFAULT_ACTIVITY_PLAN_CODEC.dumps(record.plan),
             ),
         )
         return record
@@ -698,7 +699,7 @@ class PostgresActivityHistoryStore:
             desired_graph_id=row[3],
             status=row[4],
             created_at=row[5],
-            payload=row[6],
+            plan=DEFAULT_ACTIVITY_PLAN_CODEC.decode(row[6]),
         )
 
     def plans_for_session(self, session_id: str) -> tuple[ActivityPlanRecord, ...]:
@@ -719,7 +720,7 @@ class PostgresActivityHistoryStore:
                 desired_graph_id=row[3],
                 status=row[4],
                 created_at=row[5],
-                payload=row[6],
+                plan=DEFAULT_ACTIVITY_PLAN_CODEC.decode(row[6]),
             )
             for row in rows
         )
