@@ -121,6 +121,17 @@ class GraphDescriptorCodec:
         self._validate(graph)
         return descriptor
 
+    def encode_block_spec(self, spec: BlockSpec) -> dict[str, object]:
+        """Return the registered closed descriptor for one block specification."""
+
+        try:
+            codec = self._by_type[type(spec)]
+        except KeyError as error:
+            raise UnknownGraphVariant(
+                f"unregistered block spec type {type(spec).__name__}"
+            ) from error
+        return dict(codec.encode(spec))
+
     def decode(self, descriptor: Mapping[str, object]) -> DeploymentGraph:
         top = _mapping(descriptor, "graph")
         graph = DeploymentGraph(_text(top, "name"))
@@ -137,14 +148,8 @@ class GraphDescriptorCodec:
         return graph
 
     def _encode_node(self, node: Node) -> dict[str, object]:
-        try:
-            codec = self._by_type[type(node.block_spec)]
-        except KeyError as error:
-            raise UnknownGraphVariant(
-                f"unregistered block spec type {type(node.block_spec).__name__}"
-            ) from error
         descriptor = node.descriptor()
-        descriptor["block_spec"] = dict(codec.encode(node.block_spec))
+        descriptor["block_spec"] = self.encode_block_spec(node.block_spec)
         return descriptor
 
     def _decode_runtime(self, runtime_id: str, descriptor: Mapping[str, object]) -> RuntimeRecord:

@@ -1,5 +1,6 @@
 import unittest
-from dataclasses import replace
+from dataclasses import dataclass, replace
+from typing import Mapping
 
 from control_plane_kit import (
     ApplicationBlock,
@@ -9,6 +10,7 @@ from control_plane_kit import (
     DockerRuntime,
     Endpoint,
     GraphValidationError,
+    GraphDescriptorCodec,
     LiteralAddress,
     PlanOnlyImplementation,
     Protocol,
@@ -20,6 +22,41 @@ from control_plane_kit import (
     compile_recipe,
     validate_graph,
 )
+
+
+@dataclass(frozen=True)
+class ExtendedBlockSpec(BlockSpec):
+    topology_role: str = "instance"
+
+
+class ExtendedBlockSpecCodec:
+    variant = "extended"
+    spec_type = ExtendedBlockSpec
+
+    def encode(self, spec: BlockSpec) -> Mapping[str, object]:
+        if not isinstance(spec, ExtendedBlockSpec):
+            raise TypeError("expected ExtendedBlockSpec")
+        return {
+            "variant": self.variant,
+            "role_id": spec.role_id,
+            "display_name": spec.display_name,
+            "health_path": spec.health_path,
+            "capabilities": [],
+            "metadata": dict(spec.metadata),
+            "topology_role": spec.topology_role,
+        }
+
+    def decode(self, descriptor: Mapping[str, object]) -> BlockSpec:
+        return ExtendedBlockSpec(
+            role_id=str(descriptor["role_id"]),
+            display_name=_optional_text(descriptor.get("display_name")),
+            health_path=_optional_text(descriptor.get("health_path")),
+            metadata={
+                str(key): str(value)
+                for key, value in _mapping(descriptor["metadata"]).items()
+            },
+            topology_role=str(descriptor["topology_role"]),
+        )
 
 
 def graph_with_requirement(*, required: bool = True, connected: bool = True):
@@ -125,6 +162,30 @@ class GraphValidationTests(unittest.TestCase):
         self.assertFalse(result.valid)
         self.assertEqual(result.errors[0].code, ValidationCode.INVALID_DESCRIPTOR)
 
+    def test_registered_block_spec_codec_is_retained_as_validation_evidence(self):
+        app = ApplicationBlock(
+            ExtendedBlockSpec("instance-a", topology_role="control-plane"),
+            PlanOnlyImplementation("instance", {"operator": "http://instance"}),
+            BlockSockets(providers=(ProviderSocket("operator", Protocol.HTTP),)),
+        )
+        graph = compile_recipe(
+            DeploymentRecipe("extended", DockerRuntime(children=(app,)))
+        )
+        codec = GraphDescriptorCodec(spec_codecs=(ExtendedBlockSpecCodec(),))
+
+        rejected_by_default = validate_graph(graph)
+        accepted = validate_graph(graph, codec=codec)
+
+        self.assertFalse(rejected_by_default.valid)
+        self.assertTrue(accepted.valid)
+        self.assertIs(accepted.codec, codec)
+        self.assertEqual(
+            codec.encode_block_spec(accepted.graph.node("instance-a").block_spec)[
+                "variant"
+            ],
+            "extended",
+        )
+
     def test_multiple_connections_to_one_requirement_are_rejected(self):
         graph = graph_with_requirement()
         edge = next(iter(graph.edges.values()))
@@ -216,6 +277,16 @@ class GraphValidationTests(unittest.TestCase):
             result.require_valid()
 
         self.assertIs(raised.exception.result, result)
+
+
+def _mapping(value: object) -> Mapping[str, object]:
+    if not isinstance(value, Mapping):
+        raise TypeError("expected mapping")
+    return value
+
+
+def _optional_text(value: object) -> str | None:
+    return None if value is None else str(value)
 
 
 if __name__ == "__main__":
