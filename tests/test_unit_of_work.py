@@ -7,8 +7,10 @@ from control_plane_kit.graph import DeploymentGraph
 from control_plane_kit.stores import (
     ActivityPlanRecord,
     GraphVersionRecord,
+    OperationActionKind,
     OperationActionRecord,
     OperationSessionRecord,
+    OperationSessionStatus,
     PostgresUnitOfWork,
     UnitOfWorkStateError,
     WorkspaceRecord,
@@ -203,7 +205,7 @@ class PostgresUnitOfWorkIntegrationTests(PostgresStoreTestCase):
             workspace_id="workspace-a",
             actor_id="jacob",
             title="Swap API",
-            status="open",
+            status=OperationSessionStatus.OPEN,
             created_at="2026-07-15T00:00:01Z",
         )
 
@@ -213,7 +215,7 @@ class PostgresUnitOfWorkIntegrationTests(PostgresStoreTestCase):
             action_id="action-a",
             session_id="session-a",
             ordinal=1,
-            action_type="set_desired_graph",
+            action_type=OperationActionKind.SET_DESIRED_GRAPH,
             actor_id="jacob",
             created_at="2026-07-15T00:00:02Z",
         )

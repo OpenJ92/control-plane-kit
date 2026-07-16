@@ -33,8 +33,10 @@ from control_plane_kit import (
 from control_plane_kit.stores import (
     GraphVersionRecord,
     ObservationRecord,
+    OperationActionKind,
     OperationActionRecord,
     OperationSessionRecord,
+    OperationSessionStatus,
     PostgresStoreBundle,
     WorkspaceLifecycle,
     WorkspaceRecord,
@@ -144,7 +146,7 @@ def seed_demo_data(stores: PostgresStoreBundle) -> None:
             workspace_id=DEMO_WORKSPACE_ID,
             actor_id="operator",
             title="Inspect read interfaces",
-            status="open",
+            status=OperationSessionStatus.OPEN,
             created_at="2026-07-15T00:10:00Z",
         )
     )
@@ -153,7 +155,7 @@ def seed_demo_data(stores: PostgresStoreBundle) -> None:
             action_id="demo-action-1",
             session_id="demo-session-1",
             ordinal=1,
-            action_type="inspect-control-surface",
+            action_type=OperationActionKind.INSPECT_CONTROL_SURFACE,
             actor_id="operator",
             payload={"node_id": "api-router"},
             created_at="2026-07-15T00:11:00Z",

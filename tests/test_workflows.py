@@ -3,6 +3,8 @@ import unittest
 from control_plane_kit.graph import DeploymentGraph
 from control_plane_kit.stores import (
     GraphVersionRecord,
+    OperationActionKind,
+    OperationSessionStatus,
     WorkspaceRecord,
 )
 from control_plane_kit.workflows import (
@@ -32,8 +34,8 @@ class WorkflowServiceTests(PostgresStoreTestCase):
         session = service.start(workspace_id="workspace-a", actor_id="jacob", title="Swap API")
         closed = service.close(session.session_id)
 
-        self.assertEqual(session.status, "open")
-        self.assertEqual(closed.status, "closed")
+        self.assertEqual(session.status, OperationSessionStatus.OPEN)
+        self.assertEqual(closed.status, OperationSessionStatus.CLOSED)
         self.assertEqual(closed.closed_at, "2026-07-15T00:01:00Z")
 
     def test_action_service_preserves_session_action_order(self):
@@ -49,8 +51,8 @@ class WorkflowServiceTests(PostgresStoreTestCase):
             id_factory=Sequence(["action-a", "action-b"]),
         )
 
-        actions.record(session_id="session-a", action_type="add_block", actor_id="jacob")
-        actions.record(session_id="session-a", action_type="connect_socket", actor_id="jacob")
+        actions.record(session_id="session-a", action_type=OperationActionKind.ADD_BLOCK, actor_id="jacob")
+        actions.record(session_id="session-a", action_type=OperationActionKind.CONNECT_SOCKET, actor_id="jacob")
 
         self.assertEqual(
             [(record.ordinal, record.action_type) for record in history.actions_for_session("session-a")],
@@ -129,7 +131,7 @@ class WorkflowServiceTests(PostgresStoreTestCase):
             id_factory=Sequence(["action-a"]),
         ).record(
             session_id="session-a",
-            action_type="request_graph_edit",
+            action_type=OperationActionKind.REQUEST_GRAPH_EDIT,
             actor_id="jacob",
             payload={"desired_graph_id": "graph-desired"},
         )

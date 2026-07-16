@@ -16,7 +16,12 @@ from control_plane_kit import (
     compile_recipe,
     create_instance_read_app,
 )
-from control_plane_kit.stores import GraphVersionRecord, OperationSessionRecord, WorkspaceRecord
+from control_plane_kit.stores import (
+    GraphVersionRecord,
+    OperationSessionRecord,
+    OperationSessionStatus,
+    WorkspaceRecord,
+)
 from tests.postgres_case import PostgresStoreTestCase
 
 try:
@@ -74,7 +79,7 @@ class InstanceReadFastAPITests(PostgresStoreTestCase):
                 workspace_id="workspace-a",
                 actor_id="jacob",
                 title="Inspect",
-                status="open",
+                status=OperationSessionStatus.OPEN,
                 created_at="2026-07-15T00:00:00Z",
             )
         )

@@ -11,8 +11,10 @@ from control_plane_kit.stores import (
     ActivityPlanRecord,
     ActivityRunRecord,
     ApprovalRecord,
+    OperationActionKind,
     OperationActionRecord,
     OperationSessionRecord,
+    OperationSessionStatus,
 )
 
 
@@ -51,13 +53,18 @@ class OperationSessionService:
             workspace_id=workspace_id,
             actor_id=actor_id,
             title=title,
-            status="open",
+            status=OperationSessionStatus.OPEN,
             created_at=self._clock(),
             metadata=metadata or {},
         )
         return self._history.add_session(record)
 
-    def close(self, session_id: str, *, status: str = "closed") -> OperationSessionRecord:
+    def close(
+        self,
+        session_id: str,
+        *,
+        status: OperationSessionStatus = OperationSessionStatus.CLOSED,
+    ) -> OperationSessionRecord:
         existing = self._history.get_session(session_id)
         closed = replace(existing, status=status, closed_at=self._clock())
         return self._history.update_session(closed)
@@ -81,7 +88,7 @@ class OperationActionService:
         self,
         *,
         session_id: str,
-        action_type: str,
+        action_type: OperationActionKind,
         actor_id: str,
         payload: Mapping[str, object] | None = None,
     ) -> OperationActionRecord:

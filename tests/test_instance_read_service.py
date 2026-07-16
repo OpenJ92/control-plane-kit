@@ -23,8 +23,10 @@ from control_plane_kit.stores import (
     ApprovalRecord,
     GraphVersionRecord,
     ObservationRecord,
+    OperationActionKind,
     OperationActionRecord,
     OperationSessionRecord,
+    OperationSessionStatus,
     WorkspaceRecord,
 )
 from examples.app_with_postgres import recipe
@@ -296,7 +298,7 @@ class InstanceReadServiceTests(PostgresStoreTestCase):
                 workspace_id="workspace-a",
                 actor_id="jacob",
                 title="Swap API",
-                status="open",
+                status=OperationSessionStatus.OPEN,
                 created_at="2026-07-15T00:00:00Z",
             )
         )
@@ -306,7 +308,7 @@ class InstanceReadServiceTests(PostgresStoreTestCase):
                 workspace_id="workspace-b",
                 actor_id="jacob",
                 title="Other workspace",
-                status="open",
+                status=OperationSessionStatus.OPEN,
                 created_at="2026-07-15T00:00:01Z",
             )
         )
@@ -315,7 +317,7 @@ class InstanceReadServiceTests(PostgresStoreTestCase):
                 action_id="action-a",
                 session_id="session-a",
                 ordinal=1,
-                action_type="patch_variable",
+                action_type=OperationActionKind.PATCH_VARIABLE,
                 actor_id="jacob",
                 payload={"api_token": "secret", "note": "visible"},
                 created_at="2026-07-15T00:01:00Z",
@@ -326,7 +328,7 @@ class InstanceReadServiceTests(PostgresStoreTestCase):
                 action_id="action-b",
                 session_id="session-a",
                 ordinal=2,
-                action_type="check_health",
+                action_type=OperationActionKind.CHECK_HEALTH,
                 actor_id="jacob",
                 payload={"note": "bounded away"},
                 created_at="2026-07-15T00:02:00Z",
@@ -437,7 +439,7 @@ class InstanceReadServiceTests(PostgresStoreTestCase):
                 workspace_id="workspace-a",
                 actor_id="jacob",
                 title="Nested",
-                status="open",
+                status=OperationSessionStatus.OPEN,
                 created_at="2026-07-15T00:00:00Z",
             )
         )
