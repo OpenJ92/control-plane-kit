@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 
-from control_plane_kit.graph_diff import (
+from control_plane_kit.graph_changes import (
     AddedChange,
     AmbiguousChange,
     FieldSubject,
