@@ -15,9 +15,18 @@ from control_plane_kit.workflows.commands import (
     StartOperationSession,
 )
 
-from control_plane_kit.workflows.services import (
-    ActivityRunService,
-    ApprovalWorkflowService,
+from control_plane_kit.workflows.services import ActivityRunService
+from control_plane_kit.workflows.approvals import (
+    ApprovalAuthorizationDenied,
+    ApprovalCommandService,
+    ApprovalDecisionResult,
+    ApprovalIdempotencyConflict,
+    ApprovalRequestResult,
+    ApprovalStateConflict,
+    ApprovalTargetNotFound,
+    ApprovalWorkflowError,
+    DecidePlanApproval,
+    RequestPlanApproval,
 )
 from control_plane_kit.workflows.command_service import OperationCommandService
 from control_plane_kit.workflows.graph_edits import (
@@ -53,7 +62,14 @@ __all__ = [
     "ActivityPlanningResult",
     "ActivityPlanningSessionConflict",
     "ActivityPlanningWorkspaceNotFound",
-    "ApprovalWorkflowService",
+    "ApprovalAuthorizationDenied",
+    "ApprovalCommandService",
+    "ApprovalDecisionResult",
+    "ApprovalIdempotencyConflict",
+    "ApprovalRequestResult",
+    "ApprovalStateConflict",
+    "ApprovalTargetNotFound",
+    "ApprovalWorkflowError",
     "CancelOperationSession",
     "CloseOperationSession",
     "DesiredGraphEdit",
@@ -77,4 +93,6 @@ __all__ = [
     "SetDesiredGraph",
     "StaleDesiredGraph",
     "DesiredGraphWorkspaceNotFound",
+    "DecidePlanApproval",
+    "RequestPlanApproval",
 ]

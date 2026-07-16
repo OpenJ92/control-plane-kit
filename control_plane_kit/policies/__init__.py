@@ -3,6 +3,7 @@
 from control_plane_kit.policies.lifecycle import LifecycleRetention, retention_for
 from control_plane_kit.policies.services import (
     ApprovalPolicy,
+    ApprovalRequirement,
     DestructiveActivityPolicy,
     HubAccessPolicy,
     InstanceAccessPolicy,
@@ -11,6 +12,7 @@ from control_plane_kit.policies.services import (
 
 __all__ = [
     "ApprovalPolicy",
+    "ApprovalRequirement",
     "DestructiveActivityPolicy",
     "HubAccessPolicy",
     "InstanceAccessPolicy",

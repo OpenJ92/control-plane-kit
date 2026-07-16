@@ -14,7 +14,6 @@ from control_plane_kit.stores import (
 )
 from control_plane_kit.workflows import (
     ActivityRunService,
-    ApprovalWorkflowService,
     CloseOperationSession,
     IdempotencyKey,
     OperationCommandService,
@@ -92,29 +91,6 @@ class WorkflowServiceTests(PostgresStoreTestCase):
             ],
             [(1, "session_started"), (2, "add_block"), (3, "connect_socket")],
         )
-
-    def test_approval_service_records_decision_without_execution(self):
-        history = self.stores.activity_history
-        self.operation_service(["session-a", "action-start"]).execute(
-            StartOperationSession(
-                "workspace-a", "jacob", "Approve plan", IdempotencyKey("start")
-            )
-        )
-        approval = ApprovalWorkflowService(
-            history,
-            clock=Sequence(["2026-07-15T00:01:00Z"]),
-            id_factory=Sequence(["approval-a"]),
-        ).decide(
-            session_id="session-a",
-            target_id="plan-a",
-            actor_id="manager",
-            decision="approved",
-            scope="plan:approve",
-            comment="Looks safe.",
-        )
-
-        self.assertEqual(approval.decision, "approved")
-        self.assertEqual(history.approvals_for_session("session-a")[0].target_id, "plan-a")
 
     def test_activity_run_service_opens_run_for_persisted_plan_without_effects(self):
         history = self.stores.activity_history

@@ -14,8 +14,9 @@ TRUNCATE_SCHEMA = """
 TRUNCATE TABLE
   cpk_activity_events,
   cpk_activity_runs,
+  cpk_approval_decisions,
+  cpk_approval_requests,
   cpk_activity_plans,
-  cpk_approvals,
   cpk_operation_actions,
   cpk_operation_sessions,
   cpk_graph_versions,

@@ -6,7 +6,7 @@ from dataclasses import dataclass, field
 from enum import StrEnum
 from typing import Mapping
 
-from control_plane_kit.activity_plan import ActivityPlan
+from control_plane_kit.activity_plan import ActivityPlan, RiskLevel
 from control_plane_kit.graph import DeploymentGraph
 from control_plane_kit.graph_codec import DEFAULT_GRAPH_CODEC
 
@@ -50,6 +50,13 @@ class OperationActionKind(StrEnum):
     APPROVAL_REQUESTED = "approval_requested"
     APPROVAL_DECIDED = "approval_decided"
     RECOVERY_REQUESTED = "recovery_requested"
+
+
+class ApprovalDecisionKind(StrEnum):
+    """Closed vocabulary for answers to approval requests."""
+
+    APPROVED = "approved"
+    REJECTED = "rejected"
 
 
 @dataclass(frozen=True)
@@ -141,17 +148,43 @@ class OperationActionRecord:
 
 
 @dataclass(frozen=True)
-class ApprovalRecord:
-    """Approval or rejection for a consequential plan or action."""
+class ApprovalRequestRecord:
+    """Immutable request for authority over one canonical persisted plan."""
 
-    approval_id: str
+    request_id: str
     session_id: str
-    target_id: str
+    plan_id: str
+    requested_by: str
+    requested_at: str
+    required_scope: str
+    max_risk: RiskLevel
+    destructive: bool
+    comment: str | None = None
+    idempotency_key: str | None = None
+    intent_fingerprint: str | None = None
+
+    def __post_init__(self) -> None:
+        if not isinstance(self.max_risk, RiskLevel):
+            raise TypeError("approval request max risk must be RiskLevel")
+
+
+@dataclass(frozen=True)
+class ApprovalDecisionRecord:
+    """Immutable answer to exactly one approval request."""
+
+    decision_id: str
+    request_id: str
     actor_id: str
-    decision: str
+    decision: ApprovalDecisionKind
     scope: str
     decided_at: str
     comment: str | None = None
+    idempotency_key: str | None = None
+    intent_fingerprint: str | None = None
+
+    def __post_init__(self) -> None:
+        if not isinstance(self.decision, ApprovalDecisionKind):
+            raise TypeError("approval decision must be ApprovalDecisionKind")
 
 
 @dataclass(frozen=True)

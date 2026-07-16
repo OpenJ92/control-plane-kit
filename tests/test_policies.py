@@ -1,5 +1,14 @@
 import unittest
 
+from control_plane_kit import (
+    ActivityId,
+    ActivityImpact,
+    ActivityPlan,
+    NodeTarget,
+    PlannedActivity,
+    RiskLevel,
+    StopNode,
+)
 from control_plane_kit.policies import (
     ApprovalPolicy,
     DestructiveActivityPolicy,
@@ -36,6 +45,26 @@ class PolicyTests(unittest.TestCase):
         self.assertTrue(ordinary.allowed)
         self.assertFalse(destructive.allowed)
         self.assertEqual(destructive.required_scope, "plan:approve-destructive")
+
+    def test_approval_policy_derives_scope_and_risk_from_plan_data(self):
+        policy = ApprovalPolicy()
+        requirement = policy.requirement_for(
+            ActivityPlan(
+                (
+                    PlannedActivity(
+                        ActivityId("stop-api"),
+                        StopNode(NodeTarget("api")),
+                        risk=RiskLevel.CRITICAL,
+                        impact=ActivityImpact.DESTRUCTIVE,
+                    ),
+                )
+            )
+        )
+
+        self.assertEqual(requirement.max_risk, RiskLevel.CRITICAL)
+        self.assertTrue(requirement.destructive)
+        self.assertEqual(requirement.required_scope, "plan:approve-destructive")
+        self.assertTrue(policy.can_request_plan(["plan:request"]).allowed)
 
     def test_destructive_activity_policy_classifies_consequential_actions(self):
         policy = DestructiveActivityPolicy()
