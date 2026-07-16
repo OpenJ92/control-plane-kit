@@ -22,6 +22,34 @@ class WorkspaceLifecycle(StrEnum):
     FAILED = "failed"
 
 
+class OperationSessionStatus(StrEnum):
+    """Closed lifecycle vocabulary for grouped operator intent."""
+
+    OPEN = "open"
+    CLOSED = "closed"
+    CANCELLED = "cancelled"
+
+
+class OperationActionKind(StrEnum):
+    """Closed vocabulary for durable operator-workflow actions."""
+
+    SESSION_STARTED = "session_started"
+    SESSION_CLOSED = "session_closed"
+    SESSION_CANCELLED = "session_cancelled"
+    ADD_BLOCK = "add_block"
+    CONNECT_SOCKET = "connect_socket"
+    PATCH_VARIABLE = "patch_variable"
+    CHECK_HEALTH = "check_health"
+    INSPECT_CONTROL_SURFACE = "inspect_control_surface"
+    PROPOSE_DESIRED_GRAPH = "propose_desired_graph"
+    REQUEST_GRAPH_EDIT = "request_graph_edit"
+    SET_DESIRED_GRAPH = "set_desired_graph"
+    PLAN_REQUESTED = "plan_requested"
+    APPROVAL_REQUESTED = "approval_requested"
+    APPROVAL_DECIDED = "approval_decided"
+    RECOVERY_REQUESTED = "recovery_requested"
+
+
 @dataclass(frozen=True)
 class GraphVersionRecord:
     """One named topology version owned by the graph store."""
@@ -79,10 +107,14 @@ class OperationSessionRecord:
     workspace_id: str
     actor_id: str
     title: str
-    status: str
+    status: OperationSessionStatus
     created_at: str
     closed_at: str | None = None
     metadata: Mapping[str, str] = field(default_factory=dict)
+
+    def __post_init__(self) -> None:
+        if not isinstance(self.status, OperationSessionStatus):
+            raise TypeError("operation session status must be OperationSessionStatus")
 
 
 @dataclass(frozen=True)
@@ -92,10 +124,14 @@ class OperationActionRecord:
     action_id: str
     session_id: str
     ordinal: int
-    action_type: str
+    action_type: OperationActionKind
     actor_id: str
     payload: Mapping[str, object] = field(default_factory=dict)
     created_at: str = ""
+
+    def __post_init__(self) -> None:
+        if not isinstance(self.action_type, OperationActionKind):
+            raise TypeError("operation action type must be OperationActionKind")
 
 
 @dataclass(frozen=True)

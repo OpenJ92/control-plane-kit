@@ -4,6 +4,7 @@ from control_plane_kit.graph import DeploymentGraph
 from control_plane_kit.policies import ApprovalPolicy, DestructiveActivityPolicy
 from control_plane_kit.stores import (
     GraphVersionRecord,
+    OperationActionKind,
     WorkspaceRecord,
 )
 from control_plane_kit.workflows import OperationActionService, OperationSessionService
@@ -65,7 +66,7 @@ class BackendBoundaryTests(PostgresStoreTestCase):
             id_factory=Sequence(["action-a"]),
         ).record(
             session_id=session.session_id,
-            action_type="propose_desired_graph",
+            action_type=OperationActionKind.PROPOSE_DESIRED_GRAPH,
             actor_id="jacob",
             payload={"desired_graph_id": "graph-desired"},
         )
