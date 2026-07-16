@@ -83,6 +83,15 @@ class DesiredGraphEditResult:
             raise InvalidOperationCommand(
                 "desired graph result requires SET_DESIRED_GRAPH action evidence"
             )
+        evidence = self.action.payload
+        if evidence.get("workspace_id") != self.workspace_id:
+            raise InvalidOperationCommand("action evidence workspace must match result workspace")
+        if evidence.get("desired_graph_id") != self.graph_version.graph_id:
+            raise InvalidOperationCommand("action evidence graph must match graph version")
+        if evidence.get("previous_desired_graph_id") != self.previous_desired_graph_id:
+            raise InvalidOperationCommand("action evidence previous pointer must match result")
+        if self.action.actor_id != self.graph_version.created_by:
+            raise InvalidOperationCommand("graph creator must match action actor")
 
     def descriptor(self) -> dict[str, object]:
         return {
@@ -163,16 +172,16 @@ class DesiredGraphCommandService:
                 raise DesiredGraphSessionConflict(
                     "operation session and desired graph must belong to the same workspace"
                 )
-            if session.status is not OperationSessionStatus.OPEN:
-                raise DesiredGraphSessionConflict(
-                    f"operation session {command.session_id!r} is {session.status.value}, not open"
-                )
-
             replay = stores.activity_history.action_for_idempotency(
                 command.session_id, command.idempotency_key.value
             )
             if replay is not None:
                 return _desired_graph_replay(stores.graph_topology, replay, fingerprint)
+
+            if session.status is not OperationSessionStatus.OPEN:
+                raise DesiredGraphSessionConflict(
+                    f"operation session {command.session_id!r} is {session.status.value}, not open"
+                )
 
             if workspace.desired_graph_id != command.expected_desired_graph_id:
                 raise StaleDesiredGraph(

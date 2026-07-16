@@ -1,4 +1,6 @@
 import os
+import concurrent.futures
+import threading
 import unittest
 
 import psycopg
@@ -109,6 +111,60 @@ class DesiredGraphCommandServiceTests(PostgresStoreTestCase):
             self.service("unused-graph", "unused-action").execute(
                 self.command(graph_name="different")
             )
+
+    def test_replay_remains_available_after_session_closes(self):
+        command = self.command()
+        first = self.service("graph-a", "action-a").execute(command)
+        self._operation_service("close-action").execute(
+            CloseOperationSession("session-a", "jacob", IdempotencyKey("close"))
+        )
+
+        replay = self.service("unused-graph", "unused-action").execute(command)
+
+        self.assertTrue(replay.replayed)
+        self.assertEqual(replay.action.action_id, first.action.action_id)
+
+    def test_concurrent_identical_requests_converge_on_one_graph(self):
+        barrier = threading.Barrier(2)
+
+        def submit(ids: tuple[str, str]):
+            barrier.wait(timeout=5)
+            return self.service(*ids).execute(self.command())
+
+        with concurrent.futures.ThreadPoolExecutor(max_workers=2) as executor:
+            results = tuple(
+                executor.map(submit, (("graph-a", "action-a"), ("graph-b", "action-b")))
+            )
+
+        self.assertEqual({result.graph_version.graph_id for result in results}, {"graph-a"})
+        self.assertEqual(sum(result.replayed for result in results), 1)
+        self.assertEqual(len(self.stores.activity_history.actions_for_session("session-a")), 2)
+
+    def test_concurrent_distinct_requests_publish_one_and_reject_one_stale(self):
+        barrier = threading.Barrier(2)
+
+        def submit(values: tuple[str, str, str, str]):
+            graph_id, action_id, graph_name, key = values
+            barrier.wait(timeout=5)
+            try:
+                return self.service(graph_id, action_id).execute(
+                    self.command(graph_name=graph_name, key=key)
+                )
+            except StaleDesiredGraph as error:
+                return error
+
+        requests = (
+            ("graph-a", "action-a", "desired-a", "request-a"),
+            ("graph-b", "action-b", "desired-b", "request-b"),
+        )
+        with concurrent.futures.ThreadPoolExecutor(max_workers=2) as executor:
+            outcomes = tuple(executor.map(submit, requests))
+
+        self.assertEqual(sum(isinstance(value, StaleDesiredGraph) for value in outcomes), 1)
+        self.assertEqual(len(self.stores.activity_history.actions_for_session("session-a")), 2)
+        latest = self.stores.graph_topology.latest_for_workspace("workspace-a")
+        self.assertIsNotNone(latest)
+        self.assertEqual(latest.version, 1)
 
     def test_session_must_be_open_and_owned_by_workspace(self):
         self.stores.workspace.create(WorkspaceRecord("workspace-b", "Workspace B"))

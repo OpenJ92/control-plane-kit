@@ -80,6 +80,11 @@ class DesiredGraphCommandTests(unittest.TestCase):
             ordinal=2,
             action_type=OperationActionKind.SET_DESIRED_GRAPH,
             actor_id="jacob",
+            payload={
+                "workspace_id": "workspace-a",
+                "previous_desired_graph_id": "graph-a",
+                "desired_graph_id": "graph-b",
+            },
         )
         result = DesiredGraphEditResult(
             workspace_id="workspace-a",
@@ -107,6 +112,11 @@ class DesiredGraphCommandTests(unittest.TestCase):
                     ordinal=2,
                     action_type=OperationActionKind.ADD_BLOCK,
                     actor_id="jacob",
+                    payload={
+                        "workspace_id": "workspace-a",
+                        "previous_desired_graph_id": None,
+                        "desired_graph_id": "graph-b",
+                    },
                 ),
             )
 
