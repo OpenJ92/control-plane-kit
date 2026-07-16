@@ -11,6 +11,12 @@ from control_plane_kit.stores.postgres import (
     PostgresWorkspaceStore,
     install_schema,
 )
+from control_plane_kit.stores.unit_of_work import (
+    PostgresConnectionFactory,
+    PostgresUnitOfWork,
+    TransactionalPostgresConnection,
+    UnitOfWorkStateError,
+)
 from control_plane_kit.stores.records import (
     ActivityEventRecord,
     ActivityPlanRecord,
@@ -56,8 +62,12 @@ __all__ = [
     "PostgresSecretReferenceStore",
     "PostgresStoreBundle",
     "PostgresWorkspaceStore",
+    "PostgresConnectionFactory",
+    "PostgresUnitOfWork",
     "SecretReferenceRecord",
     "SecretReferenceStore",
+    "TransactionalPostgresConnection",
+    "UnitOfWorkStateError",
     "WorkspaceRecord",
     "WorkspaceLifecycle",
     "WorkspaceStore",
