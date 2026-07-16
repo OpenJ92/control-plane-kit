@@ -10,6 +10,7 @@ from control_plane_kit.execution.values import (
     ActivityEventRecord,
     ActivityRunRecord,
     ActivityRunStatus,
+    AdmittedRun,
     BoundedEvidence,
     ClaimIdentity,
     ExecutionDescriptorValue,
@@ -19,6 +20,7 @@ from control_plane_kit.execution.values import (
     ExecutionRequestStatus,
     FailureCategory,
     FailureEvidence,
+    LegacyImportedRun,
     ObservationFreshness,
     ObservationRecord,
     ObservationStatus,
@@ -101,13 +103,20 @@ class ExecutionDescriptorCodec:
                     "approval_decision_id": value.approval_decision_id,
                     "idempotency_key": value.idempotency.key,
                     "intent_fingerprint": value.idempotency.intent_fingerprint,
+                    "claim": _encode_claim(value.claim),
                 }
             case ActivityRunRecord():
                 return {
                     "kind": "activity-run",
                     "run_id": value.run_id,
                     "plan_id": value.plan_id,
+                    "admission": _encode_admission(value.admission),
+                    "retry": {
+                        "attempt": value.retry.attempt,
+                        "prior_run_id": value.retry.prior_run_id,
+                    },
                     "status": value.status.value,
+                    "created_at": value.created_at,
                     "started_at": value.started_at,
                     "finished_at": value.finished_at,
                     "metadata": value.metadata.descriptor(),
@@ -148,6 +157,13 @@ class ExecutionDescriptorCodec:
                     "attempt": value.attempt,
                     "prior_run_id": value.prior_run_id,
                 }
+            case AdmittedRun():
+                return {"kind": "admitted-run", "request_id": value.request_id}
+            case LegacyImportedRun():
+                return {
+                    "kind": "legacy-imported-run",
+                    "schema_version": value.schema_version,
+                }
             case FailureEvidence():
                 return {
                     "kind": "failure-evidence",
@@ -179,13 +195,17 @@ class ExecutionDescriptorCodec:
                             key=_text(value, "idempotency_key"),
                             intent_fingerprint=_text(value, "intent_fingerprint"),
                         ),
+                        claim=_decode_claim(value.get("claim")),
                     )
                 case "activity-run":
                     return ActivityRunRecord(
                         run_id=_text(value, "run_id"),
                         plan_id=_text(value, "plan_id"),
+                        admission=_decode_admission(value.get("admission")),
+                        retry=_decode_retry(value.get("retry")),
                         status=ActivityRunStatus(_text(value, "status")),
-                        started_at=_text(value, "started_at"),
+                        created_at=_text(value, "created_at"),
+                        started_at=_optional_text(value, "started_at"),
                         finished_at=_optional_text(value, "finished_at"),
                         metadata=_evidence(value, "metadata"),
                     )
@@ -232,6 +252,15 @@ class ExecutionDescriptorCodec:
                     if failure is None:
                         raise MalformedExecutionDescriptor("failure evidence is required")
                     return failure
+                case "admitted-run":
+                    return AdmittedRun(_text(value, "request_id"))
+                case "legacy-imported-run":
+                    version = value.get("schema_version")
+                    if type(version) is not int:
+                        raise MalformedExecutionDescriptor(
+                            "schema_version must be an integer"
+                        )
+                    return LegacyImportedRun(version)
                 case _:
                     raise UnknownExecutionVariant(f"unknown execution value {kind!r}")
         except ValueError as error:
@@ -249,6 +278,64 @@ def _encode_failure(value: FailureEvidence | None) -> dict[str, object] | None:
         "message": value.message,
         "details": value.details.descriptor(),
     }
+
+
+def _encode_claim(value: ClaimIdentity | None) -> dict[str, object] | None:
+    if value is None:
+        return None
+    return {
+        "worker_id": value.worker_id,
+        "claimed_at": value.claimed_at,
+        "lease_expires_at": value.lease_expires_at,
+    }
+
+
+def _decode_claim(value: object) -> ClaimIdentity | None:
+    if value is None:
+        return None
+    claim = _mapping(value, "claim")
+    return ClaimIdentity(
+        worker_id=_text(claim, "worker_id"),
+        claimed_at=_text(claim, "claimed_at"),
+        lease_expires_at=_text(claim, "lease_expires_at"),
+    )
+
+
+def _encode_admission(value: object) -> dict[str, object]:
+    match value:
+        case AdmittedRun(request_id=request_id):
+            return {"kind": "admitted", "request_id": request_id}
+        case LegacyImportedRun(schema_version=version):
+            return {"kind": "legacy-imported", "schema_version": version}
+        case _:
+            raise MalformedExecutionDescriptor("run admission must be typed")
+
+
+def _decode_admission(value: object) -> AdmittedRun | LegacyImportedRun:
+    admission = _mapping(value, "admission")
+    match _text(admission, "kind"):
+        case "admitted":
+            return AdmittedRun(_text(admission, "request_id"))
+        case "legacy-imported":
+            version = admission.get("schema_version")
+            if type(version) is not int:
+                raise MalformedExecutionDescriptor(
+                    "schema_version must be an integer"
+                )
+            return LegacyImportedRun(version)
+        case kind:
+            raise UnknownExecutionVariant(f"unknown run admission {kind!r}")
+
+
+def _decode_retry(value: object) -> RetryIdentity:
+    retry = _mapping(value, "retry")
+    attempt = retry.get("attempt")
+    if type(attempt) is not int:
+        raise MalformedExecutionDescriptor("attempt must be an integer")
+    return RetryIdentity(
+        attempt=attempt,
+        prior_run_id=_optional_text(retry, "prior_run_id"),
+    )
 
 
 def _decode_failure(value: object) -> FailureEvidence | None:

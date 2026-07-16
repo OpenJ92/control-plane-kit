@@ -194,7 +194,7 @@ class PlanningScenarioWorkflowTests(PostgresStoreTestCase):
                     False,
                 )
                 self.assertEqual(
-                    self.stores.activity_history.runs_for_plan(
+                    self.stores.execution.runs_for_plan(
                         result.plan.plan_record.plan_id
                     ),
                     (),

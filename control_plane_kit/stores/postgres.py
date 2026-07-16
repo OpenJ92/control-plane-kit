@@ -14,16 +14,24 @@ from dataclasses import replace
 from typing import Any, Protocol
 
 from control_plane_kit.execution import (
+    AdmittedRun,
     ActivityEventKind,
     ActivityEventRecord,
     ActivityRunRecord,
     ActivityRunStatus,
     BoundedEvidence,
+    ClaimIdentity,
+    ExecutionIdempotency,
+    ExecutionRequestIdentity,
+    ExecutionRequestRecord,
+    ExecutionRequestStatus,
     FailureCategory,
     FailureEvidence,
+    LegacyImportedRun,
     ObservationFreshness,
     ObservationRecord,
     ObservationStatus,
+    RetryIdentity,
 )
 from control_plane_kit.planning.activity_plan import RiskLevel
 from control_plane_kit.planning.codec import DEFAULT_ACTIVITY_PLAN_CODEC
@@ -712,6 +720,7 @@ class PostgresStoreBundle:
         self.workspace = PostgresWorkspaceStore(connection)
         self.graph_topology = PostgresGraphTopologyStore(connection)
         self.activity_history = PostgresActivityHistoryStore(connection)
+        self.execution = PostgresExecutionStore(connection)
         self.observed_state = PostgresObservedStateStore(connection)
         self.instance_registry = PostgresInstanceRegistryStore(connection)
         self.secret_references = PostgresSecretReferenceStore(connection)
@@ -1097,21 +1106,93 @@ class PostgresActivityHistoryStore:
             for row in rows
         )
 
-    def add_run(self, record: ActivityRunRecord) -> ActivityRunRecord:
-        """Append Roadmap 0007 historical run data during forward migration."""
+class PostgresExecutionStore:
+    """Postgres execution truth on a caller-owned UnitOfWork connection."""
 
+    def __init__(self, connection: PostgresConnection) -> None:
+        self._connection = connection
+
+    def add_request(self, record: ExecutionRequestRecord) -> ExecutionRequestRecord:
+        claim = record.claim
+        self._connection.execute(
+            """
+            INSERT INTO cpk_execution_requests
+              (request_id, workspace_id, session_id, plan_id, status,
+               requested_by, requested_at, approval_request_id,
+               approval_decision_id, idempotency_key, intent_fingerprint,
+               claim_worker_id, claimed_at, lease_expires_at)
+            VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+            """,
+            (
+                record.identity.request_id,
+                record.identity.workspace_id,
+                record.identity.session_id,
+                record.identity.plan_id,
+                record.status.value,
+                record.requested_by,
+                record.requested_at,
+                record.approval_request_id,
+                record.approval_decision_id,
+                record.idempotency.key,
+                record.idempotency.intent_fingerprint,
+                None if claim is None else claim.worker_id,
+                None if claim is None else claim.claimed_at,
+                None if claim is None else claim.lease_expires_at,
+            ),
+        )
+        return record
+
+    def get_request(self, request_id: str) -> ExecutionRequestRecord:
+        row = _record(
+            self._connection.execute(
+                """
+                SELECT request_id, workspace_id, session_id, plan_id, status,
+                       requested_by, requested_at, approval_request_id,
+                       approval_decision_id, idempotency_key, intent_fingerprint,
+                       claim_worker_id, claimed_at, lease_expires_at
+                FROM cpk_execution_requests WHERE request_id = %s
+                """,
+                (request_id,),
+            ).fetchone(),
+            "execution request",
+            request_id,
+        )
+        return _execution_request(row)
+
+    def request_for_idempotency(
+        self, workspace_id: str, idempotency_key: str
+    ) -> ExecutionRequestRecord | None:
+        row = self._connection.execute(
+            """
+            SELECT request_id, workspace_id, session_id, plan_id, status,
+                   requested_by, requested_at, approval_request_id,
+                   approval_decision_id, idempotency_key, intent_fingerprint,
+                   claim_worker_id, claimed_at, lease_expires_at
+            FROM cpk_execution_requests
+            WHERE workspace_id = %s AND idempotency_key = %s
+            """,
+            (workspace_id, idempotency_key),
+        ).fetchone()
+        return None if row is None else _execution_request(row)
+
+    def add_run(self, record: ActivityRunRecord) -> ActivityRunRecord:
+        if not isinstance(record.admission, AdmittedRun):
+            raise ValueError("new execution runs require durable admission")
         self._connection.execute(
             """
             INSERT INTO cpk_activity_runs
-              (run_id, plan_id, status, created_at, started_at, finished_at,
-               metadata, legacy_imported)
-            VALUES (%s, %s, %s, %s, %s, %s, %s::jsonb, true)
+              (run_id, plan_id, request_id, attempt, prior_run_id, status,
+               created_at, started_at, finished_at, metadata, legacy_imported)
+            VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s::jsonb, false)
             """,
             (
                 record.run_id,
                 record.plan_id,
+                record.admission.request_id,
+                record.retry.attempt,
+                record.retry.prior_run_id,
                 record.status.value,
-                record.started_at,
+                record.created_at,
                 record.started_at,
                 record.finished_at,
                 _json(record.metadata.descriptor()),
@@ -1120,26 +1201,25 @@ class PostgresActivityHistoryStore:
         return record
 
     def runs_for_plan(self, plan_id: str) -> tuple[ActivityRunRecord, ...]:
+        return self._runs("plan_id", plan_id, "created_at ASC, run_id ASC")
+
+    def runs_for_request(self, request_id: str) -> tuple[ActivityRunRecord, ...]:
+        return self._runs("request_id", request_id, "attempt ASC, run_id ASC")
+
+    def _runs(
+        self, column: str, identity: str, ordering: str
+    ) -> tuple[ActivityRunRecord, ...]:
+        if column not in {"plan_id", "request_id"}:
+            raise ValueError("unsupported run lookup")
         rows = self._connection.execute(
-            """
-            SELECT run_id, plan_id, status, started_at, finished_at, metadata
-            FROM cpk_activity_runs
-            WHERE plan_id = %s
-            ORDER BY started_at ASC, run_id ASC
+            f"""
+            SELECT run_id, plan_id, request_id, attempt, prior_run_id, status,
+                   created_at, started_at, finished_at, metadata, legacy_imported
+            FROM cpk_activity_runs WHERE {column} = %s ORDER BY {ordering}
             """,
-            (plan_id,),
+            (identity,),
         ).fetchall()
-        return tuple(
-            ActivityRunRecord(
-                run_id=row[0],
-                plan_id=row[1],
-                status=ActivityRunStatus(row[2]),
-                started_at=row[3],
-                finished_at=row[4],
-                metadata=BoundedEvidence.from_mapping(row[5]),
-            )
-            for row in rows
-        )
+        return tuple(_activity_run(row) for row in rows)
 
     def add_event(self, record: ActivityEventRecord) -> ActivityEventRecord:
         self._connection.execute(
@@ -1182,6 +1262,37 @@ class PostgresActivityHistoryStore:
             )
             for row in rows
         )
+
+
+def _execution_request(row: tuple[Any, ...]) -> ExecutionRequestRecord:
+    claim = None
+    if row[11] is not None:
+        claim = ClaimIdentity(row[11], row[12], row[13])
+    return ExecutionRequestRecord(
+        identity=ExecutionRequestIdentity(row[0], row[1], row[2], row[3]),
+        status=ExecutionRequestStatus(row[4]),
+        requested_by=row[5],
+        requested_at=row[6],
+        approval_request_id=row[7],
+        approval_decision_id=row[8],
+        idempotency=ExecutionIdempotency(row[9], row[10]),
+        claim=claim,
+    )
+
+
+def _activity_run(row: tuple[Any, ...]) -> ActivityRunRecord:
+    admission = LegacyImportedRun() if row[10] else AdmittedRun(row[2])
+    return ActivityRunRecord(
+        run_id=row[0],
+        plan_id=row[1],
+        admission=admission,
+        retry=RetryIdentity(row[3], row[4]),
+        status=ActivityRunStatus(row[5]),
+        created_at=row[6],
+        started_at=row[7],
+        finished_at=row[8],
+        metadata=BoundedEvidence.from_mapping(row[9]),
+    )
 
 
 def _failure_evidence(value: object) -> FailureEvidence | None:
