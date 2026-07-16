@@ -66,6 +66,7 @@ from control_plane_kit.activity_plan_codec import (
     MalformedActivityPlanDescriptor,
     UnknownActivityPlanVariant,
 )
+from control_plane_kit.activity_plan_compiler import compile_activity_plan
 from control_plane_kit.compiler import compile_recipe
 from control_plane_kit.contracts import (
     ControlValueKind,
@@ -437,6 +438,7 @@ __all__ = [
     "SwitchSocketConnection",
     "WaitForHealthy",
     "compile_recipe",
+    "compile_activity_plan",
     "diff_graphs",
     "validate_graph",
 ]
