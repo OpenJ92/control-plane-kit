@@ -245,6 +245,22 @@ Some activities may be non-compensatable. They must say so.
 
 ## Validation
 
+The reusable planning corpus in `examples/scenarios/` is the acceptance basis
+for execution. Roadmap 0008 must preserve each scenario's typed operations,
+dependency order, risk, and readiness while extending it with expected runtime
+evidence:
+
+```text
+PlanningScenario
+  + ActivityRun expectation
+  + ActivityEvent partial order
+  + ObservedState expectation
+  + compensation/failure expectation
+```
+
+Blocked scenarios must remain non-executable and must not acquire approval or
+run records merely because an executor exists.
+
 - Approved plan can be claimed once.
 - Unapproved plan cannot execute.
 - Duplicate execution request is idempotent.

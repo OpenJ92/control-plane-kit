@@ -100,8 +100,18 @@ def http_multiplexer_block(
         BlockSockets(
             requirements=(
                 RequirementSocket("primary", Protocol.HTTP, ("MULTIPLEXER_PRIMARY_URL",)),
-                RequirementSocket("observer-a", Protocol.HTTP, ("MULTIPLEXER_OBSERVER_A_URL",)),
-                RequirementSocket("observer-b", Protocol.HTTP, ("MULTIPLEXER_OBSERVER_B_URL",)),
+                RequirementSocket(
+                    "observer-a",
+                    Protocol.HTTP,
+                    ("MULTIPLEXER_OBSERVER_A_URL",),
+                    required=False,
+                ),
+                RequirementSocket(
+                    "observer-b",
+                    Protocol.HTTP,
+                    ("MULTIPLEXER_OBSERVER_B_URL",),
+                    required=False,
+                ),
             ),
             providers=(ProviderSocket("internal", Protocol.HTTP),),
         ),

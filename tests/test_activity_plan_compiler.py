@@ -37,6 +37,7 @@ from control_plane_kit import (
     validate_graph,
 )
 from examples.router_swap import recipe as router_recipe
+from examples.scenarios import operation_expectation, switch_database_endpoint
 
 
 class ActivityPlanCompilerTests(unittest.TestCase):
@@ -177,6 +178,38 @@ class ActivityPlanCompilerTests(unittest.TestCase):
             and activity.operation.target.node_id == "api-router"
         ]
         self.assertEqual(len(reconciles), 1)
+
+    def test_modified_edge_switch_precedes_removed_endpoint_stop(self):
+        scenario = switch_database_endpoint()
+        plan = compile_activity_plan(
+            diff_graphs(
+                validate_graph(scenario.current_graph),
+                validate_graph(scenario.desired_graph),
+            )
+        )
+        activities = {
+            operation_expectation(activity.operation): activity
+            for activity in plan.activities
+        }
+        switch = next(
+            activity
+            for expectation, activity in activities.items()
+            if expectation.operation_type is SwitchSocketConnection
+        )
+        old_provider_stop = next(
+            activity
+            for expectation, activity in activities.items()
+            if expectation.operation_type is StopNode
+            and expectation.target_id == "postgres-a"
+        )
+
+        self.assertIn(
+            switch.activity_id,
+            {
+                dependency.predecessor
+                for dependency in old_provider_stop.dependencies
+            },
+        )
 
     def test_runtime_move_orders_start_reconcile_and_stop(self):
         before = RuntimeValue(RuntimeRecord("old", RuntimeKind.DOCKER))
