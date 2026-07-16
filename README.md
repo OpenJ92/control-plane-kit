@@ -185,6 +185,10 @@ timelines, observed state, and declared control surfaces.
 See [Control Plane Read Interfaces](docs/READ_INTERFACES.md) for route, CLI,
 and MCP-shaped examples.
 
+Mutation command services use an explicit caller-owned Postgres transaction.
+See [Postgres Unit Of Work](docs/POSTGRES_UNIT_OF_WORK.md) for the connection,
+store, commit, rollback, and saga boundaries.
+
 Run the local read demo with:
 
 ```bash
