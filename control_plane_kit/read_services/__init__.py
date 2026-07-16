@@ -3,6 +3,8 @@
 from control_plane_kit.read_services.instance import (
     ActivityTimelineReadModel,
     ControlSurfaceReadModel,
+    FocusedCollectionReadModel,
+    FocusedDetailReadModel,
     GraphPointerReadModel,
     InstanceReadService,
     NodeControlSurfaceReadModel,
@@ -15,6 +17,8 @@ from control_plane_kit.read_services.instance import (
 __all__ = [
     "ActivityTimelineReadModel",
     "ControlSurfaceReadModel",
+    "FocusedCollectionReadModel",
+    "FocusedDetailReadModel",
     "GraphPointerReadModel",
     "InstanceReadService",
     "NodeControlSurfaceReadModel",
