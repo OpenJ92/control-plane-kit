@@ -169,6 +169,16 @@ class PlannedActivity:
             for dependency in self.dependencies
         ):
             raise TypeError("planned activity dependencies must be ActivityDependency")
+        object.__setattr__(
+            self,
+            "dependencies",
+            tuple(
+                sorted(
+                    self.dependencies,
+                    key=lambda dependency: dependency.predecessor.value,
+                )
+            ),
+        )
         if not isinstance(self.risk, RiskLevel):
             raise TypeError("planned activity risk must be RiskLevel")
         if not isinstance(self.impact, ActivityImpact):
