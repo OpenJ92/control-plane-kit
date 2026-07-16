@@ -149,6 +149,9 @@ class StoreContractTests(PostgresStoreTestCase):
         self.assertEqual([record.run_id for record in store.runs_for_plan("plan-a")], ["run-a"])
 
     def test_observed_state_is_separate_from_graph_truth(self):
+        self.stores.workspace.create(
+            WorkspaceRecord(workspace_id="workspace-a", name="Demo")
+        )
         store = self.stores.observed_state
         store.put(
             ObservationRecord(
@@ -175,6 +178,9 @@ class StoreContractTests(PostgresStoreTestCase):
         self.assertIs(latest.freshness, ObservationFreshness.STALE)
 
     def test_observed_state_lists_latest_per_workspace_subject(self):
+        self.stores.workspace.create(
+            WorkspaceRecord(workspace_id="workspace-a", name="Demo")
+        )
         store = self.stores.observed_state
         store.put(
             ObservationRecord(
