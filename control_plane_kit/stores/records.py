@@ -111,6 +111,8 @@ class OperationSessionRecord:
     created_at: str
     closed_at: str | None = None
     metadata: Mapping[str, str] = field(default_factory=dict)
+    idempotency_key: str | None = None
+    intent_fingerprint: str | None = None
 
     def __post_init__(self) -> None:
         if not isinstance(self.status, OperationSessionStatus):
@@ -128,6 +130,8 @@ class OperationActionRecord:
     actor_id: str
     payload: Mapping[str, object] = field(default_factory=dict)
     created_at: str = ""
+    idempotency_key: str | None = None
+    intent_fingerprint: str | None = None
 
     def __post_init__(self) -> None:
         if not isinstance(self.action_type, OperationActionKind):
