@@ -5,7 +5,7 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 
 from control_plane_kit.algebra import BlockSockets, RuntimeContext
-from control_plane_kit.graph import Endpoint
+from control_plane_kit.graph import Endpoint, EndpointAddress, LiteralAddress
 from control_plane_kit.types import EndpointScope, Protocol, RuntimeKind
 
 
@@ -36,7 +36,9 @@ class DockerImageImplementation:
             if port is None:
                 raise ValueError(f"Docker image block {block_id!r} needs port for provider {provider.name!r}")
             endpoints[provider.name] = Endpoint(
-                url=_url(provider.protocol, host=f"{runtime.runtime_id}-{block_id}", port=port),
+                address=LiteralAddress(
+                    _url(provider.protocol, host=f"{runtime.runtime_id}-{block_id}", port=port)
+                ),
                 protocol=provider.protocol,
             )
         return MaterializedNode(
@@ -67,7 +69,9 @@ class LocalSourceImplementation:
             if port is None:
                 raise ValueError(f"local source block {block_id!r} needs port for provider {provider.name!r}")
             host = "127.0.0.1" if runtime.kind is RuntimeKind.DRY_RUN else f"{runtime.runtime_id}-{block_id}"
-            endpoints[provider.name] = Endpoint(_url(provider.protocol, host, port), provider.protocol)
+            endpoints[provider.name] = Endpoint(
+                LiteralAddress(_url(provider.protocol, host, port)), provider.protocol
+            )
         return MaterializedNode(
             kind=self.kind,
             endpoints=endpoints,
@@ -91,7 +95,11 @@ class ExternalHttpImplementation:
         sockets.provider(self.provider_socket)
         return MaterializedNode(
             kind=self.kind,
-            endpoints={self.provider_socket: Endpoint(self.url, Protocol.HTTP, EndpointScope.PUBLIC)},
+            endpoints={
+                self.provider_socket: Endpoint(
+                    LiteralAddress(self.url), Protocol.HTTP, EndpointScope.PUBLIC
+                )
+            },
             metadata={"owned": False},
         )
 
@@ -108,7 +116,11 @@ class ExternalTcpImplementation:
         sockets.provider(self.provider_socket)
         return MaterializedNode(
             kind=self.kind,
-            endpoints={self.provider_socket: Endpoint(self.address, Protocol.TCP, EndpointScope.PUBLIC)},
+            endpoints={
+                self.provider_socket: Endpoint(
+                    LiteralAddress(self.address), Protocol.TCP, EndpointScope.PUBLIC
+                )
+            },
             metadata={"owned": False},
         )
 
@@ -117,7 +129,7 @@ class ExternalTcpImplementation:
 class ExternalPostgresImplementation:
     """Observe an already-running Postgres provider."""
 
-    url: str
+    address: EndpointAddress
     provider_socket: str = "internal"
     kind: str = "external-postgres"
 
@@ -125,7 +137,11 @@ class ExternalPostgresImplementation:
         sockets.provider(self.provider_socket)
         return MaterializedNode(
             kind=self.kind,
-            endpoints={self.provider_socket: Endpoint(self.url, Protocol.POSTGRES, EndpointScope.PRIVATE)},
+            endpoints={
+                self.provider_socket: Endpoint(
+                    self.address, Protocol.POSTGRES, EndpointScope.PRIVATE
+                )
+            },
             metadata={"owned": False},
         )
 
@@ -136,7 +152,6 @@ class DockerPostgresImplementation:
 
     database: str = "app"
     username: str = "postgres"
-    password: str = "postgres"
     provider_socket: str = "internal"
     port: int = 5432
     image: str = "postgres:16-alpine"
@@ -146,11 +161,19 @@ class DockerPostgresImplementation:
         _require_runtime(runtime, RuntimeKind.DOCKER, self.kind)
         sockets.provider(self.provider_socket)
         host = f"{runtime.runtime_id}-{block_id}"
-        url = f"postgresql+psycopg://{self.username}:{self.password}@{host}:{self.port}/{self.database}"
+        url = f"postgresql+psycopg://{self.username}@{host}:{self.port}/{self.database}"
         return MaterializedNode(
             kind=self.kind,
-            endpoints={self.provider_socket: Endpoint(url, Protocol.POSTGRES)},
-            metadata={"image": self.image, "database": self.database},
+            endpoints={self.provider_socket: Endpoint(LiteralAddress(url), Protocol.POSTGRES)},
+            metadata={
+                "image": self.image,
+                "database": self.database,
+                "environment": {
+                    "POSTGRES_DB": self.database,
+                    "POSTGRES_USER": self.username,
+                    "POSTGRES_HOST_AUTH_METHOD": "trust",
+                },
+            },
         )
 
 
@@ -165,7 +188,9 @@ class PlanOnlyImplementation:
         endpoints: dict[str, Endpoint] = {}
         for provider in sockets.providers:
             endpoints[provider.name] = Endpoint(
-                self.output_urls.get(provider.name, f"plan://{block_id}/{provider.name}"),
+                LiteralAddress(
+                    self.output_urls.get(provider.name, f"plan://{block_id}/{provider.name}")
+                ),
                 provider.protocol,
             )
         return MaterializedNode(kind=self.kind, endpoints=endpoints, metadata={"planned": True})

@@ -73,7 +73,27 @@ from control_plane_kit.docker_runtime import (
     StopDockerContainer,
     UnsupportedDockerRuntimeFeature,
 )
-from control_plane_kit.graph import DeploymentGraph, Edge, Endpoint, Node, RuntimeRecord
+from control_plane_kit.graph import (
+    DeploymentGraph,
+    Edge,
+    Endpoint,
+    EndpointAddress,
+    LiteralAddress,
+    Node,
+    RuntimeRecord,
+    SecretReferenceAddress,
+)
+from control_plane_kit.graph_codec import (
+    DEFAULT_GRAPH_CODEC,
+    BlockSpecVariantCodec,
+    GenericBlockSpecCodec,
+    GraphDescriptorCodec,
+    GraphDescriptorError,
+    InvalidGraphReference,
+    LossyGraphDescriptor,
+    MalformedGraphDescriptor,
+    UnknownGraphVariant,
+)
 from control_plane_kit.implementations import (
     DockerImageImplementation,
     DockerPostgresImplementation,
@@ -143,14 +163,16 @@ from control_plane_kit.runtimes import (
     RuntimePlan,
     RuntimeState,
 )
-from control_plane_kit.types import EndpointScope, Protocol, RuntimeKind
+from control_plane_kit.types import BlockFamily, EndpointScope, Protocol, RuntimeKind
 
 __all__ = [
     "Activity",
     "ActivityPlan",
     "ActivityTimelineReadModel",
     "ApplicationBlock",
+    "BlockFamily",
     "BlockSpec",
+    "BlockSpecVariantCodec",
     "CAPABILITIES",
     "DRAINABLE",
     "HEALTH_CHECKABLE",
@@ -221,6 +243,7 @@ __all__ = [
     "DataBlock",
     "DeploymentGraph",
     "DeploymentRecipe",
+    "DEFAULT_GRAPH_CODEC",
     "DryRunActivity",
     "DryRunRuntime",
     "DockerClient",
@@ -231,6 +254,7 @@ __all__ = [
     "DockerRuntimeInterpreter",
     "Edge",
     "Endpoint",
+    "EndpointAddress",
     "EndpointScope",
     "EnsureDockerNetwork",
     "ExternalHttpImplementation",
@@ -238,8 +262,12 @@ __all__ = [
     "ExternalRuntime",
     "ExternalTcpImplementation",
     "GraphDiff",
+    "GraphDescriptorCodec",
+    "GraphDescriptorError",
+    "GenericBlockSpecCodec",
     "GraphPointerReadModel",
     "LocalSourceImplementation",
+    "LiteralAddress",
     "McpReadError",
     "McpToolDescriptor",
     "Node",
@@ -265,6 +293,7 @@ __all__ = [
     "RuntimeRecord",
     "RuntimeState",
     "SecretVariable",
+    "SecretReferenceAddress",
     "SocketConnection",
     "StartDockerContainer",
     "StopDockerContainer",
@@ -273,6 +302,10 @@ __all__ = [
     "UnsupportedDockerRuntimeFeature",
     "ValidationErrorDetail",
     "InstanceReadService",
+    "InvalidGraphReference",
+    "LossyGraphDescriptor",
+    "MalformedGraphDescriptor",
+    "UnknownGraphVariant",
     "WorkspaceReadModel",
     "WorkspaceSummary",
     "compile_recipe",

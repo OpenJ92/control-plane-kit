@@ -4,21 +4,70 @@ from __future__ import annotations
 
 from dataclasses import dataclass, field, replace
 from typing import Mapping
+from urllib.parse import urlsplit
 
-from control_plane_kit.algebra import BlockSockets
-from control_plane_kit.types import EndpointScope, Protocol, RuntimeKind
+from control_plane_kit.algebra import BlockSockets, BlockSpec
+from control_plane_kit.types import BlockFamily, EndpointScope, Protocol, RuntimeKind
+
+
+@dataclass(frozen=True)
+class LiteralAddress:
+    """Non-secret provider address safe to retain in durable topology."""
+
+    value: str
+
+    def __post_init__(self) -> None:
+        if not self.value.strip():
+            raise ValueError("literal address must not be empty")
+        parsed = urlsplit(self.value)
+        if parsed.password is not None:
+            raise ValueError("literal address must not contain credentials; use a secret reference")
+
+    def descriptor(self) -> dict[str, str]:
+        return {"kind": "literal", "value": self.value}
+
+
+@dataclass(frozen=True)
+class SecretReferenceAddress:
+    """Stable reference to an address resolved only by a runtime interpreter."""
+
+    secret_ref: str
+
+    def __post_init__(self) -> None:
+        if not self.secret_ref.strip():
+            raise ValueError("secret reference must not be empty")
+
+    def descriptor(self) -> dict[str, str]:
+        return {"kind": "secret-reference", "secret_ref": self.secret_ref}
+
+
+EndpointAddress = LiteralAddress | SecretReferenceAddress
 
 
 @dataclass(frozen=True)
 class Endpoint:
-    """Concrete address provided by a compiled provider socket."""
+    """Typed address provided by a compiled provider socket."""
 
-    url: str
+    address: EndpointAddress
     protocol: Protocol
     scope: EndpointScope = EndpointScope.PRIVATE
 
-    def descriptor(self) -> dict[str, str]:
-        return {"url": self.url, "protocol": self.protocol.value, "scope": self.scope.value}
+    @property
+    def url(self) -> str:
+        """Return a literal address or unresolved secret-reference token."""
+
+        match self.address:
+            case LiteralAddress(value=value):
+                return value
+            case SecretReferenceAddress(secret_ref=secret_ref):
+                return secret_ref
+
+    def descriptor(self) -> dict[str, object]:
+        return {
+            "address": self.address.descriptor(),
+            "protocol": self.protocol.value,
+            "scope": self.scope.value,
+        }
 
 
 @dataclass(frozen=True)
@@ -26,6 +75,8 @@ class Node:
     """Compiled deployable node."""
 
     node_id: str
+    block_family: BlockFamily
+    block_spec: BlockSpec
     kind: str
     runtime_id: str
     sockets: BlockSockets
@@ -52,6 +103,15 @@ class Node:
     def descriptor(self) -> dict[str, object]:
         return {
             "node_id": self.node_id,
+            "block_family": self.block_family.value,
+            "block_spec": {
+                "variant": "block",
+                "role_id": self.block_spec.role_id,
+                "display_name": self.block_spec.display_name,
+                "health_path": self.block_spec.health_path,
+                "capabilities": [value.value for value in self.block_spec.capabilities],
+                "metadata": dict(sorted(self.block_spec.metadata.items())),
+            },
             "kind": self.kind,
             "runtime_id": self.runtime_id,
             "endpoints": {key: value.descriptor() for key, value in sorted(self.endpoints.items())},
@@ -142,9 +202,6 @@ class DeploymentGraph:
         return replace(self, nodes={**self.nodes, node.node_id: node})
 
     def descriptor(self) -> dict[str, object]:
-        return {
-            "name": self.name,
-            "runtimes": {key: value.descriptor() for key, value in sorted(self.runtimes.items())},
-            "nodes": {key: value.descriptor() for key, value in sorted(self.nodes.items())},
-            "edges": {key: value.descriptor() for key, value in sorted(self.edges.items())},
-        }
+        from control_plane_kit.graph_codec import DEFAULT_GRAPH_CODEC
+
+        return DEFAULT_GRAPH_CODEC.encode(self)
