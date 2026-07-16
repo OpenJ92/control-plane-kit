@@ -136,9 +136,27 @@ class DesiredGraphCommandServiceTests(PostgresStoreTestCase):
                 executor.map(submit, (("graph-a", "action-a"), ("graph-b", "action-b")))
             )
 
-        self.assertEqual({result.graph_version.graph_id for result in results}, {"graph-a"})
+        graph_ids = {result.graph_version.graph_id for result in results}
+        action_ids = {result.action.action_id for result in results}
+
+        self.assertEqual(len(graph_ids), 1)
+        self.assertEqual(len(action_ids), 1)
+        self.assertTrue(graph_ids <= {"graph-a", "graph-b"})
+        self.assertTrue(action_ids <= {"action-a", "action-b"})
         self.assertEqual(sum(result.replayed for result in results), 1)
         self.assertEqual(len(self.stores.activity_history.actions_for_session("session-a")), 2)
+        winner_graph_id = next(iter(graph_ids))
+        loser_graph_id = ({"graph-a", "graph-b"} - graph_ids).pop()
+        self.assertEqual(
+            self.stores.workspace.get("workspace-a").desired_graph_id,
+            winner_graph_id,
+        )
+        self.assertEqual(
+            self.stores.graph_topology.get(winner_graph_id).graph_id,
+            winner_graph_id,
+        )
+        with self.assertRaises(KeyError):
+            self.stores.graph_topology.get(loser_graph_id)
 
     def test_concurrent_distinct_requests_publish_one_and_reject_one_stale(self):
         barrier = threading.Barrier(2)
