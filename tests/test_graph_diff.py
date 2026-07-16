@@ -97,8 +97,8 @@ def simple_graph(
 
 class GraphDiffTests(unittest.TestCase):
     def test_change_algebra_and_interpreter_have_separate_module_boundaries(self):
-        self.assertEqual(GraphDiff.__module__, "control_plane_kit.graph_changes")
-        self.assertEqual(diff_graphs.__module__, "control_plane_kit.graph_diff")
+        self.assertEqual(GraphDiff.__module__, "control_plane_kit.topology.changes")
+        self.assertEqual(diff_graphs.__module__, "control_plane_kit.topology.diff")
 
     def test_identical_validated_graphs_have_deterministic_empty_diff(self):
         graph = validate_graph(simple_graph())

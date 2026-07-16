@@ -9,8 +9,8 @@ import unittest
 
 import psycopg
 
-from control_plane_kit.activity_plan import SwitchSocketConnection
-from control_plane_kit.graph import DeploymentGraph
+from control_plane_kit.planning.activity_plan import SwitchSocketConnection
+from control_plane_kit.topology.graph import DeploymentGraph
 from control_plane_kit.stores import (
     GraphVersionRecord,
     OperationActionKind,

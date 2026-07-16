@@ -718,6 +718,47 @@ These layers should remain separable. For example, MCP should not know how to
 run Docker directly. It should ask the control plane. Docker should not own the
 graph model. It should interpret the graph model.
 
+### 7.1 Algebra Package Boundaries
+
+The graph and activity-plan layers are cohesive packages rather than a flat
+collection of similarly named modules:
+
+```text
+control_plane_kit/topology/
+  graph.py       # desired deployment graph values
+  codec.py       # stable graph descriptor boundary
+  validation.py  # typed graph validity evidence
+  changes.py     # typed graph-change algebra
+  diff.py        # old graph x new graph -> GraphDiff
+  compiler.py    # DeploymentRecipe -> DeploymentGraph
+
+control_plane_kit/planning/
+  activity_plan.py  # typed effect-free activity plan algebra
+  codec.py          # stable activity-plan descriptor boundary
+  compiler.py       # GraphDiff -> ActivityPlan
+  recovery.py       # explicit recovery candidates and limitations
+```
+
+Their dependency direction is a law:
+
+```text
+algebra + typed block specifications
+  -> topology
+    -> planning
+      -> workflows
+        -> runtime execution
+```
+
+`topology` must not import `planning`, workflow persistence, or stores.
+`planning` may consume topology values but must not import workflow persistence
+or stores. Workflow command services own Postgres transaction boundaries and
+compose the pure topology and planning languages. Roadmap 0008 execution code
+consumes durable plans; it does not belong inside either pure package.
+
+The root `control_plane_kit` package re-exports the intentionally public values
+for user convenience. Internal code should import from the canonical package
+that owns the concept so dependency direction remains visible during review.
+
 ## 8. EnvironmentContract Design
 
 ### 8.1 Motivation

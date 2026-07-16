@@ -14,7 +14,7 @@ from control_plane_kit.algebra import (
     SocketConnection,
 )
 from control_plane_kit.capabilities import capability_named
-from control_plane_kit.graph import DeploymentGraph, Edge, Node, RuntimeRecord
+from control_plane_kit.topology.graph import DeploymentGraph, Edge, Node, RuntimeRecord
 from control_plane_kit.types import BlockFamily
 
 

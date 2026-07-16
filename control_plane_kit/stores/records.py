@@ -6,9 +6,9 @@ from dataclasses import dataclass, field
 from enum import StrEnum
 from typing import Mapping
 
-from control_plane_kit.activity_plan import ActivityPlan, RiskLevel
-from control_plane_kit.graph import DeploymentGraph
-from control_plane_kit.graph_codec import DEFAULT_GRAPH_CODEC
+from control_plane_kit.planning.activity_plan import ActivityPlan, RiskLevel
+from control_plane_kit.topology.graph import DeploymentGraph
+from control_plane_kit.topology.codec import DEFAULT_GRAPH_CODEC
 
 
 class WorkspaceLifecycle(StrEnum):

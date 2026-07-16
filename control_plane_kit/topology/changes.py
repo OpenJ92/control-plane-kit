@@ -7,7 +7,7 @@ from enum import StrEnum
 from typing import Mapping, TypeAlias
 
 from control_plane_kit.algebra import BlockSockets, BlockSpec
-from control_plane_kit.graph import (
+from control_plane_kit.topology.graph import (
     Edge,
     Endpoint,
     LiteralAddress,
@@ -15,7 +15,7 @@ from control_plane_kit.graph import (
     RuntimeRecord,
     SecretReferenceAddress,
 )
-from control_plane_kit.validation import (
+from control_plane_kit.topology.validation import (
     EdgeSubject,
     GraphSubject,
     NodeSubject,

@@ -5,8 +5,8 @@ from __future__ import annotations
 import json
 
 from control_plane_kit.algebra import BlockSpec
-from control_plane_kit.graph import DeploymentGraph, Node
-from control_plane_kit.graph_changes import (
+from control_plane_kit.topology.graph import DeploymentGraph, Node
+from control_plane_kit.topology.changes import (
     AddedChange,
     AmbiguityReason,
     AmbiguousChange,
@@ -29,8 +29,8 @@ from control_plane_kit.graph_changes import (
     UnsupportedChange,
     UnsupportedReason,
 )
-from control_plane_kit.graph_codec import GraphDescriptorCodec
-from control_plane_kit.validation import (
+from control_plane_kit.topology.codec import GraphDescriptorCodec
+from control_plane_kit.topology.validation import (
     EdgeSubject,
     GraphSubject,
     NodeSubject,

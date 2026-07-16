@@ -6,7 +6,7 @@ import hashlib
 import json
 from dataclasses import dataclass, field
 
-from control_plane_kit.activity_plan import (
+from control_plane_kit.planning.activity_plan import (
     ActivityDependency,
     ActivityId,
     ActivityImpact,
@@ -31,7 +31,7 @@ from control_plane_kit.activity_plan import (
     SwitchSocketConnection,
     WaitForHealthy,
 )
-from control_plane_kit.graph_changes import (
+from control_plane_kit.topology.changes import (
     AddedChange,
     AmbiguousChange,
     EdgeValue,
@@ -47,7 +47,7 @@ from control_plane_kit.graph_changes import (
     TextValue,
     UnsupportedChange,
 )
-from control_plane_kit.validation import (
+from control_plane_kit.topology.validation import (
     EdgeSubject,
     GraphSubject,
     NodeSubject,

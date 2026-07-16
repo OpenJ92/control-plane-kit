@@ -78,7 +78,7 @@ class RecoveryPlanningTests(unittest.TestCase):
         self.assertEqual(first.descriptor(), second.descriptor())
         self.assertEqual(first.descriptor()["schema"], RECOVERY_CANDIDATE_SCHEMA)
         self.assertEqual(first.descriptor()["version"], RECOVERY_CANDIDATE_VERSION)
-        self.assertEqual(first.plan.__class__.__module__, "control_plane_kit.activity_plan")
+        self.assertEqual(first.plan.__class__.__module__, "control_plane_kit.planning.activity_plan")
         self.assertNotIn("rollback", str(first.descriptor()).lower())
 
     def test_invalid_inputs_fail_before_planning(self):

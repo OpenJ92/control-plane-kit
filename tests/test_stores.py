@@ -1,7 +1,7 @@
 import unittest
 
 from control_plane_kit import ActivityPlan
-from control_plane_kit.graph import DeploymentGraph
+from control_plane_kit.topology.graph import DeploymentGraph
 from control_plane_kit.stores import (
     ActivityPlanRecord,
     ActivityRunRecord,

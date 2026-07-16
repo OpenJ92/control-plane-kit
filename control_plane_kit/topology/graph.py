@@ -202,6 +202,6 @@ class DeploymentGraph:
         return replace(self, nodes={**self.nodes, node.node_id: node})
 
     def descriptor(self) -> dict[str, object]:
-        from control_plane_kit.graph_codec import DEFAULT_GRAPH_CODEC
+        from control_plane_kit.topology.codec import DEFAULT_GRAPH_CODEC
 
         return DEFAULT_GRAPH_CODEC.encode(self)

@@ -28,7 +28,7 @@ from control_plane_kit.algebra import (
     RuntimeContext,
     SocketConnection,
 )
-from control_plane_kit.activity_plan import (
+from control_plane_kit.planning.activity_plan import (
     ActivityDependency,
     ActivityId,
     ActivityImpact,
@@ -56,7 +56,7 @@ from control_plane_kit.activity_plan import (
     SwitchSocketConnection,
     WaitForHealthy,
 )
-from control_plane_kit.activity_plan_codec import (
+from control_plane_kit.planning.codec import (
     ACTIVITY_PLAN_SCHEMA,
     ACTIVITY_PLAN_VERSION,
     DEFAULT_ACTIVITY_PLAN_CODEC,
@@ -66,8 +66,8 @@ from control_plane_kit.activity_plan_codec import (
     MalformedActivityPlanDescriptor,
     UnknownActivityPlanVariant,
 )
-from control_plane_kit.activity_plan_compiler import compile_activity_plan
-from control_plane_kit.compiler import compile_recipe
+from control_plane_kit.planning.compiler import compile_activity_plan
+from control_plane_kit.topology.compiler import compile_recipe
 from control_plane_kit.contracts import (
     ControlValueKind,
     ControlVariable,
@@ -112,7 +112,7 @@ from control_plane_kit.docker_runtime import (
     StopDockerContainer,
     UnsupportedDockerRuntimeFeature,
 )
-from control_plane_kit.graph import (
+from control_plane_kit.topology.graph import (
     DeploymentGraph,
     Edge,
     Endpoint,
@@ -122,7 +122,7 @@ from control_plane_kit.graph import (
     RuntimeRecord,
     SecretReferenceAddress,
 )
-from control_plane_kit.graph_codec import (
+from control_plane_kit.topology.codec import (
     DEFAULT_GRAPH_CODEC,
     BlockSpecVariantCodec,
     GenericBlockSpecCodec,
@@ -133,7 +133,7 @@ from control_plane_kit.graph_codec import (
     MalformedGraphDescriptor,
     UnknownGraphVariant,
 )
-from control_plane_kit.graph_changes import (
+from control_plane_kit.topology.changes import (
     AddedChange,
     AmbiguityReason,
     AmbiguousChange,
@@ -158,7 +158,7 @@ from control_plane_kit.graph_changes import (
     UnsupportedChange,
     UnsupportedReason,
 )
-from control_plane_kit.graph_diff import diff_graphs
+from control_plane_kit.topology.diff import diff_graphs
 from control_plane_kit.implementations import (
     DockerImageImplementation,
     DockerPostgresImplementation,
@@ -169,7 +169,7 @@ from control_plane_kit.implementations import (
     PlanOnlyImplementation,
 )
 from control_plane_kit.mcp_read import McpReadError, McpToolDescriptor, ReadOnlyMcpAdapter
-from control_plane_kit.recovery import (
+from control_plane_kit.planning.recovery import (
     RECOVERY_CANDIDATE_SCHEMA,
     RECOVERY_CANDIDATE_VERSION,
     RecoveryActivityAssessment,
@@ -234,7 +234,7 @@ from control_plane_kit.runtimes import (
     RuntimeState,
 )
 from control_plane_kit.types import BlockFamily, EndpointScope, Protocol, RuntimeKind
-from control_plane_kit.validation import (
+from control_plane_kit.topology.validation import (
     EdgeSubject,
     GraphSubject,
     GraphValidationError,
