@@ -219,29 +219,23 @@ def move_service_between_runtimes() -> PlanningScenario:
 
 
 def switch_database_endpoint() -> PlanningScenario:
-    current = _database_graph("database-current", database_id="postgres-a")
-    desired = _database_graph("database-desired", database_id="postgres-b")
-    start_database = _op(StartNode, "postgres-b")
-    healthy_database = _op(WaitForHealthy, "postgres-b")
+    current = _database_graph(
+        "database-current",
+        active_database_id="postgres-a",
+    )
+    desired = _database_graph(
+        "database-desired",
+        active_database_id="postgres-b",
+    )
     switch_database = _op(SwitchSocketConnection, "api.database")
-    stop_database = _op(StopNode, "postgres-a")
     return _scenario(
         "switch-database-endpoint",
-        "Switch an application database endpoint",
+        "Switch between pre-provisioned database endpoints",
         current,
         desired,
         operations=(
-            start_database,
-            healthy_database,
-            stop_database,
             switch_database,
             _op(ReconcileNode, "api"),
-            _op(ReconcileRuntime, "docker"),
-        ),
-        dependencies=(
-            _dependency(start_database, healthy_database),
-            _dependency(healthy_database, switch_database),
-            _dependency(switch_database, stop_database),
         ),
         max_risk=RiskLevel.HIGH,
     )
@@ -395,7 +389,11 @@ def _runtime_move_graph(name: str, *, source: str) -> DeploymentGraph:
     return compile_recipe(DeploymentRecipe(name, root))
 
 
-def _database_graph(name: str, *, database_id: str) -> DeploymentGraph:
+def _database_graph(
+    name: str,
+    *,
+    active_database_id: str,
+) -> DeploymentGraph:
     api = ApplicationBlock(
         BlockSpec("api", "API"),
         DockerImageImplementation("api:latest", ports={"internal": 8000}),
@@ -410,17 +408,22 @@ def _database_graph(name: str, *, database_id: str) -> DeploymentGraph:
             providers=(ProviderSocket("internal", Protocol.HTTP),),
         ),
     )
-    database = DataBlock(
-        BlockSpec(database_id, "Postgres"),
-        DockerPostgresImplementation(database="app"),
-        BlockSockets(providers=(ProviderSocket("internal", Protocol.POSTGRES),)),
+    databases = tuple(
+        DataBlock(
+            BlockSpec(database_id, f"Postgres {database_id[-1].upper()}"),
+            DockerPostgresImplementation(database="app"),
+            BlockSockets(
+                providers=(ProviderSocket("internal", Protocol.POSTGRES),)
+            ),
+        )
+        for database_id in ("postgres-a", "postgres-b")
     )
     return _docker_graph(
         name,
         api,
-        database,
+        *databases,
         SocketConnection(
-            database_id,
+            active_database_id,
             "internal",
             "api",
             "DATABASE_URL",

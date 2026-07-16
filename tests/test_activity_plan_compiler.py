@@ -1,3 +1,4 @@
+from dataclasses import replace
 import unittest
 
 from control_plane_kit import (
@@ -181,10 +182,12 @@ class ActivityPlanCompilerTests(unittest.TestCase):
 
     def test_modified_edge_switch_precedes_removed_endpoint_stop(self):
         scenario = switch_database_endpoint()
+        current = self._without_node(scenario.current_graph, "postgres-b")
+        desired = self._without_node(scenario.desired_graph, "postgres-a")
         plan = compile_activity_plan(
             diff_graphs(
-                validate_graph(scenario.current_graph),
-                validate_graph(scenario.desired_graph),
+                validate_graph(current),
+                validate_graph(desired),
             )
         )
         activities = {
@@ -208,6 +211,27 @@ class ActivityPlanCompilerTests(unittest.TestCase):
             {
                 dependency.predecessor
                 for dependency in old_provider_stop.dependencies
+            },
+        )
+
+    @staticmethod
+    def _without_node(graph: DeploymentGraph, node_id: str) -> DeploymentGraph:
+        return DeploymentGraph(
+            graph.name,
+            nodes={
+                existing_id: node
+                for existing_id, node in graph.nodes.items()
+                if existing_id != node_id
+            },
+            edges=graph.edges,
+            runtimes={
+                runtime_id: replace(
+                    runtime,
+                    children=tuple(
+                        child for child in runtime.children if child != node_id
+                    ),
+                )
+                for runtime_id, runtime in graph.runtimes.items()
             },
         )
 

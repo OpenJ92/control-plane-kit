@@ -261,6 +261,26 @@ PlanningScenario
 Blocked scenarios must remain non-executable and must not acquire approval or
 run records merely because an executor exists.
 
+The database scenario is initially limited to switching between endpoints that
+the desired graph already treats as provisioned. Data copy, replication
+catch-up, schema migration, consistency verification, and old-database
+retirement are separate external effects. Roadmap 0008 must not infer those
+effects from an ordinary Postgres socket change.
+
+The first executable boundary should therefore be:
+
+```text
+operator or provider establishes migration readiness
+  -> durable, typed readiness evidence
+    -> approved endpoint cutover
+      -> bounded health/consistency observation
+```
+
+A future database-migration capability may produce and execute the readiness
+evidence itself. Until that capability exists, migration remains explicitly
+user/provider-managed and database replacement plans must fail closed rather
+than treating a newly started empty database as a valid target.
+
 - Approved plan can be claimed once.
 - Unapproved plan cannot execute.
 - Duplicate execution request is idempotent.

@@ -42,13 +42,18 @@ safety-sensitive transitions:
 4. insert a rate limiter;
 5. add a request observer through a multiplexer;
 6. move a service between runtimes;
-7. switch a database endpoint;
+7. switch between pre-provisioned database endpoints;
 8. remove an inactive backend;
 9. tear down a deployment; and
 10. reject an unsupported implementation-kind transition until reviewed.
 
 The exact node names are teaching data. The stable contract is typed operation
 shape, target identity, dependency ordering, risk, and execution readiness.
+
+The database scenario is deliberately a cutover, not a migration. Both
+endpoints already exist. The corpus does not claim that starting a database
+copies data, catches up replication, validates schema compatibility, or makes
+retirement of an old database safe.
 
 ## Downstream Extension
 
