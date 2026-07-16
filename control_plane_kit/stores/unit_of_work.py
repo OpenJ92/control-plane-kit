@@ -37,6 +37,7 @@ class PostgresUnitOfWork:
         self._connection_factory = connection_factory
         self._connection: TransactionalPostgresConnection | None = None
         self._stores: PostgresStoreBundle | None = None
+        self._commit_requested = False
         self._finished = False
 
     @property
@@ -52,15 +53,17 @@ class PostgresUnitOfWork:
             raise UnitOfWorkStateError("unit of work cannot be re-entered")
         self._connection = self._connection_factory()
         self._stores = PostgresStoreBundle(self._connection)
+        self._commit_requested = False
         self._finished = False
         return self
 
     def commit(self) -> None:
-        """Commit the complete operator command exactly once."""
+        """Request commit when the complete command exits successfully."""
 
-        connection = self._active_connection()
-        connection.commit()
-        self._finished = True
+        self._active_connection()
+        if self._commit_requested:
+            raise UnitOfWorkStateError("unit of work commit was already requested")
+        self._commit_requested = True
 
     def rollback(self) -> None:
         """Roll back the complete operator command exactly once."""
@@ -74,13 +77,25 @@ class PostgresUnitOfWork:
 
         if self._connection is None:
             return
-        self._connection.close()
+        connection = self._connection
         self._connection = None
         self._stores = None
+        connection.close()
 
     def __exit__(self, exc_type: object, exc: object, traceback: object) -> None:
         try:
-            if not self._finished:
+            if self._finished:
+                return
+            connection = self._active_connection()
+            if exc_type is None and self._commit_requested:
+                try:
+                    connection.commit()
+                except BaseException:
+                    connection.rollback()
+                    raise
+                finally:
+                    self._finished = True
+            else:
                 self.rollback()
         finally:
             self.close()

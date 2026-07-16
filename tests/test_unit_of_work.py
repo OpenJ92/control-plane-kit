@@ -17,16 +17,19 @@ from tests.postgres_case import PostgresStoreTestCase
 
 
 class FakeConnection:
-    def __init__(self) -> None:
+    def __init__(self, *, commit_error: BaseException | None = None) -> None:
         self.commits = 0
         self.rollbacks = 0
         self.closes = 0
+        self.commit_error = commit_error
 
     def execute(self, query, params=()):
         raise AssertionError("unit-of-work lifecycle tests do not execute SQL")
 
     def commit(self) -> None:
         self.commits += 1
+        if self.commit_error is not None:
+            raise self.commit_error
 
     def rollback(self) -> None:
         self.rollbacks += 1
@@ -45,6 +48,8 @@ class PostgresUnitOfWorkTests(unittest.TestCase):
             self.assertIs(stores.graph_topology._connection, connection)
             self.assertIs(stores.activity_history._connection, connection)
             unit_of_work.commit()
+            self.assertEqual(connection.commits, 0)
+            self.assertIs(unit_of_work.stores, stores)
 
         self.assertEqual(connection.commits, 1)
         self.assertEqual(connection.rollbacks, 0)
@@ -71,6 +76,29 @@ class PostgresUnitOfWorkTests(unittest.TestCase):
         self.assertEqual(connection.rollbacks, 1)
         self.assertEqual(connection.closes, 1)
 
+    def test_exception_after_commit_request_still_rolls_back(self):
+        connection = FakeConnection()
+
+        with self.assertRaisesRegex(ValueError, "failure after commit request"):
+            with PostgresUnitOfWork(lambda: connection) as unit_of_work:
+                unit_of_work.commit()
+                raise ValueError("failure after commit request")
+
+        self.assertEqual(connection.commits, 0)
+        self.assertEqual(connection.rollbacks, 1)
+        self.assertEqual(connection.closes, 1)
+
+    def test_physical_commit_failure_rolls_back_closes_and_propagates(self):
+        connection = FakeConnection(commit_error=OSError("commit failed"))
+
+        with self.assertRaisesRegex(OSError, "commit failed"):
+            with PostgresUnitOfWork(lambda: connection) as unit_of_work:
+                unit_of_work.commit()
+
+        self.assertEqual(connection.commits, 1)
+        self.assertEqual(connection.rollbacks, 1)
+        self.assertEqual(connection.closes, 1)
+
     def test_stores_and_lifecycle_methods_require_active_unfinished_unit(self):
         connection = FakeConnection()
         unit_of_work = PostgresUnitOfWork(lambda: connection)
@@ -80,8 +108,7 @@ class PostgresUnitOfWorkTests(unittest.TestCase):
 
         with unit_of_work:
             unit_of_work.commit()
-            with self.assertRaises(UnitOfWorkStateError):
-                _ = unit_of_work.stores
+            _ = unit_of_work.stores
             with self.assertRaises(UnitOfWorkStateError):
                 unit_of_work.commit()
 
@@ -107,6 +134,7 @@ class PostgresUnitOfWorkIntegrationTests(PostgresStoreTestCase):
             self.assertEqual(self.row_count("cpk_graph_versions"), 0)
             self.assertEqual(self.row_count("cpk_operation_sessions"), 0)
             unit_of_work.commit()
+            self.assertEqual(self.row_count("cpk_workspaces"), 0)
 
         self.assertEqual(self.row_count("cpk_workspaces"), 1)
         self.assertEqual(self.row_count("cpk_graph_versions"), 1)
@@ -133,6 +161,17 @@ class PostgresUnitOfWorkIntegrationTests(PostgresStoreTestCase):
             "cpk_activity_plans",
         ):
             self.assertEqual(self.row_count(table), 0, table)
+
+    def test_exception_after_commit_request_rolls_back_real_postgres_writes(self):
+        with self.assertRaisesRegex(RuntimeError, "late application failure"):
+            with self.unit_of_work() as unit_of_work:
+                unit_of_work.stores.workspace.create(
+                    WorkspaceRecord(workspace_id="workspace-a", name="Demo")
+                )
+                unit_of_work.commit()
+                raise RuntimeError("late application failure")
+
+        self.assertEqual(self.row_count("cpk_workspaces"), 0)
 
     def row_count(self, table: str) -> int:
         allowed = {
