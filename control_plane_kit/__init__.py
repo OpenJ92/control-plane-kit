@@ -169,6 +169,18 @@ from control_plane_kit.implementations import (
     PlanOnlyImplementation,
 )
 from control_plane_kit.mcp_read import McpReadError, McpToolDescriptor, ReadOnlyMcpAdapter
+from control_plane_kit.recovery import (
+    RECOVERY_CANDIDATE_SCHEMA,
+    RECOVERY_CANDIDATE_VERSION,
+    RecoveryActivityAssessment,
+    RecoveryCandidate,
+    RecoveryDisposition,
+    RecoveryLimitation,
+    RecoveryLimitationCode,
+    RecoveryMode,
+    plan_reconstruction,
+    plan_recovery_transition,
+)
 from control_plane_kit.servers import (
     BlockControlState,
     HelloEnvironment,
@@ -368,6 +380,14 @@ __all__ = [
     "ProxyBlock",
     "ReadModelError",
     "ReadOnlyMcpAdapter",
+    "RECOVERY_CANDIDATE_SCHEMA",
+    "RECOVERY_CANDIDATE_VERSION",
+    "RecoveryActivityAssessment",
+    "RecoveryCandidate",
+    "RecoveryDisposition",
+    "RecoveryLimitation",
+    "RecoveryLimitationCode",
+    "RecoveryMode",
     "RequirementSocket",
     "ProviderSocket",
     "ReloadPolicy",
@@ -440,5 +460,7 @@ __all__ = [
     "compile_recipe",
     "compile_activity_plan",
     "diff_graphs",
+    "plan_reconstruction",
+    "plan_recovery_transition",
     "validate_graph",
 ]
