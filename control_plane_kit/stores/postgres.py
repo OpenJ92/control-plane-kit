@@ -1175,6 +1175,63 @@ class PostgresExecutionStore:
         ).fetchone()
         return None if row is None else _execution_request(row)
 
+    def claim_request(
+        self,
+        request_id: str,
+        worker_id: str,
+        claimed_at: str,
+        lease_expires_at: str,
+    ) -> ExecutionRequestRecord | None:
+        row = self._connection.execute(
+            """
+            SELECT request_id, workspace_id, session_id, plan_id, status,
+                   requested_by, requested_at, approval_request_id,
+                   approval_decision_id, idempotency_key, intent_fingerprint,
+                   claim_worker_id, claimed_at, lease_expires_at
+            FROM cpk_execution_requests
+            WHERE request_id = %s
+            FOR UPDATE
+            """,
+            (request_id,),
+        ).fetchone()
+        if row is None:
+            raise KeyError(f"missing execution request {request_id!r}")
+        current = _execution_request(row)
+        if current.status is ExecutionRequestStatus.CLAIMED:
+            if current.claim is not None and current.claim.worker_id == worker_id:
+                return current
+            return None
+        if current.status is not ExecutionRequestStatus.QUEUED:
+            return None
+        updated = self._connection.execute(
+            """
+            UPDATE cpk_execution_requests
+            SET status = 'claimed', claim_worker_id = %s, claimed_at = %s,
+                lease_expires_at = %s
+            WHERE request_id = %s AND status = 'queued'
+            RETURNING request_id, workspace_id, session_id, plan_id, status,
+                      requested_by, requested_at, approval_request_id,
+                      approval_decision_id, idempotency_key, intent_fingerprint,
+                      claim_worker_id, claimed_at, lease_expires_at
+            """,
+            (worker_id, claimed_at, lease_expires_at, request_id),
+        ).fetchone()
+        return None if updated is None else _execution_request(updated)
+
+    def release_expired_claim(self, request_id: str, *, as_of: str) -> bool:
+        row = self._connection.execute(
+            """
+            UPDATE cpk_execution_requests
+            SET status = 'queued', claim_worker_id = NULL, claimed_at = NULL,
+                lease_expires_at = NULL
+            WHERE request_id = %s
+              AND status = 'claimed'
+              AND lease_expires_at::timestamptz <= %s::timestamptz
+            """,
+            (request_id, as_of),
+        )
+        return row.rowcount == 1
+
     def add_run(self, record: ActivityRunRecord) -> ActivityRunRecord:
         if not isinstance(record.admission, AdmittedRun):
             raise ValueError("new execution runs require durable admission")
@@ -1199,6 +1256,50 @@ class PostgresExecutionStore:
             ),
         )
         return record
+
+    def get_run(self, run_id: str) -> ActivityRunRecord:
+        row = _record(
+            self._connection.execute(
+                """
+                SELECT run_id, plan_id, request_id, attempt, prior_run_id, status,
+                       created_at, started_at, finished_at, metadata, legacy_imported
+                FROM cpk_activity_runs WHERE run_id = %s
+                """,
+                (run_id,),
+            ).fetchone(),
+            "activity run",
+            run_id,
+        )
+        return _activity_run(row)
+
+    def compare_and_set_run_status(
+        self,
+        run_id: str,
+        *,
+        expected: ActivityRunStatus,
+        replacement: ActivityRunStatus,
+        started_at: str | None = None,
+        finished_at: str | None = None,
+    ) -> ActivityRunRecord | None:
+        row = self._connection.execute(
+            """
+            UPDATE cpk_activity_runs
+            SET status = %s,
+                started_at = COALESCE(%s, started_at),
+                finished_at = COALESCE(%s, finished_at)
+            WHERE run_id = %s AND status = %s AND NOT legacy_imported
+            RETURNING run_id, plan_id, request_id, attempt, prior_run_id, status,
+                      created_at, started_at, finished_at, metadata, legacy_imported
+            """,
+            (
+                replacement.value,
+                started_at,
+                finished_at,
+                run_id,
+                expected.value,
+            ),
+        ).fetchone()
+        return None if row is None else _activity_run(row)
 
     def runs_for_plan(self, plan_id: str) -> tuple[ActivityRunRecord, ...]:
         return self._runs("plan_id", plan_id, "created_at ASC, run_id ASC")
@@ -1240,6 +1341,22 @@ class PostgresExecutionStore:
             })),
         )
         return record
+
+    def next_event_ordinal(self, run_id: str) -> int:
+        locked = self._connection.execute(
+            "SELECT run_id FROM cpk_activity_runs WHERE run_id = %s FOR UPDATE",
+            (run_id,),
+        ).fetchone()
+        if locked is None:
+            raise KeyError(f"missing activity run {run_id!r}")
+        row = self._connection.execute(
+            """
+            SELECT COALESCE(MAX(ordinal), 0) + 1
+            FROM cpk_activity_events WHERE run_id = %s
+            """,
+            (run_id,),
+        ).fetchone()
+        return int(row[0])
 
     def events_for_run(self, run_id: str) -> tuple[ActivityEventRecord, ...]:
         rows = self._connection.execute(
