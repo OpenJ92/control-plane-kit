@@ -43,6 +43,10 @@ class ReadOnlyMcpAdapter:
             "get_desired_graph": self._get_desired_graph,
             "get_operator_graph": self._get_operator_graph,
             "get_activity_timeline": self._get_activity_timeline,
+            "list_open_sessions": self._list_open_sessions,
+            "get_session_detail": self._get_session_detail,
+            "get_plan_detail": self._get_plan_detail,
+            "list_pending_approvals": self._list_pending_approvals,
             "get_observed_state": self._get_observed_state,
             "get_control_surface": self._get_control_surface,
         }
@@ -59,6 +63,7 @@ class ReadOnlyMcpAdapter:
             handler = self._tools[name]
         except KeyError as exc:
             raise McpReadError(f"unknown read-only tool {name!r}") from exc
+        _reject_unknown_arguments(name, arguments)
         try:
             payload = handler(arguments)
         except ReadModelError as exc:
@@ -84,6 +89,34 @@ class ReadOnlyMcpAdapter:
     def _get_activity_timeline(self, arguments: Mapping[str, object]) -> Mapping[str, object]:
         return self._service.activity_timeline(_workspace_id(arguments), limit=_limit(arguments)).descriptor()
 
+    def _list_open_sessions(self, arguments: Mapping[str, object]) -> Mapping[str, object]:
+        return self._service.open_sessions(
+            _workspace_id(arguments),
+            limit=_limit(arguments),
+            offset=_offset(arguments),
+        ).descriptor()
+
+    def _get_session_detail(self, arguments: Mapping[str, object]) -> Mapping[str, object]:
+        return self._service.session_detail(
+            _workspace_id(arguments),
+            _text_argument(arguments, "session_id"),
+            limit=_limit(arguments),
+        ).descriptor()
+
+    def _get_plan_detail(self, arguments: Mapping[str, object]) -> Mapping[str, object]:
+        return self._service.plan_detail(
+            _workspace_id(arguments),
+            _text_argument(arguments, "plan_id"),
+            limit=_limit(arguments),
+        ).descriptor()
+
+    def _list_pending_approvals(self, arguments: Mapping[str, object]) -> Mapping[str, object]:
+        return self._service.pending_approvals(
+            _workspace_id(arguments),
+            limit=_limit(arguments),
+            offset=_offset(arguments),
+        ).descriptor()
+
     def _get_observed_state(self, arguments: Mapping[str, object]) -> Mapping[str, object]:
         return self._service.observed_state(_workspace_id(arguments)).descriptor()
 
@@ -93,36 +126,77 @@ class ReadOnlyMcpAdapter:
 
 def _workspace_id(arguments: Mapping[str, object]) -> str:
     value = arguments.get("workspace_id")
-    if not isinstance(value, str) or not value:
+    if not isinstance(value, str) or not value.strip():
         raise McpReadError("workspace_id is required")
     return value
 
 
 def _pointer(arguments: Mapping[str, object]) -> str:
     value = arguments.get("pointer", "current")
-    if not isinstance(value, str) or not value:
+    if not isinstance(value, str) or not value.strip():
         raise McpReadError("pointer must be text")
     return value
 
 
 def _limit(arguments: Mapping[str, object]) -> int:
     value = arguments.get("limit", 50)
-    if not isinstance(value, int):
-        raise McpReadError("limit must be an integer")
+    if type(value) is not int or not 1 <= value <= 100:
+        raise McpReadError("limit must be an integer from 1 through 100")
     return value
 
 
-def _schema(*, pointer: bool = False, limit: bool = False) -> dict[str, object]:
+def _offset(arguments: Mapping[str, object]) -> int:
+    value = arguments.get("offset", 0)
+    if type(value) is not int or value < 0:
+        raise McpReadError("offset must be a non-negative integer")
+    return value
+
+
+def _text_argument(arguments: Mapping[str, object], name: str) -> str:
+    value = arguments.get(name)
+    if not isinstance(value, str) or not value.strip():
+        raise McpReadError(f"{name} is required")
+    return value
+
+
+def _reject_unknown_arguments(name: str, arguments: Mapping[str, object]) -> None:
+    properties = _TOOL_DESCRIPTORS[name].input_schema["properties"]
+    allowed = set(properties) if isinstance(properties, Mapping) else set()
+    unknown = sorted(set(arguments) - allowed)
+    if unknown:
+        raise McpReadError(
+            f"unknown arguments for read-only tool {name!r}: {', '.join(unknown)}"
+        )
+
+
+def _schema(
+    *,
+    pointer: bool = False,
+    limit: bool = False,
+    offset: bool = False,
+    identifier: str | None = None,
+) -> dict[str, object]:
     properties: dict[str, object] = {
         "workspace_id": {"type": "string"},
     }
     if pointer:
         properties["pointer"] = {"type": "string", "default": "current"}
     if limit:
-        properties["limit"] = {"type": "integer", "default": 50, "minimum": 1}
+        properties["limit"] = {
+            "type": "integer",
+            "default": 50,
+            "minimum": 1,
+            "maximum": 100,
+        }
+    if offset:
+        properties["offset"] = {"type": "integer", "default": 0, "minimum": 0}
+    required = ["workspace_id"]
+    if identifier is not None:
+        properties[identifier] = {"type": "string"}
+        required.append(identifier)
     return {
         "type": "object",
-        "required": ["workspace_id"],
+        "required": required,
         "properties": properties,
         "additionalProperties": False,
     }
@@ -153,6 +227,26 @@ _TOOL_DESCRIPTORS = {
         "get_activity_timeline",
         "Read a bounded activity timeline for a workspace.",
         _schema(limit=True),
+    ),
+    "list_open_sessions": McpToolDescriptor(
+        "list_open_sessions",
+        "Read a bounded page of open operation sessions.",
+        _schema(limit=True, offset=True),
+    ),
+    "get_session_detail": McpToolDescriptor(
+        "get_session_detail",
+        "Read bounded detail for one operation session.",
+        _schema(limit=True, identifier="session_id"),
+    ),
+    "get_plan_detail": McpToolDescriptor(
+        "get_plan_detail",
+        "Read one activity plan with risk and recovery projections.",
+        _schema(limit=True, identifier="plan_id"),
+    ),
+    "list_pending_approvals": McpToolDescriptor(
+        "list_pending_approvals",
+        "Read a bounded page of pending approval requests.",
+        _schema(limit=True, offset=True),
     ),
     "get_observed_state": McpToolDescriptor(
         "get_observed_state",
