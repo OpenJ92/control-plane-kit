@@ -4,33 +4,16 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 
-from control_plane_kit.graph import DeploymentGraph
-
-
-@dataclass(frozen=True)
-class GraphDiff:
-    """Structural difference between two graphs."""
-
-    added_nodes: tuple[str, ...] = ()
-    removed_nodes: tuple[str, ...] = ()
-    changed_nodes: tuple[str, ...] = ()
-    added_edges: tuple[str, ...] = ()
-    removed_edges: tuple[str, ...] = ()
-    changed_edges: tuple[str, ...] = ()
-
-    def summary(self) -> str:
-        parts = []
-        for label, values in (
-            ("added nodes", self.added_nodes),
-            ("removed nodes", self.removed_nodes),
-            ("changed nodes", self.changed_nodes),
-            ("added edges", self.added_edges),
-            ("removed edges", self.removed_edges),
-            ("changed edges", self.changed_edges),
-        ):
-            if values:
-                parts.append(f"{label}: {', '.join(values)}")
-        return "\n".join(parts) if parts else "no changes"
+from control_plane_kit.graph_diff import (
+    AddedChange,
+    AmbiguousChange,
+    FieldSubject,
+    GraphDiff,
+    ModifiedChange,
+    RemovedChange,
+    UnsupportedChange,
+)
+from control_plane_kit.validation import EdgeSubject, NodeSubject
 
 
 @dataclass(frozen=True)
@@ -59,53 +42,62 @@ class ActivityPlan:
         )
 
 
-def diff_graphs(current: DeploymentGraph, desired: DeploymentGraph) -> GraphDiff:
-    """Return a structural graph diff."""
+def plan_migration(diff: GraphDiff) -> ActivityPlan:
+    """Adapt typed diff data to the prototype plan until Roadmap 0007.6 replaces it."""
 
-    current_nodes = set(current.nodes)
-    desired_nodes = set(desired.nodes)
-    current_edges = set(current.edges)
-    desired_edges = set(desired.edges)
-    changed_nodes = tuple(
-        sorted(
-            node_id
-            for node_id in current_nodes & desired_nodes
-            if current.nodes[node_id] != desired.nodes[node_id]
-        )
-    )
-    changed_edges = tuple(
-        sorted(
-            edge_id
-            for edge_id in current_edges & desired_edges
-            if current.edges[edge_id] != desired.edges[edge_id]
-        )
-    )
-    return GraphDiff(
-        added_nodes=tuple(sorted(desired_nodes - current_nodes)),
-        removed_nodes=tuple(sorted(current_nodes - desired_nodes)),
-        changed_nodes=changed_nodes,
-        added_edges=tuple(sorted(desired_edges - current_edges)),
-        removed_edges=tuple(sorted(current_edges - desired_edges)),
-        changed_edges=changed_edges,
-    )
-
-
-def plan_migration(current: DeploymentGraph, desired: DeploymentGraph) -> ActivityPlan:
-    """Plan a conservative linear migration from current to desired."""
-
-    diff = diff_graphs(current, desired)
     activities: list[Activity] = []
-    for node_id in diff.added_nodes:
+    added_nodes = sorted(
+        change.subject.node_id
+        for change in diff.changes
+        if isinstance(change, AddedChange) and isinstance(change.subject, NodeSubject)
+    )
+    removed_nodes = sorted(
+        change.subject.node_id
+        for change in diff.changes
+        if isinstance(change, RemovedChange) and isinstance(change.subject, NodeSubject)
+    )
+    added_edges = sorted(
+        change.subject.edge_id
+        for change in diff.changes
+        if isinstance(change, AddedChange) and isinstance(change.subject, EdgeSubject)
+    )
+    removed_edges = sorted(
+        change.subject.edge_id
+        for change in diff.changes
+        if isinstance(change, RemovedChange) and isinstance(change.subject, EdgeSubject)
+    )
+    changed_edges = sorted(
+        change.subject.edge_id
+        for change in diff.changes
+        if isinstance(change, ModifiedChange) and isinstance(change.subject, EdgeSubject)
+    )
+    changed_nodes = sorted(
+        {
+            node_id
+            for change in diff.changes
+            if isinstance(change, (ModifiedChange, UnsupportedChange, AmbiguousChange))
+            for node_id in _subject_node_ids(change.subject)
+        }
+    )
+    for node_id in added_nodes:
         activities.append(Activity("StartNode", node_id))
         activities.append(Activity("HealthCheck", node_id, "if node advertises health"))
-    for edge_id in diff.added_edges:
+    for edge_id in added_edges:
         activities.append(Activity("AddSocketConnection", edge_id))
-    for edge_id in diff.changed_edges:
+    for edge_id in changed_edges:
         activities.append(Activity("SwitchSocketConnection", edge_id))
-    for edge_id in diff.removed_edges:
+    for edge_id in removed_edges:
         activities.append(Activity("RemoveSocketConnection", edge_id))
-    for node_id in diff.changed_nodes:
+    for node_id in changed_nodes:
         activities.append(Activity("ReconcileNode", node_id))
-    for node_id in diff.removed_nodes:
+    for node_id in removed_nodes:
         activities.append(Activity("StopNode", node_id, "after verification"))
     return ActivityPlan(tuple(activities))
+
+
+def _subject_node_ids(subject: object) -> tuple[str, ...]:
+    if isinstance(subject, NodeSubject):
+        return (subject.node_id,)
+    if isinstance(subject, FieldSubject) and isinstance(subject.owner, NodeSubject):
+        return (subject.owner.node_id,)
+    return ()
