@@ -60,7 +60,9 @@ CREATE TABLE IF NOT EXISTS cpk_operation_sessions (
   status text NOT NULL,
   created_at text NOT NULL,
   closed_at text,
-  metadata jsonb NOT NULL DEFAULT '{}'::jsonb
+  metadata jsonb NOT NULL DEFAULT '{}'::jsonb,
+  idempotency_key text,
+  intent_fingerprint text
 );
 
 CREATE TABLE IF NOT EXISTS cpk_operation_actions (
@@ -71,6 +73,8 @@ CREATE TABLE IF NOT EXISTS cpk_operation_actions (
   actor_id text NOT NULL,
   payload jsonb NOT NULL DEFAULT '{}'::jsonb,
   created_at text NOT NULL,
+  idempotency_key text,
+  intent_fingerprint text,
   UNIQUE (session_id, ordinal)
 );
 
@@ -140,6 +144,22 @@ CREATE TABLE IF NOT EXISTS cpk_secret_references (
   assigned_at text NOT NULL,
   metadata jsonb NOT NULL DEFAULT '{}'::jsonb
 );
+
+ALTER TABLE cpk_operation_sessions
+  ADD COLUMN IF NOT EXISTS idempotency_key text,
+  ADD COLUMN IF NOT EXISTS intent_fingerprint text;
+
+ALTER TABLE cpk_operation_actions
+  ADD COLUMN IF NOT EXISTS idempotency_key text,
+  ADD COLUMN IF NOT EXISTS intent_fingerprint text;
+
+CREATE UNIQUE INDEX IF NOT EXISTS cpk_operation_sessions_idempotency
+  ON cpk_operation_sessions (workspace_id, idempotency_key)
+  WHERE idempotency_key IS NOT NULL;
+
+CREATE UNIQUE INDEX IF NOT EXISTS cpk_operation_actions_idempotency
+  ON cpk_operation_actions (session_id, idempotency_key)
+  WHERE idempotency_key IS NOT NULL;
 """
 
 
@@ -163,6 +183,35 @@ def _record(row: tuple[Any, ...] | None, kind: str, key: str) -> tuple[Any, ...]
     if row is None:
         raise KeyError(f"missing {kind} {key!r}")
     return row
+
+
+def _session_record(row: tuple[Any, ...]) -> OperationSessionRecord:
+    return OperationSessionRecord(
+        session_id=row[0],
+        workspace_id=row[1],
+        actor_id=row[2],
+        title=row[3],
+        status=OperationSessionStatus(row[4]),
+        created_at=row[5],
+        closed_at=row[6],
+        metadata=row[7],
+        idempotency_key=row[8],
+        intent_fingerprint=row[9],
+    )
+
+
+def _action_record(row: tuple[Any, ...]) -> OperationActionRecord:
+    return OperationActionRecord(
+        action_id=row[0],
+        session_id=row[1],
+        ordinal=row[2],
+        action_type=OperationActionKind(row[3]),
+        actor_id=row[4],
+        payload=row[5],
+        created_at=row[6],
+        idempotency_key=row[7],
+        intent_fingerprint=row[8],
+    )
 
 
 class PostgresWorkspaceStore:
@@ -373,8 +422,9 @@ class PostgresActivityHistoryStore:
         self._connection.execute(
             """
             INSERT INTO cpk_operation_sessions
-              (session_id, workspace_id, actor_id, title, status, created_at, closed_at, metadata)
-            VALUES (%s, %s, %s, %s, %s, %s, %s, %s::jsonb)
+              (session_id, workspace_id, actor_id, title, status, created_at, closed_at,
+               metadata, idempotency_key, intent_fingerprint)
+            VALUES (%s, %s, %s, %s, %s, %s, %s, %s::jsonb, %s, %s)
             """,
             (
                 record.session_id,
@@ -385,6 +435,8 @@ class PostgresActivityHistoryStore:
                 record.created_at,
                 record.closed_at,
                 _json(record.metadata),
+                record.idempotency_key,
+                record.intent_fingerprint,
             ),
         )
         return record
@@ -393,7 +445,8 @@ class PostgresActivityHistoryStore:
         row = _record(
             self._connection.execute(
                 """
-                SELECT session_id, workspace_id, actor_id, title, status, created_at, closed_at, metadata
+                SELECT session_id, workspace_id, actor_id, title, status, created_at, closed_at,
+                       metadata, idempotency_key, intent_fingerprint
                 FROM cpk_operation_sessions WHERE session_id = %s
                 """,
                 (session_id,),
@@ -410,12 +463,29 @@ class PostgresActivityHistoryStore:
             created_at=row[5],
             closed_at=row[6],
             metadata=row[7],
+            idempotency_key=row[8],
+            intent_fingerprint=row[9],
         )
+
+    def session_for_idempotency(
+        self, workspace_id: str, idempotency_key: str
+    ) -> OperationSessionRecord | None:
+        row = self._connection.execute(
+            """
+            SELECT session_id, workspace_id, actor_id, title, status, created_at, closed_at,
+                   metadata, idempotency_key, intent_fingerprint
+            FROM cpk_operation_sessions
+            WHERE workspace_id = %s AND idempotency_key = %s
+            """,
+            (workspace_id, idempotency_key),
+        ).fetchone()
+        return None if row is None else _session_record(row)
 
     def sessions_for_workspace(self, workspace_id: str) -> tuple[OperationSessionRecord, ...]:
         rows = self._connection.execute(
             """
-            SELECT session_id, workspace_id, actor_id, title, status, created_at, closed_at, metadata
+            SELECT session_id, workspace_id, actor_id, title, status, created_at, closed_at,
+                   metadata, idempotency_key, intent_fingerprint
             FROM cpk_operation_sessions
             WHERE workspace_id = %s
             ORDER BY created_at ASC, session_id ASC
@@ -423,16 +493,7 @@ class PostgresActivityHistoryStore:
             (workspace_id,),
         ).fetchall()
         return tuple(
-            OperationSessionRecord(
-                session_id=row[0],
-                workspace_id=row[1],
-                actor_id=row[2],
-                title=row[3],
-                status=OperationSessionStatus(row[4]),
-                created_at=row[5],
-                closed_at=row[6],
-                metadata=row[7],
-            )
+            _session_record(row)
             for row in rows
         )
 
@@ -466,8 +527,9 @@ class PostgresActivityHistoryStore:
         self._connection.execute(
             """
             INSERT INTO cpk_operation_actions
-              (action_id, session_id, ordinal, action_type, actor_id, payload, created_at)
-            VALUES (%s, %s, %s, %s, %s, %s::jsonb, %s)
+              (action_id, session_id, ordinal, action_type, actor_id, payload, created_at,
+               idempotency_key, intent_fingerprint)
+            VALUES (%s, %s, %s, %s, %s, %s::jsonb, %s, %s, %s)
             """,
             (
                 record.action_id,
@@ -477,28 +539,52 @@ class PostgresActivityHistoryStore:
                 record.actor_id,
                 _json(record.payload),
                 record.created_at,
+                record.idempotency_key,
+                record.intent_fingerprint,
             ),
         )
         return record
 
+    def action_for_idempotency(
+        self, session_id: str, idempotency_key: str
+    ) -> OperationActionRecord | None:
+        row = self._connection.execute(
+            """
+            SELECT action_id, session_id, ordinal, action_type, actor_id, payload, created_at,
+                   idempotency_key, intent_fingerprint
+            FROM cpk_operation_actions
+            WHERE session_id = %s AND idempotency_key = %s
+            """,
+            (session_id, idempotency_key),
+        ).fetchone()
+        return None if row is None else _action_record(row)
+
+    def next_action_ordinal(self, session_id: str) -> int:
+        """Serialize one session's writers on the caller-managed transaction."""
+
+        session = self._connection.execute(
+            "SELECT session_id FROM cpk_operation_sessions WHERE session_id = %s FOR UPDATE",
+            (session_id,),
+        ).fetchone()
+        if session is None:
+            raise KeyError(f"missing session {session_id!r}")
+        row = self._connection.execute(
+            "SELECT COALESCE(MAX(ordinal), 0) + 1 FROM cpk_operation_actions WHERE session_id = %s",
+            (session_id,),
+        ).fetchone()
+        return int(row[0])
+
     def actions_for_session(self, session_id: str) -> tuple[OperationActionRecord, ...]:
         rows = self._connection.execute(
             """
-            SELECT action_id, session_id, ordinal, action_type, actor_id, payload, created_at
+            SELECT action_id, session_id, ordinal, action_type, actor_id, payload, created_at,
+                   idempotency_key, intent_fingerprint
             FROM cpk_operation_actions WHERE session_id = %s ORDER BY ordinal ASC
             """,
             (session_id,),
         ).fetchall()
         return tuple(
-            OperationActionRecord(
-                action_id=row[0],
-                session_id=row[1],
-                ordinal=row[2],
-                action_type=OperationActionKind(row[3]),
-                actor_id=row[4],
-                payload=row[5],
-                created_at=row[6],
-            )
+            _action_record(row)
             for row in rows
         )
 

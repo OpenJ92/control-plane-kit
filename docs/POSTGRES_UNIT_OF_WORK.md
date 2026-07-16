@@ -122,6 +122,31 @@ transaction records intent and progress; the saga exposes retries,
 compensation, and partial failure rather than pretending external work can be
 rolled back by Postgres.
 
+## Forward Schema Evolution
+
+`install_schema()` is an idempotent forward installer. Roadmap 0007 adds
+nullable idempotency and intent-fingerprint columns to pre-existing operation
+tables, then creates partial unique indexes:
+
+```text
+(workspace_id, session idempotency key)
+(session_id, action idempotency key)
+```
+
+Null keeps records written by the pre-command scaffold readable. New command
+services must populate both values. The fingerprint is a digest used to detect
+conflicting key reuse; it is not a second copy of the command payload.
+
+This migration is intentionally additive and has no automatic down migration.
+Dropping these columns or indexes would discard retry evidence and can make a
+previously safe request execute twice. Recovery therefore means restoring a
+database snapshot or applying an explicitly reviewed compensating migration,
+not asking a store adapter to reverse schema installation.
+
+Per-session action ordinals are allocated after locking the owning session row
+with `FOR UPDATE`. The lock belongs to the caller's transaction and is released
+only by the UnitOfWork commit or rollback. Store methods do not commit it.
+
 ## Testing Contract
 
 The Docker-first suite uses real Postgres to prove:
@@ -131,6 +156,8 @@ The Docker-first suite uses real Postgres to prove:
   commit;
 - a late SQL constraint failure removes every earlier write; and
 - store adapters do not commit independently.
+- schema installation upgrades the previous operation tables in place; and
+- concurrent action writers publish distinct per-session ordinals.
 
 Run:
 
