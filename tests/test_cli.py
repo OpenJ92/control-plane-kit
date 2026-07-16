@@ -73,6 +73,34 @@ class CliTests(TestCase):
         self.assertEqual(opener.requests[0].full_url, "http://instance/workspaces/workspace-a/operator-graph?pointer=desired")
         self.assertEqual(opener.requests[1].full_url, "http://instance/workspaces/workspace-a/activity?limit=3")
 
+    def test_focused_read_commands_encode_identifiers_and_pagination(self):
+        opener = FakeOpener({"ok": True})
+
+        commands = (
+            ["open-sessions", "workspace-a", "--limit", "2", "--offset", "3"],
+            ["session-detail", "workspace-a", "session/a", "--limit", "4"],
+            ["plan-detail", "workspace-a", "plan/a", "--limit", "5"],
+            ["pending-approvals", "workspace-a", "--limit", "6", "--offset", "7"],
+        )
+        for command in commands:
+            run(
+                ["--base-url", "http://instance", *command],
+                opener=opener,
+                stdout=StringIO(),
+                stderr=StringIO(),
+                env={},
+            )
+
+        self.assertEqual(
+            [request.full_url for request in opener.requests],
+            [
+                "http://instance/workspaces/workspace-a/sessions?limit=2&offset=3",
+                "http://instance/workspaces/workspace-a/sessions/session%2Fa?limit=4",
+                "http://instance/workspaces/workspace-a/plans/plan%2Fa?limit=5",
+                "http://instance/workspaces/workspace-a/approvals/pending?limit=6&offset=7",
+            ],
+        )
+
     def test_missing_base_url_is_usage_error(self):
         stderr = StringIO()
 

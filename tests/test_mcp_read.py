@@ -41,7 +41,11 @@ class McpReadAdapterTests(PostgresStoreTestCase):
                 "get_desired_graph",
                 "get_observed_state",
                 "get_operator_graph",
+                "get_plan_detail",
+                "get_session_detail",
                 "get_workspace",
+                "list_open_sessions",
+                "list_pending_approvals",
             ],
         )
         self.assertNotIn("mutate", str(tools))
@@ -97,6 +101,60 @@ class McpReadAdapterTests(PostgresStoreTestCase):
 
         with self.assertRaisesRegex(McpReadError, "unknown read-only tool 'mutate_graph'"):
             adapter.call_tool("mutate_graph", {"workspace_id": "workspace-a"})
+
+        with self.assertRaisesRegex(McpReadError, "unknown arguments"):
+            adapter.call_tool(
+                "get_workspace",
+                {"workspace_id": "workspace-a", "execute": True},
+            )
+
+    def test_focused_tools_delegate_identifiers_and_bounds(self):
+        adapter = ReadOnlyMcpAdapter(FocusedMcpService())
+
+        calls = (
+            adapter.call_tool(
+                "list_open_sessions",
+                {"workspace_id": "workspace-a", "limit": 2, "offset": 3},
+            ),
+            adapter.call_tool(
+                "get_session_detail",
+                {"workspace_id": "workspace-a", "session_id": "session-a", "limit": 4},
+            ),
+            adapter.call_tool(
+                "get_plan_detail",
+                {"workspace_id": "workspace-a", "plan_id": "plan-a", "limit": 5},
+            ),
+            adapter.call_tool(
+                "list_pending_approvals",
+                {"workspace_id": "workspace-a", "limit": 6, "offset": 7},
+            ),
+        )
+
+        self.assertEqual(
+            [result["content"][0]["json"]["call"] for result in calls],
+            [
+                ["open_sessions", "workspace-a", 2, 3],
+                ["session_detail", "workspace-a", "session-a", 4],
+                ["plan_detail", "workspace-a", "plan-a", 5],
+                ["pending_approvals", "workspace-a", 6, 7],
+            ],
+        )
+
+    def test_focused_tool_arguments_enforce_declared_bounds(self):
+        adapter = ReadOnlyMcpAdapter(FocusedMcpService())
+
+        invalid_calls = (
+            ("list_open_sessions", {"workspace_id": "workspace-a", "limit": True}),
+            ("list_open_sessions", {"workspace_id": "workspace-a", "limit": 0}),
+            ("list_open_sessions", {"workspace_id": "workspace-a", "limit": 101}),
+            ("list_open_sessions", {"workspace_id": "workspace-a", "offset": -1}),
+            ("get_session_detail", {"workspace_id": "workspace-a", "session_id": "  "}),
+            ("get_plan_detail", {"workspace_id": "  ", "plan_id": "plan-a"}),
+        )
+        for tool_name, arguments in invalid_calls:
+            with self.subTest(tool_name=tool_name, arguments=arguments):
+                with self.assertRaises(McpReadError):
+                    adapter.call_tool(tool_name, arguments)
 
     def test_argument_and_service_errors_are_readable(self):
         adapter = ReadOnlyMcpAdapter(self._service_with_graph())
@@ -160,6 +218,32 @@ def _node(payload: dict[str, object], node_id: str) -> dict[str, object]:
         if node["node_id"] == node_id:
             return node
     raise AssertionError(f"missing node {node_id!r}")
+
+
+class DescriptorResult:
+    def __init__(self, payload: dict[str, object]) -> None:
+        self._payload = payload
+
+    def descriptor(self) -> dict[str, object]:
+        return self._payload
+
+
+class FocusedMcpService:
+    def open_sessions(self, workspace_id: str, *, limit: int, offset: int):
+        return DescriptorResult({"call": ["open_sessions", workspace_id, limit, offset]})
+
+    def session_detail(self, workspace_id: str, session_id: str, *, limit: int):
+        return DescriptorResult(
+            {"call": ["session_detail", workspace_id, session_id, limit]}
+        )
+
+    def plan_detail(self, workspace_id: str, plan_id: str, *, limit: int):
+        return DescriptorResult({"call": ["plan_detail", workspace_id, plan_id, limit]})
+
+    def pending_approvals(self, workspace_id: str, *, limit: int, offset: int):
+        return DescriptorResult(
+            {"call": ["pending_approvals", workspace_id, limit, offset]}
+        )
 
 
 if __name__ == "__main__":

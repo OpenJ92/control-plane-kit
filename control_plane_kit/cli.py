@@ -65,6 +65,10 @@ def _parser() -> argparse.ArgumentParser:
         "desired-graph",
         "operator-graph",
         "activity",
+        "open-sessions",
+        "session-detail",
+        "plan-detail",
+        "pending-approvals",
         "observed-state",
         "control-surface",
     ):
@@ -73,6 +77,14 @@ def _parser() -> argparse.ArgumentParser:
     subcommands.choices["operator-graph"].add_argument("--pointer", default="current")
     subcommands.choices["control-surface"].add_argument("--pointer", default="current")
     subcommands.choices["activity"].add_argument("--limit", type=int, default=50)
+    subcommands.choices["open-sessions"].add_argument("--limit", type=int, default=50)
+    subcommands.choices["open-sessions"].add_argument("--offset", type=int, default=0)
+    subcommands.choices["session-detail"].add_argument("session_id")
+    subcommands.choices["session-detail"].add_argument("--limit", type=int, default=50)
+    subcommands.choices["plan-detail"].add_argument("plan_id")
+    subcommands.choices["plan-detail"].add_argument("--limit", type=int, default=50)
+    subcommands.choices["pending-approvals"].add_argument("--limit", type=int, default=50)
+    subcommands.choices["pending-approvals"].add_argument("--offset", type=int, default=0)
     return parser
 
 
@@ -98,6 +110,16 @@ def _url_for(args: argparse.Namespace, *, base_url: str) -> str:
             return f"{base}/workspaces/{workspace}/operator-graph?{urlencode({'pointer': args.pointer})}"
         case "activity":
             return f"{base}/workspaces/{workspace}/activity?{urlencode({'limit': args.limit})}"
+        case "open-sessions":
+            return f"{base}/workspaces/{workspace}/sessions?{urlencode({'limit': args.limit, 'offset': args.offset})}"
+        case "session-detail":
+            session_id = _quote_path(args.session_id)
+            return f"{base}/workspaces/{workspace}/sessions/{session_id}?{urlencode({'limit': args.limit})}"
+        case "plan-detail":
+            plan_id = _quote_path(args.plan_id)
+            return f"{base}/workspaces/{workspace}/plans/{plan_id}?{urlencode({'limit': args.limit})}"
+        case "pending-approvals":
+            return f"{base}/workspaces/{workspace}/approvals/pending?{urlencode({'limit': args.limit, 'offset': args.offset})}"
         case "observed-state":
             return f"{base}/workspaces/{workspace}/observed-state"
         case "control-surface":
