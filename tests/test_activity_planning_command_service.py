@@ -2,7 +2,9 @@
 
 from __future__ import annotations
 
+import concurrent.futures
 import os
+import threading
 import unittest
 
 import psycopg
@@ -19,6 +21,9 @@ from control_plane_kit.workflows import (
     ActivityPlanningCommandService,
     ActivityPlanningGraphInvalid,
     ActivityPlanningGraphStateConflict,
+    ActivityPlanningIdempotencyConflict,
+    ActivityPlanningSessionConflict,
+    CloseOperationSession,
     IdempotencyKey,
     OperationCommandService,
     RequestActivityPlan,
@@ -86,14 +91,19 @@ class ActivityPlanningCommandServiceTests(PostgresStoreTestCase):
             )
         )
 
-    def _command(self) -> RequestActivityPlan:
+    def _command(
+        self,
+        *,
+        actor_id: str = "jacob",
+        key: str = "plan-router-switch",
+    ) -> RequestActivityPlan:
         return RequestActivityPlan(
             session_id="session-a",
             workspace_id="workspace-a",
-            actor_id="jacob",
+            actor_id=actor_id,
             expected_current_graph_id="graph-current",
             expected_desired_graph_id="graph-desired",
-            idempotency_key=IdempotencyKey("plan-router-switch"),
+            idempotency_key=IdempotencyKey(key),
         )
 
     def test_plan_and_action_commit_as_one_operator_command(self):
@@ -171,6 +181,128 @@ class ActivityPlanningCommandServiceTests(PostgresStoreTestCase):
             len(self.stores.activity_history.actions_for_session("session-a")),
             1,
         )
+
+    def test_identical_request_replays_original_plan_and_evidence(self):
+        command = self._command()
+        first = self._planning_service("plan-a", "plan-action").execute(command)
+        replay = self._planning_service("unused-plan", "unused-action").execute(command)
+
+        self.assertFalse(first.replayed)
+        self.assertTrue(replay.replayed)
+        self.assertEqual(replay.plan_record.plan_id, "plan-a")
+        self.assertEqual(replay.action.action_id, "plan-action")
+        self.assertEqual(
+            len(self.stores.activity_history.plans_for_session("session-a")),
+            1,
+        )
+        self.assertEqual(
+            len(self.stores.activity_history.actions_for_session("session-a")),
+            2,
+        )
+
+    def test_same_key_with_different_intent_fails_explicitly(self):
+        self._planning_service("plan-a", "plan-action").execute(self._command())
+
+        with self.assertRaises(ActivityPlanningIdempotencyConflict):
+            self._planning_service("unused-plan", "unused-action").execute(
+                self._command(actor_id="another-operator")
+            )
+
+    def test_replay_survives_later_pointer_and_session_state_changes(self):
+        command = self._command()
+        first = self._planning_service("plan-a", "plan-action").execute(command)
+        self.stores.workspace.set_desired_graph("workspace-a", "graph-current")
+        self._operation_service("close-action").execute(
+            CloseOperationSession(
+                "session-a",
+                "jacob",
+                IdempotencyKey("close"),
+            )
+        )
+
+        replay = self._planning_service("unused-plan", "unused-action").execute(command)
+
+        self.assertTrue(replay.replayed)
+        self.assertEqual(replay.plan_record.plan_id, first.plan_record.plan_id)
+
+    def test_concurrent_identical_requests_converge_on_one_plan(self):
+        barrier = threading.Barrier(2)
+
+        def submit(ids: tuple[str, str]):
+            barrier.wait(timeout=5)
+            return self._planning_service(*ids).execute(self._command())
+
+        with concurrent.futures.ThreadPoolExecutor(max_workers=2) as executor:
+            results = tuple(
+                executor.map(
+                    submit,
+                    (("plan-a", "action-a"), ("plan-b", "action-b")),
+                )
+            )
+
+        plan_ids = {result.plan_record.plan_id for result in results}
+        action_ids = {result.action.action_id for result in results}
+        self.assertEqual(len(plan_ids), 1)
+        self.assertEqual(len(action_ids), 1)
+        self.assertEqual(sum(result.replayed for result in results), 1)
+        self.assertEqual(
+            len(self.stores.activity_history.plans_for_session("session-a")),
+            1,
+        )
+        self.assertEqual(
+            len(self.stores.activity_history.actions_for_session("session-a")),
+            2,
+        )
+
+    def test_concurrent_close_and_plan_publish_in_a_serial_session_order(self):
+        barrier = threading.Barrier(2)
+
+        def plan():
+            barrier.wait(timeout=5)
+            try:
+                return self._planning_service("plan-a", "plan-action").execute(
+                    self._command()
+                )
+            except ActivityPlanningSessionConflict as error:
+                return error
+
+        def close():
+            barrier.wait(timeout=5)
+            return self._operation_service("close-action").execute(
+                CloseOperationSession(
+                    "session-a",
+                    "jacob",
+                    IdempotencyKey("close"),
+                )
+            )
+
+        with concurrent.futures.ThreadPoolExecutor(max_workers=2) as executor:
+            plan_future = executor.submit(plan)
+            close_future = executor.submit(close)
+            plan_outcome = plan_future.result()
+            close_future.result()
+
+        kinds = tuple(
+            action.action_type
+            for action in self.stores.activity_history.actions_for_session("session-a")
+        )
+        if isinstance(plan_outcome, ActivityPlanningSessionConflict):
+            self.assertEqual(
+                kinds,
+                (
+                    OperationActionKind.SESSION_STARTED,
+                    OperationActionKind.SESSION_CLOSED,
+                ),
+            )
+        else:
+            self.assertEqual(
+                kinds,
+                (
+                    OperationActionKind.SESSION_STARTED,
+                    OperationActionKind.PLAN_REQUESTED,
+                    OperationActionKind.SESSION_CLOSED,
+                ),
+            )
 
 
 if __name__ == "__main__":
