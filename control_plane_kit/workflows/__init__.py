@@ -20,12 +20,19 @@ from control_plane_kit.workflows.services import (
     ApprovalWorkflowService,
 )
 from control_plane_kit.workflows.command_service import OperationCommandService
+from control_plane_kit.workflows.graph_edits import (
+    DesiredGraphEdit,
+    DesiredGraphEditResult,
+    SetDesiredGraph,
+)
 
 __all__ = [
     "ActivityRunService",
     "ApprovalWorkflowService",
     "CancelOperationSession",
     "CloseOperationSession",
+    "DesiredGraphEdit",
+    "DesiredGraphEditResult",
     "IdempotencyKey",
     "InvalidOperationCommand",
     "OperationCommandError",
@@ -37,4 +44,5 @@ __all__ = [
     "OperationWorkspaceNotFound",
     "RecordOperationAction",
     "StartOperationSession",
+    "SetDesiredGraph",
 ]
