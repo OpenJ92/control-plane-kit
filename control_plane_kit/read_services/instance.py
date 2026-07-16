@@ -5,13 +5,31 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from typing import Mapping
 
+from control_plane_kit.activity_plan import ActivityImpact, ReviewChange, RiskLevel
 from control_plane_kit.activity_plan_codec import DEFAULT_ACTIVITY_PLAN_CODEC
-
 from control_plane_kit.control_routes import route_set_named
-from control_plane_kit.graph_codec import DEFAULT_GRAPH_CODEC, GraphDescriptorError
+from control_plane_kit.graph_codec import (
+    DEFAULT_GRAPH_CODEC,
+    GraphDescriptorCodec,
+    GraphDescriptorError,
+)
 from control_plane_kit.projections import project_operator_graph
-from control_plane_kit.stores.protocols import ActivityHistoryStore, GraphTopologyStore, ObservedStateStore, WorkspaceStore
-from control_plane_kit.stores.records import GraphVersionRecord, ObservationRecord, WorkspaceRecord
+from control_plane_kit.recovery import plan_recovery_transition
+from control_plane_kit.stores.protocols import (
+    ActivityHistoryStore,
+    GraphTopologyStore,
+    ObservedStateStore,
+    WorkspaceStore,
+)
+from control_plane_kit.stores.records import (
+    ActivityPlanRecord,
+    GraphVersionRecord,
+    ObservationRecord,
+    OperationSessionRecord,
+    OperationSessionStatus,
+    WorkspaceRecord,
+)
+from control_plane_kit.validation import GraphValidationError, validate_graph
 from control_plane_kit.types import EndpointScope, Protocol, RuntimeKind
 
 _REDACTED = "<redacted>"
@@ -105,6 +123,45 @@ class ActivityTimelineReadModel:
 
 
 @dataclass(frozen=True)
+class FocusedCollectionReadModel:
+    """Bounded, offset-addressable focused workflow collection."""
+
+    workspace_id: str
+    kind: str
+    limit: int
+    offset: int
+    total: int
+    items: tuple[Mapping[str, object], ...]
+
+    def descriptor(self) -> dict[str, object]:
+        return {
+            "workspace_id": self.workspace_id,
+            "kind": self.kind,
+            "limit": self.limit,
+            "offset": self.offset,
+            "total": self.total,
+            "has_more": self.offset + len(self.items) < self.total,
+            "items": [dict(item) for item in self.items],
+        }
+
+
+@dataclass(frozen=True)
+class FocusedDetailReadModel:
+    """Named focused workflow detail with one canonical payload."""
+
+    workspace_id: str
+    kind: str
+    payload: Mapping[str, object]
+
+    def descriptor(self) -> dict[str, object]:
+        return {
+            "workspace_id": self.workspace_id,
+            "kind": self.kind,
+            **dict(self.payload),
+        }
+
+
+@dataclass(frozen=True)
 class ObservedStateReadModel:
     """Latest observed state by subject for a workspace."""
 
@@ -180,11 +237,13 @@ class InstanceReadService:
         graph_topology_store: GraphTopologyStore,
         activity_history_store: ActivityHistoryStore | None = None,
         observed_state_store: ObservedStateStore | None = None,
+        graph_codec: GraphDescriptorCodec = DEFAULT_GRAPH_CODEC,
     ) -> None:
         self._workspace_store = workspace_store
         self._graph_topology_store = graph_topology_store
         self._activity_history_store = activity_history_store
         self._observed_state_store = observed_state_store
+        self._graph_codec = graph_codec
 
     def workspace(self, workspace_id: str) -> WorkspaceReadModel:
         """Return the workspace summary and graph pointer read models."""
@@ -230,6 +289,107 @@ class InstanceReadService:
             workspace_id=workspace_id,
             limit=limit,
             sessions=tuple(_session_descriptor(store, session, limit=limit) for session in sessions),
+        )
+
+    def open_sessions(
+        self,
+        workspace_id: str,
+        *,
+        limit: int = 50,
+        offset: int = 0,
+    ) -> FocusedCollectionReadModel:
+        """Return deterministic summaries for open operation sessions."""
+
+        limit, offset = _page(limit, offset)
+        self._workspace(workspace_id)
+        sessions = tuple(
+            session
+            for session in self._activity_history().sessions_for_workspace(workspace_id)
+            if session.status is OperationSessionStatus.OPEN
+        )
+        return FocusedCollectionReadModel(
+            workspace_id=workspace_id,
+            kind="open-sessions",
+            limit=limit,
+            offset=offset,
+            total=len(sessions),
+            items=tuple(
+                _session_summary_descriptor(session)
+                for session in sessions[offset : offset + limit]
+            ),
+        )
+
+    def session_detail(
+        self,
+        workspace_id: str,
+        session_id: str,
+        *,
+        limit: int = 50,
+    ) -> FocusedDetailReadModel:
+        """Return one bounded session projection inside a workspace boundary."""
+
+        limit = _bounded_limit(limit)
+        self._workspace(workspace_id)
+        store = self._activity_history()
+        session = _session_in_workspace(store, workspace_id, session_id)
+        return FocusedDetailReadModel(
+            workspace_id=workspace_id,
+            kind="session-detail",
+            payload={"session": _session_descriptor(store, session, limit=limit)},
+        )
+
+    def plan_detail(
+        self,
+        workspace_id: str,
+        plan_id: str,
+        *,
+        limit: int = 50,
+    ) -> FocusedDetailReadModel:
+        """Return one canonical plan with risk and recovery projections."""
+
+        limit = _bounded_limit(limit)
+        self._workspace(workspace_id)
+        store = self._activity_history()
+        plan = _plan_in_workspace(store, workspace_id, plan_id)
+        payload = _plan_descriptor(store, plan, limit=limit)
+        payload["risk_summary"] = _risk_summary(plan)
+        payload["recovery"] = self._recovery_for_plan(workspace_id, plan)
+        return FocusedDetailReadModel(
+            workspace_id=workspace_id,
+            kind="plan-detail",
+            payload={"plan": payload},
+        )
+
+    def pending_approvals(
+        self,
+        workspace_id: str,
+        *,
+        limit: int = 50,
+        offset: int = 0,
+    ) -> FocusedCollectionReadModel:
+        """Return pending approval requests without exposing decision commands."""
+
+        limit, offset = _page(limit, offset)
+        self._workspace(workspace_id)
+        store = self._activity_history()
+        pending = []
+        for session in store.sessions_for_workspace(workspace_id):
+            pending.extend(
+                request
+                for request in store.approval_requests_for_session(session.session_id)
+                if store.approval_decision_for_request(request.request_id) is None
+            )
+        pending.sort(key=lambda value: (value.requested_at, value.request_id))
+        return FocusedCollectionReadModel(
+            workspace_id=workspace_id,
+            kind="pending-approvals",
+            limit=limit,
+            offset=offset,
+            total=len(pending),
+            items=tuple(
+                _approval_descriptor(store, request)
+                for request in pending[offset : offset + limit]
+            ),
         )
 
     def observed_state(self, workspace_id: str) -> ObservedStateReadModel:
@@ -293,11 +453,43 @@ class InstanceReadService:
         operator_graph: Mapping[str, object] | None = None
         if include_operator_graph:
             try:
-                graph = DEFAULT_GRAPH_CODEC.decode(record.graph_descriptor)
+                graph = self._graph_codec.decode(record.graph_descriptor)
             except GraphDescriptorError as exc:
                 raise ReadModelError(f"invalid stored graph descriptor: {exc}") from exc
             operator_graph = project_operator_graph(graph).descriptor()
         return _graph_pointer_read_model(pointer, record, operator_graph=operator_graph)
+
+    def _recovery_for_plan(
+        self,
+        workspace_id: str,
+        plan: ActivityPlanRecord,
+    ) -> Mapping[str, object]:
+        try:
+            base = self._graph_topology_store.get(plan.base_graph_id)
+            desired = self._graph_topology_store.get(plan.desired_graph_id)
+        except KeyError as exc:
+            raise ReadModelError(
+                f"plan {plan.plan_id!r} references missing graph truth"
+            ) from exc
+        if base.workspace_id != workspace_id or desired.workspace_id != workspace_id:
+            raise ReadModelError(
+                f"plan {plan.plan_id!r} references graph truth outside workspace"
+            )
+        try:
+            target = validate_graph(
+                self._graph_codec.decode(base.graph_descriptor),
+                codec=self._graph_codec,
+            )
+            current = validate_graph(
+                self._graph_codec.decode(desired.graph_descriptor),
+                codec=self._graph_codec,
+            )
+            candidate = plan_recovery_transition(current, target)
+        except (GraphDescriptorError, GraphValidationError) as exc:
+            raise ReadModelError(
+                f"plan {plan.plan_id!r} has invalid recovery graph truth"
+            ) from exc
+        return candidate.descriptor()
 
 
 def _workspace_summary(record: WorkspaceRecord) -> WorkspaceSummary:
@@ -399,18 +591,29 @@ def _list(value: object) -> list[object]:
     return []
 
 
-def _session_descriptor(store: ActivityHistoryStore, session: object, *, limit: int) -> dict[str, object]:
-    session_id = getattr(session, "session_id")
+def _session_summary_descriptor(session: OperationSessionRecord) -> dict[str, object]:
+    return {
+        "session_id": session.session_id,
+        "workspace_id": session.workspace_id,
+        "actor_id": session.actor_id,
+        "title": session.title,
+        "status": session.status.value,
+        "created_at": session.created_at,
+        "closed_at": session.closed_at,
+        "metadata": _redact_descriptor_value("metadata", session.metadata),
+    }
+
+
+def _session_descriptor(
+    store: ActivityHistoryStore,
+    session: OperationSessionRecord,
+    *,
+    limit: int,
+) -> dict[str, object]:
+    session_id = session.session_id
     plans = store.plans_for_session(session_id)[:limit]
     return {
-        "session_id": session_id,
-        "workspace_id": getattr(session, "workspace_id"),
-        "actor_id": getattr(session, "actor_id"),
-        "title": getattr(session, "title"),
-        "status": getattr(session, "status").value,
-        "created_at": getattr(session, "created_at"),
-        "closed_at": getattr(session, "closed_at"),
-        "metadata": _redact_descriptor_value("metadata", getattr(session, "metadata")),
+        **_session_summary_descriptor(session),
         "actions": [
             _action_descriptor(action)
             for action in store.actions_for_session(session_id)[:limit]
@@ -466,16 +669,21 @@ def _approval_descriptor(
     }
 
 
-def _plan_descriptor(store: ActivityHistoryStore, plan: object, *, limit: int) -> dict[str, object]:
-    plan_id = getattr(plan, "plan_id")
+def _plan_descriptor(
+    store: ActivityHistoryStore,
+    plan: ActivityPlanRecord,
+    *,
+    limit: int,
+) -> dict[str, object]:
+    plan_id = plan.plan_id
     return {
         "plan_id": plan_id,
-        "session_id": getattr(plan, "session_id"),
-        "base_graph_id": getattr(plan, "base_graph_id"),
-        "desired_graph_id": getattr(plan, "desired_graph_id"),
-        "status": getattr(plan, "status"),
-        "created_at": getattr(plan, "created_at"),
-        "payload": DEFAULT_ACTIVITY_PLAN_CODEC.encode(getattr(plan, "plan")),
+        "session_id": plan.session_id,
+        "base_graph_id": plan.base_graph_id,
+        "desired_graph_id": plan.desired_graph_id,
+        "status": plan.status,
+        "created_at": plan.created_at,
+        "payload": DEFAULT_ACTIVITY_PLAN_CODEC.encode(plan.plan),
         "runs": [
             _run_descriptor(store, run, limit=limit)
             for run in store.runs_for_plan(plan_id)[:limit]
@@ -523,9 +731,93 @@ def _observation_descriptor(record: ObservationRecord) -> dict[str, object]:
 
 
 def _positive_limit(limit: int) -> int:
-    if limit < 1:
+    if type(limit) is not int or limit < 1:
         raise ReadModelError(f"limit must be positive, got {limit}")
     return limit
+
+
+def _bounded_limit(limit: int) -> int:
+    limit = _positive_limit(limit)
+    if limit > 100:
+        raise ReadModelError(f"limit must not exceed 100, got {limit}")
+    return limit
+
+
+def _page(limit: int, offset: int) -> tuple[int, int]:
+    limit = _bounded_limit(limit)
+    if type(offset) is not int or offset < 0:
+        raise ReadModelError(f"offset must be non-negative, got {offset}")
+    return limit, offset
+
+
+def _session_in_workspace(
+    store: ActivityHistoryStore,
+    workspace_id: str,
+    session_id: str,
+) -> OperationSessionRecord:
+    try:
+        session = store.get_session(session_id)
+    except KeyError as exc:
+        raise ReadModelError(
+            f"missing session {session_id!r} in workspace {workspace_id!r}"
+        ) from exc
+    if session.workspace_id != workspace_id:
+        raise ReadModelError(
+            f"missing session {session_id!r} in workspace {workspace_id!r}"
+        )
+    return session
+
+
+def _plan_in_workspace(
+    store: ActivityHistoryStore,
+    workspace_id: str,
+    plan_id: str,
+) -> ActivityPlanRecord:
+    try:
+        plan = store.get_plan(plan_id)
+    except KeyError as exc:
+        raise ReadModelError(
+            f"missing plan {plan_id!r} in workspace {workspace_id!r}"
+        ) from exc
+    try:
+        session = store.get_session(plan.session_id)
+    except KeyError as exc:
+        raise ReadModelError(
+            f"missing plan {plan_id!r} in workspace {workspace_id!r}"
+        ) from exc
+    if session.workspace_id != workspace_id:
+        raise ReadModelError(
+            f"missing plan {plan_id!r} in workspace {workspace_id!r}"
+        )
+    return plan
+
+
+def _risk_summary(plan: ActivityPlanRecord) -> dict[str, object]:
+    counts = {risk.value: 0 for risk in RiskLevel}
+    for activity in plan.plan.activities:
+        counts[activity.risk.value] += 1
+    max_risk = max(
+        (activity.risk for activity in plan.plan.activities),
+        key=_risk_rank,
+        default=RiskLevel.INFORMATIONAL,
+    )
+    return {
+        "max_risk": max_risk.value,
+        "counts": counts,
+        "destructive_count": sum(
+            activity.impact is ActivityImpact.DESTRUCTIVE
+            for activity in plan.plan.activities
+        ),
+        "review_blocker_count": sum(
+            isinstance(activity.operation, ReviewChange)
+            for activity in plan.plan.activities
+        ),
+        "ready_for_execution": plan.plan.ready_for_execution,
+    }
+
+
+def _risk_rank(risk: RiskLevel) -> int:
+    return tuple(RiskLevel).index(risk)
 
 
 def _redact_graph_descriptor(descriptor: Mapping[str, object]) -> dict[str, object]:
