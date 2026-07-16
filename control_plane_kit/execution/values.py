@@ -275,7 +275,7 @@ class ExecutionRequestRecord:
 
 @dataclass(frozen=True)
 class ActivityRunRecord:
-    """One durable execution attempt for an admitted request."""
+    """Current projection of one run over its authoritative event history."""
 
     run_id: str
     plan_id: str
@@ -284,7 +284,7 @@ class ActivityRunRecord:
     status: ActivityRunStatus
     created_at: str
     started_at: str | None = None
-    finished_at: str | None = None
+    settled_at: str | None = None
     metadata: BoundedEvidence = field(default_factory=BoundedEvidence)
 
     def __post_init__(self) -> None:
@@ -295,7 +295,7 @@ class ActivityRunRecord:
                 "retry",
                 "status",
                 "started_at",
-                "finished_at",
+                "settled_at",
                 "metadata",
             },
         )
@@ -307,10 +307,12 @@ class ActivityRunRecord:
             raise TypeError("activity run status must be ActivityRunStatus")
         if self.started_at is not None and not _is_text(self.started_at):
             raise ExecutionValueError("started_at must be non-empty text when present")
-        if self.finished_at is not None and not _is_text(self.finished_at):
-            raise ExecutionValueError("finished_at must be non-empty text when present")
+        if self.settled_at is not None and not _is_text(self.settled_at):
+            raise ExecutionValueError("settled_at must be non-empty text when present")
         if not isinstance(self.metadata, BoundedEvidence):
             raise TypeError("activity run metadata must be BoundedEvidence")
+        if isinstance(self.admission, AdmittedRun):
+            _validate_admitted_run_projection(self)
 
 
 @dataclass(frozen=True)
@@ -376,6 +378,40 @@ ExecutionDescriptorValue: TypeAlias = (
     | LegacyImportedRun
     | FailureEvidence
 )
+
+
+_STARTED_RUN_STATUSES = frozenset(
+    {
+        ActivityRunStatus.RUNNING,
+        ActivityRunStatus.PAUSED,
+        ActivityRunStatus.SUCCEEDED,
+        ActivityRunStatus.FAILED,
+        ActivityRunStatus.COMPENSATING,
+        ActivityRunStatus.COMPENSATED,
+        ActivityRunStatus.PARTIALLY_FAILED,
+    }
+)
+_SETTLED_RUN_STATUSES = frozenset(
+    {
+        ActivityRunStatus.SUCCEEDED,
+        ActivityRunStatus.COMPENSATED,
+        ActivityRunStatus.PARTIALLY_FAILED,
+        ActivityRunStatus.CANCELLED,
+    }
+)
+
+
+def _validate_admitted_run_projection(run: ActivityRunRecord) -> None:
+    if run.status is ActivityRunStatus.CLAIMED and run.started_at is not None:
+        raise ExecutionValueError("claimed runs must not carry started_at")
+    if run.status in _STARTED_RUN_STATUSES and run.started_at is None:
+        raise ExecutionValueError(f"{run.status.value} runs require started_at")
+    if run.status in _SETTLED_RUN_STATUSES and run.settled_at is None:
+        raise ExecutionValueError(f"{run.status.value} runs require settled_at")
+    if run.status not in _SETTLED_RUN_STATUSES and run.settled_at is not None:
+        raise ExecutionValueError(
+            f"{run.status.value} runs must remain unsettled"
+        )
 
 
 def _require_text_fields(value: object, *, excluded: set[str] | None = None) -> None:

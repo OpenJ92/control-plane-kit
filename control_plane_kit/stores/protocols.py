@@ -116,8 +116,7 @@ class ExecutionStore(Protocol):
         expected: ActivityRunStatus,
         replacement: ActivityRunStatus,
         started_at: str | None = None,
-        finished_at: str | None = None,
-        clear_finished_at: bool = False,
+        settled_at: str | None = None,
     ) -> ActivityRunRecord | None: ...
     def runs_for_plan(self, plan_id: str) -> tuple[ActivityRunRecord, ...]: ...
     def runs_for_request(self, request_id: str) -> tuple[ActivityRunRecord, ...]: ...
