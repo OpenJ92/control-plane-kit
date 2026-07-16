@@ -127,13 +127,46 @@ CREATE TABLE IF NOT EXISTS cpk_approval_decisions (
   intent_fingerprint text
 );
 
+CREATE TABLE IF NOT EXISTS cpk_execution_requests (
+  request_id text PRIMARY KEY,
+  workspace_id text NOT NULL REFERENCES cpk_workspaces(workspace_id),
+  session_id text NOT NULL REFERENCES cpk_operation_sessions(session_id),
+  plan_id text NOT NULL REFERENCES cpk_activity_plans(plan_id),
+  status text NOT NULL,
+  requested_by text NOT NULL,
+  requested_at text NOT NULL,
+  approval_request_id text NOT NULL REFERENCES cpk_approval_requests(request_id),
+  approval_decision_id text NOT NULL REFERENCES cpk_approval_decisions(decision_id),
+  idempotency_key text NOT NULL,
+  intent_fingerprint text NOT NULL,
+  claim_worker_id text,
+  claimed_at text,
+  lease_expires_at text,
+  CONSTRAINT cpk_execution_requests_status_check
+    CHECK (status IN ('queued', 'claimed', 'cancelled')),
+  CONSTRAINT cpk_execution_requests_claim_check
+    CHECK (
+      (status = 'claimed' AND claim_worker_id IS NOT NULL
+        AND claimed_at IS NOT NULL AND lease_expires_at IS NOT NULL)
+      OR
+      (status <> 'claimed' AND claim_worker_id IS NULL
+        AND claimed_at IS NULL AND lease_expires_at IS NULL)
+    ),
+  UNIQUE (workspace_id, idempotency_key)
+);
+
 CREATE TABLE IF NOT EXISTS cpk_activity_runs (
   run_id text PRIMARY KEY,
   plan_id text NOT NULL REFERENCES cpk_activity_plans(plan_id),
+  request_id text REFERENCES cpk_execution_requests(request_id),
+  attempt integer NOT NULL DEFAULT 1,
+  prior_run_id text REFERENCES cpk_activity_runs(run_id),
   status text NOT NULL,
-  started_at text NOT NULL,
+  created_at text,
+  started_at text,
   finished_at text,
-  metadata jsonb NOT NULL DEFAULT '{}'::jsonb
+  metadata jsonb NOT NULL DEFAULT '{}'::jsonb,
+  legacy_imported boolean NOT NULL DEFAULT false
 );
 
 CREATE TABLE IF NOT EXISTS cpk_activity_events (
@@ -196,6 +229,190 @@ CREATE UNIQUE INDEX IF NOT EXISTS cpk_approval_requests_idempotency
 CREATE UNIQUE INDEX IF NOT EXISTS cpk_approval_decisions_idempotency
   ON cpk_approval_decisions (request_id, idempotency_key)
   WHERE idempotency_key IS NOT NULL;
+
+ALTER TABLE cpk_activity_runs
+  ADD COLUMN IF NOT EXISTS request_id text REFERENCES cpk_execution_requests(request_id),
+  ADD COLUMN IF NOT EXISTS attempt integer NOT NULL DEFAULT 1,
+  ADD COLUMN IF NOT EXISTS prior_run_id text REFERENCES cpk_activity_runs(run_id),
+  ADD COLUMN IF NOT EXISTS created_at text,
+  ADD COLUMN IF NOT EXISTS legacy_imported boolean;
+
+UPDATE cpk_activity_runs
+SET created_at = COALESCE(created_at, started_at),
+    legacy_imported = COALESCE(legacy_imported, true)
+WHERE created_at IS NULL OR legacy_imported IS NULL;
+
+ALTER TABLE cpk_activity_runs
+  ALTER COLUMN created_at SET NOT NULL,
+  ALTER COLUMN legacy_imported SET DEFAULT false,
+  ALTER COLUMN legacy_imported SET NOT NULL,
+  ALTER COLUMN started_at DROP NOT NULL;
+
+DO $$
+BEGIN
+  IF NOT EXISTS (
+    SELECT 1 FROM pg_constraint
+    WHERE conrelid = 'cpk_operation_sessions'::regclass
+      AND conname = 'cpk_operation_sessions_workspace_identity'
+  ) THEN
+    ALTER TABLE cpk_operation_sessions
+      ADD CONSTRAINT cpk_operation_sessions_workspace_identity
+      UNIQUE (session_id, workspace_id);
+  END IF;
+  IF NOT EXISTS (
+    SELECT 1 FROM pg_constraint
+    WHERE conrelid = 'cpk_activity_plans'::regclass
+      AND conname = 'cpk_activity_plans_session_identity'
+  ) THEN
+    ALTER TABLE cpk_activity_plans
+      ADD CONSTRAINT cpk_activity_plans_session_identity
+      UNIQUE (plan_id, session_id);
+  END IF;
+  IF NOT EXISTS (
+    SELECT 1 FROM pg_constraint
+    WHERE conrelid = 'cpk_approval_decisions'::regclass
+      AND conname = 'cpk_approval_decisions_request_identity'
+  ) THEN
+    ALTER TABLE cpk_approval_decisions
+      ADD CONSTRAINT cpk_approval_decisions_request_identity
+      UNIQUE (decision_id, request_id);
+  END IF;
+  IF NOT EXISTS (
+    SELECT 1 FROM pg_constraint
+    WHERE conrelid = 'cpk_execution_requests'::regclass
+      AND conname = 'cpk_execution_requests_plan_identity'
+  ) THEN
+    ALTER TABLE cpk_execution_requests
+      ADD CONSTRAINT cpk_execution_requests_plan_identity
+      UNIQUE (request_id, plan_id);
+  END IF;
+  IF NOT EXISTS (
+    SELECT 1 FROM pg_constraint
+    WHERE conrelid = 'cpk_execution_requests'::regclass
+      AND conname = 'cpk_execution_requests_workspace_session_fk'
+  ) THEN
+    ALTER TABLE cpk_execution_requests
+      ADD CONSTRAINT cpk_execution_requests_workspace_session_fk
+      FOREIGN KEY (session_id, workspace_id)
+      REFERENCES cpk_operation_sessions(session_id, workspace_id);
+  END IF;
+  IF NOT EXISTS (
+    SELECT 1 FROM pg_constraint
+    WHERE conrelid = 'cpk_execution_requests'::regclass
+      AND conname = 'cpk_execution_requests_plan_session_fk'
+  ) THEN
+    ALTER TABLE cpk_execution_requests
+      ADD CONSTRAINT cpk_execution_requests_plan_session_fk
+      FOREIGN KEY (plan_id, session_id)
+      REFERENCES cpk_activity_plans(plan_id, session_id);
+  END IF;
+  IF NOT EXISTS (
+    SELECT 1 FROM pg_constraint
+    WHERE conrelid = 'cpk_execution_requests'::regclass
+      AND conname = 'cpk_execution_requests_approval_identity_fk'
+  ) THEN
+    ALTER TABLE cpk_execution_requests
+      ADD CONSTRAINT cpk_execution_requests_approval_identity_fk
+      FOREIGN KEY (approval_decision_id, approval_request_id)
+      REFERENCES cpk_approval_decisions(decision_id, request_id);
+  END IF;
+  IF NOT EXISTS (
+    SELECT 1 FROM pg_constraint
+    WHERE conrelid = 'cpk_activity_runs'::regclass
+      AND conname = 'cpk_activity_runs_request_plan_fk'
+  ) THEN
+    ALTER TABLE cpk_activity_runs
+      ADD CONSTRAINT cpk_activity_runs_request_plan_fk
+      FOREIGN KEY (request_id, plan_id)
+      REFERENCES cpk_execution_requests(request_id, plan_id) NOT VALID;
+  END IF;
+  IF NOT EXISTS (
+    SELECT 1 FROM pg_constraint
+    WHERE conrelid = 'cpk_observations'::regclass
+      AND conname = 'cpk_observations_workspace_fk'
+  ) THEN
+    ALTER TABLE cpk_observations
+      ADD CONSTRAINT cpk_observations_workspace_fk
+      FOREIGN KEY (workspace_id) REFERENCES cpk_workspaces(workspace_id) NOT VALID;
+  END IF;
+  IF NOT EXISTS (
+    SELECT 1 FROM pg_constraint
+    WHERE conrelid = 'cpk_activity_runs'::regclass
+      AND conname = 'cpk_activity_runs_status_check'
+  ) THEN
+    ALTER TABLE cpk_activity_runs
+      ADD CONSTRAINT cpk_activity_runs_status_check
+      CHECK (status IN (
+        'claimed', 'running', 'paused', 'succeeded', 'failed',
+        'compensating', 'compensated', 'partially_failed', 'cancelled'
+      )) NOT VALID;
+  END IF;
+  IF NOT EXISTS (
+    SELECT 1 FROM pg_constraint
+    WHERE conrelid = 'cpk_activity_runs'::regclass
+      AND conname = 'cpk_activity_runs_admission_check'
+  ) THEN
+    ALTER TABLE cpk_activity_runs
+      ADD CONSTRAINT cpk_activity_runs_admission_check
+      CHECK (
+        (legacy_imported AND request_id IS NULL)
+        OR (NOT legacy_imported AND request_id IS NOT NULL)
+      ) NOT VALID;
+  END IF;
+  IF NOT EXISTS (
+    SELECT 1 FROM pg_constraint
+    WHERE conrelid = 'cpk_activity_runs'::regclass
+      AND conname = 'cpk_activity_runs_attempt_check'
+  ) THEN
+    ALTER TABLE cpk_activity_runs
+      ADD CONSTRAINT cpk_activity_runs_attempt_check
+      CHECK (
+        attempt > 0
+        AND ((attempt = 1 AND prior_run_id IS NULL)
+          OR (attempt > 1 AND prior_run_id IS NOT NULL))
+        AND prior_run_id IS DISTINCT FROM run_id
+      ) NOT VALID;
+  END IF;
+  IF NOT EXISTS (
+    SELECT 1 FROM pg_constraint
+    WHERE conrelid = 'cpk_activity_events'::regclass
+      AND conname = 'cpk_activity_events_kind_check'
+  ) THEN
+    ALTER TABLE cpk_activity_events
+      ADD CONSTRAINT cpk_activity_events_kind_check
+      CHECK (event_type IN (
+        'request_admitted', 'request_claimed', 'run_started', 'run_paused',
+        'run_resumed', 'step_started', 'step_succeeded', 'step_failed',
+        'step_uncertain', 'compensation_started', 'compensation_succeeded',
+        'compensation_failed', 'run_succeeded', 'run_failed', 'run_cancelled'
+      )) NOT VALID;
+  END IF;
+  IF NOT EXISTS (
+    SELECT 1 FROM pg_constraint
+    WHERE conrelid = 'cpk_observations'::regclass
+      AND conname = 'cpk_observations_status_check'
+  ) THEN
+    ALTER TABLE cpk_observations
+      ADD CONSTRAINT cpk_observations_status_check
+      CHECK (status IN (
+        'starting', 'process_started', 'reachable', 'healthy', 'unhealthy',
+        'timed_out', 'unknown'
+      )) NOT VALID;
+  END IF;
+END $$;
+
+CREATE UNIQUE INDEX IF NOT EXISTS cpk_execution_requests_active_plan
+  ON cpk_execution_requests (plan_id)
+  WHERE status IN ('queued', 'claimed');
+
+CREATE UNIQUE INDEX IF NOT EXISTS cpk_activity_runs_active_request
+  ON cpk_activity_runs (request_id)
+  WHERE request_id IS NOT NULL
+    AND status IN ('claimed', 'running', 'paused', 'compensating');
+
+CREATE UNIQUE INDEX IF NOT EXISTS cpk_activity_runs_request_attempt
+  ON cpk_activity_runs (request_id, attempt)
+  WHERE request_id IS NOT NULL;
 """
 
 
@@ -881,13 +1098,24 @@ class PostgresActivityHistoryStore:
         )
 
     def add_run(self, record: ActivityRunRecord) -> ActivityRunRecord:
+        """Append Roadmap 0007 historical run data during forward migration."""
+
         self._connection.execute(
             """
             INSERT INTO cpk_activity_runs
-              (run_id, plan_id, status, started_at, finished_at, metadata)
-            VALUES (%s, %s, %s, %s, %s, %s::jsonb)
+              (run_id, plan_id, status, created_at, started_at, finished_at,
+               metadata, legacy_imported)
+            VALUES (%s, %s, %s, %s, %s, %s, %s::jsonb, true)
             """,
-            (record.run_id, record.plan_id, record.status.value, record.started_at, record.finished_at, _json(record.metadata.descriptor())),
+            (
+                record.run_id,
+                record.plan_id,
+                record.status.value,
+                record.started_at,
+                record.started_at,
+                record.finished_at,
+                _json(record.metadata.descriptor()),
+            ),
         )
         return record
 
