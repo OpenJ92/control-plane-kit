@@ -152,7 +152,7 @@ Hub screen
   visible control-plane instances
   lifecycle controls
   create/wake/select child instance
-  authenticated proxy to selected child API
+  open selected child public Auth entry
 
 Workspace screen
   runtime context boxes
@@ -173,16 +173,18 @@ allows the same block descriptors and capability-driven UI machinery to
 represent both selectable child instances and other controllable deployment
 blocks without introducing a special UI node species.
 
-Navigation should preserve a stable instance identity path rather than mounting
-runtime URLs directly:
+Navigation should preserve stable spawning provenance while using the selected
+instance's observed public entry for communication:
 
 ```text
 root / child-a / child-a-1
 ```
 
-The frontend sends that path to the bootstrapped instance. Recursive proxy
-resolution and delegated authorization remain backend concerns delivered by
-Roadmap 0009.
+The frontend uses that path for breadcrumbs and selection history. It resolves
+the selected instance's observed public Auth entry URL, changes its active
+server/base URL, and authenticates directly there. Roadmap 0009 deliberately
+does not place the bootstrapped instance or any ancestor in the selected
+instance's request path.
 
 The user action:
 
@@ -261,8 +263,9 @@ production topology without approval."
   and Instance as unrelated object hierarchies.
 - Do not introduce a special UI node type when the child is already represented
   by an ordinary application block plus instance capabilities.
-- Any authorized parent instance may proxy authenticated requests to a selected
-  child, but it must not duplicate or absorb child workspace semantics.
+- An authorized instance may advertise selectable children, but clients connect
+  directly to each selected child's public Auth entry and keep sessions scoped
+  to that instance origin.
 
 ## Validation
 

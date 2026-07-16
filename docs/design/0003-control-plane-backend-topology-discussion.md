@@ -961,40 +961,42 @@ routes. From the child's perspective, it is a complete control plane.
 
 "Hub" is the positional UI name for the first externally bootstrapped instance.
 It is not a class, server species, graph grammar, or source-of-truth module. The
-entry instance may discover and proxy to selectable child instance blocks using
-the same capabilities available to every instance.
+entry instance may discover selectable child instance blocks using the same
+capabilities available to every instance. Each child advertises its own public
+Auth entry; selecting it changes the client's active server and begins a direct
+login there.
 
 Reusable instance capabilities include:
 
 - operator identity and graph-scoped access,
 - child-instance discovery as a graph projection,
 - ordinary block lifecycle planning and execution,
-- discovery of observed child API endpoints,
-- delegated credentials or sessions,
-- and authenticated proxying to a selected child instance.
+- discovery of observed child public Auth endpoints,
+- public-entry contract observation and health,
+- and lifecycle authority over child deployment fragments.
 
 Each child instance exposes a typed control API in the same broad sense that a
-router or load balancer exposes a typed control API. The parent instance can query
-health and capabilities, start or stop the child through its runtime, and proxy
-authorized instance-specific requests. The child still owns its workspace,
-plans, approvals, execution, and history; proxying does not transfer that truth
-to the parent.
+router or load balancer exposes a typed control API. The parent instance can
+query health and capabilities and start or stop the child through its runtime.
+The child owns its workspace, authentication, plans, approvals, execution, and
+history. Deployment ownership does not place the parent in the child's normal
+request path.
 
 ```text
 Frontend
-  -> Root instance API
-      authenticate user
-      select owned child instance
-      proxy authorized request
-        -> Child ControlPlaneInstance API
-            -> child workspace / graph / activity authority
+  -> Root public Auth entry
+      authenticate with root
+      select child and obtain observed public Auth entry
+  -> Child public Auth entry
+      authenticate with child
+      -> child workspace / graph / activity authority
 ```
 
 This recursion is intentionally simplified in the ordinary user experience.
 The UI presents an entry screen followed by a selected deployment workspace.
 The algebra does not need to know about recursion: it deploys an application
-block normally. The running instance application provides recursive discovery
-and navigation.
+block normally. The running instance application provides child discovery;
+the client performs direct navigation to the selected public entry.
 
 There is one unavoidable bootstrap boundary: the first root Hub must be
 started by an external bootstrap recipe or an already-running parent.  After
@@ -1047,7 +1049,7 @@ child self authority = child workspace + graph/activity authority
 The parent should not absorb a child's deployment graph semantics merely because
 it is itself a control-plane instance. It owns the graph node and activity
 history by which it deployed the child block. The child owns its internal graph
-and activity machinery. Access grants, delegated sessions, endpoint history,
+and activity machinery. Access grants, public-entry history, lifecycle events,
 and recovery metadata may be relational records, but they are not another
 topology registry.
 
@@ -1405,12 +1407,13 @@ Resolved:
   not another domain object.
 - Immediate child topology is derived from ordinary graph nodes; observed state
   supplies endpoints and health; authorization records filter visibility.
-- Access, lifecycle, delegation, and proxying are reusable instance
-  capabilities rather than Hub-only functionality.
+- Access, lifecycle, discovery, and public-entry observation are reusable
+  instance capabilities rather than Hub-only functionality.
 - One child instance owns one deployment workspace.
 - A parent instance can create, wake, pause, stop, archive, deconstruct, and reconstruct
   child instances through activity planning and execution.
-- The root instance is the authenticated frontend proxy to child instance APIs.
+- The root instance advertises selectable children but is not a proxy to their
+  APIs; clients navigate to and authenticate with each child directly.
 - A parent does not directly manage application blocks inside a child's opaque
   workspace.
 
@@ -1420,7 +1423,8 @@ Remaining questions:
    access/recovery data, and which duplicate graph topology and should retire?
 2. Which child lifecycle states physically remove runtime resources, and which
    retain durable stores?
-3. What is the delegated credential/session format between parent and child?
+3. Which typed public-entry contract and reload policy cover stable and
+   ephemeral URLs?
 4. Which typed specification or capability identifies an instance block without
    relying on display metadata?
 5. What bootstrap recipe starts the first root instance?
@@ -1806,14 +1810,16 @@ may be:
   ActivityRun / ActivityEvent recording.
   Pause/resume/failure behavior.
 
-0009 Control Plane Instance Block And Recursive Navigation
+0009 Control Plane Instance Block, Recursive Spawning, And Direct Navigation
   Package the instance server as an ordinary ApplicationBlock.
   Derive child discovery from graph, observed state, and authorization.
   Use ordinary graph diff and activity execution for instance lifecycle.
-  Add authenticated recursive navigation without a Hub implementation.
+  Advertise each child's public Auth entry for direct authentication without a
+  Hub implementation or recursive request proxy.
 
 0010 Operator UI / MCP / Cross-Language Contracts
-  Existing visual UI and cross-language concerns consume the recursive model.
+  Existing visual UI and cross-language concerns consume selectable-instance
+  projections and direct public-entry navigation.
 ```
 
 This provisional split should be tested against the construction law:

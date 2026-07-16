@@ -1,4 +1,4 @@
-# Roadmap 0009: Control Plane Instance Block And Recursive Navigation
+# Roadmap 0009: Control Plane Instance Block, Recursive Spawning, And Direct Navigation
 
 Status: Draft
 Depends on: Roadmap 0001 through Roadmap 0008
@@ -66,8 +66,8 @@ This roadmap should provide:
   existing read-only adapter and seeded demo server,
 - a package-provided `ControlPlaneInstanceBlock` constructor,
 - a real Docker image/runtime implementation for the instance server,
-- an ordinary instance deployment recipe fragment containing Auth, CPI,
-  stores, runtime authority, connections, and optional public ingress,
+- an ordinary instance deployment recipe fragment containing public entry,
+  Auth, CPI, stores, runtime authority, and connections,
 - declared HTTP, Postgres, and runtime-authority sockets,
 - declared health, read, planning, execution, and child-navigation
   capabilities,
@@ -75,9 +75,9 @@ This roadmap should provide:
 - child discovery derived from ordinary graph topology,
 - endpoint and health lookup derived from observed state,
 - access filtering derived from authorization records,
-- authenticated navigation/proxying between instances,
+- observed public entry URLs and direct per-instance authentication,
 - bootstrap and recovery recipes,
-- recursive UI/API/CLI/MCP projections,
+- nested child-discovery projections for UI, API, CLI, and MCP,
 - and a live Docker demonstration of an instance deploying another instance.
 
 ## Current Implementation Reality
@@ -251,12 +251,12 @@ the future UI is an ordinary recipe fragment:
 
 ```text
 InstanceDeploymentFragment
-  = AuthBlock
+  = PublicEntryBlock
+  + AuthBlock
   + ControlPlaneInstanceBlock
   + StoreBundle
   + RuntimeAuthority
   + SocketConnections
-  + Optional[PublicIngressBlock]
 ```
 
 This fragment is not a new graph node or persistence type. It is a convenience
@@ -265,15 +265,15 @@ constructor that returns ordinary deployment expressions:
 ```python
 def control_plane_instance_deployment(
     instance_id: str,
-    *,
-    public_ingress: DeployBlock | None = None,
 ) -> tuple[DeploymentExpr, ...]:
+    public_entry = public_entry_block(f"{instance_id}-entry")
     auth = control_plane_auth_block(f"{instance_id}-auth")
     instance = control_plane_instance_block(instance_id)
     postgres = control_plane_postgres_block(f"{instance_id}-postgres")
     runtime_authority = docker_runtime_agent_block(f"{instance_id}-runtime")
 
     children: tuple[DeploymentExpr, ...] = (
+        public_entry,
         auth,
         instance,
         postgres,
@@ -281,17 +281,17 @@ def control_plane_instance_deployment(
         SocketConnection(postgres.block_id, "internal", instance.block_id, "database"),
         SocketConnection(runtime_authority.block_id, "control", instance.block_id, "runtime"),
         SocketConnection(instance.block_id, "instance-api", auth.block_id, "upstream"),
+        SocketConnection(public_entry.block_id, "public", auth.block_id, "public-entry"),
     )
-    return children if public_ingress is None else (
-        *children,
-        public_ingress,
-        SocketConnection(public_ingress.block_id, "public", auth.block_id, "ingress"),
-    )
+    return children
 ```
 
-The exact ingress socket direction will follow the package's provider-to-
-requirement configuration-flow convention. The important law is that the
-fragment expands into ordinary blocks and edges.
+The exact public-entry implementation may be Cloudflare, an AWS load balancer,
+Kubernetes ingress, a private VPN hostname, or a host-published development
+endpoint. The socket follows the package's provider-to-requirement
+configuration-flow convention. The important law is that every selectable
+instance advertises a reachable Auth URL and the fragment expands into ordinary
+blocks and edges.
 
 One workspace may contain several disconnected fragments:
 
@@ -396,8 +396,8 @@ The implementation should replace metadata string inspection with the package's
 eventual typed block/specification form. The snippet demonstrates the
 projection boundary, not the final discriminator.
 
-Relational data may still be needed for operator grants, delegated sessions,
-endpoint history, lifecycle events, and recovery metadata. Those records do not
+Relational data may still be needed for operator visibility grants, endpoint
+history, lifecycle events, and recovery metadata. Those records do not
 constitute a second graph or a Hub-owned child topology registry.
 
 ## Parent And Child Truth
@@ -408,7 +408,7 @@ The parent owns facts about its deployment of the child block:
 parent current/desired graph
 parent observation of child endpoint and health
 parent activity history for starting/stopping/replacing the child block
-parent authorization grants for traversing to that block
+parent authorization grants for listing or managing that child deployment
 ```
 
 The child owns facts inside its application boundary:
@@ -468,110 +468,106 @@ not rely on an unexplained host-side test process to perform the child's work.
 
 ## Navigation And Authentication
 
-The user enters through the externally bootstrapped instance and selects child
-instances recursively:
+Deployment recursion does not imply recursive request routing. Every selectable
+instance advertises its own public Auth URL and owns its own login session.
 
 ```text
-UI -> bootstrapped instance
+UI -> bootstrapped instance Auth
         GET selectable child instances
-        select child-a
-        proxy or delegate authenticated request
-          -> child-a instance
-               GET selectable child instances
-               select child-a-1
-               ...
+        select child-a with entry_url
+
+UI -> child-a entry_url
+        authenticate directly with child-a Auth
+        enter child-a workspace
+        GET child-a selectable children
+        select child-a-1 with entry_url
+
+UI -> child-a-1 entry_url
+        authenticate directly with child-a-1 Auth
 ```
 
-The stable reference is the block/instance identity, not its current URL. The
-parent resolves that identity through observed runtime endpoints.
+The parent does not proxy ordinary UI traffic to the child and does not mint a
+recursive delegation chain. The parent-child relation records deployment
+provenance, lifecycle authority, observation, recovery responsibility, and
+visibility. It is not the network path for normal use.
 
-The first implementation should prefer a parent proxy:
-
-```text
-https://control.example/instances/child-a/workspace
-```
-
-The parent resolves `child-a` to its current endpoint and forwards the request.
-This keeps runtime URL changes out of frontend navigation. A later direct mode
-may return a public child URL plus a short-lived delegated session.
-
-Every boundary authorizes independently:
-
-```text
-operator -> parent
-  parent authorizes traversal to child block
-  parent creates audience- and scope-bound delegation
-  parent -> child
-    child authorizes the requested workspace operation
-```
-
-Credentials must be short-lived, audience-bound, scope-bound, attributable,
-redacted, and unavailable as raw control secrets to browser code.
-
-### Arbitrary Recursive Proxy Protocol
-
-Recursive traversal must be a defined protocol rather than repeated ad hoc
-forwarding. A canonical path is:
-
-```text
-/instances/a/proxy/instances/b/proxy/instances/c/proxy/workspace
-```
-
-Each instance consumes exactly one immediate child segment, authorizes that
-traversal, resolves the child's Auth endpoint, signs a new child-audience
-delegation, and forwards the untouched remainder.
+The selectable-instance projection includes both stable identity and the
+currently observed public entry URL:
 
 ```python
-@router.api_route("/instances/{child_id}/proxy/{remaining_path:path}")
-async def proxy_child(child_id: str, remaining_path: str, request: Request):
-    traversal = traversal_envelope(request)
-    traversal_policy.require_allowed(traversal, child_id)
-    child = selectable_instances.require(child_id)
-    delegation = delegation_service.issue_for_child(traversal, child)
-    return await forward_to_child_auth(child, remaining_path, delegation, request)
+SelectableInstance(
+    instance_id="child-a",
+    display_name="Child A",
+    entry_url="https://child-a.control.example",
+    health="healthy",
+)
 ```
 
-The signed traversal envelope must include:
+The UI treats `instance_id` as durable identity and `entry_url` as replaceable
+observed addressing. Selecting an instance changes the client's active base URL
+and authentication session. A native client may retain separate sessions for
+several instances, but credentials must remain scoped to the Auth server that
+issued them.
+
+### Public Entry URL Contract
+
+The public entry URL is a typed contract supplied by the public-entry provider
+and consumed by Auth:
 
 ```text
-original actor
-current audience
-approved scopes
-request and trace IDs
-absolute deadline
-visited instance IDs
-remaining hop budget
+PublicEntryBlock
+  provides PublicEntryUrl
+
+AuthBlock
+  requires PublicEntryUrl
+    -> CONTROL_PLANE_PUBLIC_URL
+    -> AUTH_PUBLIC_BASE_URL
+    -> AUTH_ISSUER_URL where required
 ```
 
-Every hop strips untrusted internal headers, rejects repeated instance IDs,
-decrements the hop budget, preserves the deadline, and records bounded audit
-events.
+Conceptually:
 
-### Delegation Trust
+```python
+PublicEntryUrl = EnvironmentContract[str](
+    name="public_entry_url",
+    env_bindings=(
+        "CONTROL_PLANE_PUBLIC_URL",
+        "AUTH_PUBLIC_BASE_URL",
+    ),
+    secret=False,
+)
+```
 
-The roadmap must choose and document how child Auth validates parent authority.
-The first implementation may use signed JWTs with per-instance issuer identity
-and a bounded JWKS/trust-registration protocol. Whatever mechanism is chosen,
-child creation must establish trust as explicit persisted and auditable work.
+Three facts remain distinct:
 
 ```text
-parent creates child deployment
-  -> child Auth receives trusted parent issuer/key reference
-  -> parent receives child audience/protocol identity
-  -> both sides persist non-secret trust metadata
-  -> secret/private key material remains in a secret provider
+desired contract
+  Auth requires PublicEntryUrl
+
+observed endpoint
+  PublicEntryBlock advertises the URL currently reachable by clients
+
+injected value
+  Auth currently reads that URL from its EnvironmentContract
 ```
 
-Parent authorization grants permission to traverse. Child authorization still
-decides whether the delegated actor may perform the terminal operation.
+A stable named URL may be supplied before startup. An ephemeral tunnel URL is
+available only after the ingress starts; the executor must observe it, satisfy
+the contract, then start or reconfigure Auth according to the contract's reload
+policy. The parent projection reads the observed provider endpoint, not the
+child process environment.
+
+Direct authentication is the first design. Future identity federation or SSO
+may reduce repeated logins, but it must remain optional and must not reintroduce
+ancestor-by-ancestor request proxying.
 
 ## Lifecycle Uses The Existing Pipeline
 
 Adding a child is an ordinary graph edit:
 
 ```text
-add AuthBlock + ControlPlaneInstanceBlock + stores + runtime authority
-    + socket connections + optional ingress
+add PublicEntryBlock + AuthBlock + ControlPlaneInstanceBlock + stores
+    + runtime authority + socket connections
   -> validate DeploymentRecipe
   -> compile DeploymentGraph
   -> diff current and desired graphs
@@ -590,8 +586,9 @@ policy. For the instance fragment, the required order is:
 stores ready
   -> runtime authority ready
     -> CPI ready
-      -> Auth ready
-        -> optional public ingress ready
+      -> public entry endpoint available
+        -> Auth configured and ready
+          -> public entry traffic healthy
 ```
 
 Roadmap 0008 must provide the dependency-aware activity planner/executor. This
@@ -687,25 +684,30 @@ approval/execution pipeline.
    - Connect the agent provider to the CPI runtime requirement normally.
    - Test authorization, scope restrictions, and unavailable-agent behavior.
 
-5. Package the control-plane Auth boundary and delegation trust protocol.
+5. Package the control-plane Auth and public-entry boundary.
    - Provide an ordinary Auth application block in front of CPI.
    - Connect CPI's instance API provider to Auth's upstream requirement.
-   - Choose and document parent-to-child delegation validation.
-   - Establish issuer/audience trust as explicit, persisted, auditable work.
-   - Keep signing secrets in secret providers and descriptors redacted.
+   - Define `PublicEntryUrl` as a typed EnvironmentContract supplied by the
+     public-entry provider and consumed by Auth.
+   - Support stable preconfigured URLs and observed ephemeral URLs through
+     explicit reload/restart policy.
+   - Keep Auth signing/session secrets in secret providers and descriptors
+     redacted.
+   - Prove direct login against the advertised public entry URL.
 
 6. Add the ordinary instance deployment recipe fragment.
-   - Expand to Auth, CPI, stores, runtime authority, socket connections, and
-     optional public ingress.
+   - Expand to public entry, Auth, CPI, stores, runtime authority, and socket
+     connections.
    - Return ordinary `DeploymentExpr` values rather than introducing a capsule
      graph node or new persistence aggregate.
    - Support several disconnected instance fragments in one workspace.
-   - Add compilation fixtures for private/proxied and public-ingress forms.
+   - Add compilation fixtures for named Cloudflare, ephemeral Cloudflare, and
+     host-published development entry providers.
 
 7. Prove dependency-ordered generic execution.
    - Consume the readiness/dependency semantics delivered by Roadmap 0008.
-   - Start stores, runtime authority, CPI, Auth, and optional ingress in the
-     declared order with health gates.
+   - Start stores, runtime authority, CPI, public-entry endpoint, and Auth in the
+     declared phased order with endpoint and health gates.
    - Compensate partial startup in reverse completed order where safe.
    - Reject any implementation that uses a hand-authored instance startup
      script or a child-specific executor.
@@ -713,8 +715,8 @@ approval/execution pipeline.
 
 8. Reconcile the existing instance registry concepts and access schema.
    - Identify which records are duplicated topology and remove that role.
-   - Normalize operator grants, delegated sessions, lifecycle history, and
-     recovery metadata where they are independently authoritative.
+   - Normalize operator visibility grants, lifecycle history, and recovery
+     metadata where they are independently authoritative.
    - Derive immediate child topology from graph nodes.
    - Derive endpoint and health from observed state.
    - Migrate or retire `cpk_instances` fields explicitly; do not leave a shadow
@@ -730,16 +732,15 @@ approval/execution pipeline.
      lifecycle events, retained locators, and grants.
    - Expose the same projection to FastAPI, CLI, and read-only MCP.
 
-10. Add authenticated arbitrary-depth recursive navigation.
-   - Implement the consume-one-child-and-forward-remainder path protocol.
-   - Resolve stable child identity to the observed child Auth endpoint.
-   - Add strict parent proxying with timeout, body, method, path, header, depth,
-     cycle, and deadline policies.
-   - Add signed traversal envelopes and audience-/scope-bound delegation.
-   - Require authorization at parent and child.
-   - Preserve original actor attribution in child activity history.
-   - Test root-to-child and root-to-child-to-grandchild requests with identical
-     endpoint semantics at every hop.
+10. Add direct selectable-instance navigation.
+   - Project stable child identity and observed public Auth entry URL.
+   - Let clients switch their active base URL and authenticate directly against
+     the selected child.
+   - Keep sessions scoped by instance origin and prevent credential reuse across
+     unrelated Auth servers.
+   - Handle changed, stale, unavailable, and malformed advertised URLs.
+   - Test root login -> child selection -> child login and child login ->
+     grandchild selection -> grandchild login without parent proxying.
 
 11. Add idempotent bootstrap, archive, and recovery interpreters.
    - Install schema, workspace, empty graph, initial grants, trust identity,
@@ -753,30 +754,30 @@ approval/execution pipeline.
 
 12. Add a recursive Docker demonstration.
    - Bootstrap a root instance.
-   - Use its graph workflow to add a full private child instance fragment.
+   - Use its graph workflow to add a full child instance fragment.
    - Execute the approved plan.
    - Discover the child from graph plus observed state.
-   - Navigate through Auth and the root proxy to the child workspace.
+   - Navigate directly to the child's advertised URL and log in there.
    - Let the child deploy a grandchild through its own runtime authority.
-   - Navigate root -> child -> grandchild through the same recursive route.
-   - Add an optional fixture with a Cloudflare/public-ingress block without
-     making public exposure required for ordinary children.
+   - Navigate directly to the grandchild's advertised URL and log in there.
+   - Exercise both a host-published development entry and a Cloudflare entry
+     implementation of the same public-entry contract.
 
 13. Perform security, data, design, and reliability hardening.
     - Concurrent child block creation and idempotency.
     - Duplicate stable identities.
     - Runtime-agent privilege and command-surface review.
     - Endpoint staleness and child unavailability.
-    - Delegation audience, scope, expiry, replay, and redaction.
-    - Proxy loops, depth exhaustion, path confusion, header injection, request
-      smuggling, deadline propagation, and size limits.
+    - Public URL validation, issuer mismatch, open redirects, DNS rebinding,
+      stale endpoints, session-origin isolation, and redaction.
     - Partial startup, failed compensation, retained Postgres, and recovery.
     - Verify no second topology registry remains.
 
-14. Document and hand off recursive projections to Roadmap 0010.
+14. Document and hand off recursive spawning and direct navigation to Roadmap 0010.
     - Include root, child, grandchild, stopped child, and failed-start fixtures.
     - Curate block-construction and navigation snippets.
-    - Make the UI derive navigation from selectable instance projections.
+    - Make the UI derive instance switching from selectable-instance IDs and
+      observed public URLs.
     - Avoid hard-coded Hub/Instance species in UI models.
 
 ## Transaction And Saga Boundaries
@@ -802,10 +803,11 @@ persist approved desired graph
   -> start child stores and wait for readiness
   -> start or connect runtime authority
   -> start child CPI and wait for health
-  -> start child Auth and establish delegation trust
-  -> optionally start public ingress
-  -> observe Auth/CPI provider endpoints
-  -> expose child in selectable-instance projection
+  -> start public-entry provider and observe PublicEntryUrl
+  -> inject PublicEntryUrl into child Auth
+  -> start or reconfigure child Auth
+  -> wait for public-entry traffic health
+  -> expose child with entry_url in selectable-instance projection
 ```
 
 ## Non-Goals
@@ -817,8 +819,11 @@ persist approved desired graph
 - Do not inline a child's graph into its parent's graph.
 - Do not let a parent read or mutate a child's database directly.
 - Do not give CPI arbitrary shell access through its runtime authority.
-- Do not expose raw delegated or control credentials to the browser.
-- Do not require direct browser-to-child communication initially.
+- Do not proxy ordinary UI or API traffic through ancestor instances.
+- Do not create recursive delegation chains between instance Auth servers.
+- Do not treat deployment ownership as a network route.
+- Do not expose raw control credentials to the browser.
+- Do not make Cloudflare the only implementation of the public-entry contract.
 
 ## Validation
 
@@ -827,8 +832,8 @@ persist approved desired graph
 - Existing recipe, graph, diff, and execution code accepts it without a new node
   alternative.
 - Socket connections supply its Postgres and HTTP requirements normally.
-- One ordinary recipe fragment expands into Auth, CPI, stores, runtime
-  authority, connections, and optional public ingress.
+- One ordinary recipe fragment expands into public entry, Auth, CPI, stores,
+  runtime authority, and connections.
 - Dependency-aware execution starts that fragment in readiness order without a
   special instance executor.
 - A running CPI can execute an approved child deployment through its explicit
@@ -836,10 +841,13 @@ persist approved desired graph
 - A parent discovers immediate child instances from graph plus observed state.
 - Authorization filters selectable children independently of topology truth.
 - No parallel instance registry claims to own child topology.
-- Parent and child both authorize proxied operations.
-- Delegated credentials are scoped, expiring, and redacted.
-- Recursive proxying rejects loops, expired deadlines, and exhausted hop
-  budgets.
+- Every selectable child advertises its observed public Auth entry URL.
+- The desired public URL contract, observed provider endpoint, and injected
+  Auth environment value remain distinct and traceable.
+- Root, child, and grandchild each authenticate directly and maintain
+  origin-scoped sessions.
+- Named and ephemeral public-entry providers satisfy the same typed contract.
+- Public URL changes obey the declared reload or restart policy.
 - A child owns its own workspace, plans, runs, events, and observations.
 - Bootstrap is idempotent and recovery does not require hidden entrypoint
   mutation.
@@ -862,15 +870,16 @@ Roadmap 0009 is complete when:
 - no special recursive graph node or compiler case is needed,
 - the bootstrapped instance can deploy a child through the ordinary graph edit,
   planning, approval, and execution pipeline,
-- the deployed child consists of ordinary Auth, CPI, store, runtime-authority,
-  connection, and optional-ingress blocks,
+- the deployed child consists of ordinary public-entry, Auth, CPI, store,
+  runtime-authority, and connection blocks,
 - the parent derives selectable children from existing graph, observation, and
   authorization truths,
 - the child remains opaque and authoritative for its own workspace,
-- recursive navigation and authorization work through at least three levels in
-  a live Docker example,
-- every hop uses the same bounded proxy/delegation protocol and every CPI uses
-  an explicit runtime-authority capability,
+- the root can spawn a child, the UI can open the child's advertised URL and
+  authenticate there, and the child can repeat that process for a grandchild,
+- no ancestor instance is required in the request path after a child is
+  selected,
+- every CPI uses an explicit runtime-authority capability,
 - all previous deployments continue to run,
 - and Roadmap 0010 can build its UI entirely from ordinary graph projections,
   selectable-instance projections, and capability descriptors.
@@ -880,5 +889,7 @@ Roadmap 0009 is complete when:
 Roadmap 0010 should present the externally bootstrapped instance as the user's
 entry screen and recursively display selectable `ControlPlaneInstanceBlock`
 children. "Hub" may remain UI vocabulary, but the UI must not require a Hub
-backend type. Selecting a child changes the current instance focus; it does not
-enter a different application species.
+backend type. Selecting a child changes the active server/base URL to the
+child's observed public Auth entry and begins a direct authentication session
+there. Breadcrumbs may preserve spawning provenance, but they must not route
+requests through ancestors.
