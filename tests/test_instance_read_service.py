@@ -12,6 +12,7 @@ from control_plane_kit import (
     ProxyBlock,
     ProviderSocket,
     RequirementSocket,
+    RiskLevel,
     SocketConnection,
     compile_recipe,
 )
@@ -21,7 +22,9 @@ from control_plane_kit.stores import (
     ActivityEventRecord,
     ActivityPlanRecord,
     ActivityRunRecord,
-    ApprovalRecord,
+    ApprovalDecisionKind,
+    ApprovalDecisionRecord,
+    ApprovalRequestRecord,
     GraphVersionRecord,
     ObservationRecord,
     OperationActionKind,
@@ -338,17 +341,6 @@ class InstanceReadServiceTests(PostgresStoreTestCase):
                 created_at="2026-07-15T00:02:00Z",
             )
         )
-        self.stores.activity_history.add_approval(
-            ApprovalRecord(
-                approval_id="approval-a",
-                session_id="session-a",
-                target_id="plan-a",
-                actor_id="manager",
-                decision="approved",
-                scope="admin",
-                decided_at="2026-07-15T00:02:30Z",
-            )
-        )
         self.stores.activity_history.add_plan(
             ActivityPlanRecord(
                 plan_id="plan-a",
@@ -358,6 +350,28 @@ class InstanceReadServiceTests(PostgresStoreTestCase):
                 status="planned",
                 created_at="2026-07-15T00:03:00Z",
                 plan=ActivityPlan(()),
+            )
+        )
+        self.stores.activity_history.add_approval_request(
+            ApprovalRequestRecord(
+                request_id="approval-request-a",
+                session_id="session-a",
+                plan_id="plan-a",
+                requested_by="jacob",
+                requested_at="2026-07-15T00:02:15Z",
+                required_scope="plan:approve",
+                max_risk=RiskLevel.LOW,
+                destructive=False,
+            )
+        )
+        self.stores.activity_history.add_approval_decision(
+            ApprovalDecisionRecord(
+                decision_id="approval-decision-a",
+                request_id="approval-request-a",
+                actor_id="manager",
+                decision=ApprovalDecisionKind.APPROVED,
+                scope="plan:approve",
+                decided_at="2026-07-15T00:02:30Z",
             )
         )
         self.stores.activity_history.add_run(

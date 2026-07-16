@@ -416,8 +416,8 @@ def _session_descriptor(store: ActivityHistoryStore, session: object, *, limit: 
             for action in store.actions_for_session(session_id)[:limit]
         ],
         "approvals": [
-            _approval_descriptor(approval)
-            for approval in store.approvals_for_session(session_id)[:limit]
+            _approval_descriptor(store, approval)
+            for approval in store.approval_requests_for_session(session_id)[:limit]
         ],
         "plans": [
             _plan_descriptor(store, plan, limit=limit)
@@ -438,16 +438,31 @@ def _action_descriptor(action: object) -> dict[str, object]:
     }
 
 
-def _approval_descriptor(approval: object) -> dict[str, object]:
+def _approval_descriptor(
+    store: ActivityHistoryStore,
+    approval: object,
+) -> dict[str, object]:
+    request_id = getattr(approval, "request_id")
+    decision = store.approval_decision_for_request(request_id)
     return {
-        "approval_id": getattr(approval, "approval_id"),
+        "request_id": request_id,
         "session_id": getattr(approval, "session_id"),
-        "target_id": getattr(approval, "target_id"),
-        "actor_id": getattr(approval, "actor_id"),
-        "decision": getattr(approval, "decision"),
-        "scope": getattr(approval, "scope"),
-        "decided_at": getattr(approval, "decided_at"),
+        "plan_id": getattr(approval, "plan_id"),
+        "requested_by": getattr(approval, "requested_by"),
+        "requested_at": getattr(approval, "requested_at"),
+        "required_scope": getattr(approval, "required_scope"),
+        "max_risk": getattr(approval, "max_risk").value,
+        "destructive": getattr(approval, "destructive"),
         "comment": getattr(approval, "comment"),
+        "state": "pending" if decision is None else decision.decision.value,
+        "decision": None if decision is None else {
+            "decision_id": decision.decision_id,
+            "actor_id": decision.actor_id,
+            "decision": decision.decision.value,
+            "scope": decision.scope,
+            "decided_at": decision.decided_at,
+            "comment": decision.comment,
+        },
     }
 
 

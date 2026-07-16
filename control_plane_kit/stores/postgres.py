@@ -13,12 +13,15 @@ import json
 from dataclasses import replace
 from typing import Any, Protocol
 
+from control_plane_kit.activity_plan import RiskLevel
 from control_plane_kit.activity_plan_codec import DEFAULT_ACTIVITY_PLAN_CODEC
 from control_plane_kit.stores.records import (
     ActivityEventRecord,
     ActivityPlanRecord,
     ActivityRunRecord,
-    ApprovalRecord,
+    ApprovalDecisionKind,
+    ApprovalDecisionRecord,
+    ApprovalRequestRecord,
     GraphVersionRecord,
     InstanceRecord,
     ObservationRecord,
@@ -79,17 +82,6 @@ CREATE TABLE IF NOT EXISTS cpk_operation_actions (
   UNIQUE (session_id, ordinal)
 );
 
-CREATE TABLE IF NOT EXISTS cpk_approvals (
-  approval_id text PRIMARY KEY,
-  session_id text NOT NULL REFERENCES cpk_operation_sessions(session_id),
-  target_id text NOT NULL,
-  actor_id text NOT NULL,
-  decision text NOT NULL,
-  scope text NOT NULL,
-  decided_at text NOT NULL,
-  comment text
-);
-
 CREATE TABLE IF NOT EXISTS cpk_activity_plans (
   plan_id text PRIMARY KEY,
   session_id text NOT NULL REFERENCES cpk_operation_sessions(session_id),
@@ -98,6 +90,32 @@ CREATE TABLE IF NOT EXISTS cpk_activity_plans (
   status text NOT NULL,
   created_at text NOT NULL,
   payload jsonb NOT NULL DEFAULT '{}'::jsonb
+);
+
+CREATE TABLE IF NOT EXISTS cpk_approval_requests (
+  request_id text PRIMARY KEY,
+  session_id text NOT NULL REFERENCES cpk_operation_sessions(session_id),
+  plan_id text NOT NULL REFERENCES cpk_activity_plans(plan_id),
+  requested_by text NOT NULL,
+  requested_at text NOT NULL,
+  required_scope text NOT NULL,
+  max_risk text NOT NULL,
+  destructive boolean NOT NULL,
+  comment text,
+  idempotency_key text,
+  intent_fingerprint text
+);
+
+CREATE TABLE IF NOT EXISTS cpk_approval_decisions (
+  decision_id text PRIMARY KEY,
+  request_id text NOT NULL UNIQUE REFERENCES cpk_approval_requests(request_id),
+  actor_id text NOT NULL,
+  decision text NOT NULL,
+  scope text NOT NULL,
+  decided_at text NOT NULL,
+  comment text,
+  idempotency_key text,
+  intent_fingerprint text
 );
 
 CREATE TABLE IF NOT EXISTS cpk_activity_runs (
@@ -161,6 +179,14 @@ CREATE UNIQUE INDEX IF NOT EXISTS cpk_operation_sessions_idempotency
 CREATE UNIQUE INDEX IF NOT EXISTS cpk_operation_actions_idempotency
   ON cpk_operation_actions (session_id, idempotency_key)
   WHERE idempotency_key IS NOT NULL;
+
+CREATE UNIQUE INDEX IF NOT EXISTS cpk_approval_requests_idempotency
+  ON cpk_approval_requests (session_id, idempotency_key)
+  WHERE idempotency_key IS NOT NULL;
+
+CREATE UNIQUE INDEX IF NOT EXISTS cpk_approval_decisions_idempotency
+  ON cpk_approval_decisions (request_id, idempotency_key)
+  WHERE idempotency_key IS NOT NULL;
 """
 
 
@@ -210,6 +236,36 @@ def _action_record(row: tuple[Any, ...]) -> OperationActionRecord:
         actor_id=row[4],
         payload=row[5],
         created_at=row[6],
+        idempotency_key=row[7],
+        intent_fingerprint=row[8],
+    )
+
+
+def _approval_request_record(row: tuple[Any, ...]) -> ApprovalRequestRecord:
+    return ApprovalRequestRecord(
+        request_id=row[0],
+        session_id=row[1],
+        plan_id=row[2],
+        requested_by=row[3],
+        requested_at=row[4],
+        required_scope=row[5],
+        max_risk=RiskLevel(row[6]),
+        destructive=row[7],
+        comment=row[8],
+        idempotency_key=row[9],
+        intent_fingerprint=row[10],
+    )
+
+
+def _approval_decision_record(row: tuple[Any, ...]) -> ApprovalDecisionRecord:
+    return ApprovalDecisionRecord(
+        decision_id=row[0],
+        request_id=row[1],
+        actor_id=row[2],
+        decision=ApprovalDecisionKind(row[3]),
+        scope=row[4],
+        decided_at=row[5],
+        comment=row[6],
         idempotency_key=row[7],
         intent_fingerprint=row[8],
     )
@@ -619,47 +675,137 @@ class PostgresActivityHistoryStore:
             for row in rows
         )
 
-    def add_approval(self, record: ApprovalRecord) -> ApprovalRecord:
+    def add_approval_request(
+        self,
+        record: ApprovalRequestRecord,
+    ) -> ApprovalRequestRecord:
         self._connection.execute(
             """
-            INSERT INTO cpk_approvals
-              (approval_id, session_id, target_id, actor_id, decision, scope, decided_at, comment)
-            VALUES (%s, %s, %s, %s, %s, %s, %s, %s)
+            INSERT INTO cpk_approval_requests
+              (request_id, session_id, plan_id, requested_by, requested_at,
+               required_scope, max_risk, destructive, comment,
+               idempotency_key, intent_fingerprint)
+            VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
             """,
             (
-                record.approval_id,
+                record.request_id,
                 record.session_id,
-                record.target_id,
-                record.actor_id,
-                record.decision,
-                record.scope,
-                record.decided_at,
+                record.plan_id,
+                record.requested_by,
+                record.requested_at,
+                record.required_scope,
+                record.max_risk.value,
+                record.destructive,
                 record.comment,
+                record.idempotency_key,
+                record.intent_fingerprint,
             ),
         )
         return record
 
-    def approvals_for_session(self, session_id: str) -> tuple[ApprovalRecord, ...]:
+    def get_approval_request(self, request_id: str) -> ApprovalRequestRecord:
+        row = _record(
+            self._connection.execute(
+                """
+                SELECT request_id, session_id, plan_id, requested_by, requested_at,
+                       required_scope, max_risk, destructive, comment,
+                       idempotency_key, intent_fingerprint
+                FROM cpk_approval_requests WHERE request_id = %s
+                """,
+                (request_id,),
+            ).fetchone(),
+            "approval request",
+            request_id,
+        )
+        return _approval_request_record(row)
+
+    def approval_request_for_idempotency(
+        self,
+        session_id: str,
+        idempotency_key: str,
+    ) -> ApprovalRequestRecord | None:
+        row = self._connection.execute(
+            """
+            SELECT request_id, session_id, plan_id, requested_by, requested_at,
+                   required_scope, max_risk, destructive, comment,
+                   idempotency_key, intent_fingerprint
+            FROM cpk_approval_requests
+            WHERE session_id = %s AND idempotency_key = %s
+            """,
+            (session_id, idempotency_key),
+        ).fetchone()
+        return None if row is None else _approval_request_record(row)
+
+    def approval_requests_for_session(
+        self,
+        session_id: str,
+    ) -> tuple[ApprovalRequestRecord, ...]:
         rows = self._connection.execute(
             """
-            SELECT approval_id, session_id, target_id, actor_id, decision, scope, decided_at, comment
-            FROM cpk_approvals WHERE session_id = %s ORDER BY decided_at ASC
+            SELECT request_id, session_id, plan_id, requested_by, requested_at,
+                   required_scope, max_risk, destructive, comment,
+                   idempotency_key, intent_fingerprint
+            FROM cpk_approval_requests
+            WHERE session_id = %s ORDER BY requested_at ASC, request_id ASC
             """,
             (session_id,),
         ).fetchall()
-        return tuple(
-            ApprovalRecord(
-                approval_id=row[0],
-                session_id=row[1],
-                target_id=row[2],
-                actor_id=row[3],
-                decision=row[4],
-                scope=row[5],
-                decided_at=row[6],
-                comment=row[7],
-            )
-            for row in rows
+        return tuple(_approval_request_record(row) for row in rows)
+
+    def add_approval_decision(
+        self,
+        record: ApprovalDecisionRecord,
+    ) -> ApprovalDecisionRecord:
+        self._connection.execute(
+            """
+            INSERT INTO cpk_approval_decisions
+              (decision_id, request_id, actor_id, decision, scope, decided_at,
+               comment, idempotency_key, intent_fingerprint)
+            VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s)
+            """,
+            (
+                record.decision_id,
+                record.request_id,
+                record.actor_id,
+                record.decision.value,
+                record.scope,
+                record.decided_at,
+                record.comment,
+                record.idempotency_key,
+                record.intent_fingerprint,
+            ),
         )
+        return record
+
+    def approval_decision_for_request(
+        self,
+        request_id: str,
+    ) -> ApprovalDecisionRecord | None:
+        row = self._connection.execute(
+            """
+            SELECT decision_id, request_id, actor_id, decision, scope, decided_at,
+                   comment, idempotency_key, intent_fingerprint
+            FROM cpk_approval_decisions WHERE request_id = %s
+            """,
+            (request_id,),
+        ).fetchone()
+        return None if row is None else _approval_decision_record(row)
+
+    def approval_decision_for_idempotency(
+        self,
+        request_id: str,
+        idempotency_key: str,
+    ) -> ApprovalDecisionRecord | None:
+        row = self._connection.execute(
+            """
+            SELECT decision_id, request_id, actor_id, decision, scope, decided_at,
+                   comment, idempotency_key, intent_fingerprint
+            FROM cpk_approval_decisions
+            WHERE request_id = %s AND idempotency_key = %s
+            """,
+            (request_id, idempotency_key),
+        ).fetchone()
+        return None if row is None else _approval_decision_record(row)
 
     def add_plan(self, record: ActivityPlanRecord) -> ActivityPlanRecord:
         self._connection.execute(
