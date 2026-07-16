@@ -243,7 +243,7 @@ class RunLifecycleTests(PostgresStoreTestCase):
 
         run = self.stores.execution.get_run("run-a")
         self.assertEqual(run.started_at, "2026-07-16T00:04:00Z")
-        self.assertEqual(run.finished_at, "2026-07-16T00:04:00Z")
+        self.assertEqual(run.settled_at, "2026-07-16T00:04:00Z")
         model = InstanceReadService(
             workspace_store=self.stores.workspace,
             graph_topology_store=self.stores.graph_topology,
@@ -252,6 +252,8 @@ class RunLifecycleTests(PostgresStoreTestCase):
         ).session_detail("workspace-a", "session-a")
         run_view = model.payload["session"]["plans"][0]["runs"][0]
         self.assertEqual(run_view["status"], "succeeded")
+        self.assertEqual(run_view["settled_at"], "2026-07-16T00:04:00Z")
+        self.assertNotIn("finished_at", run_view)
         self.assertEqual(
             [event["event_type"] for event in run_view["events"]],
             [
@@ -345,6 +347,8 @@ class RunLifecycleTests(PostgresStoreTestCase):
             "action-fail",
         )
         self.assertEqual(failed.event.failure, self._failure())
+        self.assertIsNone(failed.run.settled_at)
+        self.assertEqual(failed.event.occurred_at, "2026-07-16T00:04:00Z")
 
         retry = self._service("run-b", "event-retry", "action-retry").execute(
             RetryActivityRun(
@@ -357,6 +361,17 @@ class RunLifecycleTests(PostgresStoreTestCase):
             retry.event.evidence.descriptor(),
             {"attempt": 2, "prior_run_id": "run-a"},
         )
+        prior = self.stores.execution.get_run("run-a")
+        self.assertIs(prior.status, ActivityRunStatus.FAILED)
+        self.assertIsNone(prior.settled_at)
+        self.assertEqual(
+            [event.kind for event in self.stores.execution.events_for_run("run-a")],
+            [
+                ActivityEventKind.RUN_OPENED,
+                ActivityEventKind.RUN_STARTED,
+                ActivityEventKind.RUN_FAILED,
+            ],
+        )
         with self.assertRaises(RunLifecycleConflict):
             self._service("unused", "unused", "unused").execute(
                 RetryActivityRun(
@@ -364,7 +379,7 @@ class RunLifecycleTests(PostgresStoreTestCase):
                 )
             )
 
-    def test_compensation_success_is_explicit_and_replaces_failure_finish_time(self):
+    def test_compensation_uses_events_and_settles_without_erasing_failure(self):
         self._claim()
         self._transition(
             StartActivityRun("run-a", self._authority(), IdempotencyKey("start-a")),
@@ -390,7 +405,7 @@ class RunLifecycleTests(PostgresStoreTestCase):
             now="2026-07-16T00:05:00Z",
         )
         self.assertIs(compensating.run.status, ActivityRunStatus.COMPENSATING)
-        self.assertIsNone(compensating.run.finished_at)
+        self.assertIsNone(compensating.run.settled_at)
         compensated = self._transition(
             CompleteActivityRunCompensation(
                 "run-a", self._authority(), IdempotencyKey("compensated-a")
@@ -400,7 +415,16 @@ class RunLifecycleTests(PostgresStoreTestCase):
             now="2026-07-16T00:06:00Z",
         )
         self.assertIs(compensated.run.status, ActivityRunStatus.COMPENSATED)
-        self.assertEqual(compensated.run.finished_at, "2026-07-16T00:06:00Z")
+        self.assertEqual(compensated.run.settled_at, "2026-07-16T00:06:00Z")
+        events = self.stores.execution.events_for_run("run-a")
+        self.assertEqual(
+            [(event.kind, event.occurred_at) for event in events[-3:]],
+            [
+                (ActivityEventKind.RUN_FAILED, "2026-07-16T00:04:00Z"),
+                (ActivityEventKind.COMPENSATION_STARTED, "2026-07-16T00:05:00Z"),
+                (ActivityEventKind.COMPENSATION_SUCCEEDED, "2026-07-16T00:06:00Z"),
+            ],
+        )
 
     def test_compensation_failure_records_partial_failure(self):
         self._claim()
@@ -449,6 +473,7 @@ class RunLifecycleTests(PostgresStoreTestCase):
             "action-cancel",
         )
         self.assertIs(cancelled.run.status, ActivityRunStatus.CANCELLED)
+        self.assertEqual(cancelled.run.settled_at, "2026-07-16T00:04:00Z")
         self.assertIs(cancelled.request.status, ExecutionRequestStatus.CANCELLED)
         replay = self._transition(
             CancelActivityRun(

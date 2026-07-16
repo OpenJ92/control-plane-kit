@@ -147,6 +147,37 @@ class ExecutionConcurrencyTests(PostgresStoreTestCase):
             ExecutionRequestStatus.QUEUED,
         )
 
+    def test_run_settlement_is_write_once(self):
+        self._seed_claimed_run()
+        with self.unit_of_work() as unit_of_work:
+            running = unit_of_work.stores.execution.compare_and_set_run_status(
+                "run-a",
+                expected=ActivityRunStatus.CLAIMED,
+                replacement=ActivityRunStatus.RUNNING,
+                started_at="2026-07-16T00:05:00Z",
+            )
+            settled = unit_of_work.stores.execution.compare_and_set_run_status(
+                "run-a",
+                expected=ActivityRunStatus.RUNNING,
+                replacement=ActivityRunStatus.SUCCEEDED,
+                settled_at="2026-07-16T00:06:00Z",
+            )
+            overwritten = unit_of_work.stores.execution.compare_and_set_run_status(
+                "run-a",
+                expected=ActivityRunStatus.SUCCEEDED,
+                replacement=ActivityRunStatus.COMPENSATED,
+                settled_at="2026-07-16T00:07:00Z",
+            )
+            unit_of_work.commit()
+
+        self.assertIs(running.status, ActivityRunStatus.RUNNING)
+        self.assertEqual(settled.settled_at, "2026-07-16T00:06:00Z")
+        self.assertIsNone(overwritten)
+        self.assertEqual(
+            self.stores.execution.get_run("run-a").settled_at,
+            "2026-07-16T00:06:00Z",
+        )
+
     def _seed_claimed_run(self) -> None:
         self.stores.execution.add_request(ExecutionStoreTests._request())
         self.stores.execution.add_run(

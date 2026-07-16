@@ -719,7 +719,7 @@ def _run_descriptor(store: ExecutionStore, run: object, *, limit: int) -> dict[s
         "status": getattr(run, "status").value,
         "created_at": getattr(run, "created_at"),
         "started_at": getattr(run, "started_at"),
-        "finished_at": getattr(run, "finished_at"),
+        "settled_at": getattr(run, "settled_at"),
         "metadata": _redact_descriptor_value("metadata", getattr(run, "metadata").descriptor()),
         "events": [
             _event_descriptor(event)

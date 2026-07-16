@@ -172,7 +172,7 @@ CREATE TABLE IF NOT EXISTS cpk_activity_runs (
   status text NOT NULL,
   created_at text,
   started_at text,
-  finished_at text,
+  settled_at text,
   metadata jsonb NOT NULL DEFAULT '{}'::jsonb,
   legacy_imported boolean NOT NULL DEFAULT false
 );
@@ -243,6 +243,7 @@ ALTER TABLE cpk_activity_runs
   ADD COLUMN IF NOT EXISTS attempt integer NOT NULL DEFAULT 1,
   ADD COLUMN IF NOT EXISTS prior_run_id text REFERENCES cpk_activity_runs(run_id),
   ADD COLUMN IF NOT EXISTS created_at text,
+  ADD COLUMN IF NOT EXISTS settled_at text,
   ADD COLUMN IF NOT EXISTS legacy_imported boolean;
 
 UPDATE cpk_activity_runs
@@ -255,6 +256,70 @@ ALTER TABLE cpk_activity_runs
   ALTER COLUMN legacy_imported SET DEFAULT false,
   ALTER COLUMN legacy_imported SET NOT NULL,
   ALTER COLUMN started_at DROP NOT NULL;
+
+-- Roadmap 0008 Gate A originally overloaded finished_at with both failure
+-- time and final settlement. Preserve authoritative event history, retain
+-- ambiguous legacy evidence explicitly, and remove that ambiguous projection.
+DO $$
+BEGIN
+  IF EXISTS (
+    SELECT 1 FROM information_schema.columns
+    WHERE table_schema = current_schema()
+      AND table_name = 'cpk_activity_runs'
+      AND column_name = 'finished_at'
+  ) THEN
+    IF EXISTS (
+      SELECT 1
+      FROM cpk_activity_runs run
+      WHERE NOT run.legacy_imported
+        AND run.finished_at IS NOT NULL
+        AND run.status IN ('failed', 'compensating')
+        AND NOT EXISTS (
+          SELECT 1 FROM cpk_activity_events event
+          WHERE event.run_id = run.run_id
+            AND event.event_type = 'run_failed'
+            AND event.occurred_at = run.finished_at
+        )
+    ) THEN
+      RAISE EXCEPTION
+        'cannot migrate unresolved run timestamp without matching run_failed event';
+    END IF;
+
+    IF EXISTS (
+      SELECT 1
+      FROM cpk_activity_runs run
+      WHERE NOT run.legacy_imported
+        AND run.finished_at IS NOT NULL
+        AND run.status NOT IN (
+          'succeeded', 'failed', 'compensating', 'compensated',
+          'partially_failed', 'cancelled'
+        )
+    ) THEN
+      RAISE EXCEPTION
+        'cannot migrate finished_at from a non-settled modern run';
+    END IF;
+
+    UPDATE cpk_activity_runs
+    SET settled_at = finished_at
+    WHERE NOT legacy_imported
+      AND status IN (
+        'succeeded', 'compensated', 'partially_failed', 'cancelled'
+      )
+      AND finished_at IS NOT NULL;
+
+    UPDATE cpk_activity_runs
+    SET metadata = jsonb_set(
+      metadata,
+      '{migration}',
+      COALESCE(metadata->'migration', '{}'::jsonb)
+        || jsonb_build_object('legacy_finished_at', finished_at),
+      true
+    )
+    WHERE legacy_imported AND finished_at IS NOT NULL;
+
+    ALTER TABLE cpk_activity_runs DROP COLUMN finished_at;
+  END IF;
+END $$;
 
 DO $$
 BEGIN
@@ -408,6 +473,39 @@ BEGIN
       )) NOT VALID;
   END IF;
 END $$;
+
+ALTER TABLE cpk_activity_runs
+  DROP CONSTRAINT IF EXISTS cpk_activity_runs_settlement_check;
+ALTER TABLE cpk_activity_runs
+  ADD CONSTRAINT cpk_activity_runs_settlement_check
+  CHECK (
+    legacy_imported
+    OR (
+      status IN ('succeeded', 'compensated', 'partially_failed', 'cancelled')
+      AND settled_at IS NOT NULL
+    )
+    OR (
+      status IN ('claimed', 'running', 'paused', 'failed', 'compensating')
+      AND settled_at IS NULL
+    )
+  ) NOT VALID;
+
+ALTER TABLE cpk_activity_runs
+  DROP CONSTRAINT IF EXISTS cpk_activity_runs_started_check;
+ALTER TABLE cpk_activity_runs
+  ADD CONSTRAINT cpk_activity_runs_started_check
+  CHECK (
+    legacy_imported
+    OR (status = 'claimed' AND started_at IS NULL)
+    OR (status = 'cancelled')
+    OR (
+      status IN (
+        'running', 'paused', 'succeeded', 'failed', 'compensating',
+        'compensated', 'partially_failed'
+      )
+      AND started_at IS NOT NULL
+    )
+  ) NOT VALID;
 
 -- Event vocabulary is a closed sum. Rebuild the check so forward migrations
 -- admit newly introduced constructors without weakening the closed boundary.
@@ -1292,7 +1390,7 @@ class PostgresExecutionStore:
             """
             INSERT INTO cpk_activity_runs
               (run_id, plan_id, request_id, attempt, prior_run_id, status,
-               created_at, started_at, finished_at, metadata, legacy_imported)
+               created_at, started_at, settled_at, metadata, legacy_imported)
             VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s::jsonb, false)
             """,
             (
@@ -1304,7 +1402,7 @@ class PostgresExecutionStore:
                 record.status.value,
                 record.created_at,
                 record.started_at,
-                record.finished_at,
+                record.settled_at,
                 _json(record.metadata.descriptor()),
             ),
         )
@@ -1315,7 +1413,7 @@ class PostgresExecutionStore:
             self._connection.execute(
                 """
                 SELECT run_id, plan_id, request_id, attempt, prior_run_id, status,
-                       created_at, started_at, finished_at, metadata, legacy_imported
+                       created_at, started_at, settled_at, metadata, legacy_imported
                 FROM cpk_activity_runs WHERE run_id = %s
                 """,
                 (run_id,),
@@ -1330,7 +1428,7 @@ class PostgresExecutionStore:
             self._connection.execute(
                 """
                 SELECT run_id, plan_id, request_id, attempt, prior_run_id, status,
-                       created_at, started_at, finished_at, metadata, legacy_imported
+                       created_at, started_at, settled_at, metadata, legacy_imported
                 FROM cpk_activity_runs
                 WHERE run_id = %s
                 FOR UPDATE
@@ -1349,27 +1447,23 @@ class PostgresExecutionStore:
         expected: ActivityRunStatus,
         replacement: ActivityRunStatus,
         started_at: str | None = None,
-        finished_at: str | None = None,
-        clear_finished_at: bool = False,
+        settled_at: str | None = None,
     ) -> ActivityRunRecord | None:
         row = self._connection.execute(
             """
             UPDATE cpk_activity_runs
             SET status = %s,
                 started_at = COALESCE(%s, started_at),
-                finished_at = CASE
-                  WHEN %s THEN NULL
-                  ELSE COALESCE(%s, finished_at)
-                END
+                settled_at = COALESCE(settled_at, %s)
             WHERE run_id = %s AND status = %s AND NOT legacy_imported
+              AND settled_at IS NULL
             RETURNING run_id, plan_id, request_id, attempt, prior_run_id, status,
-                      created_at, started_at, finished_at, metadata, legacy_imported
+                      created_at, started_at, settled_at, metadata, legacy_imported
             """,
             (
                 replacement.value,
                 started_at,
-                clear_finished_at,
-                finished_at,
+                settled_at,
                 run_id,
                 expected.value,
             ),
@@ -1390,7 +1484,7 @@ class PostgresExecutionStore:
         rows = self._connection.execute(
             f"""
             SELECT run_id, plan_id, request_id, attempt, prior_run_id, status,
-                   created_at, started_at, finished_at, metadata, legacy_imported
+                   created_at, started_at, settled_at, metadata, legacy_imported
             FROM cpk_activity_runs WHERE {column} = %s ORDER BY {ordering}
             """,
             (identity,),
@@ -1484,7 +1578,7 @@ def _activity_run(row: tuple[Any, ...]) -> ActivityRunRecord:
         status=ActivityRunStatus(row[5]),
         created_at=row[6],
         started_at=row[7],
-        finished_at=row[8],
+        settled_at=row[8],
         metadata=BoundedEvidence.from_mapping(row[9]),
     )
 

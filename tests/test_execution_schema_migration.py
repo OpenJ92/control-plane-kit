@@ -76,8 +76,9 @@ INSERT INTO cpk_activity_plans
 VALUES ('plan-a', 'session-a', 'graph-a', 'graph-b', 'planned',
         '2026-07-15T00:01:00Z');
 INSERT INTO cpk_activity_runs
-  (run_id, plan_id, status, started_at)
-VALUES ('run-a', 'plan-a', 'running', '2026-07-15T00:02:00Z');
+  (run_id, plan_id, status, started_at, finished_at)
+VALUES ('run-a', 'plan-a', 'running', '2026-07-15T00:02:00Z',
+        '2026-07-15T00:02:30Z');
 INSERT INTO cpk_activity_events
   (event_id, run_id, ordinal, event_type, occurred_at)
 VALUES ('event-a', 'run-a', 1, 'legacy-step', '2026-07-15T00:03:00Z');
@@ -107,13 +108,29 @@ class ExecutionSchemaMigrationTests(unittest.TestCase):
                 migrated = connection.execute(
                     """
                     SELECT request_id, attempt, prior_run_id, created_at,
-                           legacy_imported
+                           legacy_imported, settled_at, metadata
                     FROM cpk_activity_runs WHERE run_id = 'run-a'
                     """
                 ).fetchone()
                 self.assertEqual(
-                    migrated,
-                    (None, 1, None, "2026-07-15T00:02:00Z", True),
+                    migrated[:6],
+                    (None, 1, None, "2026-07-15T00:02:00Z", True, None),
+                )
+                self.assertEqual(
+                    migrated[6]["migration"]["legacy_finished_at"],
+                    "2026-07-15T00:02:30Z",
+                )
+                self.assertFalse(
+                    connection.execute(
+                        """
+                        SELECT EXISTS (
+                          SELECT 1 FROM information_schema.columns
+                          WHERE table_schema = current_schema()
+                            AND table_name = 'cpk_activity_runs'
+                            AND column_name = 'finished_at'
+                        )
+                        """
+                    ).fetchone()[0]
                 )
                 self.assertEqual(
                     connection.execute(
@@ -161,6 +178,167 @@ class ExecutionSchemaMigrationTests(unittest.TestCase):
             finally:
                 connection.execute("SET search_path TO public")
                 connection.execute(f'DROP SCHEMA "{schema}" CASCADE')
+
+    def test_gate_a_timestamps_migrate_to_event_authoritative_settlement(self):
+        schema = f"execution_settlement_{uuid.uuid4().hex}"
+        database_url = os.environ["CPK_TEST_DATABASE_URL"]
+        with psycopg.connect(database_url, autocommit=True) as connection:
+            connection.execute(f'CREATE SCHEMA "{schema}"')
+            try:
+                connection.execute(f'SET search_path TO "{schema}"')
+                self._seed_gate_a_schema(connection, include_failure_events=True)
+
+                install_schema(connection)
+                install_schema(connection)
+
+                rows = connection.execute(
+                    """
+                    SELECT run_id, status, settled_at, metadata
+                    FROM cpk_activity_runs ORDER BY attempt
+                    """
+                ).fetchall()
+                self.assertEqual(
+                    [(row[0], row[1], row[2]) for row in rows],
+                    [
+                        ("run-succeeded", "succeeded", "settled-success"),
+                        ("run-failed", "failed", None),
+                        ("run-compensating", "compensating", None),
+                        ("run-compensated", "compensated", "settled-compensated"),
+                    ],
+                )
+                self.assertEqual(
+                    connection.execute(
+                        """
+                        SELECT run_id, event_type, occurred_at
+                        FROM cpk_activity_events ORDER BY run_id
+                        """
+                    ).fetchall(),
+                    [
+                        ("run-compensating", "run_failed", "compensating-failed-at"),
+                        ("run-failed", "run_failed", "failed-at"),
+                    ],
+                )
+                with self.assertRaises(CheckViolation):
+                    connection.execute(
+                        """
+                        INSERT INTO cpk_activity_runs
+                          (run_id, plan_id, request_id, attempt, prior_run_id,
+                           status, created_at, started_at, settled_at,
+                           legacy_imported)
+                        VALUES ('run-illegal-failed', 'plan-modern',
+                                'request-modern', 5, 'run-compensated',
+                                'failed', 'created-5', 'started-5',
+                                'not-settled', false)
+                        """
+                    )
+                with self.assertRaises(CheckViolation):
+                    connection.execute(
+                        """
+                        INSERT INTO cpk_activity_runs
+                          (run_id, plan_id, request_id, attempt, prior_run_id,
+                           status, created_at, started_at, settled_at,
+                           legacy_imported)
+                        VALUES ('run-illegal-success', 'plan-modern',
+                                'request-modern', 5, 'run-compensated',
+                                'succeeded', 'created-5', 'started-5', NULL,
+                                false)
+                        """
+                    )
+            finally:
+                connection.execute("SET search_path TO public")
+                connection.execute(f'DROP SCHEMA "{schema}" CASCADE')
+
+    def test_gate_a_migration_rejects_unproven_modern_failure_timestamp(self):
+        schema = f"execution_settlement_reject_{uuid.uuid4().hex}"
+        database_url = os.environ["CPK_TEST_DATABASE_URL"]
+        with psycopg.connect(database_url, autocommit=True) as connection:
+            connection.execute(f'CREATE SCHEMA "{schema}"')
+            try:
+                connection.execute(f'SET search_path TO "{schema}"')
+                self._seed_gate_a_schema(connection, include_failure_events=False)
+
+                with self.assertRaisesRegex(
+                    psycopg.errors.RaiseException,
+                    "without matching run_failed event",
+                ):
+                    install_schema(connection)
+            finally:
+                connection.execute("SET search_path TO public")
+                connection.execute(f'DROP SCHEMA "{schema}" CASCADE')
+
+    @staticmethod
+    def _seed_gate_a_schema(
+        connection: psycopg.Connection,
+        *,
+        include_failure_events: bool,
+    ) -> None:
+        install_schema(connection)
+        connection.execute(
+            """
+            ALTER TABLE cpk_activity_runs
+              DROP CONSTRAINT cpk_activity_runs_settlement_check,
+              DROP CONSTRAINT cpk_activity_runs_started_check,
+              DROP COLUMN settled_at,
+              ADD COLUMN finished_at text;
+
+            INSERT INTO cpk_workspaces (workspace_id, name, lifecycle)
+            VALUES ('workspace-modern', 'Modern', 'active');
+            INSERT INTO cpk_operation_sessions
+              (session_id, workspace_id, actor_id, title, status, created_at)
+            VALUES ('session-modern', 'workspace-modern', 'operator', 'Modern',
+                    'open', 'created');
+            INSERT INTO cpk_activity_plans
+              (plan_id, session_id, base_graph_id, desired_graph_id, status,
+               created_at, payload)
+            VALUES ('plan-modern', 'session-modern', 'graph-a', 'graph-b',
+                    'planned', 'created', '{}'::jsonb);
+            INSERT INTO cpk_approval_requests
+              (request_id, session_id, plan_id, requested_by, requested_at,
+               required_scope, max_risk, destructive)
+            VALUES ('approval-request-modern', 'session-modern', 'plan-modern',
+                    'operator', 'requested', 'plan:approve', 'low', false);
+            INSERT INTO cpk_approval_decisions
+              (decision_id, request_id, actor_id, decision, scope, decided_at)
+            VALUES ('approval-decision-modern', 'approval-request-modern',
+                    'manager', 'approved', 'plan:approve', 'approved');
+            INSERT INTO cpk_execution_requests
+              (request_id, workspace_id, session_id, plan_id, status,
+               requested_by, requested_at, approval_request_id,
+               approval_decision_id, idempotency_key, intent_fingerprint,
+               claim_worker_id, claimed_at, lease_expires_at)
+            VALUES ('request-modern', 'workspace-modern', 'session-modern',
+                    'plan-modern', 'claimed', 'operator', 'requested',
+                    'approval-request-modern', 'approval-decision-modern',
+                    'execute-modern', 'fingerprint-modern', 'worker', 'claimed',
+                    '2099-01-01T00:00:00Z');
+
+            INSERT INTO cpk_activity_runs
+              (run_id, plan_id, request_id, attempt, prior_run_id, status,
+               created_at, started_at, finished_at, metadata, legacy_imported)
+            VALUES
+              ('run-succeeded', 'plan-modern', 'request-modern', 1, NULL,
+               'succeeded', 'created-1', 'started-1', 'settled-success', '{}', false),
+              ('run-failed', 'plan-modern', 'request-modern', 2, 'run-succeeded',
+               'failed', 'created-2', 'started-2', 'failed-at', '{}', false),
+              ('run-compensating', 'plan-modern', 'request-modern', 3, 'run-failed',
+               'compensating', 'created-3', 'started-3',
+               'compensating-failed-at', '{}', false),
+              ('run-compensated', 'plan-modern', 'request-modern', 4,
+               'run-compensating', 'compensated', 'created-4', 'started-4',
+               'settled-compensated', '{}', false);
+            """
+        )
+        if include_failure_events:
+            connection.execute(
+                """
+                INSERT INTO cpk_activity_events
+                  (event_id, run_id, ordinal, event_type, occurred_at, payload)
+                VALUES
+                  ('event-failed', 'run-failed', 1, 'run_failed', 'failed-at', '{}'),
+                  ('event-compensating-failed', 'run-compensating', 1,
+                   'run_failed', 'compensating-failed-at', '{}');
+                """
+            )
 
     def test_new_execution_rows_are_constrained_after_forward_migration(self):
         schema = f"execution_constraints_{uuid.uuid4().hex}"

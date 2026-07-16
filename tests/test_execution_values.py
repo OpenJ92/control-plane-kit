@@ -59,18 +59,58 @@ class ExecutionValueTests(unittest.TestCase):
     def test_codec_round_trips_every_run_status(self):
         for status in ActivityRunStatus:
             with self.subTest(status=status):
-                self._round_trip(
+                self._round_trip(self._run(status))
+
+    def test_admitted_run_projection_rejects_impossible_timing(self):
+        cases = (
+            (ActivityRunStatus.CLAIMED, "started", None, "must not carry started_at"),
+            (ActivityRunStatus.RUNNING, None, None, "require started_at"),
+            (ActivityRunStatus.FAILED, "started", "settled", "must remain unsettled"),
+            (ActivityRunStatus.COMPENSATING, "started", "settled", "must remain unsettled"),
+            (ActivityRunStatus.SUCCEEDED, "started", None, "require settled_at"),
+            (ActivityRunStatus.CANCELLED, None, None, "require settled_at"),
+        )
+        for status, started_at, settled_at, message in cases:
+            with self.subTest(status=status, started_at=started_at, settled_at=settled_at):
+                with self.assertRaisesRegex(ExecutionValueError, message):
                     ActivityRunRecord(
                         run_id="run-a",
                         plan_id="plan-a",
                         admission=AdmittedRun("request-a"),
                         retry=RetryIdentity(1),
                         status=status,
-                        created_at="2026-07-16T00:00:00Z",
-                        started_at="2026-07-16T00:00:00Z",
-                        metadata=BoundedEvidence.from_mapping({"worker": "agent-a"}),
+                        created_at="created",
+                        started_at=started_at,
+                        settled_at=settled_at,
                     )
-                )
+
+    def test_legacy_run_does_not_fabricate_modern_projection_completeness(self):
+        value = ActivityRunRecord(
+            run_id="legacy-run",
+            plan_id="plan-a",
+            admission=LegacyImportedRun(),
+            retry=RetryIdentity(1),
+            status=ActivityRunStatus.FAILED,
+            created_at="created",
+            metadata=BoundedEvidence.from_mapping(
+                {"migration": {"legacy_finished_at": "historic"}}
+            ),
+        )
+
+        self.assertIsNone(value.started_at)
+        self.assertIsNone(value.settled_at)
+        self._round_trip(value)
+
+    def test_stale_finished_at_descriptor_fails_closed(self):
+        descriptor = DEFAULT_EXECUTION_CODEC.encode(
+            self._run(ActivityRunStatus.SUCCEEDED)
+        )
+        value = descriptor["value"]
+        self.assertIsInstance(value, dict)
+        value["finished_at"] = value.pop("settled_at")
+
+        with self.assertRaises(MalformedExecutionDescriptor):
+            DEFAULT_EXECUTION_CODEC.decode(descriptor)
 
     def test_codec_round_trips_every_event_kind(self):
         for kind in ActivityEventKind:
@@ -212,6 +252,32 @@ class ExecutionValueTests(unittest.TestCase):
         descriptor = DEFAULT_EXECUTION_CODEC.encode(value)
         self.assertEqual(DEFAULT_EXECUTION_CODEC.decode(descriptor), value)
         self.assertEqual(DEFAULT_EXECUTION_CODEC.dumps(value), DEFAULT_EXECUTION_CODEC.dumps(value))
+
+    @staticmethod
+    def _run(status: ActivityRunStatus) -> ActivityRunRecord:
+        started_at = None if status is ActivityRunStatus.CLAIMED else "started"
+        settled_at = (
+            "settled"
+            if status
+            in {
+                ActivityRunStatus.SUCCEEDED,
+                ActivityRunStatus.COMPENSATED,
+                ActivityRunStatus.PARTIALLY_FAILED,
+                ActivityRunStatus.CANCELLED,
+            }
+            else None
+        )
+        return ActivityRunRecord(
+            run_id="run-a",
+            plan_id="plan-a",
+            admission=AdmittedRun("request-a"),
+            retry=RetryIdentity(1),
+            status=status,
+            created_at="created",
+            started_at=started_at,
+            settled_at=settled_at,
+            metadata=BoundedEvidence.from_mapping({"worker": "agent-a"}),
+        )
 
 
 if __name__ == "__main__":

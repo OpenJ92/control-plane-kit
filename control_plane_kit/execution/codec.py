@@ -29,7 +29,7 @@ from control_plane_kit.execution.values import (
 
 
 EXECUTION_SCHEMA = "control-plane-kit.execution"
-EXECUTION_VERSION = 1
+EXECUTION_VERSION = 2
 
 
 class ExecutionDescriptorError(ValueError):
@@ -118,7 +118,7 @@ class ExecutionDescriptorCodec:
                     "status": value.status.value,
                     "created_at": value.created_at,
                     "started_at": value.started_at,
-                    "finished_at": value.finished_at,
+                    "settled_at": value.settled_at,
                     "metadata": value.metadata.descriptor(),
                 }
             case ActivityEventRecord():
@@ -198,6 +198,22 @@ class ExecutionDescriptorCodec:
                         claim=_decode_claim(value.get("claim")),
                     )
                 case "activity-run":
+                    _require_exact_fields(
+                        value,
+                        {
+                            "kind",
+                            "run_id",
+                            "plan_id",
+                            "admission",
+                            "retry",
+                            "status",
+                            "created_at",
+                            "started_at",
+                            "settled_at",
+                            "metadata",
+                        },
+                        "activity-run",
+                    )
                     return ActivityRunRecord(
                         run_id=_text(value, "run_id"),
                         plan_id=_text(value, "plan_id"),
@@ -206,7 +222,7 @@ class ExecutionDescriptorCodec:
                         status=ActivityRunStatus(_text(value, "status")),
                         created_at=_text(value, "created_at"),
                         started_at=_optional_text(value, "started_at"),
-                        finished_at=_optional_text(value, "finished_at"),
+                        settled_at=_optional_text(value, "settled_at"),
                         metadata=_evidence(value, "metadata"),
                     )
                 case "activity-event":
@@ -362,6 +378,22 @@ def _mapping(value: object, name: str) -> Mapping[str, object]:
     if not isinstance(value, Mapping) or not all(isinstance(key, str) for key in value):
         raise MalformedExecutionDescriptor(f"{name} must be an object with text keys")
     return value
+
+
+def _require_exact_fields(
+    value: Mapping[str, object], expected: set[str], name: str
+) -> None:
+    actual = set(value)
+    if actual == expected:
+        return
+    missing = sorted(expected - actual)
+    unknown = sorted(actual - expected)
+    details = []
+    if missing:
+        details.append(f"missing fields: {', '.join(missing)}")
+    if unknown:
+        details.append(f"unknown fields: {', '.join(unknown)}")
+    raise MalformedExecutionDescriptor(f"{name} has {'; '.join(details)}")
 
 
 def _text(value: Mapping[str, object], key: str) -> str:

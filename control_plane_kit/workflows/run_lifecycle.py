@@ -241,7 +241,7 @@ class RunTransition:
     expected: frozenset[ActivityRunStatus]
     replacement: ActivityRunStatus
     event_kind: ActivityEventKind
-    terminal: bool = False
+    settles_run: bool = False
     cancel_request: bool = False
 
 
@@ -264,13 +264,12 @@ _COMPLETE = RunTransition(
     frozenset({ActivityRunStatus.RUNNING}),
     ActivityRunStatus.SUCCEEDED,
     ActivityEventKind.RUN_SUCCEEDED,
-    terminal=True,
+    settles_run=True,
 )
 _FAIL = RunTransition(
     frozenset({ActivityRunStatus.RUNNING, ActivityRunStatus.PAUSED}),
     ActivityRunStatus.FAILED,
     ActivityEventKind.RUN_FAILED,
-    terminal=True,
 )
 _BEGIN_COMPENSATION = RunTransition(
     frozenset({ActivityRunStatus.FAILED}),
@@ -281,13 +280,13 @@ _COMPLETE_COMPENSATION = RunTransition(
     frozenset({ActivityRunStatus.COMPENSATING}),
     ActivityRunStatus.COMPENSATED,
     ActivityEventKind.COMPENSATION_SUCCEEDED,
-    terminal=True,
+    settles_run=True,
 )
 _FAIL_COMPENSATION = RunTransition(
     frozenset({ActivityRunStatus.COMPENSATING}),
     ActivityRunStatus.PARTIALLY_FAILED,
     ActivityEventKind.COMPENSATION_FAILED,
-    terminal=True,
+    settles_run=True,
 )
 _CANCEL = RunTransition(
     frozenset(
@@ -299,7 +298,7 @@ _CANCEL = RunTransition(
     ),
     ActivityRunStatus.CANCELLED,
     ActivityEventKind.RUN_CANCELLED,
-    terminal=True,
+    settles_run=True,
     cancel_request=True,
 )
 
@@ -500,11 +499,7 @@ class RunLifecycleCommandService:
                     if transition.event_kind is ActivityEventKind.RUN_STARTED
                     else None
                 ),
-                finished_at=occurred_at if transition.terminal else None,
-                clear_finished_at=(
-                    transition.event_kind
-                    is ActivityEventKind.COMPENSATION_STARTED
-                ),
+                settled_at=occurred_at if transition.settles_run else None,
             )
             if replacement is None:
                 raise RunLifecycleConflict("run changed concurrently")
