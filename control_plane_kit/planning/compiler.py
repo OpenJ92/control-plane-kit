@@ -91,6 +91,10 @@ def compile_activity_plan(diff: GraphDiff) -> ActivityPlan:
     reconcile_node: dict[str, _ActivityDraft] = {}
     removed_node_runtime: dict[str, str] = {}
     removed_edges: dict[str, tuple[_ActivityDraft, EdgeValue]] = {}
+    modified_edges: dict[
+        str,
+        tuple[_ActivityDraft, EdgeValue, EdgeValue],
+    ] = {}
     node_reconciliations: dict[str, list[StructuralChange]] = {}
     runtime_reconciliations: dict[str, list[StructuralChange]] = {}
 
@@ -126,6 +130,18 @@ def compile_activity_plan(diff: GraphDiff) -> ActivityPlan:
                     change.before, EdgeValue
                 ):
                     removed_edges[edge_id] = (draft, change.before)
+                case SwitchSocketConnection(
+                    target=SocketConnectionTarget(edge_id=edge_id)
+                ) if (
+                    isinstance(change, ModifiedChange)
+                    and isinstance(change.before, EdgeValue)
+                    and isinstance(change.after, EdgeValue)
+                ):
+                    modified_edges[edge_id] = (
+                        draft,
+                        change.before,
+                        change.after,
+                    )
 
     for node_id, changes in sorted(node_reconciliations.items()):
         draft = _reconcile_node(tuple(changes), node_id)
@@ -145,6 +161,7 @@ def compile_activity_plan(diff: GraphDiff) -> ActivityPlan:
             stop_node=stop_node,
             removed_node_runtime=removed_node_runtime,
             removed_edges=removed_edges,
+            modified_edges=modified_edges,
         )
     for node_id, changes in node_reconciliations.items():
         reconcile = reconcile_node[node_id]
@@ -275,6 +292,10 @@ def _add_dependencies(
     stop_node: dict[str, _ActivityDraft],
     removed_node_runtime: dict[str, str],
     removed_edges: dict[str, tuple[_ActivityDraft, EdgeValue]],
+    modified_edges: dict[
+        str,
+        tuple[_ActivityDraft, EdgeValue, EdgeValue],
+    ],
 ) -> None:
     matching = [draft for draft in drafts if _change_token(change) in draft.activity_id.value]
     match change:
@@ -294,6 +315,13 @@ def _add_dependencies(
                 edge = edge_value.edge
                 if node_id in (edge.provider_role, edge.consumer_role):
                     stop_node[node_id].dependencies.add(remove.activity_id)
+            for switch, before_value, after_value in modified_edges.values():
+                before = before_value.edge
+                after = after_value.edge
+                before_endpoints = (before.provider_role, before.consumer_role)
+                after_endpoints = (after.provider_role, after.consumer_role)
+                if node_id in before_endpoints and node_id not in after_endpoints:
+                    stop_node[node_id].dependencies.add(switch.activity_id)
         case RemovedChange(
             subject=RuntimeSubject(runtime_id=runtime_id),
         ):

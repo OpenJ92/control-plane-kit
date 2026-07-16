@@ -1227,6 +1227,19 @@ persist approved desired graph
 
 ## Validation
 
+Roadmap 0009 must reuse `examples/scenarios/` through the composed CPI server.
+Its HTTP, MCP, CLI, and eventual UI checks should compare adapter projections
+with the transport-neutral workflow result rather than maintaining separate
+scenario semantics. This turns the corpus into a cross-roadmap spine:
+
+```text
+graph pair
+  -> pure plan
+  -> durable planning workflow
+  -> approved execution evidence
+  -> authenticated adapter projection
+```
+
 - `ControlPlaneInstanceBlock` is an ordinary `ApplicationBlock` and therefore a
   `DeployBlock`.
 - `ControlPlaneInstanceSpec` survives recipe compilation, descriptor

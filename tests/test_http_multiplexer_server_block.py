@@ -5,6 +5,7 @@ from control_plane_kit import (
     DockerRuntime,
     SocketConnection,
     compile_recipe,
+    validate_graph,
 )
 from control_plane_kit.servers import (
     HttpMultiplexerServer,
@@ -25,6 +26,8 @@ class HttpMultiplexerServerBlockTests(TestCase):
         self.assertEqual(block.sockets.requirement("primary").env_bindings, ("MULTIPLEXER_PRIMARY_URL",))
         self.assertEqual(block.sockets.requirement("observer-a").env_bindings, ("MULTIPLEXER_OBSERVER_A_URL",))
         self.assertEqual(block.sockets.requirement("observer-b").env_bindings, ("MULTIPLEXER_OBSERVER_B_URL",))
+        self.assertFalse(block.sockets.requirement("observer-a").required)
+        self.assertFalse(block.sockets.requirement("observer-b").required)
 
     def test_multiplexer_block_compiles_socket_connections_to_environment(self):
         recipe = DeploymentRecipe(
@@ -40,6 +43,7 @@ class HttpMultiplexerServerBlockTests(TestCase):
 
         graph = compile_recipe(recipe)
 
+        self.assertTrue(validate_graph(graph).valid)
         self.assertEqual(
             graph.node("multiplexer").environment["MULTIPLEXER_PRIMARY_URL"],
             graph.node("app").endpoint("internal").url,

@@ -1,3 +1,4 @@
+from dataclasses import replace
 import unittest
 
 from control_plane_kit import (
@@ -37,6 +38,7 @@ from control_plane_kit import (
     validate_graph,
 )
 from examples.router_swap import recipe as router_recipe
+from examples.scenarios import operation_expectation, switch_database_endpoint
 
 
 class ActivityPlanCompilerTests(unittest.TestCase):
@@ -177,6 +179,61 @@ class ActivityPlanCompilerTests(unittest.TestCase):
             and activity.operation.target.node_id == "api-router"
         ]
         self.assertEqual(len(reconciles), 1)
+
+    def test_modified_edge_switch_precedes_removed_endpoint_stop(self):
+        scenario = switch_database_endpoint()
+        current = self._without_node(scenario.current_graph, "postgres-b")
+        desired = self._without_node(scenario.desired_graph, "postgres-a")
+        plan = compile_activity_plan(
+            diff_graphs(
+                validate_graph(current),
+                validate_graph(desired),
+            )
+        )
+        activities = {
+            operation_expectation(activity.operation): activity
+            for activity in plan.activities
+        }
+        switch = next(
+            activity
+            for expectation, activity in activities.items()
+            if expectation.operation_type is SwitchSocketConnection
+        )
+        old_provider_stop = next(
+            activity
+            for expectation, activity in activities.items()
+            if expectation.operation_type is StopNode
+            and expectation.target_id == "postgres-a"
+        )
+
+        self.assertIn(
+            switch.activity_id,
+            {
+                dependency.predecessor
+                for dependency in old_provider_stop.dependencies
+            },
+        )
+
+    @staticmethod
+    def _without_node(graph: DeploymentGraph, node_id: str) -> DeploymentGraph:
+        return DeploymentGraph(
+            graph.name,
+            nodes={
+                existing_id: node
+                for existing_id, node in graph.nodes.items()
+                if existing_id != node_id
+            },
+            edges=graph.edges,
+            runtimes={
+                runtime_id: replace(
+                    runtime,
+                    children=tuple(
+                        child for child in runtime.children if child != node_id
+                    ),
+                )
+                for runtime_id, runtime in graph.runtimes.items()
+            },
+        )
 
     def test_runtime_move_orders_start_reconcile_and_stop(self):
         before = RuntimeValue(RuntimeRecord("old", RuntimeKind.DOCKER))
