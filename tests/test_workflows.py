@@ -6,6 +6,7 @@ import psycopg
 from control_plane_kit import ActivityId, ActivityPlan, NodeTarget, PlannedActivity, StartNode
 from control_plane_kit.graph import DeploymentGraph
 from control_plane_kit.stores import (
+    ActivityPlanRecord,
     GraphVersionRecord,
     OperationActionKind,
     PostgresUnitOfWork,
@@ -115,26 +116,35 @@ class WorkflowServiceTests(PostgresStoreTestCase):
         self.assertEqual(approval.decision, "approved")
         self.assertEqual(history.approvals_for_session("session-a")[0].target_id, "plan-a")
 
-    def test_activity_run_service_records_plan_and_run_without_effects(self):
+    def test_activity_run_service_opens_run_for_persisted_plan_without_effects(self):
         history = self.stores.activity_history
         self.operation_service(["session-a", "action-start"]).execute(
             StartOperationSession(
                 "workspace-a", "jacob", "Plan run", IdempotencyKey("start")
             )
         )
+        plan = history.add_plan(
+            ActivityPlanRecord(
+                plan_id="plan-a",
+                session_id="session-a",
+                base_graph_id="graph-current",
+                desired_graph_id="graph-desired",
+                status="planned",
+                created_at="2026-07-15T00:01:00Z",
+                plan=ActivityPlan(
+                    (
+                        PlannedActivity(
+                            ActivityId("start-api"),
+                            StartNode(NodeTarget("api-v2")),
+                        ),
+                    )
+                ),
+            )
+        )
         service = ActivityRunService(
             history,
-            clock=Sequence(["2026-07-15T00:01:00Z", "2026-07-15T00:02:00Z"]),
-            id_factory=Sequence(["plan-a", "run-a"]),
-        )
-
-        plan = service.record_plan(
-            session_id="session-a",
-            base_graph_id="graph-current",
-            desired_graph_id="graph-desired",
-            plan=ActivityPlan(
-                (PlannedActivity(ActivityId("start-api"), StartNode(NodeTarget("api-v2"))),)
-            ),
+            clock=Sequence(["2026-07-15T00:02:00Z"]),
+            id_factory=Sequence(["run-a"]),
         )
         run = service.open_run(plan_id=plan.plan_id)
 

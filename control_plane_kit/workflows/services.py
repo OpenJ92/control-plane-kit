@@ -5,10 +5,8 @@ from __future__ import annotations
 from typing import Callable, Mapping
 from uuid import uuid4
 
-from control_plane_kit.activity_plan import ActivityPlan
 from control_plane_kit.stores import (
     ActivityHistoryStore,
-    ActivityPlanRecord,
     ActivityRunRecord,
     ApprovalRecord,
 )
@@ -60,7 +58,7 @@ class ApprovalWorkflowService:
 
 
 class ActivityRunService:
-    """Records plan and run state; it does not execute runtime effects."""
+    """Records run state for an already persisted canonical plan."""
 
     def __init__(
         self,
@@ -72,25 +70,6 @@ class ActivityRunService:
         self._history = history
         self._clock = clock
         self._id_factory = id_factory
-
-    def record_plan(
-        self,
-        *,
-        session_id: str,
-        base_graph_id: str,
-        desired_graph_id: str,
-        plan: ActivityPlan,
-    ) -> ActivityPlanRecord:
-        record = ActivityPlanRecord(
-            plan_id=self._id_factory(),
-            session_id=session_id,
-            base_graph_id=base_graph_id,
-            desired_graph_id=desired_graph_id,
-            status="planned",
-            created_at=self._clock(),
-            plan=plan,
-        )
-        return self._history.add_plan(record)
 
     def open_run(
         self,

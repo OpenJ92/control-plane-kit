@@ -31,9 +31,26 @@ from control_plane_kit.workflows.graph_edits import (
     StaleDesiredGraph,
     DesiredGraphWorkspaceNotFound,
 )
+from control_plane_kit.workflows.planning import (
+    ActivityPlanningCommandService,
+    ActivityPlanningError,
+    ActivityPlanningGraphInvalid,
+    ActivityPlanningGraphStateConflict,
+    ActivityPlanningResult,
+    ActivityPlanningSessionConflict,
+    ActivityPlanningWorkspaceNotFound,
+    RequestActivityPlan,
+)
 
 __all__ = [
     "ActivityRunService",
+    "ActivityPlanningCommandService",
+    "ActivityPlanningError",
+    "ActivityPlanningGraphInvalid",
+    "ActivityPlanningGraphStateConflict",
+    "ActivityPlanningResult",
+    "ActivityPlanningSessionConflict",
+    "ActivityPlanningWorkspaceNotFound",
     "ApprovalWorkflowService",
     "CancelOperationSession",
     "CloseOperationSession",
@@ -53,6 +70,7 @@ __all__ = [
     "OperationSessionStateConflict",
     "OperationWorkspaceNotFound",
     "RecordOperationAction",
+    "RequestActivityPlan",
     "StartOperationSession",
     "SetDesiredGraph",
     "StaleDesiredGraph",
