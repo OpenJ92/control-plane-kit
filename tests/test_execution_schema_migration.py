@@ -81,6 +81,9 @@ VALUES ('run-a', 'plan-a', 'running', '2026-07-15T00:02:00Z');
 INSERT INTO cpk_activity_events
   (event_id, run_id, ordinal, event_type, occurred_at)
 VALUES ('event-a', 'run-a', 1, 'legacy-step', '2026-07-15T00:03:00Z');
+ALTER TABLE cpk_activity_events
+  ADD CONSTRAINT cpk_activity_events_kind_check
+  CHECK (event_type IN ('request_claimed', 'run_started')) NOT VALID;
 INSERT INTO cpk_observations
   (observation_id, workspace_id, subject_id, status, observed_at)
 VALUES ('observation-a', 'workspace-a', 'api', 'legacy-health',
@@ -178,6 +181,14 @@ class ExecutionSchemaMigrationTests(unittest.TestCase):
                                 '2026-07-16T00:00:00Z', true)
                         """
                     )
+                connection.execute(
+                    """
+                    INSERT INTO cpk_activity_events
+                      (event_id, run_id, ordinal, event_type, occurred_at)
+                    VALUES ('event-opened', 'run-a', 2, 'run_opened',
+                            '2026-07-16T00:00:00Z')
+                    """
+                )
                 with self.assertRaises(CheckViolation):
                     connection.execute(
                         """
@@ -193,7 +204,7 @@ class ExecutionSchemaMigrationTests(unittest.TestCase):
                         """
                         INSERT INTO cpk_activity_events
                           (event_id, run_id, ordinal, event_type, occurred_at)
-                        VALUES ('event-invalid', 'run-a', 2, 'invented',
+                        VALUES ('event-invalid', 'run-a', 3, 'invented',
                                 '2026-07-16T00:00:00Z')
                         """
                     )

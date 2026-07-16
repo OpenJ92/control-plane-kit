@@ -8,6 +8,7 @@ import psycopg
 from control_plane_kit import (
     ActivityEventKind,
     ActivityEventRecord,
+    ActivityId,
     ActivityPlan,
     ActivityRunRecord,
     ActivityRunStatus,
@@ -20,6 +21,9 @@ from control_plane_kit import (
     ExecutionRequestStatus,
     RetryIdentity,
     RiskLevel,
+    PlannedActivity,
+    RuntimeTarget,
+    StartRuntime,
 )
 from control_plane_kit.stores import (
     ActivityPlanRecord,
@@ -116,7 +120,14 @@ class ExecutionStoreTests(PostgresStoreTestCase):
                 desired_graph_id="graph-b",
                 status="planned",
                 created_at="2026-07-16T00:01:00Z",
-                plan=ActivityPlan(()),
+                plan=ActivityPlan(
+                    (
+                        PlannedActivity(
+                            ActivityId("start-runtime-a"),
+                            StartRuntime(RuntimeTarget("runtime-a")),
+                        ),
+                    )
+                ),
             )
         )
         stores.activity_history.add_approval_request(
