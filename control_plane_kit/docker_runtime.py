@@ -18,6 +18,7 @@ from control_plane_kit.effects import (
     EffectSucceeded,
     EffectUnsupported,
     EnvironmentBindingMaterial,
+    DataMountMaterial,
     LiteralMaterialValue,
     MaterializedEffectRequest,
     NodeMaterial,
@@ -31,7 +32,16 @@ from control_plane_kit.execution import (
     FailureEvidence,
     ObservationStatus,
 )
-from control_plane_kit.planning import StartNode, StartRuntime, StopNode
+from control_plane_kit.lifecycle import ResourceLifecycle, ResourceOwnership, ResourcePersistence
+from control_plane_kit.planning import (
+    DestroyDataResource,
+    RemoveNodeResource,
+    RemoveRuntimeResource,
+    StartNode,
+    StartRuntime,
+    StopNode,
+    StopRuntime,
+)
 
 from control_plane_kit.topology.graph import DeploymentGraph, Node
 from control_plane_kit.runtimes import CleanupPolicy, RuntimeActivity, RuntimeNodeState, RuntimePlan, RuntimeState
@@ -75,7 +85,11 @@ class DockerClient(Protocol):
 
     def inspect_container(self, name: str, *, timeout_seconds: int = 30) -> "DockerResourceInspection | None": ...
 
-    def run_container(self, *, name: str, image: str, network: str, environment: Mapping[str, str], command: tuple[str, ...], labels: Mapping[str, str], timeout_seconds: int = 30) -> None: ...
+    def run_container(self, *, name: str, image: str, network: str, environment: Mapping[str, str], command: tuple[str, ...], labels: Mapping[str, str], mounts: Mapping[str, str] | None = None, timeout_seconds: int = 30) -> None: ...
+
+    def inspect_volume(self, name: str, *, timeout_seconds: int = 30) -> "DockerResourceInspection | None": ...
+
+    def create_volume(self, name: str, labels: Mapping[str, str], *, timeout_seconds: int = 30) -> None: ...
 
     def start_existing_container(self, resource_id: str, *, timeout_seconds: int = 30) -> None: ...
 
@@ -87,6 +101,12 @@ class DockerClient(Protocol):
         timeout_seconds: int = 30,
     ) -> None: ...
 
+    def remove_owned_container(self, name: str, ownership: "DockerOwnership", *, timeout_seconds: int = 30) -> None: ...
+
+    def remove_owned_network(self, name: str, ownership: "DockerOwnership", *, timeout_seconds: int = 30) -> None: ...
+
+    def remove_owned_volume(self, name: str, ownership: "DockerOwnership", *, timeout_seconds: int = 30) -> None: ...
+
 
 @dataclass(frozen=True)
 class DockerCliClient:
@@ -95,17 +115,20 @@ class DockerCliClient:
     docker: str = "docker"
 
     def inspect_network(self, name: str, *, timeout_seconds: int = 30) -> "DockerResourceInspection | None":
+        if not self._resource_exists(
+            DockerResourceKind.NETWORK,
+            name,
+            timeout_seconds=timeout_seconds,
+        ):
+            return None
         result = self._capture(
             "network",
             "inspect",
             "--format",
             "{{.Id}}\t{{.Name}}\t{{json .Labels}}",
             name,
-            check=False,
             timeout_seconds=timeout_seconds,
         )
-        if result.returncode != 0:
-            return None
         parts = result.stdout.strip().split("\t", 2)
         if len(parts) != 3:
             raise UnsupportedDockerRuntimeFeature("Docker network inspection was malformed")
@@ -132,17 +155,20 @@ class DockerCliClient:
         self._run(*args, timeout_seconds=timeout_seconds)
 
     def inspect_container(self, name: str, *, timeout_seconds: int = 30) -> "DockerResourceInspection | None":
+        if not self._resource_exists(
+            DockerResourceKind.CONTAINER,
+            name,
+            timeout_seconds=timeout_seconds,
+        ):
+            return None
         result = self._capture(
             "container",
             "inspect",
             "--format",
             "{{.Id}}\t{{.Name}}\t{{.State.Running}}\t{{.Config.Image}}\t{{json .Config.Labels}}",
             name,
-            check=False,
             timeout_seconds=timeout_seconds,
         )
-        if result.returncode != 0:
-            return None
         parts = result.stdout.strip().split("\t", 4)
         if len(parts) != 5 or parts[2] not in ("true", "false"):
             raise UnsupportedDockerRuntimeFeature("Docker container inspection was malformed")
@@ -164,6 +190,7 @@ class DockerCliClient:
         environment: Mapping[str, str],
         command: tuple[str, ...],
         labels: Mapping[str, str],
+        mounts: Mapping[str, str] | None = None,
         timeout_seconds: int = 30,
     ) -> None:
         args = ["run", "-d", "--name", name, "--network", network]
@@ -173,9 +200,51 @@ class DockerCliClient:
             args.extend(("-e", key))
         for key, value in sorted(labels.items()):
             args.extend(("--label", f"{key}={value}"))
+        for source, target in sorted((mounts or {}).items()):
+            args.extend(("--mount", f"type=volume,source={source},target={target}"))
         args.append(image)
         args.extend(command)
         self._run(*args, timeout_seconds=timeout_seconds, environment=process_environment)
+
+    def inspect_volume(self, name: str, *, timeout_seconds: int = 30) -> "DockerResourceInspection | None":
+        if not self._resource_exists(
+            DockerResourceKind.VOLUME,
+            name,
+            timeout_seconds=timeout_seconds,
+        ):
+            return None
+        result = self._capture(
+            "volume",
+            "inspect",
+            "--format",
+            "{{.Name}}\t{{json .Labels}}",
+            name,
+            timeout_seconds=timeout_seconds,
+        )
+        parts = result.stdout.strip().split("\t", 1)
+        if len(parts) != 2:
+            raise UnsupportedDockerRuntimeFeature("Docker volume inspection was malformed")
+        return DockerResourceInspection(
+            DockerResourceKind.VOLUME,
+            parts[0],
+            parts[0],
+            False,
+            None,
+            _parse_labels(parts[1]),
+        )
+
+    def create_volume(
+        self,
+        name: str,
+        labels: Mapping[str, str],
+        *,
+        timeout_seconds: int = 30,
+    ) -> None:
+        args = ["volume", "create"]
+        for key, value in sorted(labels.items()):
+            args.extend(("--label", f"{key}={value}"))
+        args.append(name)
+        self._run(*args, timeout_seconds=timeout_seconds)
 
     def start_existing_container(self, resource_id: str, *, timeout_seconds: int = 30) -> None:
         self._run("start", resource_id, timeout_seconds=timeout_seconds)
@@ -195,6 +264,42 @@ class DockerCliClient:
             raise DockerOwnershipConflict(disposition)
         if inspected is not None and inspected.running:
             self._run("stop", inspected.resource_id, timeout_seconds=timeout_seconds)
+
+    def remove_owned_container(
+        self,
+        name: str,
+        ownership: "DockerOwnership",
+        *,
+        timeout_seconds: int = 30,
+    ) -> None:
+        inspected = self.inspect_container(name, timeout_seconds=timeout_seconds)
+        _require_owned_compatible(inspected, ownership)
+        if inspected is not None:
+            self._run("rm", "-f", inspected.resource_id, timeout_seconds=timeout_seconds)
+
+    def remove_owned_network(
+        self,
+        name: str,
+        ownership: "DockerOwnership",
+        *,
+        timeout_seconds: int = 30,
+    ) -> None:
+        inspected = self.inspect_network(name, timeout_seconds=timeout_seconds)
+        _require_owned_compatible(inspected, ownership)
+        if inspected is not None:
+            self._run("network", "rm", inspected.resource_id, timeout_seconds=timeout_seconds)
+
+    def remove_owned_volume(
+        self,
+        name: str,
+        ownership: "DockerOwnership",
+        *,
+        timeout_seconds: int = 30,
+    ) -> None:
+        inspected = self.inspect_volume(name, timeout_seconds=timeout_seconds)
+        _require_owned_compatible(inspected, ownership)
+        if inspected is not None:
+            self._run("volume", "rm", inspected.resource_id, timeout_seconds=timeout_seconds)
 
     def ensure_network(self, name: str, *, timeout_seconds: int = 30) -> None:
         expected = DockerOwnership.legacy_network(name)
@@ -287,10 +392,28 @@ class DockerCliClient:
             raise UnsupportedDockerRuntimeFeature("Docker inspection exceeded its output bound")
         return result
 
+    def _resource_exists(
+        self,
+        kind: "DockerResourceKind",
+        name: str,
+        *,
+        timeout_seconds: int,
+    ) -> bool:
+        match kind:
+            case DockerResourceKind.CONTAINER:
+                args = ("container", "ls", "--all", "--format", "{{.Names}}")
+            case DockerResourceKind.NETWORK:
+                args = ("network", "ls", "--format", "{{.Name}}")
+            case DockerResourceKind.VOLUME:
+                args = ("volume", "ls", "--format", "{{.Name}}")
+        result = self._capture(*args, timeout_seconds=timeout_seconds)
+        return name in result.stdout.splitlines()
+
 
 class DockerResourceKind(StrEnum):
     NETWORK = "network"
     CONTAINER = "container"
+    VOLUME = "volume"
 
 
 class DockerResourceDisposition(StrEnum):
@@ -318,6 +441,7 @@ class DockerOwnership:
     resource_kind: DockerResourceKind
     intent_fingerprint: str
     node_id: str | None = None
+    data_resource_id: str | None = None
     effect_id: str | None = None
 
     def labels(self) -> dict[str, str]:
@@ -330,6 +454,8 @@ class DockerOwnership:
         }
         if self.node_id is not None:
             values[f"{_LABEL_PREFIX}.node"] = self.node_id
+        if self.data_resource_id is not None:
+            values[f"{_LABEL_PREFIX}.data-resource"] = self.data_resource_id
         if self.effect_id is not None:
             values[f"{_LABEL_PREFIX}.created-by"] = self.effect_id
         return values
@@ -381,6 +507,11 @@ def classify_docker_resource(
         return DockerResourceDisposition.OWNED_CONFLICTING
     if expected.node_id is not None and labels.get(f"{_LABEL_PREFIX}.node") != expected.node_id:
         return DockerResourceDisposition.OWNED_CONFLICTING
+    if (
+        expected.data_resource_id is not None
+        and labels.get(f"{_LABEL_PREFIX}.data-resource") != expected.data_resource_id
+    ):
+        return DockerResourceDisposition.OWNED_CONFLICTING
     if labels.get(f"{_LABEL_PREFIX}.intent") != expected.intent_fingerprint:
         return DockerResourceDisposition.OWNED_CONFLICTING
     return DockerResourceDisposition.OWNED_COMPATIBLE
@@ -418,6 +549,19 @@ def _require_legacy_owned(
         raise DockerOwnershipConflict(disposition)
 
 
+def _require_owned_compatible(
+    inspected: DockerResourceInspection | None,
+    expected: DockerOwnership,
+) -> DockerResourceDisposition:
+    disposition = classify_docker_resource(inspected, expected)
+    if disposition not in (
+        DockerResourceDisposition.ABSENT,
+        DockerResourceDisposition.OWNED_COMPATIBLE,
+    ):
+        raise DockerOwnershipConflict(disposition)
+    return disposition
+
+
 class DockerSecretResolver(Protocol):
     """Resolve one opaque environment reference only at Docker dispatch."""
 
@@ -440,6 +584,7 @@ class StartDockerNodeEffect:
     image: str
     command: tuple[str, ...]
     environment: tuple[EnvironmentBindingMaterial, ...]
+    data_mounts: tuple["DockerDataMount", ...]
     ownership: DockerOwnership
 
 
@@ -451,8 +596,51 @@ class StopDockerNodeEffect:
     ownership: DockerOwnership
 
 
+@dataclass(frozen=True)
+class DockerDataMount:
+    resource_id: str
+    volume_name: str
+    target_path: str
+    ownership: DockerOwnership
+
+
+@dataclass(frozen=True)
+class StopDockerRuntimeEffect:
+    runtime_id: str
+
+
+@dataclass(frozen=True)
+class RemoveDockerNodeResourceEffect:
+    runtime_id: str
+    node_id: str
+    container_name: str
+    ownership: DockerOwnership
+
+
+@dataclass(frozen=True)
+class RemoveDockerRuntimeResourceEffect:
+    runtime_id: str
+    network_name: str
+    ownership: DockerOwnership
+
+
+@dataclass(frozen=True)
+class DestroyDockerDataResourceEffect:
+    runtime_id: str
+    node_id: str
+    resource_id: str
+    volume_name: str
+    ownership: DockerOwnership
+
+
 DockerEffectCommand: TypeAlias = (
-    EnsureDockerNetworkEffect | StartDockerNodeEffect | StopDockerNodeEffect
+    EnsureDockerNetworkEffect
+    | StartDockerNodeEffect
+    | StopDockerNodeEffect
+    | StopDockerRuntimeEffect
+    | RemoveDockerNodeResourceEffect
+    | RemoveDockerRuntimeResourceEffect
+    | DestroyDockerDataResourceEffect
 )
 
 
@@ -467,7 +655,11 @@ class DockerEffectInterpreter:
     @property
     def capabilities(self) -> frozenset[EffectCapability]:
         return frozenset(
-            {EffectCapability.NODE_LIFECYCLE, EffectCapability.RUNTIME_LIFECYCLE}
+            {
+                EffectCapability.NODE_LIFECYCLE,
+                EffectCapability.RUNTIME_LIFECYCLE,
+                EffectCapability.DATA_DESTRUCTION,
+            }
         )
 
     def execute(self, request: MaterializedEffectRequest) -> EffectResult:
@@ -494,6 +686,15 @@ class DockerEffectInterpreter:
                         ),
                     )
                 case StartDockerNodeEffect():
+                    mount_dispositions = {
+                        mount.resource_id: _ensure_owned_volume(
+                            self.client,
+                            mount.volume_name,
+                            mount.ownership,
+                            timeout_seconds=timeout,
+                        ).value
+                        for mount in command.data_mounts
+                    }
                     disposition = _start_owned_container(
                         self.client,
                         command,
@@ -507,6 +708,7 @@ class DockerEffectInterpreter:
                                 "operation": "start-container",
                                 "node_id": command.node_id,
                                 "disposition": disposition.value,
+                                "data_resources": mount_dispositions,
                                 "ownership": _ownership_evidence(command.ownership),
                             }
                         ),
@@ -543,6 +745,90 @@ class DockerEffectInterpreter:
                             {
                                 "operation": "stop-container",
                                 "node_id": command.node_id,
+                                "disposition": disposition.value,
+                                "ownership": _ownership_evidence(ownership),
+                            }
+                        ),
+                    )
+                case StopDockerRuntimeEffect():
+                    return EffectSucceeded(
+                        request.identity,
+                        BoundedEvidence.from_mapping(
+                            {
+                                "operation": "stop-runtime",
+                                "runtime_id": command.runtime_id,
+                                "disposition": "logical-barrier",
+                            }
+                        ),
+                    )
+                case RemoveDockerNodeResourceEffect(
+                    container_name=name,
+                    ownership=ownership,
+                ):
+                    disposition = _require_owned_compatible(
+                        self.client.inspect_container(name, timeout_seconds=timeout),
+                        ownership,
+                    )
+                    self.client.remove_owned_container(
+                        name,
+                        ownership,
+                        timeout_seconds=timeout,
+                    )
+                    return EffectSucceeded(
+                        request.identity,
+                        BoundedEvidence.from_mapping(
+                            {
+                                "operation": "remove-container",
+                                "node_id": command.node_id,
+                                "disposition": disposition.value,
+                                "ownership": _ownership_evidence(ownership),
+                            }
+                        ),
+                    )
+                case RemoveDockerRuntimeResourceEffect(
+                    network_name=name,
+                    ownership=ownership,
+                ):
+                    disposition = _require_owned_compatible(
+                        self.client.inspect_network(name, timeout_seconds=timeout),
+                        ownership,
+                    )
+                    self.client.remove_owned_network(
+                        name,
+                        ownership,
+                        timeout_seconds=timeout,
+                    )
+                    return EffectSucceeded(
+                        request.identity,
+                        BoundedEvidence.from_mapping(
+                            {
+                                "operation": "remove-network",
+                                "runtime_id": command.runtime_id,
+                                "disposition": disposition.value,
+                                "ownership": _ownership_evidence(ownership),
+                            }
+                        ),
+                    )
+                case DestroyDockerDataResourceEffect(
+                    volume_name=name,
+                    ownership=ownership,
+                ):
+                    disposition = _require_owned_compatible(
+                        self.client.inspect_volume(name, timeout_seconds=timeout),
+                        ownership,
+                    )
+                    self.client.remove_owned_volume(
+                        name,
+                        ownership,
+                        timeout_seconds=timeout,
+                    )
+                    return EffectSucceeded(
+                        request.identity,
+                        BoundedEvidence.from_mapping(
+                            {
+                                "operation": "destroy-data-resource",
+                                "node_id": command.node_id,
+                                "resource_id": command.resource_id,
                                 "disposition": disposition.value,
                                 "ownership": _ownership_evidence(ownership),
                             }
@@ -589,25 +875,16 @@ def plan_docker_effect(
     match request.action, request.material:
         case StartRuntime(), RuntimeMaterial() as runtime:
             _require_docker(runtime)
+            _require_owned(runtime.lifecycle)
             network_name = runtime.network_name or f"{runtime.runtime_id}-network"
             return EnsureDockerNetworkEffect(
                 runtime.runtime_id,
                 network_name,
-                DockerOwnership(
-                    request.graphs.workspace_id,
-                    runtime.runtime_id,
-                    DockerResourceKind.NETWORK,
-                    _fingerprint(
-                        {
-                            "runtime_id": runtime.runtime_id,
-                            "network_name": network_name,
-                        }
-                    ),
-                    effect_id=request.identity.idempotency_key,
-                ),
+                _runtime_ownership(request, runtime, network_name),
             )
         case StartNode(), NodeMaterial() as node:
             _require_docker(node.runtime)
+            _require_owned(node.lifecycle)
             if not node.implementation.image:
                 raise UnsupportedDockerRuntimeFeature(
                     "Docker node material requires an image"
@@ -620,15 +897,62 @@ def plan_docker_effect(
                 node.implementation.image,
                 node.implementation.command,
                 node.implementation.environment,
+                _docker_data_mounts(request, node, project_name),
                 _node_ownership(request, node),
             )
         case StopNode(), NodeMaterial() as node:
             _require_docker(node.runtime)
+            _require_owned(node.lifecycle)
             return StopDockerNodeEffect(
                 node.runtime.runtime_id,
                 node.node_id,
                 _container_name(project_name, node.runtime.runtime_id, node.node_id),
                 _node_ownership(request, node),
+            )
+        case StopRuntime(), RuntimeMaterial() as runtime:
+            _require_docker(runtime)
+            _require_owned(runtime.lifecycle)
+            return StopDockerRuntimeEffect(runtime.runtime_id)
+        case RemoveNodeResource(), NodeMaterial() as node:
+            _require_docker(node.runtime)
+            _require_owned_ephemeral(node.lifecycle)
+            return RemoveDockerNodeResourceEffect(
+                node.runtime.runtime_id,
+                node.node_id,
+                _container_name(project_name, node.runtime.runtime_id, node.node_id),
+                _node_ownership(request, node),
+            )
+        case RemoveRuntimeResource(), RuntimeMaterial() as runtime:
+            _require_docker(runtime)
+            _require_owned_ephemeral(runtime.lifecycle)
+            network_name = runtime.network_name or f"{runtime.runtime_id}-network"
+            return RemoveDockerRuntimeResourceEffect(
+                runtime.runtime_id,
+                network_name,
+                _runtime_ownership(request, runtime, network_name),
+            )
+        case DestroyDataResource(target=target), NodeMaterial() as node:
+            _require_docker(node.runtime)
+            _require_owned(node.lifecycle)
+            resource = node.lifecycle.data_resource(target.resource_id)
+            mount = next(
+                (
+                    value
+                    for value in _docker_data_mounts(request, node, project_name)
+                    if value.resource_id == resource.resource_id
+                ),
+                None,
+            )
+            if mount is None:
+                raise UnsupportedDockerRuntimeFeature(
+                    "Docker data destruction requires typed mount material"
+                )
+            return DestroyDockerDataResourceEffect(
+                node.runtime.runtime_id,
+                node.node_id,
+                mount.resource_id,
+                mount.volume_name,
+                mount.ownership,
             )
     raise UnsupportedDockerRuntimeFeature(
         "activity has no safe narrow Docker lifecycle interpretation"
@@ -638,6 +962,21 @@ def plan_docker_effect(
 def _require_docker(runtime: RuntimeMaterial) -> None:
     if runtime.kind is not RuntimeKind.DOCKER:
         raise UnsupportedDockerRuntimeFeature("effect material is not a Docker runtime")
+
+
+def _require_owned(lifecycle: ResourceLifecycle) -> None:
+    if lifecycle.ownership is not ResourceOwnership.OWNED:
+        raise UnsupportedDockerRuntimeFeature(
+            "Docker lifecycle mutation requires an owned resource"
+        )
+
+
+def _require_owned_ephemeral(lifecycle: ResourceLifecycle) -> None:
+    _require_owned(lifecycle)
+    if lifecycle.compute is not ResourcePersistence.EPHEMERAL:
+        raise UnsupportedDockerRuntimeFeature(
+            "Docker compute removal requires ephemeral persistence"
+        )
 
 
 def _resolve_environment(
@@ -681,9 +1020,78 @@ def _node_ownership(
                 "image": node.implementation.image,
                 "command": list(node.implementation.command),
                 "environment": material_environment,
+                "data_mounts": [
+                    {
+                        "resource_id": mount.resource_id,
+                        "target_path": mount.target_path,
+                    }
+                    for mount in node.implementation.data_mounts
+                ],
             }
         ),
         node_id=node.node_id,
+        effect_id=request.identity.idempotency_key,
+    )
+
+
+def _runtime_ownership(
+    request: MaterializedEffectRequest,
+    runtime: RuntimeMaterial,
+    network_name: str,
+) -> DockerOwnership:
+    return DockerOwnership(
+        request.graphs.workspace_id,
+        runtime.runtime_id,
+        DockerResourceKind.NETWORK,
+        _fingerprint(
+            {
+                "runtime_id": runtime.runtime_id,
+                "network_name": network_name,
+            }
+        ),
+        effect_id=request.identity.idempotency_key,
+    )
+
+
+def _docker_data_mounts(
+    request: MaterializedEffectRequest,
+    node: NodeMaterial,
+    project_name: str,
+) -> tuple[DockerDataMount, ...]:
+    return tuple(
+        DockerDataMount(
+            mount.resource_id,
+            _volume_name(
+                project_name,
+                node.runtime.runtime_id,
+                node.node_id,
+                mount.resource_id,
+            ),
+            mount.target_path,
+            _data_ownership(request, node, mount),
+        )
+        for mount in node.implementation.data_mounts
+    )
+
+
+def _data_ownership(
+    request: MaterializedEffectRequest,
+    node: NodeMaterial,
+    mount: DataMountMaterial,
+) -> DockerOwnership:
+    return DockerOwnership(
+        request.graphs.workspace_id,
+        node.runtime.runtime_id,
+        DockerResourceKind.VOLUME,
+        _fingerprint(
+            {
+                "node_id": node.node_id,
+                "resource_id": mount.resource_id,
+                "target_path": mount.target_path,
+            }
+        ),
+        node_id=node.node_id,
+        data_resource_id=mount.resource_id,
         effect_id=request.identity.idempotency_key,
     )
 
@@ -694,6 +1102,7 @@ def _ownership_evidence(ownership: DockerOwnership) -> dict[str, object]:
         "runtime_id": ownership.runtime_id,
         "resource_kind": ownership.resource_kind.value,
         "node_id": ownership.node_id,
+        "data_resource_id": ownership.data_resource_id,
         "intent_fingerprint": ownership.intent_fingerprint,
     }
 
@@ -719,6 +1128,34 @@ def _ensure_owned_network(
         )
     except subprocess.SubprocessError:
         raced = client.inspect_network(name, timeout_seconds=timeout_seconds)
+        raced_disposition = classify_docker_resource(raced, ownership)
+        if raced_disposition is not DockerResourceDisposition.OWNED_COMPATIBLE:
+            raise
+        return raced_disposition
+    return disposition
+
+
+def _ensure_owned_volume(
+    client: DockerClient,
+    name: str,
+    ownership: DockerOwnership,
+    *,
+    timeout_seconds: int,
+) -> DockerResourceDisposition:
+    inspected = client.inspect_volume(name, timeout_seconds=timeout_seconds)
+    disposition = classify_docker_resource(inspected, ownership)
+    if disposition is DockerResourceDisposition.OWNED_COMPATIBLE:
+        return disposition
+    if disposition is not DockerResourceDisposition.ABSENT:
+        raise DockerOwnershipConflict(disposition)
+    try:
+        client.create_volume(
+            name,
+            ownership.labels(),
+            timeout_seconds=timeout_seconds,
+        )
+    except subprocess.SubprocessError:
+        raced = client.inspect_volume(name, timeout_seconds=timeout_seconds)
         raced_disposition = classify_docker_resource(raced, ownership)
         if raced_disposition is not DockerResourceDisposition.OWNED_COMPATIBLE:
             raise
@@ -755,6 +1192,10 @@ def _start_owned_container(
             environment=environment,
             command=command.command,
             labels=command.ownership.labels(),
+            mounts={
+                mount.volume_name: mount.target_path
+                for mount in command.data_mounts
+            },
             timeout_seconds=timeout_seconds,
         )
     except subprocess.SubprocessError:
@@ -921,15 +1362,6 @@ class DockerRuntimeInterpreter:
                     cleanup_policy=state.cleanup_policy,
                 )
             )
-        network_name = state.metadata.get("network_name")
-        if isinstance(network_name, str):
-            activities.append(
-                RemoveDockerNetwork(
-                    runtime_id=state.runtime_id,
-                    network_name=network_name,
-                    cleanup_policy=state.cleanup_policy,
-                )
-            )
         return RuntimePlan(runtime_id=state.runtime_id, action="stop", activities=tuple(activities))
 
     def down(self, state: RuntimeState) -> RuntimeState:
@@ -938,15 +1370,9 @@ class DockerRuntimeInterpreter:
             match activity:
                 case StopDockerContainer(container_name=name):
                     self.client.stop_container(name)
-                    if state.cleanup_policy is CleanupPolicy.REMOVE_ON_STOP:
-                        self.client.remove_container(name)
-                case RemoveDockerNetwork(network_name=name):
-                    if state.cleanup_policy is CleanupPolicy.REMOVE_ON_STOP:
-                        self.client.remove_network(name)
                 case _:
                     raise UnsupportedDockerRuntimeFeature(f"unknown Docker stop activity {activity!r}")
-        nodes = {} if state.cleanup_policy is CleanupPolicy.REMOVE_ON_STOP else state.nodes
-        return replace(state, nodes=nodes, metadata={**state.metadata, "stopped": True})
+        return replace(state, metadata={**state.metadata, "stopped": True})
 
 
 def _docker_runtime(graph: DeploymentGraph, runtime_id: str):
@@ -1023,4 +1449,14 @@ def _network_name(runtime_id: str, metadata: Mapping[str, str]) -> str:
 
 def _container_name(project_name: str, runtime_id: str, node_id: str) -> str:
     safe = f"{project_name}-{runtime_id}-{node_id}"
+    return safe.replace("_", "-").replace(".", "-")
+
+
+def _volume_name(
+    project_name: str,
+    runtime_id: str,
+    node_id: str,
+    resource_id: str,
+) -> str:
+    safe = f"{project_name}-{runtime_id}-{node_id}-{resource_id}"
     return safe.replace("_", "-").replace(".", "-")

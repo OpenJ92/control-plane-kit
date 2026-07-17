@@ -46,6 +46,7 @@ class OwnershipClient:
         environment,
         command,
         labels,
+        mounts=None,
         timeout_seconds=30,
     ):
         self.calls.append(("run", name, image, dict(labels)))
@@ -69,6 +70,21 @@ class OwnershipClient:
         self.calls.append(("stop", name))
         assert self.container is not None
         self.container = replace(self.container, running=False)
+
+    def remove_owned_container(self, name, ownership, *, timeout_seconds=30):
+        raise AssertionError("removal was not expected")
+
+    def remove_owned_network(self, name, ownership, *, timeout_seconds=30):
+        raise AssertionError("removal was not expected")
+
+    def inspect_volume(self, name, *, timeout_seconds=30):
+        return None
+
+    def create_volume(self, name, labels, *, timeout_seconds=30):
+        raise AssertionError("volume mutation was not expected")
+
+    def remove_owned_volume(self, name, ownership, *, timeout_seconds=30):
+        raise AssertionError("volume mutation was not expected")
 
     def inspect_network(self, name, *, timeout_seconds=30):
         return None

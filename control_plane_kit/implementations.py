@@ -28,6 +28,7 @@ class DockerImageImplementation:
     command: tuple[str, ...] = ()
     ports: dict[str, int] = field(default_factory=dict)
     environment: dict[str, str] = field(default_factory=dict)
+    data_mounts: dict[str, str] = field(default_factory=dict)
     lifecycle: ResourceLifecycle = field(default_factory=ResourceLifecycle.owned_ephemeral)
     kind: str = "docker-image"
 
@@ -51,6 +52,10 @@ class DockerImageImplementation:
                 "image": self.image,
                 "command": list(self.command),
                 "environment": dict(self.environment),
+                "data_mounts": [
+                    {"resource_id": resource_id, "target_path": target_path}
+                    for resource_id, target_path in sorted(self.data_mounts.items())
+                ],
             },
             lifecycle=self.lifecycle,
         )
@@ -162,6 +167,7 @@ class DockerPostgresImplementation:
     port: int = 5432
     image: str = "postgres:16-alpine"
     data_resource_id: str = "postgres-data"
+    data_target_path: str = "/var/lib/postgresql/data"
     kind: str = "docker-postgres"
 
     def materialize(self, block_id: str, sockets: BlockSockets, runtime: RuntimeContext) -> MaterializedNode:
@@ -180,6 +186,12 @@ class DockerPostgresImplementation:
                     "POSTGRES_USER": self.username,
                     "POSTGRES_HOST_AUTH_METHOD": "trust",
                 },
+                "data_mounts": [
+                    {
+                        "resource_id": self.data_resource_id,
+                        "target_path": self.data_target_path,
+                    }
+                ],
             },
             lifecycle=ResourceLifecycle.owned_with_retained_data(
                 self.data_resource_id

@@ -37,6 +37,7 @@ from control_plane_kit.effects.values import (
     required_capability,
 )
 from control_plane_kit.effects.material import (
+    DataMountMaterial,
     EffectMaterial,
     EffectMaterializationError,
     EndpointMaterial,
@@ -60,6 +61,7 @@ __all__ = [
     "ActivateTarget",
     "ControlEffectAction",
     "DrainTarget",
+    "DataMountMaterial",
     "EffectAction",
     "EffectAttemptResult",
     "EffectCapability",
