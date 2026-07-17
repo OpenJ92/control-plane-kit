@@ -106,10 +106,28 @@ brainstorm with the following ordered topology:
 #215 + #218 + #263 -> #244 evidence-backed current-graph advancement
   -> #219 durable execution coordinator with fake effects
 #218 -> #245 failure-explicit contract/resource mutation
-  -> #220 authenticated block-control client
-  -> #221 activity-level Docker effects
-#219 + #220 + #221 -> #222 truthful health and observations
-  -> #223 pause/resume/failure/compensation
+  -> #280 versioned staged contract mutation values
+    -> #281 prepare derived resources and publish one projection
+      -> #282 cleanup uncertainty, idempotency, and concurrency
+
+#219 + #282 -> #295 graph-pinned effect materialization
+
+#295 -> #283 control-address and transport policy
+  -> #284 bounded block-control effect interpreter
+    -> #285 protocol and adversarial live hardening
+
+#295 -> #286 narrow Docker operation mapping
+  -> #287 Docker ownership and idempotent inspection
+    -> #288 retained-resource and deletion policy
+      -> #289 explicit host publication and live compatibility
+
+#285 + #289 + #295 -> #290 truthful probe intents and evidence
+  -> #291 coordinator-backed bounded probes
+    -> #292 observation history, freshness, and graph-truth hardening
+      -> #293 Gate D live Docker Hello/router smoke
+        -> #294 mandatory Gate D milestone review
+
+#294 operator approval -> #223 pause/resume/failure/compensation
     -> #224 execution scenario corpus
       -> #225 live Docker router switch
         -> #226 security/data/operational hardening
@@ -135,6 +153,14 @@ must complete before the coordinator can advance current topology. Issue #245
 depends on typed effect outcomes and must complete before live control or Docker
 mutation. Issue #246 belongs to the Roadmap 0009 CPI lifecycle handoff rather
 than introducing a CPI-specialized execution path here.
+
+Gate D adds one provider-neutral boundary that the earlier outline omitted.
+Issue #295 materializes immutable effect input from the exact desired graph
+pinned by an approved plan. Concrete HTTP, Docker, and health interpreters
+consume that value; they do not query Postgres, select a newer graph, or invent
+provider-specific topology lookup. Issues #293 and #294 add a visible adapter
+smoke and mandatory review stop without replacing the full Gate F acceptance
+scenario in #225.
 
 The common law is:
 
