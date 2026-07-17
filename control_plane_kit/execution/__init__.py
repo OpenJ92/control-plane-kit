@@ -47,6 +47,7 @@ from control_plane_kit.execution.observations import (
     project_observation,
 )
 from control_plane_kit.execution.recovery import (
+    AbandonExpiredClaim,
     AcceptUncompensatedFailure,
     BeginCompensation,
     ConfirmEffectFailed,
@@ -59,16 +60,19 @@ from control_plane_kit.execution.recovery import (
     RecoveryDecisionRejected,
     RecoveryScope,
     RecoveryValueError,
+    RenewExpiredClaim,
     UnknownRecoveryVariant,
     RemainPaused,
     ResumeSameIntent,
     RetryAsNewRun,
+    TakeOverExpiredClaim,
     authorize_recovery_decision,
     validate_recovery_decision,
     recovery_decision_record_from_descriptor,
 )
 
 __all__ = [
+    "AbandonExpiredClaim",
     "AcceptUncompensatedFailure",
     "ActivityEventKind",
     "ActivityEventRecord",
@@ -118,11 +122,13 @@ __all__ = [
     "RecoveryDecisionRejected",
     "RecoveryScope",
     "RecoveryValueError",
+    "RenewExpiredClaim",
     "UnknownRecoveryVariant",
     "RemainPaused",
     "project_observation",
     "RetryIdentity",
     "RetryAsNewRun",
+    "TakeOverExpiredClaim",
     "ResumeSameIntent",
     "UnknownExecutionVariant",
     "authorize_recovery_decision",

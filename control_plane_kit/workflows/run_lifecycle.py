@@ -15,6 +15,7 @@ from typing import TypeAlias
 from uuid import uuid4
 
 from control_plane_kit.execution import (
+    AbandonExpiredClaim,
     AcceptUncompensatedFailure,
     ActivityEventKind,
     ActivityEventRecord,
@@ -23,6 +24,7 @@ from control_plane_kit.execution import (
     AdmittedRun,
     BeginCompensation,
     BoundedEvidence,
+    ClaimIdentity,
     ConfirmEffectFailed,
     ConfirmEffectSucceeded,
     ExecutionRequestRecord,
@@ -32,10 +34,12 @@ from control_plane_kit.execution import (
     RecoveryContext,
     RecoveryDecisionRecord,
     RecoveryDecisionRejected,
+    RenewExpiredClaim,
     RemainPaused,
     ResumeSameIntent,
     RetryIdentity,
     RetryAsNewRun,
+    TakeOverExpiredClaim,
     authorize_recovery_decision,
     validate_recovery_decision,
 )
@@ -164,12 +168,17 @@ class DecideActivityRunRecovery:
 
     run_id: str
     expected_worker_id: str
+    expected_event_ordinal: int
     recovery: RecoveryDecisionRecord
     idempotency_key: IdempotencyKey
 
     def __post_init__(self) -> None:
         _required("run_id", self.run_id)
         _required("expected_worker_id", self.expected_worker_id)
+        if type(self.expected_event_ordinal) is not int or self.expected_event_ordinal < 1:
+            raise InvalidOperationCommand(
+                "expected_event_ordinal must be a positive integer"
+            )
         if not isinstance(self.recovery, RecoveryDecisionRecord):
             raise InvalidOperationCommand(
                 "recovery must be RecoveryDecisionRecord"
@@ -245,6 +254,14 @@ class RecoveryCommandResult:
             raise InvalidOperationCommand("recovery result requires recovery action evidence")
         if self.action.payload.get("decision_event_id") != self.decision_event.event_id:
             raise InvalidOperationCommand("operation evidence must identify the decision")
+        if (
+            self.action.payload.get("execution_request_id")
+            != self.request.identity.request_id
+            or self.action.payload.get("result_run_id") != self.run.run_id
+        ):
+            raise InvalidOperationCommand(
+                "operation evidence must identify the recovery result"
+            )
         expected = (
             None if self.consequence_event is None else self.consequence_event.event_id
         )
@@ -523,6 +540,10 @@ class RunLifecycleCommandService:
             _require_context_identity(run, request)
             plan = _current_approved_plan(history, request)
             events = execution.events_for_run(run.run_id)
+            if events[-1].ordinal != command.expected_event_ordinal:
+                raise RunLifecycleConflict(
+                    "recovery journal changed after the operator decision"
+                )
             try:
                 journal = project_activity_journal(plan.plan, events)
             except SagaJournalError as error:
@@ -539,6 +560,7 @@ class RunLifecycleCommandService:
                 compensation_available=bool(
                     compensation_candidates(journal.state)
                 ),
+                claim_expired=_claim_is_expired(request, occurred_at),
             )
             try:
                 validate_recovery_decision(command.recovery.decision, context)
@@ -561,7 +583,7 @@ class RunLifecycleCommandService:
                     recovery=command.recovery,
                 )
             )
-            run, consequence = self._apply_recovery_consequence(
+            request, run, consequence = self._apply_recovery_consequence(
                 execution,
                 request,
                 run,
@@ -588,6 +610,10 @@ class RunLifecycleCommandService:
                             None if consequence is None else consequence.event_id
                         ),
                         "result_status": run.status.value,
+                        "result_request_status": request.status.value,
+                        "result_worker_id": (
+                            None if request.claim is None else request.claim.worker_id
+                        ),
                     },
                     created_at=occurred_at,
                     idempotency_key=command.idempotency_key.value,
@@ -611,7 +637,11 @@ class RunLifecycleCommandService:
         run: ActivityRunRecord,
         command: DecideActivityRunRecovery,
         occurred_at: str,
-    ) -> tuple[ActivityRunRecord, ActivityEventRecord | None]:
+    ) -> tuple[
+        ExecutionRequestRecord,
+        ActivityRunRecord,
+        ActivityEventRecord | None,
+    ]:
         decision = command.recovery.decision
         event_kind: ActivityEventKind | None = None
         activity_id: str | None = None
@@ -673,7 +703,67 @@ class RunLifecycleCommandService:
                     )
                 event_kind = ActivityEventKind.RUN_UNCOMPENSATED_FAILURE_ACCEPTED
             case RemainPaused():
-                return run, None
+                return request, run, None
+            case RenewExpiredClaim(lease_expires_at=lease_expires_at):
+                _require_future_lease(occurred_at, lease_expires_at)
+                prior = request.claim
+                if prior is None:
+                    raise RunLifecycleConflict("execution request has no claim")
+                renewed = execution.renew_expired_request_claim(
+                    request.identity.request_id,
+                    expected_worker_id=command.expected_worker_id,
+                    observed_at=occurred_at,
+                    lease_expires_at=lease_expires_at,
+                )
+                if renewed is None:
+                    raise RunLifecycleConflict("expired claim could not be renewed")
+                request = renewed
+                event_kind = ActivityEventKind.REQUEST_CLAIM_RENEWED
+                evidence = _claim_recovery_evidence(
+                    "renewed",
+                    prior,
+                    replacement_worker_id=prior.worker_id,
+                    replacement_lease_expires_at=lease_expires_at,
+                )
+            case TakeOverExpiredClaim(
+                replacement_worker_id=replacement_worker_id,
+                lease_expires_at=lease_expires_at,
+            ):
+                _require_future_lease(occurred_at, lease_expires_at)
+                prior = request.claim
+                if prior is None:
+                    raise RunLifecycleConflict("execution request has no claim")
+                taken_over = execution.take_over_expired_request_claim(
+                    request.identity.request_id,
+                    expected_worker_id=command.expected_worker_id,
+                    replacement_worker_id=replacement_worker_id,
+                    observed_at=occurred_at,
+                    lease_expires_at=lease_expires_at,
+                )
+                if taken_over is None:
+                    raise RunLifecycleConflict("expired claim could not be taken over")
+                request = taken_over
+                event_kind = ActivityEventKind.REQUEST_CLAIM_TAKEN_OVER
+                evidence = _claim_recovery_evidence(
+                    "taken-over",
+                    prior,
+                    replacement_worker_id=replacement_worker_id,
+                    replacement_lease_expires_at=lease_expires_at,
+                )
+            case AbandonExpiredClaim():
+                prior = request.claim
+                if prior is None:
+                    raise RunLifecycleConflict("execution request has no claim")
+                abandoned = execution.abandon_expired_request_claim(
+                    request.identity.request_id,
+                    expected_worker_id=command.expected_worker_id,
+                    observed_at=occurred_at,
+                )
+                if abandoned is None:
+                    raise RunLifecycleConflict("expired claim could not be abandoned")
+                request = abandoned
+                event_kind = ActivityEventKind.REQUEST_CLAIM_ABANDONED
+                evidence = _claim_recovery_evidence("abandoned", prior)
 
         if event_kind is None:
             raise InvalidOperationCommand(
@@ -690,7 +780,7 @@ class RunLifecycleCommandService:
                 evidence=evidence,
             )
         )
-        return run, event
+        return request, run, event
 
     def _record(
         self,
@@ -825,6 +915,34 @@ def _require_owner(request: ExecutionRequestRecord, worker_id: str) -> None:
         raise RunLifecycleConflict("execution request is not claimed")
     if request.claim.worker_id != worker_id:
         raise RunLifecycleDenied("execution request belongs to another worker")
+
+
+def _claim_is_expired(request: ExecutionRequestRecord, observed_at: str) -> bool:
+    if request.claim is None:
+        raise RunLifecycleConflict("execution request has no claim")
+    return _timestamp("lease_expires_at", request.claim.lease_expires_at) <= _timestamp(
+        "observed_at", observed_at
+    )
+
+
+def _claim_recovery_evidence(
+    action: str,
+    prior: ClaimIdentity,
+    *,
+    replacement_worker_id: str | None = None,
+    replacement_lease_expires_at: str | None = None,
+) -> BoundedEvidence:
+    values: dict[str, object] = {
+        "claim_action": action,
+        "prior_worker_id": prior.worker_id,
+        "prior_claimed_at": prior.claimed_at,
+        "prior_lease_expires_at": prior.lease_expires_at,
+    }
+    if replacement_worker_id is not None:
+        values["replacement_worker_id"] = replacement_worker_id
+    if replacement_lease_expires_at is not None:
+        values["replacement_lease_expires_at"] = replacement_lease_expires_at
+    return BoundedEvidence.from_mapping(values)
 
 
 def _replay_if_present(
@@ -989,6 +1107,7 @@ def _fingerprint(command: RunLifecycleCommand) -> str:
             value.update(
                 run_id=command.run_id,
                 expected_worker_id=command.expected_worker_id,
+                expected_event_ordinal=command.expected_event_ordinal,
                 recovery=command.recovery.descriptor(),
             )
         case ClaimAndOpenActivityRun():

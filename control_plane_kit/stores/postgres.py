@@ -155,7 +155,7 @@ CREATE TABLE IF NOT EXISTS cpk_execution_requests (
   claimed_at text,
   lease_expires_at text,
   CONSTRAINT cpk_execution_requests_status_check
-    CHECK (status IN ('queued', 'claimed', 'cancelled')),
+    CHECK (status IN ('queued', 'claimed', 'cancelled', 'abandoned')),
   CONSTRAINT cpk_execution_requests_claim_check
     CHECK (
       (status = 'claimed' AND claim_worker_id IS NOT NULL
@@ -471,7 +471,9 @@ BEGIN
     ALTER TABLE cpk_activity_events
       ADD CONSTRAINT cpk_activity_events_kind_check
       CHECK (event_type IN (
-        'request_admitted', 'request_claimed', 'run_opened', 'run_started', 'run_paused',
+        'request_admitted', 'request_claimed', 'request_claim_renewed',
+        'request_claim_taken_over', 'request_claim_abandoned',
+        'run_opened', 'run_started', 'run_paused',
         'run_resumed', 'step_started', 'step_succeeded', 'step_failed',
         'step_unsupported', 'step_uncertain',
         'step_uncertainty_resolved_succeeded', 'step_uncertainty_resolved_failed',
@@ -1424,6 +1426,89 @@ class PostgresExecutionStore:
                       claim_worker_id, claimed_at, lease_expires_at
             """,
             (request_id, worker_id),
+        ).fetchone()
+        return None if row is None else _execution_request(row)
+
+    def renew_expired_request_claim(
+        self,
+        request_id: str,
+        *,
+        expected_worker_id: str,
+        observed_at: str,
+        lease_expires_at: str,
+    ) -> ExecutionRequestRecord | None:
+        row = self._connection.execute(
+            """
+            UPDATE cpk_execution_requests
+            SET lease_expires_at = %s
+            WHERE request_id = %s
+              AND status = 'claimed'
+              AND claim_worker_id = %s
+              AND lease_expires_at::timestamptz <= %s::timestamptz
+            RETURNING request_id, workspace_id, session_id, plan_id, status,
+                      requested_by, requested_at, approval_request_id,
+                      approval_decision_id, idempotency_key, intent_fingerprint,
+                      claim_worker_id, claimed_at, lease_expires_at
+            """,
+            (lease_expires_at, request_id, expected_worker_id, observed_at),
+        ).fetchone()
+        return None if row is None else _execution_request(row)
+
+    def take_over_expired_request_claim(
+        self,
+        request_id: str,
+        *,
+        expected_worker_id: str,
+        replacement_worker_id: str,
+        observed_at: str,
+        lease_expires_at: str,
+    ) -> ExecutionRequestRecord | None:
+        row = self._connection.execute(
+            """
+            UPDATE cpk_execution_requests
+            SET claim_worker_id = %s, claimed_at = %s, lease_expires_at = %s
+            WHERE request_id = %s
+              AND status = 'claimed'
+              AND claim_worker_id = %s
+              AND lease_expires_at::timestamptz <= %s::timestamptz
+            RETURNING request_id, workspace_id, session_id, plan_id, status,
+                      requested_by, requested_at, approval_request_id,
+                      approval_decision_id, idempotency_key, intent_fingerprint,
+                      claim_worker_id, claimed_at, lease_expires_at
+            """,
+            (
+                replacement_worker_id,
+                observed_at,
+                lease_expires_at,
+                request_id,
+                expected_worker_id,
+                observed_at,
+            ),
+        ).fetchone()
+        return None if row is None else _execution_request(row)
+
+    def abandon_expired_request_claim(
+        self,
+        request_id: str,
+        *,
+        expected_worker_id: str,
+        observed_at: str,
+    ) -> ExecutionRequestRecord | None:
+        row = self._connection.execute(
+            """
+            UPDATE cpk_execution_requests
+            SET status = 'abandoned', claim_worker_id = NULL,
+                claimed_at = NULL, lease_expires_at = NULL
+            WHERE request_id = %s
+              AND status = 'claimed'
+              AND claim_worker_id = %s
+              AND lease_expires_at::timestamptz <= %s::timestamptz
+            RETURNING request_id, workspace_id, session_id, plan_id, status,
+                      requested_by, requested_at, approval_request_id,
+                      approval_decision_id, idempotency_key, intent_fingerprint,
+                      claim_worker_id, claimed_at, lease_expires_at
+            """,
+            (request_id, expected_worker_id, observed_at),
         ).fetchone()
         return None if row is None else _execution_request(row)
 

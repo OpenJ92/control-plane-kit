@@ -37,6 +37,7 @@ class ExecutionRequestStatus(StrEnum):
     QUEUED = "queued"
     CLAIMED = "claimed"
     CANCELLED = "cancelled"
+    ABANDONED = "abandoned"
 
 
 class ActivityRunStatus(StrEnum):
@@ -59,6 +60,9 @@ class ActivityEventKind(StrEnum):
 
     REQUEST_ADMITTED = "request_admitted"
     REQUEST_CLAIMED = "request_claimed"
+    REQUEST_CLAIM_RENEWED = "request_claim_renewed"
+    REQUEST_CLAIM_TAKEN_OVER = "request_claim_taken_over"
+    REQUEST_CLAIM_ABANDONED = "request_claim_abandoned"
     RUN_OPENED = "run_opened"
     RUN_STARTED = "run_started"
     RUN_PAUSED = "run_paused"

@@ -1,6 +1,7 @@
 import unittest
 
 from control_plane_kit.execution import (
+    AbandonExpiredClaim,
     AcceptUncompensatedFailure,
     ActivityRunStatus,
     BeginCompensation,
@@ -13,10 +14,13 @@ from control_plane_kit.execution import (
     RecoveryDecisionRecord,
     RecoveryDecisionRejected,
     RecoveryScope,
+    RenewExpiredClaim,
     RemainPaused,
     ResumeSameIntent,
     RetryAsNewRun,
+    TakeOverExpiredClaim,
     authorize_recovery_decision,
+    recovery_decision_record_from_descriptor,
     validate_recovery_decision,
 )
 
@@ -31,6 +35,12 @@ class RecoveryDecisionTests(unittest.TestCase):
             (BeginCompensation(), RecoveryScope.COMPENSATE),
             (AcceptUncompensatedFailure(), RecoveryScope.ACCEPT_LOSS),
             (RemainPaused(), RecoveryScope.OPERATE),
+            (RenewExpiredClaim("2026-07-16T00:10:00Z"), RecoveryScope.RENEW_CLAIM),
+            (
+                TakeOverExpiredClaim("worker-b", "2026-07-16T00:10:00Z"),
+                RecoveryScope.TAKE_OVER_CLAIM,
+            ),
+            (AbandonExpiredClaim(), RecoveryScope.ABANDON_CLAIM),
         )
 
         for decision, scope in cases:
@@ -95,6 +105,27 @@ class RecoveryDecisionTests(unittest.TestCase):
                 with self.assertRaisesRegex(RecoveryDecisionRejected, "fresh graph plan"):
                     validate_recovery_decision(decision, changed)
 
+    def test_expired_ownership_requires_one_closed_claim_recovery(self):
+        expired = RecoveryContext(
+            ActivityRunStatus.FAILED,
+            compensation_available=True,
+            claim_expired=True,
+        )
+        for decision in (
+            RenewExpiredClaim("2026-07-16T00:10:00Z"),
+            TakeOverExpiredClaim("worker-b", "2026-07-16T00:10:00Z"),
+            AbandonExpiredClaim(),
+        ):
+            with self.subTest(decision=type(decision).__name__):
+                validate_recovery_decision(decision, expired)
+        with self.assertRaisesRegex(RecoveryDecisionRejected, "claim recovery"):
+            validate_recovery_decision(RetryAsNewRun(), expired)
+        with self.assertRaisesRegex(RecoveryDecisionRejected, "requires expired"):
+            validate_recovery_decision(
+                RenewExpiredClaim("2026-07-16T00:10:00Z"),
+                RecoveryContext(ActivityRunStatus.FAILED),
+            )
+
     def test_decision_record_requires_attribution_and_reason(self):
         record = RecoveryDecisionRecord(
             "decision-a",
@@ -118,6 +149,35 @@ class RecoveryDecisionTests(unittest.TestCase):
                 record.authority,
                 "x" * (MAX_EVIDENCE_TEXT + 1),
             )
+
+    def test_claim_recovery_variants_round_trip_as_closed_descriptors(self):
+        authority = RecoveryAuthority(
+            "operator",
+            "grant-a",
+            (
+                RecoveryScope.RENEW_CLAIM,
+                RecoveryScope.TAKE_OVER_CLAIM,
+                RecoveryScope.ABANDON_CLAIM,
+            ),
+        )
+        for index, decision in enumerate(
+            (
+                RenewExpiredClaim("2026-07-16T00:10:00Z"),
+                TakeOverExpiredClaim("worker-b", "2026-07-16T00:10:00Z"),
+                AbandonExpiredClaim(),
+            )
+        ):
+            with self.subTest(decision=type(decision).__name__):
+                record = RecoveryDecisionRecord(
+                    f"decision-{index}",
+                    decision,
+                    authority,
+                    "Resolve expired ownership explicitly.",
+                )
+                self.assertEqual(
+                    recovery_decision_record_from_descriptor(record.descriptor()),
+                    record,
+                )
 
     def test_open_strings_do_not_enter_recovery_scopes_or_context(self):
         with self.assertRaisesRegex(TypeError, "RecoveryScope"):

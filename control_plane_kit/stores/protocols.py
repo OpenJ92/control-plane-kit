@@ -119,6 +119,30 @@ class ExecutionStore(Protocol):
     def cancel_claimed_request(
         self, request_id: str, *, worker_id: str
     ) -> ExecutionRequestRecord | None: ...
+    def renew_expired_request_claim(
+        self,
+        request_id: str,
+        *,
+        expected_worker_id: str,
+        observed_at: str,
+        lease_expires_at: str,
+    ) -> ExecutionRequestRecord | None: ...
+    def take_over_expired_request_claim(
+        self,
+        request_id: str,
+        *,
+        expected_worker_id: str,
+        replacement_worker_id: str,
+        observed_at: str,
+        lease_expires_at: str,
+    ) -> ExecutionRequestRecord | None: ...
+    def abandon_expired_request_claim(
+        self,
+        request_id: str,
+        *,
+        expected_worker_id: str,
+        observed_at: str,
+    ) -> ExecutionRequestRecord | None: ...
     def add_run(self, record: ActivityRunRecord) -> ActivityRunRecord: ...
     def get_run(self, run_id: str) -> ActivityRunRecord: ...
     def get_run_for_update(self, run_id: str) -> ActivityRunRecord: ...
