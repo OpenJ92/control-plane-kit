@@ -8,6 +8,9 @@ from control_plane_kit.effects import (
     EffectDispatchError,
     EffectFailed,
     EffectRequest,
+    MaterializedEffectRequest,
+    PinnedGraphSet,
+    RuntimeMaterial,
     EffectSucceeded,
     EffectUnsupported,
     dispatch_effect,
@@ -37,6 +40,7 @@ from control_plane_kit.planning import (
 from control_plane_kit.saga import SagaState, SagaStepId, SagaStepState
 from control_plane_kit.scheduling import derive_schedule
 from control_plane_kit.topology import diff_graphs, validate_graph
+from control_plane_kit.types import RuntimeKind
 from examples.scenarios import planning_scenarios
 
 
@@ -44,9 +48,9 @@ from examples.scenarios import planning_scenarios
 class FakeEffectInterpreter:
     capabilities: frozenset[EffectCapability]
     fail: bool = False
-    requests: list[EffectRequest] = field(default_factory=list)
+    requests: list[MaterializedEffectRequest] = field(default_factory=list)
 
-    def execute(self, request: EffectRequest) -> EffectSucceeded | EffectFailed:
+    def execute(self, request: MaterializedEffectRequest) -> EffectSucceeded | EffectFailed:
         self.requests.append(request)
         if self.fail:
             return EffectFailed(
@@ -84,12 +88,13 @@ class EffectDispatchTests(unittest.TestCase):
         for ordinal, operation in enumerate(operations, start=1):
             with self.subTest(operation=type(operation).__name__):
                 activity = PlannedActivity(ActivityId(f"effect-{ordinal}"), operation)
-                request = effect_request_for_activity(
+                abstract = effect_request_for_activity(
                     activity,
                     run_id="run-all-safe-operations",
                     attempt=1,
                     idempotency_key=f"all-safe:{ordinal}:1",
                 )
+                request = _materialized(abstract)
                 interpreter = FakeEffectInterpreter(frozenset({request.capability}))
 
                 self.assertIsInstance(
@@ -156,8 +161,9 @@ class EffectDispatchTests(unittest.TestCase):
                     attempt=1,
                     idempotency_key=f"{scenario.scenario_id}:{activity.activity_id.value}:1",
                 )
+                materialized = _materialized(request)
                 interpreter = FakeEffectInterpreter(frozenset({request.capability}))
-                self.assertIsInstance(dispatch_effect(request, interpreter), EffectSucceeded)
+                self.assertIsInstance(dispatch_effect(materialized, interpreter), EffectSucceeded)
                 executed += 1
 
         self.assertGreater(executed, 0)
@@ -166,22 +172,22 @@ class EffectDispatchTests(unittest.TestCase):
         request = self._first_executable_request()
 
         class WrongIdentityInterpreter(FakeEffectInterpreter):
-            def execute(self, value: EffectRequest) -> EffectSucceeded:
+            def execute(self, value: MaterializedEffectRequest) -> EffectSucceeded:
                 other = self._different_request(value)
                 return EffectSucceeded(other.identity)
 
             @staticmethod
-            def _different_request(value: EffectRequest) -> EffectRequest:
+            def _different_request(value: MaterializedEffectRequest) -> MaterializedEffectRequest:
                 first = next(iter(planning_scenarios()))
                 plan = compile_activity_plan(
                     diff_graphs(validate_graph(first.current_graph), validate_graph(first.desired_graph))
                 )
-                return effect_request_for_activity(
+                return _materialized(effect_request_for_activity(
                     plan.activities[0],
                     run_id="different-run",
                     attempt=1,
                     idempotency_key="different-key",
-                )
+                ))
 
         interpreter = WrongIdentityInterpreter(frozenset({request.capability}))
         with self.assertRaisesRegex(EffectDispatchError, "identity"):
@@ -195,7 +201,7 @@ class EffectDispatchTests(unittest.TestCase):
             dispatch_effect(request, interpreter)
 
     @staticmethod
-    def _first_executable_request() -> EffectRequest:
+    def _first_executable_request() -> MaterializedEffectRequest:
         for scenario in planning_scenarios():
             plan = compile_activity_plan(
                 diff_graphs(
@@ -204,13 +210,22 @@ class EffectDispatchTests(unittest.TestCase):
                 )
             )
             if plan.ready_for_execution and plan.activities:
-                return effect_request_for_activity(
+                return _materialized(effect_request_for_activity(
                     plan.activities[0],
                     run_id="run-1",
                     attempt=1,
                     idempotency_key="run-1:first:1",
-                )
+                ))
         raise AssertionError("scenario corpus has no executable activity")
+
+
+def _materialized(request: EffectRequest) -> MaterializedEffectRequest:
+    return MaterializedEffectRequest(
+        request,
+        PinnedGraphSet("workspace", "plan", "base", "desired"),
+        "desired",
+        RuntimeMaterial("runtime", RuntimeKind.DOCKER, (), "network"),
+    )
 
 
 if __name__ == "__main__":

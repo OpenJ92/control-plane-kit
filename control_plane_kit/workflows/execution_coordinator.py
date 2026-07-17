@@ -14,10 +14,13 @@ from control_plane_kit.effects import (
     EffectRequest,
     EffectSucceeded,
     EffectUnsupported,
+    MaterializedEffectRequest,
+    PinnedGraphSet,
     PreparedEffect,
     TimeoutPolicy,
     dispatch_prepared_effect,
     effect_request_for_activity,
+    materialize_effect_request,
     prepare_effect,
 )
 from control_plane_kit.execution import (
@@ -36,6 +39,7 @@ from control_plane_kit.execution import (
 from control_plane_kit.planning import ActivityPlan, PlannedActivity
 from control_plane_kit.scheduling import ExecutionSchedule, derive_schedule
 from control_plane_kit.stores import ActivityPlanRecord, PostgresUnitOfWork
+from control_plane_kit.topology import DEFAULT_GRAPH_CODEC
 from control_plane_kit.workflows.commands import IdempotencyKey, InvalidOperationCommand
 from control_plane_kit.workflows.run_lifecycle import (
     CompleteActivityRun,
@@ -196,7 +200,15 @@ class ExecutionCoordinator:
                 idempotency_key=_effect_key(context.run, activity),
                 timeout=command.timeout,
             )
-            prepared = prepare_effect(request, self._interpreter)
+            prepared_result = self._record_materialized_intent(
+                command,
+                activity,
+                request,
+            )
+            if isinstance(prepared_result, EffectUnsupported):
+                prepared = prepared_result
+            else:
+                intent, prepared = prepared_result
             if isinstance(prepared, EffectUnsupported):
                 self._record_unsupported(command, activity, prepared)
                 failed = self._fail_run(
@@ -217,7 +229,6 @@ class ExecutionCoordinator:
                     activity.activity_id.value,
                 )
 
-            intent = self._record_intent(command, activity, request)
             self._raise_if(CoordinatorCheckpoint.AFTER_INTENT_COMMIT)
             result = dispatch_prepared_effect(prepared)
             attempted += 1
@@ -335,12 +346,14 @@ class ExecutionCoordinator:
             uncertain.activity_id,
         )
 
-    def _record_intent(
+    def _record_materialized_intent(
         self,
         command: ExecuteActivityRun,
         activity: PlannedActivity,
         request: EffectRequest,
-    ) -> ActivityEventRecord:
+    ) -> tuple[ActivityEventRecord, PreparedEffect] | EffectUnsupported:
+        """Pin material, preflight capability, and commit intent in one short UoW."""
+
         occurred_at = self._clock()
         expires_at = occurred_at + timedelta(seconds=request.timeout.total_seconds)
         with self._unit_of_work_factory() as work:
@@ -354,6 +367,36 @@ class ExecutionCoordinator:
             schedule = derive_schedule(plan.plan, journal.state)
             if journal.in_flight or journal.uncertain or activity not in schedule.ready:
                 raise ExecutionCoordinatorConflict("activity is no longer ready")
+            try:
+                base_record = work.stores.graph_topology.get(plan.base_graph_id)
+                desired_record = work.stores.graph_topology.get(plan.desired_graph_id)
+            except KeyError as error:
+                raise ExecutionCoordinatorNotFound(str(error)) from error
+            workspace_id = execution_request.identity.workspace_id
+            if (
+                base_record.workspace_id != workspace_id
+                or desired_record.workspace_id != workspace_id
+            ):
+                raise ExecutionCoordinatorConflict(
+                    "plan-pinned graph belongs to a different workspace"
+                )
+            materialized = materialize_effect_request(
+                request,
+                activity,
+                PinnedGraphSet(
+                    workspace_id,
+                    plan.plan_id,
+                    plan.base_graph_id,
+                    plan.desired_graph_id,
+                ),
+                base_graph_id=base_record.graph_id,
+                base_graph=DEFAULT_GRAPH_CODEC.decode(base_record.graph_descriptor),
+                desired_graph_id=desired_record.graph_id,
+                desired_graph=DEFAULT_GRAPH_CODEC.decode(desired_record.graph_descriptor),
+            )
+            prepared = prepare_effect(materialized, self._interpreter)
+            if isinstance(prepared, EffectUnsupported):
+                return prepared
             event = work.stores.execution.add_event(
                 ActivityEventRecord(
                     event_id=self._id_factory(),
@@ -371,7 +414,7 @@ class ExecutionCoordinator:
                 )
             )
             work.commit()
-            return event
+            return event, prepared
 
     def _record_result(
         self,

@@ -1,0 +1,171 @@
+from __future__ import annotations
+
+from dataclasses import replace
+import unittest
+
+from control_plane_kit.effects import (
+    EffectMaterializationError,
+    MaterializationCode,
+    MaterializedEffectRequest,
+    PinnedGraphSet,
+    SecretReferenceMaterialValue,
+    effect_request_for_activity,
+    materialize_effect_request,
+)
+from control_plane_kit.planning import ReviewChange, compile_activity_plan
+from control_plane_kit.topology import diff_graphs, validate_graph
+from examples.scenarios import planning_scenarios
+
+
+class EffectMaterialTests(unittest.TestCase):
+    def test_every_executable_scenario_operation_materializes_from_pinned_transition(self) -> None:
+        materialized: list[MaterializedEffectRequest] = []
+        for scenario in planning_scenarios():
+            plan = compile_activity_plan(
+                diff_graphs(validate_graph(scenario.current_graph), validate_graph(scenario.desired_graph))
+            )
+            graphs = PinnedGraphSet(
+                "workspace-a",
+                f"plan-{scenario.scenario_id}",
+                f"base-{scenario.scenario_id}",
+                f"desired-{scenario.scenario_id}",
+            )
+            for activity in plan.activities:
+                if isinstance(activity.operation, ReviewChange):
+                    continue
+                request = effect_request_for_activity(
+                    activity,
+                    run_id=f"run-{scenario.scenario_id}",
+                    attempt=1,
+                    idempotency_key=f"{scenario.scenario_id}:{activity.activity_id.value}:1",
+                )
+                value = materialize_effect_request(
+                    request,
+                    activity,
+                    graphs,
+                    base_graph_id=graphs.base_graph_id,
+                    base_graph=scenario.current_graph,
+                    desired_graph_id=graphs.desired_graph_id,
+                    desired_graph=scenario.desired_graph,
+                )
+                self.assertEqual(value.request, request)
+                self.assertEqual(value.graphs, graphs)
+                materialized.append(value)
+
+        self.assertGreater(len(materialized), 20)
+
+    def test_removal_material_comes_from_pinned_base_not_mutable_desired_graph(self) -> None:
+        scenario = next(value for value in planning_scenarios() if value.scenario_id == "full-teardown")
+        plan = compile_activity_plan(diff_graphs(validate_graph(scenario.current_graph), validate_graph(scenario.desired_graph)))
+        activity = next(value for value in plan.activities if type(value.operation).__name__ == "StopNode")
+        request = effect_request_for_activity(activity, run_id="run", attempt=1, idempotency_key="stop:1")
+        graphs = PinnedGraphSet("workspace", "plan", "base", "desired")
+
+        material = materialize_effect_request(
+            request,
+            activity,
+            graphs,
+            base_graph_id="base",
+            base_graph=scenario.current_graph,
+            desired_graph_id="desired",
+            desired_graph=scenario.desired_graph,
+        )
+
+        self.assertEqual(material.material_graph_id, "base")
+        self.assertEqual(material.material.node_id, activity.operation.target.node_id)
+
+    def test_materialization_is_deterministic(self) -> None:
+        scenario = planning_scenarios()[0]
+        plan = compile_activity_plan(diff_graphs(validate_graph(scenario.current_graph), validate_graph(scenario.desired_graph)))
+        activity = plan.activities[0]
+        request = effect_request_for_activity(activity, run_id="run", attempt=1, idempotency_key="key")
+        graphs = PinnedGraphSet("workspace", "plan", "base", "desired")
+
+        def materialize() -> MaterializedEffectRequest:
+            return materialize_effect_request(
+                request,
+                activity,
+                graphs,
+                base_graph_id="base",
+                base_graph=scenario.current_graph,
+                desired_graph_id="desired",
+                desired_graph=scenario.desired_graph,
+            )
+
+        self.assertEqual(materialize(), materialize())
+        self.assertEqual(materialize().canonical_json(), materialize().canonical_json())
+
+    def test_graph_identity_mismatch_fails_before_materialization(self) -> None:
+        scenario = planning_scenarios()[0]
+        plan = compile_activity_plan(diff_graphs(validate_graph(scenario.current_graph), validate_graph(scenario.desired_graph)))
+        activity = plan.activities[0]
+        request = effect_request_for_activity(activity, run_id="run", attempt=1, idempotency_key="key")
+
+        with self.assertRaises(EffectMaterializationError) as raised:
+            materialize_effect_request(
+                request,
+                activity,
+                PinnedGraphSet("workspace", "plan", "base", "desired"),
+                base_graph_id="foreign-base",
+                base_graph=scenario.current_graph,
+                desired_graph_id="desired",
+                desired_graph=scenario.desired_graph,
+            )
+
+        self.assertIs(raised.exception.code, MaterializationCode.GRAPH_IDENTITY)
+
+    def test_plaintext_secret_shaped_environment_is_rejected_without_value_disclosure(self) -> None:
+        scenario = planning_scenarios()[0]
+        desired = scenario.desired_graph
+        node = desired.node("api")
+        malformed = desired.update_node(
+            replace(
+                node,
+                metadata={**node.metadata, "environment": {"API_TOKEN": "do-not-disclose"}},
+            )
+        )
+        plan = compile_activity_plan(diff_graphs(validate_graph(scenario.current_graph), validate_graph(scenario.desired_graph)))
+        activity = next(value for value in plan.activities if type(value.operation).__name__ == "StartNode")
+        request = effect_request_for_activity(activity, run_id="run", attempt=1, idempotency_key="key")
+
+        with self.assertRaises(EffectMaterializationError) as raised:
+            materialize_effect_request(
+                request,
+                activity,
+                PinnedGraphSet("workspace", "plan", "base", "desired"),
+                base_graph_id="base",
+                base_graph=scenario.current_graph,
+                desired_graph_id="desired",
+                desired_graph=malformed,
+            )
+
+        self.assertIs(raised.exception.code, MaterializationCode.SECRET_VALUE)
+        self.assertNotIn("do-not-disclose", str(raised.exception))
+
+    def test_descriptor_redacts_even_nonsecret_environment_values(self) -> None:
+        scenario = planning_scenarios()[0]
+        plan = compile_activity_plan(
+            diff_graphs(validate_graph(scenario.current_graph), validate_graph(scenario.desired_graph))
+        )
+        activity = next(value for value in plan.activities if type(value.operation).__name__ == "StartNode")
+        request = effect_request_for_activity(activity, run_id="run", attempt=1, idempotency_key="key")
+        materialized = materialize_effect_request(
+            request,
+            activity,
+            PinnedGraphSet("workspace", "plan", "base", "desired"),
+            base_graph_id="base",
+            base_graph=scenario.current_graph,
+            desired_graph_id="desired",
+            desired_graph=scenario.desired_graph,
+        )
+
+        self.assertNotIn("Hello from API", materialized.canonical_json())
+        self.assertIn("<redacted>", materialized.canonical_json())
+
+    def test_secret_reference_material_is_opaque(self) -> None:
+        value = SecretReferenceMaterialValue("secret://workspace/database")
+        self.assertEqual(value.reference_id, "secret://workspace/database")
+
+
+if __name__ == "__main__":
+    unittest.main()
