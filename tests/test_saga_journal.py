@@ -83,6 +83,18 @@ class SagaJournalTests(unittest.TestCase):
             SagaStepStatus.FAILED,
         )
 
+        after_discovery = project_activity_journal(
+            plan(),
+            (
+                event(1, ActivityEventKind.STEP_STARTED),
+                event(2, ActivityEventKind.STEP_UNSUPPORTED),
+            ),
+        )
+        self.assertIs(
+            after_discovery.state.steps[0].status,
+            SagaStepStatus.FAILED,
+        )
+
     def test_foreign_and_impossible_histories_fail_closed(self) -> None:
         with self.assertRaises(SagaJournalError):
             project_activity_journal(

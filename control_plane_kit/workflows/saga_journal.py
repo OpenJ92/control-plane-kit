@@ -53,6 +53,7 @@ def project_activity_journal(
     saga_events: list[SagaEvent] = []
     uncertain: list[ActivityEventRecord] = []
     event_by_step: dict[str, ActivityEventRecord] = {}
+    started_steps: set[str] = set()
 
     for event in events:
         if event.activity_id is not None and event.activity_id not in plan_ids:
@@ -66,6 +67,7 @@ def project_activity_journal(
             case ActivityEventKind.STEP_STARTED:
                 saga_events.append(SagaStepStarted(step_id))
                 event_by_step[event.activity_id] = event
+                started_steps.add(event.activity_id)
             case ActivityEventKind.STEP_SUCCEEDED:
                 saga_events.append(SagaStepSucceeded(step_id))
                 event_by_step.pop(event.activity_id, None)
@@ -73,7 +75,9 @@ def project_activity_journal(
                 saga_events.append(SagaStepFailed(step_id))
                 event_by_step.pop(event.activity_id, None)
             case ActivityEventKind.STEP_UNSUPPORTED:
-                saga_events.extend((SagaStepStarted(step_id), SagaStepFailed(step_id)))
+                if event.activity_id not in started_steps:
+                    saga_events.append(SagaStepStarted(step_id))
+                saga_events.append(SagaStepFailed(step_id))
                 event_by_step.pop(event.activity_id, None)
             case ActivityEventKind.STEP_UNCERTAIN:
                 uncertain.append(event)

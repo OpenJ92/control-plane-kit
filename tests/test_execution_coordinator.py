@@ -16,6 +16,7 @@ from control_plane_kit.effects import (
     EffectObservation,
     MaterializedEffectRequest,
     EffectSucceeded,
+    EffectUnsupported,
     ObservationKind,
 )
 from control_plane_kit.execution import (
@@ -112,13 +113,26 @@ class InspectableFakeInterpreter:
     tracker: TransactionTracker
     fail: bool = False
     observations: bool = False
+    remote_unsupported: bool = False
+    uncertain: bool = False
     capabilities: frozenset[EffectCapability] = frozenset(EffectCapability)
     requests: list[MaterializedEffectRequest] = field(default_factory=list)
 
-    def execute(self, request: MaterializedEffectRequest) -> EffectSucceeded | EffectFailed:
+    def execute(self, request: MaterializedEffectRequest) -> EffectSucceeded | EffectFailed | EffectUnsupported:
         if self.tracker.active != 0:
             raise AssertionError("effect executed while a UnitOfWork was active")
         self.requests.append(request)
+        if self.remote_unsupported:
+            return EffectUnsupported(request.identity, request.capability)
+        if self.uncertain:
+            return EffectFailed(
+                request.identity,
+                FailureEvidence(
+                    FailureCategory.UNCERTAIN,
+                    "fake.uncertain",
+                    "The fake effect may have completed without a result.",
+                ),
+            )
         if self.fail:
             return EffectFailed(
                 request.identity,
@@ -294,6 +308,35 @@ class ExecutionCoordinatorTests(PostgresStoreTestCase):
             tuple(event.kind for event in self._events())[-2:],
             (ActivityEventKind.STEP_UNSUPPORTED, ActivityEventKind.RUN_FAILED),
         )
+
+    def test_live_capability_rejection_closes_intent_without_mutation(self) -> None:
+        interpreter = InspectableFakeInterpreter(
+            self.tracker,
+            remote_unsupported=True,
+        )
+
+        result = self._coordinator(interpreter).execute(self._command())
+
+        self.assertIs(result.status, CoordinatorStatus.UNSUPPORTED)
+        self.assertEqual(len(interpreter.requests), 1)
+        self.assertEqual(
+            tuple(event.kind for event in self._events())[-3:],
+            (
+                ActivityEventKind.STEP_STARTED,
+                ActivityEventKind.STEP_UNSUPPORTED,
+                ActivityEventKind.RUN_FAILED,
+            ),
+        )
+
+    def test_uncertain_adapter_result_preserves_open_run_for_operator_review(self) -> None:
+        interpreter = InspectableFakeInterpreter(self.tracker, uncertain=True)
+
+        result = self._coordinator(interpreter).execute(self._command())
+
+        self.assertIs(result.status, CoordinatorStatus.UNCERTAIN)
+        self.assertIs(result.run.status, ActivityRunStatus.RUNNING)
+        self.assertEqual(len(interpreter.requests), 1)
+        self.assertIs(self._events()[-1].kind, ActivityEventKind.STEP_UNCERTAIN)
 
     def test_crash_after_intent_never_blindly_attempts_effect(self) -> None:
         interpreter = InspectableFakeInterpreter(self.tracker)

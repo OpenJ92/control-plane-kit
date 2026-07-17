@@ -115,6 +115,21 @@ class SecretResolver(Protocol):
     def resolve(self, reference: CredentialReference) -> SecretValue: ...
 
 
+class PublicAddressResolver(Protocol):
+    """Resolve a public hostname to addresses pinned for one HTTP request."""
+
+    def resolve(self, hostname: str) -> tuple[str, ...]: ...
+
+
+@dataclass(frozen=True)
+class ControlTransportTarget:
+    """One authorized connect authority with optional HTTP host and TLS SNI."""
+
+    base_url: str
+    host_header: str | None = None
+    sni_hostname: str | None = None
+
+
 @dataclass(frozen=True)
 class ControlAddressPolicy:
     """Explicit trust roots for control endpoint authorization.
@@ -166,7 +181,7 @@ class AuthorizedControlEndpoint:
         return f"{self._base_url}{path}"
 
     def request_headers(self, *, request_id: str, idempotency_key: str) -> dict[str, str]:
-        if not request_id.strip() or not idempotency_key.strip():
+        if not _safe_header_value(request_id) or not _safe_header_value(idempotency_key):
             raise ControlSecurityError(
                 ControlSecurityCode.UNSAFE_URL,
                 "control request identity is required",
@@ -186,6 +201,42 @@ class AuthorizedControlEndpoint:
             "authority": "<redacted>",
             "credential": "<redacted>",
         }
+
+    def transport_target(
+        self,
+        public_resolver: PublicAddressResolver | None = None,
+    ) -> ControlTransportTarget:
+        """Return a same-request transport target, pinning public DNS safely."""
+
+        if self.source is not ControlAddressSource.EXPLICIT_PUBLIC:
+            return ControlTransportTarget(self._base_url)
+        if public_resolver is None:
+            raise _untrusted()
+        parsed = urlsplit(self._base_url)
+        hostname = parsed.hostname or ""
+        try:
+            addresses = public_resolver.resolve(hostname)
+        except Exception as error:
+            raise _untrusted() from error
+        if not addresses:
+            raise _untrusted()
+        parsed_addresses = []
+        for value in addresses:
+            try:
+                candidate = ip_address(value)
+            except ValueError as error:
+                raise _untrusted() from error
+            if not candidate.is_global:
+                raise _untrusted()
+            parsed_addresses.append(candidate)
+        selected = sorted(parsed_addresses, key=lambda value: (value.version, int(value)))[0]
+        rendered = f"[{selected}]" if selected.version == 6 else str(selected)
+        port = parsed.port
+        authority = f"{parsed.scheme}://{rendered}"
+        if port is not None:
+            authority += f":{port}"
+        host_header = hostname if port is None else f"{hostname}:{port}"
+        return ControlTransportTarget(authority, host_header, hostname)
 
     def __repr__(self) -> str:
         return (
@@ -312,4 +363,13 @@ def _untrusted() -> ControlSecurityError:
     return ControlSecurityError(
         ControlSecurityCode.UNTRUSTED_ADDRESS,
         "control authority is outside the declared trust scope",
+    )
+
+
+def _safe_header_value(value: object) -> bool:
+    return (
+        isinstance(value, str)
+        and bool(value.strip())
+        and len(value) <= 256
+        and all(32 <= ord(character) < 127 for character in value)
     )

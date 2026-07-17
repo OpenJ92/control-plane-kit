@@ -119,6 +119,11 @@ class ControlHttpSecurityTests(unittest.TestCase):
             authorized.request_url("//other.example.test/path")
         with self.assertRaises(ControlSecurityError):
             authorized.request_url("/__deploy/status?next=http://other.example.test")
+        with self.assertRaises(ControlSecurityError):
+            authorized.request_headers(
+                request_id="request-a\r\nForwarded: injected",
+                idempotency_key="attempt-a",
+            )
 
         class InvalidResolver:
             def resolve(self, reference):
