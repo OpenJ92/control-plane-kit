@@ -13,40 +13,13 @@ from control_plane_kit.effects.material import (
     SecretEndpointMaterial,
 )
 from control_plane_kit.effects.values import TimeoutPolicy
+from control_plane_kit.execution import (
+    EndpointContext,
+    ProbeKind,
+    ProbeOutcome,
+    probe_outcome_is_valid,
+)
 from control_plane_kit.types import Protocol
-
-
-class EndpointContext(StrEnum):
-    """Where an observed endpoint is reachable from."""
-
-    RUNTIME_PRIVATE = "runtime-private"
-    HOST_LOCAL = "host-local"
-    PUBLIC = "public"
-
-
-class ProbeKind(StrEnum):
-    """Independent facts that may contribute to readiness."""
-
-    PROCESS = "process"
-    TRANSPORT = "transport"
-    APPLICATION_HEALTH = "application-health"
-    READINESS = "readiness"
-
-
-class ProbeOutcome(StrEnum):
-    """Closed outcomes without optimistic implication between layers."""
-
-    PROCESS_RUNNING = "process-running"
-    PROCESS_STOPPED = "process-stopped"
-    REACHABLE = "reachable"
-    REFUSED = "refused"
-    HEALTHY = "healthy"
-    UNHEALTHY = "unhealthy"
-    TIMED_OUT = "timed-out"
-    MALFORMED = "malformed"
-    UNKNOWN = "unknown"
-    READY = "ready"
-    NOT_READY = "not-ready"
 
 
 class ProbeConstructionCode(StrEnum):
@@ -281,7 +254,7 @@ class ProbeObservation:
             EndpointContext,
         ):
             raise TypeError("probe endpoint context must be EndpointContext")
-        if self.outcome not in _OUTCOMES_BY_KIND[self.kind]:
+        if not probe_outcome_is_valid(self.kind, self.outcome):
             raise ValueError(
                 f"{self.outcome.value} is not a valid {self.kind.value} observation"
             )
@@ -455,39 +428,3 @@ def _intent_descriptor(
         "graph_id": graph_id,
         "policy": policy.descriptor(),
     }
-
-
-_OUTCOMES_BY_KIND = {
-    ProbeKind.PROCESS: frozenset(
-        {
-            ProbeOutcome.PROCESS_RUNNING,
-            ProbeOutcome.PROCESS_STOPPED,
-            ProbeOutcome.UNKNOWN,
-        }
-    ),
-    ProbeKind.TRANSPORT: frozenset(
-        {
-            ProbeOutcome.REACHABLE,
-            ProbeOutcome.REFUSED,
-            ProbeOutcome.TIMED_OUT,
-            ProbeOutcome.UNKNOWN,
-        }
-    ),
-    ProbeKind.APPLICATION_HEALTH: frozenset(
-        {
-            ProbeOutcome.HEALTHY,
-            ProbeOutcome.UNHEALTHY,
-            ProbeOutcome.REFUSED,
-            ProbeOutcome.TIMED_OUT,
-            ProbeOutcome.MALFORMED,
-            ProbeOutcome.UNKNOWN,
-        }
-    ),
-    ProbeKind.READINESS: frozenset(
-        {
-            ProbeOutcome.READY,
-            ProbeOutcome.NOT_READY,
-            ProbeOutcome.UNKNOWN,
-        }
-    ),
-}

@@ -88,6 +88,22 @@ class ArchitectureOwnershipTests(unittest.TestCase):
             {2, 3},
         )
 
+    def test_observation_projection_cannot_mutate_graph_truth(self) -> None:
+        observed_state = analyze_source(
+            "def project(stores):\n"
+            "    stores.workspace.set_current_graph('workspace', 'graph')\n",
+            path="control_plane_kit/execution/observations.py",
+            module="control_plane_kit.execution.observations",
+        )
+
+        findings = evaluate_policies(
+            (observed_state,),
+            (CURRENT_GRAPH_MUTATION_POLICY,),
+        )
+
+        self.assertEqual(len(findings), 1)
+        self.assertEqual(findings[0].location.line, 2)
+
     def test_store_commit_is_rejected_but_unit_of_work_commit_is_allowed(self) -> None:
         store = analyze_source(
             "def save(connection):\n    connection.commit()\n",

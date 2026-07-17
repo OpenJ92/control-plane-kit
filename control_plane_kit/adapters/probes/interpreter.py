@@ -364,6 +364,10 @@ def _effect_observation(value: ProbeObservation) -> EffectObservation:
         kind,
         status,
         BoundedEvidence.from_mapping(value.descriptor()),
+        graph_id=value.graph_id,
+        probe_kind=value.kind,
+        probe_outcome=value.outcome,
+        endpoint_context=value.endpoint_context,
     )
 
 

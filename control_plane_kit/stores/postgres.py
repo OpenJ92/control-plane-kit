@@ -28,9 +28,12 @@ from control_plane_kit.execution import (
     FailureCategory,
     FailureEvidence,
     LegacyImportedRun,
+    EndpointContext,
     ObservationFreshness,
     ObservationRecord,
     ObservationStatus,
+    ProbeKind,
+    ProbeOutcome,
     RetryIdentity,
 )
 from control_plane_kit.planning.activity_plan import RiskLevel
@@ -194,7 +197,11 @@ CREATE TABLE IF NOT EXISTS cpk_observations (
   status text NOT NULL,
   observed_at text NOT NULL,
   payload jsonb NOT NULL DEFAULT '{}'::jsonb,
-  stale boolean NOT NULL DEFAULT false
+  stale boolean NOT NULL DEFAULT false,
+  graph_id text,
+  probe_kind text,
+  probe_outcome text,
+  endpoint_context text
 );
 
 CREATE TABLE IF NOT EXISTS cpk_instances (
@@ -256,6 +263,81 @@ ALTER TABLE cpk_activity_runs
   ALTER COLUMN legacy_imported SET DEFAULT false,
   ALTER COLUMN legacy_imported SET NOT NULL,
   ALTER COLUMN started_at DROP NOT NULL;
+
+ALTER TABLE cpk_observations
+  ADD COLUMN IF NOT EXISTS graph_id text,
+  ADD COLUMN IF NOT EXISTS probe_kind text,
+  ADD COLUMN IF NOT EXISTS probe_outcome text,
+  ADD COLUMN IF NOT EXISTS endpoint_context text;
+
+ALTER TABLE cpk_observations
+  DROP CONSTRAINT IF EXISTS cpk_observations_correlation_check;
+ALTER TABLE cpk_observations
+  ADD CONSTRAINT cpk_observations_correlation_check
+  CHECK (
+    (graph_id IS NULL AND probe_kind IS NULL AND probe_outcome IS NULL
+      AND endpoint_context IS NULL)
+    OR
+    (graph_id IS NOT NULL AND probe_kind IS NOT NULL AND probe_outcome IS NOT NULL)
+  ) NOT VALID;
+
+ALTER TABLE cpk_observations
+  DROP CONSTRAINT IF EXISTS cpk_observations_probe_kind_check;
+ALTER TABLE cpk_observations
+  ADD CONSTRAINT cpk_observations_probe_kind_check
+  CHECK (probe_kind IS NULL OR probe_kind IN (
+    'process', 'transport', 'application-health', 'readiness'
+  )) NOT VALID;
+
+ALTER TABLE cpk_observations
+  DROP CONSTRAINT IF EXISTS cpk_observations_endpoint_context_check;
+ALTER TABLE cpk_observations
+  ADD CONSTRAINT cpk_observations_endpoint_context_check
+  CHECK (endpoint_context IS NULL OR endpoint_context IN (
+    'runtime-private', 'host-local', 'public'
+  )) NOT VALID;
+
+ALTER TABLE cpk_observations
+  DROP CONSTRAINT IF EXISTS cpk_observations_probe_outcome_check;
+ALTER TABLE cpk_observations
+  ADD CONSTRAINT cpk_observations_probe_outcome_check
+  CHECK (probe_outcome IS NULL OR probe_outcome IN (
+    'process-running', 'process-stopped', 'reachable', 'refused', 'healthy',
+    'unhealthy', 'timed-out', 'malformed', 'unknown', 'ready', 'not-ready'
+  )) NOT VALID;
+
+ALTER TABLE cpk_observations
+  DROP CONSTRAINT IF EXISTS cpk_observations_context_kind_check;
+ALTER TABLE cpk_observations
+  ADD CONSTRAINT cpk_observations_context_kind_check
+  CHECK (
+    (probe_kind IN ('transport', 'application-health')
+      AND endpoint_context IS NOT NULL)
+    OR
+    (probe_kind IN ('process', 'readiness') AND endpoint_context IS NULL)
+    OR
+    probe_kind IS NULL
+  ) NOT VALID;
+
+ALTER TABLE cpk_observations
+  DROP CONSTRAINT IF EXISTS cpk_observations_outcome_kind_check;
+ALTER TABLE cpk_observations
+  ADD CONSTRAINT cpk_observations_outcome_kind_check
+  CHECK (
+    probe_kind IS NULL
+    OR (probe_kind = 'process' AND probe_outcome IN (
+      'process-running', 'process-stopped', 'unknown'
+    ))
+    OR (probe_kind = 'transport' AND probe_outcome IN (
+      'reachable', 'refused', 'timed-out', 'unknown'
+    ))
+    OR (probe_kind = 'application-health' AND probe_outcome IN (
+      'healthy', 'unhealthy', 'refused', 'timed-out', 'malformed', 'unknown'
+    ))
+    OR (probe_kind = 'readiness' AND probe_outcome IN (
+      'ready', 'not-ready', 'unknown'
+    ))
+  ) NOT VALID;
 
 -- Roadmap 0008 Gate A originally overloaded finished_at with both failure
 -- time and final settlement. Preserve authoritative event history, retain
@@ -323,6 +405,15 @@ END $$;
 
 DO $$
 BEGIN
+  IF NOT EXISTS (
+    SELECT 1 FROM pg_constraint
+    WHERE conrelid = 'cpk_graph_versions'::regclass
+      AND conname = 'cpk_graph_versions_workspace_identity'
+  ) THEN
+    ALTER TABLE cpk_graph_versions
+      ADD CONSTRAINT cpk_graph_versions_workspace_identity
+      UNIQUE (graph_id, workspace_id);
+  END IF;
   IF NOT EXISTS (
     SELECT 1 FROM pg_constraint
     WHERE conrelid = 'cpk_operation_sessions'::regclass
@@ -407,6 +498,16 @@ BEGIN
     ALTER TABLE cpk_observations
       ADD CONSTRAINT cpk_observations_workspace_fk
       FOREIGN KEY (workspace_id) REFERENCES cpk_workspaces(workspace_id) NOT VALID;
+  END IF;
+  IF NOT EXISTS (
+    SELECT 1 FROM pg_constraint
+    WHERE conrelid = 'cpk_observations'::regclass
+      AND conname = 'cpk_observations_graph_workspace_fk'
+  ) THEN
+    ALTER TABLE cpk_observations
+      ADD CONSTRAINT cpk_observations_graph_workspace_fk
+      FOREIGN KEY (graph_id, workspace_id)
+      REFERENCES cpk_graph_versions(graph_id, workspace_id) NOT VALID;
   END IF;
   IF NOT EXISTS (
     SELECT 1 FROM pg_constraint
@@ -1641,8 +1742,9 @@ class PostgresObservedStateStore:
         self._connection.execute(
             """
             INSERT INTO cpk_observations
-              (observation_id, workspace_id, subject_id, status, observed_at, payload, stale)
-            VALUES (%s, %s, %s, %s, %s, %s::jsonb, %s)
+              (observation_id, workspace_id, subject_id, status, observed_at,
+               payload, stale, graph_id, probe_kind, probe_outcome, endpoint_context)
+            VALUES (%s, %s, %s, %s, %s, %s::jsonb, %s, %s, %s, %s, %s)
             """,
             (
                 record.observation_id,
@@ -1652,6 +1754,12 @@ class PostgresObservedStateStore:
                 record.observed_at,
                 _json(record.evidence.descriptor()),
                 record.freshness is ObservationFreshness.STALE,
+                record.graph_id,
+                None if record.probe_kind is None else record.probe_kind.value,
+                None if record.probe_outcome is None else record.probe_outcome.value,
+                None
+                if record.endpoint_context is None
+                else record.endpoint_context.value,
             ),
         )
         return record
@@ -1659,10 +1767,11 @@ class PostgresObservedStateStore:
     def latest(self, workspace_id: str, subject_id: str) -> ObservationRecord | None:
         row = self._connection.execute(
             """
-            SELECT observation_id, workspace_id, subject_id, status, observed_at, payload, stale
+            SELECT observation_id, workspace_id, subject_id, status, observed_at,
+                   payload, stale, graph_id, probe_kind, probe_outcome, endpoint_context
             FROM cpk_observations
             WHERE workspace_id = %s AND subject_id = %s
-            ORDER BY observed_at DESC LIMIT 1
+            ORDER BY observed_at DESC, observation_id DESC LIMIT 1
             """,
             (workspace_id, subject_id),
         ).fetchone()
@@ -1672,7 +1781,8 @@ class PostgresObservedStateStore:
         rows = self._connection.execute(
             """
             SELECT DISTINCT ON (subject_id)
-              observation_id, workspace_id, subject_id, status, observed_at, payload, stale
+              observation_id, workspace_id, subject_id, status, observed_at,
+              payload, stale, graph_id, probe_kind, probe_outcome, endpoint_context
             FROM cpk_observations
             WHERE workspace_id = %s
             ORDER BY subject_id ASC, observed_at DESC, observation_id DESC
@@ -1684,10 +1794,11 @@ class PostgresObservedStateStore:
     def history(self, workspace_id: str, subject_id: str) -> tuple[ObservationRecord, ...]:
         rows = self._connection.execute(
             """
-            SELECT observation_id, workspace_id, subject_id, status, observed_at, payload, stale
+            SELECT observation_id, workspace_id, subject_id, status, observed_at,
+                   payload, stale, graph_id, probe_kind, probe_outcome, endpoint_context
             FROM cpk_observations
             WHERE workspace_id = %s AND subject_id = %s
-            ORDER BY observed_at ASC
+            ORDER BY observed_at ASC, observation_id ASC
             """,
             (workspace_id, subject_id),
         ).fetchall()
@@ -1705,6 +1816,12 @@ class PostgresObservedStateStore:
                 ObservationFreshness.STALE
                 if row[6]
                 else ObservationFreshness.FRESH
+            ),
+            graph_id=row[7],
+            probe_kind=None if row[8] is None else ProbeKind(row[8]),
+            probe_outcome=None if row[9] is None else ProbeOutcome(row[9]),
+            endpoint_context=(
+                None if row[10] is None else EndpointContext(row[10])
             ),
         )
 

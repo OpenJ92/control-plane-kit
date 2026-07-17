@@ -1,3 +1,4 @@
+from datetime import datetime, timezone
 from unittest import main
 
 from control_plane_kit import (
@@ -13,6 +14,9 @@ from control_plane_kit import (
     DockerRuntime,
     PlanOnlyImplementation,
     ObservationFreshness,
+    EndpointContext,
+    ProbeKind,
+    ProbeOutcome,
     ObservationStatus,
     ExecutionIdempotency,
     ExecutionRequestIdentity,
@@ -436,7 +440,23 @@ class InstanceReadServiceTests(PostgresStoreTestCase):
         )
 
     def _service_with_observations(self) -> InstanceReadService:
-        self.stores.workspace.create(WorkspaceRecord(workspace_id="workspace-a", name="Demo"))
+        self.stores.workspace.create(
+            WorkspaceRecord(
+                workspace_id="workspace-a",
+                name="Demo",
+                current_graph_id="graph-current",
+            )
+        )
+        self.stores.graph_topology.save(
+            GraphVersionRecord(
+                graph_id="graph-current",
+                workspace_id="workspace-a",
+                version=1,
+                graph_descriptor=DeploymentGraph("current").descriptor(),
+                created_by="jacob",
+                created_at="2026-07-15T00:00:00Z",
+            )
+        )
         self.stores.workspace.create(WorkspaceRecord(workspace_id="workspace-b", name="Other"))
         self.stores.observed_state.put(
             ObservationRecord(
@@ -445,6 +465,9 @@ class InstanceReadServiceTests(PostgresStoreTestCase):
                 subject_id="api",
                 status=ObservationStatus.STARTING,
                 observed_at="2026-07-15T00:00:00Z",
+                graph_id="graph-current",
+                probe_kind=ProbeKind.PROCESS,
+                probe_outcome=ProbeOutcome.PROCESS_RUNNING,
             )
         )
         self.stores.observed_state.put(
@@ -457,6 +480,10 @@ class InstanceReadServiceTests(PostgresStoreTestCase):
                 evidence=BoundedEvidence.from_mapping(
                     {"callback_url": "http://private"}
                 ),
+                graph_id="graph-current",
+                probe_kind=ProbeKind.APPLICATION_HEALTH,
+                probe_outcome=ProbeOutcome.HEALTHY,
+                endpoint_context=EndpointContext.RUNTIME_PRIVATE,
             )
         )
         self.stores.observed_state.put(
@@ -487,6 +514,7 @@ class InstanceReadServiceTests(PostgresStoreTestCase):
             activity_history_store=self.stores.activity_history,
             execution_store=self.stores.execution,
             observed_state_store=self.stores.observed_state,
+            clock=lambda: datetime(2026, 7, 15, 0, 2, tzinfo=timezone.utc),
         )
 
     def _service_with_nested_payloads(self) -> InstanceReadService:

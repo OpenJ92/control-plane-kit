@@ -500,6 +500,10 @@ class ExecutionCoordinator:
                             status=observation.status,
                             observed_at=_iso(occurred_at),
                             evidence=observation.evidence,
+                            graph_id=observation.graph_id,
+                            probe_kind=observation.probe_kind,
+                            probe_outcome=observation.probe_outcome,
+                            endpoint_context=observation.endpoint_context,
                         )
                     )
             self._raise_if(CoordinatorCheckpoint.BEFORE_RESULT_COMMIT)

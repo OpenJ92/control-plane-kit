@@ -4,6 +4,8 @@ from __future__ import annotations
 
 import json
 from collections.abc import Mapping
+from enum import StrEnum
+from typing import TypeVar
 
 from control_plane_kit.execution.values import (
     ActivityEventKind,
@@ -21,11 +23,16 @@ from control_plane_kit.execution.values import (
     FailureCategory,
     FailureEvidence,
     LegacyImportedRun,
+    EndpointContext,
     ObservationFreshness,
     ObservationRecord,
     ObservationStatus,
+    ProbeKind,
+    ProbeOutcome,
     RetryIdentity,
 )
+
+_EnumValue = TypeVar("_EnumValue", bound=StrEnum)
 
 
 EXECUTION_SCHEMA = "control-plane-kit.execution"
@@ -143,6 +150,18 @@ class ExecutionDescriptorCodec:
                     "observed_at": value.observed_at,
                     "evidence": value.evidence.descriptor(),
                     "freshness": value.freshness.value,
+                    "graph_id": value.graph_id,
+                    "probe_kind": (
+                        None if value.probe_kind is None else value.probe_kind.value
+                    ),
+                    "probe_outcome": (
+                        None if value.probe_outcome is None else value.probe_outcome.value
+                    ),
+                    "endpoint_context": (
+                        None
+                        if value.endpoint_context is None
+                        else value.endpoint_context.value
+                    ),
                 }
             case ClaimIdentity():
                 return {
@@ -248,6 +267,14 @@ class ExecutionDescriptorCodec:
                         observed_at=_text(value, "observed_at"),
                         evidence=_evidence(value, "evidence"),
                         freshness=ObservationFreshness(_text(value, "freshness")),
+                        graph_id=_optional_text(value, "graph_id"),
+                        probe_kind=_optional_enum(value, "probe_kind", ProbeKind),
+                        probe_outcome=_optional_enum(
+                            value, "probe_outcome", ProbeOutcome
+                        ),
+                        endpoint_context=_optional_enum(
+                            value, "endpoint_context", EndpointContext
+                        ),
                     )
                 case "claim-identity":
                     return ClaimIdentity(
@@ -410,6 +437,15 @@ def _optional_text(value: Mapping[str, object], key: str) -> str | None:
     if not isinstance(text, str) or not text.strip():
         raise MalformedExecutionDescriptor(f"{key} must be non-empty text when present")
     return text
+
+
+def _optional_enum(
+    value: Mapping[str, object],
+    key: str,
+    enum_type: type[_EnumValue],
+) -> _EnumValue | None:
+    text = _optional_text(value, key)
+    return None if text is None else enum_type(text)
 
 
 def _json_value(value: object) -> object:

@@ -146,9 +146,13 @@ class ExecutionSchemaMigrationTests(unittest.TestCase):
                 )
                 self.assertEqual(
                     connection.execute(
-                        "SELECT status FROM cpk_observations"
-                    ).fetchone()[0],
-                    "legacy-health",
+                        """
+                        SELECT status, graph_id, probe_kind, probe_outcome,
+                               endpoint_context
+                        FROM cpk_observations
+                        """
+                    ).fetchone(),
+                    ("legacy-health", None, None, None, None),
                 )
                 constraint_names = {
                     row[0]

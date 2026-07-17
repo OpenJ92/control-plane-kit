@@ -92,6 +92,81 @@ class ObservationFreshness(StrEnum):
     STALE = "stale"
 
 
+class ObservationStaleReason(StrEnum):
+    """Closed reasons immutable evidence cannot describe current state."""
+
+    RECORDED_STALE = "recorded-stale"
+    UNCORRELATED = "uncorrelated"
+    GRAPH_CHANGED = "graph-changed"
+    EXPIRED = "expired"
+    MALFORMED_TIMESTAMP = "malformed-timestamp"
+    FUTURE_TIMESTAMP = "future-timestamp"
+
+
+class ProbeKind(StrEnum):
+    """Independent runtime facts; no constructor implies another."""
+
+    PROCESS = "process"
+    TRANSPORT = "transport"
+    APPLICATION_HEALTH = "application-health"
+    READINESS = "readiness"
+
+
+class ProbeOutcome(StrEnum):
+    """Closed exact outcomes retained with durable observations."""
+
+    PROCESS_RUNNING = "process-running"
+    PROCESS_STOPPED = "process-stopped"
+    REACHABLE = "reachable"
+    REFUSED = "refused"
+    HEALTHY = "healthy"
+    UNHEALTHY = "unhealthy"
+    TIMED_OUT = "timed-out"
+    MALFORMED = "malformed"
+    UNKNOWN = "unknown"
+    READY = "ready"
+    NOT_READY = "not-ready"
+
+
+class EndpointContext(StrEnum):
+    """Reachability scope without retaining an endpoint address."""
+
+    RUNTIME_PRIVATE = "runtime-private"
+    HOST_LOCAL = "host-local"
+    PUBLIC = "public"
+
+
+def probe_outcome_is_valid(kind: ProbeKind, outcome: ProbeOutcome) -> bool:
+    """Return whether an exact outcome belongs to its observation layer."""
+
+    return outcome in {
+        ProbeKind.PROCESS: frozenset(
+            {ProbeOutcome.PROCESS_RUNNING, ProbeOutcome.PROCESS_STOPPED, ProbeOutcome.UNKNOWN}
+        ),
+        ProbeKind.TRANSPORT: frozenset(
+            {
+                ProbeOutcome.REACHABLE,
+                ProbeOutcome.REFUSED,
+                ProbeOutcome.TIMED_OUT,
+                ProbeOutcome.UNKNOWN,
+            }
+        ),
+        ProbeKind.APPLICATION_HEALTH: frozenset(
+            {
+                ProbeOutcome.HEALTHY,
+                ProbeOutcome.UNHEALTHY,
+                ProbeOutcome.REFUSED,
+                ProbeOutcome.TIMED_OUT,
+                ProbeOutcome.MALFORMED,
+                ProbeOutcome.UNKNOWN,
+            }
+        ),
+        ProbeKind.READINESS: frozenset(
+            {ProbeOutcome.READY, ProbeOutcome.NOT_READY, ProbeOutcome.UNKNOWN}
+        ),
+    }[kind]
+
+
 class FailureCategory(StrEnum):
     """Operator-relevant classification of execution failure evidence."""
 
@@ -358,15 +433,60 @@ class ObservationRecord:
     observed_at: str
     evidence: BoundedEvidence = field(default_factory=BoundedEvidence)
     freshness: ObservationFreshness = ObservationFreshness.FRESH
+    graph_id: str | None = None
+    probe_kind: ProbeKind | None = None
+    probe_outcome: ProbeOutcome | None = None
+    endpoint_context: EndpointContext | None = None
 
     def __post_init__(self) -> None:
-        _require_text_fields(self, excluded={"status", "evidence", "freshness"})
+        _require_text_fields(
+            self,
+            excluded={
+                "status",
+                "evidence",
+                "freshness",
+                "graph_id",
+                "probe_kind",
+                "probe_outcome",
+                "endpoint_context",
+            },
+        )
         if not isinstance(self.status, ObservationStatus):
             raise TypeError("observation status must be ObservationStatus")
         if not isinstance(self.evidence, BoundedEvidence):
             raise TypeError("observation evidence must be BoundedEvidence")
         if not isinstance(self.freshness, ObservationFreshness):
             raise TypeError("observation freshness must be ObservationFreshness")
+        if self.graph_id is not None and not _is_text(self.graph_id):
+            raise ExecutionValueError("observation graph_id must be non-empty text")
+        if self.probe_kind is not None and not isinstance(self.probe_kind, ProbeKind):
+            raise TypeError("observation probe_kind must be ProbeKind")
+        if self.probe_outcome is not None and not isinstance(
+            self.probe_outcome, ProbeOutcome
+        ):
+            raise TypeError("observation probe_outcome must be ProbeOutcome")
+        if self.endpoint_context is not None and not isinstance(
+            self.endpoint_context, EndpointContext
+        ):
+            raise TypeError("observation endpoint_context must be EndpointContext")
+        correlated = (self.graph_id, self.probe_kind, self.probe_outcome)
+        if any(value is not None for value in correlated) and any(
+            value is None for value in correlated
+        ):
+            raise ExecutionValueError(
+                "correlated observation requires graph, probe kind, and outcome"
+            )
+        if self.probe_kind is ProbeKind.PROCESS and self.endpoint_context is not None:
+            raise ExecutionValueError("process observation cannot claim endpoint context")
+        if (
+            self.probe_kind is not None
+            and self.probe_outcome is not None
+            and not probe_outcome_is_valid(self.probe_kind, self.probe_outcome)
+        ):
+            raise ExecutionValueError(
+                f"{self.probe_outcome.value} is not a valid "
+                f"{self.probe_kind.value} observation"
+            )
 
 
 ExecutionDescriptorValue: TypeAlias = (

@@ -28,7 +28,10 @@ from control_plane_kit.execution import (
     BoundedEvidence,
     FailureCategory,
     FailureEvidence,
+    EndpointContext,
     ObservationStatus,
+    ProbeKind,
+    ProbeOutcome,
     RetryIdentity,
 )
 from control_plane_kit.stores import GraphVersionRecord, PostgresUnitOfWork, WorkspaceRecord
@@ -130,6 +133,10 @@ class InspectableFakeInterpreter:
                     ObservationKind.HEALTH,
                     ObservationStatus.HEALTHY,
                     BoundedEvidence.from_mapping({"probe": "fake-ready"}),
+                    graph_id="graph-b",
+                    probe_kind=ProbeKind.APPLICATION_HEALTH,
+                    probe_outcome=ProbeOutcome.HEALTHY,
+                    endpoint_context=EndpointContext.RUNTIME_PRIVATE,
                 ),
             )
         if self.remote_unsupported:
@@ -311,6 +318,13 @@ class ExecutionCoordinatorTests(PostgresStoreTestCase):
         )
         self.assertIsNotNone(observation)
         self.assertIs(observation.status, ObservationStatus.HEALTHY)
+        self.assertEqual(observation.graph_id, "graph-b")
+        self.assertIs(observation.probe_kind, ProbeKind.APPLICATION_HEALTH)
+        self.assertIs(observation.probe_outcome, ProbeOutcome.HEALTHY)
+        self.assertIs(
+            observation.endpoint_context,
+            EndpointContext.RUNTIME_PRIVATE,
+        )
         self.assertIs(self._events()[-2].kind, ActivityEventKind.STEP_FAILED)
 
     def test_unsupported_capability_is_distinct_and_never_attempted(self) -> None:
