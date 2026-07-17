@@ -94,7 +94,16 @@ brainstorm with the following ordered topology:
           -> #217 resumable dependency scheduler
             -> #218 runtime/control effect protocols
 
-#215 + #218 -> #244 evidence-backed current-graph advancement
+#218 -> #257 AST architecture/integrity hardening
+  -> #260 reusable AST source and policy model
+  -> #261 package dependency and transport isolation
+  -> #258 generated Python server template validation
+  -> #264 UnitOfWork commit and environment access ownership
+  -> #262 test-integrity declaration audit
+  -> #259 read-only FastAPI route audit
+  -> #263 integrated review
+
+#215 + #218 + #263 -> #244 evidence-backed current-graph advancement
   -> #219 durable execution coordinator with fake effects
 #218 -> #245 failure-explicit contract/resource mutation
   -> #220 authenticated block-control client
@@ -113,6 +122,11 @@ Parent issue: #210.
 The ordering is intentional. Docker and HTTP mutation are not foundations.
 They are concrete interpretations added only after durable admission, claims,
 run lifecycle, scheduling, and effect protocols exist.
+
+The Gate B.1 AST hardening vertical makes selected static laws executable
+before Gate C. It does not replace behavioral, runtime, authorization, or
+transaction tests. Issue #244 remains blocked until #263 confirms the checks
+are precise and the complete suite remains green.
 
 The mutation-integrity amendment is also intentionally staged. Issues #242 and
 #243 repair dangerous primitives whose semantics are already knowable, so they
