@@ -19,6 +19,8 @@ from tests.architecture.source import (
     evaluate_policies,
 )
 from tests.architecture.policies import (
+    CommitOwnershipPolicy,
+    EnvironmentAccessPolicy,
     PackageDependencyPolicy,
     PackageDependencyRule,
     TransportOwner,
@@ -29,8 +31,10 @@ __all__ = [
     "AliasBinding",
     "AstPolicy",
     "CallFact",
+    "CommitOwnershipPolicy",
     "DecoratorFact",
     "ExceptHandlerFact",
+    "EnvironmentAccessPolicy",
     "FunctionFact",
     "ImportFact",
     "ImportKind",
