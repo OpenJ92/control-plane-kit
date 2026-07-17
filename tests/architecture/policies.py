@@ -119,6 +119,48 @@ class CommitOwnershipPolicy:
         )
 
 
+@dataclass(frozen=True, order=True)
+class CallOwner:
+    """Modules permitted to spell one application-significant call."""
+
+    call_name: str
+    owner_modules: tuple[str, ...]
+    owner_module_prefixes: tuple[str, ...] = ()
+
+
+@dataclass(frozen=True)
+class CallOwnershipPolicy:
+    """Reserve significant call spellings to declared application owners.
+
+    This is intentionally a source-boundary proof. It does not infer receiver
+    types; application tests still prove the behavior of each allowed call.
+    """
+
+    owners: tuple[CallOwner, ...]
+
+    def evaluate(self, facts: SourceFacts) -> tuple[PolicyFinding, ...]:
+        findings: list[PolicyFinding] = []
+        for call in facts.calls:
+            call_name = call.qualified_name.rsplit(".", 1)[-1]
+            for owner in self.owners:
+                if call_name != owner.call_name:
+                    continue
+                if _module_owned(
+                    facts.module,
+                    modules=owner.owner_modules,
+                    prefixes=owner.owner_module_prefixes,
+                ):
+                    continue
+                findings.append(
+                    PolicyFinding(
+                        "call-ownership",
+                        f"{owner.call_name} calls are not owned by {facts.module}",
+                        call.location,
+                    )
+                )
+        return tuple(sorted(findings))
+
+
 @dataclass(frozen=True)
 class EnvironmentAccessPolicy:
     """Keep direct process-environment access at declared boundaries."""
