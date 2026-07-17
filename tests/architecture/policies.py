@@ -163,6 +163,18 @@ class IntegrityEvidenceKind(StrEnum):
     TEST_DOUBLE = "test-double"
 
 
+class HttpRouteMethod(StrEnum):
+    """Closed HTTP route methods understood by static route policy."""
+
+    GET = "GET"
+    HEAD = "HEAD"
+    OPTIONS = "OPTIONS"
+    POST = "POST"
+    PUT = "PUT"
+    PATCH = "PATCH"
+    DELETE = "DELETE"
+
+
 @dataclass(frozen=True, order=True)
 class IntegrityEvidence:
     """One reviewable declaration that is not automatically a violation."""
@@ -260,6 +272,60 @@ class TestIntegrityPolicy:
             if handler.pass_only
         )
         return tuple(sorted(findings))
+
+
+@dataclass(frozen=True)
+class ReadOnlyRoutePolicy:
+    """Reject mutation and ambiguous decorators in declared read modules.
+
+    This policy proves route declaration shape only. Runtime route-table and
+    authorization behavior require separate application-level tests.
+    """
+
+    modules: tuple[str, ...]
+    allowed_methods: tuple[HttpRouteMethod, ...] = (
+        HttpRouteMethod.GET,
+        HttpRouteMethod.HEAD,
+        HttpRouteMethod.OPTIONS,
+    )
+
+    def evaluate(self, facts: SourceFacts) -> tuple[PolicyFinding, ...]:
+        if facts.module not in self.modules:
+            return ()
+        findings: list[PolicyFinding] = []
+        for decorator in facts.decorators:
+            method = _route_decorator_method(decorator.qualified_name)
+            if method is None:
+                continue
+            if method in self.allowed_methods:
+                continue
+            findings.append(
+                PolicyFinding(
+                    "read-only-route",
+                    f"{facts.module} declares prohibited {method.value} route",
+                    decorator.location,
+                )
+            )
+        for decorator in facts.decorators:
+            if decorator.qualified_name.endswith((".route", ".api_route", ".websocket")):
+                findings.append(
+                    PolicyFinding(
+                        "ambiguous-read-route",
+                        f"{facts.module} must use an explicit read-only HTTP decorator",
+                        decorator.location,
+                    )
+                )
+        return tuple(sorted(findings))
+
+
+def declared_route_methods(facts: SourceFacts) -> tuple[HttpRouteMethod, ...]:
+    """Return explicit HTTP methods declared by decorators in one module."""
+
+    return tuple(
+        method
+        for decorator in facts.decorators
+        if (method := _route_decorator_method(decorator.qualified_name)) is not None
+    )
 
 
 def audit_test_integrity(
@@ -401,3 +467,11 @@ def _approved_skip_is_disabled(decorator: DecoratorFact) -> bool:
         None,
     )
     return first is False
+
+
+def _route_decorator_method(name: str) -> HttpRouteMethod | None:
+    suffix = name.rsplit(".", 1)[-1].upper()
+    try:
+        return HttpRouteMethod(suffix)
+    except ValueError:
+        return None

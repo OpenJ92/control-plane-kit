@@ -23,6 +23,11 @@ class ReadInterfaceDemoServerTests(PostgresStoreTestCase):
         headers = {"Authorization": "Bearer test-token"}
 
         try:
+            workflow_routes = {
+                route.path: route.methods
+                for route in app.routes
+                if route.path.startswith("/workspaces/")
+            }
             with TestClient(app) as client:
                 workspace = client.get(f"/workspaces/{DEMO_WORKSPACE_ID}", headers=headers)
                 operator_graph = client.get(f"/workspaces/{DEMO_WORKSPACE_ID}/operator-graph", headers=headers)
@@ -34,6 +39,10 @@ class ReadInterfaceDemoServerTests(PostgresStoreTestCase):
             self.assertTrue(operator_graph.json()["assigned"])
             self.assertEqual(activity.status_code, 200)
             self.assertEqual(activity.json()["sessions"][0]["session_id"], "demo-session-1")
+            self.assertTrue(workflow_routes)
+            self.assertTrue(
+                all(methods == {"GET"} for methods in workflow_routes.values())
+            )
         finally:
             app.state.demo_connection.close()
 
