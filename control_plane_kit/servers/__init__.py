@@ -1,5 +1,6 @@
 """Optional server adapters for control-plane-kit."""
 
+from control_plane_kit.servers._templates import GeneratedServerSyntaxError
 from control_plane_kit.servers.block_control import BlockControlState, create_block_control_app
 from control_plane_kit.servers.hello import HelloEnvironment, hello_command, hello_server_block
 from control_plane_kit.servers.http_active_router import (
@@ -32,6 +33,7 @@ from control_plane_kit.servers.instance_read import create_instance_read_app
 
 __all__ = [
     "BlockControlState",
+    "GeneratedServerSyntaxError",
     "HelloEnvironment",
     "HttpActiveRouterRuntime",
     "HttpActiveRouterServer",
