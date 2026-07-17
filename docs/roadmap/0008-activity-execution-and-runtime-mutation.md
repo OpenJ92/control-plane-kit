@@ -123,10 +123,10 @@ The ordering is intentional. Docker and HTTP mutation are not foundations.
 They are concrete interpretations added only after durable admission, claims,
 run lifecycle, scheduling, and effect protocols exist.
 
-The Gate B.1 AST hardening vertical makes selected static laws executable
+The completed Gate B.1 AST hardening vertical makes selected static laws executable
 before Gate C. It does not replace behavioral, runtime, authorization, or
-transaction tests. Issue #244 remains blocked until #263 confirms the checks
-are precise and the complete suite remains green.
+transaction tests. Issue #263 confirmed the checks are precise and the complete
+suite remains green, so #244 may begin only after the required operator gate.
 
 The mutation-integrity amendment is also intentionally staged. Issues #242 and
 #243 repair dangerous primitives whose semantics are already knowable, so they
