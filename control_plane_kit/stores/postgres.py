@@ -27,7 +27,6 @@ from control_plane_kit.execution import (
     ExecutionRequestStatus,
     FailureCategory,
     FailureEvidence,
-    LegacyImportedRun,
     EndpointContext,
     ObservationFreshness,
     ObservationRecord,
@@ -171,15 +170,14 @@ CREATE TABLE IF NOT EXISTS cpk_execution_requests (
 CREATE TABLE IF NOT EXISTS cpk_activity_runs (
   run_id text PRIMARY KEY,
   plan_id text NOT NULL REFERENCES cpk_activity_plans(plan_id),
-  request_id text REFERENCES cpk_execution_requests(request_id),
+  request_id text NOT NULL REFERENCES cpk_execution_requests(request_id),
   attempt integer NOT NULL DEFAULT 1,
   prior_run_id text REFERENCES cpk_activity_runs(run_id),
   status text NOT NULL,
-  created_at text,
+  created_at text NOT NULL,
   started_at text,
   settled_at text,
-  metadata jsonb NOT NULL DEFAULT '{}'::jsonb,
-  legacy_imported boolean NOT NULL DEFAULT false
+  metadata jsonb NOT NULL DEFAULT '{}'::jsonb
 );
 
 CREATE TABLE IF NOT EXISTS cpk_activity_events (
@@ -203,7 +201,52 @@ CREATE TABLE IF NOT EXISTS cpk_observations (
   graph_id text,
   probe_kind text,
   probe_outcome text,
-  endpoint_context text
+  endpoint_context text,
+  CONSTRAINT cpk_observations_correlation_check CHECK (
+    (graph_id IS NULL AND probe_kind IS NULL AND probe_outcome IS NULL
+      AND endpoint_context IS NULL)
+    OR
+    (graph_id IS NOT NULL AND probe_kind IS NOT NULL AND probe_outcome IS NOT NULL)
+  ),
+  CONSTRAINT cpk_observations_probe_kind_check CHECK (
+    probe_kind IS NULL OR probe_kind IN (
+      'process', 'transport', 'application-health', 'readiness'
+    )
+  ),
+  CONSTRAINT cpk_observations_endpoint_context_check CHECK (
+    endpoint_context IS NULL OR endpoint_context IN (
+      'runtime-private', 'host-local', 'public'
+    )
+  ),
+  CONSTRAINT cpk_observations_probe_outcome_check CHECK (
+    probe_outcome IS NULL OR probe_outcome IN (
+      'process-running', 'process-stopped', 'reachable', 'refused', 'healthy',
+      'unhealthy', 'timed-out', 'malformed', 'unknown', 'ready', 'not-ready'
+    )
+  ),
+  CONSTRAINT cpk_observations_context_kind_check CHECK (
+    (probe_kind IN ('transport', 'application-health')
+      AND endpoint_context IS NOT NULL)
+    OR
+    (probe_kind IN ('process', 'readiness') AND endpoint_context IS NULL)
+    OR
+    probe_kind IS NULL
+  ),
+  CONSTRAINT cpk_observations_outcome_kind_check CHECK (
+    probe_kind IS NULL
+    OR (probe_kind = 'process' AND probe_outcome IN (
+      'process-running', 'process-stopped', 'unknown'
+    ))
+    OR (probe_kind = 'transport' AND probe_outcome IN (
+      'reachable', 'refused', 'timed-out', 'unknown'
+    ))
+    OR (probe_kind = 'application-health' AND probe_outcome IN (
+      'healthy', 'unhealthy', 'refused', 'timed-out', 'malformed', 'unknown'
+    ))
+    OR (probe_kind = 'readiness' AND probe_outcome IN (
+      'ready', 'not-ready', 'unknown'
+    ))
+  )
 );
 
 CREATE TABLE IF NOT EXISTS cpk_instances (
@@ -246,164 +289,6 @@ CREATE UNIQUE INDEX IF NOT EXISTS cpk_approval_requests_idempotency
 CREATE UNIQUE INDEX IF NOT EXISTS cpk_approval_decisions_idempotency
   ON cpk_approval_decisions (request_id, idempotency_key)
   WHERE idempotency_key IS NOT NULL;
-
-ALTER TABLE cpk_activity_runs
-  ADD COLUMN IF NOT EXISTS request_id text REFERENCES cpk_execution_requests(request_id),
-  ADD COLUMN IF NOT EXISTS attempt integer NOT NULL DEFAULT 1,
-  ADD COLUMN IF NOT EXISTS prior_run_id text REFERENCES cpk_activity_runs(run_id),
-  ADD COLUMN IF NOT EXISTS created_at text,
-  ADD COLUMN IF NOT EXISTS settled_at text,
-  ADD COLUMN IF NOT EXISTS legacy_imported boolean;
-
-UPDATE cpk_activity_runs
-SET created_at = COALESCE(created_at, started_at),
-    legacy_imported = COALESCE(legacy_imported, true)
-WHERE created_at IS NULL OR legacy_imported IS NULL;
-
-ALTER TABLE cpk_activity_runs
-  ALTER COLUMN created_at SET NOT NULL,
-  ALTER COLUMN legacy_imported SET DEFAULT false,
-  ALTER COLUMN legacy_imported SET NOT NULL,
-  ALTER COLUMN started_at DROP NOT NULL;
-
-ALTER TABLE cpk_observations
-  ADD COLUMN IF NOT EXISTS graph_id text,
-  ADD COLUMN IF NOT EXISTS probe_kind text,
-  ADD COLUMN IF NOT EXISTS probe_outcome text,
-  ADD COLUMN IF NOT EXISTS endpoint_context text;
-
-ALTER TABLE cpk_observations
-  DROP CONSTRAINT IF EXISTS cpk_observations_correlation_check;
-ALTER TABLE cpk_observations
-  ADD CONSTRAINT cpk_observations_correlation_check
-  CHECK (
-    (graph_id IS NULL AND probe_kind IS NULL AND probe_outcome IS NULL
-      AND endpoint_context IS NULL)
-    OR
-    (graph_id IS NOT NULL AND probe_kind IS NOT NULL AND probe_outcome IS NOT NULL)
-  ) NOT VALID;
-
-ALTER TABLE cpk_observations
-  DROP CONSTRAINT IF EXISTS cpk_observations_probe_kind_check;
-ALTER TABLE cpk_observations
-  ADD CONSTRAINT cpk_observations_probe_kind_check
-  CHECK (probe_kind IS NULL OR probe_kind IN (
-    'process', 'transport', 'application-health', 'readiness'
-  )) NOT VALID;
-
-ALTER TABLE cpk_observations
-  DROP CONSTRAINT IF EXISTS cpk_observations_endpoint_context_check;
-ALTER TABLE cpk_observations
-  ADD CONSTRAINT cpk_observations_endpoint_context_check
-  CHECK (endpoint_context IS NULL OR endpoint_context IN (
-    'runtime-private', 'host-local', 'public'
-  )) NOT VALID;
-
-ALTER TABLE cpk_observations
-  DROP CONSTRAINT IF EXISTS cpk_observations_probe_outcome_check;
-ALTER TABLE cpk_observations
-  ADD CONSTRAINT cpk_observations_probe_outcome_check
-  CHECK (probe_outcome IS NULL OR probe_outcome IN (
-    'process-running', 'process-stopped', 'reachable', 'refused', 'healthy',
-    'unhealthy', 'timed-out', 'malformed', 'unknown', 'ready', 'not-ready'
-  )) NOT VALID;
-
-ALTER TABLE cpk_observations
-  DROP CONSTRAINT IF EXISTS cpk_observations_context_kind_check;
-ALTER TABLE cpk_observations
-  ADD CONSTRAINT cpk_observations_context_kind_check
-  CHECK (
-    (probe_kind IN ('transport', 'application-health')
-      AND endpoint_context IS NOT NULL)
-    OR
-    (probe_kind IN ('process', 'readiness') AND endpoint_context IS NULL)
-    OR
-    probe_kind IS NULL
-  ) NOT VALID;
-
-ALTER TABLE cpk_observations
-  DROP CONSTRAINT IF EXISTS cpk_observations_outcome_kind_check;
-ALTER TABLE cpk_observations
-  ADD CONSTRAINT cpk_observations_outcome_kind_check
-  CHECK (
-    probe_kind IS NULL
-    OR (probe_kind = 'process' AND probe_outcome IN (
-      'process-running', 'process-stopped', 'unknown'
-    ))
-    OR (probe_kind = 'transport' AND probe_outcome IN (
-      'reachable', 'refused', 'timed-out', 'unknown'
-    ))
-    OR (probe_kind = 'application-health' AND probe_outcome IN (
-      'healthy', 'unhealthy', 'refused', 'timed-out', 'malformed', 'unknown'
-    ))
-    OR (probe_kind = 'readiness' AND probe_outcome IN (
-      'ready', 'not-ready', 'unknown'
-    ))
-  ) NOT VALID;
-
--- Roadmap 0008 Gate A originally overloaded finished_at with both failure
--- time and final settlement. Preserve authoritative event history, retain
--- ambiguous legacy evidence explicitly, and remove that ambiguous projection.
-DO $$
-BEGIN
-  IF EXISTS (
-    SELECT 1 FROM information_schema.columns
-    WHERE table_schema = current_schema()
-      AND table_name = 'cpk_activity_runs'
-      AND column_name = 'finished_at'
-  ) THEN
-    IF EXISTS (
-      SELECT 1
-      FROM cpk_activity_runs run
-      WHERE NOT run.legacy_imported
-        AND run.finished_at IS NOT NULL
-        AND run.status IN ('failed', 'compensating')
-        AND NOT EXISTS (
-          SELECT 1 FROM cpk_activity_events event
-          WHERE event.run_id = run.run_id
-            AND event.event_type = 'run_failed'
-            AND event.occurred_at = run.finished_at
-        )
-    ) THEN
-      RAISE EXCEPTION
-        'cannot migrate unresolved run timestamp without matching run_failed event';
-    END IF;
-
-    IF EXISTS (
-      SELECT 1
-      FROM cpk_activity_runs run
-      WHERE NOT run.legacy_imported
-        AND run.finished_at IS NOT NULL
-        AND run.status NOT IN (
-          'succeeded', 'failed', 'compensating', 'compensated',
-          'partially_failed', 'cancelled'
-        )
-    ) THEN
-      RAISE EXCEPTION
-        'cannot migrate finished_at from a non-settled modern run';
-    END IF;
-
-    UPDATE cpk_activity_runs
-    SET settled_at = finished_at
-    WHERE NOT legacy_imported
-      AND status IN (
-        'succeeded', 'compensated', 'partially_failed', 'cancelled'
-      )
-      AND finished_at IS NOT NULL;
-
-    UPDATE cpk_activity_runs
-    SET metadata = jsonb_set(
-      metadata,
-      '{migration}',
-      COALESCE(metadata->'migration', '{}'::jsonb)
-        || jsonb_build_object('legacy_finished_at', finished_at),
-      true
-    )
-    WHERE legacy_imported AND finished_at IS NOT NULL;
-
-    ALTER TABLE cpk_activity_runs DROP COLUMN finished_at;
-  END IF;
-END $$;
 
 DO $$
 BEGIN
@@ -527,18 +412,6 @@ BEGIN
   IF NOT EXISTS (
     SELECT 1 FROM pg_constraint
     WHERE conrelid = 'cpk_activity_runs'::regclass
-      AND conname = 'cpk_activity_runs_admission_check'
-  ) THEN
-    ALTER TABLE cpk_activity_runs
-      ADD CONSTRAINT cpk_activity_runs_admission_check
-      CHECK (
-        (legacy_imported AND request_id IS NULL)
-        OR (NOT legacy_imported AND request_id IS NOT NULL)
-      ) NOT VALID;
-  END IF;
-  IF NOT EXISTS (
-    SELECT 1 FROM pg_constraint
-    WHERE conrelid = 'cpk_activity_runs'::regclass
       AND conname = 'cpk_activity_runs_attempt_check'
   ) THEN
     ALTER TABLE cpk_activity_runs
@@ -548,6 +421,46 @@ BEGIN
         AND ((attempt = 1 AND prior_run_id IS NULL)
           OR (attempt > 1 AND prior_run_id IS NOT NULL))
         AND prior_run_id IS DISTINCT FROM run_id
+      ) NOT VALID;
+  END IF;
+  IF NOT EXISTS (
+    SELECT 1 FROM pg_constraint
+    WHERE conrelid = 'cpk_activity_runs'::regclass
+      AND conname = 'cpk_activity_runs_settlement_check'
+  ) THEN
+    ALTER TABLE cpk_activity_runs
+      ADD CONSTRAINT cpk_activity_runs_settlement_check
+      CHECK (
+        (
+          status IN (
+            'succeeded', 'compensated', 'partially_failed',
+            'uncompensated_failure', 'cancelled'
+          )
+          AND settled_at IS NOT NULL
+        )
+        OR (
+          status IN ('claimed', 'running', 'paused', 'failed', 'compensating')
+          AND settled_at IS NULL
+        )
+      ) NOT VALID;
+  END IF;
+  IF NOT EXISTS (
+    SELECT 1 FROM pg_constraint
+    WHERE conrelid = 'cpk_activity_runs'::regclass
+      AND conname = 'cpk_activity_runs_started_check'
+  ) THEN
+    ALTER TABLE cpk_activity_runs
+      ADD CONSTRAINT cpk_activity_runs_started_check
+      CHECK (
+        (status = 'claimed' AND started_at IS NULL)
+        OR status = 'cancelled'
+        OR (
+          status IN (
+            'running', 'paused', 'succeeded', 'failed', 'compensating',
+            'compensated', 'partially_failed', 'uncompensated_failure'
+          )
+          AND started_at IS NOT NULL
+        )
       ) NOT VALID;
   END IF;
   IF NOT EXISTS (
@@ -571,6 +484,54 @@ BEGIN
   END IF;
   IF NOT EXISTS (
     SELECT 1 FROM pg_constraint
+    WHERE conrelid = 'cpk_activity_events'::regclass
+      AND conname = 'cpk_activity_events_shape_check'
+  ) THEN
+    ALTER TABLE cpk_activity_events
+      ADD CONSTRAINT cpk_activity_events_shape_check
+      CHECK (
+        (
+          (
+            event_type IN (
+              'step_started', 'step_succeeded', 'step_failed',
+              'step_unsupported', 'step_uncertain',
+              'step_uncertainty_resolved_succeeded',
+              'step_uncertainty_resolved_failed',
+              'step_compensation_started', 'step_compensation_succeeded',
+              'step_compensation_failed'
+            )
+            AND NULLIF(payload->>'activity_id', '') IS NOT NULL
+          )
+          OR (
+            event_type NOT IN (
+              'step_started', 'step_succeeded', 'step_failed',
+              'step_unsupported', 'step_uncertain',
+              'step_uncertainty_resolved_succeeded',
+              'step_uncertainty_resolved_failed',
+              'step_compensation_started', 'step_compensation_succeeded',
+              'step_compensation_failed'
+            )
+            AND payload->>'activity_id' IS NULL
+          )
+        )
+        AND (
+          (
+            event_type = 'recovery_decision_recorded'
+            AND payload ? 'recovery'
+            AND jsonb_typeof(payload->'recovery') = 'object'
+          )
+          OR (
+            event_type <> 'recovery_decision_recorded'
+            AND (
+              NOT payload ? 'recovery'
+              OR payload->'recovery' = 'null'::jsonb
+            )
+          )
+        )
+      ) NOT VALID;
+  END IF;
+  IF NOT EXISTS (
+    SELECT 1 FROM pg_constraint
     WHERE conrelid = 'cpk_observations'::regclass
       AND conname = 'cpk_observations_status_check'
   ) THEN
@@ -582,73 +543,6 @@ BEGIN
       )) NOT VALID;
   END IF;
 END $$;
-
--- Closed run status vocabulary is rebuilt in place because this package has
--- no released compatibility surface.  Existing development databases receive
--- the same current schema as newly created databases.
-ALTER TABLE cpk_activity_runs
-  DROP CONSTRAINT IF EXISTS cpk_activity_runs_status_check;
-ALTER TABLE cpk_activity_runs
-  ADD CONSTRAINT cpk_activity_runs_status_check
-  CHECK (status IN (
-    'claimed', 'running', 'paused', 'succeeded', 'failed',
-    'compensating', 'compensated', 'partially_failed',
-    'uncompensated_failure', 'cancelled'
-  )) NOT VALID;
-
-ALTER TABLE cpk_activity_runs
-  DROP CONSTRAINT IF EXISTS cpk_activity_runs_settlement_check;
-ALTER TABLE cpk_activity_runs
-  ADD CONSTRAINT cpk_activity_runs_settlement_check
-  CHECK (
-    legacy_imported
-    OR (
-      status IN (
-        'succeeded', 'compensated', 'partially_failed',
-        'uncompensated_failure', 'cancelled'
-      )
-      AND settled_at IS NOT NULL
-    )
-    OR (
-      status IN ('claimed', 'running', 'paused', 'failed', 'compensating')
-      AND settled_at IS NULL
-    )
-  ) NOT VALID;
-
-ALTER TABLE cpk_activity_runs
-  DROP CONSTRAINT IF EXISTS cpk_activity_runs_started_check;
-ALTER TABLE cpk_activity_runs
-  ADD CONSTRAINT cpk_activity_runs_started_check
-  CHECK (
-    legacy_imported
-    OR (status = 'claimed' AND started_at IS NULL)
-    OR (status = 'cancelled')
-    OR (
-      status IN (
-        'running', 'paused', 'succeeded', 'failed', 'compensating',
-        'compensated', 'partially_failed', 'uncompensated_failure'
-      )
-      AND started_at IS NOT NULL
-    )
-  ) NOT VALID;
-
--- Event vocabulary is a closed sum. Rebuild the check so forward migrations
--- admit newly introduced constructors without weakening the closed boundary.
-ALTER TABLE cpk_activity_events
-  DROP CONSTRAINT IF EXISTS cpk_activity_events_kind_check;
-ALTER TABLE cpk_activity_events
-  ADD CONSTRAINT cpk_activity_events_kind_check
-  CHECK (event_type IN (
-    'request_admitted', 'request_claimed', 'run_opened', 'run_started',
-    'run_paused', 'run_resumed', 'step_started', 'step_succeeded',
-    'step_failed', 'step_unsupported', 'step_uncertain',
-    'step_uncertainty_resolved_succeeded', 'step_uncertainty_resolved_failed',
-    'step_compensation_started', 'step_compensation_succeeded',
-    'step_compensation_failed', 'recovery_decision_recorded',
-    'run_compensation_started', 'run_compensation_succeeded',
-    'run_compensation_failed', 'run_uncompensated_failure_accepted',
-    'run_succeeded', 'run_failed', 'run_cancelled', 'current_graph_advanced'
-  )) NOT VALID;
 
 CREATE UNIQUE INDEX IF NOT EXISTS cpk_execution_requests_active_plan
   ON cpk_execution_requests (plan_id)
@@ -1534,14 +1428,12 @@ class PostgresExecutionStore:
         return None if row is None else _execution_request(row)
 
     def add_run(self, record: ActivityRunRecord) -> ActivityRunRecord:
-        if not isinstance(record.admission, AdmittedRun):
-            raise ValueError("new execution runs require durable admission")
         self._connection.execute(
             """
             INSERT INTO cpk_activity_runs
               (run_id, plan_id, request_id, attempt, prior_run_id, status,
-               created_at, started_at, settled_at, metadata, legacy_imported)
-            VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s::jsonb, false)
+               created_at, started_at, settled_at, metadata)
+            VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s::jsonb)
             """,
             (
                 record.run_id,
@@ -1563,7 +1455,7 @@ class PostgresExecutionStore:
             self._connection.execute(
                 """
                 SELECT run_id, plan_id, request_id, attempt, prior_run_id, status,
-                       created_at, started_at, settled_at, metadata, legacy_imported
+                       created_at, started_at, settled_at, metadata
                 FROM cpk_activity_runs WHERE run_id = %s
                 """,
                 (run_id,),
@@ -1578,7 +1470,7 @@ class PostgresExecutionStore:
             self._connection.execute(
                 """
                 SELECT run_id, plan_id, request_id, attempt, prior_run_id, status,
-                       created_at, started_at, settled_at, metadata, legacy_imported
+                       created_at, started_at, settled_at, metadata
                 FROM cpk_activity_runs
                 WHERE run_id = %s
                 FOR UPDATE
@@ -1605,10 +1497,10 @@ class PostgresExecutionStore:
             SET status = %s,
                 started_at = COALESCE(%s, started_at),
                 settled_at = COALESCE(settled_at, %s)
-            WHERE run_id = %s AND status = %s AND NOT legacy_imported
+            WHERE run_id = %s AND status = %s
               AND settled_at IS NULL
             RETURNING run_id, plan_id, request_id, attempt, prior_run_id, status,
-                      created_at, started_at, settled_at, metadata, legacy_imported
+                      created_at, started_at, settled_at, metadata
             """,
             (
                 replacement.value,
@@ -1634,7 +1526,7 @@ class PostgresExecutionStore:
         rows = self._connection.execute(
             f"""
             SELECT run_id, plan_id, request_id, attempt, prior_run_id, status,
-                   created_at, started_at, settled_at, metadata, legacy_imported
+                   created_at, started_at, settled_at, metadata
             FROM cpk_activity_runs WHERE {column} = %s ORDER BY {ordering}
             """,
             (identity,),
@@ -1722,11 +1614,10 @@ def _execution_request(row: tuple[Any, ...]) -> ExecutionRequestRecord:
 
 
 def _activity_run(row: tuple[Any, ...]) -> ActivityRunRecord:
-    admission = LegacyImportedRun() if row[10] else AdmittedRun(row[2])
     return ActivityRunRecord(
         run_id=row[0],
         plan_id=row[1],
-        admission=admission,
+        admission=AdmittedRun(row[2]),
         retry=RetryIdentity(row[3], row[4]),
         status=ActivityRunStatus(row[5]),
         created_at=row[6],

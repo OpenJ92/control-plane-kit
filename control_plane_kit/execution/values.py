@@ -250,20 +250,6 @@ class AdmittedRun:
 
 
 @dataclass(frozen=True)
-class LegacyImportedRun:
-    """Truthful marker for pre-admission Roadmap 0007 history."""
-
-    schema_version: int = 7
-
-    def __post_init__(self) -> None:
-        if self.schema_version != 7:
-            raise ExecutionValueError("only Roadmap 0007 run history may be imported")
-
-
-RunAdmission: TypeAlias = AdmittedRun | LegacyImportedRun
-
-
-@dataclass(frozen=True)
 class BoundedEvidence:
     """Canonical bounded JSON evidence safe for durable descriptors.
 
@@ -367,7 +353,7 @@ class ActivityRunRecord:
 
     run_id: str
     plan_id: str
-    admission: RunAdmission
+    admission: AdmittedRun
     retry: RetryIdentity
     status: ActivityRunStatus
     created_at: str
@@ -387,8 +373,8 @@ class ActivityRunRecord:
                 "metadata",
             },
         )
-        if not isinstance(self.admission, (AdmittedRun, LegacyImportedRun)):
-            raise TypeError("activity run admission must be typed")
+        if not isinstance(self.admission, AdmittedRun):
+            raise TypeError("activity run admission must be AdmittedRun")
         if not isinstance(self.retry, RetryIdentity):
             raise TypeError("activity run retry identity must be typed")
         if not isinstance(self.status, ActivityRunStatus):
@@ -399,8 +385,7 @@ class ActivityRunRecord:
             raise ExecutionValueError("settled_at must be non-empty text when present")
         if not isinstance(self.metadata, BoundedEvidence):
             raise TypeError("activity run metadata must be BoundedEvidence")
-        if isinstance(self.admission, AdmittedRun):
-            _validate_admitted_run_projection(self)
+        _validate_admitted_run_projection(self)
 
 
 @dataclass(frozen=True)
@@ -536,7 +521,6 @@ ExecutionDescriptorValue: TypeAlias = (
     | ClaimIdentity
     | RetryIdentity
     | AdmittedRun
-    | LegacyImportedRun
     | FailureEvidence
 )
 

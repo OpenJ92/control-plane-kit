@@ -22,7 +22,6 @@ from control_plane_kit.execution.values import (
     ExecutionRequestStatus,
     FailureCategory,
     FailureEvidence,
-    LegacyImportedRun,
     EndpointContext,
     ObservationFreshness,
     ObservationRecord,
@@ -187,11 +186,6 @@ class ExecutionDescriptorCodec:
                 }
             case AdmittedRun():
                 return {"kind": "admitted-run", "request_id": value.request_id}
-            case LegacyImportedRun():
-                return {
-                    "kind": "legacy-imported-run",
-                    "schema_version": value.schema_version,
-                }
             case FailureEvidence():
                 return {
                     "kind": "failure-evidence",
@@ -323,13 +317,6 @@ class ExecutionDescriptorCodec:
                     return failure
                 case "admitted-run":
                     return AdmittedRun(_text(value, "request_id"))
-                case "legacy-imported-run":
-                    version = value.get("schema_version")
-                    if type(version) is not int:
-                        raise MalformedExecutionDescriptor(
-                            "schema_version must be an integer"
-                        )
-                    return LegacyImportedRun(version)
                 case _:
                     raise UnknownExecutionVariant(f"unknown execution value {kind!r}")
         except ValueError as error:
@@ -374,24 +361,15 @@ def _encode_admission(value: object) -> dict[str, object]:
     match value:
         case AdmittedRun(request_id=request_id):
             return {"kind": "admitted", "request_id": request_id}
-        case LegacyImportedRun(schema_version=version):
-            return {"kind": "legacy-imported", "schema_version": version}
         case _:
-            raise MalformedExecutionDescriptor("run admission must be typed")
+            raise MalformedExecutionDescriptor("run admission must be AdmittedRun")
 
 
-def _decode_admission(value: object) -> AdmittedRun | LegacyImportedRun:
+def _decode_admission(value: object) -> AdmittedRun:
     admission = _mapping(value, "admission")
     match _text(admission, "kind"):
         case "admitted":
             return AdmittedRun(_text(admission, "request_id"))
-        case "legacy-imported":
-            version = admission.get("schema_version")
-            if type(version) is not int:
-                raise MalformedExecutionDescriptor(
-                    "schema_version must be an integer"
-                )
-            return LegacyImportedRun(version)
         case kind:
             raise UnknownExecutionVariant(f"unknown run admission {kind!r}")
 

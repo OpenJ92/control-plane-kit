@@ -19,7 +19,6 @@ from control_plane_kit.execution import (
     FailureCategory,
     FailureEvidence,
     LossyExecutionDescriptor,
-    LegacyImportedRun,
     MAX_EVIDENCE_BYTES,
     MalformedExecutionDescriptor,
     ObservationFreshness,
@@ -87,23 +86,6 @@ class ExecutionValueTests(unittest.TestCase):
                         started_at=started_at,
                         settled_at=settled_at,
                     )
-
-    def test_legacy_run_does_not_fabricate_modern_projection_completeness(self):
-        value = ActivityRunRecord(
-            run_id="legacy-run",
-            plan_id="plan-a",
-            admission=LegacyImportedRun(),
-            retry=RetryIdentity(1),
-            status=ActivityRunStatus.FAILED,
-            created_at="created",
-            metadata=BoundedEvidence.from_mapping(
-                {"migration": {"legacy_finished_at": "historic"}}
-            ),
-        )
-
-        self.assertIsNone(value.started_at)
-        self.assertIsNone(value.settled_at)
-        self._round_trip(value)
 
     def test_stale_finished_at_descriptor_fails_closed(self):
         descriptor = DEFAULT_EXECUTION_CODEC.encode(
@@ -300,7 +282,6 @@ class ExecutionValueTests(unittest.TestCase):
             ),
             RetryIdentity(2, "run-a"),
             AdmittedRun("request-a"),
-            LegacyImportedRun(),
         ]
         values.extend(
             FailureEvidence(
@@ -332,7 +313,7 @@ class ExecutionValueTests(unittest.TestCase):
             ActivityRunRecord(
                 run_id="run-a",
                 plan_id="plan-a",
-                admission=LegacyImportedRun(),
+                admission=AdmittedRun("request-a"),
                 retry=RetryIdentity(1),
                 status="running",  # type: ignore[arg-type]
                 created_at="2026-07-16T00:00:00Z",
