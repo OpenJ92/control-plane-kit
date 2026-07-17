@@ -3,9 +3,12 @@
 from __future__ import annotations
 
 import os
+from collections import OrderedDict
 from copy import deepcopy
 from dataclasses import dataclass, field, replace
 from enum import StrEnum
+from hashlib import blake2b
+from threading import RLock
 from types import MappingProxyType
 from typing import Any, Callable, Iterable, Mapping, Protocol
 
@@ -64,6 +67,24 @@ class ConflictingContractMutation(ContractMutationError):
     """Raised when one mutation identity is reused for different intent."""
 
 
+class ContractPublicationConflict(ContractMutationError):
+    """Raised when a prepared candidate no longer matches published truth."""
+
+
+class ContractMutationInProgress(ContractMutationError):
+    """Raised when candidate work attempts a nested contract mutation."""
+
+
+@dataclass(frozen=True, order=True)
+class ContractCleanupUncertainty:
+    """One owned superseded resource that could not be disposed."""
+
+    resource_name: str
+
+    def descriptor(self) -> dict[str, str]:
+        return {"resource_name": self.resource_name}
+
+
 class ContractPreparationError(ContractMutationError):
     """Bounded evidence that candidate resource preparation did not complete."""
 
@@ -74,12 +95,14 @@ class ContractPreparationError(ContractMutationError):
         resource_name: str,
         prepared_resources: tuple[str, ...],
         cleanup_failures: tuple[str, ...] = (),
+        cleanup_uncertainties: tuple[str, ...] = (),
     ) -> None:
         super().__init__(f"contract resource preparation failed for {resource_name!r}")
         self.mutation_id = mutation_id
         self.resource_name = resource_name
         self.prepared_resources = prepared_resources
         self.cleanup_failures = cleanup_failures
+        self.cleanup_uncertainties = cleanup_uncertainties
 
     def descriptor(self) -> dict[str, object]:
         """Describe the failed stage without values or exception text."""
@@ -89,6 +112,7 @@ class ContractPreparationError(ContractMutationError):
             "resource_name": self.resource_name,
             "prepared_resources": list(self.prepared_resources),
             "cleanup_failures": list(self.cleanup_failures),
+            "cleanup_uncertainties": list(self.cleanup_uncertainties),
         }
 
 
@@ -339,6 +363,7 @@ class ContractMutation:
     mutation_id: str
     expected_version: int
     assignments: Mapping[str, Any] = field(repr=False)
+    _intent_fingerprint: bytes = field(init=False, repr=False, compare=False)
 
     def __post_init__(self) -> None:
         if not isinstance(self.mutation_id, str) or not self.mutation_id.strip():
@@ -350,6 +375,21 @@ class ContractMutation:
         if not isinstance(self.assignments, Mapping):
             raise ContractMutationError("contract mutation assignments must be a mapping")
         object.__setattr__(self, "assignments", _immutable_mapping(self.assignments))
+        object.__setattr__(
+            self,
+            "_intent_fingerprint",
+            _contract_intent_fingerprint(self.expected_version, self.assignments),
+        )
+
+    def same_intent(self, other: object) -> bool:
+        """Compare intent without publishing its private fingerprint."""
+
+        return (
+            isinstance(other, ContractMutation)
+            and self._intent_fingerprint == other._intent_fingerprint
+            and self.expected_version == other.expected_version
+            and self.assignments == other.assignments
+        )
 
     def descriptor(self) -> dict[str, object]:
         """Describe intent without retaining or publishing assigned values."""
@@ -448,6 +488,8 @@ class ContractPatchResult:
     mutation_id: str | None = None
     base_version: int = 0
     version: int = 0
+    cleanup_uncertainties: tuple[ContractCleanupUncertainty, ...] = ()
+    preserved_resources: tuple[str, ...] = ()
 
     def descriptor(self) -> dict[str, object]:
         descriptor: dict[str, object] = {
@@ -462,6 +504,13 @@ class ContractPatchResult:
             descriptor["rebuilt_resources"] = sorted(self.rebuilt_resources)
         if self.stale_resources:
             descriptor["stale_resources"] = sorted(self.stale_resources)
+        if self.cleanup_uncertainties:
+            descriptor["cleanup_uncertainties"] = [
+                uncertainty.descriptor()
+                for uncertainty in sorted(self.cleanup_uncertainties)
+            ]
+        if self.preserved_resources:
+            descriptor["preserved_resources"] = sorted(self.preserved_resources)
         return descriptor
 
 
@@ -473,6 +522,8 @@ class DerivedResourceSpec:
     variables: tuple[str, ...]
     build: Callable[[ContractValueReader], Any]
     dispose: Callable[[Any], None] | None = None
+    owned: bool = True
+    retained: bool = False
     rebuild_policies: tuple[ReloadPolicy, ...] = (ReloadPolicy.LIVE, ReloadPolicy.CUSTOM_HANDLER)
 
     @classmethod
@@ -483,6 +534,8 @@ class DerivedResourceSpec:
         build: Callable[[ContractValueReader], Any],
         *,
         dispose: Callable[[Any], None] | None = None,
+        owned: bool = True,
+        retained: bool = False,
         rebuild_policies: Iterable[ReloadPolicy] = (ReloadPolicy.LIVE, ReloadPolicy.CUSTOM_HANDLER),
     ) -> "DerivedResourceSpec":
         if isinstance(variables, str):
@@ -491,13 +544,23 @@ class DerivedResourceSpec:
             variable_names = tuple(variables)
         if not variable_names:
             raise ValueError("derived resource must depend on at least one variable")
-        return cls(name, variable_names, build, dispose, tuple(rebuild_policies))
+        return cls(
+            name=name,
+            variables=variable_names,
+            build=build,
+            dispose=dispose,
+            owned=owned,
+            retained=retained,
+            rebuild_policies=tuple(rebuild_policies),
+        )
 
     def descriptor(self, *, stale: bool) -> dict[str, object]:
         return {
             "name": self.name,
             "variables": list(self.variables),
             "rebuild_policies": [policy.value for policy in self.rebuild_policies],
+            "owned": self.owned,
+            "retained": self.retained,
             "stale": stale,
         }
 
@@ -528,6 +591,9 @@ class EnvironmentContract:
     is always lookup through `get`.
     """
 
+    _prepared_mutation_limit = 128
+    _completed_mutation_limit = 1024
+
     def __init__(self, values: Mapping[str, Any]):
         declarations = self.declarations()
         self._initialize_state()
@@ -545,9 +611,14 @@ class EnvironmentContract:
         self._derived_specs: dict[str, DerivedResourceSpec] = {}
         self._projection = _ContractProjection(0, {}, {}, frozenset())
         self._local_mutation_sequence = 0
-        self._prepared_mutations: dict[
+        self._prepared_mutations: OrderedDict[
             str, tuple[ContractMutation, ContractCandidate]
-        ] = {}
+        ] = OrderedDict()
+        self._completed_mutations: OrderedDict[
+            str, tuple[bytes, ContractPatchResult]
+        ] = OrderedDict()
+        self._mutation_lock = RLock()
+        self._mutation_in_progress = False
 
     @classmethod
     def declarations(cls) -> dict[str, ControlVariableSpec]:
@@ -597,10 +668,22 @@ class EnvironmentContract:
 
         if not isinstance(mutation, ContractMutation):
             raise TypeError("contract mutation preparation requires ContractMutation")
+        with self._mutation_lock:
+            if self._mutation_in_progress:
+                raise ContractMutationInProgress(
+                    "cannot prepare another contract mutation during candidate work"
+                )
+            return self._prepare_mutation_locked(mutation)
+
+    def _prepare_mutation_locked(
+        self,
+        mutation: ContractMutation,
+    ) -> ContractCandidate:
         previous = self._prepared_mutations.get(mutation.mutation_id)
         if previous is not None:
             previous_mutation, candidate = previous
-            if previous_mutation == mutation:
+            if previous_mutation.same_intent(mutation):
+                self._prepared_mutations.move_to_end(mutation.mutation_id)
                 return candidate
             raise ConflictingContractMutation(
                 f"contract mutation id {mutation.mutation_id!r} has conflicting intent"
@@ -627,23 +710,82 @@ class EnvironmentContract:
             _values=values,
         )
         self._prepared_mutations[mutation.mutation_id] = (mutation, candidate)
+        self._prepared_mutations.move_to_end(mutation.mutation_id)
+        while len(self._prepared_mutations) > self._prepared_mutation_limit:
+            self._prepared_mutations.popitem(last=False)
         return candidate
 
     def apply_patch(self, patch: Mapping[str, Any]) -> ContractPatchResult:
-        self._local_mutation_sequence += 1
-        return self.apply_mutation(
-            ContractMutation(
-                mutation_id=f"local-{self._local_mutation_sequence}",
-                expected_version=self.version,
-                assignments=patch,
+        with self._mutation_lock:
+            if self._mutation_in_progress:
+                raise ContractMutationInProgress(
+                    "cannot publish a nested contract mutation during candidate work"
+                )
+            self._local_mutation_sequence += 1
+            return self.apply_mutation(
+                ContractMutation(
+                    mutation_id=f"local-{self._local_mutation_sequence}",
+                    expected_version=self.version,
+                    assignments=patch,
+                )
             )
-        )
 
     def apply_mutation(self, mutation: ContractMutation) -> ContractPatchResult:
         """Prepare every affected resource, then publish one projection."""
 
-        candidate = self.prepare_mutation(mutation)
+        if not isinstance(mutation, ContractMutation):
+            raise TypeError("contract mutation application requires ContractMutation")
+        with self._mutation_lock:
+            if self._mutation_in_progress:
+                raise ContractMutationInProgress(
+                    "cannot publish a nested contract mutation during candidate work"
+                )
+            self._mutation_in_progress = True
+            try:
+                return self._apply_mutation_locked(mutation)
+            finally:
+                self._mutation_in_progress = False
+
+    def _apply_mutation_locked(
+        self,
+        mutation: ContractMutation,
+    ) -> ContractPatchResult:
+        completed = self._completed_mutations.get(mutation.mutation_id)
+        if completed is not None:
+            intent_fingerprint, result = completed
+            if intent_fingerprint == mutation._intent_fingerprint:
+                self._completed_mutations.move_to_end(mutation.mutation_id)
+                return result
+            raise ConflictingContractMutation(
+                f"contract mutation id {mutation.mutation_id!r} has conflicting intent"
+            )
+
+        candidate = self._prepare_mutation_locked(mutation)
+        if candidate.base_version != self.version:
+            self._prepared_mutations.pop(candidate.mutation_id, None)
+            raise ContractPublicationConflict(
+                f"contract candidate base version {candidate.base_version}, "
+                f"current version is {self.version}"
+            )
         prepared = self._prepare_contract_mutation(candidate)
+        if candidate.base_version != self.version:
+            cleanup_failures, cleanup_uncertainties = (
+                self._dispose_candidate_resources(
+                    prepared._replacement_resources,
+                    reversed(prepared.rebuilt_resources),
+                )
+            )
+            self._prepared_mutations.pop(candidate.mutation_id, None)
+            evidence = sorted((*cleanup_failures, *cleanup_uncertainties))
+            suffix = (
+                f"; candidate cleanup uncertain for {evidence!r}"
+                if evidence
+                else ""
+            )
+            raise ContractPublicationConflict(
+                f"contract candidate base version {candidate.base_version}, "
+                f"current version is {self.version}{suffix}"
+            )
         old_projection = self._projection
         derived_values = dict(old_projection.derived_values)
         derived_values.update(prepared._replacement_resources)
@@ -657,18 +799,35 @@ class EnvironmentContract:
             frozenset(stale_derived),
         )
         self._prepared_mutations.pop(candidate.mutation_id, None)
-        self._dispose_superseded_resources(
+        cleanup_uncertainties, preserved = self._dispose_superseded_resources(
             old_projection,
             prepared.rebuilt_resources,
         )
-        return ContractPatchResult(
+        result = ContractPatchResult(
             candidate.changed,
             prepared.rebuilt_resources,
             prepared.stale_resources,
             mutation_id=candidate.mutation_id,
             base_version=candidate.base_version,
             version=candidate.version,
+            cleanup_uncertainties=cleanup_uncertainties,
+            preserved_resources=preserved,
         )
+        self._remember_completed_mutation(mutation, result)
+        return result
+
+    def _remember_completed_mutation(
+        self,
+        mutation: ContractMutation,
+        result: ContractPatchResult,
+    ) -> None:
+        self._completed_mutations[mutation.mutation_id] = (
+            mutation._intent_fingerprint,
+            result,
+        )
+        self._completed_mutations.move_to_end(mutation.mutation_id)
+        while len(self._completed_mutations) > self._completed_mutation_limit:
+            self._completed_mutations.popitem(last=False)
 
     def _prepare_contract_mutation(
         self,
@@ -689,7 +848,7 @@ class EnvironmentContract:
             try:
                 replacements[name] = spec.build(candidate)
             except Exception as error:
-                cleanup_failures = self._dispose_candidate_resources(
+                cleanup_failures, cleanup_uncertainties = self._dispose_candidate_resources(
                     replacements,
                     reversed(rebuilt),
                 )
@@ -698,6 +857,7 @@ class EnvironmentContract:
                     resource_name=name,
                     prepared_resources=tuple(rebuilt),
                     cleanup_failures=cleanup_failures,
+                    cleanup_uncertainties=cleanup_uncertainties,
                 ) from error
             rebuilt.append(name)
         return PreparedContractMutation(
@@ -711,28 +871,43 @@ class EnvironmentContract:
         self,
         resources: Mapping[str, Any],
         names: Iterable[str],
-    ) -> tuple[str, ...]:
+    ) -> tuple[tuple[str, ...], tuple[str, ...]]:
         failures: list[str] = []
+        uncertainties: list[str] = []
         for name in names:
-            dispose = self._derived_specs[name].dispose
+            spec = self._derived_specs[name]
+            if not spec.owned or spec.retained:
+                uncertainties.append(name)
+                continue
+            dispose = spec.dispose
             if dispose is None:
                 continue
             try:
                 dispose(resources[name])
             except Exception:
                 failures.append(name)
-        return tuple(failures)
+        return tuple(failures), tuple(uncertainties)
 
     def _dispose_superseded_resources(
         self,
         old_projection: _ContractProjection,
         names: Iterable[str],
-    ) -> None:
+    ) -> tuple[tuple[ContractCleanupUncertainty, ...], tuple[str, ...]]:
+        uncertainties: list[ContractCleanupUncertainty] = []
+        preserved: list[str] = []
         for name in names:
             old_value = old_projection.derived_values.get(name)
-            dispose = self._derived_specs[name].dispose
-            if old_value is not None and dispose is not None:
-                dispose(old_value)
+            spec = self._derived_specs[name]
+            if not spec.owned or spec.retained:
+                preserved.append(name)
+                continue
+            if old_value is None or spec.dispose is None:
+                continue
+            try:
+                spec.dispose(old_value)
+            except Exception:
+                uncertainties.append(ContractCleanupUncertainty(name))
+        return tuple(uncertainties), tuple(preserved)
 
     def derived(
         self,
@@ -741,6 +916,8 @@ class EnvironmentContract:
         build: Callable[[ContractValueReader], Any],
         *,
         dispose: Callable[[Any], None] | None = None,
+        owned: bool = True,
+        retained: bool = False,
         rebuild_policies: Iterable[ReloadPolicy] = (ReloadPolicy.LIVE, ReloadPolicy.CUSTOM_HANDLER),
     ) -> Any:
         spec = DerivedResourceSpec.from_variables(
@@ -748,6 +925,8 @@ class EnvironmentContract:
             from_var,
             build,
             dispose=dispose,
+            owned=owned,
+            retained=retained,
             rebuild_policies=rebuild_policies,
         )
         self._validate_derived_spec(spec)
@@ -914,3 +1093,75 @@ def _immutable_value(value: Any) -> Any:
     if isinstance(value, set):
         return frozenset(_immutable_value(item) for item in value)
     return deepcopy(value)
+
+
+def _contract_intent_fingerprint(
+    expected_version: int,
+    assignments: Mapping[str, Any],
+) -> bytes:
+    """Return a private process-local comparison key for mutation intent."""
+
+    digest = blake2b(digest_size=32)
+    _update_fingerprint(digest, expected_version)
+    _update_fingerprint(digest, assignments)
+    return digest.digest()
+
+
+def _update_fingerprint(digest, value: Any) -> None:
+    """Encode common contract values with explicit type and length markers."""
+
+    if value is None:
+        digest.update(b"none;")
+        return
+    if isinstance(value, bool):
+        digest.update(b"bool:1;" if value else b"bool:0;")
+        return
+    if isinstance(value, (str, bytes, int, float)):
+        payload = value if isinstance(value, bytes) else str(value).encode("utf-8")
+        digest.update(type(value).__name__.encode("ascii"))
+        digest.update(b":")
+        digest.update(str(len(payload)).encode("ascii"))
+        digest.update(b":")
+        digest.update(payload)
+        digest.update(b";")
+        return
+    if isinstance(value, Mapping):
+        digest.update(b"mapping[")
+        keyed = sorted(
+            (
+                (_fingerprint_bytes(key), key, item)
+                for key, item in value.items()
+            ),
+            key=lambda entry: entry[0],
+        )
+        for _, key, item in keyed:
+            _update_fingerprint(digest, key)
+            _update_fingerprint(digest, item)
+        digest.update(b"]")
+        return
+    if isinstance(value, (tuple, list)):
+        digest.update(b"sequence[")
+        for item in value:
+            _update_fingerprint(digest, item)
+        digest.update(b"]")
+        return
+    if isinstance(value, (set, frozenset)):
+        digest.update(b"set[")
+        for item in sorted(_fingerprint_bytes(item) for item in value):
+            digest.update(item)
+        digest.update(b"]")
+        return
+    payload = repr(value).encode("utf-8")
+    digest.update(
+        f"{type(value).__module__}.{type(value).__qualname__}:".encode("utf-8")
+    )
+    digest.update(str(len(payload)).encode("ascii"))
+    digest.update(b":")
+    digest.update(payload)
+    digest.update(b";")
+
+
+def _fingerprint_bytes(value: Any) -> bytes:
+    digest = blake2b(digest_size=32)
+    _update_fingerprint(digest, value)
+    return digest.digest()

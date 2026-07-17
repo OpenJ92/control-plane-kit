@@ -156,6 +156,23 @@ class ArchitectureOwnershipTests(unittest.TestCase):
 
         self.assertEqual(ENVIRONMENT_POLICY.evaluate(facts), ())
 
+    def test_packaged_servers_do_not_bypass_contract_mutation_boundary(self) -> None:
+        root = Path(__file__).parents[1]
+        facts = tuple(
+            analyze_file(path, root=root)
+            for path in sorted((root / "control_plane_kit" / "servers").rglob("*.py"))
+        )
+
+        bypasses = tuple(
+            reference
+            for source in facts
+            for reference in source.references
+            if reference.qualified_name == "_projection"
+            or reference.qualified_name.endswith("._projection")
+        )
+
+        self.assertEqual(bypasses, ())
+
 
 if __name__ == "__main__":
     unittest.main()
