@@ -81,6 +81,60 @@ class TransportOwnershipPolicy:
         return tuple(findings)
 
 
+@dataclass(frozen=True)
+class CommitOwnershipPolicy:
+    """Restrict commit call sites without pretending to infer receiver types.
+
+    The policy proves where a call spelled ``*.commit()`` is written. Runtime
+    receiver identity and transaction behavior remain the responsibility of
+    UnitOfWork integration tests.
+    """
+
+    owner_modules: tuple[str, ...]
+    owner_module_prefixes: tuple[str, ...] = ()
+
+    def evaluate(self, facts: SourceFacts) -> tuple[PolicyFinding, ...]:
+        if _module_owned(
+            facts.module,
+            modules=self.owner_modules,
+            prefixes=self.owner_module_prefixes,
+        ):
+            return ()
+        return tuple(
+            PolicyFinding(
+                "commit-ownership",
+                f"commit calls are not owned by {facts.module}",
+                call.location,
+            )
+            for call in facts.calls
+            if call.qualified_name == "commit" or call.qualified_name.endswith(".commit")
+        )
+
+
+@dataclass(frozen=True)
+class EnvironmentAccessPolicy:
+    """Keep direct process-environment access at declared boundaries."""
+
+    owner_modules: tuple[str, ...]
+
+    def evaluate(self, facts: SourceFacts) -> tuple[PolicyFinding, ...]:
+        if facts.module in self.owner_modules:
+            return ()
+        locations = {
+            reference.location
+            for reference in facts.references
+            if _is_environment_reference(reference.qualified_name)
+        }
+        return tuple(
+            PolicyFinding(
+                "environment-access-ownership",
+                f"direct process-environment access is not owned by {facts.module}",
+                location,
+            )
+            for location in sorted(locations)
+        )
+
+
 def _package_root(module: str, package: str) -> str | None:
     if module == package:
         return "<facade>"
@@ -105,3 +159,24 @@ def _transport_owner_message(module: str, owners: tuple[str, ...]) -> str:
     if not owners:
         return f"{module} has no declared transport adapter owner"
     return f"{module} is owned by {', '.join(owners)}"
+
+
+def _module_owned(
+    module: str,
+    *,
+    modules: tuple[str, ...],
+    prefixes: tuple[str, ...],
+) -> bool:
+    return module in modules or any(
+        module == prefix or module.startswith(f"{prefix}.")
+        for prefix in prefixes
+    )
+
+
+def _is_environment_reference(name: str) -> bool:
+    return (
+        name == "os.environ"
+        or name.startswith("os.environ.")
+        or name == "os.getenv"
+        or name.startswith("os.getenv.")
+    )
