@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from control_plane_kit.algebra import ApplicationBlock, BlockSockets, BlockSpec, ProviderSocket
 from control_plane_kit.contracts import EnvironmentContract, TextVariable
-from control_plane_kit.implementations import DockerImageImplementation
+from control_plane_kit.implementations import DockerImageImplementation, HostPublication
 from control_plane_kit.servers._templates import render_python_command
 from control_plane_kit.types import Protocol
 
@@ -21,6 +21,7 @@ def hello_server_block(
     message: str = "Hello, world!",
     display_name: str = "Hello HTTP",
     image: str = "python:3.13-alpine",
+    host_port: int | None = None,
 ) -> ApplicationBlock:
     """Return a Docker-backed HTTP hello server block.
 
@@ -36,6 +37,11 @@ def hello_server_block(
             command=hello_command(),
             ports={"internal": 8000},
             environment={"HELLO_MESSAGE": env.get("message")},
+            host_publications=(
+                {"internal": HostPublication.loopback_v4(host_port)}
+                if host_port is not None
+                else {}
+            ),
         ),
         BlockSockets(providers=(ProviderSocket("internal", Protocol.HTTP),)),
     )

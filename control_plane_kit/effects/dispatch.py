@@ -3,7 +3,8 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import Protocol
+from types import MappingProxyType
+from typing import Mapping, Protocol
 
 from control_plane_kit.effects.values import (
     EffectAttemptResult,
@@ -27,6 +28,35 @@ class EffectInterpreter(Protocol):
     def capabilities(self) -> frozenset[EffectCapability]: ...
 
     def execute(self, request: MaterializedEffectRequest) -> EffectResult: ...
+
+
+@dataclass(frozen=True)
+class CapabilityInterpreterRegistry:
+    """One explicit, immutable interpreter choice per effect capability."""
+
+    interpreters: Mapping[EffectCapability, EffectInterpreter]
+
+    def __post_init__(self) -> None:
+        values = dict(self.interpreters)
+        if not all(isinstance(key, EffectCapability) for key in values):
+            raise EffectDispatchError("registry keys must be typed effect capabilities")
+        for capability, interpreter in values.items():
+            if capability not in interpreter.capabilities:
+                raise EffectDispatchError(
+                    f"registered interpreter does not advertise {capability.value!r}"
+                )
+        object.__setattr__(self, "interpreters", MappingProxyType(values))
+
+    @property
+    def capabilities(self) -> frozenset[EffectCapability]:
+        return frozenset(self.interpreters)
+
+    def execute(self, request: MaterializedEffectRequest) -> EffectResult:
+        try:
+            interpreter = self.interpreters[request.capability]
+        except KeyError:
+            return EffectUnsupported(request.identity, request.capability)
+        return interpreter.execute(request)
 
 
 @dataclass(frozen=True)

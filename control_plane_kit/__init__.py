@@ -429,7 +429,13 @@ from control_plane_kit.runtimes import (
     RuntimePlan,
     RuntimeState,
 )
-from control_plane_kit.types import BlockFamily, EndpointScope, Protocol, RuntimeKind
+from control_plane_kit.types import (
+    BlockFamily,
+    EndpointScope,
+    Protocol,
+    RuntimeKind,
+    SocketBinding,
+)
 from control_plane_kit.topology.validation import (
     EdgeSubject,
     GraphSubject,
@@ -620,6 +626,7 @@ __all__ = [
     "RuntimeContext",
     "RuntimeInterpreter",
     "RuntimeKind",
+    "SocketBinding",
     "RuntimeNodeState",
     "RuntimePlan",
     "RuntimeRecord",

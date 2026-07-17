@@ -11,6 +11,17 @@ from control_plane_kit.topology.graph import Endpoint, EndpointAddress, LiteralA
 from control_plane_kit.types import EndpointScope, Protocol, RuntimeKind
 
 
+@dataclass(frozen=True, order=True)
+class SecretEnvironmentReference:
+    """Opaque startup-environment reference resolved only by a runtime adapter."""
+
+    reference_id: str
+
+    def __post_init__(self) -> None:
+        if not self.reference_id.strip():
+            raise ValueError("secret environment reference identity must not be empty")
+
+
 @dataclass(frozen=True)
 class MaterializedNode:
     """Implementation result consumed by the compiler."""
@@ -54,7 +65,7 @@ class DockerImageImplementation:
     image: str
     command: tuple[str, ...] = ()
     ports: dict[str, int] = field(default_factory=dict)
-    environment: dict[str, str] = field(default_factory=dict)
+    environment: dict[str, str | SecretEnvironmentReference] = field(default_factory=dict)
     data_mounts: dict[str, str] = field(default_factory=dict)
     host_publications: dict[str, HostPublication] = field(default_factory=dict)
     lifecycle: ResourceLifecycle = field(default_factory=ResourceLifecycle.owned_ephemeral)
@@ -80,7 +91,10 @@ class DockerImageImplementation:
             metadata={
                 "image": self.image,
                 "command": list(self.command),
-                "environment": dict(self.environment),
+                "environment": {
+                    name: _environment_descriptor(value)
+                    for name, value in self.environment.items()
+                },
                 "data_mounts": [
                     {"resource_id": resource_id, "target_path": target_path}
                     for resource_id, target_path in sorted(self.data_mounts.items())
@@ -268,6 +282,14 @@ def _url(protocol: Protocol, host: str, port: int) -> str:
             return f"postgresql+psycopg://{host}:{port}"
         case Protocol.TCP:
             return f"tcp://{host}:{port}"
+
+
+def _environment_descriptor(value: str | SecretEnvironmentReference) -> object:
+    match value:
+        case str():
+            return value
+        case SecretEnvironmentReference(reference_id=reference_id):
+            return {"kind": "secret-reference", "reference_id": reference_id}
 
 
 def _validate_host_publications(

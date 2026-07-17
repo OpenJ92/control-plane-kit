@@ -121,6 +121,7 @@ class Node:
             "requirements": {
                 socket.name: {
                     "protocol": socket.protocol.value,
+                    "binding": socket.binding.value,
                     "env_bindings": list(socket.env_bindings),
                     "required": socket.required,
                 }

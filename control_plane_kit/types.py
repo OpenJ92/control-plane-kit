@@ -13,6 +13,13 @@ class Protocol(StrEnum):
     TCP = "tcp"
 
 
+class SocketBinding(StrEnum):
+    """How a requirement connection becomes available to its consumer."""
+
+    ENVIRONMENT = "environment"
+    RUNTIME_CONTROL = "runtime-control"
+
+
 class EndpointScope(StrEnum):
     """Descriptive endpoint visibility."""
 

@@ -27,7 +27,13 @@ from control_plane_kit.topology.graph import (
     RuntimeRecord,
     SecretReferenceAddress,
 )
-from control_plane_kit.types import BlockFamily, EndpointScope, Protocol, RuntimeKind
+from control_plane_kit.types import (
+    BlockFamily,
+    EndpointScope,
+    Protocol,
+    RuntimeKind,
+    SocketBinding,
+)
 
 
 class GraphDescriptorError(ValueError):
@@ -207,6 +213,7 @@ class GraphDescriptorCodec:
                     for binding in _list(_mapping(value, "requirement").get("env_bindings", []))
                 ),
                 required=_boolean(_mapping(value, "requirement"), "required", default=True),
+                binding=_socket_binding(value),
             )
             for name, value in sorted(
                 _mapping(descriptor.get("requirements", {}), "requirements").items()
@@ -357,6 +364,16 @@ def _protocol(value: object, path: str) -> Protocol:
         return Protocol(_text(descriptor, "protocol"))
     except ValueError as error:
         raise UnknownGraphVariant(f"unknown protocol: {error}") from error
+
+
+def _socket_binding(value: object) -> SocketBinding:
+    descriptor = _mapping(value, "requirement")
+    try:
+        return SocketBinding(
+            str(descriptor.get("binding", SocketBinding.ENVIRONMENT.value))
+        )
+    except ValueError as error:
+        raise UnknownGraphVariant(f"unknown socket binding: {error}") from error
 
 
 def _endpoint_scope(value: object) -> EndpointScope:
