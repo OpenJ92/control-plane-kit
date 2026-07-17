@@ -7,6 +7,7 @@ from control_plane_kit.execution import (
     ActivityEventRecord,
     ActivityRunRecord,
     ActivityRunStatus,
+    AcceptUncompensatedFailure,
     AdmittedRun,
     BoundedEvidence,
     ClaimIdentity,
@@ -24,6 +25,9 @@ from control_plane_kit.execution import (
     ObservationFreshness,
     ObservationRecord,
     ObservationStatus,
+    RecoveryAuthority,
+    RecoveryDecisionRecord,
+    RecoveryScope,
     RetryIdentity,
     UnknownExecutionVariant,
 )
@@ -113,6 +117,18 @@ class ExecutionValueTests(unittest.TestCase):
             DEFAULT_EXECUTION_CODEC.decode(descriptor)
 
     def test_codec_round_trips_every_event_kind(self):
+        step_kinds = {
+            ActivityEventKind.STEP_STARTED,
+            ActivityEventKind.STEP_SUCCEEDED,
+            ActivityEventKind.STEP_FAILED,
+            ActivityEventKind.STEP_UNSUPPORTED,
+            ActivityEventKind.STEP_UNCERTAIN,
+            ActivityEventKind.STEP_UNCERTAINTY_RESOLVED_SUCCEEDED,
+            ActivityEventKind.STEP_UNCERTAINTY_RESOLVED_FAILED,
+            ActivityEventKind.STEP_COMPENSATION_STARTED,
+            ActivityEventKind.STEP_COMPENSATION_SUCCEEDED,
+            ActivityEventKind.STEP_COMPENSATION_FAILED,
+        }
         for kind in ActivityEventKind:
             with self.subTest(kind=kind):
                 self._round_trip(
@@ -122,7 +138,7 @@ class ExecutionValueTests(unittest.TestCase):
                         ordinal=1,
                         kind=kind,
                         occurred_at="2026-07-16T00:00:00Z",
-                        activity_id="start-api",
+                        activity_id="start-api" if kind in step_kinds else None,
                         evidence=BoundedEvidence.from_mapping({"target": "api"}),
                         failure=(
                             FailureEvidence(
@@ -133,8 +149,132 @@ class ExecutionValueTests(unittest.TestCase):
                             if kind is ActivityEventKind.STEP_UNCERTAIN
                             else None
                         ),
+                        recovery=(
+                            RecoveryDecisionRecord(
+                                "decision-a",
+                                AcceptUncompensatedFailure(),
+                                RecoveryAuthority(
+                                    "operator-a",
+                                    "grant-a",
+                                    (RecoveryScope.ACCEPT_LOSS,),
+                                ),
+                                "The operator accepts the visible loss.",
+                            )
+                            if kind is ActivityEventKind.RECOVERY_DECISION_RECORDED
+                            else None
+                        ),
                     )
                 )
+
+    def test_event_scope_is_valid_by_construction(self):
+        with self.assertRaisesRegex(ExecutionValueError, "step event requires"):
+            ActivityEventRecord(
+                "event-a",
+                "run-a",
+                1,
+                ActivityEventKind.STEP_STARTED,
+                "2026-07-16T00:00:00Z",
+            )
+        with self.assertRaisesRegex(ExecutionValueError, "run event must not"):
+            ActivityEventRecord(
+                "event-a",
+                "run-a",
+                1,
+                ActivityEventKind.RUN_STARTED,
+                "2026-07-16T00:00:00Z",
+                activity_id="start-api",
+            )
+
+    def test_recovery_event_descriptor_is_strict_and_attributable(self):
+        event = ActivityEventRecord(
+            "event-recovery",
+            "run-a",
+            1,
+            ActivityEventKind.RECOVERY_DECISION_RECORDED,
+            "2026-07-16T00:00:00Z",
+            recovery=RecoveryDecisionRecord(
+                "decision-a",
+                AcceptUncompensatedFailure(),
+                RecoveryAuthority(
+                    "operator-a",
+                    "grant-a",
+                    (RecoveryScope.ACCEPT_LOSS,),
+                ),
+                "The original failure cannot be safely compensated.",
+            ),
+        )
+        self._round_trip(event)
+
+        descriptor = DEFAULT_EXECUTION_CODEC.encode(event)
+        value = descriptor["value"]
+        self.assertIsInstance(value, dict)
+        recovery = value["recovery"]
+        self.assertIsInstance(recovery, dict)
+        recovery["unexpected"] = "must-fail-closed"
+
+        with self.assertRaises(MalformedExecutionDescriptor):
+            DEFAULT_EXECUTION_CODEC.decode(descriptor)
+
+    def test_unknown_recovery_members_are_not_malformed_shapes(self):
+        event = ActivityEventRecord(
+            "event-recovery",
+            "run-a",
+            1,
+            ActivityEventKind.RECOVERY_DECISION_RECORDED,
+            "2026-07-16T00:00:00Z",
+            recovery=RecoveryDecisionRecord(
+                "decision-a",
+                AcceptUncompensatedFailure(),
+                RecoveryAuthority(
+                    "operator-a",
+                    "grant-a",
+                    (RecoveryScope.ACCEPT_LOSS,),
+                ),
+                "The original failure cannot be safely compensated.",
+            ),
+        )
+        for path, unknown in (
+            (("decision", "kind"), "unknown-decision"),
+            (("scopes", 0), "recovery:unknown"),
+        ):
+            with self.subTest(path=path):
+                descriptor = DEFAULT_EXECUTION_CODEC.encode(event)
+                value = descriptor["value"]
+                self.assertIsInstance(value, dict)
+                recovery = value["recovery"]
+                self.assertIsInstance(recovery, dict)
+                if path[0] == "decision":
+                    decision = recovery["decision"]
+                    self.assertIsInstance(decision, dict)
+                    decision[path[1]] = unknown
+                else:
+                    scopes = recovery["scopes"]
+                    self.assertIsInstance(scopes, list)
+                    scopes[path[1]] = unknown
+
+                with self.assertRaises(UnknownExecutionVariant):
+                    DEFAULT_EXECUTION_CODEC.decode(descriptor)
+
+    def test_recovery_evidence_cannot_ride_on_an_unrelated_event(self):
+        recovery = RecoveryDecisionRecord(
+            "decision-a",
+            AcceptUncompensatedFailure(),
+            RecoveryAuthority(
+                "operator-a",
+                "grant-a",
+                (RecoveryScope.ACCEPT_LOSS,),
+            ),
+            "The original failure cannot be safely compensated.",
+        )
+        with self.assertRaisesRegex(ExecutionValueError, "only recovery decision"):
+            ActivityEventRecord(
+                "event-a",
+                "run-a",
+                1,
+                ActivityEventKind.RUN_FAILED,
+                "2026-07-16T00:00:00Z",
+                recovery=recovery,
+            )
 
     def test_codec_round_trips_every_observation_status_and_freshness(self):
         for status in ObservationStatus:
@@ -263,6 +403,7 @@ class ExecutionValueTests(unittest.TestCase):
                 ActivityRunStatus.SUCCEEDED,
                 ActivityRunStatus.COMPENSATED,
                 ActivityRunStatus.PARTIALLY_FAILED,
+                ActivityRunStatus.UNCOMPENSATED_FAILURE,
                 ActivityRunStatus.CANCELLED,
             }
             else None

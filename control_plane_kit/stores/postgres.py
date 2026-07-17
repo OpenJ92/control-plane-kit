@@ -34,6 +34,8 @@ from control_plane_kit.execution import (
     ObservationStatus,
     ProbeKind,
     ProbeOutcome,
+    RecoveryDecisionRecord,
+    recovery_decision_record_from_descriptor,
     RetryIdentity,
 )
 from control_plane_kit.planning.activity_plan import RiskLevel
@@ -518,7 +520,8 @@ BEGIN
       ADD CONSTRAINT cpk_activity_runs_status_check
       CHECK (status IN (
         'claimed', 'running', 'paused', 'succeeded', 'failed',
-        'compensating', 'compensated', 'partially_failed', 'cancelled'
+        'compensating', 'compensated', 'partially_failed',
+        'uncompensated_failure', 'cancelled'
       )) NOT VALID;
   END IF;
   IF NOT EXISTS (
@@ -557,9 +560,13 @@ BEGIN
       CHECK (event_type IN (
         'request_admitted', 'request_claimed', 'run_opened', 'run_started', 'run_paused',
         'run_resumed', 'step_started', 'step_succeeded', 'step_failed',
-        'step_unsupported', 'step_uncertain', 'compensation_started', 'compensation_succeeded',
-        'compensation_failed', 'run_succeeded', 'run_failed', 'run_cancelled',
-        'current_graph_advanced'
+        'step_unsupported', 'step_uncertain',
+        'step_uncertainty_resolved_succeeded', 'step_uncertainty_resolved_failed',
+        'step_compensation_started', 'step_compensation_succeeded',
+        'step_compensation_failed', 'recovery_decision_recorded',
+        'run_compensation_started', 'run_compensation_succeeded',
+        'run_compensation_failed', 'run_uncompensated_failure_accepted',
+        'run_succeeded', 'run_failed', 'run_cancelled', 'current_graph_advanced'
       )) NOT VALID;
   END IF;
   IF NOT EXISTS (
@@ -576,6 +583,19 @@ BEGIN
   END IF;
 END $$;
 
+-- Closed run status vocabulary is rebuilt in place because this package has
+-- no released compatibility surface.  Existing development databases receive
+-- the same current schema as newly created databases.
+ALTER TABLE cpk_activity_runs
+  DROP CONSTRAINT IF EXISTS cpk_activity_runs_status_check;
+ALTER TABLE cpk_activity_runs
+  ADD CONSTRAINT cpk_activity_runs_status_check
+  CHECK (status IN (
+    'claimed', 'running', 'paused', 'succeeded', 'failed',
+    'compensating', 'compensated', 'partially_failed',
+    'uncompensated_failure', 'cancelled'
+  )) NOT VALID;
+
 ALTER TABLE cpk_activity_runs
   DROP CONSTRAINT IF EXISTS cpk_activity_runs_settlement_check;
 ALTER TABLE cpk_activity_runs
@@ -583,7 +603,10 @@ ALTER TABLE cpk_activity_runs
   CHECK (
     legacy_imported
     OR (
-      status IN ('succeeded', 'compensated', 'partially_failed', 'cancelled')
+      status IN (
+        'succeeded', 'compensated', 'partially_failed',
+        'uncompensated_failure', 'cancelled'
+      )
       AND settled_at IS NOT NULL
     )
     OR (
@@ -603,7 +626,7 @@ ALTER TABLE cpk_activity_runs
     OR (
       status IN (
         'running', 'paused', 'succeeded', 'failed', 'compensating',
-        'compensated', 'partially_failed'
+        'compensated', 'partially_failed', 'uncompensated_failure'
       )
       AND started_at IS NOT NULL
     )
@@ -618,9 +641,13 @@ ALTER TABLE cpk_activity_events
   CHECK (event_type IN (
     'request_admitted', 'request_claimed', 'run_opened', 'run_started',
     'run_paused', 'run_resumed', 'step_started', 'step_succeeded',
-    'step_failed', 'step_unsupported', 'step_uncertain', 'compensation_started',
-    'compensation_succeeded', 'compensation_failed', 'run_succeeded',
-    'run_failed', 'run_cancelled', 'current_graph_advanced'
+    'step_failed', 'step_unsupported', 'step_uncertain',
+    'step_uncertainty_resolved_succeeded', 'step_uncertainty_resolved_failed',
+    'step_compensation_started', 'step_compensation_succeeded',
+    'step_compensation_failed', 'recovery_decision_recorded',
+    'run_compensation_started', 'run_compensation_succeeded',
+    'run_compensation_failed', 'run_uncompensated_failure_accepted',
+    'run_succeeded', 'run_failed', 'run_cancelled', 'current_graph_advanced'
   )) NOT VALID;
 
 CREATE UNIQUE INDEX IF NOT EXISTS cpk_execution_requests_active_plan
@@ -1630,6 +1657,9 @@ class PostgresExecutionStore:
                     "message": record.failure.message,
                     "details": record.failure.details.descriptor(),
                 },
+                "recovery": (
+                    None if record.recovery is None else record.recovery.descriptor()
+                ),
             })),
         )
         return record
@@ -1716,6 +1746,7 @@ def _activity_event(row: tuple[Any, ...]) -> ActivityEventRecord:
         activity_id=row[5].get("activity_id"),
         evidence=BoundedEvidence.from_mapping(row[5].get("evidence", {})),
         failure=_failure_evidence(row[5].get("failure")),
+        recovery=_recovery_decision(row[5].get("recovery")),
     )
 
 
@@ -1730,6 +1761,14 @@ def _failure_evidence(value: object) -> FailureEvidence | None:
         message=value["message"],
         details=BoundedEvidence.from_mapping(value.get("details", {})),
     )
+
+
+def _recovery_decision(value: object) -> RecoveryDecisionRecord | None:
+    if value is None:
+        return None
+    if not isinstance(value, dict):
+        raise ValueError("persisted recovery decision must be an object")
+    return recovery_decision_record_from_descriptor(value)
 
 
 class PostgresObservedStateStore:

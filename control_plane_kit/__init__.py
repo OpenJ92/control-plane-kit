@@ -320,6 +320,7 @@ from control_plane_kit.execution import (
     RecoveryDecisionRejected,
     RecoveryScope,
     RecoveryValueError,
+    UnknownRecoveryVariant,
     RemainPaused,
     probe_outcome_is_valid,
     RetryIdentity,
@@ -330,6 +331,7 @@ from control_plane_kit.execution import (
     authorize_recovery_decision,
     project_observation,
     validate_recovery_decision,
+    recovery_decision_record_from_descriptor,
 )
 from control_plane_kit.topology.graph import (
     DeploymentGraph,
@@ -782,6 +784,7 @@ __all__ += [
     "RecoveryDecisionRejected",
     "RecoveryScope",
     "RecoveryValueError",
+    "UnknownRecoveryVariant",
     "RemainPaused",
     "probe_outcome_is_valid",
     "RetryIdentity",
@@ -792,6 +795,7 @@ __all__ += [
     "authorize_recovery_decision",
     "project_observation",
     "validate_recovery_decision",
+    "recovery_decision_record_from_descriptor",
 ]
 
 __all__ += [

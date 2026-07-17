@@ -10,7 +10,10 @@ import json
 import math
 from dataclasses import dataclass, field
 from enum import StrEnum
-from typing import Mapping, TypeAlias
+from typing import TYPE_CHECKING, Mapping, TypeAlias
+
+if TYPE_CHECKING:
+    from control_plane_kit.execution.recovery import RecoveryDecisionRecord
 
 
 MAX_EVIDENCE_BYTES = 8_192
@@ -47,6 +50,7 @@ class ActivityRunStatus(StrEnum):
     COMPENSATING = "compensating"
     COMPENSATED = "compensated"
     PARTIALLY_FAILED = "partially_failed"
+    UNCOMPENSATED_FAILURE = "uncompensated_failure"
     CANCELLED = "cancelled"
 
 
@@ -64,9 +68,16 @@ class ActivityEventKind(StrEnum):
     STEP_FAILED = "step_failed"
     STEP_UNSUPPORTED = "step_unsupported"
     STEP_UNCERTAIN = "step_uncertain"
-    COMPENSATION_STARTED = "compensation_started"
-    COMPENSATION_SUCCEEDED = "compensation_succeeded"
-    COMPENSATION_FAILED = "compensation_failed"
+    STEP_UNCERTAINTY_RESOLVED_SUCCEEDED = "step_uncertainty_resolved_succeeded"
+    STEP_UNCERTAINTY_RESOLVED_FAILED = "step_uncertainty_resolved_failed"
+    STEP_COMPENSATION_STARTED = "step_compensation_started"
+    STEP_COMPENSATION_SUCCEEDED = "step_compensation_succeeded"
+    STEP_COMPENSATION_FAILED = "step_compensation_failed"
+    RECOVERY_DECISION_RECORDED = "recovery_decision_recorded"
+    RUN_COMPENSATION_STARTED = "run_compensation_started"
+    RUN_COMPENSATION_SUCCEEDED = "run_compensation_succeeded"
+    RUN_COMPENSATION_FAILED = "run_compensation_failed"
+    RUN_UNCOMPENSATED_FAILURE_ACCEPTED = "run_uncompensated_failure_accepted"
     RUN_SUCCEEDED = "run_succeeded"
     RUN_FAILED = "run_failed"
     RUN_CANCELLED = "run_cancelled"
@@ -404,11 +415,19 @@ class ActivityEventRecord:
     activity_id: str | None = None
     evidence: BoundedEvidence = field(default_factory=BoundedEvidence)
     failure: FailureEvidence | None = None
+    recovery: "RecoveryDecisionRecord | None" = None
 
     def __post_init__(self) -> None:
         _require_text_fields(
             self,
-            excluded={"ordinal", "kind", "activity_id", "evidence", "failure"},
+            excluded={
+                "ordinal",
+                "kind",
+                "activity_id",
+                "evidence",
+                "failure",
+                "recovery",
+            },
         )
         if type(self.ordinal) is not int or self.ordinal < 1:
             raise ExecutionValueError("event ordinal must be a positive integer")
@@ -420,6 +439,26 @@ class ActivityEventRecord:
             raise TypeError("activity event evidence must be BoundedEvidence")
         if self.failure is not None and not isinstance(self.failure, FailureEvidence):
             raise TypeError("activity event failure must be FailureEvidence when present")
+        from control_plane_kit.execution.recovery import RecoveryDecisionRecord
+
+        if self.recovery is not None and not isinstance(
+            self.recovery, RecoveryDecisionRecord
+        ):
+            raise TypeError("activity event recovery must be RecoveryDecisionRecord")
+        if self.kind is ActivityEventKind.RECOVERY_DECISION_RECORDED:
+            if self.recovery is None:
+                raise ExecutionValueError(
+                    "recovery decision event requires typed recovery evidence"
+                )
+        elif self.recovery is not None:
+            raise ExecutionValueError(
+                "only recovery decision events may carry recovery evidence"
+            )
+        if self.kind in _STEP_ACTIVITY_EVENT_KINDS:
+            if self.activity_id is None:
+                raise ExecutionValueError("step event requires activity_id")
+        elif self.activity_id is not None:
+            raise ExecutionValueError("run event must not carry activity_id")
 
 
 @dataclass(frozen=True)
@@ -511,6 +550,7 @@ _STARTED_RUN_STATUSES = frozenset(
         ActivityRunStatus.COMPENSATING,
         ActivityRunStatus.COMPENSATED,
         ActivityRunStatus.PARTIALLY_FAILED,
+        ActivityRunStatus.UNCOMPENSATED_FAILURE,
     }
 )
 _SETTLED_RUN_STATUSES = frozenset(
@@ -518,7 +558,24 @@ _SETTLED_RUN_STATUSES = frozenset(
         ActivityRunStatus.SUCCEEDED,
         ActivityRunStatus.COMPENSATED,
         ActivityRunStatus.PARTIALLY_FAILED,
+        ActivityRunStatus.UNCOMPENSATED_FAILURE,
         ActivityRunStatus.CANCELLED,
+    }
+)
+
+
+_STEP_ACTIVITY_EVENT_KINDS = frozenset(
+    {
+        ActivityEventKind.STEP_STARTED,
+        ActivityEventKind.STEP_SUCCEEDED,
+        ActivityEventKind.STEP_FAILED,
+        ActivityEventKind.STEP_UNSUPPORTED,
+        ActivityEventKind.STEP_UNCERTAIN,
+        ActivityEventKind.STEP_UNCERTAINTY_RESOLVED_SUCCEEDED,
+        ActivityEventKind.STEP_UNCERTAINTY_RESOLVED_FAILED,
+        ActivityEventKind.STEP_COMPENSATION_STARTED,
+        ActivityEventKind.STEP_COMPENSATION_SUCCEEDED,
+        ActivityEventKind.STEP_COMPENSATION_FAILED,
     }
 )
 

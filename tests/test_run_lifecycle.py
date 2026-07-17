@@ -421,8 +421,8 @@ class RunLifecycleTests(PostgresStoreTestCase):
             [(event.kind, event.occurred_at) for event in events[-3:]],
             [
                 (ActivityEventKind.RUN_FAILED, "2026-07-16T00:04:00Z"),
-                (ActivityEventKind.COMPENSATION_STARTED, "2026-07-16T00:05:00Z"),
-                (ActivityEventKind.COMPENSATION_SUCCEEDED, "2026-07-16T00:06:00Z"),
+                (ActivityEventKind.RUN_COMPENSATION_STARTED, "2026-07-16T00:05:00Z"),
+                (ActivityEventKind.RUN_COMPENSATION_SUCCEEDED, "2026-07-16T00:06:00Z"),
             ],
         )
 

@@ -9,6 +9,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from enum import StrEnum
+from collections.abc import Mapping
 from typing import TypeAlias
 
 from control_plane_kit.execution.values import ActivityRunStatus
@@ -16,6 +17,10 @@ from control_plane_kit.execution.values import ActivityRunStatus
 
 class RecoveryValueError(ValueError):
     """Raised when a recovery value cannot represent a valid closed fact."""
+
+
+class UnknownRecoveryVariant(RecoveryValueError):
+    """Raised when recovery descriptor data names an unknown closed member."""
 
 
 class RecoveryScope(StrEnum):
@@ -127,6 +132,18 @@ class RecoveryDecisionRecord:
         if not isinstance(self.authority, RecoveryAuthority):
             raise TypeError("authority must be RecoveryAuthority")
 
+    def descriptor(self) -> dict[str, object]:
+        """Return strict secret-free data suitable for an ActivityEvent payload."""
+
+        return {
+            "decision_id": self.decision_id,
+            "decision": _decision_descriptor(self.decision),
+            "operator_id": self.authority.operator_id,
+            "authority_reference": self.authority.authority_reference,
+            "scopes": [scope.value for scope in self.authority.scopes],
+            "reason": self.reason,
+        }
+
 
 @dataclass(frozen=True)
 class RecoveryContext:
@@ -234,6 +251,45 @@ def authorize_recovery_decision(
         )
 
 
+def recovery_decision_record_from_descriptor(
+    value: Mapping[str, object],
+) -> RecoveryDecisionRecord:
+    """Decode the one closed nested recovery descriptor language."""
+
+    expected = {
+        "decision_id",
+        "decision",
+        "operator_id",
+        "authority_reference",
+        "scopes",
+        "reason",
+    }
+    if set(value) != expected:
+        raise RecoveryValueError("recovery decision fields do not match schema")
+    scopes = value["scopes"]
+    if not isinstance(scopes, list):
+        raise RecoveryValueError("recovery scopes must be a list")
+    try:
+        authority = RecoveryAuthority(
+            _descriptor_text(value, "operator_id"),
+            _descriptor_text(value, "authority_reference"),
+            tuple(RecoveryScope(scope) for scope in scopes),
+        )
+    except (TypeError, ValueError) as error:
+        raise UnknownRecoveryVariant(
+            "recovery descriptor contains unknown scope"
+        ) from error
+    decision_value = value["decision"]
+    if not isinstance(decision_value, Mapping):
+        raise RecoveryValueError("recovery decision must be an object")
+    return RecoveryDecisionRecord(
+        _descriptor_text(value, "decision_id"),
+        _decision_from_descriptor(decision_value),
+        authority,
+        _descriptor_text(value, "reason"),
+    )
+
+
 def _require_failed_run(context: RecoveryContext) -> None:
     if context.run_status not in {
         ActivityRunStatus.FAILED,
@@ -252,3 +308,56 @@ def _require_no_uncertainty(context: RecoveryContext) -> None:
 def _require_text(name: str, value: str) -> None:
     if not isinstance(value, str) or not value.strip():
         raise RecoveryValueError(f"{name} must be non-empty text")
+
+
+def _decision_descriptor(value: RecoveryDecision) -> dict[str, object]:
+    match value:
+        case ConfirmEffectSucceeded(activity_id=activity_id):
+            return {"kind": "confirm-effect-succeeded", "activity_id": activity_id}
+        case ConfirmEffectFailed(activity_id=activity_id):
+            return {"kind": "confirm-effect-failed", "activity_id": activity_id}
+        case ResumeSameIntent():
+            return {"kind": "resume-same-intent"}
+        case RetryAsNewRun():
+            return {"kind": "retry-as-new-run"}
+        case BeginCompensation():
+            return {"kind": "begin-compensation"}
+        case AcceptUncompensatedFailure():
+            return {"kind": "accept-uncompensated-failure"}
+        case RemainPaused():
+            return {"kind": "remain-paused"}
+
+
+def _decision_from_descriptor(value: Mapping[str, object]) -> RecoveryDecision:
+    kind = _descriptor_text(value, "kind")
+    if kind in {"confirm-effect-succeeded", "confirm-effect-failed"}:
+        if set(value) != {"kind", "activity_id"}:
+            raise RecoveryValueError("uncertainty decision fields do not match schema")
+        activity_id = _descriptor_text(value, "activity_id")
+        return (
+            ConfirmEffectSucceeded(activity_id)
+            if kind == "confirm-effect-succeeded"
+            else ConfirmEffectFailed(activity_id)
+        )
+    if set(value) != {"kind"}:
+        raise RecoveryValueError("recovery decision fields do not match schema")
+    match kind:
+        case "resume-same-intent":
+            return ResumeSameIntent()
+        case "retry-as-new-run":
+            return RetryAsNewRun()
+        case "begin-compensation":
+            return BeginCompensation()
+        case "accept-uncompensated-failure":
+            return AcceptUncompensatedFailure()
+        case "remain-paused":
+            return RemainPaused()
+        case _:
+            raise UnknownRecoveryVariant(f"unknown recovery decision {kind!r}")
+
+
+def _descriptor_text(value: Mapping[str, object], key: str) -> str:
+    result = value.get(key)
+    if not isinstance(result, str) or not result.strip():
+        raise RecoveryValueError(f"{key} must be non-empty text")
+    return result
