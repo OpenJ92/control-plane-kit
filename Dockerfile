@@ -26,6 +26,14 @@ RUN python -m pip install ".[test-server]"
 
 CMD ["python", "-m", "unittest", "discover", "-s", "tests", "-v"]
 
+FROM docker:27-cli AS docker_cli
+
+FROM test AS live-test
+
+COPY --from=docker_cli /usr/local/bin/docker /usr/local/bin/docker
+
+CMD ["python", "tests/live_docker_publication.py", "start"]
+
 FROM package AS demo
 
 COPY examples ./examples

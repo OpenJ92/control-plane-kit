@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass, field
+from ipaddress import IPv4Address
 import subprocess
 import unittest
 
@@ -12,6 +13,7 @@ from control_plane_kit import (
     EffectSucceeded,
     EffectUnsupported,
     EnvironmentBindingMaterial,
+    HostPublicationMaterial,
     ImplementationMaterial,
     LiteralMaterialValue,
     MaterializedEffectRequest,
@@ -19,7 +21,9 @@ from control_plane_kit import (
     PinnedGraphSet,
     RuntimeKind,
     RuntimeMaterial,
+    Protocol,
 )
+from control_plane_kit.docker_runtime import DockerPublishedPort, DockerPortBinding
 from control_plane_kit.execution import ObservationStatus
 from control_plane_kit.planning import (
     ActivityId,
@@ -67,12 +71,25 @@ class NarrowClient:
     def inspect_container(self, name, *, timeout_seconds=30):
         return self.containers.get(name)
 
-    def run_container(self, *, name, image, network, environment, command, labels, mounts=None, timeout_seconds=30):
+    def run_container(self, *, name, image, network, environment, command, labels, mounts=None, ports=(), timeout_seconds=30):
         from control_plane_kit.docker_runtime import DockerResourceInspection, DockerResourceKind
 
-        self._record(("start-container", name, image, network, dict(environment), tuple(command), dict(mounts or {}), timeout_seconds))
+        self._record(("start-container", name, image, network, dict(environment), tuple(command), dict(mounts or {}), tuple(ports), timeout_seconds))
         self.containers[name] = DockerResourceInspection(
-            DockerResourceKind.CONTAINER, "container-id", name, True, image, dict(labels)
+            DockerResourceKind.CONTAINER,
+            "container-id",
+            name,
+            True,
+            image,
+            dict(labels),
+            tuple(
+                DockerPublishedPort(
+                    value.container_port,
+                    value.host_address,
+                    value.host_port or 49_152 + index,
+                )
+                for index, value in enumerate(ports)
+            ),
         )
 
     def start_existing_container(self, resource_id, *, timeout_seconds=30):
@@ -131,6 +148,7 @@ class DockerEffectTests(unittest.TestCase):
         args, kwargs = client.recorded
         self.assertNotIn("never-in-argv", str(args))
         self.assertIn("API_TOKEN", args)
+        self.assertNotIn("--publish", args)
         self.assertEqual(kwargs["environment"]["API_TOKEN"], "never-in-argv")
 
     def test_cli_distinguishes_absence_from_failed_inspection(self) -> None:
@@ -151,6 +169,76 @@ class DockerEffectTests(unittest.TestCase):
         object.__setattr__(client, "failure", True)
         with self.assertRaises(subprocess.CalledProcessError):
             client.inspect_volume("unknown-because-docker-failed")
+
+    def test_cli_publishes_only_explicit_typed_port_bindings(self) -> None:
+        class RecordingCli(DockerCliClient):
+            def _run(self, *args, **kwargs):
+                self.recorded = args
+                return subprocess.CompletedProcess(args, 0)
+
+        client = RecordingCli()
+        client.run_container(
+            name="api",
+            image="api:latest",
+            network="network",
+            environment={},
+            command=(),
+            labels={},
+            ports=(
+                DockerPortBinding(
+                    "internal",
+                    Protocol.HTTP,
+                    8000,
+                    "127.0.0.1",
+                    None,
+                ),
+            ),
+        )
+
+        publish_index = client.recorded.index("--publish")
+        self.assertEqual(
+            client.recorded[publish_index + 1],
+            "127.0.0.1::8000/tcp",
+        )
+
+    def test_cli_inspection_preserves_private_and_host_port_distinction(self) -> None:
+        class RecordingCli(DockerCliClient):
+            def _resource_exists(self, *args, **kwargs):
+                return True
+
+            def _capture(self, *args, **kwargs):
+                return subprocess.CompletedProcess(
+                    args,
+                    0,
+                    stdout=(
+                        'container-id\t/api\ttrue\tapi:latest\t{}\t'
+                        '{"8000/tcp":[{"HostIp":"127.0.0.1",'
+                        '"HostPort":"49152"}]}\n'
+                    ),
+                )
+
+        inspected = RecordingCli().inspect_container("api")
+
+        self.assertIsNotNone(inspected)
+        self.assertEqual(
+            inspected.published_ports,
+            (DockerPublishedPort(8000, "127.0.0.1", 49_152),),
+        )
+
+    def test_host_publication_is_distinct_from_private_node_material(self) -> None:
+        client = NarrowClient()
+
+        result = DockerEffectInterpreter(project_name="demo", client=client).execute(
+            _request(StartNode(NodeTarget("api")), _published_node())
+        )
+
+        self.assertIsInstance(result, EffectSucceeded)
+        started = next(call for call in client.calls if call[0] == "start-container")
+        self.assertEqual(len(started[7]), 1)
+        self.assertEqual(started[7][0].socket_name, "internal")
+        evidence = result.evidence.descriptor()["host_publications"]
+        self.assertEqual(evidence[0]["host_address"], "127.0.0.1")
+        self.assertEqual(evidence[0]["host_port"], 49_152)
 
     def test_runtime_start_ensures_only_the_pinned_network(self) -> None:
         client = NarrowClient()
@@ -250,6 +338,32 @@ def _node() -> NodeMaterial:
         (),
         environment,
         "/health",
+    )
+
+
+def _published_node() -> NodeMaterial:
+    node = _node()
+    return NodeMaterial(
+        node.node_id,
+        node.runtime,
+        ImplementationMaterial(
+            node.implementation.kind,
+            image=node.implementation.image,
+            command=node.implementation.command,
+            environment=node.implementation.environment,
+            host_publications=(
+                HostPublicationMaterial(
+                    "internal",
+                    Protocol.HTTP,
+                    8000,
+                    IPv4Address("127.0.0.1"),
+                ),
+            ),
+        ),
+        node.endpoints,
+        node.environment,
+        node.health_path,
+        node.lifecycle,
     )
 
 
