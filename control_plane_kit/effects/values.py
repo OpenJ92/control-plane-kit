@@ -9,8 +9,11 @@ from typing import TypeAlias
 
 from control_plane_kit.execution import (
     BoundedEvidence,
+    EndpointContext,
     FailureEvidence,
     ObservationStatus,
+    ProbeKind,
+    ProbeOutcome,
 )
 from control_plane_kit.planning import (
     ActivityId,
@@ -244,6 +247,10 @@ class EffectObservation:
     kind: ObservationKind
     status: ObservationStatus
     evidence: BoundedEvidence = field(default_factory=BoundedEvidence)
+    graph_id: str | None = None
+    probe_kind: ProbeKind | None = None
+    probe_outcome: ProbeOutcome | None = None
+    endpoint_context: EndpointContext | None = None
 
     def __post_init__(self) -> None:
         _require_text(self.subject_id, "effect observation subject id")
@@ -253,6 +260,25 @@ class EffectObservation:
             raise TypeError("effect observation status must be ObservationStatus")
         if not isinstance(self.evidence, BoundedEvidence):
             raise TypeError("effect observation evidence must be BoundedEvidence")
+        correlated = (self.graph_id, self.probe_kind, self.probe_outcome)
+        if any(value is not None for value in correlated) and any(
+            value is None for value in correlated
+        ):
+            raise EffectValueError(
+                "correlated effect observation requires graph, probe kind, and outcome"
+            )
+        if self.graph_id is not None:
+            _require_text(self.graph_id, "effect observation graph id")
+        if self.probe_kind is not None and not isinstance(self.probe_kind, ProbeKind):
+            raise TypeError("effect observation probe kind must be ProbeKind")
+        if self.probe_outcome is not None and not isinstance(
+            self.probe_outcome, ProbeOutcome
+        ):
+            raise TypeError("effect observation probe outcome must be ProbeOutcome")
+        if self.endpoint_context is not None and not isinstance(
+            self.endpoint_context, EndpointContext
+        ):
+            raise TypeError("effect observation endpoint context must be EndpointContext")
 
 
 @dataclass(frozen=True)

@@ -33,10 +33,20 @@ from control_plane_kit.execution.values import (
     FailureEvidence,
     LegacyImportedRun,
     ObservationFreshness,
+    ObservationStaleReason,
     ObservationRecord,
     ObservationStatus,
+    EndpointContext,
+    ProbeKind,
+    ProbeOutcome,
+    probe_outcome_is_valid,
     RetryIdentity,
     RunAdmission,
+)
+from control_plane_kit.execution.observations import (
+    ObservationFreshnessPolicy,
+    ProjectedObservation,
+    project_observation,
 )
 
 __all__ = [
@@ -69,8 +79,16 @@ __all__ = [
     "MAX_EVIDENCE_TEXT",
     "MalformedExecutionDescriptor",
     "ObservationFreshness",
+    "ObservationFreshnessPolicy",
+    "ObservationStaleReason",
     "ObservationRecord",
     "ObservationStatus",
+    "EndpointContext",
+    "ProbeKind",
+    "ProbeOutcome",
+    "probe_outcome_is_valid",
+    "ProjectedObservation",
+    "project_observation",
     "RetryIdentity",
     "RunAdmission",
     "UnknownExecutionVariant",

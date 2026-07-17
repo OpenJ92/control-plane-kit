@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass, field
+from datetime import datetime, timezone
 from typing import Mapping
 
 from control_plane_kit.planning.activity_plan import ActivityImpact, ReviewChange, RiskLevel
@@ -22,7 +23,13 @@ from control_plane_kit.stores.protocols import (
     ObservedStateStore,
     WorkspaceStore,
 )
-from control_plane_kit.execution import DEFAULT_EXECUTION_CODEC, ObservationRecord
+from control_plane_kit.execution import (
+    DEFAULT_EXECUTION_CODEC,
+    ObservationFreshnessPolicy,
+    ObservationRecord,
+    ProjectedObservation,
+    project_observation,
+)
 from control_plane_kit.stores.records import (
     ActivityPlanRecord,
     GraphVersionRecord,
@@ -240,6 +247,8 @@ class InstanceReadService:
         execution_store: ExecutionStore | None = None,
         observed_state_store: ObservedStateStore | None = None,
         graph_codec: GraphDescriptorCodec = DEFAULT_GRAPH_CODEC,
+        clock=lambda: datetime.now(timezone.utc),
+        observation_freshness: ObservationFreshnessPolicy = ObservationFreshnessPolicy(),
     ) -> None:
         self._workspace_store = workspace_store
         self._graph_topology_store = graph_topology_store
@@ -247,6 +256,8 @@ class InstanceReadService:
         self._execution_store = execution_store
         self._observed_state_store = observed_state_store
         self._graph_codec = graph_codec
+        self._clock = clock
+        self._observation_freshness = observation_freshness
 
     def workspace(self, workspace_id: str) -> WorkspaceReadModel:
         """Return the workspace summary and graph pointer read models."""
@@ -406,9 +417,17 @@ class InstanceReadService:
     def observed_state(self, workspace_id: str) -> ObservedStateReadModel:
         """Return latest observed state per subject for one workspace."""
 
-        self._workspace(workspace_id)
+        workspace = self._workspace(workspace_id)
+        as_of = self._clock()
         observations = tuple(
-            _observation_descriptor(record)
+            _observation_descriptor(
+                project_observation(
+                    record,
+                    current_graph_id=workspace.current_graph_id,
+                    as_of=as_of,
+                    policy=self._observation_freshness,
+                )
+            )
             for record in self._observed_state().latest_for_workspace(workspace_id)
         )
         return ObservedStateReadModel(workspace_id=workspace_id, observations=observations)
@@ -740,14 +759,27 @@ def _event_descriptor(event: object) -> dict[str, object]:
     }
 
 
-def _observation_descriptor(record: ObservationRecord) -> dict[str, object]:
+def _observation_descriptor(projected: ProjectedObservation) -> dict[str, object]:
+    record = projected.record
     return {
         "observation_id": record.observation_id,
         "workspace_id": record.workspace_id,
         "subject_id": record.subject_id,
         "status": record.status.value,
         "observed_at": record.observed_at,
-        "stale": record.freshness.value == "stale",
+        "graph_id": record.graph_id,
+        "probe_kind": None if record.probe_kind is None else record.probe_kind.value,
+        "probe_outcome": (
+            None if record.probe_outcome is None else record.probe_outcome.value
+        ),
+        "endpoint_context": (
+            None if record.endpoint_context is None else record.endpoint_context.value
+        ),
+        "freshness": projected.freshness.value,
+        "stale": projected.freshness.value == "stale",
+        "stale_reason": (
+            None if projected.stale_reason is None else projected.stale_reason.value
+        ),
         "payload": _redact_descriptor_value("payload", record.evidence.descriptor()),
     }
 

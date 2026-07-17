@@ -207,6 +207,30 @@ class StoreContractTests(PostgresStoreTestCase):
             [("api", "healthy", "fresh"), ("router", "unknown", "stale")],
         )
 
+    def test_observed_state_uses_observation_id_to_break_equal_time_ties(self):
+        self.stores.workspace.create(
+            WorkspaceRecord(workspace_id="workspace-a", name="Demo")
+        )
+        for observation_id, status in (
+            ("obs-a", ObservationStatus.STARTING),
+            ("obs-b", ObservationStatus.HEALTHY),
+        ):
+            self.stores.observed_state.put(
+                ObservationRecord(
+                    observation_id=observation_id,
+                    workspace_id="workspace-a",
+                    subject_id="api",
+                    status=status,
+                    observed_at="2026-07-15T00:00:00Z",
+                )
+            )
+
+        latest = self.stores.observed_state.latest("workspace-a", "api")
+        history = self.stores.observed_state.history("workspace-a", "api")
+
+        self.assertEqual(latest.observation_id, "obs-b")
+        self.assertEqual([value.observation_id for value in history], ["obs-a", "obs-b"])
+
     def test_instance_registry_lists_by_owner_and_updates_lifecycle(self):
         store = self.stores.instance_registry
         store.register(
