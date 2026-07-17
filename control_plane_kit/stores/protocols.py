@@ -19,6 +19,7 @@ from control_plane_kit.stores.records import (
     InstanceRecord,
     OperationActionRecord,
     OperationSessionRecord,
+    OperationSessionStatus,
     SecretReferenceRecord,
     WorkspaceLifecycle,
     WorkspaceRecord,
@@ -55,7 +56,13 @@ class ActivityHistoryStore(Protocol):
         self, workspace_id: str, idempotency_key: str
     ) -> OperationSessionRecord | None: ...
     def sessions_for_workspace(self, workspace_id: str) -> tuple[OperationSessionRecord, ...]: ...
-    def update_session(self, record: OperationSessionRecord) -> OperationSessionRecord: ...
+    def transition_open_session(
+        self,
+        session_id: str,
+        *,
+        replacement: OperationSessionStatus,
+        closed_at: str,
+    ) -> OperationSessionRecord | None: ...
     def add_action(self, record: OperationActionRecord) -> OperationActionRecord: ...
     def action_for_idempotency(
         self, session_id: str, idempotency_key: str

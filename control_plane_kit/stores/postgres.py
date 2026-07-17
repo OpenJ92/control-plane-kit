@@ -931,31 +931,36 @@ class PostgresActivityHistoryStore:
             for row in rows
         )
 
-    def update_session(self, record: OperationSessionRecord) -> OperationSessionRecord:
-        self._connection.execute(
+    def transition_open_session(
+        self,
+        session_id: str,
+        *,
+        replacement: OperationSessionStatus,
+        closed_at: str,
+    ) -> OperationSessionRecord | None:
+        if replacement not in {
+            OperationSessionStatus.CLOSED,
+            OperationSessionStatus.CANCELLED,
+        }:
+            raise ValueError("operation sessions may transition only to a terminal status")
+        if not closed_at:
+            raise ValueError("terminal operation sessions require closed_at")
+        row = self._connection.execute(
             """
             UPDATE cpk_operation_sessions
-            SET workspace_id = %s,
-                actor_id = %s,
-                title = %s,
-                status = %s,
-                created_at = %s,
-                closed_at = %s,
-                metadata = %s::jsonb
-            WHERE session_id = %s
+            SET status = %s, closed_at = %s
+            WHERE session_id = %s AND status = 'open'
+            RETURNING session_id, workspace_id, actor_id, title, status,
+                      created_at, closed_at, metadata, idempotency_key,
+                      intent_fingerprint
             """,
             (
-                record.workspace_id,
-                record.actor_id,
-                record.title,
-                record.status.value,
-                record.created_at,
-                record.closed_at,
-                _json(record.metadata),
-                record.session_id,
+                replacement.value,
+                closed_at,
+                session_id,
             ),
-        )
-        return record
+        ).fetchone()
+        return None if row is None else _session_record(row)
 
     def add_action(self, record: OperationActionRecord) -> OperationActionRecord:
         self._connection.execute(

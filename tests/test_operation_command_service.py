@@ -222,6 +222,33 @@ class OperationCommandServiceTests(PostgresStoreTestCase):
         with self.assertRaises(KeyError):
             self.stores.activity_history.get_session("rolled-back-session")
 
+    def test_late_action_failure_rolls_back_terminal_projection(self):
+        self.start(self.service("session-a", "action-start"))
+        self.start(
+            self.service("session-b", "action-collision"),
+            key="start-b",
+        )
+
+        with self.assertRaises(psycopg.errors.UniqueViolation):
+            self.service(
+                "action-collision",
+                clock=lambda: "2026-07-15T00:01:00Z",
+            ).execute(
+                CloseOperationSession(
+                    "session-a",
+                    "jacob",
+                    IdempotencyKey("close"),
+                )
+            )
+
+        persisted = self.stores.activity_history.get_session("session-a")
+        self.assertEqual(persisted.status.value, "open")
+        self.assertIsNone(persisted.closed_at)
+        self.assertEqual(
+            len(self.stores.activity_history.actions_for_session("session-a")),
+            1,
+        )
+
     def test_concurrent_terminal_transitions_cannot_both_publish(self):
         self.start(self.service("session-a", "action-start"))
         barrier = threading.Barrier(2)
