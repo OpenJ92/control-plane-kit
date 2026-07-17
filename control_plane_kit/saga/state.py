@@ -51,6 +51,7 @@ class SagaState:
     completion_order: tuple[SagaStepId, ...] = ()
     failed_steps: tuple[SagaStepId, ...] = ()
     cancelled: bool = False
+    compensation_requested: bool = False
 
     def step(self, step_id: SagaStepId) -> SagaStepState:
         for value in self.steps:
@@ -65,6 +66,13 @@ class SagaState:
             return SagaStatus.COMPENSATING
         if SagaStepStatus.COMPENSATION_FAILED in statuses:
             return SagaStatus.PARTIALLY_COMPENSATED
+        if self.compensation_requested:
+            if compensation_candidates(self):
+                return SagaStatus.COMPENSATING
+            if any(
+                value.status is SagaStepStatus.COMPENSATED for value in self.steps
+            ):
+                return SagaStatus.COMPENSATED
         if (self.failed_steps or self.cancelled) and not compensation_candidates(self):
             if any(
                 value.status is SagaStepStatus.COMPENSATED for value in self.steps
@@ -100,6 +108,11 @@ class CancelSaga:
 
 
 @dataclass(frozen=True)
+class RequestSagaCompensation:
+    pass
+
+
+@dataclass(frozen=True)
 class BeginSagaCompensation:
     step_id: SagaStepId
 
@@ -119,6 +132,7 @@ SagaCommand: TypeAlias = (
     | SucceedSagaStep
     | FailSagaStep
     | CancelSaga
+    | RequestSagaCompensation
     | BeginSagaCompensation
     | SucceedSagaCompensation
     | FailSagaCompensation
@@ -146,6 +160,11 @@ class SagaCancelled:
 
 
 @dataclass(frozen=True)
+class SagaCompensationRequested:
+    pass
+
+
+@dataclass(frozen=True)
 class SagaCompensationStarted:
     step_id: SagaStepId
 
@@ -165,6 +184,7 @@ SagaEvent: TypeAlias = (
     | SagaStepSucceeded
     | SagaStepFailed
     | SagaCancelled
+    | SagaCompensationRequested
     | SagaCompensationStarted
     | SagaCompensationSucceeded
     | SagaCompensationFailed
@@ -205,6 +225,9 @@ def decide(state: SagaState, command: SagaCommand) -> tuple[SagaEvent, ...]:
                     f"cannot cancel saga in {state.status.value} state"
                 )
             return (SagaCancelled(),)
+        case RequestSagaCompensation():
+            _require_compensation_admission(state)
+            return (SagaCompensationRequested(),)
         case BeginSagaCompensation(step_id=step_id):
             candidates = compensation_candidates(state)
             if not candidates or candidates[0] != step_id:
@@ -246,6 +269,9 @@ def evolve(state: SagaState, event: SagaEvent) -> SagaState:
                     f"cannot apply cancellation in {state.status.value} state"
                 )
             return replace(state, cancelled=True)
+        case SagaCompensationRequested():
+            _require_compensation_admission(state)
+            return replace(state, compensation_requested=True)
         case SagaCompensationStarted(step_id=step_id):
             candidates = compensation_candidates(state)
             if not candidates or candidates[0] != step_id:
@@ -316,6 +342,15 @@ def _replace_step(
 def _require_active(state: SagaState) -> None:
     if state.status is not SagaStatus.ACTIVE:
         raise SagaStateError(f"saga is {state.status.value}, not active")
+
+
+def _require_compensation_admission(state: SagaState) -> None:
+    if state.compensation_requested:
+        raise SagaStateError("saga compensation was already requested")
+    if not compensation_candidates(state):
+        raise SagaStateError(
+            "saga compensation requires completed compensatable work"
+        )
 
 
 def _require_step_status(

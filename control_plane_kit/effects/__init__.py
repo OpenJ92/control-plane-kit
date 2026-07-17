@@ -35,6 +35,7 @@ from control_plane_kit.effects.values import (
     TimeoutPolicy,
     UnsupportedEffectOperation,
     effect_request_for_activity,
+    effect_request_for_compensation,
     required_capability,
 )
 from control_plane_kit.effects.material import (
@@ -56,6 +57,7 @@ from control_plane_kit.effects.material import (
     SecretReferenceMaterialValue,
     SocketConnectionMaterial,
     materialize_effect_request,
+    materialize_compensation_effect_request,
 )
 from control_plane_kit.effects.probes import (
     ApplicationHealthProbeIntent,
@@ -127,7 +129,9 @@ __all__ = [
     "prepare_effect",
     "preflight_effect",
     "effect_request_for_activity",
+    "effect_request_for_compensation",
     "materialize_effect_request",
+    "materialize_compensation_effect_request",
     "required_capability",
     "ApplicationHealthProbeIntent",
     "EndpointContext",

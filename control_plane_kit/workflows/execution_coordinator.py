@@ -20,7 +20,9 @@ from control_plane_kit.effects import (
     TimeoutPolicy,
     dispatch_prepared_effect,
     effect_request_for_activity,
+    effect_request_for_compensation,
     materialize_effect_request,
+    materialize_compensation_effect_request,
     prepare_effect,
 )
 from control_plane_kit.execution import (
@@ -36,15 +38,21 @@ from control_plane_kit.execution import (
     FailureEvidence,
     ObservationRecord,
 )
-from control_plane_kit.planning import ActivityPlan, PlannedActivity
+from control_plane_kit.planning import (
+    ActivityPlan,
+    NonCompensatable,
+    PlannedActivity,
+)
 from control_plane_kit.scheduling import ExecutionSchedule, derive_schedule
 from control_plane_kit.stores import ActivityPlanRecord, PostgresUnitOfWork
 from control_plane_kit.topology import DEFAULT_GRAPH_CODEC
 from control_plane_kit.workflows.commands import IdempotencyKey, InvalidOperationCommand
 from control_plane_kit.workflows.run_lifecycle import (
     CompleteActivityRun,
+    CompleteActivityRunCompensation,
     ExecutionWorkerAuthority,
     FailActivityRun,
+    FailActivityRunCompensation,
     RunLifecycleCommandService,
 )
 from control_plane_kit.workflows.saga_journal import (
@@ -64,6 +72,8 @@ class CoordinatorStatus(StrEnum):
     UNCERTAIN = "uncertain"
     PROGRESSED = "progressed"
     UNSUPPORTED = "unsupported"
+    COMPENSATED = "compensated"
+    COMPENSATION_FAILED = "compensation_failed"
 
 
 class CoordinatorCheckpoint(StrEnum):
@@ -176,6 +186,15 @@ class ExecutionCoordinator:
             terminal = self._terminal_result(context, command, attempted)
             if terminal is not None:
                 return terminal
+            if context.run.status is ActivityRunStatus.COMPENSATING:
+                outcome, attempted = self._advance_compensation(
+                    context,
+                    command,
+                    attempted,
+                )
+                if outcome is not None:
+                    return outcome
+                continue
             if context.journal.uncertain:
                 return ExecutionCoordinatorResult(
                     CoordinatorStatus.UNCERTAIN,
@@ -313,10 +332,23 @@ class ExecutionCoordinator:
                 return ExecutionCoordinatorResult(
                     CoordinatorStatus.COMPLETED, context.run, attempted
                 )
+            case ActivityRunStatus.COMPENSATED:
+                return ExecutionCoordinatorResult(
+                    CoordinatorStatus.COMPENSATED, context.run, attempted
+                )
             case ActivityRunStatus.FAILED | ActivityRunStatus.PARTIALLY_FAILED:
+                status = (
+                    CoordinatorStatus.COMPENSATION_FAILED
+                    if context.run.status is ActivityRunStatus.PARTIALLY_FAILED
+                    else CoordinatorStatus.FAILED
+                )
+                return ExecutionCoordinatorResult(status, context.run, attempted)
+            case ActivityRunStatus.UNCOMPENSATED_FAILURE | ActivityRunStatus.CANCELLED:
                 return ExecutionCoordinatorResult(
                     CoordinatorStatus.FAILED, context.run, attempted
                 )
+            case ActivityRunStatus.COMPENSATING:
+                return None
             case ActivityRunStatus.RUNNING:
                 if context.schedule.failed:
                     failure, status = _journal_failure(context.events)
@@ -345,6 +377,384 @@ class ExecutionCoordinator:
                 raise ExecutionCoordinatorConflict(
                     f"run is {context.run.status.value}, not executable"
                 )
+
+    def _advance_compensation(
+        self,
+        context: _Context,
+        command: ExecuteActivityRun,
+        attempted: int,
+    ) -> tuple[ExecutionCoordinatorResult | None, int]:
+        if context.journal.compensation_uncertain:
+            uncertain = context.journal.compensation_uncertain[0]
+            return (
+                ExecutionCoordinatorResult(
+                    CoordinatorStatus.UNCERTAIN,
+                    context.run,
+                    attempted,
+                    uncertain.activity_id,
+                ),
+                attempted,
+            )
+        if context.journal.compensation_in_flight:
+            return (
+                self._resolve_compensation_in_flight(context, command, attempted),
+                attempted,
+            )
+        if context.schedule.compensation_failed:
+            failure = _compensation_failure(context.events)
+            failed = self._lifecycle.execute(
+                FailActivityRunCompensation(
+                    context.run.run_id,
+                    command.authority,
+                    failure,
+                    IdempotencyKey(
+                        f"coordinator:{context.run.run_id}:compensation-failed"
+                    ),
+                )
+            ).run
+            return (
+                ExecutionCoordinatorResult(
+                    CoordinatorStatus.COMPENSATION_FAILED,
+                    failed,
+                    attempted,
+                    context.schedule.compensation_failed[0].activity_id.value,
+                ),
+                attempted,
+            )
+        if context.schedule.compensation_ready:
+            activity = context.schedule.compensation_ready[0]
+            request = effect_request_for_compensation(
+                activity,
+                run_id=context.run.run_id,
+                attempt=context.run.retry.attempt,
+                idempotency_key=_compensation_effect_key(context.run, activity),
+                timeout=command.timeout,
+            )
+            prepared_result = self._record_compensation_intent(
+                command,
+                activity,
+                request,
+            )
+            if isinstance(prepared_result, EffectUnsupported):
+                self._record_compensation_unsupported(
+                    command,
+                    activity,
+                    prepared_result,
+                )
+                return None, attempted
+            intent, prepared = prepared_result
+            self._raise_if(CoordinatorCheckpoint.AFTER_INTENT_COMMIT)
+            result = dispatch_prepared_effect(prepared)
+            attempted += 1
+            self._raise_if(CoordinatorCheckpoint.AFTER_EFFECT)
+            self._record_compensation_result(command, intent, result)
+            self._raise_if(CoordinatorCheckpoint.AFTER_RESULT_COMMIT)
+            if isinstance(result, EffectFailed) and (
+                result.failure.category is FailureCategory.UNCERTAIN
+            ):
+                return (
+                    ExecutionCoordinatorResult(
+                        CoordinatorStatus.UNCERTAIN,
+                        self._load_context(command).run,
+                        attempted,
+                        activity.activity_id.value,
+                    ),
+                    attempted,
+                )
+            return None, attempted
+
+        non_compensatable = tuple(
+            activity
+            for activity in context.schedule.succeeded
+            if isinstance(activity.compensation, NonCompensatable)
+        )
+        if non_compensatable:
+            names = tuple(
+                activity.activity_id.value for activity in non_compensatable
+            )
+            failed = self._lifecycle.execute(
+                FailActivityRunCompensation(
+                    context.run.run_id,
+                    command.authority,
+                    FailureEvidence(
+                        FailureCategory.TERMINAL,
+                        "compensation.non-compensatable-work",
+                        "Completed work cannot be compensated automatically.",
+                        BoundedEvidence.from_mapping({"activity_ids": names}),
+                    ),
+                    IdempotencyKey(
+                        f"coordinator:{context.run.run_id}:non-compensatable"
+                    ),
+                )
+            ).run
+            return (
+                ExecutionCoordinatorResult(
+                    CoordinatorStatus.COMPENSATION_FAILED,
+                    failed,
+                    attempted,
+                    names[0],
+                ),
+                attempted,
+            )
+
+        completed = self._lifecycle.execute(
+            CompleteActivityRunCompensation(
+                context.run.run_id,
+                command.authority,
+                IdempotencyKey(f"coordinator:{context.run.run_id}:compensated"),
+            )
+        ).run
+        return (
+            ExecutionCoordinatorResult(
+                CoordinatorStatus.COMPENSATED,
+                completed,
+                attempted,
+            ),
+            attempted,
+        )
+
+    def _record_compensation_intent(
+        self,
+        command: ExecuteActivityRun,
+        activity: PlannedActivity,
+        request: EffectRequest,
+    ) -> tuple[ActivityEventRecord, PreparedEffect] | EffectUnsupported:
+        occurred_at = self._clock()
+        expires_at = occurred_at + timedelta(seconds=request.timeout.total_seconds)
+        with self._unit_of_work_factory() as work:
+            run, execution_request, plan = _locked_context(work, command.run_id)
+            _require_owner(execution_request, command.authority.worker_id)
+            _require_compensating(run)
+            journal = project_activity_journal(
+                plan.plan,
+                work.stores.execution.events_for_run(run.run_id),
+            )
+            schedule = derive_schedule(plan.plan, journal.state)
+            if (
+                journal.compensation_in_flight
+                or journal.compensation_uncertain
+                or not schedule.compensation_ready
+                or activity != schedule.compensation_ready[0]
+            ):
+                raise ExecutionCoordinatorConflict(
+                    "compensation activity is no longer ready"
+                )
+            try:
+                base_record = work.stores.graph_topology.get(plan.base_graph_id)
+                desired_record = work.stores.graph_topology.get(plan.desired_graph_id)
+            except KeyError as error:
+                raise ExecutionCoordinatorNotFound(str(error)) from error
+            workspace_id = execution_request.identity.workspace_id
+            if (
+                base_record.workspace_id != workspace_id
+                or desired_record.workspace_id != workspace_id
+            ):
+                raise ExecutionCoordinatorConflict(
+                    "plan-pinned graph belongs to a different workspace"
+                )
+            materialized = materialize_compensation_effect_request(
+                request,
+                activity,
+                PinnedGraphSet(
+                    workspace_id,
+                    plan.plan_id,
+                    plan.base_graph_id,
+                    plan.desired_graph_id,
+                ),
+                base_graph_id=base_record.graph_id,
+                base_graph=DEFAULT_GRAPH_CODEC.decode(base_record.graph_descriptor),
+                desired_graph_id=desired_record.graph_id,
+                desired_graph=DEFAULT_GRAPH_CODEC.decode(
+                    desired_record.graph_descriptor
+                ),
+            )
+            prepared = prepare_effect(materialized, self._interpreter)
+            if isinstance(prepared, EffectUnsupported):
+                return prepared
+            event = work.stores.execution.add_event(
+                ActivityEventRecord(
+                    event_id=self._id_factory(),
+                    run_id=run.run_id,
+                    ordinal=work.stores.execution.next_event_ordinal(run.run_id),
+                    kind=ActivityEventKind.STEP_COMPENSATION_STARTED,
+                    activity_id=activity.activity_id.value,
+                    occurred_at=_iso(occurred_at),
+                    evidence=BoundedEvidence.from_mapping(
+                        {
+                            "attempt_id": request.identity.idempotency_key,
+                            "lease_expires_at": _iso(expires_at),
+                        }
+                    ),
+                )
+            )
+            work.commit()
+            return event, prepared
+
+    def _record_compensation_result(
+        self,
+        command: ExecuteActivityRun,
+        intent: ActivityEventRecord,
+        result: EffectSucceeded | EffectFailed | EffectUnsupported,
+    ) -> ActivityEventRecord:
+        occurred_at = self._clock()
+        with self._unit_of_work_factory() as work:
+            run, request, _ = _locked_context(work, command.run_id)
+            _require_owner(request, command.authority.worker_id)
+            _require_compensating(run)
+            _require_open_compensation_intent(
+                work.stores.execution.events_for_run(run.run_id),
+                intent,
+            )
+            match result:
+                case EffectSucceeded():
+                    kind = ActivityEventKind.STEP_COMPENSATION_SUCCEEDED
+                    evidence = _result_evidence(intent, result.evidence)
+                    failure = None
+                case EffectFailed():
+                    kind = (
+                        ActivityEventKind.STEP_COMPENSATION_UNCERTAIN
+                        if result.failure.category is FailureCategory.UNCERTAIN
+                        else ActivityEventKind.STEP_COMPENSATION_FAILED
+                    )
+                    evidence = _result_evidence(intent, BoundedEvidence())
+                    failure = result.failure
+                case EffectUnsupported():
+                    kind = ActivityEventKind.STEP_COMPENSATION_UNSUPPORTED
+                    evidence = _result_evidence(
+                        intent,
+                        BoundedEvidence.from_mapping(
+                            {"capability": result.capability.value}
+                        ),
+                    )
+                    failure = None
+            event = work.stores.execution.add_event(
+                ActivityEventRecord(
+                    event_id=self._id_factory(),
+                    run_id=run.run_id,
+                    ordinal=work.stores.execution.next_event_ordinal(run.run_id),
+                    kind=kind,
+                    activity_id=intent.activity_id,
+                    occurred_at=_iso(occurred_at),
+                    evidence=evidence,
+                    failure=failure,
+                )
+            )
+            if isinstance(result, (EffectSucceeded, EffectFailed)):
+                for observation in result.observations:
+                    work.stores.observed_state.put(
+                        ObservationRecord(
+                            observation_id=self._id_factory(),
+                            workspace_id=request.identity.workspace_id,
+                            subject_id=observation.subject_id,
+                            status=observation.status,
+                            observed_at=_iso(occurred_at),
+                            evidence=observation.evidence,
+                            graph_id=observation.graph_id,
+                            probe_kind=observation.probe_kind,
+                            probe_outcome=observation.probe_outcome,
+                            endpoint_context=observation.endpoint_context,
+                        )
+                    )
+            self._raise_if(CoordinatorCheckpoint.BEFORE_RESULT_COMMIT)
+            work.commit()
+            return event
+
+    def _record_compensation_unsupported(
+        self,
+        command: ExecuteActivityRun,
+        activity: PlannedActivity,
+        unsupported: EffectUnsupported,
+    ) -> ActivityEventRecord:
+        with self._unit_of_work_factory() as work:
+            run, request, plan = _locked_context(work, command.run_id)
+            _require_owner(request, command.authority.worker_id)
+            _require_compensating(run)
+            journal = project_activity_journal(
+                plan.plan,
+                work.stores.execution.events_for_run(run.run_id),
+            )
+            schedule = derive_schedule(plan.plan, journal.state)
+            if (
+                not schedule.compensation_ready
+                or activity != schedule.compensation_ready[0]
+            ):
+                raise ExecutionCoordinatorConflict(
+                    "unsupported compensation is no longer ready"
+                )
+            event = work.stores.execution.add_event(
+                ActivityEventRecord(
+                    event_id=self._id_factory(),
+                    run_id=run.run_id,
+                    ordinal=work.stores.execution.next_event_ordinal(run.run_id),
+                    kind=ActivityEventKind.STEP_COMPENSATION_UNSUPPORTED,
+                    activity_id=activity.activity_id.value,
+                    occurred_at=_iso(self._clock()),
+                    evidence=BoundedEvidence.from_mapping(
+                        {"capability": unsupported.capability.value}
+                    ),
+                )
+            )
+            work.commit()
+            return event
+
+    def _resolve_compensation_in_flight(
+        self,
+        context: _Context,
+        command: ExecuteActivityRun,
+        attempted: int,
+    ) -> ExecutionCoordinatorResult:
+        intent = context.journal.compensation_in_flight[0]
+        expires_at = intent.evidence.descriptor().get("lease_expires_at")
+        if not isinstance(expires_at, str):
+            raise ExecutionCoordinatorConflict(
+                "compensation intent has no attempt lease"
+            )
+        if self._clock() < _timestamp(expires_at):
+            return ExecutionCoordinatorResult(
+                CoordinatorStatus.IN_FLIGHT,
+                context.run,
+                attempted,
+                intent.activity_id,
+            )
+        uncertain = self._record_compensation_uncertain(command, intent)
+        return ExecutionCoordinatorResult(
+            CoordinatorStatus.UNCERTAIN,
+            context.run,
+            attempted,
+            uncertain.activity_id,
+        )
+
+    def _record_compensation_uncertain(
+        self,
+        command: ExecuteActivityRun,
+        intent: ActivityEventRecord,
+    ) -> ActivityEventRecord:
+        with self._unit_of_work_factory() as work:
+            run, request, _ = _locked_context(work, command.run_id)
+            _require_owner(request, command.authority.worker_id)
+            _require_compensating(run)
+            _require_open_compensation_intent(
+                work.stores.execution.events_for_run(run.run_id),
+                intent,
+            )
+            event = work.stores.execution.add_event(
+                ActivityEventRecord(
+                    event_id=self._id_factory(),
+                    run_id=run.run_id,
+                    ordinal=work.stores.execution.next_event_ordinal(run.run_id),
+                    kind=ActivityEventKind.STEP_COMPENSATION_UNCERTAIN,
+                    activity_id=intent.activity_id,
+                    occurred_at=_iso(self._clock()),
+                    evidence=BoundedEvidence.from_mapping(
+                        {
+                            "reason": "compensation-result-missing-after-attempt-lease",
+                            "attempt_event_id": intent.event_id,
+                        }
+                    ),
+                )
+            )
+            work.commit()
+            return event
 
     def _resolve_in_flight(
         self,
@@ -644,6 +1054,11 @@ def _require_running(run: ActivityRunRecord) -> None:
         raise ExecutionCoordinatorConflict("run is not running")
 
 
+def _require_compensating(run: ActivityRunRecord) -> None:
+    if run.status is not ActivityRunStatus.COMPENSATING:
+        raise ExecutionCoordinatorConflict("run is not compensating")
+
+
 def _require_open_intent(
     events: tuple[ActivityEventRecord, ...],
     intent: ActivityEventRecord,
@@ -657,8 +1072,35 @@ def _require_open_intent(
         raise ExecutionCoordinatorConflict("effect intent is not a start event")
 
 
+def _require_open_compensation_intent(
+    events: tuple[ActivityEventRecord, ...],
+    intent: ActivityEventRecord,
+) -> None:
+    matching = tuple(
+        event for event in events if event.activity_id == intent.activity_id
+    )
+    if not matching or matching[-1].event_id != intent.event_id:
+        raise ExecutionCoordinatorConflict(
+            "compensation effect intent is no longer open"
+        )
+    if intent.kind is not ActivityEventKind.STEP_COMPENSATION_STARTED:
+        raise ExecutionCoordinatorConflict(
+            "compensation effect intent is not a start event"
+        )
+
+
 def _effect_key(run: ActivityRunRecord, activity: PlannedActivity) -> str:
     return f"{run.run_id}:{activity.activity_id.value}:{run.retry.attempt}"
+
+
+def _compensation_effect_key(
+    run: ActivityRunRecord,
+    activity: PlannedActivity,
+) -> str:
+    return (
+        f"{run.run_id}:{activity.activity_id.value}:"
+        f"compensation:{run.retry.attempt}"
+    )
 
 
 def _result_evidence(
@@ -697,6 +1139,41 @@ def _journal_failure(
                 CoordinatorStatus.UNSUPPORTED,
             )
     raise ExecutionCoordinatorConflict("failed schedule has no durable failure event")
+
+
+def _compensation_failure(
+    events: tuple[ActivityEventRecord, ...],
+) -> FailureEvidence:
+    for event in reversed(events):
+        if event.kind is ActivityEventKind.STEP_COMPENSATION_FAILED:
+            if event.failure is None:
+                raise ExecutionCoordinatorConflict(
+                    "failed compensation has no failure evidence"
+                )
+            return event.failure
+        if event.kind is ActivityEventKind.STEP_COMPENSATION_UNSUPPORTED:
+            capability = event.evidence.descriptor().get("capability")
+            return FailureEvidence(
+                FailureCategory.TERMINAL,
+                "compensation.unsupported-capability",
+                "The selected interpreter cannot compensate this effect.",
+                BoundedEvidence.from_mapping({"capability": capability}),
+            )
+        if (
+            event.kind
+            is ActivityEventKind.STEP_COMPENSATION_UNCERTAINTY_RESOLVED_FAILED
+        ):
+            return FailureEvidence(
+                FailureCategory.TERMINAL,
+                "compensation.operator-confirmed-failure",
+                "The operator confirmed that the uncertain compensation failed.",
+                BoundedEvidence.from_mapping(
+                    {"activity_id": event.activity_id}
+                ),
+            )
+    raise ExecutionCoordinatorConflict(
+        "failed compensation has no durable failure event"
+    )
 
 
 def _timestamp(value: str) -> datetime:

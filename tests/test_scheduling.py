@@ -43,6 +43,7 @@ def evidence_for(
     completion_order: tuple[str, ...] = (),
     failed_steps: tuple[str, ...] = (),
     cancelled: bool = False,
+    compensation_requested: bool = False,
 ) -> SagaState:
     statuses = {} if statuses is None else statuses
     return SagaState(
@@ -57,6 +58,7 @@ def evidence_for(
         tuple(SagaStepId(value) for value in completion_order),
         tuple(SagaStepId(value) for value in failed_steps),
         cancelled,
+        compensation_requested,
     )
 
 
@@ -234,6 +236,24 @@ class SchedulingTests(unittest.TestCase):
         self.assertFalse(
             derive_schedule(self.plan, compensation_running).compensation_ready
         )
+
+    def test_explicit_compensation_admission_drives_reverse_schedule(self):
+        schedule = derive_schedule(
+            self.plan,
+            evidence_for(
+                self.plan,
+                {
+                    "root": SagaStepStatus.SUCCEEDED,
+                    "left": SagaStepStatus.SUCCEEDED,
+                },
+                compensatable=("root", "left"),
+                completion_order=("root", "left"),
+                compensation_requested=True,
+            ),
+        )
+
+        self.assertEqual(self._ids(schedule.compensation_ready), ("left", "root"))
+        self.assertFalse(schedule.ready)
 
     def test_missing_foreign_and_duplicate_evidence_fail_closed(self):
         complete = evidence_for(self.plan)

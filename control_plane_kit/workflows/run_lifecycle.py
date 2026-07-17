@@ -554,7 +554,10 @@ class RunLifecycleCommandService:
                 run_status=run.status,
                 uncertain_activity_ids=frozenset(
                     event.activity_id
-                    for event in journal.uncertain
+                    for event in (
+                        *journal.uncertain,
+                        *journal.compensation_uncertain,
+                    )
                     if event.activity_id is not None
                 ),
                 compensation_available=bool(
@@ -649,10 +652,18 @@ class RunLifecycleCommandService:
 
         match decision:
             case ConfirmEffectSucceeded(activity_id=value):
-                event_kind = ActivityEventKind.STEP_UNCERTAINTY_RESOLVED_SUCCEEDED
+                event_kind = _uncertainty_resolution_kind(
+                    execution.events_for_run(run.run_id),
+                    value,
+                    succeeded=True,
+                )
                 activity_id = value
             case ConfirmEffectFailed(activity_id=value):
-                event_kind = ActivityEventKind.STEP_UNCERTAINTY_RESOLVED_FAILED
+                event_kind = _uncertainty_resolution_kind(
+                    execution.events_for_run(run.run_id),
+                    value,
+                    succeeded=False,
+                )
                 activity_id = value
             case ResumeSameIntent():
                 run = _replace_run_status(
@@ -923,6 +934,37 @@ def _claim_is_expired(request: ExecutionRequestRecord, observed_at: str) -> bool
     return _timestamp("lease_expires_at", request.claim.lease_expires_at) <= _timestamp(
         "observed_at", observed_at
     )
+
+
+def _uncertainty_resolution_kind(
+    events: tuple[ActivityEventRecord, ...],
+    activity_id: str,
+    *,
+    succeeded: bool,
+) -> ActivityEventKind:
+    latest = next(
+        (event for event in reversed(events) if event.activity_id == activity_id),
+        None,
+    )
+    if latest is None:
+        raise RunLifecycleConflict("uncertain activity has no journal evidence")
+    match latest.kind:
+        case ActivityEventKind.STEP_UNCERTAIN:
+            return (
+                ActivityEventKind.STEP_UNCERTAINTY_RESOLVED_SUCCEEDED
+                if succeeded
+                else ActivityEventKind.STEP_UNCERTAINTY_RESOLVED_FAILED
+            )
+        case ActivityEventKind.STEP_COMPENSATION_UNCERTAIN:
+            return (
+                ActivityEventKind.STEP_COMPENSATION_UNCERTAINTY_RESOLVED_SUCCEEDED
+                if succeeded
+                else ActivityEventKind.STEP_COMPENSATION_UNCERTAINTY_RESOLVED_FAILED
+            )
+        case _:
+            raise RunLifecycleConflict(
+                "uncertain activity evidence changed before recovery"
+            )
 
 
 def _claim_recovery_evidence(

@@ -10,7 +10,7 @@ from control_plane_kit.planning import (
     RuntimeTarget,
     StartRuntime,
 )
-from control_plane_kit.saga import SagaStateError, SagaStepStatus
+from control_plane_kit.saga import SagaStateError, SagaStatus, SagaStepStatus
 from control_plane_kit.workflows import SagaJournalError, project_activity_journal
 
 
@@ -41,6 +41,16 @@ def event(
     )
 
 
+def run_event(ordinal: int, kind: ActivityEventKind) -> ActivityEventRecord:
+    return ActivityEventRecord(
+        event_id=f"event-{ordinal}",
+        run_id="run-a",
+        ordinal=ordinal,
+        kind=kind,
+        occurred_at=f"2026-07-16T00:00:{ordinal:02d}Z",
+    )
+
+
 class SagaJournalTests(unittest.TestCase):
     def test_success_reconstructs_from_canonical_activity_events(self) -> None:
         projection = project_activity_journal(
@@ -57,6 +67,19 @@ class SagaJournalTests(unittest.TestCase):
         )
         self.assertEqual(projection.in_flight, ())
         self.assertEqual(projection.uncertain, ())
+
+    def test_run_compensation_admission_reconstructs_pure_saga_intent(self) -> None:
+        projection = project_activity_journal(
+            plan(),
+            (
+                event(1, ActivityEventKind.STEP_STARTED),
+                event(2, ActivityEventKind.STEP_SUCCEEDED),
+                run_event(3, ActivityEventKind.RUN_COMPENSATION_STARTED),
+            ),
+        )
+
+        self.assertTrue(projection.state.compensation_requested)
+        self.assertIs(projection.state.status, SagaStatus.COMPENSATING)
 
     def test_uncertain_attempt_remains_running_but_is_not_in_flight(self) -> None:
         uncertainty = event(2, ActivityEventKind.STEP_UNCERTAIN)
