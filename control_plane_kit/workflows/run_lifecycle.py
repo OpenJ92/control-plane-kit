@@ -274,18 +274,18 @@ _FAIL = RunTransition(
 _BEGIN_COMPENSATION = RunTransition(
     frozenset({ActivityRunStatus.FAILED}),
     ActivityRunStatus.COMPENSATING,
-    ActivityEventKind.COMPENSATION_STARTED,
+    ActivityEventKind.RUN_COMPENSATION_STARTED,
 )
 _COMPLETE_COMPENSATION = RunTransition(
     frozenset({ActivityRunStatus.COMPENSATING}),
     ActivityRunStatus.COMPENSATED,
-    ActivityEventKind.COMPENSATION_SUCCEEDED,
+    ActivityEventKind.RUN_COMPENSATION_SUCCEEDED,
     settles_run=True,
 )
 _FAIL_COMPENSATION = RunTransition(
     frozenset({ActivityRunStatus.COMPENSATING}),
     ActivityRunStatus.PARTIALLY_FAILED,
-    ActivityEventKind.COMPENSATION_FAILED,
+    ActivityEventKind.RUN_COMPENSATION_FAILED,
     settles_run=True,
 )
 _CANCEL = RunTransition(

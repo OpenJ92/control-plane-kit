@@ -106,6 +106,7 @@ class ExecutionConcurrencyTests(PostgresStoreTestCase):
                         ordinal=ordinal,
                         kind=ActivityEventKind.STEP_STARTED,
                         occurred_at=f"2026-07-16T00:05:0{ordinal}Z",
+                        activity_id=f"activity-{event_id}",
                     )
                 )
                 unit_of_work.commit()

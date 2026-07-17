@@ -451,6 +451,7 @@ class InstanceReadServiceTests(PostgresStoreTestCase):
                 ordinal=1,
                 kind=ActivityEventKind.STEP_STARTED,
                 occurred_at="2026-07-15T00:05:00Z",
+                activity_id="start-api",
                 evidence=BoundedEvidence.from_mapping({"target": "api"}),
             )
         )
@@ -616,6 +617,7 @@ class InstanceReadServiceTests(PostgresStoreTestCase):
                 ordinal=1,
                 kind=ActivityEventKind.STEP_SUCCEEDED,
                 occurred_at="2026-07-15T00:03:00Z",
+                activity_id="start-api",
                 evidence=BoundedEvidence.from_mapping({
                     "nested": {"label": "visible"},
                     "items": [{"callback_url": "http://private", "label": "visible"}],

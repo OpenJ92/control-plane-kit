@@ -12,6 +12,7 @@ from control_plane_kit import (
     ActivityPlan,
     ActivityRunRecord,
     ActivityRunStatus,
+    AcceptUncompensatedFailure,
     AdmittedRun,
     BoundedEvidence,
     ClaimIdentity,
@@ -19,6 +20,11 @@ from control_plane_kit import (
     ExecutionRequestIdentity,
     ExecutionRequestRecord,
     ExecutionRequestStatus,
+    FailureCategory,
+    FailureEvidence,
+    RecoveryAuthority,
+    RecoveryDecisionRecord,
+    RecoveryScope,
     RetryIdentity,
     RiskLevel,
     PlannedActivity,
@@ -101,6 +107,79 @@ class ExecutionStoreTests(PostgresStoreTestCase):
             """
         ).fetchone()
         self.assertEqual(counts, (0, 0, 0, 0, 0))
+
+    def test_recovery_and_forward_compensation_failures_round_trip_together(self):
+        self._seed_admission_truth(self.stores)
+        self.stores.execution.add_request(self._request())
+        self.stores.execution.add_run(
+            ActivityRunRecord(
+                run_id="run-a",
+                plan_id="plan-a",
+                admission=AdmittedRun("execution-request-a"),
+                retry=RetryIdentity(1),
+                status=ActivityRunStatus.PARTIALLY_FAILED,
+                created_at="2026-07-16T00:04:00Z",
+                started_at="2026-07-16T00:04:30Z",
+                settled_at="2026-07-16T00:07:00Z",
+            )
+        )
+        original_failure = FailureEvidence(
+            FailureCategory.TERMINAL,
+            "forward-failed",
+            "The forward effect failed.",
+        )
+        compensation_failure = FailureEvidence(
+            FailureCategory.OPERATOR_REVIEW,
+            "compensation-failed",
+            "The compensation effect also failed.",
+        )
+        recovery = RecoveryDecisionRecord(
+            "decision-a",
+            AcceptUncompensatedFailure(),
+            RecoveryAuthority(
+                "operator-a",
+                "grant-a",
+                (RecoveryScope.ACCEPT_LOSS,),
+            ),
+            "The remaining failure requires manual repair.",
+        )
+        events = (
+            ActivityEventRecord(
+                "event-forward-failed",
+                "run-a",
+                1,
+                ActivityEventKind.STEP_FAILED,
+                "2026-07-16T00:05:00Z",
+                activity_id="start-api",
+                failure=original_failure,
+            ),
+            ActivityEventRecord(
+                "event-recovery",
+                "run-a",
+                2,
+                ActivityEventKind.RECOVERY_DECISION_RECORDED,
+                "2026-07-16T00:06:00Z",
+                recovery=recovery,
+            ),
+            ActivityEventRecord(
+                "event-compensation-failed",
+                "run-a",
+                3,
+                ActivityEventKind.STEP_COMPENSATION_FAILED,
+                "2026-07-16T00:07:00Z",
+                activity_id="start-api",
+                failure=compensation_failure,
+            ),
+        )
+        for event in events:
+            self.stores.execution.add_event(event)
+
+        persisted = self.stores.execution.events_for_run("run-a")
+
+        self.assertEqual(persisted, events)
+        self.assertEqual(persisted[0].failure, original_failure)
+        self.assertEqual(persisted[1].recovery, recovery)
+        self.assertEqual(persisted[2].failure, compensation_failure)
 
     @staticmethod
     def _seed_admission_truth(stores: object, *, include_graphs: bool = False) -> None:

@@ -51,7 +51,7 @@ def project_activity_journal(
         raise SagaJournalError("activity journal cannot mix run identities")
     plan_ids = {activity.activity_id.value for activity in plan.activities}
     saga_events: list[SagaEvent] = []
-    uncertain: list[ActivityEventRecord] = []
+    uncertain_by_step: dict[str, ActivityEventRecord] = {}
     event_by_step: dict[str, ActivityEventRecord] = {}
     started_steps: set[str] = set()
 
@@ -80,13 +80,27 @@ def project_activity_journal(
                 saga_events.append(SagaStepFailed(step_id))
                 event_by_step.pop(event.activity_id, None)
             case ActivityEventKind.STEP_UNCERTAIN:
-                uncertain.append(event)
+                uncertain_by_step[event.activity_id] = event
                 event_by_step.pop(event.activity_id, None)
-            case ActivityEventKind.COMPENSATION_STARTED:
+            case ActivityEventKind.STEP_UNCERTAINTY_RESOLVED_SUCCEEDED:
+                if event.activity_id not in uncertain_by_step:
+                    raise SagaJournalError(
+                        "success resolution requires prior uncertain evidence"
+                    )
+                saga_events.append(SagaStepSucceeded(step_id))
+                uncertain_by_step.pop(event.activity_id)
+            case ActivityEventKind.STEP_UNCERTAINTY_RESOLVED_FAILED:
+                if event.activity_id not in uncertain_by_step:
+                    raise SagaJournalError(
+                        "failure resolution requires prior uncertain evidence"
+                    )
+                saga_events.append(SagaStepFailed(step_id))
+                uncertain_by_step.pop(event.activity_id)
+            case ActivityEventKind.STEP_COMPENSATION_STARTED:
                 saga_events.append(SagaCompensationStarted(step_id))
-            case ActivityEventKind.COMPENSATION_SUCCEEDED:
+            case ActivityEventKind.STEP_COMPENSATION_SUCCEEDED:
                 saga_events.append(SagaCompensationSucceeded(step_id))
-            case ActivityEventKind.COMPENSATION_FAILED:
+            case ActivityEventKind.STEP_COMPENSATION_FAILED:
                 saga_events.append(SagaCompensationFailed(step_id))
             case _:
                 continue
@@ -107,7 +121,7 @@ def project_activity_journal(
             for value in sorted(running_ids)
             if value in event_by_step
         ),
-        tuple(uncertain),
+        tuple(uncertain_by_step[key] for key in sorted(uncertain_by_step)),
     )
 
 

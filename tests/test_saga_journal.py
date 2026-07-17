@@ -72,6 +72,44 @@ class SagaJournalTests(unittest.TestCase):
         self.assertEqual(projection.in_flight, ())
         self.assertEqual(projection.uncertain, (uncertainty,))
 
+    def test_uncertainty_resolution_replays_into_terminal_step_evidence(self) -> None:
+        for kind, expected in (
+            (
+                ActivityEventKind.STEP_UNCERTAINTY_RESOLVED_SUCCEEDED,
+                SagaStepStatus.SUCCEEDED,
+            ),
+            (
+                ActivityEventKind.STEP_UNCERTAINTY_RESOLVED_FAILED,
+                SagaStepStatus.FAILED,
+            ),
+        ):
+            with self.subTest(kind=kind):
+                projection = project_activity_journal(
+                    plan(),
+                    (
+                        event(1, ActivityEventKind.STEP_STARTED),
+                        event(2, ActivityEventKind.STEP_UNCERTAIN),
+                        event(3, kind),
+                    ),
+                )
+
+                self.assertIs(projection.state.steps[0].status, expected)
+                self.assertEqual(projection.in_flight, ())
+                self.assertEqual(projection.uncertain, ())
+
+    def test_uncertainty_resolution_requires_prior_uncertain_evidence(self) -> None:
+        with self.assertRaisesRegex(SagaJournalError, "prior uncertain evidence"):
+            project_activity_journal(
+                plan(),
+                (
+                    event(1, ActivityEventKind.STEP_STARTED),
+                    event(
+                        2,
+                        ActivityEventKind.STEP_UNCERTAINTY_RESOLVED_SUCCEEDED,
+                    ),
+                ),
+            )
+
     def test_unsupported_is_distinct_durable_failure_evidence(self) -> None:
         projection = project_activity_journal(
             plan(),

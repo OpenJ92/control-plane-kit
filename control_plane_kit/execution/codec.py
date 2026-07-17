@@ -31,6 +31,12 @@ from control_plane_kit.execution.values import (
     ProbeOutcome,
     RetryIdentity,
 )
+from control_plane_kit.execution.recovery import (
+    RecoveryDecisionRecord,
+    RecoveryValueError,
+    UnknownRecoveryVariant,
+    recovery_decision_record_from_descriptor,
+)
 
 _EnumValue = TypeVar("_EnumValue", bound=StrEnum)
 
@@ -139,6 +145,9 @@ class ExecutionDescriptorCodec:
                     "activity_id": value.activity_id,
                     "evidence": value.evidence.descriptor(),
                     "failure": _encode_failure(value.failure),
+                    "recovery": (
+                        None if value.recovery is None else value.recovery.descriptor()
+                    ),
                 }
             case ObservationRecord():
                 return {
@@ -245,6 +254,22 @@ class ExecutionDescriptorCodec:
                         metadata=_evidence(value, "metadata"),
                     )
                 case "activity-event":
+                    _require_exact_fields(
+                        value,
+                        {
+                            "kind",
+                            "event_id",
+                            "run_id",
+                            "ordinal",
+                            "event_kind",
+                            "occurred_at",
+                            "activity_id",
+                            "evidence",
+                            "failure",
+                            "recovery",
+                        },
+                        "activity-event",
+                    )
                     ordinal = value.get("ordinal")
                     if type(ordinal) is not int:
                         raise MalformedExecutionDescriptor("ordinal must be an integer")
@@ -257,6 +282,7 @@ class ExecutionDescriptorCodec:
                         activity_id=_optional_text(value, "activity_id"),
                         evidence=_evidence(value, "evidence"),
                         failure=_decode_failure(value.get("failure")),
+                        recovery=_decode_recovery(value.get("recovery")),
                     )
                 case "observation":
                     return ObservationRecord(
@@ -395,6 +421,17 @@ def _decode_failure(value: object) -> FailureEvidence | None:
         message=_text(failure, "message"),
         details=_evidence(failure, "details"),
     )
+
+
+def _decode_recovery(value: object) -> RecoveryDecisionRecord | None:
+    if value is None:
+        return None
+    try:
+        return recovery_decision_record_from_descriptor(_mapping(value, "recovery"))
+    except UnknownRecoveryVariant as error:
+        raise UnknownExecutionVariant(str(error)) from error
+    except RecoveryValueError as error:
+        raise MalformedExecutionDescriptor(str(error)) from error
 
 
 def _evidence(value: Mapping[str, object], key: str) -> BoundedEvidence:

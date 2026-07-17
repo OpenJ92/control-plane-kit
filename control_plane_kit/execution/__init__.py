@@ -61,11 +61,13 @@ from control_plane_kit.execution.recovery import (
     RecoveryDecisionRejected,
     RecoveryScope,
     RecoveryValueError,
+    UnknownRecoveryVariant,
     RemainPaused,
     ResumeSameIntent,
     RetryAsNewRun,
     authorize_recovery_decision,
     validate_recovery_decision,
+    recovery_decision_record_from_descriptor,
 )
 
 __all__ = [
@@ -119,6 +121,7 @@ __all__ = [
     "RecoveryDecisionRejected",
     "RecoveryScope",
     "RecoveryValueError",
+    "UnknownRecoveryVariant",
     "RemainPaused",
     "project_observation",
     "RetryIdentity",
@@ -128,4 +131,5 @@ __all__ = [
     "UnknownExecutionVariant",
     "authorize_recovery_decision",
     "validate_recovery_decision",
+    "recovery_decision_record_from_descriptor",
 ]
