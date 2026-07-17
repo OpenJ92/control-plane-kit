@@ -33,6 +33,7 @@ from control_plane_kit.effects import (
     ObservationKind,
     ObserveSubject,
     RegisterTarget,
+    RegisterObserver,
     SocketConnectionMaterial,
 )
 from control_plane_kit.execution import (
@@ -116,6 +117,7 @@ class BlockControlHttpInterpreter:
             EffectCapability.TARGET_SWITCHING,
             EffectCapability.TARGET_DRAIN,
             EffectCapability.OBSERVATION,
+            EffectCapability.OBSERVER_REGISTRATION,
         }
     )
 
@@ -290,6 +292,28 @@ class BlockControlHttpInterpreter:
                 body={"target_id": operation.target_id},
             )
             _mutation_descriptor(_active_target_descriptor, response.payload)
+            return _OperationResponse(response.status_code)
+        if operation.name == "register-observer":
+            current = self._json_request(
+                endpoint,
+                "GET",
+                control_path("observers"),
+                request_id=f"{request.identity.idempotency_key}:observers",
+                idempotency_key=request.identity.idempotency_key,
+                timeout_seconds=request.timeout.total_seconds,
+            )
+            observers = _observers_descriptor(current.payload)
+            observers[operation.target_id] = operation.target_address
+            response = self._json_request(
+                endpoint,
+                "POST",
+                control_path("observers"),
+                request_id=request.identity.run_id,
+                idempotency_key=request.identity.idempotency_key,
+                timeout_seconds=request.timeout.total_seconds,
+                body=observers,
+            )
+            _mutation_descriptor(_observers_descriptor, response.payload)
             return _OperationResponse(response.status_code)
         if operation.name == "drain-target":
             response = self._json_request(
@@ -481,6 +505,14 @@ def _operation_for(request: MaterializedEffectRequest) -> _ControlOperation:
             return _ControlOperation("activate-target", controller, CapabilityName.SWITCHABLE, target)
         case DrainTarget(controller_id=controller, target_id=target):
             return _ControlOperation("drain-target", controller, CapabilityName.DRAINABLE, target)
+        case RegisterObserver(controller_id=controller, observer_id=observer):
+            return _ControlOperation(
+                "register-observer",
+                controller,
+                CapabilityName.OBSERVER_MUTABLE,
+                observer,
+                _target_address(material),
+            )
         case ObserveSubject(subject_id=subject, kind=kind):
             return _ControlOperation(
                 "health" if kind is ObservationKind.HEALTH else "status",
@@ -578,6 +610,15 @@ def _active_target_descriptor(payload: dict[str, object]) -> None:
     _exact_keys(payload, {"block_id", "active_target"})
     _text(payload.get("block_id"))
     _text(payload.get("active_target"))
+
+
+def _observers_descriptor(payload: dict[str, object]) -> dict[str, str]:
+    _exact_keys(payload, {"block_id", "observers"})
+    _text(payload.get("block_id"))
+    observers = payload.get("observers")
+    if not isinstance(observers, dict) or len(observers) > 256:
+        raise _malformed()
+    return {_text(key): _text(value, maximum=4096) for key, value in observers.items()}
 
 
 def _drain_descriptor(payload: dict[str, object]) -> None:

@@ -55,6 +55,7 @@ class EffectCapability(StrEnum):
     TARGET_SWITCHING = "target-switching"
     TARGET_DRAIN = "target-drain"
     OBSERVATION = "observation"
+    OBSERVER_REGISTRATION = "observer-registration"
 
 
 class ObservationKind(StrEnum):
@@ -180,8 +181,23 @@ class ObserveSubject:
             raise TypeError("observation kind must be ObservationKind")
 
 
+@dataclass(frozen=True)
+class RegisterObserver:
+    """Register an opaque endpoint under a controller-owned observer identity."""
+
+    controller_id: str
+    observer_id: str
+    endpoint: EndpointReference
+
+    def __post_init__(self) -> None:
+        _require_text(self.controller_id, "observer controller id")
+        _require_text(self.observer_id, "observer id")
+        if not isinstance(self.endpoint, EndpointReference):
+            raise TypeError("registered observer endpoint must be EndpointReference")
+
+
 ControlEffectAction: TypeAlias = (
-    RegisterTarget | ActivateTarget | DrainTarget | ObserveSubject
+    RegisterTarget | ActivateTarget | DrainTarget | RegisterObserver | ObserveSubject
 )
 EffectAction: TypeAlias = ActivityOperation | ControlEffectAction
 
@@ -335,6 +351,8 @@ def required_capability(action: EffectAction) -> EffectCapability:
             return EffectCapability.TARGET_SWITCHING
         case DrainTarget():
             return EffectCapability.TARGET_DRAIN
+        case RegisterObserver():
+            return EffectCapability.OBSERVER_REGISTRATION
         case ObserveSubject():
             return EffectCapability.OBSERVATION
         case ReviewChange():

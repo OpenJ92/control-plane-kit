@@ -15,6 +15,7 @@ from control_plane_kit.effects import (
     ObservationKind,
     ObserveSubject,
     RegisterTarget,
+    RegisterObserver,
     TimeoutPolicy,
     UnsupportedEffectOperation,
     effect_request_for_activity,
@@ -73,6 +74,10 @@ class EffectValueTests(unittest.TestCase):
             ),
             (ActivateTarget("router", "api-v2"), EffectCapability.TARGET_SWITCHING),
             (DrainTarget("router", "api-v1"), EffectCapability.TARGET_DRAIN),
+            (
+                RegisterObserver("mux", "logger", EndpointReference("logger-internal")),
+                EffectCapability.OBSERVER_REGISTRATION,
+            ),
             (
                 ObserveSubject("api-v2", ObservationKind.HEALTH),
                 EffectCapability.OBSERVATION,
