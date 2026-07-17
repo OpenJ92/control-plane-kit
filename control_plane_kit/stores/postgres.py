@@ -478,7 +478,11 @@ BEGIN
         'step_unsupported', 'step_uncertain',
         'step_uncertainty_resolved_succeeded', 'step_uncertainty_resolved_failed',
         'step_compensation_started', 'step_compensation_succeeded',
-        'step_compensation_failed', 'recovery_decision_recorded',
+        'step_compensation_failed', 'step_compensation_unsupported',
+        'step_compensation_uncertain',
+        'step_compensation_uncertainty_resolved_succeeded',
+        'step_compensation_uncertainty_resolved_failed',
+        'recovery_decision_recorded',
         'run_compensation_started', 'run_compensation_succeeded',
         'run_compensation_failed', 'run_uncompensated_failure_accepted',
         'run_succeeded', 'run_failed', 'run_cancelled', 'current_graph_advanced'
@@ -500,7 +504,10 @@ BEGIN
               'step_uncertainty_resolved_succeeded',
               'step_uncertainty_resolved_failed',
               'step_compensation_started', 'step_compensation_succeeded',
-              'step_compensation_failed'
+              'step_compensation_failed', 'step_compensation_unsupported',
+              'step_compensation_uncertain',
+              'step_compensation_uncertainty_resolved_succeeded',
+              'step_compensation_uncertainty_resolved_failed'
             )
             AND NULLIF(payload->>'activity_id', '') IS NOT NULL
           )
@@ -511,7 +518,10 @@ BEGIN
               'step_uncertainty_resolved_succeeded',
               'step_uncertainty_resolved_failed',
               'step_compensation_started', 'step_compensation_succeeded',
-              'step_compensation_failed'
+              'step_compensation_failed', 'step_compensation_unsupported',
+              'step_compensation_uncertain',
+              'step_compensation_uncertainty_resolved_succeeded',
+              'step_compensation_uncertainty_resolved_failed'
             )
             AND payload->>'activity_id' IS NULL
           )

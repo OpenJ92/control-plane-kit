@@ -33,6 +33,10 @@ from control_plane_kit.execution import (
     ProbeKind,
     ProbeOutcome,
     RetryIdentity,
+    BeginCompensation,
+    RecoveryAuthority,
+    RecoveryDecisionRecord,
+    RecoveryScope,
 )
 from control_plane_kit.stores import GraphVersionRecord, PostgresUnitOfWork, WorkspaceRecord
 from control_plane_kit.planning import DEFAULT_ACTIVITY_PLAN_CODEC, compile_activity_plan
@@ -41,11 +45,14 @@ from examples.scenarios import planning_scenarios
 from control_plane_kit.workflows import (
     CoordinatorCheckpoint,
     CoordinatorStatus,
+    DecideActivityRunRecovery,
     ExecuteActivityRun,
     ExecutionCoordinator,
     ExecutionCoordinatorConflict,
     ExecutionCoordinatorDenied,
     ExecutionWorkerAuthority,
+    FailActivityRun,
+    IdempotencyKey,
     InjectedCoordinatorCrash,
     RunLifecycleCommandService,
 )
@@ -249,6 +256,135 @@ class ExecutionCoordinatorTests(PostgresStoreTestCase):
 
     def _events(self) -> tuple[ActivityEventRecord, ...]:
         return self.stores.execution.events_for_run("run-a")
+
+    def _enter_compensation(self) -> FailureEvidence:
+        self.connection.execute(
+            """
+            UPDATE cpk_execution_requests
+            SET lease_expires_at = '2026-07-16T00:10:00Z'
+            WHERE request_id = 'execution-request-a'
+            """
+        )
+        for kind in (
+            ActivityEventKind.STEP_STARTED,
+            ActivityEventKind.STEP_SUCCEEDED,
+        ):
+            self.stores.execution.add_event(
+                ActivityEventRecord(
+                    self.ids(),
+                    "run-a",
+                    self.stores.execution.next_event_ordinal("run-a"),
+                    kind,
+                    self.clock.text(),
+                    activity_id="start-runtime-a",
+                )
+            )
+        failure = FailureEvidence(
+            FailureCategory.RETRYABLE,
+            "forward.failed",
+            "The forward execution failed after durable work completed.",
+        )
+        lifecycle = RunLifecycleCommandService(
+            self.tracker,
+            clock=self.clock.text,
+            id_factory=self.ids,
+        )
+        lifecycle.execute(
+            FailActivityRun(
+                "run-a",
+                self._authority(),
+                failure,
+                IdempotencyKey("enter-compensation:fail"),
+            )
+        )
+        expected = self.stores.execution.events_for_run("run-a")[-1].ordinal
+        lifecycle.execute(
+            DecideActivityRunRecovery(
+                "run-a",
+                "worker-a",
+                expected,
+                RecoveryDecisionRecord(
+                    "decision-enter-compensation",
+                    BeginCompensation(),
+                    RecoveryAuthority(
+                        "operator-a",
+                        "grant-compensation",
+                        (RecoveryScope.COMPENSATE,),
+                    ),
+                    "Compensate the completed forward work.",
+                ),
+                IdempotencyKey("enter-compensation:recover"),
+            )
+        )
+        return failure
+
+    def test_compensation_executes_pinned_inverse_and_settles_run(self) -> None:
+        original_failure = self._enter_compensation()
+        interpreter = InspectableFakeInterpreter(self.tracker)
+
+        result = self._coordinator(interpreter).execute(self._command())
+
+        self.assertIs(result.status, CoordinatorStatus.COMPENSATED)
+        self.assertIs(result.run.status, ActivityRunStatus.COMPENSATED)
+        self.assertEqual(len(interpreter.requests), 1)
+        self.assertEqual(
+            type(interpreter.requests[0].action).__name__,
+            "StopRuntime",
+        )
+        self.assertEqual(interpreter.requests[0].material_graph_id, "graph-b")
+        self.assertEqual(
+            tuple(event.kind for event in self._events())[-3:],
+            (
+                ActivityEventKind.STEP_COMPENSATION_STARTED,
+                ActivityEventKind.STEP_COMPENSATION_SUCCEEDED,
+                ActivityEventKind.RUN_COMPENSATION_SUCCEEDED,
+            ),
+        )
+        self.assertEqual(
+            next(
+                event.failure
+                for event in self._events()
+                if event.kind is ActivityEventKind.RUN_FAILED
+            ),
+            original_failure,
+        )
+
+    def test_compensation_failure_is_partial_and_preserves_forward_failure(self) -> None:
+        original_failure = self._enter_compensation()
+        interpreter = InspectableFakeInterpreter(self.tracker, fail=True)
+
+        result = self._coordinator(interpreter).execute(self._command())
+
+        self.assertIs(result.status, CoordinatorStatus.COMPENSATION_FAILED)
+        self.assertIs(result.run.status, ActivityRunStatus.PARTIALLY_FAILED)
+        failures = tuple(
+            event.failure for event in self._events() if event.failure is not None
+        )
+        self.assertIn(original_failure, failures)
+        self.assertIn("fake.effect-failed", {failure.code for failure in failures})
+        self.assertEqual(
+            tuple(event.kind for event in self._events())[-2:],
+            (
+                ActivityEventKind.STEP_COMPENSATION_FAILED,
+                ActivityEventKind.RUN_COMPENSATION_FAILED,
+            ),
+        )
+
+    def test_uncertain_compensation_pauses_without_blind_replay(self) -> None:
+        self._enter_compensation()
+        interpreter = InspectableFakeInterpreter(self.tracker, uncertain=True)
+        coordinator = self._coordinator(interpreter)
+
+        uncertain = coordinator.execute(self._command())
+        replay = coordinator.execute(self._command())
+
+        self.assertIs(uncertain.status, CoordinatorStatus.UNCERTAIN)
+        self.assertIs(replay.status, CoordinatorStatus.UNCERTAIN)
+        self.assertEqual(len(interpreter.requests), 1)
+        self.assertIs(
+            self._events()[-1].kind,
+            ActivityEventKind.STEP_COMPENSATION_UNCERTAIN,
+        )
 
     def test_success_uses_two_short_transactions_and_settles_run(self) -> None:
         interpreter = InspectableFakeInterpreter(self.tracker, observations=True)

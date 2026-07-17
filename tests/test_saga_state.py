@@ -6,7 +6,9 @@ from control_plane_kit.saga import (
     CancelSaga,
     FailSagaCompensation,
     FailSagaStep,
+    RequestSagaCompensation,
     SagaCompensationFailed,
+    SagaCompensationRequested,
     SagaCompensationStarted,
     SagaCompensationSucceeded,
     SagaStateError,
@@ -92,6 +94,56 @@ class SagaStateTests(unittest.TestCase):
         state = apply(state, BeginSagaCompensation(SagaStepId("right")))
         state = apply(state, SucceedSagaCompensation(SagaStepId("right")))
         self.assertIs(state.status, SagaStatus.COMPENSATED)
+
+    def test_explicit_compensation_admission_is_pure_replayable_state(self):
+        program = chain(saga_step("first"), saga_step("second"))
+        completed = (
+            SagaStepStarted(SagaStepId("first")),
+            SagaStepSucceeded(SagaStepId("first")),
+            SagaCompensationRequested(),
+        )
+
+        state = reconstruct(program, completed)
+
+        self.assertTrue(state.compensation_requested)
+        self.assertIs(state.status, SagaStatus.COMPENSATING)
+        self.assertEqual(
+            compensation_candidates(state),
+            (SagaStepId("first"),),
+        )
+        self.assertEqual(state, reconstruct(program, completed))
+        with self.assertRaisesRegex(SagaStateError, "not active"):
+            decide(state, StartSagaStep(SagaStepId("second")))
+        with self.assertRaisesRegex(SagaStateError, "already requested"):
+            decide(state, RequestSagaCompensation())
+
+    def test_compensation_admission_preserves_in_flight_forward_evidence(self):
+        program = parallel(saga_step("completed"), saga_step("running"))
+        state = reconstruct(
+            program,
+            (
+                SagaStepStarted(SagaStepId("completed")),
+                SagaStepSucceeded(SagaStepId("completed")),
+                SagaStepStarted(SagaStepId("running")),
+                SagaCompensationRequested(),
+            ),
+        )
+
+        self.assertIs(
+            state.step(SagaStepId("running")).status,
+            SagaStepStatus.RUNNING,
+        )
+        self.assertIs(state.status, SagaStatus.COMPENSATING)
+
+    def test_compensation_admission_without_completed_inverse_fails_closed(self):
+        with self.assertRaisesRegex(
+            SagaStateError,
+            "requires completed compensatable work",
+        ):
+            reconstruct(
+                chain(saga_step("first")),
+                (SagaCompensationRequested(),),
+            )
 
     def test_partial_parallel_failure_compensates_only_completed_siblings(self):
         program = then(

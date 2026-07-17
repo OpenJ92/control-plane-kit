@@ -8,6 +8,7 @@ from control_plane_kit.execution import ActivityEventKind, ActivityEventRecord
 from control_plane_kit.planning import ActivityPlan, Compensate
 from control_plane_kit.saga import (
     SagaCompensationFailed,
+    SagaCompensationRequested,
     SagaCompensationStarted,
     SagaCompensationSucceeded,
     SagaEvent,
@@ -33,6 +34,8 @@ class SagaJournalProjection:
     state: SagaState
     in_flight: tuple[ActivityEventRecord, ...] = ()
     uncertain: tuple[ActivityEventRecord, ...] = ()
+    compensation_in_flight: tuple[ActivityEventRecord, ...] = ()
+    compensation_uncertain: tuple[ActivityEventRecord, ...] = ()
 
 
 def project_activity_journal(
@@ -53,6 +56,8 @@ def project_activity_journal(
     saga_events: list[SagaEvent] = []
     uncertain_by_step: dict[str, ActivityEventRecord] = {}
     event_by_step: dict[str, ActivityEventRecord] = {}
+    compensation_uncertain_by_step: dict[str, ActivityEventRecord] = {}
+    compensation_event_by_step: dict[str, ActivityEventRecord] = {}
     started_steps: set[str] = set()
 
     for event in events:
@@ -60,6 +65,9 @@ def project_activity_journal(
             raise SagaJournalError(
                 f"activity event references foreign step {event.activity_id!r}"
             )
+        if event.kind is ActivityEventKind.RUN_COMPENSATION_STARTED:
+            saga_events.append(SagaCompensationRequested())
+            continue
         if event.activity_id is None:
             continue
         step_id = SagaStepId(event.activity_id)
@@ -98,10 +106,35 @@ def project_activity_journal(
                 uncertain_by_step.pop(event.activity_id)
             case ActivityEventKind.STEP_COMPENSATION_STARTED:
                 saga_events.append(SagaCompensationStarted(step_id))
+                compensation_event_by_step[event.activity_id] = event
             case ActivityEventKind.STEP_COMPENSATION_SUCCEEDED:
                 saga_events.append(SagaCompensationSucceeded(step_id))
+                compensation_event_by_step.pop(event.activity_id, None)
             case ActivityEventKind.STEP_COMPENSATION_FAILED:
                 saga_events.append(SagaCompensationFailed(step_id))
+                compensation_event_by_step.pop(event.activity_id, None)
+            case ActivityEventKind.STEP_COMPENSATION_UNSUPPORTED:
+                if event.activity_id not in compensation_event_by_step:
+                    saga_events.append(SagaCompensationStarted(step_id))
+                saga_events.append(SagaCompensationFailed(step_id))
+                compensation_event_by_step.pop(event.activity_id, None)
+            case ActivityEventKind.STEP_COMPENSATION_UNCERTAIN:
+                compensation_uncertain_by_step[event.activity_id] = event
+                compensation_event_by_step.pop(event.activity_id, None)
+            case ActivityEventKind.STEP_COMPENSATION_UNCERTAINTY_RESOLVED_SUCCEEDED:
+                if event.activity_id not in compensation_uncertain_by_step:
+                    raise SagaJournalError(
+                        "compensation success resolution requires prior uncertain evidence"
+                    )
+                saga_events.append(SagaCompensationSucceeded(step_id))
+                compensation_uncertain_by_step.pop(event.activity_id)
+            case ActivityEventKind.STEP_COMPENSATION_UNCERTAINTY_RESOLVED_FAILED:
+                if event.activity_id not in compensation_uncertain_by_step:
+                    raise SagaJournalError(
+                        "compensation failure resolution requires prior uncertain evidence"
+                    )
+                saga_events.append(SagaCompensationFailed(step_id))
+                compensation_uncertain_by_step.pop(event.activity_id)
             case _:
                 continue
 
@@ -122,6 +155,14 @@ def project_activity_journal(
             if value in event_by_step
         ),
         tuple(uncertain_by_step[key] for key in sorted(uncertain_by_step)),
+        tuple(
+            compensation_event_by_step[value]
+            for value in sorted(compensation_event_by_step)
+        ),
+        tuple(
+            compensation_uncertain_by_step[key]
+            for key in sorted(compensation_uncertain_by_step)
+        ),
     )
 
 

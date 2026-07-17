@@ -13,7 +13,10 @@ from control_plane_kit.lifecycle import OWNED_EPHEMERAL, ResourceLifecycle
 
 from control_plane_kit.effects.values import EffectRequest
 from control_plane_kit.planning import (
+    ActivityOperation,
     AddSocketConnection,
+    Compensate,
+    CompensationMaterialSource,
     DestroyDataResource,
     PlannedActivity,
     ReconcileNode,
@@ -318,13 +321,89 @@ def materialize_effect_request(
             "loaded graph identity does not match the approved plan",
         )
 
-    match activity.operation:
-        case StopNode(target=target) | RemoveNodeResource(target=target):
-            graph_id, material = base_graph_id, _node_material(base_graph, target.node_id)
-        case StopRuntime(target=target) | RemoveRuntimeResource(target=target):
-            graph_id, material = base_graph_id, _runtime_material(base_graph, target.runtime_id)
+    graph_id, graph = _forward_material_graph(
+        activity.operation,
+        base_graph_id=base_graph_id,
+        base_graph=base_graph,
+        desired_graph_id=desired_graph_id,
+        desired_graph=desired_graph,
+    )
+    material = _material_for_operation(graph, activity.operation)
+    return MaterializedEffectRequest(request, graphs, graph_id, material)
+
+
+def materialize_compensation_effect_request(
+    request: EffectRequest,
+    activity: PlannedActivity,
+    graphs: PinnedGraphSet,
+    *,
+    base_graph_id: str,
+    base_graph: DeploymentGraph,
+    desired_graph_id: str,
+    desired_graph: DeploymentGraph,
+) -> MaterializedEffectRequest:
+    """Materialize the canonical inverse from its explicitly pinned graph."""
+
+    compensation = activity.compensation
+    if not isinstance(compensation, Compensate):
+        raise EffectMaterializationError(
+            MaterializationCode.UNSUPPORTED_OPERATION,
+            "planned activity has no executable compensation",
+        )
+    if request.action != compensation.operation:
+        raise EffectMaterializationError(
+            MaterializationCode.GRAPH_IDENTITY,
+            "effect request action does not match planned compensation",
+        )
+    if base_graph_id != graphs.base_graph_id or desired_graph_id != graphs.desired_graph_id:
+        raise EffectMaterializationError(
+            MaterializationCode.GRAPH_IDENTITY,
+            "loaded graph identity does not match the approved plan",
+        )
+    match compensation.material_source:
+        case CompensationMaterialSource.BASE_GRAPH:
+            graph_id, graph = base_graph_id, base_graph
+        case CompensationMaterialSource.DESIRED_GRAPH:
+            graph_id, graph = desired_graph_id, desired_graph
+    return MaterializedEffectRequest(
+        request,
+        graphs,
+        graph_id,
+        _material_for_operation(graph, compensation.operation),
+    )
+
+
+def _forward_material_graph(
+    operation: ActivityOperation,
+    *,
+    base_graph_id: str,
+    base_graph: DeploymentGraph,
+    desired_graph_id: str,
+    desired_graph: DeploymentGraph,
+) -> tuple[str, DeploymentGraph]:
+    match operation:
+        case StopNode() | RemoveNodeResource() | StopRuntime() | RemoveRuntimeResource() | DestroyDataResource() | RemoveSocketConnection():
+            return base_graph_id, base_graph
+        case StartNode() | ReconcileNode() | WaitForHealthy() | StartRuntime() | ReconcileRuntime() | AddSocketConnection() | SwitchSocketConnection():
+            return desired_graph_id, desired_graph
+        case _:
+            raise EffectMaterializationError(
+                MaterializationCode.UNSUPPORTED_OPERATION,
+                f"operation {type(operation).__name__} has no effect materializer",
+            )
+
+
+def _material_for_operation(
+    graph: DeploymentGraph,
+    operation: ActivityOperation,
+) -> EffectMaterial:
+    match operation:
+        case StartNode(target=target) | StopNode(target=target) | RemoveNodeResource(target=target) | ReconcileNode(target=target) | WaitForHealthy(target=target):
+            return _node_material(graph, target.node_id)
+        case StartRuntime(target=target) | StopRuntime(target=target) | RemoveRuntimeResource(target=target) | ReconcileRuntime(target=target):
+            return _runtime_material(graph, target.runtime_id)
         case DestroyDataResource(target=target):
-            material = _node_material(base_graph, target.node_id)
+            material = _node_material(graph, target.node_id)
             try:
                 material.lifecycle.data_resource(target.resource_id)
             except KeyError as error:
@@ -332,21 +411,14 @@ def materialize_effect_request(
                     MaterializationCode.TARGET_NOT_FOUND,
                     "pinned graph has no matching data resource",
                 ) from error
-            graph_id = base_graph_id
-        case RemoveSocketConnection(target=target):
-            graph_id, material = base_graph_id, _edge_material(base_graph, target.edge_id)
-        case StartNode(target=target) | ReconcileNode(target=target) | WaitForHealthy(target=target):
-            graph_id, material = desired_graph_id, _node_material(desired_graph, target.node_id)
-        case StartRuntime(target=target) | ReconcileRuntime(target=target):
-            graph_id, material = desired_graph_id, _runtime_material(desired_graph, target.runtime_id)
-        case AddSocketConnection(target=target) | SwitchSocketConnection(target=target):
-            graph_id, material = desired_graph_id, _edge_material(desired_graph, target.edge_id)
+            return material
+        case AddSocketConnection(target=target) | SwitchSocketConnection(target=target) | RemoveSocketConnection(target=target):
+            return _edge_material(graph, target.edge_id)
         case _:
             raise EffectMaterializationError(
                 MaterializationCode.UNSUPPORTED_OPERATION,
-                f"operation {type(activity.operation).__name__} has no effect materializer",
+                f"operation {type(operation).__name__} has no effect materializer",
             )
-    return MaterializedEffectRequest(request, graphs, graph_id, material)
 
 
 def _runtime_material(graph: DeploymentGraph, runtime_id: str) -> RuntimeMaterial:

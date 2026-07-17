@@ -21,6 +21,7 @@ from control_plane_kit.planning import (
     AddSocketConnection,
     DestroyDataResource,
     PlannedActivity,
+    Compensate,
     ReconcileNode,
     ReconcileRuntime,
     RemoveNodeResource,
@@ -360,6 +361,36 @@ def effect_request_for_activity(
             idempotency_key=idempotency_key,
         ),
         activity.operation,
+        TimeoutPolicy() if timeout is None else timeout,
+        secret_references,
+    )
+
+
+def effect_request_for_compensation(
+    activity: PlannedActivity,
+    *,
+    run_id: str,
+    attempt: int,
+    idempotency_key: str,
+    timeout: TimeoutPolicy | None = None,
+    secret_references: tuple[EffectSecretReference, ...] = (),
+) -> EffectRequest:
+    """Lift one planned activity's canonical inverse into an effect request."""
+
+    if not isinstance(activity, PlannedActivity):
+        raise TypeError("compensation effect factory requires PlannedActivity")
+    if not isinstance(activity.compensation, Compensate):
+        raise UnsupportedEffectOperation(
+            "planned activity has no executable compensation effect"
+        )
+    return EffectRequest(
+        EffectIdentity(
+            run_id=run_id,
+            activity_id=activity.activity_id,
+            attempt=attempt,
+            idempotency_key=idempotency_key,
+        ),
+        activity.compensation.operation,
         TimeoutPolicy() if timeout is None else timeout,
         secret_references,
     )

@@ -110,6 +110,10 @@ class ExecutionValueTests(unittest.TestCase):
             ActivityEventKind.STEP_COMPENSATION_STARTED,
             ActivityEventKind.STEP_COMPENSATION_SUCCEEDED,
             ActivityEventKind.STEP_COMPENSATION_FAILED,
+            ActivityEventKind.STEP_COMPENSATION_UNSUPPORTED,
+            ActivityEventKind.STEP_COMPENSATION_UNCERTAIN,
+            ActivityEventKind.STEP_COMPENSATION_UNCERTAINTY_RESOLVED_SUCCEEDED,
+            ActivityEventKind.STEP_COMPENSATION_UNCERTAINTY_RESOLVED_FAILED,
         }
         for kind in ActivityEventKind:
             with self.subTest(kind=kind):

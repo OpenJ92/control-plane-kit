@@ -77,6 +77,14 @@ class ActivityEventKind(StrEnum):
     STEP_COMPENSATION_STARTED = "step_compensation_started"
     STEP_COMPENSATION_SUCCEEDED = "step_compensation_succeeded"
     STEP_COMPENSATION_FAILED = "step_compensation_failed"
+    STEP_COMPENSATION_UNSUPPORTED = "step_compensation_unsupported"
+    STEP_COMPENSATION_UNCERTAIN = "step_compensation_uncertain"
+    STEP_COMPENSATION_UNCERTAINTY_RESOLVED_SUCCEEDED = (
+        "step_compensation_uncertainty_resolved_succeeded"
+    )
+    STEP_COMPENSATION_UNCERTAINTY_RESOLVED_FAILED = (
+        "step_compensation_uncertainty_resolved_failed"
+    )
     RECOVERY_DECISION_RECORDED = "recovery_decision_recorded"
     RUN_COMPENSATION_STARTED = "run_compensation_started"
     RUN_COMPENSATION_SUCCEEDED = "run_compensation_succeeded"
@@ -564,6 +572,10 @@ _STEP_ACTIVITY_EVENT_KINDS = frozenset(
         ActivityEventKind.STEP_COMPENSATION_STARTED,
         ActivityEventKind.STEP_COMPENSATION_SUCCEEDED,
         ActivityEventKind.STEP_COMPENSATION_FAILED,
+        ActivityEventKind.STEP_COMPENSATION_UNSUPPORTED,
+        ActivityEventKind.STEP_COMPENSATION_UNCERTAIN,
+        ActivityEventKind.STEP_COMPENSATION_UNCERTAINTY_RESOLVED_SUCCEEDED,
+        ActivityEventKind.STEP_COMPENSATION_UNCERTAINTY_RESOLVED_FAILED,
     }
 )
 
