@@ -15,6 +15,7 @@ from tests.architecture import (
 
 
 PACKAGE_RULES = (
+    PackageDependencyRule("adapters", ("control_routes", "effects", "execution", "types")),
     PackageDependencyRule("algebra", ("capabilities", "types")),
     PackageDependencyRule("capabilities", ("control_routes",)),
     PackageDependencyRule("cli", ()),
@@ -73,7 +74,7 @@ DEPENDENCY_POLICY = PackageDependencyPolicy("control_plane_kit", PACKAGE_RULES)
 TRANSPORT_POLICY = TransportOwnershipPolicy(
     (
         TransportOwner("subprocess", ("control_plane_kit.docker_runtime",)),
-        TransportOwner("httpx", ("control_plane_kit.cli",)),
+        TransportOwner("httpx", ("control_plane_kit.adapters", "control_plane_kit.cli")),
         TransportOwner("requests", ("control_plane_kit.cli",)),
         TransportOwner("aiohttp", ()),
         TransportOwner("http.client", ()),
