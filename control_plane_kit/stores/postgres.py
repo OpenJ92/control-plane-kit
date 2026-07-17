@@ -1349,20 +1349,6 @@ class PostgresExecutionStore:
         ).fetchone()
         return None if updated is None else _execution_request(updated)
 
-    def release_expired_claim(self, request_id: str, *, as_of: str) -> bool:
-        row = self._connection.execute(
-            """
-            UPDATE cpk_execution_requests
-            SET status = 'queued', claim_worker_id = NULL, claimed_at = NULL,
-                lease_expires_at = NULL
-            WHERE request_id = %s
-              AND status = 'claimed'
-              AND lease_expires_at::timestamptz <= %s::timestamptz
-            """,
-            (request_id, as_of),
-        )
-        return row.rowcount == 1
-
     def cancel_claimed_request(
         self, request_id: str, *, worker_id: str
     ) -> ExecutionRequestRecord | None:

@@ -116,8 +116,11 @@ class ExecutionConcurrencyTests(PostgresStoreTestCase):
 
         self.assertEqual(sorted(ordinals), [1, 2])
 
-    def test_run_compare_and_set_and_expired_claim_are_guarded(self):
+    def test_expired_claim_remains_durable_and_cannot_be_reclaimed(self):
         self._seed_claimed_run()
+        original_claim = self.stores.execution.get_request(
+            "execution-request-a"
+        ).claim
         with self.unit_of_work() as unit_of_work:
             transitioned = unit_of_work.stores.execution.compare_and_set_run_status(
                 "run-a",
@@ -130,22 +133,26 @@ class ExecutionConcurrencyTests(PostgresStoreTestCase):
                 expected=ActivityRunStatus.CLAIMED,
                 replacement=ActivityRunStatus.RUNNING,
             )
-            released_early = unit_of_work.stores.execution.release_expired_claim(
-                "execution-request-a", as_of="2026-07-16T00:04:30Z"
-            )
-            released = unit_of_work.stores.execution.release_expired_claim(
-                "execution-request-a", as_of="2026-07-16T00:06:00Z"
+            unit_of_work.commit()
+
+        with self.unit_of_work() as unit_of_work:
+            competing_claim = unit_of_work.stores.execution.claim_request(
+                "execution-request-a",
+                "worker-b",
+                "2026-07-16T00:06:00Z",
+                "2026-07-16T00:07:00Z",
             )
             unit_of_work.commit()
 
+        request = self.stores.execution.get_request("execution-request-a")
+        run = self.stores.execution.get_run("run-a")
         self.assertIs(transitioned.status, ActivityRunStatus.RUNNING)
         self.assertIsNone(stale)
-        self.assertFalse(released_early)
-        self.assertTrue(released)
-        self.assertIs(
-            self.stores.execution.get_request("execution-request-a").status,
-            ExecutionRequestStatus.QUEUED,
-        )
+        self.assertIsNone(competing_claim)
+        self.assertIs(request.status, ExecutionRequestStatus.CLAIMED)
+        self.assertEqual(request.claim, original_claim)
+        self.assertEqual(run.admission.request_id, request.identity.request_id)
+        self.assertIs(run.status, ActivityRunStatus.RUNNING)
 
     def test_run_settlement_is_write_once(self):
         self._seed_claimed_run()
