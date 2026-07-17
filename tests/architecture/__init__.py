@@ -21,6 +21,8 @@ from tests.architecture.source import (
     evaluate_policies,
 )
 from tests.architecture.policies import (
+    CallOwner,
+    CallOwnershipPolicy,
     CommitOwnershipPolicy,
     EnvironmentAccessPolicy,
     AllowedSkip,
@@ -45,6 +47,8 @@ __all__ = [
     "BooleanArgumentFact",
     "BooleanAssertionFact",
     "CallFact",
+    "CallOwner",
+    "CallOwnershipPolicy",
     "CommitOwnershipPolicy",
     "DecoratorFact",
     "ExceptHandlerFact",

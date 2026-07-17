@@ -4,6 +4,8 @@ from pathlib import Path
 import unittest
 
 from tests.architecture import (
+    CallOwner,
+    CallOwnershipPolicy,
     CommitOwnershipPolicy,
     EnvironmentAccessPolicy,
     analyze_file,
@@ -22,10 +24,21 @@ ENVIRONMENT_POLICY = EnvironmentAccessPolicy(
         "control_plane_kit.contracts",
     )
 )
+CURRENT_GRAPH_MUTATION_POLICY = CallOwnershipPolicy(
+    owners=(
+        CallOwner("set_current_graph", ()),
+        CallOwner(
+            "compare_and_set_current_graph",
+            ("control_plane_kit.workflows.current_graph",),
+        ),
+    )
+)
 
 
 class ArchitectureOwnershipTests(unittest.TestCase):
-    def test_repository_obeys_commit_and_environment_ownership(self) -> None:
+    def test_repository_obeys_commit_environment_and_graph_mutation_ownership(
+        self,
+    ) -> None:
         root = Path(__file__).parents[1]
         facts = tuple(
             analyze_file(path, root=root)
@@ -33,8 +46,45 @@ class ArchitectureOwnershipTests(unittest.TestCase):
         )
 
         self.assertEqual(
-            evaluate_policies(facts, (COMMIT_POLICY, ENVIRONMENT_POLICY)),
+            evaluate_policies(
+                facts,
+                (
+                    COMMIT_POLICY,
+                    ENVIRONMENT_POLICY,
+                    CURRENT_GRAPH_MUTATION_POLICY,
+                ),
+            ),
             (),
+        )
+
+    def test_raw_current_graph_mutation_is_reserved_to_guarded_workflow(self) -> None:
+        bypass = analyze_source(
+            "def bypass(stores):\n"
+            "    stores.workspace.set_current_graph('workspace', 'graph')\n"
+            "    stores.workspace.compare_and_set_current_graph(\n"
+            "        'workspace', expected_graph_id='a', replacement_graph_id='b'\n"
+            "    )\n",
+            path="control_plane_kit/workflows/bypass.py",
+            module="control_plane_kit.workflows.bypass",
+        )
+        owner = analyze_source(
+            "def advance(stores):\n"
+            "    stores.workspace.compare_and_set_current_graph(\n"
+            "        'workspace', expected_graph_id='a', replacement_graph_id='b'\n"
+            "    )\n",
+            path="control_plane_kit/workflows/current_graph.py",
+            module="control_plane_kit.workflows.current_graph",
+        )
+
+        findings = evaluate_policies(
+            (bypass, owner),
+            (CURRENT_GRAPH_MUTATION_POLICY,),
+        )
+
+        self.assertEqual(len(findings), 2)
+        self.assertEqual(
+            {finding.location.line for finding in findings},
+            {2, 3},
         )
 
     def test_store_commit_is_rejected_but_unit_of_work_commit_is_allowed(self) -> None:
