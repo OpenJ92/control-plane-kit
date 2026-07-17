@@ -12,7 +12,7 @@ from enum import StrEnum
 from collections.abc import Mapping
 from typing import TypeAlias
 
-from control_plane_kit.execution.values import ActivityRunStatus
+from control_plane_kit.execution.values import ActivityRunStatus, MAX_EVIDENCE_TEXT
 
 
 class RecoveryValueError(ValueError):
@@ -116,6 +116,10 @@ class RecoveryDecisionRecord:
     def __post_init__(self) -> None:
         _require_text("decision_id", self.decision_id)
         _require_text("reason", self.reason)
+        if len(self.reason) > MAX_EVIDENCE_TEXT:
+            raise RecoveryValueError(
+                f"reason must not exceed {MAX_EVIDENCE_TEXT} characters"
+            )
         if not isinstance(
             self.decision,
             (

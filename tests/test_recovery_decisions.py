@@ -6,6 +6,7 @@ from control_plane_kit.execution import (
     BeginCompensation,
     ConfirmEffectFailed,
     ConfirmEffectSucceeded,
+    MAX_EVIDENCE_TEXT,
     RecoveryAuthority,
     RecoveryAuthorizationDenied,
     RecoveryContext,
@@ -109,6 +110,13 @@ class RecoveryDecisionTests(unittest.TestCase):
                 RemainPaused(),
                 record.authority,
                 "",
+            )
+        with self.assertRaisesRegex(ValueError, "must not exceed"):
+            RecoveryDecisionRecord(
+                "decision-c",
+                RemainPaused(),
+                record.authority,
+                "x" * (MAX_EVIDENCE_TEXT + 1),
             )
 
     def test_open_strings_do_not_enter_recovery_scopes_or_context(self):

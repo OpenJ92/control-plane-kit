@@ -8,12 +8,22 @@ from dataclasses import replace
 import psycopg
 
 from control_plane_kit.execution import (
+    AcceptUncompensatedFailure,
+    BeginCompensation,
     ActivityEventKind,
+    ActivityEventRecord,
     ActivityRunStatus,
     BoundedEvidence,
+    ConfirmEffectSucceeded,
     ExecutionRequestStatus,
     FailureCategory,
     FailureEvidence,
+    RecoveryAuthority,
+    RecoveryDecisionRecord,
+    RecoveryScope,
+    RemainPaused,
+    ResumeSameIntent,
+    RetryAsNewRun,
 )
 from control_plane_kit.read_services import InstanceReadService
 from control_plane_kit.stores import (
@@ -22,18 +32,16 @@ from control_plane_kit.stores import (
     PostgresUnitOfWork,
 )
 from control_plane_kit.workflows import (
-    BeginActivityRunCompensation,
     CancelActivityRun,
     ClaimAndOpenActivityRun,
     CompleteActivityRun,
     CompleteActivityRunCompensation,
+    DecideActivityRunRecovery,
     ExecutionWorkerAuthority,
     FailActivityRun,
     FailActivityRunCompensation,
     IdempotencyKey,
     PauseActivityRun,
-    ResumeActivityRun,
-    RetryActivityRun,
     RunLifecycleCommandService,
     RunLifecycleConflict,
     RunLifecycleDenied,
@@ -120,6 +128,71 @@ class RunLifecycleTests(PostgresStoreTestCase):
             BoundedEvidence.from_mapping({"reference": "failure/a"}),
         )
 
+    def _recovery(
+        self,
+        decision,
+        *,
+        scope: RecoveryScope,
+        key: str,
+        ids: tuple[str, ...],
+        now: str = "2026-07-16T00:04:00Z",
+    ):
+        return self._service(*ids, now=now).execute(
+            DecideActivityRunRecovery(
+                "run-a",
+                "worker-a",
+                RecoveryDecisionRecord(
+                    f"decision-{key}",
+                    decision,
+                    RecoveryAuthority("operator-a", "grant-a", (scope,)),
+                    f"Authorize {key} for the admitted run.",
+                ),
+                IdempotencyKey(key),
+            )
+        )
+
+    def _succeed_plan_step(self) -> None:
+        for event_id, kind in (
+            ("event-step-start", ActivityEventKind.STEP_STARTED),
+            ("event-step-success", ActivityEventKind.STEP_SUCCEEDED),
+        ):
+            self.stores.execution.add_event(
+                ActivityEventRecord(
+                    event_id,
+                    "run-a",
+                    self.stores.execution.next_event_ordinal("run-a"),
+                    kind,
+                    "2026-07-16T00:04:00Z",
+                    activity_id="start-runtime-a",
+                )
+            )
+
+    def _pause_with_uncertain_step(self) -> None:
+        self._transition(
+            StartActivityRun("run-a", self._authority(), IdempotencyKey("start-a")),
+            "event-start",
+            "action-start",
+        )
+        for event_id, kind in (
+            ("event-step-start", ActivityEventKind.STEP_STARTED),
+            ("event-step-uncertain", ActivityEventKind.STEP_UNCERTAIN),
+        ):
+            self.stores.execution.add_event(
+                ActivityEventRecord(
+                    event_id,
+                    "run-a",
+                    self.stores.execution.next_event_ordinal("run-a"),
+                    kind,
+                    "2026-07-16T00:04:00Z",
+                    activity_id="start-runtime-a",
+                )
+            )
+        self._transition(
+            PauseActivityRun("run-a", self._authority(), IdempotencyKey("pause-a")),
+            "event-pause",
+            "action-pause",
+        )
+
     def test_claim_opens_one_run_and_event_atomically_without_effect_dependency(self):
         result = self._claim()
 
@@ -197,49 +270,37 @@ class RunLifecycleTests(PostgresStoreTestCase):
 
     def test_start_pause_resume_complete_are_atomic_and_visible_to_reads(self):
         self._claim()
-        commands = (
-            (
-                StartActivityRun(
-                    "run-a", self._authority(), IdempotencyKey("start-a")
-                ),
-                "event-start",
-                "action-start",
-                ActivityRunStatus.RUNNING,
-                ActivityEventKind.RUN_STARTED,
-            ),
-            (
-                PauseActivityRun(
-                    "run-a", self._authority(), IdempotencyKey("pause-a")
-                ),
-                "event-pause",
-                "action-pause",
-                ActivityRunStatus.PAUSED,
-                ActivityEventKind.RUN_PAUSED,
-            ),
-            (
-                ResumeActivityRun(
-                    "run-a", self._authority(), IdempotencyKey("resume-a")
-                ),
-                "event-resume",
-                "action-resume",
-                ActivityRunStatus.RUNNING,
-                ActivityEventKind.RUN_RESUMED,
-            ),
-            (
-                CompleteActivityRun(
-                    "run-a", self._authority(), IdempotencyKey("complete-a")
-                ),
-                "event-complete",
-                "action-complete",
-                ActivityRunStatus.SUCCEEDED,
-                ActivityEventKind.RUN_SUCCEEDED,
-            ),
+        started = self._transition(
+            StartActivityRun("run-a", self._authority(), IdempotencyKey("start-a")),
+            "event-start",
+            "action-start",
         )
-        for command, event_id, action_id, status, event_kind in commands:
-            with self.subTest(command=type(command).__name__):
-                result = self._transition(command, event_id, action_id)
-                self.assertIs(result.run.status, status)
-                self.assertIs(result.event.kind, event_kind)
+        paused = self._transition(
+            PauseActivityRun("run-a", self._authority(), IdempotencyKey("pause-a")),
+            "event-pause",
+            "action-pause",
+        )
+        resumed = self._recovery(
+            ResumeSameIntent(),
+            scope=RecoveryScope.OPERATE,
+            key="resume-a",
+            ids=("event-resume-decision", "event-resume", "action-resume"),
+        )
+        completed = self._transition(
+            CompleteActivityRun(
+                "run-a", self._authority(), IdempotencyKey("complete-a")
+            ),
+            "event-complete",
+            "action-complete",
+        )
+        self.assertIs(started.run.status, ActivityRunStatus.RUNNING)
+        self.assertIs(paused.run.status, ActivityRunStatus.PAUSED)
+        self.assertIs(resumed.run.status, ActivityRunStatus.RUNNING)
+        self.assertIs(
+            resumed.consequence_event.kind,
+            ActivityEventKind.RUN_RESUMED,
+        )
+        self.assertIs(completed.run.status, ActivityRunStatus.SUCCEEDED)
 
         run = self.stores.execution.get_run("run-a")
         self.assertEqual(run.started_at, "2026-07-16T00:04:00Z")
@@ -260,9 +321,127 @@ class RunLifecycleTests(PostgresStoreTestCase):
                 "run_opened",
                 "run_started",
                 "run_paused",
+                "recovery_decision_recorded",
                 "run_resumed",
                 "run_succeeded",
             ],
+        )
+
+    def test_uncertainty_resolution_records_choice_and_consequence_atomically(self):
+        self._claim()
+        self._pause_with_uncertain_step()
+
+        result = self._recovery(
+            ConfirmEffectSucceeded("start-runtime-a"),
+            scope=RecoveryScope.RESOLVE_UNCERTAINTY,
+            key="resolve-a",
+            ids=("event-decision", "event-resolution", "action-recovery"),
+        )
+
+        self.assertIs(result.run.status, ActivityRunStatus.PAUSED)
+        self.assertIs(
+            result.decision_event.kind,
+            ActivityEventKind.RECOVERY_DECISION_RECORDED,
+        )
+        self.assertEqual(result.decision_event.recovery.decision_id, "decision-resolve-a")
+        self.assertIs(
+            result.consequence_event.kind,
+            ActivityEventKind.STEP_UNCERTAINTY_RESOLVED_SUCCEEDED,
+        )
+        self.assertEqual(
+            result.consequence_event.activity_id,
+            "start-runtime-a",
+        )
+        replay = self._recovery(
+            ConfirmEffectSucceeded("start-runtime-a"),
+            scope=RecoveryScope.RESOLVE_UNCERTAINTY,
+            key="resolve-a",
+            ids=("unused", "unused", "unused"),
+        )
+        self.assertTrue(replay.replayed)
+        self.assertEqual(replay.decision_event, result.decision_event)
+        self.assertEqual(replay.consequence_event, result.consequence_event)
+
+    def test_recovery_authority_and_late_action_failure_fail_closed(self):
+        self._claim()
+        self._pause_with_uncertain_step()
+        with self.assertRaises(RunLifecycleDenied):
+            self._recovery(
+                ConfirmEffectSucceeded("start-runtime-a"),
+                scope=RecoveryScope.OPERATE,
+                key="wrong-scope",
+                ids=("unused", "unused", "unused"),
+            )
+        self.assertNotIn(
+            ActivityEventKind.RECOVERY_DECISION_RECORDED,
+            tuple(
+                event.kind
+                for event in self.stores.execution.events_for_run("run-a")
+            ),
+        )
+
+        self.stores.activity_history.add_action(
+            OperationActionRecord(
+                "collision-action",
+                "session-a",
+                self.stores.activity_history.next_action_ordinal("session-a"),
+                OperationActionKind.SESSION_STARTED,
+                "operator",
+                created_at="2026-07-16T00:04:00Z",
+            )
+        )
+        with self.assertRaises(psycopg.errors.UniqueViolation):
+            self._recovery(
+                ConfirmEffectSucceeded("start-runtime-a"),
+                scope=RecoveryScope.RESOLVE_UNCERTAINTY,
+                key="resolve-collision",
+                ids=("event-decision", "event-resolution", "collision-action"),
+            )
+        events = self.stores.execution.events_for_run("run-a")
+        self.assertNotIn("event-decision", {event.event_id for event in events})
+        self.assertNotIn("event-resolution", {event.event_id for event in events})
+
+    def test_acceptance_and_remain_paused_preserve_distinct_projection_meaning(self):
+        self._claim()
+        self._transition(
+            StartActivityRun("run-a", self._authority(), IdempotencyKey("start-a")),
+            "event-start",
+            "action-start",
+        )
+        self._transition(
+            FailActivityRun(
+                "run-a",
+                self._authority(),
+                self._failure(),
+                IdempotencyKey("fail-a"),
+            ),
+            "event-fail",
+            "action-fail",
+        )
+        paused = self._recovery(
+            RemainPaused(),
+            scope=RecoveryScope.OPERATE,
+            key="remain-paused",
+            ids=("event-remain-paused", "action-remain-paused"),
+        )
+        self.assertIs(paused.run.status, ActivityRunStatus.FAILED)
+        self.assertIsNone(paused.consequence_event)
+
+        accepted = self._recovery(
+            AcceptUncompensatedFailure(),
+            scope=RecoveryScope.ACCEPT_LOSS,
+            key="accept-loss",
+            ids=("event-accept-decision", "event-accept", "action-accept"),
+            now="2026-07-16T00:05:00Z",
+        )
+        self.assertIs(
+            accepted.run.status,
+            ActivityRunStatus.UNCOMPENSATED_FAILURE,
+        )
+        self.assertEqual(accepted.run.settled_at, "2026-07-16T00:05:00Z")
+        self.assertIs(
+            accepted.consequence_event.kind,
+            ActivityEventKind.RUN_UNCOMPENSATED_FAILURE_ACCEPTED,
         )
 
     def test_transition_algebra_exhaustively_accepts_only_declared_domains(self):
@@ -277,10 +456,6 @@ class RunLifecycleTests(PostgresStoreTestCase):
                 {ActivityRunStatus.RUNNING},
             ),
             (
-                ResumeActivityRun("run", self._authority(), IdempotencyKey("c")),
-                {ActivityRunStatus.PAUSED},
-            ),
-            (
                 CompleteActivityRun("run", self._authority(), IdempotencyKey("d")),
                 {ActivityRunStatus.RUNNING},
             ),
@@ -289,12 +464,6 @@ class RunLifecycleTests(PostgresStoreTestCase):
                     "run", self._authority(), failure, IdempotencyKey("e")
                 ),
                 {ActivityRunStatus.RUNNING, ActivityRunStatus.PAUSED},
-            ),
-            (
-                BeginActivityRunCompensation(
-                    "run", self._authority(), IdempotencyKey("f")
-                ),
-                {ActivityRunStatus.FAILED},
             ),
             (
                 CompleteActivityRunCompensation(
@@ -350,15 +519,21 @@ class RunLifecycleTests(PostgresStoreTestCase):
         self.assertIsNone(failed.run.settled_at)
         self.assertEqual(failed.event.occurred_at, "2026-07-16T00:04:00Z")
 
-        retry = self._service("run-b", "event-retry", "action-retry").execute(
-            RetryActivityRun(
-                "run-a", self._authority(), IdempotencyKey("retry-a")
-            )
+        retry = self._recovery(
+            RetryAsNewRun(),
+            scope=RecoveryScope.OPERATE,
+            key="retry-a",
+            ids=(
+                "event-retry-decision",
+                "run-b",
+                "event-retry",
+                "action-retry",
+            ),
         )
         self.assertEqual(retry.run.retry.attempt, 2)
         self.assertEqual(retry.run.retry.prior_run_id, "run-a")
         self.assertEqual(
-            retry.event.evidence.descriptor(),
+            retry.consequence_event.evidence.descriptor(),
             {"attempt": 2, "prior_run_id": "run-a"},
         )
         prior = self.stores.execution.get_run("run-a")
@@ -370,13 +545,15 @@ class RunLifecycleTests(PostgresStoreTestCase):
                 ActivityEventKind.RUN_OPENED,
                 ActivityEventKind.RUN_STARTED,
                 ActivityEventKind.RUN_FAILED,
+                ActivityEventKind.RECOVERY_DECISION_RECORDED,
             ],
         )
         with self.assertRaises(RunLifecycleConflict):
-            self._service("unused", "unused", "unused").execute(
-                RetryActivityRun(
-                    "run-a", self._authority(), IdempotencyKey("retry-branch")
-                )
+            self._recovery(
+                RetryAsNewRun(),
+                scope=RecoveryScope.OPERATE,
+                key="retry-branch",
+                ids=("unused", "unused", "unused", "unused"),
             )
 
     def test_compensation_uses_events_and_settles_without_erasing_failure(self):
@@ -386,6 +563,7 @@ class RunLifecycleTests(PostgresStoreTestCase):
             "event-start",
             "action-start",
         )
+        self._succeed_plan_step()
         self._transition(
             FailActivityRun(
                 "run-a",
@@ -396,12 +574,15 @@ class RunLifecycleTests(PostgresStoreTestCase):
             "event-fail",
             "action-fail",
         )
-        compensating = self._transition(
-            BeginActivityRunCompensation(
-                "run-a", self._authority(), IdempotencyKey("compensate-a")
+        compensating = self._recovery(
+            BeginCompensation(),
+            scope=RecoveryScope.COMPENSATE,
+            key="compensate-a",
+            ids=(
+                "event-compensate-decision",
+                "event-compensate",
+                "action-compensate",
             ),
-            "event-compensate",
-            "action-compensate",
             now="2026-07-16T00:05:00Z",
         )
         self.assertIs(compensating.run.status, ActivityRunStatus.COMPENSATING)
@@ -418,9 +599,13 @@ class RunLifecycleTests(PostgresStoreTestCase):
         self.assertEqual(compensated.run.settled_at, "2026-07-16T00:06:00Z")
         events = self.stores.execution.events_for_run("run-a")
         self.assertEqual(
-            [(event.kind, event.occurred_at) for event in events[-3:]],
+            [(event.kind, event.occurred_at) for event in events[-4:]],
             [
                 (ActivityEventKind.RUN_FAILED, "2026-07-16T00:04:00Z"),
+                (
+                    ActivityEventKind.RECOVERY_DECISION_RECORDED,
+                    "2026-07-16T00:05:00Z",
+                ),
                 (ActivityEventKind.RUN_COMPENSATION_STARTED, "2026-07-16T00:05:00Z"),
                 (ActivityEventKind.RUN_COMPENSATION_SUCCEEDED, "2026-07-16T00:06:00Z"),
             ],
@@ -433,6 +618,7 @@ class RunLifecycleTests(PostgresStoreTestCase):
             "event-start",
             "action-start",
         )
+        self._succeed_plan_step()
         self._transition(
             FailActivityRun(
                 "run-a",
@@ -443,12 +629,15 @@ class RunLifecycleTests(PostgresStoreTestCase):
             "event-fail",
             "action-fail",
         )
-        self._transition(
-            BeginActivityRunCompensation(
-                "run-a", self._authority(), IdempotencyKey("compensate-a")
+        self._recovery(
+            BeginCompensation(),
+            scope=RecoveryScope.COMPENSATE,
+            key="compensate-a",
+            ids=(
+                "event-compensate-decision",
+                "event-compensate",
+                "action-compensate",
             ),
-            "event-compensate",
-            "action-compensate",
         )
         result = self._transition(
             FailActivityRunCompensation(

@@ -15,23 +15,42 @@ from typing import TypeAlias
 from uuid import uuid4
 
 from control_plane_kit.execution import (
+    AcceptUncompensatedFailure,
     ActivityEventKind,
     ActivityEventRecord,
     ActivityRunRecord,
     ActivityRunStatus,
     AdmittedRun,
+    BeginCompensation,
     BoundedEvidence,
+    ConfirmEffectFailed,
+    ConfirmEffectSucceeded,
     ExecutionRequestRecord,
     ExecutionRequestStatus,
     FailureEvidence,
+    RecoveryAuthorizationDenied,
+    RecoveryContext,
+    RecoveryDecisionRecord,
+    RecoveryDecisionRejected,
+    RemainPaused,
+    ResumeSameIntent,
     RetryIdentity,
+    RetryAsNewRun,
+    authorize_recovery_decision,
+    validate_recovery_decision,
 )
+from control_plane_kit.saga import compensation_candidates
 from control_plane_kit.stores import (
     ActivityHistoryStore,
+    ApprovalDecisionKind,
     ExecutionStore,
     OperationActionKind,
     OperationActionRecord,
     PostgresUnitOfWork,
+)
+from control_plane_kit.workflows.saga_journal import (
+    SagaJournalError,
+    project_activity_journal,
 )
 from control_plane_kit.workflows.commands import (
     IdempotencyKey,
@@ -64,16 +83,6 @@ class ClaimAndOpenActivityRun:
 
 
 @dataclass(frozen=True)
-class RetryActivityRun:
-    prior_run_id: str
-    authority: ExecutionWorkerAuthority
-    idempotency_key: IdempotencyKey
-
-    def __post_init__(self) -> None:
-        _command_fields(self, "prior_run_id")
-
-
-@dataclass(frozen=True)
 class StartActivityRun:
     run_id: str
     authority: ExecutionWorkerAuthority
@@ -85,16 +94,6 @@ class StartActivityRun:
 
 @dataclass(frozen=True)
 class PauseActivityRun:
-    run_id: str
-    authority: ExecutionWorkerAuthority
-    idempotency_key: IdempotencyKey
-
-    def __post_init__(self) -> None:
-        _command_fields(self, "run_id")
-
-
-@dataclass(frozen=True)
-class ResumeActivityRun:
     run_id: str
     authority: ExecutionWorkerAuthority
     idempotency_key: IdempotencyKey
@@ -124,16 +123,6 @@ class FailActivityRun:
         _command_fields(self, "run_id")
         if not isinstance(self.failure, FailureEvidence):
             raise InvalidOperationCommand("failure must be FailureEvidence")
-
-
-@dataclass(frozen=True)
-class BeginActivityRunCompensation:
-    run_id: str
-    authority: ExecutionWorkerAuthority
-    idempotency_key: IdempotencyKey
-
-    def __post_init__(self) -> None:
-        _command_fields(self, "run_id")
 
 
 @dataclass(frozen=True)
@@ -169,26 +158,42 @@ class CancelActivityRun:
         _command_fields(self, "run_id")
 
 
+@dataclass(frozen=True)
+class DecideActivityRunRecovery:
+    """Choose one authorized recovery path for the currently owned run."""
+
+    run_id: str
+    expected_worker_id: str
+    recovery: RecoveryDecisionRecord
+    idempotency_key: IdempotencyKey
+
+    def __post_init__(self) -> None:
+        _required("run_id", self.run_id)
+        _required("expected_worker_id", self.expected_worker_id)
+        if not isinstance(self.recovery, RecoveryDecisionRecord):
+            raise InvalidOperationCommand(
+                "recovery must be RecoveryDecisionRecord"
+            )
+        if not isinstance(self.idempotency_key, IdempotencyKey):
+            raise InvalidOperationCommand("idempotency_key must be IdempotencyKey")
+
+
 RunLifecycleCommand: TypeAlias = (
     ClaimAndOpenActivityRun
-    | RetryActivityRun
     | StartActivityRun
     | PauseActivityRun
-    | ResumeActivityRun
     | CompleteActivityRun
     | FailActivityRun
-    | BeginActivityRunCompensation
     | CompleteActivityRunCompensation
     | FailActivityRunCompensation
     | CancelActivityRun
+    | DecideActivityRunRecovery
 )
 RunTransitionCommand: TypeAlias = (
     StartActivityRun
     | PauseActivityRun
-    | ResumeActivityRun
     | CompleteActivityRun
     | FailActivityRun
-    | BeginActivityRunCompensation
     | CompleteActivityRunCompensation
     | FailActivityRunCompensation
     | CancelActivityRun
@@ -214,6 +219,39 @@ class RunLifecycleResult:
             raise InvalidOperationCommand("lifecycle result requires transition evidence")
         if self.action.payload.get("event_id") != self.event.event_id:
             raise InvalidOperationCommand("operation evidence must identify the event")
+
+
+@dataclass(frozen=True)
+class RecoveryCommandResult:
+    """Atomic recovery decision evidence and its immediate durable consequence."""
+
+    request: ExecutionRequestRecord
+    run: ActivityRunRecord
+    decision_event: ActivityEventRecord
+    consequence_event: ActivityEventRecord | None
+    action: OperationActionRecord
+    replayed: bool = False
+
+    def __post_init__(self) -> None:
+        if self.run.admission.request_id != self.request.identity.request_id:
+            raise InvalidOperationCommand("run and request identity must agree")
+        if self.decision_event.kind is not ActivityEventKind.RECOVERY_DECISION_RECORDED:
+            raise InvalidOperationCommand(
+                "recovery result requires a recovery decision event"
+            )
+        if self.decision_event.recovery is None:
+            raise InvalidOperationCommand("recovery decision evidence is missing")
+        if self.action.action_type is not OperationActionKind.RECOVERY_REQUESTED:
+            raise InvalidOperationCommand("recovery result requires recovery action evidence")
+        if self.action.payload.get("decision_event_id") != self.decision_event.event_id:
+            raise InvalidOperationCommand("operation evidence must identify the decision")
+        expected = (
+            None if self.consequence_event is None else self.consequence_event.event_id
+        )
+        if self.action.payload.get("consequence_event_id") != expected:
+            raise InvalidOperationCommand(
+                "operation evidence must identify the recovery consequence"
+            )
 
 
 class RunLifecycleError(RuntimeError):
@@ -255,11 +293,6 @@ _PAUSE = RunTransition(
     ActivityRunStatus.PAUSED,
     ActivityEventKind.RUN_PAUSED,
 )
-_RESUME = RunTransition(
-    frozenset({ActivityRunStatus.PAUSED}),
-    ActivityRunStatus.RUNNING,
-    ActivityEventKind.RUN_RESUMED,
-)
 _COMPLETE = RunTransition(
     frozenset({ActivityRunStatus.RUNNING}),
     ActivityRunStatus.SUCCEEDED,
@@ -270,11 +303,6 @@ _FAIL = RunTransition(
     frozenset({ActivityRunStatus.RUNNING, ActivityRunStatus.PAUSED}),
     ActivityRunStatus.FAILED,
     ActivityEventKind.RUN_FAILED,
-)
-_BEGIN_COMPENSATION = RunTransition(
-    frozenset({ActivityRunStatus.FAILED}),
-    ActivityRunStatus.COMPENSATING,
-    ActivityEventKind.RUN_COMPENSATION_STARTED,
 )
 _COMPLETE_COMPENSATION = RunTransition(
     frozenset({ActivityRunStatus.COMPENSATING}),
@@ -326,24 +354,25 @@ class RunLifecycleCommandService:
         self._clock = clock
         self._id_factory = id_factory
 
-    def execute(self, command: RunLifecycleCommand) -> RunLifecycleResult:
-        _authorize(command.authority)
+    def execute(
+        self, command: RunLifecycleCommand
+    ) -> RunLifecycleResult | RecoveryCommandResult:
         match command:
+            case DecideActivityRunRecovery():
+                return self._recover(command)
             case ClaimAndOpenActivityRun():
+                _authorize(command.authority)
                 return self._claim_and_open(command)
-            case RetryActivityRun():
-                return self._retry(command)
             case (
                 StartActivityRun()
                 | PauseActivityRun()
-                | ResumeActivityRun()
                 | CompleteActivityRun()
                 | FailActivityRun()
-                | BeginActivityRunCompensation()
                 | CompleteActivityRunCompensation()
                 | FailActivityRunCompensation()
                 | CancelActivityRun()
             ):
+                _authorize(command.authority)
                 return self._transition(command)
         raise InvalidOperationCommand(
             f"unsupported lifecycle command {type(command).__name__}"
@@ -398,64 +427,6 @@ class RunLifecycleCommandService:
                 ActivityEventKind.RUN_OPENED,
                 occurred_at,
                 evidence=BoundedEvidence.from_mapping({"attempt": 1}),
-            )
-            work.commit()
-            return result
-
-    def _retry(self, command: RetryActivityRun) -> RunLifecycleResult:
-        occurred_at = self._clock()
-        fingerprint = _fingerprint(command)
-        with self._unit_of_work_factory() as work:
-            execution = work.stores.execution
-            history = work.stores.activity_history
-            prior = _run(execution, command.prior_run_id)
-            request_id = _admitted_request_id(prior)
-            request = _request_for_update(execution, request_id)
-            replay = _replay_if_present(
-                execution,
-                history,
-                request,
-                command.idempotency_key,
-                fingerprint,
-            )
-            if replay is not None:
-                return replay
-            _require_owner(request, command.authority.worker_id)
-            prior = _run_for_update(execution, command.prior_run_id)
-            if prior.status not in {
-                ActivityRunStatus.FAILED,
-                ActivityRunStatus.PARTIALLY_FAILED,
-            }:
-                raise RunLifecycleConflict(
-                    "only failed or partially failed runs may be retried"
-                )
-            attempts = execution.runs_for_request(request_id)
-            latest = max(attempts, key=lambda value: value.retry.attempt)
-            if latest.run_id != prior.run_id:
-                raise RunLifecycleConflict("retry must extend the latest run attempt")
-            attempt = prior.retry.attempt + 1
-            run = execution.add_run(
-                ActivityRunRecord(
-                    run_id=self._id_factory(),
-                    plan_id=prior.plan_id,
-                    admission=AdmittedRun(request_id),
-                    retry=RetryIdentity(attempt, prior.run_id),
-                    status=ActivityRunStatus.CLAIMED,
-                    created_at=occurred_at,
-                )
-            )
-            result = self._record(
-                execution,
-                history,
-                request,
-                run,
-                command,
-                fingerprint,
-                ActivityEventKind.RUN_OPENED,
-                occurred_at,
-                evidence=BoundedEvidence.from_mapping(
-                    {"attempt": attempt, "prior_run_id": prior.run_id}
-                ),
             )
             work.commit()
             return result
@@ -524,6 +495,202 @@ class RunLifecycleCommandService:
             )
             work.commit()
             return result
+
+    def _recover(
+        self,
+        command: DecideActivityRunRecovery,
+    ) -> RecoveryCommandResult:
+        occurred_at = self._clock()
+        fingerprint = _fingerprint(command)
+        with self._unit_of_work_factory() as work:
+            execution = work.stores.execution
+            history = work.stores.activity_history
+            initial = _run(execution, command.run_id)
+            request = _request_for_update(
+                execution, _admitted_request_id(initial)
+            )
+            replay = _replay_recovery_if_present(
+                execution,
+                history,
+                request,
+                command.idempotency_key,
+                fingerprint,
+            )
+            if replay is not None:
+                return replay
+            _require_owner(request, command.expected_worker_id)
+            run = _run_for_update(execution, command.run_id)
+            _require_context_identity(run, request)
+            plan = _current_approved_plan(history, request)
+            events = execution.events_for_run(run.run_id)
+            try:
+                journal = project_activity_journal(plan.plan, events)
+            except SagaJournalError as error:
+                raise RunLifecycleConflict(
+                    "recovery requires coherent canonical journal evidence"
+                ) from error
+            context = RecoveryContext(
+                run_status=run.status,
+                uncertain_activity_ids=frozenset(
+                    event.activity_id
+                    for event in journal.uncertain
+                    if event.activity_id is not None
+                ),
+                compensation_available=bool(
+                    compensation_candidates(journal.state)
+                ),
+            )
+            try:
+                validate_recovery_decision(command.recovery.decision, context)
+                authorize_recovery_decision(
+                    command.recovery.decision,
+                    command.recovery.authority,
+                )
+            except RecoveryDecisionRejected as error:
+                raise RunLifecycleConflict(str(error)) from error
+            except RecoveryAuthorizationDenied as error:
+                raise RunLifecycleDenied(str(error)) from error
+
+            decision_event = execution.add_event(
+                ActivityEventRecord(
+                    event_id=self._id_factory(),
+                    run_id=run.run_id,
+                    ordinal=execution.next_event_ordinal(run.run_id),
+                    kind=ActivityEventKind.RECOVERY_DECISION_RECORDED,
+                    occurred_at=occurred_at,
+                    recovery=command.recovery,
+                )
+            )
+            run, consequence = self._apply_recovery_consequence(
+                execution,
+                request,
+                run,
+                command,
+                occurred_at,
+            )
+            action = history.add_action(
+                OperationActionRecord(
+                    action_id=self._id_factory(),
+                    session_id=request.identity.session_id,
+                    ordinal=history.next_action_ordinal(
+                        request.identity.session_id
+                    ),
+                    action_type=OperationActionKind.RECOVERY_REQUESTED,
+                    actor_id=command.recovery.authority.operator_id,
+                    payload={
+                        "command": "decide_run_recovery",
+                        "execution_request_id": request.identity.request_id,
+                        "run_id": command.run_id,
+                        "result_run_id": run.run_id,
+                        "decision_id": command.recovery.decision_id,
+                        "decision_event_id": decision_event.event_id,
+                        "consequence_event_id": (
+                            None if consequence is None else consequence.event_id
+                        ),
+                        "result_status": run.status.value,
+                    },
+                    created_at=occurred_at,
+                    idempotency_key=command.idempotency_key.value,
+                    intent_fingerprint=fingerprint,
+                )
+            )
+            result = RecoveryCommandResult(
+                request,
+                run,
+                decision_event,
+                consequence,
+                action,
+            )
+            work.commit()
+            return result
+
+    def _apply_recovery_consequence(
+        self,
+        execution: ExecutionStore,
+        request: ExecutionRequestRecord,
+        run: ActivityRunRecord,
+        command: DecideActivityRunRecovery,
+        occurred_at: str,
+    ) -> tuple[ActivityRunRecord, ActivityEventRecord | None]:
+        decision = command.recovery.decision
+        event_kind: ActivityEventKind | None = None
+        activity_id: str | None = None
+        evidence = BoundedEvidence()
+
+        match decision:
+            case ConfirmEffectSucceeded(activity_id=value):
+                event_kind = ActivityEventKind.STEP_UNCERTAINTY_RESOLVED_SUCCEEDED
+                activity_id = value
+            case ConfirmEffectFailed(activity_id=value):
+                event_kind = ActivityEventKind.STEP_UNCERTAINTY_RESOLVED_FAILED
+                activity_id = value
+            case ResumeSameIntent():
+                run = _replace_run_status(
+                    execution,
+                    run,
+                    replacement=ActivityRunStatus.RUNNING,
+                )
+                event_kind = ActivityEventKind.RUN_RESUMED
+            case RetryAsNewRun():
+                attempts = execution.runs_for_request(
+                    request.identity.request_id
+                )
+                latest = max(attempts, key=lambda value: value.retry.attempt)
+                if latest.run_id != run.run_id:
+                    raise RunLifecycleConflict(
+                        "retry must extend the latest run attempt"
+                    )
+                attempt = run.retry.attempt + 1
+                prior_run_id = run.run_id
+                run = execution.add_run(
+                    ActivityRunRecord(
+                        run_id=self._id_factory(),
+                        plan_id=run.plan_id,
+                        admission=AdmittedRun(request.identity.request_id),
+                        retry=RetryIdentity(attempt, prior_run_id),
+                        status=ActivityRunStatus.CLAIMED,
+                        created_at=occurred_at,
+                    )
+                )
+                event_kind = ActivityEventKind.RUN_OPENED
+                evidence = BoundedEvidence.from_mapping(
+                    {"attempt": attempt, "prior_run_id": prior_run_id}
+                )
+            case BeginCompensation():
+                run = _replace_run_status(
+                    execution,
+                    run,
+                    replacement=ActivityRunStatus.COMPENSATING,
+                )
+                event_kind = ActivityEventKind.RUN_COMPENSATION_STARTED
+            case AcceptUncompensatedFailure():
+                if run.status is ActivityRunStatus.FAILED:
+                    run = _replace_run_status(
+                        execution,
+                        run,
+                        replacement=ActivityRunStatus.UNCOMPENSATED_FAILURE,
+                        settled_at=occurred_at,
+                    )
+                event_kind = ActivityEventKind.RUN_UNCOMPENSATED_FAILURE_ACCEPTED
+            case RemainPaused():
+                return run, None
+
+        if event_kind is None:
+            raise InvalidOperationCommand(
+                f"unsupported recovery decision {type(decision).__name__}"
+            )
+        event = execution.add_event(
+            ActivityEventRecord(
+                event_id=self._id_factory(),
+                run_id=run.run_id,
+                ordinal=execution.next_event_ordinal(run.run_id),
+                kind=event_kind,
+                occurred_at=occurred_at,
+                activity_id=activity_id,
+                evidence=evidence,
+            )
+        )
+        return run, event
 
     def _record(
         self,
@@ -596,9 +763,61 @@ def _run_for_update(execution: ExecutionStore, run_id: str) -> ActivityRunRecord
 
 
 def _admitted_request_id(run: ActivityRunRecord) -> str:
-    if not isinstance(run.admission, AdmittedRun):
-        raise RunLifecycleConflict("legacy imported runs cannot be transitioned")
     return run.admission.request_id
+
+
+def _require_context_identity(
+    run: ActivityRunRecord,
+    request: ExecutionRequestRecord,
+) -> None:
+    if run.admission.request_id != request.identity.request_id:
+        raise RunLifecycleConflict("run and request identity disagree")
+    if run.plan_id != request.identity.plan_id:
+        raise RunLifecycleConflict("run and request plan identity disagree")
+
+
+def _current_approved_plan(
+    history: ActivityHistoryStore,
+    request: ExecutionRequestRecord,
+):
+    try:
+        plan = history.get_plan(request.identity.plan_id)
+        approval = history.get_approval_request(request.approval_request_id)
+        decision = history.approval_decision_for_request(approval.request_id)
+    except KeyError as error:
+        raise RunLifecycleNotFound(str(error)) from error
+    if plan.session_id != request.identity.session_id:
+        raise RunLifecycleConflict("plan and request session identity disagree")
+    if (
+        approval.session_id != request.identity.session_id
+        or approval.plan_id != request.identity.plan_id
+    ):
+        raise RunLifecycleDenied("approval does not authorize this run")
+    if decision is None or decision.decision_id != request.approval_decision_id:
+        raise RunLifecycleDenied("execution approval is stale or missing")
+    if decision.decision is not ApprovalDecisionKind.APPROVED:
+        raise RunLifecycleDenied("execution approval is not approved")
+    if decision.scope != approval.required_scope:
+        raise RunLifecycleDenied("execution approval scope is inconsistent")
+    return plan
+
+
+def _replace_run_status(
+    execution: ExecutionStore,
+    run: ActivityRunRecord,
+    *,
+    replacement: ActivityRunStatus,
+    settled_at: str | None = None,
+) -> ActivityRunRecord:
+    result = execution.compare_and_set_run_status(
+        run.run_id,
+        expected=run.status,
+        replacement=replacement,
+        settled_at=settled_at,
+    )
+    if result is None:
+        raise RunLifecycleConflict("run changed concurrently or is already settled")
+    return result
 
 
 def _require_owner(request: ExecutionRequestRecord, worker_id: str) -> None:
@@ -641,6 +860,56 @@ def _replay_if_present(
     return RunLifecycleResult(request, run, event, action, replayed=True)
 
 
+def _replay_recovery_if_present(
+    execution: ExecutionStore,
+    history: ActivityHistoryStore,
+    request: ExecutionRequestRecord,
+    key: IdempotencyKey,
+    fingerprint: str,
+) -> RecoveryCommandResult | None:
+    action = history.action_for_idempotency(
+        request.identity.session_id,
+        key.value,
+    )
+    if action is None:
+        return None
+    if action.action_type is not OperationActionKind.RECOVERY_REQUESTED:
+        raise RunLifecycleIdempotencyConflict(
+            "idempotency key already belongs to another operation command"
+        )
+    if action.intent_fingerprint != fingerprint:
+        raise RunLifecycleIdempotencyConflict(
+            "idempotency key was used for different recovery intent"
+        )
+    run_id = action.payload.get("result_run_id")
+    decision_event_id = action.payload.get("decision_event_id")
+    consequence_event_id = action.payload.get("consequence_event_id")
+    if not isinstance(run_id, str) or not isinstance(decision_event_id, str):
+        raise RunLifecycleError("recovery operation evidence is incomplete")
+    if consequence_event_id is not None and not isinstance(
+        consequence_event_id, str
+    ):
+        raise RunLifecycleError("recovery consequence evidence is malformed")
+    try:
+        run = execution.get_run(run_id)
+        decision_event = execution.get_event(decision_event_id)
+        consequence = (
+            None
+            if consequence_event_id is None
+            else execution.get_event(consequence_event_id)
+        )
+    except KeyError as error:
+        raise RunLifecycleError("recovery operation evidence is orphaned") from error
+    return RecoveryCommandResult(
+        request,
+        run,
+        decision_event,
+        consequence,
+        action,
+        replayed=True,
+    )
+
+
 def decide_run_transition(
     command: RunTransitionCommand,
     current: ActivityRunStatus,
@@ -652,14 +921,10 @@ def decide_run_transition(
             transition = _START
         case PauseActivityRun():
             transition = _PAUSE
-        case ResumeActivityRun():
-            transition = _RESUME
         case CompleteActivityRun():
             transition = _COMPLETE
         case FailActivityRun():
             transition = _FAIL
-        case BeginActivityRunCompensation():
-            transition = _BEGIN_COMPENSATION
         case CompleteActivityRunCompensation():
             transition = _COMPLETE_COMPENSATION
         case FailActivityRunCompensation():
@@ -696,46 +961,45 @@ def _command_tag(command: RunLifecycleCommand) -> str:
     match command:
         case ClaimAndOpenActivityRun():
             return "claim_and_open_run"
-        case RetryActivityRun():
-            return "retry_run"
         case StartActivityRun():
             return "start_run"
         case PauseActivityRun():
             return "pause_run"
-        case ResumeActivityRun():
-            return "resume_run"
         case CompleteActivityRun():
             return "complete_run"
         case FailActivityRun():
             return "fail_run"
-        case BeginActivityRunCompensation():
-            return "begin_run_compensation"
         case CompleteActivityRunCompensation():
             return "complete_run_compensation"
         case FailActivityRunCompensation():
             return "fail_run_compensation"
         case CancelActivityRun():
             return "cancel_run"
+        case DecideActivityRunRecovery():
+            return "decide_run_recovery"
     raise InvalidOperationCommand(
         f"unsupported lifecycle command {type(command).__name__}"
     )
 
 
 def _fingerprint(command: RunLifecycleCommand) -> str:
-    value: dict[str, object] = {
-        "command": _command_tag(command),
-        "worker_id": command.authority.worker_id,
-    }
+    value: dict[str, object] = {"command": _command_tag(command)}
     match command:
+        case DecideActivityRunRecovery():
+            value.update(
+                run_id=command.run_id,
+                expected_worker_id=command.expected_worker_id,
+                recovery=command.recovery.descriptor(),
+            )
         case ClaimAndOpenActivityRun():
             value.update(
+                worker_id=command.authority.worker_id,
                 request_id=command.request_id,
                 lease_expires_at=command.lease_expires_at,
             )
-        case RetryActivityRun():
-            value["prior_run_id"] = command.prior_run_id
         case FailActivityRun() | FailActivityRunCompensation():
             value.update(
+                worker_id=command.authority.worker_id,
                 run_id=command.run_id,
                 failure={
                     "category": command.failure.category.value,
@@ -745,7 +1009,10 @@ def _fingerprint(command: RunLifecycleCommand) -> str:
                 },
             )
         case _:
-            value["run_id"] = command.run_id
+            value.update(
+                worker_id=command.authority.worker_id,
+                run_id=command.run_id,
+            )
     return hashlib.sha256(
         json.dumps(value, sort_keys=True, separators=(",", ":")).encode()
     ).hexdigest()
