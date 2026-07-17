@@ -707,6 +707,13 @@ root = the ControlPlaneInstanceBlock whose public endpoint was bootstrapped
 
 No `Hub` class, `HubServer`, `HubGraph`, or `HubAdmission` type is required.
 
+Before this roadmap exposes instance lifecycle mutation, issue #246 must replace
+the raw registry projection setter with guarded commands and append-only
+evidence. A ControlPlaneInstance is an ordinary application block, so its
+lifecycle must consume Roadmap 0008's generic execution outcomes rather than a
+CPI-specific executor. Stop, pause, deconstruct, archive, and delete remain
+distinct operations with explicit authority, idempotency, and retention laws.
+
 ## Discovery Is A Projection, Not Another Registry
 
 The current code contains instance-registry concepts introduced while Hub was
