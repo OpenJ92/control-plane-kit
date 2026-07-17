@@ -30,6 +30,9 @@ class RecoveryScope(StrEnum):
     RESOLVE_UNCERTAINTY = "recovery:resolve-uncertainty"
     COMPENSATE = "recovery:compensate"
     ACCEPT_LOSS = "recovery:accept-loss"
+    RENEW_CLAIM = "recovery:renew-claim"
+    TAKE_OVER_CLAIM = "recovery:take-over-claim"
+    ABANDON_CLAIM = "recovery:abandon-claim"
 
 
 @dataclass(frozen=True)
@@ -93,6 +96,33 @@ class RemainPaused:
     """Record that no effectful recovery branch is currently authorized."""
 
 
+@dataclass(frozen=True)
+class RenewExpiredClaim:
+    """Extend the current worker's expired lease without changing ownership."""
+
+    lease_expires_at: str
+
+    def __post_init__(self) -> None:
+        _require_text("lease_expires_at", self.lease_expires_at)
+
+
+@dataclass(frozen=True)
+class TakeOverExpiredClaim:
+    """Replace expired worker ownership through an explicit authorized choice."""
+
+    replacement_worker_id: str
+    lease_expires_at: str
+
+    def __post_init__(self) -> None:
+        _require_text("replacement_worker_id", self.replacement_worker_id)
+        _require_text("lease_expires_at", self.lease_expires_at)
+
+
+@dataclass(frozen=True)
+class AbandonExpiredClaim:
+    """Terminate an expired request without erasing its journal evidence."""
+
+
 RecoveryDecision: TypeAlias = (
     ConfirmEffectSucceeded
     | ConfirmEffectFailed
@@ -101,6 +131,9 @@ RecoveryDecision: TypeAlias = (
     | BeginCompensation
     | AcceptUncompensatedFailure
     | RemainPaused
+    | RenewExpiredClaim
+    | TakeOverExpiredClaim
+    | AbandonExpiredClaim
 )
 
 
@@ -130,6 +163,9 @@ class RecoveryDecisionRecord:
                 BeginCompensation,
                 AcceptUncompensatedFailure,
                 RemainPaused,
+                RenewExpiredClaim,
+                TakeOverExpiredClaim,
+                AbandonExpiredClaim,
             ),
         ):
             raise TypeError("decision must be a RecoveryDecision")
@@ -157,6 +193,7 @@ class RecoveryContext:
     uncertain_activity_ids: frozenset[str] = frozenset()
     compensation_available: bool = False
     intent_matches_admitted_plan: bool = True
+    claim_expired: bool = False
 
     def __post_init__(self) -> None:
         if not isinstance(self.run_status, ActivityRunStatus):
@@ -170,6 +207,8 @@ class RecoveryContext:
             raise TypeError("compensation_available must be bool")
         if type(self.intent_matches_admitted_plan) is not bool:
             raise TypeError("intent_matches_admitted_plan must be bool")
+        if type(self.claim_expired) is not bool:
+            raise TypeError("claim_expired must be bool")
 
 
 class RecoveryDecisionRejected(RecoveryValueError):
@@ -185,6 +224,21 @@ def validate_recovery_decision(
     context: RecoveryContext,
 ) -> None:
     """Reject a decision that is inconsistent with canonical journal evidence."""
+
+    claim_recovery = isinstance(
+        decision,
+        (RenewExpiredClaim, TakeOverExpiredClaim, AbandonExpiredClaim),
+    )
+    if context.claim_expired and not claim_recovery:
+        raise RecoveryDecisionRejected(
+            "expired ownership requires an explicit claim recovery decision"
+        )
+    if claim_recovery:
+        if not context.claim_expired:
+            raise RecoveryDecisionRejected(
+                "claim recovery requires expired ownership"
+            )
+        return
 
     if not context.intent_matches_admitted_plan and not isinstance(decision, RemainPaused):
         raise RecoveryDecisionRejected(
@@ -249,6 +303,12 @@ def authorize_recovery_decision(
             required = RecoveryScope.ACCEPT_LOSS
         case ResumeSameIntent() | RetryAsNewRun() | RemainPaused():
             required = RecoveryScope.OPERATE
+        case RenewExpiredClaim():
+            required = RecoveryScope.RENEW_CLAIM
+        case TakeOverExpiredClaim():
+            required = RecoveryScope.TAKE_OVER_CLAIM
+        case AbandonExpiredClaim():
+            required = RecoveryScope.ABANDON_CLAIM
     if required not in authority.scopes:
         raise RecoveryAuthorizationDenied(
             f"recovery decision requires {required.value} authority"
@@ -330,6 +390,22 @@ def _decision_descriptor(value: RecoveryDecision) -> dict[str, object]:
             return {"kind": "accept-uncompensated-failure"}
         case RemainPaused():
             return {"kind": "remain-paused"}
+        case RenewExpiredClaim(lease_expires_at=lease_expires_at):
+            return {
+                "kind": "renew-expired-claim",
+                "lease_expires_at": lease_expires_at,
+            }
+        case TakeOverExpiredClaim(
+            replacement_worker_id=replacement_worker_id,
+            lease_expires_at=lease_expires_at,
+        ):
+            return {
+                "kind": "take-over-expired-claim",
+                "replacement_worker_id": replacement_worker_id,
+                "lease_expires_at": lease_expires_at,
+            }
+        case AbandonExpiredClaim():
+            return {"kind": "abandon-expired-claim"}
 
 
 def _decision_from_descriptor(value: Mapping[str, object]) -> RecoveryDecision:
@@ -342,6 +418,21 @@ def _decision_from_descriptor(value: Mapping[str, object]) -> RecoveryDecision:
             ConfirmEffectSucceeded(activity_id)
             if kind == "confirm-effect-succeeded"
             else ConfirmEffectFailed(activity_id)
+        )
+    if kind == "renew-expired-claim":
+        if set(value) != {"kind", "lease_expires_at"}:
+            raise RecoveryValueError("claim renewal fields do not match schema")
+        return RenewExpiredClaim(_descriptor_text(value, "lease_expires_at"))
+    if kind == "take-over-expired-claim":
+        if set(value) != {
+            "kind",
+            "replacement_worker_id",
+            "lease_expires_at",
+        }:
+            raise RecoveryValueError("claim takeover fields do not match schema")
+        return TakeOverExpiredClaim(
+            _descriptor_text(value, "replacement_worker_id"),
+            _descriptor_text(value, "lease_expires_at"),
         )
     if set(value) != {"kind"}:
         raise RecoveryValueError("recovery decision fields do not match schema")
@@ -356,6 +447,8 @@ def _decision_from_descriptor(value: Mapping[str, object]) -> RecoveryDecision:
             return AcceptUncompensatedFailure()
         case "remain-paused":
             return RemainPaused()
+        case "abandon-expired-claim":
+            return AbandonExpiredClaim()
         case _:
             raise UnknownRecoveryVariant(f"unknown recovery decision {kind!r}")
 

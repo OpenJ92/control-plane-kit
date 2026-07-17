@@ -8,6 +8,7 @@ from dataclasses import replace
 import psycopg
 
 from control_plane_kit.execution import (
+    AbandonExpiredClaim,
     AcceptUncompensatedFailure,
     BeginCompensation,
     ActivityEventKind,
@@ -22,8 +23,10 @@ from control_plane_kit.execution import (
     RecoveryDecisionRecord,
     RecoveryScope,
     RemainPaused,
+    RenewExpiredClaim,
     ResumeSameIntent,
     RetryAsNewRun,
+    TakeOverExpiredClaim,
 )
 from control_plane_kit.read_services import InstanceReadService
 from control_plane_kit.stores import (
@@ -100,12 +103,13 @@ class RunLifecycleTests(PostgresStoreTestCase):
         *,
         key: str = "claim-a",
         ids: tuple[str, str, str] = ("run-a", "event-open", "action-open"),
+        lease_expires_at: str = "2026-07-16T00:05:00Z",
     ):
         return self._service(*ids).execute(
             ClaimAndOpenActivityRun(
                 "execution-request-a",
                 self._authority(),
-                "2026-07-16T00:05:00Z",
+                lease_expires_at,
                 IdempotencyKey(key),
             )
         )
@@ -136,11 +140,17 @@ class RunLifecycleTests(PostgresStoreTestCase):
         key: str,
         ids: tuple[str, ...],
         now: str = "2026-07-16T00:04:00Z",
+        expected_event_ordinal: int | None = None,
     ):
+        if expected_event_ordinal is None:
+            expected_event_ordinal = self.stores.execution.events_for_run(
+                "run-a"
+            )[-1].ordinal
         return self._service(*ids, now=now).execute(
             DecideActivityRunRecovery(
                 "run-a",
                 "worker-a",
+                expected_event_ordinal,
                 RecoveryDecisionRecord(
                     f"decision-{key}",
                     decision,
@@ -330,12 +340,16 @@ class RunLifecycleTests(PostgresStoreTestCase):
     def test_uncertainty_resolution_records_choice_and_consequence_atomically(self):
         self._claim()
         self._pause_with_uncertain_step()
+        expected_event_ordinal = self.stores.execution.events_for_run("run-a")[
+            -1
+        ].ordinal
 
         result = self._recovery(
             ConfirmEffectSucceeded("start-runtime-a"),
             scope=RecoveryScope.RESOLVE_UNCERTAINTY,
             key="resolve-a",
             ids=("event-decision", "event-resolution", "action-recovery"),
+            expected_event_ordinal=expected_event_ordinal,
         )
 
         self.assertIs(result.run.status, ActivityRunStatus.PAUSED)
@@ -357,10 +371,107 @@ class RunLifecycleTests(PostgresStoreTestCase):
             scope=RecoveryScope.RESOLVE_UNCERTAINTY,
             key="resolve-a",
             ids=("unused", "unused", "unused"),
+            expected_event_ordinal=expected_event_ordinal,
         )
         self.assertTrue(replay.replayed)
         self.assertEqual(replay.decision_event, result.decision_event)
         self.assertEqual(replay.consequence_event, result.consequence_event)
+
+    def test_recovery_journal_version_rejects_a_stale_competing_choice(self):
+        self._claim()
+        self._transition(
+            StartActivityRun("run-a", self._authority(), IdempotencyKey("start-a")),
+            "event-start",
+            "action-start",
+        )
+        self._transition(
+            FailActivityRun(
+                "run-a",
+                self._authority(),
+                self._failure(),
+                IdempotencyKey("fail-a"),
+            ),
+            "event-fail",
+            "action-fail",
+        )
+        expected = self.stores.execution.events_for_run("run-a")[-1].ordinal
+        self._recovery(
+            RemainPaused(),
+            scope=RecoveryScope.OPERATE,
+            key="remain-a",
+            ids=("event-remain", "action-remain"),
+            expected_event_ordinal=expected,
+        )
+        with self.assertRaisesRegex(RunLifecycleConflict, "journal changed"):
+            self._recovery(
+                RetryAsNewRun(),
+                scope=RecoveryScope.OPERATE,
+                key="retry-stale",
+                ids=("unused", "unused", "unused", "unused"),
+                expected_event_ordinal=expected,
+            )
+
+    def test_expired_claim_renewal_preserves_prior_ownership_evidence(self):
+        self._claim()
+        result = self._recovery(
+            RenewExpiredClaim("2026-07-16T00:07:00Z"),
+            scope=RecoveryScope.RENEW_CLAIM,
+            key="renew-claim",
+            ids=("event-renew-decision", "event-renew", "action-renew"),
+            now="2026-07-16T00:06:00Z",
+        )
+        self.assertEqual(result.request.claim.worker_id, "worker-a")
+        self.assertEqual(
+            result.request.claim.lease_expires_at,
+            "2026-07-16T00:07:00Z",
+        )
+        self.assertIs(
+            result.consequence_event.kind,
+            ActivityEventKind.REQUEST_CLAIM_RENEWED,
+        )
+        self.assertEqual(
+            result.consequence_event.evidence.descriptor()["prior_lease_expires_at"],
+            "2026-07-16T00:05:00Z",
+        )
+
+    def test_expired_claim_takeover_changes_owner_with_immutable_evidence(self):
+        self._claim()
+        result = self._recovery(
+            TakeOverExpiredClaim("worker-b", "2026-07-16T00:07:00Z"),
+            scope=RecoveryScope.TAKE_OVER_CLAIM,
+            key="take-over-claim",
+            ids=("event-takeover-decision", "event-takeover", "action-takeover"),
+            now="2026-07-16T00:06:00Z",
+        )
+        self.assertEqual(result.request.claim.worker_id, "worker-b")
+        self.assertIs(
+            result.consequence_event.kind,
+            ActivityEventKind.REQUEST_CLAIM_TAKEN_OVER,
+        )
+        self.assertEqual(
+            result.consequence_event.evidence.descriptor()["prior_worker_id"],
+            "worker-a",
+        )
+
+    def test_expired_claim_abandonment_is_terminal_and_event_producing(self):
+        self._claim()
+        result = self._recovery(
+            AbandonExpiredClaim(),
+            scope=RecoveryScope.ABANDON_CLAIM,
+            key="abandon-claim",
+            ids=("event-abandon-decision", "event-abandon", "action-abandon"),
+            now="2026-07-16T00:06:00Z",
+        )
+        self.assertIs(result.request.status, ExecutionRequestStatus.ABANDONED)
+        self.assertIsNone(result.request.claim)
+        self.assertIs(
+            result.consequence_event.kind,
+            ActivityEventKind.REQUEST_CLAIM_ABANDONED,
+        )
+        self.assertEqual(
+            result.consequence_event.evidence.descriptor()["prior_worker_id"],
+            "worker-a",
+        )
 
     def test_recovery_authority_and_late_action_failure_fail_closed(self):
         self._claim()
@@ -401,8 +512,55 @@ class RunLifecycleTests(PostgresStoreTestCase):
         self.assertNotIn("event-decision", {event.event_id for event in events})
         self.assertNotIn("event-resolution", {event.event_id for event in events})
 
-    def test_acceptance_and_remain_paused_preserve_distinct_projection_meaning(self):
+    def test_recovery_rejects_foreign_worker_without_journal_writes(self):
         self._claim()
+        before = self.stores.execution.events_for_run("run-a")
+
+        with self.assertRaisesRegex(RunLifecycleDenied, "another worker"):
+            self._service(now="2026-07-16T00:04:00Z").execute(
+                DecideActivityRunRecovery(
+                    "run-a",
+                    "worker-b",
+                    before[-1].ordinal,
+                    RecoveryDecisionRecord(
+                        "decision-foreign-worker",
+                        RemainPaused(),
+                        RecoveryAuthority(
+                            "operator-a",
+                            "grant-foreign-worker",
+                            (RecoveryScope.OPERATE,),
+                        ),
+                        "Attempt recovery under foreign worker ownership.",
+                    ),
+                    IdempotencyKey("recovery-foreign-worker"),
+                )
+            )
+
+        self.assertEqual(self.stores.execution.events_for_run("run-a"), before)
+
+    def test_recovery_rechecks_current_approval_without_journal_writes(self):
+        self._claim()
+        before = self.stores.execution.events_for_run("run-a")
+        self.connection.execute(
+            """
+            UPDATE cpk_approval_decisions
+            SET scope = 'plan:obsolete'
+            WHERE decision_id = 'approval-decision-a'
+            """
+        )
+
+        with self.assertRaisesRegex(RunLifecycleDenied, "scope is inconsistent"):
+            self._recovery(
+                RemainPaused(),
+                scope=RecoveryScope.OPERATE,
+                key="stale-approval",
+                ids=(),
+            )
+
+        self.assertEqual(self.stores.execution.events_for_run("run-a"), before)
+
+    def test_acceptance_and_remain_paused_preserve_distinct_projection_meaning(self):
+        self._claim(lease_expires_at="2026-07-16T00:07:00Z")
         self._transition(
             StartActivityRun("run-a", self._authority(), IdempotencyKey("start-a")),
             "event-start",
@@ -557,7 +715,7 @@ class RunLifecycleTests(PostgresStoreTestCase):
             )
 
     def test_compensation_uses_events_and_settles_without_erasing_failure(self):
-        self._claim()
+        self._claim(lease_expires_at="2026-07-16T00:07:00Z")
         self._transition(
             StartActivityRun("run-a", self._authority(), IdempotencyKey("start-a")),
             "event-start",
