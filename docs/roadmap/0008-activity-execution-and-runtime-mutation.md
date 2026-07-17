@@ -86,20 +86,26 @@ brainstorm with the following ordered topology:
     -> #213 claim/event/transition concurrency hardening
       -> #214 execution request and approval admission
         -> #215 claimed ActivityRun lifecycle
+          -> #239 event-authoritative run settlement
+            -> #242 fail-closed expired-claim semantics
+              -> #243 guarded operation-session transitions
 
-#211 -> #216 generic saga adaptation
+#211 + #243 -> #216 generic saga adaptation
           -> #217 resumable dependency scheduler
             -> #218 runtime/control effect protocols
 
-#215 + #218 -> #219 durable execution coordinator with fake effects
-#218 -> #220 authenticated block-control client
-#218 -> #221 activity-level Docker effects
+#215 + #218 -> #244 evidence-backed current-graph advancement
+  -> #219 durable execution coordinator with fake effects
+#218 -> #245 failure-explicit contract/resource mutation
+  -> #220 authenticated block-control client
+  -> #221 activity-level Docker effects
 #219 + #220 + #221 -> #222 truthful health and observations
   -> #223 pause/resume/failure/compensation
     -> #224 execution scenario corpus
       -> #225 live Docker router switch
         -> #226 security/data/operational hardening
           -> #227 closeout and Roadmap 0009 handoff
+            -> #246 guarded instance lifecycle evidence
 ```
 
 Parent issue: #210.
@@ -107,6 +113,22 @@ Parent issue: #210.
 The ordering is intentional. Docker and HTTP mutation are not foundations.
 They are concrete interpretations added only after durable admission, claims,
 run lifecycle, scheduling, and effect protocols exist.
+
+The mutation-integrity amendment is also intentionally staged. Issues #242 and
+#243 repair dangerous primitives whose semantics are already knowable, so they
+must complete before Gate B. Issue #244 depends on the pure effect language and
+must complete before the coordinator can advance current topology. Issue #245
+depends on typed effect outcomes and must complete before live control or Docker
+mutation. Issue #246 belongs to the Roadmap 0009 CPI lifecycle handoff rather
+than introducing a CPI-specialized execution path here.
+
+The common law is:
+
+```text
+mutation is acceptable for a current projection
+iff authoritative history remains append-only
+and the projection can be reconstructed from it
+```
 
 ## Initial Issue Brainstorm (Superseded By Canonical Topology)
 
@@ -362,3 +384,9 @@ retain Postgres across application replacement where policy requires
 Roadmap 0009 must not repair those generic Docker/runtime behaviors with a CPI
 startup script, a Hub-specific executor, or a special control-plane-instance
 node path.
+
+Roadmap 0009 must also consume #246 before exposing CPI lifecycle commands.
+The raw instance-registry lifecycle setter is scaffolding, not an acceptable
+command boundary. Stop, pause, deconstruct, archive, and delete require guarded
+transitions, append-only evidence, authorization, idempotency, and explicit
+retained-data policy.
