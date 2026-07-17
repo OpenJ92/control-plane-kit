@@ -3,6 +3,7 @@ from unittest import TestCase, main
 from control_plane_kit import (
     ConflictingContractMutation,
     ContractMutation,
+    ContractPreparationError,
     ControlValueKind,
     EnvironmentContract,
     ControlVariableError,
@@ -468,6 +469,182 @@ class DerivedResourceTests(TestCase):
 
         self.assertEqual(descriptor["derived_resources"]["storage_client"]["variables"], ["storage_base_url"])
         self.assertNotIn("resource-object", str(descriptor))
+
+    def test_multi_resource_mutation_prepares_against_candidate_then_publishes_once(self):
+        built: list[tuple[str, str]] = []
+        disposed: list[str] = []
+
+        class ApiEnvironment(EnvironmentContract):
+            storage_base_url = HttpVariable("storage_base_url")
+
+        env = ApiEnvironment.from_mapping(
+            {"storage_base_url": "https://storage-v1.internal"}
+        )
+
+        def build(name):
+            def builder(values):
+                candidate_url = values.get("storage_base_url")
+                built.append((name, candidate_url))
+                self.assertEqual(
+                    env.get("storage_base_url"),
+                    "https://storage-v1.internal",
+                )
+                return f"{name}:{candidate_url}"
+
+            return builder
+
+        env.derived(
+            "client-a",
+            "storage_base_url",
+            build("a"),
+            dispose=disposed.append,
+        )
+        env.derived(
+            "client-b",
+            "storage_base_url",
+            build("b"),
+            dispose=disposed.append,
+        )
+        built.clear()
+
+        result = env.apply_mutation(
+            ContractMutation(
+                "storage-cutover",
+                expected_version=0,
+                assignments={
+                    "storage_base_url": "https://storage-v2.internal"
+                },
+            )
+        )
+
+        self.assertEqual(
+            built,
+            [
+                ("a", "https://storage-v2.internal"),
+                ("b", "https://storage-v2.internal"),
+            ],
+        )
+        self.assertEqual(env.version, 1)
+        self.assertEqual(
+            env.get("storage_base_url"),
+            "https://storage-v2.internal",
+        )
+        self.assertEqual(
+            env.get_derived("client-a"),
+            "a:https://storage-v2.internal",
+        )
+        self.assertEqual(
+            env.get_derived("client-b"),
+            "b:https://storage-v2.internal",
+        )
+        self.assertEqual(
+            disposed,
+            [
+                "a:https://storage-v1.internal",
+                "b:https://storage-v1.internal",
+            ],
+        )
+        self.assertEqual(result.rebuilt_resources, ("client-a", "client-b"))
+
+    def test_late_preparation_failure_preserves_old_projection_and_cleans_candidate(self):
+        disposed: list[str] = []
+
+        class ApiEnvironment(EnvironmentContract):
+            storage_base_url = HttpVariable("storage_base_url")
+
+        env = ApiEnvironment.from_mapping(
+            {"storage_base_url": "https://storage-v1.internal"}
+        )
+        env.derived(
+            "client-a",
+            "storage_base_url",
+            lambda values: f"a:{values.get('storage_base_url')}",
+            dispose=disposed.append,
+        )
+
+        def failing_builder(values):
+            if values.get("storage_base_url").endswith("v2.internal"):
+                raise RuntimeError("contains sensitive provider diagnostics")
+            return f"b:{values.get('storage_base_url')}"
+
+        env.derived(
+            "client-b",
+            "storage_base_url",
+            failing_builder,
+            dispose=disposed.append,
+        )
+
+        with self.assertRaises(ContractPreparationError) as raised:
+            env.apply_mutation(
+                ContractMutation(
+                    "storage-cutover",
+                    expected_version=0,
+                    assignments={
+                        "storage_base_url": "https://storage-v2.internal"
+                    },
+                )
+            )
+
+        self.assertEqual(env.version, 0)
+        self.assertEqual(
+            env.get("storage_base_url"),
+            "https://storage-v1.internal",
+        )
+        self.assertEqual(
+            env.get_derived("client-a"),
+            "a:https://storage-v1.internal",
+        )
+        self.assertEqual(
+            env.get_derived("client-b"),
+            "b:https://storage-v1.internal",
+        )
+        self.assertEqual(disposed, ["a:https://storage-v2.internal"])
+        self.assertEqual(
+            raised.exception.descriptor(),
+            {
+                "mutation_id": "storage-cutover",
+                "resource_name": "client-b",
+                "prepared_resources": ["client-a"],
+                "cleanup_failures": [],
+            },
+        )
+        self.assertNotIn("sensitive provider diagnostics", str(raised.exception))
+
+    def test_preparation_cleanup_failure_is_bounded_and_does_not_publish(self):
+        class ApiEnvironment(EnvironmentContract):
+            storage_base_url = HttpVariable("storage_base_url")
+
+        env = ApiEnvironment.from_mapping(
+            {"storage_base_url": "https://storage-v1.internal"}
+        )
+
+        def failing_dispose(resource):
+            raise RuntimeError(f"could not dispose {resource}")
+
+        env.derived(
+            "client-a",
+            "storage_base_url",
+            lambda values: f"a:{values.get('storage_base_url')}",
+            dispose=failing_dispose,
+        )
+
+        def failing_build(values):
+            if values.get("storage_base_url").endswith("v2.internal"):
+                raise RuntimeError("build failed with secret")
+            return f"b:{values.get('storage_base_url')}"
+
+        env.derived("client-b", "storage_base_url", failing_build)
+
+        with self.assertRaises(ContractPreparationError) as raised:
+            env.apply_patch(
+                {"storage_base_url": "https://storage-v2.internal"}
+            )
+
+        self.assertEqual(env.version, 0)
+        self.assertEqual(raised.exception.cleanup_failures, ("client-a",))
+        evidence = f"{raised.exception} {raised.exception.descriptor()}"
+        self.assertNotIn("https://storage-v2.internal", evidence)
+        self.assertNotIn("build failed with secret", evidence)
 
 
 class RuntimeContractTests(TestCase):

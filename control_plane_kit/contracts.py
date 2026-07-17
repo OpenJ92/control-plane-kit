@@ -64,6 +64,34 @@ class ConflictingContractMutation(ContractMutationError):
     """Raised when one mutation identity is reused for different intent."""
 
 
+class ContractPreparationError(ContractMutationError):
+    """Bounded evidence that candidate resource preparation did not complete."""
+
+    def __init__(
+        self,
+        *,
+        mutation_id: str,
+        resource_name: str,
+        prepared_resources: tuple[str, ...],
+        cleanup_failures: tuple[str, ...] = (),
+    ) -> None:
+        super().__init__(f"contract resource preparation failed for {resource_name!r}")
+        self.mutation_id = mutation_id
+        self.resource_name = resource_name
+        self.prepared_resources = prepared_resources
+        self.cleanup_failures = cleanup_failures
+
+    def descriptor(self) -> dict[str, object]:
+        """Describe the failed stage without values or exception text."""
+
+        return {
+            "mutation_id": self.mutation_id,
+            "resource_name": self.resource_name,
+            "prepared_resources": list(self.prepared_resources),
+            "cleanup_failures": list(self.cleanup_failures),
+        }
+
+
 class ControlVariable(Protocol):
     """Inspectable declaration for a configurable value."""
 
@@ -78,6 +106,13 @@ class ControlVariable(Protocol):
 
     def descriptor(self, value: Any = None, *, include_value: bool = False) -> Mapping[str, object]:
         """Describe this variable without exposing unsafe values by default."""
+
+
+class ContractValueReader(Protocol):
+    """Minimal lookup capability shared by live and candidate projections."""
+
+    def get(self, name: str) -> Any:
+        """Return the currently represented value for one declared name."""
 
 
 @dataclass(frozen=True)
@@ -378,6 +413,32 @@ class ContractCandidate:
 
 
 @dataclass(frozen=True)
+class PreparedContractMutation:
+    """Candidate projection plus every resource prepared before publication."""
+
+    candidate: ContractCandidate
+    rebuilt_resources: tuple[str, ...]
+    stale_resources: tuple[str, ...]
+    _replacement_resources: Mapping[str, Any] = field(repr=False)
+
+    def __post_init__(self) -> None:
+        object.__setattr__(
+            self,
+            "_replacement_resources",
+            MappingProxyType(dict(self._replacement_resources)),
+        )
+
+    def descriptor(self) -> dict[str, object]:
+        """Describe prepared resource identities without their values."""
+
+        return {
+            "candidate": self.candidate.descriptor(),
+            "rebuilt_resources": list(self.rebuilt_resources),
+            "stale_resources": list(self.stale_resources),
+        }
+
+
+@dataclass(frozen=True)
 class ContractPatchResult:
     """Result of applying one or more local contract value changes."""
 
@@ -410,7 +471,7 @@ class DerivedResourceSpec:
 
     name: str
     variables: tuple[str, ...]
-    build: Callable[["EnvironmentContract"], Any]
+    build: Callable[[ContractValueReader], Any]
     dispose: Callable[[Any], None] | None = None
     rebuild_policies: tuple[ReloadPolicy, ...] = (ReloadPolicy.LIVE, ReloadPolicy.CUSTOM_HANDLER)
 
@@ -419,7 +480,7 @@ class DerivedResourceSpec:
         cls,
         name: str,
         variables: str | Iterable[str],
-        build: Callable[["EnvironmentContract"], Any],
+        build: Callable[[ContractValueReader], Any],
         *,
         dispose: Callable[[Any], None] | None = None,
         rebuild_policies: Iterable[ReloadPolicy] = (ReloadPolicy.LIVE, ReloadPolicy.CUSTOM_HANDLER),
@@ -441,6 +502,25 @@ class DerivedResourceSpec:
         }
 
 
+@dataclass(frozen=True)
+class _ContractProjection:
+    """One coherently published set of contract values and resources."""
+
+    version: int
+    values: Mapping[str, Any]
+    derived_values: Mapping[str, Any]
+    stale_derived: frozenset[str]
+
+    def __post_init__(self) -> None:
+        object.__setattr__(self, "values", _immutable_mapping(self.values))
+        object.__setattr__(
+            self,
+            "derived_values",
+            MappingProxyType(dict(self.derived_values)),
+        )
+        object.__setattr__(self, "stale_derived", frozenset(self.stale_derived))
+
+
 class EnvironmentContract:
     """Runtime holder for environment-backed control variables.
 
@@ -451,20 +531,19 @@ class EnvironmentContract:
     def __init__(self, values: Mapping[str, Any]):
         declarations = self.declarations()
         self._initialize_state()
+        initial_values: dict[str, Any] = {}
         for name, variable in declarations.items():
             raw = values.get(name)
             if raw is None:
                 env_name = _env_name(variable)
                 if env_name in values:
                     raw = values[env_name]
-            self._values[name] = variable.validate(raw)
+            initial_values[name] = variable.validate(raw)
+        self._projection = _ContractProjection(0, initial_values, {}, frozenset())
 
     def _initialize_state(self) -> None:
-        self._values: dict[str, Any] = {}
         self._derived_specs: dict[str, DerivedResourceSpec] = {}
-        self._derived_values: dict[str, Any] = {}
-        self._stale_derived: set[str] = set()
-        self._version = 0
+        self._projection = _ContractProjection(0, {}, {}, frozenset())
         self._local_mutation_sequence = 0
         self._prepared_mutations: dict[
             str, tuple[ContractMutation, ContractCandidate]
@@ -488,15 +567,15 @@ class EnvironmentContract:
         return cls.from_mapping(os.environ)
 
     def get(self, name: str) -> Any:
-        if name not in self._values:
+        if name not in self._projection.values:
             raise KeyError(f"unknown contract variable {name!r}")
-        return self._values[name]
+        return self._projection.values[name]
 
     @property
     def version(self) -> int:
         """Return the current process-local projection version."""
 
-        return self._version
+        return self._projection.version
 
     def set(self, name: str, value: Any) -> ContractPatchResult:
         return self.apply_patch({name: value})
@@ -526,15 +605,15 @@ class EnvironmentContract:
             raise ConflictingContractMutation(
                 f"contract mutation id {mutation.mutation_id!r} has conflicting intent"
             )
-        if mutation.expected_version != self._version:
+        if mutation.expected_version != self.version:
             raise StaleContractVersion(
                 f"contract mutation expected version {mutation.expected_version}, "
-                f"current version is {self._version}"
+                f"current version is {self.version}"
             )
 
         validated = self.validate_patch(mutation.assignments)
         declarations = self.declarations()
-        values = dict(self._values)
+        values = dict(self._projection.values)
         changed: dict[str, ReloadPolicy] = {}
         for name, value in validated.items():
             if values.get(name) != value:
@@ -542,8 +621,8 @@ class EnvironmentContract:
                 changed[name] = declarations[name].reload_policy
         candidate = ContractCandidate(
             mutation_id=mutation.mutation_id,
-            base_version=self._version,
-            version=self._version + (1 if changed else 0),
+            base_version=self.version,
+            version=self.version + (1 if changed else 0),
             changed=changed,
             _values=values,
         )
@@ -555,37 +634,111 @@ class EnvironmentContract:
         return self.apply_mutation(
             ContractMutation(
                 mutation_id=f"local-{self._local_mutation_sequence}",
-                expected_version=self._version,
+                expected_version=self.version,
                 assignments=patch,
             )
         )
 
     def apply_mutation(self, mutation: ContractMutation) -> ContractPatchResult:
-        """Publish a candidate through the legacy resource path.
-
-        Issue #281 replaces this publication section with all-resource
-        preparation and one atomic projection swap.
-        """
+        """Prepare every affected resource, then publish one projection."""
 
         candidate = self.prepare_mutation(mutation)
-        self._values = dict(candidate._values)
-        self._version = candidate.version
+        prepared = self._prepare_contract_mutation(candidate)
+        old_projection = self._projection
+        derived_values = dict(old_projection.derived_values)
+        derived_values.update(prepared._replacement_resources)
+        stale_derived = set(old_projection.stale_derived)
+        stale_derived.difference_update(prepared.rebuilt_resources)
+        stale_derived.update(prepared.stale_resources)
+        self._projection = _ContractProjection(
+            candidate.version,
+            candidate._values,
+            derived_values,
+            frozenset(stale_derived),
+        )
         self._prepared_mutations.pop(candidate.mutation_id, None)
-        rebuilt, stale = self._apply_derived_resource_policy(candidate.changed)
+        self._dispose_superseded_resources(
+            old_projection,
+            prepared.rebuilt_resources,
+        )
         return ContractPatchResult(
             candidate.changed,
-            tuple(rebuilt),
-            tuple(stale),
+            prepared.rebuilt_resources,
+            prepared.stale_resources,
             mutation_id=candidate.mutation_id,
             base_version=candidate.base_version,
             version=candidate.version,
         )
 
+    def _prepare_contract_mutation(
+        self,
+        candidate: ContractCandidate,
+    ) -> PreparedContractMutation:
+        replacements: dict[str, Any] = {}
+        rebuilt: list[str] = []
+        stale: list[str] = []
+        changed_names = set(candidate.changed)
+        for name, spec in sorted(self._derived_specs.items()):
+            touched = changed_names.intersection(spec.variables)
+            if not touched:
+                continue
+            policies = {candidate.changed[variable] for variable in touched}
+            if not policies.issubset(set(spec.rebuild_policies)):
+                stale.append(name)
+                continue
+            try:
+                replacements[name] = spec.build(candidate)
+            except Exception as error:
+                cleanup_failures = self._dispose_candidate_resources(
+                    replacements,
+                    reversed(rebuilt),
+                )
+                raise ContractPreparationError(
+                    mutation_id=candidate.mutation_id,
+                    resource_name=name,
+                    prepared_resources=tuple(rebuilt),
+                    cleanup_failures=cleanup_failures,
+                ) from error
+            rebuilt.append(name)
+        return PreparedContractMutation(
+            candidate,
+            tuple(rebuilt),
+            tuple(stale),
+            replacements,
+        )
+
+    def _dispose_candidate_resources(
+        self,
+        resources: Mapping[str, Any],
+        names: Iterable[str],
+    ) -> tuple[str, ...]:
+        failures: list[str] = []
+        for name in names:
+            dispose = self._derived_specs[name].dispose
+            if dispose is None:
+                continue
+            try:
+                dispose(resources[name])
+            except Exception:
+                failures.append(name)
+        return tuple(failures)
+
+    def _dispose_superseded_resources(
+        self,
+        old_projection: _ContractProjection,
+        names: Iterable[str],
+    ) -> None:
+        for name in names:
+            old_value = old_projection.derived_values.get(name)
+            dispose = self._derived_specs[name].dispose
+            if old_value is not None and dispose is not None:
+                dispose(old_value)
+
     def derived(
         self,
         name: str,
         from_var: str | Iterable[str],
-        build: Callable[["EnvironmentContract"], Any],
+        build: Callable[[ContractValueReader], Any],
         *,
         dispose: Callable[[Any], None] | None = None,
         rebuild_policies: Iterable[ReloadPolicy] = (ReloadPolicy.LIVE, ReloadPolicy.CUSTOM_HANDLER),
@@ -599,28 +752,46 @@ class EnvironmentContract:
         )
         self._validate_derived_spec(spec)
         self._derived_specs[name] = spec
-        self._derived_values[name] = spec.build(self)
-        self._stale_derived.discard(name)
-        return self._derived_values[name]
+        resource = spec.build(self)
+        derived_values = dict(self._projection.derived_values)
+        derived_values[name] = resource
+        stale_derived = set(self._projection.stale_derived)
+        stale_derived.discard(name)
+        self._projection = _ContractProjection(
+            self.version,
+            self._projection.values,
+            derived_values,
+            frozenset(stale_derived),
+        )
+        return resource
 
     def get_derived(self, name: str) -> Any:
-        if name not in self._derived_values:
+        if name not in self._projection.derived_values:
             raise KeyError(f"unknown derived resource {name!r}")
-        return self._derived_values[name]
+        return self._projection.derived_values[name]
 
     def is_derived_stale(self, name: str) -> bool:
         if name not in self._derived_specs:
             raise KeyError(f"unknown derived resource {name!r}")
-        return name in self._stale_derived
+        return name in self._projection.stale_derived
 
     def rebuild_derived(self, name: str) -> Any:
         if name not in self._derived_specs:
             raise KeyError(f"unknown derived resource {name!r}")
         spec = self._derived_specs[name]
-        old_value = self._derived_values.get(name)
+        old_projection = self._projection
+        old_value = old_projection.derived_values.get(name)
         new_value = spec.build(self)
-        self._derived_values[name] = new_value
-        self._stale_derived.discard(name)
+        derived_values = dict(old_projection.derived_values)
+        derived_values[name] = new_value
+        stale_derived = set(old_projection.stale_derived)
+        stale_derived.discard(name)
+        self._projection = _ContractProjection(
+            self.version,
+            old_projection.values,
+            derived_values,
+            frozenset(stale_derived),
+        )
         if old_value is not None and spec.dispose is not None:
             spec.dispose(old_value)
         return new_value
@@ -631,52 +802,44 @@ class EnvironmentContract:
             if variable not in declarations:
                 raise KeyError(f"unknown contract variable {variable!r}")
 
-    def _apply_derived_resource_policy(self, changed: Mapping[str, ReloadPolicy]) -> tuple[list[str], list[str]]:
-        rebuilt: list[str] = []
-        stale: list[str] = []
-        changed_names = set(changed)
-        if not changed_names:
-            return rebuilt, stale
-        for name, spec in self._derived_specs.items():
-            touched = changed_names.intersection(spec.variables)
-            if not touched:
-                continue
-            policies = {changed[variable] for variable in touched}
-            if policies.issubset(set(spec.rebuild_policies)):
-                self.rebuild_derived(name)
-                rebuilt.append(name)
-            else:
-                self._stale_derived.add(name)
-                stale.append(name)
-        return rebuilt, stale
-
     def descriptor(self) -> dict[str, object]:
         return self.redacted_descriptor()
 
     def redacted_descriptor(self) -> dict[str, object]:
+        projection = self._projection
         return {
-            "version": self._version,
+            "version": projection.version,
             "variables": {
-                name: _redacted_variable_descriptor(variable, self._values.get(name))
+                name: _redacted_variable_descriptor(
+                    variable,
+                    projection.values.get(name),
+                )
                 for name, variable in sorted(self.declarations().items())
             },
-            "derived_resources": self._derived_descriptor(),
+            "derived_resources": self._derived_descriptor(projection),
         }
 
     def unsafe_descriptor(self) -> dict[str, object]:
+        projection = self._projection
         return {
-            "version": self._version,
+            "version": projection.version,
             "variables": {
-                name: variable.descriptor(self._values.get(name), include_value=True)
+                name: variable.descriptor(
+                    projection.values.get(name),
+                    include_value=True,
+                )
                 for name, variable in sorted(self.declarations().items())
             },
-            "derived_resources": self._derived_descriptor(),
+            "derived_resources": self._derived_descriptor(projection),
             "unsafe": True,
         }
 
-    def _derived_descriptor(self) -> dict[str, object]:
+    def _derived_descriptor(
+        self,
+        projection: _ContractProjection,
+    ) -> dict[str, object]:
         return {
-            name: spec.descriptor(stale=name in self._stale_derived)
+            name: spec.descriptor(stale=name in projection.stale_derived)
             for name, spec in sorted(self._derived_specs.items())
         }
 
@@ -692,8 +855,10 @@ class RuntimeContract(EnvironmentContract):
     def __init__(self, values: Mapping[str, Any]):
         declarations = self.declarations()
         self._initialize_state()
+        initial_values: dict[str, Any] = {}
         for name, variable in declarations.items():
-            self._values[name] = variable.validate(values.get(name))
+            initial_values[name] = variable.validate(values.get(name))
+        self._projection = _ContractProjection(0, initial_values, {}, frozenset())
 
     @classmethod
     def from_process(cls) -> "RuntimeContract":
