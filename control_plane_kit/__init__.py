@@ -150,6 +150,10 @@ from control_plane_kit.effects import (
 )
 from control_plane_kit.topology.compiler import compile_recipe
 from control_plane_kit.contracts import (
+    ConflictingContractMutation,
+    ContractCandidate,
+    ContractMutation,
+    ContractMutationError,
     ControlValueKind,
     ControlVariable,
     ControlVariableError,
@@ -166,6 +170,7 @@ from control_plane_kit.contracts import (
     TcpVariable,
     TextVariable,
     ReloadPolicy,
+    StaleContractVersion,
     ValidationErrorDetail,
 )
 from control_plane_kit.control_routes import (
@@ -426,6 +431,10 @@ __all__ = [
     "OBSERVER_ROUTES",
     "TARGET_ROUTES",
     "ControlRoute",
+    "ConflictingContractMutation",
+    "ContractCandidate",
+    "ContractMutation",
+    "ContractMutationError",
     "ControlValueKind",
     "ControlVariable",
     "ControlVariableError",
@@ -502,6 +511,7 @@ __all__ = [
     "RequirementSocket",
     "ProviderSocket",
     "ReloadPolicy",
+    "StaleContractVersion",
     "BlockSockets",
     "RemoveDockerNetwork",
     "RemovedChange",

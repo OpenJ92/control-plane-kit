@@ -3,8 +3,10 @@
 from __future__ import annotations
 
 import os
+from copy import deepcopy
 from dataclasses import dataclass, field, replace
 from enum import StrEnum
+from types import MappingProxyType
 from typing import Any, Callable, Iterable, Mapping, Protocol
 
 
@@ -48,6 +50,18 @@ class ControlVariableError(ValueError):
     def __init__(self, detail: ValidationErrorDetail):
         super().__init__(detail.message)
         self.detail = detail
+
+
+class ContractMutationError(ValueError):
+    """Base error for invalid or conflicting contract mutation intent."""
+
+
+class StaleContractVersion(ContractMutationError):
+    """Raised when mutation intent was authored against another projection."""
+
+
+class ConflictingContractMutation(ContractMutationError):
+    """Raised when one mutation identity is reused for different intent."""
 
 
 class ControlVariable(Protocol):
@@ -284,15 +298,105 @@ def _require_text(variable: ControlVariableSpec, value: Any) -> str | None:
 
 
 @dataclass(frozen=True)
+class ContractMutation:
+    """One version-pinned, idempotently identifiable contract mutation."""
+
+    mutation_id: str
+    expected_version: int
+    assignments: Mapping[str, Any] = field(repr=False)
+
+    def __post_init__(self) -> None:
+        if not isinstance(self.mutation_id, str) or not self.mutation_id.strip():
+            raise ContractMutationError("contract mutation id must be non-empty text")
+        if type(self.expected_version) is not int or self.expected_version < 0:
+            raise ContractMutationError(
+                "contract mutation expected version must be a non-negative integer"
+            )
+        if not isinstance(self.assignments, Mapping):
+            raise ContractMutationError("contract mutation assignments must be a mapping")
+        object.__setattr__(self, "assignments", _immutable_mapping(self.assignments))
+
+    def descriptor(self) -> dict[str, object]:
+        """Describe intent without retaining or publishing assigned values."""
+
+        return {
+            "mutation_id": self.mutation_id,
+            "expected_version": self.expected_version,
+            "variables": sorted(self.assignments),
+        }
+
+
+@dataclass(frozen=True)
+class ContractCandidate:
+    """Immutable, read-only projection prepared from one mutation."""
+
+    mutation_id: str
+    base_version: int
+    version: int
+    changed: Mapping[str, ReloadPolicy]
+    _values: Mapping[str, Any] = field(repr=False)
+
+    def __post_init__(self) -> None:
+        if not isinstance(self.mutation_id, str) or not self.mutation_id.strip():
+            raise ContractMutationError("contract candidate mutation id must be non-empty")
+        if type(self.base_version) is not int or self.base_version < 0:
+            raise ContractMutationError("contract candidate base version is invalid")
+        if type(self.version) is not int or self.version < self.base_version:
+            raise ContractMutationError("contract candidate version is invalid")
+        if self.version > self.base_version + 1:
+            raise ContractMutationError(
+                "contract candidate may advance at most one version"
+            )
+        if not all(
+            isinstance(name, str) and isinstance(policy, ReloadPolicy)
+            for name, policy in self.changed.items()
+        ):
+            raise ContractMutationError(
+                "contract candidate changes must map names to reload policies"
+            )
+        object.__setattr__(self, "changed", MappingProxyType(dict(self.changed)))
+        object.__setattr__(self, "_values", _immutable_mapping(self._values))
+
+    def get(self, name: str) -> Any:
+        """Read one candidate value without exposing a mutable projection."""
+
+        if name not in self._values:
+            raise KeyError(f"unknown contract variable {name!r}")
+        return self._values[name]
+
+    def descriptor(self) -> dict[str, object]:
+        """Describe candidate identity and shape without any values."""
+
+        return {
+            "mutation_id": self.mutation_id,
+            "base_version": self.base_version,
+            "version": self.version,
+            "changed": {
+                name: policy.value for name, policy in sorted(self.changed.items())
+            },
+        }
+
+
+@dataclass(frozen=True)
 class ContractPatchResult:
     """Result of applying one or more local contract value changes."""
 
     changed: Mapping[str, ReloadPolicy]
     rebuilt_resources: tuple[str, ...] = ()
     stale_resources: tuple[str, ...] = ()
+    mutation_id: str | None = None
+    base_version: int = 0
+    version: int = 0
 
     def descriptor(self) -> dict[str, object]:
-        descriptor: dict[str, object] = {name: policy.value for name, policy in sorted(self.changed.items())}
+        descriptor: dict[str, object] = {
+            "mutation_id": self.mutation_id,
+            "base_version": self.base_version,
+            "version": self.version,
+            "changed": {
+                name: policy.value for name, policy in sorted(self.changed.items())
+            },
+        }
         if self.rebuilt_resources:
             descriptor["rebuilt_resources"] = sorted(self.rebuilt_resources)
         if self.stale_resources:
@@ -346,10 +450,7 @@ class EnvironmentContract:
 
     def __init__(self, values: Mapping[str, Any]):
         declarations = self.declarations()
-        self._values: dict[str, Any] = {}
-        self._derived_specs: dict[str, DerivedResourceSpec] = {}
-        self._derived_values: dict[str, Any] = {}
-        self._stale_derived: set[str] = set()
+        self._initialize_state()
         for name, variable in declarations.items():
             raw = values.get(name)
             if raw is None:
@@ -357,6 +458,17 @@ class EnvironmentContract:
                 if env_name in values:
                     raw = values[env_name]
             self._values[name] = variable.validate(raw)
+
+    def _initialize_state(self) -> None:
+        self._values: dict[str, Any] = {}
+        self._derived_specs: dict[str, DerivedResourceSpec] = {}
+        self._derived_values: dict[str, Any] = {}
+        self._stale_derived: set[str] = set()
+        self._version = 0
+        self._local_mutation_sequence = 0
+        self._prepared_mutations: dict[
+            str, tuple[ContractMutation, ContractCandidate]
+        ] = {}
 
     @classmethod
     def declarations(cls) -> dict[str, ControlVariableSpec]:
@@ -380,6 +492,12 @@ class EnvironmentContract:
             raise KeyError(f"unknown contract variable {name!r}")
         return self._values[name]
 
+    @property
+    def version(self) -> int:
+        """Return the current process-local projection version."""
+
+        return self._version
+
     def set(self, name: str, value: Any) -> ContractPatchResult:
         return self.apply_patch({name: value})
 
@@ -395,16 +513,73 @@ class EnvironmentContract:
             validated[name] = variable.validate(value)
         return validated
 
-    def apply_patch(self, patch: Mapping[str, Any]) -> ContractPatchResult:
-        validated = self.validate_patch(patch)
+    def prepare_mutation(self, mutation: ContractMutation) -> ContractCandidate:
+        """Purely prepare one immutable candidate without publishing it."""
+
+        if not isinstance(mutation, ContractMutation):
+            raise TypeError("contract mutation preparation requires ContractMutation")
+        previous = self._prepared_mutations.get(mutation.mutation_id)
+        if previous is not None:
+            previous_mutation, candidate = previous
+            if previous_mutation == mutation:
+                return candidate
+            raise ConflictingContractMutation(
+                f"contract mutation id {mutation.mutation_id!r} has conflicting intent"
+            )
+        if mutation.expected_version != self._version:
+            raise StaleContractVersion(
+                f"contract mutation expected version {mutation.expected_version}, "
+                f"current version is {self._version}"
+            )
+
+        validated = self.validate_patch(mutation.assignments)
         declarations = self.declarations()
+        values = dict(self._values)
         changed: dict[str, ReloadPolicy] = {}
         for name, value in validated.items():
-            if self._values.get(name) != value:
-                self._values[name] = value
+            if values.get(name) != value:
+                values[name] = value
                 changed[name] = declarations[name].reload_policy
-        rebuilt, stale = self._apply_derived_resource_policy(changed)
-        return ContractPatchResult(changed, tuple(rebuilt), tuple(stale))
+        candidate = ContractCandidate(
+            mutation_id=mutation.mutation_id,
+            base_version=self._version,
+            version=self._version + (1 if changed else 0),
+            changed=changed,
+            _values=values,
+        )
+        self._prepared_mutations[mutation.mutation_id] = (mutation, candidate)
+        return candidate
+
+    def apply_patch(self, patch: Mapping[str, Any]) -> ContractPatchResult:
+        self._local_mutation_sequence += 1
+        return self.apply_mutation(
+            ContractMutation(
+                mutation_id=f"local-{self._local_mutation_sequence}",
+                expected_version=self._version,
+                assignments=patch,
+            )
+        )
+
+    def apply_mutation(self, mutation: ContractMutation) -> ContractPatchResult:
+        """Publish a candidate through the legacy resource path.
+
+        Issue #281 replaces this publication section with all-resource
+        preparation and one atomic projection swap.
+        """
+
+        candidate = self.prepare_mutation(mutation)
+        self._values = dict(candidate._values)
+        self._version = candidate.version
+        self._prepared_mutations.pop(candidate.mutation_id, None)
+        rebuilt, stale = self._apply_derived_resource_policy(candidate.changed)
+        return ContractPatchResult(
+            candidate.changed,
+            tuple(rebuilt),
+            tuple(stale),
+            mutation_id=candidate.mutation_id,
+            base_version=candidate.base_version,
+            version=candidate.version,
+        )
 
     def derived(
         self,
@@ -480,6 +655,7 @@ class EnvironmentContract:
 
     def redacted_descriptor(self) -> dict[str, object]:
         return {
+            "version": self._version,
             "variables": {
                 name: _redacted_variable_descriptor(variable, self._values.get(name))
                 for name, variable in sorted(self.declarations().items())
@@ -489,6 +665,7 @@ class EnvironmentContract:
 
     def unsafe_descriptor(self) -> dict[str, object]:
         return {
+            "version": self._version,
             "variables": {
                 name: variable.descriptor(self._values.get(name), include_value=True)
                 for name, variable in sorted(self.declarations().items())
@@ -514,10 +691,7 @@ class RuntimeContract(EnvironmentContract):
 
     def __init__(self, values: Mapping[str, Any]):
         declarations = self.declarations()
-        self._values: dict[str, Any] = {}
-        self._derived_specs: dict[str, DerivedResourceSpec] = {}
-        self._derived_values: dict[str, Any] = {}
-        self._stale_derived: set[str] = set()
+        self._initialize_state()
         for name, variable in declarations.items():
             self._values[name] = variable.validate(values.get(name))
 
@@ -550,3 +724,28 @@ def _redacted_variable_descriptor(variable: ControlVariableSpec, value: Any) -> 
     descriptor = variable.descriptor(value, include_value=False)
     descriptor["value"] = variable.describe_value(value) if isinstance(variable, SecretVariable) else {"present": value is not None, "redacted": True}
     return descriptor
+
+
+def _immutable_mapping(values: Mapping[str, Any]) -> Mapping[str, Any]:
+    """Copy and recursively freeze a mapping at an algebra boundary."""
+
+    return MappingProxyType(
+        {
+            key: _immutable_value(value)
+            for key, value in values.items()
+        }
+    )
+
+
+def _immutable_value(value: Any) -> Any:
+    if isinstance(value, Mapping):
+        return MappingProxyType(
+            {key: _immutable_value(item) for key, item in value.items()}
+        )
+    if isinstance(value, list):
+        return tuple(_immutable_value(item) for item in value)
+    if isinstance(value, tuple):
+        return tuple(_immutable_value(item) for item in value)
+    if isinstance(value, set):
+        return frozenset(_immutable_value(item) for item in value)
+    return deepcopy(value)

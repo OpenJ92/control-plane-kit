@@ -1,6 +1,8 @@
 from unittest import TestCase, main
 
 from control_plane_kit import (
+    ConflictingContractMutation,
+    ContractMutation,
     ControlValueKind,
     EnvironmentContract,
     ControlVariableError,
@@ -13,6 +15,7 @@ from control_plane_kit import (
     RuntimeValueVariable,
     TextVariable,
     SecretVariable,
+    StaleContractVersion,
     TcpVariable,
 )
 
@@ -132,8 +135,196 @@ class EnvironmentContractTests(TestCase):
         result = env.apply_patch({"storage_base_url": "https://storage-v2.internal"})
 
         self.assertEqual(env.get("storage_base_url"), "https://storage-v2.internal")
-        self.assertEqual(result.descriptor(), {"storage_base_url": "live"})
+        self.assertEqual(
+            result.descriptor(),
+            {
+                "mutation_id": "local-1",
+                "base_version": 0,
+                "version": 1,
+                "changed": {"storage_base_url": "live"},
+            },
+        )
         self.assertNotEqual(__import__("os").environ.get("STORAGE_BASE_URL"), "https://storage-v2.internal")
+
+    def test_mutation_prepares_immutable_candidate_without_publication(self):
+        class RouterState(EnvironmentContract):
+            active_target = TextVariable("active_target")
+            targets = RuntimeMapVariable("targets")
+
+        original_targets = {"v1": "http://api-v1"}
+        state = RouterState.from_mapping(
+            {"active_target": "v1", "targets": original_targets}
+        )
+        mutation = ContractMutation(
+            "route-v2",
+            expected_version=0,
+            assignments={
+                "active_target": "v2",
+                "targets": {"v2": "http://api-v2"},
+            },
+        )
+
+        candidate = state.prepare_mutation(mutation)
+        original_targets["v1"] = "http://changed-after-construction"
+
+        self.assertEqual(state.version, 0)
+        self.assertEqual(state.get("active_target"), "v1")
+        self.assertEqual(candidate.base_version, 0)
+        self.assertEqual(candidate.version, 1)
+        self.assertEqual(candidate.get("active_target"), "v2")
+        self.assertEqual(candidate.get("targets"), {"v2": "http://api-v2"})
+        with self.assertRaises(TypeError):
+            candidate.get("targets")["v3"] = "http://api-v3"
+
+    def test_mutation_rejects_stale_version_before_preparation(self):
+        class ApiEnvironment(EnvironmentContract):
+            storage_base_url = HttpVariable("storage_base_url")
+
+        env = ApiEnvironment.from_mapping(
+            {"storage_base_url": "https://storage-v1.internal"}
+        )
+        env.apply_patch({"storage_base_url": "https://storage-v2.internal"})
+
+        with self.assertRaises(StaleContractVersion):
+            env.prepare_mutation(
+                ContractMutation(
+                    "stale",
+                    expected_version=0,
+                    assignments={
+                        "storage_base_url": "https://storage-v3.internal"
+                    },
+                )
+            )
+
+        self.assertEqual(env.version, 1)
+        self.assertEqual(
+            env.get("storage_base_url"), "https://storage-v2.internal"
+        )
+
+    def test_preparation_validates_all_assignments_before_any_publication(self):
+        class ApiEnvironment(EnvironmentContract):
+            storage_base_url = HttpVariable("storage_base_url")
+            database_url = PostgresVariable("database_url")
+
+        env = ApiEnvironment.from_mapping(
+            {
+                "storage_base_url": "https://storage-v1.internal",
+                "database_url": "postgresql://db-v1/app",
+            }
+        )
+
+        with self.assertRaises(ControlVariableError):
+            env.prepare_mutation(
+                ContractMutation(
+                    "invalid-database",
+                    expected_version=0,
+                    assignments={
+                        "storage_base_url": "https://storage-v2.internal",
+                        "database_url": "not-postgres",
+                    },
+                )
+            )
+
+        self.assertEqual(env.version, 0)
+        self.assertEqual(
+            env.get("storage_base_url"), "https://storage-v1.internal"
+        )
+
+    def test_prepared_mutation_identity_replays_or_rejects_conflicting_intent(self):
+        class ApiEnvironment(EnvironmentContract):
+            storage_base_url = HttpVariable("storage_base_url")
+
+        env = ApiEnvironment.from_mapping(
+            {"storage_base_url": "https://storage-v1.internal"}
+        )
+        mutation = ContractMutation(
+            "storage-cutover",
+            expected_version=0,
+            assignments={"storage_base_url": "https://storage-v2.internal"},
+        )
+
+        first = env.prepare_mutation(mutation)
+        replay = env.prepare_mutation(mutation)
+
+        self.assertIs(replay, first)
+        with self.assertRaises(ConflictingContractMutation):
+            env.prepare_mutation(
+                ContractMutation(
+                    "storage-cutover",
+                    expected_version=0,
+                    assignments={
+                        "storage_base_url": "https://storage-v3.internal"
+                    },
+                )
+            )
+        self.assertEqual(
+            env.get("storage_base_url"), "https://storage-v1.internal"
+        )
+
+    def test_noop_candidate_does_not_advance_version(self):
+        class ApiEnvironment(EnvironmentContract):
+            storage_base_url = HttpVariable("storage_base_url")
+
+        env = ApiEnvironment.from_mapping(
+            {"storage_base_url": "https://storage.internal"}
+        )
+        candidate = env.prepare_mutation(
+            ContractMutation(
+                "same-value",
+                expected_version=0,
+                assignments={"storage_base_url": "https://storage.internal"},
+            )
+        )
+
+        self.assertEqual(candidate.version, 0)
+        self.assertEqual(candidate.changed, {})
+
+    def test_published_mutation_identity_cannot_accidentally_reexecute(self):
+        class ApiEnvironment(EnvironmentContract):
+            storage_base_url = HttpVariable("storage_base_url")
+
+        env = ApiEnvironment.from_mapping(
+            {"storage_base_url": "https://storage-v1.internal"}
+        )
+        mutation = ContractMutation(
+            "storage-cutover",
+            expected_version=0,
+            assignments={"storage_base_url": "https://storage-v2.internal"},
+        )
+
+        env.apply_mutation(mutation)
+
+        with self.assertRaises(StaleContractVersion):
+            env.apply_mutation(mutation)
+        self.assertEqual(env.version, 1)
+
+    def test_mutation_and_candidate_descriptors_never_publish_values(self):
+        class ApiEnvironment(EnvironmentContract):
+            sendgrid_key = SecretVariable("sendgrid_key")
+
+        env = ApiEnvironment.from_mapping({"sendgrid_key": "SG.old-secret"})
+        mutation = ContractMutation(
+            "rotate-sendgrid",
+            expected_version=0,
+            assignments={"sendgrid_key": "SG.new-secret"},
+        )
+        candidate = env.prepare_mutation(mutation)
+
+        evidence = (
+            f"{mutation!r} {mutation.descriptor()} "
+            f"{candidate!r} {candidate.descriptor()}"
+        )
+        self.assertNotIn("SG.old-secret", evidence)
+        self.assertNotIn("SG.new-secret", evidence)
+        self.assertEqual(
+            candidate.descriptor(),
+            {
+                "mutation_id": "rotate-sendgrid",
+                "base_version": 0,
+                "version": 1,
+                "changed": {"sendgrid_key": "live"},
+            },
+        )
 
     def test_immutable_value_rejects_patch(self):
         class ApiEnvironment(EnvironmentContract):
@@ -301,7 +492,15 @@ class RuntimeContractTests(TestCase):
         result = state.apply_patch({"active_target": "v2"})
 
         self.assertEqual(state.get("active_target"), "v2")
-        self.assertEqual(result.descriptor(), {"active_target": "live"})
+        self.assertEqual(
+            result.descriptor(),
+            {
+                "mutation_id": "local-1",
+                "base_version": 0,
+                "version": 1,
+                "changed": {"active_target": "live"},
+            },
+        )
 
     def test_runtime_contract_descriptor_redacts_values(self):
         class RouterState(RuntimeContract):
