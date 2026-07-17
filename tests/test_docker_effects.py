@@ -36,6 +36,8 @@ from control_plane_kit.planning import (
 class NarrowClient:
     timeout: bool = False
     calls: list[tuple] = field(default_factory=list)
+    networks: dict[str, object] = field(default_factory=dict)
+    containers: dict[str, object] = field(default_factory=dict)
 
     def _record(self, value):
         if self.timeout:
@@ -45,8 +47,36 @@ class NarrowClient:
     def ensure_network(self, name, *, timeout_seconds=30):
         self._record(("ensure-network", name, timeout_seconds))
 
+    def inspect_network(self, name, *, timeout_seconds=30):
+        return self.networks.get(name)
+
+    def create_network(self, name, labels, *, timeout_seconds=30):
+        from control_plane_kit.docker_runtime import DockerResourceInspection, DockerResourceKind
+
+        self._record(("ensure-network", name, timeout_seconds))
+        self.networks[name] = DockerResourceInspection(
+            DockerResourceKind.NETWORK, "network-id", name, False, None, dict(labels)
+        )
+
     def start_container(self, *, name, image, network, environment, command, timeout_seconds=30):
         self._record(("start-container", name, image, network, dict(environment), tuple(command), timeout_seconds))
+
+    def inspect_container(self, name, *, timeout_seconds=30):
+        return self.containers.get(name)
+
+    def run_container(self, *, name, image, network, environment, command, labels, timeout_seconds=30):
+        from control_plane_kit.docker_runtime import DockerResourceInspection, DockerResourceKind
+
+        self._record(("start-container", name, image, network, dict(environment), tuple(command), timeout_seconds))
+        self.containers[name] = DockerResourceInspection(
+            DockerResourceKind.CONTAINER, "container-id", name, True, image, dict(labels)
+        )
+
+    def start_existing_container(self, resource_id, *, timeout_seconds=30):
+        self._record(("start-existing-container", resource_id, timeout_seconds))
+
+    def stop_owned_container(self, name, ownership, *, timeout_seconds=30):
+        self._record(("stop-container", name, timeout_seconds))
 
     def stop_container(self, name, *, timeout_seconds=30):
         self._record(("stop-container", name, timeout_seconds))
@@ -66,12 +96,13 @@ class DockerEffectTests(unittest.TestCase):
                 return subprocess.CompletedProcess(args, 0)
 
         client = RecordingCli()
-        client.start_container(
+        client.run_container(
             name="api",
             image="api:latest",
             network="network",
             environment={"API_TOKEN": "never-in-argv"},
             command=(),
+            labels={},
         )
 
         args, kwargs = client.recorded
