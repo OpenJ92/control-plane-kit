@@ -12,10 +12,14 @@ from control_plane_kit.planning.activity_plan import (
     ActivityPlan,
     AddSocketConnection,
     ChangeTarget,
+    DataResourceTarget,
+    DestroyDataResource,
     NodeTarget,
     PlannedActivity,
     ReconcileNode,
     ReconcileRuntime,
+    RemoveNodeResource,
+    RemoveRuntimeResource,
     RemoveSocketConnection,
     ReviewChange,
     ReviewReason,
@@ -136,6 +140,8 @@ class ActivityPlanDescriptorCodec:
                 return _targeted("start-node", target)
             case StopNode(target=target):
                 return _targeted("stop-node", target)
+            case RemoveNodeResource(target=target):
+                return _targeted("remove-node-resource", target)
             case WaitForHealthy(target=target):
                 return _targeted("wait-for-healthy", target)
             case AddSocketConnection(target=target):
@@ -152,6 +158,10 @@ class ActivityPlanDescriptorCodec:
                 return _targeted("start-runtime", target)
             case StopRuntime(target=target):
                 return _targeted("stop-runtime", target)
+            case RemoveRuntimeResource(target=target):
+                return _targeted("remove-runtime-resource", target)
+            case DestroyDataResource(target=target):
+                return _targeted("destroy-data-resource", target)
             case ReviewChange(target=ChangeTarget(subject=subject), reason=reason):
                 return {
                     "kind": "review-change",
@@ -169,6 +179,8 @@ class ActivityPlanDescriptorCodec:
                 return StartNode(_node_target(target))
             case "stop-node":
                 return StopNode(_node_target(target))
+            case "remove-node-resource":
+                return RemoveNodeResource(_node_target(target))
             case "wait-for-healthy":
                 return WaitForHealthy(_node_target(target))
             case "add-socket-connection":
@@ -185,6 +197,10 @@ class ActivityPlanDescriptorCodec:
                 return StartRuntime(_runtime_target(target))
             case "stop-runtime":
                 return StopRuntime(_runtime_target(target))
+            case "remove-runtime-resource":
+                return RemoveRuntimeResource(_runtime_target(target))
+            case "destroy-data-resource":
+                return DestroyDataResource(_data_resource_target(target))
             case "review-change":
                 _require_kind(target, "change")
                 try:
@@ -211,6 +227,12 @@ def _targeted(kind: str, target: object) -> dict[str, object]:
             value = {"kind": "runtime", "runtime_id": runtime_id}
         case SocketConnectionTarget(edge_id=edge_id):
             value = {"kind": "socket-connection", "edge_id": edge_id}
+        case DataResourceTarget(node_id=node_id, resource_id=resource_id):
+            value = {
+                "kind": "data-resource",
+                "node_id": node_id,
+                "resource_id": resource_id,
+            }
         case _:
             raise MalformedActivityPlanDescriptor("unknown typed activity target")
     return {"kind": kind, "target": value}
@@ -229,6 +251,14 @@ def _runtime_target(value: Mapping[str, object]) -> RuntimeTarget:
 def _socket_target(value: Mapping[str, object]) -> SocketConnectionTarget:
     _require_kind(value, "socket-connection")
     return SocketConnectionTarget(_text(value, "edge_id"))
+
+
+def _data_resource_target(value: Mapping[str, object]) -> DataResourceTarget:
+    _require_kind(value, "data-resource")
+    return DataResourceTarget(
+        _text(value, "node_id"),
+        _text(value, "resource_id"),
+    )
 
 
 def _require_kind(value: Mapping[str, object], expected: str) -> None:

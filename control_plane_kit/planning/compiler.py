@@ -6,6 +6,8 @@ import hashlib
 import json
 from dataclasses import dataclass, field
 
+from control_plane_kit.lifecycle import ResourceOwnership, ResourcePersistence
+
 from control_plane_kit.planning.activity_plan import (
     ActivityDependency,
     ActivityId,
@@ -18,6 +20,8 @@ from control_plane_kit.planning.activity_plan import (
     PlannedActivity,
     ReconcileNode,
     ReconcileRuntime,
+    RemoveNodeResource,
+    RemoveRuntimeResource,
     RemoveSocketConnection,
     ReviewChange,
     ReviewReason,
@@ -85,9 +89,11 @@ def compile_activity_plan(diff: GraphDiff) -> ActivityPlan:
     drafts: list[_ActivityDraft] = []
     start_runtime: dict[str, _ActivityDraft] = {}
     stop_runtime: dict[str, _ActivityDraft] = {}
+    remove_runtime: dict[str, _ActivityDraft] = {}
     start_node: dict[str, _ActivityDraft] = {}
     healthy_node: dict[str, _ActivityDraft] = {}
     stop_node: dict[str, _ActivityDraft] = {}
+    remove_node: dict[str, _ActivityDraft] = {}
     reconcile_node: dict[str, _ActivityDraft] = {}
     removed_node_runtime: dict[str, str] = {}
     removed_edges: dict[str, tuple[_ActivityDraft, EdgeValue]] = {}
@@ -114,6 +120,8 @@ def compile_activity_plan(diff: GraphDiff) -> ActivityPlan:
                     start_runtime[runtime_id] = draft
                 case StopRuntime(target=RuntimeTarget(runtime_id=runtime_id)):
                     stop_runtime[runtime_id] = draft
+                case RemoveRuntimeResource(target=RuntimeTarget(runtime_id=runtime_id)):
+                    remove_runtime[runtime_id] = draft
                 case StartNode(target=NodeTarget(node_id=node_id)):
                     start_node[node_id] = draft
                 case WaitForHealthy(target=NodeTarget(node_id=node_id)):
@@ -124,6 +132,8 @@ def compile_activity_plan(diff: GraphDiff) -> ActivityPlan:
                         change.before, NodeValue
                     ):
                         removed_node_runtime[node_id] = change.before.node.runtime_id
+                case RemoveNodeResource(target=NodeTarget(node_id=node_id)):
+                    remove_node[node_id] = draft
                 case RemoveSocketConnection(
                     target=SocketConnectionTarget(edge_id=edge_id)
                 ) if isinstance(change, RemovedChange) and isinstance(
@@ -156,9 +166,11 @@ def compile_activity_plan(diff: GraphDiff) -> ActivityPlan:
             drafts,
             start_runtime=start_runtime,
             stop_runtime=stop_runtime,
+            remove_runtime=remove_runtime,
             start_node=start_node,
             healthy_node=healthy_node,
             stop_node=stop_node,
+            remove_node=remove_node,
             removed_node_runtime=removed_node_runtime,
             removed_edges=removed_edges,
             modified_edges=modified_edges,
@@ -184,8 +196,10 @@ def _compile_change(change: StructuralChange) -> tuple[_ActivityDraft, ...]:
     match change:
         case AddedChange(
             subject=RuntimeSubject(runtime_id=runtime_id),
-            after=RuntimeValue(),
+            after=RuntimeValue(runtime=runtime),
         ):
+            if runtime.lifecycle.ownership is not ResourceOwnership.OWNED:
+                return ()
             return (
                 _draft(
                     change,
@@ -197,21 +211,34 @@ def _compile_change(change: StructuralChange) -> tuple[_ActivityDraft, ...]:
             )
         case RemovedChange(
             subject=RuntimeSubject(runtime_id=runtime_id),
-            before=RuntimeValue(),
+            before=RuntimeValue(runtime=runtime),
         ):
-            return (
-                _draft(
-                    change,
-                    "stop-runtime",
-                    StopRuntime(RuntimeTarget(runtime_id)),
-                    RiskLevel.CRITICAL,
-                    ActivityImpact.DESTRUCTIVE,
-                ),
+            if runtime.lifecycle.ownership is not ResourceOwnership.OWNED:
+                return ()
+            stop = _draft(
+                change,
+                "stop-runtime",
+                StopRuntime(RuntimeTarget(runtime_id)),
+                RiskLevel.HIGH,
+                ActivityImpact.DISRUPTIVE,
             )
+            if runtime.lifecycle.compute is ResourcePersistence.RETAINED:
+                return (stop,)
+            remove = _draft(
+                change,
+                "remove-runtime-resource",
+                RemoveRuntimeResource(RuntimeTarget(runtime_id)),
+                RiskLevel.HIGH,
+                ActivityImpact.DESTRUCTIVE,
+            )
+            remove.dependencies.add(stop.activity_id)
+            return stop, remove
         case AddedChange(
             subject=NodeSubject(node_id=node_id),
-            after=NodeValue(),
+            after=NodeValue(node=node),
         ):
+            if node.lifecycle.ownership is not ResourceOwnership.OWNED:
+                return ()
             start = _draft(
                 change,
                 "start-node",
@@ -230,17 +257,28 @@ def _compile_change(change: StructuralChange) -> tuple[_ActivityDraft, ...]:
             return start, healthy
         case RemovedChange(
             subject=NodeSubject(node_id=node_id),
-            before=NodeValue(),
+            before=NodeValue(node=node),
         ):
-            return (
-                _draft(
-                    change,
-                    "stop-node",
-                    StopNode(NodeTarget(node_id)),
-                    RiskLevel.HIGH,
-                    ActivityImpact.DESTRUCTIVE,
-                ),
+            if node.lifecycle.ownership is not ResourceOwnership.OWNED:
+                return ()
+            stop = _draft(
+                change,
+                "stop-node",
+                StopNode(NodeTarget(node_id)),
+                RiskLevel.HIGH,
+                ActivityImpact.DISRUPTIVE,
             )
+            if node.lifecycle.compute is ResourcePersistence.RETAINED:
+                return (stop,)
+            remove = _draft(
+                change,
+                "remove-node-resource",
+                RemoveNodeResource(NodeTarget(node_id)),
+                RiskLevel.HIGH,
+                ActivityImpact.DESTRUCTIVE,
+            )
+            remove.dependencies.add(stop.activity_id)
+            return stop, remove
         case AddedChange(subject=EdgeSubject(edge_id=edge_id), after=EdgeValue()):
             return (
                 _draft(
@@ -287,9 +325,11 @@ def _add_dependencies(
     *,
     start_runtime: dict[str, _ActivityDraft],
     stop_runtime: dict[str, _ActivityDraft],
+    remove_runtime: dict[str, _ActivityDraft],
     start_node: dict[str, _ActivityDraft],
     healthy_node: dict[str, _ActivityDraft],
     stop_node: dict[str, _ActivityDraft],
+    remove_node: dict[str, _ActivityDraft],
     removed_node_runtime: dict[str, str],
     removed_edges: dict[str, tuple[_ActivityDraft, EdgeValue]],
     modified_edges: dict[
@@ -311,6 +351,8 @@ def _add_dependencies(
                 if healthy := healthy_node.get(node_id):
                     matching[0].dependencies.add(healthy.activity_id)
         case RemovedChange(subject=NodeSubject(node_id=node_id), before=NodeValue()):
+            if node_id not in stop_node:
+                return
             for remove, edge_value in removed_edges.values():
                 edge = edge_value.edge
                 if node_id in (edge.provider_role, edge.consumer_role):
@@ -325,16 +367,26 @@ def _add_dependencies(
         case RemovedChange(
             subject=RuntimeSubject(runtime_id=runtime_id),
         ):
-            runtime_stop = stop_runtime[runtime_id]
+            runtime_stop = stop_runtime.get(runtime_id)
+            if runtime_stop is None:
+                return
             for node_id, node_runtime_id in removed_node_runtime.items():
                 if node_runtime_id == runtime_id:
-                    runtime_stop.dependencies.add(stop_node[node_id].activity_id)
+                    predecessor = remove_node.get(node_id) or stop_node.get(node_id)
+                    if predecessor is not None:
+                        runtime_stop.dependencies.add(predecessor.activity_id)
+            if runtime_remove := remove_runtime.get(runtime_id):
+                runtime_remove.dependencies.add(runtime_stop.activity_id)
 
 
 def _reconciliation_owner(change: StructuralChange) -> NodeSubject | RuntimeSubject | None:
     if not isinstance(change, (AddedChange, ModifiedChange, RemovedChange)):
         return None
     if not isinstance(change.subject, FieldSubject):
+        return None
+    if change.subject.field is StructuralField.RESOURCE_LIFECYCLE:
+        # Ownership and retention changes alter what later plans may destroy.
+        # They require an explicit review path rather than ordinary reconciliation.
         return None
     if isinstance(change.subject.owner, (NodeSubject, RuntimeSubject)):
         return change.subject.owner

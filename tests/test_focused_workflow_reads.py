@@ -177,7 +177,7 @@ class FocusedWorkflowReadTests(PostgresStoreTestCase):
         plan = self._service().plan_detail("workspace-a", "plan-a").descriptor()["plan"]
 
         self.assertEqual(plan["payload"]["schema"], "control-plane-kit.activity-plan")
-        self.assertEqual(plan["risk_summary"]["max_risk"], RiskLevel.CRITICAL.value)
+        self.assertEqual(plan["risk_summary"]["max_risk"], RiskLevel.HIGH.value)
         self.assertGreater(plan["risk_summary"]["destructive_count"], 0)
         self.assertEqual(
             plan["recovery"]["schema"],

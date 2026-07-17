@@ -7,12 +7,17 @@ from enum import StrEnum
 import json
 from typing import Mapping, TypeAlias
 
+from control_plane_kit.lifecycle import OWNED_EPHEMERAL, ResourceLifecycle
+
 from control_plane_kit.effects.values import EffectRequest
 from control_plane_kit.planning import (
     AddSocketConnection,
+    DestroyDataResource,
     PlannedActivity,
     ReconcileNode,
     ReconcileRuntime,
+    RemoveNodeResource,
+    RemoveRuntimeResource,
     RemoveSocketConnection,
     StartNode,
     StartRuntime,
@@ -121,7 +126,6 @@ class ImplementationMaterial:
     command: tuple[str, ...] = ()
     environment: tuple[EnvironmentBindingMaterial, ...] = ()
     database: str | None = None
-    owned: bool | None = None
 
 
 @dataclass(frozen=True)
@@ -130,6 +134,7 @@ class RuntimeMaterial:
     kind: RuntimeKind
     children: tuple[str, ...]
     network_name: str | None
+    lifecycle: ResourceLifecycle = OWNED_EPHEMERAL
 
 
 @dataclass(frozen=True)
@@ -140,6 +145,7 @@ class NodeMaterial:
     endpoints: tuple[EndpointMaterial, ...]
     environment: tuple[EnvironmentBindingMaterial, ...]
     health_path: str | None
+    lifecycle: ResourceLifecycle = OWNED_EPHEMERAL
 
 
 @dataclass(frozen=True)
@@ -258,10 +264,20 @@ def materialize_effect_request(
         )
 
     match activity.operation:
-        case StopNode(target=target):
+        case StopNode(target=target) | RemoveNodeResource(target=target):
             graph_id, material = base_graph_id, _node_material(base_graph, target.node_id)
-        case StopRuntime(target=target):
+        case StopRuntime(target=target) | RemoveRuntimeResource(target=target):
             graph_id, material = base_graph_id, _runtime_material(base_graph, target.runtime_id)
+        case DestroyDataResource(target=target):
+            material = _node_material(base_graph, target.node_id)
+            try:
+                material.lifecycle.data_resource(target.resource_id)
+            except KeyError as error:
+                raise EffectMaterializationError(
+                    MaterializationCode.TARGET_NOT_FOUND,
+                    "pinned graph has no matching data resource",
+                ) from error
+            graph_id = base_graph_id
         case RemoveSocketConnection(target=target):
             graph_id, material = base_graph_id, _edge_material(base_graph, target.edge_id)
         case StartNode(target=target) | ReconcileNode(target=target) | WaitForHealthy(target=target):
@@ -297,6 +313,7 @@ def _runtime_material(graph: DeploymentGraph, runtime_id: str) -> RuntimeMateria
         runtime.kind,
         tuple(runtime.children),
         runtime.metadata.get("network_name"),
+        runtime.lifecycle,
     )
 
 
@@ -321,6 +338,7 @@ def _node_material(graph: DeploymentGraph, node_id: str) -> NodeMaterial:
         tuple(_endpoint_material(name, endpoint) for name, endpoint in sorted(node.endpoints.items())),
         _environment_material(node.environment, node=node, graph=graph),
         node.block_spec.health_path,
+        node.lifecycle,
     )
 
 
@@ -358,9 +376,6 @@ def _implementation_material(node: Node, graph: DeploymentGraph) -> Implementati
     metadata = node.metadata
     image = _optional_text(metadata.get("image"), "image")
     database = _optional_text(metadata.get("database"), "database")
-    owned = metadata.get("owned")
-    if owned is not None and type(owned) is not bool:
-        raise _malformed("owned")
     command_value = metadata.get("command", ())
     if not isinstance(command_value, (list, tuple)) or not all(isinstance(value, str) for value in command_value):
         raise _malformed("command")
@@ -377,7 +392,6 @@ def _implementation_material(node: Node, graph: DeploymentGraph) -> Implementati
         tuple(command_value),
         _environment_material(environment, node=node, graph=graph),
         database,
-        owned,
     )
 
 
@@ -466,6 +480,7 @@ def _descriptor(value: object) -> object:
                 "kind": value.kind.value,
                 "children": list(value.children),
                 "network_name": value.network_name,
+                "lifecycle": value.lifecycle.descriptor(),
             }
         case NodeMaterial():
             return {
@@ -476,6 +491,7 @@ def _descriptor(value: object) -> object:
                 "endpoints": [_descriptor(item) for item in value.endpoints],
                 "environment": [_descriptor(item) for item in value.environment],
                 "health_path": value.health_path,
+                "lifecycle": value.lifecycle.descriptor(),
             }
         case ImplementationMaterial():
             return {
@@ -484,7 +500,6 @@ def _descriptor(value: object) -> object:
                 "command": list(value.command),
                 "environment": [_descriptor(item) for item in value.environment],
                 "database": value.database,
-                "owned": value.owned,
             }
         case SocketConnectionMaterial():
             return {

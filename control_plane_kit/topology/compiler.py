@@ -55,6 +55,7 @@ def _compile_runtime(
             kind=runtime.kind,
             children=tuple(child_nodes),
             metadata=_runtime_metadata(runtime),
+            lifecycle=runtime.lifecycle,
         )
     )
     return next_graph, tuple(connections)
@@ -80,6 +81,7 @@ def _materialize_block(block: DeployBlock, runtime: RuntimeContext) -> Node:
         sockets=block.sockets,
         endpoints=materialized.endpoints,
         metadata=metadata,
+        lifecycle=materialized.lifecycle,
     )
 
 

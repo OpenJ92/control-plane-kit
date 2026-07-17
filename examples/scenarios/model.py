@@ -16,6 +16,8 @@ from control_plane_kit.planning import (
     NodeTarget,
     ReconcileNode,
     ReconcileRuntime,
+    RemoveNodeResource,
+    RemoveRuntimeResource,
     RemoveSocketConnection,
     ReviewChange,
     RiskLevel,
@@ -83,6 +85,7 @@ def operation_expectation(operation: ActivityOperation) -> OperationExpectation:
         case (
             StartNode(target=NodeTarget(node_id=target_id))
             | StopNode(target=NodeTarget(node_id=target_id))
+            | RemoveNodeResource(target=NodeTarget(node_id=target_id))
             | WaitForHealthy(target=NodeTarget(node_id=target_id))
             | ReconcileNode(target=NodeTarget(node_id=target_id))
         ):
@@ -90,6 +93,7 @@ def operation_expectation(operation: ActivityOperation) -> OperationExpectation:
         case (
             StartRuntime(target=RuntimeTarget(runtime_id=target_id))
             | StopRuntime(target=RuntimeTarget(runtime_id=target_id))
+            | RemoveRuntimeResource(target=RuntimeTarget(runtime_id=target_id))
             | ReconcileRuntime(target=RuntimeTarget(runtime_id=target_id))
         ):
             return OperationExpectation(type(operation), target_id)

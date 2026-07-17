@@ -26,6 +26,8 @@ from control_plane_kit.planning import (
     AddSocketConnection,
     ReconcileNode,
     ReconcileRuntime,
+    RemoveNodeResource,
+    RemoveRuntimeResource,
     RemoveSocketConnection,
     ReviewChange,
     RiskLevel,
@@ -256,6 +258,7 @@ def partial_scale_in() -> PlanningScenario:
         desired,
         operations=(
             _op(StopNode, "api-v1"),
+            _op(RemoveNodeResource, "api-v1"),
             _op(ReconcileRuntime, "docker"),
         ),
         max_risk=RiskLevel.HIGH,
@@ -267,20 +270,34 @@ def full_teardown() -> PlanningScenario:
     remove_edge = _op(RemoveSocketConnection, "app.internal-to-limiter.target")
     stop_app = _op(StopNode, "app")
     stop_limiter = _op(StopNode, "limiter")
+    remove_app = _op(RemoveNodeResource, "app")
+    remove_limiter = _op(RemoveNodeResource, "limiter")
     stop_runtime = _op(StopRuntime, "docker")
+    remove_runtime = _op(RemoveRuntimeResource, "docker")
     return _scenario(
         "full-teardown",
         "Tear down a deployment",
         current,
         DeploymentGraph("empty"),
-        operations=(remove_edge, stop_app, stop_limiter, stop_runtime),
+        operations=(
+            remove_edge,
+            stop_app,
+            stop_limiter,
+            remove_app,
+            remove_limiter,
+            stop_runtime,
+            remove_runtime,
+        ),
         dependencies=(
             _dependency(remove_edge, stop_app),
             _dependency(remove_edge, stop_limiter),
-            _dependency(stop_app, stop_runtime),
-            _dependency(stop_limiter, stop_runtime),
+            _dependency(stop_app, remove_app),
+            _dependency(stop_limiter, remove_limiter),
+            _dependency(remove_app, stop_runtime),
+            _dependency(remove_limiter, stop_runtime),
+            _dependency(stop_runtime, remove_runtime),
         ),
-        max_risk=RiskLevel.CRITICAL,
+        max_risk=RiskLevel.HIGH,
     )
 
 

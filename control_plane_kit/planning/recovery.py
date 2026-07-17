@@ -15,8 +15,11 @@ from control_plane_kit.planning.activity_plan import (
     ActivityImpact,
     ActivityPlan,
     AddSocketConnection,
+    DestroyDataResource,
     ReconcileNode,
     ReconcileRuntime,
+    RemoveNodeResource,
+    RemoveRuntimeResource,
     RemoveSocketConnection,
     ReviewChange,
     PlannedActivity,
@@ -267,6 +270,19 @@ def _assess(activity: PlannedActivity) -> RecoveryActivityAssessment:
                 RecoveryDisposition.COMPENSATION_REQUIRED,
                 "stopping a resource cannot prove that its data or prior effects are "
                 "recoverable",
+            )
+        case RemoveNodeResource() | RemoveRuntimeResource():
+            return RecoveryActivityAssessment(
+                activity_id,
+                RecoveryDisposition.COMPENSATION_REQUIRED,
+                "removing ephemeral compute requires reconstruction rather than "
+                "assuming that stop preserved a reusable resource",
+            )
+        case DestroyDataResource():
+            return RecoveryActivityAssessment(
+                activity_id,
+                RecoveryDisposition.MANUAL_REVIEW_REQUIRED,
+                "explicit data destruction is not structurally reversible",
             )
         case (
             AddSocketConnection()

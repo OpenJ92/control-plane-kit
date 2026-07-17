@@ -5,6 +5,7 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 
 from control_plane_kit.algebra import BlockSockets, RuntimeContext
+from control_plane_kit.lifecycle import ResourceLifecycle
 from control_plane_kit.topology.graph import Endpoint, EndpointAddress, LiteralAddress
 from control_plane_kit.types import EndpointScope, Protocol, RuntimeKind
 
@@ -16,6 +17,7 @@ class MaterializedNode:
     kind: str
     endpoints: dict[str, Endpoint]
     metadata: dict[str, object] = field(default_factory=dict)
+    lifecycle: ResourceLifecycle = field(default_factory=ResourceLifecycle.owned_ephemeral)
 
 
 @dataclass(frozen=True)
@@ -26,6 +28,7 @@ class DockerImageImplementation:
     command: tuple[str, ...] = ()
     ports: dict[str, int] = field(default_factory=dict)
     environment: dict[str, str] = field(default_factory=dict)
+    lifecycle: ResourceLifecycle = field(default_factory=ResourceLifecycle.owned_ephemeral)
     kind: str = "docker-image"
 
     def materialize(self, block_id: str, sockets: BlockSockets, runtime: RuntimeContext) -> MaterializedNode:
@@ -49,6 +52,7 @@ class DockerImageImplementation:
                 "command": list(self.command),
                 "environment": dict(self.environment),
             },
+            lifecycle=self.lifecycle,
         )
 
 
@@ -61,6 +65,7 @@ class LocalSourceImplementation:
     ports: dict[str, int] = field(default_factory=dict)
     build_command: tuple[str, ...] = ()
     kind: str = "local-source"
+    lifecycle: ResourceLifecycle = field(default_factory=ResourceLifecycle.owned_ephemeral)
 
     def materialize(self, block_id: str, sockets: BlockSockets, runtime: RuntimeContext) -> MaterializedNode:
         endpoints: dict[str, Endpoint] = {}
@@ -80,6 +85,7 @@ class LocalSourceImplementation:
                 "build_command": list(self.build_command),
                 "run_command": list(self.run_command),
             },
+            lifecycle=self.lifecycle,
         )
 
 
@@ -100,7 +106,7 @@ class ExternalHttpImplementation:
                     LiteralAddress(self.url), Protocol.HTTP, EndpointScope.PUBLIC
                 )
             },
-            metadata={"owned": False},
+            lifecycle=ResourceLifecycle.external(),
         )
 
 
@@ -121,7 +127,7 @@ class ExternalTcpImplementation:
                     LiteralAddress(self.address), Protocol.TCP, EndpointScope.PUBLIC
                 )
             },
-            metadata={"owned": False},
+            lifecycle=ResourceLifecycle.external(),
         )
 
 
@@ -142,7 +148,7 @@ class ExternalPostgresImplementation:
                     self.address, Protocol.POSTGRES, EndpointScope.PRIVATE
                 )
             },
-            metadata={"owned": False},
+            lifecycle=ResourceLifecycle.external(),
         )
 
 
@@ -155,6 +161,7 @@ class DockerPostgresImplementation:
     provider_socket: str = "internal"
     port: int = 5432
     image: str = "postgres:16-alpine"
+    data_resource_id: str = "postgres-data"
     kind: str = "docker-postgres"
 
     def materialize(self, block_id: str, sockets: BlockSockets, runtime: RuntimeContext) -> MaterializedNode:
@@ -174,6 +181,9 @@ class DockerPostgresImplementation:
                     "POSTGRES_HOST_AUTH_METHOD": "trust",
                 },
             },
+            lifecycle=ResourceLifecycle.owned_with_retained_data(
+                self.data_resource_id
+            ),
         )
 
 

@@ -128,6 +128,14 @@ def _diff_runtimes(
                     MetadataValue(after.metadata),
                 )
             )
+        if before.lifecycle != after.lifecycle:
+            changes.append(
+                ModifiedChange(
+                    FieldSubject(subject, StructuralField.RESOURCE_LIFECYCLE),
+                    MetadataValue(before.lifecycle.descriptor()),
+                    MetadataValue(after.lifecycle.descriptor()),
+                )
+            )
 
 
 def _diff_nodes(
@@ -208,6 +216,14 @@ def _diff_nodes(
                     FieldSubject(subject, StructuralField.NODE_METADATA),
                     MetadataValue(before.metadata),
                     MetadataValue(after.metadata),
+                )
+            )
+        if before.lifecycle != after.lifecycle:
+            changes.append(
+                ModifiedChange(
+                    FieldSubject(subject, StructuralField.RESOURCE_LIFECYCLE),
+                    MetadataValue(before.lifecycle.descriptor()),
+                    MetadataValue(after.lifecycle.descriptor()),
                 )
             )
 

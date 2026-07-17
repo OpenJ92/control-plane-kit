@@ -14,6 +14,8 @@ from control_plane_kit import (
     ModifiedChange,
     NodeSubject,
     ReconcileNode,
+    RemoveNodeResource,
+    RemoveRuntimeResource,
     RemovedChange,
     RemoveSocketConnection,
     ReviewChange,
@@ -136,6 +138,16 @@ class ActivityPlanCompilerTests(unittest.TestCase):
         runtime_stop = next(
             activity for activity in plan.activities if isinstance(activity.operation, StopRuntime)
         )
+        node_removals = {
+            activity.operation.target.node_id: activity
+            for activity in plan.activities
+            if isinstance(activity.operation, RemoveNodeResource)
+        }
+        runtime_remove = next(
+            activity
+            for activity in plan.activities
+            if isinstance(activity.operation, RemoveRuntimeResource)
+        )
         graph = populated.graph
         for node_id, activity in stops.items():
             expected = {
@@ -147,12 +159,22 @@ class ActivityPlanCompilerTests(unittest.TestCase):
                 {dependency.predecessor for dependency in activity.dependencies},
                 expected,
             )
+            self.assertEqual(
+                {dependency.predecessor for dependency in node_removals[node_id].dependencies},
+                {activity.activity_id},
+            )
         self.assertEqual(
             {dependency.predecessor for dependency in runtime_stop.dependencies},
-            {activity.activity_id for activity in stops.values()},
+            {activity.activity_id for activity in node_removals.values()},
         )
-        self.assertEqual(runtime_stop.risk, RiskLevel.CRITICAL)
-        self.assertEqual(runtime_stop.impact, ActivityImpact.DESTRUCTIVE)
+        self.assertEqual(
+            {dependency.predecessor for dependency in runtime_remove.dependencies},
+            {runtime_stop.activity_id},
+        )
+        self.assertEqual(runtime_stop.risk, RiskLevel.HIGH)
+        self.assertEqual(runtime_stop.impact, ActivityImpact.DISRUPTIVE)
+        self.assertEqual(runtime_remove.risk, RiskLevel.HIGH)
+        self.assertEqual(runtime_remove.impact, ActivityImpact.DESTRUCTIVE)
 
     def test_router_change_compiles_to_typed_switch_and_is_deterministic(self):
         current = validate_graph(compile_recipe(router_recipe("api-v1")))

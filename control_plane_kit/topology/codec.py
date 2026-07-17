@@ -12,6 +12,12 @@ from control_plane_kit.algebra import (
     RequirementSocket,
 )
 from control_plane_kit.capabilities import CapabilityName
+from control_plane_kit.lifecycle import (
+    DataResourceSpec,
+    ResourceLifecycle,
+    ResourceOwnership,
+    ResourcePersistence,
+)
 from control_plane_kit.topology.graph import (
     DeploymentGraph,
     Edge,
@@ -173,6 +179,7 @@ class GraphDescriptorCodec:
             kind=kind,
             children=tuple(str(child) for child in _list(descriptor.get("children", []))),
             metadata=_string_mapping(descriptor.get("metadata", {}), "runtime.metadata"),
+            lifecycle=_lifecycle(descriptor.get("lifecycle"), "runtime.lifecycle"),
         )
 
     def _decode_node(self, node_id: str, descriptor: Mapping[str, object]) -> Node:
@@ -231,6 +238,7 @@ class GraphDescriptorCodec:
             endpoints=endpoints,
             environment=_string_mapping(descriptor.get("environment", {}), "node.environment"),
             metadata=_object_mapping(descriptor.get("metadata", {}), "node.metadata"),
+            lifecycle=_lifecycle(descriptor.get("lifecycle"), "node.lifecycle"),
         )
 
     def _decode_edge(self, edge_id: str, descriptor: Mapping[str, object]) -> Edge:
@@ -357,6 +365,26 @@ def _endpoint_scope(value: object) -> EndpointScope:
         return EndpointScope(str(descriptor.get("scope", EndpointScope.PRIVATE.value)))
     except ValueError as error:
         raise UnknownGraphVariant(f"unknown endpoint scope: {error}") from error
+
+
+def _lifecycle(value: object, path: str) -> ResourceLifecycle:
+    descriptor = _mapping(value, path)
+    try:
+        ownership = ResourceOwnership(_text(descriptor, "ownership"))
+        compute = ResourcePersistence(_text(descriptor, "compute"))
+        data = tuple(
+            DataResourceSpec(
+                _text(resource_descriptor, "resource_id"),
+                ResourcePersistence(_text(resource_descriptor, "persistence")),
+            )
+            for resource_descriptor in (
+                _mapping(resource, f"{path}.data")
+                for resource in _list(descriptor.get("data", []))
+            )
+        )
+    except ValueError as error:
+        raise UnknownGraphVariant(f"unknown resource lifecycle variant: {error}") from error
+    return ResourceLifecycle(ownership, compute, data)
 
 
 def _endpoint_address(value: object) -> LiteralAddress | SecretReferenceAddress:
