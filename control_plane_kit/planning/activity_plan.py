@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from enum import StrEnum
 from typing import TypeAlias
 
@@ -167,6 +167,52 @@ ActivityOperation: TypeAlias = (
 )
 
 
+class CompensationMaterialSource(StrEnum):
+    """Which immutable plan-pinned graph defines compensation material."""
+
+    BASE_GRAPH = "base-graph"
+    DESIRED_GRAPH = "desired-graph"
+
+
+class NonCompensatableReason(StrEnum):
+    """Closed reasons a completed operation has no safe automatic inverse."""
+
+    RESOURCE_REMOVAL = "resource-removal"
+    DATA_DESTRUCTION = "data-destruction"
+
+
+@dataclass(frozen=True)
+class Compensate:
+    """Pinned inverse operation and the graph from which to materialize it."""
+
+    operation: ActivityOperation
+    material_source: CompensationMaterialSource
+
+    def __post_init__(self) -> None:
+        _require_typed_operation(self.operation)
+        if not isinstance(self.material_source, CompensationMaterialSource):
+            raise TypeError("compensation source must be CompensationMaterialSource")
+
+
+@dataclass(frozen=True)
+class NoCompensationRequired:
+    """The forward activity has no external state requiring an inverse."""
+
+
+@dataclass(frozen=True)
+class NonCompensatable:
+    """The effect may complete, but automatic reversal would be unsafe."""
+
+    reason: NonCompensatableReason
+
+    def __post_init__(self) -> None:
+        if not isinstance(self.reason, NonCompensatableReason):
+            raise TypeError("non-compensatable reason must be closed")
+
+
+CompensationSpec: TypeAlias = Compensate | NoCompensationRequired | NonCompensatable
+
+
 class RiskLevel(StrEnum):
     INFORMATIONAL = "informational"
     LOW = "low"
@@ -188,6 +234,7 @@ class PlannedActivity:
     dependencies: tuple[ActivityDependency, ...] = ()
     risk: RiskLevel = RiskLevel.LOW
     impact: ActivityImpact = ActivityImpact.NON_DESTRUCTIVE
+    compensation: CompensationSpec = field(init=False)
 
     def __post_init__(self) -> None:
         if not isinstance(self.activity_id, ActivityId):
@@ -212,6 +259,11 @@ class PlannedActivity:
         if not isinstance(self.impact, ActivityImpact):
             raise TypeError("planned activity impact must be ActivityImpact")
         _require_typed_operation(self.operation)
+        object.__setattr__(
+            self,
+            "compensation",
+            compensation_for_operation(self.operation),
+        )
 
 
 class PlanViolationCode(StrEnum):
@@ -299,6 +351,48 @@ def _require_typed_operation(operation: object) -> None:
             return
         case _:
             raise TypeError("planned activity operation is not a closed activity variant")
+
+
+def compensation_for_operation(operation: ActivityOperation) -> CompensationSpec:
+    """Return the deterministic recovery meaning of one forward operation."""
+
+    match operation:
+        case StartNode(target=target):
+            return Compensate(StopNode(target), CompensationMaterialSource.DESIRED_GRAPH)
+        case StopNode(target=target):
+            return Compensate(StartNode(target), CompensationMaterialSource.BASE_GRAPH)
+        case StartRuntime(target=target):
+            return Compensate(StopRuntime(target), CompensationMaterialSource.DESIRED_GRAPH)
+        case StopRuntime(target=target):
+            return Compensate(StartRuntime(target), CompensationMaterialSource.BASE_GRAPH)
+        case AddSocketConnection(target=target):
+            return Compensate(
+                RemoveSocketConnection(target),
+                CompensationMaterialSource.DESIRED_GRAPH,
+            )
+        case RemoveSocketConnection(target=target):
+            return Compensate(
+                AddSocketConnection(target),
+                CompensationMaterialSource.BASE_GRAPH,
+            )
+        case SwitchSocketConnection(target=target):
+            return Compensate(
+                SwitchSocketConnection(target),
+                CompensationMaterialSource.BASE_GRAPH,
+            )
+        case ReconcileNode(target=target):
+            return Compensate(ReconcileNode(target), CompensationMaterialSource.BASE_GRAPH)
+        case ReconcileRuntime(target=target):
+            return Compensate(
+                ReconcileRuntime(target),
+                CompensationMaterialSource.BASE_GRAPH,
+            )
+        case WaitForHealthy() | ReviewChange():
+            return NoCompensationRequired()
+        case RemoveNodeResource() | RemoveRuntimeResource():
+            return NonCompensatable(NonCompensatableReason.RESOURCE_REMOVAL)
+        case DestroyDataResource():
+            return NonCompensatable(NonCompensatableReason.DATA_DESTRUCTION)
 
 
 def _validate_composition(
