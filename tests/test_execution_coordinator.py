@@ -5,6 +5,7 @@ from datetime import datetime, timedelta, timezone
 from itertools import count
 import json
 import os
+from threading import Event, Thread
 
 import psycopg
 
@@ -140,6 +141,20 @@ class InspectableFakeInterpreter:
             BoundedEvidence.from_mapping({"fake": "completed"}),
             observed,
         )
+
+
+@dataclass
+class BlockingFakeInterpreter(InspectableFakeInterpreter):
+    entered: Event = field(default_factory=Event)
+    release: Event = field(default_factory=Event)
+
+    def execute(self, request: EffectRequest) -> EffectSucceeded | EffectFailed:
+        if self.tracker.active != 0:
+            raise AssertionError("blocked effect entered while a UnitOfWork was active")
+        self.entered.set()
+        if not self.release.wait(timeout=5):
+            raise AssertionError("test did not release the blocked fake effect")
+        return super().execute(request)
 
 
 class ExecutionCoordinatorTests(PostgresStoreTestCase):
@@ -346,6 +361,67 @@ class ExecutionCoordinatorTests(PostgresStoreTestCase):
         self.assertIs(resumed.status, CoordinatorStatus.FAILED)
         self.assertIs(resumed.run.status, ActivityRunStatus.FAILED)
         self.assertEqual(len(interpreter.requests), 1)
+
+    def test_success_result_commit_resumes_run_settlement_without_replay(self) -> None:
+        interpreter = InspectableFakeInterpreter(self.tracker)
+        with self.assertRaises(InjectedCoordinatorCrash):
+            self._coordinator(
+                interpreter,
+                crash=CoordinatorCheckpoint.AFTER_RESULT_COMMIT,
+            ).execute(self._command())
+
+        self.assertIs(
+            self.stores.execution.get_run("run-a").status,
+            ActivityRunStatus.RUNNING,
+        )
+        self.assertIs(self._events()[-1].kind, ActivityEventKind.STEP_SUCCEEDED)
+
+        resumed = self._coordinator(interpreter).execute(self._command())
+
+        self.assertIs(resumed.status, CoordinatorStatus.COMPLETED)
+        self.assertIs(resumed.run.status, ActivityRunStatus.SUCCEEDED)
+        self.assertEqual(len(interpreter.requests), 1)
+
+    def test_concurrent_observer_reports_in_flight_without_duplicate_effect(self) -> None:
+        interpreter = BlockingFakeInterpreter(self.tracker)
+        coordinator = self._coordinator(interpreter)
+        first_result: list[object] = []
+
+        def execute_first() -> None:
+            try:
+                first_result.append(coordinator.execute(self._command()))
+            except BaseException as error:
+                first_result.append(error)
+
+        worker = Thread(target=execute_first)
+        worker.start()
+        self.assertTrue(interpreter.entered.wait(timeout=5))
+
+        observer = self._coordinator(interpreter).execute(self._command())
+
+        self.assertIs(observer.status, CoordinatorStatus.IN_FLIGHT)
+        self.assertEqual(interpreter.requests, [])
+        self.assertNotIn(
+            ActivityEventKind.STEP_UNCERTAIN,
+            tuple(event.kind for event in self._events()),
+        )
+
+        interpreter.release.set()
+        worker.join(timeout=5)
+        self.assertFalse(worker.is_alive())
+        self.assertEqual(len(first_result), 1)
+        self.assertNotIsInstance(first_result[0], BaseException)
+        completed = first_result[0]
+        self.assertIs(completed.status, CoordinatorStatus.COMPLETED)
+        self.assertEqual(len(interpreter.requests), 1)
+        self.assertEqual(
+            tuple(event.kind for event in self._events())[-3:],
+            (
+                ActivityEventKind.STEP_STARTED,
+                ActivityEventKind.STEP_SUCCEEDED,
+                ActivityEventKind.RUN_SUCCEEDED,
+            ),
+        )
 
     def test_representative_scenario_executes_in_canonical_plan_order(self) -> None:
         plan = self._representative_plan()
