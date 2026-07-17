@@ -2,12 +2,13 @@
 
 from __future__ import annotations
 
+import ast
 import importlib.util
 from pathlib import Path
 import unittest
 
 import control_plane_kit
-from control_plane_kit import planning, saga, scheduling, topology
+from control_plane_kit import effects, planning, saga, scheduling, topology
 
 
 class PackageStructureTests(unittest.TestCase):
@@ -25,6 +26,8 @@ class PackageStructureTests(unittest.TestCase):
         self.assertIs(control_plane_kit.RecoveryCandidate, planning.RecoveryCandidate)
         self.assertIs(control_plane_kit.SagaStep, saga.SagaStep)
         self.assertIs(control_plane_kit.ExecutionSchedule, scheduling.ExecutionSchedule)
+        self.assertIs(control_plane_kit.EffectRequest, effects.EffectRequest)
+        self.assertIs(control_plane_kit.EffectInterpreter, effects.EffectInterpreter)
 
     def test_canonical_types_report_their_new_module_homes(self) -> None:
         self.assertEqual(topology.DeploymentGraph.__module__, "control_plane_kit.topology.graph")
@@ -36,6 +39,7 @@ class PackageStructureTests(unittest.TestCase):
             scheduling.ExecutionSchedule.__module__,
             "control_plane_kit.scheduling.schedule",
         )
+        self.assertEqual(effects.EffectRequest.__module__, "control_plane_kit.effects.values")
 
     def test_retired_flat_modules_are_not_importable(self) -> None:
         retired_modules = (
@@ -77,11 +81,21 @@ class PackageStructureTests(unittest.TestCase):
             "control_plane_kit.docker_runtime",
             "control_plane_kit.servers",
         )
+        effects_forbidden = (
+            "control_plane_kit.stores",
+            "control_plane_kit.workflows",
+            "control_plane_kit.docker_runtime",
+            "control_plane_kit.servers",
+            "httpx",
+            "requests",
+            "subprocess",
+        )
 
         self._assert_package_avoids(topology.__file__, topology_forbidden)
         self._assert_package_avoids(planning.__file__, planning_forbidden)
         self._assert_package_avoids(saga.__file__, saga_forbidden)
         self._assert_package_avoids(scheduling.__file__, scheduling_forbidden)
+        self._assert_package_avoids(effects.__file__, effects_forbidden)
 
     def _assert_package_avoids(
         self,
@@ -92,10 +106,32 @@ class PackageStructureTests(unittest.TestCase):
         package_dir = Path(package_file).parent
 
         for source_path in package_dir.glob("*.py"):
-            source = source_path.read_text(encoding="utf-8")
+            tree = ast.parse(source_path.read_text(encoding="utf-8"))
+            imported_modules = {
+                module
+                for node in ast.walk(tree)
+                for module in self._imported_modules(node)
+            }
             for forbidden_import in forbidden_imports:
                 with self.subTest(source=source_path.name, forbidden=forbidden_import):
-                    self.assertNotIn(forbidden_import, source)
+                    self.assertFalse(
+                        any(
+                            module == forbidden_import
+                            or module.startswith(f"{forbidden_import}.")
+                            for module in imported_modules
+                        ),
+                        f"{source_path.name} imports forbidden module {forbidden_import}",
+                    )
+
+    @staticmethod
+    def _imported_modules(node: ast.AST) -> tuple[str, ...]:
+        match node:
+            case ast.Import(names=names):
+                return tuple(alias.name for alias in names)
+            case ast.ImportFrom(module=module) if module is not None:
+                return (module,)
+            case _:
+                return ()
 
 
 if __name__ == "__main__":
