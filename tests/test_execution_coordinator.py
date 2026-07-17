@@ -122,6 +122,16 @@ class InspectableFakeInterpreter:
         if self.tracker.active != 0:
             raise AssertionError("effect executed while a UnitOfWork was active")
         self.requests.append(request)
+        observed = ()
+        if self.observations:
+            observed = (
+                EffectObservation(
+                    "runtime-a",
+                    ObservationKind.HEALTH,
+                    ObservationStatus.HEALTHY,
+                    BoundedEvidence.from_mapping({"probe": "fake-ready"}),
+                ),
+            )
         if self.remote_unsupported:
             return EffectUnsupported(request.identity, request.capability)
         if self.uncertain:
@@ -141,16 +151,7 @@ class InspectableFakeInterpreter:
                     "fake.effect-failed",
                     "The fake effect failed after an attempt.",
                 ),
-            )
-        observed = ()
-        if self.observations:
-            observed = (
-                EffectObservation(
-                    "runtime-a",
-                    ObservationKind.HEALTH,
-                    ObservationStatus.HEALTHY,
-                    BoundedEvidence.from_mapping({"probe": "fake-ready"}),
-                ),
+                observed,
             )
         return EffectSucceeded(
             request.identity,
@@ -293,6 +294,24 @@ class ExecutionCoordinatorTests(PostgresStoreTestCase):
                 ActivityEventKind.RUN_FAILED,
             ),
         )
+
+    def test_failed_effect_observations_commit_with_the_step_result(self) -> None:
+        interpreter = InspectableFakeInterpreter(
+            self.tracker,
+            fail=True,
+            observations=True,
+        )
+
+        result = self._coordinator(interpreter).execute(self._command())
+
+        self.assertIs(result.status, CoordinatorStatus.FAILED)
+        observation = self.stores.observed_state.latest(
+            "workspace-a",
+            "runtime-a",
+        )
+        self.assertIsNotNone(observation)
+        self.assertIs(observation.status, ObservationStatus.HEALTHY)
+        self.assertIs(self._events()[-2].kind, ActivityEventKind.STEP_FAILED)
 
     def test_unsupported_capability_is_distinct_and_never_attempted(self) -> None:
         interpreter = InspectableFakeInterpreter(

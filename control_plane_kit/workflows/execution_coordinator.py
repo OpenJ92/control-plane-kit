@@ -490,7 +490,7 @@ class ExecutionCoordinator:
                     failure=failure,
                 )
             )
-            if isinstance(result, EffectSucceeded):
+            if isinstance(result, (EffectSucceeded, EffectFailed)):
                 for observation in result.observations:
                     work.stores.observed_state.put(
                         ObservationRecord(
