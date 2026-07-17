@@ -281,12 +281,18 @@ class EffectFailed:
 
     identity: EffectIdentity
     failure: FailureEvidence
+    observations: tuple[EffectObservation, ...] = ()
 
     def __post_init__(self) -> None:
         if not isinstance(self.identity, EffectIdentity):
             raise TypeError("effect failure identity must be EffectIdentity")
         if not isinstance(self.failure, FailureEvidence):
             raise TypeError("effect failure must carry FailureEvidence")
+        if not all(
+            isinstance(value, EffectObservation)
+            for value in self.observations
+        ):
+            raise TypeError("effect failure observations must be typed")
 
 
 @dataclass(frozen=True)

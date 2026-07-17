@@ -95,12 +95,16 @@ TRANSPORT_POLICY = TransportOwnershipPolicy(
         TransportOwner("subprocess", ("control_plane_kit.docker_runtime",)),
         TransportOwner(
             "httpx",
-            ("control_plane_kit.adapters.control_http.client", "control_plane_kit.cli"),
+            (
+                "control_plane_kit.adapters.control_http.client",
+                "control_plane_kit.adapters.probes.clients",
+                "control_plane_kit.cli",
+            ),
         ),
         TransportOwner("requests", ("control_plane_kit.cli",)),
         TransportOwner("aiohttp", ()),
         TransportOwner("http.client", ()),
-        TransportOwner("socket", ()),
+        TransportOwner("socket", ("control_plane_kit.adapters.probes.clients",)),
         TransportOwner("urllib3", ()),
         TransportOwner("urllib.request", ("control_plane_kit.cli",)),
     )

@@ -24,6 +24,9 @@ from control_plane_kit.effects import (
     MaterializedEffectRequest,
     NodeMaterial,
     ObservationKind,
+    ProbeObservation,
+    ProbeOutcome,
+    ProcessProbeIntent,
     RuntimeMaterial,
     SecretReferenceMaterialValue,
 )
@@ -963,6 +966,52 @@ class DockerEffectInterpreter:
             )
 
 
+@dataclass(frozen=True)
+class DockerProcessProbeAdapter:
+    """Inspect the exact graph-owned Docker process without mutating it."""
+
+    project_name: str = "control-plane-kit"
+    client: DockerClient = field(default_factory=DockerCliClient)
+
+    def observe(
+        self,
+        intent: ProcessProbeIntent,
+        request: MaterializedEffectRequest,
+        *,
+        timeout_seconds: float,
+    ) -> ProbeObservation | None:
+        if not isinstance(request.material, NodeMaterial):
+            raise TypeError("Docker process probe requires node material")
+        if request.material.runtime.kind is not RuntimeKind.DOCKER:
+            return None
+        try:
+            running = inspect_docker_node_process(
+                request,
+                self.client,
+                project_name=self.project_name,
+                timeout_seconds=max(1, int(timeout_seconds)),
+            )
+        except DockerOwnershipConflict:
+            return ProbeObservation(
+                intent.subject_id,
+                intent.graph_id,
+                intent.kind,
+                ProbeOutcome.UNKNOWN,
+            )
+        except UnsupportedDockerRuntimeFeature:
+            return None
+        return ProbeObservation(
+            intent.subject_id,
+            intent.graph_id,
+            intent.kind,
+            (
+                ProbeOutcome.PROCESS_RUNNING
+                if running
+                else ProbeOutcome.PROCESS_STOPPED
+            ),
+        )
+
+
 def plan_docker_effect(
     request: MaterializedEffectRequest,
     *,
@@ -1606,6 +1655,49 @@ def _network_name(runtime_id: str, metadata: Mapping[str, str]) -> str:
 def _container_name(project_name: str, runtime_id: str, node_id: str) -> str:
     safe = f"{project_name}-{runtime_id}-{node_id}"
     return safe.replace("_", "-").replace(".", "-")
+
+
+def docker_container_name(project_name: str, runtime_id: str, node_id: str) -> str:
+    """Return the stable container identity used by Docker runtime effects."""
+
+    return _container_name(project_name, runtime_id, node_id)
+
+
+def inspect_docker_node_process(
+    request: MaterializedEffectRequest,
+    client: DockerClient,
+    *,
+    project_name: str = "control-plane-kit",
+    timeout_seconds: int = 30,
+) -> bool:
+    """Inspect the exact owned container pinned by a node effect request."""
+
+    if not isinstance(request.material, NodeMaterial):
+        raise UnsupportedDockerRuntimeFeature(
+            "Docker process inspection requires node material"
+        )
+    node = request.material
+    _require_docker(node.runtime)
+    name = _container_name(project_name, node.runtime.runtime_id, node.node_id)
+    inspected = client.inspect_container(name, timeout_seconds=timeout_seconds)
+    disposition = classify_docker_resource(inspected, _node_ownership(request, node))
+    if disposition is DockerResourceDisposition.ABSENT:
+        return False
+    if disposition is not DockerResourceDisposition.OWNED_COMPATIBLE:
+        raise DockerOwnershipConflict(disposition)
+    assert inspected is not None
+    return inspected.running
+
+
+def docker_node_ownership(request: MaterializedEffectRequest) -> DockerOwnership:
+    """Return expected ownership for the request's graph-pinned Docker node."""
+
+    if not isinstance(request.material, NodeMaterial):
+        raise UnsupportedDockerRuntimeFeature(
+            "Docker node ownership requires node material"
+        )
+    _require_docker(request.material.runtime)
+    return _node_ownership(request, request.material)
 
 
 def _volume_name(
