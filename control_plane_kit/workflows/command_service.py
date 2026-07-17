@@ -151,8 +151,15 @@ class OperationCommandService:
                 return _action_replay(locked_session, replay, fingerprint)
             _require_open(locked_session)
 
-            changed = replace(locked_session, status=status, closed_at=self._clock())
-            history.update_session(changed)
+            changed = history.transition_open_session(
+                command.session_id,
+                replacement=status,
+                closed_at=self._clock(),
+            )
+            if changed is None:
+                raise OperationSessionStateConflict(
+                    f"operation session {command.session_id!r} is no longer open"
+                )
             action = self._add_action(
                 history,
                 ordinal=ordinal,

@@ -104,6 +104,54 @@ class OperationPostgresPrimitiveTests(PostgresStoreTestCase):
                 )
             )
 
+    def test_terminal_transition_preserves_identity_and_rejects_stale_writes(self):
+        original = replace(
+            self.session(key="start-a", fingerprint="session-fingerprint"),
+            metadata={"purpose": "backend swap"},
+        )
+        self.stores.activity_history.add_session(original)
+
+        changed = self.stores.activity_history.transition_open_session(
+            "session-a",
+            replacement=OperationSessionStatus.CLOSED,
+            closed_at="2026-07-15T00:01:00Z",
+        )
+        stale = self.stores.activity_history.transition_open_session(
+            "session-a",
+            replacement=OperationSessionStatus.CANCELLED,
+            closed_at="2026-07-15T00:02:00Z",
+        )
+
+        self.assertIsNotNone(changed)
+        self.assertEqual(changed.session_id, original.session_id)
+        self.assertEqual(changed.workspace_id, original.workspace_id)
+        self.assertEqual(changed.actor_id, original.actor_id)
+        self.assertEqual(changed.title, original.title)
+        self.assertEqual(changed.created_at, original.created_at)
+        self.assertEqual(changed.metadata, original.metadata)
+        self.assertEqual(changed.idempotency_key, original.idempotency_key)
+        self.assertEqual(changed.intent_fingerprint, original.intent_fingerprint)
+        self.assertIs(changed.status, OperationSessionStatus.CLOSED)
+        self.assertEqual(changed.closed_at, "2026-07-15T00:01:00Z")
+        self.assertIsNone(stale)
+        self.assertEqual(
+            self.stores.activity_history.get_session("session-a"),
+            changed,
+        )
+
+        with self.assertRaises(ValueError):
+            self.stores.activity_history.transition_open_session(
+                "session-a",
+                replacement=OperationSessionStatus.OPEN,
+                closed_at="2026-07-15T00:03:00Z",
+            )
+        with self.assertRaises(ValueError):
+            self.stores.activity_history.transition_open_session(
+                "session-a",
+                replacement=OperationSessionStatus.CANCELLED,
+                closed_at="",
+            )
+
     def test_concurrent_action_writers_receive_distinct_ordinals(self):
         self.stores.activity_history.add_session(self.session())
         barrier = threading.Barrier(2)
