@@ -26,7 +26,7 @@ class EffectInterpreter(Protocol):
     @property
     def capabilities(self) -> frozenset[EffectCapability]: ...
 
-    def execute(self, request: MaterializedEffectRequest) -> EffectAttemptResult: ...
+    def execute(self, request: MaterializedEffectRequest) -> EffectResult: ...
 
 
 @dataclass(frozen=True)
@@ -49,15 +49,15 @@ def dispatch_effect(
     return dispatch_prepared_effect(prepared)
 
 
-def dispatch_prepared_effect(prepared: PreparedEffect) -> EffectAttemptResult:
+def dispatch_prepared_effect(prepared: PreparedEffect) -> EffectResult:
     """Attempt exactly one request after its capability decision is fixed."""
 
     if not isinstance(prepared, PreparedEffect):
         raise TypeError("prepared effect dispatch requires PreparedEffect")
     result = prepared.interpreter.execute(prepared.request)
-    if not isinstance(result, (EffectSucceeded, EffectFailed)):
+    if not isinstance(result, (EffectSucceeded, EffectFailed, EffectUnsupported)):
         raise EffectDispatchError(
-            "interpreter must return EffectSucceeded or EffectFailed"
+            "interpreter must return a typed effect result"
         )
     if result.identity != prepared.request.identity:
         raise EffectDispatchError(

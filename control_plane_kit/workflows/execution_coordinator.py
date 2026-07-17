@@ -235,7 +235,32 @@ class ExecutionCoordinator:
             self._raise_if(CoordinatorCheckpoint.AFTER_EFFECT)
             self._record_result(command, intent, result)
             self._raise_if(CoordinatorCheckpoint.AFTER_RESULT_COMMIT)
+            if isinstance(result, EffectUnsupported):
+                failed = self._fail_run(
+                    command,
+                    FailureEvidence(
+                        FailureCategory.TERMINAL,
+                        "effect.remote-unsupported-capability",
+                        "The live subject does not advertise this effect capability.",
+                        BoundedEvidence.from_mapping(
+                            {"capability": result.capability.value}
+                        ),
+                    ),
+                )
+                return ExecutionCoordinatorResult(
+                    CoordinatorStatus.UNSUPPORTED,
+                    failed,
+                    attempted,
+                    activity.activity_id.value,
+                )
             if isinstance(result, EffectFailed):
+                if result.failure.category is FailureCategory.UNCERTAIN:
+                    return ExecutionCoordinatorResult(
+                        CoordinatorStatus.UNCERTAIN,
+                        self._load_context(command).run,
+                        attempted,
+                        activity.activity_id.value,
+                    )
                 failed = self._fail_run(command, result.failure)
                 return ExecutionCoordinatorResult(
                     CoordinatorStatus.FAILED,
@@ -420,7 +445,7 @@ class ExecutionCoordinator:
         self,
         command: ExecuteActivityRun,
         intent: ActivityEventRecord,
-        result: EffectSucceeded | EffectFailed,
+        result: EffectSucceeded | EffectFailed | EffectUnsupported,
     ) -> ActivityEventRecord:
         occurred_at = self._clock()
         with self._unit_of_work_factory() as work:
@@ -437,9 +462,22 @@ class ExecutionCoordinator:
                     evidence = _result_evidence(intent, result.evidence)
                     failure = None
                 case EffectFailed():
-                    kind = ActivityEventKind.STEP_FAILED
+                    kind = (
+                        ActivityEventKind.STEP_UNCERTAIN
+                        if result.failure.category is FailureCategory.UNCERTAIN
+                        else ActivityEventKind.STEP_FAILED
+                    )
                     evidence = _result_evidence(intent, BoundedEvidence())
                     failure = result.failure
+                case EffectUnsupported():
+                    kind = ActivityEventKind.STEP_UNSUPPORTED
+                    evidence = _result_evidence(
+                        intent,
+                        BoundedEvidence.from_mapping(
+                            {"capability": result.capability.value}
+                        ),
+                    )
+                    failure = None
             event = work.stores.execution.add_event(
                 ActivityEventRecord(
                     event_id=self._id_factory(),
