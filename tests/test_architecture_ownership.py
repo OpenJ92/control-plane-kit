@@ -22,6 +22,7 @@ ENVIRONMENT_POLICY = EnvironmentAccessPolicy(
     owner_modules=(
         "control_plane_kit.cli",
         "control_plane_kit.contracts",
+        "control_plane_kit.docker_runtime",
     )
 )
 CURRENT_GRAPH_MUTATION_POLICY = CallOwnershipPolicy(
