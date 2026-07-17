@@ -7,21 +7,26 @@ from typing import Protocol as TypingProtocol, TypeAlias
 
 from control_plane_kit.capabilities import CapabilityName
 from control_plane_kit.lifecycle import EXTERNAL_RETAINED, OWNED_EPHEMERAL, ResourceLifecycle
-from control_plane_kit.types import Protocol, RuntimeKind
+from control_plane_kit.types import Protocol, RuntimeKind, SocketBinding
 
 
 @dataclass(frozen=True)
 class RequirementSocket:
-    """An env-backed requirement on a consumer node."""
+    """A provider requirement bound at startup or through runtime control."""
 
     name: str
     protocol: Protocol
     env_bindings: tuple[str, ...]
     required: bool = True
+    binding: SocketBinding = SocketBinding.ENVIRONMENT
 
     def __post_init__(self) -> None:
-        if not self.env_bindings:
+        if self.binding is SocketBinding.ENVIRONMENT and not self.env_bindings:
             raise ValueError(f"requirement socket {self.name!r} needs at least one env binding")
+        if self.binding is SocketBinding.RUNTIME_CONTROL and self.env_bindings:
+            raise ValueError(
+                f"runtime-controlled requirement socket {self.name!r} cannot declare env bindings"
+            )
 
 
 @dataclass(frozen=True)

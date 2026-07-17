@@ -436,8 +436,7 @@ def _implementation_material(node: Node, graph: DeploymentGraph) -> Implementati
         raise _malformed("command")
     static_environment = metadata.get("environment", {})
     if not isinstance(static_environment, Mapping) or not all(
-        isinstance(key, str) and isinstance(value, str)
-        for key, value in static_environment.items()
+        isinstance(key, str) for key in static_environment
     ):
         raise _malformed("environment")
     environment = {**dict(static_environment), **dict(node.environment)}
@@ -515,7 +514,7 @@ def _implementation_material(node: Node, graph: DeploymentGraph) -> Implementati
 
 
 def _environment_material(
-    values: Mapping[str, str],
+    values: Mapping[str, object],
     *,
     node: Node | None = None,
     graph: DeploymentGraph | None = None,
@@ -523,10 +522,17 @@ def _environment_material(
 ) -> tuple[EnvironmentBindingMaterial, ...]:
     bindings: list[EnvironmentBindingMaterial] = []
     for name, literal in sorted(values.items()):
+        explicit_reference = _secret_reference(literal)
         source = endpoint or _environment_endpoint(name, node, graph)
-        if source is not None and isinstance(source.address, SecretReferenceAddress):
+        if explicit_reference is not None:
+            value: EnvironmentMaterialValue = SecretReferenceMaterialValue(
+                explicit_reference
+            )
+        elif source is not None and isinstance(source.address, SecretReferenceAddress):
             value: EnvironmentMaterialValue = SecretReferenceMaterialValue(source.address.secret_ref)
         else:
+            if not isinstance(literal, str):
+                raise _malformed("environment")
             if any(marker in name.lower() for marker in _SECRET_MARKERS):
                 raise EffectMaterializationError(
                     MaterializationCode.SECRET_VALUE,
@@ -535,6 +541,17 @@ def _environment_material(
             value = LiteralMaterialValue(literal)
         bindings.append(EnvironmentBindingMaterial(name, value))
     return tuple(bindings)
+
+
+def _secret_reference(value: object) -> str | None:
+    if not isinstance(value, Mapping):
+        return None
+    if set(value) != {"kind", "reference_id"} or value.get("kind") != "secret-reference":
+        raise _malformed("environment")
+    reference_id = value.get("reference_id")
+    if not isinstance(reference_id, str) or not reference_id.strip():
+        raise _malformed("environment")
+    return reference_id
 
 
 def _environment_endpoint(name: str, node: Node | None, graph: DeploymentGraph | None) -> Endpoint | None:

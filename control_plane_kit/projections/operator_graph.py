@@ -23,6 +23,7 @@ class OperatorSocket:
     name: str
     protocol: str
     direction: str
+    binding: str | None = None
     required: bool | None = None
     env_bindings: tuple[str, ...] = ()
     connected: bool = False
@@ -36,6 +37,8 @@ class OperatorSocket:
         }
         if self.required is not None:
             payload["required"] = self.required
+        if self.binding is not None:
+            payload["binding"] = self.binding
         if self.env_bindings:
             payload["env_bindings"] = list(self.env_bindings)
         return payload
@@ -194,6 +197,7 @@ def _project_node(
                 name=socket.name,
                 protocol=socket.protocol.value,
                 direction="requirement",
+                binding=socket.binding.value,
                 required=socket.required,
                 env_bindings=tuple(socket.env_bindings),
                 connected=(node.node_id, socket.name) in connected_requirements,

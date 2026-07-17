@@ -1,6 +1,7 @@
 """Typed provider-neutral external effect language."""
 
 from control_plane_kit.effects.dispatch import (
+    CapabilityInterpreterRegistry,
     EffectDispatchError,
     EffectInterpreter,
     PreparedEffect,
@@ -85,6 +86,7 @@ __all__ = [
     "EffectAction",
     "EffectAttemptResult",
     "EffectCapability",
+    "CapabilityInterpreterRegistry",
     "EffectDispatchError",
     "EffectFailed",
     "EffectIdentity",

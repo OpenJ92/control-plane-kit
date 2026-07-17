@@ -28,6 +28,7 @@ from control_plane_kit import (
     ProviderSocket,
     RequirementSocket,
     RiskLevel,
+    SocketBinding,
     SocketConnection,
     compile_recipe,
 )
@@ -247,7 +248,29 @@ class InstanceReadServiceTests(PostgresStoreTestCase):
         self.assertEqual(router["providers"]["internal"]["protocol"], "http")
         self.assertEqual(
             router["requirements"]["active"],
-            {"protocol": "http", "env_bindings": ["ACTIVE_TARGET_URL"], "required": True},
+            {
+                "protocol": "http",
+                "binding": "environment",
+                "env_bindings": ["ACTIVE_TARGET_URL"],
+                "required": True,
+            },
+        )
+
+    def test_control_surface_distinguishes_runtime_control_from_environment_binding(self):
+        service = self._service_with_control_surface_descriptor(
+            _control_surface_graph(SocketBinding.RUNTIME_CONTROL).descriptor()
+        )
+
+        router = _node(service.control_surface("workspace-a").descriptor(), "api-router")
+
+        self.assertEqual(
+            router["requirements"]["active"],
+            {
+                "protocol": "http",
+                "binding": "runtime-control",
+                "env_bindings": [],
+                "required": True,
+            },
         )
 
     def test_control_surface_redacts_address_metadata_but_keeps_labels(self):
@@ -642,7 +665,9 @@ def _compiled_graph_named(name: str) -> DeploymentGraph:
     )
 
 
-def _control_surface_graph() -> DeploymentGraph:
+def _control_surface_graph(
+    binding: SocketBinding = SocketBinding.ENVIRONMENT,
+) -> DeploymentGraph:
     target = ProxyBlock(
         spec=BlockSpec("api-v1", display_name="API v1"),
         implementation=PlanOnlyImplementation(kind="plan-api", output_urls={"internal": "http://api-v1:8080"}),
@@ -662,7 +687,16 @@ def _control_surface_graph() -> DeploymentGraph:
         ),
         implementation=PlanOnlyImplementation(kind="plan-router", output_urls={"internal": "http://router:8080"}),
         sockets=BlockSockets(
-            requirements=(RequirementSocket("active", Protocol.HTTP, ("ACTIVE_TARGET_URL",)),),
+            requirements=(
+                RequirementSocket(
+                    "active",
+                    Protocol.HTTP,
+                    ("ACTIVE_TARGET_URL",)
+                    if binding is SocketBinding.ENVIRONMENT
+                    else (),
+                    binding=binding,
+                ),
+            ),
             providers=(ProviderSocket("internal", Protocol.HTTP),),
         ),
     )

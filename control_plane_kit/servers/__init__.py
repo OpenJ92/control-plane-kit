@@ -30,6 +30,12 @@ from control_plane_kit.servers.http_weighted_balancer import (
     http_weighted_load_balancer_command,
 )
 from control_plane_kit.servers.instance_read import create_instance_read_app
+from control_plane_kit.servers.managed_http_router import (
+    ManagedRouterEnvironment,
+    ManagedRouterSettings,
+    create_managed_http_router_app,
+    managed_http_router_block,
+)
 
 __all__ = [
     "BlockControlState",
@@ -48,8 +54,11 @@ __all__ = [
     "HttpResponse",
     "HttpWeightedLoadBalancerRuntime",
     "HttpWeightedLoadBalancerServer",
+    "ManagedRouterEnvironment",
+    "ManagedRouterSettings",
     "create_block_control_app",
     "create_instance_read_app",
+    "create_managed_http_router_app",
     "hello_command",
     "hello_server_block",
     "http_active_router_block",
@@ -62,4 +71,5 @@ __all__ = [
     "http_rate_limiter_command",
     "http_weighted_load_balancer_block",
     "http_weighted_load_balancer_command",
+    "managed_http_router_block",
 ]

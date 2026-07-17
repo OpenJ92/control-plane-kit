@@ -15,6 +15,8 @@ from control_plane_kit.effects import (
 from control_plane_kit.planning import ReviewChange, compile_activity_plan
 from control_plane_kit.topology import diff_graphs, validate_graph
 from examples.scenarios import planning_scenarios
+from examples.gate_d_live_smoke import router_recipe
+from control_plane_kit import compile_recipe
 
 
 class EffectMaterialTests(unittest.TestCase):
@@ -165,6 +167,40 @@ class EffectMaterialTests(unittest.TestCase):
     def test_secret_reference_material_is_opaque(self) -> None:
         value = SecretReferenceMaterialValue("secret://workspace/database")
         self.assertEqual(value.reference_id, "secret://workspace/database")
+
+    def test_implementation_secret_reference_survives_only_as_opaque_material(self) -> None:
+        desired = compile_recipe(router_recipe("hello-blue"))
+        plan = compile_activity_plan(
+            diff_graphs(validate_graph(type(desired)("empty")), validate_graph(desired))
+        )
+        activity = next(
+            value
+            for value in plan.activities
+            if type(value.operation).__name__ == "StartNode"
+            and value.operation.target.node_id == "router"
+        )
+        materialized = materialize_effect_request(
+            effect_request_for_activity(
+                activity,
+                run_id="run",
+                attempt=1,
+                idempotency_key="router-start:1",
+            ),
+            activity,
+            PinnedGraphSet("workspace", "plan", "base", "desired"),
+            base_graph_id="base",
+            base_graph=type(desired)("empty"),
+            desired_graph_id="desired",
+            desired_graph=desired,
+        )
+        control_token = next(
+            value
+            for value in materialized.material.implementation.environment
+            if value.name == "CPK_CONTROL_TOKEN"
+        )
+
+        self.assertIsInstance(control_token.value, SecretReferenceMaterialValue)
+        self.assertNotIn("gate-d-synthetic-control-token", materialized.canonical_json())
 
 
 if __name__ == "__main__":

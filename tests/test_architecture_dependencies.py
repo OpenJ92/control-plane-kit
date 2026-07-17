@@ -58,6 +58,7 @@ PACKAGE_RULES = (
     PackageDependencyRule(
         "servers",
         (
+            "adapters",
             "algebra",
             "capabilities",
             "contracts",
@@ -97,6 +98,7 @@ TRANSPORT_POLICY = TransportOwnershipPolicy(
             "httpx",
             (
                 "control_plane_kit.adapters.control_http.client",
+                "control_plane_kit.adapters.http_forwarding",
                 "control_plane_kit.adapters.probes.clients",
                 "control_plane_kit.cli",
             ),

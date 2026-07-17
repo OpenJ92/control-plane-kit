@@ -1653,7 +1653,8 @@ def _network_name(runtime_id: str, metadata: Mapping[str, str]) -> str:
 
 
 def _container_name(project_name: str, runtime_id: str, node_id: str) -> str:
-    safe = f"{project_name}-{runtime_id}-{node_id}"
+    prefix = f"{project_name}-" if project_name else ""
+    safe = f"{prefix}{runtime_id}-{node_id}"
     return safe.replace("_", "-").replace(".", "-")
 
 
@@ -1706,5 +1707,6 @@ def _volume_name(
     node_id: str,
     resource_id: str,
 ) -> str:
-    safe = f"{project_name}-{runtime_id}-{node_id}-{resource_id}"
+    prefix = f"{project_name}-" if project_name else ""
+    safe = f"{prefix}{runtime_id}-{node_id}-{resource_id}"
     return safe.replace("_", "-").replace(".", "-")
