@@ -108,6 +108,13 @@ from control_plane_kit.saga import (
     step,
     then,
 )
+from control_plane_kit.scheduling import (
+    BlockedActivity,
+    BlockReason,
+    ExecutionSchedule,
+    ScheduleEvidenceError,
+    derive_schedule,
+)
 from control_plane_kit.topology.compiler import compile_recipe
 from control_plane_kit.contracts import (
     ControlValueKind,
@@ -607,4 +614,12 @@ __all__ += [
     "reconstruct",
     "step",
     "then",
+]
+
+__all__ += [
+    "BlockedActivity",
+    "BlockReason",
+    "ExecutionSchedule",
+    "ScheduleEvidenceError",
+    "derive_schedule",
 ]
