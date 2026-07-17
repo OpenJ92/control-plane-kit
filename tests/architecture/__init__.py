@@ -3,6 +3,8 @@
 from tests.architecture.source import (
     AliasBinding,
     AstPolicy,
+    BooleanArgumentFact,
+    BooleanAssertionFact,
     CallFact,
     DecoratorFact,
     ExceptHandlerFact,
@@ -21,15 +23,24 @@ from tests.architecture.source import (
 from tests.architecture.policies import (
     CommitOwnershipPolicy,
     EnvironmentAccessPolicy,
+    AllowedSkip,
+    IntegrityEvidence,
+    IntegrityEvidenceKind,
     PackageDependencyPolicy,
     PackageDependencyRule,
     TransportOwner,
     TransportOwnershipPolicy,
+    TestIntegrityPolicy,
+    TestIntegrityReport,
+    audit_test_integrity,
 )
 
 __all__ = [
     "AliasBinding",
+    "AllowedSkip",
     "AstPolicy",
+    "BooleanArgumentFact",
+    "BooleanAssertionFact",
     "CallFact",
     "CommitOwnershipPolicy",
     "DecoratorFact",
@@ -38,6 +49,8 @@ __all__ = [
     "FunctionFact",
     "ImportFact",
     "ImportKind",
+    "IntegrityEvidence",
+    "IntegrityEvidenceKind",
     "PolicyFinding",
     "PackageDependencyPolicy",
     "PackageDependencyRule",
@@ -47,7 +60,10 @@ __all__ = [
     "SourceLocation",
     "TransportOwner",
     "TransportOwnershipPolicy",
+    "TestIntegrityPolicy",
+    "TestIntegrityReport",
     "analyze_file",
     "analyze_source",
+    "audit_test_integrity",
     "evaluate_policies",
 ]

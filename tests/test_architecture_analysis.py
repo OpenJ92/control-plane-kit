@@ -147,6 +147,26 @@ VALUE = "os.environ"
         self.assertTrue(facts.except_handlers[0].pass_only)
         self.assertEqual(facts.except_handlers[0].exception_name, "RuntimeError")
 
+    def test_boolean_arguments_assertions_and_empty_test_bodies_are_explicit(self) -> None:
+        facts = analyze_source(
+            "class Tests:\n"
+            "    def test_placeholder(self):\n"
+            "        self.assertTrue(True)\n"
+            "        assert True\n"
+            "    def test_empty(self):\n"
+            "        'documentation only'\n",
+            path="test_placeholder.py",
+            module="test_placeholder",
+        )
+
+        placeholder = next(
+            value for value in facts.calls if value.qualified_name == "self.assertTrue"
+        )
+        self.assertEqual(placeholder.boolean_arguments[0].value, True)
+        self.assertEqual(facts.boolean_assertions[0].value, True)
+        empty = next(value for value in facts.functions if value.qualified_name.endswith("test_empty"))
+        self.assertTrue(empty.empty_body)
+
     def test_bare_and_named_exception_handlers_have_total_ordering(self) -> None:
         facts = analyze_source(
             "try:\n"

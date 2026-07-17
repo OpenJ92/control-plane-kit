@@ -64,11 +64,21 @@ class ReferenceFact:
 
 
 @dataclass(frozen=True, order=True)
+class BooleanArgumentFact:
+    """One boolean literal argument without retaining arbitrary values."""
+
+    position: int
+    value: bool
+
+
+@dataclass(frozen=True, order=True)
 class CallFact:
     """A resolved call target when static qualification is possible."""
 
     qualified_name: str
     location: SourceLocation
+    boolean_arguments: tuple[BooleanArgumentFact, ...]
+    first_two_constants_equal: bool
 
 
 @dataclass(frozen=True, order=True)
@@ -77,6 +87,7 @@ class DecoratorFact:
 
     qualified_name: str
     location: SourceLocation
+    boolean_arguments: tuple[BooleanArgumentFact, ...]
 
 
 @dataclass(frozen=True, order=True)
@@ -87,6 +98,7 @@ class FunctionFact:
     decorators: tuple[DecoratorFact, ...]
     statement_count: int
     pass_only: bool
+    empty_body: bool
     location: SourceLocation
 
 
@@ -96,6 +108,14 @@ class ExceptHandlerFact:
 
     exception_name: str | None
     pass_only: bool
+    location: SourceLocation
+
+
+@dataclass(frozen=True, order=True)
+class BooleanAssertionFact:
+    """One literal boolean ``assert`` statement."""
+
+    value: bool
     location: SourceLocation
 
 
@@ -112,6 +132,7 @@ class SourceFacts:
     decorators: tuple[DecoratorFact, ...]
     functions: tuple[FunctionFact, ...]
     except_handlers: tuple[ExceptHandlerFact, ...]
+    boolean_assertions: tuple[BooleanAssertionFact, ...]
 
 
 @dataclass(frozen=True, order=True)
@@ -182,7 +203,12 @@ def analyze_source(source: str, *, path: str, module: str) -> SourceFacts:
     )
     calls = tuple(
         sorted(
-            CallFact(name, _location(path, node))
+            CallFact(
+                name,
+                _location(path, node),
+                _boolean_arguments(node),
+                _first_two_constants_equal(node),
+            )
             for node in ast.walk(tree)
             if isinstance(node, ast.Call)
             if (name := _qualified_name(node.func, alias_map)) is not None
@@ -218,6 +244,15 @@ def analyze_source(source: str, *, path: str, module: str) -> SourceFacts:
             key=_except_handler_sort_key,
         )
     )
+    assertions = tuple(
+        sorted(
+            BooleanAssertionFact(node.test.value, _location(path, node))
+            for node in ast.walk(tree)
+            if isinstance(node, ast.Assert)
+            and isinstance(node.test, ast.Constant)
+            and isinstance(node.test.value, bool)
+        )
+    )
     return SourceFacts(
         path=path,
         module=module,
@@ -228,6 +263,7 @@ def analyze_source(source: str, *, path: str, module: str) -> SourceFacts:
         decorators=decorators,
         functions=functions,
         except_handlers=handlers,
+        boolean_assertions=assertions,
     )
 
 
@@ -319,6 +355,7 @@ def _function_fact(
         ),
         statement_count=len(node.body),
         pass_only=len(node.body) == 1 and isinstance(node.body[0], ast.Pass),
+        empty_body=all(_is_non_behavioral_statement(value) for value in node.body),
         location=_location(path, node),
     )
 
@@ -331,7 +368,11 @@ def _decorator_fact(
     name = _qualified_name(_decorator_target(node), aliases)
     if name is None:
         raise SourceAnalysisError("decorator target cannot be represented")
-    return DecoratorFact(name, _location(path, node))
+    return DecoratorFact(
+        name,
+        _location(path, node),
+        _boolean_arguments(node) if isinstance(node, ast.Call) else (),
+    )
 
 
 def _decorator_target(node: ast.expr) -> ast.expr:
@@ -362,3 +403,29 @@ def _except_handler_sort_key(
     """Give optional exception names a total, deterministic ordering."""
 
     return (value.location, value.exception_name or "", value.pass_only)
+
+
+def _is_non_behavioral_statement(node: ast.stmt) -> bool:
+    return isinstance(node, ast.Pass) or (
+        isinstance(node, ast.Expr)
+        and isinstance(node.value, ast.Constant)
+        and (isinstance(node.value.value, str) or node.value.value is Ellipsis)
+    )
+
+
+def _first_two_constants_equal(node: ast.Call) -> bool:
+    return (
+        len(node.args) >= 2
+        and isinstance(node.args[0], ast.Constant)
+        and isinstance(node.args[1], ast.Constant)
+        and node.args[0].value == node.args[1].value
+    )
+
+
+def _boolean_arguments(node: ast.Call) -> tuple[BooleanArgumentFact, ...]:
+    return tuple(
+        BooleanArgumentFact(index, argument.value)
+        for index, argument in enumerate(node.args)
+        if isinstance(argument, ast.Constant)
+        and isinstance(argument.value, bool)
+    )
