@@ -127,9 +127,27 @@ brainstorm with the following ordered topology:
       -> #293 Gate D live Docker Hello/router smoke
         -> #294 mandatory Gate D milestone review
 
-#294 operator approval -> #223 pause/resume/failure/compensation
-    -> #224 execution scenario corpus
-      -> #225 live Docker router switch
+#294 operator approval -> #316 Gate E milestone
+  -> #223 recovery and compensation phase
+    -> #317 closed recovery decisions and authorization
+      -> #318 pinned typed compensation programs
+        -> #319 durable recovery events and Postgres projections
+          -> #328 recovery schema migration and journal hardening
+            -> #320 transactional recovery command services
+              -> #329 decision concurrency and expired-claim hardening
+                -> #321 durable compensation coordinator
+                  -> #330 compensation crash-window hardening
+                    -> #322 operator recovery projections
+                      -> #323 integrated recovery hardening
+  -> #224 execution acceptance phase
+    -> #324 execution scenario expectation algebra
+      -> #325 Postgres coordinator scenario runner
+        -> #331 scenario isolation and canonical-service hardening
+          -> #326 failure, uncertainty, and compensation corpus
+            -> #327 mandatory Gate E milestone review
+
+#323 -> #324
+#327 operator approval -> #225 live Docker router switch
         -> #226 security/data/operational hardening
           -> #227 closeout and Roadmap 0009 handoff
             -> #246 guarded instance lifecycle evidence
@@ -161,6 +179,14 @@ consume that value; they do not query Postgres, select a newer graph, or invent
 provider-specific topology lookup. Issues #293 and #294 add a visible adapter
 smoke and mandatory review stop without replacing the full Gate F acceptance
 scenario in #225.
+
+Gate E deliberately extends the canonical `ActivityPlan`, `ActivityEvent`,
+`ActivityRun`, saga, UnitOfWork, and coordinator models. It does not add a
+recovery journal, compensation store, mutable resume cursor, or second run
+state machine. Four focused hardening issues isolate proof obligations that
+would otherwise be hidden inside broad implementation issues: closed-schema
+migration (#328), one-winner recovery decisions and expired claims (#329),
+compensation crash windows (#330), and scenario-runner isolation (#331).
 
 The common law is:
 
