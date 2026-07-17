@@ -6,6 +6,7 @@ from dataclasses import dataclass, field
 from typing import Protocol as TypingProtocol, TypeAlias
 
 from control_plane_kit.capabilities import CapabilityName
+from control_plane_kit.lifecycle import EXTERNAL_RETAINED, OWNED_EPHEMERAL, ResourceLifecycle
 from control_plane_kit.types import Protocol, RuntimeKind
 
 
@@ -139,6 +140,7 @@ class RuntimeContext:
     kind: RuntimeKind
     children: tuple[DeploymentExpr, ...] = ()
     metadata: dict[str, str] = field(default_factory=dict)
+    lifecycle: ResourceLifecycle = OWNED_EPHEMERAL
 
 
 @dataclass(frozen=True)
@@ -154,6 +156,7 @@ class DockerRuntime(RuntimeContext):
     network_name: str = "control-plane-kit-network"
     children: tuple[DeploymentExpr, ...] = ()
     metadata: dict[str, str] = field(default_factory=dict)
+    lifecycle: ResourceLifecycle = OWNED_EPHEMERAL
 
 
 @dataclass(frozen=True)
@@ -164,6 +167,7 @@ class ExternalRuntime(RuntimeContext):
     kind: RuntimeKind = RuntimeKind.EXTERNAL
     children: tuple[DeploymentExpr, ...] = ()
     metadata: dict[str, str] = field(default_factory=dict)
+    lifecycle: ResourceLifecycle = EXTERNAL_RETAINED
 
 
 DeploymentExpr: TypeAlias = DeployBlock | RuntimeContext | SocketConnection

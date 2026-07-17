@@ -16,9 +16,12 @@ from control_plane_kit.planning import (
     ActivityId,
     ActivityOperation,
     AddSocketConnection,
+    DestroyDataResource,
     PlannedActivity,
     ReconcileNode,
     ReconcileRuntime,
+    RemoveNodeResource,
+    RemoveRuntimeResource,
     RemoveSocketConnection,
     ReviewChange,
     StartNode,
@@ -56,6 +59,7 @@ class EffectCapability(StrEnum):
     TARGET_DRAIN = "target-drain"
     OBSERVATION = "observation"
     OBSERVER_REGISTRATION = "observer-registration"
+    DATA_DESTRUCTION = "data-destruction"
 
 
 class ObservationKind(StrEnum):
@@ -333,10 +337,12 @@ def required_capability(action: EffectAction) -> EffectCapability:
     """Interpret a closed action as the capability required to attempt it."""
 
     match action:
-        case StartNode() | StopNode():
+        case StartNode() | StopNode() | RemoveNodeResource():
             return EffectCapability.NODE_LIFECYCLE
-        case StartRuntime() | StopRuntime():
+        case StartRuntime() | StopRuntime() | RemoveRuntimeResource():
             return EffectCapability.RUNTIME_LIFECYCLE
+        case DestroyDataResource():
+            return EffectCapability.DATA_DESTRUCTION
         case WaitForHealthy():
             return EffectCapability.HEALTH_PROBE
         case AddSocketConnection() | SwitchSocketConnection() | RemoveSocketConnection():

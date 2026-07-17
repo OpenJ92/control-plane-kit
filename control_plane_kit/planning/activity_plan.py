@@ -46,6 +46,16 @@ class RuntimeTarget:
 
 
 @dataclass(frozen=True)
+class DataResourceTarget:
+    node_id: str
+    resource_id: str
+
+    def __post_init__(self) -> None:
+        if not self.node_id.strip() or not self.resource_id.strip():
+            raise ValueError("data resource target identities must not be empty")
+
+
+@dataclass(frozen=True)
 class SocketConnectionTarget:
     edge_id: str
 
@@ -70,6 +80,11 @@ class StartNode:
 
 @dataclass(frozen=True)
 class StopNode:
+    target: NodeTarget
+
+
+@dataclass(frozen=True)
+class RemoveNodeResource:
     target: NodeTarget
 
 
@@ -113,6 +128,16 @@ class StopRuntime:
     target: RuntimeTarget
 
 
+@dataclass(frozen=True)
+class RemoveRuntimeResource:
+    target: RuntimeTarget
+
+
+@dataclass(frozen=True)
+class DestroyDataResource:
+    target: DataResourceTarget
+
+
 class ReviewReason(StrEnum):
     UNSUPPORTED_CHANGE = "unsupported-change"
     AMBIGUOUS_CHANGE = "ambiguous-change"
@@ -127,6 +152,7 @@ class ReviewChange:
 ActivityOperation: TypeAlias = (
     StartNode
     | StopNode
+    | RemoveNodeResource
     | WaitForHealthy
     | AddSocketConnection
     | SwitchSocketConnection
@@ -135,6 +161,8 @@ ActivityOperation: TypeAlias = (
     | ReconcileRuntime
     | StartRuntime
     | StopRuntime
+    | RemoveRuntimeResource
+    | DestroyDataResource
     | ReviewChange
 )
 
@@ -193,6 +221,7 @@ class PlanViolationCode(StrEnum):
     DUPLICATE_DEPENDENCY = "duplicate-dependency"
     DEPENDENCY_CYCLE = "dependency-cycle"
     DESTRUCTIVE_RISK = "destructive-risk"
+    DATA_DESTRUCTION_SAFETY = "data-destruction-safety"
     REVIEW_RISK = "review-risk"
 
 
@@ -244,6 +273,8 @@ def _require_typed_operation(operation: object) -> None:
             return
         case StopNode(target=NodeTarget()):
             return
+        case RemoveNodeResource(target=NodeTarget()):
+            return
         case WaitForHealthy(target=NodeTarget()):
             return
         case AddSocketConnection(target=SocketConnectionTarget()):
@@ -259,6 +290,10 @@ def _require_typed_operation(operation: object) -> None:
         case StartRuntime(target=RuntimeTarget()):
             return
         case StopRuntime(target=RuntimeTarget()):
+            return
+        case RemoveRuntimeResource(target=RuntimeTarget()):
+            return
+        case DestroyDataResource(target=DataResourceTarget()):
             return
         case ReviewChange(target=ChangeTarget(), reason=ReviewReason()):
             return
@@ -325,6 +360,20 @@ def _validate_composition(
                     (
                         f"destructive activity {activity.activity_id.value!r} "
                         "must be high or critical risk"
+                    ),
+                    activity.activity_id,
+                )
+            )
+        if isinstance(activity.operation, DestroyDataResource) and (
+            activity.risk is not RiskLevel.CRITICAL
+            or activity.impact is not ActivityImpact.DESTRUCTIVE
+        ):
+            violations.append(
+                PlanViolation(
+                    PlanViolationCode.DATA_DESTRUCTION_SAFETY,
+                    (
+                        f"data destruction activity {activity.activity_id.value!r} "
+                        "must be critical risk and destructive"
                     ),
                     activity.activity_id,
                 )

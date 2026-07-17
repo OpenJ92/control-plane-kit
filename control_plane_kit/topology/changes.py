@@ -46,6 +46,7 @@ class StructuralField(StrEnum):
     ENDPOINT = "endpoint"
     ENVIRONMENT = "environment"
     NODE_METADATA = "node-metadata"
+    RESOURCE_LIFECYCLE = "resource-lifecycle"
 
 
 DiffOwner: TypeAlias = GraphSubject | RuntimeSubject | NodeSubject
@@ -165,6 +166,7 @@ class RuntimeValue:
             "kind": self.runtime.kind.value,
             "children": list(self.runtime.children),
             "metadata": _redact_mapping(self.runtime.metadata),
+            "lifecycle": self.runtime.lifecycle.descriptor(),
         }
 
 
@@ -190,6 +192,7 @@ class NodeValue:
             },
             "environment": EnvironmentValue(self.node.environment).descriptor(),
             "metadata": _redact_mapping(self.node.metadata),
+            "lifecycle": self.node.lifecycle.descriptor(),
         }
 
 

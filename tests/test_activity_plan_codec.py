@@ -10,6 +10,8 @@ from control_plane_kit import (
     ActivityPlan,
     ActivityPlanDescriptorCodec,
     ChangeTarget,
+    DataResourceTarget,
+    DestroyDataResource,
     EdgeSubject,
     FieldSubject,
     GraphSubject,
@@ -29,6 +31,8 @@ from control_plane_kit import (
     AddSocketConnection,
     ReconcileNode,
     ReconcileRuntime,
+    RemoveNodeResource,
+    RemoveRuntimeResource,
     RemoveSocketConnection,
     RuntimeTarget,
     SocketConnectionTarget,
@@ -142,6 +146,7 @@ class ActivityPlanDescriptorCodecTests(unittest.TestCase):
         operations = (
             StartNode(NodeTarget("api")),
             StopNode(NodeTarget("api")),
+            RemoveNodeResource(NodeTarget("api")),
             WaitForHealthy(NodeTarget("api")),
             AddSocketConnection(SocketConnectionTarget("auth-api")),
             SwitchSocketConnection(SocketConnectionTarget("auth-api")),
@@ -150,6 +155,7 @@ class ActivityPlanDescriptorCodecTests(unittest.TestCase):
             ReconcileRuntime(RuntimeTarget("docker")),
             StartRuntime(RuntimeTarget("docker")),
             StopRuntime(RuntimeTarget("docker")),
+            RemoveRuntimeResource(RuntimeTarget("docker")),
         )
         for ordinal, operation in enumerate(operations):
             with self.subTest(operation=type(operation).__name__):
@@ -157,6 +163,18 @@ class ActivityPlanDescriptorCodecTests(unittest.TestCase):
                     (PlannedActivity(ActivityId(f"activity-{ordinal}"), operation),)
                 )
                 self.assertEqual(self.codec.decode(self.codec.encode(plan)), plan)
+
+        destruction = ActivityPlan(
+            (
+                PlannedActivity(
+                    ActivityId("destroy-data"),
+                    DestroyDataResource(DataResourceTarget("postgres", "postgres-data")),
+                    risk=RiskLevel.CRITICAL,
+                    impact=ActivityImpact.DESTRUCTIVE,
+                ),
+            )
+        )
+        self.assertEqual(self.codec.decode(self.codec.encode(destruction)), destruction)
 
     def test_every_review_subject_variant_round_trips(self):
         subjects = (

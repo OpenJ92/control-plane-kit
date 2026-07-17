@@ -7,6 +7,7 @@ from typing import Mapping
 from urllib.parse import urlsplit
 
 from control_plane_kit.algebra import BlockSockets, BlockSpec
+from control_plane_kit.lifecycle import OWNED_EPHEMERAL, ResourceLifecycle
 from control_plane_kit.types import BlockFamily, EndpointScope, Protocol, RuntimeKind
 
 
@@ -83,6 +84,7 @@ class Node:
     endpoints: Mapping[str, Endpoint] = field(default_factory=dict)
     environment: Mapping[str, str] = field(default_factory=dict)
     metadata: Mapping[str, object] = field(default_factory=dict)
+    lifecycle: ResourceLifecycle = OWNED_EPHEMERAL
 
     def requirement_socket(self, name: str):
         return self.sockets.requirement(name)
@@ -129,6 +131,7 @@ class Node:
                 for socket in self.sockets.providers
             },
             "metadata": dict(self.metadata),
+            "lifecycle": self.lifecycle.descriptor(),
         }
 
 
@@ -162,12 +165,14 @@ class RuntimeRecord:
     kind: RuntimeKind
     children: tuple[str, ...] = ()
     metadata: Mapping[str, str] = field(default_factory=dict)
+    lifecycle: ResourceLifecycle = OWNED_EPHEMERAL
 
     def descriptor(self) -> dict[str, object]:
         return {
             "kind": self.kind.value,
             "children": list(self.children),
             "metadata": dict(self.metadata),
+            "lifecycle": self.lifecycle.descriptor(),
         }
 
 
