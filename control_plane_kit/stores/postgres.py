@@ -457,7 +457,8 @@ BEGIN
         'request_admitted', 'request_claimed', 'run_opened', 'run_started', 'run_paused',
         'run_resumed', 'step_started', 'step_succeeded', 'step_failed',
         'step_uncertain', 'compensation_started', 'compensation_succeeded',
-        'compensation_failed', 'run_succeeded', 'run_failed', 'run_cancelled'
+        'compensation_failed', 'run_succeeded', 'run_failed', 'run_cancelled',
+        'current_graph_advanced'
       )) NOT VALID;
   END IF;
   IF NOT EXISTS (
@@ -518,7 +519,7 @@ ALTER TABLE cpk_activity_events
     'run_paused', 'run_resumed', 'step_started', 'step_succeeded',
     'step_failed', 'step_uncertain', 'compensation_started',
     'compensation_succeeded', 'compensation_failed', 'run_succeeded',
-    'run_failed', 'run_cancelled'
+    'run_failed', 'run_cancelled', 'current_graph_advanced'
   )) NOT VALID;
 
 CREATE UNIQUE INDEX IF NOT EXISTS cpk_execution_requests_active_plan
@@ -686,6 +687,36 @@ class PostgresWorkspaceStore:
             (graph_id, workspace_id),
         )
         return record
+
+    def compare_and_set_current_graph(
+        self,
+        workspace_id: str,
+        *,
+        expected_graph_id: str,
+        replacement_graph_id: str,
+    ) -> WorkspaceRecord | None:
+        """Advance a pointer only from the caller's expected graph."""
+
+        row = self._connection.execute(
+            """
+            UPDATE cpk_workspaces
+            SET current_graph_id = %s
+            WHERE workspace_id = %s AND current_graph_id = %s
+            RETURNING workspace_id, name, lifecycle, current_graph_id,
+                      desired_graph_id, metadata
+            """,
+            (replacement_graph_id, workspace_id, expected_graph_id),
+        ).fetchone()
+        if row is None:
+            return None
+        return WorkspaceRecord(
+            workspace_id=row[0],
+            name=row[1],
+            lifecycle=WorkspaceLifecycle(row[2]),
+            current_graph_id=row[3],
+            desired_graph_id=row[4],
+            metadata=row[5],
+        )
 
     def set_desired_graph(self, workspace_id: str, graph_id: str) -> WorkspaceRecord:
         record = replace(self.get(workspace_id), desired_graph_id=graph_id)

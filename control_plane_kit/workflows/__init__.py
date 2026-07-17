@@ -87,6 +87,17 @@ from control_plane_kit.workflows.run_lifecycle import (
     StartActivityRun,
     decide_run_transition,
 )
+from control_plane_kit.workflows.current_graph import (
+    AdvanceCurrentGraph,
+    CurrentGraphAdvancementCommandService,
+    CurrentGraphAdvancementConflict,
+    CurrentGraphAdvancementDenied,
+    CurrentGraphAdvancementError,
+    CurrentGraphAdvancementIdempotencyConflict,
+    CurrentGraphAdvancementIncomplete,
+    CurrentGraphAdvancementNotFound,
+    CurrentGraphAdvancementResult,
+)
 
 __all__ = [
     "ActivityPlanningCommandService",
@@ -163,4 +174,13 @@ __all__ = [
     "RunTransitionCommand",
     "StartActivityRun",
     "decide_run_transition",
+    "AdvanceCurrentGraph",
+    "CurrentGraphAdvancementCommandService",
+    "CurrentGraphAdvancementConflict",
+    "CurrentGraphAdvancementDenied",
+    "CurrentGraphAdvancementError",
+    "CurrentGraphAdvancementIdempotencyConflict",
+    "CurrentGraphAdvancementIncomplete",
+    "CurrentGraphAdvancementNotFound",
+    "CurrentGraphAdvancementResult",
 ]

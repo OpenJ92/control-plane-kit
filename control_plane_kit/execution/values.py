@@ -69,6 +69,7 @@ class ActivityEventKind(StrEnum):
     RUN_SUCCEEDED = "run_succeeded"
     RUN_FAILED = "run_failed"
     RUN_CANCELLED = "run_cancelled"
+    CURRENT_GRAPH_ADVANCED = "current_graph_advanced"
 
 
 class ObservationStatus(StrEnum):
