@@ -1,9 +1,14 @@
+from concurrent.futures import ThreadPoolExecutor
+from threading import Barrier
 from unittest import TestCase, main
 
 from control_plane_kit import (
     ConflictingContractMutation,
+    ContractCleanupUncertainty,
     ContractMutation,
+    ContractMutationInProgress,
     ContractPreparationError,
+    ContractPublicationConflict,
     ControlValueKind,
     EnvironmentContract,
     ControlVariableError,
@@ -280,7 +285,7 @@ class EnvironmentContractTests(TestCase):
         self.assertEqual(candidate.version, 0)
         self.assertEqual(candidate.changed, {})
 
-    def test_published_mutation_identity_cannot_accidentally_reexecute(self):
+    def test_published_mutation_identity_replays_without_reexecution(self):
         class ApiEnvironment(EnvironmentContract):
             storage_base_url = HttpVariable("storage_base_url")
 
@@ -293,10 +298,10 @@ class EnvironmentContractTests(TestCase):
             assignments={"storage_base_url": "https://storage-v2.internal"},
         )
 
-        env.apply_mutation(mutation)
+        first = env.apply_mutation(mutation)
+        replay = env.apply_mutation(mutation)
 
-        with self.assertRaises(StaleContractVersion):
-            env.apply_mutation(mutation)
+        self.assertIs(replay, first)
         self.assertEqual(env.version, 1)
 
     def test_mutation_and_candidate_descriptors_never_publish_values(self):
@@ -606,6 +611,7 @@ class DerivedResourceTests(TestCase):
                 "resource_name": "client-b",
                 "prepared_resources": ["client-a"],
                 "cleanup_failures": [],
+                "cleanup_uncertainties": [],
             },
         )
         self.assertNotIn("sensitive provider diagnostics", str(raised.exception))
@@ -645,6 +651,221 @@ class DerivedResourceTests(TestCase):
         evidence = f"{raised.exception} {raised.exception.descriptor()}"
         self.assertNotIn("https://storage-v2.internal", evidence)
         self.assertNotIn("build failed with secret", evidence)
+
+    def test_superseded_cleanup_failure_keeps_new_projection_and_replays_evidence(self):
+        builds: list[str] = []
+        disposals: list[str] = []
+
+        class ApiEnvironment(EnvironmentContract):
+            storage_base_url = HttpVariable("storage_base_url")
+
+        env = ApiEnvironment.from_mapping(
+            {"storage_base_url": "https://storage-v1.internal"}
+        )
+
+        def build(values):
+            value = f"client:{values.get('storage_base_url')}"
+            builds.append(value)
+            return value
+
+        def dispose(value):
+            disposals.append(value)
+            raise RuntimeError(f"provider leaked {value}")
+
+        env.derived(
+            "storage-client",
+            "storage_base_url",
+            build,
+            dispose=dispose,
+        )
+        mutation = ContractMutation(
+            "storage-cutover",
+            expected_version=0,
+            assignments={"storage_base_url": "https://storage-v2.internal"},
+        )
+
+        result = env.apply_mutation(mutation)
+        replay = env.apply_mutation(mutation)
+
+        self.assertIs(replay, result)
+        self.assertEqual(env.version, 1)
+        self.assertEqual(
+            env.get_derived("storage-client"),
+            "client:https://storage-v2.internal",
+        )
+        self.assertEqual(len(builds), 2)
+        self.assertEqual(disposals, ["client:https://storage-v1.internal"])
+        self.assertEqual(
+            result.cleanup_uncertainties,
+            (ContractCleanupUncertainty("storage-client"),),
+        )
+        evidence = str(result.descriptor())
+        self.assertNotIn("provider leaked", evidence)
+        self.assertNotIn("https://storage-v1.internal", evidence)
+
+    def test_competing_prepared_mutations_have_one_publication_winner(self):
+        class RouterState(RuntimeContract):
+            active_target = RuntimeValueVariable("active_target")
+
+        state = RouterState.from_mapping({"active_target": "v1"})
+        first = ContractMutation(
+            "route-v2",
+            expected_version=0,
+            assignments={"active_target": "v2"},
+        )
+        second = ContractMutation(
+            "route-v3",
+            expected_version=0,
+            assignments={"active_target": "v3"},
+        )
+        state.prepare_mutation(first)
+        state.prepare_mutation(second)
+        barrier = Barrier(2)
+
+        def publish(mutation):
+            barrier.wait()
+            try:
+                return state.apply_mutation(mutation)
+            except ContractPublicationConflict as error:
+                return error
+
+        with ThreadPoolExecutor(max_workers=2) as executor:
+            outcomes = tuple(executor.map(publish, (first, second)))
+
+        results = [value for value in outcomes if not isinstance(value, Exception)]
+        conflicts = [
+            value
+            for value in outcomes
+            if isinstance(value, ContractPublicationConflict)
+        ]
+        self.assertEqual(len(results), 1)
+        self.assertEqual(len(conflicts), 1)
+        self.assertEqual(state.version, 1)
+        self.assertIn(state.get("active_target"), {"v2", "v3"})
+
+    def test_concurrent_identical_mutations_build_dispose_and_publish_once(self):
+        builds: list[str] = []
+        disposals: list[str] = []
+
+        class RouterState(RuntimeContract):
+            active_target = RuntimeValueVariable("active_target")
+
+        state = RouterState.from_mapping({"active_target": "v1"})
+
+        def build(values):
+            value = f"client:{values.get('active_target')}"
+            builds.append(value)
+            return value
+
+        state.derived(
+            "client",
+            "active_target",
+            build,
+            dispose=disposals.append,
+        )
+        mutation = ContractMutation(
+            "route-v2",
+            expected_version=0,
+            assignments={"active_target": "v2"},
+        )
+        barrier = Barrier(2)
+
+        def publish():
+            barrier.wait()
+            return state.apply_mutation(mutation)
+
+        with ThreadPoolExecutor(max_workers=2) as executor:
+            outcomes = tuple(executor.map(lambda _: publish(), range(2)))
+
+        self.assertIs(outcomes[0], outcomes[1])
+        self.assertEqual(builds, ["client:v1", "client:v2"])
+        self.assertEqual(disposals, ["client:v1"])
+        self.assertEqual(state.version, 1)
+
+    def test_completed_identity_rejects_changed_intent_without_retaining_values(self):
+        class RouterState(RuntimeContract):
+            active_target = RuntimeValueVariable("active_target")
+
+        state = RouterState.from_mapping({"active_target": "v1"})
+        state.apply_mutation(
+            ContractMutation(
+                "route-change",
+                expected_version=0,
+                assignments={"active_target": "private-v2"},
+            )
+        )
+
+        with self.assertRaises(ConflictingContractMutation) as raised:
+            state.apply_mutation(
+                ContractMutation(
+                    "route-change",
+                    expected_version=0,
+                    assignments={"active_target": "private-v3"},
+                )
+            )
+
+        evidence = f"{raised.exception} {state.descriptor()}"
+        self.assertNotIn("private-v2", evidence)
+        self.assertNotIn("private-v3", evidence)
+
+    def test_retained_or_unowned_superseded_resources_are_never_disposed(self):
+        disposed: list[str] = []
+
+        class RouterState(RuntimeContract):
+            active_target = RuntimeValueVariable("active_target")
+
+        state = RouterState.from_mapping({"active_target": "v1"})
+        state.derived(
+            "retained-client",
+            "active_target",
+            lambda values: f"retained:{values.get('active_target')}",
+            dispose=disposed.append,
+            retained=True,
+        )
+        state.derived(
+            "external-client",
+            "active_target",
+            lambda values: f"external:{values.get('active_target')}",
+            dispose=disposed.append,
+            owned=False,
+        )
+
+        result = state.apply_patch({"active_target": "v2"})
+
+        self.assertEqual(disposed, [])
+        self.assertEqual(
+            result.preserved_resources,
+            ("external-client", "retained-client"),
+        )
+        descriptor = state.descriptor()["derived_resources"]
+        self.assertFalse(descriptor["external-client"]["owned"])
+        self.assertTrue(descriptor["retained-client"]["retained"])
+
+    def test_candidate_builder_cannot_publish_nested_contract_mutation(self):
+        class RouterState(RuntimeContract):
+            active_target = RuntimeValueVariable("active_target")
+
+        state = RouterState.from_mapping({"active_target": "v1"})
+
+        def nested_mutation(values):
+            target = values.get("active_target")
+            if target == "v2":
+                state.apply_patch({"active_target": "nested"})
+            return f"client:{target}"
+
+        state.derived(
+            "client",
+            "active_target",
+            nested_mutation,
+        )
+
+        with self.assertRaises(ContractPreparationError) as raised:
+            state.apply_patch({"active_target": "v2"})
+
+        self.assertIsInstance(raised.exception.__cause__, ContractMutationInProgress)
+        self.assertEqual(state.version, 0)
+        self.assertEqual(state.get("active_target"), "v1")
+        self.assertEqual(state.get_derived("client"), "client:v1")
 
 
 class RuntimeContractTests(TestCase):
