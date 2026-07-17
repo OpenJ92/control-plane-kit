@@ -29,6 +29,8 @@ from control_plane_kit.planning import (
     StartRuntime,
     StopNode,
     StopRuntime,
+    RemoveNodeResource,
+    RemoveRuntimeResource,
 )
 
 
@@ -38,6 +40,7 @@ class NarrowClient:
     calls: list[tuple] = field(default_factory=list)
     networks: dict[str, object] = field(default_factory=dict)
     containers: dict[str, object] = field(default_factory=dict)
+    volumes: dict[str, object] = field(default_factory=dict)
 
     def _record(self, value):
         if self.timeout:
@@ -64,10 +67,10 @@ class NarrowClient:
     def inspect_container(self, name, *, timeout_seconds=30):
         return self.containers.get(name)
 
-    def run_container(self, *, name, image, network, environment, command, labels, timeout_seconds=30):
+    def run_container(self, *, name, image, network, environment, command, labels, mounts=None, timeout_seconds=30):
         from control_plane_kit.docker_runtime import DockerResourceInspection, DockerResourceKind
 
-        self._record(("start-container", name, image, network, dict(environment), tuple(command), timeout_seconds))
+        self._record(("start-container", name, image, network, dict(environment), tuple(command), dict(mounts or {}), timeout_seconds))
         self.containers[name] = DockerResourceInspection(
             DockerResourceKind.CONTAINER, "container-id", name, True, image, dict(labels)
         )
@@ -77,6 +80,26 @@ class NarrowClient:
 
     def stop_owned_container(self, name, ownership, *, timeout_seconds=30):
         self._record(("stop-container", name, timeout_seconds))
+
+    def remove_owned_container(self, name, ownership, *, timeout_seconds=30):
+        self._record(("remove-container", name, timeout_seconds))
+
+    def remove_owned_network(self, name, ownership, *, timeout_seconds=30):
+        self._record(("remove-network", name, timeout_seconds))
+
+    def inspect_volume(self, name, *, timeout_seconds=30):
+        return self.volumes.get(name)
+
+    def create_volume(self, name, labels, *, timeout_seconds=30):
+        from control_plane_kit.docker_runtime import DockerResourceInspection, DockerResourceKind
+
+        self._record(("create-volume", name, timeout_seconds))
+        self.volumes[name] = DockerResourceInspection(
+            DockerResourceKind.VOLUME, name, name, False, None, dict(labels)
+        )
+
+    def remove_owned_volume(self, name, ownership, *, timeout_seconds=30):
+        self._record(("remove-volume", name, timeout_seconds))
 
     def stop_container(self, name, *, timeout_seconds=30):
         self._record(("stop-container", name, timeout_seconds))
@@ -110,6 +133,25 @@ class DockerEffectTests(unittest.TestCase):
         self.assertIn("API_TOKEN", args)
         self.assertEqual(kwargs["environment"]["API_TOKEN"], "never-in-argv")
 
+    def test_cli_distinguishes_absence_from_failed_inspection(self) -> None:
+        class RecordingCli(DockerCliClient):
+            failure: bool = False
+
+            def _capture(self, *args, **kwargs):
+                if self.failure:
+                    raise subprocess.CalledProcessError(1, args)
+                self.recorded = args
+                return subprocess.CompletedProcess(args, 0, stdout="")
+
+        client = RecordingCli()
+
+        self.assertIsNone(client.inspect_volume("missing"))
+        self.assertEqual(client.recorded[:2], ("volume", "ls"))
+
+        object.__setattr__(client, "failure", True)
+        with self.assertRaises(subprocess.CalledProcessError):
+            client.inspect_volume("unknown-because-docker-failed")
+
     def test_runtime_start_ensures_only_the_pinned_network(self) -> None:
         client = NarrowClient()
         result = DockerEffectInterpreter(client=client).execute(
@@ -140,14 +182,37 @@ class DockerEffectTests(unittest.TestCase):
         self.assertIsInstance(result, EffectSucceeded)
         self.assertEqual(client.calls, [("stop-container", "demo-docker-api", 30)])
 
-    def test_runtime_stop_is_unsupported_until_retention_policy_is_typed(self) -> None:
+    def test_runtime_stop_is_a_non_deleting_logical_barrier(self) -> None:
         client = NarrowClient()
         request = _request(StopRuntime(RuntimeTarget("docker")), _runtime(), graph_id="base")
 
         result = DockerEffectInterpreter(client=client).execute(request)
 
-        self.assertEqual(result, EffectUnsupported(request.identity, request.capability))
+        self.assertIsInstance(result, EffectSucceeded)
         self.assertEqual(client.calls, [])
+
+    def test_compute_removal_is_explicit_and_separate_from_stop(self) -> None:
+        client = NarrowClient()
+        node_result = DockerEffectInterpreter(project_name="demo", client=client).execute(
+            _request(RemoveNodeResource(NodeTarget("api")), _node(), graph_id="base")
+        )
+        runtime_result = DockerEffectInterpreter(project_name="demo", client=client).execute(
+            _request(
+                RemoveRuntimeResource(RuntimeTarget("docker")),
+                _runtime(),
+                graph_id="base",
+            )
+        )
+
+        self.assertIsInstance(node_result, EffectSucceeded)
+        self.assertIsInstance(runtime_result, EffectSucceeded)
+        self.assertEqual(
+            client.calls,
+            [
+                ("remove-container", "demo-docker-api", 30),
+                ("remove-network", "deployment-network", 30),
+            ],
+        )
 
     def test_timeout_is_uncertain_and_does_not_publish_command_output(self) -> None:
         client = NarrowClient(timeout=True)

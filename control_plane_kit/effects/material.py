@@ -96,6 +96,26 @@ class EnvironmentBindingMaterial:
     value: EnvironmentMaterialValue
 
 
+@dataclass(frozen=True, order=True)
+class DataMountMaterial:
+    """One named lifecycle resource attached at an implementation path."""
+
+    resource_id: str
+    target_path: str
+
+    def __post_init__(self) -> None:
+        if not self.resource_id.strip():
+            raise EffectMaterializationError(
+                MaterializationCode.MALFORMED_IMPLEMENTATION,
+                "data mount resource identity must not be empty",
+            )
+        if not self.target_path.startswith("/"):
+            raise EffectMaterializationError(
+                MaterializationCode.MALFORMED_IMPLEMENTATION,
+                "data mount target path must be absolute",
+            )
+
+
 @dataclass(frozen=True)
 class LiteralEndpointMaterial:
     value: str
@@ -126,6 +146,7 @@ class ImplementationMaterial:
     command: tuple[str, ...] = ()
     environment: tuple[EnvironmentBindingMaterial, ...] = ()
     database: str | None = None
+    data_mounts: tuple[DataMountMaterial, ...] = ()
 
 
 @dataclass(frozen=True)
@@ -386,12 +407,34 @@ def _implementation_material(node: Node, graph: DeploymentGraph) -> Implementati
     ):
         raise _malformed("environment")
     environment = {**dict(static_environment), **dict(node.environment)}
+    mounts_value = metadata.get("data_mounts", ())
+    if not isinstance(mounts_value, (list, tuple)):
+        raise _malformed("data_mounts")
+    mounts: list[DataMountMaterial] = []
+    for value in mounts_value:
+        if not isinstance(value, Mapping):
+            raise _malformed("data_mounts")
+        resource_id = value.get("resource_id")
+        target_path = value.get("target_path")
+        if not isinstance(resource_id, str) or not isinstance(target_path, str):
+            raise _malformed("data_mounts")
+        try:
+            node.lifecycle.data_resource(resource_id)
+        except KeyError as error:
+            raise EffectMaterializationError(
+                MaterializationCode.MALFORMED_IMPLEMENTATION,
+                "data mount references an undeclared lifecycle resource",
+            ) from error
+        mounts.append(DataMountMaterial(resource_id, target_path))
+    if len({mount.resource_id for mount in mounts}) != len(mounts):
+        raise _malformed("data_mounts")
     return ImplementationMaterial(
         node.kind,
         image,
         tuple(command_value),
         _environment_material(environment, node=node, graph=graph),
         database,
+        tuple(sorted(mounts)),
     )
 
 
@@ -500,6 +543,12 @@ def _descriptor(value: object) -> object:
                 "command": list(value.command),
                 "environment": [_descriptor(item) for item in value.environment],
                 "database": value.database,
+                "data_mounts": [_descriptor(item) for item in value.data_mounts],
+            }
+        case DataMountMaterial():
+            return {
+                "resource_id": value.resource_id,
+                "target_path": value.target_path,
             }
         case SocketConnectionMaterial():
             return {

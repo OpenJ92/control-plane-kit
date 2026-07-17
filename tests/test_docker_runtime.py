@@ -119,7 +119,7 @@ class DockerRuntimeExecutorTests(TestCase):
         self.assertEqual(state.node("orders-api").metadata["container_name"], "demo-docker-orders-api")
         self.assertFalse(state.node("postgres").healthy)
 
-    def test_down_removes_owned_containers_and_network_by_default(self):
+    def test_down_stops_without_removing_owned_resources(self):
         graph = compile_recipe(app_recipe())
         client = FakeDockerClient()
         interpreter = DockerRuntimeInterpreter(project_name="demo", client=client)
@@ -129,9 +129,9 @@ class DockerRuntimeExecutorTests(TestCase):
         stopped = interpreter.down(state)
 
         self.assertIn(("stop_container", "demo-docker-orders-api"), client.calls)
-        self.assertIn(("remove_container", "demo-docker-orders-api"), client.calls)
-        self.assertIn(("remove_network", "control-plane-kit-network"), client.calls)
-        self.assertEqual(stopped.nodes, {})
+        self.assertNotIn(("remove_container", "demo-docker-orders-api"), client.calls)
+        self.assertNotIn(("remove_network", "control-plane-kit-network"), client.calls)
+        self.assertIn("orders-api", stopped.nodes)
         self.assertTrue(stopped.metadata["stopped"])
 
     def test_down_preserves_containers_when_cleanup_policy_preserves(self):
