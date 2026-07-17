@@ -3,9 +3,17 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
+from enum import StrEnum
 from importlib.util import resolve_name
 
-from tests.architecture.source import PolicyFinding, SourceFacts
+from tests.architecture.source import (
+    CallFact,
+    DecoratorFact,
+    PolicyFinding,
+    SourceFacts,
+    SourceLocation,
+    evaluate_policies,
+)
 
 
 @dataclass(frozen=True, order=True)
@@ -135,6 +143,164 @@ class EnvironmentAccessPolicy:
         )
 
 
+@dataclass(frozen=True, order=True)
+class AllowedSkip:
+    """One reviewed conditional-skip declaration and its justification."""
+
+    module: str
+    decorator: str
+    reason: str
+
+    def __post_init__(self) -> None:
+        if not self.reason.strip():
+            raise ValueError("allowed skip requires a reviewable reason")
+
+
+class IntegrityEvidenceKind(StrEnum):
+    """Non-failing declarations surfaced by a test-integrity audit."""
+
+    APPROVED_SKIP = "approved-skip"
+    TEST_DOUBLE = "test-double"
+
+
+@dataclass(frozen=True, order=True)
+class IntegrityEvidence:
+    """One reviewable declaration that is not automatically a violation."""
+
+    kind: IntegrityEvidenceKind
+    name: str
+    reason: str
+    location: SourceLocation
+
+
+@dataclass(frozen=True)
+class TestIntegrityReport:
+    """Deterministic violations and non-failing review evidence."""
+
+    violations: tuple[PolicyFinding, ...]
+    evidence: tuple[IntegrityEvidence, ...]
+
+
+@dataclass(frozen=True)
+class TestIntegrityPolicy:
+    """Reject declarations that can silently weaken executable evidence."""
+
+    allowed_skips: tuple[AllowedSkip, ...] = ()
+
+    def __post_init__(self) -> None:
+        identities = tuple(
+            (value.module, value.decorator)
+            for value in self.allowed_skips
+        )
+        if len(identities) != len(set(identities)):
+            raise ValueError("allowed skip declarations must be unique")
+
+    def evaluate(self, facts: SourceFacts) -> tuple[PolicyFinding, ...]:
+        findings: list[PolicyFinding] = []
+        allowed = {
+            (value.module, value.decorator): value
+            for value in self.allowed_skips
+        }
+        for decorator in facts.decorators:
+            if not _is_skip_decorator(decorator.qualified_name):
+                continue
+            if (facts.module, decorator.qualified_name) in allowed:
+                if not _approved_skip_is_disabled(decorator):
+                    continue
+            findings.append(
+                PolicyFinding(
+                    "unapproved-test-skip",
+                    f"{decorator.qualified_name} is not approved in {facts.module}",
+                    decorator.location,
+                )
+            )
+        for call in facts.calls:
+            if _is_runtime_skip(call.qualified_name):
+                findings.append(
+                    PolicyFinding(
+                        "runtime-test-skip",
+                        f"runtime skip {call.qualified_name} is prohibited",
+                        call.location,
+                    )
+                )
+            if _is_placeholder_assertion(call):
+                findings.append(
+                    PolicyFinding(
+                        "placeholder-assertion",
+                        f"{call.qualified_name} uses a constant passing value",
+                        call.location,
+                    )
+                )
+        findings.extend(
+            PolicyFinding(
+                "placeholder-assertion",
+                "literal `assert True` does not test behavior",
+                assertion.location,
+            )
+            for assertion in facts.boolean_assertions
+            if assertion.value
+        )
+        findings.extend(
+            PolicyFinding(
+                "empty-test",
+                f"{function.qualified_name} has no behavioral statements",
+                function.location,
+            )
+            for function in facts.functions
+            if function.qualified_name.rsplit(".", 1)[-1].startswith("test")
+            and function.empty_body
+        )
+        findings.extend(
+            PolicyFinding(
+                "swallowed-exception",
+                "pass-only exception handler hides failure evidence",
+                handler.location,
+            )
+            for handler in facts.except_handlers
+            if handler.pass_only
+        )
+        return tuple(sorted(findings))
+
+
+def audit_test_integrity(
+    facts: tuple[SourceFacts, ...],
+    policy: TestIntegrityPolicy,
+) -> TestIntegrityReport:
+    """Evaluate weakening rules while retaining skips and doubles as evidence."""
+
+    allowed = {
+        (value.module, value.decorator): value
+        for value in policy.allowed_skips
+    }
+    evidence: list[IntegrityEvidence] = []
+    for source in facts:
+        for decorator in source.decorators:
+            declaration = allowed.get((source.module, decorator.qualified_name))
+            if declaration is not None and not _approved_skip_is_disabled(decorator):
+                evidence.append(
+                    IntegrityEvidence(
+                        IntegrityEvidenceKind.APPROVED_SKIP,
+                        decorator.qualified_name,
+                        declaration.reason,
+                        decorator.location,
+                    )
+                )
+        for call in source.calls:
+            if _is_test_double(call.qualified_name):
+                evidence.append(
+                    IntegrityEvidence(
+                        IntegrityEvidenceKind.TEST_DOUBLE,
+                        call.qualified_name,
+                        "review test-double scope against application behavior",
+                        call.location,
+                    )
+                )
+    return TestIntegrityReport(
+        violations=evaluate_policies(facts, (policy,)),
+        evidence=tuple(sorted(evidence)),
+    )
+
+
 def _package_root(module: str, package: str) -> str | None:
     if module == package:
         return "<facade>"
@@ -180,3 +346,58 @@ def _is_environment_reference(name: str) -> bool:
         or name == "os.getenv"
         or name.startswith("os.getenv.")
     )
+
+
+def _is_skip_decorator(name: str) -> bool:
+    return name in {
+        "unittest.skip",
+        "unittest.skipIf",
+        "unittest.skipUnless",
+        "pytest.mark.skip",
+        "pytest.mark.skipif",
+        "pytest.mark.xfail",
+    }
+
+
+def _is_runtime_skip(name: str) -> bool:
+    return (
+        name == "pytest.skip"
+        or name == "pytest.xfail"
+        or name == "unittest.SkipTest"
+        or name.endswith(".skipTest")
+    )
+
+
+def _is_placeholder_assertion(call: CallFact) -> bool:
+    first = next(
+        (value.value for value in call.boolean_arguments if value.position == 0),
+        None,
+    )
+    return (
+        call.qualified_name.endswith(".assertTrue") and first is True
+    ) or (
+        call.qualified_name.endswith(".assertFalse") and first is False
+    ) or (
+        call.qualified_name.endswith(".assertEqual")
+        and call.first_two_constants_equal
+    )
+
+
+def _is_test_double(name: str) -> bool:
+    return name in {
+        "unittest.mock.Mock",
+        "unittest.mock.MagicMock",
+        "unittest.mock.create_autospec",
+        "unittest.mock.patch",
+        "mock.Mock",
+        "mock.MagicMock",
+        "mock.patch",
+    }
+
+
+def _approved_skip_is_disabled(decorator: DecoratorFact) -> bool:
+    first = next(
+        (value.value for value in decorator.boolean_arguments if value.position == 0),
+        None,
+    )
+    return first is False
