@@ -9,19 +9,7 @@ from typing import Mapping
 from control_plane_kit.planning.activity_plan import ActivityPlan, RiskLevel
 from control_plane_kit.topology.graph import DeploymentGraph
 from control_plane_kit.topology.codec import DEFAULT_GRAPH_CODEC
-
-
-class WorkspaceLifecycle(StrEnum):
-    """Lifecycle states shared by early workspace and instance records."""
-
-    CREATED = "created"
-    RUNNING = "running"
-    PAUSED = "paused"
-    STOPPED = "stopped"
-    ARCHIVED = "archived"
-    DECONSTRUCTED = "deconstructed"
-    DELETED = "deleted"
-    FAILED = "failed"
+from control_plane_kit.types import WorkspaceLifecycle
 
 
 class OperationSessionStatus(StrEnum):

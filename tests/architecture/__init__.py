@@ -18,6 +18,12 @@ from tests.architecture.source import (
     analyze_source,
     evaluate_policies,
 )
+from tests.architecture.policies import (
+    PackageDependencyPolicy,
+    PackageDependencyRule,
+    TransportOwner,
+    TransportOwnershipPolicy,
+)
 
 __all__ = [
     "AliasBinding",
@@ -29,10 +35,14 @@ __all__ = [
     "ImportFact",
     "ImportKind",
     "PolicyFinding",
+    "PackageDependencyPolicy",
+    "PackageDependencyRule",
     "ReferenceFact",
     "SourceAnalysisError",
     "SourceFacts",
     "SourceLocation",
+    "TransportOwner",
+    "TransportOwnershipPolicy",
     "analyze_file",
     "analyze_source",
     "evaluate_policies",

@@ -147,6 +147,25 @@ VALUE = "os.environ"
         self.assertTrue(facts.except_handlers[0].pass_only)
         self.assertEqual(facts.except_handlers[0].exception_name, "RuntimeError")
 
+    def test_bare_and_named_exception_handlers_have_total_ordering(self) -> None:
+        facts = analyze_source(
+            "try:\n"
+            "    first()\n"
+            "except RuntimeError:\n"
+            "    recover()\n"
+            "try:\n"
+            "    second()\n"
+            "except:\n"
+            "    recover()\n",
+            path="handlers.py",
+            module="handlers",
+        )
+
+        self.assertEqual(
+            tuple(value.exception_name for value in facts.except_handlers),
+            ("RuntimeError", None),
+        )
+
 
 if __name__ == "__main__":
     unittest.main()
