@@ -19,6 +19,7 @@ from control_plane_kit.effects import (
     EffectUnsupported,
     EnvironmentBindingMaterial,
     DataMountMaterial,
+    HostPublicationMaterial,
     LiteralMaterialValue,
     MaterializedEffectRequest,
     NodeMaterial,
@@ -45,7 +46,7 @@ from control_plane_kit.planning import (
 
 from control_plane_kit.topology.graph import DeploymentGraph, Node
 from control_plane_kit.runtimes import CleanupPolicy, RuntimeActivity, RuntimeNodeState, RuntimePlan, RuntimeState
-from control_plane_kit.types import RuntimeKind
+from control_plane_kit.types import Protocol as SocketProtocol, RuntimeKind
 
 
 class UnsupportedDockerRuntimeFeature(ValueError):
@@ -85,7 +86,7 @@ class DockerClient(Protocol):
 
     def inspect_container(self, name: str, *, timeout_seconds: int = 30) -> "DockerResourceInspection | None": ...
 
-    def run_container(self, *, name: str, image: str, network: str, environment: Mapping[str, str], command: tuple[str, ...], labels: Mapping[str, str], mounts: Mapping[str, str] | None = None, timeout_seconds: int = 30) -> None: ...
+    def run_container(self, *, name: str, image: str, network: str, environment: Mapping[str, str], command: tuple[str, ...], labels: Mapping[str, str], mounts: Mapping[str, str] | None = None, ports: tuple["DockerPortBinding", ...] = (), timeout_seconds: int = 30) -> None: ...
 
     def inspect_volume(self, name: str, *, timeout_seconds: int = 30) -> "DockerResourceInspection | None": ...
 
@@ -165,12 +166,12 @@ class DockerCliClient:
             "container",
             "inspect",
             "--format",
-            "{{.Id}}\t{{.Name}}\t{{.State.Running}}\t{{.Config.Image}}\t{{json .Config.Labels}}",
+            "{{.Id}}\t{{.Name}}\t{{.State.Running}}\t{{.Config.Image}}\t{{json .Config.Labels}}\t{{json .NetworkSettings.Ports}}",
             name,
             timeout_seconds=timeout_seconds,
         )
-        parts = result.stdout.strip().split("\t", 4)
-        if len(parts) != 5 or parts[2] not in ("true", "false"):
+        parts = result.stdout.strip().split("\t", 5)
+        if len(parts) != 6 or parts[2] not in ("true", "false"):
             raise UnsupportedDockerRuntimeFeature("Docker container inspection was malformed")
         return DockerResourceInspection(
             DockerResourceKind.CONTAINER,
@@ -179,6 +180,7 @@ class DockerCliClient:
             parts[2] == "true",
             parts[3],
             _parse_labels(parts[4]),
+            _parse_published_ports(parts[5]),
         )
 
     def run_container(
@@ -191,6 +193,7 @@ class DockerCliClient:
         command: tuple[str, ...],
         labels: Mapping[str, str],
         mounts: Mapping[str, str] | None = None,
+        ports: tuple["DockerPortBinding", ...] = (),
         timeout_seconds: int = 30,
     ) -> None:
         args = ["run", "-d", "--name", name, "--network", network]
@@ -202,6 +205,8 @@ class DockerCliClient:
             args.extend(("--label", f"{key}={value}"))
         for source, target in sorted((mounts or {}).items()):
             args.extend(("--mount", f"type=volume,source={source},target={target}"))
+        for binding in sorted(ports, key=lambda value: value.socket_name):
+            args.extend(("--publish", binding.docker_argument()))
         args.append(image)
         args.extend(command)
         self._run(*args, timeout_seconds=timeout_seconds, environment=process_environment)
@@ -423,12 +428,41 @@ class DockerResourceDisposition(StrEnum):
     UNOWNED = "unowned"
 
 
+@dataclass(frozen=True, order=True)
+class DockerPublishedPort:
+    container_port: int
+    host_address: str
+    host_port: int
+
+
+@dataclass(frozen=True)
+class DockerPortBinding:
+    socket_name: str
+    protocol: SocketProtocol
+    container_port: int
+    host_address: str
+    host_port: int | None = None
+
+    def docker_argument(self) -> str:
+        address = (
+            f"[{self.host_address}]"
+            if ":" in self.host_address
+            else self.host_address
+        )
+        requested = "" if self.host_port is None else str(self.host_port)
+        return f"{address}:{requested}:{self.container_port}/tcp"
+
+
 class DockerOwnershipConflict(ValueError):
     """Raised when a Docker name resolves to incompatible ownership truth."""
 
     def __init__(self, disposition: DockerResourceDisposition) -> None:
         self.disposition = disposition
         super().__init__(f"Docker resource is {disposition.value}")
+
+
+class DockerPostconditionUnknown(RuntimeError):
+    """Raised after mutation when Docker cannot prove the requested result."""
 
 
 _LABEL_PREFIX = "io.control-plane-kit"
@@ -486,6 +520,7 @@ class DockerResourceInspection:
     running: bool
     image: str | None
     labels: Mapping[str, str]
+    published_ports: tuple[DockerPublishedPort, ...] = ()
 
 
 def classify_docker_resource(
@@ -530,6 +565,46 @@ def _parse_labels(value: str) -> dict[str, str]:
     ):
         raise UnsupportedDockerRuntimeFeature("Docker labels were malformed")
     return parsed
+
+
+def _parse_published_ports(value: str) -> tuple[DockerPublishedPort, ...]:
+    try:
+        parsed = json.loads(value)
+    except (TypeError, json.JSONDecodeError) as exc:
+        raise UnsupportedDockerRuntimeFeature("Docker port inspection was malformed") from exc
+    if parsed is None:
+        return ()
+    if not isinstance(parsed, dict):
+        raise UnsupportedDockerRuntimeFeature("Docker port inspection was malformed")
+    values: list[DockerPublishedPort] = []
+    for container, bindings in parsed.items():
+        if not isinstance(container, str) or not container.endswith("/tcp"):
+            continue
+        try:
+            container_port = int(container.removesuffix("/tcp"))
+        except ValueError as exc:
+            raise UnsupportedDockerRuntimeFeature(
+                "Docker port inspection was malformed"
+            ) from exc
+        if bindings is None:
+            continue
+        if not isinstance(bindings, list):
+            raise UnsupportedDockerRuntimeFeature("Docker port inspection was malformed")
+        for binding in bindings:
+            if not isinstance(binding, dict):
+                raise UnsupportedDockerRuntimeFeature("Docker port inspection was malformed")
+            address = binding.get("HostIp")
+            port = binding.get("HostPort")
+            if not isinstance(address, str) or not isinstance(port, str):
+                raise UnsupportedDockerRuntimeFeature("Docker port inspection was malformed")
+            try:
+                host_port = int(port)
+            except ValueError as exc:
+                raise UnsupportedDockerRuntimeFeature(
+                    "Docker port inspection was malformed"
+                ) from exc
+            values.append(DockerPublishedPort(container_port, address, host_port))
+    return tuple(sorted(values))
 
 
 def _fingerprint(value: Mapping[str, object]) -> str:
@@ -585,6 +660,7 @@ class StartDockerNodeEffect:
     command: tuple[str, ...]
     environment: tuple[EnvironmentBindingMaterial, ...]
     data_mounts: tuple["DockerDataMount", ...]
+    host_publications: tuple[DockerPortBinding, ...]
     ownership: DockerOwnership
 
 
@@ -701,6 +777,11 @@ class DockerEffectInterpreter:
                         _resolve_environment(command.environment, self.secrets),
                         timeout_seconds=timeout,
                     )
+                    published = _verified_host_publications(
+                        self.client,
+                        command,
+                        timeout_seconds=timeout,
+                    )
                     return EffectSucceeded(
                         request.identity,
                         BoundedEvidence.from_mapping(
@@ -709,6 +790,14 @@ class DockerEffectInterpreter:
                                 "node_id": command.node_id,
                                 "disposition": disposition.value,
                                 "data_resources": mount_dispositions,
+                                "host_publications": [
+                                    {
+                                        "container_port": value.container_port,
+                                        "host_address": value.host_address,
+                                        "host_port": value.host_port,
+                                    }
+                                    for value in published
+                                ],
                                 "ownership": _ownership_evidence(command.ownership),
                             }
                         ),
@@ -834,6 +923,15 @@ class DockerEffectInterpreter:
                             }
                         ),
                     )
+        except DockerPostconditionUnknown:
+            return EffectFailed(
+                request.identity,
+                FailureEvidence(
+                    FailureCategory.UNCERTAIN,
+                    "docker.postcondition-unknown",
+                    "Docker accepted a mutation but its requested postcondition could not be proven.",
+                ),
+            )
         except UnsupportedDockerRuntimeFeature:
             return EffectUnsupported(request.identity, request.capability)
         except DockerOwnershipConflict as error:
@@ -898,6 +996,7 @@ def plan_docker_effect(
                 node.implementation.command,
                 node.implementation.environment,
                 _docker_data_mounts(request, node, project_name),
+                _docker_port_bindings(node),
                 _node_ownership(request, node),
             )
         case StopNode(), NodeMaterial() as node:
@@ -1027,6 +1126,16 @@ def _node_ownership(
                     }
                     for mount in node.implementation.data_mounts
                 ],
+                "host_publications": [
+                    {
+                        "socket_name": value.socket_name,
+                        "protocol": value.protocol.value,
+                        "container_port": value.container_port,
+                        "host_address": str(value.bind_address),
+                        "host_port": value.host_port,
+                    }
+                    for value in node.implementation.host_publications
+                ],
             }
         ),
         node_id=node.node_id,
@@ -1071,6 +1180,19 @@ def _docker_data_mounts(
             _data_ownership(request, node, mount),
         )
         for mount in node.implementation.data_mounts
+    )
+
+
+def _docker_port_bindings(node: NodeMaterial) -> tuple[DockerPortBinding, ...]:
+    return tuple(
+        DockerPortBinding(
+            value.socket_name,
+            value.protocol,
+            value.container_port,
+            str(value.bind_address),
+            value.host_port,
+        )
+        for value in node.implementation.host_publications
     )
 
 
@@ -1196,6 +1318,7 @@ def _start_owned_container(
                 mount.volume_name: mount.target_path
                 for mount in command.data_mounts
             },
+            ports=command.host_publications,
             timeout_seconds=timeout_seconds,
         )
     except subprocess.SubprocessError:
@@ -1208,6 +1331,39 @@ def _start_owned_container(
             raise
         return raced_disposition
     return disposition
+
+
+def _verified_host_publications(
+    client: DockerClient,
+    command: StartDockerNodeEffect,
+    *,
+    timeout_seconds: int,
+) -> tuple[DockerPublishedPort, ...]:
+    if not command.host_publications:
+        return ()
+    try:
+        inspected = client.inspect_container(
+            command.container_name,
+            timeout_seconds=timeout_seconds,
+        )
+    except (subprocess.SubprocessError, OSError, ValueError, TypeError) as error:
+        raise DockerPostconditionUnknown from error
+    if inspected is None:
+        raise DockerPostconditionUnknown
+    for requested in command.host_publications:
+        matching = tuple(
+            value
+            for value in inspected.published_ports
+            if value.container_port == requested.container_port
+            and value.host_address == requested.host_address
+            and (
+                requested.host_port is None
+                or value.host_port == requested.host_port
+            )
+        )
+        if len(matching) != 1:
+            raise DockerPostconditionUnknown
+    return inspected.published_ports
 
 
 @dataclass(frozen=True)

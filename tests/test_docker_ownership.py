@@ -47,6 +47,7 @@ class OwnershipClient:
         command,
         labels,
         mounts=None,
+        ports=(),
         timeout_seconds=30,
     ):
         self.calls.append(("run", name, image, dict(labels)))

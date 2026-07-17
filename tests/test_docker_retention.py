@@ -66,6 +66,7 @@ class RetentionClient:
         command,
         labels,
         mounts=None,
+        ports=(),
         timeout_seconds=30,
     ):
         self.containers[name] = DockerResourceInspection(

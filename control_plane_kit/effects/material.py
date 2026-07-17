@@ -4,8 +4,10 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from enum import StrEnum
+from ipaddress import IPv4Address, IPv6Address, ip_address
 import json
 from typing import Mapping, TypeAlias
+from urllib.parse import urlsplit
 
 from control_plane_kit.lifecycle import OWNED_EPHEMERAL, ResourceLifecycle
 
@@ -117,6 +119,37 @@ class DataMountMaterial:
 
 
 @dataclass(frozen=True)
+class HostPublicationMaterial:
+    """One explicit host binding derived from a provider socket."""
+
+    socket_name: str
+    protocol: Protocol
+    container_port: int
+    bind_address: IPv4Address | IPv6Address
+    host_port: int | None = None
+
+    def __post_init__(self) -> None:
+        if not self.socket_name.strip():
+            raise _malformed("host_publications")
+        if not isinstance(self.protocol, Protocol):
+            raise TypeError("host publication protocol must be Protocol")
+        if (
+            type(self.container_port) is not int
+            or self.container_port < 1
+            or self.container_port > 65_535
+        ):
+            raise _malformed("host_publications")
+        if not isinstance(self.bind_address, (IPv4Address, IPv6Address)):
+            raise TypeError("host publication bind address must be an IP address")
+        if self.host_port is not None and (
+            type(self.host_port) is not int
+            or self.host_port < 1
+            or self.host_port > 65_535
+        ):
+            raise _malformed("host_publications")
+
+
+@dataclass(frozen=True)
 class LiteralEndpointMaterial:
     value: str
 
@@ -147,6 +180,7 @@ class ImplementationMaterial:
     environment: tuple[EnvironmentBindingMaterial, ...] = ()
     database: str | None = None
     data_mounts: tuple[DataMountMaterial, ...] = ()
+    host_publications: tuple[HostPublicationMaterial, ...] = ()
 
 
 @dataclass(frozen=True)
@@ -428,6 +462,47 @@ def _implementation_material(node: Node, graph: DeploymentGraph) -> Implementati
         mounts.append(DataMountMaterial(resource_id, target_path))
     if len({mount.resource_id for mount in mounts}) != len(mounts):
         raise _malformed("data_mounts")
+    publications_value = metadata.get("host_publications", ())
+    if not isinstance(publications_value, (list, tuple)):
+        raise _malformed("host_publications")
+    publications: list[HostPublicationMaterial] = []
+    for value in publications_value:
+        if not isinstance(value, Mapping):
+            raise _malformed("host_publications")
+        socket_name = value.get("socket_name")
+        bind_address = value.get("bind_address")
+        host_port = value.get("host_port")
+        if not isinstance(socket_name, str) or not isinstance(bind_address, str):
+            raise _malformed("host_publications")
+        try:
+            endpoint = node.endpoint(socket_name)
+            parsed = urlsplit(endpoint.url)
+            container_port = parsed.port
+            address = ip_address(bind_address)
+        except (KeyError, ValueError) as error:
+            raise _malformed("host_publications") from error
+        if container_port is None:
+            raise _malformed("host_publications")
+        publications.append(
+            HostPublicationMaterial(
+                socket_name,
+                endpoint.protocol,
+                container_port,
+                address,
+                host_port,
+            )
+        )
+    if len({value.socket_name for value in publications}) != len(publications):
+        raise _malformed("host_publications")
+    fixed_bindings = {
+        (value.bind_address, value.host_port)
+        for value in publications
+        if value.host_port is not None
+    }
+    if len(fixed_bindings) != len(
+        [value for value in publications if value.host_port is not None]
+    ):
+        raise _malformed("host_publications")
     return ImplementationMaterial(
         node.kind,
         image,
@@ -435,6 +510,7 @@ def _implementation_material(node: Node, graph: DeploymentGraph) -> Implementati
         _environment_material(environment, node=node, graph=graph),
         database,
         tuple(sorted(mounts)),
+        tuple(sorted(publications, key=lambda value: value.socket_name)),
     )
 
 
@@ -544,11 +620,22 @@ def _descriptor(value: object) -> object:
                 "environment": [_descriptor(item) for item in value.environment],
                 "database": value.database,
                 "data_mounts": [_descriptor(item) for item in value.data_mounts],
+                "host_publications": [
+                    _descriptor(item) for item in value.host_publications
+                ],
             }
         case DataMountMaterial():
             return {
                 "resource_id": value.resource_id,
                 "target_path": value.target_path,
+            }
+        case HostPublicationMaterial():
+            return {
+                "socket_name": value.socket_name,
+                "protocol": value.protocol.value,
+                "container_port": value.container_port,
+                "bind_address": str(value.bind_address),
+                "host_port": value.host_port,
             }
         case SocketConnectionMaterial():
             return {

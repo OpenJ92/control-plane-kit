@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass, field
+from ipaddress import IPv4Address, IPv6Address
 
 from control_plane_kit.algebra import BlockSockets, RuntimeContext
 from control_plane_kit.lifecycle import ResourceLifecycle
@@ -21,6 +22,32 @@ class MaterializedNode:
 
 
 @dataclass(frozen=True)
+class HostPublication:
+    """Explicit host exposure requested for one provider socket."""
+
+    bind_address: IPv4Address | IPv6Address = IPv4Address("127.0.0.1")
+    host_port: int | None = None
+
+    def __post_init__(self) -> None:
+        if not isinstance(self.bind_address, (IPv4Address, IPv6Address)):
+            raise TypeError("host publication bind address must be an IP address")
+        if self.host_port is not None and (
+            type(self.host_port) is not int
+            or self.host_port < 1
+            or self.host_port > 65_535
+        ):
+            raise ValueError("host publication port must be between 1 and 65535")
+
+    @classmethod
+    def loopback_v4(cls, host_port: int | None = None) -> "HostPublication":
+        return cls(IPv4Address("127.0.0.1"), host_port)
+
+    @classmethod
+    def loopback_v6(cls, host_port: int | None = None) -> "HostPublication":
+        return cls(IPv6Address("::1"), host_port)
+
+
+@dataclass(frozen=True)
 class DockerImageImplementation:
     """Run a server as a Docker image under an enclosing Docker runtime."""
 
@@ -29,6 +56,7 @@ class DockerImageImplementation:
     ports: dict[str, int] = field(default_factory=dict)
     environment: dict[str, str] = field(default_factory=dict)
     data_mounts: dict[str, str] = field(default_factory=dict)
+    host_publications: dict[str, HostPublication] = field(default_factory=dict)
     lifecycle: ResourceLifecycle = field(default_factory=ResourceLifecycle.owned_ephemeral)
     kind: str = "docker-image"
 
@@ -45,6 +73,7 @@ class DockerImageImplementation:
                 ),
                 protocol=provider.protocol,
             )
+        _validate_host_publications(block_id, sockets, self.host_publications)
         return MaterializedNode(
             kind=self.kind,
             endpoints=endpoints,
@@ -56,6 +85,9 @@ class DockerImageImplementation:
                     {"resource_id": resource_id, "target_path": target_path}
                     for resource_id, target_path in sorted(self.data_mounts.items())
                 ],
+                "host_publications": _host_publication_descriptors(
+                    self.host_publications
+                ),
             },
             lifecycle=self.lifecycle,
         )
@@ -168,11 +200,13 @@ class DockerPostgresImplementation:
     image: str = "postgres:16-alpine"
     data_resource_id: str = "postgres-data"
     data_target_path: str = "/var/lib/postgresql/data"
+    host_publications: dict[str, HostPublication] = field(default_factory=dict)
     kind: str = "docker-postgres"
 
     def materialize(self, block_id: str, sockets: BlockSockets, runtime: RuntimeContext) -> MaterializedNode:
         _require_runtime(runtime, RuntimeKind.DOCKER, self.kind)
         sockets.provider(self.provider_socket)
+        _validate_host_publications(block_id, sockets, self.host_publications)
         host = f"{runtime.runtime_id}-{block_id}"
         url = f"postgresql+psycopg://{self.username}@{host}:{self.port}/{self.database}"
         return MaterializedNode(
@@ -192,6 +226,9 @@ class DockerPostgresImplementation:
                         "target_path": self.data_target_path,
                     }
                 ],
+                "host_publications": _host_publication_descriptors(
+                    self.host_publications
+                ),
             },
             lifecycle=ResourceLifecycle.owned_with_retained_data(
                 self.data_resource_id
@@ -231,3 +268,37 @@ def _url(protocol: Protocol, host: str, port: int) -> str:
             return f"postgresql+psycopg://{host}:{port}"
         case Protocol.TCP:
             return f"tcp://{host}:{port}"
+
+
+def _validate_host_publications(
+    block_id: str,
+    sockets: BlockSockets,
+    publications: dict[str, HostPublication],
+) -> None:
+    providers = {provider.name for provider in sockets.providers}
+    unknown = set(publications).difference(providers)
+    if unknown:
+        names = ", ".join(sorted(unknown))
+        raise ValueError(
+            f"Docker block {block_id!r} publishes unknown provider sockets: {names}"
+        )
+    fixed = [
+        (publication.bind_address, publication.host_port)
+        for publication in publications.values()
+        if publication.host_port is not None
+    ]
+    if len(set(fixed)) != len(fixed):
+        raise ValueError("Docker block host publications contain a fixed-port collision")
+
+
+def _host_publication_descriptors(
+    publications: dict[str, HostPublication],
+) -> list[dict[str, object]]:
+    return [
+        {
+            "socket_name": socket_name,
+            "bind_address": str(publication.bind_address),
+            "host_port": publication.host_port,
+        }
+        for socket_name, publication in sorted(publications.items())
+    ]
