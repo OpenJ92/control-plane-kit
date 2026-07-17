@@ -3,7 +3,11 @@
 from control_plane_kit.effects.dispatch import (
     EffectDispatchError,
     EffectInterpreter,
+    PreparedEffect,
+    dispatch_prepared_effect,
     dispatch_effect,
+    prepare_effect,
+    preflight_effect,
 )
 from control_plane_kit.effects.values import (
     MAX_EFFECT_TIMEOUT_SECONDS,
@@ -44,6 +48,7 @@ __all__ = [
     "EffectFailed",
     "EffectIdentity",
     "EffectInterpreter",
+    "PreparedEffect",
     "EffectObservation",
     "EffectRequest",
     "EffectResult",
@@ -58,6 +63,9 @@ __all__ = [
     "TimeoutPolicy",
     "UnsupportedEffectOperation",
     "dispatch_effect",
+    "dispatch_prepared_effect",
+    "prepare_effect",
+    "preflight_effect",
     "effect_request_for_activity",
     "required_capability",
 ]

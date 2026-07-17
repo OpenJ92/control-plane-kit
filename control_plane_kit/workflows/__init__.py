@@ -98,6 +98,24 @@ from control_plane_kit.workflows.current_graph import (
     CurrentGraphAdvancementNotFound,
     CurrentGraphAdvancementResult,
 )
+from control_plane_kit.workflows.execution_coordinator import (
+    CoordinatorCheckpoint,
+    CoordinatorStatus,
+    ExecuteActivityRun,
+    ExecutionCoordinator,
+    ExecutionCoordinatorConflict,
+    ExecutionCoordinatorDenied,
+    ExecutionCoordinatorError,
+    ExecutionCoordinatorNotFound,
+    ExecutionCoordinatorResult,
+    InjectedCoordinatorCrash,
+)
+from control_plane_kit.workflows.saga_journal import (
+    SagaJournalError,
+    SagaJournalProjection,
+    initial_state_for_plan,
+    project_activity_journal,
+)
 
 __all__ = [
     "ActivityPlanningCommandService",
@@ -183,4 +201,18 @@ __all__ = [
     "CurrentGraphAdvancementIncomplete",
     "CurrentGraphAdvancementNotFound",
     "CurrentGraphAdvancementResult",
+    "CoordinatorCheckpoint",
+    "CoordinatorStatus",
+    "ExecuteActivityRun",
+    "ExecutionCoordinator",
+    "ExecutionCoordinatorConflict",
+    "ExecutionCoordinatorDenied",
+    "ExecutionCoordinatorError",
+    "ExecutionCoordinatorNotFound",
+    "ExecutionCoordinatorResult",
+    "InjectedCoordinatorCrash",
+    "SagaJournalError",
+    "SagaJournalProjection",
+    "initial_state_for_plan",
+    "project_activity_journal",
 ]
