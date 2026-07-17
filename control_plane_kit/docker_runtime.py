@@ -3,8 +3,32 @@
 from __future__ import annotations
 
 import subprocess
+import os
 from dataclasses import dataclass, field, replace
-from typing import Mapping, Protocol
+from typing import Mapping, Protocol, TypeAlias
+
+from control_plane_kit.effects import (
+    EffectCapability,
+    EffectFailed,
+    EffectObservation,
+    EffectResult,
+    EffectSucceeded,
+    EffectUnsupported,
+    EnvironmentBindingMaterial,
+    LiteralMaterialValue,
+    MaterializedEffectRequest,
+    NodeMaterial,
+    ObservationKind,
+    RuntimeMaterial,
+    SecretReferenceMaterialValue,
+)
+from control_plane_kit.execution import (
+    BoundedEvidence,
+    FailureCategory,
+    FailureEvidence,
+    ObservationStatus,
+)
+from control_plane_kit.planning import StartNode, StartRuntime, StopNode
 
 from control_plane_kit.topology.graph import DeploymentGraph, Node
 from control_plane_kit.runtimes import CleanupPolicy, RuntimeActivity, RuntimeNodeState, RuntimePlan, RuntimeState
@@ -18,7 +42,7 @@ class UnsupportedDockerRuntimeFeature(ValueError):
 class DockerClient(Protocol):
     """Small Docker capability surface used by the runtime executor."""
 
-    def ensure_network(self, name: str) -> None:
+    def ensure_network(self, name: str, *, timeout_seconds: int = 30) -> None:
         """Create the network if needed."""
 
     def start_container(
@@ -29,16 +53,17 @@ class DockerClient(Protocol):
         network: str,
         environment: Mapping[str, str],
         command: tuple[str, ...],
+        timeout_seconds: int = 30,
     ) -> None:
         """Start a detached container."""
 
-    def stop_container(self, name: str) -> None:
+    def stop_container(self, name: str, *, timeout_seconds: int = 30) -> None:
         """Stop a container if it is running."""
 
-    def remove_container(self, name: str) -> None:
+    def remove_container(self, name: str, *, timeout_seconds: int = 30) -> None:
         """Remove a container if it exists."""
 
-    def remove_network(self, name: str) -> None:
+    def remove_network(self, name: str, *, timeout_seconds: int = 30) -> None:
         """Remove a network if it exists."""
 
 
@@ -48,10 +73,10 @@ class DockerCliClient:
 
     docker: str = "docker"
 
-    def ensure_network(self, name: str) -> None:
-        result = self._run("network", "inspect", name, check=False)
+    def ensure_network(self, name: str, *, timeout_seconds: int = 30) -> None:
+        result = self._run("network", "inspect", name, check=False, timeout_seconds=timeout_seconds)
         if result.returncode != 0:
-            self._run("network", "create", name)
+            self._run("network", "create", name, timeout_seconds=timeout_seconds)
 
     def start_container(
         self,
@@ -61,32 +86,227 @@ class DockerCliClient:
         network: str,
         environment: Mapping[str, str],
         command: tuple[str, ...],
+        timeout_seconds: int = 30,
     ) -> None:
-        self.remove_container(name)
         args = ["run", "-d", "--name", name, "--network", network]
-        for key, value in sorted(environment.items()):
-            args.extend(("-e", f"{key}={value}"))
+        process_environment = os.environ.copy()
+        process_environment.update(environment)
+        for key in sorted(environment):
+            args.extend(("-e", key))
         args.append(image)
         args.extend(command)
-        self._run(*args)
+        self._run(
+            *args,
+            timeout_seconds=timeout_seconds,
+            environment=process_environment,
+        )
 
-    def stop_container(self, name: str) -> None:
-        self._run("stop", name, check=False)
+    def stop_container(self, name: str, *, timeout_seconds: int = 30) -> None:
+        self._run("stop", name, check=False, timeout_seconds=timeout_seconds)
 
-    def remove_container(self, name: str) -> None:
-        self._run("rm", "-f", name, check=False)
+    def remove_container(self, name: str, *, timeout_seconds: int = 30) -> None:
+        self._run("rm", "-f", name, check=False, timeout_seconds=timeout_seconds)
 
-    def remove_network(self, name: str) -> None:
-        self._run("network", "rm", name, check=False)
+    def remove_network(self, name: str, *, timeout_seconds: int = 30) -> None:
+        self._run("network", "rm", name, check=False, timeout_seconds=timeout_seconds)
 
-    def _run(self, *args: str, check: bool = True) -> subprocess.CompletedProcess[str]:
+    def _run(
+        self,
+        *args: str,
+        check: bool = True,
+        timeout_seconds: int = 30,
+        environment: Mapping[str, str] | None = None,
+    ) -> subprocess.CompletedProcess[str]:
         return subprocess.run(
             (self.docker, *args),
             check=check,
             text=True,
-            stdout=subprocess.PIPE,
-            stderr=subprocess.PIPE,
+            stdout=subprocess.DEVNULL,
+            stderr=subprocess.DEVNULL,
+            timeout=timeout_seconds,
+            env=environment,
         )
+
+
+class DockerSecretResolver(Protocol):
+    """Resolve one opaque environment reference only at Docker dispatch."""
+
+    def resolve(self, reference_id: str) -> str: ...
+
+
+@dataclass(frozen=True)
+class EnsureDockerNetworkEffect:
+    runtime_id: str
+    network_name: str
+
+
+@dataclass(frozen=True)
+class StartDockerNodeEffect:
+    runtime_id: str
+    node_id: str
+    container_name: str
+    network_name: str
+    image: str
+    command: tuple[str, ...]
+    environment: tuple[EnvironmentBindingMaterial, ...]
+
+
+@dataclass(frozen=True)
+class StopDockerNodeEffect:
+    runtime_id: str
+    node_id: str
+    container_name: str
+
+
+DockerEffectCommand: TypeAlias = (
+    EnsureDockerNetworkEffect | StartDockerNodeEffect | StopDockerNodeEffect
+)
+
+
+@dataclass(frozen=True)
+class DockerEffectInterpreter:
+    """Execute one graph-pinned Docker lifecycle activity at a time."""
+
+    project_name: str = "control-plane-kit"
+    client: DockerClient = field(default_factory=DockerCliClient)
+    secrets: DockerSecretResolver | None = None
+
+    @property
+    def capabilities(self) -> frozenset[EffectCapability]:
+        return frozenset(
+            {EffectCapability.NODE_LIFECYCLE, EffectCapability.RUNTIME_LIFECYCLE}
+        )
+
+    def execute(self, request: MaterializedEffectRequest) -> EffectResult:
+        try:
+            command = plan_docker_effect(request, project_name=self.project_name)
+            timeout = request.timeout.total_seconds
+            match command:
+                case EnsureDockerNetworkEffect(network_name=name):
+                    self.client.ensure_network(name, timeout_seconds=timeout)
+                    return EffectSucceeded(
+                        request.identity,
+                        BoundedEvidence.from_mapping(
+                            {"operation": "ensure-network", "runtime_id": command.runtime_id}
+                        ),
+                    )
+                case StartDockerNodeEffect():
+                    self.client.start_container(
+                        name=command.container_name,
+                        image=command.image,
+                        network=command.network_name,
+                        environment=_resolve_environment(command.environment, self.secrets),
+                        command=command.command,
+                        timeout_seconds=timeout,
+                    )
+                    return EffectSucceeded(
+                        request.identity,
+                        BoundedEvidence.from_mapping(
+                            {"operation": "start-container", "node_id": command.node_id}
+                        ),
+                        (
+                            EffectObservation(
+                                command.node_id,
+                                ObservationKind.STATUS,
+                                ObservationStatus.PROCESS_STARTED,
+                                BoundedEvidence.from_mapping(
+                                    {"runtime_id": command.runtime_id}
+                                ),
+                            ),
+                        ),
+                    )
+                case StopDockerNodeEffect(container_name=name):
+                    self.client.stop_container(name, timeout_seconds=timeout)
+                    return EffectSucceeded(
+                        request.identity,
+                        BoundedEvidence.from_mapping(
+                            {"operation": "stop-container", "node_id": command.node_id}
+                        ),
+                    )
+        except UnsupportedDockerRuntimeFeature:
+            return EffectUnsupported(request.identity, request.capability)
+        except subprocess.TimeoutExpired:
+            return EffectFailed(
+                request.identity,
+                FailureEvidence(
+                    FailureCategory.UNCERTAIN,
+                    "docker.timeout",
+                    "The Docker operation timed out without trustworthy completion evidence.",
+                ),
+            )
+        except (subprocess.SubprocessError, OSError, ValueError, KeyError, TypeError):
+            return EffectFailed(
+                request.identity,
+                FailureEvidence(
+                    FailureCategory.TERMINAL,
+                    "docker.operation-failed",
+                    "The Docker operation failed without publishable command output.",
+                ),
+            )
+
+
+def plan_docker_effect(
+    request: MaterializedEffectRequest,
+    *,
+    project_name: str,
+) -> DockerEffectCommand:
+    """Interpret one canonical activity as a pure narrow Docker command."""
+
+    match request.action, request.material:
+        case StartRuntime(), RuntimeMaterial() as runtime:
+            _require_docker(runtime)
+            return EnsureDockerNetworkEffect(
+                runtime.runtime_id,
+                runtime.network_name or f"{runtime.runtime_id}-network",
+            )
+        case StartNode(), NodeMaterial() as node:
+            _require_docker(node.runtime)
+            if not node.implementation.image:
+                raise UnsupportedDockerRuntimeFeature(
+                    "Docker node material requires an image"
+                )
+            return StartDockerNodeEffect(
+                node.runtime.runtime_id,
+                node.node_id,
+                _container_name(project_name, node.runtime.runtime_id, node.node_id),
+                node.runtime.network_name or f"{node.runtime.runtime_id}-network",
+                node.implementation.image,
+                node.implementation.command,
+                node.implementation.environment,
+            )
+        case StopNode(), NodeMaterial() as node:
+            _require_docker(node.runtime)
+            return StopDockerNodeEffect(
+                node.runtime.runtime_id,
+                node.node_id,
+                _container_name(project_name, node.runtime.runtime_id, node.node_id),
+            )
+    raise UnsupportedDockerRuntimeFeature(
+        "activity has no safe narrow Docker lifecycle interpretation"
+    )
+
+
+def _require_docker(runtime: RuntimeMaterial) -> None:
+    if runtime.kind is not RuntimeKind.DOCKER:
+        raise UnsupportedDockerRuntimeFeature("effect material is not a Docker runtime")
+
+
+def _resolve_environment(
+    bindings: tuple[EnvironmentBindingMaterial, ...],
+    resolver: DockerSecretResolver | None,
+) -> dict[str, str]:
+    values = {}
+    for binding in bindings:
+        match binding.value:
+            case LiteralMaterialValue(value=value):
+                values[binding.name] = value
+            case SecretReferenceMaterialValue(reference_id=reference):
+                if resolver is None:
+                    raise UnsupportedDockerRuntimeFeature(
+                        "Docker environment secret reference has no resolver"
+                    )
+                values[binding.name] = resolver.resolve(reference)
+    return values
 
 
 @dataclass(frozen=True)
@@ -210,7 +430,7 @@ class DockerRuntimeInterpreter:
                         node_id=start.node_id,
                         kind=graph_node.kind,
                         runtime_id=runtime_id,
-                        healthy=True,
+                        healthy=False,
                         environment=graph_node.environment,
                         endpoints=graph_node.endpoints,
                         metadata={

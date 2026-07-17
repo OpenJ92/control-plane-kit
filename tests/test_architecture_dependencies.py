@@ -24,7 +24,10 @@ PACKAGE_RULES = (
     PackageDependencyRule("cli", ()),
     PackageDependencyRule("contracts", ()),
     PackageDependencyRule("control_routes", ()),
-    PackageDependencyRule("docker_runtime", ("runtimes", "topology", "types")),
+    PackageDependencyRule(
+        "docker_runtime",
+        ("effects", "execution", "planning", "runtimes", "topology", "types"),
+    ),
     PackageDependencyRule("effects", ("execution", "planning", "topology", "types")),
     PackageDependencyRule("execution", ()),
     PackageDependencyRule("implementations", ("algebra", "topology", "types")),
