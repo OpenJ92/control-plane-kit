@@ -26,13 +26,16 @@ from tests.architecture.policies import (
     AllowedSkip,
     IntegrityEvidence,
     IntegrityEvidenceKind,
+    HttpRouteMethod,
     PackageDependencyPolicy,
     PackageDependencyRule,
     TransportOwner,
     TransportOwnershipPolicy,
     TestIntegrityPolicy,
     TestIntegrityReport,
+    ReadOnlyRoutePolicy,
     audit_test_integrity,
+    declared_route_methods,
 )
 
 __all__ = [
@@ -49,12 +52,14 @@ __all__ = [
     "FunctionFact",
     "ImportFact",
     "ImportKind",
+    "HttpRouteMethod",
     "IntegrityEvidence",
     "IntegrityEvidenceKind",
     "PolicyFinding",
     "PackageDependencyPolicy",
     "PackageDependencyRule",
     "ReferenceFact",
+    "ReadOnlyRoutePolicy",
     "SourceAnalysisError",
     "SourceFacts",
     "SourceLocation",
@@ -65,5 +70,6 @@ __all__ = [
     "analyze_file",
     "analyze_source",
     "audit_test_integrity",
+    "declared_route_methods",
     "evaluate_policies",
 ]
