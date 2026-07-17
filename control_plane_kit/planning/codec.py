@@ -12,9 +12,15 @@ from control_plane_kit.planning.activity_plan import (
     ActivityPlan,
     AddSocketConnection,
     ChangeTarget,
+    Compensate,
+    CompensationMaterialSource,
+    CompensationSpec,
     DataResourceTarget,
     DestroyDataResource,
     NodeTarget,
+    NoCompensationRequired,
+    NonCompensatable,
+    NonCompensatableReason,
     PlannedActivity,
     ReconcileNode,
     ReconcileRuntime,
@@ -77,6 +83,7 @@ class ActivityPlanDescriptorCodec:
     def decode(self, descriptor: Mapping[str, object]) -> ActivityPlan:
         try:
             top = _mapping(descriptor, "activity plan")
+            json_top = _json_value(top)
             if _text(top, "schema") != ACTIVITY_PLAN_SCHEMA:
                 raise UnknownActivityPlanVariant("unknown activity plan schema")
             version = top.get("version")
@@ -88,13 +95,14 @@ class ActivityPlanDescriptorCodec:
                 raise UnknownActivityPlanVariant(
                     f"unsupported activity plan version {version!r}"
                 )
+            _require_keys(top, {"schema", "version", "activities"}, "activity plan")
             plan = ActivityPlan(
                 tuple(
                     self._decode_activity(_mapping(value, "activity"))
                     for value in _list(top.get("activities"), "activities")
                 )
             )
-            if self.encode(plan) != _json_value(top):
+            if self.encode(plan) != json_top:
                 raise LossyActivityPlanDescriptor(
                     "activity plan descriptor does not round-trip through the typed codec"
                 )
@@ -115,15 +123,34 @@ class ActivityPlanDescriptorCodec:
             ],
             "risk": activity.risk.value,
             "impact": activity.impact.value,
+            "compensation": self._encode_compensation(activity.compensation),
         }
 
-    def _decode_activity(self, descriptor: Mapping[str, object]) -> PlannedActivity:
+    def _decode_activity(
+        self,
+        descriptor: Mapping[str, object],
+    ) -> PlannedActivity:
+        _require_keys(
+            descriptor,
+            {
+                "activity_id",
+                "operation",
+                "dependencies",
+                "risk",
+                "impact",
+                "compensation",
+            },
+            "activity",
+        )
         try:
             risk = RiskLevel(_text(descriptor, "risk"))
             impact = ActivityImpact(_text(descriptor, "impact"))
         except ValueError as error:
             raise UnknownActivityPlanVariant(str(error)) from error
-        return PlannedActivity(
+        encoded_compensation = self._decode_compensation(
+            _mapping(descriptor.get("compensation"), "compensation")
+        )
+        activity = PlannedActivity(
             activity_id=ActivityId(_text(descriptor, "activity_id")),
             operation=self._decode_operation(_mapping(descriptor.get("operation"), "operation")),
             dependencies=tuple(
@@ -133,6 +160,52 @@ class ActivityPlanDescriptorCodec:
             risk=risk,
             impact=impact,
         )
+        if activity.compensation != encoded_compensation:
+            raise LossyActivityPlanDescriptor(
+                "activity compensation does not match its canonical operation"
+            )
+        return activity
+
+    def _encode_compensation(self, value: CompensationSpec) -> dict[str, object]:
+        match value:
+            case Compensate(operation=operation, material_source=source):
+                return {
+                    "kind": "compensate",
+                    "operation": self._encode_operation(operation),
+                    "material_source": source.value,
+                }
+            case NoCompensationRequired():
+                return {"kind": "not-required"}
+            case NonCompensatable(reason=reason):
+                return {"kind": "non-compensatable", "reason": reason.value}
+            case _:
+                raise MalformedActivityPlanDescriptor("unknown compensation variant")
+
+    def _decode_compensation(self, value: Mapping[str, object]) -> CompensationSpec:
+        match _text(value, "kind"):
+            case "compensate":
+                try:
+                    source = CompensationMaterialSource(_text(value, "material_source"))
+                except ValueError as error:
+                    raise UnknownActivityPlanVariant(str(error)) from error
+                return Compensate(
+                    self._decode_operation(
+                        _mapping(value.get("operation"), "compensation.operation")
+                    ),
+                    source,
+                )
+            case "not-required":
+                return NoCompensationRequired()
+            case "non-compensatable":
+                try:
+                    reason = NonCompensatableReason(_text(value, "reason"))
+                except ValueError as error:
+                    raise UnknownActivityPlanVariant(str(error)) from error
+                return NonCompensatable(reason)
+            case other:
+                raise UnknownActivityPlanVariant(
+                    f"unknown compensation variant {other!r}"
+                )
 
     def _encode_operation(self, operation: object) -> dict[str, object]:
         match operation:
@@ -298,6 +371,17 @@ def _mapping(value: object, name: str) -> Mapping[str, object]:
     if not isinstance(value, Mapping) or not all(isinstance(key, str) for key in value):
         raise MalformedActivityPlanDescriptor(f"{name} must be an object with text keys")
     return value
+
+
+def _require_keys(
+    value: Mapping[str, object],
+    expected: set[str],
+    name: str,
+) -> None:
+    if set(value) != expected:
+        raise LossyActivityPlanDescriptor(
+            f"{name} fields do not match activity-plan version"
+        )
 
 
 def _list(value: object, name: str) -> list[object]:

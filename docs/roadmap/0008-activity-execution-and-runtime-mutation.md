@@ -132,7 +132,7 @@ brainstorm with the following ordered topology:
     -> #317 closed recovery decisions and authorization
       -> #318 pinned typed compensation programs
         -> #319 durable recovery events and Postgres projections
-          -> #328 recovery schema migration and journal hardening
+          -> #328 strict recovery schema and journal hardening
             -> #320 transactional recovery command services
               -> #329 decision concurrency and expired-claim hardening
                 -> #321 durable compensation coordinator
@@ -184,8 +184,8 @@ Gate E deliberately extends the canonical `ActivityPlan`, `ActivityEvent`,
 `ActivityRun`, saga, UnitOfWork, and coordinator models. It does not add a
 recovery journal, compensation store, mutable resume cursor, or second run
 state machine. Four focused hardening issues isolate proof obligations that
-would otherwise be hidden inside broad implementation issues: closed-schema
-migration (#328), one-winner recovery decisions and expired claims (#329),
+would otherwise be hidden inside broad implementation issues: strict closed
+schema validation (#328), one-winner recovery decisions and expired claims (#329),
 compensation crash windows (#330), and scenario-runner isolation (#331).
 
 The common law is:

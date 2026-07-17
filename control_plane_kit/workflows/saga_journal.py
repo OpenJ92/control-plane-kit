@@ -5,7 +5,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 
 from control_plane_kit.execution import ActivityEventKind, ActivityEventRecord
-from control_plane_kit.planning import ActivityPlan
+from control_plane_kit.planning import ActivityPlan, Compensate
 from control_plane_kit.saga import (
     SagaCompensationFailed,
     SagaCompensationStarted,
@@ -118,7 +118,10 @@ def initial_state_for_plan(plan: ActivityPlan) -> SagaState:
         raise TypeError("initial saga evidence requires ActivityPlan")
     return SagaState(
         tuple(
-            SagaStepState(SagaStepId(activity.activity_id.value))
+            SagaStepState(
+                SagaStepId(activity.activity_id.value),
+                compensation_available=isinstance(activity.compensation, Compensate),
+            )
             for activity in plan.activities
         )
     )
