@@ -35,6 +35,12 @@ from control_plane_kit.stores import (
 )
 from control_plane_kit.workflows.commands import IdempotencyKey, InvalidOperationCommand
 from control_plane_kit.workflows.run_lifecycle import ExecutionWorkerAuthority
+from control_plane_kit.saga import SagaStateError
+from control_plane_kit.scheduling import ScheduleEvidenceError, derive_schedule
+from control_plane_kit.workflows.saga_journal import (
+    SagaJournalError,
+    project_activity_journal,
+)
 
 
 @dataclass(frozen=True)
@@ -293,6 +299,7 @@ def _require_complete_success(
         )
     disqualifying = {
         ActivityEventKind.STEP_FAILED,
+        ActivityEventKind.STEP_UNSUPPORTED,
         ActivityEventKind.STEP_UNCERTAIN,
         ActivityEventKind.COMPENSATION_STARTED,
         ActivityEventKind.COMPENSATION_SUCCEEDED,
@@ -303,6 +310,17 @@ def _require_complete_success(
     if any(event.kind in disqualifying for event in events):
         raise CurrentGraphAdvancementIncomplete(
             "failed, uncertain, cancelled, or compensating history cannot advance truth"
+        )
+    try:
+        journal = project_activity_journal(plan, events)
+        schedule = derive_schedule(plan, journal.state)
+    except (SagaJournalError, SagaStateError, ScheduleEvidenceError) as error:
+        raise CurrentGraphAdvancementIncomplete(
+            "durable saga evidence is structurally incoherent"
+        ) from error
+    if journal.in_flight or journal.uncertain or not schedule.successful:
+        raise CurrentGraphAdvancementIncomplete(
+            "durable saga evidence is not a complete successful schedule"
         )
     expected = Counter(activity.activity_id.value for activity in plan.activities)
     succeeded = Counter(

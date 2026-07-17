@@ -62,6 +62,7 @@ class ActivityEventKind(StrEnum):
     STEP_STARTED = "step_started"
     STEP_SUCCEEDED = "step_succeeded"
     STEP_FAILED = "step_failed"
+    STEP_UNSUPPORTED = "step_unsupported"
     STEP_UNCERTAIN = "step_uncertain"
     COMPENSATION_STARTED = "compensation_started"
     COMPENSATION_SUCCEEDED = "compensation_succeeded"

@@ -186,6 +186,19 @@ class CurrentGraphAdvancementTests(PostgresStoreTestCase):
         )
         self.assertEqual(self.stores.activity_history.actions_for_session("session-a"), ())
 
+    def test_unsupported_step_cannot_advance_current_graph(self):
+        self._seed_succeeded_run(
+            step_kind=ActivityEventKind.STEP_UNSUPPORTED,
+        )
+
+        with self.assertRaises(CurrentGraphAdvancementIncomplete):
+            self._service("unused", "unused").execute(self._command())
+
+        self.assertEqual(
+            self.stores.workspace.get("workspace-a").current_graph_id,
+            "graph-a",
+        )
+
     def test_missing_step_success_evidence_fails_closed(self):
         self._seed_succeeded_run(step_kind=ActivityEventKind.STEP_STARTED)
 

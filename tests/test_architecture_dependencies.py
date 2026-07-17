@@ -55,7 +55,17 @@ PACKAGE_RULES = (
     PackageDependencyRule("types", ()),
     PackageDependencyRule(
         "workflows",
-        ("execution", "planning", "policies", "stores", "topology", "types"),
+        (
+            "effects",
+            "execution",
+            "planning",
+            "policies",
+            "saga",
+            "scheduling",
+            "stores",
+            "topology",
+            "types",
+        ),
     ),
 )
 

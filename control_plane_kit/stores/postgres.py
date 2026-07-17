@@ -456,7 +456,7 @@ BEGIN
       CHECK (event_type IN (
         'request_admitted', 'request_claimed', 'run_opened', 'run_started', 'run_paused',
         'run_resumed', 'step_started', 'step_succeeded', 'step_failed',
-        'step_uncertain', 'compensation_started', 'compensation_succeeded',
+        'step_unsupported', 'step_uncertain', 'compensation_started', 'compensation_succeeded',
         'compensation_failed', 'run_succeeded', 'run_failed', 'run_cancelled',
         'current_graph_advanced'
       )) NOT VALID;
@@ -517,7 +517,7 @@ ALTER TABLE cpk_activity_events
   CHECK (event_type IN (
     'request_admitted', 'request_claimed', 'run_opened', 'run_started',
     'run_paused', 'run_resumed', 'step_started', 'step_succeeded',
-    'step_failed', 'step_uncertain', 'compensation_started',
+    'step_failed', 'step_unsupported', 'step_uncertain', 'compensation_started',
     'compensation_succeeded', 'compensation_failed', 'run_succeeded',
     'run_failed', 'run_cancelled', 'current_graph_advanced'
   )) NOT VALID;

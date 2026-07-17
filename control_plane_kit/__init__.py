@@ -127,6 +127,7 @@ from control_plane_kit.effects import (
     EffectFailed,
     EffectIdentity,
     EffectInterpreter,
+    PreparedEffect,
     EffectObservation,
     EffectRequest,
     EffectResult,
@@ -141,7 +142,10 @@ from control_plane_kit.effects import (
     TimeoutPolicy,
     UnsupportedEffectOperation,
     dispatch_effect,
+    dispatch_prepared_effect,
     effect_request_for_activity,
+    preflight_effect,
+    prepare_effect,
     required_capability,
 )
 from control_plane_kit.topology.compiler import compile_recipe
@@ -665,6 +669,7 @@ __all__ += [
     "EffectFailed",
     "EffectIdentity",
     "EffectInterpreter",
+    "PreparedEffect",
     "EffectObservation",
     "EffectRequest",
     "EffectResult",
@@ -679,6 +684,9 @@ __all__ += [
     "TimeoutPolicy",
     "UnsupportedEffectOperation",
     "dispatch_effect",
+    "dispatch_prepared_effect",
     "effect_request_for_activity",
+    "preflight_effect",
+    "prepare_effect",
     "required_capability",
 ]

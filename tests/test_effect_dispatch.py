@@ -11,7 +11,9 @@ from control_plane_kit.effects import (
     EffectSucceeded,
     EffectUnsupported,
     dispatch_effect,
+    dispatch_prepared_effect,
     effect_request_for_activity,
+    prepare_effect,
 )
 from control_plane_kit.execution import BoundedEvidence, FailureCategory, FailureEvidence
 from control_plane_kit.planning import compile_activity_plan
@@ -107,6 +109,17 @@ class EffectDispatchTests(unittest.TestCase):
             EffectUnsupported(request.identity, request.capability),
         )
         self.assertEqual(interpreter.requests, [])
+
+    def test_prepared_effect_freezes_support_decision_before_attempt(self) -> None:
+        request = self._first_executable_request()
+        interpreter = FakeEffectInterpreter(frozenset({request.capability}))
+        prepared = prepare_effect(request, interpreter)
+        interpreter.capabilities = frozenset()
+
+        result = dispatch_prepared_effect(prepared)
+
+        self.assertIsInstance(result, EffectSucceeded)
+        self.assertEqual(interpreter.requests, [request])
 
     def test_attempted_failure_is_distinct_from_unsupported(self) -> None:
         request = self._first_executable_request()
