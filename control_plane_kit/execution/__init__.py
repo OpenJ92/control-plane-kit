@@ -31,7 +31,6 @@ from control_plane_kit.execution.values import (
     ExecutionValueError,
     FailureCategory,
     FailureEvidence,
-    LegacyImportedRun,
     ObservationFreshness,
     ObservationStaleReason,
     ObservationRecord,
@@ -41,7 +40,6 @@ from control_plane_kit.execution.values import (
     ProbeOutcome,
     probe_outcome_is_valid,
     RetryIdentity,
-    RunAdmission,
 )
 from control_plane_kit.execution.observations import (
     ObservationFreshnessPolicy,
@@ -96,7 +94,6 @@ __all__ = [
     "ExecutionValueError",
     "FailureCategory",
     "FailureEvidence",
-    "LegacyImportedRun",
     "LossyExecutionDescriptor",
     "MAX_EVIDENCE_BYTES",
     "MAX_EVIDENCE_DEPTH",
@@ -127,7 +124,6 @@ __all__ = [
     "RetryIdentity",
     "RetryAsNewRun",
     "ResumeSameIntent",
-    "RunAdmission",
     "UnknownExecutionVariant",
     "authorize_recovery_decision",
     "validate_recovery_decision",
