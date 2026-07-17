@@ -21,7 +21,7 @@ PACKAGE_RULES = (
     PackageDependencyRule("contracts", ()),
     PackageDependencyRule("control_routes", ()),
     PackageDependencyRule("docker_runtime", ("runtimes", "topology", "types")),
-    PackageDependencyRule("effects", ("execution", "planning")),
+    PackageDependencyRule("effects", ("execution", "planning", "topology", "types")),
     PackageDependencyRule("execution", ()),
     PackageDependencyRule("implementations", ("algebra", "topology", "types")),
     PackageDependencyRule("mcp_read", ("read_services",)),
@@ -128,6 +128,18 @@ class ArchitectureDependencyTests(unittest.TestCase):
                 "control_plane_kit/planning/selected.py",
             },
         )
+
+    def test_effect_materialization_and_interpreters_cannot_import_stores(self) -> None:
+        facts = analyze_source(
+            "from control_plane_kit.stores import GraphTopologyStore\n",
+            path="control_plane_kit/effects/provider.py",
+            module="control_plane_kit.effects.provider",
+        )
+
+        findings = DEPENDENCY_POLICY.evaluate(facts)
+
+        self.assertEqual(len(findings), 1)
+        self.assertIn("stores", findings[0].message)
 
     def test_relative_same_package_import_is_allowed(self) -> None:
         facts = analyze_source(

@@ -12,8 +12,9 @@ import psycopg
 from control_plane_kit.effects import (
     EffectCapability,
     EffectFailed,
+    EffectMaterializationError,
     EffectObservation,
-    EffectRequest,
+    MaterializedEffectRequest,
     EffectSucceeded,
     ObservationKind,
 )
@@ -29,15 +30,16 @@ from control_plane_kit.execution import (
     ObservationStatus,
     RetryIdentity,
 )
-from control_plane_kit.stores import PostgresUnitOfWork
+from control_plane_kit.stores import GraphVersionRecord, PostgresUnitOfWork, WorkspaceRecord
 from control_plane_kit.planning import DEFAULT_ACTIVITY_PLAN_CODEC, compile_activity_plan
-from control_plane_kit.topology import diff_graphs, validate_graph
+from control_plane_kit.topology import DeploymentGraph, diff_graphs, validate_graph
 from examples.scenarios import planning_scenarios
 from control_plane_kit.workflows import (
     CoordinatorCheckpoint,
     CoordinatorStatus,
     ExecuteActivityRun,
     ExecutionCoordinator,
+    ExecutionCoordinatorConflict,
     ExecutionCoordinatorDenied,
     ExecutionWorkerAuthority,
     InjectedCoordinatorCrash,
@@ -111,9 +113,9 @@ class InspectableFakeInterpreter:
     fail: bool = False
     observations: bool = False
     capabilities: frozenset[EffectCapability] = frozenset(EffectCapability)
-    requests: list[EffectRequest] = field(default_factory=list)
+    requests: list[MaterializedEffectRequest] = field(default_factory=list)
 
-    def execute(self, request: EffectRequest) -> EffectSucceeded | EffectFailed:
+    def execute(self, request: MaterializedEffectRequest) -> EffectSucceeded | EffectFailed:
         if self.tracker.active != 0:
             raise AssertionError("effect executed while a UnitOfWork was active")
         self.requests.append(request)
@@ -148,7 +150,7 @@ class BlockingFakeInterpreter(InspectableFakeInterpreter):
     entered: Event = field(default_factory=Event)
     release: Event = field(default_factory=Event)
 
-    def execute(self, request: EffectRequest) -> EffectSucceeded | EffectFailed:
+    def execute(self, request: MaterializedEffectRequest) -> EffectSucceeded | EffectFailed:
         if self.tracker.active != 0:
             raise AssertionError("blocked effect entered while a UnitOfWork was active")
         self.entered.set()
@@ -160,7 +162,7 @@ class BlockingFakeInterpreter(InspectableFakeInterpreter):
 class ExecutionCoordinatorTests(PostgresStoreTestCase):
     def setUp(self) -> None:
         super().setUp()
-        ExecutionStoreTests._seed_admission_truth(self.stores)
+        ExecutionStoreTests._seed_admission_truth(self.stores, include_graphs=True)
         self.stores.execution.add_request(ExecutionStoreTests._request())
         self.stores.execution.add_run(
             ActivityRunRecord(
@@ -424,11 +426,8 @@ class ExecutionCoordinatorTests(PostgresStoreTestCase):
         )
 
     def test_representative_scenario_executes_in_canonical_plan_order(self) -> None:
-        plan = self._representative_plan()
-        self.connection.execute(
-            "UPDATE cpk_activity_plans SET payload = %s::jsonb WHERE plan_id = 'plan-a'",
-            (json.dumps(DEFAULT_ACTIVITY_PLAN_CODEC.encode(plan)),),
-        )
+        plan, scenario = self._representative_plan()
+        self._replace_plan_truth(plan, scenario.current_graph, scenario.desired_graph)
         interpreter = InspectableFakeInterpreter(self.tracker)
 
         result = self._coordinator(interpreter).execute(self._command())
@@ -440,11 +439,8 @@ class ExecutionCoordinatorTests(PostgresStoreTestCase):
         )
 
     def test_effect_limit_returns_typed_progress_without_settling_run(self) -> None:
-        plan = self._representative_plan()
-        self.connection.execute(
-            "UPDATE cpk_activity_plans SET payload = %s::jsonb WHERE plan_id = 'plan-a'",
-            (json.dumps(DEFAULT_ACTIVITY_PLAN_CODEC.encode(plan)),),
-        )
+        plan, scenario = self._representative_plan()
+        self._replace_plan_truth(plan, scenario.current_graph, scenario.desired_graph)
         interpreter = InspectableFakeInterpreter(self.tracker)
 
         result = self._coordinator(interpreter).execute(
@@ -466,8 +462,19 @@ class ExecutionCoordinatorTests(PostgresStoreTestCase):
                 )
             )
             if candidate.ready_for_execution and len(candidate.activities) >= 3:
-                return candidate
+                return candidate, scenario
         self.fail("planning scenarios must include a multi-step executable plan")
+
+    def _replace_plan_truth(self, plan, base_graph, desired_graph) -> None:
+        self.connection.execute(
+            "UPDATE cpk_activity_plans SET payload = %s::jsonb WHERE plan_id = 'plan-a'",
+            (json.dumps(DEFAULT_ACTIVITY_PLAN_CODEC.encode(plan)),),
+        )
+        for graph_id, graph in (("graph-a", base_graph), ("graph-b", desired_graph)):
+            self.connection.execute(
+                "UPDATE cpk_graph_versions SET graph_descriptor = %s::jsonb WHERE graph_id = %s",
+                (json.dumps(graph.descriptor()), graph_id),
+            )
 
     def test_worker_identity_and_scope_fail_before_effect(self) -> None:
         interpreter = InspectableFakeInterpreter(self.tracker)
@@ -480,6 +487,58 @@ class ExecutionCoordinatorTests(PostgresStoreTestCase):
                 self._command(authority=self._authority(worker_id="worker-b"))
             )
         self.assertEqual(interpreter.requests, [])
+
+    def test_materialization_failure_records_no_intent_and_attempts_no_effect(self) -> None:
+        self.connection.execute(
+            "UPDATE cpk_graph_versions SET graph_descriptor = %s::jsonb WHERE graph_id = 'graph-b'",
+            (json.dumps(DeploymentGraph("missing-runtime").descriptor()),),
+        )
+        interpreter = InspectableFakeInterpreter(self.tracker)
+
+        with self.assertRaisesRegex(EffectMaterializationError, "no runtime 'runtime-a'"):
+            self._coordinator(interpreter).execute(self._command())
+
+        self.assertEqual(interpreter.requests, [])
+        self.assertNotIn(
+            ActivityEventKind.STEP_STARTED,
+            tuple(event.kind for event in self._events()),
+        )
+
+    def test_cross_workspace_graph_substitution_fails_before_intent(self) -> None:
+        self.stores.workspace.create(WorkspaceRecord("workspace-b", "Foreign"))
+        self.connection.execute(
+            "UPDATE cpk_graph_versions SET workspace_id = 'workspace-b', version = 1 WHERE graph_id = 'graph-b'"
+        )
+        interpreter = InspectableFakeInterpreter(self.tracker)
+
+        with self.assertRaisesRegex(ExecutionCoordinatorConflict, "different workspace"):
+            self._coordinator(interpreter).execute(self._command())
+
+        self.assertEqual(interpreter.requests, [])
+        self.assertNotIn(
+            ActivityEventKind.STEP_STARTED,
+            tuple(event.kind for event in self._events()),
+        )
+
+    def test_later_workspace_pointer_does_not_retarget_pinned_graph_material(self) -> None:
+        self.stores.graph_topology.save(
+            GraphVersionRecord.from_graph(
+                graph_id="graph-c",
+                workspace_id="workspace-a",
+                version=3,
+                graph=DeploymentGraph("later"),
+                created_by="other-operator",
+                created_at="2026-07-16T00:04:45Z",
+            )
+        )
+        self.stores.workspace.set_desired_graph("workspace-a", "graph-c")
+        interpreter = InspectableFakeInterpreter(self.tracker)
+
+        self._coordinator(interpreter).execute(self._command())
+
+        self.assertEqual(len(interpreter.requests), 1)
+        self.assertEqual(interpreter.requests[0].graphs.desired_graph_id, "graph-b")
+        self.assertEqual(interpreter.requests[0].material_graph_id, "graph-b")
 
 
 if __name__ == "__main__":

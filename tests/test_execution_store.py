@@ -34,7 +34,10 @@ from control_plane_kit.stores import (
     OperationSessionStatus,
     PostgresUnitOfWork,
     WorkspaceRecord,
+    GraphVersionRecord,
 )
+from control_plane_kit.topology import DeploymentGraph, RuntimeRecord
+from control_plane_kit.types import RuntimeKind
 from tests.postgres_case import PostgresStoreTestCase
 
 
@@ -100,8 +103,23 @@ class ExecutionStoreTests(PostgresStoreTestCase):
         self.assertEqual(counts, (0, 0, 0, 0, 0))
 
     @staticmethod
-    def _seed_admission_truth(stores: object) -> None:
+    def _seed_admission_truth(stores: object, *, include_graphs: bool = False) -> None:
         stores.workspace.create(WorkspaceRecord("workspace-a", "Demo"))
+        if include_graphs:
+            graph = DeploymentGraph("execution", runtimes={
+                "runtime-a": RuntimeRecord("runtime-a", RuntimeKind.DOCKER)
+            })
+            for graph_id, version in (("graph-a", 1), ("graph-b", 2)):
+                stores.graph_topology.save(
+                    GraphVersionRecord.from_graph(
+                        graph_id=graph_id,
+                        workspace_id="workspace-a",
+                        version=version,
+                        graph=graph,
+                        created_by="operator",
+                        created_at=f"2026-07-16T00:00:0{version}Z",
+                    )
+                )
         stores.activity_history.add_session(
             OperationSessionRecord(
                 session_id="session-a",

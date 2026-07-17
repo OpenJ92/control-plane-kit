@@ -9,11 +9,11 @@ from control_plane_kit.effects.values import (
     EffectAttemptResult,
     EffectCapability,
     EffectFailed,
-    EffectRequest,
     EffectResult,
     EffectSucceeded,
     EffectUnsupported,
 )
+from control_plane_kit.effects.material import MaterializedEffectRequest
 
 
 class EffectDispatchError(RuntimeError):
@@ -26,19 +26,19 @@ class EffectInterpreter(Protocol):
     @property
     def capabilities(self) -> frozenset[EffectCapability]: ...
 
-    def execute(self, request: EffectRequest) -> EffectAttemptResult: ...
+    def execute(self, request: MaterializedEffectRequest) -> EffectAttemptResult: ...
 
 
 @dataclass(frozen=True)
 class PreparedEffect:
     """A request paired with the interpreter that passed capability preflight."""
 
-    request: EffectRequest
+    request: MaterializedEffectRequest
     interpreter: EffectInterpreter
 
 
 def dispatch_effect(
-    request: EffectRequest,
+    request: MaterializedEffectRequest,
     interpreter: EffectInterpreter,
 ) -> EffectResult:
     """Reject unsupported work before invoking an effect interpreter."""
@@ -67,7 +67,7 @@ def dispatch_prepared_effect(prepared: PreparedEffect) -> EffectAttemptResult:
 
 
 def preflight_effect(
-    request: EffectRequest,
+    request: MaterializedEffectRequest,
     interpreter: EffectInterpreter,
 ) -> EffectUnsupported | None:
     """Check capability support without attempting an external effect."""
@@ -77,13 +77,13 @@ def preflight_effect(
 
 
 def prepare_effect(
-    request: EffectRequest,
+    request: MaterializedEffectRequest,
     interpreter: EffectInterpreter,
 ) -> PreparedEffect | EffectUnsupported:
     """Freeze one capability decision before durable effect intent is recorded."""
 
-    if not isinstance(request, EffectRequest):
-        raise TypeError("effect preparation requires EffectRequest")
+    if not isinstance(request, MaterializedEffectRequest):
+        raise TypeError("effect preparation requires MaterializedEffectRequest")
     capabilities = interpreter.capabilities
     if not isinstance(capabilities, frozenset) or not all(
         isinstance(value, EffectCapability) for value in capabilities

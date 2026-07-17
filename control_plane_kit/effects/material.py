@@ -1,0 +1,518 @@
+"""Pure materialization of planned effects from plan-pinned graph truth."""
+
+from __future__ import annotations
+
+from dataclasses import dataclass
+from enum import StrEnum
+import json
+from typing import Mapping, TypeAlias
+
+from control_plane_kit.effects.values import EffectRequest
+from control_plane_kit.planning import (
+    AddSocketConnection,
+    PlannedActivity,
+    ReconcileNode,
+    ReconcileRuntime,
+    RemoveSocketConnection,
+    StartNode,
+    StartRuntime,
+    StopNode,
+    StopRuntime,
+    SwitchSocketConnection,
+    WaitForHealthy,
+)
+from control_plane_kit.topology import (
+    DeploymentGraph,
+    Edge,
+    Endpoint,
+    LiteralAddress,
+    Node,
+    SecretReferenceAddress,
+)
+from control_plane_kit.types import EndpointScope, Protocol, RuntimeKind
+
+
+_SECRET_MARKERS = ("secret", "token", "password", "credential", "private_key", "api_key")
+
+
+class MaterializationCode(StrEnum):
+    """Closed reasons why approved work cannot become adapter input."""
+
+    GRAPH_IDENTITY = "graph-identity"
+    TARGET_NOT_FOUND = "target-not-found"
+    INVALID_RUNTIME_MEMBERSHIP = "invalid-runtime-membership"
+    INVALID_SOCKET_CONNECTION = "invalid-socket-connection"
+    MALFORMED_IMPLEMENTATION = "malformed-implementation"
+    SECRET_VALUE = "secret-value"
+    UNSUPPORTED_OPERATION = "unsupported-operation"
+
+
+class EffectMaterializationError(ValueError):
+    """Typed pre-intent rejection; its message must never contain secret values."""
+
+    def __init__(self, code: MaterializationCode, message: str) -> None:
+        self.code = code
+        super().__init__(message)
+
+
+@dataclass(frozen=True)
+class PinnedGraphSet:
+    """The immutable graph coordinates owned by one approved plan."""
+
+    workspace_id: str
+    plan_id: str
+    base_graph_id: str
+    desired_graph_id: str
+
+
+@dataclass(frozen=True)
+class LiteralMaterialValue:
+    value: str
+
+
+@dataclass(frozen=True, order=True)
+class SecretReferenceMaterialValue:
+    reference_id: str
+
+    def __post_init__(self) -> None:
+        if not self.reference_id.strip():
+            raise EffectMaterializationError(
+                MaterializationCode.MALFORMED_IMPLEMENTATION,
+                "secret reference identity must not be empty",
+            )
+
+
+EnvironmentMaterialValue: TypeAlias = LiteralMaterialValue | SecretReferenceMaterialValue
+
+
+@dataclass(frozen=True, order=True)
+class EnvironmentBindingMaterial:
+    name: str
+    value: EnvironmentMaterialValue
+
+
+@dataclass(frozen=True)
+class LiteralEndpointMaterial:
+    value: str
+
+
+@dataclass(frozen=True)
+class SecretEndpointMaterial:
+    reference_id: str
+
+
+EndpointAddressMaterial: TypeAlias = LiteralEndpointMaterial | SecretEndpointMaterial
+
+
+@dataclass(frozen=True)
+class EndpointMaterial:
+    socket_name: str
+    protocol: Protocol
+    scope: EndpointScope
+    address: EndpointAddressMaterial
+
+
+@dataclass(frozen=True)
+class ImplementationMaterial:
+    """Closed provider-neutral process material retained from a graph node."""
+
+    kind: str
+    image: str | None = None
+    command: tuple[str, ...] = ()
+    environment: tuple[EnvironmentBindingMaterial, ...] = ()
+    database: str | None = None
+    owned: bool | None = None
+
+
+@dataclass(frozen=True)
+class RuntimeMaterial:
+    runtime_id: str
+    kind: RuntimeKind
+    children: tuple[str, ...]
+    network_name: str | None
+
+
+@dataclass(frozen=True)
+class NodeMaterial:
+    node_id: str
+    runtime: RuntimeMaterial
+    implementation: ImplementationMaterial
+    endpoints: tuple[EndpointMaterial, ...]
+    environment: tuple[EnvironmentBindingMaterial, ...]
+    health_path: str | None
+
+
+@dataclass(frozen=True)
+class SocketConnectionMaterial:
+    edge_id: str
+    protocol: Protocol
+    provider_node_id: str
+    provider_socket: str
+    provider_endpoint: EndpointMaterial
+    consumer_node_id: str
+    requirement_socket: str
+    environment: tuple[EnvironmentBindingMaterial, ...]
+
+
+EffectMaterial: TypeAlias = NodeMaterial | RuntimeMaterial | SocketConnectionMaterial
+
+
+@dataclass(frozen=True)
+class MaterializedEffectRequest:
+    """An abstract request paired with immutable, graph-pinned adapter input."""
+
+    request: EffectRequest
+    graphs: PinnedGraphSet
+    material_graph_id: str
+    material: EffectMaterial
+
+    def __post_init__(self) -> None:
+        if not isinstance(self.request, EffectRequest):
+            raise TypeError("materialized effect requires EffectRequest")
+        if not isinstance(self.graphs, PinnedGraphSet):
+            raise TypeError("materialized effect requires PinnedGraphSet")
+        if self.material_graph_id not in (
+            self.graphs.base_graph_id,
+            self.graphs.desired_graph_id,
+        ):
+            raise EffectMaterializationError(
+                MaterializationCode.GRAPH_IDENTITY,
+                "material graph identity is not pinned by the approved plan",
+            )
+        if not isinstance(
+            self.material,
+            (NodeMaterial, RuntimeMaterial, SocketConnectionMaterial),
+        ):
+            raise TypeError("materialized effect requires typed effect material")
+
+    @property
+    def identity(self):
+        return self.request.identity
+
+    @property
+    def action(self):
+        return self.request.action
+
+    @property
+    def timeout(self):
+        return self.request.timeout
+
+    @property
+    def capability(self):
+        return self.request.capability
+
+    @property
+    def material_secret_references(self) -> tuple[SecretReferenceMaterialValue, ...]:
+        references = {
+            value.reference_id
+            for binding in _all_environment(self.material)
+            if isinstance((value := binding.value), SecretReferenceMaterialValue)
+        }
+        references.update(
+            endpoint.address.reference_id
+            for endpoint in _all_endpoints(self.material)
+            if isinstance(endpoint.address, SecretEndpointMaterial)
+        )
+        return tuple(SecretReferenceMaterialValue(value) for value in sorted(references))
+
+    def descriptor(self) -> dict[str, object]:
+        """Return deterministic execution identity without secret values."""
+
+        return {
+            "run_id": self.identity.run_id,
+            "activity_id": self.identity.activity_id.value,
+            "attempt": self.identity.attempt,
+            "plan_id": self.graphs.plan_id,
+            "workspace_id": self.graphs.workspace_id,
+            "base_graph_id": self.graphs.base_graph_id,
+            "desired_graph_id": self.graphs.desired_graph_id,
+            "material_graph_id": self.material_graph_id,
+            "material": _descriptor(self.material),
+        }
+
+    def canonical_json(self) -> str:
+        return json.dumps(self.descriptor(), sort_keys=True, separators=(",", ":"))
+
+
+def materialize_effect_request(
+    request: EffectRequest,
+    activity: PlannedActivity,
+    graphs: PinnedGraphSet,
+    *,
+    base_graph_id: str,
+    base_graph: DeploymentGraph,
+    desired_graph_id: str,
+    desired_graph: DeploymentGraph,
+) -> MaterializedEffectRequest:
+    """Interpret one operation against only the graph versions pinned by its plan."""
+
+    if request.action != activity.operation:
+        raise EffectMaterializationError(
+            MaterializationCode.GRAPH_IDENTITY,
+            "effect request action does not match the planned activity",
+        )
+    if base_graph_id != graphs.base_graph_id or desired_graph_id != graphs.desired_graph_id:
+        raise EffectMaterializationError(
+            MaterializationCode.GRAPH_IDENTITY,
+            "loaded graph identity does not match the approved plan",
+        )
+
+    match activity.operation:
+        case StopNode(target=target):
+            graph_id, material = base_graph_id, _node_material(base_graph, target.node_id)
+        case StopRuntime(target=target):
+            graph_id, material = base_graph_id, _runtime_material(base_graph, target.runtime_id)
+        case RemoveSocketConnection(target=target):
+            graph_id, material = base_graph_id, _edge_material(base_graph, target.edge_id)
+        case StartNode(target=target) | ReconcileNode(target=target) | WaitForHealthy(target=target):
+            graph_id, material = desired_graph_id, _node_material(desired_graph, target.node_id)
+        case StartRuntime(target=target) | ReconcileRuntime(target=target):
+            graph_id, material = desired_graph_id, _runtime_material(desired_graph, target.runtime_id)
+        case AddSocketConnection(target=target) | SwitchSocketConnection(target=target):
+            graph_id, material = desired_graph_id, _edge_material(desired_graph, target.edge_id)
+        case _:
+            raise EffectMaterializationError(
+                MaterializationCode.UNSUPPORTED_OPERATION,
+                f"operation {type(activity.operation).__name__} has no effect materializer",
+            )
+    return MaterializedEffectRequest(request, graphs, graph_id, material)
+
+
+def _runtime_material(graph: DeploymentGraph, runtime_id: str) -> RuntimeMaterial:
+    try:
+        runtime = graph.runtimes[runtime_id]
+    except KeyError as error:
+        raise EffectMaterializationError(
+            MaterializationCode.TARGET_NOT_FOUND,
+            f"pinned graph has no runtime {runtime_id!r}",
+        ) from error
+    missing = tuple(child for child in runtime.children if child not in graph.nodes)
+    if missing:
+        raise EffectMaterializationError(
+            MaterializationCode.INVALID_RUNTIME_MEMBERSHIP,
+            f"runtime {runtime_id!r} contains missing node identities",
+        )
+    return RuntimeMaterial(
+        runtime.runtime_id,
+        runtime.kind,
+        tuple(runtime.children),
+        runtime.metadata.get("network_name"),
+    )
+
+
+def _node_material(graph: DeploymentGraph, node_id: str) -> NodeMaterial:
+    try:
+        node = graph.nodes[node_id]
+    except KeyError as error:
+        raise EffectMaterializationError(
+            MaterializationCode.TARGET_NOT_FOUND,
+            f"pinned graph has no node {node_id!r}",
+        ) from error
+    runtime = _runtime_material(graph, node.runtime_id)
+    if node_id not in runtime.children:
+        raise EffectMaterializationError(
+            MaterializationCode.INVALID_RUNTIME_MEMBERSHIP,
+            f"node {node_id!r} is not a child of runtime {node.runtime_id!r}",
+        )
+    return NodeMaterial(
+        node.node_id,
+        runtime,
+        _implementation_material(node, graph),
+        tuple(_endpoint_material(name, endpoint) for name, endpoint in sorted(node.endpoints.items())),
+        _environment_material(node.environment, node=node, graph=graph),
+        node.block_spec.health_path,
+    )
+
+
+def _edge_material(graph: DeploymentGraph, edge_id: str) -> SocketConnectionMaterial:
+    try:
+        edge = graph.edges[edge_id]
+        provider = graph.node(edge.provider_role)
+        consumer = graph.node(edge.consumer_role)
+        endpoint = provider.endpoint(edge.provider_socket)
+        provider.provider_socket(edge.provider_socket)
+        requirement = consumer.requirement_socket(edge.requirement_socket)
+    except KeyError as error:
+        raise EffectMaterializationError(
+            MaterializationCode.TARGET_NOT_FOUND,
+            f"pinned graph cannot resolve socket connection {edge_id!r}",
+        ) from error
+    if endpoint.protocol is not edge.protocol or requirement.protocol is not edge.protocol:
+        raise EffectMaterializationError(
+            MaterializationCode.INVALID_SOCKET_CONNECTION,
+            f"socket connection {edge_id!r} has incompatible protocols",
+        )
+    return SocketConnectionMaterial(
+        edge.edge_id,
+        edge.protocol,
+        provider.node_id,
+        edge.provider_socket,
+        _endpoint_material(edge.provider_socket, endpoint),
+        consumer.node_id,
+        edge.requirement_socket,
+        _environment_material(edge.env_assignments, endpoint=endpoint),
+    )
+
+
+def _implementation_material(node: Node, graph: DeploymentGraph) -> ImplementationMaterial:
+    metadata = node.metadata
+    image = _optional_text(metadata.get("image"), "image")
+    database = _optional_text(metadata.get("database"), "database")
+    owned = metadata.get("owned")
+    if owned is not None and type(owned) is not bool:
+        raise _malformed("owned")
+    command_value = metadata.get("command", ())
+    if not isinstance(command_value, (list, tuple)) or not all(isinstance(value, str) for value in command_value):
+        raise _malformed("command")
+    static_environment = metadata.get("environment", {})
+    if not isinstance(static_environment, Mapping) or not all(
+        isinstance(key, str) and isinstance(value, str)
+        for key, value in static_environment.items()
+    ):
+        raise _malformed("environment")
+    environment = {**dict(static_environment), **dict(node.environment)}
+    return ImplementationMaterial(
+        node.kind,
+        image,
+        tuple(command_value),
+        _environment_material(environment, node=node, graph=graph),
+        database,
+        owned,
+    )
+
+
+def _environment_material(
+    values: Mapping[str, str],
+    *,
+    node: Node | None = None,
+    graph: DeploymentGraph | None = None,
+    endpoint: Endpoint | None = None,
+) -> tuple[EnvironmentBindingMaterial, ...]:
+    bindings: list[EnvironmentBindingMaterial] = []
+    for name, literal in sorted(values.items()):
+        source = endpoint or _environment_endpoint(name, node, graph)
+        if source is not None and isinstance(source.address, SecretReferenceAddress):
+            value: EnvironmentMaterialValue = SecretReferenceMaterialValue(source.address.secret_ref)
+        else:
+            if any(marker in name.lower() for marker in _SECRET_MARKERS):
+                raise EffectMaterializationError(
+                    MaterializationCode.SECRET_VALUE,
+                    f"environment field {name!r} must use an opaque secret reference",
+                )
+            value = LiteralMaterialValue(literal)
+        bindings.append(EnvironmentBindingMaterial(name, value))
+    return tuple(bindings)
+
+
+def _environment_endpoint(name: str, node: Node | None, graph: DeploymentGraph | None) -> Endpoint | None:
+    if node is None or graph is None:
+        return None
+    for edge in graph.edges.values():
+        if edge.consumer_role == node.node_id and name in edge.env_assignments:
+            return graph.node(edge.provider_role).endpoint(edge.provider_socket)
+    return None
+
+
+def _endpoint_material(name: str, endpoint: Endpoint) -> EndpointMaterial:
+    match endpoint.address:
+        case LiteralAddress(value=value):
+            address: EndpointAddressMaterial = LiteralEndpointMaterial(value)
+        case SecretReferenceAddress(secret_ref=reference):
+            address = SecretEndpointMaterial(reference)
+    return EndpointMaterial(name, endpoint.protocol, endpoint.scope, address)
+
+
+def _optional_text(value: object, name: str) -> str | None:
+    if value is None:
+        return None
+    if not isinstance(value, str) or not value.strip():
+        raise _malformed(name)
+    return value
+
+
+def _malformed(name: str) -> EffectMaterializationError:
+    return EffectMaterializationError(
+        MaterializationCode.MALFORMED_IMPLEMENTATION,
+        f"implementation field {name!r} has an invalid shape",
+    )
+
+
+def _all_environment(material: EffectMaterial) -> tuple[EnvironmentBindingMaterial, ...]:
+    match material:
+        case NodeMaterial():
+            return material.implementation.environment
+        case SocketConnectionMaterial():
+            return material.environment
+        case RuntimeMaterial():
+            return ()
+
+
+def _all_endpoints(material: EffectMaterial) -> tuple[EndpointMaterial, ...]:
+    match material:
+        case NodeMaterial():
+            return material.endpoints
+        case SocketConnectionMaterial():
+            return (material.provider_endpoint,)
+        case RuntimeMaterial():
+            return ()
+
+
+def _descriptor(value: object) -> object:
+    match value:
+        case RuntimeMaterial():
+            return {
+                "type": "runtime",
+                "runtime_id": value.runtime_id,
+                "kind": value.kind.value,
+                "children": list(value.children),
+                "network_name": value.network_name,
+            }
+        case NodeMaterial():
+            return {
+                "type": "node",
+                "node_id": value.node_id,
+                "runtime": _descriptor(value.runtime),
+                "implementation": _descriptor(value.implementation),
+                "endpoints": [_descriptor(item) for item in value.endpoints],
+                "environment": [_descriptor(item) for item in value.environment],
+                "health_path": value.health_path,
+            }
+        case ImplementationMaterial():
+            return {
+                "kind": value.kind,
+                "image": value.image,
+                "command": list(value.command),
+                "environment": [_descriptor(item) for item in value.environment],
+                "database": value.database,
+                "owned": value.owned,
+            }
+        case SocketConnectionMaterial():
+            return {
+                "type": "socket-connection",
+                "edge_id": value.edge_id,
+                "protocol": value.protocol.value,
+                "provider_node_id": value.provider_node_id,
+                "provider_socket": value.provider_socket,
+                "provider_endpoint": _descriptor(value.provider_endpoint),
+                "consumer_node_id": value.consumer_node_id,
+                "requirement_socket": value.requirement_socket,
+                "environment": [_descriptor(item) for item in value.environment],
+            }
+        case EndpointMaterial():
+            return {
+                "socket_name": value.socket_name,
+                "protocol": value.protocol.value,
+                "scope": value.scope.value,
+                "address": _descriptor(value.address),
+            }
+        case LiteralEndpointMaterial():
+            return {"kind": "literal", "value": value.value}
+        case SecretEndpointMaterial():
+            return {"kind": "secret-reference", "reference_id": value.reference_id}
+        case EnvironmentBindingMaterial():
+            return {"name": value.name, "value": _descriptor(value.value)}
+        case LiteralMaterialValue():
+            return {"kind": "literal", "value": "<redacted>"}
+        case SecretReferenceMaterialValue():
+            return {"kind": "secret-reference", "reference_id": value.reference_id}
+    raise TypeError(f"unsupported effect material descriptor {value!r}")
