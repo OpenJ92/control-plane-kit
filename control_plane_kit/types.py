@@ -31,6 +31,19 @@ class RuntimeKind(StrEnum):
     KUBERNETES = "kubernetes"
 
 
+class WorkspaceLifecycle(StrEnum):
+    """Lifecycle states shared by workspace and instance records."""
+
+    CREATED = "created"
+    RUNNING = "running"
+    PAUSED = "paused"
+    STOPPED = "stopped"
+    ARCHIVED = "archived"
+    DECONSTRUCTED = "deconstructed"
+    DELETED = "deleted"
+    FAILED = "failed"
+
+
 class BlockFamily(StrEnum):
     """Closed authoring roles retained by compiled graph nodes."""
 

@@ -206,13 +206,16 @@ def analyze_source(source: str, *, path: str, module: str) -> SourceFacts:
     )
     handlers = tuple(
         sorted(
-            ExceptHandlerFact(
-                _qualified_name(node.type, alias_map),
-                len(node.body) == 1 and isinstance(node.body[0], ast.Pass),
-                _location(path, node),
-            )
-            for node in ast.walk(tree)
-            if isinstance(node, ast.ExceptHandler)
+            (
+                ExceptHandlerFact(
+                    _qualified_name(node.type, alias_map),
+                    len(node.body) == 1 and isinstance(node.body[0], ast.Pass),
+                    _location(path, node),
+                )
+                for node in ast.walk(tree)
+                if isinstance(node, ast.ExceptHandler)
+            ),
+            key=_except_handler_sort_key,
         )
     )
     return SourceFacts(
@@ -351,3 +354,11 @@ def _qualified_name(
 
 def _location(path: str, node: ast.AST) -> SourceLocation:
     return SourceLocation(path, getattr(node, "lineno", 0), getattr(node, "col_offset", 0))
+
+
+def _except_handler_sort_key(
+    value: ExceptHandlerFact,
+) -> tuple[SourceLocation, str, bool]:
+    """Give optional exception names a total, deterministic ordering."""
+
+    return (value.location, value.exception_name or "", value.pass_only)
