@@ -38,10 +38,14 @@ from control_plane_kit.application.deploy.stages import (
 )
 from control_plane_kit.application.deploy.program import (
     Deploy,
+    DeploymentContextReader,
     DeploymentExecutionGrant,
+    DeploymentProgram,
+    DeploymentProgramServices,
     DeploymentProgramResult,
     ExecuteApprovedDeployment,
     PrepareDeployment,
+    StoredDeployment,
 )
 
 __all__ = [
@@ -64,6 +68,9 @@ __all__ = [
     "DeploymentReviewBlocked",
     "DeploymentExecutionResult",
     "DeploymentExecutionGrant",
+    "DeploymentContextReader",
+    "DeploymentProgram",
+    "DeploymentProgramServices",
     "DeploymentProgramResult",
     "DeploymentTransition",
     "InitialDeployment",
@@ -80,6 +87,7 @@ __all__ = [
     "RecoverySuspension",
     "TeardownDeployment",
     "UpdateDeployment",
+    "StoredDeployment",
     "classify_transition",
     "Deploy",
 ]

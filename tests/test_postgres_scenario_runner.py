@@ -7,7 +7,19 @@ import os
 
 import psycopg
 
-from control_plane_kit.application.deploy import PlanningServices
+from control_plane_kit.application.deploy import (
+    AdvancedDeployment,
+    AdvancementGrant,
+    AdmissionGrant,
+    ApprovalGrant,
+    ApprovalSuspension,
+    ClaimGrant,
+    DeploymentExecutionGrant,
+    DeploymentPlanRequest,
+    DeploymentProgram,
+    DeploymentProgramServices,
+    PlanningServices,
+)
 from control_plane_kit.read_services import InstanceReadService
 from control_plane_kit.stores import (
     GraphVersionRecord,
@@ -19,10 +31,14 @@ from control_plane_kit.workflows import (
     ApprovalCommandService,
     CoordinatorStatus,
     CurrentGraphAdvancementCommandService,
+    DeploymentContextError,
+    DeploymentPlanContextQueryService,
     DesiredGraphCommandService,
     ExecutionAdmissionCommandService,
+    ExecutionAdmissionConflict,
     ExecutionCoordinator,
     ExecutionWorkerAuthority,
+    IdempotencyKey,
     OperationCommandService,
     RunLifecycleCommandService,
 )
@@ -92,6 +108,272 @@ class TransactionTracker:
 
 
 class PostgresScenarioRunnerTests(PostgresStoreTestCase):
+    def test_deployment_context_rejects_missing_plan_truth(self):
+        tracker = TransactionTracker()
+
+        with self.assertRaisesRegex(
+            DeploymentContextError,
+            "references missing durable truth",
+        ):
+            DeploymentPlanContextQueryService(tracker).load("missing-plan")
+
+        self.assertEqual(tracker.active, 0)
+
+    def test_deployment_context_rejects_cross_workspace_graph_truth(self):
+        scenario = self._scenario("backend-switch")
+        context, services, _ = self._prepare(
+            scenario,
+            workspace_suffix="cross-workspace-program",
+        )
+        deployment = self._deployment_program(services).between(
+            scenario.planning.current_graph,
+            scenario.planning.desired_graph,
+        )
+        prepared = deployment.plan(
+            DeploymentPlanRequest(
+                transition=deployment.transition,
+                workspace_id=context.workspace_id,
+                current_graph_id=context.current_graph_id,
+                expected_desired_graph_id=context.current_graph_id,
+                actor_id=context.actor_id,
+                title="Cross-workspace durable context",
+                approval_comment="This context must fail closed.",
+                idempotency_prefix="cross-workspace-program",
+            )
+        )
+        assert isinstance(prepared, ApprovalSuspension)
+        plan = prepared.preparation.plan.plan_record
+        self.stores.workspace.create(
+            WorkspaceRecord("foreign-workspace", "Foreign workspace")
+        )
+        self.connection.execute(
+            "UPDATE cpk_graph_versions SET workspace_id = %s WHERE graph_id = %s",
+            ("foreign-workspace", plan.desired_graph_id),
+        )
+
+        with self.assertRaisesRegex(
+            DeploymentContextError,
+            "outside its workspace",
+        ):
+            DeploymentPlanContextQueryService(self._tracker).load(plan.plan_id)
+
+        self.assertEqual(self._tracker.active, 0)
+
+    def test_deployment_program_reconstructs_plan_across_operator_requests(self):
+        scenario = self._scenario("backend-switch")
+        context, services, interpreter = self._prepare(
+            scenario,
+            workspace_suffix="durable-program",
+        )
+        program = self._deployment_program(services)
+        deployment = program.between(
+            scenario.planning.current_graph,
+            scenario.planning.desired_graph,
+        )
+        prepared = deployment.plan(
+            DeploymentPlanRequest(
+                transition=deployment.transition,
+                workspace_id=context.workspace_id,
+                current_graph_id=context.current_graph_id,
+                expected_desired_graph_id=context.current_graph_id,
+                actor_id=context.actor_id,
+                title="Durable deployment program",
+                approval_comment="Approve after reconstructing this plan.",
+                idempotency_prefix="durable-program",
+            )
+        )
+        self.assertIsInstance(prepared, ApprovalSuspension)
+        assert isinstance(prepared, ApprovalSuspension)
+        plan_id = prepared.preparation.plan.plan_record.plan_id
+        approval_request_id = prepared.approval_request.request.request_id
+
+        approval_grant = ApprovalGrant(
+            actor_id=context.approver_id,
+            actor_scopes=(prepared.approval_request.request.required_scope,),
+            idempotency_key=IdempotencyKey("durable-program:approve"),
+            comment="Approved from a reconstructed plan handle.",
+        )
+        approved = self._deployment_program(services).for_plan(plan_id).approve(
+            approval_request_id,
+            approval_grant,
+        )
+        self.assertEqual(approved.approval.request.plan_id, plan_id)
+
+        execution_grant = DeploymentExecutionGrant(
+            admission=AdmissionGrant(
+                actor_id=context.actor_id,
+                actor_scopes=("plan:execute",),
+                idempotency_key=IdempotencyKey("durable-program:admit"),
+            ),
+            claim=ClaimGrant(
+                authority=context.worker,
+                lease_expires_at=context.lease_expires_at,
+                claim_idempotency_key=IdempotencyKey("durable-program:claim"),
+                start_idempotency_key=IdempotencyKey("durable-program:start"),
+            ),
+            advancement=AdvancementGrant(
+                IdempotencyKey("durable-program:advance")
+            ),
+        )
+        result = self._deployment_program(services).for_plan(plan_id).run(
+            approval_request_id,
+            execution_grant,
+        )
+
+        self.assertIsInstance(result, AdvancedDeployment)
+        assert isinstance(result, AdvancedDeployment)
+        self.assertEqual(
+            self.stores.workspace.get(context.workspace_id).current_graph_id,
+            result.advancement.to_graph_id,
+        )
+        self.assertGreater(len(interpreter.requests), 0)
+        effect_count = len(interpreter.requests)
+
+        replayed_approval = self._deployment_program(services).for_plan(
+            plan_id
+        ).approve(approval_request_id, approval_grant)
+        replayed_result = self._deployment_program(services).for_plan(plan_id).run(
+            approval_request_id,
+            execution_grant,
+        )
+
+        self.assertTrue(replayed_approval.approval.replayed)
+        self.assertIsInstance(replayed_result, AdvancedDeployment)
+        self.assertEqual(len(interpreter.requests), effect_count)
+        self.assertEqual(self._tracker.active, 0)
+
+    def test_stored_deployment_refuses_run_before_durable_approval(self):
+        scenario = self._scenario("backend-switch")
+        context, services, interpreter = self._prepare(
+            scenario,
+            workspace_suffix="unapproved-program",
+        )
+        deployment = self._deployment_program(services).between(
+            scenario.planning.current_graph,
+            scenario.planning.desired_graph,
+        )
+        prepared = deployment.plan(
+            DeploymentPlanRequest(
+                transition=deployment.transition,
+                workspace_id=context.workspace_id,
+                current_graph_id=context.current_graph_id,
+                expected_desired_graph_id=context.current_graph_id,
+                actor_id=context.actor_id,
+                title="Unapproved durable deployment",
+                approval_comment="This plan must remain suspended.",
+                idempotency_prefix="unapproved-program",
+            )
+        )
+        assert isinstance(prepared, ApprovalSuspension)
+        stored = self._deployment_program(services).for_plan(
+            prepared.preparation.plan.plan_record.plan_id
+        )
+
+        with self.assertRaisesRegex(DeploymentContextError, "has no approval request"):
+            stored.approve(
+                "another-request",
+                ApprovalGrant(
+                    context.approver_id,
+                    (prepared.approval_request.request.required_scope,),
+                    IdempotencyKey("unapproved-program:wrong-request"),
+                ),
+            )
+
+        with self.assertRaisesRegex(DeploymentContextError, "has not been approved"):
+            stored.run(
+                prepared.approval_request.request.request_id,
+                DeploymentExecutionGrant(
+                    admission=AdmissionGrant(
+                        context.actor_id,
+                        ("plan:execute",),
+                        IdempotencyKey("unapproved-program:admit"),
+                    ),
+                    claim=ClaimGrant(
+                        context.worker,
+                        context.lease_expires_at,
+                        IdempotencyKey("unapproved-program:claim"),
+                        IdempotencyKey("unapproved-program:start"),
+                    ),
+                    advancement=AdvancementGrant(
+                        IdempotencyKey("unapproved-program:advance")
+                    ),
+                ),
+            )
+
+        self.assertEqual(interpreter.requests, [])
+        self.assertEqual(self._tracker.active, 0)
+
+    def test_stored_deployment_preserves_stale_graph_admission_guard(self):
+        scenario = self._scenario("backend-switch")
+        context, services, interpreter = self._prepare(
+            scenario,
+            workspace_suffix="stale-program",
+        )
+        program = self._deployment_program(services)
+        deployment = program.between(
+            scenario.planning.current_graph,
+            scenario.planning.desired_graph,
+        )
+        prepared = deployment.plan(
+            DeploymentPlanRequest(
+                transition=deployment.transition,
+                workspace_id=context.workspace_id,
+                current_graph_id=context.current_graph_id,
+                expected_desired_graph_id=context.current_graph_id,
+                actor_id=context.actor_id,
+                title="Stale durable deployment",
+                approval_comment="Approval must not override graph drift.",
+                idempotency_prefix="stale-program",
+            )
+        )
+        assert isinstance(prepared, ApprovalSuspension)
+        plan_id = prepared.preparation.plan.plan_record.plan_id
+        approval_request_id = prepared.approval_request.request.request_id
+        program.for_plan(plan_id).approve(
+            approval_request_id,
+            ApprovalGrant(
+                context.approver_id,
+                (prepared.approval_request.request.required_scope,),
+                IdempotencyKey("stale-program:approve"),
+            ),
+        )
+        stale_graph_id = "scenario-current:backend-switch:stale-program:replacement"
+        self.stores.graph_topology.save(
+            GraphVersionRecord.from_graph(
+                graph_id=stale_graph_id,
+                workspace_id=context.workspace_id,
+                version=3,
+                graph=scenario.planning.current_graph,
+                created_by="concurrent-operator",
+                created_at="2026-07-18T00:05:00Z",
+            )
+        )
+        self.stores.workspace.set_current_graph(context.workspace_id, stale_graph_id)
+
+        with self.assertRaisesRegex(ExecutionAdmissionConflict, "references are stale"):
+            self._deployment_program(services).for_plan(plan_id).run(
+                approval_request_id,
+                DeploymentExecutionGrant(
+                    admission=AdmissionGrant(
+                        context.actor_id,
+                        ("plan:execute",),
+                        IdempotencyKey("stale-program:admit"),
+                    ),
+                    claim=ClaimGrant(
+                        context.worker,
+                        context.lease_expires_at,
+                        IdempotencyKey("stale-program:claim"),
+                        IdempotencyKey("stale-program:start"),
+                    ),
+                    advancement=AdvancementGrant(
+                        IdempotencyKey("stale-program:advance")
+                    ),
+                ),
+            )
+
+        self.assertEqual(interpreter.requests, [])
+        self.assertEqual(self._tracker.active, 0)
+
     def test_complete_acceptance_corpus_uses_canonical_pipeline(self):
         for ordinal, case in enumerate(execution_scenario_cases(), start=1):
             with self.subTest(case=case.case_id):
@@ -421,6 +703,19 @@ class PostgresScenarioRunnerTests(PostgresStoreTestCase):
             ),
             services,
             interpreter,
+        )
+
+    def _deployment_program(self, services: ScenarioRunnerServices) -> DeploymentProgram:
+        return DeploymentProgram(
+            DeploymentProgramServices(
+                planning=services.planning,
+                approvals=services.approvals,
+                admission=services.admission,
+                lifecycle=services.lifecycle,
+                coordinator=services.coordinator,
+                advancement=services.advancement,
+                contexts=DeploymentPlanContextQueryService(self._tracker),
+            )
         )
 
     @staticmethod

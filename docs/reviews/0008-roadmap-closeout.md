@@ -191,7 +191,7 @@ Roadmap 0009 may package the control-plane instance as an ordinary
 `ApplicationBlock` and deploy it through:
 
 ```python
-from control_plane_kit.application.deploy import Deploy
+from control_plane_kit.application.deploy import DeploymentProgram
 ```
 
 It must reuse the generic graph, planning, execution, Docker, probe,

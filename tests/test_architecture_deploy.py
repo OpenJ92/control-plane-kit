@@ -60,6 +60,8 @@ class DeploymentApplicationArchitectureTests(unittest.TestCase):
                 "Approve",
                 "Claim",
                 "Deploy",
+                "DeploymentProgram",
+                "StoredDeployment",
                 "Execute",
                 "ExecuteApprovedDeployment",
                 "Plan",

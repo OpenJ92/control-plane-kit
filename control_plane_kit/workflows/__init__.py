@@ -98,6 +98,12 @@ from control_plane_kit.workflows.current_graph import (
     CurrentGraphAdvancementNotFound,
     CurrentGraphAdvancementResult,
 )
+from control_plane_kit.workflows.deployment_context import (
+    DeploymentApprovalContext,
+    DeploymentContextError,
+    DeploymentPlanContext,
+    DeploymentPlanContextQueryService,
+)
 from control_plane_kit.workflows.execution_coordinator import (
     CoordinatorCheckpoint,
     CoordinatorStatus,
@@ -152,6 +158,10 @@ __all__ = [
     "SetDesiredGraph",
     "StaleDesiredGraph",
     "DesiredGraphWorkspaceNotFound",
+    "DeploymentApprovalContext",
+    "DeploymentContextError",
+    "DeploymentPlanContext",
+    "DeploymentPlanContextQueryService",
     "ExecutionAdmissionCommandService",
     "ExecutionAdmissionConflict",
     "ExecutionAdmissionDenied",

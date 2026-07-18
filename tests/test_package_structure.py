@@ -23,6 +23,8 @@ class PackageStructureTests(unittest.TestCase):
                 "Approve",
                 "Claim",
                 "Deploy",
+                "DeploymentProgram",
+                "DeploymentProgramServices",
                 "Execute",
                 "ExecuteApprovedDeployment",
                 "Plan",
@@ -31,6 +33,7 @@ class PackageStructureTests(unittest.TestCase):
         )
         self.assertTrue(all(hasattr(deployment, name) for name in public))
         self.assertFalse(hasattr(control_plane_kit, "Deploy"))
+        self.assertFalse(hasattr(control_plane_kit, "DeploymentProgram"))
         self.assertTrue({"program", "stages", "values"}.isdisjoint(public))
 
     def test_root_api_reexports_canonical_package_objects(self) -> None:

@@ -138,18 +138,38 @@ compensating completed external steps where safe
 ```
 
 Roadmap 0008 completed that handoff through the intentional application
-entrance:
+entrance. The CPI composes one `DeploymentProgram` at startup and binds or
+reconstructs short-lived deployments per HTTP request:
 
 ```python
-from control_plane_kit.application.deploy import Deploy
+from control_plane_kit.application.deploy import DeploymentProgram
 ```
 
-The inherited program is parameterized by a graph pair and supports initial
-deployment, update, teardown, and no-op through one language. Approval and
-recovery are explicit suspensions; admission, claim, execution, and guarded
-advancement are compositions of the canonical command services. Roadmap 0009
-must use this program to deploy a CPI recipe rather than reconstructing its
-stages in a server route or startup script.
+The inherited program binds a graph pair with `program.between(current,
+desired)` and reconstructs later commands with `program.for_plan(plan_id)`.
+It supports initial deployment, update, teardown, and no-op through one
+language. Approval and recovery are explicit suspensions; admission, claim,
+execution, and guarded advancement are compositions of the canonical command
+services. Roadmap 0009 must use this program to deploy a CPI recipe rather than
+reconstructing its stages in a server route or startup script.
+
+The CPI API should map request boundaries directly:
+
+```text
+POST /workspaces/{workspace_id}/plans
+  -> program.between(current, desired).plan(command)
+
+POST /plans/{plan_id}/approvals/{approval_request_id}
+  -> program.for_plan(plan_id).approve(approval_request_id, grant)
+
+POST /plans/{plan_id}/executions
+  -> program.for_plan(plan_id).run(approval_request_id, execution_grant)
+```
+
+No route may retain a `Deploy` instance between requests. Plan and approval IDs
+refer to Postgres truth; the durable-context query reconstructs pinned graph and
+workflow evidence in one read-only UnitOfWork before the canonical mutating
+command begins.
 
 The executable Roadmap 0008 handoff includes:
 
