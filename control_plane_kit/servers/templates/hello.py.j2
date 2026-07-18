@@ -1,15 +1,98 @@
+import json
 import os
+import socket
 from http.server import BaseHTTPRequestHandler, HTTPServer
+from urllib.error import HTTPError, URLError
+from urllib.parse import urlsplit
+from urllib.request import HTTPRedirectHandler, Request, build_opener
 
 BODY = os.environ["{{ message_env }}"].encode()
+DEPENDENCIES = {
+    dependency["name"]: dependency
+    for dependency in {{ dependencies_json }}
+}
+MAX_RESPONSE_BYTES = 65_536
+TIMEOUT_SECONDS = 2
+
+
+class NoRedirects(HTTPRedirectHandler):
+    def redirect_request(self, request, file_pointer, code, message, headers, new_url):
+        return None
+
+
+OPENER = build_opener(NoRedirects)
 
 
 class Handler(BaseHTTPRequestHandler):
     def do_GET(self):
-        self.send_response(200)
-        self.send_header("content-type", "text/plain")
+        if self.path == "/":
+            self._respond(200, BODY)
+            return
+        if self.path == "/dependencies":
+            self._respond(
+                200,
+                json.dumps({"dependencies": sorted(DEPENDENCIES)}).encode(),
+                content_type="application/json",
+            )
+            return
+        parts = self.path.removeprefix("/").split("/")
+        if len(parts) != 3 or parts[0] != "dependencies":
+            self._respond(404, b"not found")
+            return
+        dependency = DEPENDENCIES.get(parts[1])
+        if dependency is None:
+            self._respond(404, b"unknown dependency")
+            return
+        if parts[2] == "http":
+            self._forward_http(dependency)
+            return
+        if parts[2] == "database":
+            self._probe_database(dependency)
+            return
+        self._respond(404, b"unknown dependency operation")
+
+    def _forward_http(self, dependency):
+        try:
+            target = os.environ[dependency["http_environment"]]
+            response = OPENER.open(
+                Request(target, method="GET"),
+                timeout=TIMEOUT_SECONDS,
+            )
+            with response:
+                body = response.read(MAX_RESPONSE_BYTES + 1)
+            if len(body) > MAX_RESPONSE_BYTES:
+                raise ValueError("downstream response exceeded limit")
+        except (HTTPError, KeyError, OSError, URLError, ValueError):
+            self._respond(502, b"http dependency unavailable")
+            return
+        self._respond(200, body)
+
+    def _probe_database(self, dependency):
+        try:
+            target = urlsplit(os.environ[dependency["database_environment"]])
+            if not target.scheme.startswith("postgresql"):
+                raise ValueError("database dependency is not Postgres")
+            if target.hostname is None or target.port is None:
+                raise ValueError("database dependency has no network address")
+            with socket.create_connection(
+                (target.hostname, target.port),
+                timeout=TIMEOUT_SECONDS,
+            ):
+                pass
+        except (KeyError, OSError, ValueError):
+            self._respond(503, b"database dependency unavailable")
+            return
+        self._respond(
+            200,
+            f"database {dependency['name']}: reachable".encode(),
+        )
+
+    def _respond(self, status, body, *, content_type="text/plain"):
+        self.send_response(status)
+        self.send_header("content-type", content_type)
+        self.send_header("content-length", str(len(body)))
         self.end_headers()
-        self.wfile.write(BODY)
+        self.wfile.write(body)
 
     def log_message(self, format, *args):
         pass
