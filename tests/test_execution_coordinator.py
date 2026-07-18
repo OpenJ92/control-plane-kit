@@ -40,7 +40,21 @@ from control_plane_kit.execution import (
 )
 from control_plane_kit.stores import GraphVersionRecord, PostgresUnitOfWork, WorkspaceRecord
 from control_plane_kit.planning import DEFAULT_ACTIVITY_PLAN_CODEC, compile_activity_plan
-from control_plane_kit.topology import DeploymentGraph, diff_graphs, validate_graph
+from control_plane_kit.planning import (
+    ActivityId,
+    ActivityPlan,
+    PlannedActivity,
+    RemoveRuntimeResource,
+    RuntimeTarget,
+    StartRuntime,
+)
+from control_plane_kit.topology import (
+    DeploymentGraph,
+    RuntimeRecord,
+    diff_graphs,
+    validate_graph,
+)
+from control_plane_kit.types import RuntimeKind
 from examples.scenarios import planning_scenarios
 from control_plane_kit.workflows import (
     CoordinatorCheckpoint,
@@ -188,6 +202,39 @@ class BlockingFakeInterpreter(InspectableFakeInterpreter):
         return super().execute(request)
 
 
+@dataclass
+class RaisingFakeInterpreter(InspectableFakeInterpreter):
+    def execute(self, request: MaterializedEffectRequest):
+        if self.tracker.active != 0:
+            raise AssertionError("effect raised while a UnitOfWork was active")
+        self.requests.append(request)
+        raise RuntimeError("simulated adapter process loss")
+
+
+@dataclass
+class SequencedFakeInterpreter(InspectableFakeInterpreter):
+    fail_on_attempt: int = 0
+
+    def execute(self, request: MaterializedEffectRequest):
+        if self.tracker.active != 0:
+            raise AssertionError("sequenced effect ran while a UnitOfWork was active")
+        attempt = len(self.requests) + 1
+        self.requests.append(request)
+        if attempt == self.fail_on_attempt:
+            return EffectFailed(
+                request.identity,
+                FailureEvidence(
+                    FailureCategory.RETRYABLE,
+                    "fake.sequenced-failure",
+                    "The selected compensation attempt failed.",
+                ),
+            )
+        return EffectSucceeded(
+            request.identity,
+            BoundedEvidence.from_mapping({"fake": "completed"}),
+        )
+
+
 class ExecutionCoordinatorTests(PostgresStoreTestCase):
     def setUp(self) -> None:
         super().setUp()
@@ -257,7 +304,12 @@ class ExecutionCoordinatorTests(PostgresStoreTestCase):
     def _events(self) -> tuple[ActivityEventRecord, ...]:
         return self.stores.execution.events_for_run("run-a")
 
-    def _enter_compensation(self) -> FailureEvidence:
+    def _enter_compensation(
+        self,
+        *activity_ids: str,
+    ) -> FailureEvidence:
+        if not activity_ids:
+            activity_ids = ("start-runtime-a",)
         self.connection.execute(
             """
             UPDATE cpk_execution_requests
@@ -265,20 +317,21 @@ class ExecutionCoordinatorTests(PostgresStoreTestCase):
             WHERE request_id = 'execution-request-a'
             """
         )
-        for kind in (
-            ActivityEventKind.STEP_STARTED,
-            ActivityEventKind.STEP_SUCCEEDED,
-        ):
-            self.stores.execution.add_event(
-                ActivityEventRecord(
-                    self.ids(),
-                    "run-a",
-                    self.stores.execution.next_event_ordinal("run-a"),
-                    kind,
-                    self.clock.text(),
-                    activity_id="start-runtime-a",
+        for activity_id in activity_ids:
+            for kind in (
+                ActivityEventKind.STEP_STARTED,
+                ActivityEventKind.STEP_SUCCEEDED,
+            ):
+                self.stores.execution.add_event(
+                    ActivityEventRecord(
+                        self.ids(),
+                        "run-a",
+                        self.stores.execution.next_event_ordinal("run-a"),
+                        kind,
+                        self.clock.text(),
+                        activity_id=activity_id,
+                    )
                 )
-            )
         failure = FailureEvidence(
             FailureCategory.RETRYABLE,
             "forward.failed",
@@ -384,6 +437,217 @@ class ExecutionCoordinatorTests(PostgresStoreTestCase):
         self.assertIs(
             self._events()[-1].kind,
             ActivityEventKind.STEP_COMPENSATION_UNCERTAIN,
+        )
+
+    def test_compensation_crash_before_dispatch_reconstructs_without_replay(self) -> None:
+        self._enter_compensation()
+        interpreter = InspectableFakeInterpreter(self.tracker)
+
+        with self.assertRaises(InjectedCoordinatorCrash):
+            self._coordinator(
+                interpreter,
+                crash=CoordinatorCheckpoint.AFTER_INTENT_COMMIT,
+            ).execute(self._command())
+
+        intent = self._events()[-1]
+        self.assertIs(intent.kind, ActivityEventKind.STEP_COMPENSATION_STARTED)
+        self.assertEqual(
+            intent.evidence.descriptor()["attempt_id"],
+            "run-a:start-runtime-a:compensation:1",
+        )
+        self.assertEqual(interpreter.requests, [])
+        self.assertIs(
+            self._coordinator(interpreter).execute(self._command()).status,
+            CoordinatorStatus.IN_FLIGHT,
+        )
+
+        self.clock.advance(31)
+        uncertain = self._coordinator(interpreter).execute(self._command())
+        replay = self._coordinator(interpreter).execute(self._command())
+
+        self.assertIs(uncertain.status, CoordinatorStatus.UNCERTAIN)
+        self.assertIs(replay.status, CoordinatorStatus.UNCERTAIN)
+        self.assertEqual(interpreter.requests, [])
+        self.assertIs(
+            self._events()[-1].kind,
+            ActivityEventKind.STEP_COMPENSATION_UNCERTAIN,
+        )
+
+    def test_compensation_adapter_loss_becomes_uncertain_after_restart(self) -> None:
+        self._enter_compensation()
+        interpreter = RaisingFakeInterpreter(self.tracker)
+
+        with self.assertRaisesRegex(RuntimeError, "adapter process loss"):
+            self._coordinator(interpreter).execute(self._command())
+
+        self.assertEqual(len(interpreter.requests), 1)
+        self.assertIs(
+            self._events()[-1].kind,
+            ActivityEventKind.STEP_COMPENSATION_STARTED,
+        )
+        self.clock.advance(31)
+
+        uncertain = self._coordinator(interpreter).execute(self._command())
+        replay = self._coordinator(interpreter).execute(self._command())
+
+        self.assertIs(uncertain.status, CoordinatorStatus.UNCERTAIN)
+        self.assertIs(replay.status, CoordinatorStatus.UNCERTAIN)
+        self.assertEqual(len(interpreter.requests), 1)
+
+    def test_compensation_result_transaction_crash_rolls_back_evidence(self) -> None:
+        self._enter_compensation()
+        interpreter = InspectableFakeInterpreter(self.tracker, observations=True)
+
+        with self.assertRaises(InjectedCoordinatorCrash):
+            self._coordinator(
+                interpreter,
+                crash=CoordinatorCheckpoint.BEFORE_RESULT_COMMIT,
+            ).execute(self._command())
+
+        self.assertEqual(len(interpreter.requests), 1)
+        self.assertIs(
+            self._events()[-1].kind,
+            ActivityEventKind.STEP_COMPENSATION_STARTED,
+        )
+        self.assertIsNone(
+            self.stores.observed_state.latest("workspace-a", "runtime-a")
+        )
+        self.clock.advance(31)
+
+        uncertain = self._coordinator(interpreter).execute(self._command())
+
+        self.assertIs(uncertain.status, CoordinatorStatus.UNCERTAIN)
+        self.assertEqual(len(interpreter.requests), 1)
+
+    def test_parallel_compensation_uses_reverse_durable_completion_order(self) -> None:
+        plan = ActivityPlan(
+            (
+                PlannedActivity(
+                    ActivityId("start-runtime-a"),
+                    StartRuntime(RuntimeTarget("runtime-a")),
+                ),
+                PlannedActivity(
+                    ActivityId("start-runtime-b"),
+                    StartRuntime(RuntimeTarget("runtime-b")),
+                ),
+            )
+        )
+        graph = DeploymentGraph(
+            "parallel-compensation",
+            runtimes={
+                "runtime-a": RuntimeRecord("runtime-a", RuntimeKind.DOCKER),
+                "runtime-b": RuntimeRecord("runtime-b", RuntimeKind.DOCKER),
+            },
+        )
+        self._replace_plan_truth(plan, graph, graph)
+        self._enter_compensation("start-runtime-a", "start-runtime-b")
+        interpreter = InspectableFakeInterpreter(self.tracker)
+
+        result = self._coordinator(interpreter).execute(self._command())
+
+        self.assertIs(result.status, CoordinatorStatus.COMPENSATED)
+        self.assertEqual(
+            tuple(request.action.target.runtime_id for request in interpreter.requests),
+            ("runtime-b", "runtime-a"),
+        )
+        self.assertEqual(
+            tuple(request.identity.idempotency_key for request in interpreter.requests),
+            (
+                "run-a:start-runtime-b:compensation:1",
+                "run-a:start-runtime-a:compensation:1",
+            ),
+        )
+
+    def test_earlier_compensation_survives_later_failure(self) -> None:
+        plan = ActivityPlan(
+            (
+                PlannedActivity(
+                    ActivityId("start-runtime-a"),
+                    StartRuntime(RuntimeTarget("runtime-a")),
+                ),
+                PlannedActivity(
+                    ActivityId("start-runtime-b"),
+                    StartRuntime(RuntimeTarget("runtime-b")),
+                ),
+            )
+        )
+        graph = DeploymentGraph(
+            "partial-compensation",
+            runtimes={
+                "runtime-a": RuntimeRecord("runtime-a", RuntimeKind.DOCKER),
+                "runtime-b": RuntimeRecord("runtime-b", RuntimeKind.DOCKER),
+            },
+        )
+        self._replace_plan_truth(plan, graph, graph)
+        original_failure = self._enter_compensation(
+            "start-runtime-a",
+            "start-runtime-b",
+        )
+        interpreter = SequencedFakeInterpreter(self.tracker, fail_on_attempt=2)
+
+        result = self._coordinator(interpreter).execute(self._command())
+
+        self.assertIs(result.status, CoordinatorStatus.COMPENSATION_FAILED)
+        self.assertIs(result.run.status, ActivityRunStatus.PARTIALLY_FAILED)
+        compensation_kinds = tuple(
+            event.kind
+            for event in self._events()
+            if event.kind
+            in {
+                ActivityEventKind.STEP_COMPENSATION_SUCCEEDED,
+                ActivityEventKind.STEP_COMPENSATION_FAILED,
+            }
+        )
+        self.assertEqual(
+            compensation_kinds,
+            (
+                ActivityEventKind.STEP_COMPENSATION_SUCCEEDED,
+                ActivityEventKind.STEP_COMPENSATION_FAILED,
+            ),
+        )
+        self.assertEqual(
+            next(
+                event.failure
+                for event in self._events()
+                if event.kind is ActivityEventKind.RUN_FAILED
+            ),
+            original_failure,
+        )
+
+    def test_non_compensatable_completed_work_remains_operator_visible(self) -> None:
+        plan = ActivityPlan(
+            (
+                PlannedActivity(
+                    ActivityId("start-runtime-a"),
+                    StartRuntime(RuntimeTarget("runtime-a")),
+                ),
+                PlannedActivity(
+                    ActivityId("remove-runtime-a"),
+                    RemoveRuntimeResource(RuntimeTarget("runtime-a")),
+                ),
+            )
+        )
+        graph = DeploymentGraph(
+            "non-compensatable",
+            runtimes={
+                "runtime-a": RuntimeRecord("runtime-a", RuntimeKind.DOCKER),
+            },
+        )
+        self._replace_plan_truth(plan, graph, graph)
+        self._enter_compensation("start-runtime-a", "remove-runtime-a")
+        interpreter = InspectableFakeInterpreter(self.tracker)
+
+        result = self._coordinator(interpreter).execute(self._command())
+
+        self.assertIs(result.status, CoordinatorStatus.COMPENSATION_FAILED)
+        self.assertIs(result.run.status, ActivityRunStatus.PARTIALLY_FAILED)
+        self.assertEqual(len(interpreter.requests), 1)
+        failure = self._events()[-1].failure
+        self.assertIsNotNone(failure)
+        self.assertEqual(failure.code, "compensation.non-compensatable-work")
+        self.assertEqual(
+            failure.details.descriptor()["activity_ids"],
+            ["remove-runtime-a"],
         )
 
     def test_success_uses_two_short_transactions_and_settles_run(self) -> None:

@@ -480,7 +480,9 @@ class ExecutionCoordinator:
                         FailureCategory.TERMINAL,
                         "compensation.non-compensatable-work",
                         "Completed work cannot be compensated automatically.",
-                        BoundedEvidence.from_mapping({"activity_ids": names}),
+                        BoundedEvidence.from_mapping(
+                            {"activity_ids": list(names)}
+                        ),
                     ),
                     IdempotencyKey(
                         f"coordinator:{context.run.run_id}:non-compensatable"
