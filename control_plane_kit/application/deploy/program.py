@@ -89,6 +89,18 @@ class ExecuteApprovedDeployment:
             advancement,
         )
 
+    def resume_recovered(
+        self,
+        suspension: RecoverySuspension,
+        *,
+        limits: ExecutionLimits,
+        advancement: AdvancementGrant,
+    ) -> DeploymentProgramResult:
+        return self._execute_and_maybe_advance(
+            self.execute(suspension.claimed, limits),
+            advancement,
+        )
+
     def _execute_and_maybe_advance(
         self,
         result: DeploymentExecutionResult,
@@ -143,6 +155,19 @@ class Deploy:
     ) -> DeploymentProgramResult:
         return self.execution.resume(
             continuation,
+            limits=limits,
+            advancement=advancement,
+        )
+
+    def resume_recovered(
+        self,
+        suspension: RecoverySuspension,
+        *,
+        limits: ExecutionLimits,
+        advancement: AdvancementGrant,
+    ) -> DeploymentProgramResult:
+        return self.execution.resume_recovered(
+            suspension,
             limits=limits,
             advancement=advancement,
         )

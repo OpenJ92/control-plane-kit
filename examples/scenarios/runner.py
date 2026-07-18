@@ -12,6 +12,35 @@ from dataclasses import dataclass, field
 from enum import StrEnum
 from typing import Callable, Mapping
 
+from control_plane_kit.application.deploy import (
+    AdmissionGrant,
+    AdvancedDeployment,
+    AdvancementGrant,
+    ApprovalGrant,
+    ApprovalSuspension,
+    ClaimedDeployment,
+    ClaimGrant,
+    DeploymentExecutionGrant,
+    DeploymentPlanRequest,
+    DeploymentPreparation,
+    DeploymentProgramResult,
+    DeploymentReviewBlocked,
+    Deploy,
+    ExecutionLimits,
+    ExecutionContinuation,
+    NoDeploymentChanges,
+    PlanningServices,
+    PrepareDeployment,
+    Plan,
+    Approve,
+    Admit,
+    Claim,
+    Execute,
+    Advance,
+    ExecuteApprovedDeployment,
+    RecoverySuspension,
+)
+
 from control_plane_kit.effects import (
     EffectCapability,
     EffectFailed,
@@ -46,18 +75,14 @@ from control_plane_kit.read_services import (
     ObservedStateReadModel,
     WorkspaceReadModel,
 )
-from control_plane_kit.stores import ApprovalDecisionKind
 from control_plane_kit.workflows import (
-    AdvanceCurrentGraph,
     ApprovalCommandService,
     ApprovalDecisionResult,
-    ClaimAndOpenActivityRun,
+    ApprovalRequestResult,
     CoordinatorStatus,
     CurrentGraphAdvancementCommandService,
     CurrentGraphAdvancementResult,
     DecideActivityRunRecovery,
-    DecidePlanApproval,
-    ExecuteActivityRun,
     ExecutionAdmissionCommandService,
     ExecutionAdmissionResult,
     ExecutionCoordinator,
@@ -66,10 +91,8 @@ from control_plane_kit.workflows import (
     ExecutionWorkerAuthority,
     IdempotencyKey,
     PauseActivityRun,
-    RequestPlanExecution,
     RunLifecycleCommandService,
     RunLifecycleResult,
-    StartActivityRun,
 )
 from examples.scenarios.execution import (
     AdmissionExpectation,
@@ -93,11 +116,6 @@ from examples.scenarios.execution import (
     UncertaintyResolution,
 )
 from examples.scenarios.model import OperationExpectation, operation_expectation
-from examples.scenarios.workflow import (
-    GraphTransitionPlanningResult,
-    PlanningWorkflowServices,
-    plan_graph_transition,
-)
 
 
 class ScenarioEffectDisposition(StrEnum):
@@ -203,7 +221,7 @@ class ScenarioEffectInterpreter:
 class ScenarioRunnerServices:
     """Canonical application services composed by the acceptance runner."""
 
-    planning: PlanningWorkflowServices
+    planning: PlanningServices
     approvals: ApprovalCommandService
     admission: ExecutionAdmissionCommandService
     lifecycle: RunLifecycleCommandService
@@ -243,7 +261,8 @@ class ScenarioEvaluation:
 class ScenarioRunnerResult:
     """Canonical workflow evidence plus an acceptance-only evaluation."""
 
-    planning: GraphTransitionPlanningResult
+    preparation: DeploymentPreparation
+    approval_request: ApprovalRequestResult | None
     approval: ApprovalDecisionResult | None
     admission: ExecutionAdmissionResult | None
     opened: RunLifecycleResult | None
@@ -264,81 +283,93 @@ def run_execution_scenario(
     """Interpret one scenario through the canonical Postgres-backed workflow."""
 
     prefix = f"scenario:{scenario.scenario_id}"
-    planned = plan_graph_transition(
-        services.planning,
-        workspace_id=context.workspace_id,
-        actor_id=context.actor_id,
-        title=scenario.planning.title,
-        approval_comment=scenario.planning.approval_comment,
-        current_graph_id=context.current_graph_id,
-        expected_desired_graph_id=context.current_graph_id,
-        desired_graph=scenario.planning.desired_graph,
-        idempotency_prefix=prefix,
+    deploy = Deploy(
+        scenario.planning.current_graph,
+        scenario.planning.desired_graph,
+        PrepareDeployment(Plan(services.planning)),
+        Approve(services.approvals),
+        ExecuteApprovedDeployment(
+            Admit(services.admission),
+            Claim(services.lifecycle),
+            Execute(services.coordinator),
+            Advance(services.advancement),
+        ),
     )
+    prepared = deploy(
+        DeploymentPlanRequest(
+            transition=deploy.transition,
+            workspace_id=context.workspace_id,
+            current_graph_id=context.current_graph_id,
+            expected_desired_graph_id=context.current_graph_id,
+            actor_id=context.actor_id,
+            title=scenario.planning.title,
+            approval_comment=scenario.planning.approval_comment,
+            idempotency_prefix=prefix,
+        )
+    )
+    match prepared:
+        case ApprovalSuspension() as approval_suspension:
+            preparation = approval_suspension.preparation
+            approval_request = approval_suspension.approval_request
+        case NoDeploymentChanges(preparation=value) | DeploymentReviewBlocked(
+            preparation=value
+        ):
+            preparation = value
+            approval_request = None
     approval: ApprovalDecisionResult | None = None
     admission: ExecutionAdmissionResult | None = None
     opened: RunLifecycleResult | None = None
     coordinated: ExecutionCoordinatorResult | None = None
     advancement: CurrentGraphAdvancementResult | None = None
+    recovery_suspension: RecoverySuspension | None = None
 
     if not isinstance(scenario.expectation.eligibility, (ReviewBlocked, NoChanges)):
-        if planned.approval is None:
+        if approval_request is None:
             raise AssertionError("executable scenario did not produce an approval request")
-        required_scope = planned.approval.request.required_scope
-        decided = services.approvals.execute(
-            DecidePlanApproval(
-                session_id=planned.session.session.session_id,
-                request_id=planned.approval.request.request_id,
+        approved = deploy.approve(
+            approval_suspension,
+            ApprovalGrant(
                 actor_id=context.approver_id,
-                actor_scopes=(required_scope,),
-                decision=ApprovalDecisionKind.APPROVED,
+                actor_scopes=(approval_request.request.required_scope,),
                 idempotency_key=IdempotencyKey(f"{prefix}:approval-decision"),
                 comment="Approved by the deterministic scenario runner.",
-            )
+            ),
         )
-        if not isinstance(decided, ApprovalDecisionResult):
-            raise TypeError("approval decision command returned the wrong result")
-        approval = decided
-        admission_command = RequestPlanExecution(
-            workspace_id=context.workspace_id,
-            session_id=planned.session.session.session_id,
-            plan_id=planned.plan.plan_record.plan_id,
-            approval_request_id=planned.approval.request.request_id,
-            actor_id=context.actor_id,
-            actor_scopes=("plan:execute",),
-            idempotency_key=IdempotencyKey(f"{prefix}:admission"),
+        approval = approved.approval
+        execution_grant = DeploymentExecutionGrant(
+            admission=AdmissionGrant(
+                actor_id=context.actor_id,
+                actor_scopes=("plan:execute",),
+                idempotency_key=IdempotencyKey(f"{prefix}:admission"),
+            ),
+            claim=ClaimGrant(
+                authority=context.worker,
+                lease_expires_at=context.lease_expires_at,
+                claim_idempotency_key=IdempotencyKey(f"{prefix}:claim"),
+                start_idempotency_key=IdempotencyKey(f"{prefix}:start"),
+            ),
+            advancement=AdvancementGrant(
+                IdempotencyKey(f"{prefix}:advance")
+            ),
         )
         if isinstance(scenario.expectation.eligibility, ExternalReadinessGated):
             try:
-                services.admission.execute(admission_command)
+                deploy.execute_approved(approved, execution_grant)
             except ExecutionReadinessRequired:
                 pass
             else:
                 raise AssertionError("readiness-gated scenario was admitted without evidence")
         else:
-            admission = services.admission.execute(admission_command)
-            opened = services.lifecycle.execute(
-                ClaimAndOpenActivityRun(
-                    request_id=admission.request.identity.request_id,
-                    authority=context.worker,
-                    lease_expires_at=context.lease_expires_at,
-                    idempotency_key=IdempotencyKey(f"{prefix}:claim"),
-                )
-            )
-            services.lifecycle.execute(
-                StartActivityRun(
-                    run_id=opened.run.run_id,
-                    authority=context.worker,
-                    idempotency_key=IdempotencyKey(f"{prefix}:start"),
-                )
-            )
-            coordinated = services.coordinator.execute(
-                ExecuteActivityRun(opened.run.run_id, context.worker)
-            )
+            outcome = deploy.execute_approved(approved, execution_grant)
+            claimed, coordinated, advancement = _program_evidence(outcome)
+            admission = claimed.admitted.admission
+            opened = claimed.opened
+            if isinstance(outcome, RecoverySuspension):
+                recovery_suspension = outcome
             if recovery.steps:
                 activities = {
                     operation_expectation(activity.operation): activity.activity_id.value
-                    for activity in planned.plan.plan_record.plan.activities
+                    for activity in preparation.plan.plan_record.plan.activities
                 }
                 for ordinal, step in enumerate(recovery.steps, start=1):
                     if isinstance(step, PauseScenarioExecution):
@@ -356,10 +387,10 @@ def run_execution_scenario(
                     events = _projected_events(
                         services.reads.session_detail(
                             context.workspace_id,
-                            planned.session.session.session_id,
+                            preparation.session.session.session_id,
                             limit=100,
                         ),
-                        plan_id=planned.plan.plan_record.plan_id,
+                        plan_id=preparation.plan.plan_record.plan_id,
                         run_id=opened.run.run_id,
                     )
                     if not events:
@@ -389,32 +420,28 @@ def run_execution_scenario(
                                 f"{prefix}:recovery-command:{ordinal}"
                             ),
                         )
+                        )
+                if recovery_suspension is None:
+                    raise AssertionError(
+                        "scenario recovery program requires a recovery suspension"
                     )
-                coordinated = services.coordinator.execute(
-                    ExecuteActivityRun(opened.run.run_id, context.worker)
+                outcome = deploy.resume_recovered(
+                    recovery_suspension,
+                    limits=ExecutionLimits(),
+                    advancement=execution_grant.advancement,
                 )
-            if coordinated.status is CoordinatorStatus.COMPLETED:
-                advancement = services.advancement.execute(
-                    AdvanceCurrentGraph(
-                        workspace_id=context.workspace_id,
-                        run_id=opened.run.run_id,
-                        plan_id=planned.plan.plan_record.plan_id,
-                        expected_current_graph_id=context.current_graph_id,
-                        desired_graph_id=planned.desired_graph.graph_version.graph_id,
-                        authority=context.worker,
-                        idempotency_key=IdempotencyKey(f"{prefix}:advance"),
-                    )
-                )
+                _, coordinated, advancement = _program_evidence(outcome)
 
     session_view = services.reads.session_detail(
         context.workspace_id,
-        planned.session.session.session_id,
+        preparation.session.session.session_id,
         limit=100,
     )
     workspace_view = services.reads.workspace(context.workspace_id)
     observed_state = services.reads.observed_state(context.workspace_id)
     result = ScenarioRunnerResult(
-        planned,
+        preparation,
+        approval_request,
         approval,
         admission,
         opened,
@@ -426,7 +453,8 @@ def run_execution_scenario(
         ScenarioEvaluation(),
     )
     return ScenarioRunnerResult(
-        planned,
+        preparation,
+        approval_request,
         approval,
         admission,
         opened,
@@ -437,6 +465,22 @@ def run_execution_scenario(
         observed_state,
         evaluate_execution_scenario(scenario, result),
     )
+
+
+def _program_evidence(
+    result: DeploymentProgramResult,
+) -> tuple[
+    ClaimedDeployment,
+    ExecutionCoordinatorResult,
+    CurrentGraphAdvancementResult | None,
+]:
+    match result:
+        case AdvancedDeployment(executed=executed, advancement=advancement):
+            return executed.claimed, executed.execution, advancement
+        case ExecutionContinuation(claimed=claimed, execution=execution):
+            return claimed, execution, None
+        case RecoverySuspension(claimed=claimed, execution=execution):
+            return claimed, execution, None
 
 
 def evaluate_execution_scenario(
@@ -450,7 +494,7 @@ def evaluate_execution_scenario(
     _expect_presence(
         findings,
         "approval request",
-        result.planning.approval,
+        result.approval_request,
         expectation.approval is not ApprovalExpectation.NOT_REQUESTED,
     )
     _expect_presence(
@@ -493,11 +537,11 @@ def evaluate_execution_scenario(
         findings.append("no-run scenario produced coordinator evidence")
 
     current_graph_id = result.workspace_view.workspace.current_graph_id
-    desired_graph_id = result.planning.desired_graph.graph_version.graph_id
+    desired_graph_id = result.preparation.desired_graph.graph_version.graph_id
     expected_current = (
         desired_graph_id
         if expectation.graph_advancement is GraphAdvancementExpectation.ADVANCED_TO_DESIRED
-        else result.planning.plan.plan_record.base_graph_id
+        else result.preparation.plan.plan_record.base_graph_id
     )
     if current_graph_id != expected_current:
         findings.append(
@@ -507,12 +551,12 @@ def evaluate_execution_scenario(
     if result.opened is not None:
         projected_events = _projected_events(
             result.session_view,
-            plan_id=result.planning.plan.plan_record.plan_id,
+            plan_id=result.preparation.plan.plan_record.plan_id,
             run_id=result.opened.run.run_id,
         )
         activities = {
             operation_expectation(activity.operation): activity.activity_id.value
-            for activity in result.planning.plan.plan_record.plan.activities
+            for activity in result.preparation.plan.plan_record.plan.activities
         }
         positions: dict[EventExpectation, int] = {}
         for expected in expectation.events:
