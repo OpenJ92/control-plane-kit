@@ -109,12 +109,6 @@ from control_plane_kit.workflows.execution_coordinator import (
     ExecutionCoordinatorResult,
     InjectedCoordinatorCrash,
 )
-from control_plane_kit.workflows.saga_journal import (
-    SagaJournalError,
-    SagaJournalProjection,
-    initial_state_for_plan,
-    project_activity_journal,
-)
 
 __all__ = [
     "ActivityPlanningCommandService",
@@ -209,8 +203,4 @@ __all__ = [
     "ExecutionCoordinatorNotFound",
     "ExecutionCoordinatorResult",
     "InjectedCoordinatorCrash",
-    "SagaJournalError",
-    "SagaJournalProjection",
-    "initial_state_for_plan",
-    "project_activity_journal",
 ]

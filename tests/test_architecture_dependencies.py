@@ -47,7 +47,10 @@ PACKAGE_RULES = (
     PackageDependencyRule("mcp_read", ("read_services",)),
     PackageDependencyRule("planning", ("lifecycle", "policies", "topology")),
     PackageDependencyRule("policies", ("planning", "types")),
-    PackageDependencyRule("projections", ("topology",)),
+    PackageDependencyRule(
+        "projections",
+        ("execution", "planning", "saga", "scheduling", "topology"),
+    ),
     PackageDependencyRule(
         "read_services",
         ("control_routes", "execution", "planning", "projections", "stores", "topology", "types"),
@@ -81,6 +84,7 @@ PACKAGE_RULES = (
             "execution",
             "planning",
             "policies",
+            "projections",
             "saga",
             "scheduling",
             "stores",
