@@ -17,6 +17,7 @@ from control_plane_kit.workflows import (
     ApprovalRequestResult,
     DesiredGraphEditResult,
     CoordinatorStatus,
+    CurrentGraphAdvancementResult,
     ExecutionAdmissionResult,
     ExecutionCoordinatorResult,
     ExecutionWorkerAuthority,
@@ -342,6 +343,36 @@ class ExecutedDeployment:
             raise TypeError("execution must be ExecutionCoordinatorResult")
         if self.execution.status is not CoordinatorStatus.COMPLETED:
             raise ValueError("executed deployment requires completed coordinator evidence")
+
+
+@dataclass(frozen=True)
+class AdvancementGrant:
+    """Explicit idempotency identity for publishing completed graph truth."""
+
+    idempotency_key: IdempotencyKey
+
+    def __post_init__(self) -> None:
+        if not isinstance(self.idempotency_key, IdempotencyKey):
+            raise TypeError("idempotency_key must be IdempotencyKey")
+
+
+@dataclass(frozen=True)
+class AdvancedDeployment:
+    """Terminal deployment evidence after guarded current-graph advancement."""
+
+    executed: ExecutedDeployment
+    advancement: CurrentGraphAdvancementResult
+
+    def __post_init__(self) -> None:
+        if not isinstance(self.executed, ExecutedDeployment):
+            raise TypeError("executed must be ExecutedDeployment")
+        if not isinstance(self.advancement, CurrentGraphAdvancementResult):
+            raise TypeError("advancement must be CurrentGraphAdvancementResult")
+        preparation = self.executed.claimed.admitted.approved.suspension.preparation
+        if self.advancement.plan_id != preparation.plan.plan_record.plan_id:
+            raise ValueError("advancement belongs to another plan")
+        if self.advancement.run_id != self.executed.execution.run.run_id:
+            raise ValueError("advancement belongs to another run")
 
 
 @dataclass(frozen=True)

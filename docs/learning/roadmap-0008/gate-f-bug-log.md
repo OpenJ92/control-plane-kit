@@ -73,3 +73,28 @@ Each entry must contain:
   contracts from calling adapters or dispatching effects directly.
 - **Residual risk:** A broad import from `effects` could expose more than Gate F
   needs; #360 will constrain names and call sites inside the deployment package.
+
+## GF-003: Docker Desktop exhausted build-cache storage
+
+- **Issue:** #357
+- **Symptom:** The complete suite stopped before test execution while BuildKit
+  unpacked the test image: `no space left on device`.
+- **Violated law:** Docker-first validation must be repeatable without touching
+  retained or data-bearing runtime resources.
+- **Root cause:** Repeated Roadmap 0008 image builds accumulated hundreds of
+  reclaimable BuildKit cache layers inside Docker Desktop.
+- **Classification:** Local validation-environment exhaustion; no application
+  assertion or runtime behavior failed.
+- **Alternatives considered:** Increase Docker Desktop's disk allocation,
+  delete images or anonymous volumes, or prune only build cache. Image and
+  volume deletion risked unrelated live or retained systems.
+- **Chosen fix:** Inspect with `docker system df -v`, then run
+  `docker builder prune --all --force`. Running containers, named volumes,
+  anonymous volumes, and application data were left untouched.
+- **Test integrity:** No test, assertion, fixture, timeout, or application code
+  changed in response to this environment failure.
+- **Validation:** Restart the complete Docker/Postgres suite from the beginning.
+- **Downstream consequences:** Gate F validation may periodically need scoped
+  BuildKit cleanup because every issue deliberately rebuilds in Docker.
+- **Residual risk:** Docker Desktop has a finite internal disk; Gate F closeout
+  should report cache pressure separately from retained application resources.

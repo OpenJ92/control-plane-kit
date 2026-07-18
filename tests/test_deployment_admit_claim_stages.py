@@ -6,6 +6,9 @@ from datetime import datetime, timezone
 import psycopg
 
 from control_plane_kit.application.deploy import (
+    Advance,
+    AdvancedDeployment,
+    AdvancementGrant,
     AdmissionGrant,
     Admit,
     ApprovalGrant,
@@ -42,6 +45,7 @@ from control_plane_kit.workflows import (
     ExecutionCoordinatorResult,
     ExecutionWorkerAuthority,
     CoordinatorStatus,
+    CurrentGraphAdvancementCommandService,
     IdempotencyKey,
     OperationCommandService,
     RunLifecycleCommandService,
@@ -174,6 +178,28 @@ class DeploymentAdmitClaimStageTests(PostgresStoreTestCase):
         self.assertGreater(len(interpreter.requests), 0)
         self.assertIs(executed.execution.run.status, ActivityRunStatus.SUCCEEDED)
 
+        advance = Advance(
+            CurrentGraphAdvancementCommandService(
+                self.factory,
+                clock=lambda: "2026-07-18T00:07:00Z",
+                id_factory=Ids("advancement"),
+            )
+        )
+        advanced = advance(
+            executed,
+            AdvancementGrant(IdempotencyKey("admit-claim:advance")),
+        )
+        self.assertIsInstance(advanced, AdvancedDeployment)
+        self.assertEqual(advanced.advancement.from_graph_id, "graph-current")
+        self.assertEqual(
+            advanced.advancement.to_graph_id,
+            executed.claimed.admitted.approved.suspension.preparation.plan.plan_record.desired_graph_id,
+        )
+        self.assertEqual(
+            self.stores.workspace.get("workspace-a").current_graph_id,
+            advanced.advancement.to_graph_id,
+        )
+
         for status in (
             CoordinatorStatus.PAUSED,
             CoordinatorStatus.COMPENSATION_FAILED,
@@ -202,6 +228,17 @@ class DeploymentAdmitClaimStageTests(PostgresStoreTestCase):
                 self.assertIsInstance(continuation, ExecutionContinuation)
                 assert isinstance(continuation, ExecutionContinuation)
                 self.assertIs(continuation.execution.status, status)
+
+        with self.assertRaisesRegex(TypeError, "ExecutedDeployment"):
+            advance(
+                continuation,
+                AdvancementGrant(IdempotencyKey("admit-claim:invalid-continuation")),
+            )
+        with self.assertRaisesRegex(TypeError, "ExecutedDeployment"):
+            advance(
+                suspended,
+                AdvancementGrant(IdempotencyKey("admit-claim:invalid-recovery")),
+            )
 
     def _planning_services(self) -> tuple[PlanningServices, ApprovalCommandService]:
         approvals = ApprovalCommandService(
