@@ -16,6 +16,7 @@ from control_plane_kit.workflows.commands import (
 )
 
 from control_plane_kit.workflows.approvals import (
+    ApprovalDecisionKind,
     ApprovalAuthorizationDenied,
     ApprovalCommandService,
     ApprovalDecisionResult,
@@ -122,6 +123,7 @@ __all__ = [
     "ApprovalAuthorizationDenied",
     "ApprovalCommandService",
     "ApprovalDecisionResult",
+    "ApprovalDecisionKind",
     "ApprovalIdempotencyConflict",
     "ApprovalRequestResult",
     "ApprovalStateConflict",
