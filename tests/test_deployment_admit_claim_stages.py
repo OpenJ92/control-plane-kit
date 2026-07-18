@@ -18,11 +18,15 @@ from control_plane_kit.application.deploy import (
     ClaimGrant,
     ClaimedDeployment,
     DeploymentPlanRequest,
+    DeploymentExecutionGrant,
+    Deploy,
     Execute,
+    ExecuteApprovedDeployment,
     ExecutedDeployment,
     ExecutionContinuation,
     Plan,
     PlanningServices,
+    PrepareDeployment,
     RecoverySuspension,
     classify_transition,
 )
@@ -100,9 +104,48 @@ class DeploymentAdmitClaimStageTests(PostgresStoreTestCase):
 
     def test_approved_plan_reaches_execution_through_callable_stages(self) -> None:
         planning, approvals = self._planning_services()
-        suspended = Plan(planning)(
+        authority = ExecutionWorkerAuthority("worker-a", ("execution:operate",))
+        lifecycle = RunLifecycleCommandService(
+            self.factory,
+            clock=lambda: "2026-07-18T00:06:00Z",
+            id_factory=Ids("lifecycle"),
+        )
+        interpreter = ScenarioEffectInterpreter()
+        deploy = Deploy(
+            self.current,
+            self.desired,
+            PrepareDeployment(Plan(planning)),
+            Approve(approvals),
+            ExecuteApprovedDeployment(
+                Admit(
+                    ExecutionAdmissionCommandService(
+                        self.factory,
+                        clock=lambda: "2026-07-18T00:05:00Z",
+                        id_factory=Ids("admission"),
+                    )
+                ),
+                Claim(lifecycle),
+                Execute(
+                    ExecutionCoordinator(
+                        self.factory,
+                        lifecycle,
+                        interpreter,
+                        clock=lambda: datetime(2026, 7, 18, tzinfo=timezone.utc),
+                        id_factory=Ids("coordinator"),
+                    )
+                ),
+                Advance(
+                    CurrentGraphAdvancementCommandService(
+                        self.factory,
+                        clock=lambda: "2026-07-18T00:07:00Z",
+                        id_factory=Ids("advancement"),
+                    )
+                ),
+            ),
+        )
+        suspended = deploy(
             DeploymentPlanRequest(
-                classify_transition(self.current, self.desired),
+                deploy.transition,
                 "workspace-a",
                 "graph-current",
                 "graph-current",
@@ -113,7 +156,7 @@ class DeploymentAdmitClaimStageTests(PostgresStoreTestCase):
             )
         )
         assert isinstance(suspended, ApprovalSuspension)
-        approved = Approve(approvals)(
+        approved = deploy.approve(
             suspended,
             ApprovalGrant(
                 "approver",
@@ -121,35 +164,28 @@ class DeploymentAdmitClaimStageTests(PostgresStoreTestCase):
                 IdempotencyKey("admit-claim:approve"),
             ),
         )
-        admitted = Admit(
-            ExecutionAdmissionCommandService(
-                self.factory,
-                clock=lambda: "2026-07-18T00:05:00Z",
-                id_factory=Ids("admission"),
-            )
-        )(
+        advanced = deploy.execute_approved(
             approved,
-            AdmissionGrant(
-                "operator",
-                ("plan:execute",),
-                IdempotencyKey("admit-claim:admit"),
+            DeploymentExecutionGrant(
+                AdmissionGrant(
+                    "operator",
+                    ("plan:execute",),
+                    IdempotencyKey("admit-claim:admit"),
+                ),
+                ClaimGrant(
+                    authority,
+                    "2026-07-18T01:00:00Z",
+                    IdempotencyKey("admit-claim:claim"),
+                    IdempotencyKey("admit-claim:start"),
+                ),
+                AdvancementGrant(IdempotencyKey("admit-claim:advance")),
             ),
         )
-        authority = ExecutionWorkerAuthority("worker-a", ("execution:operate",))
-        lifecycle = RunLifecycleCommandService(
-            self.factory,
-            clock=lambda: "2026-07-18T00:06:00Z",
-            id_factory=Ids("lifecycle"),
-        )
-        claimed = Claim(lifecycle)(
-            admitted,
-            ClaimGrant(
-                authority,
-                "2026-07-18T01:00:00Z",
-                IdempotencyKey("admit-claim:claim"),
-                IdempotencyKey("admit-claim:start"),
-            ),
-        )
+        self.assertIsInstance(advanced, AdvancedDeployment)
+        assert isinstance(advanced, AdvancedDeployment)
+        executed = advanced.executed
+        claimed = executed.claimed
+        admitted = claimed.admitted
 
         self.assertIsInstance(claimed, ClaimedDeployment)
         self.assertIs(admitted.admission.request.status, ExecutionRequestStatus.QUEUED)
@@ -158,38 +194,16 @@ class DeploymentAdmitClaimStageTests(PostgresStoreTestCase):
         self.assertIs(claimed.started.event.kind, ActivityEventKind.RUN_STARTED)
         self.assertIs(claimed.started.run.status, ActivityRunStatus.RUNNING)
         self.assertEqual(
-            [event.kind for event in self.stores.execution.events_for_run(claimed.started.run.run_id)],
+            [
+                event.kind
+                for event in self.stores.execution.events_for_run(
+                    claimed.started.run.run_id
+                )[:2]
+            ],
             [ActivityEventKind.RUN_OPENED, ActivityEventKind.RUN_STARTED],
         )
-
-        interpreter = ScenarioEffectInterpreter()
-        executed = Execute(
-            ExecutionCoordinator(
-                self.factory,
-                lifecycle,
-                interpreter,
-                clock=lambda: datetime(2026, 7, 18, tzinfo=timezone.utc),
-                id_factory=Ids("coordinator"),
-            )
-        )(claimed)
-
-        self.assertIsInstance(executed, ExecutedDeployment)
-        assert isinstance(executed, ExecutedDeployment)
         self.assertGreater(len(interpreter.requests), 0)
         self.assertIs(executed.execution.run.status, ActivityRunStatus.SUCCEEDED)
-
-        advance = Advance(
-            CurrentGraphAdvancementCommandService(
-                self.factory,
-                clock=lambda: "2026-07-18T00:07:00Z",
-                id_factory=Ids("advancement"),
-            )
-        )
-        advanced = advance(
-            executed,
-            AdvancementGrant(IdempotencyKey("admit-claim:advance")),
-        )
-        self.assertIsInstance(advanced, AdvancedDeployment)
         self.assertEqual(advanced.advancement.from_graph_id, "graph-current")
         self.assertEqual(
             advanced.advancement.to_graph_id,
@@ -199,6 +213,8 @@ class DeploymentAdmitClaimStageTests(PostgresStoreTestCase):
             self.stores.workspace.get("workspace-a").current_graph_id,
             advanced.advancement.to_graph_id,
         )
+
+        advance = deploy.execution.advance
 
         for status in (
             CoordinatorStatus.PAUSED,

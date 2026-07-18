@@ -98,3 +98,25 @@ Each entry must contain:
   BuildKit cleanup because every issue deliberately rebuilds in Docker.
 - **Residual risk:** Docker Desktop has a finite internal disk; Gate F closeout
   should report cache pressure separately from retained application resources.
+
+## GF-004: Host compile check encountered Docker-owned bytecode caches
+
+- **Issue:** #358
+- **Symptom:** A supplemental host `compileall` check could read source but
+  could not replace root-owned files under existing `__pycache__` directories.
+- **Violated law:** Host tooling must not become an undeclared prerequisite for
+  this Docker-first Python repository.
+- **Root cause:** Prior container runs created bytecode caches on a mounted
+  source tree as container root.
+- **Classification:** Supplemental host-check environment mismatch.
+- **Alternatives considered:** Change ownership, delete caches, run host Python
+  with elevated privileges, or rely on the canonical Docker test image.
+- **Chosen fix:** Do not mutate ownership or introduce a host dependency. Use
+  `./test.sh`, which builds and imports the package inside its declared Python
+  3.14 environment.
+- **Test integrity:** No test or application behavior changed.
+- **Validation:** The complete Docker/Postgres suite must compile and pass.
+- **Downstream consequences:** Gate F commands should avoid host bytecode writes
+  unless cache ownership is deliberately normalized in a separate issue.
+- **Residual risk:** Root-owned cache files remain local noise but do not affect
+  source edits or Docker validation.
