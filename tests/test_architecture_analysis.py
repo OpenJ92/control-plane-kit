@@ -55,6 +55,27 @@ def read_value():
         self.assertEqual(facts.imports[0].qualified_name, ".helpers.run")
         self.assertEqual(facts.calls[0].qualified_name, ".helpers.run")
         self.assertEqual(facts.functions[0].qualified_name, "Service.call")
+        self.assertEqual(facts.classes[0].qualified_name, "Service")
+
+    def test_nested_class_names_and_decorators_are_explicit(self) -> None:
+        facts = analyze_source(
+            "from dataclasses import dataclass as product\n"
+            "@product(frozen=True)\n"
+            "class Outer:\n"
+            "    class Inner:\n"
+            "        pass\n",
+            path="classes.py",
+            module="classes",
+        )
+
+        self.assertEqual(
+            tuple(value.qualified_name for value in facts.classes),
+            ("Outer", "Outer.Inner"),
+        )
+        self.assertEqual(
+            facts.classes[0].decorators[0].qualified_name,
+            "dataclasses.dataclass",
+        )
 
     def test_dotted_import_binding_matches_python_semantics(self) -> None:
         facts = analyze_source(

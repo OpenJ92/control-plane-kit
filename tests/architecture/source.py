@@ -103,6 +103,15 @@ class FunctionFact:
 
 
 @dataclass(frozen=True, order=True)
+class ClassFact:
+    """Structural facts for one class declaration."""
+
+    qualified_name: str
+    decorators: tuple[DecoratorFact, ...]
+    location: SourceLocation
+
+
+@dataclass(frozen=True, order=True)
 class ExceptHandlerFact:
     """Structural evidence for an exception handler body."""
 
@@ -130,6 +139,7 @@ class SourceFacts:
     references: tuple[ReferenceFact, ...]
     calls: tuple[CallFact, ...]
     decorators: tuple[DecoratorFact, ...]
+    classes: tuple[ClassFact, ...]
     functions: tuple[FunctionFact, ...]
     except_handlers: tuple[ExceptHandlerFact, ...]
     boolean_assertions: tuple[BooleanAssertionFact, ...]
@@ -230,6 +240,24 @@ def analyze_source(source: str, *, path: str, module: str) -> SourceFacts:
             if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef))
         )
     )
+    classes = tuple(
+        sorted(
+            ClassFact(
+                qualified_name=".".join((*parents, node.name)),
+                decorators=tuple(
+                    sorted(
+                        _decorator_fact(value, path, alias_map)
+                        for value in node.decorator_list
+                        if _qualified_name(_decorator_target(value), alias_map)
+                        is not None
+                    )
+                ),
+                location=_location(path, node),
+            )
+            for node, parents in _definitions(tree)
+            if isinstance(node, ast.ClassDef)
+        )
+    )
     handlers = tuple(
         sorted(
             (
@@ -261,6 +289,7 @@ def analyze_source(source: str, *, path: str, module: str) -> SourceFacts:
         references=references,
         calls=calls,
         decorators=decorators,
+        classes=classes,
         functions=functions,
         except_handlers=handlers,
         boolean_assertions=assertions,

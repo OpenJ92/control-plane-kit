@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from dataclasses import replace
 from datetime import datetime, timezone
 from itertools import count
 import os
@@ -24,7 +25,11 @@ from control_plane_kit.workflows import (
     OperationCommandService,
     RunLifecycleCommandService,
 )
-from examples.scenarios import execution_scenarios
+from examples.scenarios import (
+    EventOrderExpectation,
+    ExecutionScenario,
+    execution_scenarios,
+)
 from examples.scenarios.runner import (
     ScenarioEffectDirective,
     ScenarioEffectDisposition,
@@ -32,6 +37,7 @@ from examples.scenarios.runner import (
     ScenarioEffectProgram,
     ScenarioRunContext,
     ScenarioRunnerServices,
+    evaluate_execution_scenario,
     run_execution_scenario,
 )
 from examples.scenarios.workflow import PlanningWorkflowServices
@@ -177,9 +183,111 @@ class PostgresScenarioRunnerTests(PostgresStoreTestCase):
         self.assertGreater(len(interpreter.requests), 0)
         self.assertFalse(result.evaluation.satisfied)
 
-    def _prepare(self, scenario, *, program=ScenarioEffectProgram()):
-        workspace_id = f"scenario-workspace:{scenario.scenario_id}"
-        current_graph_id = f"scenario-current:{scenario.scenario_id}"
+    def test_repeated_runs_have_distinct_workspaces_and_fake_state(self):
+        scenario = self._scenario("backend-switch")
+        first_context, first_services, first_interpreter = self._prepare(
+            scenario,
+            workspace_suffix="first",
+        )
+        second_context, second_services, second_interpreter = self._prepare(
+            scenario,
+            workspace_suffix="second",
+        )
+
+        first = run_execution_scenario(first_services, scenario, first_context)
+        second = run_execution_scenario(second_services, scenario, second_context)
+
+        first.evaluation.require_satisfied()
+        second.evaluation.require_satisfied()
+        self.assertNotEqual(first_context.workspace_id, second_context.workspace_id)
+        self.assertNotEqual(
+            first.planning.plan.plan_record.plan_id,
+            second.planning.plan.plan_record.plan_id,
+        )
+        self.assertIsNot(first_interpreter.requests, second_interpreter.requests)
+        self.assertEqual(
+            len(first_interpreter.requests),
+            len(second_interpreter.requests),
+        )
+        self.assertTrue(
+            all(
+                request.graphs.workspace_id == first_context.workspace_id
+                for request in first_interpreter.requests
+            )
+        )
+        self.assertTrue(
+            all(
+                request.graphs.workspace_id == second_context.workspace_id
+                for request in second_interpreter.requests
+            )
+        )
+
+    def test_scenario_order_does_not_change_semantic_results(self):
+        scenarios = (
+            self._scenario("backend-switch"),
+            self._scenario("switch-database-endpoint"),
+            self._scenario("unsupported-implementation-transition"),
+        )
+
+        forward = self._run_order(scenarios, order="forward")
+        reverse = self._run_order(tuple(reversed(scenarios)), order="reverse")
+
+        self.assertEqual(
+            {scenario_id: result.evaluation for scenario_id, result in forward},
+            {scenario_id: result.evaluation for scenario_id, result in reverse},
+        )
+        self.assertTrue(all(result.evaluation.satisfied for _, result in forward))
+        self.assertTrue(all(result.evaluation.satisfied for _, result in reverse))
+
+    def test_semantic_diagnostic_reports_event_order_not_generated_values(self):
+        scenario = self._scenario("backend-switch")
+        context, services, _ = self._prepare(scenario)
+        completed = run_execution_scenario(services, scenario, context)
+        order = scenario.expectation.event_order[0]
+        contradicted = ExecutionScenario(
+            scenario.planning,
+            replace(
+                scenario.expectation,
+                event_order=(
+                    EventOrderExpectation(order.successor, order.predecessor),
+                ),
+            ),
+        )
+
+        evaluated = evaluate_execution_scenario(contradicted, completed)
+
+        self.assertFalse(evaluated.satisfied)
+        self.assertEqual(len(evaluated.findings), 1)
+        self.assertIn("event order violated", evaluated.findings[0])
+        self.assertIsNotNone(completed.opened)
+        assert completed.opened is not None
+        self.assertNotIn(completed.opened.run.run_id, evaluated.findings[0])
+
+    def _run_order(self, scenarios, *, order: str):
+        results = []
+        for ordinal, scenario in enumerate(scenarios, start=1):
+            context, services, _ = self._prepare(
+                scenario,
+                workspace_suffix=f"{order}-{ordinal}",
+            )
+            results.append(
+                (
+                    scenario.scenario_id,
+                    run_execution_scenario(services, scenario, context),
+                )
+            )
+        return tuple(results)
+
+    def _prepare(
+        self,
+        scenario,
+        *,
+        program=ScenarioEffectProgram(),
+        workspace_suffix: str | None = None,
+    ):
+        suffix = "" if workspace_suffix is None else f":{workspace_suffix}"
+        workspace_id = f"scenario-workspace:{scenario.scenario_id}{suffix}"
+        current_graph_id = f"scenario-current:{scenario.scenario_id}{suffix}"
         self.stores.workspace.create(WorkspaceRecord(workspace_id, scenario.planning.title))
         self.stores.graph_topology.save(
             GraphVersionRecord.from_graph(
@@ -195,7 +303,7 @@ class PostgresScenarioRunnerTests(PostgresStoreTestCase):
         self.stores.workspace.set_desired_graph(workspace_id, current_graph_id)
 
         self._tracker = TransactionTracker()
-        prefix = scenario.scenario_id
+        prefix = f"{scenario.scenario_id}{suffix}"
         approval = ApprovalCommandService(
             self._tracker,
             clock=_text_clock,
