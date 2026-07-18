@@ -1,6 +1,6 @@
 # Roadmap 0008: Activity Execution And Runtime Mutation
 
-Status: Draft
+Status: Implementation complete; awaiting operator review in draft PR #228
 Depends on: Roadmap 0005, Roadmap 0006, Roadmap 0007
 
 ## Motivation
@@ -147,10 +147,27 @@ brainstorm with the following ordered topology:
             -> #327 mandatory Gate E milestone review
 
 #323 -> #324
-#327 operator approval -> #225 live Docker router switch
-        -> #226 security/data/operational hardening
-          -> #227 closeout and Roadmap 0009 handoff
-            -> #246 guarded instance lifecycle evidence
+
+#327 operator approval -> #225 Gate F milestone
+  -> #353 closed deployment-program values
+    -> #354 Plan and Approve stages
+      -> #355 Admit and Claim stages
+        -> #356 Execute stage
+          -> #357 Advance stage
+            -> #358 parameterized Deploy composition
+              -> #359 four-transition laws
+                -> #360 AST application boundaries
+                  -> #361 scenario runner migration
+                    -> #362 live Docker router switch through Deploy
+                      -> #226 hardening milestone
+                        -> #363 live boundary matrix
+                          -> #364 cross-module review
+                            -> #379 transition-owned resumption hardening
+                              -> #365 public API and guide
+                                -> #366 complete acceptance corpus
+                                  -> #367 roadmap closeout
+                                    -> #227 Roadmap 0009 handoff
+                                      -> #246 guarded instance lifecycle evidence
 ```
 
 Parent issue: #210.
@@ -194,6 +211,37 @@ Approve -> Admit -> Claim -> Execute -> Advance`, with explicit durable
 suspensions for approval and recovery. The callable application composition and
 live proof remain Gate F work; Gate E did not add a facade or bypass the
 canonical services.
+
+Gate F is implemented and has passed its complete acceptance review. It added
+one public higher-order deployment program rather than another workflow or
+executor model:
+
+```text
+Deploy(current, desired)
+  = Plan
+      -> suspend for Approve
+        -> Admit
+          -> Claim
+            -> Execute
+              -> suspend for Recovery when required
+                -> Advance
+```
+
+The graph pair is the program parameter and the complete transition language:
+
+```text
+initial deployment = Deploy(EmptyGraph, desired)
+update             = Deploy(current, desired)
+teardown           = Deploy(current, EmptyGraph)
+no-op              = Deploy(graph, graph)
+```
+
+`Deploy` composes existing durable command services. It does not combine them
+into one long transaction, bypass approval or recovery, dispatch effects
+directly, or introduce a second journal. Every suspension is bound to the same
+typed graph pair, and each resumed command retains the authorization,
+transaction, concurrency, and pinned-graph checks owned by its canonical
+service.
 
 The common law is:
 
