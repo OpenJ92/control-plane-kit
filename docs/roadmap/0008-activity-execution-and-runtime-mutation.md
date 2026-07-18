@@ -1,6 +1,6 @@
 # Roadmap 0008: Activity Execution And Runtime Mutation
 
-Status: Implementation complete; awaiting operator review in draft PR #228
+Status: Implemented through Gate F; post-closeout Gate G planned in #402; awaiting operator review in draft PR #228
 Depends on: Roadmap 0005, Roadmap 0006, Roadmap 0007
 
 ## Motivation
@@ -168,7 +168,30 @@ brainstorm with the following ordered topology:
                                   -> #367 roadmap closeout
                                     -> #385 durable DeploymentProgram lifecycle
                                       -> #227 Roadmap 0009 handoff
-                                        -> #246 guarded instance lifecycle evidence
+
+#227 -> #246 guarded instance lifecycle evidence
+
+#227 -> #387 generated Hello topology stress vertical
+  -> #388 parameterized Hello dependencies
+    -> #389 generated valid and invalid graph corpus
+      -> #390 Postgres-backed DeploymentProgram coverage
+        -> #396 protocol-aware readiness prerequisite
+          -> #398 startup and runtime edge-binding prerequisite
+            -> #391 live generated graph proof
+              -> #392 generated topology hardening
+
+#392 -> #402 Gate G heterogeneous topology acceptance
+  -> #403 package-owned capability-contract audit
+    -> #404 bounded request observer
+      -> #405 heterogeneous scenarios and invalidities
+        -> #406 ActivityPlan AST proofs
+          -> #407 Postgres-backed DeploymentProgram proof
+            -> #408 static live Docker topology
+              -> #409 authenticated router mutation
+                -> #410 hardening
+                  -> #411 Gate G closeout and CPI handoff
+
+#246 + #411 -> Roadmap 0009 CPI implementation
 ```
 
 Parent issue: #210.
@@ -269,6 +292,35 @@ mutation is acceptable for a current projection
 iff authoritative history remains append-only
 and the projection can be reconstructed from it
 ```
+
+Post-closeout issues #387 through #392 extend acceptance from one fixed router
+switch to generated bounded Hello trees with paired HTTP and Postgres
+requirements. They prove protocol-aware readiness, startup environment binding,
+real edge behavior, invalid-graph rejection, canonical execution, and owned
+resource cleanup without changing the generic deployment language.
+
+Gate G issue #402 deliberately extends that evidence to heterogeneous
+package-owned blocks before CPI packaging:
+
+```text
+rate limiter
+  -> weighted load balancer
+    -> managed routing paths
+      -> multiplexer
+        -> Hello applications + Postgres dependencies + request observer
+```
+
+Gate G is an acceptance composition, not a second execution model. It first
+reconciles advertised capabilities with live server behavior, then proves the
+mixed graph through validation, ActivityPlan AST dependencies, Postgres-backed
+`DeploymentProgram`, real Docker execution, authenticated route mutation, and
+canonical teardown. It does not make the teaching HTTP servers production
+infrastructure and does not implement CPI packaging.
+
+Roadmap 0009 may begin only after the independent guarded instance-lifecycle
+prerequisite #246 and Gate G closeout #411 converge. Gate G must hand the mixed
+valid/invalid corpus to CPI public API acceptance rather than creating a
+CPI-specific planner, executor, or live fixture.
 
 ## Initial Issue Brainstorm (Superseded By Canonical Topology)
 
