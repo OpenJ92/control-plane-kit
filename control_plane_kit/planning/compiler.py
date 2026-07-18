@@ -57,6 +57,7 @@ from control_plane_kit.topology.validation import (
     NodeSubject,
     RuntimeSubject,
 )
+from control_plane_kit.topology import SocketBinding
 
 
 @dataclass
@@ -96,15 +97,30 @@ def compile_activity_plan(diff: GraphDiff) -> ActivityPlan:
     remove_node: dict[str, _ActivityDraft] = {}
     reconcile_node: dict[str, _ActivityDraft] = {}
     removed_node_runtime: dict[str, str] = {}
-    removed_edges: dict[str, tuple[_ActivityDraft, EdgeValue]] = {}
+    removed_edges: dict[str, tuple[_ActivityDraft | None, EdgeValue]] = {}
     modified_edges: dict[
         str,
-        tuple[_ActivityDraft, EdgeValue, EdgeValue],
+        tuple[_ActivityDraft | None, EdgeValue, EdgeValue],
     ] = {}
     node_reconciliations: dict[str, list[StructuralChange]] = {}
     runtime_reconciliations: dict[str, list[StructuralChange]] = {}
 
     for change in diff.changes:
+        match change:
+            case RemovedChange(
+                subject=EdgeSubject(edge_id=edge_id),
+                before=EdgeValue(edge=edge),
+            ) if edge.binding is SocketBinding.ENVIRONMENT:
+                removed_edges[edge_id] = (None, change.before)
+            case ModifiedChange(
+                subject=EdgeSubject(edge_id=edge_id),
+                before=EdgeValue(edge=before),
+                after=EdgeValue(edge=after),
+            ) if (
+                before.binding is SocketBinding.ENVIRONMENT
+                or after.binding is SocketBinding.ENVIRONMENT
+            ):
+                modified_edges[edge_id] = (None, change.before, change.after)
         match _reconciliation_owner(change):
             case NodeSubject(node_id=node_id):
                 node_reconciliations.setdefault(node_id, []).append(change)
@@ -171,6 +187,7 @@ def compile_activity_plan(diff: GraphDiff) -> ActivityPlan:
             healthy_node=healthy_node,
             stop_node=stop_node,
             remove_node=remove_node,
+            reconcile_node=reconcile_node,
             removed_node_runtime=removed_node_runtime,
             removed_edges=removed_edges,
             modified_edges=modified_edges,
@@ -279,6 +296,11 @@ def _compile_change(change: StructuralChange) -> tuple[_ActivityDraft, ...]:
             )
             remove.dependencies.add(stop.activity_id)
             return stop, remove
+        case AddedChange(
+            subject=EdgeSubject(),
+            after=EdgeValue(edge=edge),
+        ) if edge.binding is SocketBinding.ENVIRONMENT:
+            return ()
         case AddedChange(subject=EdgeSubject(edge_id=edge_id), after=EdgeValue()):
             return (
                 _draft(
@@ -289,6 +311,15 @@ def _compile_change(change: StructuralChange) -> tuple[_ActivityDraft, ...]:
                     ActivityImpact.NON_DESTRUCTIVE,
                 ),
             )
+        case ModifiedChange(
+            subject=EdgeSubject(),
+            before=EdgeValue(edge=before),
+            after=EdgeValue(edge=after),
+        ) if (
+            before.binding is SocketBinding.ENVIRONMENT
+            or after.binding is SocketBinding.ENVIRONMENT
+        ):
+            return ()
         case ModifiedChange(subject=EdgeSubject(edge_id=edge_id), after=EdgeValue()):
             return (
                 _draft(
@@ -299,6 +330,11 @@ def _compile_change(change: StructuralChange) -> tuple[_ActivityDraft, ...]:
                     ActivityImpact.DISRUPTIVE,
                 ),
             )
+        case RemovedChange(
+            subject=EdgeSubject(),
+            before=EdgeValue(edge=edge),
+        ) if edge.binding is SocketBinding.ENVIRONMENT:
+            return ()
         case RemovedChange(subject=EdgeSubject(edge_id=edge_id), before=EdgeValue()):
             return (
                 _draft(
@@ -330,11 +366,12 @@ def _add_dependencies(
     healthy_node: dict[str, _ActivityDraft],
     stop_node: dict[str, _ActivityDraft],
     remove_node: dict[str, _ActivityDraft],
+    reconcile_node: dict[str, _ActivityDraft],
     removed_node_runtime: dict[str, str],
-    removed_edges: dict[str, tuple[_ActivityDraft, EdgeValue]],
+    removed_edges: dict[str, tuple[_ActivityDraft | None, EdgeValue]],
     modified_edges: dict[
         str,
-        tuple[_ActivityDraft, EdgeValue, EdgeValue],
+        tuple[_ActivityDraft | None, EdgeValue, EdgeValue],
     ],
 ) -> None:
     matching = [draft for draft in drafts if _change_token(change) in draft.activity_id.value]
@@ -343,10 +380,24 @@ def _add_dependencies(
             if runtime := start_runtime.get(node.runtime_id):
                 start_node[node_id].dependencies.add(runtime.activity_id)
         case AddedChange(subject=EdgeSubject(), after=EdgeValue(edge=edge)):
+            if not matching:
+                predecessor = healthy_node.get(edge.provider_role)
+                successor = start_node.get(edge.consumer_role) or reconcile_node.get(
+                    edge.consumer_role
+                )
+                if predecessor is not None and successor is not None:
+                    successor.dependencies.add(predecessor.activity_id)
+                return
             for node_id in (edge.provider_role, edge.consumer_role):
                 if healthy := healthy_node.get(node_id):
                     matching[0].dependencies.add(healthy.activity_id)
         case ModifiedChange(subject=EdgeSubject(), after=EdgeValue(edge=edge)):
+            if not matching:
+                predecessor = healthy_node.get(edge.provider_role)
+                successor = reconcile_node.get(edge.consumer_role)
+                if predecessor is not None and successor is not None:
+                    successor.dependencies.add(predecessor.activity_id)
+                return
             for node_id in (edge.provider_role, edge.consumer_role):
                 if healthy := healthy_node.get(node_id):
                     matching[0].dependencies.add(healthy.activity_id)
@@ -356,14 +407,26 @@ def _add_dependencies(
             for remove, edge_value in removed_edges.values():
                 edge = edge_value.edge
                 if node_id in (edge.provider_role, edge.consumer_role):
-                    stop_node[node_id].dependencies.add(remove.activity_id)
+                    if remove is not None:
+                        stop_node[node_id].dependencies.add(remove.activity_id)
+                    elif node_id == edge.provider_role:
+                        if reconcile := reconcile_node.get(edge.consumer_role):
+                            stop_node[node_id].dependencies.add(
+                                reconcile.activity_id
+                            )
             for switch, before_value, after_value in modified_edges.values():
                 before = before_value.edge
                 after = after_value.edge
                 before_endpoints = (before.provider_role, before.consumer_role)
                 after_endpoints = (after.provider_role, after.consumer_role)
                 if node_id in before_endpoints and node_id not in after_endpoints:
-                    stop_node[node_id].dependencies.add(switch.activity_id)
+                    if switch is not None:
+                        stop_node[node_id].dependencies.add(switch.activity_id)
+                    elif node_id == before.provider_role:
+                        if reconcile := reconcile_node.get(after.consumer_role):
+                            stop_node[node_id].dependencies.add(
+                                reconcile.activity_id
+                            )
         case RemovedChange(
             subject=RuntimeSubject(runtime_id=runtime_id),
         ):

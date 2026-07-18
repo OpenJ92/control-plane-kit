@@ -19,7 +19,11 @@ from control_plane_kit.execution import (
     ExecutionRequestRecord,
     ExecutionRequestStatus,
 )
-from control_plane_kit.planning import PlannedActivity, SwitchSocketConnection
+from control_plane_kit.planning import (
+    PlannedActivity,
+    ReconcileNode,
+    SwitchSocketConnection,
+)
 from control_plane_kit.policies import ApprovalPolicy
 from control_plane_kit.stores import (
     ActivityHistoryStore,
@@ -32,7 +36,7 @@ from control_plane_kit.stores import (
 )
 from control_plane_kit.topology.codec import DEFAULT_GRAPH_CODEC, GraphDescriptorError
 from control_plane_kit.topology.graph import DeploymentGraph
-from control_plane_kit.types import Protocol
+from control_plane_kit.types import Protocol, SocketBinding
 from control_plane_kit.workflows.commands import IdempotencyKey, InvalidOperationCommand
 
 
@@ -314,16 +318,46 @@ def _readiness_required(
 ) -> set[str]:
     required: set[str] = set()
     for activity in activities:
-        if not isinstance(activity.operation, SwitchSocketConnection):
-            continue
-        edge_id = activity.operation.target.edge_id
-        edges = [graph.edges.get(edge_id) for graph in (current, desired)]
-        if any(
-            edge is not None and edge.protocol is Protocol.POSTGRES
-            for edge in edges
-        ):
-            required.add(activity.activity_id.value)
+        match activity.operation:
+            case SwitchSocketConnection(target=target):
+                edges = [
+                    graph.edges.get(target.edge_id)
+                    for graph in (current, desired)
+                ]
+                if any(
+                    edge is not None and edge.protocol is Protocol.POSTGRES
+                    for edge in edges
+                ):
+                    required.add(activity.activity_id.value)
+            case ReconcileNode(target=target):
+                if _changes_startup_postgres_endpoint(
+                    target.node_id,
+                    current,
+                    desired,
+                ):
+                    required.add(activity.activity_id.value)
     return required
+
+
+def _changes_startup_postgres_endpoint(
+    consumer_id: str,
+    current: DeploymentGraph,
+    desired: DeploymentGraph,
+) -> bool:
+    for edge_id in set(current.edges) | set(desired.edges):
+        before = current.edges.get(edge_id)
+        after = desired.edges.get(edge_id)
+        if before == after:
+            continue
+        for edge in (before, after):
+            if (
+                edge is not None
+                and edge.consumer_role == consumer_id
+                and edge.protocol is Protocol.POSTGRES
+                and edge.binding is SocketBinding.ENVIRONMENT
+            ):
+                return True
+    return False
 
 
 def _replay(

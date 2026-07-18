@@ -137,6 +137,7 @@ def _apply_connection(graph: DeploymentGraph, connection: SocketConnection) -> D
         consumer_role=consumer.node_id,
         requirement_socket=requirement_socket.name,
         protocol=protocol,
+        binding=requirement_socket.binding,
         env_assignments=assignments,
     )
     return graph.update_node(consumer.with_environment(assignments)).add_edge(edge)

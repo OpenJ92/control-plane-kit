@@ -33,6 +33,7 @@ class ValidationCode(StrEnum):
     MULTIPLE_REQUIREMENT_CONNECTIONS = "multiple-requirement-connections"
     EDGE_REFERENCE = "edge-reference"
     EDGE_PROTOCOL = "edge-protocol"
+    EDGE_BINDING = "edge-binding"
     CONTROL_ROUTE_SET = "control-route-set"
     DUPLICATE_PROVIDER_SOCKET = "duplicate-provider-socket"
     DUPLICATE_REQUIREMENT_SOCKET = "duplicate-requirement-socket"
@@ -200,6 +201,14 @@ def validate_graph(
                     ValidationCode.EDGE_PROTOCOL,
                     EdgeSubject(edge_id),
                     "edge protocol does not match both connected sockets",
+                )
+            )
+        if requirement.binding is not edge.binding:
+            findings.append(
+                _error(
+                    ValidationCode.EDGE_BINDING,
+                    EdgeSubject(edge_id),
+                    "edge binding does not match the consumer requirement contract",
                 )
             )
         expected_keys = set(requirement.env_bindings)

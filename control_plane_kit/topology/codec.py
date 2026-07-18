@@ -258,6 +258,7 @@ class GraphDescriptorCodec:
             consumer_role=_text(consumer, "role"),
             requirement_socket=_text(consumer, "requirement"),
             protocol=_protocol(descriptor, "edge"),
+            binding=_edge_socket_binding(descriptor),
             env_assignments=_string_mapping(
                 descriptor.get("env_assignments", {}), "edge.env_assignments"
             ),
@@ -374,6 +375,14 @@ def _socket_binding(value: object) -> SocketBinding:
         )
     except ValueError as error:
         raise UnknownGraphVariant(f"unknown socket binding: {error}") from error
+
+
+def _edge_socket_binding(value: object) -> SocketBinding:
+    descriptor = _mapping(value, "edge")
+    try:
+        return SocketBinding(_text(descriptor, "binding"))
+    except ValueError as error:
+        raise UnknownGraphVariant(f"unknown edge socket binding: {error}") from error
 
 
 def _endpoint_scope(value: object) -> EndpointScope:
