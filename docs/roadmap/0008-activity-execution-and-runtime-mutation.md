@@ -343,6 +343,15 @@ bounded and its control routes are authenticated; traffic evidence excludes
 bodies, credentials, cookies, arbitrary headers, query strings, and raw
 unbounded paths by default.
 
+Request or response body transformation is deliberately outside the
+package-owned Gate G server catalog. XML/JSON conversion, field mapping, schema
+evolution, defaults, and semantic validation are application behavior. A user
+may provide a transformer as an ordinary `ApplicationBlock` with HTTP provider
+and requirement sockets. CPK compiles, deploys, wires, observes, and optionally
+executes its declared verification contract without understanding or owning the
+mapping semantics. Issue #417 and PR #418 record the rejected generic-server
+alternative.
+
 ## Initial Issue Brainstorm (Superseded By Canonical Topology)
 
 The following list is retained as design motivation. Use the canonical issue
