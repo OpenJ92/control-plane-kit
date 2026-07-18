@@ -137,6 +137,7 @@ class Deploy:
         suspension: ApprovalSuspension,
         grant: ApprovalGrant,
     ) -> ApprovedDeployment:
+        self._require_own_transition(suspension)
         return self.approval(suspension, grant)
 
     def execute_approved(
@@ -144,6 +145,7 @@ class Deploy:
         approved: ApprovedDeployment,
         grant: DeploymentExecutionGrant,
     ) -> DeploymentProgramResult:
+        self._require_own_transition(approved)
         return self.execution(approved, grant)
 
     def resume_execution(
@@ -153,6 +155,7 @@ class Deploy:
         limits: ExecutionLimits,
         advancement: AdvancementGrant,
     ) -> DeploymentProgramResult:
+        self._require_own_transition(continuation)
         return self.execution.resume(
             continuation,
             limits=limits,
@@ -166,8 +169,36 @@ class Deploy:
         limits: ExecutionLimits,
         advancement: AdvancementGrant,
     ) -> DeploymentProgramResult:
+        self._require_own_transition(suspension)
         return self.execution.resume_recovered(
             suspension,
             limits=limits,
             advancement=advancement,
         )
+
+    def _require_own_transition(
+        self,
+        value: ApprovalSuspension
+        | ApprovedDeployment
+        | ExecutionContinuation
+        | RecoverySuspension,
+    ) -> None:
+        match value:
+            case ApprovalSuspension(preparation=preparation):
+                pass
+            case ApprovedDeployment(
+                suspension=ApprovalSuspension(preparation=preparation)
+            ):
+                pass
+            case ExecutionContinuation(claimed=claimed) | RecoverySuspension(
+                claimed=claimed
+            ):
+                preparation = (
+                    claimed.admitted.approved.suspension.preparation
+                )
+            case _:
+                raise TypeError("deployment evidence has an unsupported shape")
+        if preparation.request.transition != self.transition:
+            raise ValueError(
+                "deployment evidence belongs to another graph transition"
+            )

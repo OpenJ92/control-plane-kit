@@ -143,3 +143,34 @@ Each entry must contain:
 - **Downstream consequences:** #361 must use the same canonical scenario fields
   when constructing `Deploy`.
 - **Residual risk:** None beyond the planned scenario-runner migration.
+
+## GF-006: Deploy resumptions were not bound to the parameterized graph pair
+
+- **Issue:** #379, discovered during #364
+- **Symptom:** `Deploy.approve()`, `execute_approved()`, `resume_execution()`,
+  and `resume_recovered()` accepted nested evidence prepared by another
+  `Deploy(current, desired, ...)` instance.
+- **Violated law:** A parameterized deployment program owns one graph
+  transition across every explicit suspension and resumption boundary.
+- **Root cause:** `Deploy.__call__()` checked request transition identity, but
+  later methods delegated directly because canonical nested evidence was
+  assumed to be sufficient.
+- **Classification:** Application composition identity defect. Durable command
+  services retained their own plan, run, approval, worker, and graph guards.
+- **Alternatives considered:** Add a new deployment identity field, rely only on
+  store rejection, or derive the transition already carried by preparation
+  evidence. A new identity would duplicate graph-pair truth; store-only failure
+  would make the public parameterization misleading.
+- **Chosen fix:** Pattern-match each accepted suspension/result shape, recover
+  its canonical `DeploymentPlanRequest.transition`, and compare it to
+  `Deploy.transition` before invoking any downstream stage.
+- **Test integrity:** Adversarial tests use a real foreign graph pair and assert
+  rejection before approval or run persistence. Existing successful execution
+  remains unchanged; no assertion or authorization check was relaxed.
+- **Validation:** Complete Docker/Postgres suite: 706 passed.
+- **Downstream consequences:** API, MCP, and UI callers may safely retain a
+  parameterized `Deploy` across approval and recovery pauses without it
+  consuming another workspace transition's evidence.
+- **Residual risk:** Durable services remain the final authority for graph IDs
+  and concurrency. The application guard intentionally compares typed graph
+  transitions, not mutable pointers or a new deployment identifier.
