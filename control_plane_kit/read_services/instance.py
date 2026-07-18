@@ -25,6 +25,7 @@ from control_plane_kit.stores.protocols import (
 )
 from control_plane_kit.execution import (
     DEFAULT_EXECUTION_CODEC,
+    FailureEvidence,
     ObservationFreshnessPolicy,
     ObservationRecord,
     ProjectedObservation,
@@ -756,6 +757,21 @@ def _event_descriptor(event: object) -> dict[str, object]:
         "occurred_at": getattr(event, "occurred_at"),
         "activity_id": getattr(event, "activity_id"),
         "payload": _redact_descriptor_value("payload", getattr(event, "evidence").descriptor()),
+        "failure": _failure_descriptor(getattr(event, "failure")),
+    }
+
+
+def _failure_descriptor(failure: FailureEvidence | None) -> dict[str, object] | None:
+    if failure is None:
+        return None
+    return {
+        "category": failure.category.value,
+        "code": failure.code,
+        "message": failure.message,
+        "details": _redact_descriptor_value(
+            "details",
+            failure.details.descriptor(),
+        ),
     }
 
 

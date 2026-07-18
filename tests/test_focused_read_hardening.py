@@ -4,14 +4,39 @@ from unittest import main
 
 from fastapi.testclient import TestClient
 
-from control_plane_kit import ActivityPlan, RiskLevel
+from control_plane_kit import (
+    ActivityEventKind,
+    ActivityId,
+    ActivityImpact,
+    ActivityPlan,
+    ActivityRunStatus,
+    AdmittedRun,
+    BoundedEvidence,
+    ClaimIdentity,
+    ExecutionIdempotency,
+    ExecutionRequestIdentity,
+    ExecutionRequestRecord,
+    ExecutionRequestStatus,
+    ExecutionValueError,
+    FailureCategory,
+    FailureEvidence,
+    PlannedActivity,
+    RemoveRuntimeResource,
+    RetryIdentity,
+    RiskLevel,
+    RuntimeTarget,
+)
 from control_plane_kit.cli import run as run_cli
 from control_plane_kit.topology.graph import DeploymentGraph
 from control_plane_kit.mcp_read import McpReadError, ReadOnlyMcpAdapter
 from control_plane_kit.read_services import InstanceReadService, ReadModelError
 from control_plane_kit.servers import create_instance_read_app
 from control_plane_kit.stores import (
+    ActivityEventRecord,
     ActivityPlanRecord,
+    ActivityRunRecord,
+    ApprovalDecisionKind,
+    ApprovalDecisionRecord,
     ApprovalRequestRecord,
     GraphVersionRecord,
     OperationActionKind,
@@ -31,6 +56,13 @@ class FocusedReadHardeningTests(PostgresStoreTestCase):
         opener = TestClientOpener(client)
 
         cases = (
+            (
+                service.activity_timeline("workspace-a", limit=1).descriptor(),
+                "/workspaces/workspace-a/activity?limit=1",
+                "get_activity_timeline",
+                {"workspace_id": "workspace-a", "limit": 1},
+                ["activity", "workspace-a", "--limit", "1"],
+            ),
             (
                 service.open_sessions("workspace-a", limit=1, offset=1).descriptor(),
                 "/workspaces/workspace-a/sessions?limit=1&offset=1",
@@ -87,6 +119,39 @@ class FocusedReadHardeningTests(PostgresStoreTestCase):
                 self.assertEqual(mcp_payload, expected)
                 self.assertEqual(cli_status, 0)
                 self.assertEqual(json.loads(stdout.getvalue()), expected)
+
+    def test_failure_evidence_is_canonical_and_bounded(self):
+        payload = self._seed_service().activity_timeline(
+            "workspace-a",
+            limit=1,
+        ).descriptor()
+
+        failure = payload["sessions"][0]["plans"][0]["runs"][0]["events"][0][
+            "failure"
+        ]
+        self.assertEqual(
+            failure,
+            {
+                "category": "operator_review",
+                "code": "compensation.non-compensatable-work",
+                "message": "Completed work cannot be compensated automatically.",
+                "details": {
+                    "activity_ids": ["remove-runtime-a"],
+                    "nested": {
+                        "label": "visible",
+                    },
+                },
+            },
+        )
+
+    def test_secret_shaped_failure_details_are_rejected_before_persistence(self):
+        with self.assertRaisesRegex(
+            ExecutionValueError,
+            "recovery_token is secret-shaped",
+        ):
+            BoundedEvidence.from_mapping(
+                {"nested": {"recovery_token": "secret-value"}}
+            )
 
     def test_workspace_boundaries_fail_closed_without_disclosing_foreign_records(self):
         service = self._seed_service()
@@ -215,7 +280,20 @@ class FocusedReadHardeningTests(PostgresStoreTestCase):
                     desired_graph_id=desired_graph_id,
                     status="planned",
                     created_at="2026-07-16T01:02:00Z",
-                    plan=ActivityPlan(()),
+                    plan=(
+                        ActivityPlan(
+                            (
+                                PlannedActivity(
+                                    ActivityId("remove-runtime-a"),
+                                    RemoveRuntimeResource(RuntimeTarget("runtime-a")),
+                                    risk=RiskLevel.HIGH,
+                                    impact=ActivityImpact.DESTRUCTIVE,
+                                ),
+                            )
+                        )
+                        if plan_id == "plan-a"
+                        else ActivityPlan(())
+                    ),
                 )
             )
         self.stores.activity_history.add_approval_request(
@@ -226,8 +304,74 @@ class FocusedReadHardeningTests(PostgresStoreTestCase):
                 requested_by="operator",
                 requested_at="2026-07-16T01:03:00Z",
                 required_scope="plan:approve",
-                max_risk=RiskLevel.LOW,
-                destructive=False,
+                max_risk=RiskLevel.HIGH,
+                destructive=True,
+            )
+        )
+        self.stores.activity_history.add_approval_decision(
+            ApprovalDecisionRecord(
+                decision_id="approval-decision-a",
+                request_id="approval-a",
+                actor_id="manager",
+                decision=ApprovalDecisionKind.APPROVED,
+                scope="plan:approve",
+                decided_at="2026-07-16T01:04:00Z",
+            )
+        )
+        self.stores.execution.add_request(
+            ExecutionRequestRecord(
+                identity=ExecutionRequestIdentity(
+                    "execution-request-a",
+                    "workspace-a",
+                    "session-a",
+                    "plan-a",
+                ),
+                status=ExecutionRequestStatus.CLAIMED,
+                requested_by="operator",
+                requested_at="2026-07-16T01:05:00Z",
+                approval_request_id="approval-a",
+                approval_decision_id="approval-decision-a",
+                idempotency=ExecutionIdempotency("execute-a", "fingerprint-a"),
+                claim=ClaimIdentity(
+                    "worker-a",
+                    "2026-07-16T01:05:00Z",
+                    "2026-07-16T01:10:00Z",
+                ),
+            )
+        )
+        self.stores.execution.add_run(
+            ActivityRunRecord(
+                run_id="run-a",
+                plan_id="plan-a",
+                admission=AdmittedRun("execution-request-a"),
+                retry=RetryIdentity(1),
+                status=ActivityRunStatus.PARTIALLY_FAILED,
+                created_at="2026-07-16T01:06:00Z",
+                started_at="2026-07-16T01:06:00Z",
+                settled_at="2026-07-16T01:07:00Z",
+            )
+        )
+        self.stores.execution.add_event(
+            ActivityEventRecord(
+                event_id="event-a",
+                run_id="run-a",
+                ordinal=1,
+                kind=ActivityEventKind.STEP_COMPENSATION_UNSUPPORTED,
+                occurred_at="2026-07-16T01:07:00Z",
+                activity_id="remove-runtime-a",
+                failure=FailureEvidence(
+                    FailureCategory.OPERATOR_REVIEW,
+                    "compensation.non-compensatable-work",
+                    "Completed work cannot be compensated automatically.",
+                    BoundedEvidence.from_mapping(
+                        {
+                            "activity_ids": ["remove-runtime-a"],
+                            "nested": {
+                                "label": "visible",
+                            },
+                        }
+                    ),
+                ),
             )
         )
         return InstanceReadService(
