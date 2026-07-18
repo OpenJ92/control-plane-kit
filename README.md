@@ -233,7 +233,11 @@ the same canonical deployment program:
 
 The default is a two-branch, one-level graph. Set
 `CPK_GENERATED_HELLO_BRANCHING_FACTOR` and `CPK_GENERATED_HELLO_DEPTH` to exercise
-a larger bounded generated topology.
+a larger bounded generated topology. Live execution defaults to at most 31
+application and database containers. Raising
+`CPK_GENERATED_HELLO_MAX_LIVE_NODES` is an explicit acknowledgement that a
+larger graph will consume correspondingly more local Docker resources; it does
+not change the larger bound of the pure graph generator.
 
 Run the local read demo with:
 

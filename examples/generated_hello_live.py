@@ -116,9 +116,20 @@ class PlannedLiveDeployment:
 def shape_from_environment() -> HelloGraphShape:
     branching = int(os.environ.get("CPK_GENERATED_HELLO_BRANCHING_FACTOR", "2"))
     depth = int(os.environ.get("CPK_GENERATED_HELLO_DEPTH", "1"))
+    max_live_nodes = int(os.environ.get("CPK_GENERATED_HELLO_MAX_LIVE_NODES", "31"))
     if branching < 1 or depth < 1:
         raise ValueError("the live generated proof requires branching and depth of at least one")
-    return HelloGraphShape(branching, depth, root_host_port=ROOT_PORT)
+    if max_live_nodes < 1:
+        raise ValueError("CPK_GENERATED_HELLO_MAX_LIVE_NODES must be positive")
+    shape = HelloGraphShape(branching, depth, root_host_port=ROOT_PORT)
+    live_node_count = shape.application_count + shape.database_count
+    if live_node_count > max_live_nodes:
+        raise ValueError(
+            "generated Hello live topology requires "
+            f"{live_node_count} containers, exceeding the configured "
+            f"{max_live_nodes}-container limit"
+        )
+    return shape
 
 
 def empty_graph(name: str = "generated-hello-empty") -> DeploymentGraph:

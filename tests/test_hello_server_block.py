@@ -93,6 +93,11 @@ class HelloServerBlockTests(TestCase):
         self.assertIn("HELLO_DATABASE_ORDERS_URL", source)
         self.assertIn("MAX_RESPONSE_BYTES", source)
         self.assertIn("NoRedirects", source)
+        self.assertIn(
+            'target.scheme not in {"postgresql", "postgresql+psycopg"}',
+            source,
+        )
+        self.assertNotIn('target.scheme.startswith("postgresql")', source)
         self.assertNotIn("http://orders", source)
         self.assertNotIn("postgresql://orders", source)
 

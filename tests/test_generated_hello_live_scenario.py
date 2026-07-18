@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import unittest
+from unittest.mock import patch
 
 from control_plane_kit.planning import (
     AddSocketConnection,
@@ -11,7 +12,7 @@ from control_plane_kit.planning import (
 from control_plane_kit.topology import DeploymentGraph, diff_graphs, validate_graph
 from control_plane_kit.types import Protocol
 from examples.generated_hello_graphs import HelloGraphShape, generated_hello_graph
-from examples.generated_hello_live import _probe_address
+from examples.generated_hello_live import _probe_address, shape_from_environment
 
 
 class GeneratedHelloLiveScenarioTests(unittest.TestCase):
@@ -58,6 +59,32 @@ class GeneratedHelloLiveScenarioTests(unittest.TestCase):
             _probe_address("http://runtime-api:8000/path", Protocol.HTTP),
             "http://runtime-api:8000",
         )
+
+    def test_live_shape_rejects_accidental_container_explosion(self) -> None:
+        with patch.dict(
+            "os.environ",
+            {
+                "CPK_GENERATED_HELLO_BRANCHING_FACTOR": "3",
+                "CPK_GENERATED_HELLO_DEPTH": "3",
+            },
+            clear=True,
+        ):
+            with self.assertRaisesRegex(ValueError, "79 containers"):
+                shape_from_environment()
+
+    def test_live_shape_limit_can_be_raised_explicitly(self) -> None:
+        with patch.dict(
+            "os.environ",
+            {
+                "CPK_GENERATED_HELLO_BRANCHING_FACTOR": "3",
+                "CPK_GENERATED_HELLO_DEPTH": "3",
+                "CPK_GENERATED_HELLO_MAX_LIVE_NODES": "79",
+            },
+            clear=True,
+        ):
+            shape = shape_from_environment()
+
+        self.assertEqual(shape.application_count + shape.database_count, 79)
 
 
 if __name__ == "__main__":
