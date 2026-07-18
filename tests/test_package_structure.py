@@ -8,10 +8,31 @@ from pathlib import Path
 import unittest
 
 import control_plane_kit
+from control_plane_kit.application import deploy as deployment
 from control_plane_kit import effects, planning, saga, scheduling, topology
 
 
 class PackageStructureTests(unittest.TestCase):
+    def test_deployment_program_has_one_intentional_package_entrance(self) -> None:
+        public = set(deployment.__all__)
+
+        self.assertTrue(
+            {
+                "Admit",
+                "Advance",
+                "Approve",
+                "Claim",
+                "Deploy",
+                "Execute",
+                "ExecuteApprovedDeployment",
+                "Plan",
+                "PrepareDeployment",
+            }.issubset(public)
+        )
+        self.assertTrue(all(hasattr(deployment, name) for name in public))
+        self.assertFalse(hasattr(control_plane_kit, "Deploy"))
+        self.assertTrue({"program", "stages", "values"}.isdisjoint(public))
+
     def test_root_api_reexports_canonical_package_objects(self) -> None:
         self.assertIs(control_plane_kit.DeploymentGraph, topology.DeploymentGraph)
         self.assertIs(control_plane_kit.GraphDescriptorCodec, topology.GraphDescriptorCodec)

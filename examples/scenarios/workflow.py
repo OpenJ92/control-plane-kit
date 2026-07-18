@@ -1,4 +1,4 @@
-"""Generic Roadmap 0007 workflow for planning any graph transition."""
+"""Roadmap 0007 planning-only fixture; use application.deploy for execution."""
 
 from __future__ import annotations
 

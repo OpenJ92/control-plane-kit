@@ -1,9 +1,10 @@
 # control-plane-kit
 
-`control-plane-kit` is a small Python algebra for describing deployable systems
-as values: blocks, runtimes, sockets, and connections. It is designed for tools
-that want to let a user build deployment topology visually, diff that topology,
-and hand the result to a runtime interpreter.
+`control-plane-kit` is a Python algebra and control-plane application for
+describing deployable systems as values: blocks, runtimes, sockets, and
+connections. Tools can build topology visually, diff it, compile an activity
+plan, request explicit approval, and execute the approved transition through
+runtime adapters.
 
 The central equation is:
 
@@ -193,6 +194,34 @@ Operation sessions, desired graph edits, typed activity planning, approvals,
 recovery candidates, and focused workflow reads are documented in
 [Activity Sessions And Planning](docs/ACTIVITY_PLANNING.md).
 
+## Deployment Program
+
+The intentional application entrance is:
+
+```python
+from control_plane_kit.application.deploy import Deploy
+```
+
+One parameterized program handles every graph-pair transition:
+
+```text
+initial deployment = Deploy(EmptyGraph, desired)
+update             = Deploy(current, desired)
+teardown           = Deploy(current, EmptyGraph)
+no-op              = Deploy(graph, graph)
+```
+
+It composes `Plan -> Approve -> Admit -> Claim -> Execute -> Advance` while
+keeping approval and recovery as explicit suspension boundaries. See
+[Deployment Application Program](docs/DEPLOY_PROGRAM.md) for construction,
+typed outcomes, operator grants, transaction laws, recovery, and live examples.
+
+Run the complete Docker/Postgres live proof with:
+
+```bash
+./gate-f-live-test.sh
+```
+
 Run the local read demo with:
 
 ```bash
@@ -260,7 +289,9 @@ The Docker interpreter operates on one `RuntimeRecord` at a time. It consumes
 live facts in `RuntimeState`. Container names, cleanup metadata, and health
 belong to runtime state; they do not belong to the graph.
 
-Current Docker support is intentionally narrow:
+The older `DockerRuntimeInterpreter.up/down` surface is a focused low-level
+runtime example. New control-plane workflows should use the deployment program
+above. Current Docker support is intentionally narrow:
 
 - supported: one Docker runtime at a time,
 - supported: Docker image blocks and Docker Postgres blocks,
@@ -268,7 +299,9 @@ Current Docker support is intentionally narrow:
 - supported: default cleanup that removes owned containers and network,
 - supported: preserve cleanup that stops containers but keeps resources,
 - unsupported: cross-runtime Docker realization,
-- unsupported: host port publishing and host health checks,
+- supported: explicit typed loopback host publication,
+- supported: distinct process, reachability, application-health, and readiness
+  probes,
 - unsupported: Kubernetes, ECS, EC2, RDS, and Cloudflare interpreters.
 
 Activity descriptors redact environment values. The executor still receives the
