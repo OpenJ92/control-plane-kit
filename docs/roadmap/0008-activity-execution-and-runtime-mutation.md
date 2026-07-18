@@ -185,9 +185,10 @@ brainstorm with the following ordered topology:
     |-> #404 bounded request observer
     |-> #413 HTTP circuit-breaker scaffold
     |-> #414 bounded HTTP retry scaffold
-    `-> #415 inline HTTP traffic-logger scaffold
+    |-> #415 inline HTTP traffic-logger scaffold
+    `-> #417 HTTP representation-transformer scaffold
 
-#404 + #413 + #414 + #415
+#404 + #413 + #414 + #415 + #417
       -> #405 heterogeneous scenarios and invalidities
         -> #406 ActivityPlan AST proofs
           -> #407 Postgres-backed DeploymentProgram proof
@@ -342,6 +343,20 @@ non-idempotent work without an explicit idempotency contract; circuit state is
 bounded and its control routes are authenticated; traffic evidence excludes
 bodies, credentials, cookies, arbitrary headers, query strings, and raw
 unbounded paths by default.
+
+The representation transformer is another independent inline block. Its
+package-owned teaching profile may translate only a documented constrained
+subset of JSON and XML. Arbitrary XML and JSON are not naturally isomorphic:
+attributes, namespaces, mixed content, order, repeated elements, duplicate JSON
+keys, and numeric semantics require explicit policy or rejection. Domain field
+mapping, schema evolution, defaults, and business interpretation remain
+application-owned behavior.
+
+The transformer must negotiate media types explicitly, bound body size, depth,
+collection count, and parse time, and disable XML external entities, DTD
+retrieval, entity expansion, and parser network/file access. It may never accept
+arbitrary mapping source over a control route or expose transformed bodies in
+descriptors, observations, logs, or errors.
 
 ## Initial Issue Brainstorm (Superseded By Canonical Topology)
 
