@@ -11,7 +11,7 @@ from urllib.parse import urlsplit
 
 from control_plane_kit.lifecycle import OWNED_EPHEMERAL, ResourceLifecycle
 
-from control_plane_kit.effects.values import EffectRequest
+from control_plane_kit.effects.values import EffectPurpose, EffectRequest
 from control_plane_kit.planning import (
     ActivityOperation,
     AddSocketConnection,
@@ -266,6 +266,10 @@ class MaterializedEffectRequest:
         return self.request.capability
 
     @property
+    def purpose(self):
+        return self.request.purpose
+
+    @property
     def material_secret_references(self) -> tuple[SecretReferenceMaterialValue, ...]:
         references = {
             value.reference_id
@@ -286,6 +290,7 @@ class MaterializedEffectRequest:
             "run_id": self.identity.run_id,
             "activity_id": self.identity.activity_id.value,
             "attempt": self.identity.attempt,
+            "purpose": self.purpose.value,
             "plan_id": self.graphs.plan_id,
             "workspace_id": self.graphs.workspace_id,
             "base_graph_id": self.graphs.base_graph_id,
@@ -310,6 +315,11 @@ def materialize_effect_request(
 ) -> MaterializedEffectRequest:
     """Interpret one operation against only the graph versions pinned by its plan."""
 
+    if request.purpose is not EffectPurpose.FORWARD:
+        raise EffectMaterializationError(
+            MaterializationCode.GRAPH_IDENTITY,
+            "forward materialization requires a forward effect request",
+        )
     if request.action != activity.operation:
         raise EffectMaterializationError(
             MaterializationCode.GRAPH_IDENTITY,
@@ -344,6 +354,11 @@ def materialize_compensation_effect_request(
 ) -> MaterializedEffectRequest:
     """Materialize the canonical inverse from its explicitly pinned graph."""
 
+    if request.purpose is not EffectPurpose.COMPENSATION:
+        raise EffectMaterializationError(
+            MaterializationCode.GRAPH_IDENTITY,
+            "compensation materialization requires a compensation effect request",
+        )
     compensation = activity.compensation
     if not isinstance(compensation, Compensate):
         raise EffectMaterializationError(

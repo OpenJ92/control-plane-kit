@@ -103,7 +103,7 @@ def plan_graph_transition(
         )
     )
     approval: ApprovalRequestResult | None = None
-    if plan.plan_record.plan.ready_for_execution:
+    if plan.plan_record.plan.ready_for_execution and plan.plan_record.plan.activities:
         approval = services.approvals.execute(
             RequestPlanApproval(
                 session_id=session.session.session_id,

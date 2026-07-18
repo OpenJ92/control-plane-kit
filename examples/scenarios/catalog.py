@@ -70,6 +70,7 @@ def planning_scenarios() -> tuple[PlanningScenario, ...]:
         switch_database_endpoint(),
         partial_scale_in(),
         full_teardown(),
+        no_change(),
         unsupported_implementation_transition(),
     )
 
@@ -298,6 +299,18 @@ def full_teardown() -> PlanningScenario:
             _dependency(stop_runtime, remove_runtime),
         ),
         max_risk=RiskLevel.HIGH,
+    )
+
+
+def no_change() -> PlanningScenario:
+    graph = router_graph("api-v1")
+    return _scenario(
+        "no-change",
+        "Keep an unchanged deployment",
+        graph,
+        graph,
+        operations=(),
+        max_risk=RiskLevel.INFORMATIONAL,
     )
 
 

@@ -5,14 +5,17 @@ import unittest
 
 from control_plane_kit.effects import (
     EffectMaterializationError,
+    EffectPurpose,
     MaterializationCode,
     MaterializedEffectRequest,
     PinnedGraphSet,
     SecretReferenceMaterialValue,
     effect_request_for_activity,
+    effect_request_for_compensation,
+    materialize_compensation_effect_request,
     materialize_effect_request,
 )
-from control_plane_kit.planning import ReviewChange, compile_activity_plan
+from control_plane_kit.planning import Compensate, ReviewChange, compile_activity_plan
 from control_plane_kit.topology import diff_graphs, validate_graph
 from examples.scenarios import planning_scenarios
 from examples.gate_d_live_smoke import router_recipe
@@ -96,6 +99,54 @@ class EffectMaterialTests(unittest.TestCase):
 
         self.assertEqual(materialize(), materialize())
         self.assertEqual(materialize().canonical_json(), materialize().canonical_json())
+
+    def test_materialization_preserves_and_enforces_effect_purpose(self) -> None:
+        scenario = planning_scenarios()[0]
+        plan = compile_activity_plan(
+            diff_graphs(
+                validate_graph(scenario.current_graph),
+                validate_graph(scenario.desired_graph),
+            )
+        )
+        activity = next(
+            value for value in plan.activities if isinstance(value.compensation, Compensate)
+        )
+        graphs = PinnedGraphSet("workspace", "plan", "base", "desired")
+        request = effect_request_for_compensation(
+            activity,
+            run_id="run",
+            attempt=1,
+            idempotency_key="compensate:1",
+        )
+
+        materialized = materialize_compensation_effect_request(
+            request,
+            activity,
+            graphs,
+            base_graph_id="base",
+            base_graph=scenario.current_graph,
+            desired_graph_id="desired",
+            desired_graph=scenario.desired_graph,
+        )
+
+        self.assertIs(materialized.purpose, EffectPurpose.COMPENSATION)
+        self.assertEqual(
+            materialized.descriptor()["purpose"],
+            EffectPurpose.COMPENSATION.value,
+        )
+        with self.assertRaisesRegex(
+            EffectMaterializationError,
+            "forward effect request",
+        ):
+            materialize_effect_request(
+                request,
+                activity,
+                graphs,
+                base_graph_id="base",
+                base_graph=scenario.current_graph,
+                desired_graph_id="desired",
+                desired_graph=scenario.desired_graph,
+            )
 
     def test_graph_identity_mismatch_fails_before_materialization(self) -> None:
         scenario = planning_scenarios()[0]

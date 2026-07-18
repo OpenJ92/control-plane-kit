@@ -174,7 +174,10 @@ class PlanningScenarioWorkflowTests(PostgresStoreTestCase):
                     ),
                     Counter(scenario.expectation.operations),
                 )
-                if scenario.expectation.ready_for_execution:
+                if (
+                    scenario.expectation.ready_for_execution
+                    and scenario.expectation.operations
+                ):
                     self.assertIsNotNone(result.approval)
                     assert result.approval is not None
                     self.assertEqual(

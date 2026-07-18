@@ -300,7 +300,7 @@ def _require_complete_success(
     disqualifying = {
         ActivityEventKind.STEP_FAILED,
         ActivityEventKind.STEP_UNSUPPORTED,
-        ActivityEventKind.STEP_UNCERTAIN,
+        ActivityEventKind.STEP_UNCERTAINTY_RESOLVED_FAILED,
         ActivityEventKind.STEP_COMPENSATION_STARTED,
         ActivityEventKind.STEP_COMPENSATION_SUCCEEDED,
         ActivityEventKind.STEP_COMPENSATION_FAILED,
@@ -330,7 +330,11 @@ def _require_complete_success(
     succeeded = Counter(
         event.activity_id
         for event in events
-        if event.kind is ActivityEventKind.STEP_SUCCEEDED
+        if event.kind
+        in {
+            ActivityEventKind.STEP_SUCCEEDED,
+            ActivityEventKind.STEP_UNCERTAINTY_RESOLVED_SUCCEEDED,
+        }
     )
     if succeeded != expected:
         raise CurrentGraphAdvancementIncomplete(
