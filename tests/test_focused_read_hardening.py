@@ -1,11 +1,13 @@
 from io import StringIO
 import json
+from datetime import datetime, timezone
 from unittest import main
 
 from fastapi.testclient import TestClient
 
 from control_plane_kit import (
     ActivityEventKind,
+    ActivityDependency,
     ActivityId,
     ActivityImpact,
     ActivityPlan,
@@ -25,6 +27,7 @@ from control_plane_kit import (
     RetryIdentity,
     RiskLevel,
     RuntimeTarget,
+    StartRuntime,
 )
 from control_plane_kit.cli import run as run_cli
 from control_plane_kit.topology.graph import DeploymentGraph
@@ -123,12 +126,15 @@ class FocusedReadHardeningTests(PostgresStoreTestCase):
     def test_failure_evidence_is_canonical_and_bounded(self):
         payload = self._seed_service().activity_timeline(
             "workspace-a",
-            limit=1,
+            limit=50,
         ).descriptor()
 
-        failure = payload["sessions"][0]["plans"][0]["runs"][0]["events"][0][
-            "failure"
-        ]
+        events = payload["sessions"][0]["plans"][0]["runs"][0]["events"]
+        failure = next(
+            event["failure"]
+            for event in events
+            if event["failure"] is not None
+        )
         self.assertEqual(
             failure,
             {
@@ -141,6 +147,82 @@ class FocusedReadHardeningTests(PostgresStoreTestCase):
                         "label": "visible",
                     },
                 },
+            },
+        )
+
+    def test_recovery_projection_is_reconstructed_from_complete_journal(self):
+        run = self._seed_service().plan_detail(
+            "workspace-a",
+            "plan-a",
+            limit=1,
+        ).descriptor()["plan"]["runs"][0]
+
+        self.assertEqual(len(run["events"]), 1)
+        self.assertEqual(
+            run["recovery"],
+            {
+                "run_status": "partially_failed",
+                "saga_status": "compensated",
+                "claim_status": "active",
+                "schedule": {
+                    "ready": [],
+                    "running": [],
+                    "waiting": [],
+                    "blocked": [],
+                    "succeeded": ["remove-runtime-a"],
+                    "failed": [],
+                    "compensating": [],
+                    "compensated": ["start-runtime-a"],
+                    "compensation_failed": [],
+                    "compensation_ready": [],
+                },
+                "in_flight": {"forward": [], "compensation": []},
+                "uncertainty": {"forward": [], "compensation": []},
+                "failures": {
+                    "original": [],
+                    "compensation": [
+                        {
+                            "event_id": "event-8",
+                            "run_id": "run-a",
+                            "ordinal": 8,
+                            "event_type": "run_compensation_failed",
+                            "occurred_at": "2026-07-16T01:07:08Z",
+                            "activity_id": None,
+                            "payload": {},
+                            "failure": {
+                                "category": "operator_review",
+                                "code": "compensation.non-compensatable-work",
+                                "message": "Completed work cannot be compensated automatically.",
+                                "details": {
+                                    "activity_ids": ["remove-runtime-a"],
+                                    "nested": {"label": "visible"},
+                                },
+                            },
+                        }
+                    ],
+                },
+                "non_compensatable_activity_ids": ["remove-runtime-a"],
+                "decisions": [],
+                "allowed_decisions": [
+                    {
+                        "kind": "retry-as-new-run",
+                        "required_scope": "recovery:operate",
+                        "activity_id": None,
+                        "required_parameters": [],
+                    },
+                    {
+                        "kind": "accept-uncompensated-failure",
+                        "required_scope": "recovery:accept-loss",
+                        "activity_id": None,
+                        "required_parameters": [],
+                    },
+                    {
+                        "kind": "remain-paused",
+                        "required_scope": "recovery:operate",
+                        "activity_id": None,
+                        "required_parameters": [],
+                    },
+                ],
             },
         )
 
@@ -284,8 +366,17 @@ class FocusedReadHardeningTests(PostgresStoreTestCase):
                         ActivityPlan(
                             (
                                 PlannedActivity(
+                                    ActivityId("start-runtime-a"),
+                                    StartRuntime(RuntimeTarget("runtime-a")),
+                                ),
+                                PlannedActivity(
                                     ActivityId("remove-runtime-a"),
                                     RemoveRuntimeResource(RuntimeTarget("runtime-a")),
+                                    (
+                                        ActivityDependency(
+                                            ActivityId("start-runtime-a")
+                                        ),
+                                    ),
                                     risk=RiskLevel.HIGH,
                                     impact=ActivityImpact.DESTRUCTIVE,
                                 ),
@@ -351,35 +442,49 @@ class FocusedReadHardeningTests(PostgresStoreTestCase):
                 settled_at="2026-07-16T01:07:00Z",
             )
         )
-        self.stores.execution.add_event(
-            ActivityEventRecord(
-                event_id="event-a",
-                run_id="run-a",
-                ordinal=1,
-                kind=ActivityEventKind.STEP_COMPENSATION_UNSUPPORTED,
-                occurred_at="2026-07-16T01:07:00Z",
-                activity_id="remove-runtime-a",
-                failure=FailureEvidence(
-                    FailureCategory.OPERATOR_REVIEW,
-                    "compensation.non-compensatable-work",
-                    "Completed work cannot be compensated automatically.",
-                    BoundedEvidence.from_mapping(
-                        {
-                            "activity_ids": ["remove-runtime-a"],
-                            "nested": {
-                                "label": "visible",
-                            },
-                        }
-                    ),
-                ),
-            )
+        failure = FailureEvidence(
+            FailureCategory.OPERATOR_REVIEW,
+            "compensation.non-compensatable-work",
+            "Completed work cannot be compensated automatically.",
+            BoundedEvidence.from_mapping(
+                {
+                    "activity_ids": ["remove-runtime-a"],
+                    "nested": {"label": "visible"},
+                }
+            ),
         )
+        event_values = (
+            (ActivityEventKind.STEP_STARTED, "start-runtime-a", None),
+            (ActivityEventKind.STEP_SUCCEEDED, "start-runtime-a", None),
+            (ActivityEventKind.STEP_STARTED, "remove-runtime-a", None),
+            (ActivityEventKind.STEP_SUCCEEDED, "remove-runtime-a", None),
+            (ActivityEventKind.RUN_COMPENSATION_STARTED, None, None),
+            (ActivityEventKind.STEP_COMPENSATION_STARTED, "start-runtime-a", None),
+            (ActivityEventKind.STEP_COMPENSATION_SUCCEEDED, "start-runtime-a", None),
+            (ActivityEventKind.RUN_COMPENSATION_FAILED, None, failure),
+        )
+        for ordinal, (kind, activity_id, event_failure) in enumerate(
+            event_values,
+            start=1,
+        ):
+            self.stores.execution.add_event(
+                ActivityEventRecord(
+                    event_id=f"event-{ordinal}",
+                    run_id="run-a",
+                    ordinal=ordinal,
+                    kind=kind,
+                    occurred_at=f"2026-07-16T01:07:{ordinal:02d}Z",
+                    activity_id=activity_id,
+                    failure=event_failure,
+                )
+            )
         return InstanceReadService(
             workspace_store=self.stores.workspace,
             graph_topology_store=self.stores.graph_topology,
             activity_history_store=self.stores.activity_history,
             execution_store=self.stores.execution,
             observed_state_store=self.stores.observed_state,
+            clock=lambda: datetime(2026, 7, 16, 1, 8, tzinfo=timezone.utc),
         )
 
 

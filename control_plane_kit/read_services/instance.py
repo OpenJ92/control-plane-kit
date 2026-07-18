@@ -14,7 +14,12 @@ from control_plane_kit.topology.codec import (
     GraphDescriptorCodec,
     GraphDescriptorError,
 )
-from control_plane_kit.projections import project_operator_graph
+from control_plane_kit.projections import (
+    ClaimObservation,
+    OperatorRecoveryView,
+    project_operator_graph,
+    project_operator_recovery,
+)
 from control_plane_kit.planning.recovery import plan_recovery_transition
 from control_plane_kit.stores.protocols import (
     ActivityHistoryStore,
@@ -24,6 +29,7 @@ from control_plane_kit.stores.protocols import (
     WorkspaceStore,
 )
 from control_plane_kit.execution import (
+    ActivityRunRecord,
     DEFAULT_EXECUTION_CODEC,
     FailureEvidence,
     ObservationFreshnessPolicy,
@@ -300,12 +306,19 @@ class InstanceReadService:
         self._workspace(workspace_id)
         store = self._activity_history()
         execution = self._execution()
+        observed_at = _observation_time(self._clock())
         sessions = store.sessions_for_workspace(workspace_id)[:limit]
         return ActivityTimelineReadModel(
             workspace_id=workspace_id,
             limit=limit,
             sessions=tuple(
-                _session_descriptor(store, execution, session, limit=limit)
+                _session_descriptor(
+                    store,
+                    execution,
+                    session,
+                    limit=limit,
+                    observed_at=observed_at,
+                )
                 for session in sessions
             ),
         )
@@ -351,12 +364,17 @@ class InstanceReadService:
         self._workspace(workspace_id)
         store = self._activity_history()
         session = _session_in_workspace(store, workspace_id, session_id)
+        observed_at = _observation_time(self._clock())
         return FocusedDetailReadModel(
             workspace_id=workspace_id,
             kind="session-detail",
             payload={
                 "session": _session_descriptor(
-                    store, self._execution(), session, limit=limit
+                    store,
+                    self._execution(),
+                    session,
+                    limit=limit,
+                    observed_at=observed_at,
                 )
             },
         )
@@ -374,7 +392,14 @@ class InstanceReadService:
         self._workspace(workspace_id)
         store = self._activity_history()
         plan = _plan_in_workspace(store, workspace_id, plan_id)
-        payload = _plan_descriptor(store, self._execution(), plan, limit=limit)
+        payload = _plan_descriptor(
+            store,
+            self._execution(),
+            plan,
+            workspace_id=workspace_id,
+            limit=limit,
+            observed_at=_observation_time(self._clock()),
+        )
         payload["risk_summary"] = _risk_summary(plan)
         payload["recovery"] = self._recovery_for_plan(workspace_id, plan)
         return FocusedDetailReadModel(
@@ -646,6 +671,7 @@ def _session_descriptor(
     session: OperationSessionRecord,
     *,
     limit: int,
+    observed_at: str,
 ) -> dict[str, object]:
     session_id = session.session_id
     plans = store.plans_for_session(session_id)[:limit]
@@ -660,7 +686,14 @@ def _session_descriptor(
             for approval in store.approval_requests_for_session(session_id)[:limit]
         ],
         "plans": [
-            _plan_descriptor(store, execution, plan, limit=limit)
+            _plan_descriptor(
+                store,
+                execution,
+                plan,
+                workspace_id=session.workspace_id,
+                limit=limit,
+                observed_at=observed_at,
+            )
             for plan in plans
         ],
     }
@@ -711,7 +744,9 @@ def _plan_descriptor(
     execution: ExecutionStore,
     plan: ActivityPlanRecord,
     *,
+    workspace_id: str,
     limit: int,
+    observed_at: str,
 ) -> dict[str, object]:
     plan_id = plan.plan_id
     return {
@@ -723,27 +758,123 @@ def _plan_descriptor(
         "created_at": plan.created_at,
         "payload": DEFAULT_ACTIVITY_PLAN_CODEC.encode(plan.plan),
         "runs": [
-            _run_descriptor(execution, run, limit=limit)
+            _run_descriptor(
+                execution,
+                plan,
+                run,
+                workspace_id=workspace_id,
+                limit=limit,
+                observed_at=observed_at,
+            )
             for run in execution.runs_for_plan(plan_id)[:limit]
         ],
     }
 
 
-def _run_descriptor(store: ExecutionStore, run: object, *, limit: int) -> dict[str, object]:
-    run_id = getattr(run, "run_id")
+def _run_descriptor(
+    store: ExecutionStore,
+    plan: ActivityPlanRecord,
+    run: ActivityRunRecord,
+    *,
+    workspace_id: str,
+    limit: int,
+    observed_at: str,
+) -> dict[str, object]:
+    run_id = run.run_id
+    events = store.events_for_run(run_id)
+    try:
+        request = store.get_request(run.admission.request_id)
+    except KeyError as exc:
+        raise ReadModelError(
+            f"run {run_id!r} references missing execution request"
+        ) from exc
+    if (
+        request.identity.workspace_id != workspace_id
+        or request.identity.session_id != plan.session_id
+        or request.identity.plan_id != plan.plan_id
+    ):
+        raise ReadModelError(
+            f"run {run_id!r} references execution truth outside its plan workspace"
+        )
+    try:
+        recovery = project_operator_recovery(
+            plan.plan,
+            request,
+            run,
+            events,
+            ClaimObservation(observed_at),
+        )
+    except (TypeError, ValueError) as exc:
+        raise ReadModelError(
+            f"run {run_id!r} contains incoherent recovery evidence"
+        ) from exc
     return {
         "run_id": run_id,
-        "plan_id": getattr(run, "plan_id"),
-        "admission": DEFAULT_EXECUTION_CODEC.encode(getattr(run, "admission")),
-        "retry": DEFAULT_EXECUTION_CODEC.encode(getattr(run, "retry")),
-        "status": getattr(run, "status").value,
-        "created_at": getattr(run, "created_at"),
-        "started_at": getattr(run, "started_at"),
-        "settled_at": getattr(run, "settled_at"),
-        "metadata": _redact_descriptor_value("metadata", getattr(run, "metadata").descriptor()),
+        "plan_id": run.plan_id,
+        "admission": DEFAULT_EXECUTION_CODEC.encode(run.admission),
+        "retry": DEFAULT_EXECUTION_CODEC.encode(run.retry),
+        "status": run.status.value,
+        "created_at": run.created_at,
+        "started_at": run.started_at,
+        "settled_at": run.settled_at,
+        "metadata": _redact_descriptor_value("metadata", run.metadata.descriptor()),
+        "recovery": _operator_recovery_descriptor(recovery),
         "events": [
             _event_descriptor(event)
-            for event in store.events_for_run(run_id)[:limit]
+            for event in events[:limit]
+        ],
+    }
+
+
+def _operator_recovery_descriptor(view: OperatorRecoveryView) -> dict[str, object]:
+    schedule = view.schedule
+    return {
+        "run_status": view.run_status.value,
+        "saga_status": view.saga_status.value,
+        "claim_status": view.claim_status.value,
+        "schedule": {
+            "ready": list(schedule.ready),
+            "running": list(schedule.running),
+            "waiting": list(schedule.waiting),
+            "blocked": list(schedule.blocked),
+            "succeeded": list(schedule.succeeded),
+            "failed": list(schedule.failed),
+            "compensating": list(schedule.compensating),
+            "compensated": list(schedule.compensated),
+            "compensation_failed": list(schedule.compensation_failed),
+            "compensation_ready": list(schedule.compensation_ready),
+        },
+        "in_flight": {
+            "forward": list(view.forward_in_flight),
+            "compensation": list(view.compensation_in_flight),
+        },
+        "uncertainty": {
+            "forward": list(view.forward_uncertain),
+            "compensation": list(view.compensation_uncertain),
+        },
+        "failures": {
+            "original": [
+                _event_descriptor(event) for event in view.original_failures
+            ],
+            "compensation": [
+                _event_descriptor(event) for event in view.compensation_failures
+            ],
+        },
+        "non_compensatable_activity_ids": list(
+            view.non_compensatable_activity_ids
+        ),
+        "decisions": [
+            _redact_descriptor_value("decision", decision.descriptor())
+            for decision in view.decisions
+        ],
+        "allowed_decisions": [
+            {
+                "kind": option.kind.value,
+                "required_scope": option.required_scope.value,
+                "activity_id": option.activity_id,
+                "required_parameters": list(option.required_parameters),
+            }
+            for option in view.allowed_decisions
         ],
     }
 
@@ -804,6 +935,12 @@ def _positive_limit(limit: int) -> int:
     if type(limit) is not int or limit < 1:
         raise ReadModelError(f"limit must be positive, got {limit}")
     return limit
+
+
+def _observation_time(value: datetime) -> str:
+    if not isinstance(value, datetime) or value.tzinfo is None:
+        raise ReadModelError("read-service clock must return a timezone-aware datetime")
+    return value.isoformat()
 
 
 def _bounded_limit(limit: int) -> int:
