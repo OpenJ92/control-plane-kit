@@ -137,6 +137,46 @@ retaining Postgres according to cleanup policy
 compensating completed external steps where safe
 ```
 
+Roadmap 0008 completed that handoff through the intentional application
+entrance:
+
+```python
+from control_plane_kit.application.deploy import Deploy
+```
+
+The inherited program is parameterized by a graph pair and supports initial
+deployment, update, teardown, and no-op through one language. Approval and
+recovery are explicit suspensions; admission, claim, execution, and guarded
+advancement are compositions of the canonical command services. Roadmap 0009
+must use this program to deploy a CPI recipe rather than reconstructing its
+stages in a server route or startup script.
+
+The executable Roadmap 0008 handoff includes:
+
+```text
+typed graph-pinned activity plans
+durable approval, admission, worker claim, run, and event truth
+pure saga scheduling and reconstructible compensation
+authenticated bounded HTTP control effects
+ownership-checked Docker effects and retained-resource policy
+explicit host publication
+separate process, reachability, health, and readiness evidence
+observations that never rewrite desired topology
+operator-visible uncertainty and recovery
+```
+
+`./gate-f-live-test.sh` proves an authenticated blue-to-green update through
+`Deploy` and the real adapters. Its initial bootstrap and final teardown retain
+a local harness boundary because a controller cannot join a Docker network
+before that network exists. Roadmap 0009 may improve generic bootstrap
+allocation, but it must not interpret that limitation as permission for a
+CPI-specialized executor.
+
+Guarded instance lifecycle issue #246 remains the first destructive-lifecycle
+prerequisite. CPI packaging may begin from the generic `ApplicationBlock`
+contract, but stop, pause, deconstruct, archive, and delete must not expose the
+older raw registry setter.
+
 If either handoff is absent, Roadmap 0009 stops and repairs the prerequisite
 roadmap. It must not add a CPI-specific transaction manager, activity executor,
 Docker startup script, or optimistic `started == healthy` shortcut.
