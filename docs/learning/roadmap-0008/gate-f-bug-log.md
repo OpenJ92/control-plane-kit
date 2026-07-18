@@ -120,3 +120,26 @@ Each entry must contain:
   unless cache ownership is deliberately normalized in a separate issue.
 - **Residual risk:** Root-owned cache files remain local noise but do not affect
   source edits or Docker validation.
+
+## GF-005: Transition-law test guessed flattened scenario graph fields
+
+- **Issue:** #359
+- **Symptom:** Four new subtests errored with `PlanningScenario` missing
+  `current` because the fixture exposes `current_graph` and `desired_graph`.
+- **Violated law:** Acceptance tests must consume the canonical typed scenario
+  language rather than inventing a parallel fixture shape.
+- **Root cause:** The test used shorthand names from the deployment program
+  discussion instead of reading `PlanningScenario`'s established fields.
+- **Classification:** Test-only API assumption; all existing Postgres scenario
+  executions passed before the new subtest errors.
+- **Alternatives considered:** Add compatibility properties to the scenario,
+  flatten the scenario model, or correct the new consumer. Production aliases
+  would broaden the model solely for a mistaken test.
+- **Chosen fix:** Read `scenario.current_graph` and
+  `scenario.desired_graph` directly.
+- **Test integrity:** Preserve the exact four typed transition assertions. No
+  skip, mock, relaxed assertion, or application change was introduced.
+- **Validation:** Restart the complete Docker/Postgres suite.
+- **Downstream consequences:** #361 must use the same canonical scenario fields
+  when constructing `Deploy`.
+- **Residual risk:** None beyond the planned scenario-runner migration.
