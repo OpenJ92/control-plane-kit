@@ -1,6 +1,8 @@
 """Typed deployment-transition application language."""
 
 from control_plane_kit.application.deploy.values import (
+    AdvancedDeployment,
+    AdvancementGrant,
     AdmissionGrant,
     AdmittedDeployment,
     ApprovalGrant,
@@ -26,6 +28,7 @@ from control_plane_kit.application.deploy.values import (
     classify_transition,
 )
 from control_plane_kit.application.deploy.stages import (
+    Advance,
     Admit,
     Approve,
     Claim,
@@ -35,6 +38,9 @@ from control_plane_kit.application.deploy.stages import (
 )
 
 __all__ = [
+    "Advance",
+    "AdvancedDeployment",
+    "AdvancementGrant",
     "AdmissionGrant",
     "Admit",
     "AdmittedDeployment",

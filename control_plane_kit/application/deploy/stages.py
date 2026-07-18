@@ -5,6 +5,8 @@ from __future__ import annotations
 from dataclasses import dataclass
 
 from control_plane_kit.application.deploy.values import (
+    AdvancedDeployment,
+    AdvancementGrant,
     AdmissionGrant,
     AdmittedDeployment,
     ApprovalGrant,
@@ -24,6 +26,7 @@ from control_plane_kit.application.deploy.values import (
     RecoverySuspension,
 )
 from control_plane_kit.workflows import (
+    AdvanceCurrentGraph,
     ActivityPlanningCommandService,
     ApprovalCommandService,
     ApprovalDecisionKind,
@@ -35,6 +38,7 @@ from control_plane_kit.workflows import (
     ExecutionAdmissionCommandService,
     ExecutionAdmissionResult,
     CoordinatorStatus,
+    CurrentGraphAdvancementCommandService,
     ExecuteActivityRun,
     ExecutionCoordinator,
     IdempotencyKey,
@@ -251,3 +255,33 @@ class Execute:
                 return ExecutionContinuation(deployment, result)
             case _:
                 return RecoverySuspension(deployment, result)
+
+
+@dataclass(frozen=True)
+class Advance:
+    """Publish the plan-pinned desired graph after terminal execution success."""
+
+    service: CurrentGraphAdvancementCommandService
+
+    def __call__(
+        self,
+        executed: ExecutedDeployment,
+        grant: AdvancementGrant,
+    ) -> AdvancedDeployment:
+        if not isinstance(executed, ExecutedDeployment):
+            raise TypeError("Advance requires ExecutedDeployment")
+        if not isinstance(grant, AdvancementGrant):
+            raise TypeError("Advance requires AdvancementGrant")
+        preparation = executed.claimed.admitted.approved.suspension.preparation
+        result = self.service.execute(
+            AdvanceCurrentGraph(
+                workspace_id=preparation.request.workspace_id,
+                run_id=executed.execution.run.run_id,
+                plan_id=preparation.plan.plan_record.plan_id,
+                expected_current_graph_id=preparation.request.current_graph_id,
+                desired_graph_id=preparation.plan.plan_record.desired_graph_id,
+                authority=executed.claimed.authority,
+                idempotency_key=grant.idempotency_key,
+            )
+        )
+        return AdvancedDeployment(executed, result)
