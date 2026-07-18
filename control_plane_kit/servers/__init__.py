@@ -2,7 +2,12 @@
 
 from control_plane_kit.servers._templates import GeneratedServerSyntaxError
 from control_plane_kit.servers.block_control import BlockControlState, create_block_control_app
-from control_plane_kit.servers.hello import HelloEnvironment, hello_command, hello_server_block
+from control_plane_kit.servers.hello import (
+    HelloDependency,
+    HelloEnvironment,
+    hello_command,
+    hello_server_block,
+)
 from control_plane_kit.servers.http_active_router import (
     HttpActiveRouterRuntime,
     HttpActiveRouterServer,
@@ -40,6 +45,7 @@ from control_plane_kit.servers.managed_http_router import (
 __all__ = [
     "BlockControlState",
     "GeneratedServerSyntaxError",
+    "HelloDependency",
     "HelloEnvironment",
     "HttpActiveRouterRuntime",
     "HttpActiveRouterServer",

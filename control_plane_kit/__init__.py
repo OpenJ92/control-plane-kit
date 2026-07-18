@@ -411,6 +411,7 @@ from control_plane_kit.planning.recovery import (
 )
 from control_plane_kit.servers import (
     BlockControlState,
+    HelloDependency,
     HelloEnvironment,
     HttpActiveRouterRuntime,
     HttpActiveRouterServer,
@@ -512,6 +513,7 @@ __all__ = [
     "Capability",
     "CleanupPolicy",
     "BlockControlState",
+    "HelloDependency",
     "HelloEnvironment",
     "HttpActiveRouterRuntime",
     "HttpActiveRouterServer",

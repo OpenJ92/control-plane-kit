@@ -2,6 +2,7 @@ import ast
 from unittest import TestCase, main
 
 from control_plane_kit.servers import (
+    HelloDependency,
     hello_command,
     http_active_router_command,
     http_multiplexer_command,
@@ -32,6 +33,9 @@ class ServerCommandTemplateTests(TestCase):
 
     def test_rendered_commands_include_expected_environment_names(self):
         self.assertIn("HELLO_MESSAGE", hello_command()[2])
+        dependency_source = hello_command((HelloDependency("orders"),))[2]
+        self.assertIn("HELLO_HTTP_ORDERS_URL", dependency_source)
+        self.assertIn("HELLO_DATABASE_ORDERS_URL", dependency_source)
         self.assertIn("PROXY_TARGET_URL", http_proxy_command()[2])
         self.assertIn("ACTIVE_TARGET_URL", http_active_router_command()[2])
         self.assertIn("BALANCER_TARGET_A_URL", http_weighted_load_balancer_command()[2])
