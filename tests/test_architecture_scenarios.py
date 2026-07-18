@@ -142,6 +142,35 @@ class ScenarioArchitectureTests(unittest.TestCase):
         self.assertTrue(callable(interpreter.execute))
         self.assertEqual(interpreter.requests, [])
 
+    def test_runner_uses_deploy_program_not_manual_command_chain(self) -> None:
+        root = Path(__file__).parents[1]
+        facts = analyze_file(root / "examples" / "scenarios" / "runner.py", root=root)
+
+        self.assertTrue(
+            any(
+                imported.qualified_name
+                == "control_plane_kit.application.deploy.Deploy"
+                for imported in facts.imports
+            )
+        )
+        retired = {
+            "AdvanceCurrentGraph",
+            "ClaimAndOpenActivityRun",
+            "DecidePlanApproval",
+            "ExecuteActivityRun",
+            "RequestPlanExecution",
+            "StartActivityRun",
+            "plan_graph_transition",
+        }
+        self.assertEqual(
+            {
+                imported.qualified_name.rsplit(".", 1)[-1]
+                for imported in facts.imports
+                if imported.qualified_name.rsplit(".", 1)[-1] in retired
+            },
+            set(),
+        )
+
     def test_atomic_contract_suites_remain_independent_of_scenario_runner(self):
         root = Path(__file__).parents[1]
         required = (

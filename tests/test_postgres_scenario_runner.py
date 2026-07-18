@@ -7,6 +7,7 @@ import os
 
 import psycopg
 
+from control_plane_kit.application.deploy import PlanningServices
 from control_plane_kit.read_services import InstanceReadService
 from control_plane_kit.stores import (
     GraphVersionRecord,
@@ -41,7 +42,6 @@ from examples.scenarios.runner import (
     evaluate_execution_scenario,
     run_execution_scenario,
 )
-from examples.scenarios.workflow import PlanningWorkflowServices
 from tests.postgres_case import PostgresStoreTestCase
 
 
@@ -124,7 +124,7 @@ class PostgresScenarioRunnerTests(PostgresStoreTestCase):
         self.assertEqual(self._tracker.active, 0)
         self.assertEqual(
             result.workspace_view.workspace.current_graph_id,
-            result.planning.desired_graph.graph_version.graph_id,
+            result.preparation.desired_graph.graph_version.graph_id,
         )
 
     def test_readiness_gated_scenario_records_approval_but_no_effect(self):
@@ -150,7 +150,7 @@ class PostgresScenarioRunnerTests(PostgresStoreTestCase):
         result = run_execution_scenario(services, scenario, context)
 
         result.evaluation.require_satisfied()
-        self.assertIsNone(result.planning.approval)
+        self.assertIsNone(result.approval_request)
         self.assertIsNone(result.approval)
         self.assertIsNone(result.admission)
         self.assertEqual(interpreter.requests, [])
@@ -162,11 +162,11 @@ class PostgresScenarioRunnerTests(PostgresStoreTestCase):
         result = run_execution_scenario(services, scenario, context)
 
         result.evaluation.require_satisfied()
-        self.assertIsNone(result.planning.approval)
+        self.assertIsNone(result.approval_request)
         self.assertIsNone(result.approval)
         self.assertIsNone(result.admission)
         self.assertIsNone(result.opened)
-        self.assertEqual(result.planning.plan.plan_record.plan.activities, ())
+        self.assertEqual(result.preparation.plan.plan_record.plan.activities, ())
         self.assertEqual(interpreter.requests, [])
         self.assertEqual(
             result.workspace_view.workspace.current_graph_id,
@@ -241,8 +241,8 @@ class PostgresScenarioRunnerTests(PostgresStoreTestCase):
         second.evaluation.require_satisfied()
         self.assertNotEqual(first_context.workspace_id, second_context.workspace_id)
         self.assertNotEqual(
-            first.planning.plan.plan_record.plan_id,
-            second.planning.plan.plan_record.plan_id,
+            first.preparation.plan.plan_record.plan_id,
+            second.preparation.plan.plan_record.plan_id,
         )
         self.assertIsNot(first_interpreter.requests, second_interpreter.requests)
         self.assertEqual(
@@ -349,7 +349,7 @@ class PostgresScenarioRunnerTests(PostgresStoreTestCase):
             clock=_text_clock,
             id_factory=Ids(f"{prefix}:approval"),
         )
-        planning = PlanningWorkflowServices(
+        planning = PlanningServices(
             OperationCommandService(
                 self._tracker,
                 clock=_text_clock,
