@@ -70,7 +70,7 @@ class Handler(BaseHTTPRequestHandler):
     def _probe_database(self, dependency):
         try:
             target = urlsplit(os.environ[dependency["database_environment"]])
-            if not target.scheme.startswith("postgresql"):
+            if target.scheme not in {"postgresql", "postgresql+psycopg"}:
                 raise ValueError("database dependency is not Postgres")
             if target.hostname is None or target.port is None:
                 raise ValueError("database dependency has no network address")

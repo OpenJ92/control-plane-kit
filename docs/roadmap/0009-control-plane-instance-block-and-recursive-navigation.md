@@ -1307,6 +1307,29 @@ graph pair
   -> authenticated adapter projection
 ```
 
+The generated Hello corpus from Roadmap 0008 is also a mandatory CPI acceptance
+input. It supplies arbitrary bounded trees in which every application edge has
+paired HTTP and Postgres requirements, plus typed invalid graph variants. CPI
+tests must submit these graphs through the public planning and execution routes
+rather than constructing a CPI-specific fixture or bypassing `DeploymentProgram`:
+
+```text
+HelloGraphShape(branching_factor, depth)
+  -> valid or intentionally invalid DeploymentGraph
+    -> CPI plan request
+      -> validation evidence or approval suspension
+        -> approved execution
+          -> HTTP and Postgres edge verification
+            -> canonical teardown
+```
+
+The pure corpus may describe more resources than a developer should accidentally
+start on a laptop. Live CPI tests must therefore retain a separate explicit
+resource ceiling, fail before admission when the ceiling is exceeded, and allow
+an operator to raise it deliberately. At least one non-default multi-level shape
+must pass through the CPI API, and representative invalidities must produce no
+plan, approval, run, or Docker resources.
+
 - `ControlPlaneInstanceBlock` is an ordinary `ApplicationBlock` and therefore a
   `DeployBlock`.
 - `ControlPlaneInstanceSpec` survives recipe compilation, descriptor
@@ -1315,6 +1338,11 @@ graph pair
   metadata strings.
 - Existing recipe, graph, diff, and execution code accepts it without a new node
   alternative.
+- Generated valid Hello trees pass through CPI planning, approval, execution,
+  edge verification, and teardown without a specialized execution path.
+- Generated invalid Hello graphs fail before durable planning or runtime
+  mutation, and the live resource ceiling prevents accidental container
+  explosion unless an operator explicitly raises it.
 - Socket connections supply its Postgres and HTTP requirements normally.
 - The Stage A core recipe runs the real CPI image with Postgres, an intentionally
   published development endpoint, truthful health, and a real read route.
