@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import concurrent.futures
+from datetime import datetime, timezone
 import inspect
 import os
 from dataclasses import replace
@@ -376,6 +377,57 @@ class RunLifecycleTests(PostgresStoreTestCase):
         self.assertTrue(replay.replayed)
         self.assertEqual(replay.decision_event, result.decision_event)
         self.assertEqual(replay.consequence_event, result.consequence_event)
+
+    def test_committed_recovery_command_drives_canonical_operator_projection(self):
+        self._claim()
+        self._pause_with_uncertain_step()
+        self._recovery(
+            ConfirmEffectSucceeded("start-runtime-a"),
+            scope=RecoveryScope.RESOLVE_UNCERTAINTY,
+            key="resolve-a",
+            ids=("event-decision", "event-resolution", "action-recovery"),
+        )
+
+        service = InstanceReadService(
+            workspace_store=self.stores.workspace,
+            graph_topology_store=self.stores.graph_topology,
+            activity_history_store=self.stores.activity_history,
+            execution_store=self.stores.execution,
+            observed_state_store=self.stores.observed_state,
+            clock=lambda: datetime(2026, 7, 16, 0, 4, 30, tzinfo=timezone.utc),
+        )
+
+        run = service.activity_timeline("workspace-a").descriptor()["sessions"][0][
+            "plans"
+        ][0]["runs"][0]
+        recovery = run["recovery"]
+
+        self.assertEqual(recovery["claim_status"], "active")
+        self.assertEqual(recovery["uncertainty"], {"forward": [], "compensation": []})
+        self.assertEqual(recovery["schedule"]["succeeded"], ["start-runtime-a"])
+        self.assertEqual(
+            recovery["decisions"],
+            [
+                {
+                    "decision_id": "decision-resolve-a",
+                    "decision": {
+                        "kind": "confirm-effect-succeeded",
+                        "activity_id": "start-runtime-a",
+                    },
+                    "operator_id": "operator-a",
+                    "authority_reference": "grant-a",
+                    "scopes": ["recovery:resolve-uncertainty"],
+                    "reason": "Authorize resolve-a for the admitted run.",
+                }
+            ],
+        )
+        self.assertEqual(
+            [value["kind"] for value in recovery["allowed_decisions"]],
+            [
+                "resume-same-intent",
+                "remain-paused",
+            ],
+        )
 
     def test_recovery_journal_version_rejects_a_stale_competing_choice(self):
         self._claim()
