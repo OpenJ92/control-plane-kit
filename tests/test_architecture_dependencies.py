@@ -15,6 +15,7 @@ from tests.architecture import (
 
 
 PACKAGE_RULES = (
+    PackageDependencyRule("application", ("topology", "workflows")),
     PackageDependencyRule(
         "adapters",
         ("capabilities", "control_routes", "effects", "execution", "planning", "types"),
