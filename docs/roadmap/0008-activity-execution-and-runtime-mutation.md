@@ -182,7 +182,12 @@ brainstorm with the following ordered topology:
 
 #392 -> #402 Gate G heterogeneous topology acceptance
   -> #403 package-owned capability-contract audit
-    -> #404 bounded request observer
+    |-> #404 bounded request observer
+    |-> #413 HTTP circuit-breaker scaffold
+    |-> #414 bounded HTTP retry scaffold
+    `-> #415 inline HTTP traffic-logger scaffold
+
+#404 + #413 + #414 + #415
       -> #405 heterogeneous scenarios and invalidities
         -> #406 ActivityPlan AST proofs
           -> #407 Postgres-backed DeploymentProgram proof
@@ -303,11 +308,14 @@ Gate G issue #402 deliberately extends that evidence to heterogeneous
 package-owned blocks before CPI packaging:
 
 ```text
-rate limiter
-  -> weighted load balancer
-    -> managed routing paths
-      -> multiplexer
-        -> Hello applications + Postgres dependencies + request observer
+inbound traffic logger
+  -> rate limiter
+    -> circuit breaker
+      -> retry proxy
+        -> weighted load balancer
+          -> managed routing paths
+            -> outbound traffic logger / multiplexer
+              -> Hello applications + Postgres dependencies + request observer
 ```
 
 Gate G is an acceptance composition, not a second execution model. It first
@@ -321,6 +329,19 @@ Roadmap 0009 may begin only after the independent guarded instance-lifecycle
 prerequisite #246 and Gate G closeout #411 converge. Gate G must hand the mixed
 valid/invalid corpus to CPI public API acceptance rather than creating a
 CPI-specific planner, executor, or live fixture.
+
+The circuit breaker, retry proxy, and traffic logger remain separate
+package-owned blocks. Their composition order is topology with observable
+consequences, not an implementation detail hidden inside a combined middleware
+class. The traffic logger is one transparent forwarding server that works on an
+incoming or outgoing edge according to graph position. It is distinct from the
+terminal request observer used as a multiplexer copy target.
+
+These scaffolds retain strict safety boundaries: the retry proxy never retries
+non-idempotent work without an explicit idempotency contract; circuit state is
+bounded and its control routes are authenticated; traffic evidence excludes
+bodies, credentials, cookies, arbitrary headers, query strings, and raw
+unbounded paths by default.
 
 ## Initial Issue Brainstorm (Superseded By Canonical Topology)
 
