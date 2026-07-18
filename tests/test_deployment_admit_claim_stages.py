@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import os
+from datetime import datetime, timezone
 
 import psycopg
 
@@ -14,8 +15,12 @@ from control_plane_kit.application.deploy import (
     ClaimGrant,
     ClaimedDeployment,
     DeploymentPlanRequest,
+    Execute,
+    ExecutedDeployment,
+    ExecutionContinuation,
     Plan,
     PlanningServices,
+    RecoverySuspension,
     classify_transition,
 )
 from control_plane_kit.execution import (
@@ -33,12 +38,16 @@ from control_plane_kit.workflows import (
     ApprovalCommandService,
     DesiredGraphCommandService,
     ExecutionAdmissionCommandService,
+    ExecutionCoordinator,
+    ExecutionCoordinatorResult,
     ExecutionWorkerAuthority,
+    CoordinatorStatus,
     IdempotencyKey,
     OperationCommandService,
     RunLifecycleCommandService,
 )
 from examples.router_runtime import router_graph
+from examples.scenarios.runner import ScenarioEffectInterpreter
 from tests.postgres_case import PostgresStoreTestCase
 
 
@@ -51,6 +60,16 @@ class Ids:
         value = f"{self.prefix}-{self.next_value}"
         self.next_value += 1
         return value
+
+
+class FixedCoordinator:
+    """Return one canonical coordinator result to exercise stage classification."""
+
+    def __init__(self, result: ExecutionCoordinatorResult) -> None:
+        self.result = result
+
+    def execute(self, _command) -> ExecutionCoordinatorResult:
+        return self.result
 
 
 class DeploymentAdmitClaimStageTests(PostgresStoreTestCase):
@@ -75,7 +94,7 @@ class DeploymentAdmitClaimStageTests(PostgresStoreTestCase):
             lambda: psycopg.connect(os.environ["CPK_TEST_DATABASE_URL"])
         )
 
-    def test_approved_plan_is_admitted_claimed_and_started_without_effects(self) -> None:
+    def test_approved_plan_reaches_execution_through_callable_stages(self) -> None:
         planning, approvals = self._planning_services()
         suspended = Plan(planning)(
             DeploymentPlanRequest(
@@ -113,13 +132,12 @@ class DeploymentAdmitClaimStageTests(PostgresStoreTestCase):
             ),
         )
         authority = ExecutionWorkerAuthority("worker-a", ("execution:operate",))
-        claimed = Claim(
-            RunLifecycleCommandService(
-                self.factory,
-                clock=lambda: "2026-07-18T00:06:00Z",
-                id_factory=Ids("lifecycle"),
-            )
-        )(
+        lifecycle = RunLifecycleCommandService(
+            self.factory,
+            clock=lambda: "2026-07-18T00:06:00Z",
+            id_factory=Ids("lifecycle"),
+        )
+        claimed = Claim(lifecycle)(
             admitted,
             ClaimGrant(
                 authority,
@@ -139,6 +157,51 @@ class DeploymentAdmitClaimStageTests(PostgresStoreTestCase):
             [event.kind for event in self.stores.execution.events_for_run(claimed.started.run.run_id)],
             [ActivityEventKind.RUN_OPENED, ActivityEventKind.RUN_STARTED],
         )
+
+        interpreter = ScenarioEffectInterpreter()
+        executed = Execute(
+            ExecutionCoordinator(
+                self.factory,
+                lifecycle,
+                interpreter,
+                clock=lambda: datetime(2026, 7, 18, tzinfo=timezone.utc),
+                id_factory=Ids("coordinator"),
+            )
+        )(claimed)
+
+        self.assertIsInstance(executed, ExecutedDeployment)
+        assert isinstance(executed, ExecutedDeployment)
+        self.assertGreater(len(interpreter.requests), 0)
+        self.assertIs(executed.execution.run.status, ActivityRunStatus.SUCCEEDED)
+
+        for status in (
+            CoordinatorStatus.PAUSED,
+            CoordinatorStatus.COMPENSATION_FAILED,
+            CoordinatorStatus.UNCERTAIN,
+        ):
+            with self.subTest(status=status):
+                suspended = Execute(
+                    FixedCoordinator(
+                        ExecutionCoordinatorResult(status, claimed.started.run)
+                    )
+                )(claimed)
+                self.assertIsInstance(suspended, RecoverySuspension)
+                assert isinstance(suspended, RecoverySuspension)
+                self.assertIs(suspended.execution.status, status)
+
+        for status in (
+            CoordinatorStatus.PROGRESSED,
+            CoordinatorStatus.IN_FLIGHT,
+        ):
+            with self.subTest(status=status):
+                continuation = Execute(
+                    FixedCoordinator(
+                        ExecutionCoordinatorResult(status, claimed.started.run)
+                    )
+                )(claimed)
+                self.assertIsInstance(continuation, ExecutionContinuation)
+                assert isinstance(continuation, ExecutionContinuation)
+                self.assertIs(continuation.execution.status, status)
 
     def _planning_services(self) -> tuple[PlanningServices, ApprovalCommandService]:
         approvals = ApprovalCommandService(

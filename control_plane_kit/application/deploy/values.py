@@ -9,12 +9,14 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import TypeAlias
 
+from control_plane_kit.effects import TimeoutPolicy
 from control_plane_kit.topology import DeploymentGraph
 from control_plane_kit.workflows import (
     ActivityPlanningResult,
     ApprovalDecisionResult,
     ApprovalRequestResult,
     DesiredGraphEditResult,
+    CoordinatorStatus,
     ExecutionAdmissionResult,
     ExecutionCoordinatorResult,
     ExecutionWorkerAuthority,
@@ -296,16 +298,75 @@ class ClaimedDeployment:
 class RecoverySuspension:
     """Durable boundary where execution waits for an operator recovery decision."""
 
-    transition: DeploymentTransition
+    claimed: ClaimedDeployment
     execution: ExecutionCoordinatorResult
 
     def __post_init__(self) -> None:
-        _require_transition(self.transition)
+        if not isinstance(self.claimed, ClaimedDeployment):
+            raise TypeError("claimed must be ClaimedDeployment")
         if not isinstance(self.execution, ExecutionCoordinatorResult):
             raise TypeError("execution must be ExecutionCoordinatorResult")
+        if self.execution.status in (
+            CoordinatorStatus.COMPLETED,
+            CoordinatorStatus.PROGRESSED,
+            CoordinatorStatus.IN_FLIGHT,
+        ):
+            raise ValueError("recovery suspension requires an operator-recovery outcome")
+
+
+@dataclass(frozen=True)
+class ExecutionLimits:
+    """Bounds for one coordinator invocation."""
+
+    timeout: TimeoutPolicy = TimeoutPolicy()
+    max_effects: int = 100
+
+    def __post_init__(self) -> None:
+        if not isinstance(self.timeout, TimeoutPolicy):
+            raise TypeError("timeout must be TimeoutPolicy")
+        if type(self.max_effects) is not int or self.max_effects < 1:
+            raise ValueError("max_effects must be a positive integer")
+
+
+@dataclass(frozen=True)
+class ExecutedDeployment:
+    """Canonical completed execution ready for guarded advancement."""
+
+    claimed: ClaimedDeployment
+    execution: ExecutionCoordinatorResult
+
+    def __post_init__(self) -> None:
+        if not isinstance(self.claimed, ClaimedDeployment):
+            raise TypeError("claimed must be ClaimedDeployment")
+        if not isinstance(self.execution, ExecutionCoordinatorResult):
+            raise TypeError("execution must be ExecutionCoordinatorResult")
+        if self.execution.status is not CoordinatorStatus.COMPLETED:
+            raise ValueError("executed deployment requires completed coordinator evidence")
+
+
+@dataclass(frozen=True)
+class ExecutionContinuation:
+    """Bounded progress that may be passed through `Execute` again."""
+
+    claimed: ClaimedDeployment
+    execution: ExecutionCoordinatorResult
+
+    def __post_init__(self) -> None:
+        if not isinstance(self.claimed, ClaimedDeployment):
+            raise TypeError("claimed must be ClaimedDeployment")
+        if not isinstance(self.execution, ExecutionCoordinatorResult):
+            raise TypeError("execution must be ExecutionCoordinatorResult")
+        if self.execution.status not in (
+            CoordinatorStatus.PROGRESSED,
+            CoordinatorStatus.IN_FLIGHT,
+        ):
+            raise ValueError("execution continuation requires bounded-progress evidence")
 
 
 DeploymentSuspension: TypeAlias = ApprovalSuspension | RecoverySuspension
+DeploymentExecutionResult: TypeAlias = (
+    ExecutedDeployment | ExecutionContinuation | RecoverySuspension
+)
 DeploymentPreparationResult: TypeAlias = (
     ApprovalSuspension | NoDeploymentChanges | DeploymentReviewBlocked
 )

@@ -44,3 +44,32 @@ Each entry must contain:
 - **Residual risk:** Later stage implementation may reveal another justified
   package edge; each edge must be reviewed and explicitly added rather than
   broadly permitting application imports.
+
+## GF-002: Execution bounds require the canonical effect value language
+
+- **Issue:** #356
+- **Symptom:** The exhaustive dependency test rejected
+  `ExecutionLimits.timeout: TimeoutPolicy` because GF-001 initially permitted
+  the application package to import only topology and workflow roots.
+- **Violated law:** Every application dependency must be explicit and must
+  point to canonical values rather than reimplementing their semantics.
+- **Root cause:** The first Gate F package rule was intentionally minimal before
+  the `Execute` stage existed. Bounded execution introduces a legitimate need
+  for the canonical effect timeout product.
+- **Classification:** Architecture integration defect discovered by an
+  executable dependency law.
+- **Alternatives considered:** Duplicate timeout fields in the application
+  package, hide a fixed timeout inside `Execute`, re-export `TimeoutPolicy`
+  through workflows, or admit the direct canonical edge. Duplication and
+  re-export obscure ownership; a fixed timeout removes required parameterization.
+- **Chosen fix:** Expand the closed relation to
+  `application -> {effects, topology, workflows}`. The application still may
+  not import adapters, stores, SQL, transports, or effect-dispatch internals.
+- **Test integrity:** The repository-wide dependency assertion remains exact.
+  No import was ignored and no package wildcard was introduced.
+- **Validation:** The complete Docker/Postgres suite and the dedicated Gate F
+  AST policies must both pass.
+- **Downstream consequences:** #360 must distinguish importing immutable effect
+  contracts from calling adapters or dispatching effects directly.
+- **Residual risk:** A broad import from `effects` could expose more than Gate F
+  needs; #360 will constrain names and call sites inside the deployment package.
