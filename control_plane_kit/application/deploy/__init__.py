@@ -36,6 +36,13 @@ from control_plane_kit.application.deploy.stages import (
     Plan,
     PlanningServices,
 )
+from control_plane_kit.application.deploy.program import (
+    Deploy,
+    DeploymentExecutionGrant,
+    DeploymentProgramResult,
+    ExecuteApprovedDeployment,
+    PrepareDeployment,
+)
 
 __all__ = [
     "Advance",
@@ -56,18 +63,23 @@ __all__ = [
     "DeploymentPreparationResult",
     "DeploymentReviewBlocked",
     "DeploymentExecutionResult",
+    "DeploymentExecutionGrant",
+    "DeploymentProgramResult",
     "DeploymentTransition",
     "InitialDeployment",
     "ExecutedDeployment",
     "Execute",
+    "ExecuteApprovedDeployment",
     "ExecutionContinuation",
     "ExecutionLimits",
     "NoDeploymentChanges",
     "NoOpDeployment",
     "Plan",
     "PlanningServices",
+    "PrepareDeployment",
     "RecoverySuspension",
     "TeardownDeployment",
     "UpdateDeployment",
     "classify_transition",
+    "Deploy",
 ]
