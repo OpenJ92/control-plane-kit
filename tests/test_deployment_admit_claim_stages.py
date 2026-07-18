@@ -24,6 +24,7 @@ from control_plane_kit.application.deploy import (
     ExecuteApprovedDeployment,
     ExecutedDeployment,
     ExecutionContinuation,
+    ExecutionLimits,
     Plan,
     PlanningServices,
     PrepareDeployment,
@@ -156,6 +157,27 @@ class DeploymentAdmitClaimStageTests(PostgresStoreTestCase):
             )
         )
         assert isinstance(suspended, ApprovalSuspension)
+        foreign = Deploy(
+            self.desired,
+            self.current,
+            deploy.preparation,
+            deploy.approval,
+            deploy.execution,
+        )
+        with self.assertRaisesRegex(ValueError, "another graph transition"):
+            foreign.approve(
+                suspended,
+                ApprovalGrant(
+                    "approver",
+                    (suspended.approval_request.request.required_scope,),
+                    IdempotencyKey("foreign:approve"),
+                ),
+            )
+        self.assertIsNone(
+            self.stores.activity_history.approval_decision_for_request(
+                suspended.approval_request.request.request_id
+            )
+        )
         approved = deploy.approve(
             suspended,
             ApprovalGrant(
@@ -163,6 +185,30 @@ class DeploymentAdmitClaimStageTests(PostgresStoreTestCase):
                 (suspended.approval_request.request.required_scope,),
                 IdempotencyKey("admit-claim:approve"),
             ),
+        )
+        with self.assertRaisesRegex(ValueError, "another graph transition"):
+            foreign.execute_approved(
+                approved,
+                DeploymentExecutionGrant(
+                    AdmissionGrant(
+                        "operator",
+                        ("plan:execute",),
+                        IdempotencyKey("foreign:admit"),
+                    ),
+                    ClaimGrant(
+                        authority,
+                        "2026-07-18T01:00:00Z",
+                        IdempotencyKey("foreign:claim"),
+                        IdempotencyKey("foreign:start"),
+                    ),
+                    AdvancementGrant(IdempotencyKey("foreign:advance")),
+                ),
+            )
+        self.assertEqual(
+            self.stores.execution.runs_for_plan(
+                approved.suspension.preparation.plan.plan_record.plan_id
+            ),
+            (),
         )
         advanced = deploy.execute_approved(
             approved,
@@ -244,6 +290,26 @@ class DeploymentAdmitClaimStageTests(PostgresStoreTestCase):
                 self.assertIsInstance(continuation, ExecutionContinuation)
                 assert isinstance(continuation, ExecutionContinuation)
                 self.assertIs(continuation.execution.status, status)
+
+                with self.assertRaisesRegex(
+                    ValueError, "another graph transition"
+                ):
+                    foreign.resume_execution(
+                        continuation,
+                        limits=ExecutionLimits(),
+                        advancement=AdvancementGrant(
+                            IdempotencyKey("foreign:resume")
+                        ),
+                    )
+
+        with self.assertRaisesRegex(ValueError, "another graph transition"):
+            foreign.resume_recovered(
+                suspended,
+                limits=ExecutionLimits(),
+                advancement=AdvancementGrant(
+                    IdempotencyKey("foreign:recovery")
+                ),
+            )
 
         with self.assertRaisesRegex(TypeError, "ExecutedDeployment"):
             advance(
