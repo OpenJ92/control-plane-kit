@@ -16,7 +16,12 @@ from control_plane_kit.application.deploy.values import (
     DeploymentPreparation,
     DeploymentPreparationResult,
     DeploymentReviewBlocked,
+    DeploymentExecutionResult,
+    ExecutedDeployment,
+    ExecutionContinuation,
+    ExecutionLimits,
     NoDeploymentChanges,
+    RecoverySuspension,
 )
 from control_plane_kit.workflows import (
     ActivityPlanningCommandService,
@@ -29,6 +34,9 @@ from control_plane_kit.workflows import (
     DesiredGraphCommandService,
     ExecutionAdmissionCommandService,
     ExecutionAdmissionResult,
+    CoordinatorStatus,
+    ExecuteActivityRun,
+    ExecutionCoordinator,
     IdempotencyKey,
     OperationCommandService,
     RequestActivityPlan,
@@ -206,3 +214,40 @@ class Claim:
             )
         )
         return ClaimedDeployment(admitted, opened, started, grant.authority)
+
+
+@dataclass(frozen=True)
+class Execute:
+    """Request bounded coordinator progress and classify its durable outcome."""
+
+    coordinator: ExecutionCoordinator
+
+    def __call__(
+        self,
+        claimed: ClaimedDeployment | ExecutionContinuation,
+        limits: ExecutionLimits = ExecutionLimits(),
+    ) -> DeploymentExecutionResult:
+        match claimed:
+            case ClaimedDeployment() as deployment:
+                pass
+            case ExecutionContinuation(claimed=deployment):
+                pass
+            case _:
+                raise TypeError("Execute requires claimed work or a continuation")
+        if not isinstance(limits, ExecutionLimits):
+            raise TypeError("Execute requires ExecutionLimits")
+        result = self.coordinator.execute(
+            ExecuteActivityRun(
+                run_id=deployment.started.run.run_id,
+                authority=deployment.authority,
+                timeout=limits.timeout,
+                max_effects=limits.max_effects,
+            )
+        )
+        match result.status:
+            case CoordinatorStatus.COMPLETED:
+                return ExecutedDeployment(deployment, result)
+            case CoordinatorStatus.PROGRESSED | CoordinatorStatus.IN_FLIGHT:
+                return ExecutionContinuation(deployment, result)
+            case _:
+                return RecoverySuspension(deployment, result)
