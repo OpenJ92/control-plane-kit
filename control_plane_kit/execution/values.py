@@ -96,6 +96,13 @@ class ActivityEventKind(StrEnum):
     CURRENT_GRAPH_ADVANCED = "current_graph_advanced"
 
 
+class ActivityEventScope(StrEnum):
+    """Whether one canonical event belongs to a run or a planned activity."""
+
+    RUN = "run"
+    ACTIVITY = "activity"
+
+
 class ObservationStatus(StrEnum):
     """Closed observation vocabulary without optimistic health inference."""
 
@@ -451,7 +458,7 @@ class ActivityEventRecord:
             raise ExecutionValueError(
                 "only recovery decision events may carry recovery evidence"
             )
-        if self.kind in _STEP_ACTIVITY_EVENT_KINDS:
+        if activity_event_scope(self.kind) is ActivityEventScope.ACTIVITY:
             if self.activity_id is None:
                 raise ExecutionValueError("step event requires activity_id")
         elif self.activity_id is not None:
@@ -578,6 +585,16 @@ _STEP_ACTIVITY_EVENT_KINDS = frozenset(
         ActivityEventKind.STEP_COMPENSATION_UNCERTAINTY_RESOLVED_FAILED,
     }
 )
+
+
+def activity_event_scope(kind: ActivityEventKind) -> ActivityEventScope:
+    """Return the canonical ownership scope of one closed event kind."""
+
+    if not isinstance(kind, ActivityEventKind):
+        raise TypeError("activity event kind must be ActivityEventKind")
+    if kind in _STEP_ACTIVITY_EVENT_KINDS:
+        return ActivityEventScope.ACTIVITY
+    return ActivityEventScope.RUN
 
 
 def _validate_admitted_run_projection(run: ActivityRunRecord) -> None:

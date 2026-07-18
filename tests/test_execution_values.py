@@ -5,6 +5,7 @@ from control_plane_kit.execution import (
     EXECUTION_VERSION,
     ActivityEventKind,
     ActivityEventRecord,
+    ActivityEventScope,
     ActivityRunRecord,
     ActivityRunStatus,
     AcceptUncompensatedFailure,
@@ -29,6 +30,7 @@ from control_plane_kit.execution import (
     RecoveryScope,
     RetryIdentity,
     UnknownExecutionVariant,
+    activity_event_scope,
 )
 
 
@@ -170,6 +172,16 @@ class ExecutionValueTests(unittest.TestCase):
                 "2026-07-16T00:00:00Z",
                 activity_id="start-api",
             )
+
+    def test_every_event_kind_has_one_canonical_scope(self):
+        for kind in ActivityEventKind:
+            with self.subTest(kind=kind):
+                expected = (
+                    ActivityEventScope.ACTIVITY
+                    if kind.value.startswith("step_")
+                    else ActivityEventScope.RUN
+                )
+                self.assertIs(activity_event_scope(kind), expected)
 
     def test_recovery_event_descriptor_is_strict_and_attributable(self):
         event = ActivityEventRecord(

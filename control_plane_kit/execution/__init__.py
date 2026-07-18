@@ -18,6 +18,7 @@ from control_plane_kit.execution.values import (
     MAX_EVIDENCE_TEXT,
     ActivityEventKind,
     ActivityEventRecord,
+    ActivityEventScope,
     ActivityRunRecord,
     ActivityRunStatus,
     AdmittedRun,
@@ -40,6 +41,7 @@ from control_plane_kit.execution.values import (
     ProbeOutcome,
     probe_outcome_is_valid,
     RetryIdentity,
+    activity_event_scope,
 )
 from control_plane_kit.execution.observations import (
     ObservationFreshnessPolicy,
@@ -76,6 +78,7 @@ __all__ = [
     "AcceptUncompensatedFailure",
     "ActivityEventKind",
     "ActivityEventRecord",
+    "ActivityEventScope",
     "ActivityRunRecord",
     "ActivityRunStatus",
     "AdmittedRun",
@@ -132,6 +135,7 @@ __all__ = [
     "ResumeSameIntent",
     "UnknownExecutionVariant",
     "authorize_recovery_decision",
+    "activity_event_scope",
     "validate_recovery_decision",
     "recovery_decision_record_from_descriptor",
 ]
