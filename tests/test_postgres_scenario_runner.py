@@ -28,6 +28,7 @@ from control_plane_kit.workflows import (
 from examples.scenarios import (
     EventOrderExpectation,
     ExecutionScenario,
+    execution_scenario_cases,
     execution_scenarios,
 )
 from examples.scenarios.runner import (
@@ -91,6 +92,27 @@ class TransactionTracker:
 
 
 class PostgresScenarioRunnerTests(PostgresStoreTestCase):
+    def test_complete_acceptance_corpus_uses_canonical_pipeline(self):
+        for ordinal, case in enumerate(execution_scenario_cases(), start=1):
+            with self.subTest(case=case.case_id):
+                context, services, interpreter = self._prepare(
+                    case.scenario,
+                    program=case.effects,
+                    workspace_suffix=f"corpus-{ordinal}",
+                )
+
+                result = run_execution_scenario(
+                    services,
+                    case.scenario,
+                    context,
+                    case.recovery,
+                )
+
+                result.evaluation.require_satisfied()
+                self.assertEqual(self._tracker.active, 0)
+                if result.opened is None:
+                    self.assertEqual(interpreter.requests, [])
+
     def test_executable_scenario_uses_canonical_pipeline_and_projection(self):
         scenario = self._scenario("backend-switch")
         context, services, interpreter = self._prepare(scenario)
@@ -132,6 +154,24 @@ class PostgresScenarioRunnerTests(PostgresStoreTestCase):
         self.assertIsNone(result.approval)
         self.assertIsNone(result.admission)
         self.assertEqual(interpreter.requests, [])
+
+    def test_no_change_records_plan_but_no_approval_run_or_effect(self):
+        scenario = self._scenario("no-change")
+        context, services, interpreter = self._prepare(scenario)
+
+        result = run_execution_scenario(services, scenario, context)
+
+        result.evaluation.require_satisfied()
+        self.assertIsNone(result.planning.approval)
+        self.assertIsNone(result.approval)
+        self.assertIsNone(result.admission)
+        self.assertIsNone(result.opened)
+        self.assertEqual(result.planning.plan.plan_record.plan.activities, ())
+        self.assertEqual(interpreter.requests, [])
+        self.assertEqual(
+            result.workspace_view.workspace.current_graph_id,
+            context.current_graph_id,
+        )
 
     def test_programmed_failure_uses_real_coordinator_and_does_not_advance(self):
         scenario = self._scenario("backend-switch")

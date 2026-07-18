@@ -15,6 +15,7 @@ from typing import Callable, Mapping
 from control_plane_kit.effects import (
     EffectCapability,
     EffectFailed,
+    EffectPurpose,
     EffectObservation,
     EffectSucceeded,
     MaterializedEffectRequest,
@@ -22,13 +23,21 @@ from control_plane_kit.effects import (
 )
 from control_plane_kit.execution import (
     ActivityEventKind,
+    BeginCompensation,
     BoundedEvidence,
+    ConfirmEffectFailed,
+    ConfirmEffectSucceeded,
     EndpointContext,
     FailureCategory,
     FailureEvidence,
     ObservationStatus,
     ProbeKind,
     ProbeOutcome,
+    RecoveryAuthority,
+    RecoveryDecision,
+    RecoveryDecisionRecord,
+    RecoveryScope,
+    ResumeSameIntent,
 )
 from control_plane_kit.planning import WaitForHealthy
 from control_plane_kit.read_services import (
@@ -46,6 +55,7 @@ from control_plane_kit.workflows import (
     CoordinatorStatus,
     CurrentGraphAdvancementCommandService,
     CurrentGraphAdvancementResult,
+    DecideActivityRunRecovery,
     DecidePlanApproval,
     ExecuteActivityRun,
     ExecutionAdmissionCommandService,
@@ -55,6 +65,7 @@ from control_plane_kit.workflows import (
     ExecutionReadinessRequired,
     ExecutionWorkerAuthority,
     IdempotencyKey,
+    PauseActivityRun,
     RequestPlanExecution,
     RunLifecycleCommandService,
     RunLifecycleResult,
@@ -63,6 +74,7 @@ from control_plane_kit.workflows import (
 from examples.scenarios.execution import (
     AdmissionExpectation,
     ApprovalExpectation,
+    BeginScenarioCompensation,
     EventExpectation,
     CompensationExpected,
     ExecutionScenario,
@@ -70,8 +82,15 @@ from examples.scenarios.execution import (
     GraphAdvancementExpectation,
     FailurePhase,
     NoRunExpected,
+    NoChanges,
+    PauseScenarioExecution,
     ReviewBlocked,
+    ResolveScenarioUncertainty,
+    ResumeScenarioExecution,
     RunExpected,
+    ScenarioRecoveryProgram,
+    ScenarioRecoveryStep,
+    UncertaintyResolution,
 )
 from examples.scenarios.model import OperationExpectation, operation_expectation
 from examples.scenarios.workflow import (
@@ -95,12 +114,15 @@ class ScenarioEffectDirective:
 
     operation: OperationExpectation
     disposition: ScenarioEffectDisposition
+    phase: FailurePhase = FailurePhase.FORWARD
 
     def __post_init__(self) -> None:
         if not isinstance(self.operation, OperationExpectation):
             raise TypeError("scenario effect operation must be typed")
         if not isinstance(self.disposition, ScenarioEffectDisposition):
             raise TypeError("scenario effect disposition must be typed")
+        if not isinstance(self.phase, FailurePhase):
+            raise TypeError("scenario effect phase must be typed")
 
 
 @dataclass(frozen=True)
@@ -112,16 +134,20 @@ class ScenarioEffectProgram:
     def __post_init__(self) -> None:
         if not all(isinstance(value, ScenarioEffectDirective) for value in self.directives):
             raise TypeError("scenario effect directives must be typed")
-        operations = tuple(value.operation for value in self.directives)
-        if len(operations) != len(set(operations)):
-            raise ValueError("scenario effect program cannot repeat an operation")
+        keys = tuple((value.operation, value.phase) for value in self.directives)
+        if len(keys) != len(set(keys)):
+            raise ValueError("scenario effect program cannot repeat an operation phase")
 
-    def disposition_for(self, operation: OperationExpectation) -> ScenarioEffectDisposition:
+    def disposition_for(
+        self,
+        operation: OperationExpectation,
+        phase: FailurePhase,
+    ) -> ScenarioEffectDisposition:
         return next(
             (
                 directive.disposition
                 for directive in self.directives
-                if directive.operation == operation
+                if directive.operation == operation and directive.phase is phase
             ),
             ScenarioEffectDisposition.SUCCEED,
         )
@@ -141,7 +167,12 @@ class ScenarioEffectInterpreter:
             raise AssertionError("scenario effect ran while a UnitOfWork was active")
         operation = operation_expectation(request.action)
         self.requests.append(request)
-        match self.program.disposition_for(operation):
+        match request.purpose:
+            case EffectPurpose.FORWARD:
+                phase = FailurePhase.FORWARD
+            case EffectPurpose.COMPENSATION:
+                phase = FailurePhase.COMPENSATION
+        match self.program.disposition_for(operation, phase):
             case ScenarioEffectDisposition.SUCCEED:
                 return EffectSucceeded(
                     request.identity,
@@ -228,6 +259,7 @@ def run_execution_scenario(
     services: ScenarioRunnerServices,
     scenario: ExecutionScenario,
     context: ScenarioRunContext,
+    recovery: ScenarioRecoveryProgram = ScenarioRecoveryProgram(),
 ) -> ScenarioRunnerResult:
     """Interpret one scenario through the canonical Postgres-backed workflow."""
 
@@ -249,7 +281,7 @@ def run_execution_scenario(
     coordinated: ExecutionCoordinatorResult | None = None
     advancement: CurrentGraphAdvancementResult | None = None
 
-    if not isinstance(scenario.expectation.eligibility, ReviewBlocked):
+    if not isinstance(scenario.expectation.eligibility, (ReviewBlocked, NoChanges)):
         if planned.approval is None:
             raise AssertionError("executable scenario did not produce an approval request")
         required_scope = planned.approval.request.required_scope
@@ -303,6 +335,64 @@ def run_execution_scenario(
             coordinated = services.coordinator.execute(
                 ExecuteActivityRun(opened.run.run_id, context.worker)
             )
+            if recovery.steps:
+                activities = {
+                    operation_expectation(activity.operation): activity.activity_id.value
+                    for activity in planned.plan.plan_record.plan.activities
+                }
+                for ordinal, step in enumerate(recovery.steps, start=1):
+                    if isinstance(step, PauseScenarioExecution):
+                        services.lifecycle.execute(
+                            PauseActivityRun(
+                                run_id=opened.run.run_id,
+                                authority=context.worker,
+                                idempotency_key=IdempotencyKey(
+                                    f"{prefix}:pause:{ordinal}"
+                                ),
+                            )
+                        )
+                        continue
+                    decision, scope = _recovery_decision(step, activities)
+                    events = _projected_events(
+                        services.reads.session_detail(
+                            context.workspace_id,
+                            planned.session.session.session_id,
+                            limit=100,
+                        ),
+                        plan_id=planned.plan.plan_record.plan_id,
+                        run_id=opened.run.run_id,
+                    )
+                    if not events:
+                        raise AssertionError(
+                            "scenario recovery requires durable run events"
+                        )
+                    services.lifecycle.execute(
+                        DecideActivityRunRecovery(
+                            run_id=opened.run.run_id,
+                            expected_worker_id=context.worker.worker_id,
+                            expected_event_ordinal=max(
+                                int(event["ordinal"]) for event in events
+                            ),
+                            recovery=RecoveryDecisionRecord(
+                                decision_id=f"{prefix}:recovery:{ordinal}",
+                                decision=decision,
+                                authority=RecoveryAuthority(
+                                    context.approver_id,
+                                    f"{prefix}:recovery-grant:{ordinal}",
+                                    (scope,),
+                                ),
+                                reason=(
+                                    "Execute the typed acceptance recovery program."
+                                ),
+                            ),
+                            idempotency_key=IdempotencyKey(
+                                f"{prefix}:recovery-command:{ordinal}"
+                            ),
+                        )
+                    )
+                coordinated = services.coordinator.execute(
+                    ExecuteActivityRun(opened.run.run_id, context.worker)
+                )
             if coordinated.status is CoordinatorStatus.COMPLETED:
                 advancement = services.advancement.execute(
                     AdvanceCurrentGraph(
@@ -510,6 +600,27 @@ def evaluate_execution_scenario(
         if key not in actual_observations:
             findings.append(f"missing observation {key!r}")
     return ScenarioEvaluation(tuple(findings))
+
+
+def _recovery_decision(
+    step: ScenarioRecoveryStep,
+    activities: Mapping[OperationExpectation, str],
+) -> tuple[RecoveryDecision, RecoveryScope]:
+    match step:
+        case ResolveScenarioUncertainty(operation=operation, resolution=resolution):
+            activity_id = activities[operation]
+            decision = (
+                ConfirmEffectSucceeded(activity_id)
+                if resolution is UncertaintyResolution.SUCCEEDED
+                else ConfirmEffectFailed(activity_id)
+            )
+            return decision, RecoveryScope.RESOLVE_UNCERTAINTY
+        case ResumeScenarioExecution():
+            return ResumeSameIntent(), RecoveryScope.OPERATE
+        case BeginScenarioCompensation():
+            return BeginCompensation(), RecoveryScope.COMPENSATE
+        case _:
+            raise TypeError("unknown scenario recovery step")
 
 
 def _observations(request: MaterializedEffectRequest) -> tuple[EffectObservation, ...]:

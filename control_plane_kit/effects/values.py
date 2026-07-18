@@ -66,6 +66,13 @@ class EffectCapability(StrEnum):
     DATA_DESTRUCTION = "data-destruction"
 
 
+class EffectPurpose(StrEnum):
+    """Closed reason an external effect is being requested."""
+
+    FORWARD = "forward"
+    COMPENSATION = "compensation"
+
+
 class ObservationKind(StrEnum):
     """Closed kinds of operator-relevant observations."""
 
@@ -218,6 +225,7 @@ class EffectRequest:
     action: EffectAction
     timeout: TimeoutPolicy = field(default_factory=TimeoutPolicy)
     secret_references: tuple[EffectSecretReference, ...] = ()
+    purpose: EffectPurpose = EffectPurpose.FORWARD
 
     def __post_init__(self) -> None:
         if not isinstance(self.identity, EffectIdentity):
@@ -230,6 +238,8 @@ class EffectRequest:
             for value in self.secret_references
         ):
             raise TypeError("effect request secrets must be reference values")
+        if not isinstance(self.purpose, EffectPurpose):
+            raise TypeError("effect request purpose must be EffectPurpose")
         references = tuple(sorted(self.secret_references))
         if len(references) != len(set(references)):
             raise EffectValueError("effect request repeats a secret reference")
@@ -363,6 +373,7 @@ def effect_request_for_activity(
         activity.operation,
         TimeoutPolicy() if timeout is None else timeout,
         secret_references,
+        EffectPurpose.FORWARD,
     )
 
 
@@ -393,6 +404,7 @@ def effect_request_for_compensation(
         activity.compensation.operation,
         TimeoutPolicy() if timeout is None else timeout,
         secret_references,
+        EffectPurpose.COMPENSATION,
     )
 
 

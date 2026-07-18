@@ -8,6 +8,7 @@ from control_plane_kit.effects import (
     DrainTarget,
     EffectCapability,
     EffectIdentity,
+    EffectPurpose,
     EffectRequest,
     EffectSecretReference,
     EffectValueError,
@@ -124,7 +125,18 @@ class EffectValueTests(unittest.TestCase):
         self.assertEqual(request.identity.attempt, 2)
         self.assertEqual(request.timeout.total_seconds, 45)
         self.assertEqual(request.secret_references[0].reference_id, "control-token")
+        self.assertIs(request.purpose, EffectPurpose.FORWARD)
         self.assertIs(request.capability, EffectCapability.NODE_LIFECYCLE)
+
+    def test_request_rejects_open_effect_purpose(self) -> None:
+        identity = EffectIdentity("run-1", ActivityId("start-api"), 1, "key-1")
+
+        with self.assertRaisesRegex(TypeError, "purpose"):
+            EffectRequest(
+                identity,
+                StartNode(NodeTarget("api")),
+                purpose="forward",  # type: ignore[arg-type]
+            )
 
     def test_timeout_policy_is_bounded(self) -> None:
         with self.assertRaises(EffectValueError):

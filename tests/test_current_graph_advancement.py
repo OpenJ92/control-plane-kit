@@ -186,6 +186,41 @@ class CurrentGraphAdvancementTests(PostgresStoreTestCase):
         )
         self.assertEqual(self.stores.activity_history.actions_for_session("session-a"), ())
 
+    def test_operator_confirmed_uncertain_success_can_advance(self):
+        self._seed_resolved_uncertainty(
+            ActivityEventKind.STEP_UNCERTAINTY_RESOLVED_SUCCEEDED
+        )
+
+        result = self._service("event-advance", "action-advance").execute(
+            self._command()
+        )
+
+        self.assertIs(result.event.kind, ActivityEventKind.CURRENT_GRAPH_ADVANCED)
+        self.assertEqual(
+            self.stores.workspace.get("workspace-a").current_graph_id,
+            "graph-b",
+        )
+        self.assertIn(
+            ActivityEventKind.STEP_UNCERTAIN,
+            tuple(
+                event.kind
+                for event in self.stores.execution.events_for_run("run-a")
+            ),
+        )
+
+    def test_operator_confirmed_uncertain_failure_cannot_advance(self):
+        self._seed_resolved_uncertainty(
+            ActivityEventKind.STEP_UNCERTAINTY_RESOLVED_FAILED
+        )
+
+        with self.assertRaises(CurrentGraphAdvancementIncomplete):
+            self._service("unused", "unused").execute(self._command())
+
+        self.assertEqual(
+            self.stores.workspace.get("workspace-a").current_graph_id,
+            "graph-a",
+        )
+
     def test_unsupported_step_cannot_advance_current_graph(self):
         self._seed_succeeded_run(
             step_kind=ActivityEventKind.STEP_UNSUPPORTED,
@@ -198,6 +233,39 @@ class CurrentGraphAdvancementTests(PostgresStoreTestCase):
             self.stores.workspace.get("workspace-a").current_graph_id,
             "graph-a",
         )
+
+    def _seed_resolved_uncertainty(self, resolution: ActivityEventKind) -> None:
+        self.stores.execution.add_run(
+            ActivityRunRecord(
+                run_id="run-a",
+                plan_id="plan-a",
+                admission=AdmittedRun("execution-request-a"),
+                retry=RetryIdentity(1),
+                status=ActivityRunStatus.SUCCEEDED,
+                created_at="2026-07-16T00:04:00Z",
+                started_at="2026-07-16T00:04:10Z",
+                settled_at="2026-07-16T00:05:00Z",
+            )
+        )
+        values = (
+            (ActivityEventKind.RUN_OPENED, None),
+            (ActivityEventKind.RUN_STARTED, None),
+            (ActivityEventKind.STEP_STARTED, "start-runtime-a"),
+            (ActivityEventKind.STEP_UNCERTAIN, "start-runtime-a"),
+            (resolution, "start-runtime-a"),
+            (ActivityEventKind.RUN_SUCCEEDED, None),
+        )
+        for ordinal, (kind, activity_id) in enumerate(values, start=1):
+            self.stores.execution.add_event(
+                ActivityEventRecord(
+                    event_id=f"event-{ordinal}",
+                    run_id="run-a",
+                    ordinal=ordinal,
+                    kind=kind,
+                    activity_id=activity_id,
+                    occurred_at=f"2026-07-16T00:04:{ordinal:02d}Z",
+                )
+            )
 
     def test_missing_step_success_evidence_fails_closed(self):
         self._seed_succeeded_run(step_kind=ActivityEventKind.STEP_STARTED)

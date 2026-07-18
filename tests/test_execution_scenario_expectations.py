@@ -17,11 +17,13 @@ from examples.scenarios import (
     ExternalReadinessGated,
     ExternalReadinessRequirement,
     GraphAdvancementExpectation,
+    NoChanges,
     NoRunExpected,
     ReviewBlocked,
     ReviewBlockReason,
     RunExpected,
     execution_scenarios,
+    execution_scenario_cases,
     planning_scenarios,
 )
 from examples.scenarios.model import OperationExpectation
@@ -116,6 +118,25 @@ class ExecutionScenarioExpectationTests(TestCase):
             GraphAdvancementExpectation.UNCHANGED,
         )
 
+    def test_no_change_is_planning_evidence_without_approval_or_execution(self):
+        scenario = self._scenario("no-change")
+
+        self.assertEqual(scenario.expectation.eligibility, NoChanges())
+        self.assertIs(
+            scenario.expectation.approval,
+            ApprovalExpectation.NOT_REQUESTED,
+        )
+        self.assertIs(
+            scenario.expectation.admission,
+            AdmissionExpectation.NOT_ADMITTED,
+        )
+        self.assertEqual(scenario.expectation.run, NoRunExpected())
+        self.assertEqual(scenario.planning.expectation.operations, ())
+        self.assertIs(
+            scenario.expectation.graph_advancement,
+            GraphAdvancementExpectation.UNCHANGED,
+        )
+
     def test_unsupported_transition_remains_review_blocked(self):
         scenario = self._scenario("unsupported-implementation-transition")
 
@@ -197,6 +218,32 @@ class ExecutionScenarioExpectationTests(TestCase):
         self.assertEqual(
             tuple(scenario.planning.expectation for scenario in first),
             tuple(scenario.expectation for scenario in planning_scenarios()),
+        )
+
+    def test_acceptance_case_catalog_is_closed_unique_and_deterministic(self):
+        first = execution_scenario_cases()
+        second = execution_scenario_cases()
+
+        self.assertEqual(first, second)
+        self.assertIsNot(first, second)
+        self.assertEqual(len({case.case_id for case in first}), len(first))
+        self.assertEqual(
+            {
+                case.scenario.scenario_id
+                for case in first
+                if case.case_id.startswith("canonical:")
+            },
+            {scenario.scenario_id for scenario in execution_scenarios()},
+        )
+        self.assertTrue(
+            {
+                "independent-leaf-failure",
+                "shared-leaf-failure",
+                "uncertain-paused",
+                "uncertainty-resolved-and-resumed",
+                "reverse-order-compensation",
+                "compensation-failure",
+            }.issubset({case.case_id for case in first})
         )
 
     @staticmethod

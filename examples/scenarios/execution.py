@@ -67,6 +67,11 @@ class ExecutableScenario:
 
 
 @dataclass(frozen=True)
+class NoChanges:
+    """Planning proved that desired and current topology are identical."""
+
+
+@dataclass(frozen=True)
 class ExternalReadinessGated:
     """Execution requires explicit provider/operator readiness evidence."""
 
@@ -89,7 +94,7 @@ class ReviewBlocked:
 
 
 ExecutionEligibility: TypeAlias = (
-    ExecutableScenario | ExternalReadinessGated | ReviewBlocked
+    ExecutableScenario | NoChanges | ExternalReadinessGated | ReviewBlocked
 )
 
 
@@ -179,6 +184,67 @@ class FailurePhase(StrEnum):
     COMPENSATION = "compensation"
 
 
+class UncertaintyResolution(StrEnum):
+    """Independent evidence supplied for one uncertain effect."""
+
+    SUCCEEDED = "succeeded"
+    FAILED = "failed"
+
+
+@dataclass(frozen=True)
+class ResolveScenarioUncertainty:
+    """Resolve an uncertain semantic operation without generated activity ids."""
+
+    operation: OperationExpectation
+    resolution: UncertaintyResolution
+
+    def __post_init__(self) -> None:
+        if not isinstance(self.operation, OperationExpectation):
+            raise TypeError("uncertainty resolution operation must be typed")
+        if not isinstance(self.resolution, UncertaintyResolution):
+            raise TypeError("uncertainty resolution outcome must be typed")
+
+
+@dataclass(frozen=True)
+class PauseScenarioExecution:
+    """Pause a running uncertain run before an operator recovery decision."""
+
+
+@dataclass(frozen=True)
+class ResumeScenarioExecution:
+    """Resume the unchanged admitted intent after uncertainty is resolved."""
+
+
+@dataclass(frozen=True)
+class BeginScenarioCompensation:
+    """Admit the plan-pinned compensation program after forward failure."""
+
+
+ScenarioRecoveryStep: TypeAlias = (
+    PauseScenarioExecution
+    | ResolveScenarioUncertainty
+    | ResumeScenarioExecution
+    | BeginScenarioCompensation
+)
+
+
+@dataclass(frozen=True)
+class ScenarioRecoveryProgram:
+    """Pure semantic recovery choices interpreted by the scenario runner."""
+
+    steps: tuple[ScenarioRecoveryStep, ...] = ()
+
+    def __post_init__(self) -> None:
+        variants = (
+            PauseScenarioExecution,
+            ResolveScenarioUncertainty,
+            ResumeScenarioExecution,
+            BeginScenarioCompensation,
+        )
+        if not all(isinstance(value, variants) for value in self.steps):
+            raise TypeError("scenario recovery steps must be closed typed values")
+
+
 @dataclass(frozen=True)
 class FailureExpectation:
     """Expected failure classification attached to a stable operation."""
@@ -247,7 +313,7 @@ class ExecutionScenarioExpectation:
     def __post_init__(self) -> None:
         if not isinstance(
             self.eligibility,
-            (ExecutableScenario, ExternalReadinessGated, ReviewBlocked),
+            (ExecutableScenario, NoChanges, ExternalReadinessGated, ReviewBlocked),
         ):
             raise TypeError("execution eligibility must be a closed typed value")
         if not isinstance(self.approval, ApprovalExpectation):
@@ -341,6 +407,13 @@ class ExecutionScenario:
                 raise ValueError("review-blocked execution cannot expect approval")
         elif not self.planning.expectation.ready_for_execution:
             raise ValueError("execution eligibility requires ready planning truth")
+        if isinstance(self.expectation.eligibility, NoChanges):
+            if self.planning.expectation.operations:
+                raise ValueError("no-change execution cannot contain operations")
+            if self.expectation.approval is not ApprovalExpectation.NOT_REQUESTED:
+                raise ValueError("no-change execution cannot expect approval")
+            if self.expectation.admission is not AdmissionExpectation.NOT_ADMITTED:
+                raise ValueError("no-change execution cannot expect admission")
         if isinstance(self.expectation.eligibility, ExternalReadinessGated) and (
             self.expectation.admission is not AdmissionExpectation.NOT_ADMITTED
         ):
@@ -355,6 +428,7 @@ def execution_scenarios() -> tuple[ExecutionScenario, ...]:
     """Pair every canonical planning scenario with one execution contract."""
 
     expectations = {
+        "no-change": _no_change_expectation(),
         "switch-database-endpoint": _database_readiness_expectation(),
         "unsupported-implementation-transition": _review_blocked_expectation(),
     }
@@ -439,6 +513,15 @@ def _database_readiness_expectation() -> ExecutionScenarioExpectation:
             ExternalReadinessRequirement.DATABASE_ENDPOINT_CUTOVER
         ),
         approval=ApprovalExpectation.APPROVED,
+        admission=AdmissionExpectation.NOT_ADMITTED,
+        run=NoRunExpected(),
+    )
+
+
+def _no_change_expectation() -> ExecutionScenarioExpectation:
+    return ExecutionScenarioExpectation(
+        eligibility=NoChanges(),
+        approval=ApprovalExpectation.NOT_REQUESTED,
         admission=AdmissionExpectation.NOT_ADMITTED,
         run=NoRunExpected(),
     )
