@@ -15,9 +15,13 @@ from control_plane_kit.workflows import (
     ApprovalDecisionResult,
     ApprovalRequestResult,
     DesiredGraphEditResult,
+    ExecutionAdmissionResult,
     ExecutionCoordinatorResult,
+    ExecutionWorkerAuthority,
+    ExternalReadinessAttestation,
     IdempotencyKey,
     OperationCommandResult,
+    RunLifecycleResult,
 )
 
 
@@ -187,12 +191,7 @@ class ApprovalGrant:
 
     def __post_init__(self) -> None:
         _require_text("actor_id", self.actor_id)
-        if not isinstance(self.actor_scopes, tuple) or not self.actor_scopes or not all(
-            isinstance(value, str) and value.strip() for value in self.actor_scopes
-        ):
-            raise ValueError("actor_scopes must be a non-empty tuple of text")
-        if len(self.actor_scopes) != len(set(self.actor_scopes)):
-            raise ValueError("actor_scopes must not contain duplicates")
+        _require_scopes(self.actor_scopes)
         if not isinstance(self.idempotency_key, IdempotencyKey):
             raise TypeError("idempotency_key must be IdempotencyKey")
 
@@ -211,6 +210,86 @@ class ApprovedDeployment:
             raise TypeError("approval must be ApprovalDecisionResult")
         if self.approval.request.request_id != self.suspension.approval_request.request.request_id:
             raise ValueError("approval decision must answer the suspended request")
+
+
+@dataclass(frozen=True)
+class AdmissionGrant:
+    """Explicit operator authority and readiness evidence for admission."""
+
+    actor_id: str
+    actor_scopes: tuple[str, ...]
+    idempotency_key: IdempotencyKey
+    readiness: tuple[ExternalReadinessAttestation, ...] = ()
+
+    def __post_init__(self) -> None:
+        _require_text("actor_id", self.actor_id)
+        _require_scopes(self.actor_scopes)
+        if not isinstance(self.idempotency_key, IdempotencyKey):
+            raise TypeError("idempotency_key must be IdempotencyKey")
+        if not isinstance(self.readiness, tuple) or not all(
+            isinstance(value, ExternalReadinessAttestation) for value in self.readiness
+        ):
+            raise TypeError("readiness must be a tuple of ExternalReadinessAttestation")
+
+
+@dataclass(frozen=True)
+class AdmittedDeployment:
+    """Approved deployment paired with canonical durable admission evidence."""
+
+    approved: ApprovedDeployment
+    admission: ExecutionAdmissionResult
+
+    def __post_init__(self) -> None:
+        if not isinstance(self.approved, ApprovedDeployment):
+            raise TypeError("approved must be ApprovedDeployment")
+        if not isinstance(self.admission, ExecutionAdmissionResult):
+            raise TypeError("admission must be ExecutionAdmissionResult")
+        plan_id = self.approved.suspension.preparation.plan.plan_record.plan_id
+        if self.admission.request.identity.plan_id != plan_id:
+            raise ValueError("execution admission must target the approved plan")
+
+
+@dataclass(frozen=True)
+class ClaimGrant:
+    """Worker ownership and lease intent for one admitted execution request."""
+
+    authority: ExecutionWorkerAuthority
+    lease_expires_at: str
+    claim_idempotency_key: IdempotencyKey
+    start_idempotency_key: IdempotencyKey
+
+    def __post_init__(self) -> None:
+        if not isinstance(self.authority, ExecutionWorkerAuthority):
+            raise TypeError("authority must be ExecutionWorkerAuthority")
+        _require_text("lease_expires_at", self.lease_expires_at)
+        if not isinstance(self.claim_idempotency_key, IdempotencyKey):
+            raise TypeError("claim_idempotency_key must be IdempotencyKey")
+        if not isinstance(self.start_idempotency_key, IdempotencyKey):
+            raise TypeError("start_idempotency_key must be IdempotencyKey")
+
+
+@dataclass(frozen=True)
+class ClaimedDeployment:
+    """Admitted work with separate canonical claim/open and start evidence."""
+
+    admitted: AdmittedDeployment
+    opened: RunLifecycleResult
+    started: RunLifecycleResult
+    authority: ExecutionWorkerAuthority
+
+    def __post_init__(self) -> None:
+        if not isinstance(self.admitted, AdmittedDeployment):
+            raise TypeError("admitted must be AdmittedDeployment")
+        if not isinstance(self.opened, RunLifecycleResult):
+            raise TypeError("opened must be RunLifecycleResult")
+        if not isinstance(self.started, RunLifecycleResult):
+            raise TypeError("started must be RunLifecycleResult")
+        if not isinstance(self.authority, ExecutionWorkerAuthority):
+            raise TypeError("authority must be ExecutionWorkerAuthority")
+        if self.opened.run.run_id != self.started.run.run_id:
+            raise ValueError("claim/open and start evidence must identify one run")
+        if self.opened.request.identity != self.admitted.admission.request.identity:
+            raise ValueError("claim/open evidence belongs to another admission")
 
 
 @dataclass(frozen=True)
@@ -275,6 +354,15 @@ def _require_graph(name: str, value: object) -> None:
 def _require_text(name: str, value: object) -> None:
     if not isinstance(value, str) or not value.strip():
         raise ValueError(f"{name} must be non-empty text")
+
+
+def _require_scopes(value: object) -> None:
+    if not isinstance(value, tuple) or not value or not all(
+        isinstance(scope, str) and scope.strip() for scope in value
+    ):
+        raise ValueError("actor_scopes must be a non-empty tuple of text")
+    if len(value) != len(set(value)):
+        raise ValueError("actor_scopes must not contain duplicates")
 
 
 def _require_empty(name: str, graph: DeploymentGraph) -> None:

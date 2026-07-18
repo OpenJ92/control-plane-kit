@@ -1,0 +1,169 @@
+from __future__ import annotations
+
+import os
+
+import psycopg
+
+from control_plane_kit.application.deploy import (
+    AdmissionGrant,
+    Admit,
+    ApprovalGrant,
+    ApprovalSuspension,
+    Approve,
+    Claim,
+    ClaimGrant,
+    ClaimedDeployment,
+    DeploymentPlanRequest,
+    Plan,
+    PlanningServices,
+    classify_transition,
+)
+from control_plane_kit.execution import (
+    ActivityEventKind,
+    ActivityRunStatus,
+    ExecutionRequestStatus,
+)
+from control_plane_kit.stores import (
+    GraphVersionRecord,
+    PostgresUnitOfWork,
+    WorkspaceRecord,
+)
+from control_plane_kit.workflows import (
+    ActivityPlanningCommandService,
+    ApprovalCommandService,
+    DesiredGraphCommandService,
+    ExecutionAdmissionCommandService,
+    ExecutionWorkerAuthority,
+    IdempotencyKey,
+    OperationCommandService,
+    RunLifecycleCommandService,
+)
+from examples.router_runtime import router_graph
+from tests.postgres_case import PostgresStoreTestCase
+
+
+class Ids:
+    def __init__(self, prefix: str) -> None:
+        self.prefix = prefix
+        self.next_value = 1
+
+    def __call__(self) -> str:
+        value = f"{self.prefix}-{self.next_value}"
+        self.next_value += 1
+        return value
+
+
+class DeploymentAdmitClaimStageTests(PostgresStoreTestCase):
+    def setUp(self) -> None:
+        super().setUp()
+        self.current = router_graph("api-v1")
+        self.desired = router_graph("api-v2")
+        self.stores.workspace.create(WorkspaceRecord("workspace-a", "Deploy test"))
+        self.stores.graph_topology.save(
+            GraphVersionRecord.from_graph(
+                graph_id="graph-current",
+                workspace_id="workspace-a",
+                version=1,
+                graph=self.current,
+                created_by="operator",
+                created_at="2026-07-18T00:00:00Z",
+            )
+        )
+        self.stores.workspace.set_current_graph("workspace-a", "graph-current")
+        self.stores.workspace.set_desired_graph("workspace-a", "graph-current")
+        self.factory = lambda: PostgresUnitOfWork(
+            lambda: psycopg.connect(os.environ["CPK_TEST_DATABASE_URL"])
+        )
+
+    def test_approved_plan_is_admitted_claimed_and_started_without_effects(self) -> None:
+        planning, approvals = self._planning_services()
+        suspended = Plan(planning)(
+            DeploymentPlanRequest(
+                classify_transition(self.current, self.desired),
+                "workspace-a",
+                "graph-current",
+                "graph-current",
+                "operator",
+                "Admit and claim",
+                "Review the transition.",
+                "admit-claim",
+            )
+        )
+        assert isinstance(suspended, ApprovalSuspension)
+        approved = Approve(approvals)(
+            suspended,
+            ApprovalGrant(
+                "approver",
+                (suspended.approval_request.request.required_scope,),
+                IdempotencyKey("admit-claim:approve"),
+            ),
+        )
+        admitted = Admit(
+            ExecutionAdmissionCommandService(
+                self.factory,
+                clock=lambda: "2026-07-18T00:05:00Z",
+                id_factory=Ids("admission"),
+            )
+        )(
+            approved,
+            AdmissionGrant(
+                "operator",
+                ("plan:execute",),
+                IdempotencyKey("admit-claim:admit"),
+            ),
+        )
+        authority = ExecutionWorkerAuthority("worker-a", ("execution:operate",))
+        claimed = Claim(
+            RunLifecycleCommandService(
+                self.factory,
+                clock=lambda: "2026-07-18T00:06:00Z",
+                id_factory=Ids("lifecycle"),
+            )
+        )(
+            admitted,
+            ClaimGrant(
+                authority,
+                "2026-07-18T01:00:00Z",
+                IdempotencyKey("admit-claim:claim"),
+                IdempotencyKey("admit-claim:start"),
+            ),
+        )
+
+        self.assertIsInstance(claimed, ClaimedDeployment)
+        self.assertIs(admitted.admission.request.status, ExecutionRequestStatus.QUEUED)
+        self.assertIs(claimed.opened.event.kind, ActivityEventKind.RUN_OPENED)
+        self.assertIs(claimed.opened.run.status, ActivityRunStatus.CLAIMED)
+        self.assertIs(claimed.started.event.kind, ActivityEventKind.RUN_STARTED)
+        self.assertIs(claimed.started.run.status, ActivityRunStatus.RUNNING)
+        self.assertEqual(
+            [event.kind for event in self.stores.execution.events_for_run(claimed.started.run.run_id)],
+            [ActivityEventKind.RUN_OPENED, ActivityEventKind.RUN_STARTED],
+        )
+
+    def _planning_services(self) -> tuple[PlanningServices, ApprovalCommandService]:
+        approvals = ApprovalCommandService(
+            self.factory,
+            clock=lambda: "2026-07-18T00:04:00Z",
+            id_factory=Ids("approval"),
+        )
+        return (
+            PlanningServices(
+                OperationCommandService(
+                    self.factory,
+                    clock=lambda: "2026-07-18T00:01:00Z",
+                    id_factory=Ids("operation"),
+                ),
+                DesiredGraphCommandService(
+                    self.factory,
+                    clock=lambda: "2026-07-18T00:02:00Z",
+                    id_factory=Ids("graph"),
+                ),
+                ActivityPlanningCommandService(
+                    self.factory,
+                    clock=lambda: "2026-07-18T00:03:00Z",
+                    id_factory=Ids("plan"),
+                ),
+                approvals,
+            ),
+            approvals,
+        )
