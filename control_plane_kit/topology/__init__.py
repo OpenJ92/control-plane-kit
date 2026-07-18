@@ -62,6 +62,7 @@ from control_plane_kit.topology.changes import (
 )
 from control_plane_kit.topology.diff import diff_graphs
 from control_plane_kit.topology.compiler import compile_recipe
+from control_plane_kit.types import SocketBinding
 
 __all__ = [
     "AddedChange",
@@ -102,6 +103,7 @@ __all__ = [
     "RuntimeValue",
     "SecretReferenceAddress",
     "SocketContractValue",
+    "SocketBinding",
     "SocketDirection",
     "SocketSubject",
     "StringTupleValue",

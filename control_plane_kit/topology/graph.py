@@ -8,7 +8,13 @@ from urllib.parse import urlsplit
 
 from control_plane_kit.algebra import BlockSockets, BlockSpec
 from control_plane_kit.lifecycle import OWNED_EPHEMERAL, ResourceLifecycle
-from control_plane_kit.types import BlockFamily, EndpointScope, Protocol, RuntimeKind
+from control_plane_kit.types import (
+    BlockFamily,
+    EndpointScope,
+    Protocol,
+    RuntimeKind,
+    SocketBinding,
+)
 
 
 @dataclass(frozen=True)
@@ -146,6 +152,7 @@ class Edge:
     consumer_role: str
     requirement_socket: str
     protocol: Protocol
+    binding: SocketBinding
     env_assignments: Mapping[str, str] = field(default_factory=dict)
 
     def descriptor(self) -> dict[str, object]:
@@ -154,6 +161,7 @@ class Edge:
             "provider": {"role": self.provider_role, "socket": self.provider_socket},
             "consumer": {"role": self.consumer_role, "requirement": self.requirement_socket},
             "protocol": self.protocol.value,
+            "binding": self.binding.value,
             "env_assignments": dict(sorted(self.env_assignments.items())),
         }
 

@@ -13,6 +13,7 @@ from control_plane_kit import (
     ChangeTarget,
     DeploymentGraph,
     PlannedActivity,
+    ReconcileNode,
     ReviewChange,
     ReviewReason,
     RiskLevel,
@@ -290,13 +291,13 @@ class ExecutionAdmissionTests(PostgresStoreTestCase):
         with self.assertRaises(ExecutionReadinessRequired):
             self._service("unused", "unused").execute(command)
 
-        switch = next(
+        reconcile = next(
             activity
             for activity in plan.activities
-            if isinstance(activity.operation, SwitchSocketConnection)
+            if isinstance(activity.operation, ReconcileNode)
         )
         evidence = ExternalReadinessAttestation(
-            activity_id=switch.activity_id.value,
+            activity_id=reconcile.activity_id.value,
             evidence_ref="migration-check/2026-07-16/a",
         )
         result = self._service("execution-a", "execution-action").execute(
@@ -310,7 +311,7 @@ class ExecutionAdmissionTests(PostgresStoreTestCase):
             result.action.payload["readiness"],
             [
                 {
-                    "activity_id": switch.activity_id.value,
+                    "activity_id": reconcile.activity_id.value,
                     "evidence_ref": "migration-check/2026-07-16/a",
                 }
             ],

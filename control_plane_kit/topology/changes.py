@@ -213,6 +213,7 @@ class EdgeValue:
                 "socket": self.edge.requirement_socket,
             },
             "protocol": self.edge.protocol.value,
+            "binding": self.edge.binding.value,
             "env_assignments": EnvironmentValue(
                 self.edge.env_assignments
             ).descriptor(),

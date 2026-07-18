@@ -23,19 +23,16 @@ from control_plane_kit import (
     compile_recipe,
 )
 from control_plane_kit.planning import (
-    AddSocketConnection,
     ReconcileNode,
     ReconcileRuntime,
     RemoveNodeResource,
     RemoveRuntimeResource,
-    RemoveSocketConnection,
     ReviewChange,
     RiskLevel,
     StartNode,
     StartRuntime,
     StopNode,
     StopRuntime,
-    SwitchSocketConnection,
     WaitForHealthy,
 )
 from control_plane_kit.servers import (
@@ -104,10 +101,9 @@ def backend_switch() -> PlanningScenario:
         router_graph("api-v1"),
         router_graph("api-v2"),
         operations=(
-            _op(SwitchSocketConnection, "api-router.active"),
             _op(ReconcileNode, "api-router"),
         ),
-        max_risk=RiskLevel.HIGH,
+        max_risk=RiskLevel.MEDIUM,
     )
 
 
@@ -118,8 +114,6 @@ def scale_out_behind_load_balancer() -> PlanningScenario:
     healthy_app = _op(WaitForHealthy, "app-b")
     start_balancer = _op(StartNode, "balancer")
     healthy_balancer = _op(WaitForHealthy, "balancer")
-    edge_a = _op(AddSocketConnection, "app-a.internal-to-balancer.target-a")
-    edge_b = _op(AddSocketConnection, "app-b.internal-to-balancer.target-b")
     return _scenario(
         "scale-out-load-balancer",
         "Scale an application behind a load balancer",
@@ -130,16 +124,12 @@ def scale_out_behind_load_balancer() -> PlanningScenario:
             healthy_app,
             start_balancer,
             healthy_balancer,
-            edge_a,
-            edge_b,
             _op(ReconcileRuntime, "docker"),
         ),
         dependencies=(
             _dependency(start_app, healthy_app),
             _dependency(start_balancer, healthy_balancer),
-            _dependency(healthy_balancer, edge_a),
-            _dependency(healthy_app, edge_b),
-            _dependency(healthy_balancer, edge_b),
+            _dependency(healthy_app, start_balancer),
         ),
         max_risk=RiskLevel.MEDIUM,
     )
@@ -150,7 +140,6 @@ def insert_rate_limiter() -> PlanningScenario:
     current = _retain(desired, "rate-limiter-current", nodes=("app",))
     start = _op(StartNode, "limiter")
     healthy = _op(WaitForHealthy, "limiter")
-    connect = _op(AddSocketConnection, "app.internal-to-limiter.target")
     return _scenario(
         "insert-rate-limiter",
         "Insert a rate limiter",
@@ -159,12 +148,10 @@ def insert_rate_limiter() -> PlanningScenario:
         operations=(
             start,
             healthy,
-            connect,
             _op(ReconcileRuntime, "docker"),
         ),
         dependencies=(
             _dependency(start, healthy),
-            _dependency(healthy, connect),
         ),
         max_risk=RiskLevel.MEDIUM,
     )
@@ -177,8 +164,6 @@ def add_request_observer() -> PlanningScenario:
     healthy_observer = _op(WaitForHealthy, "observer")
     start_mux = _op(StartNode, "multiplexer")
     healthy_mux = _op(WaitForHealthy, "multiplexer")
-    primary = _op(AddSocketConnection, "primary.internal-to-multiplexer.primary")
-    observer = _op(AddSocketConnection, "observer.internal-to-multiplexer.observer-a")
     return _scenario(
         "add-request-observer",
         "Add an HTTP request observer",
@@ -189,16 +174,12 @@ def add_request_observer() -> PlanningScenario:
             healthy_observer,
             start_mux,
             healthy_mux,
-            primary,
-            observer,
             _op(ReconcileRuntime, "docker"),
         ),
         dependencies=(
             _dependency(start_observer, healthy_observer),
             _dependency(start_mux, healthy_mux),
-            _dependency(healthy_mux, primary),
-            _dependency(healthy_observer, observer),
-            _dependency(healthy_mux, observer),
+            _dependency(healthy_observer, start_mux),
         ),
         max_risk=RiskLevel.MEDIUM,
     )
@@ -230,17 +211,15 @@ def switch_database_endpoint() -> PlanningScenario:
         "database-desired",
         active_database_id="postgres-b",
     )
-    switch_database = _op(SwitchSocketConnection, "api.database")
     return _scenario(
         "switch-database-endpoint",
         "Switch between pre-provisioned database endpoints",
         current,
         desired,
         operations=(
-            switch_database,
             _op(ReconcileNode, "api"),
         ),
-        max_risk=RiskLevel.HIGH,
+        max_risk=RiskLevel.MEDIUM,
     )
 
 
@@ -268,7 +247,6 @@ def partial_scale_in() -> PlanningScenario:
 
 def full_teardown() -> PlanningScenario:
     current = compile_recipe(rate_limiter_recipe())
-    remove_edge = _op(RemoveSocketConnection, "app.internal-to-limiter.target")
     stop_app = _op(StopNode, "app")
     stop_limiter = _op(StopNode, "limiter")
     remove_app = _op(RemoveNodeResource, "app")
@@ -281,7 +259,6 @@ def full_teardown() -> PlanningScenario:
         current,
         DeploymentGraph("empty"),
         operations=(
-            remove_edge,
             stop_app,
             stop_limiter,
             remove_app,
@@ -290,8 +267,6 @@ def full_teardown() -> PlanningScenario:
             remove_runtime,
         ),
         dependencies=(
-            _dependency(remove_edge, stop_app),
-            _dependency(remove_edge, stop_limiter),
             _dependency(stop_app, remove_app),
             _dependency(stop_limiter, remove_limiter),
             _dependency(remove_app, stop_runtime),

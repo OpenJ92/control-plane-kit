@@ -22,6 +22,7 @@ from control_plane_kit import (
     compile_recipe,
     validate_graph,
 )
+from control_plane_kit.types import SocketBinding
 
 
 @dataclass(frozen=True)
@@ -247,6 +248,21 @@ class GraphValidationTests(unittest.TestCase):
         self.assertIn(
             ValidationCode.EDGE_ENV_BINDINGS,
             {finding.code for finding in value_result.errors},
+        )
+
+    def test_edge_binding_must_match_consumer_requirement(self):
+        graph = graph_with_requirement()
+        edge_id, edge = next(iter(graph.edges.items()))
+        malformed = replace(
+            graph,
+            edges={
+                edge_id: replace(edge, binding=SocketBinding.RUNTIME_CONTROL),
+            },
+        )
+
+        self.assertIn(
+            ValidationCode.EDGE_BINDING,
+            {finding.code for finding in validate_graph(malformed).errors},
         )
 
     def test_consumer_environment_must_retain_edge_assignments(self):

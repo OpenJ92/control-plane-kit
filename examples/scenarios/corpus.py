@@ -10,7 +10,6 @@ from control_plane_kit.execution import (
     FailureCategory,
 )
 from control_plane_kit.planning import (
-    AddSocketConnection,
     StartNode,
     StartRuntime,
     StopNode,
@@ -78,11 +77,7 @@ def execution_scenario_cases() -> tuple[ExecutionScenarioCase, ...]:
     fresh = by_id["fresh-deployment"]
 
     independent = _operation(scale_out, StartNode, "app-b")
-    shared = _operation(
-        scale_out,
-        AddSocketConnection,
-        "app-b.internal-to-balancer.target-b",
-    )
+    shared = _operation(scale_out, StartNode, "balancer")
     backend_switch = backend.planning.expectation.operations[0]
     start_runtime = _operation(fresh, StartRuntime, "docker")
     start_api = _operation(fresh, StartNode, "api")

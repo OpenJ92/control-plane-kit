@@ -23,6 +23,7 @@ from control_plane_kit import (
     compile_recipe,
 )
 from examples.app_with_postgres import recipe
+from examples.gate_d_live_smoke import router_recipe
 
 
 @dataclass(frozen=True)
@@ -133,6 +134,28 @@ class GraphDescriptorCodecTests(unittest.TestCase):
 
         with self.assertRaises(InvalidGraphReference):
             GraphDescriptorCodec().decode(descriptor)
+
+    def test_edge_binding_round_trips_as_a_closed_value(self):
+        codec = GraphDescriptorCodec()
+        descriptor = codec.encode(compile_recipe(recipe()))
+        edge = descriptor["edges"]["postgres.internal-to-orders-api.DATABASE_URL"]
+
+        self.assertEqual(edge["binding"], "environment")
+        self.assertEqual(codec.encode(codec.decode(descriptor)), descriptor)
+
+        edge["binding"] = "future-binding"
+        with self.assertRaises(UnknownGraphVariant):
+            codec.decode(descriptor)
+
+        runtime_control = codec.encode(
+            compile_recipe(router_recipe("hello-blue"))
+        )
+        active = runtime_control["edges"]["router.active"]
+        self.assertEqual(active["binding"], "runtime-control")
+        self.assertEqual(
+            codec.encode(codec.decode(runtime_control)),
+            runtime_control,
+        )
 
     def test_unknown_fields_are_rejected_as_lossy(self):
         descriptor = GraphDescriptorCodec().encode(compile_recipe(recipe()))

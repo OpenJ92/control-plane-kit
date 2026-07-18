@@ -5,7 +5,7 @@ from unittest import main
 
 import psycopg
 
-from control_plane_kit import SwitchSocketConnection
+from control_plane_kit import ReconcileNode
 from control_plane_kit.stores import (
     GraphVersionRecord,
     OperationActionKind,
@@ -85,7 +85,7 @@ class BackendSwapPlanningExampleTests(PostgresStoreTestCase):
         )
         self.assertTrue(
             any(
-                isinstance(activity.operation, SwitchSocketConnection)
+                isinstance(activity.operation, ReconcileNode)
                 for activity in persisted_plan.plan.activities
             )
         )
