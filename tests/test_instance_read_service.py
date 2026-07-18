@@ -2,6 +2,7 @@ from datetime import datetime, timezone
 from unittest import main
 
 from control_plane_kit import (
+    ActivityId,
     ActivityPlan,
     ActivityEventKind,
     ActivityRunStatus,
@@ -13,6 +14,7 @@ from control_plane_kit import (
     DeploymentRecipe,
     DockerRuntime,
     PlanOnlyImplementation,
+    PlannedActivity,
     ObservationFreshness,
     EndpointContext,
     ProbeKind,
@@ -28,8 +30,10 @@ from control_plane_kit import (
     ProviderSocket,
     RequirementSocket,
     RiskLevel,
+    NodeTarget,
     SocketBinding,
     SocketConnection,
+    StartNode,
     compile_recipe,
 )
 from control_plane_kit.topology.graph import DeploymentGraph
@@ -213,7 +217,12 @@ class InstanceReadServiceTests(PostgresStoreTestCase):
 
         payload = service.activity_timeline("workspace-a").descriptor()
 
-        event_payload = payload["sessions"][0]["plans"][0]["runs"][0]["events"][0]["payload"]
+        events = payload["sessions"][0]["plans"][0]["runs"][0]["events"]
+        event_payload = next(
+            event["payload"]
+            for event in events
+            if event["event_type"] == ActivityEventKind.STEP_SUCCEEDED.value
+        )
         self.assertEqual(event_payload["nested"]["label"], "visible")
         self.assertEqual(event_payload["items"][0]["callback_url"], "<redacted>")
         self.assertEqual(event_payload["items"][0]["label"], "visible")
@@ -394,7 +403,7 @@ class InstanceReadServiceTests(PostgresStoreTestCase):
                 desired_graph_id="graph-b",
                 status="planned",
                 created_at="2026-07-15T00:03:00Z",
-                plan=ActivityPlan(()),
+                plan=_start_api_plan(),
             )
         )
         self.stores.activity_history.add_approval_request(
@@ -561,7 +570,7 @@ class InstanceReadServiceTests(PostgresStoreTestCase):
                 desired_graph_id="graph-b",
                 status="planned",
                 created_at="2026-07-15T00:01:00Z",
-                plan=ActivityPlan(()),
+                plan=_start_api_plan(),
             )
         )
         self.stores.activity_history.add_approval_request(
@@ -615,6 +624,16 @@ class InstanceReadServiceTests(PostgresStoreTestCase):
                 event_id="event-a",
                 run_id="run-a",
                 ordinal=1,
+                kind=ActivityEventKind.STEP_STARTED,
+                occurred_at="2026-07-15T00:02:30Z",
+                activity_id="start-api",
+            )
+        )
+        self.stores.execution.add_event(
+            ActivityEventRecord(
+                event_id="event-b",
+                run_id="run-a",
+                ordinal=2,
                 kind=ActivityEventKind.STEP_SUCCEEDED,
                 occurred_at="2026-07-15T00:03:00Z",
                 activity_id="start-api",
@@ -655,6 +674,15 @@ class InstanceReadServiceTests(PostgresStoreTestCase):
             execution_store=self.stores.execution,
             observed_state_store=self.stores.observed_state,
         )
+
+
+def _start_api_plan() -> ActivityPlan:
+    return ActivityPlan((
+        PlannedActivity(
+            ActivityId("start-api"),
+            StartNode(NodeTarget("api")),
+        ),
+    ))
 
 
 def _compiled_graph_named(name: str) -> DeploymentGraph:
