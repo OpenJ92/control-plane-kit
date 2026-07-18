@@ -11,6 +11,28 @@ from urllib.parse import urlsplit
 
 import psycopg
 
+from control_plane_kit.application.deploy import (
+    AdmissionGrant,
+    Admit,
+    Advance,
+    AdvancedDeployment,
+    AdvancementGrant,
+    ApprovalGrant,
+    ApprovalSuspension,
+    Approve,
+    Claim,
+    ClaimGrant,
+    Deploy,
+    DeploymentExecutionGrant,
+    DeploymentPlanRequest,
+    Execute,
+    ExecuteApprovedDeployment,
+    ExecutionLimits,
+    Plan,
+    PlanningServices,
+    PrepareDeployment,
+)
+
 from control_plane_kit import (
     DeploymentGraph,
     DeploymentRecipe,
@@ -78,7 +100,7 @@ from control_plane_kit.workflows import (
     RunLifecycleCommandService,
     StartActivityRun,
 )
-from examples.scenarios.workflow import PlanningWorkflowServices, plan_graph_transition
+from examples.scenarios.workflow import plan_graph_transition
 
 
 WORKSPACE_ID = "gate-d-live"
@@ -164,9 +186,9 @@ def _unit_of_work_factory(database_url: str):
     return lambda: PostgresUnitOfWork(lambda: psycopg.connect(database_url))
 
 
-def _planning_services(database_url: str, prefix: str) -> PlanningWorkflowServices:
+def _planning_services(database_url: str, prefix: str) -> PlanningServices:
     factory = _unit_of_work_factory(database_url)
-    return PlanningWorkflowServices(
+    return PlanningServices(
         OperationCommandService(factory, clock=_clock, id_factory=Ids(f"{prefix}-operation")),
         DesiredGraphCommandService(factory, clock=_clock, id_factory=Ids(f"{prefix}-graph")),
         ActivityPlanningCommandService(factory, clock=_clock, id_factory=Ids(f"{prefix}-plan")),
@@ -410,29 +432,96 @@ def resume_deploy(database_url: str, run_id: str, plan_id: str, graph_id: str) -
 
 
 def switch(database_url: str, graph_id: str) -> dict[str, str]:
-    switched_run, switched_plan, switched_graph, _activity_count = plan_approve_admit_open(
-        database_url,
-        prefix="switch",
-        current_graph_id=graph_id,
-        desired_graph=compile_recipe(router_recipe("hello-green")),
+    current = compile_recipe(router_recipe("hello-blue"))
+    desired = compile_recipe(router_recipe("hello-green"))
+    factory = _unit_of_work_factory(database_url)
+    planning = _planning_services(database_url, "switch")
+    lifecycle = RunLifecycleCommandService(
+        factory,
+        clock=_clock,
+        id_factory=Ids("switch-run"),
     )
-    switched = execute_run(
-        database_url,
-        switched_run,
-        graph_ids=(graph_id, switched_graph),
-        max_effects=100,
+    deploy = Deploy(
+        current,
+        desired,
+        PrepareDeployment(Plan(planning)),
+        Approve(planning.approvals),
+        ExecuteApprovedDeployment(
+            Admit(
+                ExecutionAdmissionCommandService(
+                    factory,
+                    clock=_clock,
+                    id_factory=Ids("switch-admission"),
+                )
+            ),
+            Claim(lifecycle),
+            Execute(
+                ExecutionCoordinator(
+                    factory,
+                    lifecycle,
+                    _interpreter((graph_id, "switch-graph-1")),
+                    clock=lambda: __import__("datetime").datetime.now(
+                        __import__("datetime").timezone.utc
+                    ),
+                    id_factory=Ids("switch-coordinator"),
+                )
+            ),
+            Advance(
+                CurrentGraphAdvancementCommandService(
+                    factory,
+                    clock=_clock,
+                    id_factory=Ids("switch-advance"),
+                )
+            ),
+        ),
     )
-    if switched.status is not CoordinatorStatus.COMPLETED:
-        raise RuntimeError(
-            "switch did not complete: "
-            f"status={switched.status.value} activity={switched.activity_id!r} "
-            f"failure={_latest_failure(database_url, switched_run)!r}"
+    prepared = deploy(
+        DeploymentPlanRequest(
+            deploy.transition,
+            WORKSPACE_ID,
+            graph_id,
+            graph_id,
+            "gate-d-operator",
+            "Gate F live router switch",
+            "Approve the authenticated blue-to-green router mutation.",
+            "switch",
         )
-    advance(database_url, switched_run, switched_plan, graph_id, switched_graph, "switch")
+    )
+    if not isinstance(prepared, ApprovalSuspension):
+        raise RuntimeError("live switch did not reach approval suspension")
+    approved = deploy.approve(
+        prepared,
+        ApprovalGrant(
+            "gate-d-approver",
+            (prepared.approval_request.request.required_scope,),
+            IdempotencyKey("switch:approval-decision"),
+            "Approved for the local Gate F smoke.",
+        ),
+    )
+    switched = deploy.execute_approved(
+        approved,
+        DeploymentExecutionGrant(
+            AdmissionGrant(
+                "gate-d-operator",
+                ("plan:execute",),
+                IdempotencyKey("switch:admit"),
+            ),
+            ClaimGrant(
+                ExecutionWorkerAuthority("gate-d-worker", ("execution:operate",)),
+                "2026-07-17T13:00:00Z",
+                IdempotencyKey("switch:claim"),
+                IdempotencyKey("switch:start"),
+            ),
+            AdvancementGrant(IdempotencyKey("switch:advance")),
+            ExecutionLimits(TimeoutPolicy(30, 1), 100),
+        ),
+    )
+    if not isinstance(switched, AdvancedDeployment):
+        raise RuntimeError(f"live switch suspended with {type(switched).__name__}")
     return {
-        "run_id": switched_run,
-        "plan_id": switched_plan,
-        "graph_id": switched_graph,
+        "run_id": switched.executed.execution.run.run_id,
+        "plan_id": switched.advancement.plan_id,
+        "graph_id": switched.advancement.to_graph_id,
         "router_url": f"http://127.0.0.1:{ROUTER_PORT}/",
     }
 
