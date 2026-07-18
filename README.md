@@ -224,6 +224,17 @@ Run the complete Docker/Postgres live proof with:
 ./gate-f-live-test.sh
 ```
 
+Run a generated Hello topology with paired HTTP and Postgres dependencies through
+the same canonical deployment program:
+
+```bash
+./generated-hello-live-test.sh
+```
+
+The default is a two-branch, one-level graph. Set
+`CPK_GENERATED_HELLO_BRANCHING_FACTOR` and `CPK_GENERATED_HELLO_DEPTH` to exercise
+a larger bounded generated topology.
+
 Run the local read demo with:
 
 ```bash
