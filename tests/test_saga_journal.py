@@ -11,7 +11,7 @@ from control_plane_kit.planning import (
     StartRuntime,
 )
 from control_plane_kit.saga import SagaStateError, SagaStatus, SagaStepStatus
-from control_plane_kit.workflows import SagaJournalError, project_activity_journal
+from control_plane_kit.projections import SagaJournalError, project_activity_journal
 
 
 def plan() -> ActivityPlan:

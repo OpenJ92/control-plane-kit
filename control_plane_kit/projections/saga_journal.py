@@ -1,4 +1,4 @@
-"""Adapt canonical activity events into the pure saga evidence model."""
+"""Project canonical activity events into the pure saga evidence model."""
 
 from __future__ import annotations
 

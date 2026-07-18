@@ -37,7 +37,7 @@ from control_plane_kit.workflows.commands import IdempotencyKey, InvalidOperatio
 from control_plane_kit.workflows.run_lifecycle import ExecutionWorkerAuthority
 from control_plane_kit.saga import SagaStateError
 from control_plane_kit.scheduling import ScheduleEvidenceError, derive_schedule
-from control_plane_kit.workflows.saga_journal import (
+from control_plane_kit.projections.saga_journal import (
     SagaJournalError,
     project_activity_journal,
 )

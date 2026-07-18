@@ -52,7 +52,7 @@ from control_plane_kit.stores import (
     OperationActionRecord,
     PostgresUnitOfWork,
 )
-from control_plane_kit.workflows.saga_journal import (
+from control_plane_kit.projections.saga_journal import (
     SagaJournalError,
     project_activity_journal,
 )

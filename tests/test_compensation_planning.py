@@ -31,7 +31,7 @@ from control_plane_kit.planning import (
 )
 from control_plane_kit.execution import ActivityEventKind, ActivityEventRecord
 from control_plane_kit.saga import compensation_candidates
-from control_plane_kit.workflows.saga_journal import (
+from control_plane_kit.projections.saga_journal import (
     initial_state_for_plan,
     project_activity_journal,
 )

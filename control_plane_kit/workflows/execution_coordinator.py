@@ -55,7 +55,7 @@ from control_plane_kit.workflows.run_lifecycle import (
     FailActivityRunCompensation,
     RunLifecycleCommandService,
 )
-from control_plane_kit.workflows.saga_journal import (
+from control_plane_kit.projections.saga_journal import (
     SagaJournalProjection,
     project_activity_journal,
 )
