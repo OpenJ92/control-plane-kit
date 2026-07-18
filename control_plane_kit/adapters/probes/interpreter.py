@@ -44,6 +44,7 @@ from control_plane_kit.execution import (
     ObservationStatus,
 )
 from control_plane_kit.planning import WaitForHealthy
+from control_plane_kit.types import Protocol
 
 
 MonotonicClock = Callable[[], float]
@@ -87,11 +88,17 @@ class ProbeEffectInterpreter:
                 policy,
             )
             transport_intent = transport_probe(request.material, endpoint, policy)
-            health_intent = application_health_probe(request.material, endpoint, policy)
             if isinstance(transport_intent, ProbeConstructionFailure):
                 return self._construction_failure(request, transport_intent)
-            if isinstance(health_intent, ProbeConstructionFailure):
-                return self._construction_failure(request, health_intent)
+            health_intent = None
+            if endpoint.protocol is Protocol.HTTP:
+                health_intent = application_health_probe(
+                    request.material,
+                    endpoint,
+                    policy,
+                )
+                if isinstance(health_intent, ProbeConstructionFailure):
+                    return self._construction_failure(request, health_intent)
         except ProbeSecurityError:
             return self._terminal_failure(
                 request,
@@ -115,6 +122,7 @@ class ProbeEffectInterpreter:
                     request.material_graph_id,
                     endpoint.context,
                     attempt,
+                    ProbeKind.TRANSPORT,
                 )
                 break
             try:
@@ -163,7 +171,7 @@ class ProbeEffectInterpreter:
         request: MaterializedEffectRequest,
         process_intent: ProcessProbeIntent,
         transport_intent: TransportProbeIntent,
-        health_intent: ApplicationHealthProbeIntent,
+        health_intent: ApplicationHealthProbeIntent | None,
         *,
         attempt: int,
         deadline: float,
@@ -178,6 +186,7 @@ class ProbeEffectInterpreter:
                     process_intent.graph_id,
                     transport_intent.endpoint.context,
                     attempt,
+                    ProbeKind.TRANSPORT,
                 )
             process = self.process.observe(
                 process_intent,
@@ -198,6 +207,7 @@ class ProbeEffectInterpreter:
                 process_intent.graph_id,
                 transport_intent.endpoint.context,
                 attempt,
+                ProbeKind.TRANSPORT,
             )
         transport = _at_attempt(
             self.transport.observe(
@@ -211,6 +221,23 @@ class ProbeEffectInterpreter:
         if transport.outcome is not ProbeOutcome.REACHABLE:
             return _not_ready(observed, process_intent, required, attempt)
 
+        if health_intent is None:
+            readiness_intent = ReadinessProbeIntent(
+                process_intent.subject_id,
+                process_intent.graph_id,
+                tuple(required),
+            )
+            observed.append(
+                ProbeObservation(
+                    readiness_intent.subject_id,
+                    readiness_intent.graph_id,
+                    readiness_intent.kind,
+                    ProbeOutcome.READY,
+                    attempts=attempt,
+                )
+            )
+            return tuple(observed)
+
         remaining = deadline - self.monotonic()
         if remaining <= 0:
             return _timeout_observations(
@@ -218,6 +245,7 @@ class ProbeEffectInterpreter:
                 process_intent.graph_id,
                 transport_intent.endpoint.context,
                 attempt,
+                ProbeKind.APPLICATION_HEALTH,
             )
         health = _at_attempt(
             self.application.observe(
@@ -320,12 +348,15 @@ def _timeout_observations(
     graph_id: str,
     context,
     attempt: int,
+    kind: ProbeKind,
 ) -> tuple[ProbeObservation, ...]:
+    if kind not in (ProbeKind.TRANSPORT, ProbeKind.APPLICATION_HEALTH):
+        raise ValueError("timeout observation requires an endpoint probe kind")
     return (
         ProbeObservation(
             subject_id,
             graph_id,
-            ProbeKind.APPLICATION_HEALTH,
+            kind,
             ProbeOutcome.TIMED_OUT,
             attempts=attempt,
             endpoint_context=context,

@@ -173,6 +173,70 @@ class ProbeEffectInterpreterTests(unittest.TestCase):
             "not-ready",
         )
 
+    def test_reachable_postgres_is_ready_without_an_http_health_contract(self) -> None:
+        health = SequenceHealthProbe([])
+        result = ProbeEffectInterpreter(
+            _endpoint_provider(protocol=Protocol.POSTGRES),
+            SequenceTransportProbe([ProbeOutcome.REACHABLE]),
+            health,
+            SequenceProcessProbe([ProbeOutcome.PROCESS_RUNNING]),
+        ).execute(_request(protocol=Protocol.POSTGRES))
+
+        self.assertIsInstance(result, EffectSucceeded)
+        self.assertEqual(health.outcomes, [])
+        evidence = [value.evidence.descriptor() for value in result.observations]
+        self.assertEqual(
+            [value["kind"] for value in evidence],
+            ["process", "transport", "readiness"],
+        )
+        self.assertEqual(
+            [value["outcome"] for value in evidence],
+            ["process-running", "reachable", "ready"],
+        )
+
+    def test_unreachable_postgres_is_not_ready_and_does_not_run_http(self) -> None:
+        health = SequenceHealthProbe([])
+        result = ProbeEffectInterpreter(
+            _endpoint_provider(protocol=Protocol.POSTGRES),
+            SequenceTransportProbe([ProbeOutcome.REFUSED]),
+            health,
+        ).execute(
+            _request(
+                protocol=Protocol.POSTGRES,
+                timeout=TimeoutPolicy(5),
+            )
+        )
+
+        self.assertIsInstance(result, EffectFailed)
+        self.assertEqual(result.failure.code, "probe.connection-refused")
+        self.assertEqual(health.outcomes, [])
+        self.assertEqual(
+            [value.evidence.descriptor()["kind"] for value in result.observations],
+            ["transport", "readiness"],
+        )
+
+    def test_postgres_deadline_exhaustion_is_transport_not_http_evidence(self) -> None:
+        moments = iter((100.0, 105.0))
+        result = ProbeEffectInterpreter(
+            _endpoint_provider(protocol=Protocol.POSTGRES),
+            SequenceTransportProbe([]),
+            SequenceHealthProbe([]),
+            monotonic=lambda: next(moments),
+            sleep=lambda _: None,
+        ).execute(
+            _request(
+                protocol=Protocol.POSTGRES,
+                timeout=TimeoutPolicy(5),
+            )
+        )
+
+        self.assertIsInstance(result, EffectFailed)
+        self.assertEqual(result.failure.code, "probe.timed-out")
+        self.assertEqual(
+            [value.evidence.descriptor()["kind"] for value in result.observations],
+            ["transport", "readiness"],
+        )
+
     def test_missing_endpoint_fails_before_any_probe_attempt(self) -> None:
         result = ProbeEffectInterpreter(
             StaticRuntimeEndpointProvider({}),
@@ -429,7 +493,8 @@ def _runtime() -> RuntimeMaterial:
     return RuntimeMaterial("docker", RuntimeKind.DOCKER, ("api",), "demo-network")
 
 
-def _node() -> NodeMaterial:
+def _node(protocol: Protocol = Protocol.HTTP) -> NodeMaterial:
+    scheme = "http" if protocol is Protocol.HTTP else protocol.value
     return NodeMaterial(
         "api",
         _runtime(),
@@ -437,17 +502,21 @@ def _node() -> NodeMaterial:
         (
             EndpointMaterial(
                 "internal",
-                Protocol.HTTP,
+                protocol,
                 EndpointScope.LOCAL,
-                LiteralEndpointMaterial("http://127.0.0.1:18000"),
+                LiteralEndpointMaterial(f"{scheme}://127.0.0.1:18000"),
             ),
         ),
         (),
-        "/health",
+        "/health" if protocol is Protocol.HTTP else None,
     )
 
 
-def _request(*, timeout: TimeoutPolicy | None = None) -> MaterializedEffectRequest:
+def _request(
+    *,
+    protocol: Protocol = Protocol.HTTP,
+    timeout: TimeoutPolicy | None = None,
+) -> MaterializedEffectRequest:
     action = WaitForHealthy(NodeTarget("api"))
     return MaterializedEffectRequest(
         EffectRequest(
@@ -457,23 +526,28 @@ def _request(*, timeout: TimeoutPolicy | None = None) -> MaterializedEffectReque
         ),
         PinnedGraphSet("workspace-a", "plan-a", "graph-base", "graph-a"),
         "graph-a",
-        _node(),
+        _node(protocol),
     )
 
 
-def _endpoint() -> RuntimeEndpointObservation:
+def _endpoint(protocol: Protocol = Protocol.HTTP) -> RuntimeEndpointObservation:
+    scheme = "http" if protocol is Protocol.HTTP else protocol.value
     return RuntimeEndpointObservation(
         "api",
         "internal",
         "graph-a",
-        Protocol.HTTP,
+        protocol,
         EndpointContext.HOST_LOCAL,
-        LiteralEndpointMaterial("http://127.0.0.1:18000"),
+        LiteralEndpointMaterial(f"{scheme}://127.0.0.1:18000"),
     )
 
 
-def _endpoint_provider() -> StaticRuntimeEndpointProvider:
-    return StaticRuntimeEndpointProvider({("api", "graph-a"): _endpoint()})
+def _endpoint_provider(
+    protocol: Protocol = Protocol.HTTP,
+) -> StaticRuntimeEndpointProvider:
+    return StaticRuntimeEndpointProvider(
+        {("api", "graph-a"): _endpoint(protocol)}
+    )
 
 
 def _process_intent():
