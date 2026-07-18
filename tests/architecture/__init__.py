@@ -37,6 +37,7 @@ from tests.architecture.policies import (
     TestIntegrityPolicy,
     TestIntegrityReport,
     ReadOnlyRoutePolicy,
+    SourceBoundaryPolicy,
     audit_test_integrity,
     declared_route_methods,
 )
@@ -67,6 +68,7 @@ __all__ = [
     "ReferenceFact",
     "ReadOnlyRoutePolicy",
     "SourceAnalysisError",
+    "SourceBoundaryPolicy",
     "SourceFacts",
     "SourceLocation",
     "TransportOwner",

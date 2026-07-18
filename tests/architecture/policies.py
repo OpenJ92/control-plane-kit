@@ -56,6 +56,63 @@ class PackageDependencyPolicy:
         return tuple(findings)
 
 
+@dataclass(frozen=True)
+class SourceBoundaryPolicy:
+    """Constrain one module family to composition over declared dependencies."""
+
+    rule_prefix: str
+    module_prefix: str
+    forbidden_import_prefixes: tuple[str, ...] = ()
+    forbidden_call_names: tuple[str, ...] = ()
+    forbidden_call_prefixes: tuple[str, ...] = ()
+    forbidden_class_names: tuple[str, ...] = ()
+
+    def evaluate(self, facts: SourceFacts) -> tuple[PolicyFinding, ...]:
+        if not (
+            facts.module == self.module_prefix
+            or facts.module.startswith(f"{self.module_prefix}.")
+        ):
+            return ()
+        findings: list[PolicyFinding] = []
+        for imported in facts.imports:
+            imported_name = _absolute_import_name(facts.module, imported.qualified_name)
+            if any(
+                _matches_prefix(imported_name, prefix)
+                for prefix in self.forbidden_import_prefixes
+            ):
+                findings.append(
+                    PolicyFinding(
+                        f"{self.rule_prefix}-import",
+                        f"{facts.module} imports forbidden boundary {imported_name}",
+                        imported.location,
+                    )
+                )
+        for call in facts.calls:
+            call_name = call.qualified_name.rsplit(".", 1)[-1]
+            if call_name in self.forbidden_call_names or any(
+                _matches_prefix(call.qualified_name, prefix)
+                for prefix in self.forbidden_call_prefixes
+            ):
+                findings.append(
+                    PolicyFinding(
+                        f"{self.rule_prefix}-call",
+                        f"{facts.module} calls forbidden boundary {call.qualified_name}",
+                        call.location,
+                    )
+                )
+        for declared in facts.classes:
+            class_name = declared.qualified_name.rsplit(".", 1)[-1]
+            if class_name in self.forbidden_class_names:
+                findings.append(
+                    PolicyFinding(
+                        f"{self.rule_prefix}-duplicate-type",
+                        f"{facts.module} redeclares canonical type {class_name}",
+                        declared.location,
+                    )
+                )
+        return tuple(sorted(findings))
+
+
 @dataclass(frozen=True, order=True)
 class TransportOwner:
     """Modules permitted to import one transport or process API."""
