@@ -5,9 +5,13 @@ from __future__ import annotations
 from dataclasses import dataclass
 
 from control_plane_kit.application.deploy.values import (
+    AdmissionGrant,
+    AdmittedDeployment,
     ApprovalGrant,
     ApprovalSuspension,
     ApprovedDeployment,
+    ClaimGrant,
+    ClaimedDeployment,
     DeploymentPlanRequest,
     DeploymentPreparation,
     DeploymentPreparationResult,
@@ -20,14 +24,20 @@ from control_plane_kit.workflows import (
     ApprovalDecisionKind,
     ApprovalDecisionResult,
     ApprovalRequestResult,
+    ClaimAndOpenActivityRun,
     DecidePlanApproval,
     DesiredGraphCommandService,
+    ExecutionAdmissionCommandService,
+    ExecutionAdmissionResult,
     IdempotencyKey,
     OperationCommandService,
     RequestActivityPlan,
     RequestPlanApproval,
+    RequestPlanExecution,
+    RunLifecycleCommandService,
     SetDesiredGraph,
     StartOperationSession,
+    StartActivityRun,
 )
 
 
@@ -129,3 +139,70 @@ class Approve:
         if not isinstance(result, ApprovalDecisionResult):
             raise TypeError("approval decision command returned the wrong result")
         return ApprovedDeployment(suspension, result)
+
+
+@dataclass(frozen=True)
+class Admit:
+    """Record durable execution intent for one explicitly approved plan."""
+
+    service: ExecutionAdmissionCommandService
+
+    def __call__(
+        self,
+        approved: ApprovedDeployment,
+        grant: AdmissionGrant,
+    ) -> AdmittedDeployment:
+        if not isinstance(approved, ApprovedDeployment):
+            raise TypeError("Admit requires ApprovedDeployment")
+        if not isinstance(grant, AdmissionGrant):
+            raise TypeError("Admit requires AdmissionGrant")
+        preparation = approved.suspension.preparation
+        approval_request = approved.suspension.approval_request.request
+        result = self.service.execute(
+            RequestPlanExecution(
+                workspace_id=preparation.request.workspace_id,
+                session_id=preparation.session.session.session_id,
+                plan_id=preparation.plan.plan_record.plan_id,
+                approval_request_id=approval_request.request_id,
+                actor_id=grant.actor_id,
+                actor_scopes=grant.actor_scopes,
+                idempotency_key=grant.idempotency_key,
+                readiness=grant.readiness,
+            )
+        )
+        if not isinstance(result, ExecutionAdmissionResult):
+            raise TypeError("execution admission command returned the wrong result")
+        return AdmittedDeployment(approved, result)
+
+
+@dataclass(frozen=True)
+class Claim:
+    """Claim/open then start one admitted run through canonical transitions."""
+
+    service: RunLifecycleCommandService
+
+    def __call__(
+        self,
+        admitted: AdmittedDeployment,
+        grant: ClaimGrant,
+    ) -> ClaimedDeployment:
+        if not isinstance(admitted, AdmittedDeployment):
+            raise TypeError("Claim requires AdmittedDeployment")
+        if not isinstance(grant, ClaimGrant):
+            raise TypeError("Claim requires ClaimGrant")
+        opened = self.service.execute(
+            ClaimAndOpenActivityRun(
+                request_id=admitted.admission.request.identity.request_id,
+                authority=grant.authority,
+                lease_expires_at=grant.lease_expires_at,
+                idempotency_key=grant.claim_idempotency_key,
+            )
+        )
+        started = self.service.execute(
+            StartActivityRun(
+                run_id=opened.run.run_id,
+                authority=grant.authority,
+                idempotency_key=grant.start_idempotency_key,
+            )
+        )
+        return ClaimedDeployment(admitted, opened, started, grant.authority)

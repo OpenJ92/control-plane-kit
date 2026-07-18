@@ -1,9 +1,13 @@
 """Typed deployment-transition application language."""
 
 from control_plane_kit.application.deploy.values import (
+    AdmissionGrant,
+    AdmittedDeployment,
     ApprovalGrant,
     ApprovalSuspension,
     ApprovedDeployment,
+    ClaimGrant,
+    ClaimedDeployment,
     DeploymentPlanRequest,
     DeploymentPreparation,
     DeploymentPreparationResult,
@@ -17,13 +21,25 @@ from control_plane_kit.application.deploy.values import (
     UpdateDeployment,
     classify_transition,
 )
-from control_plane_kit.application.deploy.stages import Approve, Plan, PlanningServices
+from control_plane_kit.application.deploy.stages import (
+    Admit,
+    Approve,
+    Claim,
+    Plan,
+    PlanningServices,
+)
 
 __all__ = [
+    "AdmissionGrant",
+    "Admit",
+    "AdmittedDeployment",
     "ApprovalGrant",
     "ApprovalSuspension",
     "ApprovedDeployment",
     "Approve",
+    "Claim",
+    "ClaimGrant",
+    "ClaimedDeployment",
     "DeploymentPlanRequest",
     "DeploymentPreparation",
     "DeploymentPreparationResult",
