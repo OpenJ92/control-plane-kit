@@ -1,24 +1,103 @@
 # Deployment Application Program
 
 `control_plane_kit.application.deploy` is the intentional application entrance
-for moving one deployment graph to another. It composes the package's canonical
-planning, approval, admission, lifecycle, execution, and advancement services.
-It does not replace their durable records or transaction boundaries.
+for moving one deployment graph to another. A long-lived `DeploymentProgram`
+composes the package's canonical planning, approval, admission, lifecycle,
+execution, advancement, and durable-context services. A short-lived `Deploy`
+binds that program to one graph pair. Neither object replaces durable records or
+transaction boundaries.
+
+## Object Lifecycles
+
+Create the capability composition once when the control-plane server starts:
+
+```python
+from control_plane_kit.application.deploy import (
+    DeploymentProgram,
+    DeploymentProgramServices,
+)
+
+program = DeploymentProgram(
+    DeploymentProgramServices(
+        planning=planning,
+        approvals=approval_command_service,
+        admission=execution_admission_service,
+        lifecycle=run_lifecycle_service,
+        coordinator=execution_coordinator,
+        advancement=current_graph_advancement_service,
+        contexts=deployment_plan_context_query_service,
+    )
+)
+```
+
+The three lifecycles are distinct:
+
+```text
+DeploymentProgram
+  long-lived capability composition; no operator workflow state
+
+Deploy
+  short-lived program specialized to current graph x desired graph
+
+plan, approval, execution request, run, event, and observation records
+  durable Postgres facts that survive process restarts and long delays
+```
+
+Planning binds a graph pair only for the current request:
+
+```python
+prepared = program.between(current, desired).plan(plan_command)
+```
+
+Later requests reconstruct from durable identity. The Python object from the
+planning request is neither retained nor required:
+
+```python
+approved = program.for_plan(plan_id).approve(
+    approval_request_id,
+    approval_grant,
+)
+
+result = program.for_plan(plan_id).run(
+    approval_request_id,
+    execution_grant,
+)
+```
+
+`for_plan()` returns an ephemeral handle containing only `plan_id`. Every
+`approve()` or `run()` invocation opens one read-only Postgres UnitOfWork,
+reconstructs the canonical graph, session, plan, and approval evidence, closes
+that transaction, and then delegates mutation to the existing command service.
+It does not cache a snapshot across requests.
+
+The approval request remains explicit because one plan may have more than one
+historical request. The server must never guess which authority decision an
+execution uses.
+
+The future CPI HTTP boundary maps directly onto this API:
+
+```text
+POST /workspaces/{workspace_id}/plans
+POST /plans/{plan_id}/approvals/{approval_request_id}
+POST /plans/{plan_id}/executions
+```
+
+Notification is a downstream adapter over durable `ApprovalRequested` truth.
+Failed email or push delivery cannot erase or become the approval request.
 
 ## One Transition Language
 
-Every deployment operation is a pair of graph values:
+Every deployment operation remains a pair of graph values:
 
 ```python
 from control_plane_kit import DeploymentGraph
-from control_plane_kit.application.deploy import Deploy
 
 empty = DeploymentGraph("empty")
 
-initial = Deploy(empty, desired, prepare, approve, execute_approved)
-update = Deploy(current, desired, prepare, approve, execute_approved)
-teardown = Deploy(current, empty, prepare, approve, execute_approved)
-no_op = Deploy(current, current, prepare, approve, execute_approved)
+initial = program.between(empty, desired)
+update = program.between(current, desired)
+teardown = program.between(current, empty)
+no_op = program.between(current, current)
 ```
 
 `Deploy.transition` interprets those pairs as one closed sum type:
@@ -281,7 +360,8 @@ mutation, and ownership-aware cleanup.
 - `examples.scenarios.workflow` is a Roadmap 0007 planning-only fixture. It does
   not execute effects and is not the deployment application API.
 - The older `DockerRuntimeInterpreter.up/down` surface remains a focused
-  low-level runtime example. New control-plane workflows should use `Deploy`.
+  low-level runtime example. New control-plane workflows should use
+  `DeploymentProgram`.
 - CPI packaging, CPI lifecycle, public endpoint advertisement, and parent-child
   instance spawning remain Roadmap 0009 work.
 
@@ -290,7 +370,7 @@ mutation, and ownership-aware cleanup.
 Use this package boundary:
 
 ```python
-from control_plane_kit.application.deploy import Deploy
+from control_plane_kit.application.deploy import DeploymentProgram
 ```
 
 The root `control_plane_kit` package intentionally does not flatten the

@@ -166,8 +166,9 @@ brainstorm with the following ordered topology:
                               -> #365 public API and guide
                                 -> #366 complete acceptance corpus
                                   -> #367 roadmap closeout
-                                    -> #227 Roadmap 0009 handoff
-                                      -> #246 guarded instance lifecycle evidence
+                                    -> #385 durable DeploymentProgram lifecycle
+                                      -> #227 Roadmap 0009 handoff
+                                        -> #246 guarded instance lifecycle evidence
 ```
 
 Parent issue: #210.
@@ -242,6 +243,24 @@ directly, or introduce a second journal. Every suspension is bound to the same
 typed graph pair, and each resumed command retains the authorization,
 transaction, concurrency, and pinned-graph checks owned by its canonical
 service.
+
+Post-closeout issue #385 separates object lifetime from workflow lifetime:
+
+```text
+DeploymentProgram
+  = long-lived capabilities
+
+Deploy
+  = DeploymentProgram specialized to current x desired
+
+StoredDeployment(plan_id)
+  = ephemeral handle that reloads durable truth per command
+```
+
+This makes hours- or days-later approval and execution ordinary HTTP request
+boundaries without retaining a Python object as state. Reconstruction occurs
+inside one read-only Postgres UnitOfWork and then delegates to the same approval,
+admission, lifecycle, coordinator, and advancement services.
 
 The common law is:
 

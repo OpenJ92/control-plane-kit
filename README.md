@@ -196,23 +196,25 @@ recovery candidates, and focused workflow reads are documented in
 
 ## Deployment Program
 
-The intentional application entrance is:
+The intentional long-lived application entrance is:
 
 ```python
-from control_plane_kit.application.deploy import Deploy
+from control_plane_kit.application.deploy import DeploymentProgram
 ```
 
-One parameterized program handles every graph-pair transition:
+One program binds every graph-pair transition:
 
 ```text
-initial deployment = Deploy(EmptyGraph, desired)
-update             = Deploy(current, desired)
-teardown           = Deploy(current, EmptyGraph)
-no-op              = Deploy(graph, graph)
+initial deployment = program.between(EmptyGraph, desired)
+update             = program.between(current, desired)
+teardown           = program.between(current, EmptyGraph)
+no-op              = program.between(graph, graph)
 ```
 
 It composes `Plan -> Approve -> Admit -> Claim -> Execute -> Advance` while
-keeping approval and recovery as explicit suspension boundaries. See
+keeping approval and recovery as explicit suspension boundaries. Later HTTP
+requests reconstruct with `program.for_plan(plan_id)` rather than retaining a
+Python object as workflow state. See
 [Deployment Application Program](docs/DEPLOY_PROGRAM.md) for construction,
 typed outcomes, operator grants, transaction laws, recovery, and live examples.
 
