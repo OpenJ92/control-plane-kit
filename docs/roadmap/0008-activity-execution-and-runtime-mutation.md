@@ -188,6 +188,13 @@ would otherwise be hidden inside broad implementation issues: strict closed
 schema validation (#328), one-winner recovery decisions and expired claims (#329),
 compensation crash windows (#330), and scenario-runner isolation (#331).
 
+Gate E is implemented and has passed its mandatory #327 milestone review. The
+review found the canonical services can be composed as `Deploy = Plan ->
+Approve -> Admit -> Claim -> Execute -> Advance`, with explicit durable
+suspensions for approval and recovery. The callable application composition and
+live proof remain Gate F work; Gate E did not add a facade or bypass the
+canonical services.
+
 The common law is:
 
 ```text
