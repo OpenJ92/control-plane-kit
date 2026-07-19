@@ -29,28 +29,55 @@ class PackageServerCatalogTests(unittest.TestCase):
         )
         self.assertEqual(len(PACKAGE_SERVER_CONTRACTS), len(PackageServerProduct))
 
-    def test_teaching_servers_advertise_only_probe_backed_health(self) -> None:
+    def test_teaching_servers_advertise_only_executable_evidence(self) -> None:
         teaching = tuple(
             contract
             for contract in PACKAGE_SERVER_CONTRACTS
             if contract.maturity is ProductMaturity.TEACHING
+        )
+        expected_probe_paths = {
+            PackageServerProduct.HELLO: "/",
+            PackageServerProduct.HTTP_PROXY: "/",
+            PackageServerProduct.HTTP_ACTIVE_ROUTER: "/",
+            PackageServerProduct.HTTP_MULTIPLEXER: "/",
+            PackageServerProduct.HTTP_RATE_LIMITER: "/",
+            PackageServerProduct.HTTP_WEIGHTED_LOAD_BALANCER: "/",
+            PackageServerProduct.REQUEST_OBSERVER: "/health",
+        }
+        self.assertEqual(
+            {contract.product for contract in teaching},
+            set(expected_probe_paths),
         )
 
         for contract in teaching:
             with self.subTest(product=contract.product.value):
                 self.assertEqual(
                     contract.block.spec.capabilities,
-                    (CapabilityName.HEALTH_CHECKABLE,),
+                    tuple(value.capability for value in contract.capabilities),
                 )
                 self.assertEqual(
                     contract.capabilities[0].implementation,
                     CapabilityImplementation.APPLICATION_PROBE,
                 )
-                self.assertEqual(contract.capabilities[0].path, "/")
+                self.assertEqual(
+                    contract.capabilities[0].path,
+                    expected_probe_paths[contract.product],
+                )
                 self.assertIsInstance(
                     contract.resolve(CapabilityName.TARGET_MUTABLE),
                     UnsupportedCapability,
                 )
+
+        observer = package_server_contract(PackageServerProduct.REQUEST_OBSERVER)
+        self.assertEqual(
+            observer.block.spec.capabilities,
+            (CapabilityName.HEALTH_CHECKABLE, CapabilityName.METRICS_READABLE),
+        )
+        self.assertEqual(observer.capabilities[0].path, "/health")
+        self.assertEqual(
+            observer.capabilities[1].route_set,
+            ControlRouteSetName.METRICS,
+        )
 
     def test_managed_router_capabilities_are_control_route_backed(self) -> None:
         contract = package_server_contract(PackageServerProduct.MANAGED_HTTP_ROUTER)

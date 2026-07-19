@@ -41,6 +41,12 @@ from control_plane_kit.servers.managed_http_router import (
     create_managed_http_router_app,
     managed_http_router_block,
 )
+from control_plane_kit.servers.request_observer import (
+    RequestObservation,
+    RequestObserverServer,
+    request_observer_block,
+    request_observer_command,
+)
 from control_plane_kit.servers.catalog import (
     PACKAGE_SERVER_CONTRACTS,
     CapabilityImplementation,
@@ -76,6 +82,8 @@ __all__ = [
     "PACKAGE_SERVER_CONTRACTS",
     "PackageServerContract",
     "ProductMaturity",
+    "RequestObservation",
+    "RequestObserverServer",
     "UnsupportedCapability",
     "create_block_control_app",
     "create_instance_read_app",
@@ -94,4 +102,6 @@ __all__ = [
     "http_weighted_load_balancer_command",
     "managed_http_router_block",
     "package_server_contract",
+    "request_observer_block",
+    "request_observer_command",
 ]

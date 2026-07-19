@@ -9,6 +9,7 @@ from control_plane_kit.servers import (
     http_proxy_command,
     http_rate_limiter_command,
     http_weighted_load_balancer_command,
+    request_observer_command,
 )
 from control_plane_kit.servers._templates import (
     GeneratedServerSyntaxError,
@@ -25,6 +26,7 @@ class ServerCommandTemplateTests(TestCase):
             http_weighted_load_balancer_command(),
             http_multiplexer_command(),
             http_rate_limiter_command(),
+            request_observer_command(),
         )
 
         for command in commands:
@@ -41,6 +43,7 @@ class ServerCommandTemplateTests(TestCase):
         self.assertIn("BALANCER_TARGET_A_URL", http_weighted_load_balancer_command()[2])
         self.assertIn("MULTIPLEXER_PRIMARY_URL", http_multiplexer_command()[2])
         self.assertIn("RATE_LIMIT_TARGET_URL", http_rate_limiter_command()[2])
+        self.assertIn("CPK_CONTROL_TOKEN", request_observer_command()[2])
 
     def test_invalid_rendered_source_fails_without_retaining_source(self):
         sensitive_source = "TOKEN = 'do-not-retain'\ndef broken(:\n"

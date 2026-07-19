@@ -983,3 +983,119 @@ complete Docker/Postgres suite: 835 passed
 assertions weakened: 0
 skips added: 0
 ```
+
+## #404 Decision Log: Bounded Request Observer
+
+### Capability
+
+The package now owns a terminal HTTP observer suitable for the copied branch of
+an `HTTP_MULTIPLEXER` topology:
+
+```text
+RequestObserverBlock
+  = PackageServerSpec(REQUEST_OBSERVER)
+  x DockerImageImplementation
+  x ProviderSocket(HTTP)
+  x SecretEnvironmentDelivery(control token)
+```
+
+The data route accepts bounded copied traffic and retains only:
+
+```python
+@dataclass(frozen=True)
+class RequestObservation:
+    count: int
+    latest_correlation_id: str | None
+```
+
+Bodies, paths, query values, authorization headers, cookies, arbitrary headers,
+and caller-provided correlation identities are discarded. The package generates
+the retained identity from the monotonic in-process observation count.
+
+Operational evidence is available through the authenticated closed route set:
+
+```text
+CapabilityName.METRICS_READABLE
+  -> ControlRouteSetName.METRICS
+    -> GET /__deploy/metrics
+```
+
+`/health` remains an unauthenticated readiness probe. The metrics route accepts
+the opaque control token only at runtime; the graph retains its secret reference
+and never its value.
+
+### Objects, Morphisms, And Laws
+
+```text
+HttpRequest
+  -> bounded request-observer interpreter
+    -> HttpResponse(202, generated correlation identity)
+    -> RequestObservation(count, latest identity)
+
+PackageServerProduct.REQUEST_OBSERVER
+  -> package-server capability contract
+    -> executable health probe + authenticated metrics route
+```
+
+- request bodies are bounded to 1 through 1,048,576 configured bytes;
+- an oversized request returns `413` and does not change observation state;
+- unauthorized metrics access returns `401`;
+- advertised capabilities exactly equal the executable capability evidence;
+- the generated command crosses the existing strict Jinja2/Python syntax
+  boundary;
+- observer state is explicitly ephemeral process state, not graph or durable
+  operational truth;
+- no request-controlled value enters the retained observation descriptor.
+
+### Breaking Point: Expected HTTP errors were not closed
+
+The first focused run passed but emitted `ResourceWarning` for the expected
+`401` and `413` responses. The tests now close both `HTTPError` response objects
+while preserving the exact status assertions. No application behavior changed.
+
+### Breaking Point: Readiness helper assumed application health
+
+The first multiplexer integration fixture used the observer `/health` helper for
+a temporary Python file server. That server has no `/health` contract, so the
+fixture incorrectly treated an application-level `404` as failure to start.
+
+The correction uses a TCP listening check for the opaque primary and retains an
+HTTP health check for the package-owned observer. This explicitly preserves the
+distinction between transport reachability and application readiness.
+
+### Breaking Point: Primary response was decoded as observer JSON
+
+The multiplexer successfully returned the primary file server response, but the
+test reused a JSON-only control-route helper and failed while decoding HTML.
+The primary assertion now reads the response as opaque bytes and checks only its
+HTTP status. Metrics remain decoded through the JSON control-route helper.
+
+### Review Finding: Generic probe assertion weakened exact paths
+
+The first catalogue update changed the existing teaching-product assertion from
+an exact `"/"` probe to merely non-null because the observer uses `/health`.
+Test-integrity review rejected that weakening. The final test contains a closed
+product-to-path table, preserves every prior exact `"/"` assertion, requires the
+observer's exact `/health` path, and fails when a new teaching product lacks an
+explicit expected path.
+
+### Evidence
+
+```text
+focused Docker suite: 29 passed
+live generated multiplexer path:
+  client -> multiplexer -> opaque primary response
+                       `-> request observer -> authenticated count == 1
+complete Docker/Postgres suite: 840 passed
+assertions weakened: 0
+skips added: 0
+request-controlled values retained: 0
+```
+
+### Handoff To #413
+
+Use this observer as the terminal copied-traffic target while hardening the
+multiplexer itself. Keep observer failure off the primary response path, bound
+both copied requests and observer response handling, and preserve graph position
+as the distinction between terminal observation and the later inline logger in
+`#415`.

@@ -1,0 +1,82 @@
+import hmac
+import json
+import os
+import threading
+from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
+
+CONTROL_TOKEN = os.environ["CPK_CONTROL_TOKEN"]
+MAX_REQUEST_BYTES = {{ max_request_bytes }}
+LOCK = threading.Lock()
+COUNT = 0
+LATEST_CORRELATION_ID = None
+
+
+def correlation_id(count):
+    return f"observation-{count:020d}"
+
+
+class Handler(BaseHTTPRequestHandler):
+    def _json(self, status, payload):
+        body = json.dumps(payload, sort_keys=True, separators=(",", ":")).encode()
+        self.send_response(status)
+        self.send_header("content-type", "application/json")
+        self.send_header("content-length", str(len(body)))
+        self.end_headers()
+        self.wfile.write(body)
+
+    def _authorized(self):
+        authorization = self.headers.get("authorization", "")
+        alternate = self.headers.get("x-control-plane-token", "")
+        return hmac.compare_digest(authorization, f"Bearer {CONTROL_TOKEN}") or hmac.compare_digest(alternate, CONTROL_TOKEN)
+
+    def _observe(self):
+        global COUNT, LATEST_CORRELATION_ID
+        try:
+            length = int(self.headers.get("content-length", "0") or "0")
+        except ValueError:
+            self._json(400, {"detail": "invalid content length"})
+            return
+        if length < 0 or length > MAX_REQUEST_BYTES:
+            self._json(413, {"detail": "request exceeds configured limit"})
+            return
+        self.connection.settimeout(2)
+        if length:
+            self.rfile.read(length)
+        with LOCK:
+            COUNT += 1
+            LATEST_CORRELATION_ID = correlation_id(COUNT)
+            current = LATEST_CORRELATION_ID
+        self._json(202, {"accepted": True, "correlation_id": current})
+
+    def do_GET(self):
+        path = self.path.split("?", 1)[0]
+        if path == "/health":
+            self._json(200, {"status": "healthy"})
+            return
+        if path == "/__deploy/metrics":
+            if not self._authorized():
+                self._json(401, {"detail": "unauthorized"})
+                return
+            with LOCK:
+                payload = {"count": COUNT, "latest_correlation_id": LATEST_CORRELATION_ID}
+            self._json(200, payload)
+            return
+        self._observe()
+
+    def do_POST(self):
+        self._observe()
+
+    def do_PUT(self):
+        self._observe()
+
+    def do_PATCH(self):
+        self._observe()
+
+    def do_DELETE(self):
+        self._observe()
+
+    def log_message(self, format, *args):
+        pass
+
+
+ThreadingHTTPServer(("0.0.0.0", {{ port }}), Handler).serve_forever()

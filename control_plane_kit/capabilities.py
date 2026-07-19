@@ -91,6 +91,7 @@ METRICS_READABLE = Capability(
     name=CapabilityName.METRICS_READABLE,
     label="Metrics",
     description="Node exposes deploy-readable operational counters.",
+    route_set=ControlRouteSetName.METRICS,
 )
 RESTARTABLE = Capability(
     name=CapabilityName.RESTARTABLE,
