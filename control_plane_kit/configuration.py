@@ -13,6 +13,7 @@ from typing import Mapping
 
 MAX_CONFIGURATION_BYTES = 262_144
 _ARTIFACT_ID = re.compile(r"[a-z][a-z0-9-]{0,62}\Z")
+_TARGET_SEGMENT = re.compile(r"[A-Za-z0-9._-]{1,128}\Z")
 _SECRET_ASSIGNMENT = re.compile(
     r"(?im)^\s*(?:password|secret|token|credential|private_key|api_key)\s*[:=]"
 )
@@ -110,6 +111,8 @@ def _validate_target_path(value: str) -> None:
     path = PurePosixPath(value)
     if str(path) != value or ".." in path.parts or value == "/":
         raise ConfigurationArtifactError("configuration target path is not normalized")
+    if any(not _TARGET_SEGMENT.fullmatch(part) for part in path.parts[1:]):
+        raise ConfigurationArtifactError("configuration target path contains unsafe characters")
     if any(value == root or value.startswith(f"{root}/") for root in _FORBIDDEN_ROOTS):
         raise ConfigurationArtifactError("configuration target path is reserved")
 

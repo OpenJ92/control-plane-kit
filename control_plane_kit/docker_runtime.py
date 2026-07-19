@@ -10,6 +10,7 @@ from enum import StrEnum
 from dataclasses import dataclass, field, replace
 from typing import Mapping, Protocol, TypeAlias
 
+from control_plane_kit.configuration import ConfigurationArtifact
 from control_plane_kit.effects import (
     EffectCapability,
     EffectFailed,
@@ -52,6 +53,12 @@ from control_plane_kit.runtimes import CleanupPolicy, RuntimeActivity, RuntimeNo
 from control_plane_kit.types import Protocol as SocketProtocol, RuntimeKind, Transport
 
 
+_CONFIGURATION_HELPER_IMAGE = (
+    "python:3.14-slim@"
+    "sha256:cea0e6040540fb2b965b6e7fb5ffa00871e632eef63719f0ea54bca189ce14a6"
+)
+
+
 class UnsupportedDockerRuntimeFeature(ValueError):
     """Raised when a graph cannot be realized by the Docker interpreter yet."""
 
@@ -89,7 +96,7 @@ class DockerClient(Protocol):
 
     def inspect_container(self, name: str, *, timeout_seconds: int = 30) -> "DockerResourceInspection | None": ...
 
-    def run_container(self, *, name: str, image: str, network: str, environment: Mapping[str, str], command: tuple[str, ...], labels: Mapping[str, str], mounts: Mapping[str, str] | None = None, ports: tuple["DockerPortBinding", ...] = (), timeout_seconds: int = 30) -> None: ...
+    def run_container(self, *, name: str, image: str, network: str, environment: Mapping[str, str], command: tuple[str, ...], labels: Mapping[str, str], mounts: Mapping[str, str] | None = None, configuration_mounts: tuple["DockerConfigurationMount", ...] = (), ports: tuple["DockerPortBinding", ...] = (), timeout_seconds: int = 30) -> None: ...
 
     def inspect_volume(self, name: str, *, timeout_seconds: int = 30) -> "DockerResourceInspection | None": ...
 
@@ -111,12 +118,28 @@ class DockerClient(Protocol):
 
     def remove_owned_volume(self, name: str, ownership: "DockerOwnership", *, timeout_seconds: int = 30) -> None: ...
 
+    def materialize_configuration_artifact(
+        self,
+        volume_name: str,
+        artifact: ConfigurationArtifact,
+        *,
+        timeout_seconds: int = 30,
+    ) -> None: ...
+
+    def configuration_artifact_digest(
+        self,
+        volume_name: str,
+        *,
+        timeout_seconds: int = 30,
+    ) -> str | None: ...
+
 
 @dataclass(frozen=True)
 class DockerCliClient:
     """Docker client backed by the local `docker` CLI."""
 
     docker: str = "docker"
+    configuration_helper_image: str = _CONFIGURATION_HELPER_IMAGE
 
     def inspect_network(self, name: str, *, timeout_seconds: int = 30) -> "DockerResourceInspection | None":
         if not self._resource_exists(
@@ -196,6 +219,7 @@ class DockerCliClient:
         command: tuple[str, ...],
         labels: Mapping[str, str],
         mounts: Mapping[str, str] | None = None,
+        configuration_mounts: tuple["DockerConfigurationMount", ...] = (),
         ports: tuple["DockerPortBinding", ...] = (),
         timeout_seconds: int = 30,
     ) -> None:
@@ -208,6 +232,11 @@ class DockerCliClient:
             args.extend(("--label", f"{key}={value}"))
         for source, target in sorted((mounts or {}).items()):
             args.extend(("--mount", f"type=volume,source={source},target={target}"))
+        for mount in sorted(
+            configuration_mounts,
+            key=lambda value: value.artifact.artifact_id,
+        ):
+            args.extend(("--mount", mount.docker_argument()))
         for binding in sorted(ports, key=lambda value: value.socket_name):
             args.extend(("--publish", binding.docker_argument()))
         args.append(image)
@@ -309,6 +338,96 @@ class DockerCliClient:
         if inspected is not None:
             self._run("volume", "rm", inspected.resource_id, timeout_seconds=timeout_seconds)
 
+    def materialize_configuration_artifact(
+        self,
+        volume_name: str,
+        artifact: ConfigurationArtifact,
+        *,
+        timeout_seconds: int = 30,
+    ) -> None:
+        script = (
+            "from pathlib import Path\n"
+            "import os, sys\n"
+            "root = Path('/artifact')\n"
+            "temporary = root / '.content.tmp'\n"
+            "target = root / 'content'\n"
+            "with temporary.open('wb') as stream:\n"
+            "    stream.write(sys.stdin.buffer.read())\n"
+            "    stream.flush()\n"
+            "    os.fsync(stream.fileno())\n"
+            "os.chmod(temporary, int(sys.argv[1], 8))\n"
+            "os.replace(temporary, target)\n"
+        )
+        self._run_with_input(
+            artifact.content,
+            "run",
+            "--rm",
+            "--interactive",
+            "--network",
+            "none",
+            "--read-only",
+            "--cap-drop",
+            "ALL",
+            "--security-opt",
+            "no-new-privileges",
+            "--mount",
+            f"type=volume,source={volume_name},target=/artifact",
+            self.configuration_helper_image,
+            "python",
+            "-B",
+            "-c",
+            script,
+            artifact.file_mode.value,
+            timeout_seconds=timeout_seconds,
+        )
+
+    def configuration_artifact_digest(
+        self,
+        volume_name: str,
+        *,
+        timeout_seconds: int = 30,
+    ) -> str | None:
+        script = (
+            "from pathlib import Path\n"
+            "import hashlib, sys\n"
+            "target = Path('/artifact/content')\n"
+            "if not target.is_file():\n"
+            "    raise SystemExit(3)\n"
+            "print(hashlib.sha256(target.read_bytes()).hexdigest())\n"
+        )
+        result = self._capture(
+            "run",
+            "--rm",
+            "--network",
+            "none",
+            "--read-only",
+            "--cap-drop",
+            "ALL",
+            "--security-opt",
+            "no-new-privileges",
+            "--mount",
+            f"type=volume,source={volume_name},target=/artifact,readonly",
+            self.configuration_helper_image,
+            "python",
+            "-B",
+            "-c",
+            script,
+            check=False,
+            timeout_seconds=timeout_seconds,
+        )
+        if result.returncode == 3:
+            return None
+        if result.returncode != 0:
+            raise UnsupportedDockerRuntimeFeature(
+                "Docker configuration digest inspection failed"
+            )
+        digest = result.stdout.strip()
+        if len(digest) != 64 or any(value not in "0123456789abcdef" for value in digest):
+            raise UnsupportedDockerRuntimeFeature(
+                "Docker configuration digest inspection was malformed"
+            )
+        return digest
+
     def ensure_network(self, name: str, *, timeout_seconds: int = 30) -> None:
         expected = DockerOwnership.legacy_network(name)
         inspected = self.inspect_network(name, timeout_seconds=timeout_seconds)
@@ -380,6 +499,22 @@ class DockerCliClient:
             stderr=subprocess.DEVNULL,
             timeout=timeout_seconds,
             env=environment,
+        )
+
+    def _run_with_input(
+        self,
+        input_text: str,
+        *args: str,
+        timeout_seconds: int = 30,
+    ) -> subprocess.CompletedProcess[str]:
+        return subprocess.run(
+            (self.docker, *args),
+            input=input_text,
+            check=True,
+            text=True,
+            stdout=subprocess.DEVNULL,
+            stderr=subprocess.DEVNULL,
+            timeout=timeout_seconds,
         )
 
     def _capture(
@@ -460,6 +595,20 @@ class DockerPortBinding:
         )
 
 
+@dataclass(frozen=True)
+class DockerConfigurationMount:
+    artifact: ConfigurationArtifact
+    volume_name: str
+    ownership: "DockerOwnership"
+
+    def docker_argument(self) -> str:
+        return (
+            f"type=volume,source={self.volume_name},"
+            f"target={self.artifact.target_path},"
+            "volume-subpath=content,readonly"
+        )
+
+
 class DockerOwnershipConflict(ValueError):
     """Raised when a Docker name resolves to incompatible ownership truth."""
 
@@ -470,6 +619,14 @@ class DockerOwnershipConflict(ValueError):
 
 class DockerPostconditionUnknown(RuntimeError):
     """Raised after mutation when Docker cannot prove the requested result."""
+
+
+class DockerConfigurationConflict(ValueError):
+    """Raised when owned configuration storage does not contain pinned content."""
+
+    def __init__(self, artifact_id: str) -> None:
+        self.artifact_id = artifact_id
+        super().__init__("Docker configuration content conflicts with pinned material")
 
 
 _LABEL_PREFIX = "io.control-plane-kit"
@@ -483,6 +640,7 @@ class DockerOwnership:
     intent_fingerprint: str
     node_id: str | None = None
     data_resource_id: str | None = None
+    configuration_artifact_id: str | None = None
     effect_id: str | None = None
 
     def labels(self) -> dict[str, str]:
@@ -497,6 +655,10 @@ class DockerOwnership:
             values[f"{_LABEL_PREFIX}.node"] = self.node_id
         if self.data_resource_id is not None:
             values[f"{_LABEL_PREFIX}.data-resource"] = self.data_resource_id
+        if self.configuration_artifact_id is not None:
+            values[f"{_LABEL_PREFIX}.configuration-artifact"] = (
+                self.configuration_artifact_id
+            )
         if self.effect_id is not None:
             values[f"{_LABEL_PREFIX}.created-by"] = self.effect_id
         return values
@@ -552,6 +714,12 @@ def classify_docker_resource(
     if (
         expected.data_resource_id is not None
         and labels.get(f"{_LABEL_PREFIX}.data-resource") != expected.data_resource_id
+    ):
+        return DockerResourceDisposition.OWNED_CONFLICTING
+    if (
+        expected.configuration_artifact_id is not None
+        and labels.get(f"{_LABEL_PREFIX}.configuration-artifact")
+        != expected.configuration_artifact_id
     ):
         return DockerResourceDisposition.OWNED_CONFLICTING
     if labels.get(f"{_LABEL_PREFIX}.intent") != expected.intent_fingerprint:
@@ -673,6 +841,7 @@ class StartDockerNodeEffect:
     command: tuple[str, ...]
     environment: tuple[EnvironmentBindingMaterial, ...]
     data_mounts: tuple["DockerDataMount", ...]
+    configuration_mounts: tuple[DockerConfigurationMount, ...]
     host_publications: tuple[DockerPortBinding, ...]
     ownership: DockerOwnership
 
@@ -704,6 +873,7 @@ class RemoveDockerNodeResourceEffect:
     node_id: str
     container_name: str
     ownership: DockerOwnership
+    configuration_mounts: tuple[DockerConfigurationMount, ...] = ()
 
 
 @dataclass(frozen=True)
@@ -775,6 +945,13 @@ class DockerEffectInterpreter:
                         ),
                     )
                 case StartDockerNodeEffect():
+                    _require_owned_compatible(
+                        self.client.inspect_container(
+                            command.container_name,
+                            timeout_seconds=timeout,
+                        ),
+                        command.ownership,
+                    )
                     mount_dispositions = {
                         mount.resource_id: _ensure_owned_volume(
                             self.client,
@@ -783,6 +960,14 @@ class DockerEffectInterpreter:
                             timeout_seconds=timeout,
                         ).value
                         for mount in command.data_mounts
+                    }
+                    configuration_dispositions = {
+                        mount.artifact.artifact_id: _ensure_configuration_mount(
+                            self.client,
+                            mount,
+                            timeout_seconds=timeout,
+                        ).value
+                        for mount in command.configuration_mounts
                     }
                     disposition = _start_owned_container(
                         self.client,
@@ -803,6 +988,7 @@ class DockerEffectInterpreter:
                                 "node_id": command.node_id,
                                 "disposition": disposition.value,
                                 "data_resources": mount_dispositions,
+                                "configuration_artifacts": configuration_dispositions,
                                 "host_publications": [
                                     {
                                         "container_port": value.container_port,
@@ -872,11 +1058,30 @@ class DockerEffectInterpreter:
                         self.client.inspect_container(name, timeout_seconds=timeout),
                         ownership,
                     )
+                    configuration_dispositions = {
+                        mount.artifact.artifact_id: _require_owned_compatible(
+                            self.client.inspect_volume(
+                                mount.volume_name,
+                                timeout_seconds=timeout,
+                            ),
+                            mount.ownership,
+                        )
+                        for mount in command.configuration_mounts
+                    }
                     self.client.remove_owned_container(
                         name,
                         ownership,
                         timeout_seconds=timeout,
                     )
+                    try:
+                        for mount in command.configuration_mounts:
+                            self.client.remove_owned_volume(
+                                mount.volume_name,
+                                mount.ownership,
+                                timeout_seconds=timeout,
+                            )
+                    except (subprocess.SubprocessError, OSError, ValueError, TypeError) as error:
+                        raise DockerPostconditionUnknown from error
                     return EffectSucceeded(
                         request.identity,
                         BoundedEvidence.from_mapping(
@@ -884,6 +1089,10 @@ class DockerEffectInterpreter:
                                 "operation": "remove-container",
                                 "node_id": command.node_id,
                                 "disposition": disposition.value,
+                                "configuration_artifacts": {
+                                    artifact_id: value.value
+                                    for artifact_id, value in configuration_dispositions.items()
+                                },
                                 "ownership": _ownership_evidence(ownership),
                             }
                         ),
@@ -955,6 +1164,15 @@ class DockerEffectInterpreter:
                     FailureCategory.TERMINAL,
                     "docker.ownership-conflict",
                     f"Docker mutation refused because the resource is {error.disposition.value}.",
+                ),
+            )
+        except DockerConfigurationConflict:
+            return EffectFailed(
+                request.identity,
+                FailureEvidence(
+                    FailureCategory.TERMINAL,
+                    "docker.configuration-conflict",
+                    "Docker mutation refused because owned configuration does not match pinned material.",
                 ),
             )
         except subprocess.TimeoutExpired:
@@ -1056,6 +1274,7 @@ def plan_docker_effect(
                 node.implementation.command,
                 node.implementation.environment,
                 _docker_data_mounts(request, node, project_name),
+                _docker_configuration_mounts(request, node, project_name),
                 _docker_port_bindings(node),
                 _node_ownership(request, node),
             )
@@ -1080,6 +1299,7 @@ def plan_docker_effect(
                 node.node_id,
                 _container_name(project_name, node.runtime.runtime_id, node.node_id),
                 _node_ownership(request, node),
+                _docker_configuration_mounts(request, node, project_name),
             )
         case RemoveRuntimeResource(), RuntimeMaterial() as runtime:
             _require_docker(runtime)
@@ -1196,6 +1416,16 @@ def _node_ownership(
                     }
                     for value in node.implementation.host_publications
                 ],
+                "configuration_artifacts": [
+                    {
+                        "artifact_id": value.artifact_id,
+                        "target_path": value.target_path,
+                        "media_type": value.media_type.value,
+                        "content_digest": value.content_digest,
+                        "file_mode": value.file_mode.value,
+                    }
+                    for value in node.implementation.configuration_artifacts
+                ],
             }
         ),
         node_id=node.node_id,
@@ -1256,6 +1486,26 @@ def _docker_port_bindings(node: NodeMaterial) -> tuple[DockerPortBinding, ...]:
     )
 
 
+def _docker_configuration_mounts(
+    request: MaterializedEffectRequest,
+    node: NodeMaterial,
+    project_name: str,
+) -> tuple[DockerConfigurationMount, ...]:
+    return tuple(
+        DockerConfigurationMount(
+            artifact,
+            _volume_name(
+                project_name,
+                node.runtime.runtime_id,
+                node.node_id,
+                f"config-{artifact.artifact_id}",
+            ),
+            _configuration_ownership(request, node, artifact),
+        )
+        for artifact in node.implementation.configuration_artifacts
+    )
+
+
 def _data_ownership(
     request: MaterializedEffectRequest,
     node: NodeMaterial,
@@ -1278,6 +1528,31 @@ def _data_ownership(
     )
 
 
+def _configuration_ownership(
+    request: MaterializedEffectRequest,
+    node: NodeMaterial,
+    artifact: ConfigurationArtifact,
+) -> DockerOwnership:
+    return DockerOwnership(
+        request.graphs.workspace_id,
+        node.runtime.runtime_id,
+        DockerResourceKind.VOLUME,
+        _fingerprint(
+            {
+                "node_id": node.node_id,
+                "artifact_id": artifact.artifact_id,
+                "target_path": artifact.target_path,
+                "media_type": artifact.media_type.value,
+                "content_digest": artifact.content_digest,
+                "file_mode": artifact.file_mode.value,
+            }
+        ),
+        node_id=node.node_id,
+        configuration_artifact_id=artifact.artifact_id,
+        effect_id=request.identity.idempotency_key,
+    )
+
+
 def _ownership_evidence(ownership: DockerOwnership) -> dict[str, object]:
     return {
         "workspace_id": ownership.workspace_id,
@@ -1285,6 +1560,7 @@ def _ownership_evidence(ownership: DockerOwnership) -> dict[str, object]:
         "resource_kind": ownership.resource_kind.value,
         "node_id": ownership.node_id,
         "data_resource_id": ownership.data_resource_id,
+        "configuration_artifact_id": ownership.configuration_artifact_id,
         "intent_fingerprint": ownership.intent_fingerprint,
     }
 
@@ -1345,6 +1621,39 @@ def _ensure_owned_volume(
     return disposition
 
 
+def _ensure_configuration_mount(
+    client: DockerClient,
+    mount: DockerConfigurationMount,
+    *,
+    timeout_seconds: int,
+) -> DockerResourceDisposition:
+    disposition = _ensure_owned_volume(
+        client,
+        mount.volume_name,
+        mount.ownership,
+        timeout_seconds=timeout_seconds,
+    )
+    if disposition is DockerResourceDisposition.ABSENT:
+        try:
+            client.materialize_configuration_artifact(
+                mount.volume_name,
+                mount.artifact,
+                timeout_seconds=timeout_seconds,
+            )
+        except (subprocess.SubprocessError, OSError, ValueError, TypeError) as error:
+            raise DockerPostconditionUnknown from error
+    try:
+        digest = client.configuration_artifact_digest(
+            mount.volume_name,
+            timeout_seconds=timeout_seconds,
+        )
+    except (subprocess.SubprocessError, OSError, ValueError, TypeError) as error:
+        raise DockerPostconditionUnknown from error
+    if digest != mount.artifact.content_digest:
+        raise DockerConfigurationConflict(mount.artifact.artifact_id)
+    return disposition
+
+
 def _start_owned_container(
     client: DockerClient,
     command: StartDockerNodeEffect,
@@ -1378,6 +1687,7 @@ def _start_owned_container(
                 mount.volume_name: mount.target_path
                 for mount in command.data_mounts
             },
+            configuration_mounts=command.configuration_mounts,
             ports=command.host_publications,
             timeout_seconds=timeout_seconds,
         )

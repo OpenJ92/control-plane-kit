@@ -47,6 +47,7 @@ class OwnershipClient:
         command,
         labels,
         mounts=None,
+        configuration_mounts=(),
         ports=(),
         timeout_seconds=30,
     ):
@@ -118,7 +119,10 @@ class DockerOwnershipTests(unittest.TestCase):
         )
 
         self.assertIsInstance(result, EffectSucceeded)
-        labels = client.calls[1][3]
+        create_container = next(
+            call for call in client.calls if call[0] == "run"
+        )
+        labels = create_container[3]
         self.assertEqual(labels["io.control-plane-kit.workspace"], "workspace")
         self.assertEqual(labels["io.control-plane-kit.runtime"], "docker")
         self.assertEqual(labels["io.control-plane-kit.node"], "api")
