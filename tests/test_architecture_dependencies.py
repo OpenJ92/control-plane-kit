@@ -42,6 +42,9 @@ PACKAGE_RULES = (
     PackageDependencyRule("control_routes", ()),
     PackageDependencyRule("discovery", ("topology", "types")),
     PackageDependencyRule(
+        "discovery_registry", ("discovery", "topology", "types")
+    ),
+    PackageDependencyRule(
         "docker_runtime",
         (
             "configuration",
