@@ -71,6 +71,7 @@ from control_plane_kit.servers.http_load_generator import (
     LoadRunConflict,
     create_load_generator_app,
     http_load_generator_block,
+    http_load_generator_command,
 )
 from control_plane_kit.servers.http_fault_injector import (
     ConnectionTerminationFault,
@@ -203,6 +204,7 @@ __all__ = [
     "LoadRunConflict",
     "create_load_generator_app",
     "http_load_generator_block",
+    "http_load_generator_command",
     "HttpCachePolicy",
     "HttpCacheServer",
     "HttpFault",

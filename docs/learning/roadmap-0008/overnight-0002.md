@@ -816,3 +816,150 @@ Handoff to #437:
   coverage;
 - preserve TEST_ONLY admission and owned-process cleanup;
 - do not reinterpret generated traffic as application-level correctness.
+
+## #437 HTTP Policy And Resilience Family Acceptance
+
+### Capability
+
+The complete closed HTTP product family now appears in one ordinary deployment
+expression:
+
+```text
+load generator -> managed entry router
+                    |-> active router -> proxy -> auth -> rate limiter
+                    |                              -> weighted balancer
+                    |                                   |-> logger -> retry
+                    |                                   |             -> circuit
+                    |                                   |                 -> cache
+                    |                                   |                     -> Hello A
+                    |                                   `-> timeout -> bulkhead
+                    |                                                -> fault injector
+                    |                                                    -> multiplexer
+                    |                                                         |-> Hello B
+                    |                                                         `-> observer
+                    `-> Hello green
+
+idempotency gateway -> Hello target
+                    -> Postgres
+```
+
+The exact authoring expression is
+`examples/http_policy_family.py:http_policy_family_recipe`. It is composed
+only from `DeploymentRecipe`, `DockerRuntime`, deployable blocks, and
+`SocketConnection` values. It creates no combined gateway product and no
+acceptance-only graph model.
+
+### Objects And Transformations
+
+```text
+DeploymentRecipe
+  -> compile_recipe
+    -> validated heterogeneous DeploymentGraph
+      -> GraphDescriptorCodec
+        -> exact canonical descriptor
+
+EmptyGraph x HTTPFamilyGraph
+  -> diff_graphs
+    -> compile_activity_plan
+      -> dependency-ordered ActivityPlan
+```
+
+The entry router owns a package verification contract:
+
+```python
+VerificationContract(
+    (
+        HttpCheck(
+            check_id="entry-can-reach-application",
+            provider_socket="internal",
+            path="/probe",
+        ),
+    )
+)
+```
+
+Environment-bound socket edges make provider health a predecessor of consumer
+startup. The managed router's runtime-controlled active socket remains a
+separate explicit edge interpreted after process startup.
+
+### Representative Live Proof
+
+One focused test starts real generated server processes for:
+
+```text
+load generator
+  -> rate limiter
+    -> weighted balancer
+      |-> traffic logger -> retry -> circuit breaker -> target A
+      `-> timeout -> bulkhead -> disabled fault injector
+                              -> multiplexer
+                                  |-> target B
+                                  `-> request observer
+```
+
+Twelve generated requests produce eight successful responses and four explicit
+rate-limit rejections. Both balancer branches receive real HTTP traffic.
+Observer count equals branch-B terminal deliveries, and logger count equals
+branch-A terminal deliveries. Aggregate evidence contains neither control
+tokens nor target addresses.
+
+This is representative server-composition evidence. It intentionally does not
+replace the later Postgres-backed `DeploymentProgram` proof in #407 or static
+Docker realization in #408.
+
+### Breakpoints And Resolutions
+
+1. The first graph validation failed because the managed router's
+   runtime-controlled `active` requirement was not connected. The expression
+   now declares that edge explicitly; the requirement was not made optional.
+2. The first logger read asked for 100 entries while the product's default
+   page bound is 50. The acceptance client now obeys the public bound; the
+   server bound was not raised.
+3. The first startup-order assertion treated runtime-control edges like startup
+   environment edges. The law now distinguishes the two typed bindings:
+   environment consumers depend on provider health, while runtime control is a
+   post-start mutation.
+4. Direct Python equality failed after codec reconstruction because canonical
+   decoding sorts runtime children while authoring preserves source insertion
+   order. The durable law is exact canonical descriptor round trip:
+   `encode(decode(encode(graph))) == encode(graph)`.
+5. Docker BuildKit lost a parent extraction snapshot while exporting a rebuilt
+   test image. Only build cache was pruned. Running containers, images, volumes,
+   and Pottery Factory processes were not removed.
+
+### Evidence
+
+```text
+focused HTTP family acceptance: 4 passed
+complete Docker/Postgres suite:   917 passed
+assertions weakened:              0
+skips added:                      0
+mocked application behavior:      0
+```
+
+The suite also retains every atomic HTTP product proof: timeout, retry,
+circuit, bulkhead, rate limit, cache, authentication, idempotency, logging,
+observer delivery, fault injection, load generation, router mutation,
+descriptor closure, capability truth, and control-route authentication.
+
+### Review And Handoff
+
+- Algebra: every product retains exact `PackageServerProduct`, implementation,
+  sockets, maturity, verification, and descriptor identity.
+- Security: test-only products fail production validation; mutable controls are
+  authenticated; the live assertion rejects token and address retention.
+- Data: the acceptance addition introduces no store and no transaction.
+- Effects: live processes are bounded, joined, and exercised only through
+  public HTTP surfaces.
+- Test integrity: no skip, mock, or weakened assertion was introduced.
+
+Handoff to #440, #441, and #405:
+
+- reuse `http_policy_family_recipe` as a source expression rather than copying
+  its node list into another graph model;
+- named recipes may choose coherent subsets but must expand to visible ordinary
+  blocks and socket connections;
+- #405 should add typed invalid heterogeneous variants;
+- #407 must carry this graph through the existing Postgres-backed
+  `DeploymentProgram`;
+- #408 owns canonical Docker materialization and resource cleanup.

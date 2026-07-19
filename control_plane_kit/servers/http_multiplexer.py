@@ -115,13 +115,15 @@ def http_multiplexer_block(
     )
 
 
-def http_multiplexer_command() -> tuple[str, ...]:
+def http_multiplexer_command(*, port: int = 8080) -> tuple[str, ...]:
     """Return a tiny stdlib HTTP multiplexer command for Docker examples."""
 
+    if type(port) is not int or port < 1 or port > 65_535:
+        raise ValueError("multiplexer port must be between 1 and 65535")
     return render_python_command(
         "http_multiplexer.py.j2",
         primary_env="MULTIPLEXER_PRIMARY_URL",
         observer_a_env="MULTIPLEXER_OBSERVER_A_URL",
         observer_b_env="MULTIPLEXER_OBSERVER_B_URL",
-        port=8080,
+        port=port,
     )
