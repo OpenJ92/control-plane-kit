@@ -347,16 +347,20 @@ class DockerCliClient:
     ) -> None:
         script = (
             "from pathlib import Path\n"
-            "import os, sys\n"
+            "import os, sys, tempfile\n"
             "root = Path('/artifact')\n"
-            "temporary = root / '.content.tmp'\n"
             "target = root / 'content'\n"
-            "with temporary.open('wb') as stream:\n"
-            "    stream.write(sys.stdin.buffer.read())\n"
-            "    stream.flush()\n"
-            "    os.fsync(stream.fileno())\n"
-            "os.chmod(temporary, int(sys.argv[1], 8))\n"
-            "os.replace(temporary, target)\n"
+            "descriptor, name = tempfile.mkstemp(prefix='.content.', dir=root)\n"
+            "temporary = Path(name)\n"
+            "try:\n"
+            "    with os.fdopen(descriptor, 'wb') as stream:\n"
+            "        stream.write(sys.stdin.buffer.read())\n"
+            "        stream.flush()\n"
+            "        os.fsync(stream.fileno())\n"
+            "    os.chmod(temporary, int(sys.argv[1], 8))\n"
+            "    os.replace(temporary, target)\n"
+            "finally:\n"
+            "    temporary.unlink(missing_ok=True)\n"
         )
         self._run_with_input(
             artifact.content,
@@ -1633,7 +1637,14 @@ def _ensure_configuration_mount(
         mount.ownership,
         timeout_seconds=timeout_seconds,
     )
-    if disposition is DockerResourceDisposition.ABSENT:
+    try:
+        digest = client.configuration_artifact_digest(
+            mount.volume_name,
+            timeout_seconds=timeout_seconds,
+        )
+    except (subprocess.SubprocessError, OSError, ValueError, TypeError) as error:
+        raise DockerPostconditionUnknown from error
+    if digest is None:
         try:
             client.materialize_configuration_artifact(
                 mount.volume_name,
@@ -1642,13 +1653,13 @@ def _ensure_configuration_mount(
             )
         except (subprocess.SubprocessError, OSError, ValueError, TypeError) as error:
             raise DockerPostconditionUnknown from error
-    try:
-        digest = client.configuration_artifact_digest(
-            mount.volume_name,
-            timeout_seconds=timeout_seconds,
-        )
-    except (subprocess.SubprocessError, OSError, ValueError, TypeError) as error:
-        raise DockerPostconditionUnknown from error
+        try:
+            digest = client.configuration_artifact_digest(
+                mount.volume_name,
+                timeout_seconds=timeout_seconds,
+            )
+        except (subprocess.SubprocessError, OSError, ValueError, TypeError) as error:
+            raise DockerPostconditionUnknown from error
     if digest != mount.artifact.content_digest:
         raise DockerConfigurationConflict(mount.artifact.artifact_id)
     return disposition

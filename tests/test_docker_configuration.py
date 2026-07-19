@@ -1,7 +1,9 @@
 from __future__ import annotations
 
+from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass, field, replace
 import subprocess
+from threading import Barrier, Lock
 import unittest
 
 from control_plane_kit import (
@@ -147,6 +149,101 @@ class ConfigurationClient:
         raise AssertionError("legacy removal is outside this fixture")
 
 
+class ConcurrentConfigurationClient(ConfigurationClient):
+    def __init__(self) -> None:
+        super().__init__()
+        self._lock = Lock()
+        self._container_preflight = Barrier(2)
+        self._volume_preflight = Barrier(2)
+        self._materialization = Barrier(2)
+        self._container_inspections = 0
+        self._volume_inspections = 0
+
+    def inspect_container(self, name, *, timeout_seconds=30):
+        with self._lock:
+            self.calls.append(("inspect-container", name))
+            self._container_inspections += 1
+            preflight = self._container_inspections <= 2
+            current = self.containers.get(name)
+        if preflight:
+            self._container_preflight.wait(timeout=timeout_seconds)
+            return None
+        return current
+
+    def inspect_volume(self, name, *, timeout_seconds=30):
+        with self._lock:
+            self.calls.append(("inspect-volume", name))
+            self._volume_inspections += 1
+            preflight = self._volume_inspections <= 2
+            current = self.volumes.get(name)
+        if preflight:
+            self._volume_preflight.wait(timeout=timeout_seconds)
+            return None
+        return current
+
+    def create_volume(self, name, labels, *, timeout_seconds=30):
+        with self._lock:
+            self.calls.append(("create-volume", name))
+            if name in self.volumes:
+                raise subprocess.CalledProcessError(1, ("docker", "volume", "create"))
+            self.volumes[name] = DockerResourceInspection(
+                DockerResourceKind.VOLUME,
+                name,
+                name,
+                False,
+                None,
+                dict(labels),
+            )
+
+    def materialize_configuration_artifact(
+        self,
+        volume_name,
+        artifact,
+        *,
+        timeout_seconds=30,
+    ):
+        with self._lock:
+            self.calls.append(("materialize", volume_name, artifact.artifact_id))
+        self._materialization.wait(timeout=timeout_seconds)
+        with self._lock:
+            self.digests[volume_name] = artifact.content_digest
+
+    def configuration_artifact_digest(self, volume_name, *, timeout_seconds=30):
+        with self._lock:
+            self.calls.append(("digest", volume_name))
+            return self.digests.get(volume_name)
+
+    def run_container(
+        self,
+        *,
+        name,
+        image,
+        network,
+        environment,
+        command,
+        labels,
+        mounts=None,
+        configuration_mounts=(),
+        ports=(),
+        timeout_seconds=30,
+    ):
+        with self._lock:
+            for mount in configuration_mounts:
+                if self.digests.get(mount.volume_name) != mount.artifact.content_digest:
+                    raise AssertionError("container started before configuration verification")
+            self.calls.append(("run-container", name))
+            if name in self.containers:
+                raise subprocess.CalledProcessError(1, ("docker", "run"))
+            self.containers[name] = DockerResourceInspection(
+                DockerResourceKind.CONTAINER,
+                "container-id",
+                name,
+                True,
+                image,
+                dict(labels),
+            )
+
+
 class DockerConfigurationTests(unittest.TestCase):
     def test_start_materializes_before_container_and_replay_converges(self) -> None:
         client = ConfigurationClient()
@@ -185,6 +282,48 @@ class DockerConfigurationTests(unittest.TestCase):
         self.assertEqual(result.failure.code, "docker.configuration-conflict")
         self.assertEqual(
             [value[0] for value in client.calls].count("run-container"),
+            1,
+        )
+
+    def test_owned_incomplete_volume_is_completed_by_exact_replay(self) -> None:
+        client = ConfigurationClient(fail_materialization=True)
+        interpreter = DockerEffectInterpreter(project_name="demo", client=client)
+        request = _request(StartNode(NodeTarget("api")), _node())
+        first = interpreter.execute(request)
+        self.assertIsInstance(first, EffectFailed)
+        self.assertEqual(first.failure.category.value, "uncertain")
+
+        client.fail_materialization = False
+        replay = interpreter.execute(request)
+
+        self.assertIsInstance(replay, EffectSucceeded)
+        self.assertEqual(
+            next(iter(client.digests.values())),
+            _artifact().content_digest,
+        )
+
+    def test_concurrent_identical_starts_converge_on_exact_artifact(self) -> None:
+        client = ConcurrentConfigurationClient()
+        request = _request(StartNode(NodeTarget("api")), _node())
+
+        def execute():
+            return DockerEffectInterpreter(project_name="demo", client=client).execute(
+                request
+            )
+
+        with ThreadPoolExecutor(max_workers=2) as executor:
+            results = tuple(executor.map(lambda _: execute(), range(2)))
+
+        self.assertTrue(all(isinstance(result, EffectSucceeded) for result in results))
+        self.assertEqual(len(client.volumes), 1)
+        self.assertEqual(len(client.containers), 1)
+        self.assertEqual(tuple(client.digests.values()), (_artifact().content_digest,))
+        self.assertEqual(
+            [call[0] for call in client.calls].count("materialize"),
+            2,
+        )
+        self.assertEqual(
+            [call[0] for call in client.calls].count("run-container"),
             1,
         )
 
