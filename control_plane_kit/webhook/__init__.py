@@ -34,6 +34,26 @@ from control_plane_kit.webhook.language import (
     webhook_event_from_descriptor,
     webhook_intent_from_descriptor,
 )
+from control_plane_kit.webhook.postgres import (
+    WEBHOOK_POSTGRES_SCHEMA,
+    PostgresWebhookCommandRecord,
+    PostgresWebhookCommandStore,
+    PostgresWebhookIntentStore,
+    PostgresWebhookJournalStore,
+    PostgresWebhookProjectionRecord,
+    PostgresWebhookProjectionStore,
+    install_webhook_schema,
+)
+from control_plane_kit.webhook.protocols import (
+    WebhookCommandRecord,
+    WebhookCommandStore,
+    WebhookIntentStore,
+    WebhookJournalStore,
+    WebhookProjectionRecord,
+    WebhookProjectionStore,
+    WebhookUnitOfWork,
+)
+from control_plane_kit.webhook.unit_of_work import PostgresWebhookUnitOfWork
 
 __all__ = [
     "MAX_WEBHOOK_PAYLOAD_BYTES",
@@ -68,4 +88,20 @@ __all__ = [
     "webhook_event_descriptor",
     "webhook_event_from_descriptor",
     "webhook_intent_from_descriptor",
+    "WEBHOOK_POSTGRES_SCHEMA",
+    "PostgresWebhookCommandRecord",
+    "PostgresWebhookCommandStore",
+    "PostgresWebhookIntentStore",
+    "PostgresWebhookJournalStore",
+    "PostgresWebhookProjectionRecord",
+    "PostgresWebhookProjectionStore",
+    "PostgresWebhookUnitOfWork",
+    "WebhookCommandRecord",
+    "WebhookCommandStore",
+    "WebhookIntentStore",
+    "WebhookJournalStore",
+    "WebhookProjectionRecord",
+    "WebhookProjectionStore",
+    "WebhookUnitOfWork",
+    "install_webhook_schema",
 ]

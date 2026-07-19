@@ -1707,3 +1707,100 @@ SQL or external effects introduced:                   0
 Handoff to #511: persist these exact claim events and reconstructible active
 claim. SQL may enforce one-winner appends and projection versions, but it must
 not invent another claim status, lease language, or mutable dispatch cursor.
+
+## #511 Webhook-Owned Postgres And UnitOfWork
+
+### Capability
+
+Webhook delivery now has a dedicated application persistence boundary over one
+Postgres connection:
+
+```text
+PostgresWebhookUnitOfWork
+  = IntentStore
+  x JournalStore
+  x ProjectionStore
+  x CommandStore
+  x one caller-owned transaction
+```
+
+The intent relation retains exact dispatch material, including bounded payload
+bytes and only the signing `SecretReference`. The event relation is the
+immutable canonical journal. The current projection is an indexed,
+reconstructible derivative carrying its exact journal version. The command
+ledger gives later services durable exact-replay identity.
+
+### Transaction And Reconstruction Laws
+
+```python
+with PostgresWebhookUnitOfWork(connect) as work:
+    work.intents.add(intent)
+    work.journal.append(identity, expected_ordinal=1, event=enqueued)
+    work.projections.add(initial_state, journal_version=1)
+    work.commands.add(...)
+    work.commit()
+```
+
+`commit()` requests commit; it does not expose transaction ownership to a
+store. On normal exit without that request, exceptions, or commit failure, the
+UnitOfWork rolls back the shared connection. The existing architecture policy
+admits this exact application UnitOfWork module and continues rejecting commit
+calls from stores and unrelated modules.
+
+Executable laws prove:
+
+- all four repositories participate in one atomic transaction;
+- schema installation executes inside the caller's transaction and never
+  commits or rolls back itself;
+- reinstalling the schema preserves rows and named constraint identity;
+- journal append and projection replacement reject stale versions;
+- delivery and command advisory locks serialize independent connections;
+- concurrent enqueue and claim decisions have exactly one winner;
+- the stored projection equals replay of the canonical event journal;
+- unknown event/status values and malformed relational state fail closed;
+- payload bytes and signing values remain absent from diagnostics and command
+  results; only the signing reference is durable;
+- no HTTP, secret-resolution, Docker, or other external effect exists in this
+  persistence issue.
+
+### Breakpoints And Resolutions
+
+1. Architecture analysis correctly rejected the new UnitOfWork's commit call.
+   The exact `control_plane_kit.webhook.unit_of_work` module was added to the
+   closed owner set and an executable policy test proves that store commits
+   remain rejected. No package-prefix exemption was added.
+2. The complete suite exposed an unrelated live-fixture race. Two sequential
+   released-port probes could select the same port, and the one-second startup
+   budget was too narrow under container load. The fixture now reserves both
+   dynamic ports simultaneously and uses an explicit five-second monotonic
+   readiness deadline. Its end-to-end forwarding and observer assertions are
+   unchanged.
+3. The Postgres relations deliberately duplicate exact immutable event
+   descriptors alongside normalized intent columns. The event journal remains
+   independently replayable canonical history; the projection is explicitly
+   derivative and is checked against replay in real-Postgres tests.
+4. Webhook persistence does not import CPI stores or CPI
+   `PostgresUnitOfWork`. It is owned by the webhook application so a packaged
+   webhook service can receive its own Postgres requirement socket.
+
+### Evidence And Handoff
+
+```text
+focused real-Postgres webhook cases:                 9 passed
+focused live multiplexer regression:                 1 passed
+complete Docker/Postgres suite:                    983 passed
+assertions weakened:                                 0
+skips added:                                         0
+external effects introduced:                        0
+```
+
+Handoff to #512:
+
+- compose command services over these four stores and this UnitOfWork;
+- preserve one command as one short explicit transaction;
+- commit durable claim/attempt intent before outbound delivery;
+- resolve secrets and perform HTTP only after that transaction closes;
+- record result and replay-equivalent projection in a second short transaction;
+- never treat claim lease expiry after attempt start as permission for blind
+  replay;
+- introduce no second journal, projection, recovery cursor, or CPI transaction.
