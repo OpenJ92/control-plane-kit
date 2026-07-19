@@ -82,6 +82,7 @@ def _materialize_block(block: DeployBlock, runtime: RuntimeContext) -> Node:
         endpoints=materialized.endpoints,
         metadata=metadata,
         lifecycle=materialized.lifecycle,
+        configuration_artifacts=materialized.configuration_artifacts,
     )
 
 

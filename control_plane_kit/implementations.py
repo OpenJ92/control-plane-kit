@@ -6,6 +6,7 @@ from dataclasses import dataclass, field
 from ipaddress import IPv4Address, IPv6Address
 
 from control_plane_kit.algebra import BlockSockets, RuntimeContext
+from control_plane_kit.configuration import ConfigurationArtifact
 from control_plane_kit.lifecycle import ResourceLifecycle
 from control_plane_kit.topology.graph import Endpoint, EndpointAddress, LiteralAddress
 from control_plane_kit.types import EndpointScope, Protocol, RuntimeKind
@@ -30,6 +31,7 @@ class MaterializedNode:
     endpoints: dict[str, Endpoint]
     metadata: dict[str, object] = field(default_factory=dict)
     lifecycle: ResourceLifecycle = field(default_factory=ResourceLifecycle.owned_ephemeral)
+    configuration_artifacts: tuple[ConfigurationArtifact, ...] = ()
 
 
 @dataclass(frozen=True)
@@ -68,6 +70,7 @@ class DockerImageImplementation:
     environment: dict[str, str | SecretEnvironmentReference] = field(default_factory=dict)
     data_mounts: dict[str, str] = field(default_factory=dict)
     host_publications: dict[str, HostPublication] = field(default_factory=dict)
+    configuration_artifacts: tuple[ConfigurationArtifact, ...] = ()
     lifecycle: ResourceLifecycle = field(default_factory=ResourceLifecycle.owned_ephemeral)
     kind: str = "docker-image"
 
@@ -85,6 +88,7 @@ class DockerImageImplementation:
                 protocol=provider.protocol,
             )
         _validate_host_publications(block_id, sockets, self.host_publications)
+        _validate_configuration_artifacts(self.configuration_artifacts)
         return MaterializedNode(
             kind=self.kind,
             endpoints=endpoints,
@@ -104,6 +108,7 @@ class DockerImageImplementation:
                 ),
             },
             lifecycle=self.lifecycle,
+            configuration_artifacts=tuple(sorted(self.configuration_artifacts)),
         )
 
 
@@ -350,3 +355,18 @@ def _host_publication_descriptors(
         }
         for socket_name, publication in sorted(publications.items())
     ]
+
+
+def _validate_configuration_artifacts(
+    artifacts: tuple[ConfigurationArtifact, ...],
+) -> None:
+    if not isinstance(artifacts, tuple) or not all(
+        isinstance(value, ConfigurationArtifact) for value in artifacts
+    ):
+        raise TypeError("configuration artifacts must be ConfigurationArtifact values")
+    identities = tuple(value.artifact_id for value in artifacts)
+    paths = tuple(value.target_path for value in artifacts)
+    if len(set(identities)) != len(identities):
+        raise ValueError("configuration artifact identities must be unique per node")
+    if len(set(paths)) != len(paths):
+        raise ValueError("configuration artifact target paths must be unique per node")
