@@ -7,6 +7,7 @@ from datetime import datetime, timezone
 from enum import StrEnum
 import re
 from typing import Mapping, TypeAlias
+from urllib.parse import urlsplit
 
 from control_plane_kit.topology.graph import (
     Endpoint,
@@ -31,6 +32,24 @@ class DiscoveryScope(StrEnum):
     RESOLVE = "discovery:resolve"
     MANAGE = "discovery:manage"
     REGISTER_SELF = "discovery:register-self"
+
+
+class DiscoveryRegistrationStatus(StrEnum):
+    """Closed current-projection status for one registration identity."""
+
+    ACTIVE = "active"
+    DEREGISTERED = "deregistered"
+    EXPIRED = "expired"
+
+
+class DiscoveryOutcome(StrEnum):
+    """Closed result variants returned by the discovery command service."""
+
+    REGISTERED = "registered"
+    HEARTBEAT = "heartbeat"
+    DEREGISTERED = "deregistered"
+    RESOLVED = "resolved"
+    EXPIRED = "expired"
 
 
 @dataclass(frozen=True, slots=True)
@@ -84,6 +103,13 @@ class DiscoveryRegistration:
             raise TypeError("discovery registration endpoint must be typed")
         if not isinstance(self.endpoint.address, LiteralAddress):
             raise ValueError("discovery registration requires a literal endpoint address")
+        if len(self.endpoint.url.encode()) > 2_048 or any(
+            character in self.endpoint.url for character in "\r\n\0"
+        ):
+            raise ValueError("discovery endpoint address must be bounded and single-line")
+        parsed = urlsplit(self.endpoint.url)
+        if parsed.username is not None or parsed.password is not None:
+            raise ValueError("discovery endpoint address must not contain credentials")
         if self.endpoint.scope is EndpointScope.LOCAL:
             raise ValueError("process-local endpoints cannot be registered for discovery")
         if not isinstance(self.mode, DiscoveryRegistrationMode):
@@ -97,6 +123,61 @@ class DiscoveryRegistration:
             "endpoint": self.endpoint.descriptor(),
             "mode": self.mode.value,
             "lease": self.lease.descriptor(),
+        }
+
+
+@dataclass(frozen=True, slots=True)
+class DiscoveryRegistrationRecord:
+    """Current lease projection for one discoverable instance."""
+
+    registration: DiscoveryRegistration
+    status: DiscoveryRegistrationStatus
+    revision: int
+    updated_at: datetime
+
+    def __post_init__(self) -> None:
+        if not isinstance(self.registration, DiscoveryRegistration):
+            raise TypeError("discovery record registration must be typed")
+        if not isinstance(self.status, DiscoveryRegistrationStatus):
+            raise TypeError("discovery record status must be typed")
+        if type(self.revision) is not int or self.revision < 1:
+            raise ValueError("discovery record revision must be positive")
+        _aware("updated_at", self.updated_at)
+
+    def descriptor(self) -> dict[str, object]:
+        return {
+            "registration": self.registration.descriptor(),
+            "status": self.status.value,
+            "revision": self.revision,
+            "updated_at": _timestamp(self.updated_at),
+        }
+
+
+@dataclass(frozen=True, slots=True)
+class DiscoveryResult:
+    outcome: DiscoveryOutcome
+    registrations: tuple[DiscoveryRegistrationRecord, ...] = ()
+    affected_count: int = 0
+    replayed: bool = False
+
+    def __post_init__(self) -> None:
+        if not isinstance(self.outcome, DiscoveryOutcome):
+            raise TypeError("discovery result outcome must be typed")
+        if not isinstance(self.registrations, tuple) or any(
+            not isinstance(value, DiscoveryRegistrationRecord)
+            for value in self.registrations
+        ):
+            raise TypeError("discovery result registrations must be typed")
+        if type(self.affected_count) is not int or self.affected_count < 0:
+            raise ValueError("discovery result affected_count must be nonnegative")
+        if type(self.replayed) is not bool:
+            raise TypeError("discovery result replayed must be bool")
+
+    def descriptor(self) -> dict[str, object]:
+        return {
+            "outcome": self.outcome.value,
+            "registrations": [value.descriptor() for value in self.registrations],
+            "affected_count": self.affected_count,
         }
 
 
@@ -352,6 +433,8 @@ def discovery_authority_from_descriptor(
         scopes = frozenset(DiscoveryScope(scope) for scope in scopes_value)
     except ValueError as error:
         raise ValueError("unknown discovery authority scope") from error
+    if len(scopes) != len(scopes_value):
+        raise ValueError("discovery authority scopes must be unique")
     subject = value.get("subject_instance_id")
     if subject is not None and not isinstance(subject, str):
         raise ValueError("discovery subject_instance_id must be text or null")
@@ -361,6 +444,48 @@ def discovery_authority_from_descriptor(
         scopes,
         subject_instance_id=subject,
     )
+
+
+def discovery_result_from_descriptor(value: Mapping[str, object]) -> DiscoveryResult:
+    """Decode one exact immutable command result snapshot."""
+
+    _exact(value, "outcome", "registrations", "affected_count")
+    try:
+        outcome = DiscoveryOutcome(_text(value, "outcome"))
+    except ValueError as error:
+        raise ValueError("unknown discovery result outcome") from error
+    registrations_value = value.get("registrations")
+    if not isinstance(registrations_value, list):
+        raise ValueError("discovery result registrations must be an array")
+    registrations = tuple(
+        _registration_record(item)
+        if isinstance(item, Mapping)
+        else _raise_registration_record()
+        for item in registrations_value
+    )
+    return DiscoveryResult(
+        outcome,
+        registrations,
+        _integer(value, "affected_count"),
+    )
+
+
+def _registration_record(value: Mapping[str, object]) -> DiscoveryRegistrationRecord:
+    _exact(value, "registration", "status", "revision", "updated_at")
+    try:
+        status = DiscoveryRegistrationStatus(_text(value, "status"))
+    except ValueError as error:
+        raise ValueError("unknown discovery registration status") from error
+    return DiscoveryRegistrationRecord(
+        _registration(_mapping(value, "registration")),
+        status,
+        _integer(value, "revision"),
+        _datetime(value, "updated_at"),
+    )
+
+
+def _raise_registration_record() -> DiscoveryRegistrationRecord:
+    raise ValueError("discovery result registration must be an object")
 
 
 def _registration(value: Mapping[str, object]) -> DiscoveryRegistration:

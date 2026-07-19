@@ -1060,3 +1060,110 @@ skips added:                                                          0
 - stores may execute and return rows but never commit;
 - explicit observed timestamps drive lease expiry;
 - preserve graph truth independently from registry lease truth.
+
+## #502 Durable Service-Discovery Registry
+
+### Capability
+
+The service-discovery block now has its own transactional Postgres boundary:
+
+```text
+DiscoveryRegistryService
+  -> DiscoveryUnitOfWork
+    -> PostgresDiscoveryStore
+      -> current lease projection
+      x immutable command ledger
+```
+
+The current projection is normalized by
+`(workspace_id, service_id, instance_id)`. The command ledger separately owns
+command identity, intent fingerprint, actor identity, bounded result snapshot,
+and recording time. Exact replay returns the original durable result. Reusing a
+command id with changed intent fails without mutating the projection.
+
+This is deliberately not part of the control-plane persistence module. The
+registry has a dedicated `PostgresDiscoveryUnitOfWork`; neither the existing
+`PostgresUnitOfWork` nor its stores were modified or imported.
+
+### Transaction And Lease Laws
+
+```text
+one discovery command
+  = one explicit registry-owned Postgres transaction
+```
+
+- the application service owns commit;
+- the store never commits;
+- command and identity advisory locks serialize competing writers;
+- projection mutation and immutable command evidence commit together;
+- a late command-ledger failure rolls back an earlier projection mutation;
+- an active unexpired identity has one registration winner;
+- an expired identity may be registered again but cannot be revived by a late
+  heartbeat or deregistration;
+- expiry changes status and revision without deleting prior lease truth;
+- resolution returns only active leases whose expiry is strictly after the
+  explicit observation time.
+
+The database independently closes registration status, registration mode,
+endpoint scope, command variant, lease ordering, revision, and the valid
+transport/application protocol product. Direct SQL cannot bypass the pure
+protocol algebra with unknown strings.
+
+### Security And Descriptor Boundaries
+
+Registry endpoint values reuse the canonical typed `Endpoint`, but their
+literal addresses are additionally bounded to 2,048 bytes, single-line, and
+credential-free. Workspace authority is checked before writes. Control-plane
+registrations require management scope; self-registration requires both the
+self-registration scope and an exact subject/instance match. Authority
+descriptors reject duplicate and unknown scopes.
+
+Result descriptors remain closed JSON-shaped durable values. They reconstruct
+typed `DiscoveryResult` and `DiscoveryRegistrationRecord` values rather than
+leaking database rows into the application language.
+
+### Breakpoints And Resolutions
+
+1. The initial projection rule treated every active row as permanently
+   exclusive, including rows whose leases had already expired. Registration
+   now compares the existing expiry to the command's recorded time, allowing a
+   new lease while preserving the row's increasing revision.
+2. Heartbeat and deregistration initially relied only on exact expiry equality.
+   Both now reject commands recorded at or after that expiry, so a stale client
+   cannot revive or rewrite an expired lease.
+3. Pure protocol construction closed valid combinations, but direct SQL could
+   still write arbitrary transport/application strings. A named Postgres check
+   constraint now mirrors the closed product and survives schema
+   reinstallation.
+4. The first complete suite run passed all discovery tests but two existing
+   live HTTP child processes missed their five-second readiness windows while
+   remaining alive. Both tests passed unchanged in the same image when run
+   alone, and the complete suite then passed unchanged on rerun. No timeout,
+   assertion, skip, or application behavior was relaxed. This is retained as a
+   test-harness pressure signal for later hardening if it recurs.
+
+### Evidence
+
+```text
+complete Docker/Postgres suite:                   933 passed
+focused unchanged live HTTP rerun:                  2 passed
+independent-connection registration winner proof:   present
+late-ledger rollback proof:                          present
+schema reinstall row/constraint preservation:       present
+assertions weakened:                                      0
+skips added:                                             0
+```
+
+### Handoff To #503
+
+- mount the existing `DiscoveryRegistryService` behind authenticated FastAPI
+  routes; do not move transaction ownership into route handlers or stores;
+- bootstrap a dedicated registry database connection from the block's declared
+  `DISCOVERY_DATABASE_URL` requirement;
+- decode the existing closed command and authority descriptors at the HTTP
+  boundary;
+- advertise service-discovery capabilities only after route behavior is live
+  and tested;
+- keep tokens, database credentials, endpoint credentials, and command bodies
+  out of durable results and errors;
+- keep network effects outside the registry transaction.
