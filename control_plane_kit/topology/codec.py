@@ -408,7 +408,7 @@ def _boolean(descriptor: Mapping[str, object], key: str, *, default: bool) -> bo
 def _protocol(value: object, path: str) -> Protocol:
     descriptor = _mapping(value, path)
     try:
-        return Protocol(_text(descriptor, "protocol"))
+        return Protocol.parse(_text(descriptor, "protocol"))
     except ValueError as error:
         raise UnknownGraphVariant(f"unknown protocol: {error}") from error
 
