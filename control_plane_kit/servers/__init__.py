@@ -37,6 +37,15 @@ from control_plane_kit.servers.http_rate_limiter import (
     http_rate_limiter_block,
     http_rate_limiter_command,
 )
+from control_plane_kit.servers.http_retry import (
+    HttpRetryServer,
+    RetryMethodPolicy,
+    RetryObservation,
+    RetryPolicy,
+    RetryStatusPolicy,
+    http_retry_block,
+    http_retry_command,
+)
 from control_plane_kit.servers.http_weighted_balancer import (
     HttpWeightedLoadBalancerRuntime,
     HttpWeightedLoadBalancerServer,
@@ -85,6 +94,7 @@ __all__ = [
     "HttpProxyServer",
     "HttpRateLimiterRuntime",
     "HttpRateLimiterServer",
+    "HttpRetryServer",
     "HttpRequest",
     "HttpResponse",
     "HttpWeightedLoadBalancerRuntime",
@@ -98,6 +108,10 @@ __all__ = [
     "ProductMaturity",
     "RequestObservation",
     "RequestObserverServer",
+    "RetryMethodPolicy",
+    "RetryObservation",
+    "RetryPolicy",
+    "RetryStatusPolicy",
     "UnsupportedCapability",
     "create_block_control_app",
     "create_instance_read_app",
@@ -114,6 +128,8 @@ __all__ = [
     "http_proxy_command",
     "http_rate_limiter_block",
     "http_rate_limiter_command",
+    "http_retry_block",
+    "http_retry_command",
     "http_weighted_load_balancer_block",
     "http_weighted_load_balancer_command",
     "managed_http_router_block",
