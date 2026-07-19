@@ -2385,3 +2385,120 @@ Handoff back to #515:
   language;
 - perform the final security, data-engineering, architecture, retained-data,
   and test-integrity audit before closing the webhook parent.
+
+## #515 Durable Webhook Final Hardening And Closeout
+
+### Result
+
+The complete webhook vertical is coherent. The final review found no production
+change that would improve the established model without duplicating or
+weakening it. This issue therefore closes through review evidence rather than
+inventing another abstraction.
+
+### Objects And Boundaries
+
+The application owns one closed workflow language:
+
+```text
+WebhookDeliveryIntent
+  -> WebhookEvent journal
+  -> replay_webhook_events
+  -> WebhookDeliveryState projection
+```
+
+Postgres retains four conceptually separate relations:
+
+```text
+cpk_webhook_intents       original bounded delivery truth
+cpk_webhook_events        immutable ordered history
+cpk_webhook_projections   rebuildable current state
+cpk_webhook_commands      exact command/idempotency ledger
+```
+
+All four stores share one `PostgresWebhookUnitOfWork` connection. Stores never
+commit. Application commands request commit, and exceptional or unrequested
+exit rolls the complete relation set back.
+
+The dispatch boundary retains the external-effect law literally:
+
+```python
+with self._unit_of_work_factory() as work:
+    # lock, append WebhookAttemptStarted, record command intent
+    work.commit()
+
+outbound_result = self._outbound.deliver(request)
+
+with self._unit_of_work_factory() as work:
+    # re-lock, prove claim ownership, append result, replace projection
+    work.commit()
+```
+
+No database transaction spans outbound HTTP. A crash or adapter loss after the
+attempt-start commit leaves durable in-flight evidence; expiry recovery records
+an uncertain attempt plus operator-required evidence and never resends
+automatically.
+
+### Security Review
+
+- the FastAPI boundary requires a bounded constant-time identity attestation;
+- actor, workspace, and closed scopes are reconstructed from bounded headers;
+- every service command rechecks workspace and scope authority;
+- endpoint grants are exact, bounded, and bootstrap-configured;
+- runtime-private and public destinations follow separate address laws;
+- public DNS is resolved and pinned for the request;
+- metadata, loopback, redirect, rebinding, credential-bearing, and ungranted
+  destinations fail closed;
+- signing values are resolved only at the outbound effect boundary;
+- payloads are bounded and digest-checked;
+- response headers and bodies are bounded;
+- projections expose identity, status, counts, timing, and closed outcomes but
+  not endpoint URLs, payload bodies, or signing references;
+- transport errors publish closed failure codes rather than exception text.
+
+### Data And Concurrency Review
+
+- enqueue and claim races use independent Postgres connections and one winner;
+- journal ordinals and projection versions reject stale writers;
+- the command ledger makes exact replay stable across process restart;
+- changed intent under the same command identity conflicts;
+- claim ownership and lease boundaries are validated by pure state evolution;
+- effect-result and expiry-recovery races cannot both publish terminal truth;
+- original payload bytes are stored once as application truth and verified
+  against their digest when reconstructed;
+- schema installation is caller-transactional, idempotent, and preserves rows
+  and named constraints;
+- no CPI store, CPI UnitOfWork, mutable delivery cursor, or second recovery
+  journal entered the application.
+
+### Test-Integrity Review
+
+The review covered the pure algebra, codecs, Postgres stores, application UoW,
+service commands, crash windows, secure HTTP adapter, FastAPI boundary,
+ApplicationBlock packaging, graph reconciliation, and live process restart.
+
+```text
+complete Docker/Postgres suite:                            1023 passed
+real webhook deploy/restart/deliver/teardown proof:           passed
+assertions weakened:                                             0
+skips added:                                                     0
+fixture-only replacement of application behavior:               0
+parallel webhook models introduced:                              0
+```
+
+### Residual Scope
+
+Webhook delivery is now operational as a package-owned ApplicationBlock. It
+does not yet claim a general worker scheduler, hosted secret provider, or
+production cloud runtime. Those are composition/deployment concerns, not gaps
+to fill by expanding the webhook algebra.
+
+Handoff to #438:
+
+- compose webhook delivery with service discovery, OpenTelemetry, and the
+  package verification contract;
+- retain the webhook application's explicit Postgres requirement and
+  application-owned UoW;
+- prove credentials and payloads remain absent from cross-product acceptance
+  evidence;
+- run representative operations through `DeploymentProgram` and verify final
+  cleanup.
