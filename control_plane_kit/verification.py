@@ -366,7 +366,7 @@ class VerificationIdentity:
 
     def __post_init__(self) -> None:
         _validate_identity(self.node_id, "verification node")
-        _validate_identity(self.graph_id, "verification graph")
+        _validate_graph_identity(self.graph_id)
         _validate_identity(self.check_id, "verification check")
 
     def descriptor(self) -> dict[str, object]:
@@ -557,6 +557,16 @@ def _validate_policy(value: VerificationPolicy) -> None:
 def _validate_identity(value: str, name: str) -> None:
     if not isinstance(value, str) or not fullmatch(r"[A-Za-z0-9][A-Za-z0-9._-]{0,127}", value):
         raise VerificationContractError(f"{name} identity is invalid")
+
+
+def _validate_graph_identity(value: str) -> None:
+    if (
+        not isinstance(value, str)
+        or not value.strip()
+        or len(value.encode("utf-8")) > MAX_VERIFICATION_TEXT
+        or any(ord(character) < 32 or ord(character) == 127 for character in value)
+    ):
+        raise VerificationContractError("verification graph identity is invalid")
 
 
 def _validate_bounded_text(value: str, name: str) -> None:
