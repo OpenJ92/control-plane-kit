@@ -182,12 +182,17 @@ brainstorm with the following ordered topology:
 
 #392 -> #402 Gate G heterogeneous topology acceptance
   -> #403 package-owned capability-contract audit
-    |-> #404 bounded request observer
-    |-> #413 HTTP circuit-breaker scaffold
-    |-> #414 bounded HTTP retry scaffold
-    `-> #415 inline HTTP traffic-logger scaffold
+    |-> #404 + #413 + #414 + #415 + #420..#425
+    |     -> #437 HTTP policy and resilience acceptance
+    |-> #426 + #427 + #428
+    |     -> #438 service and application-infrastructure acceptance
+    `-> #429..#436
+          -> #439 protocol and data-product acceptance
 
-#404 + #413 + #414 + #415
+#437 + #439 -> #440 compositional API-gateway recipe
+#437 + #438 + #439 -> #441 compositional service-edge recipe
+
+#437 + #438 + #439 + #440 + #441
       -> #405 heterogeneous scenarios and invalidities
         -> #406 ActivityPlan AST proofs
           -> #407 Postgres-backed DeploymentProgram proof
@@ -304,8 +309,9 @@ requirements. They prove protocol-aware readiness, startup environment binding,
 real edge behavior, invalid-graph rejection, canonical execution, and owned
 resource cleanup without changing the generic deployment language.
 
-Gate G issue #402 deliberately extends that evidence to heterogeneous
-package-owned blocks before CPI packaging:
+Gate G issue #402 deliberately extends that evidence to a typed server
+catalogue and heterogeneous package-owned blocks before CPI packaging. The
+mandatory mixed HTTP spine remains:
 
 ```text
 inbound traffic logger
@@ -319,11 +325,18 @@ inbound traffic logger
 ```
 
 Gate G is an acceptance composition, not a second execution model. It first
-reconciles advertised capabilities with live server behavior, then proves the
-mixed graph through validation, ActivityPlan AST dependencies, Postgres-backed
-`DeploymentProgram`, real Docker execution, authenticated route mutation, and
-canonical teardown. It does not make the teaching HTTP servers production
-infrastructure and does not implement CPI packaging.
+reconciles advertised capabilities with live server behavior. It then develops
+three parallel tracks: HTTP policy/resilience, service/application
+infrastructure, and protocol/data-product integrations. Each track converges
+through its own acceptance issue before reusable API-gateway and service-edge
+recipes expand into ordinary graph data. The resulting corpus proceeds through
+validation, ActivityPlan AST dependencies, Postgres-backed `DeploymentProgram`,
+real Docker execution, authenticated route mutation, and canonical teardown.
+
+Every product needs closed descriptors, socket validation, capability truth,
+invalidity tests, and ownership/retention/security laws. Representative products
+from each family run live; Gate G does not require every vendor implementation
+or every permutation to execute in one laptop-sized graph.
 
 Roadmap 0009 may begin only after the independent guarded instance-lifecycle
 prerequisite #246 and Gate G closeout #411 converge. Gate G must hand the mixed
@@ -342,6 +355,24 @@ non-idempotent work without an explicit idempotency contract; circuit state is
 bounded and its control routes are authenticated; traffic evidence excludes
 bodies, credentials, cookies, arbitrary headers, query strings, and raw
 unbounded paths by default.
+
+The expanded catalogue adds timeout/deadline, bulkhead, test-only fault
+injection, bounded cache, policy gateway, idempotency gateway, service discovery,
+OpenTelemetry Collector, durable webhook delivery, TCP switching, CoreDNS,
+PgBouncer, Redis-compatible cache, typed broker products, MinIO/S3-compatible
+storage, SMTP relay, and secrets-provider contracts. CPK implements small
+teaching servers only where that is the declared product. DNS, pooling,
+telemetry, brokers, object storage, and secret management use mature product
+integrations rather than package-local replacements.
+
+Frequently repeated arrangements are transparent recipes:
+
+```text
+Recipe -> tuple[DeployBlock, ...] x tuple[SocketConnection, ...]
+```
+
+The API-gateway and service-edge recipes introduce no hidden runtime, graph, or
+execution language. Their expanded blocks remain inspectable and configurable.
 
 Request or response body transformation is deliberately outside the
 package-owned Gate G server catalog. XML/JSON conversion, field mapping, schema
