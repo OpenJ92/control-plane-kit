@@ -120,6 +120,7 @@ PACKAGE_RULES = (
             "secrets",
             "types",
             "verification",
+            "webhook",
         ),
     ),
     PackageDependencyRule("stores", ("execution", "planning", "topology", "types")),
@@ -139,6 +140,10 @@ PACKAGE_RULES = (
     PackageDependencyRule("types", ()),
     PackageDependencyRule("verification", ("types",)),
     PackageDependencyRule("webhook", ("secrets",)),
+    PackageDependencyRule(
+        "webhook_server",
+        ("contracts", "secrets", "servers", "webhook"),
+    ),
     PackageDependencyRule(
         "workflows",
         (
@@ -180,6 +185,7 @@ TRANSPORT_POLICY = TransportOwnershipPolicy(
             (
                 "control_plane_kit.adapters.probes.clients",
                 "control_plane_kit.adapters.verification",
+                "control_plane_kit.webhook.http",
             ),
         ),
         TransportOwner("urllib3", ()),

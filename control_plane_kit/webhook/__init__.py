@@ -76,6 +76,7 @@ from control_plane_kit.webhook.service import (
 )
 from control_plane_kit.webhook.http import (
     HttpWebhookDelivery,
+    SystemWebhookPublicAddressResolver,
     WebhookAddressPolicy,
     WebhookEndpointGrant,
     WebhookEndpointScope,
@@ -156,6 +157,7 @@ __all__ = [
     "WebhookOutboundResult",
     "WebhookReadResult",
     "HttpWebhookDelivery",
+    "SystemWebhookPublicAddressResolver",
     "WebhookAddressPolicy",
     "WebhookEndpointGrant",
     "WebhookEndpointScope",

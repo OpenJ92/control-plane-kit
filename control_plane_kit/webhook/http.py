@@ -7,6 +7,7 @@ from enum import StrEnum
 import hashlib
 import hmac
 from ipaddress import ip_address
+import socket
 from typing import Protocol
 from urllib.parse import urlsplit, urlunsplit
 
@@ -67,6 +68,22 @@ class WebhookAddressPolicy:
 
 class WebhookPublicAddressResolver(Protocol):
     def resolve(self, hostname: str) -> tuple[str, ...]: ...
+
+
+class SystemWebhookPublicAddressResolver:
+    """Resolve all public address candidates for same-request policy pinning."""
+
+    def resolve(self, hostname: str) -> tuple[str, ...]:
+        addresses = {
+            item[4][0]
+            for item in socket.getaddrinfo(
+                hostname,
+                None,
+                family=socket.AF_UNSPEC,
+                type=socket.SOCK_STREAM,
+            )
+        }
+        return tuple(sorted(addresses))
 
 
 class WebhookHttpSecurityError(ValueError):

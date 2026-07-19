@@ -44,6 +44,7 @@ from control_plane_kit.servers.http_weighted_balancer import http_weighted_load_
 from control_plane_kit.servers.managed_http_router import managed_http_router_block
 from control_plane_kit.servers.request_observer import request_observer_block
 from control_plane_kit.servers.service_discovery import service_discovery_block
+from control_plane_kit.servers.webhook_delivery import webhook_delivery_block
 from control_plane_kit.servers.opentelemetry_collector import (
     opentelemetry_collector_block,
 )
@@ -185,6 +186,12 @@ def _control(
 
 
 PACKAGE_SERVER_CONTRACTS = (
+    PackageServerContract(
+        PackageServerProduct.WEBHOOK_DELIVERY,
+        ProductMaturity.OPERATIONAL,
+        webhook_delivery_block(),
+        (_probe(path="/health/ready"),),
+    ),
     PackageServerContract(
         PackageServerProduct.OPENTELEMETRY_COLLECTOR,
         ProductMaturity.OPERATIONAL,
