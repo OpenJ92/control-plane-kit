@@ -7,6 +7,7 @@ from enum import StrEnum
 from typing import Mapping, TypeAlias
 
 from control_plane_kit.algebra import BlockSockets, BlockSpec
+from control_plane_kit.configuration import ConfigurationArtifact
 from control_plane_kit.topology.graph import (
     Edge,
     Endpoint,
@@ -46,6 +47,7 @@ class StructuralField(StrEnum):
     ENDPOINT = "endpoint"
     ENVIRONMENT = "environment"
     NODE_METADATA = "node-metadata"
+    CONFIGURATION_ARTIFACTS = "configuration-artifacts"
     RESOURCE_LIFECYCLE = "resource-lifecycle"
 
 
@@ -103,6 +105,14 @@ class EnvironmentValue:
 
     def descriptor(self) -> dict[str, str]:
         return {name: _REDACTED for name in sorted(self.values)}
+
+
+@dataclass(frozen=True)
+class ConfigurationArtifactsValue:
+    values: tuple[ConfigurationArtifact, ...]
+
+    def descriptor(self) -> list[dict[str, str]]:
+        return [value.descriptor() for value in sorted(self.values)]
 
 
 @dataclass(frozen=True)
@@ -194,6 +204,9 @@ class NodeValue:
             "environment": EnvironmentValue(self.node.environment).descriptor(),
             "metadata": _redact_mapping(self.node.metadata),
             "lifecycle": self.node.lifecycle.descriptor(),
+            "configuration_artifacts": ConfigurationArtifactsValue(
+                self.node.configuration_artifacts
+            ).descriptor(),
         }
 
 
@@ -225,6 +238,7 @@ DiffValue: TypeAlias = (
     | StringTupleValue
     | MetadataValue
     | EnvironmentValue
+    | ConfigurationArtifactsValue
     | EndpointValue
     | SocketContractValue
     | BlockSpecValue

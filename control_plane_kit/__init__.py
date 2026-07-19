@@ -14,6 +14,13 @@ from control_plane_kit.capabilities import (
     CapabilityName,
     capability_named,
 )
+from control_plane_kit.configuration import (
+    MAX_CONFIGURATION_BYTES,
+    ConfigurationArtifact,
+    ConfigurationArtifactError,
+    ConfigurationFileMode,
+    ConfigurationMediaType,
+)
 from control_plane_kit.algebra import (
     ApplicationBlock,
     BlockSpec,
@@ -368,6 +375,7 @@ from control_plane_kit.topology.changes import (
     AmbiguityReason,
     AmbiguousChange,
     BlockSpecValue,
+    ConfigurationArtifactsValue,
     DiffSubject,
     DiffValue,
     EdgeValue,
@@ -508,6 +516,11 @@ __all__ = [
     "AmbiguousChange",
     "ActivityTimelineReadModel",
     "ApplicationBlock",
+    "ConfigurationArtifact",
+    "ConfigurationArtifactError",
+    "ConfigurationArtifactsValue",
+    "ConfigurationFileMode",
+    "ConfigurationMediaType",
     "BlockFamily",
     "BlockSpec",
     "BlockSpecValue",
@@ -627,6 +640,7 @@ __all__ = [
     "ExternalRuntime",
     "ExternalTcpImplementation",
     "EnvironmentValue",
+    "MAX_CONFIGURATION_BYTES",
     "FieldSubject",
     "GraphDiff",
     "GraphDescriptorCodec",

@@ -24,6 +24,7 @@ PACKAGE_RULES = (
     PackageDependencyRule("capabilities", ("control_routes",)),
     PackageDependencyRule("cli", ()),
     PackageDependencyRule("contracts", ()),
+    PackageDependencyRule("configuration", ()),
     PackageDependencyRule("control_routes", ()),
     PackageDependencyRule(
         "docker_runtime",
@@ -38,11 +39,13 @@ PACKAGE_RULES = (
         ),
     ),
     PackageDependencyRule(
-        "effects", ("execution", "lifecycle", "planning", "topology", "types")
+        "effects",
+        ("configuration", "execution", "lifecycle", "planning", "topology", "types"),
     ),
     PackageDependencyRule("execution", ()),
     PackageDependencyRule(
-        "implementations", ("algebra", "lifecycle", "topology", "types")
+        "implementations",
+        ("algebra", "configuration", "lifecycle", "topology", "types"),
     ),
     PackageDependencyRule("lifecycle", ()),
     PackageDependencyRule("mcp_read", ("read_services",)),
@@ -75,7 +78,14 @@ PACKAGE_RULES = (
     PackageDependencyRule("stores", ("execution", "planning", "topology", "types")),
     PackageDependencyRule(
         "topology",
-        ("algebra", "capabilities", "control_routes", "lifecycle", "types"),
+        (
+            "algebra",
+            "capabilities",
+            "configuration",
+            "control_routes",
+            "lifecycle",
+            "types",
+        ),
     ),
     PackageDependencyRule("types", ()),
     PackageDependencyRule(

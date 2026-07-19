@@ -13,6 +13,7 @@ from control_plane_kit.topology.changes import (
     BlockSpecValue,
     EdgeValue,
     EndpointValue,
+    ConfigurationArtifactsValue,
     EnvironmentValue,
     FieldSubject,
     GraphDiff,
@@ -216,6 +217,17 @@ def _diff_nodes(
                     FieldSubject(subject, StructuralField.NODE_METADATA),
                     MetadataValue(before.metadata),
                     MetadataValue(after.metadata),
+                )
+            )
+        if before.configuration_artifacts != after.configuration_artifacts:
+            changes.append(
+                ModifiedChange(
+                    FieldSubject(
+                        subject,
+                        StructuralField.CONFIGURATION_ARTIFACTS,
+                    ),
+                    ConfigurationArtifactsValue(before.configuration_artifacts),
+                    ConfigurationArtifactsValue(after.configuration_artifacts),
                 )
             )
         if before.lifecycle != after.lifecycle:

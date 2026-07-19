@@ -10,6 +10,7 @@ from typing import Mapping, TypeAlias
 from urllib.parse import urlsplit
 
 from control_plane_kit.lifecycle import OWNED_EPHEMERAL, ResourceLifecycle
+from control_plane_kit.configuration import ConfigurationArtifact
 
 from control_plane_kit.effects.values import EffectPurpose, EffectRequest
 from control_plane_kit.planning import (
@@ -184,6 +185,7 @@ class ImplementationMaterial:
     database: str | None = None
     data_mounts: tuple[DataMountMaterial, ...] = ()
     host_publications: tuple[HostPublicationMaterial, ...] = ()
+    configuration_artifacts: tuple[ConfigurationArtifact, ...] = ()
 
 
 @dataclass(frozen=True)
@@ -597,6 +599,7 @@ def _implementation_material(node: Node, graph: DeploymentGraph) -> Implementati
         database,
         tuple(sorted(mounts)),
         tuple(sorted(publications, key=lambda value: value.socket_name)),
+        tuple(sorted(node.configuration_artifacts)),
     )
 
 
@@ -727,7 +730,12 @@ def _descriptor(value: object) -> object:
                 "host_publications": [
                     _descriptor(item) for item in value.host_publications
                 ],
+                "configuration_artifacts": [
+                    _descriptor(item) for item in value.configuration_artifacts
+                ],
             }
+        case ConfigurationArtifact():
+            return value.descriptor()
         case DataMountMaterial():
             return {
                 "resource_id": value.resource_id,

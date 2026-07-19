@@ -7,6 +7,7 @@ from typing import Mapping
 from urllib.parse import urlsplit
 
 from control_plane_kit.algebra import BlockSockets, BlockSpec
+from control_plane_kit.configuration import ConfigurationArtifact
 from control_plane_kit.lifecycle import OWNED_EPHEMERAL, ResourceLifecycle
 from control_plane_kit.types import (
     BlockFamily,
@@ -91,6 +92,22 @@ class Node:
     environment: Mapping[str, str] = field(default_factory=dict)
     metadata: Mapping[str, object] = field(default_factory=dict)
     lifecycle: ResourceLifecycle = OWNED_EPHEMERAL
+    configuration_artifacts: tuple[ConfigurationArtifact, ...] = ()
+
+    def __post_init__(self) -> None:
+        if not isinstance(self.configuration_artifacts, tuple) or not all(
+            isinstance(value, ConfigurationArtifact)
+            for value in self.configuration_artifacts
+        ):
+            raise TypeError(
+                "node configuration artifacts must be ConfigurationArtifact values"
+            )
+        identities = tuple(value.artifact_id for value in self.configuration_artifacts)
+        paths = tuple(value.target_path for value in self.configuration_artifacts)
+        if len(set(identities)) != len(identities):
+            raise ValueError("node configuration artifact identities must be unique")
+        if len(set(paths)) != len(paths):
+            raise ValueError("node configuration artifact target paths must be unique")
 
     def requirement_socket(self, name: str):
         return self.sockets.requirement(name)
@@ -139,6 +156,9 @@ class Node:
             },
             "metadata": dict(self.metadata),
             "lifecycle": self.lifecycle.descriptor(),
+            "configuration_artifacts": [
+                value.descriptor() for value in sorted(self.configuration_artifacts)
+            ],
         }
 
 

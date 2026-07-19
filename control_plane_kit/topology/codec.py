@@ -14,6 +14,10 @@ from control_plane_kit.algebra import (
     RequirementSocket,
 )
 from control_plane_kit.capabilities import CapabilityName
+from control_plane_kit.configuration import (
+    ConfigurationArtifact,
+    ConfigurationArtifactError,
+)
 from control_plane_kit.lifecycle import (
     DataResourceSpec,
     ResourceLifecycle,
@@ -292,6 +296,9 @@ class GraphDescriptorCodec:
             environment=_string_mapping(descriptor.get("environment", {}), "node.environment"),
             metadata=_object_mapping(descriptor.get("metadata", {}), "node.metadata"),
             lifecycle=_lifecycle(descriptor.get("lifecycle"), "node.lifecycle"),
+            configuration_artifacts=_configuration_artifacts(
+                descriptor.get("configuration_artifacts", [])
+            ),
         )
 
     def _decode_edge(self, edge_id: str, descriptor: Mapping[str, object]) -> Edge:
@@ -477,6 +484,18 @@ def _endpoint_address(value: object) -> LiteralAddress | SecretReferenceAddress:
                 raise MalformedGraphDescriptor(str(error)) from error
         case unknown:
             raise UnknownGraphVariant(f"unknown endpoint address variant {unknown!r}")
+
+
+def _configuration_artifacts(value: object) -> tuple[ConfigurationArtifact, ...]:
+    try:
+        return tuple(
+            ConfigurationArtifact.from_descriptor(
+                _mapping(item, "configuration_artifact")
+            )
+            for item in _list(value)
+        )
+    except ConfigurationArtifactError as error:
+        raise MalformedGraphDescriptor(str(error)) from error
 
 
 def _json_value(value: object) -> object:
