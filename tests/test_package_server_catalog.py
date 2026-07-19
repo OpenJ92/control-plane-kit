@@ -3,6 +3,7 @@ from __future__ import annotations
 import unittest
 
 from control_plane_kit import (
+    ApplicationBlock,
     CapabilityImplementation,
     CapabilityName,
     ControlRouteSetName,
@@ -160,6 +161,23 @@ class PackageServerCatalogTests(unittest.TestCase):
         self.assertEqual(
             tuple(value.capability for value in idempotency.capabilities),
             (CapabilityName.HEALTH_CHECKABLE,),
+        )
+        load_generator = package_server_contract(
+            PackageServerProduct.HTTP_LOAD_GENERATOR
+        )
+        self.assertIs(load_generator.maturity, ProductMaturity.TEST_ONLY)
+        self.assertIsInstance(load_generator.block, ApplicationBlock)
+        self.assertEqual(
+            tuple(value.capability for value in load_generator.capabilities),
+            (
+                CapabilityName.HEALTH_CHECKABLE,
+                CapabilityName.LOAD_STATE_READABLE,
+                CapabilityName.LOAD_MUTABLE,
+            ),
+        )
+        self.assertEqual(
+            load_generator.capabilities[1].route_set,
+            ControlRouteSetName.LOADS,
         )
 
     def test_contract_rejects_capability_claim_without_evidence(self) -> None:

@@ -31,6 +31,8 @@ class CapabilityName(StrEnum):
     FAULT_MUTABLE = "fault-mutable"
     CACHE_STATE_READABLE = "cache-state-readable"
     CACHE_PURGEABLE = "cache-purgeable"
+    LOAD_STATE_READABLE = "load-state-readable"
+    LOAD_MUTABLE = "load-mutable"
 
 
 @dataclass(frozen=True)
@@ -147,6 +149,18 @@ CACHE_PURGEABLE = Capability(
     description="Node accepts authenticated purge of ephemeral cache entries.",
     route_set=ControlRouteSetName.CACHE,
 )
+LOAD_STATE_READABLE = Capability(
+    name=CapabilityName.LOAD_STATE_READABLE,
+    label="Load runs",
+    description="Node exposes bounded aggregate evidence for test-only load runs.",
+    route_set=ControlRouteSetName.LOADS,
+)
+LOAD_MUTABLE = Capability(
+    name=CapabilityName.LOAD_MUTABLE,
+    label="Run load",
+    description="Node can start and cancel bounded test-only load runs.",
+    route_set=ControlRouteSetName.LOADS,
+)
 
 CAPABILITIES = (
     HEALTH_CHECKABLE,
@@ -164,6 +178,8 @@ CAPABILITIES = (
     FAULT_MUTABLE,
     CACHE_STATE_READABLE,
     CACHE_PURGEABLE,
+    LOAD_STATE_READABLE,
+    LOAD_MUTABLE,
 )
 CAPABILITY_BY_NAME = {capability.name: capability for capability in CAPABILITIES}
 

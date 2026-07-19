@@ -65,6 +65,13 @@ from control_plane_kit.servers.http_idempotency_gateway import (
     create_idempotency_gateway_app,
     http_idempotency_gateway_block,
 )
+from control_plane_kit.servers.http_load_generator import (
+    HttpLoadGeneratorServer,
+    LoadGeneratorCapacityExhausted,
+    LoadRunConflict,
+    create_load_generator_app,
+    http_load_generator_block,
+)
 from control_plane_kit.servers.http_fault_injector import (
     ConnectionTerminationFault,
     DelayFault,
@@ -191,6 +198,11 @@ __all__ = [
     "HttpAuthGatewayServer",
     "create_idempotency_gateway_app",
     "http_idempotency_gateway_block",
+    "HttpLoadGeneratorServer",
+    "LoadGeneratorCapacityExhausted",
+    "LoadRunConflict",
+    "create_load_generator_app",
+    "http_load_generator_block",
     "HttpCachePolicy",
     "HttpCacheServer",
     "HttpFault",

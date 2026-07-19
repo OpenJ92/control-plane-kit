@@ -44,6 +44,7 @@ class ValidationCode(StrEnum):
     VERIFICATION_PROVIDER = "verification-provider"
     VERIFICATION_PROTOCOL = "verification-protocol"
     PACKAGE_MATURITY = "package-maturity"
+    SELF_CONNECTION = "self-connection"
 
 
 class SocketDirection(StrEnum):
@@ -225,6 +226,14 @@ def validate_graph(
                 _error(ValidationCode.EDGE_REFERENCE, EdgeSubject(edge_id), str(error))
             )
             continue
+        if edge.provider_role == edge.consumer_role:
+            findings.append(
+                _error(
+                    ValidationCode.SELF_CONNECTION,
+                    EdgeSubject(edge_id),
+                    "a node cannot satisfy its own requirement socket",
+                )
+            )
         if provider.protocol != edge.protocol or requirement.protocol != edge.protocol:
             findings.append(
                 _error(

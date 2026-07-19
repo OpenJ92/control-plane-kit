@@ -96,13 +96,16 @@ def http_rate_limiter_block(
     )
 
 
-def http_rate_limiter_command() -> tuple[str, ...]:
+def http_rate_limiter_command(*, port: int = 8080) -> tuple[str, ...]:
     """Return a tiny stdlib quota-gated HTTP forwarding command."""
+
+    if type(port) is not int or port < 1 or port > 65_535:
+        raise ValueError("rate limiter port must be between 1 and 65535")
 
     return render_python_command(
         "http_rate_limiter.py.j2",
         target_env="RATE_LIMIT_TARGET_URL",
         limit_env="RATE_LIMIT_REQUESTS",
         default_limit=60,
-        port=8080,
+        port=port,
     )

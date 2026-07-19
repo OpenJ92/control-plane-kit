@@ -60,6 +60,7 @@ class ControlRouteTests(TestCase):
                 ControlRouteSetName.TRAFFIC_EVIDENCE,
                 ControlRouteSetName.FAULTS,
                 ControlRouteSetName.CACHE,
+                ControlRouteSetName.LOADS,
             },
         )
         self.assertEqual(
@@ -109,6 +110,14 @@ class ControlRouteTests(TestCase):
             {
                 (ControlRouteMethod.GET, "/__deploy/cache"),
                 (ControlRouteMethod.POST, "/__deploy/cache/purge"),
+            },
+        )
+        self.assertEqual(
+            descriptors[ControlRouteSetName.LOADS],
+            {
+                (ControlRouteMethod.GET, "/__deploy/load-runs/{run_id}"),
+                (ControlRouteMethod.POST, "/__deploy/load-runs"),
+                (ControlRouteMethod.POST, "/__deploy/load-runs/{run_id}/cancel"),
             },
         )
 
