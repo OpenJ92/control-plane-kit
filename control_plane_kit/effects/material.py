@@ -224,15 +224,16 @@ class VerificationCheckMaterial:
     """One semantic check paired with its graph-pinned provider endpoint."""
 
     node_id: str
+    graph_id: str
     check: VerificationCheck
     endpoint: EndpointMaterial
 
     def __post_init__(self) -> None:
         VerificationContract((self.check,))
-        if not self.node_id.strip():
+        if not self.node_id.strip() or not self.graph_id.strip():
             raise EffectMaterializationError(
                 MaterializationCode.INVALID_VERIFICATION_TARGET,
-                "verification material node identity must not be empty",
+                "verification material node and graph identities must not be empty",
             )
         if self.endpoint.socket_name != self.check.provider_socket:
             raise EffectMaterializationError(
@@ -249,6 +250,7 @@ class VerificationCheckMaterial:
         return {
             "type": "verification-check",
             "node_id": self.node_id,
+            "graph_id": self.graph_id,
             "check": self.check.descriptor(),
             "endpoint": _descriptor(self.endpoint),
         }
@@ -534,12 +536,15 @@ def _node_material(graph: DeploymentGraph, node_id: str) -> NodeMaterial:
 
 
 def materialize_verification_contract(
-    node: NodeMaterial,
+    request: MaterializedEffectRequest,
 ) -> tuple[VerificationCheckMaterial, ...]:
     """Resolve a contract only against endpoints already pinned in node material."""
 
-    if not isinstance(node, NodeMaterial):
-        raise TypeError("verification materialization requires NodeMaterial")
+    if not isinstance(request, MaterializedEffectRequest):
+        raise TypeError("verification materialization requires MaterializedEffectRequest")
+    if not isinstance(request.material, NodeMaterial):
+        raise TypeError("verification materialization requires node effect material")
+    node = request.material
     endpoints = {value.socket_name: value for value in node.endpoints}
     material: list[VerificationCheckMaterial] = []
     for check in node.verification.checks:
@@ -550,7 +555,14 @@ def materialize_verification_contract(
                 MaterializationCode.INVALID_VERIFICATION_TARGET,
                 f"verification check {check.check_id!r} has no pinned provider endpoint",
             ) from error
-        material.append(VerificationCheckMaterial(node.node_id, check, endpoint))
+        material.append(
+            VerificationCheckMaterial(
+                node.node_id,
+                request.material_graph_id,
+                check,
+                endpoint,
+            )
+        )
     return tuple(material)
 
 

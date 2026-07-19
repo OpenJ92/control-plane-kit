@@ -14,18 +14,25 @@ from control_plane_kit import (
     DockerRuntime,
     GraphDescriptorCodec,
     HttpCheck,
+    HttpVerificationEvidence,
     ObjectStorageRoundTripCheck,
     PlanOnlyImplementation,
     PostgresQueryCheck,
     Protocol,
     ProviderSocket,
     RedisCheck,
+    RedisVerificationEvidence,
     SmtpAcceptanceCheck,
     VerificationContract,
+    VerificationCapability,
     VerificationContractError,
     VerificationPolicy,
+    VerificationIdentity,
+    VerificationCompleted,
+    VerificationOutcome,
     expected_protocols,
     compile_recipe,
+    verification_capability,
     verification_check_from_descriptor,
 )
 
@@ -116,6 +123,61 @@ class VerificationContractTests(unittest.TestCase):
         )
         self.assertEqual(expected_protocols(checks[5]), frozenset((Protocol.S3,)))
         self.assertEqual(expected_protocols(checks[6]), frozenset((Protocol.SMTP,)))
+        self.assertEqual(
+            tuple(verification_capability(check) for check in checks),
+            (
+                VerificationCapability.HTTP,
+                VerificationCapability.DNS,
+                VerificationCapability.POSTGRES,
+                VerificationCapability.REDIS,
+                VerificationCapability.BROKER,
+                VerificationCapability.OBJECT_STORAGE,
+                VerificationCapability.SMTP,
+            ),
+        )
+
+    def test_result_values_are_closed_bounded_and_deterministic(self) -> None:
+        identity = VerificationIdentity("api", "graph-1", "semantic-http")
+        observation = VerificationCompleted(
+            identity,
+            VerificationCapability.HTTP,
+            VerificationOutcome.PASSED,
+            2,
+            HttpVerificationEvidence(200, 128),
+        )
+
+        self.assertEqual(
+            observation.descriptor(),
+            {
+                "type": "verification-completed",
+                "identity": {
+                    "node_id": "api",
+                    "graph_id": "graph-1",
+                    "check_id": "semantic-http",
+                },
+                "capability": "http",
+                "outcome": "passed",
+                "attempts": 2,
+                "evidence": {
+                    "kind": "http",
+                    "status_code": 200,
+                    "response_bytes": 128,
+                },
+            },
+        )
+        self.assertEqual(
+            RedisVerificationEvidence(7).descriptor(),
+            {"kind": "redis", "response_bytes": 7},
+        )
+        with self.assertRaises(VerificationContractError):
+            HttpVerificationEvidence(200, 65_537)
+        with self.assertRaises(VerificationContractError):
+            VerificationCompleted(
+                identity,
+                VerificationCapability.HTTP,
+                VerificationOutcome.PASSED,
+                11,
+            )
 
     def test_block_contract_survives_the_authoritative_graph_codec(self) -> None:
         contract = VerificationContract(

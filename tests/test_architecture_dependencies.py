@@ -20,7 +20,15 @@ PACKAGE_RULES = (
     PackageDependencyRule("application", ("effects", "topology", "workflows")),
     PackageDependencyRule(
         "adapters",
-        ("capabilities", "control_routes", "effects", "execution", "planning", "types"),
+        (
+            "capabilities",
+            "control_routes",
+            "effects",
+            "execution",
+            "planning",
+            "types",
+            "verification",
+        ),
     ),
     PackageDependencyRule(
         "algebra", ("capabilities", "lifecycle", "types", "verification")
@@ -132,13 +140,20 @@ TRANSPORT_POLICY = TransportOwnershipPolicy(
                 "control_plane_kit.adapters.control_http.client",
                 "control_plane_kit.adapters.http_forwarding",
                 "control_plane_kit.adapters.probes.clients",
+                "control_plane_kit.adapters.verification",
                 "control_plane_kit.cli",
             ),
         ),
         TransportOwner("requests", ("control_plane_kit.cli",)),
         TransportOwner("aiohttp", ()),
         TransportOwner("http.client", ()),
-        TransportOwner("socket", ("control_plane_kit.adapters.probes.clients",)),
+        TransportOwner(
+            "socket",
+            (
+                "control_plane_kit.adapters.probes.clients",
+                "control_plane_kit.adapters.verification",
+            ),
+        ),
         TransportOwner("urllib3", ()),
         TransportOwner("urllib.request", ("control_plane_kit.cli",)),
     )
