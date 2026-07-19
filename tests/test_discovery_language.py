@@ -76,7 +76,7 @@ class DiscoveryLanguageTests(unittest.TestCase):
                 NOW,
                 25,
             ),
-            ExpireDiscoveryLeases("expire-a", "workspace-a", NOW, 250),
+            ExpireDiscoveryLeases("expire-a", "workspace-a", NOW, 100),
         )
 
         for command in commands:
@@ -124,6 +124,7 @@ class DiscoveryLanguageTests(unittest.TestCase):
             "orders-a",
             "workspace-a",
             frozenset((DiscoveryScope.REGISTER_SELF,)),
+            subject_service_id="orders",
             subject_instance_id="orders-a",
         )
 
@@ -133,6 +134,7 @@ class DiscoveryLanguageTests(unittest.TestCase):
                 "actor_id": "orders-a",
                 "workspace_id": "workspace-a",
                 "scopes": ["discovery:register-self"],
+                "subject_service_id": "orders",
                 "subject_instance_id": "orders-a",
             },
         )
@@ -199,6 +201,41 @@ class DiscoveryLanguageTests(unittest.TestCase):
             DiscoveryIdentity("workspace a", "orders", "orders-a")
         with self.assertRaisesRegex(ValueError, "between 1 and 100"):
             ResolveDiscoveryService("resolve-a", "workspace-a", "orders", NOW, 101)
+        with self.assertRaisesRegex(ValueError, "between 1 and 100"):
+            ExpireDiscoveryLeases("expire-a", "workspace-a", NOW, 101)
+
+    def test_endpoint_scheme_must_match_closed_protocol(self) -> None:
+        with self.assertRaisesRegex(ValueError, "incompatible with its protocol"):
+            DiscoveryRegistration(
+                self.identity,
+                Endpoint(
+                    LiteralAddress("postgresql://orders-a:5432/orders"),
+                    Protocol.HTTP,
+                    EndpointScope.PRIVATE,
+                ),
+                DiscoveryRegistrationMode.SELF,
+                self.lease,
+            )
+        with self.assertRaisesRegex(ValueError, "network host"):
+            DiscoveryRegistration(
+                self.identity,
+                Endpoint(
+                    LiteralAddress("http:///missing-host"),
+                    Protocol.HTTP,
+                    EndpointScope.PRIVATE,
+                ),
+                DiscoveryRegistrationMode.SELF,
+                self.lease,
+            )
+
+    def test_self_authority_requires_service_and_instance_as_one_product(self) -> None:
+        with self.assertRaisesRegex(ValueError, "service and instance identity together"):
+            DiscoveryAuthority(
+                "orders-a",
+                "workspace-a",
+                frozenset((DiscoveryScope.REGISTER_SELF,)),
+                subject_instance_id="orders-a",
+            )
 
 
 if __name__ == "__main__":

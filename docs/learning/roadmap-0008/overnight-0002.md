@@ -1279,3 +1279,136 @@ skips added:                                             0
   application composition root;
 - prove cleanup removes only graph-owned ephemeral containers and networks;
 - do not create another registry service, store, ledger, or UoW.
+
+## #504 Discovery Concurrency, Security, And Live Acceptance
+
+### Capability
+
+The package-owned discovery product now has adversarial and live acceptance
+evidence around the complete server boundary:
+
+```text
+authenticated command
+  -> closed DiscoveryAuthority
+  -> DiscoveryRegistryService
+  -> PostgresDiscoveryUnitOfWork
+  -> current lease projection + immutable command ledger
+```
+
+Independent Postgres connections prove one-winner registration and heartbeat,
+heartbeat-versus-deregistration serialization, and heartbeat-versus-expiry
+serialization at the exact lease boundary. Late heartbeat cannot revive either
+an expired or deregistered registration. Resolution remains deterministic by
+instance identity and is bounded to 100 records.
+
+The real Docker proof starts a dedicated Postgres container and the packaged
+FastAPI discovery server, then sends authenticated HTTP commands through the
+same public routes used by a control plane:
+
+```text
+unauthenticated register -> 401
+register hello-a
+resolve hello-a
+heartbeat hello-a
+deregister hello-a
+resolve []
+register hello-b
+expire hello-b
+resolve []
+```
+
+Cleanup removes only containers and the network carrying the exact
+`io.control-plane-kit.test=discovery-live` ownership label, then verifies that
+none remain.
+
+### Closed Self Identity
+
+The hardening pass found that self-registration authority originally bound
+only an instance identifier. That allowed an attested instance to reuse its
+instance ID under another service name. Self identity is now one product:
+
+```python
+DiscoveryAuthority(
+    actor_id="orders-a",
+    workspace_id="workspace-a",
+    scopes=frozenset((DiscoveryScope.REGISTER_SELF,)),
+    subject_service_id="orders",
+    subject_instance_id="orders-a",
+)
+```
+
+Service and instance subject values must be present together. The application
+service compares both values to the registration identity. The FastAPI
+boundary reconstructs them from separate trusted headers after constant-time
+attestation; an incorrect service fails before any registry or command-ledger
+write.
+
+### One Protocol Scheme Law
+
+Discovery initially introduced a second mapping from `Protocol` to safe URL
+schemes. Review found that probes already owned the same closed relation. The
+relation now belongs to the protocol algebra itself:
+
+```python
+class Protocol:
+    def endpoint_schemes(self) -> frozenset[str]:
+        return _ENDPOINT_SCHEMES[self]
+```
+
+Both discovery construction and probe construction use this method. A
+discovery endpoint must contain a host and explicit port, use a scheme admitted
+by its exact transport/application product, contain no credentials, query, or
+fragment, remain non-local, and fit the existing 2,048-byte bound. This avoids
+parallel address-policy models and makes future product integrations inherit
+one protocol truth.
+
+### Bounded HTTP Projection
+
+Resolve and expiry pages now share a maximum of 100 records. The FastAPI
+adapter also checks the exact compact JSON projection against a 512 KiB
+response bound. The maximal-page test uses 100 near-maximum endpoint values
+through the real Postgres service and proves the emitted response remains under
+that bound. Invalid credential-bearing endpoints return only the generic
+closed 400 response; endpoint material and attestation do not appear.
+
+### Breakpoints And Resolutions
+
+1. The dry run exposed incomplete self identity. Adding another route-only
+   check would have left durable authority ambiguous, so service identity was
+   added to the closed `DiscoveryAuthority` descriptor and enforced by the
+   canonical service.
+2. Discovery endpoint validation first duplicated the probe scheme table and
+   disagreed on DNS and OTLP gRPC spellings. The scheme relation moved to
+   `Protocol`, and the existing probe helper became a compatibility interpreter
+   over that method.
+3. A heartbeat-versus-expiry race can reject the losing heartbeat as either a
+   missing active registration or a stale precondition, depending on lock
+   acquisition. Both are canonical fail-closed outcomes; the test asserts that
+   only one lease mutation wins and that the final row matches that winner.
+4. The first complete implementation suite passed 950 tests. After the
+   protocol-scheme consolidation and an added exhaustive protocol law, the
+   complete suite passed 951 tests. No assertions or timeouts were relaxed.
+
+### Evidence
+
+```text
+complete Docker/Postgres suite:                    951 passed
+real Docker/Postgres discovery lifecycle:          passed
+unauthenticated live mutation:                      401
+owned containers/networks after cleanup:            0
+maximum resolution page:                 100 records
+assertions weakened:                                  0
+skips added:                                         0
+```
+
+### Handoff To #430 And #438
+
+- treat the discovery registry as authoritative lease projection, never graph
+  truth;
+- reuse `Protocol.endpoint_schemes()` and exact typed endpoint products;
+- derive CoreDNS configuration from bounded registry results rather than
+  inventing another registry;
+- keep health, DNS projection, and discoverability as distinct evidence;
+- compose service acceptance through the packaged discovery server and its
+  existing authenticated routes;
+- do not introduce another discovery service, store, ledger, or UnitOfWork.

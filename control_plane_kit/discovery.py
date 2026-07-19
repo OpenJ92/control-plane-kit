@@ -110,6 +110,14 @@ class DiscoveryRegistration:
         parsed = urlsplit(self.endpoint.url)
         if parsed.username is not None or parsed.password is not None:
             raise ValueError("discovery endpoint address must not contain credentials")
+        if parsed.hostname is None or parsed.port is None:
+            raise ValueError("discovery endpoint address must identify a network host")
+        if parsed.query or parsed.fragment:
+            raise ValueError("discovery endpoint address must not contain query or fragment")
+        if parsed.scheme.lower() not in self.endpoint.protocol.endpoint_schemes():
+            raise ValueError(
+                "discovery endpoint address scheme is incompatible with its protocol"
+            )
         if self.endpoint.scope is EndpointScope.LOCAL:
             raise ValueError("process-local endpoints cannot be registered for discovery")
         if not isinstance(self.mode, DiscoveryRegistrationMode):
@@ -186,6 +194,7 @@ class DiscoveryAuthority:
     actor_id: str
     workspace_id: str
     scopes: frozenset[DiscoveryScope]
+    subject_service_id: str | None = None
     subject_instance_id: str | None = None
 
     def __post_init__(self) -> None:
@@ -195,6 +204,12 @@ class DiscoveryAuthority:
             not isinstance(scope, DiscoveryScope) for scope in self.scopes
         ):
             raise TypeError("discovery authority scopes must be typed")
+        if (self.subject_service_id is None) != (self.subject_instance_id is None):
+            raise ValueError(
+                "discovery self authority requires service and instance identity together"
+            )
+        if self.subject_service_id is not None:
+            _require_identifier("subject_service_id", self.subject_service_id)
         if self.subject_instance_id is not None:
             _require_identifier("subject_instance_id", self.subject_instance_id)
 
@@ -203,6 +218,7 @@ class DiscoveryAuthority:
             "actor_id": self.actor_id,
             "workspace_id": self.workspace_id,
             "scopes": [scope.value for scope in sorted(self.scopes, key=lambda value: value.value)],
+            "subject_service_id": self.subject_service_id,
             "subject_instance_id": self.subject_instance_id,
         }
 
@@ -264,13 +280,13 @@ class ExpireDiscoveryLeases:
     command_id: str
     workspace_id: str
     observed_at: datetime
-    limit: int = 1_000
+    limit: int = 100
 
     def __post_init__(self) -> None:
         _require_identifier("command_id", self.command_id)
         _require_identifier("workspace_id", self.workspace_id)
         _aware("observed_at", self.observed_at)
-        _require_limit(self.limit, maximum=1_000)
+        _require_limit(self.limit)
 
 
 DiscoveryCommand: TypeAlias = (
@@ -423,7 +439,14 @@ def discovery_authority_from_descriptor(
 ) -> DiscoveryAuthority:
     """Decode one exact durable authority without accepting open scopes."""
 
-    _exact(value, "actor_id", "workspace_id", "scopes", "subject_instance_id")
+    _exact(
+        value,
+        "actor_id",
+        "workspace_id",
+        "scopes",
+        "subject_service_id",
+        "subject_instance_id",
+    )
     scopes_value = value.get("scopes")
     if not isinstance(scopes_value, list) or any(
         not isinstance(scope, str) for scope in scopes_value
@@ -435,14 +458,18 @@ def discovery_authority_from_descriptor(
         raise ValueError("unknown discovery authority scope") from error
     if len(scopes) != len(scopes_value):
         raise ValueError("discovery authority scopes must be unique")
-    subject = value.get("subject_instance_id")
-    if subject is not None and not isinstance(subject, str):
+    subject_service = value.get("subject_service_id")
+    if subject_service is not None and not isinstance(subject_service, str):
+        raise ValueError("discovery subject_service_id must be text or null")
+    subject_instance = value.get("subject_instance_id")
+    if subject_instance is not None and not isinstance(subject_instance, str):
         raise ValueError("discovery subject_instance_id must be text or null")
     return DiscoveryAuthority(
         _text(value, "actor_id"),
         _text(value, "workspace_id"),
         scopes,
-        subject_instance_id=subject,
+        subject_service_id=subject_service,
+        subject_instance_id=subject_instance,
     )
 
 

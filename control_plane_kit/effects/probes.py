@@ -391,24 +391,7 @@ def _validate_literal_endpoint(value: str, protocol: Protocol) -> None:
 def protocol_endpoint_schemes(protocol: Protocol) -> frozenset[str]:
     """Return closed safe URL schemes for one connection protocol."""
 
-    return {
-        Protocol.HTTP: frozenset(("http", "https")),
-        Protocol.POSTGRES: frozenset(
-            ("postgres", "postgresql", "postgresql+psycopg")
-        ),
-        Protocol.TCP: frozenset(("tcp",)),
-        Protocol.UDP: frozenset(("udp",)),
-        Protocol.DNS_TCP: frozenset(("dns+tcp",)),
-        Protocol.DNS_UDP: frozenset(("dns+udp",)),
-        Protocol.REDIS: frozenset(("redis", "rediss")),
-        Protocol.SMTP: frozenset(("smtp", "smtps")),
-        Protocol.OTLP_HTTP: frozenset(("http", "https")),
-        Protocol.OTLP_GRPC: frozenset(("grpc", "grpcs")),
-        Protocol.NATS: frozenset(("nats",)),
-        Protocol.AMQP: frozenset(("amqp", "amqps")),
-        Protocol.KAFKA: frozenset(("kafka",)),
-        Protocol.S3: frozenset(("s3", "http", "https")),
-    }[protocol]
+    return protocol.endpoint_schemes()
 
 
 def _validate_health_path(value: str) -> None:

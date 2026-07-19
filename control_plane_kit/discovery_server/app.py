@@ -23,6 +23,7 @@ from control_plane_kit.servers._fastapi import require_fastapi
 
 
 MAX_DISCOVERY_REQUEST_BYTES = 16_384
+MAX_DISCOVERY_RESPONSE_BYTES = 524_288
 
 
 def create_service_discovery_app(
@@ -45,6 +46,7 @@ def create_service_discovery_app(
         x_cpk_authenticated_subject: str | None = Header(default=None),
         x_cpk_authenticated_workspace: str | None = Header(default=None),
         x_cpk_discovery_scopes: str | None = Header(default=None),
+        x_cpk_discovery_service: str | None = Header(default=None),
         x_cpk_discovery_instance: str | None = Header(default=None),
     ):
         supplied = x_cpk_identity_attestation or ""
@@ -60,6 +62,7 @@ def create_service_discovery_app(
                     "actor_id": x_cpk_authenticated_subject,
                     "workspace_id": x_cpk_authenticated_workspace,
                     "scopes": x_cpk_discovery_scopes.split(","),
+                    "subject_service_id": x_cpk_discovery_service,
                     "subject_instance_id": x_cpk_discovery_instance,
                 }
             )
@@ -173,4 +176,9 @@ def _execute(service, command, authority, http_exception) -> dict[str, object]:
         raise http_exception(status_code=404, detail="discovery registration not found") from error
     except DiscoveryConflict as error:
         raise http_exception(status_code=409, detail="discovery operation conflicts") from error
-    return {"result": result.descriptor(), "replayed": result.replayed}
+    response = {"result": result.descriptor(), "replayed": result.replayed}
+    if len(json.dumps(response, sort_keys=True, separators=(",", ":")).encode()) > (
+        MAX_DISCOVERY_RESPONSE_BYTES
+    ):
+        raise http_exception(status_code=500, detail="discovery response exceeds bound")
+    return response

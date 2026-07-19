@@ -114,6 +114,11 @@ class Protocol:
 
         return self == other
 
+    def endpoint_schemes(self) -> frozenset[str]:
+        """Return the closed URL schemes that preserve this protocol product."""
+
+        return _ENDPOINT_SCHEMES[self]
+
     def descriptor(self) -> dict[str, str]:
         """Return the exact durable product descriptor."""
 
@@ -185,6 +190,23 @@ _PROTOCOL_BY_VALUE = {
         Protocol.KAFKA,
         Protocol.S3,
     )
+}
+
+_ENDPOINT_SCHEMES: dict[Protocol, frozenset[str]] = {
+    Protocol.HTTP: frozenset(("http", "https")),
+    Protocol.POSTGRES: frozenset(("postgres", "postgresql", "postgresql+psycopg")),
+    Protocol.TCP: frozenset(("tcp",)),
+    Protocol.UDP: frozenset(("udp",)),
+    Protocol.DNS_TCP: frozenset(("dns+tcp",)),
+    Protocol.DNS_UDP: frozenset(("dns+udp",)),
+    Protocol.REDIS: frozenset(("redis", "rediss")),
+    Protocol.SMTP: frozenset(("smtp", "smtps")),
+    Protocol.OTLP_HTTP: frozenset(("http", "https")),
+    Protocol.OTLP_GRPC: frozenset(("grpc", "grpcs")),
+    Protocol.NATS: frozenset(("nats",)),
+    Protocol.AMQP: frozenset(("amqp", "amqps")),
+    Protocol.KAFKA: frozenset(("kafka",)),
+    Protocol.S3: frozenset(("s3", "http", "https")),
 }
 
 
