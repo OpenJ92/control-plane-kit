@@ -202,6 +202,35 @@ class GraphDiffTests(unittest.TestCase):
             )
         )
 
+    def test_protocol_product_change_is_an_explicit_socket_and_endpoint_change(self):
+        current = simple_graph()
+        node = current.node("application")
+        desired = current.update_node(
+            replace(
+                node,
+                sockets=BlockSockets(
+                    providers=(ProviderSocket("public", Protocol.TCP),)
+                ),
+                endpoints={
+                    "public": Endpoint(
+                        LiteralAddress("tcp://application:8000"),
+                        Protocol.TCP,
+                    )
+                },
+            )
+        )
+
+        result = diff_graphs(validate_graph(current), validate_graph(desired))
+
+        fields = {
+            change.subject.field
+            for change in result.changes
+            if isinstance(change, ModifiedChange)
+            and isinstance(change.subject, FieldSubject)
+        }
+        self.assertIn(StructuralField.SOCKET_CONTRACT, fields)
+        self.assertIn(StructuralField.ENDPOINT, fields)
+
     def test_block_spec_endpoint_and_metadata_changes_are_separate_fields(self):
         current = simple_graph(display_name="Version A", endpoint="http://a")
         desired = simple_graph(display_name="Version B", endpoint="http://b")

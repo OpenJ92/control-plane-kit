@@ -118,12 +118,12 @@ def _apply_connection(graph: DeploymentGraph, connection: SocketConnection) -> D
     provider_socket = provider.provider_socket(connection.provider_socket)
     requirement_socket = consumer.requirement_socket(connection.requirement_socket)
     protocol = connection.protocol or provider_socket.protocol
-    if provider_socket.protocol is not protocol:
+    if provider_socket.protocol != protocol:
         raise ValueError(
             f"provider {provider.node_id}.{provider_socket.name} is {provider_socket.protocol.value}, "
             f"connection requested {protocol.value}"
         )
-    if requirement_socket.protocol is not protocol:
+    if requirement_socket.protocol != protocol:
         raise ValueError(
             f"consumer {consumer.node_id}.{requirement_socket.name} expects {requirement_socket.protocol.value}, "
             f"connection provides {protocol.value}"

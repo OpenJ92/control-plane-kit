@@ -71,7 +71,10 @@ class OperatorGraphProjectionTests(TestCase):
                 "edge_id": "postgres.internal-to-api.DATABASE_URL",
                 "provider": {"node_id": "postgres", "socket": "internal"},
                 "consumer": {"node_id": "api", "socket": "DATABASE_URL"},
-                "protocol": "postgres",
+                "protocol": {
+                    "transport": "tcp",
+                    "application": "postgres",
+                },
             },
         )
 

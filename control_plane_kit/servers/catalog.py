@@ -111,7 +111,7 @@ class PackageServerContract:
             "requirements": [
                 {
                     "name": socket.name,
-                    "protocol": socket.protocol.value,
+                    "protocol": socket.protocol.descriptor(),
                     "binding": socket.binding.value,
                     "env_bindings": list(socket.env_bindings),
                     "required": socket.required,
@@ -119,7 +119,7 @@ class PackageServerContract:
                 for socket in self.block.sockets.requirements
             ],
             "providers": [
-                {"name": socket.name, "protocol": socket.protocol.value}
+                {"name": socket.name, "protocol": socket.protocol.descriptor()}
                 for socket in self.block.sockets.providers
             ],
             "capabilities": [

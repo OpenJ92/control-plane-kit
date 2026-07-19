@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from enum import StrEnum
-from typing import ClassVar
+from typing import ClassVar, Mapping
 
 
 class Transport(StrEnum):
@@ -113,6 +113,39 @@ class Protocol:
         """Return whether two sockets have identical connection semantics."""
 
         return self == other
+
+    def descriptor(self) -> dict[str, str]:
+        """Return the exact durable product descriptor."""
+
+        return {
+            "transport": self.transport.value,
+            "application": self.application.value,
+        }
+
+    @classmethod
+    def from_descriptor(cls, value: Mapping[str, object]) -> "Protocol":
+        """Decode one exact durable product descriptor."""
+
+        if set(value) != {"transport", "application"}:
+            raise ValueError(
+                "protocol descriptor requires exactly transport and application"
+            )
+        transport_value = value["transport"]
+        application_value = value["application"]
+        if not isinstance(transport_value, str):
+            raise ValueError("protocol transport must be a string")
+        if not isinstance(application_value, str):
+            raise ValueError("protocol application must be a string")
+        try:
+            transport = Transport(transport_value)
+            application = ApplicationProtocol(application_value)
+        except ValueError as error:
+            raise ValueError(f"unknown protocol descriptor value: {error}") from error
+        candidate = cls(transport, application)
+        try:
+            return _PROTOCOL_BY_VALUE[candidate.value]
+        except KeyError as error:
+            raise ValueError("protocol descriptor has no canonical value") from error
 
     def __str__(self) -> str:
         return self.value

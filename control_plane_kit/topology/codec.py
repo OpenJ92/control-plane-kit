@@ -338,7 +338,7 @@ class GraphDescriptorCodec:
                 )
             for name, endpoint in node.endpoints.items():
                 provider = node.provider_socket(name)
-                if provider.protocol is not endpoint.protocol:
+                if provider.protocol != endpoint.protocol:
                     raise InvalidGraphReference(
                         f"endpoint {node_id}.{name} protocol does not match provider"
                     )
@@ -352,7 +352,7 @@ class GraphDescriptorCodec:
                 )
             except KeyError as error:
                 raise InvalidGraphReference(str(error)) from error
-            if provider.protocol is not edge.protocol or requirement.protocol is not edge.protocol:
+            if provider.protocol != edge.protocol or requirement.protocol != edge.protocol:
                 raise InvalidGraphReference(f"edge {edge_id!r} has incompatible protocol")
 
 
@@ -408,7 +408,9 @@ def _boolean(descriptor: Mapping[str, object], key: str, *, default: bool) -> bo
 def _protocol(value: object, path: str) -> Protocol:
     descriptor = _mapping(value, path)
     try:
-        return Protocol.parse(_text(descriptor, "protocol"))
+        return Protocol.from_descriptor(
+            _mapping(descriptor.get("protocol"), f"{path}.protocol")
+        )
     except ValueError as error:
         raise UnknownGraphVariant(f"unknown protocol: {error}") from error
 

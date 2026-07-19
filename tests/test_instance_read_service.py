@@ -254,11 +254,14 @@ class InstanceReadServiceTests(PostgresStoreTestCase):
             },
             target_routes,
         )
-        self.assertEqual(router["providers"]["internal"]["protocol"], "http")
+        self.assertEqual(
+            router["providers"]["internal"]["protocol"],
+            {"transport": "tcp", "application": "http"},
+        )
         self.assertEqual(
             router["requirements"]["active"],
             {
-                "protocol": "http",
+                "protocol": {"transport": "tcp", "application": "http"},
                 "binding": "environment",
                 "env_bindings": ["ACTIVE_TARGET_URL"],
                 "required": True,
@@ -275,7 +278,7 @@ class InstanceReadServiceTests(PostgresStoreTestCase):
         self.assertEqual(
             router["requirements"]["active"],
             {
-                "protocol": "http",
+                "protocol": {"transport": "tcp", "application": "http"},
                 "binding": "runtime-control",
                 "env_bindings": [],
                 "required": True,

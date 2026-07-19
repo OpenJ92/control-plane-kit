@@ -497,7 +497,7 @@ def _edge_material(graph: DeploymentGraph, edge_id: str) -> SocketConnectionMate
             MaterializationCode.TARGET_NOT_FOUND,
             f"pinned graph cannot resolve socket connection {edge_id!r}",
         ) from error
-    if endpoint.protocol is not edge.protocol or requirement.protocol is not edge.protocol:
+    if endpoint.protocol != edge.protocol or requirement.protocol != edge.protocol:
         raise EffectMaterializationError(
             MaterializationCode.INVALID_SOCKET_CONNECTION,
             f"socket connection {edge_id!r} has incompatible protocols",
@@ -736,7 +736,7 @@ def _descriptor(value: object) -> object:
         case HostPublicationMaterial():
             return {
                 "socket_name": value.socket_name,
-                "protocol": value.protocol.value,
+                "protocol": value.protocol.descriptor(),
                 "container_port": value.container_port,
                 "bind_address": str(value.bind_address),
                 "host_port": value.host_port,
@@ -745,7 +745,7 @@ def _descriptor(value: object) -> object:
             return {
                 "type": "socket-connection",
                 "edge_id": value.edge_id,
-                "protocol": value.protocol.value,
+                "protocol": value.protocol.descriptor(),
                 "provider_node_id": value.provider_node_id,
                 "provider_socket": value.provider_socket,
                 "provider_endpoint": _descriptor(value.provider_endpoint),
@@ -756,7 +756,7 @@ def _descriptor(value: object) -> object:
         case EndpointMaterial():
             return {
                 "socket_name": value.socket_name,
-                "protocol": value.protocol.value,
+                "protocol": value.protocol.descriptor(),
                 "scope": value.scope.value,
                 "address": _descriptor(value.address),
             }

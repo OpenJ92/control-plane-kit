@@ -242,6 +242,26 @@ class EnvironmentAccessPolicy:
         )
 
 
+@dataclass(frozen=True)
+class ProtocolProjectionPolicy:
+    """Reject scalar protocol projection outside explicit display-only owners."""
+
+    scalar_display_owner_modules: tuple[str, ...] = ()
+
+    def evaluate(self, facts: SourceFacts) -> tuple[PolicyFinding, ...]:
+        if facts.module in self.scalar_display_owner_modules:
+            return ()
+        return tuple(
+            PolicyFinding(
+                "protocol-product-erasure",
+                f"{facts.module} erases protocol product structure through .protocol.value",
+                reference.location,
+            )
+            for reference in facts.references
+            if reference.qualified_name.endswith(".protocol.value")
+        )
+
+
 @dataclass(frozen=True, order=True)
 class AllowedSkip:
     """One reviewed conditional-skip declaration and its justification."""

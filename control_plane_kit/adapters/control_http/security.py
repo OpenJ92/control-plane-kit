@@ -259,7 +259,7 @@ def authorize_control_endpoint(
             ControlSecurityCode.INVALID_OBSERVATION,
             "control authority must be a runtime-observed literal endpoint",
         )
-    if observation.endpoint.protocol is not NetworkProtocol.HTTP:
+    if observation.endpoint.protocol != NetworkProtocol.HTTP:
         raise ControlSecurityError(
             ControlSecurityCode.INVALID_OBSERVATION,
             "control authority must use HTTP protocol",

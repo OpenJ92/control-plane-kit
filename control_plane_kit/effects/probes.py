@@ -127,7 +127,7 @@ class RuntimeEndpointObservation:
             "subject_id": self.subject_id,
             "socket_name": self.socket_name,
             "graph_id": self.graph_id,
-            "protocol": self.protocol.value,
+            "protocol": self.protocol.descriptor(),
             "context": self.context.value,
             "address": address,
         }
@@ -180,7 +180,7 @@ class ApplicationHealthProbeIntent:
         _validate_probe_identity(self.subject_id, self.graph_id, self.policy)
         if self.endpoint.subject_id != self.subject_id or self.endpoint.graph_id != self.graph_id:
             raise ValueError("health probe endpoint identity must match its subject and graph")
-        if self.endpoint.protocol is not Protocol.HTTP:
+        if self.endpoint.protocol != Protocol.HTTP:
             raise ValueError("application health probes require HTTP endpoints")
         _validate_health_path(self.health_path)
 
@@ -323,7 +323,7 @@ def application_health_probe(
     failure = _validate_endpoint_identity(node, endpoint)
     if failure is not None:
         return failure
-    if endpoint.protocol is not Protocol.HTTP:
+    if endpoint.protocol != Protocol.HTTP:
         return ProbeConstructionFailure(
             ProbeConstructionCode.INCOMPATIBLE_PROTOCOL,
             node.node_id,
@@ -365,7 +365,7 @@ def _validate_endpoint_identity(
             ProbeConstructionCode.MISSING_ENDPOINT,
             node.node_id,
         )
-    if expected.protocol is not endpoint.protocol:
+    if expected.protocol != endpoint.protocol:
         return ProbeConstructionFailure(
             ProbeConstructionCode.INCOMPATIBLE_PROTOCOL,
             node.node_id,
