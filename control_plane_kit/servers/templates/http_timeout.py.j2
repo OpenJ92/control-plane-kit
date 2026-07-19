@@ -1,0 +1,177 @@
+import hmac
+import json
+import os
+import socket
+import threading
+import time
+from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
+from urllib.error import HTTPError, URLError
+from urllib.request import HTTPRedirectHandler, Request, build_opener
+
+TARGET = os.environ["TIMEOUT_TARGET_URL"].rstrip("/")
+CONTROL_TOKEN = os.environ["CPK_CONTROL_TOKEN"]
+UPSTREAM_TIMEOUT_SECONDS = {{ upstream_timeout_ms }} / 1000
+TOTAL_DEADLINE_SECONDS = {{ total_deadline_ms }} / 1000
+MAX_REQUEST_BYTES = {{ max_request_bytes }}
+MAX_RESPONSE_BYTES = {{ max_response_bytes }}
+LOCK = threading.Lock()
+REQUEST_COUNT = 0
+TIMEOUT_COUNT = 0
+DISCONNECT_COUNT = 0
+LATEST_OUTCOME = None
+LATEST_DURATION_MS = None
+
+
+class NoRedirects(HTTPRedirectHandler):
+    def redirect_request(self, request, file_pointer, code, message, headers, new_url):
+        return None
+
+
+OPENER = build_opener(NoRedirects)
+
+
+def record(outcome, duration_ms):
+    global REQUEST_COUNT, TIMEOUT_COUNT, DISCONNECT_COUNT, LATEST_OUTCOME, LATEST_DURATION_MS
+    with LOCK:
+        REQUEST_COUNT += 1
+        if outcome in {"upstream-timeout", "total-deadline-exceeded"}:
+            TIMEOUT_COUNT += 1
+        if outcome in {"upstream-disconnected", "client-disconnected"}:
+            DISCONNECT_COUNT += 1
+        LATEST_OUTCOME = outcome
+        LATEST_DURATION_MS = duration_ms
+
+
+def observation():
+    with LOCK:
+        return {
+            "request_count": REQUEST_COUNT,
+            "timeout_count": TIMEOUT_COUNT,
+            "disconnect_count": DISCONNECT_COUNT,
+            "latest_outcome": LATEST_OUTCOME,
+            "latest_duration_ms": LATEST_DURATION_MS,
+            "latest_request_id": None if REQUEST_COUNT == 0 else f"timeout-request-{REQUEST_COUNT:020d}",
+        }
+
+
+class Handler(BaseHTTPRequestHandler):
+    def _json(self, status, payload):
+        body = json.dumps(payload, sort_keys=True, separators=(",", ":")).encode()
+        self.send_response(status)
+        self.send_header("content-type", "application/json")
+        self.send_header("content-length", str(len(body)))
+        self.end_headers()
+        if self.command != "HEAD":
+            self.wfile.write(body)
+
+    def _authorized(self):
+        authorization = self.headers.get("authorization", "")
+        alternate = self.headers.get("x-control-plane-token", "")
+        return hmac.compare_digest(authorization, f"Bearer {CONTROL_TOKEN}") or hmac.compare_digest(alternate, CONTROL_TOKEN)
+
+    def _read_body(self, deadline):
+        try:
+            length = int(self.headers.get("content-length", "0") or "0")
+        except ValueError:
+            return None, 400, "request-rejected"
+        if length < 0 or length > MAX_REQUEST_BYTES:
+            return None, 413, "request-rejected"
+        remaining = deadline - time.monotonic()
+        if remaining <= 0:
+            return None, 504, "total-deadline-exceeded"
+        self.connection.settimeout(min(UPSTREAM_TIMEOUT_SECONDS, remaining))
+        try:
+            return self.rfile.read(length), None, None
+        except (BrokenPipeError, ConnectionResetError, socket.timeout):
+            return None, None, "client-disconnected"
+
+    def _send(self, status, payload, headers, outcome, started):
+        duration_ms = min(int((time.monotonic() - started) * 1000), int(TOTAL_DEADLINE_SECONDS * 1000))
+        try:
+            self.send_response(status)
+            for key, value in headers:
+                if key.lower() not in {"transfer-encoding", "connection", "content-length"}:
+                    self.send_header(key, value)
+            self.send_header("content-length", str(len(payload)))
+            self.end_headers()
+            if self.command != "HEAD":
+                self.wfile.write(payload)
+        except (BrokenPipeError, ConnectionResetError):
+            record("client-disconnected", duration_ms)
+            return
+        record(outcome, duration_ms)
+
+    def _forward(self):
+        started = time.monotonic()
+        deadline = started + TOTAL_DEADLINE_SECONDS
+        body, error_status, read_outcome = self._read_body(deadline)
+        if read_outcome == "client-disconnected":
+            record(read_outcome, min(int((time.monotonic() - started) * 1000), int(TOTAL_DEADLINE_SECONDS * 1000)))
+            return
+        if error_status is not None:
+            payload = b"invalid or oversized request"
+            self._send(error_status, payload, (), read_outcome, started)
+            return
+        remaining = deadline - time.monotonic()
+        if remaining <= 0:
+            self._send(504, b"total deadline exceeded", (), "total-deadline-exceeded", started)
+            return
+        headers = {
+            key.lower(): value
+            for key, value in self.headers.items()
+            if key.lower() not in {"host", "content-length"}
+        }
+        request = Request(TARGET + self.path, data=body or None, headers=headers, method=self.command)
+        try:
+            response = OPENER.open(request, timeout=min(UPSTREAM_TIMEOUT_SECONDS, remaining))
+            with response:
+                payload = response.read(MAX_RESPONSE_BYTES + 1)
+                status = response.status
+                response_headers = tuple(response.headers.items())
+            outcome = "forwarded"
+        except HTTPError as error:
+            with error:
+                payload = error.read(MAX_RESPONSE_BYTES + 1)
+                status = error.code
+                response_headers = tuple(error.headers.items())
+            outcome = "forwarded"
+        except (TimeoutError, socket.timeout):
+            payload, status, response_headers, outcome = b"upstream timeout", 504, (), "upstream-timeout"
+        except URLError as error:
+            if isinstance(error.reason, (TimeoutError, socket.timeout)):
+                payload, status, response_headers, outcome = b"upstream timeout", 504, (), "upstream-timeout"
+            else:
+                payload, status, response_headers, outcome = b"upstream disconnected", 502, (), "upstream-disconnected"
+        except OSError:
+            payload, status, response_headers, outcome = b"upstream disconnected", 502, (), "upstream-disconnected"
+        if time.monotonic() >= deadline and outcome == "forwarded":
+            payload, status, response_headers, outcome = b"total deadline exceeded", 504, (), "total-deadline-exceeded"
+        if len(payload) > MAX_RESPONSE_BYTES:
+            payload, status, response_headers, outcome = b"upstream response exceeded limit", 502, (), "response-rejected"
+        self._send(status, payload, response_headers, outcome, started)
+
+    def do_GET(self):
+        path = self.path.split("?", 1)[0]
+        if path == "/health":
+            self._json(200, {"status": "healthy"})
+            return
+        if path == "/__deploy/metrics":
+            if not self._authorized():
+                self._json(401, {"detail": "unauthorized"})
+                return
+            self._json(200, observation())
+            return
+        self._forward()
+
+    do_HEAD = _forward
+    do_OPTIONS = _forward
+    do_POST = _forward
+    do_PUT = _forward
+    do_PATCH = _forward
+    do_DELETE = _forward
+
+    def log_message(self, format, *args):
+        pass
+
+
+ThreadingHTTPServer(("0.0.0.0", {{ port }}), Handler).serve_forever()
