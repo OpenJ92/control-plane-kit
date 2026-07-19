@@ -11,6 +11,10 @@ from control_plane_kit import (
     WebhookAttemptOutcome,
     WebhookAttemptStarted,
     WebhookAuthority,
+    WebhookClaim,
+    WebhookClaimed,
+    WebhookClaimReleased,
+    WebhookClaimReleaseReason,
     WebhookContentType,
     WebhookDeadLettered,
     WebhookDeliveryIdentity,
@@ -103,14 +107,95 @@ class WebhookAlgebraTests(unittest.TestCase):
         with self.assertRaises(ValueError):
             policy.backoff_ms(0)
 
+    def test_claim_release_is_explicit_and_safe_only_before_dispatch(self) -> None:
+        intent = _intent()
+        claim = _claim(intent)
+        claimed = replay_webhook_events(
+            (WebhookEnqueued(intent), WebhookClaimed(claim))
+        )
+
+        self.assertIs(claimed.status, WebhookDeliveryStatus.CLAIMED)
+        self.assertEqual(claimed.active_claim, claim)
+        short_intent = replace(
+            intent,
+            retry_policy=WebhookRetryPolicy(3, 1_000, 10_000, 1),
+        )
+        short_queued = evolve_webhook_delivery(None, WebhookEnqueued(short_intent))
+        with self.assertRaisesRegex(ValueError, "fit within the delivery deadline"):
+            evolve_webhook_delivery(
+                short_queued,
+                WebhookClaimed(_claim(short_intent)),
+            )
+        with self.assertRaisesRegex(ValueError, "before its lease boundary"):
+            evolve_webhook_delivery(
+                claimed,
+                WebhookClaimReleased(
+                    intent.identity,
+                    claim.claim_id,
+                    1,
+                    WebhookClaimReleaseReason.EXPIRED,
+                    claim.lease_expires_at - timedelta(microseconds=1),
+                ),
+            )
+
+        released = evolve_webhook_delivery(
+            claimed,
+            WebhookClaimReleased(
+                intent.identity,
+                claim.claim_id,
+                1,
+                WebhookClaimReleaseReason.EXPIRED,
+                claim.lease_expires_at,
+            ),
+        )
+        reclaimed = evolve_webhook_delivery(
+            released,
+            WebhookClaimed(
+                _claim(
+                    intent,
+                    claim_id="claim-2",
+                    claimed_at=claim.lease_expires_at,
+                )
+            ),
+        )
+
+        self.assertIs(released.status, WebhookDeliveryStatus.QUEUED)
+        self.assertIsNone(released.active_claim)
+        self.assertEqual(reclaimed.active_claim.claim_id, "claim-2")
+
+        started = evolve_webhook_delivery(
+            reclaimed,
+            WebhookAttemptStarted(
+                intent.identity,
+                1,
+                "claim-2",
+                claim.lease_expires_at + timedelta(seconds=1),
+            ),
+        )
+        with self.assertRaisesRegex(ValueError, "only before attempt start"):
+            evolve_webhook_delivery(
+                started,
+                WebhookClaimReleased(
+                    intent.identity,
+                    "claim-2",
+                    1,
+                    WebhookClaimReleaseReason.ABANDONED,
+                    claim.lease_expires_at + timedelta(seconds=2),
+                ),
+            )
+
     def test_success_history_reconstructs_without_mutable_cursor(self) -> None:
         intent = _intent()
         events = (
             WebhookEnqueued(intent),
-            WebhookAttemptStarted(intent.identity, 1, NOW + timedelta(seconds=1)),
+            WebhookClaimed(_claim(intent)),
+            WebhookAttemptStarted(
+                intent.identity, 1, "claim-1", NOW + timedelta(seconds=1)
+            ),
             WebhookAttemptFinished(
                 intent.identity,
                 1,
+                "claim-1",
                 WebhookAttemptOutcome.SUCCEEDED,
                 NOW + timedelta(seconds=2),
                 response_status=204,
@@ -133,14 +218,18 @@ class WebhookAlgebraTests(unittest.TestCase):
         failed = replay_webhook_events(
             (
                 WebhookEnqueued(intent),
-                WebhookAttemptStarted(intent.identity, 1, NOW + timedelta(seconds=1)),
+                WebhookClaimed(_claim(intent)),
+                WebhookAttemptStarted(
+                    intent.identity, 1, "claim-1", NOW + timedelta(seconds=1)
+                ),
                 WebhookAttemptFinished(
                     intent.identity,
                     1,
-                WebhookAttemptOutcome.RETRYABLE_FAILURE,
-                failed_at,
-                response_status=503,
-                failure_code="http.server-error",
+                    "claim-1",
+                    WebhookAttemptOutcome.RETRYABLE_FAILURE,
+                    failed_at,
+                    response_status=503,
+                    failure_code="http.server-error",
                 ),
             )
         )
@@ -155,11 +244,34 @@ class WebhookAlgebraTests(unittest.TestCase):
         with self.assertRaisesRegex(ValueError, "before availability"):
             evolve_webhook_delivery(
                 scheduled,
-                WebhookAttemptStarted(intent.identity, 2, failed_at),
+                WebhookClaimed(
+                    _claim(
+                        intent,
+                        claim_id="claim-early",
+                        attempt_number=2,
+                        claimed_at=failed_at,
+                    )
+                ),
             )
-        started = evolve_webhook_delivery(
+        claimed = evolve_webhook_delivery(
             scheduled,
-            WebhookAttemptStarted(intent.identity, 2, available_at),
+            WebhookClaimed(
+                _claim(
+                    intent,
+                    claim_id="claim-2",
+                    attempt_number=2,
+                    claimed_at=available_at,
+                )
+            ),
+        )
+        started = evolve_webhook_delivery(
+            claimed,
+            WebhookAttemptStarted(
+                intent.identity,
+                2,
+                "claim-2",
+                available_at + timedelta(milliseconds=1),
+            ),
         )
         self.assertIs(started.status, WebhookDeliveryStatus.IN_FLIGHT)
 
@@ -178,7 +290,10 @@ class WebhookAlgebraTests(unittest.TestCase):
         in_flight = replay_webhook_events(
             (
                 WebhookEnqueued(intent),
-                WebhookAttemptStarted(intent.identity, 1, NOW + timedelta(seconds=1)),
+                WebhookClaimed(_claim(intent)),
+                WebhookAttemptStarted(
+                    intent.identity, 1, "claim-1", NOW + timedelta(seconds=1)
+                ),
             )
         )
         terminal = evolve_webhook_delivery(
@@ -186,6 +301,7 @@ class WebhookAlgebraTests(unittest.TestCase):
             WebhookAttemptFinished(
                 intent.identity,
                 1,
+                "claim-1",
                 WebhookAttemptOutcome.TERMINAL_FAILURE,
                 NOW + timedelta(seconds=2),
                 failure_code="http.rejected",
@@ -204,6 +320,7 @@ class WebhookAlgebraTests(unittest.TestCase):
             WebhookAttemptFinished(
                 intent.identity,
                 1,
+                "claim-1",
                 WebhookAttemptOutcome.UNCERTAIN,
                 NOW + timedelta(seconds=2),
             ),
@@ -229,22 +346,27 @@ class WebhookAlgebraTests(unittest.TestCase):
         with self.assertRaisesRegex(ValueError, "another delivery"):
             evolve_webhook_delivery(
                 queued,
-                WebhookAttemptStarted(foreign, 1, NOW + timedelta(seconds=1)),
+                WebhookClaimed(
+                    WebhookClaim(
+                        foreign,
+                        "claim-foreign",
+                        "worker-a",
+                        1,
+                        NOW,
+                        NOW + timedelta(seconds=30),
+                    )
+                ),
             )
-        with self.assertRaisesRegex(ValueError, "finish only while in flight"):
+        with self.assertRaisesRegex(ValueError, "requires an active claim"):
             evolve_webhook_delivery(
                 queued,
-                WebhookAttemptFinished(
-                    intent.identity,
-                    1,
-                    WebhookAttemptOutcome.SUCCEEDED,
-                    NOW + timedelta(seconds=1),
-                    response_status=200,
+                WebhookAttemptStarted(
+                    intent.identity, 1, "claim-1", NOW + timedelta(seconds=1)
                 ),
             )
         with self.assertRaisesRegex(ValueError, "begin with enqueue"):
             replay_webhook_events(
-                (WebhookAttemptStarted(intent.identity, 1, NOW),)
+                (WebhookAttemptStarted(intent.identity, 1, "claim-1", NOW),)
             )
         with self.assertRaisesRegex(ValueError, "state shape is inconsistent"):
             WebhookDeliveryState(
@@ -259,10 +381,21 @@ class WebhookAlgebraTests(unittest.TestCase):
         intent = _intent()
         events = (
             WebhookEnqueued(intent),
-            WebhookAttemptStarted(intent.identity, 1, NOW + timedelta(seconds=1)),
+            WebhookClaimed(_claim(intent)),
+            WebhookClaimReleased(
+                intent.identity,
+                "claim-1",
+                1,
+                WebhookClaimReleaseReason.ABANDONED,
+                NOW + timedelta(milliseconds=750),
+            ),
+            WebhookAttemptStarted(
+                intent.identity, 1, "claim-1", NOW + timedelta(seconds=1)
+            ),
             WebhookAttemptFinished(
                 intent.identity,
                 1,
+                "claim-1",
                 WebhookAttemptOutcome.SUCCEEDED,
                 NOW + timedelta(seconds=2),
                 response_status=200,
@@ -270,6 +403,7 @@ class WebhookAlgebraTests(unittest.TestCase):
             WebhookAttemptFinished(
                 intent.identity,
                 1,
+                "claim-1",
                 WebhookAttemptOutcome.RETRYABLE_FAILURE,
                 NOW + timedelta(seconds=2),
                 response_status=503,
@@ -278,6 +412,7 @@ class WebhookAlgebraTests(unittest.TestCase):
             WebhookAttemptFinished(
                 intent.identity,
                 1,
+                "claim-1",
                 WebhookAttemptOutcome.UNCERTAIN,
                 NOW + timedelta(seconds=2),
             ),
@@ -322,6 +457,7 @@ class WebhookAlgebraTests(unittest.TestCase):
             WebhookAttemptFinished(
                 _intent().identity,
                 1,
+                "claim-1",
                 WebhookAttemptOutcome.SUCCEEDED,
                 NOW,
                 response_status=200,
@@ -356,6 +492,23 @@ def _intent() -> WebhookDeliveryIntent:
         WebhookRetryPolicy(3, 1_000, 10_000, 3_600),
         NOW,
         WebhookSigning(SecretReference("secret://webhook/orders")),
+    )
+
+
+def _claim(
+    intent: WebhookDeliveryIntent,
+    *,
+    claim_id: str = "claim-1",
+    attempt_number: int = 1,
+    claimed_at: datetime = NOW + timedelta(milliseconds=500),
+) -> WebhookClaim:
+    return WebhookClaim(
+        intent.identity,
+        claim_id,
+        "worker-a",
+        attempt_number,
+        claimed_at,
+        claimed_at + timedelta(seconds=30),
     )
 
 
