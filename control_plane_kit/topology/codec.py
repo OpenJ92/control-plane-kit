@@ -11,6 +11,7 @@ from control_plane_kit.algebra import (
     ProviderSocket,
     PackageServerProduct,
     PackageServerSpec,
+    ProductMaturity,
     RequirementSocket,
 )
 from control_plane_kit.capabilities import CapabilityName
@@ -133,11 +134,13 @@ class PackageServerSpecCodec:
             "verification": spec.verification.descriptor(),
             "metadata": dict(sorted(spec.metadata.items())),
             "product": spec.product.value,
+            "maturity": spec.maturity.value,
         }
 
     def decode(self, descriptor: Mapping[str, object]) -> BlockSpec:
         try:
             product = PackageServerProduct(_text(descriptor, "product"))
+            maturity = ProductMaturity(_text(descriptor, "maturity"))
             capabilities = tuple(
                 CapabilityName(str(value))
                 for value in _list(descriptor.get("capabilities", []))
@@ -147,6 +150,7 @@ class PackageServerSpecCodec:
         return PackageServerSpec(
             role_id=_text(descriptor, "role_id"),
             product=product,
+            maturity=maturity,
             display_name=_optional_text(descriptor, "display_name"),
             health_path=_optional_text(descriptor, "health_path"),
             capabilities=capabilities,

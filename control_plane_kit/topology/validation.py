@@ -6,6 +6,7 @@ from collections import Counter
 from dataclasses import dataclass
 from enum import StrEnum
 
+from control_plane_kit.algebra import PackageServerSpec, ProductMaturity
 from control_plane_kit.capabilities import capability_named
 from control_plane_kit.control_routes import route_set_named
 from control_plane_kit.topology.graph import DeploymentGraph
@@ -42,6 +43,7 @@ class ValidationCode(StrEnum):
     CONSUMER_ENVIRONMENT = "consumer-environment"
     VERIFICATION_PROVIDER = "verification-provider"
     VERIFICATION_PROTOCOL = "verification-protocol"
+    PACKAGE_MATURITY = "package-maturity"
 
 
 class SocketDirection(StrEnum):
@@ -160,10 +162,35 @@ class GraphValidationError(ValueError):
         super().__init__(f"graph {result.graph.name!r} has {len(result.errors)} validation errors")
 
 
+@dataclass(frozen=True)
+class GraphValidationPolicy:
+    """Closed package-maturity policy applied at pure graph validation."""
+
+    allowed_package_maturities: tuple[ProductMaturity, ...] = tuple(ProductMaturity)
+
+    def __post_init__(self) -> None:
+        if not self.allowed_package_maturities:
+            raise ValueError("graph validation policy must allow at least one maturity")
+        if any(
+            not isinstance(value, ProductMaturity)
+            for value in self.allowed_package_maturities
+        ):
+            raise TypeError("allowed package maturities must be typed")
+        if len(set(self.allowed_package_maturities)) != len(
+            self.allowed_package_maturities
+        ):
+            raise ValueError("allowed package maturities must be unique")
+
+    @classmethod
+    def production(cls) -> "GraphValidationPolicy":
+        return cls((ProductMaturity.OPERATIONAL,))
+
+
 def validate_graph(
     graph: DeploymentGraph,
     *,
     codec: GraphDescriptorCodec = DEFAULT_GRAPH_CODEC,
+    policy: GraphValidationPolicy = GraphValidationPolicy(),
 ) -> ValidatedGraph:
     """Return deterministic findings without mutating topology or external state."""
 
@@ -247,6 +274,17 @@ def validate_graph(
             )
 
     for node_id, node in sorted(graph.nodes.items()):
+        if (
+            isinstance(node.block_spec, PackageServerSpec)
+            and node.block_spec.maturity not in policy.allowed_package_maturities
+        ):
+            findings.append(
+                _error(
+                    ValidationCode.PACKAGE_MATURITY,
+                    NodeSubject(node_id),
+                    f"package maturity {node.block_spec.maturity.value!r} is not allowed by validation policy",
+                )
+            )
         if node.runtime_id not in graph.runtimes:
             findings.append(
                 _error(

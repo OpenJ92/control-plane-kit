@@ -28,6 +28,7 @@ class ControlRouteScope(StrEnum):
     READ_STATE = "control:read"
     READ_LOGS = "logs:read"
     SEND_SIGNAL = "signal:send"
+    INJECT_FAULT = "fault:inject"
 
 
 class ControlRouteSetName(StrEnum):
@@ -40,6 +41,7 @@ class ControlRouteSetName(StrEnum):
     METRICS = "metrics"
     CIRCUIT = "circuit"
     TRAFFIC_EVIDENCE = "traffic-evidence"
+    FAULTS = "faults"
 
 
 @dataclass(frozen=True)
@@ -228,6 +230,26 @@ TRAFFIC_EVIDENCE_ROUTES = ControlRouteSet(
     ),
 )
 
+FAULT_ROUTES = ControlRouteSet(
+    name=ControlRouteSetName.FAULTS,
+    routes=(
+        ControlRoute(
+            name="fault-state",
+            method=ControlRouteMethod.GET,
+            path=control_path("fault"),
+            scope=ControlRouteScope.READ_STATE,
+            description="Read bounded test-only fault-injection state.",
+        ),
+        ControlRoute(
+            name="fault-replace",
+            method=ControlRouteMethod.POST,
+            path=control_path("fault"),
+            scope=ControlRouteScope.INJECT_FAULT,
+            description="Replace test-only fault activation with closed policy data.",
+        ),
+    ),
+)
+
 CONTROL_ROUTE_SETS = (
     COMMON_STATUS_ROUTES,
     LOG_ROUTES,
@@ -236,6 +258,7 @@ CONTROL_ROUTE_SETS = (
     METRIC_ROUTES,
     CIRCUIT_ROUTES,
     TRAFFIC_EVIDENCE_ROUTES,
+    FAULT_ROUTES,
 )
 
 

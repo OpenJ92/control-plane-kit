@@ -9,6 +9,7 @@ from control_plane_kit.algebra import (
     DeployBlock,
     PackageServerProduct,
     PackageServerSpec,
+    ProductMaturity,
 )
 from control_plane_kit.capabilities import CapabilityName
 from control_plane_kit.control_routes import ControlRouteSetName
@@ -16,6 +17,7 @@ from control_plane_kit.servers.hello import hello_server_block
 from control_plane_kit.servers.http_active_router import http_active_router_block
 from control_plane_kit.servers.http_circuit_breaker import http_circuit_breaker_block
 from control_plane_kit.servers.http_bulkhead import http_bulkhead_block
+from control_plane_kit.servers.http_fault_injector import http_fault_injector_block
 from control_plane_kit.servers.http_multiplexer import http_multiplexer_block
 from control_plane_kit.servers.http_proxy import http_proxy_block
 from control_plane_kit.servers.http_rate_limiter import http_rate_limiter_block
@@ -25,13 +27,6 @@ from control_plane_kit.servers.http_timeout import http_timeout_block
 from control_plane_kit.servers.http_weighted_balancer import http_weighted_load_balancer_block
 from control_plane_kit.servers.managed_http_router import managed_http_router_block
 from control_plane_kit.servers.request_observer import request_observer_block
-
-
-class ProductMaturity(StrEnum):
-    """Operational intent of one package implementation."""
-
-    TEACHING = "teaching"
-    OPERATIONAL = "operational"
 
 
 class CapabilityImplementation(StrEnum):
@@ -89,6 +84,8 @@ class PackageServerContract:
             raise TypeError("package server contract requires PackageServerSpec")
         if self.block.spec.product is not self.product:
             raise ValueError("package server contract product does not match block spec")
+        if self.block.spec.maturity is not self.maturity:
+            raise ValueError("package server contract maturity does not match block spec")
         implemented = tuple(value.capability for value in self.capabilities)
         if len(set(implemented)) != len(implemented):
             raise ValueError("package server contract repeats a capability")
@@ -209,6 +206,22 @@ PACKAGE_SERVER_CONTRACTS = (
         (
             _probe(path="/health"),
             _control(CapabilityName.METRICS_READABLE, ControlRouteSetName.METRICS),
+        ),
+    ),
+    PackageServerContract(
+        PackageServerProduct.HTTP_FAULT_INJECTOR,
+        ProductMaturity.TEST_ONLY,
+        http_fault_injector_block(),
+        (
+            _probe(path="/health"),
+            _control(
+                CapabilityName.FAULT_STATE_READABLE,
+                ControlRouteSetName.FAULTS,
+            ),
+            _control(
+                CapabilityName.FAULT_MUTABLE,
+                ControlRouteSetName.FAULTS,
+            ),
         ),
     ),
     PackageServerContract(

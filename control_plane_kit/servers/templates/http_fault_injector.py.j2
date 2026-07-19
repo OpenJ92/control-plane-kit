@@ -1,0 +1,331 @@
+import hmac
+import json
+import os
+import random
+import socket
+import threading
+import time
+from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
+from urllib.error import HTTPError, URLError
+from urllib.request import HTTPRedirectHandler, Request, build_opener
+
+TARGET = os.environ["FAULT_TARGET_URL"].rstrip("/")
+CONTROL_TOKEN = os.environ["CPK_FAULT_CONTROL_TOKEN"]
+MAX_REQUEST_BYTES = {{ max_request_bytes }}
+MAX_RESPONSE_BYTES = {{ max_response_bytes }}
+MAX_CONTROL_BYTES = 4096
+UPSTREAM_TIMEOUT_SECONDS = 5
+LOCK = threading.Lock()
+ACTIVE = {"variant": "disabled"}
+RANDOM_SOURCE = None
+REQUEST_COUNT = 0
+INJECTED_COUNT = 0
+NATURAL_FAILURE_COUNT = 0
+LATEST_INJECTION = None
+LATEST_TARGET_OUTCOME = None
+
+
+class NoRedirects(HTTPRedirectHandler):
+    def redirect_request(self, request, file_pointer, code, message, headers, new_url):
+        return None
+
+
+OPENER = build_opener(NoRedirects)
+ALLOWED_STATUSES = {"500", "502", "503", "504"}
+
+
+def exact_keys(value, expected, label):
+    if not isinstance(value, dict) or set(value) != expected:
+        raise ValueError(f"{label} has invalid fields")
+
+
+def bounded_integer(value, label, minimum, maximum):
+    if type(value) is not int or value < minimum or value > maximum:
+        raise ValueError(f"{label} is outside its allowed range")
+    return value
+
+
+def parse_state(value):
+    if not isinstance(value, dict):
+        raise ValueError("fault state must be an object")
+    variant = value.get("variant")
+    if variant == "disabled":
+        exact_keys(value, {"variant"}, "disabled fault state")
+        return {"variant": "disabled"}
+    if variant != "enabled":
+        raise ValueError("unknown fault activation variant")
+    exact_keys(value, {"variant", "fault"}, "enabled fault state")
+    fault = value["fault"]
+    if not isinstance(fault, dict):
+        raise ValueError("fault must be an object")
+    kind = fault.get("kind")
+    if kind == "delay":
+        exact_keys(fault, {"kind", "delay_ms"}, "delay fault")
+        return {
+            "variant": "enabled",
+            "fault": {
+                "kind": kind,
+                "delay_ms": bounded_integer(fault["delay_ms"], "delay", 1, 60000),
+            },
+        }
+    if kind == "status":
+        exact_keys(fault, {"kind", "status"}, "status fault")
+        if fault["status"] not in ALLOWED_STATUSES:
+            raise ValueError("status fault is not allowed")
+        return {"variant": "enabled", "fault": dict(fault)}
+    if kind == "connection-termination":
+        exact_keys(fault, {"kind"}, "connection termination fault")
+        return {"variant": "enabled", "fault": {"kind": kind}}
+    if kind == "truncation":
+        exact_keys(fault, {"kind", "retained_bytes"}, "truncation fault")
+        return {
+            "variant": "enabled",
+            "fault": {
+                "kind": kind,
+                "retained_bytes": bounded_integer(
+                    fault["retained_bytes"], "retained bytes", 0, 1048576
+                ),
+            },
+        }
+    if kind == "seeded-probability":
+        exact_keys(
+            fault,
+            {"kind", "probability_basis_points", "seed", "status"},
+            "seeded probability fault",
+        )
+        if fault["status"] not in ALLOWED_STATUSES:
+            raise ValueError("probabilistic status is not allowed")
+        return {
+            "variant": "enabled",
+            "fault": {
+                "kind": kind,
+                "probability_basis_points": bounded_integer(
+                    fault["probability_basis_points"], "probability", 1, 10000
+                ),
+                "seed": bounded_integer(fault["seed"], "seed", 0, 2147483647),
+                "status": fault["status"],
+            },
+        }
+    raise ValueError("unknown fault kind")
+
+
+def replace_state(value):
+    global ACTIVE, RANDOM_SOURCE
+    parsed = parse_state(value)
+    with LOCK:
+        ACTIVE = parsed
+        fault = parsed.get("fault", {})
+        RANDOM_SOURCE = (
+            random.Random(fault["seed"])
+            if fault.get("kind") == "seeded-probability"
+            else None
+        )
+    return state_descriptor()
+
+
+def state_descriptor():
+    with LOCK:
+        return {
+            "request_count": REQUEST_COUNT,
+            "injected_count": INJECTED_COUNT,
+            "natural_failure_count": NATURAL_FAILURE_COUNT,
+            "active": json.loads(json.dumps(ACTIVE)),
+            "latest_injection": LATEST_INJECTION,
+            "latest_target_outcome": LATEST_TARGET_OUTCOME,
+        }
+
+
+def begin_request():
+    global REQUEST_COUNT, LATEST_INJECTION, LATEST_TARGET_OUTCOME
+    with LOCK:
+        REQUEST_COUNT += 1
+        LATEST_INJECTION = None
+        LATEST_TARGET_OUTCOME = None
+        return json.loads(json.dumps(ACTIVE))
+
+
+def record_injection(kind):
+    global INJECTED_COUNT, LATEST_INJECTION
+    with LOCK:
+        INJECTED_COUNT += 1
+        LATEST_INJECTION = kind
+
+
+def record_target(outcome):
+    global NATURAL_FAILURE_COUNT, LATEST_TARGET_OUTCOME
+    with LOCK:
+        LATEST_TARGET_OUTCOME = outcome
+        if outcome in {"http-failure", "unavailable"}:
+            NATURAL_FAILURE_COUNT += 1
+
+
+def probability_selected(fault):
+    with LOCK:
+        if RANDOM_SOURCE is None:
+            raise RuntimeError("probabilistic source is not initialized")
+        return RANDOM_SOURCE.randrange(10000) < fault["probability_basis_points"]
+
+
+class Handler(BaseHTTPRequestHandler):
+    def _json(self, status, payload):
+        body = json.dumps(payload, sort_keys=True, separators=(",", ":")).encode()
+        self.send_response(status)
+        self.send_header("content-type", "application/json")
+        self.send_header("content-length", str(len(body)))
+        self.end_headers()
+        if self.command != "HEAD":
+            self.wfile.write(body)
+
+    def _fixed_injected_status(self, status):
+        body = b"Injected test fault"
+        self.send_response(int(status))
+        self.send_header("content-type", "text/plain")
+        self.send_header("content-length", str(len(body)))
+        self.end_headers()
+        if self.command != "HEAD":
+            self.wfile.write(body)
+
+    def _authorized(self):
+        authorization = self.headers.get("authorization", "")
+        alternate = self.headers.get("x-control-plane-token", "")
+        return hmac.compare_digest(
+            authorization, f"Bearer {CONTROL_TOKEN}"
+        ) or hmac.compare_digest(alternate, CONTROL_TOKEN)
+
+    def _read_body(self, limit):
+        try:
+            length = int(self.headers.get("content-length", "0") or "0")
+        except ValueError:
+            return None, 400
+        if length < 0 or length > limit:
+            return None, 413
+        return self.rfile.read(length), None
+
+    def _fault_control(self):
+        if not self._authorized():
+            self._json(401, {"detail": "unauthorized"})
+            return
+        if self.command == "GET":
+            self._json(200, state_descriptor())
+            return
+        body, error_status = self._read_body(MAX_CONTROL_BYTES)
+        if error_status is not None:
+            self._json(error_status, {"detail": "invalid control request"})
+            return
+        try:
+            payload = json.loads(body)
+            descriptor = replace_state(payload)
+        except (UnicodeDecodeError, json.JSONDecodeError, ValueError):
+            self._json(400, {"detail": "invalid closed fault policy"})
+            return
+        self._json(200, descriptor)
+
+    def _forward(self):
+        body, error_status = self._read_body(MAX_REQUEST_BYTES)
+        if error_status is not None:
+            self._json(error_status, {"detail": "invalid or oversized request"})
+            return
+        state = begin_request()
+        fault = state.get("fault")
+        if fault is not None:
+            kind = fault["kind"]
+            if kind == "delay":
+                record_injection(kind)
+                time.sleep(fault["delay_ms"] / 1000)
+            elif kind == "status":
+                record_injection(kind)
+                record_target("not-attempted")
+                self._fixed_injected_status(fault["status"])
+                return
+            elif kind == "connection-termination":
+                record_injection(kind)
+                record_target("not-attempted")
+                self.close_connection = True
+                try:
+                    self.connection.shutdown(socket.SHUT_RDWR)
+                except OSError:
+                    pass
+                self.connection.close()
+                return
+            elif kind == "seeded-probability" and probability_selected(fault):
+                record_injection(kind)
+                record_target("not-attempted")
+                self._fixed_injected_status(fault["status"])
+                return
+
+        headers = {
+            key: value
+            for key, value in self.headers.items()
+            if key.lower() not in {"host", "content-length", "connection"}
+        }
+        request = Request(
+            TARGET + self.path,
+            data=body or None,
+            headers=headers,
+            method=self.command,
+        )
+        try:
+            response = OPENER.open(request, timeout=UPSTREAM_TIMEOUT_SECONDS)
+            with response:
+                payload = response.read(MAX_RESPONSE_BYTES + 1)
+                status = response.status
+                response_headers = tuple(response.headers.items())
+        except HTTPError as error:
+            with error:
+                payload = error.read(MAX_RESPONSE_BYTES + 1)
+                status = error.code
+                response_headers = tuple(error.headers.items())
+        except (OSError, TimeoutError, URLError):
+            record_target("unavailable")
+            self._json(502, {"detail": "upstream unavailable"})
+            return
+        if len(payload) > MAX_RESPONSE_BYTES:
+            record_target("unavailable")
+            self._json(502, {"detail": "upstream response exceeded limit"})
+            return
+        record_target("http-failure" if status >= 500 else "succeeded")
+        if fault is not None and fault["kind"] == "truncation":
+            record_injection("truncation")
+            payload = payload[: fault["retained_bytes"]]
+        self.send_response(status)
+        for key, value in response_headers:
+            if key.lower() not in {"transfer-encoding", "connection", "content-length"}:
+                self.send_header(key, value)
+        self.send_header("content-length", str(len(payload)))
+        self.end_headers()
+        if self.command != "HEAD":
+            self.wfile.write(payload)
+
+    def do_GET(self):
+        path = self.path.split("?", 1)[0]
+        if path == "/health":
+            self._json(200, {"status": "healthy", "maturity": "test-only"})
+            return
+        if path == "/__deploy/fault":
+            self._fault_control()
+            return
+        self._forward()
+
+    def do_HEAD(self):
+        self._forward()
+
+    def do_POST(self):
+        if self.path.split("?", 1)[0] == "/__deploy/fault":
+            self._fault_control()
+            return
+        self._forward()
+
+    def do_PUT(self):
+        self._forward()
+
+    def do_PATCH(self):
+        self._forward()
+
+    def do_DELETE(self):
+        self._forward()
+
+    def log_message(self, format, *args):
+        pass
+
+
+ThreadingHTTPServer(("0.0.0.0", {{ port }}), Handler).serve_forever()

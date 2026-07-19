@@ -27,6 +27,8 @@ class CapabilityName(StrEnum):
     CIRCUIT_STATE_READABLE = "circuit-state-readable"
     CIRCUIT_RESETTABLE = "circuit-resettable"
     TRAFFIC_EVIDENCE_READABLE = "traffic-evidence-readable"
+    FAULT_STATE_READABLE = "fault-state-readable"
+    FAULT_MUTABLE = "fault-mutable"
 
 
 @dataclass(frozen=True)
@@ -119,6 +121,18 @@ TRAFFIC_EVIDENCE_READABLE = Capability(
     description="Node exposes bounded paginated HTTP traffic evidence.",
     route_set=ControlRouteSetName.TRAFFIC_EVIDENCE,
 )
+FAULT_STATE_READABLE = Capability(
+    name=CapabilityName.FAULT_STATE_READABLE,
+    label="Fault state",
+    description="Node exposes bounded test-only fault-injection state.",
+    route_set=ControlRouteSetName.FAULTS,
+)
+FAULT_MUTABLE = Capability(
+    name=CapabilityName.FAULT_MUTABLE,
+    label="Inject fault",
+    description="Node accepts strongly authenticated test-only fault activation.",
+    route_set=ControlRouteSetName.FAULTS,
+)
 
 CAPABILITIES = (
     HEALTH_CHECKABLE,
@@ -132,6 +146,8 @@ CAPABILITIES = (
     CIRCUIT_STATE_READABLE,
     CIRCUIT_RESETTABLE,
     TRAFFIC_EVIDENCE_READABLE,
+    FAULT_STATE_READABLE,
+    FAULT_MUTABLE,
 )
 CAPABILITY_BY_NAME = {capability.name: capability for capability in CAPABILITIES}
 

@@ -121,6 +121,30 @@ class PackageServerCatalogTests(unittest.TestCase):
             ControlRouteSetName.TARGETS,
         )
 
+    def test_fault_injector_is_structurally_test_only(self) -> None:
+        contract = package_server_contract(
+            PackageServerProduct.HTTP_FAULT_INJECTOR
+        )
+
+        self.assertIs(contract.maturity, ProductMaturity.TEST_ONLY)
+        self.assertIs(contract.block.spec.maturity, ProductMaturity.TEST_ONLY)
+        self.assertEqual(
+            tuple(value.capability for value in contract.capabilities),
+            (
+                CapabilityName.HEALTH_CHECKABLE,
+                CapabilityName.FAULT_STATE_READABLE,
+                CapabilityName.FAULT_MUTABLE,
+            ),
+        )
+        self.assertEqual(
+            contract.capabilities[1].route_set,
+            ControlRouteSetName.FAULTS,
+        )
+        self.assertEqual(
+            contract.capabilities[2].route_set,
+            ControlRouteSetName.FAULTS,
+        )
+
     def test_contract_rejects_capability_claim_without_evidence(self) -> None:
         block = package_server_contract(PackageServerProduct.HTTP_PROXY).block
 
@@ -178,6 +202,10 @@ class PackageServerCatalogTests(unittest.TestCase):
         self.assertEqual(
             descriptor["nodes"][block.block_id]["block_spec"]["product"],
             "http-multiplexer",
+        )
+        self.assertEqual(
+            descriptor["nodes"][block.block_id]["block_spec"]["maturity"],
+            "teaching",
         )
         self.assertIs(
             restored.node(block.block_id).block_spec.product,
