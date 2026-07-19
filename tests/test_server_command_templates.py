@@ -2,8 +2,13 @@ import ast
 from unittest import TestCase, main
 
 from control_plane_kit.servers import (
+    AuthenticationMechanism,
+    AuthGatewayPolicy,
+    GatewayMethod,
     HelloDependency,
+    RouteAuthorizationPolicy,
     hello_command,
+    http_auth_gateway_command,
     http_active_router_command,
     http_circuit_breaker_command,
     http_bulkhead_command,
@@ -26,7 +31,12 @@ from control_plane_kit.servers._templates import (
 
 class ServerCommandTemplateTests(TestCase):
     def test_server_commands_render_python_scripts(self):
+        auth_policy = AuthGatewayPolicy(
+            AuthenticationMechanism.API_KEY,
+            (RouteAuthorizationPolicy("/", (GatewayMethod.GET,)),),
+        )
         commands = (
+            http_auth_gateway_command(auth_policy),
             hello_command(),
             http_proxy_command(),
             http_active_router_command(),
@@ -48,6 +58,14 @@ class ServerCommandTemplateTests(TestCase):
             self.assertIsInstance(ast.parse(command[2]), ast.Module)
 
     def test_rendered_commands_include_expected_environment_names(self):
+        auth_policy = AuthGatewayPolicy(
+            AuthenticationMechanism.API_KEY,
+            (RouteAuthorizationPolicy("/", (GatewayMethod.GET,)),),
+        )
+        self.assertIn(
+            "AUTH_GATEWAY_TARGET_URL",
+            http_auth_gateway_command(auth_policy)[2],
+        )
         self.assertIn("HELLO_MESSAGE", hello_command()[2])
         dependency_source = hello_command((HelloDependency("orders"),))[2]
         self.assertIn("HELLO_HTTP_ORDERS_URL", dependency_source)
