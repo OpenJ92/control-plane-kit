@@ -10,6 +10,7 @@ from control_plane_kit.servers import (
     http_proxy_command,
     http_rate_limiter_command,
     http_retry_command,
+    http_traffic_logger_command,
     http_weighted_load_balancer_command,
     request_observer_command,
 )
@@ -30,6 +31,7 @@ class ServerCommandTemplateTests(TestCase):
             http_multiplexer_command(),
             http_rate_limiter_command(),
             http_retry_command(),
+            http_traffic_logger_command(),
             request_observer_command(),
         )
 
@@ -49,6 +51,7 @@ class ServerCommandTemplateTests(TestCase):
         self.assertIn("MULTIPLEXER_PRIMARY_URL", http_multiplexer_command()[2])
         self.assertIn("RATE_LIMIT_TARGET_URL", http_rate_limiter_command()[2])
         self.assertIn("RETRY_TARGET_URL", http_retry_command()[2])
+        self.assertIn("LOGGER_TARGET_URL", http_traffic_logger_command()[2])
         self.assertIn("CPK_CONTROL_TOKEN", request_observer_command()[2])
 
     def test_invalid_rendered_source_fails_without_retaining_source(self):

@@ -39,6 +39,7 @@ class ControlRouteSetName(StrEnum):
     OBSERVERS = "observers"
     METRICS = "metrics"
     CIRCUIT = "circuit"
+    TRAFFIC_EVIDENCE = "traffic-evidence"
 
 
 @dataclass(frozen=True)
@@ -214,6 +215,19 @@ CIRCUIT_ROUTES = ControlRouteSet(
     ),
 )
 
+TRAFFIC_EVIDENCE_ROUTES = ControlRouteSet(
+    name=ControlRouteSetName.TRAFFIC_EVIDENCE,
+    routes=(
+        ControlRoute(
+            name="traffic-evidence",
+            method=ControlRouteMethod.GET,
+            path=control_path("traffic-evidence"),
+            scope=ControlRouteScope.READ_LOGS,
+            description="Read bounded paginated traffic evidence from this block.",
+        ),
+    ),
+)
+
 CONTROL_ROUTE_SETS = (
     COMMON_STATUS_ROUTES,
     LOG_ROUTES,
@@ -221,6 +235,7 @@ CONTROL_ROUTE_SETS = (
     OBSERVER_ROUTES,
     METRIC_ROUTES,
     CIRCUIT_ROUTES,
+    TRAFFIC_EVIDENCE_ROUTES,
 )
 
 

@@ -1341,3 +1341,122 @@ sharing retry policy or counters. Inbound versus outbound logging is graph
 position. Keep forwarding independent from bounded evidence retention, use a
 closed path-redaction policy, and expose evidence only through authenticated
 control routes.
+
+## #415 Decision Log: Inline HTTP Traffic Logger
+
+### Capability
+
+The package catalogue now contains one traffic logger whose direction is graph
+position rather than product identity:
+
+```text
+HttpTrafficLoggerBlock
+  = ProxyBlock
+  x RequirementSocket(target, HTTP)
+  x ProviderSocket(internal, HTTP)
+  x TrafficEvidencePolicy
+  x opaque control-token reference
+
+client -> logger -> application    -- inbound
+application -> logger -> service   -- outbound
+```
+
+The evidence language is closed:
+
+```text
+TrafficPathPolicy = Redacted | StableHash
+TrafficMethod = Get | Head | Options | Post | Put | Patch | Delete | Other
+TrafficStatusClass
+  = Informational | Success | Redirection | ClientError | ServerError
+
+TrafficEvidence
+  = sequence
+  x generated correlation identity
+  x closed method
+  x closed status class
+  x bounded duration
+  x bounded request/response byte counts
+  x optional path digest
+```
+
+Evidence lives in a fixed-capacity ring with an explicit eviction count.
+Operator reads are authenticated and paginated. There is deliberately no reset
+mutation and no durable log store in this teaching implementation.
+
+### Data-Minimization Laws
+
+- bodies, query strings, authorization, cookies, arbitrary headers, target
+  URLs, credentials, and caller correlation values never enter evidence;
+- raw paths are never retained;
+- the default path policy is complete redaction;
+- stable hashing is an explicit graph-time policy and produces only a fixed
+  SHA-256 digest of the path without its query;
+- unknown or oversized methods collapse to the closed `Other` evidence value;
+- capacity, page size, request/response bytes, and upstream time are bounded;
+- forwarding returns the target response independently of evidence retrieval;
+- health, successful forwarding, and evidence availability remain distinct.
+
+### Breaking Point: Auth preceded pagination validation
+
+The first full run expected malformed pagination to return `400` but sent no
+control credential. The server correctly returned `401` before inspecting the
+query. The negative test now authenticates and preserves the exact `400`
+assertion. No authorization ordering or application behavior changed.
+
+### Review Finding: Structured evidence is not line logs
+
+The first catalogue pass advertised `LOG_READABLE` and served paginated traffic
+records from `/__deploy/logs`. Review found that the canonical log protocol is
+an exact `block_id + lines` descriptor interpreted by the control HTTP client.
+Treating structured evidence as that capability would either lie about the
+route contract or stringify and erase the traffic algebra.
+
+The correction introduced a distinct closed capability and route set:
+
+```text
+TrafficEvidenceReadable
+  -> ControlRouteSetName.TRAFFIC_EVIDENCE
+    -> GET /__deploy/traffic-evidence
+```
+
+Ordinary line logs remain unchanged. The package product now advertises exactly
+health plus structured traffic evidence.
+
+### Harness Findings
+
+Two focused invocations initially selected the wrong import root. They executed
+zero relevant tests and were not counted as evidence. The corrected Docker
+invocations use `/app/tests` for flat test modules and `/app` for modules that
+import the `tests.architecture` namespace. The canonical full harness remains
+authoritative.
+
+### Evidence
+
+```text
+focused logger/product suite: 30 passed
+focused architecture/capability suite: 26 passed
+live generated logger path:
+  request method/path/query/headers/body -> target unchanged
+  target status/body -> caller unchanged
+  three requests into capacity two -> oldest evicted, count == 1
+  unauthenticated evidence read -> 401
+  authenticated bounded page -> structured redacted evidence
+  oversized request -> 413 and zero target calls
+complete Docker/Postgres suite: 857 passed
+assertions weakened: 0
+skips added: 0
+```
+
+### Residual Risk
+
+The evidence ring is process-local and disappears on restart. Stable path
+digests can reveal membership for guessable paths and are therefore opt-in, not
+the default. The scaffold does not stream bodies, preserve trailers, implement
+HTTP/2, or provide durable distributed telemetry; none is advertised.
+
+### Handoff To #420
+
+The timeout/deadline proxy must remain a separate product even though this
+logger already bounds its own target attempt. `#420` owns explicit timeout
+outcomes and cancellation semantics; it must not absorb logging or traffic
+evidence. Composition order should remain visible in graph topology.
