@@ -14,6 +14,15 @@ from control_plane_kit.servers.http_active_router import (
     http_active_router_block,
     http_active_router_command,
 )
+from control_plane_kit.servers.http_circuit_breaker import (
+    CircuitBreakerMethodPolicy,
+    CircuitBreakerObservation,
+    CircuitBreakerPolicy,
+    CircuitBreakerState,
+    HttpCircuitBreakerServer,
+    http_circuit_breaker_block,
+    http_circuit_breaker_command,
+)
 from control_plane_kit.servers.http_messages import HttpHandler, HttpRequest, HttpResponse
 from control_plane_kit.servers.http_multiplexer import (
     HttpMultiplexerRuntime,
@@ -64,6 +73,11 @@ __all__ = [
     "HelloEnvironment",
     "HttpActiveRouterRuntime",
     "HttpActiveRouterServer",
+    "CircuitBreakerMethodPolicy",
+    "CircuitBreakerObservation",
+    "CircuitBreakerPolicy",
+    "CircuitBreakerState",
+    "HttpCircuitBreakerServer",
     "HttpHandler",
     "HttpMultiplexerRuntime",
     "HttpMultiplexerServer",
@@ -92,6 +106,8 @@ __all__ = [
     "hello_server_block",
     "http_active_router_block",
     "http_active_router_command",
+    "http_circuit_breaker_block",
+    "http_circuit_breaker_command",
     "http_multiplexer_block",
     "http_multiplexer_command",
     "http_proxy_block",

@@ -24,6 +24,14 @@ class CapabilityTests(TestCase):
         self.assertEqual(DRAINABLE.route_set, ControlRouteSetName.TARGETS)
         self.assertEqual(OBSERVER_MUTABLE.route_set, ControlRouteSetName.OBSERVERS)
         self.assertEqual(METRICS_READABLE.route_set, ControlRouteSetName.METRICS)
+        self.assertEqual(
+            capability_named(CapabilityName.CIRCUIT_STATE_READABLE).route_set,
+            ControlRouteSetName.CIRCUIT,
+        )
+        self.assertEqual(
+            capability_named(CapabilityName.CIRCUIT_RESETTABLE).route_set,
+            ControlRouteSetName.CIRCUIT,
+        )
 
     def test_lifecycle_does_not_claim_a_route_yet(self):
         self.assertIsNone(RESTARTABLE.route_set)

@@ -87,6 +87,7 @@ class PackageServerProduct(StrEnum):
     HELLO = "hello"
     HTTP_PROXY = "http-proxy"
     HTTP_ACTIVE_ROUTER = "http-active-router"
+    HTTP_CIRCUIT_BREAKER = "http-circuit-breaker"
     HTTP_MULTIPLEXER = "http-multiplexer"
     HTTP_RATE_LIMITER = "http-rate-limiter"
     HTTP_WEIGHTED_LOAD_BALANCER = "http-weighted-load-balancer"

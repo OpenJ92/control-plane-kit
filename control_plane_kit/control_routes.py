@@ -38,6 +38,7 @@ class ControlRouteSetName(StrEnum):
     TARGETS = "targets"
     OBSERVERS = "observers"
     METRICS = "metrics"
+    CIRCUIT = "circuit"
 
 
 @dataclass(frozen=True)
@@ -193,12 +194,33 @@ METRIC_ROUTES = ControlRouteSet(
     ),
 )
 
+CIRCUIT_ROUTES = ControlRouteSet(
+    name=ControlRouteSetName.CIRCUIT,
+    routes=(
+        ControlRoute(
+            name="circuit-state",
+            method=ControlRouteMethod.GET,
+            path=control_path("circuit"),
+            scope=ControlRouteScope.READ_STATE,
+            description="Read bounded circuit-breaker state.",
+        ),
+        ControlRoute(
+            name="circuit-reset",
+            method=ControlRouteMethod.POST,
+            path=control_path("circuit/reset"),
+            scope=ControlRouteScope.SEND_SIGNAL,
+            description="Reset a circuit breaker to its closed state.",
+        ),
+    ),
+)
+
 CONTROL_ROUTE_SETS = (
     COMMON_STATUS_ROUTES,
     LOG_ROUTES,
     TARGET_ROUTES,
     OBSERVER_ROUTES,
     METRIC_ROUTES,
+    CIRCUIT_ROUTES,
 )
 
 

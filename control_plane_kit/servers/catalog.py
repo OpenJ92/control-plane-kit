@@ -14,6 +14,7 @@ from control_plane_kit.capabilities import CapabilityName
 from control_plane_kit.control_routes import ControlRouteSetName
 from control_plane_kit.servers.hello import hello_server_block
 from control_plane_kit.servers.http_active_router import http_active_router_block
+from control_plane_kit.servers.http_circuit_breaker import http_circuit_breaker_block
 from control_plane_kit.servers.http_multiplexer import http_multiplexer_block
 from control_plane_kit.servers.http_proxy import http_proxy_block
 from control_plane_kit.servers.http_rate_limiter import http_rate_limiter_block
@@ -180,6 +181,22 @@ PACKAGE_SERVER_CONTRACTS = (
         ProductMaturity.TEACHING,
         http_active_router_block(),
         (_probe(),),
+    ),
+    PackageServerContract(
+        PackageServerProduct.HTTP_CIRCUIT_BREAKER,
+        ProductMaturity.TEACHING,
+        http_circuit_breaker_block(),
+        (
+            _probe(path="/health"),
+            _control(
+                CapabilityName.CIRCUIT_STATE_READABLE,
+                ControlRouteSetName.CIRCUIT,
+            ),
+            _control(
+                CapabilityName.CIRCUIT_RESETTABLE,
+                ControlRouteSetName.CIRCUIT,
+            ),
+        ),
     ),
     PackageServerContract(
         PackageServerProduct.HTTP_MULTIPLEXER,
