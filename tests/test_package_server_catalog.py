@@ -146,6 +146,14 @@ class PackageServerCatalogTests(unittest.TestCase):
             ControlRouteSetName.FAULTS,
         )
 
+        gateway = package_server_contract(PackageServerProduct.HTTP_AUTH_GATEWAY)
+        self.assertIs(gateway.maturity, ProductMaturity.TEST_ONLY)
+        self.assertIs(gateway.block.spec.maturity, ProductMaturity.TEST_ONLY)
+        self.assertEqual(
+            tuple(value.capability for value in gateway.capabilities),
+            (CapabilityName.HEALTH_CHECKABLE, CapabilityName.METRICS_READABLE),
+        )
+
     def test_contract_rejects_capability_claim_without_evidence(self) -> None:
         block = package_server_contract(PackageServerProduct.HTTP_PROXY).block
 

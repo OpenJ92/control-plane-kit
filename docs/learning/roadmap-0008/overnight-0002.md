@@ -292,9 +292,134 @@ that the block is an operational CDN or reverse-proxy cache.
 
 Handoff to #424:
 
-- retry behavior must remain distinct from cache hit/miss/stale evidence;
-- retries must not run while a Postgres transaction or cache lock is held;
-- retries must define request replayability and bounded attempt policy rather
-  than infer safety from free-form methods;
+- authentication and route authorization must be separate closed decisions;
+- raw credentials, forwarded identity values, and key material must never enter
+  descriptors, observations, logs, or errors;
+- trusted identity headers must be stripped from untrusted inbound requests;
+- CPK must define gateway contracts without implementing JWT, OIDC, or mTLS
+  cryptographic primitives;
 - preserve ProductMaturity and dedicated control-route authorization;
-- never retry an uncertain non-idempotent effect by default.
+- application-domain authorization must remain downstream.
+
+## #424 Authentication And Policy Gateway Contract
+
+### Capability
+
+The package now has a closed authentication-gateway policy language and an
+adapter boundary for mature API-key, OIDC/JWT, and mTLS products:
+
+    AuthGatewayPolicy
+      x IdentityValidator
+      x RequirementSocket[HTTP](target)
+      x ProviderSocket[HTTP](internal)
+
+Authentication and route authorization are different values:
+
+    HttpRequest
+      -> AuthenticationAccepted AuthenticatedIdentity
+       | AuthenticationRejected AuthenticationRejection
+
+    AuthenticatedIdentity x RouteAuthorizationPolicy
+      -> AuthorizationDecision
+
+The package does not parse JWTs, discover OIDC keys, validate signatures, or
+verify client certificates. Those effects remain behind IdentityValidator.
+The included StaticApiKeyValidator and generated API-key gateway are explicitly
+TEST_ONLY conformance tools.
+
+Accepted mechanisms, JWT algorithms, route methods, forwarded identity
+headers, issuers, audiences, scopes, and resource bounds are typed or bounded.
+AuthGatewayPolicy has one exact descriptor decoder; unknown and missing fields
+fail closed.
+
+### Breaking Points And Solutions
+
+#### Protocol was imported from the wrong standard module
+
+The first focused run produced five import errors because Protocol was imported
+from collections.abc. It remains a typing construct. The import moved to typing
+without changing the adapter contract.
+
+#### Two tests guessed the wrong boundaries
+
+The second focused run had one error and one failure. A test called a nonexistent
+DockerImageImplementation.descriptor() instead of using the authoritative graph
+codec. Another classified the intentionally TEST_ONLY gateway as TEACHING.
+
+The tests were corrected, not weakened. Secret-reference evidence now passes
+through compile_recipe and GraphDescriptorCodec, and the catalogue test asserts
+the exact TEST_ONLY maturity and capability set.
+
+#### Review found credential forwarding and lexical-prefix authorization
+
+The first complete suite passed 885 tests, but security review found two real
+application defects:
+
+- the in-memory gateway consumed X-Api-Key but still forwarded it downstream;
+- a lexical startswith check allowed /administer to match an /admin policy.
+
+The forwarding boundary now strips Authorization and X-Api-Key after identity
+validation and before injecting trusted identity headers. Route matching now
+uses exact path segments. New negative tests preserve both laws in the
+in-memory and generated interpreters.
+
+### Evidence
+
+    focused gateway/catalogue/templates/codec/validation/architecture:
+      61 passed
+
+    live generated behavior inside Docker:
+      missing and invalid credentials return 401
+      authenticated but unauthorized route returns 403
+      forged trusted identity headers are replaced
+      consumed API key is not forwarded
+      authorized route receives package-issued identity headers
+      unauthenticated metrics return 401
+      authenticated metrics contain no credentials, identity values,
+        target address, or control token
+      generated process terminates during cleanup
+
+    complete Docker/Postgres suite before security hardening:
+      885 passed
+
+    complete Docker/Postgres suite after security hardening:
+      886 passed
+
+    assertions weakened: 0
+    skips added: 0
+    production mocks added: 0
+
+Security review:
+
+- trusted identity headers are always removed before validation and regenerated
+  only after successful authentication and authorization;
+- gateway credentials are removed before forwarding;
+- identity-provider unavailability is 503, distinct from 401 and 403;
+- API-key equality uses constant-time comparison;
+- observations retain only counts and closed decisions;
+- OIDC/JWT and mTLS cryptographic work remains outside CPK.
+
+Data and effect review:
+
+- this contract adds no store and performs no Postgres transaction;
+- downstream HTTP occurs only after authentication and authorization;
+- identity, credentials, and runtime metrics do not rewrite graph truth;
+- policy descriptors contain allowlists and references, never secret values.
+
+### Residual Risk And Handoff
+
+The package interpreter is not a production identity gateway. Real OIDC/JWT
+discovery, key rotation, mTLS trust, API-key storage, and distributed policy
+availability require reviewed external product adapters. Application domain
+authorization remains downstream even when gateway route policy allows access.
+
+Handoff to #425:
+
+- idempotency identity must include bounded tenant, actor, route, and payload
+  fingerprints without retaining credentials or request bodies;
+- one execution winner and conflict detection require durable Postgres truth;
+- no transaction may span the downstream HTTP effect;
+- gateway identity headers may supply actor context only after an explicit
+  trust boundary; never infer trust from a header name alone;
+- replay must distinguish exact intent, conflicting reuse, in-flight work,
+  expired records, and effect-without-result uncertainty.

@@ -18,6 +18,13 @@ from control_plane_kit.servers.http_active_router import http_active_router_bloc
 from control_plane_kit.servers.http_circuit_breaker import http_circuit_breaker_block
 from control_plane_kit.servers.http_bulkhead import http_bulkhead_block
 from control_plane_kit.servers.http_cache import http_cache_block
+from control_plane_kit.servers.http_auth_gateway import (
+    AuthenticationMechanism,
+    AuthGatewayPolicy,
+    GatewayMethod,
+    RouteAuthorizationPolicy,
+    http_auth_gateway_block,
+)
 from control_plane_kit.servers.http_fault_injector import http_fault_injector_block
 from control_plane_kit.servers.http_multiplexer import http_multiplexer_block
 from control_plane_kit.servers.http_proxy import http_proxy_block
@@ -166,6 +173,20 @@ def _control(
 
 
 PACKAGE_SERVER_CONTRACTS = (
+    PackageServerContract(
+        PackageServerProduct.HTTP_AUTH_GATEWAY,
+        ProductMaturity.TEST_ONLY,
+        http_auth_gateway_block(
+            policy=AuthGatewayPolicy(
+                AuthenticationMechanism.API_KEY,
+                (RouteAuthorizationPolicy("/", (GatewayMethod.GET,)),),
+            ),
+        ),
+        (
+            _probe(path="/health"),
+            _control(CapabilityName.METRICS_READABLE, ControlRouteSetName.METRICS),
+        ),
+    ),
     PackageServerContract(
         PackageServerProduct.HELLO,
         ProductMaturity.TEACHING,
