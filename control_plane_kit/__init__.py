@@ -722,6 +722,10 @@ from control_plane_kit.servers import (
     http_weighted_load_balancer_command,
     service_discovery_block,
 )
+from control_plane_kit.discovery_server import (
+    MAX_DISCOVERY_REQUEST_BYTES,
+    create_service_discovery_app,
+)
 from control_plane_kit.read_services import (
     ActivityTimelineReadModel,
     ControlSurfaceReadModel,
@@ -1139,6 +1143,8 @@ __all__ += [
     "PostgresDiscoveryUnitOfWork",
     "install_discovery_schema",
     "service_discovery_block",
+    "create_service_discovery_app",
+    "MAX_DISCOVERY_REQUEST_BYTES",
     "DISCOVERY_MUTABLE",
     "DISCOVERY_READABLE",
     "DISCOVERY_ROUTES",

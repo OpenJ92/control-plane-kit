@@ -186,7 +186,11 @@ PACKAGE_SERVER_CONTRACTS = (
         PackageServerProduct.SERVICE_DISCOVERY,
         ProductMaturity.TEST_ONLY,
         service_discovery_block(),
-        (),
+        (
+            _probe(path="/health/ready"),
+            _control(CapabilityName.DISCOVERY_READABLE, ControlRouteSetName.DISCOVERY),
+            _control(CapabilityName.DISCOVERY_MUTABLE, ControlRouteSetName.DISCOVERY),
+        ),
     ),
     PackageServerContract(
         PackageServerProduct.HTTP_LOAD_GENERATOR,

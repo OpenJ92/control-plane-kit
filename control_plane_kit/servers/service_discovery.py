@@ -1,7 +1,5 @@
 """Package-owned service-discovery block contract."""
 
-from __future__ import annotations
-
 from control_plane_kit.algebra import (
     ApplicationBlock,
     BlockSockets,
@@ -11,7 +9,9 @@ from control_plane_kit.algebra import (
     ProviderSocket,
     RequirementSocket,
 )
-from control_plane_kit.implementations import PlanOnlyImplementation
+from control_plane_kit.capabilities import CapabilityName
+from control_plane_kit.implementations import DockerImageImplementation
+from control_plane_kit.secrets import SecretEnvironmentDelivery, SecretReference
 from control_plane_kit.types import Protocol
 
 
@@ -19,8 +19,10 @@ def service_discovery_block(
     block_id: str = "service-discovery",
     *,
     display_name: str = "Service Discovery Registry",
+    image: str = "control-plane-kit:local",
+    identity_secret_reference: str = "secret://service-discovery/identity-attestation",
 ) -> ApplicationBlock:
-    """Return the contract-only block; #503 adds its Docker interpreter."""
+    """Return the package-owned Docker service-discovery block."""
 
     return ApplicationBlock(
         PackageServerSpec(
@@ -28,8 +30,24 @@ def service_discovery_block(
             product=PackageServerProduct.SERVICE_DISCOVERY,
             maturity=ProductMaturity.TEST_ONLY,
             display_name=display_name,
+            health_path="/health/ready",
+            capabilities=(
+                CapabilityName.HEALTH_CHECKABLE,
+                CapabilityName.DISCOVERY_READABLE,
+                CapabilityName.DISCOVERY_MUTABLE,
+            ),
         ),
-        PlanOnlyImplementation("service-discovery-contract"),
+        DockerImageImplementation(
+            image=image,
+            command=("python", "-m", "control_plane_kit.discovery_server.main"),
+            ports={"internal": 8080},
+            secret_deliveries=(
+                SecretEnvironmentDelivery(
+                    "CPK_DISCOVERY_IDENTITY_TOKEN",
+                    SecretReference(identity_secret_reference),
+                ),
+            ),
+        ),
         BlockSockets(
             requirements=(
                 RequirementSocket(

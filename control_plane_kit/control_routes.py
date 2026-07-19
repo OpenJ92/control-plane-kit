@@ -335,6 +335,13 @@ DISCOVERY_ROUTES = ControlRouteSet(
             scope=ControlRouteScope.WRITE_DISCOVERY,
             description="Retire one owned service registration.",
         ),
+        ControlRoute(
+            name="expire-leases",
+            method=ControlRouteMethod.POST,
+            path=control_path("discovery/expiry"),
+            scope=ControlRouteScope.WRITE_DISCOVERY,
+            description="Expire a bounded batch of elapsed discovery leases.",
+        ),
     ),
 )
 

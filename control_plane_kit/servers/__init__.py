@@ -270,6 +270,7 @@ __all__ = [
     "create_managed_http_router_app",
     "hello_command",
     "hello_server_block",
+    "service_discovery_block",
     "authorize_request",
     "http_auth_gateway_block",
     "http_auth_gateway_command",
