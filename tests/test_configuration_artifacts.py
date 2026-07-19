@@ -49,6 +49,8 @@ class ConfigurationArtifactTests(unittest.TestCase):
         for path in (
             "relative/config.conf",
             "/etc/../config.conf",
+            "/etc/service/config.json,readonly",
+            "/etc/service/config file.json",
             "/run/secrets/token",
             "/var/run/docker.sock",
         ):

@@ -29,6 +29,7 @@ PACKAGE_RULES = (
     PackageDependencyRule(
         "docker_runtime",
         (
+            "configuration",
             "effects",
             "execution",
             "lifecycle",
