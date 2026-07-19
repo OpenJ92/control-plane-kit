@@ -24,6 +24,8 @@ class CapabilityName(StrEnum):
     OBSERVER_MUTABLE = "observer-mutable"
     METRICS_READABLE = "metrics-readable"
     RESTARTABLE = "restartable"
+    CIRCUIT_STATE_READABLE = "circuit-state-readable"
+    CIRCUIT_RESETTABLE = "circuit-resettable"
 
 
 @dataclass(frozen=True)
@@ -98,6 +100,18 @@ RESTARTABLE = Capability(
     label="Restart",
     description="Runtime owns enough lifecycle state to restart this node.",
 )
+CIRCUIT_STATE_READABLE = Capability(
+    name=CapabilityName.CIRCUIT_STATE_READABLE,
+    label="Circuit state",
+    description="Node exposes bounded circuit-breaker state.",
+    route_set=ControlRouteSetName.CIRCUIT,
+)
+CIRCUIT_RESETTABLE = Capability(
+    name=CapabilityName.CIRCUIT_RESETTABLE,
+    label="Reset circuit",
+    description="Node accepts an authenticated circuit reset signal.",
+    route_set=ControlRouteSetName.CIRCUIT,
+)
 
 CAPABILITIES = (
     HEALTH_CHECKABLE,
@@ -108,6 +122,8 @@ CAPABILITIES = (
     OBSERVER_MUTABLE,
     METRICS_READABLE,
     RESTARTABLE,
+    CIRCUIT_STATE_READABLE,
+    CIRCUIT_RESETTABLE,
 )
 CAPABILITY_BY_NAME = {capability.name: capability for capability in CAPABILITIES}
 

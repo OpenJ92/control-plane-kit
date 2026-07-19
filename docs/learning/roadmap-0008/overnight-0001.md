@@ -1099,3 +1099,122 @@ multiplexer itself. Keep observer failure off the primary response path, bound
 both copied requests and observer response handling, and preserve graph position
 as the distinction between terminal observation and the later inline logger in
 `#415`.
+
+## #413 Decision Log: Typed HTTP Circuit Breaker
+
+### Capability
+
+The package catalogue now contains a Docker-backed teaching circuit breaker:
+
+```text
+HttpCircuitBreakerBlock
+  = ProxyBlock
+  x RequirementSocket(target, HTTP)
+  x ProviderSocket(internal, HTTP)
+  x CircuitBreakerPolicy
+  x opaque control-token reference
+```
+
+The product-local closed language is:
+
+```text
+CircuitBreakerState
+  = Closed | Open | HalfOpen
+
+CircuitBreakerMethodPolicy
+  = SafeOnly | AllMethods
+
+CircuitBreakerPolicy
+  = failure threshold
+  x recovery timeout
+  x half-open trial budget
+  x upstream timeout
+  x request byte bound
+  x response byte bound
+  x method policy
+```
+
+Policy values are rendered into validated Jinja2 source and therefore remain
+part of immutable Docker implementation identity. The target is supplied by the
+typed socket connection through `CIRCUIT_TARGET_URL`; it is not free metadata.
+
+The closed operational surface is:
+
+```text
+CircuitStateReadable -> GET  /__deploy/circuit
+CircuitResettable    -> POST /__deploy/circuit/reset
+```
+
+Both routes require the opaque control token. The product deliberately omits a
+force-open mutation: authenticated reset is sufficient for this scaffold and
+does not enlarge operator authority without a demonstrated workflow.
+
+### State Laws
+
+- closed requests contact the target and count only failures;
+- reaching the typed threshold transitions to open;
+- open fails fast without contacting the target;
+- recovery timeout transitions to half-open;
+- half-open reserves no more than the typed trial budget;
+- a successful trial closes and a failed trial reopens;
+- `SAFE_ONLY` rejects unsafe methods before reading or forwarding bodies;
+- `ALL_METHODS` is a typed explicit opt-in;
+- request, response, timeout, threshold, and trial values are bounded;
+- locks protect state transitions but never span an upstream HTTP effect;
+- circuit observations retain state, counters, and package-generated transition
+  identity only;
+- health remains distinct from open/closed circuit state;
+- reset changes ephemeral process state and never graph truth.
+
+### Breaking Point: Policy default preceded its validator
+
+The first focused import failed because function defaults construct
+`CircuitBreakerPolicy()` while the module loads, but the pure `_bounded`
+validator was defined later. The validator moved above the policy definition.
+No policy value, bound, or test changed.
+
+### Breaking Point: Unsafe-method and body-bound assertions overlapped
+
+The first live fixture expected an oversized `POST` to return `413`. The
+`SAFE_ONLY` policy correctly rejects `POST` as `405` before reading its body.
+The test now proves those independent laws independently:
+
+```text
+unsafe POST -> 405 -> zero target calls
+oversized permitted GET -> 413 -> zero target calls
+```
+
+This preserves fail-early handling of unsafe methods rather than reordering the
+application merely to satisfy the fixture.
+
+### Security And Data Findings
+
+- unauthorized circuit reads and resets return `401`;
+- unauthorized reset leaves the open state unchanged;
+- target addresses and control credentials are absent from state evidence;
+- redirects are not followed;
+- upstream time and response bytes are bounded;
+- server logs are suppressed and bounded errors do not echo target failures;
+- the control token remains an opaque `SecretReference` in graph data;
+- there is no store, transaction, durable cursor, or second observation model.
+
+### Evidence
+
+```text
+focused Docker suite: 55 passed
+live generated state path:
+  closed -> two target failures -> open
+  open -> fail fast with unchanged target call count
+  timeout -> half-open -> successful target call -> closed
+  open -> unauthorized reset rejected -> authorized reset -> closed
+complete Docker/Postgres suite: 845 passed
+assertions weakened: 0
+skips added: 0
+```
+
+### Handoff To #414
+
+The retry proxy must remain a separate network block and policy language. It may
+retry only operations allowed by a closed method/idempotency policy, must bound
+attempts, delay, total deadline, request bytes, and response bytes, and must not
+reuse circuit state or silently compose itself into this product.
