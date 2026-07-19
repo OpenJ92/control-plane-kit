@@ -44,6 +44,9 @@ from control_plane_kit.servers.http_weighted_balancer import http_weighted_load_
 from control_plane_kit.servers.managed_http_router import managed_http_router_block
 from control_plane_kit.servers.request_observer import request_observer_block
 from control_plane_kit.servers.service_discovery import service_discovery_block
+from control_plane_kit.servers.opentelemetry_collector import (
+    opentelemetry_collector_block,
+)
 
 
 class CapabilityImplementation(StrEnum):
@@ -182,6 +185,12 @@ def _control(
 
 
 PACKAGE_SERVER_CONTRACTS = (
+    PackageServerContract(
+        PackageServerProduct.OPENTELEMETRY_COLLECTOR,
+        ProductMaturity.OPERATIONAL,
+        opentelemetry_collector_block(),
+        (_probe(path="/"),),
+    ),
     PackageServerContract(
         PackageServerProduct.SERVICE_DISCOVERY,
         ProductMaturity.TEST_ONLY,

@@ -1412,3 +1412,142 @@ skips added:                                         0
 - compose service acceptance through the packaged discovery server and its
   existing authenticated routes;
 - do not introduce another discovery service, store, ledger, or UnitOfWork.
+
+## #427 OpenTelemetry Collector Integration
+
+### Capability
+
+Control Plane Kit now models the official OpenTelemetry Collector as a typed,
+operational package server rather than implementing another telemetry process:
+
+```text
+OpenTelemetryCollectorConfiguration
+  = Receivers
+  x Processors
+  x Exporters
+  x Pipelines
+  x HealthExtension
+
+opentelemetry_collector_block
+  = PackageServerSpec
+  x DockerImageImplementation
+  x RoleSockets
+```
+
+The default product accepts exact OTLP/gRPC and OTLP/HTTP connections, exposes
+an HTTP health socket, redacts selected request attributes, batches all three
+telemetry signals, and writes to the Collector debug exporter. Optional remote
+OTLP/HTTP exporters are graph connections: their endpoints are requirement
+sockets, while credential headers are opaque `SecretReference` deliveries.
+
+Product configuration follows the configuration-artifact law established by
+#444:
+
+```text
+typed Collector configuration
+  -> strict packaged Jinja2 template
+  -> bounded secret-free ConfigurationArtifact
+  -> graph-pinned read-only Docker mount
+```
+
+The official image is pinned to
+`otel/opentelemetry-collector-contrib:0.156.0`. The generated artifact is
+mounted at `/etc/cpk/opentelemetry-collector.yaml`, and the image receives the
+exact `--config` argument for that package-owned path.
+
+### Objects, Morphisms, And Laws
+
+The closed product vocabulary includes `TelemetrySignal`, typed OTLP receiver
+protocols, memory limiting, batching, attribute redaction, probabilistic trace
+sampling, debug and OTLP/HTTP exporters, exporter headers, health, and signal
+pipelines. Collector references preserve official component identity such as
+`attributes/redaction` and `otlphttp/archive`; arbitrary component-type strings
+cannot enter configuration.
+
+Construction enforces these laws at the pure boundary:
+
+- every pipeline references declared receiver, processor, and exporter
+  components;
+- probabilistic sampling belongs only to traces;
+- provider socket names and container ports are globally unique;
+- remote exporter requirement sockets and all injected environment names are
+  globally unique;
+- headers, component collections, identities, ports, queues, retry windows,
+  and rendered content are bounded;
+- generated configuration contains environment placeholders, never secret
+  values or secret reference identifiers;
+- graph codec reconstruction preserves product, socket, image, secret
+  delivery, and exact artifact identity;
+- changing rendered configuration is visible to graph diff;
+- telemetry remains observational evidence and never rewrites desired graph
+  truth.
+
+### Breakpoints And Resolutions
+
+1. The first product draft allowed arbitrary Collector `component_id` values.
+   The official image rejected `redaction` because Collector component names
+   retain their implementation type. Fixed components now own canonical IDs,
+   and repeatable OTLP/HTTP exporters derive `otlphttp/<instance>` identities.
+   This removed the invalid state rather than special-casing the live fixture.
+2. Docker Desktop rejected mounting a volume-subpath file over the image's
+   existing `/etc/otelcol-contrib/config.yaml`. The artifact moved to the
+   package-owned `/etc/cpk/opentelemetry-collector.yaml` path, selected through
+   the Collector's official `--config` argument. The mount remains immutable
+   and graph-pinned.
+3. An inline shell-quoted OTLP JSON body was fragile. Structured OTLP payload
+   construction moved into the Python live fixture; the shell now only
+   orchestrates isolated Docker resources.
+4. Architecture policy rejected the new server module's direct configuration
+   and verification imports because those composition dependencies were not
+   declared. The `servers` dependency rule now explicitly admits the existing
+   pure configuration output and verification languages. The policy was not
+   bypassed or weakened.
+5. Final review found that per-receiver uniqueness did not prevent collisions
+   with the health extension, and per-exporter checks did not prevent
+   cross-exporter environment collisions. Global socket, port, requirement,
+   and environment checks plus a header bound were added at configuration
+   construction.
+
+### Live Evidence
+
+The dedicated live proof derives startup and teardown from the canonical
+recipe, graph, diff, ActivityPlan, effect request, materialization, and Docker
+interpreter pipeline. It proves:
+
+```text
+graph-pinned Collector startup
+  -> idempotent start replay
+  -> HTTP health
+  -> real OTLP/HTTP JSON trace
+  -> official debug exporter logs contain cpk-live-span
+  -> graph-derived teardown
+  -> zero owned container, network, or configuration volume remains
+```
+
+Validation at closeout:
+
+```text
+complete Docker/Postgres suite:                    961 passed
+focused Collector and descriptor cases:             10 passed
+real official-image OTLP live proof:                    passed
+owned resources after cleanup:                               0
+assertions weakened:                                          0
+skips added:                                                 0
+```
+
+### Residual Risk And Handoff
+
+The integration proves OTLP/HTTP trace delivery through the official Collector
+and exact OTLP/gRPC topology, but it does not yet send a live gRPC payload or
+exercise a remote authenticated exporter. Product telemetry is intentionally
+not retained by CPK as graph truth.
+
+Handoff requirements:
+
+- #438 may compose this block into service-observability acceptance, using its
+  existing exact sockets and package-owned verification contract;
+- future remote-exporter acceptance must bind the OTLP/HTTP requirement socket
+  and resolve header secrets only at execution;
+- do not introduce another collector, telemetry store, protocol model,
+  configuration interpreter, or observation truth;
+- preserve the official-image boundary and graph-derived ownership cleanup.
