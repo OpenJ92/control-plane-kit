@@ -103,6 +103,7 @@ class PackageServerProduct(StrEnum):
     MANAGED_HTTP_ROUTER = "managed-http-router"
     REQUEST_OBSERVER = "request-observer"
     SERVICE_DISCOVERY = "service-discovery"
+    OPENTELEMETRY_COLLECTOR = "opentelemetry-collector"
 
 
 class ProductMaturity(StrEnum):
