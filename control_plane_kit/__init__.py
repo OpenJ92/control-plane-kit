@@ -30,6 +30,26 @@ from control_plane_kit.configuration_rendering import (
     ConfigurationTemplateSyntaxError,
     ConfigurationValue,
 )
+from control_plane_kit.verification import (
+    MAX_VERIFICATION_CHECKS,
+    MAX_VERIFICATION_TEXT,
+    BrokerRoundTripCheck,
+    DnsRecordType,
+    DnsResolveCheck,
+    HttpCheck,
+    ObjectStorageRoundTripCheck,
+    PostgresQueryCheck,
+    PostgresVerificationOperation,
+    RedisCheck,
+    RedisVerificationOperation,
+    SmtpAcceptanceCheck,
+    VerificationCheck,
+    VerificationContract,
+    VerificationContractError,
+    VerificationPolicy,
+    expected_protocols,
+    verification_check_from_descriptor,
+)
 from control_plane_kit.algebra import (
     ApplicationBlock,
     BlockSpec,
@@ -918,6 +938,27 @@ __all__ += [
     "ExecutionSchedule",
     "ScheduleEvidenceError",
     "derive_schedule",
+]
+
+__all__ += [
+    "MAX_VERIFICATION_CHECKS",
+    "MAX_VERIFICATION_TEXT",
+    "BrokerRoundTripCheck",
+    "DnsRecordType",
+    "DnsResolveCheck",
+    "HttpCheck",
+    "ObjectStorageRoundTripCheck",
+    "PostgresQueryCheck",
+    "PostgresVerificationOperation",
+    "RedisCheck",
+    "RedisVerificationOperation",
+    "SmtpAcceptanceCheck",
+    "VerificationCheck",
+    "VerificationContract",
+    "VerificationContractError",
+    "VerificationPolicy",
+    "expected_protocols",
+    "verification_check_from_descriptor",
 ]
 
 __all__ += [

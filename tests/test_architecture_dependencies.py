@@ -22,7 +22,9 @@ PACKAGE_RULES = (
         "adapters",
         ("capabilities", "control_routes", "effects", "execution", "planning", "types"),
     ),
-    PackageDependencyRule("algebra", ("capabilities", "lifecycle", "types")),
+    PackageDependencyRule(
+        "algebra", ("capabilities", "lifecycle", "types", "verification")
+    ),
     PackageDependencyRule("capabilities", ("control_routes",)),
     PackageDependencyRule("cli", ()),
     PackageDependencyRule("contracts", ()),
@@ -90,9 +92,11 @@ PACKAGE_RULES = (
             "control_routes",
             "lifecycle",
             "types",
+            "verification",
         ),
     ),
     PackageDependencyRule("types", ()),
+    PackageDependencyRule("verification", ("types",)),
     PackageDependencyRule(
         "workflows",
         (

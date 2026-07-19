@@ -60,4 +60,90 @@ are not prerequisites for #457.
 
 ## Breaking Points
 
-No breaking point has occurred yet.
+### #473: Architecture ownership rejected the new package
+
+The first complete Docker/Postgres run reached 793 tests with 792 passing. The
+architecture test rejected the newly discovered `verification` package because
+it had no declared dependency rule.
+
+This was not resolved by excluding the package. The dependency algebra was
+extended explicitly:
+
+```text
+verification -> types
+algebra      -> verification
+topology     -> verification
+```
+
+`verification` remains pure and owns no transport, persistence, workflow, or
+runtime dependencies. This preserves the AST policy's exhaustiveness: adding a
+new package without declaring its permitted imports continues to fail.
+
+## #473 Decision Log: Closed Verification Contract
+
+### Capability
+
+Blocks can now declare bounded semantic checks as part of `BlockSpec` product
+truth. The contract survives compilation and the authoritative graph codec, but
+does not execute yet.
+
+```python
+BlockSpec(
+    role_id="orders-api",
+    verification=VerificationContract(
+        checks=(
+            HttpCheck(
+                check_id="can-list-orders",
+                provider_socket="public",
+                path="/internal/tests/orders",
+            ),
+        ),
+    ),
+)
+```
+
+The closed language contains HTTP, DNS, Postgres, Redis, broker, object-storage,
+and SMTP checks. Every variant has an exact protocol set. `PostgresQueryCheck`
+deliberately exposes only the closed `SELECT_ONE` operation; there is no SQL
+string. HTTP checks carry a relative path and provider socket identity, never a
+URL.
+
+### Objects, Morphisms, And Laws
+
+```text
+VerificationCheck
+  = HttpCheck
+  | DnsResolveCheck
+  | PostgresQueryCheck
+  | RedisCheck
+  | BrokerRoundTripCheck
+  | ObjectStorageRoundTripCheck
+  | SmtpAcceptanceCheck
+
+VerificationContract -> exact descriptor -> VerificationContract
+VerificationCheck    -> accepted provider protocols
+```
+
+- policies bound timeout, attempts, and evidence bytes;
+- contract check identities are unique and bounded;
+- descriptor keys and variants are exact and fail closed;
+- `BlockSpec` rejects untyped contract values at construction;
+- process, transport, application-health, and readiness probes remain unchanged;
+- no interpreter, transport, store, or external effect was introduced.
+
+### Evidence
+
+```text
+Focused Docker tests: 27 passed before review strengthening
+Complete Docker/Postgres suite after AST ownership correction: 793 passed
+Final complete Docker/Postgres suite: 795 passed
+Test skips added: 0
+Assertions weakened: 0
+```
+
+### Handoff To #474
+
+Validate every check against the provider socket on its compiled node, preserve
+contract changes as graph differences, and materialize endpoint-bearing check
+requests only from the exact graph pinned by the approved plan. Adapters must
+not import stores or choose current graph truth.
