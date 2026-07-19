@@ -38,6 +38,7 @@ class WebhookSigningAlgorithm(StrEnum):
 
 class WebhookDeliveryStatus(StrEnum):
     QUEUED = "queued"
+    CLAIMED = "claimed"
     IN_FLIGHT = "in-flight"
     RETRY_SCHEDULED = "retry-scheduled"
     DELIVERED = "delivered"
@@ -52,6 +53,11 @@ class WebhookAttemptOutcome(StrEnum):
     RETRYABLE_FAILURE = "retryable-failure"
     TERMINAL_FAILURE = "terminal-failure"
     UNCERTAIN = "uncertain"
+
+
+class WebhookClaimReleaseReason(StrEnum):
+    ABANDONED = "abandoned"
+    EXPIRED = "expired"
 
 
 class WebhookScope(StrEnum):
@@ -302,14 +308,74 @@ class WebhookEnqueued:
 
 
 @dataclass(frozen=True, slots=True)
+class WebhookClaim:
+    identity: WebhookDeliveryIdentity
+    claim_id: str
+    worker_id: str
+    attempt_number: int
+    claimed_at: datetime
+    lease_expires_at: datetime
+
+    def __post_init__(self) -> None:
+        _event_identity(self.identity)
+        _identifier("claim_id", self.claim_id)
+        _identifier("worker_id", self.worker_id)
+        _bounded("webhook claim attempt number", self.attempt_number, 1, 20)
+        claimed = _aware("claim claimed_at", self.claimed_at)
+        expires = _aware("claim lease_expires_at", self.lease_expires_at)
+        if expires <= claimed:
+            raise ValueError("webhook claim lease must expire after claim time")
+        if expires - claimed > timedelta(days=1):
+            raise ValueError("webhook claim lease must be bounded")
+
+    def descriptor(self) -> dict[str, object]:
+        return {
+            "identity": self.identity.descriptor(),
+            "claim_id": self.claim_id,
+            "worker_id": self.worker_id,
+            "attempt_number": self.attempt_number,
+            "claimed_at": _timestamp(self.claimed_at),
+            "lease_expires_at": _timestamp(self.lease_expires_at),
+        }
+
+
+@dataclass(frozen=True, slots=True)
+class WebhookClaimed:
+    claim: WebhookClaim
+
+    def __post_init__(self) -> None:
+        if not isinstance(self.claim, WebhookClaim):
+            raise TypeError("webhook claimed event requires a typed claim")
+
+
+@dataclass(frozen=True, slots=True)
+class WebhookClaimReleased:
+    identity: WebhookDeliveryIdentity
+    claim_id: str
+    attempt_number: int
+    reason: WebhookClaimReleaseReason
+    recorded_at: datetime
+
+    def __post_init__(self) -> None:
+        _event_identity(self.identity)
+        _identifier("claim_id", self.claim_id)
+        _bounded("webhook claim attempt number", self.attempt_number, 1, 20)
+        if not isinstance(self.reason, WebhookClaimReleaseReason):
+            raise TypeError("webhook claim release reason must be typed")
+        _aware("claim release recorded_at", self.recorded_at)
+
+
+@dataclass(frozen=True, slots=True)
 class WebhookAttemptStarted:
     identity: WebhookDeliveryIdentity
     attempt_number: int
+    claim_id: str
     recorded_at: datetime
 
     def __post_init__(self) -> None:
         _event_identity(self.identity)
         _bounded("webhook attempt number", self.attempt_number, 1, 20)
+        _identifier("claim_id", self.claim_id)
         _aware("attempt recorded_at", self.recorded_at)
 
 
@@ -317,6 +383,7 @@ class WebhookAttemptStarted:
 class WebhookAttemptFinished:
     identity: WebhookDeliveryIdentity
     attempt_number: int
+    claim_id: str
     outcome: WebhookAttemptOutcome
     recorded_at: datetime
     response_status: int | None = None
@@ -325,6 +392,7 @@ class WebhookAttemptFinished:
     def __post_init__(self) -> None:
         _event_identity(self.identity)
         _bounded("webhook attempt number", self.attempt_number, 1, 20)
+        _identifier("claim_id", self.claim_id)
         _aware("attempt recorded_at", self.recorded_at)
         if not isinstance(self.outcome, WebhookAttemptOutcome):
             raise TypeError("webhook attempt outcome must be typed")
@@ -394,6 +462,8 @@ class WebhookOperatorRequired:
 
 WebhookEvent: TypeAlias = (
     WebhookEnqueued
+    | WebhookClaimed
+    | WebhookClaimReleased
     | WebhookAttemptStarted
     | WebhookAttemptFinished
     | WebhookRetryScheduled
@@ -409,6 +479,7 @@ class WebhookDeliveryState:
     attempts_started: int
     attempts_completed: int
     updated_at: datetime
+    active_claim: WebhookClaim | None = None
     next_attempt_at: datetime | None = None
     last_outcome: WebhookAttemptOutcome | None = None
 
@@ -422,6 +493,10 @@ class WebhookDeliveryState:
         if self.attempts_completed > self.attempts_started:
             raise ValueError("completed webhook attempts cannot exceed started attempts")
         _aware("updated_at", self.updated_at)
+        if self.active_claim is not None and not isinstance(
+            self.active_claim, WebhookClaim
+        ):
+            raise TypeError("webhook state active claim must be typed")
         if self.next_attempt_at is not None:
             _aware("next_attempt_at", self.next_attempt_at)
         if self.last_outcome is not None and not isinstance(
@@ -441,11 +516,11 @@ def evolve_webhook_delivery(
         if not isinstance(event, WebhookEnqueued):
             raise ValueError("webhook history must begin with enqueue")
         return WebhookDeliveryState(
-            event.intent,
-            WebhookDeliveryStatus.QUEUED,
-            0,
-            0,
-            event.intent.enqueued_at,
+            intent=event.intent,
+            status=WebhookDeliveryStatus.QUEUED,
+            attempts_started=0,
+            attempts_completed=0,
+            updated_at=event.intent.enqueued_at,
         )
     _same_identity(state, event)
     recorded_at = _event_recorded_at(event)
@@ -454,34 +529,107 @@ def evolve_webhook_delivery(
     match event:
         case WebhookEnqueued():
             raise ValueError("webhook delivery cannot be enqueued twice")
-        case WebhookAttemptStarted(attempt_number=number, recorded_at=recorded_at):
+        case WebhookClaimed(claim=claim):
             if state.status not in {
                 WebhookDeliveryStatus.QUEUED,
                 WebhookDeliveryStatus.RETRY_SCHEDULED,
             }:
-                raise ValueError("webhook attempt cannot start from current status")
-            if number != state.attempts_started + 1 or number > state.intent.retry_policy.max_attempts:
-                raise ValueError("webhook attempt number is not the next bounded attempt")
-            if state.next_attempt_at is not None and recorded_at < state.next_attempt_at:
-                raise ValueError("webhook retry attempt cannot start before availability")
-            if recorded_at > state.intent.deadline_at:
-                raise ValueError("webhook attempt cannot start after its deadline")
+                raise ValueError("webhook delivery cannot be claimed from current status")
+            if (
+                claim.attempt_number != state.attempts_started + 1
+                or claim.attempt_number > state.intent.retry_policy.max_attempts
+            ):
+                raise ValueError("webhook claim is not for the next bounded attempt")
+            if (
+                state.next_attempt_at is not None
+                and claim.claimed_at < state.next_attempt_at
+            ):
+                raise ValueError("webhook retry cannot be claimed before availability")
+            if (
+                claim.claimed_at >= state.intent.deadline_at
+                or claim.lease_expires_at > state.intent.deadline_at
+            ):
+                raise ValueError("webhook claim must fit within the delivery deadline")
             return WebhookDeliveryState(
-                state.intent,
-                WebhookDeliveryStatus.IN_FLIGHT,
-                number,
-                state.attempts_completed,
-                recorded_at,
+                intent=state.intent,
+                status=WebhookDeliveryStatus.CLAIMED,
+                attempts_started=state.attempts_started,
+                attempts_completed=state.attempts_completed,
+                updated_at=claim.claimed_at,
+                active_claim=claim,
+                next_attempt_at=state.next_attempt_at,
+                last_outcome=state.last_outcome,
+            )
+        case WebhookClaimReleased(
+            claim_id=claim_id,
+            attempt_number=number,
+            reason=reason,
+            recorded_at=recorded_at,
+        ):
+            claim = state.active_claim
+            if state.status is not WebhookDeliveryStatus.CLAIMED or claim is None:
+                raise ValueError("webhook claim can be released only before attempt start")
+            if claim.claim_id != claim_id or claim.attempt_number != number:
+                raise ValueError("webhook claim release does not own the active claim")
+            if (
+                reason is WebhookClaimReleaseReason.EXPIRED
+                and recorded_at < claim.lease_expires_at
+            ):
+                raise ValueError("webhook claim cannot expire before its lease boundary")
+            restored = (
+                WebhookDeliveryStatus.QUEUED
+                if state.attempts_started == 0
+                else WebhookDeliveryStatus.RETRY_SCHEDULED
+            )
+            return WebhookDeliveryState(
+                intent=state.intent,
+                status=restored,
+                attempts_started=state.attempts_started,
+                attempts_completed=state.attempts_completed,
+                updated_at=recorded_at,
+                next_attempt_at=state.next_attempt_at,
+                last_outcome=state.last_outcome,
+            )
+        case WebhookAttemptStarted(
+            attempt_number=number,
+            claim_id=claim_id,
+            recorded_at=recorded_at,
+        ):
+            claim = state.active_claim
+            if state.status is not WebhookDeliveryStatus.CLAIMED or claim is None:
+                raise ValueError("webhook attempt requires an active claim")
+            if claim.claim_id != claim_id or claim.attempt_number != number:
+                raise ValueError("webhook attempt does not own the active claim")
+            if recorded_at >= claim.lease_expires_at:
+                raise ValueError("webhook attempt cannot start after claim expiry")
+            if recorded_at >= state.intent.deadline_at:
+                raise ValueError("webhook attempt cannot start after delivery deadline")
+            if number != state.attempts_started + 1:
+                raise ValueError("webhook attempt number is not the next attempt")
+            return WebhookDeliveryState(
+                intent=state.intent,
+                status=WebhookDeliveryStatus.IN_FLIGHT,
+                attempts_started=number,
+                attempts_completed=state.attempts_completed,
+                updated_at=recorded_at,
+                active_claim=claim,
                 last_outcome=state.last_outcome,
             )
         case WebhookAttemptFinished(
             attempt_number=number,
+            claim_id=claim_id,
             outcome=outcome,
             recorded_at=recorded_at,
         ):
-            if state.status is not WebhookDeliveryStatus.IN_FLIGHT:
+            claim = state.active_claim
+            if state.status is not WebhookDeliveryStatus.IN_FLIGHT or claim is None:
                 raise ValueError("webhook attempt can finish only while in flight")
-            if number != state.attempts_started or state.attempts_completed != number - 1:
+            if claim.claim_id != claim_id or claim.attempt_number != number:
+                raise ValueError("webhook attempt result does not own the active claim")
+            if (
+                number != state.attempts_started
+                or state.attempts_completed != number - 1
+            ):
                 raise ValueError("webhook attempt completion is out of order")
             status = {
                 WebhookAttemptOutcome.SUCCEEDED: WebhookDeliveryStatus.DELIVERED,
@@ -490,11 +638,11 @@ def evolve_webhook_delivery(
                 WebhookAttemptOutcome.UNCERTAIN: WebhookDeliveryStatus.UNCERTAIN,
             }[outcome]
             return WebhookDeliveryState(
-                state.intent,
-                status,
-                number,
-                number,
-                recorded_at,
+                intent=state.intent,
+                status=status,
+                attempts_started=number,
+                attempts_completed=number,
+                updated_at=recorded_at,
                 last_outcome=outcome,
             )
         case WebhookRetryScheduled(
@@ -515,13 +663,13 @@ def evolve_webhook_delivery(
             if available_at != expected or available_at > state.intent.deadline_at:
                 raise ValueError("webhook retry availability violates policy")
             return WebhookDeliveryState(
-                state.intent,
-                WebhookDeliveryStatus.RETRY_SCHEDULED,
-                state.attempts_started,
-                state.attempts_completed,
-                recorded_at,
-                available_at,
-                state.last_outcome,
+                intent=state.intent,
+                status=WebhookDeliveryStatus.RETRY_SCHEDULED,
+                attempts_started=state.attempts_started,
+                attempts_completed=state.attempts_completed,
+                updated_at=recorded_at,
+                next_attempt_at=available_at,
+                last_outcome=state.last_outcome,
             )
         case WebhookDeadLettered(recorded_at=recorded_at):
             if state.status is not WebhookDeliveryStatus.FAILED:
@@ -535,22 +683,22 @@ def evolve_webhook_delivery(
                     "retryable webhook failure cannot enter dead letter before exhaustion"
                 )
             return WebhookDeliveryState(
-                state.intent,
-                WebhookDeliveryStatus.DEAD_LETTER,
-                state.attempts_started,
-                state.attempts_completed,
-                recorded_at,
+                intent=state.intent,
+                status=WebhookDeliveryStatus.DEAD_LETTER,
+                attempts_started=state.attempts_started,
+                attempts_completed=state.attempts_completed,
+                updated_at=recorded_at,
                 last_outcome=state.last_outcome,
             )
         case WebhookOperatorRequired(recorded_at=recorded_at):
             if state.status is not WebhookDeliveryStatus.UNCERTAIN:
                 raise ValueError("only uncertain webhook delivery requires operator action")
             return WebhookDeliveryState(
-                state.intent,
-                WebhookDeliveryStatus.OPERATOR_REQUIRED,
-                state.attempts_started,
-                state.attempts_completed,
-                recorded_at,
+                intent=state.intent,
+                status=WebhookDeliveryStatus.OPERATOR_REQUIRED,
+                attempts_started=state.attempts_started,
+                attempts_completed=state.attempts_completed,
+                updated_at=recorded_at,
                 last_outcome=state.last_outcome,
             )
 
@@ -570,16 +718,40 @@ def webhook_event_descriptor(event: WebhookEvent) -> dict[str, object]:
     match event:
         case WebhookEnqueued(intent=intent):
             return {"variant": "enqueued", "intent": intent.descriptor()}
-        case WebhookAttemptStarted(identity=identity, attempt_number=number, recorded_at=at):
+        case WebhookClaimed(claim=claim):
+            return {"variant": "claimed", "claim": claim.descriptor()}
+        case WebhookClaimReleased(
+            identity=identity,
+            claim_id=claim_id,
+            attempt_number=number,
+            reason=reason,
+            recorded_at=at,
+        ):
+            return {
+                "variant": "claim-released",
+                "identity": identity.descriptor(),
+                "claim_id": claim_id,
+                "attempt_number": number,
+                "reason": reason.value,
+                "recorded_at": _timestamp(at),
+            }
+        case WebhookAttemptStarted(
+            identity=identity,
+            attempt_number=number,
+            claim_id=claim_id,
+            recorded_at=at,
+        ):
             return {
                 "variant": "attempt-started",
                 "identity": identity.descriptor(),
                 "attempt_number": number,
+                "claim_id": claim_id,
                 "recorded_at": _timestamp(at),
             }
         case WebhookAttemptFinished(
             identity=identity,
             attempt_number=number,
+            claim_id=claim_id,
             outcome=outcome,
             recorded_at=at,
             response_status=response_status,
@@ -589,6 +761,7 @@ def webhook_event_descriptor(event: WebhookEvent) -> dict[str, object]:
                 "variant": "attempt-finished",
                 "identity": identity.descriptor(),
                 "attempt_number": number,
+                "claim_id": claim_id,
                 "outcome": outcome.value,
                 "recorded_at": _timestamp(at),
                 "response_status": response_status,
@@ -631,11 +804,43 @@ def webhook_event_from_descriptor(value: object) -> WebhookEvent:
         case "enqueued":
             _exact(value, "variant", "intent")
             return WebhookEnqueued(_intent(_mapping(value, "intent")))
+        case "claimed":
+            _exact(value, "variant", "claim")
+            return WebhookClaimed(_claim(_mapping(value, "claim")))
+        case "claim-released":
+            _exact(
+                value,
+                "variant",
+                "identity",
+                "claim_id",
+                "attempt_number",
+                "reason",
+                "recorded_at",
+            )
+            try:
+                reason = WebhookClaimReleaseReason(_text(value, "reason"))
+            except ValueError as error:
+                raise ValueError("unknown webhook claim release reason") from error
+            return WebhookClaimReleased(
+                _identity(_mapping(value, "identity")),
+                _text(value, "claim_id"),
+                _integer(value, "attempt_number"),
+                reason,
+                _datetime(value, "recorded_at"),
+            )
         case "attempt-started":
-            _exact(value, "variant", "identity", "attempt_number", "recorded_at")
+            _exact(
+                value,
+                "variant",
+                "identity",
+                "attempt_number",
+                "claim_id",
+                "recorded_at",
+            )
             return WebhookAttemptStarted(
                 _identity(_mapping(value, "identity")),
                 _integer(value, "attempt_number"),
+                _text(value, "claim_id"),
                 _datetime(value, "recorded_at"),
             )
         case "attempt-finished":
@@ -644,6 +849,7 @@ def webhook_event_from_descriptor(value: object) -> WebhookEvent:
                 "variant",
                 "identity",
                 "attempt_number",
+                "claim_id",
                 "outcome",
                 "recorded_at",
                 "response_status",
@@ -656,6 +862,7 @@ def webhook_event_from_descriptor(value: object) -> WebhookEvent:
             return WebhookAttemptFinished(
                 _identity(_mapping(value, "identity")),
                 _integer(value, "attempt_number"),
+                _text(value, "claim_id"),
                 outcome,
                 _datetime(value, "recorded_at"),
                 _optional_integer(value, "response_status"),
@@ -751,6 +958,26 @@ def _identity(value: Mapping[str, object]) -> WebhookDeliveryIdentity:
     )
 
 
+def _claim(value: Mapping[str, object]) -> WebhookClaim:
+    _exact(
+        value,
+        "identity",
+        "claim_id",
+        "worker_id",
+        "attempt_number",
+        "claimed_at",
+        "lease_expires_at",
+    )
+    return WebhookClaim(
+        _identity(_mapping(value, "identity")),
+        _text(value, "claim_id"),
+        _text(value, "worker_id"),
+        _integer(value, "attempt_number"),
+        _datetime(value, "claimed_at"),
+        _datetime(value, "lease_expires_at"),
+    )
+
+
 def _endpoint(value: Mapping[str, object]) -> WebhookEndpoint:
     _exact(value, "endpoint_id", "url", "scheme")
     endpoint = WebhookEndpoint(_text(value, "endpoint_id"), _text(value, "url"))
@@ -802,7 +1029,12 @@ def _signing(value: Mapping[str, object]) -> WebhookSigning:
 
 
 def _same_identity(state: WebhookDeliveryState, event: WebhookEvent) -> None:
-    identity = event.intent.identity if isinstance(event, WebhookEnqueued) else event.identity
+    if isinstance(event, WebhookEnqueued):
+        identity = event.intent.identity
+    elif isinstance(event, WebhookClaimed):
+        identity = event.claim.identity
+    else:
+        identity = event.identity
     if identity != state.intent.identity:
         raise ValueError("webhook event belongs to another delivery")
 
@@ -815,6 +1047,8 @@ def _event_identity(value: WebhookDeliveryIdentity) -> None:
 def _event_recorded_at(event: WebhookEvent) -> datetime:
     if isinstance(event, WebhookEnqueued):
         return event.intent.enqueued_at
+    if isinstance(event, WebhookClaimed):
+        return event.claim.claimed_at
     return event.recorded_at
 
 
@@ -824,11 +1058,39 @@ def _validate_state_shape(state: WebhookDeliveryState) -> None:
     completed = state.attempts_completed
     outcome = state.last_outcome
     next_attempt = state.next_attempt_at
+    claim = state.active_claim
     if status is WebhookDeliveryStatus.QUEUED:
-        valid = (started, completed, outcome, next_attempt) == (0, 0, None, None)
+        valid = (started, completed, outcome, next_attempt, claim) == (
+            0,
+            0,
+            None,
+            None,
+            None,
+        )
+    elif status is WebhookDeliveryStatus.CLAIMED:
+        initial_claim = (
+            started == completed == 0
+            and outcome is None
+            and next_attempt is None
+        )
+        retry_claim = (
+            started == completed
+            and started >= 1
+            and outcome is WebhookAttemptOutcome.RETRYABLE_FAILURE
+            and next_attempt is not None
+        )
+        valid = (
+            claim is not None
+            and claim.identity == state.intent.identity
+            and claim.attempt_number == started + 1
+            and (initial_claim or retry_claim)
+        )
     elif status is WebhookDeliveryStatus.IN_FLIGHT:
         valid = (
             started == completed + 1
+            and claim is not None
+            and claim.identity == state.intent.identity
+            and claim.attempt_number == started
             and outcome in (None, WebhookAttemptOutcome.RETRYABLE_FAILURE)
             and next_attempt is None
         )
@@ -838,6 +1100,7 @@ def _validate_state_shape(state: WebhookDeliveryState) -> None:
             and started >= 1
             and outcome is WebhookAttemptOutcome.RETRYABLE_FAILURE
             and next_attempt is not None
+            and claim is None
         )
     elif status is WebhookDeliveryStatus.DELIVERED:
         valid = (
@@ -845,6 +1108,7 @@ def _validate_state_shape(state: WebhookDeliveryState) -> None:
             and started >= 1
             and outcome is WebhookAttemptOutcome.SUCCEEDED
             and next_attempt is None
+            and claim is None
         )
     elif status is WebhookDeliveryStatus.FAILED:
         valid = (
@@ -855,6 +1119,7 @@ def _validate_state_shape(state: WebhookDeliveryState) -> None:
                 WebhookAttemptOutcome.TERMINAL_FAILURE,
             }
             and next_attempt is None
+            and claim is None
         )
     elif status in {
         WebhookDeliveryStatus.UNCERTAIN,
@@ -865,6 +1130,7 @@ def _validate_state_shape(state: WebhookDeliveryState) -> None:
             and started >= 1
             and outcome is WebhookAttemptOutcome.UNCERTAIN
             and next_attempt is None
+            and claim is None
         )
     else:
         valid = (
@@ -876,6 +1142,7 @@ def _validate_state_shape(state: WebhookDeliveryState) -> None:
                 WebhookAttemptOutcome.TERMINAL_FAILURE,
             }
             and next_attempt is None
+            and claim is None
         )
     if not valid:
         raise ValueError("webhook delivery state shape is inconsistent")

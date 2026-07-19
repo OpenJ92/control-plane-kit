@@ -1652,3 +1652,58 @@ persistence introduced:                              0
 - use optimistic journal/version preconditions and one-winner claim semantics;
 - do not introduce another event vocabulary, projection, recovery cursor, or
   compatibility schema.
+
+## #517 Webhook Claim And Lease Hardening
+
+The #511 persistence dry run found that #510's issue contract required claim
+facts, but the merged pure language moved directly from enqueue to attempt
+start. Encoding worker ownership only as Postgres columns would have created a
+second operational language below the algebra. #517 therefore blocks #511 and
+adds the missing distinction in place:
+
+```text
+queued or retry-ready
+  -> WebhookClaimed(WebhookClaim)
+    -> WebhookAttemptStarted(claim_id)
+      -> external effect
+        -> WebhookAttemptFinished(claim_id, outcome)
+
+claimed before attempt start
+  -> WebhookClaimReleased(abandoned | expired)
+    -> prior readiness reconstructed
+```
+
+`WebhookClaim` owns delivery identity, claim identity, worker identity, attempt
+number, claim time, and bounded lease expiry. `WebhookDeliveryState` projects
+the active claim from immutable history. Attempt intent and result both carry
+the exact claim identity, so a stale or foreign worker result cannot compose
+with the active history.
+
+The executable laws now prove:
+
+- only queued or retry-ready work can be claimed;
+- one claim targets exactly the next bounded attempt;
+- retry work cannot be claimed before policy availability;
+- claim time and lease fit wholly inside the delivery deadline;
+- attempt start requires the exact active, unexpired claim;
+- release is possible only before attempt start;
+- expired release cannot precede the lease boundary;
+- release and reclaim preserve immutable prior history;
+- unknown claim descriptors and release reasons fail closed;
+- identical event replay reconstructs identical claim state;
+- effect intent without a result remains in-flight and cannot become a fresh
+  retry merely because a lease expires.
+
+Evidence:
+
+```text
+focused webhook and architecture tests:             19 passed
+complete Docker/Postgres suite:                     974 passed
+assertions weakened:                                  0
+skips added:                                         0
+SQL or external effects introduced:                   0
+```
+
+Handoff to #511: persist these exact claim events and reconstructible active
+claim. SQL may enforce one-winner appends and projection versions, but it must
+not invent another claim status, lease language, or mutable dispatch cursor.
