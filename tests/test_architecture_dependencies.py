@@ -138,6 +138,7 @@ PACKAGE_RULES = (
     ),
     PackageDependencyRule("types", ()),
     PackageDependencyRule("verification", ("types",)),
+    PackageDependencyRule("webhook", ("secrets",)),
     PackageDependencyRule(
         "workflows",
         (
