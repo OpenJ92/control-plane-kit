@@ -1642,6 +1642,11 @@ def _node_ownership(
                         "reference_id": value.reference_id,
                         "target_path": value.target_path,
                         "file_mode": value.file_mode.value,
+                        "path_binding": (
+                            None
+                            if value.path_binding is None
+                            else value.path_binding.environment_name
+                        ),
                     }
                     for value in node.implementation.secret_files
                 ],
@@ -1803,6 +1808,11 @@ def _secret_ownership(
             "reference_id": material.reference_id,
             "target_path": material.target_path,
             "file_mode": material.file_mode.value,
+            "path_binding": (
+                None
+                if material.path_binding is None
+                else material.path_binding.environment_name
+            ),
         }
     )
     return DockerOwnership(

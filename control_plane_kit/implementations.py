@@ -12,6 +12,7 @@ from control_plane_kit.secrets import (
     SecretDelivery,
     SecretEnvironmentDelivery,
     SecretFileDelivery,
+    SecretFilePathBinding,
     secret_delivery_sort_key,
 )
 from control_plane_kit.topology.graph import Endpoint, EndpointAddress, LiteralAddress
@@ -374,8 +375,10 @@ def _validate_secret_deliveries(
         match delivery:
             case SecretEnvironmentDelivery(environment_name=name):
                 environment_names.append(name)
-            case SecretFileDelivery(target_path=path):
+            case SecretFileDelivery(target_path=path, path_binding=path_binding):
                 file_paths.append(path)
+                if isinstance(path_binding, SecretFilePathBinding):
+                    environment_names.append(path_binding.environment_name)
             case _:
                 raise TypeError("secret delivery must use the closed SecretDelivery language")
     if set(environment_names).intersection(environment):

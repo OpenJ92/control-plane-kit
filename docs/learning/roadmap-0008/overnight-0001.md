@@ -858,3 +858,128 @@ secret-backed credentials through the same reference algebra. They must not
 invent product-specific secret stores, value fields, host mounts, or read-secret
 routes. Credential rotation remains an explicit graph edit to a new immutable
 reference.
+
+## #487 Decision Log: Credentialed Postgres Product Proof
+
+### Capability
+
+The generic secret-file language now supports products that require the mounted
+file path to be named by a non-secret environment variable:
+
+```python
+SecretFileDelivery(
+    "/run/secrets/postgres-password",
+    SecretReference("secret://live/postgres/password"),
+    path_binding=SecretFilePathBinding("POSTGRES_PASSWORD_FILE"),
+)
+```
+
+Materialization interprets that typed relation into the literal path binding
+`POSTGRES_PASSWORD_FILE=/run/secrets/postgres-password`. Secret bytes remain
+available only from the runtime resolver and mounted file. The existing guard
+against plaintext values in secret-shaped environment names was not weakened.
+
+```text
+SecretFilePathBinding x SecretFileDelivery
+  -> pinned SecretFileMaterial
+  -> literal path EnvironmentBindingMaterial
+  -> Docker secret volume and read-only file mount
+```
+
+### Breaking Point: Product bootstrap needs a file-path environment slot
+
+The official Postgres image does not infer its password file. It consumes
+`POSTGRES_PASSWORD_FILE`, whose value is a path rather than a credential. A raw
+literal would be rejected correctly by the package's secret-shaped environment
+guard. The fix was a closed typed relationship on `SecretFileDelivery`, not an
+exception to the guard and not a product-specific Docker branch.
+
+The path binding participates in descriptor encoding, sorting, implementation
+overlap validation, pinned effect material, and Docker ownership fingerprints.
+Changing the binding is therefore a graph-visible change.
+
+### Breaking Point: Descriptor hashing was not structural equality
+
+`Node` previously detected duplicate deliveries by converting one shallow
+descriptor level into tuples. The nested path-binding descriptor exposed that
+as an unhashable implementation accident. Frozen secret-delivery values already
+have structural equality and hashing, so uniqueness now uses the algebraic
+values directly:
+
+```python
+if len(set(self.secret_deliveries)) != len(self.secret_deliveries):
+    raise ValueError("node secret deliveries must be unique")
+```
+
+### Breaking Point: The live runner existed before its graph network
+
+The initial product proof sent `WaitForHealthy` directly to the Docker lifecycle
+interpreter and correctly received `EffectUnsupported`. It now composes the
+existing `CapabilityInterpreterRegistry`: Docker owns lifecycle capabilities,
+while `ProbeEffectInterpreter` owns health and performs both process inspection
+and real TCP reachability.
+
+The runner container itself starts before the desired graph network exists. The
+harness therefore performs one canonical `StartRuntime` bootstrap effect, exits,
+then launches a fresh runner attached to the owned network. That runner executes
+the complete empty-to-desired plan, including the idempotent runtime activity.
+Teardown executes the complete desired-to-empty plan from an unattached runner.
+
+### Breaking Point: Adapter prefix and graph DNS identity diverged
+
+The graph advertises `docker-postgres`, while a nonempty adapter project prefix
+would create a differently named container. Canonical live examples use their
+unique graph-owned network for isolation and leave the adapter prefix empty, so
+the runtime process identity exactly matches the pinned endpoint. The Postgres
+proof follows that precedent.
+
+### Breaking Point: Ownership field landed in the adjacent product
+
+The first complete suite found eight configuration-artifact errors. The
+secret-file `path_binding` fingerprint had been added to the adjacent
+`configuration_artifacts` comprehension instead of `secret_files`, causing
+artifact-only nodes to read a field outside their algebra.
+
+The tests were unchanged. The field moved to the secret-file ownership product,
+where it now affects both container ownership and individual secret-volume
+ownership. All nine configuration ownership tests and all twenty-two secret
+contract tests then passed together. This preserved the separation:
+
+```text
+ConfigurationArtifact ownership
+  = artifact identity x content/source digest x target x mode
+
+SecretFileMaterial ownership
+  = reference x target x mode x optional path binding
+```
+
+### Live Evidence
+
+```text
+denied provider authority
+  -> docker.secret-denied
+  -> no container or volume
+
+canonical empty graph -> desired Postgres graph
+  -> compile, validate, diff, plan, materialize
+  -> owned network and container
+  -> bounded process + TCP readiness
+  -> password-file bootstrap
+  -> authenticated psycopg SELECT 1
+
+identical replay
+  -> convergent owned resources
+
+desired Postgres graph -> empty graph
+  -> owned container, secret volume, and network removed
+
+mounted mode: 0400
+write attempt: rejected
+plaintext credential in argv/env/descriptors/evidence: none
+focused secret/topology/Docker tests: 22 passed
+architecture-policy tests: 43 passed
+configuration + secret ownership regression tests: 31 passed
+complete Docker/Postgres suite: 835 passed
+assertions weakened: 0
+skips added: 0
+```

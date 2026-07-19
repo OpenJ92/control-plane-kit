@@ -17,6 +17,7 @@ from control_plane_kit import (
     SecretEnvironmentDelivery,
     SecretFileDelivery,
     SecretFileMaterial,
+    SecretFilePathBinding,
     SecretReference,
     SecretReferenceMaterialValue,
     StartNode,
@@ -106,8 +107,18 @@ class SecretDeliveryTopologyTests(unittest.TestCase):
                     "secret://local/workspace-a/database-a",
                     "/run/secrets/database-password",
                     implementation.secret_files[0].file_mode,
+                    SecretFilePathBinding("POSTGRES_PASSWORD_FILE"),
                 ),
             ),
+        )
+        path_binding = next(
+            value
+            for value in implementation.environment
+            if value.name == "POSTGRES_PASSWORD_FILE"
+        )
+        self.assertEqual(
+            path_binding.value.value,
+            "/run/secrets/database-password",
         )
         self.assertNotIn("resolved-password", materialized.canonical_json())
 
@@ -124,6 +135,21 @@ class SecretDeliveryTopologyTests(unittest.TestCase):
                 ),
             ).materialize("service", BlockSockets(), DockerRuntime())
 
+        with self.assertRaisesRegex(ValueError, "overlap"):
+            DockerImageImplementation(
+                "postgres:16-alpine",
+                environment={"POSTGRES_PASSWORD_FILE": "/tmp/untyped"},
+                secret_deliveries=(
+                    SecretFileDelivery(
+                        "/run/secrets/database-password",
+                        SecretReference("secret://local/workspace-a/database"),
+                        path_binding=SecretFilePathBinding(
+                            "POSTGRES_PASSWORD_FILE"
+                        ),
+                    ),
+                ),
+            ).materialize("service", BlockSockets(), DockerRuntime())
+
 
 def _recipe(reference_name: str) -> DeploymentRecipe:
     reference = SecretReference(f"secret://local/workspace-a/{reference_name}")
@@ -133,7 +159,11 @@ def _recipe(reference_name: str) -> DeploymentRecipe:
             "service:latest",
             secret_deliveries=(
                 SecretEnvironmentDelivery("DATABASE_URL", reference),
-                SecretFileDelivery("/run/secrets/database-password", reference),
+                SecretFileDelivery(
+                    "/run/secrets/database-password",
+                    reference,
+                    path_binding=SecretFilePathBinding("POSTGRES_PASSWORD_FILE"),
+                ),
             ),
         ),
         BlockSockets(),

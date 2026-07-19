@@ -14,6 +14,7 @@ from control_plane_kit.configuration import ConfigurationArtifact
 from control_plane_kit.secrets import (
     SecretEnvironmentDelivery,
     SecretFileDelivery,
+    SecretFilePathBinding,
     SecretFileMode,
     SecretReference,
 )
@@ -135,12 +136,14 @@ class SecretFileMaterial:
     reference_id: str
     target_path: str
     file_mode: SecretFileMode
+    path_binding: SecretFilePathBinding | None = None
 
     def __post_init__(self) -> None:
         SecretFileDelivery(
             self.target_path,
             SecretReference(self.reference_id),
             self.file_mode,
+            self.path_binding,
         )
 
 
@@ -703,10 +706,23 @@ def _implementation_material(node: Node, graph: DeploymentGraph) -> Implementati
                 target_path=target_path,
                 reference=reference,
                 file_mode=file_mode,
+                path_binding=path_binding,
             ):
                 secret_files.append(
-                    SecretFileMaterial(reference.reference_id, target_path, file_mode)
+                    SecretFileMaterial(
+                        reference.reference_id,
+                        target_path,
+                        file_mode,
+                        path_binding,
+                    )
                 )
+                if path_binding is not None:
+                    environment.append(
+                        EnvironmentBindingMaterial(
+                            path_binding.environment_name,
+                            LiteralMaterialValue(target_path),
+                        )
+                    )
     if len({value.name for value in environment}) != len(environment):
         raise _malformed("environment")
     return ImplementationMaterial(
@@ -869,6 +885,11 @@ def _descriptor(value: object) -> object:
                 "reference_id": value.reference_id,
                 "target_path": value.target_path,
                 "file_mode": value.file_mode.value,
+                "path_binding": (
+                    None
+                    if value.path_binding is None
+                    else value.path_binding.descriptor()
+                ),
             }
         case HostPublicationMaterial():
             return {

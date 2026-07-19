@@ -120,10 +120,7 @@ class Node:
             for value in self.secret_deliveries
         ):
             raise TypeError("node secret deliveries must be a tuple")
-        delivery_descriptors = tuple(
-            tuple(sorted(value.descriptor().items())) for value in self.secret_deliveries
-        )
-        if len(set(delivery_descriptors)) != len(delivery_descriptors):
+        if len(set(self.secret_deliveries)) != len(self.secret_deliveries):
             raise ValueError("node secret deliveries must be unique")
 
     def requirement_socket(self, name: str):
