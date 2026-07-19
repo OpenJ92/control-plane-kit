@@ -674,10 +674,21 @@ def evolve_webhook_delivery(
         case WebhookDeadLettered(recorded_at=recorded_at):
             if state.status is not WebhookDeliveryStatus.FAILED:
                 raise ValueError("only failed webhook delivery can enter dead letter")
+            retry_window_exhausted = (
+                state.last_outcome is WebhookAttemptOutcome.RETRYABLE_FAILURE
+                and recorded_at
+                + timedelta(
+                    milliseconds=state.intent.retry_policy.backoff_ms(
+                        state.attempts_completed
+                    )
+                )
+                > state.intent.deadline_at
+            )
             if (
                 state.last_outcome is not WebhookAttemptOutcome.TERMINAL_FAILURE
                 and state.attempts_started < state.intent.retry_policy.max_attempts
                 and recorded_at < state.intent.deadline_at
+                and not retry_window_exhausted
             ):
                 raise ValueError(
                     "retryable webhook failure cannot enter dead letter before exhaustion"

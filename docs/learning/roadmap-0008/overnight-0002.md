@@ -1804,3 +1804,123 @@ Handoff to #512:
 - never treat claim lease expiry after attempt start as permission for blind
   replay;
 - introduce no second journal, projection, recovery cursor, or CPI transaction.
+
+## #512 Durable Webhook Dispatch And Recovery Service
+
+### Capability
+
+The webhook application now composes its pure event language and application
+Postgres boundary into one closed command interpreter:
+
+```text
+WebhookCommand
+  = EnqueueWebhook
+  | ClaimWebhook
+  | ReleaseWebhookClaim
+  | DispatchWebhook
+  | RecoverWebhook
+
+WebhookDeliveryService
+  : WebhookCommand -> WebhookCommandResult
+```
+
+The service accepts a typed `WebhookOutboundDelivery` capability. It does not
+know HTTP clients, DNS, SSRF policy, redirects, signing values, FastAPI, or
+Docker. Those remain the next interpreter boundary in #513.
+
+### Split-Transaction Interpretation
+
+Dispatch has the required visible composition:
+
+```text
+transaction 1
+  authorize + lock command + lock delivery
+  append WebhookAttemptStarted
+  replace replay-equivalent projection
+  record exact command identity
+  commit
+
+WebhookOutboundDelivery.deliver(WebhookOutboundRequest)
+
+transaction 2
+  lock delivery
+  append WebhookAttemptFinished
+  append retry, dead-letter, or operator-required event when required
+  replace replay-equivalent projection
+  commit
+```
+
+The outbound request carries exact endpoint, bounded payload, signing
+reference, claim identity, and attempt number as typed immutable data. A fake
+capability test asserts every UnitOfWork connection is already closed when the
+effect begins.
+
+### Recovery Laws
+
+The durable state distinguishes two crash windows:
+
+```text
+claimed, no attempt-start
+  -> expired claim release
+  -> safe re-claim
+
+attempt-started, no result
+  -> no automatic effect replay
+  -> after lease expiry, immutable uncertain result
+  -> operator-required
+```
+
+Exact replay of a dispatch command consults the command ledger and current
+canonical journal projection; it never invokes the outbound capability again.
+Recovery uses a fresh service instance over Postgres and requires no mutable
+cursor or process memory.
+
+Other executable laws prove:
+
+- workspace and least-privilege scopes are checked before mutation;
+- command-id replay converges while changed intent conflicts;
+- competing service claims across independent connections have one winner;
+- a worker may abandon only its own unexpired pre-dispatch claim;
+- an expired claim cannot be relabelled as voluntary abandonment;
+- retry time is derived exactly from bounded exponential backoff;
+- retry work cannot be claimed before availability;
+- retry exhaustion includes the case where the next backoff no longer fits
+  inside the delivery deadline;
+- terminal failure, dead letter, uncertainty, operator-required, and delivered
+  remain distinct journal-derived states;
+- caught adapter exceptions become bounded uncertainty facts without retaining
+  exception text, payload content, or secret values.
+
+### Breakpoints And Resolutions
+
+1. A deadline-exhaustion fixture initially used a thirty-second claim lease
+   inside a four-second delivery deadline. The pure algebra correctly rejected
+   that impossible claim. The fixture now uses a two-second lease and reaches
+   the intended law: a five-second retry backoff cannot fit before deadline.
+2. The original dead-letter transition recognized only terminal failure,
+   attempt-count exhaustion, or a clock already at deadline. The service exposed
+   the missing mathematical case where the next exact backoff lies beyond the
+   deadline. The pure transition law was extended to admit dead letter for that
+   derived condition; no string flag or service-only exception was introduced.
+3. Review found that an unknown runtime command object could fall through the
+   pattern match and return `None`. The interpreter now fails closed with a
+   type error after exhausting the closed command variants.
+4. Review also separated claim abandonment from expiry. Voluntary release is
+   legal only before lease expiry; after expiry the explicit recovery command
+   records `WebhookClaimReleaseReason.EXPIRED`.
+
+### Evidence And Provisional Boundary
+
+```text
+focused webhook, Postgres, service, architecture:    39 passed
+complete Docker/Postgres suite:                     994 passed
+assertions weakened:                                  0
+skips added:                                          0
+real outbound HTTP introduced:                        0
+secret values resolved:                               0
+```
+
+The service is operationally complete over a typed fake capability, but review
+still requires a focused crash-window hardening pass for result-transaction
+failure, concurrent late result versus recovery, and command-ledger rollback.
+That pass must complete before #513 receives the handoff.
