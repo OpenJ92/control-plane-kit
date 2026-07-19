@@ -40,6 +40,7 @@ class PackageServerCatalogTests(unittest.TestCase):
             PackageServerProduct.HTTP_PROXY: "/",
             PackageServerProduct.HTTP_ACTIVE_ROUTER: "/",
             PackageServerProduct.HTTP_CIRCUIT_BREAKER: "/health",
+            PackageServerProduct.HTTP_BULKHEAD: "/health",
             PackageServerProduct.HTTP_MULTIPLEXER: "/",
             PackageServerProduct.HTTP_RATE_LIMITER: "/",
             PackageServerProduct.HTTP_RETRY: "/health",

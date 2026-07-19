@@ -1562,3 +1562,68 @@ The next HTTP product must consume this timeout block only through graph
 composition. Do not copy its timeout evidence into another product or infer
 retry behavior from a timeout result. Preserve product-qualified public names
 when a generic execution-algebra name already exists.
+
+## #421 Decision Log: Ticketed HTTP Bulkhead
+
+### Capability
+
+```text
+HttpBulkheadBlock
+  = ProxyBlock
+  x RequirementSocket(target, HTTP)
+  x ProviderSocket(internal, HTTP)
+  x HttpBulkheadPolicy
+
+HttpBulkheadPolicy
+  = maximum in-flight
+  x bounded queue capacity
+  x queue timeout
+  x request/response byte bounds
+```
+
+The admission state uses monotonic tickets rather than an unstructured
+semaphore wait. Cancelled or timed-out tickets are retired explicitly so later
+callers cannot remain blocked behind an abandoned position.
+
+### Laws
+
+- no more than the configured number of target effects execute concurrently;
+- queue overflow rejects immediately and queue expiry is a distinct outcome;
+- queued admission follows ticket order;
+- permits release in `finally` after success, target failure, and response
+  rejection;
+- permit count cannot become negative;
+- the condition lock never spans the target effect;
+- no request value, target address, or secret enters observations;
+- process state is authenticated and observable but never graph truth;
+- bulkhead admission does not imply rate limiting, timeout recovery, or retry.
+
+### Evidence
+
+```text
+focused bulkhead/catalogue/architecture suite: 23 passed
+live generated concurrency proof:
+  first request -> one in flight
+  second request -> one ticket waiting
+  third request -> immediate 503 rejection
+  release -> first and second both complete
+  final in_flight == 0 and waiting == 0
+  unauthenticated metrics -> 401
+complete Docker/Postgres suite: 865 passed
+assertions weakened: 0
+skips added: 0
+```
+
+### Residual Risk
+
+Client disconnect while waiting cannot be observed reliably by the stdlib HTTP
+server before response delivery. Such a caller may retain its ticket until
+admission or queue timeout; the queue remains finite and permits still recover.
+The implementation is process-local and is not a distributed concurrency
+budget.
+
+### Handoff To #422
+
+Fault injection is test-only behavior and must not reuse bulkhead outcomes.
+Its activation authority, product maturity, and policy must make accidental
+production use structurally visible.

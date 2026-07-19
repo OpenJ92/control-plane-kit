@@ -23,6 +23,14 @@ from control_plane_kit.servers.http_circuit_breaker import (
     http_circuit_breaker_block,
     http_circuit_breaker_command,
 )
+from control_plane_kit.servers.http_bulkhead import (
+    BulkheadObservation,
+    BulkheadOutcome,
+    HttpBulkheadPolicy,
+    HttpBulkheadServer,
+    http_bulkhead_block,
+    http_bulkhead_command,
+)
 from control_plane_kit.servers.http_messages import HttpHandler, HttpRequest, HttpResponse
 from control_plane_kit.servers.http_multiplexer import (
     HttpMultiplexerRuntime,
@@ -96,6 +104,8 @@ from control_plane_kit.servers.catalog import (
 
 __all__ = [
     "BlockControlState",
+    "BulkheadObservation",
+    "BulkheadOutcome",
     "GeneratedServerSyntaxError",
     "HelloDependency",
     "HelloEnvironment",
@@ -106,6 +116,8 @@ __all__ = [
     "CircuitBreakerPolicy",
     "CircuitBreakerState",
     "HttpCircuitBreakerServer",
+    "HttpBulkheadPolicy",
+    "HttpBulkheadServer",
     "HttpHandler",
     "HttpMultiplexerRuntime",
     "HttpMultiplexerServer",
@@ -152,6 +164,8 @@ __all__ = [
     "http_active_router_command",
     "http_circuit_breaker_block",
     "http_circuit_breaker_command",
+    "http_bulkhead_block",
+    "http_bulkhead_command",
     "http_multiplexer_block",
     "http_multiplexer_command",
     "http_proxy_block",

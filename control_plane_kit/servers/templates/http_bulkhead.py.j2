@@ -1,0 +1,202 @@
+import hmac
+import json
+import os
+import threading
+import time
+from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
+from urllib.error import HTTPError, URLError
+from urllib.request import HTTPRedirectHandler, Request, build_opener
+
+TARGET = os.environ["BULKHEAD_TARGET_URL"].rstrip("/")
+CONTROL_TOKEN = os.environ["CPK_CONTROL_TOKEN"]
+MAXIMUM_IN_FLIGHT = {{ maximum_in_flight }}
+QUEUE_CAPACITY = {{ queue_capacity }}
+QUEUE_TIMEOUT_SECONDS = {{ queue_timeout_ms }} / 1000
+MAX_REQUEST_BYTES = {{ max_request_bytes }}
+MAX_RESPONSE_BYTES = {{ max_response_bytes }}
+CONDITION = threading.Condition()
+IN_FLIGHT = 0
+WAITING = 0
+NEXT_TICKET = 0
+SERVING_TICKET = 0
+CANCELLED_TICKETS = set()
+ACCEPTED_COUNT = 0
+REJECTED_COUNT = 0
+QUEUE_TIMEOUT_COUNT = 0
+REQUEST_SEQUENCE = 0
+LATEST_OUTCOME = None
+
+
+class NoRedirects(HTTPRedirectHandler):
+    def redirect_request(self, request, file_pointer, code, message, headers, new_url):
+        return None
+
+
+OPENER = build_opener(NoRedirects)
+
+
+def advance_cancelled():
+    global SERVING_TICKET
+    while SERVING_TICKET in CANCELLED_TICKETS:
+        CANCELLED_TICKETS.remove(SERVING_TICKET)
+        SERVING_TICKET += 1
+
+
+def acquire():
+    global IN_FLIGHT, WAITING, NEXT_TICKET, SERVING_TICKET, ACCEPTED_COUNT, REJECTED_COUNT, QUEUE_TIMEOUT_COUNT
+    with CONDITION:
+        if WAITING == 0 and IN_FLIGHT < MAXIMUM_IN_FLIGHT:
+            IN_FLIGHT += 1
+            ACCEPTED_COUNT += 1
+            return None
+        if WAITING >= QUEUE_CAPACITY:
+            REJECTED_COUNT += 1
+            return "rejected"
+        ticket = NEXT_TICKET
+        NEXT_TICKET += 1
+        WAITING += 1
+        deadline = time.monotonic() + QUEUE_TIMEOUT_SECONDS
+        while ticket != SERVING_TICKET or IN_FLIGHT >= MAXIMUM_IN_FLIGHT:
+            remaining = deadline - time.monotonic()
+            if remaining <= 0:
+                WAITING -= 1
+                QUEUE_TIMEOUT_COUNT += 1
+                CANCELLED_TICKETS.add(ticket)
+                advance_cancelled()
+                CONDITION.notify_all()
+                return "queue-timeout"
+            CONDITION.wait(remaining)
+        WAITING -= 1
+        SERVING_TICKET += 1
+        advance_cancelled()
+        IN_FLIGHT += 1
+        ACCEPTED_COUNT += 1
+        CONDITION.notify_all()
+        return None
+
+
+def release():
+    global IN_FLIGHT
+    with CONDITION:
+        if IN_FLIGHT <= 0:
+            raise RuntimeError("bulkhead permit count would become negative")
+        IN_FLIGHT -= 1
+        CONDITION.notify_all()
+
+
+def record(outcome):
+    global REQUEST_SEQUENCE, LATEST_OUTCOME
+    with CONDITION:
+        REQUEST_SEQUENCE += 1
+        LATEST_OUTCOME = outcome
+
+
+def observation():
+    with CONDITION:
+        return {
+            "in_flight": IN_FLIGHT,
+            "waiting": WAITING,
+            "accepted_count": ACCEPTED_COUNT,
+            "rejected_count": REJECTED_COUNT,
+            "queue_timeout_count": QUEUE_TIMEOUT_COUNT,
+            "latest_outcome": LATEST_OUTCOME,
+            "latest_request_id": None if REQUEST_SEQUENCE == 0 else f"bulkhead-request-{REQUEST_SEQUENCE:020d}",
+        }
+
+
+class Handler(BaseHTTPRequestHandler):
+    def _json(self, status, payload):
+        body = json.dumps(payload, sort_keys=True, separators=(",", ":")).encode()
+        self.send_response(status)
+        self.send_header("content-type", "application/json")
+        self.send_header("content-length", str(len(body)))
+        self.end_headers()
+        if self.command != "HEAD":
+            self.wfile.write(body)
+
+    def _authorized(self):
+        authorization = self.headers.get("authorization", "")
+        alternate = self.headers.get("x-control-plane-token", "")
+        return hmac.compare_digest(authorization, f"Bearer {CONTROL_TOKEN}") or hmac.compare_digest(alternate, CONTROL_TOKEN)
+
+    def _respond(self, status, payload, headers=()):
+        self.send_response(status)
+        for key, value in headers:
+            if key.lower() not in {"transfer-encoding", "connection", "content-length"}:
+                self.send_header(key, value)
+        self.send_header("content-length", str(len(payload)))
+        self.end_headers()
+        if self.command != "HEAD":
+            self.wfile.write(payload)
+
+    def _read_body(self):
+        try:
+            length = int(self.headers.get("content-length", "0") or "0")
+        except ValueError:
+            return None, 400
+        if length < 0 or length > MAX_REQUEST_BYTES:
+            return None, 413
+        self.connection.settimeout(QUEUE_TIMEOUT_SECONDS)
+        return self.rfile.read(length), None
+
+    def _forward(self):
+        body, error_status = self._read_body()
+        if error_status is not None:
+            record("request-rejected")
+            self._respond(error_status, b"invalid or oversized request")
+            return
+        outcome = acquire()
+        if outcome is not None:
+            record(outcome)
+            self._respond(503 if outcome == "rejected" else 504, outcome.encode())
+            return
+        try:
+            headers = {key.lower(): value for key, value in self.headers.items() if key.lower() not in {"host", "content-length"}}
+            request = Request(TARGET + self.path, data=body or None, headers=headers, method=self.command)
+            try:
+                response = OPENER.open(request, timeout=QUEUE_TIMEOUT_SECONDS)
+                with response:
+                    payload = response.read(MAX_RESPONSE_BYTES + 1)
+                    status = response.status
+                    response_headers = tuple(response.headers.items())
+                result = "forwarded"
+            except HTTPError as error:
+                with error:
+                    payload = error.read(MAX_RESPONSE_BYTES + 1)
+                    status = error.code
+                    response_headers = tuple(error.headers.items())
+                result = "forwarded"
+            except (OSError, TimeoutError, URLError):
+                payload, status, response_headers, result = b"upstream unavailable", 502, (), "target-failed"
+            if len(payload) > MAX_RESPONSE_BYTES:
+                payload, status, response_headers, result = b"upstream response exceeded limit", 502, (), "response-rejected"
+            record(result)
+        finally:
+            release()
+        self._respond(status, payload, response_headers)
+
+    def do_GET(self):
+        path = self.path.split("?", 1)[0]
+        if path == "/health":
+            self._json(200, {"status": "healthy"})
+            return
+        if path == "/__deploy/metrics":
+            if not self._authorized():
+                self._json(401, {"detail": "unauthorized"})
+                return
+            self._json(200, observation())
+            return
+        self._forward()
+
+    do_HEAD = _forward
+    do_OPTIONS = _forward
+    do_POST = _forward
+    do_PUT = _forward
+    do_PATCH = _forward
+    do_DELETE = _forward
+
+    def log_message(self, format, *args):
+        pass
+
+
+ThreadingHTTPServer(("0.0.0.0", {{ port }}), Handler).serve_forever()

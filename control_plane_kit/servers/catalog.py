@@ -15,6 +15,7 @@ from control_plane_kit.control_routes import ControlRouteSetName
 from control_plane_kit.servers.hello import hello_server_block
 from control_plane_kit.servers.http_active_router import http_active_router_block
 from control_plane_kit.servers.http_circuit_breaker import http_circuit_breaker_block
+from control_plane_kit.servers.http_bulkhead import http_bulkhead_block
 from control_plane_kit.servers.http_multiplexer import http_multiplexer_block
 from control_plane_kit.servers.http_proxy import http_proxy_block
 from control_plane_kit.servers.http_rate_limiter import http_rate_limiter_block
@@ -199,6 +200,15 @@ PACKAGE_SERVER_CONTRACTS = (
                 CapabilityName.CIRCUIT_RESETTABLE,
                 ControlRouteSetName.CIRCUIT,
             ),
+        ),
+    ),
+    PackageServerContract(
+        PackageServerProduct.HTTP_BULKHEAD,
+        ProductMaturity.TEACHING,
+        http_bulkhead_block(),
+        (
+            _probe(path="/health"),
+            _control(CapabilityName.METRICS_READABLE, ControlRouteSetName.METRICS),
         ),
     ),
     PackageServerContract(
