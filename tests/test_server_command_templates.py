@@ -11,6 +11,7 @@ from control_plane_kit.servers import (
     http_rate_limiter_command,
     http_retry_command,
     http_traffic_logger_command,
+    http_timeout_command,
     http_weighted_load_balancer_command,
     request_observer_command,
 )
@@ -32,6 +33,7 @@ class ServerCommandTemplateTests(TestCase):
             http_rate_limiter_command(),
             http_retry_command(),
             http_traffic_logger_command(),
+            http_timeout_command(),
             request_observer_command(),
         )
 
@@ -52,6 +54,7 @@ class ServerCommandTemplateTests(TestCase):
         self.assertIn("RATE_LIMIT_TARGET_URL", http_rate_limiter_command()[2])
         self.assertIn("RETRY_TARGET_URL", http_retry_command()[2])
         self.assertIn("LOGGER_TARGET_URL", http_traffic_logger_command()[2])
+        self.assertIn("TIMEOUT_TARGET_URL", http_timeout_command()[2])
         self.assertIn("CPK_CONTROL_TOKEN", request_observer_command()[2])
 
     def test_invalid_rendered_source_fails_without_retaining_source(self):

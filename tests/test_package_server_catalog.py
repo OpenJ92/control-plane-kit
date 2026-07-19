@@ -44,6 +44,7 @@ class PackageServerCatalogTests(unittest.TestCase):
             PackageServerProduct.HTTP_RATE_LIMITER: "/",
             PackageServerProduct.HTTP_RETRY: "/health",
             PackageServerProduct.HTTP_TRAFFIC_LOGGER: "/health",
+            PackageServerProduct.HTTP_TIMEOUT: "/health",
             PackageServerProduct.HTTP_WEIGHTED_LOAD_BALANCER: "/",
             PackageServerProduct.REQUEST_OBSERVER: "/health",
         }

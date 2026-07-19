@@ -1460,3 +1460,105 @@ The timeout/deadline proxy must remain a separate product even though this
 logger already bounds its own target attempt. `#420` owns explicit timeout
 outcomes and cancellation semantics; it must not absorb logging or traffic
 evidence. Composition order should remain visible in graph topology.
+
+## #420 Decision Log: HTTP Timeout And Deadline Proxy
+
+### Capability
+
+The package catalogue now contains a one-attempt timeout proxy:
+
+```text
+HttpTimeoutBlock
+  = ProxyBlock
+  x RequirementSocket(target, HTTP)
+  x ProviderSocket(internal, HTTP)
+  x HttpTimeoutPolicy
+  x opaque control-token reference
+
+HttpTimeoutPolicy
+  = upstream attempt timeout
+  x total request deadline
+  x request byte bound
+  x response byte bound
+```
+
+Its closed outcome language distinguishes:
+
+```text
+Forwarded
+RequestRejected
+ResponseRejected
+UpstreamTimeout
+UpstreamDisconnected
+TotalDeadlineExceeded
+ClientDisconnected
+```
+
+The generated server makes exactly one target attempt. It never imports retry
+policy, traffic logging, circuit state, or durable workflow state. Authenticated
+metrics retain counters, the latest closed outcome, bounded duration, and a
+package-generated request identity only.
+
+### Laws
+
+- upstream timeout and total request deadline are independent finite values;
+- timeout never implies retry;
+- redirect following is disabled;
+- request and response bytes are bounded;
+- client disconnect is recorded only when reading from or delivering to the
+  caller fails;
+- upstream timeout and disconnect remain distinct from client disconnect;
+- target addresses, headers, credentials, bodies, and error text do not enter
+  evidence;
+- no lock spans the upstream HTTP effect;
+- health, forwarding success, and timeout observations remain distinct.
+
+### Breaking Point: Public timeout policy name collision
+
+The first full suite reported ten probe errors. They had one cause: the new
+server exported a generic `TimeoutPolicy` from the package root and shadowed the
+existing execution/probe algebra's `TimeoutPolicy`. Existing callers therefore
+constructed the new HTTP product policy where effects required the canonical
+effect timeout.
+
+The package is unreleased, so no alias or compatibility model was retained. The
+server value is now explicitly product-owned:
+
+```text
+effects.TimeoutPolicy     -- existing effect/probe retry timing
+servers.HttpTimeoutPolicy -- HTTP timeout product configuration
+```
+
+Focused tests import both public surfaces and prove the established probe
+language remains intact.
+
+### Evidence
+
+```text
+initial focused timeout/architecture suite: 23 passed
+post-collision timeout/probe/architecture suite: 39 passed
+live generated proxy path:
+  success -> forwarded
+  oversized request -> 413 and zero target calls
+  slow target -> 504 upstream-timeout
+  raw caller socket close -> client-disconnected
+  unauthenticated metrics -> 401
+complete Docker/Postgres suite: 861 passed
+assertions weakened: 0
+skips added: 0
+```
+
+### Residual Risk
+
+The pure in-memory interpreter cannot preempt an arbitrary synchronous Python
+callback; it classifies elapsed time after the callback returns. The generated
+HTTP implementation enforces its network timeout during the effect. The
+teaching server remains HTTP/1 and non-streaming and does not implement
+cooperative cancellation propagation to arbitrary upstream applications.
+
+### Handoff To #421
+
+The next HTTP product must consume this timeout block only through graph
+composition. Do not copy its timeout evidence into another product or infer
+retry behavior from a timeout result. Preserve product-qualified public names
+when a generic execution-algebra name already exists.
