@@ -4,6 +4,9 @@ from datetime import datetime, timedelta, timezone
 import unittest
 
 from control_plane_kit import (
+    CapabilityImplementation,
+    CapabilityName,
+    ControlRouteSetName,
     DeregisterDiscoveryInstance,
     DiscoveryAuthority,
     DiscoveryIdentity,
@@ -13,6 +16,7 @@ from control_plane_kit import (
     DiscoveryScope,
     Endpoint,
     EndpointScope,
+    ExecutableCapability,
     ExpireDiscoveryLeases,
     GraphDescriptorCodec,
     HeartbeatDiscoveryInstance,
@@ -159,10 +163,33 @@ class DiscoveryLanguageTests(unittest.TestCase):
             ("DISCOVERY_DATABASE_URL",),
         )
         self.assertEqual(block.sockets.provider("internal").protocol, Protocol.HTTP)
-        self.assertEqual(block.spec.capabilities, ())
+        self.assertEqual(
+            block.spec.capabilities,
+            (
+                CapabilityName.HEALTH_CHECKABLE,
+                CapabilityName.DISCOVERY_READABLE,
+                CapabilityName.DISCOVERY_MUTABLE,
+            ),
+        )
         self.assertEqual(
             package_server_contract(PackageServerProduct.SERVICE_DISCOVERY).capabilities,
-            (),
+            (
+                ExecutableCapability(
+                    CapabilityName.HEALTH_CHECKABLE,
+                    CapabilityImplementation.APPLICATION_PROBE,
+                    path="/health/ready",
+                ),
+                ExecutableCapability(
+                    CapabilityName.DISCOVERY_READABLE,
+                    CapabilityImplementation.CONTROL_ROUTE,
+                    route_set=ControlRouteSetName.DISCOVERY,
+                ),
+                ExecutableCapability(
+                    CapabilityName.DISCOVERY_MUTABLE,
+                    CapabilityImplementation.CONTROL_ROUTE,
+                    route_set=ControlRouteSetName.DISCOVERY,
+                ),
+            ),
         )
 
     def test_lease_and_identifiers_are_bounded_typed_values(self) -> None:

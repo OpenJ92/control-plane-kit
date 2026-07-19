@@ -135,6 +135,7 @@ class ControlRouteTests(TestCase):
                     ControlRouteMethod.POST,
                     "/__deploy/discovery/registrations/{instance_id}/deregister",
                 ),
+                (ControlRouteMethod.POST, "/__deploy/discovery/expiry"),
             },
         )
         self.assertIs(

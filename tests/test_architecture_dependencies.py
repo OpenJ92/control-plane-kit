@@ -45,6 +45,9 @@ PACKAGE_RULES = (
         "discovery_registry", ("discovery", "topology", "types")
     ),
     PackageDependencyRule(
+        "discovery_server", ("contracts", "discovery", "discovery_registry", "servers")
+    ),
+    PackageDependencyRule(
         "docker_runtime",
         (
             "configuration",

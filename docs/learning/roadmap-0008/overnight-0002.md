@@ -1167,3 +1167,115 @@ skips added:                                             0
 - keep tokens, database credentials, endpoint credentials, and command bodies
   out of durable results and errors;
 - keep network effects outside the registry transaction.
+
+## #503 Authenticated Discovery HTTP And Docker Boundary
+
+### Capability
+
+The package-owned discovery block is now a real Docker application:
+
+```text
+service_discovery_block
+  = PackageServerSpec
+  x DockerImageImplementation
+  x (Postgres requirement + HTTP provider)
+```
+
+Its process composition is deliberately separate from the generic server
+catalogue:
+
+```text
+discovery_server.main
+  -> ServiceDiscoveryEnvironment
+  -> PostgresDiscoveryUnitOfWork
+  -> DiscoveryRegistryService
+  -> create_service_discovery_app
+```
+
+Authenticated routes expose register, heartbeat, deregister, resolve, and
+bounded expiry commands. Every route decodes or constructs the existing closed
+command language and delegates to the canonical service. No route owns SQL or
+commit behavior.
+
+### Authentication And Scope Boundary
+
+A constant-time opaque identity attestation authenticates the trusted upstream
+identity boundary. Bounded headers are then decoded into the existing
+`DiscoveryAuthority` product:
+
+```text
+attestation
+  x actor
+  x workspace
+  x closed discovery scopes
+  x optional self-instance identity
+    -> DiscoveryAuthority
+```
+
+The registry service remains authoritative for workspace, management,
+resolution, and self-registration scope checks. Missing attestation returns
+401; coherent but under-scoped authority returns 403; missing registration and
+conflicting intent remain distinct 404 and 409 outcomes. Error responses do
+not echo tokens, database URLs, endpoint bodies, or internal exception text.
+
+Mutation bodies are streamed through a 16 KiB bound before JSON and closed
+descriptor decoding. Resolve limits remain closed at 100; expiry limits remain
+closed at 1,000.
+
+### Health And Readiness
+
+```text
+/health       = HTTP process is serving
+/health/ready = registry database accepts a bounded query
+```
+
+Readiness failure returns 503 and cannot be inferred from process startup. The
+probe opens and closes its own short database connection; it does not enter a
+registry command transaction or claim a semantic registration result.
+
+### Breakpoints And Resolutions
+
+1. The initial FastAPI adapter was placed beside the package block in
+   `servers/service_discovery.py`. Architecture policy correctly showed that
+   this made the generic server catalogue depend on discovery persistence. The
+   adapter moved to `discovery_server/app.py`; `servers` again owns only the
+   block contract.
+2. Postponed annotations caused FastAPI to interpret the locally imported
+   `Request` class as a query parameter, producing 422 before the service. The
+   adapter module now evaluates its route annotations where the optional
+   FastAPI `Request` class is in lexical scope. Request bounds and service
+   assertions were not weakened.
+3. The first route implementation omitted the already-typed expiry command,
+   although #504 requires live authenticated expiry. A bounded management-only
+   expiry route was added to the same discovery route set; no new command,
+   service, or persistence model was introduced.
+4. The exact route-set corpus rejected the new expiry path until its closed
+   expected set was extended. The assertion remains exact.
+5. One complete run saw an unrelated bulkhead child process miss its readiness
+   window. The test passed unchanged in isolation, and the full suite passed
+   unchanged on rerun. No timeout or assertion was relaxed.
+
+### Evidence
+
+```text
+complete Docker/Postgres suite:                   940 passed
+focused architecture ownership proof:              1 passed
+unchanged bulkhead live rerun:                       1 passed
+authenticated real-Postgres FastAPI cases:           7 passed
+assertions weakened:                                      0
+skips added:                                             0
+```
+
+### Handoff To #504
+
+- run the packaged Docker server with a real Postgres requirement and injected
+  opaque attestation;
+- prove register, resolve, heartbeat, expiry, and deregistration through the
+  public authenticated routes;
+- add adversarial cross-workspace, self-registration, stale-boundary,
+  pagination, response-size, and redaction proofs;
+- preserve the trusted-attestation versus typed-authority distinction;
+- preserve `servers` as block declaration only and `discovery_server` as the
+  application composition root;
+- prove cleanup removes only graph-owned ephemeral containers and networks;
+- do not create another registry service, store, ledger, or UoW.
