@@ -116,6 +116,17 @@ from control_plane_kit.workflows.execution_coordinator import (
     ExecutionCoordinatorResult,
     InjectedCoordinatorCrash,
 )
+from control_plane_kit.workflows.verification import (
+    ExecuteVerification,
+    VerificationAuthority,
+    VerificationCommandConflict,
+    VerificationCommandDenied,
+    VerificationCommandError,
+    VerificationCommandNotFound,
+    VerificationCommandResult,
+    VerificationCommandService,
+    VerificationScope,
+)
 
 __all__ = [
     "ActivityPlanningCommandService",
@@ -215,4 +226,13 @@ __all__ = [
     "ExecutionCoordinatorNotFound",
     "ExecutionCoordinatorResult",
     "InjectedCoordinatorCrash",
+    "ExecuteVerification",
+    "VerificationAuthority",
+    "VerificationCommandConflict",
+    "VerificationCommandDenied",
+    "VerificationCommandError",
+    "VerificationCommandNotFound",
+    "VerificationCommandResult",
+    "VerificationCommandService",
+    "VerificationScope",
 ]
