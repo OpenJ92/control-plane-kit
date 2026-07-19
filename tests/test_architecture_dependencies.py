@@ -77,6 +77,10 @@ PACKAGE_RULES = (
         "idempotency_gateway", ("adapters", "contracts", "idempotency", "servers")
     ),
     PackageDependencyRule("lifecycle", ()),
+    PackageDependencyRule("load_generation", ()),
+    PackageDependencyRule(
+        "load_generator_server", ("adapters", "contracts", "load_generation", "servers")
+    ),
     PackageDependencyRule("mcp_read", ("read_services",)),
     PackageDependencyRule("planning", ("lifecycle", "policies", "topology")),
     PackageDependencyRule("policies", ("planning", "types")),
@@ -103,6 +107,7 @@ PACKAGE_RULES = (
             "control_routes",
             "idempotency",
             "implementations",
+            "load_generation",
             "read_services",
             "secrets",
             "types",

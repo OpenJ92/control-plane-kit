@@ -30,6 +30,7 @@ class ControlRouteScope(StrEnum):
     SEND_SIGNAL = "signal:send"
     INJECT_FAULT = "fault:inject"
     PURGE_CACHE = "cache:purge"
+    RUN_LOAD = "load:run"
 
 
 class ControlRouteSetName(StrEnum):
@@ -44,6 +45,7 @@ class ControlRouteSetName(StrEnum):
     TRAFFIC_EVIDENCE = "traffic-evidence"
     FAULTS = "faults"
     CACHE = "cache"
+    LOADS = "loads"
 
 
 @dataclass(frozen=True)
@@ -272,6 +274,33 @@ CACHE_ROUTES = ControlRouteSet(
     ),
 )
 
+LOAD_ROUTES = ControlRouteSet(
+    name=ControlRouteSetName.LOADS,
+    routes=(
+        ControlRoute(
+            name="load-runs",
+            method=ControlRouteMethod.GET,
+            path=control_path("load-runs/{run_id}"),
+            scope=ControlRouteScope.READ_STATE,
+            description="Read bounded aggregate evidence for one test-only load run.",
+        ),
+        ControlRoute(
+            name="load-trigger",
+            method=ControlRouteMethod.POST,
+            path=control_path("load-runs"),
+            scope=ControlRouteScope.RUN_LOAD,
+            description="Start one bounded test-only load run against the graph-wired target.",
+        ),
+        ControlRoute(
+            name="load-cancel",
+            method=ControlRouteMethod.POST,
+            path=control_path("load-runs/{run_id}/cancel"),
+            scope=ControlRouteScope.RUN_LOAD,
+            description="Cancel future dispatch for one bounded test-only load run.",
+        ),
+    ),
+)
+
 CONTROL_ROUTE_SETS = (
     COMMON_STATUS_ROUTES,
     LOG_ROUTES,
@@ -282,6 +311,7 @@ CONTROL_ROUTE_SETS = (
     TRAFFIC_EVIDENCE_ROUTES,
     FAULT_ROUTES,
     CACHE_ROUTES,
+    LOAD_ROUTES,
 )
 
 

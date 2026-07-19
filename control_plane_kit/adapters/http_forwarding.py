@@ -27,11 +27,14 @@ async def forward_http_request(
 ) -> ForwardedHttpResponse:
     """Forward one request without redirects and return bounded response data."""
 
-    async with httpx.AsyncClient(
-        follow_redirects=False,
-        timeout=httpx.Timeout(timeout_seconds),
-    ) as client:
-        response = await client.request(method, url, headers=headers, content=body)
+    try:
+        async with httpx.AsyncClient(
+            follow_redirects=False,
+            timeout=httpx.Timeout(timeout_seconds),
+        ) as client:
+            response = await client.request(method, url, headers=headers, content=body)
+    except httpx.TimeoutException as exc:
+        raise TimeoutError("HTTP request timed out") from exc
     if len(response.content) > max_response_bytes:
         raise ValueError("active target response too large")
     return ForwardedHttpResponse(
@@ -53,21 +56,24 @@ def forward_http_request_sync(
 ) -> ForwardedHttpResponse:
     """Synchronously forward one bounded request without following redirects."""
 
-    with httpx.Client(
-        follow_redirects=False,
-        timeout=httpx.Timeout(timeout_seconds),
-    ) as client:
-        with client.stream(method, url, headers=headers, content=body) as response:
-            chunks: list[bytes] = []
-            size = 0
-            for chunk in response.iter_bytes():
-                size += len(chunk)
-                if size > max_response_bytes:
-                    raise ValueError("active target response too large")
-                chunks.append(chunk)
-            return ForwardedHttpResponse(
-                response.status_code,
-                b"".join(chunks),
-                response.headers.get("content-type"),
-                dict(response.headers),
-            )
+    try:
+        with httpx.Client(
+            follow_redirects=False,
+            timeout=httpx.Timeout(timeout_seconds),
+        ) as client:
+            with client.stream(method, url, headers=headers, content=body) as response:
+                chunks: list[bytes] = []
+                size = 0
+                for chunk in response.iter_bytes():
+                    size += len(chunk)
+                    if size > max_response_bytes:
+                        raise ValueError("active target response too large")
+                    chunks.append(chunk)
+                return ForwardedHttpResponse(
+                    response.status_code,
+                    b"".join(chunks),
+                    response.headers.get("content-type"),
+                    dict(response.headers),
+                )
+    except httpx.TimeoutException as exc:
+        raise TimeoutError("HTTP request timed out") from exc

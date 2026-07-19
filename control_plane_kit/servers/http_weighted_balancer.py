@@ -108,12 +108,15 @@ def http_weighted_load_balancer_block(
     )
 
 
-def http_weighted_load_balancer_command() -> tuple[str, ...]:
+def http_weighted_load_balancer_command(*, port: int = 8080) -> tuple[str, ...]:
     """Return a tiny stdlib two-target HTTP load-balancer command."""
+
+    if type(port) is not int or port < 1 or port > 65_535:
+        raise ValueError("weighted load balancer port must be between 1 and 65535")
 
     return render_python_command(
         "http_weighted_balancer.py.j2",
         target_a_env="BALANCER_TARGET_A_URL",
         target_b_env="BALANCER_TARGET_B_URL",
-        port=8080,
+        port=port,
     )

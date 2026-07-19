@@ -31,6 +31,8 @@ from control_plane_kit.idempotency import (
     IdempotencyRoutePolicy,
 )
 from control_plane_kit.servers.http_idempotency_gateway import http_idempotency_gateway_block
+from control_plane_kit.load_generation import LoadGeneratorPolicy
+from control_plane_kit.servers.http_load_generator import http_load_generator_block
 from control_plane_kit.servers.http_fault_injector import http_fault_injector_block
 from control_plane_kit.servers.http_multiplexer import http_multiplexer_block
 from control_plane_kit.servers.http_proxy import http_proxy_block
@@ -179,6 +181,16 @@ def _control(
 
 
 PACKAGE_SERVER_CONTRACTS = (
+    PackageServerContract(
+        PackageServerProduct.HTTP_LOAD_GENERATOR,
+        ProductMaturity.TEST_ONLY,
+        http_load_generator_block(policy=LoadGeneratorPolicy(("/",))),
+        (
+            _probe(path="/health"),
+            _control(CapabilityName.LOAD_STATE_READABLE, ControlRouteSetName.LOADS),
+            _control(CapabilityName.LOAD_MUTABLE, ControlRouteSetName.LOADS),
+        ),
+    ),
     PackageServerContract(
         PackageServerProduct.HTTP_IDEMPOTENCY_GATEWAY,
         ProductMaturity.TEST_ONLY,

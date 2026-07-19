@@ -622,3 +622,197 @@ Handoff to #445:
   arbitrary headers, or target response bodies;
 - real Docker evidence must exercise a rate limiter or load balancer and prove
   owned-resource cleanup.
+
+## #445 Bounded Authenticated HTTP Load Generator
+
+### Capability
+
+Gate G now has a TEST_ONLY `ApplicationBlock` that drives bounded HTTP traffic
+through a graph-wired requirement socket. Operators can authenticate to its
+control provider, trigger one run, read aggregate evidence, cancel future
+dispatch, and exactly replay a command identity. The command cannot supply a
+target URL, body, credential, cookie, or arbitrary header.
+
+```text
+LoadGenerator ApplicationBlock
+  requirement target :: HTTP
+  provider control :: HTTP
+
+LoadRun
+  = RunId
+  x GET | HEAD
+  x startup-allowed path
+  x bounded count
+  x bounded concurrency
+  x bounded rate
+  x bounded duration
+  x bounded timeout
+```
+
+The control surface is an explicit closed capability:
+
+```text
+LOADS
+  GET  /__deploy/load-runs/{run_id}
+  POST /__deploy/load-runs
+  POST /__deploy/load-runs/{run_id}/cancel
+```
+
+`LoadGeneratorPolicy` defines hard startup ceilings. `LoadRunCommand` is pure
+intent data. `scheduled_offsets_ms()` is a deterministic interpreter from
+count, rate, and duration to admitted dispatch offsets. `LoadRunEvidence`
+retains only bounded counters for success, rejection, timeout, failure,
+cancellation, and deadline exclusion.
+
+### Composition
+
+The implementation remains separated by responsibility:
+
+```text
+load_generation.py
+  closed policy, command, status, evidence, codec, schedule
+
+servers/http_load_generator.py
+  process-local run interpreter and FastAPI boundary
+
+load_generator_server/main.py
+  EnvironmentContract, HTTP adapter, and process composition
+```
+
+The process composition reads `LOAD_TARGET_URL` through
+`LoadGeneratorEnvironment`. The run command never sees that address. The HTTP
+adapter receives no headers and no body, follows no redirects, bounds response
+bytes, and translates transport timeout into the closed timeout outcome.
+
+The block is rejected by production graph validation because its
+`PackageServerSpec` maturity is TEST_ONLY. Process startup independently fails
+unless `CPK_TEST_ONLY=1` is present.
+
+### Breakages And Corrections
+
+#### Live readiness initially had insufficient diagnostics
+
+The first focused run passed 28 of 29 tests but reported only that the packaged
+process did not become ready within the original two-second polling window. The
+test now gives bounded startup time, fails immediately if the process exits,
+and includes captured stderr in that failure. This did not weaken the health
+assertion. It made process-start evidence reviewable. The live proof then passed
+and closes every captured pipe during cleanup.
+
+#### Process configuration was in the server interpreter
+
+The first complete suite passed 911 tests and failed the architecture policy on
+four direct environment reads in `servers/http_load_generator.py`. Moving those
+reads into a whitelist would have obscured ownership. Instead, process
+composition moved to `load_generator_server/main.py`, where an
+`EnvironmentContract` gathers and vends the target, secret token, test marker,
+and optional port. The server interpreter no longer owns process configuration.
+
+#### Self-targeting was representable
+
+The dry run confirmed that a `SocketConnection` could connect a node's provider
+back to its own requirement. Rather than special-case the load generator, graph
+validation gained the general `SELF_CONNECTION` law. Recursive deployment
+between distinct CPI nodes remains representable; one server cannot satisfy its
+own dependency through its own endpoint.
+
+#### Runtime deadlines needed operational evidence
+
+The pure schedule already excludes offsets outside declared duration, but a
+slow runtime could fall behind that schedule. The interpreter now checks the
+actual monotonic deadline before each dispatch and records the additional
+undispatched work as `deadline_skipped`. Cancellation and deadline evidence stay
+distinct.
+
+#### Fake-clock review exposed scheduler ordering
+
+The first deterministic fake-clock test observed dispatch at `0, 1, 1` instead
+of `0, 0.5, 1`. The interpreter was waiting for the next rate offset before
+waiting for a concurrency slot. The scheduler now obtains capacity first and
+then waits for that dispatch's rate offset. This makes saturation delay work
+truthfully without advancing the schedule ahead of unavailable capacity.
+
+### Evidence
+
+```text
+focused algebra/server/catalogue/control/architecture suite:
+  39 passed
+
+complete Docker/Postgres suite after scheduler hardening:
+  913 passed
+
+live weighted-balancer proof:
+  six generated requests succeeded
+  traffic reached both configured targets
+
+live rate-limiter proof:
+  five generated requests produced two successes and three 429 rejections
+
+live control proof:
+  unauthenticated trigger returned 401
+  authenticated trigger returned 202
+  status converged from running to a closed terminal state
+  aggregate evidence contained no target URL or control token
+  generator, limiter, balancer, and target processes were cleaned up
+
+assertions weakened: 0
+skips added: 0
+production behavior replaced by mocks: 0
+```
+
+The atomic tests additionally prove exact command replay, conflicting run-id
+reuse, one-active-run capacity, cancellation before future dispatch, bounded
+concurrency, deterministic fake-clock scheduling, policy rejection before any
+target effect, descriptor closure, graph-codec reconstruction, and production
+admission refusal.
+
+### Review
+
+Architecture:
+
+- pure load data imports no server, adapter, topology, or store layer;
+- the ApplicationBlock uses the existing block product form and graph compiler;
+- target selection is entirely socket-driven;
+- environment and transport access remain in their declared composition and
+  adapter owners;
+- the feature creates no competing execution, observation, or persistence
+  model.
+
+Security and operations:
+
+- every mutable/read run route requires constant-time bearer-token validation;
+- startup policy, not a request, declares allowed non-control paths;
+- commands are limited to GET and HEAD and cannot carry bodies or headers;
+- one active run prevents multiplying configured concurrency through overlap;
+- count, concurrency, rate, duration, timeout, response bytes, command bytes,
+  and retained-run count are all finite;
+- cancellation and lifespan shutdown stop future dispatch and join workers;
+- response payloads and headers are discarded before aggregate evidence.
+
+Data and effects:
+
+- this test fixture has no store and no transaction;
+- process-local records are explicitly ephemeral and bounded;
+- network effects are executed only by the HTTP adapter;
+- aggregate observations never rewrite desired graph truth.
+
+### Residual Risk And Handoff
+
+The load generator is intentionally not a benchmarking system. It does not
+promise precise high-frequency timing, distributed coordination, durable run
+history, percentile latency statistics, arbitrary request construction, or
+production admission. Cancellation cannot revoke an HTTP request already in
+flight; each such request is bounded by its timeout, while future dispatch
+stops immediately.
+
+Handoff to #437:
+
+- compose the existing HTTP products and this load generator through ordinary
+  recipes and socket connections;
+- use aggregate load evidence to prove rate limits, balancing, bulkhead
+  rejection, retry/circuit behavior, and cancellation without inventing a new
+  scenario runner;
+- keep representative live acceptance distinct from contract-only product
+  coverage;
+- preserve TEST_ONLY admission and owned-process cleanup;
+- do not reinterpret generated traffic as application-level correctness.
