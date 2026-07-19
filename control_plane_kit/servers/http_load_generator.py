@@ -267,7 +267,6 @@ def http_load_generator_block(
     policy: LoadGeneratorPolicy,
     control_secret_reference: str = "secret://http-load-generator/control-token",
 ) -> ApplicationBlock:
-    policy_json = json.dumps(policy.descriptor(), sort_keys=True, separators=(",", ":"))
     return ApplicationBlock(
         PackageServerSpec(
             role_id=block_id,
@@ -283,7 +282,7 @@ def http_load_generator_block(
         ),
         DockerImageImplementation(
             image=image,
-            command=("python", "-m", "control_plane_kit.load_generator_server.main", policy_json),
+            command=http_load_generator_command(policy),
             ports={"control": 8080},
             environment={"CPK_TEST_ONLY": "1"},
             secret_deliveries=(
@@ -297,6 +296,26 @@ def http_load_generator_block(
             requirements=(RequirementSocket("target", Protocol.HTTP, ("LOAD_TARGET_URL",)),),
             providers=(ProviderSocket("control", Protocol.HTTP),),
         ),
+    )
+
+
+def http_load_generator_command(
+    policy: LoadGeneratorPolicy,
+) -> tuple[str, ...]:
+    """Return the process command for one typed load-generator policy."""
+
+    if not isinstance(policy, LoadGeneratorPolicy):
+        raise TypeError("load generator command requires a typed policy")
+    policy_json = json.dumps(
+        policy.descriptor(),
+        sort_keys=True,
+        separators=(",", ":"),
+    )
+    return (
+        "python",
+        "-m",
+        "control_plane_kit.load_generator_server.main",
+        policy_json,
     )
 
 
