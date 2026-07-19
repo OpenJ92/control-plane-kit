@@ -8,11 +8,15 @@ import hashlib
 import json
 from pathlib import PurePosixPath
 import re
+import tomllib
 from typing import Mapping
+
+import yaml
 
 
 MAX_CONFIGURATION_BYTES = 262_144
 _ARTIFACT_ID = re.compile(r"[a-z][a-z0-9-]{0,62}\Z")
+_DIGEST = re.compile(r"[0-9a-f]{64}\Z")
 _TARGET_SEGMENT = re.compile(r"[A-Za-z0-9._-]{1,128}\Z")
 _SECRET_ASSIGNMENT = re.compile(
     r"(?im)^\s*(?:password|secret|token|credential|private_key|api_key)\s*[:=]"
@@ -46,12 +50,13 @@ class ConfigurationArtifact:
     media_type: ConfigurationMediaType
     content: str = field(compare=False, repr=False)
     file_mode: ConfigurationFileMode = ConfigurationFileMode.READ_ONLY
+    source_digest: str | None = field(default=None, repr=False)
     content_digest: str = field(init=False)
 
     def __post_init__(self) -> None:
         if not _ARTIFACT_ID.fullmatch(self.artifact_id):
             raise ConfigurationArtifactError("configuration artifact identity is invalid")
-        _validate_target_path(self.target_path)
+        validate_configuration_target_path(self.target_path)
         if not isinstance(self.media_type, ConfigurationMediaType):
             raise TypeError("configuration media type must be ConfigurationMediaType")
         if not isinstance(self.file_mode, ConfigurationFileMode):
@@ -61,8 +66,15 @@ class ConfigurationArtifact:
         encoded = self.content.encode("utf-8")
         if not encoded or len(encoded) > MAX_CONFIGURATION_BYTES or "\x00" in self.content:
             raise ConfigurationArtifactError("configuration content is empty or exceeds its bound")
-        _reject_secret_content(self.content, self.media_type)
-        object.__setattr__(self, "content_digest", hashlib.sha256(encoded).hexdigest())
+        _validate_configuration_content(self.content, self.media_type)
+        content_digest = hashlib.sha256(encoded).hexdigest()
+        object.__setattr__(self, "content_digest", content_digest)
+        if self.source_digest is None:
+            object.__setattr__(self, "source_digest", content_digest)
+        elif not isinstance(self.source_digest, str) or not _DIGEST.fullmatch(
+            self.source_digest
+        ):
+            raise ConfigurationArtifactError("configuration source digest is invalid")
 
     def descriptor(self) -> dict[str, str]:
         return {
@@ -72,6 +84,7 @@ class ConfigurationArtifact:
             "content": self.content,
             "content_digest": self.content_digest,
             "file_mode": self.file_mode.value,
+            "source_digest": self.source_digest,
         }
 
     @classmethod
@@ -83,6 +96,7 @@ class ConfigurationArtifact:
             "content",
             "content_digest",
             "file_mode",
+            "source_digest",
         }
         if set(value) != expected or not all(
             isinstance(value[name], str) for name in expected
@@ -95,6 +109,7 @@ class ConfigurationArtifact:
                 media_type=ConfigurationMediaType(value["media_type"]),
                 content=value["content"],
                 file_mode=ConfigurationFileMode(value["file_mode"]),
+                source_digest=value["source_digest"],
             )
         except (TypeError, ValueError) as error:
             raise ConfigurationArtifactError(
@@ -105,7 +120,9 @@ class ConfigurationArtifact:
         return artifact
 
 
-def _validate_target_path(value: str) -> None:
+def validate_configuration_target_path(value: str) -> None:
+    """Reject paths that cannot safely become container file targets."""
+
     if not isinstance(value, str) or not value.startswith("/") or value.endswith("/"):
         raise ConfigurationArtifactError("configuration target must be an absolute file path")
     path = PurePosixPath(value)
@@ -117,27 +134,47 @@ def _validate_target_path(value: str) -> None:
         raise ConfigurationArtifactError("configuration target path is reserved")
 
 
-def _reject_secret_content(content: str, media_type: ConfigurationMediaType) -> None:
+def _validate_configuration_content(
+    content: str,
+    media_type: ConfigurationMediaType,
+) -> None:
     if "-----BEGIN PRIVATE KEY-----" in content or re.search(r"://[^/@\s]+:[^/@\s]+@", content):
         raise ConfigurationArtifactError("configuration content contains secret-shaped data")
+    parsed: object | None = None
     if media_type is ConfigurationMediaType.JSON:
         try:
             parsed = json.loads(content)
         except json.JSONDecodeError as error:
             raise ConfigurationArtifactError("JSON configuration content is malformed") from error
-        if _contains_secret_key(parsed):
-            raise ConfigurationArtifactError("configuration content contains secret-shaped data")
-    elif _SECRET_ASSIGNMENT.search(content):
+    elif media_type is ConfigurationMediaType.TOML:
+        try:
+            parsed = tomllib.loads(content)
+        except tomllib.TOMLDecodeError as error:
+            raise ConfigurationArtifactError("TOML configuration content is malformed") from error
+    elif media_type is ConfigurationMediaType.YAML:
+        try:
+            parsed = yaml.safe_load(content)
+        except yaml.YAMLError as error:
+            raise ConfigurationArtifactError("YAML configuration content is malformed") from error
+    if parsed is not None and _contains_secret_key(parsed):
+        raise ConfigurationArtifactError("configuration content contains secret-shaped data")
+    if media_type is ConfigurationMediaType.TEXT and _SECRET_ASSIGNMENT.search(content):
         raise ConfigurationArtifactError("configuration content contains secret-shaped data")
 
 
-def _contains_secret_key(value: object) -> bool:
+def _contains_secret_key(value: object, seen: set[int] | None = None) -> bool:
+    seen = set() if seen is None else seen
+    if isinstance(value, (dict, list, tuple)):
+        identity = id(value)
+        if identity in seen:
+            return False
+        seen.add(identity)
     if isinstance(value, dict):
         return any(
             any(marker in str(key).lower() for marker in _SECRET_KEYS)
-            or _contains_secret_key(item)
+            or _contains_secret_key(item, seen)
             for key, item in value.items()
         )
-    if isinstance(value, list):
-        return any(_contains_secret_key(item) for item in value)
+    if isinstance(value, (list, tuple)):
+        return any(_contains_secret_key(item, seen) for item in value)
     return False

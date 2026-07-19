@@ -1426,6 +1426,7 @@ def _node_ownership(
                         "target_path": value.target_path,
                         "media_type": value.media_type.value,
                         "content_digest": value.content_digest,
+                        "source_digest": value.source_digest,
                         "file_mode": value.file_mode.value,
                     }
                     for value in node.implementation.configuration_artifacts
@@ -1548,6 +1549,7 @@ def _configuration_ownership(
                 "target_path": artifact.target_path,
                 "media_type": artifact.media_type.value,
                 "content_digest": artifact.content_digest,
+                "source_digest": artifact.source_digest,
                 "file_mode": artifact.file_mode.value,
             }
         ),
