@@ -95,6 +95,7 @@ class PackageServerProduct(StrEnum):
     HTTP_TIMEOUT = "http-timeout"
     HTTP_BULKHEAD = "http-bulkhead"
     HTTP_FAULT_INJECTOR = "http-fault-injector"
+    HTTP_CACHE = "http-cache"
     HTTP_WEIGHTED_LOAD_BALANCER = "http-weighted-load-balancer"
     MANAGED_HTTP_ROUTER = "managed-http-router"
     REQUEST_OBSERVER = "request-observer"

@@ -29,6 +29,8 @@ class CapabilityName(StrEnum):
     TRAFFIC_EVIDENCE_READABLE = "traffic-evidence-readable"
     FAULT_STATE_READABLE = "fault-state-readable"
     FAULT_MUTABLE = "fault-mutable"
+    CACHE_STATE_READABLE = "cache-state-readable"
+    CACHE_PURGEABLE = "cache-purgeable"
 
 
 @dataclass(frozen=True)
@@ -133,6 +135,18 @@ FAULT_MUTABLE = Capability(
     description="Node accepts strongly authenticated test-only fault activation.",
     route_set=ControlRouteSetName.FAULTS,
 )
+CACHE_STATE_READABLE = Capability(
+    name=CapabilityName.CACHE_STATE_READABLE,
+    label="Cache state",
+    description="Node exposes bounded process-local HTTP cache state.",
+    route_set=ControlRouteSetName.CACHE,
+)
+CACHE_PURGEABLE = Capability(
+    name=CapabilityName.CACHE_PURGEABLE,
+    label="Purge cache",
+    description="Node accepts authenticated purge of ephemeral cache entries.",
+    route_set=ControlRouteSetName.CACHE,
+)
 
 CAPABILITIES = (
     HEALTH_CHECKABLE,
@@ -148,6 +162,8 @@ CAPABILITIES = (
     TRAFFIC_EVIDENCE_READABLE,
     FAULT_STATE_READABLE,
     FAULT_MUTABLE,
+    CACHE_STATE_READABLE,
+    CACHE_PURGEABLE,
 )
 CAPABILITY_BY_NAME = {capability.name: capability for capability in CAPABILITIES}
 

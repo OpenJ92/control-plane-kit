@@ -17,6 +17,7 @@ from control_plane_kit.servers.hello import hello_server_block
 from control_plane_kit.servers.http_active_router import http_active_router_block
 from control_plane_kit.servers.http_circuit_breaker import http_circuit_breaker_block
 from control_plane_kit.servers.http_bulkhead import http_bulkhead_block
+from control_plane_kit.servers.http_cache import http_cache_block
 from control_plane_kit.servers.http_fault_injector import http_fault_injector_block
 from control_plane_kit.servers.http_multiplexer import http_multiplexer_block
 from control_plane_kit.servers.http_proxy import http_proxy_block
@@ -206,6 +207,22 @@ PACKAGE_SERVER_CONTRACTS = (
         (
             _probe(path="/health"),
             _control(CapabilityName.METRICS_READABLE, ControlRouteSetName.METRICS),
+        ),
+    ),
+    PackageServerContract(
+        PackageServerProduct.HTTP_CACHE,
+        ProductMaturity.TEACHING,
+        http_cache_block(),
+        (
+            _probe(path="/health"),
+            _control(
+                CapabilityName.CACHE_STATE_READABLE,
+                ControlRouteSetName.CACHE,
+            ),
+            _control(
+                CapabilityName.CACHE_PURGEABLE,
+                ControlRouteSetName.CACHE,
+            ),
         ),
     ),
     PackageServerContract(
