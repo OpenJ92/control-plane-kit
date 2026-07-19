@@ -11,6 +11,7 @@ from control_plane_kit.adapters.probes.clients import (
     ProcessProbeAdapter,
     RuntimeEndpointProvider,
     TransportProbeAdapter,
+    UnsupportedTransportProbe,
 )
 from control_plane_kit.adapters.probes.security import ProbeSecurityError
 from control_plane_kit.effects.material import MaterializedEffectRequest, NodeMaterial
@@ -140,6 +141,8 @@ class ProbeEffectInterpreter:
                     "probe.address-rejected",
                     "The runtime endpoint was rejected by probe address policy.",
                 )
+            except UnsupportedTransportProbe:
+                return EffectUnsupported(request.identity, request.capability)
             if last[-1].outcome is ProbeOutcome.READY:
                 return EffectSucceeded(
                     request.identity,

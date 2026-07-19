@@ -24,6 +24,15 @@ from control_plane_kit.effects.probes import (
     RuntimeEndpointObservation,
     TransportProbeIntent,
 )
+from control_plane_kit.types import Transport
+
+
+class UnsupportedTransportProbe(ValueError):
+    """Raised when an adapter cannot interpret the requested transport."""
+
+    def __init__(self, transport: Transport) -> None:
+        self.transport = transport
+        super().__init__(f"transport probe does not support {transport.value}")
 
 
 class RuntimeEndpointProvider(Protocol):
@@ -125,6 +134,8 @@ class TcpTransportProbeAdapter:
         *,
         timeout_seconds: float,
     ) -> ProbeObservation:
+        if intent.endpoint.protocol.transport is not Transport.TCP:
+            raise UnsupportedTransportProbe(intent.endpoint.protocol.transport)
         target = authorize_probe_endpoint(
             intent.endpoint,
             self.policy,
@@ -156,6 +167,126 @@ class TcpTransportProbeAdapter:
             outcome,
             endpoint_context=intent.endpoint.context,
         )
+
+
+class DatagramExchangeClient(Protocol):
+    """Perform one bounded request/response datagram exchange."""
+
+    def exchange(
+        self,
+        host: str,
+        port: int,
+        payload: bytes,
+        *,
+        maximum_response_bytes: int,
+        timeout_seconds: float,
+    ) -> bytes: ...
+
+
+@dataclass(frozen=True)
+class DefaultDatagramExchangeClient:
+    """Socket-backed bounded UDP request/response exchange."""
+
+    def exchange(
+        self,
+        host: str,
+        port: int,
+        payload: bytes,
+        *,
+        maximum_response_bytes: int,
+        timeout_seconds: float,
+    ) -> bytes:
+        family = socket.AF_INET6 if ":" in host else socket.AF_INET
+        with socket.socket(family, socket.SOCK_DGRAM) as client:
+            client.settimeout(timeout_seconds)
+            client.connect((host, port))
+            client.send(payload)
+            return client.recv(maximum_response_bytes + 1)
+
+
+@dataclass(frozen=True)
+class UdpTransportProbeAdapter:
+    """Prove one bounded UDP exchange without claiming application health."""
+
+    policy: ProbeAddressPolicy
+    payload: bytes = b"\x00"
+    maximum_response_bytes: int = 512
+    client: DatagramExchangeClient = field(
+        default_factory=DefaultDatagramExchangeClient
+    )
+    secret_resolver: ProbeEndpointSecretResolver | None = None
+    public_resolver: ProbePublicAddressResolver | None = None
+
+    def __post_init__(self) -> None:
+        if not isinstance(self.payload, bytes) or not self.payload or len(self.payload) > 512:
+            raise ValueError("UDP probe payload must contain between 1 and 512 bytes")
+        if (
+            type(self.maximum_response_bytes) is not int
+            or self.maximum_response_bytes < 1
+            or self.maximum_response_bytes > 65_536
+        ):
+            raise ValueError("UDP probe response bound must be between 1 and 65536 bytes")
+
+    def observe(
+        self,
+        intent: TransportProbeIntent,
+        *,
+        timeout_seconds: float,
+    ) -> ProbeObservation:
+        if intent.endpoint.protocol.transport is not Transport.UDP:
+            raise UnsupportedTransportProbe(intent.endpoint.protocol.transport)
+        target = authorize_probe_endpoint(
+            intent.endpoint,
+            self.policy,
+            secret_resolver=self.secret_resolver,
+            public_resolver=self.public_resolver,
+        )
+        try:
+            response = self.client.exchange(
+                target.connect_host,
+                target.port,
+                self.payload,
+                maximum_response_bytes=self.maximum_response_bytes,
+                timeout_seconds=timeout_seconds,
+            )
+            outcome = (
+                ProbeOutcome.REACHABLE
+                if response and len(response) <= self.maximum_response_bytes
+                else ProbeOutcome.UNKNOWN
+            )
+        except (ConnectionRefusedError, ConnectionResetError):
+            outcome = ProbeOutcome.REFUSED
+        except (TimeoutError, socket.timeout):
+            outcome = ProbeOutcome.TIMED_OUT
+        except OSError:
+            outcome = ProbeOutcome.UNKNOWN
+        return ProbeObservation(
+            intent.subject_id,
+            intent.graph_id,
+            intent.kind,
+            outcome,
+            endpoint_context=intent.endpoint.context,
+        )
+
+
+@dataclass(frozen=True)
+class TransportProbeRouter:
+    """Dispatch transport probes solely from the typed transport factor."""
+
+    tcp: TransportProbeAdapter
+    udp: TransportProbeAdapter
+
+    def observe(
+        self,
+        intent: TransportProbeIntent,
+        *,
+        timeout_seconds: float,
+    ) -> ProbeObservation:
+        match intent.endpoint.protocol.transport:
+            case Transport.TCP:
+                return self.tcp.observe(intent, timeout_seconds=timeout_seconds)
+            case Transport.UDP:
+                return self.udp.observe(intent, timeout_seconds=timeout_seconds)
 
 
 @dataclass(frozen=True)

@@ -49,7 +49,7 @@ from control_plane_kit.planning import (
 
 from control_plane_kit.topology.graph import DeploymentGraph, Node
 from control_plane_kit.runtimes import CleanupPolicy, RuntimeActivity, RuntimeNodeState, RuntimePlan, RuntimeState
-from control_plane_kit.types import Protocol as SocketProtocol, RuntimeKind
+from control_plane_kit.types import Protocol as SocketProtocol, RuntimeKind, Transport
 
 
 class UnsupportedDockerRuntimeFeature(ValueError):
@@ -434,6 +434,7 @@ class DockerResourceDisposition(StrEnum):
 @dataclass(frozen=True, order=True)
 class DockerPublishedPort:
     container_port: int
+    transport: Transport
     host_address: str
     host_port: int
 
@@ -453,7 +454,10 @@ class DockerPortBinding:
             else self.host_address
         )
         requested = "" if self.host_port is None else str(self.host_port)
-        return f"{address}:{requested}:{self.container_port}/tcp"
+        return (
+            f"{address}:{requested}:{self.container_port}/"
+            f"{self.protocol.transport.value}"
+        )
 
 
 class DockerOwnershipConflict(ValueError):
@@ -581,10 +585,14 @@ def _parse_published_ports(value: str) -> tuple[DockerPublishedPort, ...]:
         raise UnsupportedDockerRuntimeFeature("Docker port inspection was malformed")
     values: list[DockerPublishedPort] = []
     for container, bindings in parsed.items():
-        if not isinstance(container, str) or not container.endswith("/tcp"):
-            continue
+        if not isinstance(container, str) or "/" not in container:
+            raise UnsupportedDockerRuntimeFeature(
+                "Docker port inspection was malformed"
+            )
+        port_value, transport_value = container.rsplit("/", 1)
         try:
-            container_port = int(container.removesuffix("/tcp"))
+            container_port = int(port_value)
+            transport = Transport(transport_value)
         except ValueError as exc:
             raise UnsupportedDockerRuntimeFeature(
                 "Docker port inspection was malformed"
@@ -606,7 +614,9 @@ def _parse_published_ports(value: str) -> tuple[DockerPublishedPort, ...]:
                 raise UnsupportedDockerRuntimeFeature(
                     "Docker port inspection was malformed"
                 ) from exc
-            values.append(DockerPublishedPort(container_port, address, host_port))
+            values.append(
+                DockerPublishedPort(container_port, transport, address, host_port)
+            )
     return tuple(sorted(values))
 
 
@@ -796,6 +806,7 @@ class DockerEffectInterpreter:
                                 "host_publications": [
                                     {
                                         "container_port": value.container_port,
+                                        "transport": value.transport.value,
                                         "host_address": value.host_address,
                                         "host_port": value.host_port,
                                     }
@@ -1404,6 +1415,7 @@ def _verified_host_publications(
             value
             for value in inspected.published_ports
             if value.container_port == requested.container_port
+            and value.transport == requested.protocol.transport
             and value.host_address == requested.host_address
             and (
                 requested.host_port is None

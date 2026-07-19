@@ -115,6 +115,29 @@ class HostPublicationTests(unittest.TestCase):
                 },
             ).materialize("api", sockets, runtime)
 
+    def test_same_fixed_host_port_is_valid_once_per_transport(self) -> None:
+        runtime = DockerRuntime()
+        sockets = BlockSockets(
+            providers=(
+                ProviderSocket("dns-tcp", Protocol.DNS_TCP),
+                ProviderSocket("dns-udp", Protocol.DNS_UDP),
+            )
+        )
+
+        materialized = DockerImageImplementation(
+            "dns:latest",
+            ports={"dns-tcp": 53, "dns-udp": 53},
+            host_publications={
+                "dns-tcp": HostPublication.loopback_v4(10_053),
+                "dns-udp": HostPublication.loopback_v4(10_053),
+            },
+        ).materialize("dns", sockets, runtime)
+
+        self.assertEqual(
+            {endpoint.protocol for endpoint in materialized.endpoints.values()},
+            {Protocol.DNS_TCP, Protocol.DNS_UDP},
+        )
+
     def test_adding_publication_is_explicit_disruptive_plan_work(self) -> None:
         current = validate_graph(compile_recipe(_recipe()))
         desired = validate_graph(

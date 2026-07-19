@@ -11,6 +11,7 @@ from urllib.parse import SplitResult, urlsplit
 from control_plane_kit.effects.probes import (
     EndpointContext,
     RuntimeEndpointObservation,
+    protocol_endpoint_schemes,
 )
 from control_plane_kit.effects.material import (
     LiteralEndpointMaterial,
@@ -111,7 +112,7 @@ def authorize_probe_endpoint(
     value = _resolve_address(observation, secret_resolver)
     try:
         parsed = urlsplit(value)
-        _validate_shape(parsed)
+        _validate_shape(parsed, observation)
         port = parsed.port
     except (TypeError, ValueError) as error:
         raise _unsafe() from error
@@ -192,9 +193,12 @@ def _resolve_address(
     )
 
 
-def _validate_shape(parsed: SplitResult) -> None:
+def _validate_shape(
+    parsed: SplitResult,
+    observation: RuntimeEndpointObservation,
+) -> None:
     if (
-        parsed.scheme not in ("http", "https", "tcp", "postgres", "postgresql")
+        parsed.scheme not in protocol_endpoint_schemes(observation.protocol)
         or parsed.hostname is None
         or parsed.port is None
         or parsed.username is not None
