@@ -57,8 +57,10 @@ from control_plane_kit.effects.material import (
     SecretEndpointMaterial,
     SecretReferenceMaterialValue,
     SocketConnectionMaterial,
+    VerificationCheckMaterial,
     materialize_effect_request,
     materialize_compensation_effect_request,
+    materialize_verification_contract,
 )
 from control_plane_kit.effects.probes import (
     ApplicationHealthProbeIntent,
@@ -124,6 +126,7 @@ __all__ = [
     "SecretEndpointMaterial",
     "SecretReferenceMaterialValue",
     "SocketConnectionMaterial",
+    "VerificationCheckMaterial",
     "TimeoutPolicy",
     "UnsupportedEffectOperation",
     "dispatch_effect",
@@ -134,6 +137,7 @@ __all__ = [
     "effect_request_for_compensation",
     "materialize_effect_request",
     "materialize_compensation_effect_request",
+    "materialize_verification_contract",
     "required_capability",
     "ApplicationHealthProbeIntent",
     "EndpointContext",

@@ -46,7 +46,15 @@ PACKAGE_RULES = (
     ),
     PackageDependencyRule(
         "effects",
-        ("configuration", "execution", "lifecycle", "planning", "topology", "types"),
+        (
+            "configuration",
+            "execution",
+            "lifecycle",
+            "planning",
+            "topology",
+            "types",
+            "verification",
+        ),
     ),
     PackageDependencyRule("execution", ()),
     PackageDependencyRule(

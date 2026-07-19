@@ -20,12 +20,14 @@ from control_plane_kit import (
     GraphDescriptorCodec,
     GraphDiff,
     GraphValidationError,
+    HttpCheck,
     LiteralAddress,
     ModifiedChange,
     NodeSubject,
     PlanOnlyImplementation,
     Protocol,
     ProviderSocket,
+    ReconcileNode,
     RequirementSocket,
     RemovedChange,
     RuntimeContext,
@@ -36,6 +38,8 @@ from control_plane_kit import (
     StructuralField,
     UnsupportedChange,
     UnsupportedReason,
+    VerificationContract,
+    compile_activity_plan,
     compile_recipe,
     diff_graphs,
     validate_graph,
@@ -109,6 +113,49 @@ class GraphDiffTests(unittest.TestCase):
         self.assertTrue(first.empty)
         self.assertEqual(first.descriptor(), second.descriptor())
         self.assertEqual(first.summary(), "no changes")
+
+    def test_verification_contract_change_is_explicit_block_specification_data(self):
+        current = simple_graph()
+        node = current.node("application")
+        desired = current.update_node(
+            replace(
+                node,
+                block_spec=replace(
+                    node.block_spec,
+                    verification=VerificationContract(
+                        (
+                            HttpCheck(
+                                check_id="application-response",
+                                provider_socket="public",
+                                path="/verify",
+                            ),
+                        )
+                    ),
+                ),
+            )
+        )
+
+        diff = diff_graphs(validate_graph(current), validate_graph(desired))
+
+        change = next(
+            value
+            for value in diff.changes
+            if isinstance(value, ModifiedChange)
+            and isinstance(value.subject, FieldSubject)
+            and value.subject.field is StructuralField.BLOCK_SPECIFICATION
+        )
+        self.assertEqual(
+            change.after.descriptor()["verification"],
+            desired.node("application").block_spec.verification.descriptor(),
+        )
+        plan = compile_activity_plan(diff)
+        reconciliations = [
+            activity
+            for activity in plan.activities
+            if isinstance(activity.operation, ReconcileNode)
+            and activity.operation.target.node_id == "application"
+        ]
+        self.assertEqual(len(reconciliations), 1)
 
     def test_router_swap_is_a_typed_socket_connection_change(self):
         current = validate_graph(compile_recipe(router_recipe("api-v1")))
