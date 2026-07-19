@@ -40,14 +40,17 @@ from control_plane_kit.planning import (
     SwitchSocketConnection,
 )
 from control_plane_kit.types import EndpointScope, Protocol
+from control_plane_kit.secrets import SecretProviderAuthority, SecretProviderId, SecretResolved
 
 
 @dataclass
 class Resolver:
     value: str = "test-control-token"
 
-    def resolve(self, reference: CredentialReference) -> SecretValue:
-        return SecretValue(self.value)
+    authority = SecretProviderAuthority(SecretProviderId("test"))
+
+    def resolve(self, reference: CredentialReference) -> SecretResolved:
+        return SecretResolved(reference, SecretValue(self.value))
 
 
 class ControlHttpClientTests(unittest.TestCase):
@@ -159,7 +162,7 @@ class ControlHttpClientTests(unittest.TestCase):
         )
         return BlockControlHttpInterpreter(
             StaticControlAuthorityProvider(
-                {"router": ControlAuthority(observation, CredentialReference("router-token"))}
+                {"router": ControlAuthority(observation, CredentialReference("secret://test/router-token"))}
             ),
             Resolver(),
             ControlAddressPolicy(allow_host_local=True),

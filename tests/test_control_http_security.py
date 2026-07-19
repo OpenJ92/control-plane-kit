@@ -15,6 +15,12 @@ from control_plane_kit.adapters.control_http import (
     authorize_control_endpoint,
 )
 from control_plane_kit.effects import EndpointMaterial, LiteralEndpointMaterial, SecretEndpointMaterial
+from control_plane_kit.secrets import (
+    SecretProviderAuthority,
+    SecretProviderId,
+    SecretResolutionError,
+    SecretResolved,
+)
 from control_plane_kit.types import EndpointScope, Protocol
 
 
@@ -22,9 +28,11 @@ from control_plane_kit.types import EndpointScope, Protocol
 class Resolver:
     value: str = "synthetic-control-token"
 
-    def resolve(self, reference: CredentialReference) -> SecretValue:
+    authority = SecretProviderAuthority(SecretProviderId("test"))
+
+    def resolve(self, reference: CredentialReference) -> SecretResolved:
         self.reference = reference
-        return SecretValue(self.value)
+        return SecretResolved(reference, SecretValue(self.value))
 
 
 class ControlHttpSecurityTests(unittest.TestCase):
@@ -33,7 +41,7 @@ class ControlHttpSecurityTests(unittest.TestCase):
         authorized = authorize_control_endpoint(
             self._observation("http://runtime-api:8000", network="deployment-a"),
             ControlAddressPolicy(docker_networks=frozenset({"deployment-a"})),
-            CredentialReference("control-token-a"),
+            CredentialReference("secret://test/control-token-a"),
             resolver,
         )
 
@@ -43,7 +51,7 @@ class ControlHttpSecurityTests(unittest.TestCase):
         )
         headers = authorized.request_headers(request_id="request-a", idempotency_key="attempt-a")
         self.assertEqual(headers["Authorization"], "Bearer synthetic-control-token")
-        self.assertEqual(resolver.reference, CredentialReference("control-token-a"))
+        self.assertEqual(resolver.reference, CredentialReference("secret://test/control-token-a"))
         self.assertNotIn("runtime-api", repr(authorized))
         self.assertNotIn("synthetic-control-token", repr(authorized))
         self.assertNotIn("synthetic-control-token", str(authorized.descriptor()))
@@ -60,13 +68,13 @@ class ControlHttpSecurityTests(unittest.TestCase):
             RuntimeEndpointProvenance(ControlAddressSource.EXPLICIT_PUBLIC, "cloud"),
         )
 
-        authorize_control_endpoint(local, ControlAddressPolicy(allow_host_local=True), CredentialReference("token"), Resolver())
-        authorize_control_endpoint(public, ControlAddressPolicy(public_hosts=frozenset({"control.example.test"})), CredentialReference("token"), Resolver())
+        authorize_control_endpoint(local, ControlAddressPolicy(allow_host_local=True), CredentialReference("secret://test/token"), Resolver())
+        authorize_control_endpoint(public, ControlAddressPolicy(public_hosts=frozenset({"control.example.test"})), CredentialReference("secret://test/token"), Resolver())
 
         with self.assertRaises(ControlSecurityError):
-            authorize_control_endpoint(local, ControlAddressPolicy(), CredentialReference("token"), Resolver())
+            authorize_control_endpoint(local, ControlAddressPolicy(), CredentialReference("secret://test/token"), Resolver())
         with self.assertRaises(ControlSecurityError):
-            authorize_control_endpoint(public, ControlAddressPolicy(public_hosts=frozenset({"other.example.test"})), CredentialReference("token"), Resolver())
+            authorize_control_endpoint(public, ControlAddressPolicy(public_hosts=frozenset({"other.example.test"})), CredentialReference("secret://test/token"), Resolver())
 
     def test_unsafe_authorities_fail_without_echoing_address_or_secret(self) -> None:
         unsafe = (
@@ -83,7 +91,7 @@ class ControlHttpSecurityTests(unittest.TestCase):
                     authorize_control_endpoint(
                         self._observation(value, network="deployment-a"),
                         ControlAddressPolicy(docker_networks=frozenset({"deployment-a"})),
-                        CredentialReference("token"),
+                        CredentialReference("secret://test/token"),
                         Resolver("never-disclose"),
                     )
                 self.assertNotIn(value, str(raised.exception))
@@ -99,20 +107,19 @@ class ControlHttpSecurityTests(unittest.TestCase):
             authorize_control_endpoint(
                 observation,
                 ControlAddressPolicy(docker_networks=frozenset({"deployment-a"})),
-                CredentialReference("token"),
+                CredentialReference("secret://test/token"),
                 Resolver(),
             )
         self.assertIs(raised.exception.code, ControlSecurityCode.INVALID_OBSERVATION)
 
-        with self.assertRaises(ControlSecurityError) as missing:
+        with self.assertRaises(SecretResolutionError):
             CredentialReference("")
-        self.assertIs(missing.exception.code, ControlSecurityCode.MISSING_CREDENTIAL)
 
     def test_redirect_like_route_and_invalid_resolver_result_fail_closed(self) -> None:
         authorized = authorize_control_endpoint(
             self._observation("http://runtime-api:8000", network="deployment-a"),
             ControlAddressPolicy(docker_networks=frozenset({"deployment-a"})),
-            CredentialReference("token"),
+            CredentialReference("secret://test/token"),
             Resolver(),
         )
         with self.assertRaises(ControlSecurityError):
@@ -126,6 +133,8 @@ class ControlHttpSecurityTests(unittest.TestCase):
             )
 
         class InvalidResolver:
+            authority = SecretProviderAuthority(SecretProviderId("test"))
+
             def resolve(self, reference):
                 return "plaintext"
 
@@ -133,7 +142,7 @@ class ControlHttpSecurityTests(unittest.TestCase):
             authorize_control_endpoint(
                 self._observation("http://runtime-api:8000", network="deployment-a"),
                 ControlAddressPolicy(docker_networks=frozenset({"deployment-a"})),
-                CredentialReference("token"),
+                CredentialReference("secret://test/token"),
                 InvalidResolver(),
             )
         self.assertIs(raised.exception.code, ControlSecurityCode.UNRESOLVED_CREDENTIAL)

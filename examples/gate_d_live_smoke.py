@@ -51,6 +51,12 @@ from control_plane_kit.adapters.control_http import (
     SecretValue,
     StaticControlAuthorityProvider,
 )
+from control_plane_kit.secrets import (
+    SecretProviderAuthority,
+    SecretProviderId,
+    SecretReference,
+    SecretResolved,
+)
 from control_plane_kit.adapters.probes import (
     HttpApplicationHealthProbeAdapter,
     ProbeAddressPolicy,
@@ -125,10 +131,12 @@ class Ids:
 class DemoSecrets:
     value: str = CONTROL_TOKEN
 
-    def resolve(self, reference: CredentialReference) -> SecretValue:
+    authority = SecretProviderAuthority(SecretProviderId("gate-d"))
+
+    def resolve(self, reference: CredentialReference) -> SecretResolved:
         if reference.reference_id != CONTROL_REFERENCE:
             raise KeyError("unknown control credential reference")
-        return SecretValue(self.value)
+        return SecretResolved(reference, SecretValue(self.value))
 
     def resolve_environment(self, reference_id: str) -> str:
         if reference_id != CONTROL_REFERENCE:
@@ -140,8 +148,10 @@ class DemoSecrets:
 
 
 class DockerEnvironmentSecrets:
-    def resolve(self, reference_id: str) -> str:
-        return DemoSecrets().resolve_environment(reference_id)
+    authority = SecretProviderAuthority(SecretProviderId("gate-d"))
+
+    def resolve(self, reference: SecretReference) -> SecretResolved:
+        return DemoSecrets().resolve(reference)
 
 
 def router_recipe(active: str) -> DeploymentRecipe:

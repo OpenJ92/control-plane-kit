@@ -42,14 +42,17 @@ from control_plane_kit.effects import (
 )
 from control_plane_kit.planning import ActivityId
 from control_plane_kit.types import EndpointScope, Protocol
+from control_plane_kit.secrets import SecretProviderAuthority, SecretProviderId, SecretResolved
 
 
 @dataclass
 class Resolver:
     value: str
 
-    def resolve(self, reference: CredentialReference) -> SecretValue:
-        return SecretValue(self.value)
+    authority = SecretProviderAuthority(SecretProviderId("test"))
+
+    def resolve(self, reference: CredentialReference) -> SecretResolved:
+        return SecretResolved(reference, SecretValue(self.value))
 
 
 class ControlHttpLiveTests(unittest.TestCase):
@@ -222,7 +225,7 @@ def _interpreter(
     )
     return BlockControlHttpInterpreter(
         StaticControlAuthorityProvider(
-            {subject_id: ControlAuthority(observation, CredentialReference("live-token"))}
+            {subject_id: ControlAuthority(observation, CredentialReference("secret://test/live-token"))}
         ),
         Resolver(token),
         ControlAddressPolicy(allow_host_local=True),

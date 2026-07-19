@@ -9,6 +9,13 @@ from typing import Protocol
 from urllib.parse import urlsplit
 
 from control_plane_kit.effects import EndpointMaterial, LiteralEndpointMaterial
+from control_plane_kit.secrets import (
+    CredentialReference,
+    SecretResolutionError,
+    SecretResolver,
+    SecretValue,
+    require_resolved_secret,
+)
 from control_plane_kit.types import EndpointScope, Protocol as NetworkProtocol
 
 
@@ -73,46 +80,6 @@ class ControlEndpointObservation:
             raise TypeError("control endpoint observation requires EndpointMaterial")
         if not isinstance(self.provenance, RuntimeEndpointProvenance):
             raise TypeError("control endpoint observation requires runtime provenance")
-
-
-@dataclass(frozen=True)
-class CredentialReference:
-    """Opaque identity resolved only while constructing transport headers."""
-
-    reference_id: str
-
-    def __post_init__(self) -> None:
-        if not self.reference_id.strip() or any(value.isspace() for value in self.reference_id):
-            raise ControlSecurityError(
-                ControlSecurityCode.MISSING_CREDENTIAL,
-                "control credential reference is missing or malformed",
-            )
-
-
-@dataclass(frozen=True, repr=False)
-class SecretValue:
-    """Ephemeral secret transport value that never has a revealing representation."""
-
-    _value: str
-
-    def __post_init__(self) -> None:
-        if not self._value:
-            raise ControlSecurityError(
-                ControlSecurityCode.UNRESOLVED_CREDENTIAL,
-                "control credential could not be resolved",
-            )
-
-    def bearer_header(self) -> str:
-        return f"Bearer {self._value}"
-
-    def __repr__(self) -> str:
-        return "SecretValue(<redacted>)"
-
-
-class SecretResolver(Protocol):
-    """Transport-owned secret lookup; implementations must not persist values."""
-
-    def resolve(self, reference: CredentialReference) -> SecretValue: ...
 
 
 class PublicAddressResolver(Protocol):
@@ -187,7 +154,7 @@ class AuthorizedControlEndpoint:
                 "control request identity is required",
             )
         return {
-            "Authorization": self._credential.bearer_header(),
+            "Authorization": f"Bearer {self._credential.reveal()}",
             "Accept": "application/json",
             "Content-Type": "application/json",
             "X-Control-Plane-Request-ID": request_id,
@@ -268,9 +235,12 @@ def authorize_control_endpoint(
     _validate_url_shape(parsed)
     _authorize_source(observation, policy, parsed.scheme, parsed.hostname or "")
     try:
-        credential = resolver.resolve(credential_reference)
-    except ControlSecurityError:
-        raise
+        credential = require_resolved_secret(resolver, credential_reference)
+    except SecretResolutionError as error:
+        raise ControlSecurityError(
+            ControlSecurityCode.UNRESOLVED_CREDENTIAL,
+            "control credential resolution failed",
+        ) from error
     except Exception as error:
         raise ControlSecurityError(
             ControlSecurityCode.UNRESOLVED_CREDENTIAL,

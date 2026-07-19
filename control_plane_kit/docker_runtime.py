@@ -11,6 +11,12 @@ from dataclasses import dataclass, field, replace
 from typing import Mapping, Protocol, TypeAlias
 
 from control_plane_kit.configuration import ConfigurationArtifact
+from control_plane_kit.secrets import (
+    SecretReference,
+    SecretResolutionError,
+    SecretResolver,
+    require_resolved_secret,
+)
 from control_plane_kit.effects import (
     EffectCapability,
     EffectFailed,
@@ -822,10 +828,7 @@ def _require_owned_compatible(
     return disposition
 
 
-class DockerSecretResolver(Protocol):
-    """Resolve one opaque environment reference only at Docker dispatch."""
-
-    def resolve(self, reference_id: str) -> str: ...
+DockerSecretResolver = SecretResolver
 
 
 @dataclass(frozen=True)
@@ -1376,7 +1379,13 @@ def _resolve_environment(
                     raise UnsupportedDockerRuntimeFeature(
                         "Docker environment secret reference has no resolver"
                     )
-                values[binding.name] = resolver.resolve(reference)
+                try:
+                    values[binding.name] = require_resolved_secret(
+                        resolver,
+                        SecretReference(reference),
+                    ).reveal()
+                except SecretResolutionError as error:
+                    raise ValueError("Docker environment secret resolution failed") from error
     return values
 
 

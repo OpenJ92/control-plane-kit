@@ -552,3 +552,89 @@ material, dispatch, representative adapters, canonical persistence, and shared
 operator reads now exist. Product integration work must register additional
 bounded interpreters against this language; it must not introduce product
 verification stores or decode result descriptors independently.
+
+## #481 Decision Log: Secret Bootstrap Authority
+
+### Breaking Point: Secret identity existed twice
+
+The HTTP control adapter owned `CredentialReference`, `SecretValue`, and a
+resolver protocol while Docker owned a separate string-to-string
+`DockerSecretResolver`. That duplication allowed an authenticated HTTP effect
+and a container environment effect to disagree about reference validity,
+resolution failure, and redaction.
+
+The duplicate values were replaced with one pure package language:
+
+```text
+SecretReference
+  = secret://SecretProviderId/Path+
+
+SecretResolution
+  = SecretResolved(SecretValue)
+  | SecretMissing
+  | SecretDenied
+
+SecretResolver
+  = SecretProviderAuthority
+  x (SecretReference -> SecretResolution)
+```
+
+`SecretValue` has no revealing representation. Releasing its text requires an
+explicit call at a bounded runtime transport boundary. HTTP interprets it into
+an authorization header; Docker interprets it into the environment map passed
+to the Docker client. Neither interpretation produces durable data.
+
+### Breaking Point: Path punctuation admitted traversal semantics
+
+The first full suite showed that the segment grammar admitted `.` and `..`
+because periods are otherwise valid inside provider keys. The test was kept and
+construction was tightened so traversal segments are rejected independently of
+the general segment character grammar.
+
+### Breaking Point: The architecture algebra rejected an undeclared root
+
+The AST architecture suite discovered the new `secrets` package root and
+failed because it had no declared dependency rule. The package was not folded
+into an existing adapter to evade the policy. It is declared as a pure root
+with no package dependencies, and only these roots may import it:
+
+```text
+adapters
+docker_runtime
+implementations
+```
+
+Stores, topology, effects, planning, workflows, projections, API, MCP, and CLI
+do not gain resolution authority.
+
+### Capability And Laws
+
+- all durable references are provider-qualified;
+- bootstrap authority is process configuration and cannot be obtained from a
+  deployment graph;
+- allowed provider path prefixes are immutable typed authority;
+- local development uses the same resolver protocol as external providers;
+- missing and denied are distinct closed results;
+- malformed references fail at construction;
+- local resolver representations and errors never reveal configured values;
+- no secret-value store or read-secret route was introduced.
+
+### Evidence
+
+```text
+First full Docker/Postgres suite: 817 passed, 2 failed
+  - undeclared pure package root
+  - traversal segment admitted by URI grammar
+Final full Docker/Postgres suite: 819 passed
+Assertions weakened: 0
+Skips added: 0
+Durable secret-value fields added: 0
+Secret read routes added: 0
+```
+
+### Handoff To #482
+
+Use `SecretReference` as the one opaque identity when introducing the closed
+environment-versus-file delivery algebra. Graph and pinned material may retain
+only reference identity and delivery coordinates. They must never import a
+resolver, carry `SecretValue`, or derive bootstrap authority.
