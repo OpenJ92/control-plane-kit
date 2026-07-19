@@ -92,6 +92,29 @@ def complete_contract() -> VerificationContract:
 
 
 class VerificationContractTests(unittest.TestCase):
+    def test_identity_accepts_bounded_canonical_durable_graph_ids(self) -> None:
+        identity = VerificationIdentity(
+            "api",
+            "workspace:graph:version:1",
+            "semantic-http",
+        )
+
+        self.assertEqual(
+            identity.descriptor(),
+            {
+                "node_id": "api",
+                "graph_id": "workspace:graph:version:1",
+                "check_id": "semantic-http",
+            },
+        )
+        for invalid in ("", "   ", "graph\nidentity", "g" * 257):
+            with self.subTest(invalid=invalid):
+                with self.assertRaisesRegex(
+                    VerificationContractError,
+                    "verification graph identity is invalid",
+                ):
+                    VerificationIdentity("api", invalid, "semantic-http")
+
     def test_complete_closed_language_round_trips_exactly(self) -> None:
         contract = complete_contract()
 
