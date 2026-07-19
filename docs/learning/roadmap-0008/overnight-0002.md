@@ -1924,3 +1924,78 @@ The service is operationally complete over a typed fake capability, but review
 still requires a focused crash-window hardening pass for result-transaction
 failure, concurrent late result versus recovery, and command-ledger rollback.
 That pass must complete before #513 receives the handoff.
+
+## #521 Webhook Crash And Concurrency Hardening
+
+The focused hardening pass exercised the remaining service boundaries with real
+Postgres failures and independent connections. It required no production-code
+change: the #512 split-transaction program already satisfied the proposed laws.
+
+### Real Failure Proofs
+
+Test-only Postgres triggers fail the projection update after a successful typed
+effect and fail command-ledger insertion after earlier enqueue writes. These
+prove:
+
+```text
+effect succeeds
+  -> result event insert
+  -> injected projection failure
+  -> complete result transaction rollback
+  -> durable state remains attempt-started / in-flight
+
+enqueue writes intent + event + projection
+  -> injected command-ledger failure
+  -> complete command transaction rollback
+  -> no partial durable fact remains
+```
+
+After result-transaction failure, exact dispatch replay returns the in-flight
+state without calling the capability. Once the lease expires, a fresh service
+instance records uncertainty and operator-required evidence.
+
+### Concurrency Proof
+
+A blocking typed outbound capability allows recovery to run while dispatch is
+outside every transaction. At lease expiry, recovery and the late result contend
+on the same delivery lock:
+
+```text
+recovery wins
+  -> uncertain + operator-required commits
+  -> late success is rejected and cannot overwrite history
+
+result wins
+  -> delivered commits
+  -> later recovery is rejected and cannot overwrite history
+```
+
+Both outcomes are one-winner, append-only, and replay-equivalent. The test uses
+real independent Postgres connections and no application mock.
+
+### Additional Laws
+
+- a malformed capability result cannot publish a false attempt result;
+- malformed-result rollback leaves the attempt in-flight and exact replay does
+  not invoke the capability again;
+- dispatch exactly at lease expiry is rejected before the effect;
+- recovery strictly before lease expiry is rejected;
+- failed command-ledger insertion rolls back intent, journal, projection, and
+  ledger together, after which the same command can execute normally;
+- test failure injection is confined to test-owned triggers and leaves the
+  application schema unchanged after cleanup.
+
+Evidence:
+
+```text
+focused service and hardening suite:                 17 passed
+complete Docker/Postgres suite:                    1000 passed
+production lines changed by hardening:                0
+assertions weakened:                                  0
+skips added:                                          0
+```
+
+#512 is ready to close after this hardening PR merges. #513 inherits a stable
+typed outbound capability and must implement DNS/address policy, SSRF defense,
+redirect and response bounds, final-boundary secret resolution and signing, and
+authenticated FastAPI routes without changing these workflow semantics.
