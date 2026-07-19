@@ -1551,3 +1551,104 @@ Handoff requirements:
 - do not introduce another collector, telemetry store, protocol model,
   configuration interpreter, or observation truth;
 - preserve the official-image boundary and graph-derived ownership cleanup.
+
+## #510 Closed Webhook-Delivery Algebra
+
+### Capability
+
+Control Plane Kit now has a pure, closed language for durable webhook delivery
+before either persistence or outbound HTTP exists:
+
+```text
+WebhookDeliveryIntent
+  = CommandIdentity
+  x DeliveryIdentity
+  x BoundedEndpoint
+  x BoundedPayload
+  x RetryPolicy
+  x EnqueueTime
+  x OptionalSecretReference
+
+tuple[WebhookEvent, ...]
+  -> replay_webhook_events
+    -> WebhookDeliveryState
+```
+
+The language distinguishes enqueue intent, attempt start, attempt result,
+scheduled retry, dead-letter admission, and operator-required uncertainty as
+immutable events. `WebhookDeliveryState` is a reconstructible projection, not
+stored workflow truth or a mutable delivery cursor.
+
+### Objects, Morphisms, And Laws
+
+The closed products include HTTP/HTTPS endpoints, bounded JSON, CloudEvents
+JSON, and opaque payloads, HMAC-SHA256 signing references, bounded exponential
+backoff, delivery status, attempt outcome, and least-privilege webhook scopes.
+
+The primary morphisms are:
+
+```python
+state = evolve_webhook_delivery(state, event)
+state = replay_webhook_events(events)
+descriptor = webhook_event_descriptor(event)
+event = webhook_event_from_descriptor(descriptor)
+```
+
+Construction and replay enforce these laws:
+
+- payloads are nonempty, bounded to one MiB, hidden from representations, and
+  protected by a verified SHA-256 content digest;
+- declared JSON is parsed at construction, and CloudEvents JSON is an object;
+- signing values never enter the language; only `SecretReference` identity is
+  durable;
+- endpoint URLs exclude credentials, query strings, fragments, whitespace,
+  backslashes, invalid ports, and non-HTTP schemes;
+- attempts and timestamps are ordered and bounded by the retry policy;
+- retry availability is derived exactly from prior completion and policy;
+- terminal failure, retryable failure, and effect uncertainty remain distinct;
+- uncertainty can move only to explicit operator-required state;
+- every descriptor has an exact field set and unknown variants fail closed;
+- replaying identical event history reconstructs identical state.
+
+### Review Findings And Decisions
+
+1. The initial implementation was one flat module. It moved to the
+   `control_plane_kit.webhook` package so persistence, services, adapters, and
+   server composition can gain adjacent homes without entering the pure
+   language module.
+2. The language deliberately depends only on the existing secrets algebra for
+   `SecretReference`. Architecture policy now declares and enforces that exact
+   dependency.
+3. Payload bytes are present in the durable intent because later dispatch and
+   crash recovery need exact pinned material. They are absent from `repr` and
+   must remain absent from logs, errors, graph descriptors, and operator
+   evidence downstream.
+4. Pure endpoint validation establishes closed URL shape, not DNS resolution or
+   SSRF safety. Final outbound resolution, redirect, timeout, and address policy
+   belong to #513 at the effect boundary.
+5. A truncated command rendering appeared to show a duplicate descriptor key.
+   Numbered source inspection disproved it, so no test or production behavior
+   was changed to accommodate a tooling artifact.
+
+### Evidence
+
+```text
+focused webhook and architecture tests:             18 passed
+complete Docker/Postgres suite:                     973 passed
+assertions weakened:                                  0
+skips added:                                         0
+external effects introduced:                         0
+persistence introduced:                              0
+```
+
+### Handoff To #511
+
+- persist the canonical intent and immutable event descriptors rather than a
+  second mutable state model;
+- give webhook delivery its own application-owned Postgres schema and
+  UnitOfWork, never the CPI database transaction;
+- keep stores free of commit and rollback ownership;
+- preserve payload confidentiality while retaining exact recovery material;
+- use optimistic journal/version preconditions and one-winner claim semantics;
+- do not introduce another event vocabulary, projection, recovery cursor, or
+  compatibility schema.
