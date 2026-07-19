@@ -169,6 +169,7 @@ TRANSPORT_POLICY = TransportOwnershipPolicy(
                 "control_plane_kit.adapters.probes.clients",
                 "control_plane_kit.adapters.verification",
                 "control_plane_kit.cli",
+                "control_plane_kit.webhook.http",
             ),
         ),
         TransportOwner("requests", ("control_plane_kit.cli",)),

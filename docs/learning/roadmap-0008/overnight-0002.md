@@ -1999,3 +1999,132 @@ skips added:                                          0
 typed outbound capability and must implement DNS/address policy, SSRF defense,
 redirect and response bounds, final-boundary secret resolution and signing, and
 authenticated FastAPI routes without changing these workflow semantics.
+
+## #513 Secure Webhook HTTP And Authenticated Server Boundaries
+
+### Capability
+
+The webhook application now has two side-effect adapters around the existing
+service rather than a second workflow:
+
+```text
+WebhookDeliveryService
+  -> WebhookOutboundDelivery
+       -> HttpWebhookDelivery
+
+authenticated FastAPI route
+  -> typed WebhookCommand
+       -> WebhookDeliveryService
+```
+
+`HttpWebhookDelivery` interprets the existing immutable
+`WebhookOutboundRequest`. Its address authority is an exact closed product:
+
+```python
+WebhookAddressPolicy(
+    grants=(
+        WebhookEndpointGrant(
+            endpoint_id="orders",
+            url="https://hooks.example.test/orders",
+            scope=WebhookEndpointScope.PUBLIC,
+        ),
+    )
+)
+```
+
+An endpoint identity is insufficient by itself: both identity and exact URL
+must match process-bootstrap policy. Public DNS is resolved and pinned for the
+same request; the transport connects to the selected global address while
+retaining the authorized hostname for `Host` and TLS SNI. Host-local and
+runtime-private addresses require their corresponding explicit typed grant.
+Loopback, link-local, metadata, unspecified, multicast, reserved, and public
+literal addresses cannot be smuggled through the runtime-private constructor.
+
+The outbound interpreter is redirect-free and streams a bounded response. It
+keeps transport meanings closed:
+
+```text
+2xx                         -> succeeded
+408 | 425 | 429 | 5xx       -> retryable failure
+3xx                         -> terminal redirect rejection
+other 4xx                   -> terminal rejection
+connect failure             -> retryable failure
+read/write/pool timeout      -> uncertain
+other post-dispatch loss     -> uncertain
+```
+
+When signing is requested, the durable graph and journal retain only
+`SecretReference`. The adapter resolves `SecretValue` after endpoint
+authorization and immediately computes deterministic HMAC-SHA256 over the
+exact payload bytes. The secret value is absent from requests' durable
+descriptors, command results, events, API responses, exception text, and object
+representations.
+
+### FastAPI Boundary
+
+The package now exposes authenticated enqueue, claim, release, dispatch,
+recovery, and read routes. The boundary:
+
+- validates a bounded identity-attestation header;
+- constructs `WebhookAuthority` from bounded subject, workspace, and closed
+  scope headers;
+- rejects oversized bodies before JSON decoding;
+- rejects unknown command fields;
+- constructs the already-canonical typed command variants;
+- delegates every mutation to `WebhookDeliveryService`;
+- imports neither Postgres stores nor SQL;
+- contains no commit call;
+- returns one canonical redacted state descriptor shared with future MCP and
+  CLI adapters.
+
+The application service gained a read capability over the existing UoW. It
+acquires the delivery journal's existing transaction-scoped lock before reading
+the journal and projection, preventing a concurrent append from creating a
+mixed-version two-statement read. It does not request commit.
+
+### Breakpoints And Resolutions
+
+1. The first full run correctly rejected `httpx` in the webhook package because
+   transport ownership had not been declared. The exact
+   `control_plane_kit.webhook.http` module is now an explicit HTTP transport
+   owner. The policy remains closed; the package was not granted a prefix-wide
+   exemption.
+2. The first FastAPI integration run returned `422` before reaching every route.
+   The adapter lazily imports optional FastAPI symbols inside its app factory,
+   while postponed annotations had turned the local `Request` type into an
+   unresolved string. Removing postponed annotation evaluation binds route
+   parameters to the actual FastAPI `Request` class. Authentication and body
+   assertions were not changed.
+3. Review found operator-state rendering in the HTTP adapter. That would permit
+   future MCP projection drift. The pure `webhook_delivery_descriptor`
+   interpreter now lives beside the application service and excludes endpoint,
+   payload, and signing-reference material. HTTP only bounds and transports
+   that canonical descriptor.
+4. Review also tightened scope separation: a runtime-private grant cannot be
+   used for loopback, metadata, public, unspecified, multicast, reserved, or
+   link-local literal addresses. A separate host-local grant is required for
+   loopback tests and development.
+
+### Evidence And Handoff
+
+```text
+focused HTTP, FastAPI, and architecture cases:      17 passed
+complete Docker/Postgres suite:                   1011 passed
+assertions weakened:                                 0
+skips added:                                         0
+new durable stores or projections:                   0
+transactions spanning HTTP:                          0
+```
+
+Handoff to #514:
+
+- package this exact application service and HTTP interpreter as an
+  `ApplicationBlock` with its own Postgres requirement socket;
+- provide identity-attestation and signing material through opaque secret
+  references and runtime-only resolution;
+- realize endpoint grants from explicit bootstrap configuration, not arbitrary
+  request data;
+- prove a real Docker sender-to-receiver request, deterministic signature,
+  authentication failure, readiness, restart reconstruction, and cleanup;
+- do not add another workflow, journal, projection, UoW, or outbound result
+  language.
