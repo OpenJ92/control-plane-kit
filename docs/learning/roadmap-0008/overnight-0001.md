@@ -737,3 +737,124 @@ Create owned ephemeral protected material without placing value-derived data in
 names, ownership fingerprints, labels, evidence, exceptions, or command
 descriptors. Reuse the configuration-volume ownership protocol where safe, but
 keep secret storage and public configuration storage distinct.
+
+## #483 Decision Log: Owned Docker Secret-File Realization
+
+### Capability
+
+The Docker adapter now interprets exact graph-pinned `SecretFileMaterial` into
+runtime-only protected files:
+
+```text
+SecretFileMaterial(reference, target, 0400)
+  -> resolve through process-bootstrap SecretResolver
+  -> prove or create an owned ephemeral Docker volume
+  -> write through stdin using a networkless hardened helper
+  -> verify file existence and mode
+  -> mount only the content subpath read-only
+  -> start the graph-owned container
+```
+
+The graph, plan, effect descriptor, ownership labels, journal, observations,
+and errors contain reference identity or non-secret fingerprints only. Secret
+bytes exist only in `SecretValue`, the helper process stdin, the owned runtime
+volume, and the workload file.
+
+```python
+@dataclass(frozen=True)
+class DockerSecretMount:
+    material: SecretFileMaterial
+    volume_name: str
+    ownership: DockerOwnership
+
+    def docker_argument(self) -> str:
+        return (
+            f"type=volume,source={self.volume_name},"
+            f"target={self.material.target_path},"
+            "volume-subpath=content,readonly"
+        )
+```
+
+### Breaking Point: Secret-shaped durable evidence failed closed
+
+The first focused regression run failed every ordinary container start. The
+new success evidence used a `secret_files` key whose values were only hashed
+material identities and dispositions. `BoundedEvidence` correctly rejects the
+key itself as secret-shaped.
+
+The evidence guard was not weakened. Secret delivery dispositions were removed
+from durable effect evidence because pinned graph truth already owns exact
+intent. Success retains ordinary node and ownership evidence; missing and
+denied resolution publish only closed redacted failure codes.
+
+### Breaking Point: Immutable reference versus mutable provider bytes
+
+The runtime can verify volume ownership, file existence, and mode without
+reading secret bytes back into the control plane. It cannot safely infer that a
+provider changed the value behind an unchanged reference. Treating that as
+automatic rotation would make desired state depend on hidden mutable provider
+state and could silently rewrite a running workload.
+
+The current law is explicit:
+
+```text
+same SecretReference + replay
+  = reuse exact owned material
+
+new SecretReference
+  = graph diff + new ownership fingerprint + explicit reconcile/restart
+```
+
+The hardening corpus proves both sides. A changed provider value behind the same
+reference does not rewrite the volume. A new reference changes both container
+and secret-volume ownership fingerprints.
+
+### Breaking Point: Live fixture command carried value-derived data
+
+The first live proof embedded a digest of its non-sensitive fixture value in
+the workload command to validate exact content. Review rejected that precedent.
+The final workload command verifies only that protected content arrived; exact
+value transport is covered by the focused adapter test, which proves the value
+is stdin input and absent from Docker argv.
+
+### Failure And Cleanup Laws
+
+- all environment and file references resolve before any volume mutation;
+- missing and denied references are distinct terminal failures;
+- partial or unprovable materialization is uncertain and retains the owned
+  volume for explicit recovery;
+- a definitely failed container start cleans owned secret volumes only after
+  proving the container is absent;
+- teardown preflights every secret volume before removing the container;
+- an ownership conflict preserves both container and volume;
+- teardown removes only proven-owned ephemeral secret material;
+- no host path enters graph or effect material;
+- no transaction or lock spans resolution, filesystem, or Docker effects.
+
+### Evidence
+
+```text
+Focused Docker regression suite after protocol propagation: 34 passed
+First secret-focused suite: 7 passed
+Complete Docker/Postgres suite before final review additions: 833 passed
+Final secret-focused hardening suite: 9 passed
+Final complete Docker/Postgres suite: 835 passed
+Live Docker proof:
+  - denied bootstrap created no container or volume
+  - delivered file mode was 0400
+  - workload mount rejected writes
+  - identical replay performed no rewrite
+  - cleanup left no owned container, volume, or network
+Assertions weakened: 0
+Skips added: 0
+Secret bytes in Docker argv, ownership, evidence, errors, or logs: 0
+```
+
+### Handoff To #458 And #436
+
+Close #458 only after confirming #481 through #483 form one authority,
+descriptor, and realization path. Product integrations under #436 may consume
+secret-backed credentials through the same reference algebra. They must not
+invent product-specific secret stores, value fields, host mounts, or read-secret
+routes. Credential rotation remains an explicit graph edit to a new immutable
+reference.
