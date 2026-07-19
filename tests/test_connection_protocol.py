@@ -52,6 +52,37 @@ class ConnectionProtocolTests(unittest.TestCase):
         self.assertEqual(Protocol.UDP.value, "udp")
         self.assertNotEqual(Protocol.DNS_TCP, Protocol.DNS_UDP)
 
+    def test_every_protocol_has_one_closed_endpoint_scheme_set(self) -> None:
+        protocols = tuple(
+            Protocol.parse(value)
+            for value in (
+                "tcp",
+                "udp",
+                "http",
+                "postgres",
+                "dns+tcp",
+                "dns+udp",
+                "redis",
+                "smtp",
+                "otlp-http",
+                "otlp-grpc",
+                "nats",
+                "amqp",
+                "kafka",
+                "s3",
+            )
+        )
+
+        for protocol in protocols:
+            with self.subTest(protocol=protocol.value):
+                self.assertTrue(protocol.endpoint_schemes())
+                self.assertTrue(
+                    all(
+                        isinstance(scheme, str) and scheme
+                        for scheme in protocol.endpoint_schemes()
+                    )
+                )
+
     def test_invalid_transport_application_combinations_fail_at_construction(self) -> None:
         with self.assertRaisesRegex(ValueError, "http does not support udp"):
             Protocol(Transport.UDP, ApplicationProtocol.HTTP)

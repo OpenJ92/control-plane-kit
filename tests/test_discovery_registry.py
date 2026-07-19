@@ -14,6 +14,7 @@ from control_plane_kit import (
     DiscoveryDenied,
     DiscoveryIdentity,
     DiscoveryLease,
+    DiscoveryMissing,
     DiscoveryOutcome,
     DiscoveryRegistration,
     DiscoveryRegistrationMode,
@@ -269,6 +270,241 @@ class DiscoveryRegistryTests(PostgresStoreTestCase):
             1,
         )
 
+    def test_concurrent_heartbeats_have_one_winner(self) -> None:
+        registered = self.service().execute(
+            RegisterDiscoveryInstance("register-a", _registration()),
+            _manager(),
+        ).registrations[0]
+        barrier = threading.Barrier(2)
+        outcomes: list[str] = []
+        lock = threading.Lock()
+
+        def attempt(command_id: str, seconds: int) -> None:
+            barrier.wait(timeout=5)
+            try:
+                self.service(clock=lambda: NOW + timedelta(seconds=5)).execute(
+                    HeartbeatDiscoveryInstance(
+                        command_id,
+                        registered.registration.identity,
+                        registered.registration.lease.expires_at,
+                        DiscoveryLease(
+                            NOW + timedelta(seconds=10),
+                            NOW + timedelta(seconds=seconds),
+                        ),
+                    ),
+                    _manager(),
+                )
+                outcome = "heartbeat"
+            except DiscoveryConflict:
+                outcome = "conflict"
+            with lock:
+                outcomes.append(outcome)
+
+        threads = [
+            threading.Thread(target=attempt, args=("heartbeat-a", 60)),
+            threading.Thread(target=attempt, args=("heartbeat-b", 90)),
+        ]
+        for thread in threads:
+            thread.start()
+        for thread in threads:
+            thread.join(timeout=10)
+
+        self.assertFalse(any(thread.is_alive() for thread in threads))
+        self.assertEqual(sorted(outcomes), ["conflict", "heartbeat"])
+        row = self.connection.execute(
+            "SELECT revision, expires_at FROM cpk_discovery_registrations"
+        ).fetchone()
+        self.assertEqual(row[0], 2)
+        self.assertIn(
+            row[1],
+            (NOW + timedelta(seconds=60), NOW + timedelta(seconds=90)),
+        )
+
+    def test_deregister_and_heartbeat_race_has_one_state_winner(self) -> None:
+        registered = self.service().execute(
+            RegisterDiscoveryInstance("register-a", _registration()),
+            _manager(),
+        ).registrations[0]
+        barrier = threading.Barrier(2)
+        outcomes: list[str] = []
+        lock = threading.Lock()
+
+        def heartbeat() -> None:
+            barrier.wait(timeout=5)
+            try:
+                self.service(clock=lambda: NOW + timedelta(seconds=5)).execute(
+                    HeartbeatDiscoveryInstance(
+                        "heartbeat-a",
+                        registered.registration.identity,
+                        registered.registration.lease.expires_at,
+                        DiscoveryLease(
+                            NOW + timedelta(seconds=10),
+                            NOW + timedelta(seconds=60),
+                        ),
+                    ),
+                    _manager(),
+                )
+                outcome = "heartbeat"
+            except (DiscoveryConflict, DiscoveryMissing):
+                outcome = "rejected"
+            with lock:
+                outcomes.append(outcome)
+
+        def deregister() -> None:
+            barrier.wait(timeout=5)
+            try:
+                self.service(clock=lambda: NOW + timedelta(seconds=5)).execute(
+                    DeregisterDiscoveryInstance(
+                        "deregister-a",
+                        registered.registration.identity,
+                        registered.registration.lease.expires_at,
+                    ),
+                    _manager(),
+                )
+                outcome = "deregistered"
+            except (DiscoveryConflict, DiscoveryMissing):
+                outcome = "rejected"
+            with lock:
+                outcomes.append(outcome)
+
+        threads = [threading.Thread(target=heartbeat), threading.Thread(target=deregister)]
+        for thread in threads:
+            thread.start()
+        for thread in threads:
+            thread.join(timeout=10)
+
+        self.assertFalse(any(thread.is_alive() for thread in threads))
+        self.assertEqual(outcomes.count("rejected"), 1)
+        self.assertEqual(len(outcomes), 2)
+        row = self.connection.execute(
+            "SELECT status, revision, expires_at FROM cpk_discovery_registrations"
+        ).fetchone()
+        self.assertEqual(row[1], 2)
+        if "heartbeat" in outcomes:
+            self.assertEqual(row[0], "active")
+            self.assertEqual(row[2], NOW + timedelta(seconds=60))
+        else:
+            self.assertEqual(row[0], "deregistered")
+            self.assertEqual(row[2], registered.registration.lease.expires_at)
+
+    def test_late_heartbeat_after_deregistration_fails_closed(self) -> None:
+        registered = self.service().execute(
+            RegisterDiscoveryInstance("register-a", _registration()),
+            _manager(),
+        ).registrations[0]
+        self.service(clock=lambda: NOW + timedelta(seconds=5)).execute(
+            DeregisterDiscoveryInstance(
+                "deregister-a",
+                registered.registration.identity,
+                registered.registration.lease.expires_at,
+            ),
+            _manager(),
+        )
+
+        with self.assertRaises(DiscoveryMissing):
+            self.service(clock=lambda: NOW + timedelta(seconds=6)).execute(
+                HeartbeatDiscoveryInstance(
+                    "heartbeat-late",
+                    registered.registration.identity,
+                    registered.registration.lease.expires_at,
+                    DiscoveryLease(
+                        NOW + timedelta(seconds=10),
+                        NOW + timedelta(seconds=60),
+                    ),
+                ),
+                _manager(),
+            )
+
+        row = self.connection.execute(
+            "SELECT status, revision FROM cpk_discovery_registrations"
+        ).fetchone()
+        self.assertEqual(row, ("deregistered", 2))
+
+    def test_expiry_and_heartbeat_race_cannot_both_mutate_the_lease(self) -> None:
+        registered = self.service().execute(
+            RegisterDiscoveryInstance("register-a", _registration()),
+            _manager(),
+        ).registrations[0]
+        boundary = registered.registration.lease.expires_at
+        barrier = threading.Barrier(2)
+        outcomes: dict[str, object] = {}
+        lock = threading.Lock()
+
+        def heartbeat() -> None:
+            barrier.wait(timeout=5)
+            try:
+                self.service(clock=lambda: NOW + timedelta(seconds=5)).execute(
+                    HeartbeatDiscoveryInstance(
+                        "heartbeat-race",
+                        registered.registration.identity,
+                        boundary,
+                        DiscoveryLease(
+                            NOW + timedelta(seconds=10),
+                            NOW + timedelta(seconds=60),
+                        ),
+                    ),
+                    _manager(),
+                )
+                outcome: object = "renewed"
+            except (DiscoveryConflict, DiscoveryMissing):
+                outcome = "expired-first"
+            with lock:
+                outcomes["heartbeat"] = outcome
+
+        def expire() -> None:
+            barrier.wait(timeout=5)
+            result = self.service().execute(
+                ExpireDiscoveryLeases(
+                    "expire-race", "workspace-a", boundary, 10
+                ),
+                _manager(),
+            )
+            with lock:
+                outcomes["expiry_count"] = result.affected_count
+
+        threads = [threading.Thread(target=heartbeat), threading.Thread(target=expire)]
+        for thread in threads:
+            thread.start()
+        for thread in threads:
+            thread.join(timeout=10)
+
+        self.assertFalse(any(thread.is_alive() for thread in threads))
+        row = self.connection.execute(
+            "SELECT status, revision, expires_at FROM cpk_discovery_registrations"
+        ).fetchone()
+        if outcomes["heartbeat"] == "renewed":
+            self.assertEqual(outcomes["expiry_count"], 0)
+            self.assertEqual(row, ("active", 2, NOW + timedelta(seconds=60)))
+        else:
+            self.assertEqual(outcomes["expiry_count"], 1)
+            self.assertEqual(row, ("expired", 2, boundary))
+
+    def test_resolution_limit_is_deterministic_and_workspace_scoped(self) -> None:
+        service = self.service()
+        for instance_id in ("orders-c", "orders-a", "orders-b"):
+            service.execute(
+                RegisterDiscoveryInstance(
+                    f"register-{instance_id}",
+                    _registration(instance_id=instance_id),
+                ),
+                _manager(),
+            )
+
+        result = service.execute(
+            ResolveDiscoveryService(
+                "resolve-two", "workspace-a", "orders", NOW, 2
+            ),
+            _reader(),
+        )
+
+        self.assertEqual(
+            tuple(
+                record.registration.identity.instance_id
+                for record in result.registrations
+            ),
+            ("orders-a", "orders-b"),
+        )
+
     def test_schema_reinstall_preserves_rows_and_named_constraints(self) -> None:
         self.service().execute(
             RegisterDiscoveryInstance("register-a", _registration()),
@@ -368,6 +604,7 @@ def _self_authority(instance_id: str) -> DiscoveryAuthority:
         instance_id,
         "workspace-a",
         frozenset((DiscoveryScope.REGISTER_SELF,)),
+        subject_service_id="orders",
         subject_instance_id=instance_id,
     )
 

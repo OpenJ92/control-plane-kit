@@ -211,8 +211,7 @@ def _authorize_registration(
         _require_scope(authority, DiscoveryScope.MANAGE)
         return
     _require_scope(authority, DiscoveryScope.REGISTER_SELF)
-    if authority.subject_instance_id != registration.identity.instance_id:
-        raise DiscoveryDenied("self registration identity does not match authority")
+    _require_self_identity(authority, registration.identity)
 
 
 def _authorize_existing(
@@ -223,7 +222,17 @@ def _authorize_existing(
         _require_scope(authority, DiscoveryScope.MANAGE)
         return
     _require_scope(authority, DiscoveryScope.REGISTER_SELF)
-    if authority.subject_instance_id != existing.registration.identity.instance_id:
+    _require_self_identity(authority, existing.registration.identity)
+
+
+def _require_self_identity(
+    authority: DiscoveryAuthority,
+    identity: DiscoveryIdentity,
+) -> None:
+    if (
+        authority.subject_service_id != identity.service_id
+        or authority.subject_instance_id != identity.instance_id
+    ):
         raise DiscoveryDenied("self registration identity does not match authority")
 
 

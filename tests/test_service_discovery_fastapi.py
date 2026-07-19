@@ -10,11 +10,13 @@ from fastapi.testclient import TestClient
 from control_plane_kit import (
     CapabilityName,
     DeregisterDiscoveryInstance,
+    DiscoveryAuthority,
     DiscoveryIdentity,
     DiscoveryLease,
     DiscoveryRegistration,
     DiscoveryRegistrationMode,
     DiscoveryRegistryService,
+    DiscoveryScope,
     Endpoint,
     EndpointScope,
     ExpireDiscoveryLeases,
@@ -28,7 +30,10 @@ from control_plane_kit import (
     service_discovery_block,
 )
 from control_plane_kit.implementations import DockerImageImplementation
-from control_plane_kit.discovery_server import create_service_discovery_app
+from control_plane_kit.discovery_server import (
+    MAX_DISCOVERY_RESPONSE_BYTES,
+    create_service_discovery_app,
+)
 from tests.postgres_case import PostgresStoreTestCase
 
 
@@ -194,6 +199,91 @@ class ServiceDiscoveryFastAPITests(PostgresStoreTestCase):
         self.assertEqual(expired.json()["result"]["outcome"], "expired")
         self.assertEqual(expired.json()["result"]["affected_count"], 1)
 
+    def test_self_registration_is_bound_to_service_and_instance_identity(self) -> None:
+        registration = _registration(mode=DiscoveryRegistrationMode.SELF)
+        descriptor = discovery_command_descriptor(
+            RegisterDiscoveryInstance("register-self", registration)
+        )
+
+        wrong_service = self.client.post(
+            "/__deploy/discovery/registrations",
+            json=descriptor,
+            headers=_headers(
+                "discovery:register-self",
+                actor="orders-a",
+                service="payments",
+                instance="orders-a",
+            ),
+        )
+        accepted = self.client.post(
+            "/__deploy/discovery/registrations",
+            json=descriptor,
+            headers=_headers(
+                "discovery:register-self",
+                actor="orders-a",
+                service="orders",
+                instance="orders-a",
+            ),
+        )
+
+        self.assertEqual(wrong_service.status_code, 403)
+        self.assertEqual(accepted.status_code, 200)
+        self.assertEqual(_row_count(self.connection, "cpk_discovery_registrations"), 1)
+
+    def test_rejected_endpoint_and_identity_material_are_redacted(self) -> None:
+        descriptor = discovery_command_descriptor(
+            RegisterDiscoveryInstance("register-secret", _registration())
+        )
+        endpoint = descriptor["registration"]["endpoint"]
+        endpoint["address"]["value"] = "http://operator:must-not-leak@orders-a:8080"
+
+        response = self.client.post(
+            "/__deploy/discovery/registrations",
+            json=descriptor,
+            headers=_headers("discovery:manage"),
+        )
+
+        self.assertEqual(response.status_code, 400)
+        self.assertEqual(response.json(), {"detail": "invalid discovery command"})
+        self.assertNotIn("must-not-leak", response.text)
+        self.assertNotIn(TOKEN, response.text)
+        self.assertEqual(_row_count(self.connection, "cpk_discovery_commands"), 0)
+
+    def test_maximum_resolution_page_has_a_bounded_response(self) -> None:
+        manager = DiscoveryAuthority(
+            "manager",
+            "workspace-a",
+            frozenset((DiscoveryScope.MANAGE, DiscoveryScope.RESOLVE)),
+        )
+        suffix = "x" * 1_700
+        for index in range(100):
+            instance_id = f"orders-{index:03d}"
+            self.service.execute(
+                RegisterDiscoveryInstance(
+                    f"register-{index:03d}",
+                    _registration(
+                        instance_id=instance_id,
+                        address=f"http://{instance_id}:8080/{suffix}",
+                    ),
+                ),
+                manager,
+            )
+
+        response = self.client.get(
+            "/__deploy/discovery/services/orders",
+            params={
+                "command_id": "resolve-max-page",
+                "workspace_id": "workspace-a",
+                "observed_at": NOW.isoformat(),
+                "limit": 100,
+            },
+            headers=_headers("discovery:resolve", actor="reader"),
+        )
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.json()["result"]["affected_count"], 100)
+        self.assertLessEqual(len(response.content), MAX_DISCOVERY_RESPONSE_BYTES)
+
     def test_block_now_advertises_only_real_docker_capabilities(self) -> None:
         block = service_discovery_block(
             "registry",
@@ -231,26 +321,42 @@ class ServiceDiscoveryFastAPITests(PostgresStoreTestCase):
         self.assertEqual(response.status_code, 200)
 
 
-def _registration() -> DiscoveryRegistration:
+def _registration(
+    *,
+    instance_id: str = "orders-a",
+    address: str | None = None,
+    mode: DiscoveryRegistrationMode = DiscoveryRegistrationMode.CONTROL_PLANE,
+) -> DiscoveryRegistration:
     return DiscoveryRegistration(
-        DiscoveryIdentity("workspace-a", "orders", "orders-a"),
+        DiscoveryIdentity("workspace-a", "orders", instance_id),
         Endpoint(
-            LiteralAddress("http://orders-a:8080"),
+            LiteralAddress(address or f"http://{instance_id}:8080"),
             Protocol.HTTP,
             EndpointScope.PRIVATE,
         ),
-        DiscoveryRegistrationMode.CONTROL_PLANE,
+        mode,
         DiscoveryLease(NOW, NOW + timedelta(seconds=30)),
     )
 
 
-def _headers(scope: str, *, actor: str = "manager") -> dict[str, str]:
-    return {
+def _headers(
+    scope: str,
+    *,
+    actor: str = "manager",
+    service: str | None = None,
+    instance: str | None = None,
+) -> dict[str, str]:
+    headers = {
         "x-cpk-identity-attestation": TOKEN,
         "x-cpk-authenticated-subject": actor,
         "x-cpk-authenticated-workspace": "workspace-a",
         "x-cpk-discovery-scopes": scope,
     }
+    if service is not None:
+        headers["x-cpk-discovery-service"] = service
+    if instance is not None:
+        headers["x-cpk-discovery-instance"] = instance
+    return headers
 
 
 def _row_count(connection, table: str) -> int:
