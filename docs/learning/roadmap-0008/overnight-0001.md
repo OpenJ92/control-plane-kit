@@ -1218,3 +1218,126 @@ The retry proxy must remain a separate network block and policy language. It may
 retry only operations allowed by a closed method/idempotency policy, must bound
 attempts, delay, total deadline, request bytes, and response bytes, and must not
 reuse circuit state or silently compose itself into this product.
+
+## #414 Decision Log: Bounded HTTP Retry
+
+### Capability
+
+The package catalogue now contains a Docker-backed teaching retry proxy:
+
+```text
+HttpRetryBlock
+  = ProxyBlock
+  x RequirementSocket(target, HTTP)
+  x ProviderSocket(internal, HTTP)
+  x RetryPolicy
+  x opaque control-token reference
+```
+
+Its closed policy language is:
+
+```text
+RetryMethodPolicy = SafeOnly | IdempotencyKey
+RetryStatusPolicy = GatewayErrors | ServerErrors
+
+RetryPolicy
+  = finite attempts
+  x per-attempt timeout
+  x total deadline
+  x bounded fixed backoff
+  x request/response byte bounds
+  x method policy
+  x status policy
+```
+
+Safe methods may use the configured retry budget. Unsafe methods receive one
+attempt unless the graph selected `IdempotencyKey` and the request supplies a
+bounded key. The key is forwarded for application idempotency but never enters
+the retry observation.
+
+### Objects, Morphisms, And Laws
+
+```text
+HttpRequest
+  -> method/idempotency interpretation
+    -> finite sequence of bounded target attempts
+      -> HttpResponse x RetryObservation
+
+graph position:
+  retry -> circuit -> target
+  circuit -> retry -> target
+```
+
+Composition order has executable meaning. With retry outside a one-failure
+circuit, the first target failure opens the circuit and the next retry receives
+the circuit's fail-fast response. With retry inside the circuit, transient
+failure may recover before the outer circuit observes the final response.
+
+- attempts are bounded from 1 through 10;
+- each attempt and the whole request have independent deadlines;
+- fixed backoff is bounded and cannot exceed remaining total time;
+- request and response bodies are bounded;
+- redirects are not followed;
+- gateway-only and all-server-error retry sets are closed values;
+- target addresses, bodies, credentials, cookies, and idempotency keys do not
+  enter observations;
+- retries change ephemeral process evidence, never graph truth;
+- the authenticated metrics route exposes bounded counters and a
+  package-generated request identity only.
+
+`Retry-After` is deliberately unsupported in this scaffold. Consequently no
+untrusted response header can expand the typed deadline or backoff policy.
+
+### Breaking Point: Retry decisions were counted before dispatch
+
+The first generated server incremented `retry_count` when a response was
+classified retryable. If the total deadline expired before the next attempt,
+the observation claimed a retry that never occurred. The counter now advances
+at the start of each actual attempt after the first. The live test compares the
+counter delta to the target's actual call delta.
+
+### Breaking Point: Timeout disconnect was silently discarded
+
+The live target fixture expects clients to disconnect when an attempt timeout
+expires. Its first implementation swallowed `BrokenPipeError` with a pass-only
+handler. The architecture test-integrity policy rejected that hidden evidence.
+The fixture now records each disconnected write under its lock. Retry behavior
+and assertions were not weakened.
+
+### Harness Finding
+
+An ad hoc focused command used the package Docker stage, which intentionally
+does not copy `tests/`, and therefore produced import errors without executing
+tests. Validation returned to the canonical `./test.sh` test stage. This was a
+harness invocation error, not an application or test failure.
+
+### Evidence
+
+```text
+focused retry/circuit/catalogue/template suite: 24 passed
+live generated retry path:
+  transient 503 -> 200
+  deterministic three-attempt exhaustion
+  unsafe POST -> one attempt
+  keyed POST -> bounded retries without retained key
+  oversized request -> 413 and zero target calls
+  timed-out attempts -> bounded calls and exact retry evidence
+complete Docker/Postgres suite: 851 passed
+assertions weakened: 0
+skips added: 0
+```
+
+### Residual Risk
+
+This remains a teaching proxy with process-local counters and fixed backoff. It
+does not implement distributed retry budgets, jitter, `Retry-After`, streaming,
+or durable observations. Those omissions are explicit and do not enlarge the
+advertised capability contract.
+
+### Handoff To #415
+
+The inline logger should reuse the same one-target proxy topology without
+sharing retry policy or counters. Inbound versus outbound logging is graph
+position. Keep forwarding independent from bounded evidence retention, use a
+closed path-redaction policy, and expose evidence only through authenticated
+control routes.

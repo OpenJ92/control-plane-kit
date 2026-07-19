@@ -1,0 +1,202 @@
+import hmac
+import json
+import os
+import threading
+import time
+from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
+from urllib.error import HTTPError, URLError
+from urllib.request import HTTPRedirectHandler, Request, build_opener
+
+TARGET = os.environ["RETRY_TARGET_URL"].rstrip("/")
+CONTROL_TOKEN = os.environ["CPK_CONTROL_TOKEN"]
+ATTEMPTS = {{ attempts }}
+PER_ATTEMPT_TIMEOUT_SECONDS = {{ per_attempt_timeout_ms }} / 1000
+TOTAL_DEADLINE_SECONDS = {{ total_deadline_ms }} / 1000
+BACKOFF_SECONDS = {{ backoff_ms }} / 1000
+MAX_REQUEST_BYTES = {{ max_request_bytes }}
+MAX_RESPONSE_BYTES = {{ max_response_bytes }}
+IDEMPOTENCY_KEY_POLICY = {{ idempotency_key_policy }}
+SERVER_ERROR_POLICY = {{ server_error_policy }}
+LOCK = threading.Lock()
+REQUEST_COUNT = 0
+ATTEMPT_COUNT = 0
+RETRY_COUNT = 0
+EXHAUSTED_COUNT = 0
+LATEST_ATTEMPT_COUNT = 0
+
+
+class NoRedirects(HTTPRedirectHandler):
+    def redirect_request(self, request, file_pointer, code, message, headers, new_url):
+        return None
+
+
+OPENER = build_opener(NoRedirects)
+
+
+def retryable(status):
+    return 500 <= status <= 599 if SERVER_ERROR_POLICY else status in {502, 503, 504}
+
+
+def attempt_limit(method, headers):
+    if method in {"GET", "HEAD", "OPTIONS"}:
+        return ATTEMPTS
+    if IDEMPOTENCY_KEY_POLICY:
+        key = headers.get("idempotency-key", "")
+        if 1 <= len(key) <= 256:
+            return ATTEMPTS
+    return 1
+
+
+def observation():
+    with LOCK:
+        return {
+            "request_count": REQUEST_COUNT,
+            "attempt_count": ATTEMPT_COUNT,
+            "retry_count": RETRY_COUNT,
+            "exhausted_count": EXHAUSTED_COUNT,
+            "latest_attempt_count": LATEST_ATTEMPT_COUNT,
+            "latest_request_id": (
+                None
+                if REQUEST_COUNT == 0
+                else f"retry-request-{REQUEST_COUNT:020d}"
+            ),
+        }
+
+
+class Handler(BaseHTTPRequestHandler):
+    def _json(self, status, payload):
+        body = json.dumps(payload, sort_keys=True, separators=(",", ":")).encode()
+        self.send_response(status)
+        self.send_header("content-type", "application/json")
+        self.send_header("content-length", str(len(body)))
+        self.end_headers()
+        if self.command != "HEAD":
+            self.wfile.write(body)
+
+    def _authorized(self):
+        authorization = self.headers.get("authorization", "")
+        alternate = self.headers.get("x-control-plane-token", "")
+        return hmac.compare_digest(authorization, f"Bearer {CONTROL_TOKEN}") or hmac.compare_digest(alternate, CONTROL_TOKEN)
+
+    def _read_body(self):
+        try:
+            length = int(self.headers.get("content-length", "0") or "0")
+        except ValueError:
+            return None, 400
+        if length < 0 or length > MAX_REQUEST_BYTES:
+            return None, 413
+        self.connection.settimeout(PER_ATTEMPT_TIMEOUT_SECONDS)
+        return self.rfile.read(length), None
+
+    def _forward(self):
+        global REQUEST_COUNT, ATTEMPT_COUNT, RETRY_COUNT, EXHAUSTED_COUNT, LATEST_ATTEMPT_COUNT
+        body, error_status = self._read_body()
+        if error_status is not None:
+            self._json(error_status, {"detail": "invalid or oversized request"})
+            return
+        request_headers = {
+            key.lower(): value
+            for key, value in self.headers.items()
+            if key.lower() not in {"host", "content-length"}
+        }
+        limit = attempt_limit(self.command, request_headers)
+        with LOCK:
+            REQUEST_COUNT += 1
+        started = time.monotonic()
+        final_status = 502
+        final_payload = b"upstream unavailable"
+        final_headers = ()
+        used_attempts = 0
+        for attempt in range(1, limit + 1):
+            elapsed = time.monotonic() - started
+            remaining = TOTAL_DEADLINE_SECONDS - elapsed
+            if remaining <= 0:
+                break
+            used_attempts = attempt
+            timeout = min(PER_ATTEMPT_TIMEOUT_SECONDS, remaining)
+            with LOCK:
+                ATTEMPT_COUNT += 1
+                if attempt > 1:
+                    RETRY_COUNT += 1
+                LATEST_ATTEMPT_COUNT = attempt
+            request = Request(
+                TARGET + self.path,
+                data=body or None,
+                headers=request_headers,
+                method=self.command,
+            )
+            try:
+                response = OPENER.open(request, timeout=timeout)
+                with response:
+                    final_payload = response.read(MAX_RESPONSE_BYTES + 1)
+                    final_status = response.status
+                    final_headers = tuple(response.headers.items())
+            except HTTPError as error:
+                with error:
+                    final_payload = error.read(MAX_RESPONSE_BYTES + 1)
+                    final_status = error.code
+                    final_headers = tuple(error.headers.items())
+            except (OSError, TimeoutError, URLError):
+                final_status = 502
+                final_payload = b"upstream unavailable"
+                final_headers = ()
+            if len(final_payload) > MAX_RESPONSE_BYTES:
+                final_status = 502
+                final_payload = b"upstream response exceeded limit"
+                final_headers = ()
+            if not retryable(final_status) or attempt == limit:
+                break
+            remaining = TOTAL_DEADLINE_SECONDS - (time.monotonic() - started)
+            if remaining <= 0:
+                break
+            time.sleep(min(BACKOFF_SECONDS, remaining))
+        if retryable(final_status) and limit > 1:
+            with LOCK:
+                EXHAUSTED_COUNT += 1
+        with LOCK:
+            LATEST_ATTEMPT_COUNT = used_attempts
+        self.send_response(final_status)
+        for key, value in final_headers:
+            if key.lower() not in {"transfer-encoding", "connection", "content-length"}:
+                self.send_header(key, value)
+        self.send_header("content-length", str(len(final_payload)))
+        self.end_headers()
+        if self.command != "HEAD":
+            self.wfile.write(final_payload)
+
+    def do_GET(self):
+        path = self.path.split("?", 1)[0]
+        if path == "/health":
+            self._json(200, {"status": "healthy"})
+            return
+        if path == "/__deploy/metrics":
+            if not self._authorized():
+                self._json(401, {"detail": "unauthorized"})
+                return
+            self._json(200, observation())
+            return
+        self._forward()
+
+    def do_HEAD(self):
+        self._forward()
+
+    def do_OPTIONS(self):
+        self._forward()
+
+    def do_POST(self):
+        self._forward()
+
+    def do_PUT(self):
+        self._forward()
+
+    def do_PATCH(self):
+        self._forward()
+
+    def do_DELETE(self):
+        self._forward()
+
+    def log_message(self, format, *args):
+        pass
+
+
+ThreadingHTTPServer(("0.0.0.0", {{ port }}), Handler).serve_forever()
