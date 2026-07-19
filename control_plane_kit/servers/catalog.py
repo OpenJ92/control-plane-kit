@@ -19,6 +19,7 @@ from control_plane_kit.servers.http_proxy import http_proxy_block
 from control_plane_kit.servers.http_rate_limiter import http_rate_limiter_block
 from control_plane_kit.servers.http_weighted_balancer import http_weighted_load_balancer_block
 from control_plane_kit.servers.managed_http_router import managed_http_router_block
+from control_plane_kit.servers.request_observer import request_observer_block
 
 
 class ProductMaturity(StrEnum):
@@ -138,11 +139,15 @@ class PackageServerContract:
         }
 
 
-def _probe(capability: CapabilityName = CapabilityName.HEALTH_CHECKABLE) -> ExecutableCapability:
+def _probe(
+    capability: CapabilityName = CapabilityName.HEALTH_CHECKABLE,
+    *,
+    path: str = "/",
+) -> ExecutableCapability:
     return ExecutableCapability(
         capability,
         CapabilityImplementation.APPLICATION_PROBE,
-        path="/",
+        path=path,
     )
 
 
@@ -203,6 +208,15 @@ PACKAGE_SERVER_CONTRACTS = (
             _control(CapabilityName.TARGET_MUTABLE, ControlRouteSetName.TARGETS),
             _control(CapabilityName.SWITCHABLE, ControlRouteSetName.TARGETS),
             _control(CapabilityName.DRAINABLE, ControlRouteSetName.TARGETS),
+        ),
+    ),
+    PackageServerContract(
+        PackageServerProduct.REQUEST_OBSERVER,
+        ProductMaturity.TEACHING,
+        request_observer_block(),
+        (
+            _probe(path="/health"),
+            _control(CapabilityName.METRICS_READABLE, ControlRouteSetName.METRICS),
         ),
     ),
 )

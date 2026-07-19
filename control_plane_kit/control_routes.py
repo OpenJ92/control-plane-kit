@@ -37,6 +37,7 @@ class ControlRouteSetName(StrEnum):
     LOGS = "logs"
     TARGETS = "targets"
     OBSERVERS = "observers"
+    METRICS = "metrics"
 
 
 @dataclass(frozen=True)
@@ -179,11 +180,25 @@ OBSERVER_ROUTES = ControlRouteSet(
     ),
 )
 
+METRIC_ROUTES = ControlRouteSet(
+    name=ControlRouteSetName.METRICS,
+    routes=(
+        ControlRoute(
+            name="metrics",
+            method=ControlRouteMethod.GET,
+            path=control_path("metrics"),
+            scope=ControlRouteScope.READ_STATE,
+            description="Read bounded operational counters from this block.",
+        ),
+    ),
+)
+
 CONTROL_ROUTE_SETS = (
     COMMON_STATUS_ROUTES,
     LOG_ROUTES,
     TARGET_ROUTES,
     OBSERVER_ROUTES,
+    METRIC_ROUTES,
 )
 
 
