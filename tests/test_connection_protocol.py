@@ -88,6 +88,45 @@ class ConnectionProtocolTests(unittest.TestCase):
         with self.assertRaisesRegex(ValueError, "unknown connection protocol"):
             Protocol.parse("custom")
 
+    def test_every_protocol_round_trips_through_structured_string_projection(self) -> None:
+        values = (
+            Protocol.TCP,
+            Protocol.UDP,
+            Protocol.HTTP,
+            Protocol.POSTGRES,
+            Protocol.DNS_TCP,
+            Protocol.DNS_UDP,
+            Protocol.REDIS,
+            Protocol.SMTP,
+            Protocol.OTLP_HTTP,
+            Protocol.OTLP_GRPC,
+            Protocol.NATS,
+            Protocol.AMQP,
+            Protocol.KAFKA,
+            Protocol.S3,
+        )
+
+        for protocol in values:
+            with self.subTest(protocol=protocol.value):
+                descriptor = protocol.descriptor()
+                self.assertEqual(set(descriptor), {"transport", "application"})
+                self.assertTrue(all(isinstance(value, str) for value in descriptor.values()))
+                self.assertIs(Protocol.from_descriptor(descriptor), protocol)
+
+    def test_protocol_descriptor_unknown_extra_and_invalid_values_fail_closed(self) -> None:
+        invalid = (
+            {"transport": "tcp"},
+            {"transport": "tcp", "application": "http", "future": "value"},
+            {"transport": "future", "application": "http"},
+            {"transport": "udp", "application": "http"},
+            {"transport": 1, "application": "http"},
+        )
+
+        for descriptor in invalid:
+            with self.subTest(descriptor=descriptor):
+                with self.assertRaises(ValueError):
+                    Protocol.from_descriptor(descriptor)
+
 
 if __name__ == "__main__":
     unittest.main()

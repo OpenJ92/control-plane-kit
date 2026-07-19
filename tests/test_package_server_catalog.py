@@ -111,6 +111,10 @@ class PackageServerCatalogTests(unittest.TestCase):
         self.assertEqual(requirements["target-blue"]["binding"], "environment")
         self.assertEqual(requirements["active"]["binding"], "runtime-control")
         self.assertEqual(requirements["active"]["env_bindings"], [])
+        self.assertEqual(
+            requirements["active"]["protocol"],
+            {"transport": "tcp", "application": "http"},
+        )
 
     def test_package_product_identity_round_trips_through_default_codec(self) -> None:
         block = package_server_contract(PackageServerProduct.HTTP_MULTIPLEXER).block

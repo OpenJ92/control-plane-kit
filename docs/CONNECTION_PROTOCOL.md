@@ -34,6 +34,15 @@ may prove that a TCP connection or bounded UDP exchange succeeded, while a
 product-specific verification interpreter separately proves DNS, Postgres,
 Redis, broker, object-storage, SMTP, or telemetry semantics.
 
-The compact `value` names temporarily preserve the current descriptor boundary
-within issue #451. Issue #452 replaces those durable scalar fields with the
-structured product in place; no second legacy protocol language is retained.
+Durable and operator-facing descriptors project the product into two explicit
+string fields:
+
+```json
+{
+  "transport": "tcp",
+  "application": "http"
+}
+```
+
+The compact `value` name is display-only. It is not persisted as the protocol
+language, and architecture policy rejects new `.protocol.value` projections.

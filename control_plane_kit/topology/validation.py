@@ -195,7 +195,7 @@ def validate_graph(
                 _error(ValidationCode.EDGE_REFERENCE, EdgeSubject(edge_id), str(error))
             )
             continue
-        if provider.protocol is not edge.protocol or requirement.protocol is not edge.protocol:
+        if provider.protocol != edge.protocol or requirement.protocol != edge.protocol:
             findings.append(
                 _error(
                     ValidationCode.EDGE_PROTOCOL,
@@ -306,7 +306,7 @@ def validate_graph(
                         "provider socket has no compiled endpoint",
                     )
                 )
-            elif endpoint.protocol is not provider.protocol:
+            elif endpoint.protocol != provider.protocol:
                 findings.append(
                     _error(
                         ValidationCode.ENDPOINT_PROTOCOL,

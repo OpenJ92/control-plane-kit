@@ -21,7 +21,8 @@ class OperatorSocket:
     """A provider or requirement socket visible to an operator."""
 
     name: str
-    protocol: str
+    transport: str
+    application_protocol: str
     direction: str
     binding: str | None = None
     required: bool | None = None
@@ -31,7 +32,10 @@ class OperatorSocket:
     def descriptor(self) -> dict[str, object]:
         payload: dict[str, object] = {
             "name": self.name,
-            "protocol": self.protocol,
+            "protocol": {
+                "transport": self.transport,
+                "application": self.application_protocol,
+            },
             "direction": self.direction,
             "connected": self.connected,
         }
@@ -77,14 +81,18 @@ class OperatorEdge:
     provider_socket: str
     consumer_node_id: str
     requirement_socket: str
-    protocol: str
+    transport: str
+    application_protocol: str
 
     def descriptor(self) -> dict[str, object]:
         return {
             "edge_id": self.edge_id,
             "provider": {"node_id": self.provider_node_id, "socket": self.provider_socket},
             "consumer": {"node_id": self.consumer_node_id, "socket": self.requirement_socket},
-            "protocol": self.protocol,
+            "protocol": {
+                "transport": self.transport,
+                "application": self.application_protocol,
+            },
         }
 
 
@@ -186,7 +194,8 @@ def _project_node(
         providers=tuple(
             OperatorSocket(
                 name=socket.name,
-                protocol=socket.protocol.value,
+                transport=socket.protocol.transport.value,
+                application_protocol=socket.protocol.application.value,
                 direction="provider",
                 connected=(node.node_id, socket.name) in connected_providers,
             )
@@ -195,7 +204,8 @@ def _project_node(
         requirements=tuple(
             OperatorSocket(
                 name=socket.name,
-                protocol=socket.protocol.value,
+                transport=socket.protocol.transport.value,
+                application_protocol=socket.protocol.application.value,
                 direction="requirement",
                 binding=socket.binding.value,
                 required=socket.required,
@@ -224,7 +234,8 @@ def _project_edge(edge: Edge) -> OperatorEdge:
         provider_socket=edge.provider_socket,
         consumer_node_id=edge.consumer_role,
         requirement_socket=edge.requirement_socket,
-        protocol=edge.protocol.value,
+        transport=edge.protocol.transport.value,
+        application_protocol=edge.protocol.application.value,
     )
 
 

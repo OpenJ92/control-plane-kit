@@ -72,7 +72,7 @@ class Endpoint:
     def descriptor(self) -> dict[str, object]:
         return {
             "address": self.address.descriptor(),
-            "protocol": self.protocol.value,
+            "protocol": self.protocol.descriptor(),
             "scope": self.scope.value,
         }
 
@@ -126,7 +126,7 @@ class Node:
             "environment": dict(sorted(self.environment.items())),
             "requirements": {
                 socket.name: {
-                    "protocol": socket.protocol.value,
+                    "protocol": socket.protocol.descriptor(),
                     "binding": socket.binding.value,
                     "env_bindings": list(socket.env_bindings),
                     "required": socket.required,
@@ -134,7 +134,7 @@ class Node:
                 for socket in self.sockets.requirements
             },
             "providers": {
-                socket.name: {"protocol": socket.protocol.value}
+                socket.name: {"protocol": socket.protocol.descriptor()}
                 for socket in self.sockets.providers
             },
             "metadata": dict(self.metadata),
@@ -160,7 +160,7 @@ class Edge:
             "edge_id": self.edge_id,
             "provider": {"role": self.provider_role, "socket": self.provider_socket},
             "consumer": {"role": self.consumer_role, "requirement": self.requirement_socket},
-            "protocol": self.protocol.value,
+            "protocol": self.protocol.descriptor(),
             "binding": self.binding.value,
             "env_assignments": dict(sorted(self.env_assignments.items())),
         }

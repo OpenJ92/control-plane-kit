@@ -1178,7 +1178,7 @@ def _node_ownership(
                 "host_publications": [
                     {
                         "socket_name": value.socket_name,
-                        "protocol": value.protocol.value,
+                        "protocol": value.protocol.descriptor(),
                         "container_port": value.container_port,
                         "host_address": str(value.bind_address),
                         "host_port": value.host_port,

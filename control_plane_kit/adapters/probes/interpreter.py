@@ -91,7 +91,7 @@ class ProbeEffectInterpreter:
             if isinstance(transport_intent, ProbeConstructionFailure):
                 return self._construction_failure(request, transport_intent)
             health_intent = None
-            if endpoint.protocol is Protocol.HTTP:
+            if endpoint.protocol == Protocol.HTTP:
                 health_intent = application_health_probe(
                     request.material,
                     endpoint,

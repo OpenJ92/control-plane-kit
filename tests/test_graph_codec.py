@@ -157,6 +157,21 @@ class GraphDescriptorCodecTests(unittest.TestCase):
             runtime_control,
         )
 
+    def test_protocol_product_round_trips_and_unknown_factors_fail_closed(self):
+        codec = GraphDescriptorCodec()
+        descriptor = codec.encode(compile_recipe(recipe()))
+        edge = descriptor["edges"]["postgres.internal-to-orders-api.DATABASE_URL"]
+
+        self.assertEqual(
+            edge["protocol"],
+            {"transport": "tcp", "application": "postgres"},
+        )
+        self.assertEqual(codec.encode(codec.decode(descriptor)), descriptor)
+
+        edge["protocol"]["transport"] = "future"
+        with self.assertRaisesRegex(UnknownGraphVariant, "unknown protocol"):
+            codec.decode(descriptor)
+
     def test_unknown_fields_are_rejected_as_lossy(self):
         descriptor = GraphDescriptorCodec().encode(compile_recipe(recipe()))
         descriptor["future"] = {"meaning": "unknown"}

@@ -117,7 +117,7 @@ class EndpointValue:
                 address = {"kind": "secret-reference", "secret_ref": _REDACTED}
         return {
             "address": address,
-            "protocol": self.endpoint.protocol.value,
+            "protocol": self.endpoint.protocol.descriptor(),
             "scope": self.endpoint.scope.value,
         }
 
@@ -129,13 +129,13 @@ class SocketContractValue:
     def descriptor(self) -> dict[str, object]:
         return {
             "providers": [
-                {"name": socket.name, "protocol": socket.protocol.value}
+                {"name": socket.name, "protocol": socket.protocol.descriptor()}
                 for socket in sorted(self.sockets.providers, key=lambda value: value.name)
             ],
             "requirements": [
                 {
                     "name": socket.name,
-                    "protocol": socket.protocol.value,
+                    "protocol": socket.protocol.descriptor(),
                     "binding": socket.binding.value,
                     "env_bindings": list(socket.env_bindings),
                     "required": socket.required,
@@ -212,7 +212,7 @@ class EdgeValue:
                 "node_id": self.edge.consumer_role,
                 "socket": self.edge.requirement_socket,
             },
-            "protocol": self.edge.protocol.value,
+            "protocol": self.edge.protocol.descriptor(),
             "binding": self.edge.binding.value,
             "env_assignments": EnvironmentValue(
                 self.edge.env_assignments

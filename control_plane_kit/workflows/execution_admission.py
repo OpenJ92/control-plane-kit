@@ -325,7 +325,7 @@ def _readiness_required(
                     for graph in (current, desired)
                 ]
                 if any(
-                    edge is not None and edge.protocol is Protocol.POSTGRES
+                    edge is not None and edge.protocol == Protocol.POSTGRES
                     for edge in edges
                 ):
                     required.add(activity.activity_id.value)
@@ -353,7 +353,7 @@ def _changes_startup_postgres_endpoint(
             if (
                 edge is not None
                 and edge.consumer_role == consumer_id
-                and edge.protocol is Protocol.POSTGRES
+                and edge.protocol == Protocol.POSTGRES
                 and edge.binding is SocketBinding.ENVIRONMENT
             ):
                 return True
