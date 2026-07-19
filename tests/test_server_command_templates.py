@@ -7,6 +7,7 @@ from control_plane_kit.servers import (
     http_active_router_command,
     http_circuit_breaker_command,
     http_bulkhead_command,
+    http_cache_command,
     http_fault_injector_command,
     http_multiplexer_command,
     http_proxy_command,
@@ -31,6 +32,7 @@ class ServerCommandTemplateTests(TestCase):
             http_active_router_command(),
             http_circuit_breaker_command(),
             http_bulkhead_command(),
+            http_cache_command(),
             http_fault_injector_command(),
             http_weighted_load_balancer_command(),
             http_multiplexer_command(),
@@ -54,6 +56,7 @@ class ServerCommandTemplateTests(TestCase):
         self.assertIn("ACTIVE_TARGET_URL", http_active_router_command()[2])
         self.assertIn("CIRCUIT_TARGET_URL", http_circuit_breaker_command()[2])
         self.assertIn("BULKHEAD_TARGET_URL", http_bulkhead_command()[2])
+        self.assertIn("CACHE_TARGET_URL", http_cache_command()[2])
         self.assertIn("FAULT_TARGET_URL", http_fault_injector_command()[2])
         self.assertIn("BALANCER_TARGET_A_URL", http_weighted_load_balancer_command()[2])
         self.assertIn("MULTIPLEXER_PRIMARY_URL", http_multiplexer_command()[2])

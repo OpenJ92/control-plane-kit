@@ -29,6 +29,7 @@ class ControlRouteScope(StrEnum):
     READ_LOGS = "logs:read"
     SEND_SIGNAL = "signal:send"
     INJECT_FAULT = "fault:inject"
+    PURGE_CACHE = "cache:purge"
 
 
 class ControlRouteSetName(StrEnum):
@@ -42,6 +43,7 @@ class ControlRouteSetName(StrEnum):
     CIRCUIT = "circuit"
     TRAFFIC_EVIDENCE = "traffic-evidence"
     FAULTS = "faults"
+    CACHE = "cache"
 
 
 @dataclass(frozen=True)
@@ -250,6 +252,26 @@ FAULT_ROUTES = ControlRouteSet(
     ),
 )
 
+CACHE_ROUTES = ControlRouteSet(
+    name=ControlRouteSetName.CACHE,
+    routes=(
+        ControlRoute(
+            name="cache-state",
+            method=ControlRouteMethod.GET,
+            path=control_path("cache"),
+            scope=ControlRouteScope.READ_STATE,
+            description="Read bounded HTTP cache state and counters.",
+        ),
+        ControlRoute(
+            name="cache-purge",
+            method=ControlRouteMethod.POST,
+            path=control_path("cache/purge"),
+            scope=ControlRouteScope.PURGE_CACHE,
+            description="Purge ephemeral process-local HTTP cache entries.",
+        ),
+    ),
+)
+
 CONTROL_ROUTE_SETS = (
     COMMON_STATUS_ROUTES,
     LOG_ROUTES,
@@ -259,6 +281,7 @@ CONTROL_ROUTE_SETS = (
     CIRCUIT_ROUTES,
     TRAFFIC_EVIDENCE_ROUTES,
     FAULT_ROUTES,
+    CACHE_ROUTES,
 )
 
 

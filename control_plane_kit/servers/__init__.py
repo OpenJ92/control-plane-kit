@@ -31,6 +31,15 @@ from control_plane_kit.servers.http_bulkhead import (
     http_bulkhead_block,
     http_bulkhead_command,
 )
+from control_plane_kit.servers.http_cache import (
+    CacheObservation,
+    CacheOutcome,
+    CacheVaryHeader,
+    HttpCachePolicy,
+    HttpCacheServer,
+    http_cache_block,
+    http_cache_command,
+)
 from control_plane_kit.servers.http_fault_injector import (
     ConnectionTerminationFault,
     DelayFault,
@@ -128,6 +137,9 @@ __all__ = [
     "BlockControlState",
     "BulkheadObservation",
     "BulkheadOutcome",
+    "CacheObservation",
+    "CacheOutcome",
+    "CacheVaryHeader",
     "GeneratedServerSyntaxError",
     "HelloDependency",
     "HelloEnvironment",
@@ -141,6 +153,8 @@ __all__ = [
     "HttpBulkheadPolicy",
     "HttpBulkheadServer",
     "HttpHandler",
+    "HttpCachePolicy",
+    "HttpCacheServer",
     "HttpFault",
     "HttpFaultInjectionServer",
     "HttpMultiplexerRuntime",
@@ -204,6 +218,8 @@ __all__ = [
     "http_circuit_breaker_command",
     "http_bulkhead_block",
     "http_bulkhead_command",
+    "http_cache_block",
+    "http_cache_command",
     "fault_injection_state_descriptor",
     "fault_injection_state_from_descriptor",
     "http_fault_injector_block",

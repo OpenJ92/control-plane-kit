@@ -184,3 +184,117 @@ Handoff to #423:
 - preserve ProductMaturity through any new package product;
 - production-oriented scenario validation must reject TEST_ONLY;
 - do not weaken the dedicated fault:inject authorization boundary.
+
+## #423 Bounded HTTP Cache
+
+### Capability
+
+The package now has a teaching HTTP cache whose topology identity, cache
+policy, sockets, control capabilities, and maturity survive the canonical
+graph language. Its runtime entries remain deliberately outside desired graph
+truth.
+
+The new product is:
+
+    PackageServerProduct.HTTP_CACHE
+      x ProductMaturity.TEACHING
+      x HttpCachePolicy
+      x RequirementSocket[HTTP](target)
+      x ProviderSocket[HTTP](internal)
+
+The key interpretation is:
+
+    bounded HTTP request
+      -> secret-safe cache-key digest or explicit bypass
+      -> deterministic hit, stale refresh, or target request
+      -> bounded CacheObservation
+
+Only GET/200 responses are cacheable. Authorization and Cookie requests
+bypass the cache. Set-Cookie, private, no-store, no-cache, wildcard Vary, and
+unconfigured Vary responses fail closed. Explicit safe Vary support is a closed
+CacheVaryHeader sum type rather than a free-form header escape hatch.
+
+The control language gained one exact authenticated route set:
+
+    GET  /__deploy/cache       -> control:read
+    POST /__deploy/cache/purge -> cache:purge
+
+The generated process receives its opaque control token through
+CPK_CACHE_CONTROL_TOKEN and its socket-derived target through CACHE_TARGET_URL.
+Neither value enters observations.
+
+### Breaking Points And Solutions
+
+No application or test failure occurred during implementation. Focused tests
+and the first complete suite were green.
+
+Review concentrated on four boundaries that could otherwise make a teaching
+cache unsafe:
+
+- cache keys retain only a SHA-256 digest of bounded method, route, query, and
+  explicitly permitted Vary values;
+- sensitive request headers cause bypass rather than becoming key material;
+- target I/O occurs without holding the cache lock, and this block introduces
+  no Postgres transaction;
+- purge clears only process-local cache entries and never graph truth, retained
+  data, Docker resources, or configuration artifacts.
+
+The stale-while-revalidate name describes cache semantics, but this teaching
+implementation refreshes synchronously before returning the retained stale
+response. That limitation is explicit and does not advertise asynchronous
+production behavior.
+
+### Evidence
+
+    focused cache/catalogue/routes/codec/validation/architecture:
+      54 passed
+
+    live generated behavior inside Docker:
+      first public request reaches target
+      identical second request is served from cache
+      private, unknown-Vary, and authorized requests bypass
+      unauthenticated state and purge return 401
+      authenticated state is bounded and secret-free
+      authenticated purge removes all process-local entries
+      generated process terminates during cleanup
+
+    complete Docker/Postgres suite:
+      879 passed
+
+    assertions weakened: 0
+    skips added: 0
+    production mocks added: 0
+
+Security review:
+
+- control mutation has a dedicated cache:purge scope and opaque secret
+  delivery;
+- request bodies, response bodies, URLs, headers, credentials, target address,
+  cache keys, and cached values never enter observations;
+- request, response, object, capacity, entry count, key material, TTL, and stale
+  windows are bounded;
+- redirects are disabled for target requests.
+
+Data and effect review:
+
+- cache entries are mutable runtime state, not deployment graph state;
+- this teaching server adds no store and performs no transaction;
+- target HTTP effects occur without a Postgres transaction or cache lock;
+- cached entries are not represented as DataResource or retained data.
+
+### Residual Risk And Handoff
+
+The generated server is HTTP/1, process-local, in-memory, and deliberately not
+a shared or production cache. Concurrent equivalent misses can both reach the
+target. Stale refresh is synchronous. Cached response headers receive only
+minimal hop-by-hop filtering. These are teaching-product limits, not claims
+that the block is an operational CDN or reverse-proxy cache.
+
+Handoff to #424:
+
+- retry behavior must remain distinct from cache hit/miss/stale evidence;
+- retries must not run while a Postgres transaction or cache lock is held;
+- retries must define request replayability and bounded attempt policy rather
+  than infer safety from free-form methods;
+- preserve ProductMaturity and dedicated control-route authorization;
+- never retry an uncertain non-idempotent effect by default.
