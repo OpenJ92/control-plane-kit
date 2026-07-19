@@ -190,6 +190,49 @@ class WebhookCommandResult:
     external_effect_attempted: bool
 
 
+@dataclass(frozen=True, slots=True)
+class WebhookReadResult:
+    """One reconstructible delivery projection observed at a journal version."""
+
+    state: WebhookDeliveryState
+    journal_version: int
+
+    def descriptor(self) -> dict[str, object]:
+        return {
+            "delivery": webhook_delivery_descriptor(self.state),
+            "journal_version": self.journal_version,
+        }
+
+
+def webhook_delivery_descriptor(state: WebhookDeliveryState) -> dict[str, object]:
+    """Project canonical state without endpoint, payload, or secret-reference data."""
+
+    if not isinstance(state, WebhookDeliveryState):
+        raise TypeError("webhook delivery projection requires typed state")
+    claim = state.active_claim
+    return {
+        "identity": state.intent.identity.descriptor(),
+        "status": state.status.value,
+        "attempts_started": state.attempts_started,
+        "attempts_completed": state.attempts_completed,
+        "last_outcome": None if state.last_outcome is None else state.last_outcome.value,
+        "next_attempt_at": (
+            None if state.next_attempt_at is None else state.next_attempt_at.isoformat()
+        ),
+        "active_claim": (
+            None
+            if claim is None
+            else {
+                "claim_id": claim.claim_id,
+                "worker_id": claim.worker_id,
+                "attempt_number": claim.attempt_number,
+                "claimed_at": claim.claimed_at.isoformat(),
+                "lease_expires_at": claim.lease_expires_at.isoformat(),
+            }
+        ),
+    }
+
+
 UnitOfWorkFactory: TypeAlias = Callable[[], WebhookUnitOfWork]
 Clock: TypeAlias = Callable[[], datetime]
 IdFactory: TypeAlias = Callable[[], str]
@@ -225,6 +268,21 @@ class WebhookDeliveryService:
                 return self._recover(command)
             case _:
                 raise TypeError("webhook command must be a closed command variant")
+
+    def read(
+        self,
+        identity: WebhookDeliveryIdentity,
+        authority: WebhookAuthority,
+    ) -> WebhookReadResult:
+        """Read canonical webhook state through the application's UoW boundary."""
+
+        if not isinstance(identity, WebhookDeliveryIdentity):
+            raise TypeError("webhook read identity must be typed")
+        _authorize(authority, WebhookScope.READ, identity)
+        with self._unit_of_work_factory() as work:
+            work.journal.lock_delivery(identity)
+            projection = _projection(work, identity)
+            return WebhookReadResult(projection.state, projection.journal_version)
 
     def _enqueue(self, command: EnqueueWebhook) -> WebhookCommandResult:
         intent = command.intent
