@@ -2128,3 +2128,160 @@ Handoff to #514:
   authentication failure, readiness, restart reconstruction, and cleanup;
 - do not add another workflow, journal, projection, UoW, or outbound result
   language.
+
+## #514 Packaged Webhook ApplicationBlock And Live Deployment
+
+### Capability
+
+The durable webhook application is now a package product with the same product
+form as every deployable application:
+
+```python
+ApplicationBlock(
+    PackageServerSpec(
+        product=PackageServerProduct.WEBHOOK_DELIVERY,
+        maturity=ProductMaturity.OPERATIONAL,
+        capabilities=(CapabilityName.HEALTH_CHECKABLE,),
+        verification=VerificationContract((
+            HttpCheck(
+                check_id="webhook-readiness",
+                provider_socket="internal",
+                path="/health/ready",
+            ),
+        )),
+    ),
+    DockerImageImplementation(
+        image=image,
+        command=("python", "-m", "control_plane_kit.webhook_server.main"),
+        environment={
+            "CPK_WEBHOOK_ENDPOINT_POLICY": bounded_policy_json,
+            "CPK_WEBHOOK_SIGNING_REFERENCE": signing_reference.reference_id,
+        },
+        secret_deliveries=(identity_delivery, signing_delivery),
+    ),
+    BlockSockets(
+        requirements=(
+            RequirementSocket(
+                "database",
+                Protocol.POSTGRES,
+                ("WEBHOOK_DATABASE_URL",),
+            ),
+        ),
+        providers=(ProviderSocket("internal", Protocol.HTTP),),
+    ),
+)
+```
+
+The graph supplies the database URL only through the Postgres socket
+connection. Bootstrap configuration carries a deterministic, bounded,
+secret-free endpoint policy plus opaque secret references. Secret values are
+resolved only by the Docker interpreter into the process environment.
+
+The packaged process composition root constructs its own:
+
+```text
+PostgresWebhookUnitOfWork
+  + WebhookDeliveryService
+  + HttpWebhookDelivery
+  + SystemWebhookPublicAddressResolver
+  -> authenticated FastAPI application
+```
+
+It does not reuse or import the control-plane instance stores or UnitOfWork.
+The graph's `postgresql+psycopg` endpoint remains canonical topology identity;
+the process composition root locally interprets it as the direct psycopg DSN.
+This keeps driver spelling out of the protocol algebra.
+
+### Canonical Live Proof
+
+The live scenario constructs this graph:
+
+```text
+DockerRuntime("webhook-live-runtime")
+  |-- ephemeral Postgres DataBlock
+  |-- controlled signed receiver ApplicationBlock
+  `-- webhook-delivery ApplicationBlock
+
+postgres.internal -> webhook-delivery.database
+```
+
+Every graph-owned runtime mutation passes through `DeploymentProgram`:
+
+```text
+EmptyGraph
+  -> plan -> approve -> admit -> claim -> execute -> advance
+  -> desired webhook graph
+  -> authenticated enqueue, claim, dispatch, and read
+  -> plan -> approve -> admit -> claim -> execute -> advance
+  -> EmptyGraph
+```
+
+The harness directly creates only its external control Postgres, control
+network, and controller process. It attaches that controller to the realized
+runtime network so it can continue the deliberately suspended deployment.
+Containers and networks represented by the deployment graph are created and
+removed only by the canonical coordinator and Docker interpreter.
+
+Live evidence proves:
+
+- an unauthenticated enqueue returns `401`;
+- an allowed runtime-private endpoint receives the exact payload;
+- the receiver validates the deterministic HMAC signature;
+- exact enqueue replay returns the original durable delivery without a second
+  intent;
+- the authenticated read route reconstructs delivered state from Postgres;
+- an endpoint absent from bootstrap authority becomes the closed
+  `dead-letter` / `terminal-failure` state;
+- teardown removes all proven-owned graph containers and the runtime network;
+- the ephemeral topology leaves no owned volume behind.
+
+### Breakpoints And Resolutions
+
+1. The live example initially imported store records from the package root.
+   Those records are intentionally store-local. Importing them from
+   `control_plane_kit.stores` preserved the public package boundary.
+2. The receiver signing value initially appeared as literal implementation
+   environment. Effect materialization correctly rejected it. The receiver now
+   declares `SecretEnvironmentDelivery`, and both sender and receiver values
+   enter only through the live secret resolver.
+3. The denied endpoint assertion initially expected a generic failed state.
+   The canonical webhook algebra distinguishes retry exhaustion from terminal
+   policy rejection; the correct state is `dead-letter` with
+   `terminal-failure`. The test now asserts that exact product.
+4. Adding `WEBHOOK_DELIVERY` extended the closed `PackageServerProduct` sum.
+   The exhaustive HTTP policy-family test correctly failed until webhook
+   delivery was explicitly classified as a non-policy application service.
+   The scenario's policy-product assertion remains exhaustive.
+5. Public DNS resolution belongs to the outbound transport adapter. The exact
+   `control_plane_kit.webhook.http` module is the declared socket owner; the
+   process composition root only selects that capability.
+
+### Review And Evidence
+
+```text
+focused block, catalogue, and architecture tests:     22 passed
+complete Docker/Postgres suite:                    1017 passed
+real DeploymentProgram webhook proof:                 passed
+assertions weakened:                                      0
+skips added:                                              0
+new workflow/store/journal/projection models:             0
+transactions spanning outbound HTTP:                     0
+graph-owned resources remaining after teardown:          0
+```
+
+The bootstrap/read helpers in the live harness use autocommit for fixture
+setup and read-only recovery of plan identity. The packaged webhook server does
+not: application commands own `PostgresWebhookUnitOfWork`, stores never commit,
+and outbound HTTP remains between short transactions.
+
+Handoff to #515:
+
+- repeat the security, data-engineering, crash-window, ownership, retained-data,
+  projection, and test-integrity audits over the packaged process and live
+  topology;
+- verify restart reconstruction and stable idempotency explicitly at the
+  process boundary;
+- preserve the one canonical webhook workflow, journal, projection, UoW, and
+  outbound result language;
+- close the durable webhook parent only after the focused hardening and final
+  live proof remain green.
