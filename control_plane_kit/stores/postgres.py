@@ -210,7 +210,8 @@ CREATE TABLE IF NOT EXISTS cpk_observations (
   ),
   CONSTRAINT cpk_observations_probe_kind_check CHECK (
     probe_kind IS NULL OR probe_kind IN (
-      'process', 'transport', 'application-health', 'readiness'
+      'process', 'transport', 'application-health', 'readiness',
+      'semantic-verification'
     )
   ),
   CONSTRAINT cpk_observations_endpoint_context_check CHECK (
@@ -221,11 +222,12 @@ CREATE TABLE IF NOT EXISTS cpk_observations (
   CONSTRAINT cpk_observations_probe_outcome_check CHECK (
     probe_outcome IS NULL OR probe_outcome IN (
       'process-running', 'process-stopped', 'reachable', 'refused', 'healthy',
-      'unhealthy', 'timed-out', 'malformed', 'unknown', 'ready', 'not-ready'
+      'unhealthy', 'timed-out', 'malformed', 'unknown', 'ready', 'not-ready',
+      'verified', 'verification-failed', 'unsupported', 'rejected'
     )
   ),
   CONSTRAINT cpk_observations_context_kind_check CHECK (
-    (probe_kind IN ('transport', 'application-health')
+    (probe_kind IN ('transport', 'application-health', 'semantic-verification')
       AND endpoint_context IS NOT NULL)
     OR
     (probe_kind IN ('process', 'readiness') AND endpoint_context IS NULL)
@@ -245,6 +247,10 @@ CREATE TABLE IF NOT EXISTS cpk_observations (
     ))
     OR (probe_kind = 'readiness' AND probe_outcome IN (
       'ready', 'not-ready', 'unknown'
+    ))
+    OR (probe_kind = 'semantic-verification' AND probe_outcome IN (
+      'verified', 'verification-failed', 'timed-out', 'malformed',
+      'unsupported', 'rejected', 'unknown'
     ))
   )
 );
@@ -551,7 +557,95 @@ BEGIN
       ADD CONSTRAINT cpk_observations_status_check
       CHECK (status IN (
         'starting', 'process_started', 'reachable', 'healthy', 'unhealthy',
-        'timed_out', 'unknown'
+        'timed_out', 'verified', 'verification_failed', 'unsupported',
+        'rejected', 'malformed', 'unknown'
+      )) NOT VALID;
+  END IF;
+END $$;
+
+DO $$
+DECLARE
+  definition text;
+BEGIN
+  SELECT pg_get_constraintdef(oid) INTO definition
+  FROM pg_constraint
+  WHERE conrelid = 'cpk_observations'::regclass
+    AND conname = 'cpk_observations_probe_kind_check';
+  IF definition IS NOT NULL AND position('semantic-verification' IN definition) = 0 THEN
+    ALTER TABLE cpk_observations DROP CONSTRAINT cpk_observations_probe_kind_check;
+    ALTER TABLE cpk_observations ADD CONSTRAINT cpk_observations_probe_kind_check
+      CHECK (probe_kind IS NULL OR probe_kind IN (
+        'process', 'transport', 'application-health', 'readiness',
+        'semantic-verification'
+      ));
+  END IF;
+
+  SELECT pg_get_constraintdef(oid) INTO definition
+  FROM pg_constraint
+  WHERE conrelid = 'cpk_observations'::regclass
+    AND conname = 'cpk_observations_probe_outcome_check';
+  IF definition IS NOT NULL AND position('verification-failed' IN definition) = 0 THEN
+    ALTER TABLE cpk_observations DROP CONSTRAINT cpk_observations_probe_outcome_check;
+    ALTER TABLE cpk_observations ADD CONSTRAINT cpk_observations_probe_outcome_check
+      CHECK (probe_outcome IS NULL OR probe_outcome IN (
+        'process-running', 'process-stopped', 'reachable', 'refused', 'healthy',
+        'unhealthy', 'timed-out', 'malformed', 'unknown', 'ready', 'not-ready',
+        'verified', 'verification-failed', 'unsupported', 'rejected'
+      ));
+  END IF;
+
+  SELECT pg_get_constraintdef(oid) INTO definition
+  FROM pg_constraint
+  WHERE conrelid = 'cpk_observations'::regclass
+    AND conname = 'cpk_observations_context_kind_check';
+  IF definition IS NOT NULL AND position('semantic-verification' IN definition) = 0 THEN
+    ALTER TABLE cpk_observations DROP CONSTRAINT cpk_observations_context_kind_check;
+    ALTER TABLE cpk_observations ADD CONSTRAINT cpk_observations_context_kind_check CHECK (
+      (probe_kind IN ('transport', 'application-health', 'semantic-verification')
+        AND endpoint_context IS NOT NULL)
+      OR (probe_kind IN ('process', 'readiness') AND endpoint_context IS NULL)
+      OR probe_kind IS NULL
+    );
+  END IF;
+
+  SELECT pg_get_constraintdef(oid) INTO definition
+  FROM pg_constraint
+  WHERE conrelid = 'cpk_observations'::regclass
+    AND conname = 'cpk_observations_outcome_kind_check';
+  IF definition IS NOT NULL AND position('semantic-verification' IN definition) = 0 THEN
+    ALTER TABLE cpk_observations DROP CONSTRAINT cpk_observations_outcome_kind_check;
+    ALTER TABLE cpk_observations ADD CONSTRAINT cpk_observations_outcome_kind_check CHECK (
+      probe_kind IS NULL
+      OR (probe_kind = 'process' AND probe_outcome IN (
+        'process-running', 'process-stopped', 'unknown'
+      ))
+      OR (probe_kind = 'transport' AND probe_outcome IN (
+        'reachable', 'refused', 'timed-out', 'unknown'
+      ))
+      OR (probe_kind = 'application-health' AND probe_outcome IN (
+        'healthy', 'unhealthy', 'refused', 'timed-out', 'malformed', 'unknown'
+      ))
+      OR (probe_kind = 'readiness' AND probe_outcome IN (
+        'ready', 'not-ready', 'unknown'
+      ))
+      OR (probe_kind = 'semantic-verification' AND probe_outcome IN (
+        'verified', 'verification-failed', 'timed-out', 'malformed',
+        'unsupported', 'rejected', 'unknown'
+      ))
+    );
+  END IF;
+
+  SELECT pg_get_constraintdef(oid) INTO definition
+  FROM pg_constraint
+  WHERE conrelid = 'cpk_observations'::regclass
+    AND conname = 'cpk_observations_status_check';
+  IF definition IS NOT NULL AND position('verification_failed' IN definition) = 0 THEN
+    ALTER TABLE cpk_observations DROP CONSTRAINT cpk_observations_status_check;
+    ALTER TABLE cpk_observations ADD CONSTRAINT cpk_observations_status_check
+      CHECK (status IN (
+        'starting', 'process_started', 'reachable', 'healthy', 'unhealthy',
+        'timed_out', 'verified', 'verification_failed', 'unsupported',
+        'rejected', 'malformed', 'unknown'
       )) NOT VALID;
   END IF;
 END $$;

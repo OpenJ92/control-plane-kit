@@ -126,6 +126,7 @@ PACKAGE_RULES = (
             "stores",
             "topology",
             "types",
+            "verification",
         ),
     ),
 )

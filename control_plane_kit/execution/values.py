@@ -112,6 +112,11 @@ class ObservationStatus(StrEnum):
     HEALTHY = "healthy"
     UNHEALTHY = "unhealthy"
     TIMED_OUT = "timed_out"
+    VERIFIED = "verified"
+    VERIFICATION_FAILED = "verification_failed"
+    UNSUPPORTED = "unsupported"
+    REJECTED = "rejected"
+    MALFORMED = "malformed"
     UNKNOWN = "unknown"
 
 
@@ -140,6 +145,7 @@ class ProbeKind(StrEnum):
     TRANSPORT = "transport"
     APPLICATION_HEALTH = "application-health"
     READINESS = "readiness"
+    SEMANTIC_VERIFICATION = "semantic-verification"
 
 
 class ProbeOutcome(StrEnum):
@@ -156,6 +162,10 @@ class ProbeOutcome(StrEnum):
     UNKNOWN = "unknown"
     READY = "ready"
     NOT_READY = "not-ready"
+    VERIFIED = "verified"
+    VERIFICATION_FAILED = "verification-failed"
+    UNSUPPORTED = "unsupported"
+    REJECTED = "rejected"
 
 
 class EndpointContext(StrEnum):
@@ -193,6 +203,17 @@ def probe_outcome_is_valid(kind: ProbeKind, outcome: ProbeOutcome) -> bool:
         ),
         ProbeKind.READINESS: frozenset(
             {ProbeOutcome.READY, ProbeOutcome.NOT_READY, ProbeOutcome.UNKNOWN}
+        ),
+        ProbeKind.SEMANTIC_VERIFICATION: frozenset(
+            {
+                ProbeOutcome.VERIFIED,
+                ProbeOutcome.VERIFICATION_FAILED,
+                ProbeOutcome.TIMED_OUT,
+                ProbeOutcome.MALFORMED,
+                ProbeOutcome.REJECTED,
+                ProbeOutcome.UNSUPPORTED,
+                ProbeOutcome.UNKNOWN,
+            }
         ),
     }[kind]
 
@@ -519,8 +540,13 @@ class ObservationRecord:
             raise ExecutionValueError(
                 "correlated observation requires graph, probe kind, and outcome"
             )
-        if self.probe_kind is ProbeKind.PROCESS and self.endpoint_context is not None:
-            raise ExecutionValueError("process observation cannot claim endpoint context")
+        if (
+            self.probe_kind in (ProbeKind.PROCESS, ProbeKind.READINESS)
+            and self.endpoint_context is not None
+        ):
+            raise ExecutionValueError(
+                f"{self.probe_kind.value} observation cannot claim endpoint context"
+            )
         if (
             self.probe_kind is not None
             and self.probe_outcome is not None

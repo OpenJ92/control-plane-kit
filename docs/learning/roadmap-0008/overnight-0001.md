@@ -399,3 +399,156 @@ check identity; expose only typed bounded evidence; keep unsupported distinct
 from failed; and do not introduce a verification store, mutable latest-result
 cache, or parallel projection model. API, CLI, and MCP should consume the shared
 read service rather than decode verification results independently.
+
+### #476: Architecture policy rejected an undeclared workflow dependency
+
+The first complete Docker/Postgres run reached 811 tests with 810 passing. The
+new verification command service imported the pure `verification` language,
+but the `workflows` dependency rule did not permit that package.
+
+The implementation was not moved to evade the policy. The workflow layer is
+the application transaction boundary that interprets a graph-pinned
+`VerificationResult` into canonical observed-state truth, so the dependency
+algebra was extended explicitly:
+
+```text
+workflows -> verification
+```
+
+The reverse dependency remains forbidden: `verification` still depends only on
+`types` and cannot import workflows, stores, effects, or adapters. This keeps
+the pure language independent while making its one application interpreter
+statically visible.
+
+### #476: Review found missing durable intent before verification dispatch
+
+The first green implementation used a short read-only preflight transaction,
+executed the adapter, and then persisted a terminal observation. Although no
+transaction crossed the effect, a process crash after dispatch and before the
+result transaction would have left no durable evidence that verification was
+attempted.
+
+The command was corrected to use the existing observation store as an
+append-only intent/result journal for this operation:
+
+```text
+short transaction: persist starting/unknown verification intent
+  -> commit
+    -> bounded verification adapter
+      -> short transaction: persist exact terminal result
+```
+
+Both rows retain the same `workspace x graph x node x check` identity. The
+intent is immutable and remains visible if the effect loses its result; the
+terminal observation becomes latest only after it commits. No verification
+store, mutable cursor, or graph write was introduced.
+
+### #476: Mixed ISO timestamp precision reversed causal observation order
+
+The complete suite after durable-intent hardening reached 813 tests with two
+failures. Domain time placed the terminal result one microsecond after intent,
+but `cpk_observations.observed_at` is intentionally stored and ordered as text.
+Python encoded the exact-second intent as `12:00:00Z` and the result as
+`12:00:00.000001Z`; lexical ordering therefore selected the intent because `Z`
+sorts after `.`.
+
+The tests were not changed. The command boundary now renders both timestamps in
+one canonical UTC form with fixed microsecond precision:
+
+```text
+2026-07-19T12:00:00.000000Z
+2026-07-19T12:00:00.000001Z
+```
+
+This makes the existing text ordering agree with causal time for all rows
+created by the command and removes observation-ID ordering from the semantic
+result.
+
+## #476 Decision Log: Canonical Verification Observations
+
+### Capability
+
+Package-owned semantic checks now pass through one application workflow and
+the existing observed-state system:
+
+```text
+ExecuteVerification
+  -> authorize verification:execute
+  -> verify workspace owns pinned graph
+  -> persist immutable starting intent
+  -> commit
+  -> VerificationInterpreterRegistry.execute(material)
+  -> persist immutable terminal observation
+  -> commit
+  -> InstanceReadService.observed_state
+       -> FastAPI
+       -> MCP
+       -> CLI
+```
+
+The observation algebra gained one exact layer and its closed outcomes:
+
+```text
+ProbeKind.SEMANTIC_VERIFICATION
+
+ProbeOutcome
+  = VERIFIED
+  | VERIFICATION_FAILED
+  | TIMED_OUT
+  | MALFORMED
+  | REJECTED
+  | UNSUPPORTED
+  | UNKNOWN
+```
+
+`UNKNOWN` is used only for durable pre-dispatch intent. Unsupported capability
+is not collapsed into attempted failure, and semantic success is not collapsed
+into application health.
+
+### Data And Security Laws
+
+- `VerificationAuthority` uses the closed `VerificationScope.EXECUTE` value;
+- workspace and graph ownership fail before adapter dispatch;
+- intent and result are immutable rows in the canonical observation store;
+- no transaction or lock spans HTTP, Redis, or another verification adapter;
+- adapter loss leaves visible starting/unknown evidence and no terminal lie;
+- graph pointers are never written by verification;
+- graph changes make old verification stale only through read-time projection;
+- evidence contains result identity, capability, outcome, attempt count, and
+  bounded typed evidence, never endpoint addresses or response bodies;
+- conditional schema changes preserve rows and stop changing constraint
+  identities after the current language is installed;
+- API, MCP, and CLI perform no independent verification decoding.
+
+### Representative Live Proof
+
+`./verification-live-test.sh` creates only labeled, issue-owned Docker
+resources. It starts a real HTTP fixture and Postgres, executes the concrete
+HTTP verifier through `VerificationCommandService`, confirms the durable
+`starting -> verified` history, reads the shared projection, proves the target
+address is absent from that projection, and removes every owned resource.
+
+```text
+Live verification passed: HTTP 200
+  -> durable starting/verified observations
+  -> shared redacted projection
+```
+
+### Evidence
+
+```text
+Complete Docker/Postgres suite: 813 passed
+Live Docker HTTP/Postgres proof: passed
+Test skips added: 0
+Assertions weakened: 0
+New stores or projections: 0
+Graph writes from verification: 0
+```
+
+### Handoff
+
+Issue #457 can close because its pure language, graph propagation, pinned
+material, dispatch, representative adapters, canonical persistence, and shared
+operator reads now exist. Product integration work must register additional
+bounded interpreters against this language; it must not introduce product
+verification stores or decode result descriptors independently.
