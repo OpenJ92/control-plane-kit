@@ -581,7 +581,7 @@ def _implementation_material(node: Node, graph: DeploymentGraph) -> Implementati
     if len({value.socket_name for value in publications}) != len(publications):
         raise _malformed("host_publications")
     fixed_bindings = {
-        (value.bind_address, value.host_port)
+        (value.bind_address, value.host_port, value.protocol.transport)
         for value in publications
         if value.host_port is not None
     }
