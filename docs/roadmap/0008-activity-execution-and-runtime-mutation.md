@@ -182,17 +182,23 @@ brainstorm with the following ordered topology:
 
 #392 -> #402 Gate G heterogeneous topology acceptance
   -> #403 package-owned capability-contract audit
-    |-> #443 closed connection-protocol algebra
-    |-> #444 immutable runtime configuration artifacts
-    |-> #404 + #413 + #414 + #415 + #420..#425 + #445
+    |-> #451 -> #452 -> #453 -> #443 connection-protocol foundation
+    |-> #454 -> #455 -> #456 -> #444 configuration-artifact foundation
+
+#443 -> #457 closed package-owned verification contract
+#444 + #436 -> #458 secret bootstrap and runtime secret-file material
+
+#403
+    |-> #404 + #413 + #414 + #415 + #420..#425 + #445 + #457
     |     -> #437 HTTP policy and resilience acceptance
-    |-> #426 + #428 + (#443 + #444 -> #427)
+    |-> #426 + #428 + (#443 + #444 -> #427) + #457
     |     -> #438 service and application-infrastructure acceptance
     `-> #429 + #436
           + (#443 + #426 + #444 -> #430)
-          + (#444 + #436 -> #431)
-          + (#443 + #436 -> #432 + #434 + #435)
+          + (#444 + #436 + #458 -> #431)
+          + (#443 + #436 + #458 -> #432 + #434 + #435)
           + (#443 + #444 -> #446 -> #447 + #448 + #449 -> #433)
+          + #457
           -> #439 protocol and data-product acceptance
 
 #437 + #439 -> #440 compositional API-gateway recipe
@@ -400,6 +406,40 @@ Message brokers also require a product-family decomposition. #446 defines only
 the shared typed grammar that is honest across products; #447, #448, and #449
 retain exact NATS, RabbitMQ, and Kafka identities. Parent #433 converges those
 integrations before protocol/data acceptance #439.
+
+A second integration dry run conditioned on #443 and #444 decomposed those
+foundations into executable child verticals. Protocol work is ordered as:
+
+```text
+#451 transport x application-protocol product
+  -> #452 propagation through graph, durable, and read languages
+    -> #453 transport-aware Docker endpoints, publications, and probes
+      -> #443 complete
+```
+
+This avoids a flat enum that cannot represent DNS over TCP and UDP and prevents
+Docker's current implicit TCP publication from becoming an accidental law.
+Configuration work is ordered as:
+
+```text
+#454 immutable artifact algebra and descriptors
+  -> #455 owned read-only Docker realization
+    -> #456 strict typed Jinja2 rendering and security hardening
+      -> #444 complete
+```
+
+Conditioning on both foundations exposed two additional convergence contracts.
+#457 supplies a closed package-owned verification language for bounded HTTP,
+DNS, Postgres, Redis, broker, object-storage, and SMTP checks. Targets always
+come from graph sockets; it is not an arbitrary command or test runner. #458
+separates pre-bootstrapped control-plane secret authority from the graph it
+unlocks and adds runtime-only secret-file material for products that cannot use
+environment secrets.
+
+After these additions, no integration requires a new graph, planner, activity,
+coordinator, or Docker lifecycle model. Package servers reuse current control
+and server patterns. Mature products become exact typed specs over the shared
+Docker implementation, artifact, secret, probe, and verification boundaries.
 
 Request or response body transformation is deliberately outside the
 package-owned Gate G server catalog. XML/JSON conversion, field mapping, schema
