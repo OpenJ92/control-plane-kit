@@ -6,6 +6,7 @@ from control_plane_kit.algebra import (
     BlockSockets,
     PackageServerProduct,
     PackageServerSpec,
+    ProductMaturity,
     ProviderSocket,
     ProxyBlock,
     RequirementSocket,
@@ -136,6 +137,7 @@ def managed_http_router_block(
         PackageServerSpec(
             role_id=block_id,
             product=PackageServerProduct.MANAGED_HTTP_ROUTER,
+            maturity=ProductMaturity.OPERATIONAL,
             display_name="Managed HTTP Active Router",
             health_path="/",
             capabilities=(

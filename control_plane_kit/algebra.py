@@ -94,9 +94,18 @@ class PackageServerProduct(StrEnum):
     HTTP_TRAFFIC_LOGGER = "http-traffic-logger"
     HTTP_TIMEOUT = "http-timeout"
     HTTP_BULKHEAD = "http-bulkhead"
+    HTTP_FAULT_INJECTOR = "http-fault-injector"
     HTTP_WEIGHTED_LOAD_BALANCER = "http-weighted-load-balancer"
     MANAGED_HTTP_ROUTER = "managed-http-router"
     REQUEST_OBSERVER = "request-observer"
+
+
+class ProductMaturity(StrEnum):
+    """Closed operational intent retained in package-server topology."""
+
+    TEST_ONLY = "test-only"
+    TEACHING = "teaching"
+    OPERATIONAL = "operational"
 
 
 @dataclass(frozen=True, kw_only=True)
@@ -104,6 +113,14 @@ class PackageServerSpec(BlockSpec):
     """Block specification retaining exact package-server product identity."""
 
     product: PackageServerProduct
+    maturity: ProductMaturity = ProductMaturity.TEACHING
+
+    def __post_init__(self) -> None:
+        super().__post_init__()
+        if not isinstance(self.product, PackageServerProduct):
+            raise TypeError("package server product must be typed")
+        if not isinstance(self.maturity, ProductMaturity):
+            raise TypeError("package server maturity must be typed")
 
 
 class RuntimeImplementation(TypingProtocol):

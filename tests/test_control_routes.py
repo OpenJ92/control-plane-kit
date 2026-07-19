@@ -58,6 +58,7 @@ class ControlRouteTests(TestCase):
                 ControlRouteSetName.METRICS,
                 ControlRouteSetName.CIRCUIT,
                 ControlRouteSetName.TRAFFIC_EVIDENCE,
+                ControlRouteSetName.FAULTS,
             },
         )
         self.assertEqual(
@@ -94,6 +95,13 @@ class ControlRouteTests(TestCase):
         self.assertEqual(
             descriptors[ControlRouteSetName.TRAFFIC_EVIDENCE],
             {(ControlRouteMethod.GET, "/__deploy/traffic-evidence")},
+        )
+        self.assertEqual(
+            descriptors[ControlRouteSetName.FAULTS],
+            {
+                (ControlRouteMethod.GET, "/__deploy/fault"),
+                (ControlRouteMethod.POST, "/__deploy/fault"),
+            },
         )
 
     def test_route_set_named_accepts_string_or_enum(self):
