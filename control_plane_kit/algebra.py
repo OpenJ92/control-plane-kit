@@ -9,6 +9,7 @@ from typing import Protocol as TypingProtocol, TypeAlias
 from control_plane_kit.capabilities import CapabilityName
 from control_plane_kit.lifecycle import EXTERNAL_RETAINED, OWNED_EPHEMERAL, ResourceLifecycle
 from control_plane_kit.types import Protocol, RuntimeKind, SocketBinding
+from control_plane_kit.verification import VerificationContract
 
 
 @dataclass(frozen=True)
@@ -72,7 +73,12 @@ class BlockSpec:
     display_name: str | None = None
     health_path: str | None = None
     capabilities: tuple[CapabilityName, ...] = ()
+    verification: VerificationContract = field(default_factory=VerificationContract)
     metadata: dict[str, str] = field(default_factory=dict)
+
+    def __post_init__(self) -> None:
+        if not isinstance(self.verification, VerificationContract):
+            raise TypeError("block verification must be VerificationContract")
 
 
 class PackageServerProduct(StrEnum):

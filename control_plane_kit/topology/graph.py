@@ -135,6 +135,7 @@ class Node:
                 "display_name": self.block_spec.display_name,
                 "health_path": self.block_spec.health_path,
                 "capabilities": [value.value for value in self.block_spec.capabilities],
+                "verification": self.block_spec.verification.descriptor(),
                 "metadata": dict(sorted(self.block_spec.metadata.items())),
             },
             "kind": self.kind,

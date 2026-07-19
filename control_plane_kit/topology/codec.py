@@ -40,6 +40,7 @@ from control_plane_kit.types import (
     RuntimeKind,
     SocketBinding,
 )
+from control_plane_kit.verification import VerificationContract
 
 
 class GraphDescriptorError(ValueError):
@@ -86,6 +87,7 @@ class GenericBlockSpecCodec:
             "display_name": spec.display_name,
             "health_path": spec.health_path,
             "capabilities": [value.value for value in spec.capabilities],
+            "verification": spec.verification.descriptor(),
             "metadata": dict(sorted(spec.metadata.items())),
         }
 
@@ -101,6 +103,9 @@ class GenericBlockSpecCodec:
             display_name=_optional_text(descriptor, "display_name"),
             health_path=_optional_text(descriptor, "health_path"),
             capabilities=capabilities,
+            verification=VerificationContract.from_descriptor(
+                descriptor.get("verification")
+            ),
             metadata=_string_mapping(descriptor.get("metadata", {}), "block_spec.metadata"),
         )
 
@@ -120,6 +125,7 @@ class PackageServerSpecCodec:
             "display_name": spec.display_name,
             "health_path": spec.health_path,
             "capabilities": [value.value for value in spec.capabilities],
+            "verification": spec.verification.descriptor(),
             "metadata": dict(sorted(spec.metadata.items())),
             "product": spec.product.value,
         }
@@ -139,6 +145,9 @@ class PackageServerSpecCodec:
             display_name=_optional_text(descriptor, "display_name"),
             health_path=_optional_text(descriptor, "health_path"),
             capabilities=capabilities,
+            verification=VerificationContract.from_descriptor(
+                descriptor.get("verification")
+            ),
             metadata=_string_mapping(
                 descriptor.get("metadata", {}), "package_server_spec.metadata"
             ),
