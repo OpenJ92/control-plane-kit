@@ -35,6 +35,7 @@ from control_plane_kit.planning import (
     SwitchSocketConnection,
     WaitForHealthy,
 )
+from control_plane_kit.secrets import SecretReference, SecretResolutionError
 
 
 MAX_EFFECT_TIMEOUT_SECONDS = 300
@@ -131,7 +132,10 @@ class EffectSecretReference:
     reference_id: str
 
     def __post_init__(self) -> None:
-        _require_reference(self.reference_id, "secret reference")
+        try:
+            SecretReference(self.reference_id)
+        except SecretResolutionError as error:
+            raise EffectValueError("secret reference is malformed") from error
 
 
 @dataclass(frozen=True)

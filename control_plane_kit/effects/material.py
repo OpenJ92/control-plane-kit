@@ -11,6 +11,12 @@ from urllib.parse import urlsplit
 
 from control_plane_kit.lifecycle import OWNED_EPHEMERAL, ResourceLifecycle
 from control_plane_kit.configuration import ConfigurationArtifact
+from control_plane_kit.secrets import (
+    SecretEnvironmentDelivery,
+    SecretFileDelivery,
+    SecretFileMode,
+    SecretReference,
+)
 
 from control_plane_kit.effects.values import EffectPurpose, EffectRequest
 from control_plane_kit.planning import (
@@ -92,11 +98,7 @@ class SecretReferenceMaterialValue:
     reference_id: str
 
     def __post_init__(self) -> None:
-        if not self.reference_id.strip():
-            raise EffectMaterializationError(
-                MaterializationCode.MALFORMED_IMPLEMENTATION,
-                "secret reference identity must not be empty",
-            )
+        SecretReference(self.reference_id)
 
 
 EnvironmentMaterialValue: TypeAlias = LiteralMaterialValue | SecretReferenceMaterialValue
@@ -126,6 +128,20 @@ class DataMountMaterial:
                 MaterializationCode.MALFORMED_IMPLEMENTATION,
                 "data mount target path must be absolute",
             )
+
+
+@dataclass(frozen=True, order=True)
+class SecretFileMaterial:
+    reference_id: str
+    target_path: str
+    file_mode: SecretFileMode
+
+    def __post_init__(self) -> None:
+        SecretFileDelivery(
+            self.target_path,
+            SecretReference(self.reference_id),
+            self.file_mode,
+        )
 
 
 @dataclass(frozen=True)
@@ -192,6 +208,7 @@ class ImplementationMaterial:
     data_mounts: tuple[DataMountMaterial, ...] = ()
     host_publications: tuple[HostPublicationMaterial, ...] = ()
     configuration_artifacts: tuple[ConfigurationArtifact, ...] = ()
+    secret_files: tuple[SecretFileMaterial, ...] = ()
 
 
 @dataclass(frozen=True)
@@ -671,15 +688,37 @@ def _implementation_material(node: Node, graph: DeploymentGraph) -> Implementati
         [value for value in publications if value.host_port is not None]
     ):
         raise _malformed("host_publications")
+    environment = list(_environment_material(environment, node=node, graph=graph))
+    secret_files: list[SecretFileMaterial] = []
+    for delivery in node.secret_deliveries:
+        match delivery:
+            case SecretEnvironmentDelivery(environment_name=name, reference=reference):
+                environment.append(
+                    EnvironmentBindingMaterial(
+                        name,
+                        SecretReferenceMaterialValue(reference.reference_id),
+                    )
+                )
+            case SecretFileDelivery(
+                target_path=target_path,
+                reference=reference,
+                file_mode=file_mode,
+            ):
+                secret_files.append(
+                    SecretFileMaterial(reference.reference_id, target_path, file_mode)
+                )
+    if len({value.name for value in environment}) != len(environment):
+        raise _malformed("environment")
     return ImplementationMaterial(
         node.kind,
         image,
         tuple(command_value),
-        _environment_material(environment, node=node, graph=graph),
+        tuple(sorted(environment)),
         database,
         tuple(sorted(mounts)),
         tuple(sorted(publications, key=lambda value: value.socket_name)),
         tuple(sorted(node.configuration_artifacts)),
+        tuple(sorted(secret_files)),
     )
 
 
@@ -816,6 +855,7 @@ def _descriptor(value: object) -> object:
                 "configuration_artifacts": [
                     _descriptor(item) for item in value.configuration_artifacts
                 ],
+                "secret_files": [_descriptor(item) for item in value.secret_files],
             }
         case ConfigurationArtifact():
             return value.descriptor()
@@ -823,6 +863,12 @@ def _descriptor(value: object) -> object:
             return {
                 "resource_id": value.resource_id,
                 "target_path": value.target_path,
+            }
+        case SecretFileMaterial():
+            return {
+                "reference_id": value.reference_id,
+                "target_path": value.target_path,
+                "file_mode": value.file_mode.value,
             }
         case HostPublicationMaterial():
             return {

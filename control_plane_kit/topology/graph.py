@@ -8,6 +8,13 @@ from urllib.parse import urlsplit
 
 from control_plane_kit.algebra import BlockSockets, BlockSpec
 from control_plane_kit.configuration import ConfigurationArtifact
+from control_plane_kit.secrets import (
+    SecretDelivery,
+    SecretEnvironmentDelivery,
+    SecretFileDelivery,
+    SecretReference,
+    secret_delivery_sort_key,
+)
 from control_plane_kit.lifecycle import OWNED_EPHEMERAL, ResourceLifecycle
 from control_plane_kit.types import (
     BlockFamily,
@@ -42,8 +49,7 @@ class SecretReferenceAddress:
     secret_ref: str
 
     def __post_init__(self) -> None:
-        if not self.secret_ref.strip():
-            raise ValueError("secret reference must not be empty")
+        SecretReference(self.secret_ref)
 
     def descriptor(self) -> dict[str, str]:
         return {"kind": "secret-reference", "secret_ref": self.secret_ref}
@@ -93,6 +99,7 @@ class Node:
     metadata: Mapping[str, object] = field(default_factory=dict)
     lifecycle: ResourceLifecycle = OWNED_EPHEMERAL
     configuration_artifacts: tuple[ConfigurationArtifact, ...] = ()
+    secret_deliveries: tuple[SecretDelivery, ...] = ()
 
     def __post_init__(self) -> None:
         if not isinstance(self.configuration_artifacts, tuple) or not all(
@@ -108,6 +115,16 @@ class Node:
             raise ValueError("node configuration artifact identities must be unique")
         if len(set(paths)) != len(paths):
             raise ValueError("node configuration artifact target paths must be unique")
+        if not isinstance(self.secret_deliveries, tuple) or not all(
+            isinstance(value, (SecretEnvironmentDelivery, SecretFileDelivery))
+            for value in self.secret_deliveries
+        ):
+            raise TypeError("node secret deliveries must be a tuple")
+        delivery_descriptors = tuple(
+            tuple(sorted(value.descriptor().items())) for value in self.secret_deliveries
+        )
+        if len(set(delivery_descriptors)) != len(delivery_descriptors):
+            raise ValueError("node secret deliveries must be unique")
 
     def requirement_socket(self, name: str):
         return self.sockets.requirement(name)
@@ -159,6 +176,13 @@ class Node:
             "lifecycle": self.lifecycle.descriptor(),
             "configuration_artifacts": [
                 value.descriptor() for value in sorted(self.configuration_artifacts)
+            ],
+            "secret_deliveries": [
+                value.descriptor()
+                for value in sorted(
+                    self.secret_deliveries,
+                    key=secret_delivery_sort_key,
+                )
             ],
         }
 

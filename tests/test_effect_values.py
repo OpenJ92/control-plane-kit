@@ -117,14 +117,14 @@ class EffectValueTests(unittest.TestCase):
             attempt=2,
             idempotency_key="run-1:start-api:2",
             timeout=TimeoutPolicy(total_seconds=45),
-            secret_references=(EffectSecretReference("control-token"),),
+            secret_references=(EffectSecretReference("secret://test/control-token"),),
         )
 
         self.assertEqual(request.identity.run_id, "run-1")
         self.assertEqual(request.identity.activity_id, activity.activity_id)
         self.assertEqual(request.identity.attempt, 2)
         self.assertEqual(request.timeout.total_seconds, 45)
-        self.assertEqual(request.secret_references[0].reference_id, "control-token")
+        self.assertEqual(request.secret_references[0].reference_id, "secret://test/control-token")
         self.assertIs(request.purpose, EffectPurpose.FORWARD)
         self.assertIs(request.capability, EffectCapability.NODE_LIFECYCLE)
 
@@ -161,7 +161,7 @@ class EffectValueTests(unittest.TestCase):
 
     def test_request_rejects_duplicate_secret_references(self) -> None:
         identity = EffectIdentity("run-1", ActivityId("start-api"), 1, "key-1")
-        secret = EffectSecretReference("control-token")
+        secret = EffectSecretReference("secret://test/control-token")
         with self.assertRaisesRegex(EffectValueError, "repeats"):
             EffectRequest(
                 identity,

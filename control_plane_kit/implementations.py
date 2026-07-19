@@ -8,19 +8,14 @@ from ipaddress import IPv4Address, IPv6Address
 from control_plane_kit.algebra import BlockSockets, RuntimeContext
 from control_plane_kit.configuration import ConfigurationArtifact
 from control_plane_kit.lifecycle import ResourceLifecycle
-from control_plane_kit.secrets import SecretReference
+from control_plane_kit.secrets import (
+    SecretDelivery,
+    SecretEnvironmentDelivery,
+    SecretFileDelivery,
+    secret_delivery_sort_key,
+)
 from control_plane_kit.topology.graph import Endpoint, EndpointAddress, LiteralAddress
 from control_plane_kit.types import EndpointScope, Protocol, RuntimeKind
-
-
-@dataclass(frozen=True, order=True)
-class SecretEnvironmentReference:
-    """Opaque startup-environment reference resolved only by a runtime adapter."""
-
-    reference_id: str
-
-    def __post_init__(self) -> None:
-        SecretReference(self.reference_id)
 
 
 @dataclass(frozen=True)
@@ -32,6 +27,7 @@ class MaterializedNode:
     metadata: dict[str, object] = field(default_factory=dict)
     lifecycle: ResourceLifecycle = field(default_factory=ResourceLifecycle.owned_ephemeral)
     configuration_artifacts: tuple[ConfigurationArtifact, ...] = ()
+    secret_deliveries: tuple[SecretDelivery, ...] = ()
 
 
 @dataclass(frozen=True)
@@ -67,10 +63,11 @@ class DockerImageImplementation:
     image: str
     command: tuple[str, ...] = ()
     ports: dict[str, int] = field(default_factory=dict)
-    environment: dict[str, str | SecretEnvironmentReference] = field(default_factory=dict)
+    environment: dict[str, str] = field(default_factory=dict)
     data_mounts: dict[str, str] = field(default_factory=dict)
     host_publications: dict[str, HostPublication] = field(default_factory=dict)
     configuration_artifacts: tuple[ConfigurationArtifact, ...] = ()
+    secret_deliveries: tuple[SecretDelivery, ...] = ()
     lifecycle: ResourceLifecycle = field(default_factory=ResourceLifecycle.owned_ephemeral)
     kind: str = "docker-image"
 
@@ -89,16 +86,14 @@ class DockerImageImplementation:
             )
         _validate_host_publications(block_id, sockets, self.host_publications)
         _validate_configuration_artifacts(self.configuration_artifacts)
+        _validate_secret_deliveries(self.environment, self.secret_deliveries)
         return MaterializedNode(
             kind=self.kind,
             endpoints=endpoints,
             metadata={
                 "image": self.image,
                 "command": list(self.command),
-                "environment": {
-                    name: _environment_descriptor(value)
-                    for name, value in self.environment.items()
-                },
+                "environment": dict(self.environment),
                 "data_mounts": [
                     {"resource_id": resource_id, "target_path": target_path}
                     for resource_id, target_path in sorted(self.data_mounts.items())
@@ -109,6 +104,9 @@ class DockerImageImplementation:
             },
             lifecycle=self.lifecycle,
             configuration_artifacts=tuple(sorted(self.configuration_artifacts)),
+            secret_deliveries=tuple(
+                sorted(self.secret_deliveries, key=secret_delivery_sort_key)
+            ),
         )
 
 
@@ -311,14 +309,6 @@ def _url(protocol: Protocol, host: str, port: int) -> str:
             return f"s3://{host}:{port}"
 
 
-def _environment_descriptor(value: str | SecretEnvironmentReference) -> object:
-    match value:
-        case str():
-            return value
-        case SecretEnvironmentReference(reference_id=reference_id):
-            return {"kind": "secret-reference", "reference_id": reference_id}
-
-
 def _validate_host_publications(
     block_id: str,
     sockets: BlockSockets,
@@ -370,3 +360,27 @@ def _validate_configuration_artifacts(
         raise ValueError("configuration artifact identities must be unique per node")
     if len(set(paths)) != len(paths):
         raise ValueError("configuration artifact target paths must be unique per node")
+
+
+def _validate_secret_deliveries(
+    environment: dict[str, str],
+    deliveries: tuple[SecretDelivery, ...],
+) -> None:
+    if not isinstance(deliveries, tuple):
+        raise TypeError("secret deliveries must be a tuple")
+    environment_names: list[str] = []
+    file_paths: list[str] = []
+    for delivery in deliveries:
+        match delivery:
+            case SecretEnvironmentDelivery(environment_name=name):
+                environment_names.append(name)
+            case SecretFileDelivery(target_path=path):
+                file_paths.append(path)
+            case _:
+                raise TypeError("secret delivery must use the closed SecretDelivery language")
+    if set(environment_names).intersection(environment):
+        raise ValueError("literal and secret environment bindings must not overlap")
+    if len(set(environment_names)) != len(environment_names):
+        raise ValueError("secret environment names must be unique")
+    if len(set(file_paths)) != len(file_paths):
+        raise ValueError("secret file target paths must be unique")

@@ -8,6 +8,7 @@ from typing import Mapping, TypeAlias
 
 from control_plane_kit.algebra import BlockSockets, BlockSpec
 from control_plane_kit.configuration import ConfigurationArtifact
+from control_plane_kit.secrets import SecretDelivery, secret_delivery_sort_key
 from control_plane_kit.topology.graph import (
     Edge,
     Endpoint,
@@ -48,6 +49,7 @@ class StructuralField(StrEnum):
     ENVIRONMENT = "environment"
     NODE_METADATA = "node-metadata"
     CONFIGURATION_ARTIFACTS = "configuration-artifacts"
+    SECRET_DELIVERIES = "secret-deliveries"
     RESOURCE_LIFECYCLE = "resource-lifecycle"
 
 
@@ -113,6 +115,17 @@ class ConfigurationArtifactsValue:
 
     def descriptor(self) -> list[dict[str, str]]:
         return [value.descriptor() for value in sorted(self.values)]
+
+
+@dataclass(frozen=True)
+class SecretDeliveriesValue:
+    values: tuple[SecretDelivery, ...]
+
+    def descriptor(self) -> list[dict[str, str]]:
+        return [
+            value.descriptor()
+            for value in sorted(self.values, key=secret_delivery_sort_key)
+        ]
 
 
 @dataclass(frozen=True)
@@ -207,6 +220,9 @@ class NodeValue:
             "configuration_artifacts": ConfigurationArtifactsValue(
                 self.node.configuration_artifacts
             ).descriptor(),
+            "secret_deliveries": SecretDeliveriesValue(
+                self.node.secret_deliveries
+            ).descriptor(),
         }
 
 
@@ -239,6 +255,7 @@ DiffValue: TypeAlias = (
     | MetadataValue
     | EnvironmentValue
     | ConfigurationArtifactsValue
+    | SecretDeliveriesValue
     | EndpointValue
     | SocketContractValue
     | BlockSpecValue

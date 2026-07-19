@@ -638,3 +638,102 @@ Use `SecretReference` as the one opaque identity when introducing the closed
 environment-versus-file delivery algebra. Graph and pinned material may retain
 only reference identity and delivery coordinates. They must never import a
 resolver, carry `SecretValue`, or derive bootstrap authority.
+
+## #482 Decision Log: Graph-Pinned Secret Delivery
+
+### Capability
+
+Secret consumption is now a closed sum rather than a special mapping value:
+
+```text
+SecretDelivery
+  = SecretEnvironmentDelivery(EnvironmentName, SecretReference)
+  | SecretFileDelivery(TargetPath, SecretReference, SecretFileMode)
+```
+
+The value travels through the canonical pipeline:
+
+```text
+DockerImageImplementation.secret_deliveries
+  -> MaterializedNode.secret_deliveries
+  -> Node.secret_deliveries
+  -> GraphDescriptor
+  -> StructuralField.SECRET_DELIVERIES
+  -> ReconcileNode
+  -> ImplementationMaterial
+       environment: SecretReferenceMaterialValue
+       secret_files: SecretFileMaterial
+```
+
+The old `SecretEnvironmentReference` hidden inside implementation metadata was
+removed. Literal startup environment remains implementation metadata; all
+secret-backed environment and file requirements are explicit first-class node
+data.
+
+### Breaking Point: Sum constructors do not share Python ordering
+
+The first focused run attempted `sorted(secret_deliveries)`. Both constructors
+were individually ordered dataclasses, but Python correctly refused to compare
+`SecretEnvironmentDelivery` with `SecretFileDelivery`.
+
+The domain was not flattened into a tagged mapping. A pure interpreter now
+owns canonical order:
+
+```python
+def secret_delivery_sort_key(
+    value: SecretDelivery,
+) -> tuple[str, str, str, str]:
+    match value:
+        case SecretEnvironmentDelivery(...):
+            return ("environment", ...)
+        case SecretFileDelivery(...):
+            return ("file", ...)
+```
+
+Graph and diff descriptors use this interpreter, preserving constructor
+identity while making encoding deterministic.
+
+### Breaking Point: Test assumed a nonexistent codec convenience method
+
+The second focused run found one test calling `GraphDescriptorCodec.dumps`,
+which does not exist. The application was not changed. The test now renders the
+real graph descriptor with deterministic `json.dumps` and retains the exact
+assertions that reference identity is present while resolved content is absent.
+
+### Laws
+
+- secret file targets are normalized absolute paths under `/run/secrets`;
+- file mode is the closed owner-read-only value `0400`;
+- literal and secret environment bindings cannot claim the same name;
+- delivery constructors and target identities are unique per node;
+- unknown constructors and extra descriptor fields fail closed;
+- delivery changes produce explicit graph diff and reconcile work;
+- the exact desired graph pins delivery material for execution;
+- graph, planning, effects, stores, and projections import no resolver or
+  `SecretValue`;
+- public configuration artifacts remain unable to target `/run/secrets`;
+- no host path, resolved value, digest, or size enters durable graph data.
+
+### Evidence
+
+```text
+First focused Docker suite: 68 passed, 1 architecture failure, 3 errors
+  - undeclared packaged-server dependency on pure secret algebra
+  - cross-constructor dataclass ordering was undefined
+Second focused Docker suite: 71 passed, 1 test error
+  - nonexistent codec convenience method in new test
+Corrected focused Docker proof: 4 passed
+Complete Docker/Postgres suite: 826 passed
+Assertions weakened: 0
+Skips added: 0
+Secret resolvers imported by durable layers: 0
+```
+
+### Handoff To #483
+
+`SecretFileMaterial` is now exact graph-pinned execution material. Resolve its
+`reference_id` only inside the Docker adapter immediately before dispatch.
+Create owned ephemeral protected material without placing value-derived data in
+names, ownership fingerprints, labels, evidence, exceptions, or command
+descriptors. Reuse the configuration-volume ownership protocol where safe, but
+keep secret storage and public configuration storage distinct.

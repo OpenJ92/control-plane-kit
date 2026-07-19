@@ -5,6 +5,9 @@ import unittest
 from control_plane_kit.secrets import (
     LocalDevelopmentSecretResolver,
     SecretDenied,
+    SecretEnvironmentDelivery,
+    SecretFileDelivery,
+    SecretFileMode,
     SecretMissing,
     SecretProviderAuthority,
     SecretProviderId,
@@ -13,6 +16,7 @@ from control_plane_kit.secrets import (
     SecretResolutionError,
     SecretResolved,
     require_resolved_secret,
+    secret_delivery_from_descriptor,
 )
 
 
@@ -85,6 +89,51 @@ class SecretContractTests(unittest.TestCase):
 
         self.assertIs(raised.exception.code, SecretResolutionCode.DENIED)
         self.assertNotIn("forbidden", str(raised.exception))
+
+    def test_closed_delivery_variants_round_trip(self) -> None:
+        values = (
+            SecretEnvironmentDelivery(
+                "DATABASE_URL",
+                SecretReference("secret://local/workspace-a/database"),
+            ),
+            SecretFileDelivery(
+                "/run/secrets/database-password",
+                SecretReference("secret://local/workspace-a/database-password"),
+                SecretFileMode.OWNER_READ_ONLY,
+            ),
+        )
+
+        self.assertEqual(
+            tuple(secret_delivery_from_descriptor(value.descriptor()) for value in values),
+            values,
+        )
+
+    def test_secret_file_targets_are_closed_to_protected_namespace(self) -> None:
+        for target in (
+            "/etc/service/password",
+            "/run/secrets/../password",
+            "/run/secrets/",
+            "run/secrets/password",
+        ):
+            with self.subTest(target=target), self.assertRaises(SecretResolutionError):
+                SecretFileDelivery(
+                    target,
+                    SecretReference("secret://local/workspace-a/password"),
+                )
+
+    def test_unknown_or_extra_delivery_fields_fail_closed(self) -> None:
+        malformed = (
+            {"kind": "pipe", "reference_id": "secret://local/workspace-a/key"},
+            {
+                "kind": "environment",
+                "environment_name": "TOKEN",
+                "reference_id": "secret://local/workspace-a/key",
+                "value": "must-not-enter",
+            },
+        )
+        for descriptor in malformed:
+            with self.subTest(descriptor=descriptor), self.assertRaises(SecretResolutionError):
+                secret_delivery_from_descriptor(descriptor)
 
 
 if __name__ == "__main__":
