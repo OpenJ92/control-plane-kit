@@ -4,7 +4,8 @@ from dataclasses import dataclass
 
 from control_plane_kit.algebra import (
     BlockSockets,
-    BlockSpec,
+    PackageServerProduct,
+    PackageServerSpec,
     ProviderSocket,
     ProxyBlock,
     RequirementSocket,
@@ -132,9 +133,10 @@ def managed_http_router_block(
     """Return a graph-wired, switchable two-target router block."""
 
     return ProxyBlock(
-        BlockSpec(
-            block_id,
-            "Managed HTTP Active Router",
+        PackageServerSpec(
+            role_id=block_id,
+            product=PackageServerProduct.MANAGED_HTTP_ROUTER,
+            display_name="Managed HTTP Active Router",
             health_path="/",
             capabilities=(
                 CapabilityName.HEALTH_CHECKABLE,

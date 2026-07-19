@@ -9,12 +9,14 @@ import re
 from control_plane_kit.algebra import (
     ApplicationBlock,
     BlockSockets,
-    BlockSpec,
+    PackageServerProduct,
+    PackageServerSpec,
     ProviderSocket,
     RequirementSocket,
 )
 from control_plane_kit.contracts import EnvironmentContract, TextVariable
 from control_plane_kit.implementations import DockerImageImplementation, HostPublication
+from control_plane_kit.capabilities import CapabilityName
 from control_plane_kit.servers._templates import render_python_command
 from control_plane_kit.types import Protocol
 
@@ -87,7 +89,13 @@ def hello_server_block(
     normalized = _dependencies(dependencies)
     env = HelloEnvironment.from_mapping({"message": message})
     return ApplicationBlock(
-        BlockSpec(block_id, display_name, health_path="/"),
+        PackageServerSpec(
+            role_id=block_id,
+            product=PackageServerProduct.HELLO,
+            display_name=display_name,
+            health_path="/",
+            capabilities=(CapabilityName.HEALTH_CHECKABLE,),
+        ),
         DockerImageImplementation(
             image=image,
             command=hello_command(normalized),

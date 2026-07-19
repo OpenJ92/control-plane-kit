@@ -9,6 +9,8 @@ from control_plane_kit.algebra import (
     BlockSockets,
     BlockSpec,
     ProviderSocket,
+    PackageServerProduct,
+    PackageServerSpec,
     RequirementSocket,
 )
 from control_plane_kit.capabilities import CapabilityName
@@ -99,6 +101,46 @@ class GenericBlockSpecCodec:
         )
 
 
+class PackageServerSpecCodec:
+    """Codec retaining exact package-owned server product identity."""
+
+    variant = "package-server"
+    spec_type = PackageServerSpec
+
+    def encode(self, spec: BlockSpec) -> Mapping[str, object]:
+        if not isinstance(spec, PackageServerSpec):
+            raise TypeError("package server codec requires PackageServerSpec")
+        return {
+            "variant": self.variant,
+            "role_id": spec.role_id,
+            "display_name": spec.display_name,
+            "health_path": spec.health_path,
+            "capabilities": [value.value for value in spec.capabilities],
+            "metadata": dict(sorted(spec.metadata.items())),
+            "product": spec.product.value,
+        }
+
+    def decode(self, descriptor: Mapping[str, object]) -> BlockSpec:
+        try:
+            product = PackageServerProduct(_text(descriptor, "product"))
+            capabilities = tuple(
+                CapabilityName(str(value))
+                for value in _list(descriptor.get("capabilities", []))
+            )
+        except ValueError as error:
+            raise UnknownGraphVariant(f"unknown package server value: {error}") from error
+        return PackageServerSpec(
+            role_id=_text(descriptor, "role_id"),
+            product=product,
+            display_name=_optional_text(descriptor, "display_name"),
+            health_path=_optional_text(descriptor, "health_path"),
+            capabilities=capabilities,
+            metadata=_string_mapping(
+                descriptor.get("metadata", {}), "package_server_spec.metadata"
+            ),
+        )
+
+
 class GraphDescriptorCodec:
     """Encode and decode one deterministic, typed graph descriptor language."""
 
@@ -106,7 +148,11 @@ class GraphDescriptorCodec:
         self,
         spec_codecs: Iterable[BlockSpecVariantCodec] = (),
     ) -> None:
-        codecs = (GenericBlockSpecCodec(), *tuple(spec_codecs))
+        codecs = (
+            GenericBlockSpecCodec(),
+            PackageServerSpecCodec(),
+            *tuple(spec_codecs),
+        )
         self._by_variant: dict[str, BlockSpecVariantCodec] = {}
         self._by_type: dict[type[BlockSpec], BlockSpecVariantCodec] = {}
         for codec in codecs:

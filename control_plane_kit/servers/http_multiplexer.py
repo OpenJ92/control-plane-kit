@@ -5,7 +5,7 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from typing import Mapping
 
-from control_plane_kit.algebra import BlockSockets, BlockSpec, ProviderSocket, ProxyBlock, RequirementSocket
+from control_plane_kit.algebra import BlockSockets, PackageServerProduct, PackageServerSpec, ProviderSocket, ProxyBlock, RequirementSocket
 from control_plane_kit.capabilities import CapabilityName
 from control_plane_kit.contracts import RuntimeContract, RuntimeMapVariable, RuntimeValueVariable
 from control_plane_kit.implementations import DockerImageImplementation
@@ -81,15 +81,12 @@ def http_multiplexer_block(
     """
 
     return ProxyBlock(
-        BlockSpec(
-            block_id,
-            display_name,
+        PackageServerSpec(
+            role_id=block_id,
+            product=PackageServerProduct.HTTP_MULTIPLEXER,
+            display_name=display_name,
             health_path="/",
-            capabilities=(
-                CapabilityName.HEALTH_CHECKABLE,
-                CapabilityName.TARGET_MUTABLE,
-                CapabilityName.OBSERVER_MUTABLE,
-            ),
+            capabilities=(CapabilityName.HEALTH_CHECKABLE,),
             metadata={"behavior": "http-multiplexer"},
         ),
         DockerImageImplementation(
