@@ -62,6 +62,13 @@ from control_plane_kit.effects.material import (
     materialize_compensation_effect_request,
     materialize_verification_contract,
 )
+from control_plane_kit.effects.verification import (
+    StaticVerificationInterpreter,
+    VerificationDispatchError,
+    VerificationInterpreter,
+    VerificationInterpreterRegistry,
+    verification_identity,
+)
 from control_plane_kit.effects.probes import (
     ApplicationHealthProbeIntent,
     EndpointContext,
@@ -127,6 +134,10 @@ __all__ = [
     "SecretReferenceMaterialValue",
     "SocketConnectionMaterial",
     "VerificationCheckMaterial",
+    "VerificationDispatchError",
+    "VerificationInterpreter",
+    "VerificationInterpreterRegistry",
+    "StaticVerificationInterpreter",
     "TimeoutPolicy",
     "UnsupportedEffectOperation",
     "dispatch_effect",
@@ -138,6 +149,7 @@ __all__ = [
     "materialize_effect_request",
     "materialize_compensation_effect_request",
     "materialize_verification_contract",
+    "verification_identity",
     "required_capability",
     "ApplicationHealthProbeIntent",
     "EndpointContext",

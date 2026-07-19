@@ -253,3 +253,149 @@ capability adapters. Adapters receive graph-pinned endpoint material and bounded
 policy only. They must not receive stores, graph selectors, arbitrary commands,
 arbitrary SQL, or arbitrary URLs. Unsupported product checks remain explicit
 unsupported outcomes rather than optimistic success.
+
+### #475: Adapter dry run found missing graph identity
+
+`VerificationCheckMaterial` initially carried the node, check, and endpoint but
+not the identity of the pinned graph. That was sufficient to prove endpoint
+selection but insufficient to correlate durable evidence without consulting
+some later mutable graph pointer.
+
+The material language was corrected in place:
+
+```text
+VerificationCheckMaterial
+  = node_id
+  x graph_id
+  x VerificationCheck
+  x EndpointMaterial
+```
+
+`materialize_verification_contract` now accepts the complete
+`MaterializedEffectRequest`, obtains `material_graph_id` from that already
+pinned value, and rejects non-node material. No adapter receives a graph store
+or graph selector.
+
+### #475: AST ownership rejected undeclared transports
+
+The new concrete adapter passed all semantic tests, but architecture policy
+rejected its direct `httpx` and `socket` imports. The exact module was added as
+an owner of those transports:
+
+```text
+httpx  -> control_plane_kit.adapters.verification
+socket -> control_plane_kit.adapters.verification
+```
+
+Transport ownership was not granted to the package generally. HTTP, Redis, and
+future transports therefore remain statically discoverable and reviewable.
+
+### #475: Review prevented a second observation model
+
+The first result name was `VerificationObservation`. Although it was only an
+adapter completion value, that name competed with the canonical operational
+observation model and contradicted the Gate G prohibition on parallel
+observation languages.
+
+It was renamed before merge:
+
+```text
+VerificationResult
+  = VerificationCompleted
+  | VerificationUnsupported
+
+VerificationCompleted
+  -> later interpreted by #476 into the canonical observation store
+```
+
+No verification-specific store, projection, or observation repository was
+introduced.
+
+## #475 Decision Log: Closed Verification Dispatch And Adapters
+
+### Capability
+
+The package now has a typed immutable registry over the complete verification
+capability set:
+
+```python
+registry = VerificationInterpreterRegistry(
+    {
+        VerificationCapability.HTTP: HttpVerificationInterpreter(http_policy),
+        VerificationCapability.REDIS: RedisVerificationInterpreter(redis_policy),
+    }
+)
+
+result = registry.execute(check_material)
+```
+
+Missing interpreters return `VerificationUnsupported`. Registered interpreters
+must advertise their exact capability, and results must reproduce the exact
+`node_id x graph_id x check_id` identity and capability of their input.
+
+The deterministic `StaticVerificationInterpreter` provides effect-free fixture
+behavior without replacing application services or persistence with mocks.
+
+### Representative Concrete Interpreters
+
+```text
+HttpVerificationInterpreter
+  -> authorized graph-pinned endpoint
+  -> GET relative contract path
+  -> no redirects
+  -> bounded response consumption
+  -> status and byte-count evidence only
+
+RedisVerificationInterpreter
+  -> authorized graph-pinned endpoint
+  -> exact RESP PING command
+  -> bounded response consumption
+  -> exact PONG comparison
+  -> byte-count evidence only
+```
+
+HTTP never retains a response body. Redis never accepts arbitrary commands.
+Neither interpreter imports stores, selects current topology, commits data, or
+creates an external-effect transaction boundary.
+
+### Objects, Morphisms, And Laws
+
+```text
+VerificationCheck -> VerificationCapability
+VerificationCheckMaterial -> VerificationIdentity
+Registry x VerificationCheckMaterial -> VerificationResult
+
+VerificationEvidence
+  = HttpVerificationEvidence(status_code, response_bytes)
+  | RedisVerificationEvidence(response_bytes)
+```
+
+- the seven check variants map exhaustively to seven closed capabilities;
+- unsupported capability is distinct from attempted failure;
+- interpreter capability and result identity lies fail closed;
+- all attempts and evidence sizes remain bounded by contract policy;
+- address policy is applied before transport;
+- public redirects cannot retarget verification;
+- secret references may be resolved only at the transport authorization
+  boundary and secret values never enter results;
+- results are completion values, not a competing durable observation model.
+
+### Evidence
+
+```text
+Focused Docker suite: 33 passed
+Complete Docker/Postgres suite: 806 passed
+Test skips added: 0
+Assertions weakened: 0
+Transport ownership exceptions added: 0
+Exact transport owners declared: 2
+```
+
+### Handoff To #476
+
+Adapt `VerificationCompleted` and `VerificationUnsupported` into the existing
+canonical observed-state and operator-read surfaces. Preserve graph, node, and
+check identity; expose only typed bounded evidence; keep unsupported distinct
+from failed; and do not introduce a verification store, mutable latest-result
+cache, or parallel projection model. API, CLI, and MCP should consume the shared
+read service rather than decode verification results independently.

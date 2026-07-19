@@ -32,6 +32,24 @@ class RedisVerificationOperation(StrEnum):
     PING = "ping"
 
 
+class VerificationCapability(StrEnum):
+    HTTP = "http"
+    DNS = "dns"
+    POSTGRES = "postgres"
+    REDIS = "redis"
+    BROKER = "broker"
+    OBJECT_STORAGE = "object-storage"
+    SMTP = "smtp"
+
+
+class VerificationOutcome(StrEnum):
+    PASSED = "passed"
+    FAILED = "failed"
+    TIMED_OUT = "timed-out"
+    MALFORMED = "malformed"
+    REJECTED = "rejected"
+
+
 @dataclass(frozen=True)
 class VerificationPolicy:
     """Finite execution and evidence bounds shared by semantic checks."""
@@ -320,6 +338,133 @@ def expected_protocols(check: VerificationCheck) -> frozenset[Protocol]:
             return frozenset((Protocol.SMTP,))
 
 
+def verification_capability(check: VerificationCheck) -> VerificationCapability:
+    """Return the closed interpreter capability required by one check."""
+
+    match check:
+        case HttpCheck():
+            return VerificationCapability.HTTP
+        case DnsResolveCheck():
+            return VerificationCapability.DNS
+        case PostgresQueryCheck():
+            return VerificationCapability.POSTGRES
+        case RedisCheck():
+            return VerificationCapability.REDIS
+        case BrokerRoundTripCheck():
+            return VerificationCapability.BROKER
+        case ObjectStorageRoundTripCheck():
+            return VerificationCapability.OBJECT_STORAGE
+        case SmtpAcceptanceCheck():
+            return VerificationCapability.SMTP
+
+
+@dataclass(frozen=True, order=True)
+class VerificationIdentity:
+    node_id: str
+    graph_id: str
+    check_id: str
+
+    def __post_init__(self) -> None:
+        _validate_identity(self.node_id, "verification node")
+        _validate_identity(self.graph_id, "verification graph")
+        _validate_identity(self.check_id, "verification check")
+
+    def descriptor(self) -> dict[str, object]:
+        return {
+            "node_id": self.node_id,
+            "graph_id": self.graph_id,
+            "check_id": self.check_id,
+        }
+
+
+@dataclass(frozen=True)
+class HttpVerificationEvidence:
+    status_code: int
+    response_bytes: int
+
+    def __post_init__(self) -> None:
+        if type(self.status_code) is not int or not 100 <= self.status_code <= 599:
+            raise VerificationContractError("HTTP verification status is invalid")
+        _validate_evidence_size(self.response_bytes)
+
+    def descriptor(self) -> dict[str, object]:
+        return {
+            "kind": "http",
+            "status_code": self.status_code,
+            "response_bytes": self.response_bytes,
+        }
+
+
+@dataclass(frozen=True)
+class RedisVerificationEvidence:
+    response_bytes: int
+
+    def __post_init__(self) -> None:
+        _validate_evidence_size(self.response_bytes)
+
+    def descriptor(self) -> dict[str, object]:
+        return {"kind": "redis", "response_bytes": self.response_bytes}
+
+
+VerificationEvidence: TypeAlias = HttpVerificationEvidence | RedisVerificationEvidence
+
+
+@dataclass(frozen=True)
+class VerificationCompleted:
+    identity: VerificationIdentity
+    capability: VerificationCapability
+    outcome: VerificationOutcome
+    attempts: int
+    evidence: VerificationEvidence | None = None
+
+    def __post_init__(self) -> None:
+        if not isinstance(self.identity, VerificationIdentity):
+            raise TypeError("verification completion identity must be typed")
+        if not isinstance(self.capability, VerificationCapability):
+            raise TypeError("verification completion capability must be typed")
+        if not isinstance(self.outcome, VerificationOutcome):
+            raise TypeError("verification completion outcome must be typed")
+        if type(self.attempts) is not int or not 1 <= self.attempts <= 10:
+            raise VerificationContractError("verification attempts must be between 1 and 10")
+        if self.evidence is not None and not isinstance(
+            self.evidence,
+            (HttpVerificationEvidence, RedisVerificationEvidence),
+        ):
+            raise TypeError("verification completion evidence must be typed")
+
+    def descriptor(self) -> dict[str, object]:
+        return {
+            "type": "verification-completed",
+            "identity": self.identity.descriptor(),
+            "capability": self.capability.value,
+            "outcome": self.outcome.value,
+            "attempts": self.attempts,
+            "evidence": None if self.evidence is None else self.evidence.descriptor(),
+        }
+
+
+@dataclass(frozen=True)
+class VerificationUnsupported:
+    identity: VerificationIdentity
+    capability: VerificationCapability
+
+    def __post_init__(self) -> None:
+        if not isinstance(self.identity, VerificationIdentity):
+            raise TypeError("unsupported verification identity must be typed")
+        if not isinstance(self.capability, VerificationCapability):
+            raise TypeError("unsupported verification capability must be typed")
+
+    def descriptor(self) -> dict[str, object]:
+        return {
+            "type": "verification-unsupported",
+            "identity": self.identity.descriptor(),
+            "capability": self.capability.value,
+        }
+
+
+VerificationResult: TypeAlias = VerificationCompleted | VerificationUnsupported
+
+
 def verification_check_from_descriptor(value: object) -> VerificationCheck:
     descriptor = _mapping(value, "verification check")
     kind = _text(descriptor, "kind")
@@ -422,6 +567,13 @@ def _validate_bounded_text(value: str, name: str) -> None:
         or "\x00" in value
     ):
         raise VerificationContractError(f"{name} is empty or exceeds its bound")
+
+
+def _validate_evidence_size(value: int) -> None:
+    if type(value) is not int or not 0 <= value <= 65_536:
+        raise VerificationContractError(
+            "verification evidence size must be between 0 and 65536 bytes"
+        )
 
 
 def _validate_http_path(value: str) -> None:

@@ -70,10 +70,11 @@ class EffectMaterialTests(unittest.TestCase):
             desired_graph=desired,
         )
 
-        checks = materialize_verification_contract(materialized.material)
+        checks = materialize_verification_contract(materialized)
 
         self.assertEqual(len(checks), 1)
         self.assertEqual(checks[0].check, contract.checks[0])
+        self.assertEqual(checks[0].graph_id, "desired")
         self.assertEqual(checks[0].endpoint.socket_name, "internal")
         self.assertEqual(checks[0].endpoint.protocol, Protocol.HTTP)
         self.assertEqual(
@@ -126,13 +127,16 @@ class EffectMaterialTests(unittest.TestCase):
             desired_graph_id="desired",
             desired_graph=desired,
         )
-        node_material = replace(
-            materialized.material,
-            verification=malformed.block_spec.verification,
+        malformed_request = replace(
+            materialized,
+            material=replace(
+                materialized.material,
+                verification=malformed.block_spec.verification,
+            ),
         )
 
         with self.assertRaises(EffectMaterializationError) as raised:
-            materialize_verification_contract(node_material)
+            materialize_verification_contract(malformed_request)
 
         self.assertIs(
             raised.exception.code,
