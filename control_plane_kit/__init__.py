@@ -473,11 +473,13 @@ from control_plane_kit.runtimes import (
     RuntimeState,
 )
 from control_plane_kit.types import (
+    ApplicationProtocol,
     BlockFamily,
     EndpointScope,
     Protocol,
     RuntimeKind,
     SocketBinding,
+    Transport,
 )
 from control_plane_kit.topology.validation import (
     EdgeSubject,
@@ -644,6 +646,7 @@ __all__ = [
     "NodeSubject",
     "PlanOnlyImplementation",
     "Protocol",
+    "ApplicationProtocol",
     "ProxyBlock",
     "ReadModelError",
     "ReadOnlyMcpAdapter",
@@ -671,6 +674,7 @@ __all__ = [
     "RuntimeInterpreter",
     "RuntimeKind",
     "SocketBinding",
+    "Transport",
     "RuntimeNodeState",
     "RuntimePlan",
     "RuntimeRecord",
