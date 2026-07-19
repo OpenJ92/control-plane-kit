@@ -73,10 +73,10 @@ class NarrowClient:
     def inspect_container(self, name, *, timeout_seconds=30):
         return self.containers.get(name)
 
-    def run_container(self, *, name, image, network, environment, command, labels, mounts=None, configuration_mounts=(), ports=(), timeout_seconds=30):
+    def run_container(self, *, name, image, network, environment, command, labels, mounts=None, configuration_mounts=(), secret_mounts=(), ports=(), timeout_seconds=30):
         from control_plane_kit.docker_runtime import DockerResourceInspection, DockerResourceKind
 
-        self._record(("start-container", name, image, network, dict(environment), tuple(command), dict(mounts or {}), tuple(ports), timeout_seconds, tuple(configuration_mounts)))
+        self._record(("start-container", name, image, network, dict(environment), tuple(command), dict(mounts or {}), tuple(ports), timeout_seconds, tuple(configuration_mounts), tuple(secret_mounts)))
         self.containers[name] = DockerResourceInspection(
             DockerResourceKind.CONTAINER,
             "container-id",

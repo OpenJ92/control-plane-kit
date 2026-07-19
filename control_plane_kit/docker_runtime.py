@@ -12,9 +12,12 @@ from typing import Mapping, Protocol, TypeAlias
 
 from control_plane_kit.configuration import ConfigurationArtifact
 from control_plane_kit.secrets import (
+    SecretFileMode,
     SecretReference,
+    SecretResolutionCode,
     SecretResolutionError,
     SecretResolver,
+    SecretValue,
     require_resolved_secret,
 )
 from control_plane_kit.effects import (
@@ -36,6 +39,7 @@ from control_plane_kit.effects import (
     ProcessProbeIntent,
     RuntimeMaterial,
     SecretReferenceMaterialValue,
+    SecretFileMaterial,
 )
 from control_plane_kit.execution import (
     BoundedEvidence,
@@ -102,7 +106,11 @@ class DockerClient(Protocol):
 
     def inspect_container(self, name: str, *, timeout_seconds: int = 30) -> "DockerResourceInspection | None": ...
 
-    def run_container(self, *, name: str, image: str, network: str, environment: Mapping[str, str], command: tuple[str, ...], labels: Mapping[str, str], mounts: Mapping[str, str] | None = None, configuration_mounts: tuple["DockerConfigurationMount", ...] = (), ports: tuple["DockerPortBinding", ...] = (), timeout_seconds: int = 30) -> None: ...
+    def run_container(self, *, name: str, image: str, network: str, environment: Mapping[str, str], command: tuple[str, ...], labels: Mapping[str, str], mounts: Mapping[str, str] | None = None, configuration_mounts: tuple["DockerConfigurationMount", ...] = (), secret_mounts: tuple["DockerSecretMount", ...] = (), ports: tuple["DockerPortBinding", ...] = (), timeout_seconds: int = 30) -> None: ...
+
+    def materialize_secret_file(self, volume_name: str, value: SecretValue, file_mode: SecretFileMode, *, timeout_seconds: int = 30) -> None: ...
+
+    def secret_file_ready(self, volume_name: str, file_mode: SecretFileMode, *, timeout_seconds: int = 30) -> bool: ...
 
     def inspect_volume(self, name: str, *, timeout_seconds: int = 30) -> "DockerResourceInspection | None": ...
 
@@ -226,6 +234,7 @@ class DockerCliClient:
         labels: Mapping[str, str],
         mounts: Mapping[str, str] | None = None,
         configuration_mounts: tuple["DockerConfigurationMount", ...] = (),
+        secret_mounts: tuple["DockerSecretMount", ...] = (),
         ports: tuple["DockerPortBinding", ...] = (),
         timeout_seconds: int = 30,
     ) -> None:
@@ -242,6 +251,8 @@ class DockerCliClient:
             configuration_mounts,
             key=lambda value: value.artifact.artifact_id,
         ):
+            args.extend(("--mount", mount.docker_argument()))
+        for mount in sorted(secret_mounts, key=lambda value: value.material.target_path):
             args.extend(("--mount", mount.docker_argument()))
         for binding in sorted(ports, key=lambda value: value.socket_name):
             args.extend(("--publish", binding.docker_argument()))
@@ -438,6 +449,98 @@ class DockerCliClient:
             )
         return digest
 
+    def materialize_secret_file(
+        self,
+        volume_name: str,
+        value: SecretValue,
+        file_mode: SecretFileMode,
+        *,
+        timeout_seconds: int = 30,
+    ) -> None:
+        script = (
+            "from pathlib import Path\n"
+            "import os, sys, tempfile\n"
+            "root = Path('/secret')\n"
+            "target = root / 'content'\n"
+            "descriptor, name = tempfile.mkstemp(prefix='.content.', dir=root)\n"
+            "temporary = Path(name)\n"
+            "try:\n"
+            "    with os.fdopen(descriptor, 'wb') as stream:\n"
+            "        stream.write(sys.stdin.buffer.read())\n"
+            "        stream.flush()\n"
+            "        os.fsync(stream.fileno())\n"
+            "    os.chmod(temporary, int(sys.argv[1], 8))\n"
+            "    os.replace(temporary, target)\n"
+            "finally:\n"
+            "    temporary.unlink(missing_ok=True)\n"
+        )
+        self._run_with_input(
+            value.reveal(),
+            "run",
+            "--rm",
+            "--interactive",
+            "--network",
+            "none",
+            "--read-only",
+            "--cap-drop",
+            "ALL",
+            "--security-opt",
+            "no-new-privileges",
+            "--mount",
+            f"type=volume,source={volume_name},target=/secret",
+            self.configuration_helper_image,
+            "python",
+            "-B",
+            "-c",
+            script,
+            file_mode.value,
+            timeout_seconds=timeout_seconds,
+        )
+
+    def secret_file_ready(
+        self,
+        volume_name: str,
+        file_mode: SecretFileMode,
+        *,
+        timeout_seconds: int = 30,
+    ) -> bool:
+        script = (
+            "from pathlib import Path\n"
+            "import stat, sys\n"
+            "target = Path('/secret/content')\n"
+            "if not target.is_file(): raise SystemExit(3)\n"
+            "mode = stat.S_IMODE(target.stat().st_mode)\n"
+            "raise SystemExit(0 if mode == int(sys.argv[1], 8) else 4)\n"
+        )
+        result = self._capture(
+            "run",
+            "--rm",
+            "--network",
+            "none",
+            "--read-only",
+            "--cap-drop",
+            "ALL",
+            "--security-opt",
+            "no-new-privileges",
+            "--mount",
+            f"type=volume,source={volume_name},target=/secret,readonly",
+            self.configuration_helper_image,
+            "python",
+            "-B",
+            "-c",
+            script,
+            file_mode.value,
+            check=False,
+            timeout_seconds=timeout_seconds,
+        )
+        if result.returncode == 3:
+            return False
+        if result.returncode != 0:
+            raise UnsupportedDockerRuntimeFeature(
+                "Docker secret file inspection failed"
+            )
+        return True
+
     def ensure_network(self, name: str, *, timeout_seconds: int = 30) -> None:
         expected = DockerOwnership.legacy_network(name)
         inspected = self.inspect_network(name, timeout_seconds=timeout_seconds)
@@ -619,6 +722,20 @@ class DockerConfigurationMount:
         )
 
 
+@dataclass(frozen=True)
+class DockerSecretMount:
+    material: SecretFileMaterial
+    volume_name: str
+    ownership: "DockerOwnership"
+
+    def docker_argument(self) -> str:
+        return (
+            f"type=volume,source={self.volume_name},"
+            f"target={self.material.target_path},"
+            "volume-subpath=content,readonly"
+        )
+
+
 class DockerOwnershipConflict(ValueError):
     """Raised when a Docker name resolves to incompatible ownership truth."""
 
@@ -651,6 +768,7 @@ class DockerOwnership:
     node_id: str | None = None
     data_resource_id: str | None = None
     configuration_artifact_id: str | None = None
+    secret_material_id: str | None = None
     effect_id: str | None = None
 
     def labels(self) -> dict[str, str]:
@@ -669,6 +787,8 @@ class DockerOwnership:
             values[f"{_LABEL_PREFIX}.configuration-artifact"] = (
                 self.configuration_artifact_id
             )
+        if self.secret_material_id is not None:
+            values[f"{_LABEL_PREFIX}.secret-material"] = self.secret_material_id
         if self.effect_id is not None:
             values[f"{_LABEL_PREFIX}.created-by"] = self.effect_id
         return values
@@ -730,6 +850,12 @@ def classify_docker_resource(
         expected.configuration_artifact_id is not None
         and labels.get(f"{_LABEL_PREFIX}.configuration-artifact")
         != expected.configuration_artifact_id
+    ):
+        return DockerResourceDisposition.OWNED_CONFLICTING
+    if (
+        expected.secret_material_id is not None
+        and labels.get(f"{_LABEL_PREFIX}.secret-material")
+        != expected.secret_material_id
     ):
         return DockerResourceDisposition.OWNED_CONFLICTING
     if labels.get(f"{_LABEL_PREFIX}.intent") != expected.intent_fingerprint:
@@ -849,6 +975,7 @@ class StartDockerNodeEffect:
     environment: tuple[EnvironmentBindingMaterial, ...]
     data_mounts: tuple["DockerDataMount", ...]
     configuration_mounts: tuple[DockerConfigurationMount, ...]
+    secret_mounts: tuple[DockerSecretMount, ...]
     host_publications: tuple[DockerPortBinding, ...]
     ownership: DockerOwnership
 
@@ -881,6 +1008,7 @@ class RemoveDockerNodeResourceEffect:
     container_name: str
     ownership: DockerOwnership
     configuration_mounts: tuple[DockerConfigurationMount, ...] = ()
+    secret_mounts: tuple[DockerSecretMount, ...] = ()
 
 
 @dataclass(frozen=True)
@@ -959,6 +1087,14 @@ class DockerEffectInterpreter:
                         ),
                         command.ownership,
                     )
+                    environment = _resolve_environment(
+                        command.environment,
+                        self.secrets,
+                    )
+                    resolved_secret_files = _resolve_secret_files(
+                        command.secret_mounts,
+                        self.secrets,
+                    )
                     mount_dispositions = {
                         mount.resource_id: _ensure_owned_volume(
                             self.client,
@@ -976,12 +1112,27 @@ class DockerEffectInterpreter:
                         ).value
                         for mount in command.configuration_mounts
                     }
-                    disposition = _start_owned_container(
-                        self.client,
-                        command,
-                        _resolve_environment(command.environment, self.secrets),
-                        timeout_seconds=timeout,
-                    )
+                    for mount, value in resolved_secret_files:
+                        _ensure_secret_mount(
+                            self.client,
+                            mount,
+                            value,
+                            timeout_seconds=timeout,
+                        )
+                    try:
+                        disposition = _start_owned_container(
+                            self.client,
+                            command,
+                            environment,
+                            timeout_seconds=timeout,
+                        )
+                    except subprocess.SubprocessError:
+                        _cleanup_secret_mounts_after_failed_start(
+                            self.client,
+                            command,
+                            timeout_seconds=timeout,
+                        )
+                        raise
                     published = _verified_host_publications(
                         self.client,
                         command,
@@ -1075,6 +1226,14 @@ class DockerEffectInterpreter:
                         )
                         for mount in command.configuration_mounts
                     }
+                    for mount in command.secret_mounts:
+                        _require_owned_compatible(
+                            self.client.inspect_volume(
+                                mount.volume_name,
+                                timeout_seconds=timeout,
+                            ),
+                            mount.ownership,
+                        )
                     self.client.remove_owned_container(
                         name,
                         ownership,
@@ -1082,6 +1241,12 @@ class DockerEffectInterpreter:
                     )
                     try:
                         for mount in command.configuration_mounts:
+                            self.client.remove_owned_volume(
+                                mount.volume_name,
+                                mount.ownership,
+                                timeout_seconds=timeout,
+                            )
+                        for mount in command.secret_mounts:
                             self.client.remove_owned_volume(
                                 mount.volume_name,
                                 mount.ownership,
@@ -1160,6 +1325,15 @@ class DockerEffectInterpreter:
                     FailureCategory.UNCERTAIN,
                     "docker.postcondition-unknown",
                     "Docker accepted a mutation but its requested postcondition could not be proven.",
+                ),
+            )
+        except SecretResolutionError as error:
+            return EffectFailed(
+                request.identity,
+                FailureEvidence(
+                    FailureCategory.TERMINAL,
+                    f"docker.secret-{error.code.value}",
+                    "Docker secret material could not be authorized or resolved.",
                 ),
             )
         except UnsupportedDockerRuntimeFeature:
@@ -1282,6 +1456,7 @@ def plan_docker_effect(
                 node.implementation.environment,
                 _docker_data_mounts(request, node, project_name),
                 _docker_configuration_mounts(request, node, project_name),
+                _docker_secret_mounts(request, node, project_name),
                 _docker_port_bindings(node),
                 _node_ownership(request, node),
             )
@@ -1307,6 +1482,7 @@ def plan_docker_effect(
                 _container_name(project_name, node.runtime.runtime_id, node.node_id),
                 _node_ownership(request, node),
                 _docker_configuration_mounts(request, node, project_name),
+                _docker_secret_mounts(request, node, project_name),
             )
         case RemoveRuntimeResource(), RuntimeMaterial() as runtime:
             _require_docker(runtime)
@@ -1376,17 +1552,38 @@ def _resolve_environment(
                 values[binding.name] = value
             case SecretReferenceMaterialValue(reference_id=reference):
                 if resolver is None:
-                    raise UnsupportedDockerRuntimeFeature(
-                        "Docker environment secret reference has no resolver"
+                    raise SecretResolutionError(
+                        SecretResolutionCode.MISSING,
+                        "Docker secret resolver is not configured",
                     )
-                try:
-                    values[binding.name] = require_resolved_secret(
-                        resolver,
-                        SecretReference(reference),
-                    ).reveal()
-                except SecretResolutionError as error:
-                    raise ValueError("Docker environment secret resolution failed") from error
+                values[binding.name] = require_resolved_secret(
+                    resolver,
+                    SecretReference(reference),
+                ).reveal()
     return values
+
+
+def _resolve_secret_files(
+    mounts: tuple[DockerSecretMount, ...],
+    resolver: DockerSecretResolver | None,
+) -> tuple[tuple[DockerSecretMount, SecretValue], ...]:
+    if mounts and resolver is None:
+        raise SecretResolutionError(
+            SecretResolutionCode.MISSING,
+            "Docker secret resolver is not configured",
+        )
+    if resolver is None:
+        return ()
+    return tuple(
+        (
+            mount,
+            require_resolved_secret(
+                resolver,
+                SecretReference(mount.material.reference_id),
+            ),
+        )
+        for mount in mounts
+    )
 
 
 def _node_ownership(
@@ -1439,6 +1636,14 @@ def _node_ownership(
                         "file_mode": value.file_mode.value,
                     }
                     for value in node.implementation.configuration_artifacts
+                ],
+                "secret_files": [
+                    {
+                        "reference_id": value.reference_id,
+                        "target_path": value.target_path,
+                        "file_mode": value.file_mode.value,
+                    }
+                    for value in node.implementation.secret_files
                 ],
             }
         ),
@@ -1520,6 +1725,26 @@ def _docker_configuration_mounts(
     )
 
 
+def _docker_secret_mounts(
+    request: MaterializedEffectRequest,
+    node: NodeMaterial,
+    project_name: str,
+) -> tuple[DockerSecretMount, ...]:
+    return tuple(
+        DockerSecretMount(
+            material,
+            _volume_name(
+                project_name,
+                node.runtime.runtime_id,
+                node.node_id,
+                f"secret-{index}",
+            ),
+            _secret_ownership(request, node, material),
+        )
+        for index, material in enumerate(node.implementation.secret_files, start=1)
+    )
+
+
 def _data_ownership(
     request: MaterializedEffectRequest,
     node: NodeMaterial,
@@ -1564,6 +1789,34 @@ def _configuration_ownership(
         ),
         node_id=node.node_id,
         configuration_artifact_id=artifact.artifact_id,
+        effect_id=request.identity.idempotency_key,
+    )
+
+
+def _secret_ownership(
+    request: MaterializedEffectRequest,
+    node: NodeMaterial,
+    material: SecretFileMaterial,
+) -> DockerOwnership:
+    material_identity = _fingerprint(
+        {
+            "reference_id": material.reference_id,
+            "target_path": material.target_path,
+            "file_mode": material.file_mode.value,
+        }
+    )
+    return DockerOwnership(
+        request.graphs.workspace_id,
+        node.runtime.runtime_id,
+        DockerResourceKind.VOLUME,
+        _fingerprint(
+            {
+                "node_id": node.node_id,
+                "secret_material_id": material_identity,
+            }
+        ),
+        node_id=node.node_id,
+        secret_material_id=material_identity,
         effect_id=request.identity.idempotency_key,
     )
 
@@ -1676,6 +1929,47 @@ def _ensure_configuration_mount(
     return disposition
 
 
+def _ensure_secret_mount(
+    client: DockerClient,
+    mount: DockerSecretMount,
+    value: SecretValue,
+    *,
+    timeout_seconds: int,
+) -> DockerResourceDisposition:
+    disposition = _ensure_owned_volume(
+        client,
+        mount.volume_name,
+        mount.ownership,
+        timeout_seconds=timeout_seconds,
+    )
+    try:
+        ready = client.secret_file_ready(
+            mount.volume_name,
+            mount.material.file_mode,
+            timeout_seconds=timeout_seconds,
+        )
+    except (subprocess.SubprocessError, OSError, ValueError, TypeError) as error:
+        raise DockerPostconditionUnknown from error
+    if not ready:
+        try:
+            client.materialize_secret_file(
+                mount.volume_name,
+                value,
+                mount.material.file_mode,
+                timeout_seconds=timeout_seconds,
+            )
+            ready = client.secret_file_ready(
+                mount.volume_name,
+                mount.material.file_mode,
+                timeout_seconds=timeout_seconds,
+            )
+        except (subprocess.SubprocessError, OSError, ValueError, TypeError) as error:
+            raise DockerPostconditionUnknown from error
+    if not ready:
+        raise DockerPostconditionUnknown
+    return disposition
+
+
 def _start_owned_container(
     client: DockerClient,
     command: StartDockerNodeEffect,
@@ -1710,6 +2004,7 @@ def _start_owned_container(
                 for mount in command.data_mounts
             },
             configuration_mounts=command.configuration_mounts,
+            secret_mounts=command.secret_mounts,
             ports=command.host_publications,
             timeout_seconds=timeout_seconds,
         )
@@ -1723,6 +2018,29 @@ def _start_owned_container(
             raise
         return raced_disposition
     return disposition
+
+
+def _cleanup_secret_mounts_after_failed_start(
+    client: DockerClient,
+    command: StartDockerNodeEffect,
+    *,
+    timeout_seconds: int,
+) -> None:
+    try:
+        inspected = client.inspect_container(
+            command.container_name,
+            timeout_seconds=timeout_seconds,
+        )
+        if inspected is not None:
+            return
+        for mount in command.secret_mounts:
+            client.remove_owned_volume(
+                mount.volume_name,
+                mount.ownership,
+                timeout_seconds=timeout_seconds,
+            )
+    except (subprocess.SubprocessError, OSError, ValueError, TypeError) as error:
+        raise DockerPostconditionUnknown from error
 
 
 def _verified_host_publications(

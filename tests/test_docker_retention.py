@@ -67,6 +67,7 @@ class RetentionClient:
         labels,
         mounts=None,
         configuration_mounts=(),
+        secret_mounts=(),
         ports=(),
         timeout_seconds=30,
     ):

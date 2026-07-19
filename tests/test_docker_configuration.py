@@ -56,6 +56,7 @@ class ConfigurationClient:
         labels,
         mounts=None,
         configuration_mounts=(),
+        secret_mounts=(),
         ports=(),
         timeout_seconds=30,
     ):
@@ -224,6 +225,7 @@ class ConcurrentConfigurationClient(ConfigurationClient):
         labels,
         mounts=None,
         configuration_mounts=(),
+        secret_mounts=(),
         ports=(),
         timeout_seconds=30,
     ):
