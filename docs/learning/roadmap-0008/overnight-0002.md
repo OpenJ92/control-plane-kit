@@ -423,3 +423,202 @@ Handoff to #425:
   trust boundary; never infer trust from a header name alone;
 - replay must distinguish exact intent, conflicting reuse, in-flight work,
   expired records, and effect-without-result uncertainty.
+## #425 Idempotency And Request-Deduplication Gateway
+
+### Capability
+
+The package now has a TEST_ONLY idempotency gateway block with durable,
+Postgres-backed one-winner request execution. The gateway can distinguish an
+eligible first request, an exact replay, conflicting key reuse, concurrent
+in-flight work, capacity exhaustion, and effect-without-result uncertainty.
+
+The server is independently deployable. It advertises one HTTP target
+requirement, one Postgres requirement, one HTTP provider, and a secret-reference
+identity-attestation contract. Its process entry point composes FastAPI, the
+bounded HTTP adapter, and a gateway-owned Postgres UnitOfWork.
+
+### Objects, Morphisms, And Laws
+
+The pure language is:
+
+```text
+IdempotencyIdentity
+  = tenant fingerprint
+  x actor fingerprint
+  x route fingerprint
+  x payload fingerprint
+
+IdempotencyRecord
+  = identity
+  x state
+  x lease
+  x bounded result reference
+
+IdempotencyDecision
+  = execute
+  | replay
+  | conflict
+  | in-flight
+  | uncertain
+  | capacity exhausted
+  | ineligible
+```
+
+The command interpreter is:
+
+```text
+authenticated request
+  -> validate route and authority
+  -> derive fingerprint-only identity
+  -> short transaction: reserve one winner
+  -> commit
+  -> bounded redirect-free HTTP effect
+  -> short transaction: persist terminal result reference
+```
+
+An exact replay returns the retained status and safe reference but never stores
+or replays a response body. Conflicting reuse cannot retarget prior work. An
+effect that may have occurred without a durable result becomes UNCERTAIN and is
+never automatically dispatched again.
+
+The gateway owns its own persistence composition:
+
+```python
+with IdempotencyGatewayUnitOfWork(connection_factory) as uow:
+    decision = uow.records.reserve(identity, policy, now=clock())
+    uow.commit()
+```
+
+`PostgresUnitOfWork`, `PostgresStoreBundle`, and the CPI-wide schema remain
+unchanged. This is a deployable server with a database requirement, not a new
+repository inside the control-plane instance transaction.
+
+At the durable boundary, secret and high-cardinality values become digests:
+
+```python
+identity = IdempotencyIdentity.from_request(
+    tenant_id=trusted_identity.tenant_id,
+    actor_id=trusted_identity.actor_id,
+    route=route,
+    payload=request_body,
+)
+```
+
+The record contains fingerprints, never the incoming idempotency key,
+attestation value, actor value, tenant value, request body, or response body.
+
+### Breakages And Corrections
+
+#### Persistence was initially composed at the wrong level
+
+The first implementation placed the idempotency schema and store inside the
+CPI-wide Postgres bundle. That contradicted the product boundary: each deployed
+stateful gateway owns its database requirement and transaction lifecycle. The
+implementation moved into `control_plane_kit.idempotency_gateway`, with its own
+schema, store, UnitOfWork, service, and process composition. Tests now assert
+that the generic CPI store bundle has no idempotency member.
+
+#### One missing closed import caused broad loader failure
+
+The first import-closure run found a missing `HttpResponse` import in the
+injected FastAPI executor type alias. It manifested as 103 loader errors but had
+one root cause. Importing the existing closed message type restored collection;
+no assertion, policy, or behavior was weakened.
+
+#### Review found an ingress-bounding gap
+
+The service rejected oversized bodies, but the FastAPI boundary initially read
+the complete request before calling it. The boundary now consumes the ASGI body
+stream incrementally and fails with 413 as soon as the typed policy limit is
+exceeded. The service retains the same check as defense in depth.
+
+#### Review found incomplete route identity
+
+The target adapter forwards the query string, but the first identity derivation
+hashed only the path. The same key, actor, payload, and path with a different
+query could therefore replay an operation with different target semantics. The
+identity now hashes the complete request target while route eligibility remains
+an explicit method-and-path policy. A conflict test proves that changing only
+the query cannot dispatch a second effect.
+
+### Evidence
+
+```text
+complete Docker/Postgres suite after initial composition:
+  895 passed
+
+complete Docker/Postgres suite after concurrency and live-process hardening:
+  902 passed
+
+complete Docker/Postgres suite before final intent-identity review:
+  903 passed
+
+complete Docker/Postgres suite after full request-target identity correction:
+  904 passed
+
+live process proof:
+  unauthenticated request returned 401
+  first authenticated request returned the target's 201 and Location
+  exact replay returned 201 and the retained reference with an empty body
+  target side-effect count remained exactly one
+  durable row contained no request body, response body, key, or attestation
+
+assertions weakened: 0
+skips added: 0
+production behavior replaced by mocks: 0
+```
+
+Concurrency uses independent Postgres connections and proves one effect winner.
+Schema reinstallation preserves both rows and constraint identities. Capacity
+tests prove uncertain records cannot be evicted to manufacture room. Failure
+after the target effect but before result persistence converges to explicit
+uncertainty rather than blind replay.
+
+### Review
+
+Architecture:
+
+- the pure idempotency language does not import stores, HTTP, FastAPI, or
+  product implementations;
+- the gateway package interprets that language and owns its database boundary;
+- generic CPI transaction composition remains untouched;
+- catalogue identity and graph reconstruction remain explicit.
+
+Security:
+
+- tenant and actor headers are trusted only after secret-reference attestation;
+- consumed attestation and idempotency headers are stripped before forwarding;
+- redirects are disabled and response size and time are bounded;
+- durable identity uses fingerprints rather than secret or personal values;
+- safe forwarded response headers exclude connection-framing headers.
+
+Data and effects:
+
+- stores never commit;
+- no transaction spans the downstream HTTP effect;
+- terminal and uncertain outcomes are durable and closed;
+- expiry and finite capacity are explicit policy, not implicit cleanup;
+- replay preserves intent identity and cannot change route, actor, or payload.
+
+### Residual Risk And Handoff
+
+The implementation is TEST_ONLY, not a production distributed idempotency
+service. It does not retain response bodies, stream large payloads, coordinate
+across multiple databases, or recover an uncertain request automatically.
+Production use requires reviewed deployment-specific retention, availability,
+attestation rotation, and operator recovery policy.
+
+Handoff to #445:
+
+- the load generator must be a separate TEST_ONLY deployable server with its
+  own bounded language and no dependency on idempotency persistence;
+- trigger, status, and cancellation routes require authentication;
+- dispatch must occur outside transactions;
+- count, concurrency, rate, duration, response size, and evidence cardinality
+  must be bounded;
+- idempotency identity should make an exact trigger replay safe without storing
+  request or response bodies;
+- evidence must remain aggregate and must not retain credentials, cookies,
+  arbitrary headers, or target response bodies;
+- real Docker evidence must exercise a rate limiter or load balancer and prove
+  owned-resource cleanup.

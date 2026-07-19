@@ -61,6 +61,10 @@ from control_plane_kit.servers.http_auth_gateway import (
     http_auth_gateway_block,
     http_auth_gateway_command,
 )
+from control_plane_kit.servers.http_idempotency_gateway import (
+    create_idempotency_gateway_app,
+    http_idempotency_gateway_block,
+)
 from control_plane_kit.servers.http_fault_injector import (
     ConnectionTerminationFault,
     DelayFault,
@@ -185,6 +189,8 @@ __all__ = [
     "HttpBulkheadServer",
     "HttpHandler",
     "HttpAuthGatewayServer",
+    "create_idempotency_gateway_app",
+    "http_idempotency_gateway_block",
     "HttpCachePolicy",
     "HttpCacheServer",
     "HttpFault",

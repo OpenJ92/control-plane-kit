@@ -41,6 +41,7 @@ include = ["control_plane_kit*"]
 server = [
   "fastapi>=0.115",
   "httpx>=0.27",
+  "psycopg[binary]>=3.2",
   "uvicorn>=0.30",
 ]
 test-server = [
