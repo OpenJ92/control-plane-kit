@@ -116,26 +116,41 @@ class HostPublicationTests(unittest.TestCase):
             ).materialize("api", sockets, runtime)
 
     def test_same_fixed_host_port_is_valid_once_per_transport(self) -> None:
-        runtime = DockerRuntime()
-        sockets = BlockSockets(
-            providers=(
-                ProviderSocket("dns-tcp", Protocol.DNS_TCP),
-                ProviderSocket("dns-udp", Protocol.DNS_UDP),
-            )
+        desired = compile_recipe(_dual_transport_recipe())
+        current = DeploymentGraph("dual-transport-publication")
+        plan = compile_activity_plan(
+            diff_graphs(validate_graph(current), validate_graph(desired))
+        )
+        activity = next(
+            value
+            for value in plan.activities
+            if isinstance(value.operation, StartNode)
+        )
+        request = effect_request_for_activity(
+            activity,
+            run_id="run",
+            attempt=1,
+            idempotency_key="run:start-dns:1",
+        )
+        materialized = materialize_effect_request(
+            request,
+            activity,
+            PinnedGraphSet("workspace", "plan", "base", "desired"),
+            base_graph_id="base",
+            base_graph=current,
+            desired_graph_id="desired",
+            desired_graph=desired,
         )
 
-        materialized = DockerImageImplementation(
-            "dns:latest",
-            ports={"dns-tcp": 53, "dns-udp": 53},
-            host_publications={
-                "dns-tcp": HostPublication.loopback_v4(10_053),
-                "dns-udp": HostPublication.loopback_v4(10_053),
-            },
-        ).materialize("dns", sockets, runtime)
-
         self.assertEqual(
-            {endpoint.protocol for endpoint in materialized.endpoints.values()},
-            {Protocol.DNS_TCP, Protocol.DNS_UDP},
+            {
+                (publication.socket_name, publication.protocol)
+                for publication in materialized.material.implementation.host_publications
+            },
+            {
+                ("dns-tcp", Protocol.DNS_TCP),
+                ("dns-udp", Protocol.DNS_UDP),
+            },
         )
 
     def test_adding_publication_is_explicit_disruptive_plan_work(self) -> None:
@@ -176,6 +191,30 @@ def _recipe(publication: HostPublication | None = None) -> DeploymentRecipe:
     return DeploymentRecipe(
         "host-publication",
         DockerRuntime(children=(api,)),
+    )
+
+
+def _dual_transport_recipe() -> DeploymentRecipe:
+    dns = ApplicationBlock(
+        BlockSpec("dns"),
+        DockerImageImplementation(
+            "dns:latest",
+            ports={"dns-tcp": 53, "dns-udp": 53},
+            host_publications={
+                "dns-tcp": HostPublication.loopback_v4(10_053),
+                "dns-udp": HostPublication.loopback_v4(10_053),
+            },
+        ),
+        BlockSockets(
+            providers=(
+                ProviderSocket("dns-tcp", Protocol.DNS_TCP),
+                ProviderSocket("dns-udp", Protocol.DNS_UDP),
+            )
+        ),
+    )
+    return DeploymentRecipe(
+        "dual-transport-publication",
+        DockerRuntime(children=(dns,)),
     )
 
 
