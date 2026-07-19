@@ -7,6 +7,7 @@ RUNTIME_NETWORK="webhook-live-runtime"
 POSTGRES_CONTAINER="${CPK_WEBHOOK_CONTROL_POSTGRES:-cpk-webhook-live-control-postgres}"
 CONTROLLER="${CPK_WEBHOOK_CONTROLLER:-cpk-webhook-live-controller}"
 DATABASE_URL="postgresql://cpk:cpk@${POSTGRES_CONTAINER}:5432/cpk"
+CREATED_AT="${CPK_WEBHOOK_LIVE_CREATED_AT:-$(date -u +%Y-%m-%dT%H:%M:%SZ)}"
 WORKSPACE_ID="webhook-live"
 RUNTIME_ID="webhook-live-runtime"
 TEST_LABEL="io.control-plane-kit.test"
@@ -70,6 +71,7 @@ run_example() {
     -v /var/run/docker.sock:/var/run/docker.sock \
     -e CPK_WEBHOOK_LIVE_DATABASE_URL="$DATABASE_URL" \
     -e CPK_WEBHOOK_LIVE_IMAGE="$IMAGE_NAME" \
+    -e CPK_WEBHOOK_LIVE_CREATED_AT="$CREATED_AT" \
     "$IMAGE_NAME" python -m examples.webhook_delivery_live "$@"
 }
 
@@ -104,11 +106,14 @@ docker run -d \
   -v /var/run/docker.sock:/var/run/docker.sock \
   -e CPK_WEBHOOK_LIVE_DATABASE_URL="$DATABASE_URL" \
   -e CPK_WEBHOOK_LIVE_IMAGE="$IMAGE_NAME" \
+  -e CPK_WEBHOOK_LIVE_CREATED_AT="$CREATED_AT" \
   "$IMAGE_NAME" sleep infinity >/dev/null
 docker network connect "$RUNTIME_NETWORK" "$CONTROLLER"
 
 docker exec "$CONTROLLER" python -m examples.webhook_delivery_live resume-deploy
-docker exec "$CONTROLLER" python -m examples.webhook_delivery_live verify
+docker exec "$CONTROLLER" python -m examples.webhook_delivery_live verify-before-restart
+docker exec "$CONTROLLER" python -m examples.webhook_delivery_live restart-webhook
+docker exec "$CONTROLLER" python -m examples.webhook_delivery_live verify-after-restart
 docker exec "$CONTROLLER" python -m examples.webhook_delivery_live begin-teardown
 
 remove_test_container "$CONTROLLER"

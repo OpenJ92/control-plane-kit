@@ -240,6 +240,26 @@ class NodeMaterial:
 
 
 @dataclass(frozen=True)
+class ReconcileNodeMaterial:
+    """Plan-pinned before and after material for one node replacement."""
+
+    before: NodeMaterial
+    after: NodeMaterial
+
+    def __post_init__(self) -> None:
+        if not isinstance(self.before, NodeMaterial) or not isinstance(
+            self.after,
+            NodeMaterial,
+        ):
+            raise TypeError("node reconciliation requires typed node material")
+        if self.before.node_id != self.after.node_id:
+            raise EffectMaterializationError(
+                MaterializationCode.TARGET_NOT_FOUND,
+                "node reconciliation material must identify one node",
+            )
+
+
+@dataclass(frozen=True)
 class VerificationCheckMaterial:
     """One semantic check paired with its graph-pinned provider endpoint."""
 
@@ -288,7 +308,12 @@ class SocketConnectionMaterial:
     environment: tuple[EnvironmentBindingMaterial, ...]
 
 
-EffectMaterial: TypeAlias = NodeMaterial | RuntimeMaterial | SocketConnectionMaterial
+EffectMaterial: TypeAlias = (
+    NodeMaterial
+    | ReconcileNodeMaterial
+    | RuntimeMaterial
+    | SocketConnectionMaterial
+)
 
 
 @dataclass(frozen=True)
@@ -315,7 +340,12 @@ class MaterializedEffectRequest:
             )
         if not isinstance(
             self.material,
-            (NodeMaterial, RuntimeMaterial, SocketConnectionMaterial),
+            (
+                NodeMaterial,
+                ReconcileNodeMaterial,
+                RuntimeMaterial,
+                SocketConnectionMaterial,
+            ),
         ):
             raise TypeError("materialized effect requires typed effect material")
 
@@ -401,6 +431,18 @@ def materialize_effect_request(
             "loaded graph identity does not match the approved plan",
         )
 
+    if isinstance(activity.operation, ReconcileNode):
+        target = activity.operation.target
+        return MaterializedEffectRequest(
+            request,
+            graphs,
+            desired_graph_id,
+            ReconcileNodeMaterial(
+                _node_material(base_graph, target.node_id),
+                _node_material(desired_graph, target.node_id),
+            ),
+        )
+
     graph_id, graph = _forward_material_graph(
         activity.operation,
         base_graph_id=base_graph_id,
@@ -444,6 +486,17 @@ def materialize_compensation_effect_request(
         raise EffectMaterializationError(
             MaterializationCode.GRAPH_IDENTITY,
             "loaded graph identity does not match the approved plan",
+        )
+    if isinstance(compensation.operation, ReconcileNode):
+        target = compensation.operation.target
+        return MaterializedEffectRequest(
+            request,
+            graphs,
+            base_graph_id,
+            ReconcileNodeMaterial(
+                _node_material(desired_graph, target.node_id),
+                _node_material(base_graph, target.node_id),
+            ),
         )
     match compensation.material_source:
         case CompensationMaterialSource.BASE_GRAPH:
@@ -816,6 +869,11 @@ def _all_environment(material: EffectMaterial) -> tuple[EnvironmentBindingMateri
     match material:
         case NodeMaterial():
             return material.implementation.environment
+        case ReconcileNodeMaterial():
+            return (
+                material.before.implementation.environment
+                + material.after.implementation.environment
+            )
         case SocketConnectionMaterial():
             return material.environment
         case RuntimeMaterial():
@@ -826,6 +884,8 @@ def _all_endpoints(material: EffectMaterial) -> tuple[EndpointMaterial, ...]:
     match material:
         case NodeMaterial():
             return material.endpoints
+        case ReconcileNodeMaterial():
+            return material.before.endpoints + material.after.endpoints
         case SocketConnectionMaterial():
             return (material.provider_endpoint,)
         case RuntimeMaterial():
@@ -854,6 +914,12 @@ def _descriptor(value: object) -> object:
                 "health_path": value.health_path,
                 "lifecycle": value.lifecycle.descriptor(),
                 "verification": value.verification.descriptor(),
+            }
+        case ReconcileNodeMaterial():
+            return {
+                "type": "reconcile-node",
+                "before": _descriptor(value.before),
+                "after": _descriptor(value.after),
             }
         case VerificationCheckMaterial():
             return value.descriptor()

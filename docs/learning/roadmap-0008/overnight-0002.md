@@ -2285,3 +2285,103 @@ Handoff to #515:
   outbound result language;
 - close the durable webhook parent only after the focused hardening and final
   live proof remain green.
+
+## #525 Graph-Pinned Docker Node Reconciliation
+
+### Breakpoint
+
+The webhook restart proof changed only the opaque identity-secret reference in
+the desired graph. The existing pure pipeline correctly produced
+`ReconcileNode`, but Docker did not advertise or interpret
+`NODE_RECONCILIATION`. Treating reconciliation as another start would have
+discarded the base ownership proof and attempted to create desired state over
+an existing container name.
+
+The missing execution product is a plan-pinned transition, not one node:
+
+```python
+@dataclass(frozen=True)
+class ReconcileNodeMaterial:
+    before: NodeMaterial
+    after: NodeMaterial
+```
+
+Forward materialization selects `base -> desired`; compensation selects
+`desired -> base`. Both sides come from the exact graph pair already pinned by
+the approved plan. The durable descriptor retains topology, references, and
+ownership inputs but never resolved secret values.
+
+### Docker Interpretation
+
+The Docker interpreter now advertises `NODE_RECONCILIATION` and maps the pure
+product to one typed command:
+
+```text
+ReconcileNodeMaterial
+  -> ReconcileDockerNodeEffect(before removal, after start)
+  -> resolve desired secrets
+  -> prove base container and ephemeral material ownership
+  -> preserve/prove retained data volumes
+  -> remove only the proven-owned base resources
+  -> realize and prove desired ownership and publication
+```
+
+All safe preconditions occur before removal. Once removal begins, a failure to
+realize or prove the desired postcondition becomes
+`docker.postcondition-unknown`, not an ordinary retryable failure. Exact replay
+converges when desired ownership already exists. Foreign, stale, or ambiguous
+ownership fails before mutation.
+
+No transaction or lock spans Docker. No webhook-specific branch entered the
+generic runtime interpreter.
+
+### Review Findings
+
+The first complete suite exposed two useful test-integrity findings:
+
+1. The configuration-artifact test still reached through reconciliation as if
+   material were one node. It now proves both current and desired artifacts on
+   the closed `before x after` product.
+2. The heterogeneous HTTP policy-family live test passed in isolation but its
+   load-generator process occasionally needed more than five seconds to start
+   under the complete 1,000-test run. The same listening postcondition and all
+   behavioral assertions remain; only the bounded startup allowance increased
+   to ten seconds.
+
+Neither correction weakened application behavior, added a skip, or accepted a
+different semantic result.
+
+### Evidence
+
+```text
+focused reconciliation/Docker tests:                         35 passed
+complete Docker/Postgres suite:                            1023 passed
+real webhook restart/reconciliation proof:                    passed
+assertions weakened:                                             0
+skips added:                                                     0
+secret values in descriptors/events/evidence:                    0
+transactions spanning Docker:                                   0
+graph-owned resources remaining after teardown:                 0
+Pottery Factory containers changed:                              0
+```
+
+The live proof now exercises:
+
+```text
+persist queued webhook
+  -> desired graph changes one opaque secret reference
+  -> plan -> approve -> admit -> claim -> reconcile -> advance
+  -> replacement process reconstructs exact replay from Postgres
+  -> signed delivery succeeds
+  -> ungranted endpoint dead-letters
+  -> graph teardown proves cleanup
+```
+
+Handoff back to #515:
+
+- treat restart reconstruction and stable idempotency as proven at the real
+  process boundary;
+- retain the existing webhook UoW, journal, projection, and outbound result
+  language;
+- perform the final security, data-engineering, architecture, retained-data,
+  and test-integrity audit before closing the webhook parent.
