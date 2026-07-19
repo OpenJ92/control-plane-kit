@@ -182,11 +182,17 @@ brainstorm with the following ordered topology:
 
 #392 -> #402 Gate G heterogeneous topology acceptance
   -> #403 package-owned capability-contract audit
-    |-> #404 + #413 + #414 + #415 + #420..#425
+    |-> #443 closed connection-protocol algebra
+    |-> #444 immutable runtime configuration artifacts
+    |-> #404 + #413 + #414 + #415 + #420..#425 + #445
     |     -> #437 HTTP policy and resilience acceptance
-    |-> #426 + #427 + #428
+    |-> #426 + #428 + (#443 + #444 -> #427)
     |     -> #438 service and application-infrastructure acceptance
-    `-> #429..#436
+    `-> #429 + #436
+          + (#443 + #426 + #444 -> #430)
+          + (#444 + #436 -> #431)
+          + (#443 + #436 -> #432 + #434 + #435)
+          + (#443 + #444 -> #446 -> #447 + #448 + #449 -> #433)
           -> #439 protocol and data-product acceptance
 
 #437 + #439 -> #440 compositional API-gateway recipe
@@ -373,6 +379,27 @@ Recipe -> tuple[DeployBlock, ...] x tuple[SocketConnection, ...]
 
 The API-gateway and service-edge recipes introduce no hidden runtime, graph, or
 execution language. Their expanded blocks remain inspectable and configurable.
+
+A pre-implementation dry run found two necessary foundations. The existing
+closed protocol language contains only HTTP, TCP, and Postgres; #443 must add
+typed product connection protocols without degrading socket compatibility to
+raw TCP. The Docker implementation can mount retained data volumes but cannot
+yet materialize deterministic read-only generated configuration; #444 adds
+immutable configuration artifacts rather than hiding CoreDNS, Collector,
+PgBouncer, or broker configuration in shell commands or data mounts.
+
+The same dry run added #445, a bounded authenticated load-generator
+`ApplicationBlock`. It is not an inline proxy and accepts no arbitrary target
+URL. Its sole target is graph-wired through an HTTP requirement socket, while
+an authenticated control provider starts and cancels runs with hard limits on
+request count, concurrency, rate, and duration. Gate G uses it to prove rate
+limiting, balancing, timeout, and cancellation behavior without adding a
+general denial-of-service tool.
+
+Message brokers also require a product-family decomposition. #446 defines only
+the shared typed grammar that is honest across products; #447, #448, and #449
+retain exact NATS, RabbitMQ, and Kafka identities. Parent #433 converges those
+integrations before protocol/data acceptance #439.
 
 Request or response body transformation is deliberately outside the
 package-owned Gate G server catalog. XML/JSON conversion, field mapping, schema
