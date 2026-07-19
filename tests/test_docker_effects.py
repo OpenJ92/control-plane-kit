@@ -9,6 +9,7 @@ from control_plane_kit import (
     DockerCliClient,
     DockerEffectInterpreter,
     EffectIdentity,
+    EffectFailed,
     EffectRequest,
     EffectSucceeded,
     EffectUnsupported,
@@ -19,8 +20,10 @@ from control_plane_kit import (
     MaterializedEffectRequest,
     NodeMaterial,
     PinnedGraphSet,
+    ReconcileNodeMaterial,
     RuntimeKind,
     RuntimeMaterial,
+    SecretReferenceMaterialValue,
     Protocol,
     Transport,
 )
@@ -36,6 +39,7 @@ from control_plane_kit.planning import (
     StopNode,
     StopRuntime,
     RemoveNodeResource,
+    ReconcileNode,
     RemoveRuntimeResource,
 )
 
@@ -43,6 +47,7 @@ from control_plane_kit.planning import (
 @dataclass
 class NarrowClient:
     timeout: bool = False
+    fail_start: bool = False
     calls: list[tuple] = field(default_factory=list)
     networks: dict[str, object] = field(default_factory=dict)
     containers: dict[str, object] = field(default_factory=dict)
@@ -77,6 +82,8 @@ class NarrowClient:
         from control_plane_kit.docker_runtime import DockerResourceInspection, DockerResourceKind
 
         self._record(("start-container", name, image, network, dict(environment), tuple(command), dict(mounts or {}), tuple(ports), timeout_seconds, tuple(configuration_mounts), tuple(secret_mounts)))
+        if self.fail_start:
+            raise subprocess.CalledProcessError(1, ("docker", "run"))
         self.containers[name] = DockerResourceInspection(
             DockerResourceKind.CONTAINER,
             "container-id",
@@ -103,6 +110,7 @@ class NarrowClient:
 
     def remove_owned_container(self, name, ownership, *, timeout_seconds=30):
         self._record(("remove-container", name, timeout_seconds))
+        self.containers.pop(name, None)
 
     def remove_owned_network(self, name, ownership, *, timeout_seconds=30):
         self._record(("remove-network", name, timeout_seconds))
@@ -132,6 +140,130 @@ class NarrowClient:
 
 
 class DockerEffectTests(unittest.TestCase):
+    def test_reconcile_replaces_base_owned_node_and_exact_replay_converges(self) -> None:
+        client = NarrowClient()
+        interpreter = DockerEffectInterpreter(project_name="demo", client=client)
+        before = _node(mode="before")
+        after = _node(mode="after")
+        interpreter.execute(
+            _request(StartNode(NodeTarget("api")), before, graph_id="base")
+        )
+        client.calls.clear()
+        request = _request(
+            ReconcileNode(NodeTarget("api")),
+            ReconcileNodeMaterial(before, after),
+        )
+
+        result = interpreter.execute(request)
+        first_calls = tuple(client.calls)
+        client.calls.clear()
+        replay = interpreter.execute(request)
+
+        self.assertIsInstance(result, EffectSucceeded)
+        self.assertIsInstance(replay, EffectSucceeded)
+        self.assertEqual(
+            tuple(call[0] for call in first_calls),
+            ("remove-container", "start-container"),
+        )
+        self.assertEqual(client.calls, [])
+        self.assertEqual(
+            result.evidence.descriptor()["operation"],
+            "reconcile-container",
+        )
+
+    def test_reconcile_ownership_conflict_fails_before_mutation(self) -> None:
+        from control_plane_kit.docker_runtime import (
+            DockerResourceInspection,
+            DockerResourceKind,
+        )
+
+        client = NarrowClient()
+        client.containers["demo-docker-api"] = DockerResourceInspection(
+            DockerResourceKind.CONTAINER,
+            "foreign",
+            "demo-docker-api",
+            True,
+            "foreign:latest",
+            {},
+        )
+        result = DockerEffectInterpreter(project_name="demo", client=client).execute(
+            _request(
+                ReconcileNode(NodeTarget("api")),
+                ReconcileNodeMaterial(_node(mode="before"), _node(mode="after")),
+            )
+        )
+
+        self.assertIsInstance(result, EffectFailed)
+        self.assertEqual(result.failure.code, "docker.ownership-conflict")
+        self.assertEqual(client.calls, [])
+
+    def test_reconcile_resolves_desired_secrets_before_removal(self) -> None:
+        client = NarrowClient()
+        before = _node(mode="before")
+        after = _node(mode="after")
+        after = NodeMaterial(
+            after.node_id,
+            after.runtime,
+            ImplementationMaterial(
+                after.implementation.kind,
+                image=after.implementation.image,
+                command=after.implementation.command,
+                environment=(
+                    EnvironmentBindingMaterial(
+                        "API_TOKEN",
+                        SecretReferenceMaterialValue("secret://api/token"),
+                    ),
+                ),
+            ),
+            after.endpoints,
+            after.environment,
+            after.health_path,
+            after.lifecycle,
+        )
+        interpreter = DockerEffectInterpreter(project_name="demo", client=client)
+        interpreter.execute(
+            _request(StartNode(NodeTarget("api")), before, graph_id="base")
+        )
+        client.calls.clear()
+
+        result = interpreter.execute(
+            _request(
+                ReconcileNode(NodeTarget("api")),
+                ReconcileNodeMaterial(before, after),
+            )
+        )
+
+        self.assertIsInstance(result, EffectFailed)
+        self.assertEqual(result.failure.code, "docker.secret-missing")
+        self.assertEqual(client.calls, [])
+        self.assertIn("demo-docker-api", client.containers)
+
+    def test_reconcile_failure_after_removal_is_uncertain(self) -> None:
+        client = NarrowClient()
+        before = _node(mode="before")
+        after = _node(mode="after")
+        interpreter = DockerEffectInterpreter(project_name="demo", client=client)
+        interpreter.execute(
+            _request(StartNode(NodeTarget("api")), before, graph_id="base")
+        )
+        client.calls.clear()
+        client.fail_start = True
+
+        result = interpreter.execute(
+            _request(
+                ReconcileNode(NodeTarget("api")),
+                ReconcileNodeMaterial(before, after),
+            )
+        )
+
+        self.assertIsInstance(result, EffectFailed)
+        self.assertEqual(result.failure.category.value, "uncertain")
+        self.assertEqual(result.failure.code, "docker.postcondition-unknown")
+        self.assertEqual(
+            tuple(call[0] for call in client.calls),
+            ("remove-container", "start-container"),
+        )
+
     def test_cli_keeps_environment_values_out_of_process_arguments(self) -> None:
         class RecordingCli(DockerCliClient):
             def _run(self, *args, **kwargs):
@@ -383,9 +515,9 @@ def _runtime() -> RuntimeMaterial:
     )
 
 
-def _node() -> NodeMaterial:
+def _node(*, mode: str = "live") -> NodeMaterial:
     environment = (
-        EnvironmentBindingMaterial("MODE", LiteralMaterialValue("live")),
+        EnvironmentBindingMaterial("MODE", LiteralMaterialValue(mode)),
     )
     return NodeMaterial(
         "api",

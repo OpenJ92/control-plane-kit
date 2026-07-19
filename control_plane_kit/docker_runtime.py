@@ -37,6 +37,7 @@ from control_plane_kit.effects import (
     ProbeObservation,
     ProbeOutcome,
     ProcessProbeIntent,
+    ReconcileNodeMaterial,
     RuntimeMaterial,
     SecretReferenceMaterialValue,
     SecretFileMaterial,
@@ -50,6 +51,7 @@ from control_plane_kit.execution import (
 from control_plane_kit.lifecycle import ResourceLifecycle, ResourceOwnership, ResourcePersistence
 from control_plane_kit.planning import (
     DestroyDataResource,
+    ReconcileNode,
     RemoveNodeResource,
     RemoveRuntimeResource,
     StartNode,
@@ -1012,6 +1014,14 @@ class RemoveDockerNodeResourceEffect:
 
 
 @dataclass(frozen=True)
+class ReconcileDockerNodeEffect:
+    """Replace one proven-owned node from pinned base to desired material."""
+
+    before: RemoveDockerNodeResourceEffect
+    after: StartDockerNodeEffect
+
+
+@dataclass(frozen=True)
 class RemoveDockerRuntimeResourceEffect:
     runtime_id: str
     network_name: str
@@ -1033,6 +1043,7 @@ DockerEffectCommand: TypeAlias = (
     | StopDockerNodeEffect
     | StopDockerRuntimeEffect
     | RemoveDockerNodeResourceEffect
+    | ReconcileDockerNodeEffect
     | RemoveDockerRuntimeResourceEffect
     | DestroyDockerDataResourceEffect
 )
@@ -1051,6 +1062,7 @@ class DockerEffectInterpreter:
         return frozenset(
             {
                 EffectCapability.NODE_LIFECYCLE,
+                EffectCapability.NODE_RECONCILIATION,
                 EffectCapability.RUNTIME_LIFECYCLE,
                 EffectCapability.DATA_DESTRUCTION,
             }
@@ -1269,6 +1281,14 @@ class DockerEffectInterpreter:
                             }
                         ),
                     )
+                case ReconcileDockerNodeEffect():
+                    return _reconcile_docker_node(
+                        request,
+                        command,
+                        self.client,
+                        self.secrets,
+                        timeout_seconds=timeout,
+                    )
                 case RemoveDockerRuntimeResourceEffect(
                     network_name=name,
                     ownership=ownership,
@@ -1376,6 +1396,172 @@ class DockerEffectInterpreter:
             )
 
 
+def _reconcile_docker_node(
+    request: MaterializedEffectRequest,
+    command: ReconcileDockerNodeEffect,
+    client: DockerClient,
+    secrets: DockerSecretResolver | None,
+    *,
+    timeout_seconds: int,
+) -> EffectSucceeded:
+    """Replace base-owned compute only after every safe preflight succeeds."""
+
+    before = command.before
+    after = command.after
+    environment = _resolve_environment(after.environment, secrets)
+    resolved_secret_files = _resolve_secret_files(after.secret_mounts, secrets)
+
+    desired = client.inspect_container(
+        after.container_name,
+        timeout_seconds=timeout_seconds,
+    )
+    desired_disposition = classify_docker_resource(desired, after.ownership)
+    if desired_disposition is DockerResourceDisposition.OWNED_COMPATIBLE:
+        if before.container_name != after.container_name:
+            previous = client.inspect_container(
+                before.container_name,
+                timeout_seconds=timeout_seconds,
+            )
+            previous_disposition = classify_docker_resource(
+                previous,
+                before.ownership,
+            )
+            if previous_disposition is not DockerResourceDisposition.ABSENT:
+                raise DockerOwnershipConflict(
+                    DockerResourceDisposition.OWNED_CONFLICTING
+                )
+        disposition = _start_owned_container(
+            client,
+            after,
+            environment,
+            timeout_seconds=timeout_seconds,
+        )
+        published = _verified_host_publications(
+            client,
+            after,
+            timeout_seconds=timeout_seconds,
+        )
+        return _reconcile_success(request, command, disposition, published)
+
+    current = client.inspect_container(
+        before.container_name,
+        timeout_seconds=timeout_seconds,
+    )
+    current_disposition = classify_docker_resource(current, before.ownership)
+    if current_disposition is not DockerResourceDisposition.OWNED_COMPATIBLE:
+        raise DockerOwnershipConflict(current_disposition)
+
+    for mount in before.configuration_mounts:
+        _require_owned_compatible(
+            client.inspect_volume(mount.volume_name, timeout_seconds=timeout_seconds),
+            mount.ownership,
+        )
+    for mount in before.secret_mounts:
+        _require_owned_compatible(
+            client.inspect_volume(mount.volume_name, timeout_seconds=timeout_seconds),
+            mount.ownership,
+        )
+    for mount in after.data_mounts:
+        _require_owned_compatible(
+            client.inspect_volume(mount.volume_name, timeout_seconds=timeout_seconds),
+            mount.ownership,
+        )
+
+    try:
+        client.remove_owned_container(
+            before.container_name,
+            before.ownership,
+            timeout_seconds=timeout_seconds,
+        )
+        for mount in before.configuration_mounts:
+            client.remove_owned_volume(
+                mount.volume_name,
+                mount.ownership,
+                timeout_seconds=timeout_seconds,
+            )
+        for mount in before.secret_mounts:
+            client.remove_owned_volume(
+                mount.volume_name,
+                mount.ownership,
+                timeout_seconds=timeout_seconds,
+            )
+        for mount in after.data_mounts:
+            _ensure_owned_volume(
+                client,
+                mount.volume_name,
+                mount.ownership,
+                timeout_seconds=timeout_seconds,
+            )
+        for mount in after.configuration_mounts:
+            _ensure_configuration_mount(
+                client,
+                mount,
+                timeout_seconds=timeout_seconds,
+            )
+        for mount, value in resolved_secret_files:
+            _ensure_secret_mount(
+                client,
+                mount,
+                value,
+                timeout_seconds=timeout_seconds,
+            )
+        disposition = _start_owned_container(
+            client,
+            after,
+            environment,
+            timeout_seconds=timeout_seconds,
+        )
+        published = _verified_host_publications(
+            client,
+            after,
+            timeout_seconds=timeout_seconds,
+        )
+    except (subprocess.SubprocessError, OSError, ValueError, TypeError) as error:
+        raise DockerPostconditionUnknown from error
+    return _reconcile_success(request, command, disposition, published)
+
+
+def _reconcile_success(
+    request: MaterializedEffectRequest,
+    command: ReconcileDockerNodeEffect,
+    disposition: DockerResourceDisposition,
+    published: tuple[DockerPublishedPort, ...],
+) -> EffectSucceeded:
+    return EffectSucceeded(
+        request.identity,
+        BoundedEvidence.from_mapping(
+            {
+                "operation": "reconcile-container",
+                "node_id": command.after.node_id,
+                "from_runtime_id": command.before.runtime_id,
+                "to_runtime_id": command.after.runtime_id,
+                "disposition": disposition.value,
+                "host_publications": [
+                    {
+                        "container_port": value.container_port,
+                        "transport": value.transport.value,
+                        "host_address": value.host_address,
+                        "host_port": value.host_port,
+                    }
+                    for value in published
+                ],
+                "before_ownership": _ownership_evidence(command.before.ownership),
+                "after_ownership": _ownership_evidence(command.after.ownership),
+            }
+        ),
+        (
+            EffectObservation(
+                command.after.node_id,
+                ObservationKind.STATUS,
+                ObservationStatus.PROCESS_STARTED,
+                BoundedEvidence.from_mapping(
+                    {"runtime_id": command.after.runtime_id}
+                ),
+            ),
+        ),
+    )
+
+
 @dataclass(frozen=True)
 class DockerProcessProbeAdapter:
     """Inspect the exact graph-owned Docker process without mutating it."""
@@ -1459,6 +1645,50 @@ def plan_docker_effect(
                 _docker_secret_mounts(request, node, project_name),
                 _docker_port_bindings(node),
                 _node_ownership(request, node),
+            )
+        case ReconcileNode(), ReconcileNodeMaterial() as material:
+            before = material.before
+            after = material.after
+            _require_docker(before.runtime)
+            _require_docker(after.runtime)
+            _require_owned_ephemeral(before.lifecycle)
+            _require_owned(after.lifecycle)
+            if not after.implementation.image:
+                raise UnsupportedDockerRuntimeFeature(
+                    "Docker node material requires an image"
+                )
+            return ReconcileDockerNodeEffect(
+                RemoveDockerNodeResourceEffect(
+                    before.runtime.runtime_id,
+                    before.node_id,
+                    _container_name(
+                        project_name,
+                        before.runtime.runtime_id,
+                        before.node_id,
+                    ),
+                    _node_ownership(request, before),
+                    _docker_configuration_mounts(request, before, project_name),
+                    _docker_secret_mounts(request, before, project_name),
+                ),
+                StartDockerNodeEffect(
+                    after.runtime.runtime_id,
+                    after.node_id,
+                    _container_name(
+                        project_name,
+                        after.runtime.runtime_id,
+                        after.node_id,
+                    ),
+                    after.runtime.network_name
+                    or f"{after.runtime.runtime_id}-network",
+                    after.implementation.image,
+                    after.implementation.command,
+                    after.implementation.environment,
+                    _docker_data_mounts(request, after, project_name),
+                    _docker_configuration_mounts(request, after, project_name),
+                    _docker_secret_mounts(request, after, project_name),
+                    _docker_port_bindings(after),
+                    _node_ownership(request, after),
+                ),
             )
         case StopNode(), NodeMaterial() as node:
             _require_docker(node.runtime)

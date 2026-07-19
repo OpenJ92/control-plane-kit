@@ -101,6 +101,8 @@ EMPTY_GRAPH_ID = "webhook-live-empty"
 IMAGE = os.environ.get("CPK_WEBHOOK_LIVE_IMAGE", "control-plane-kit-live-test:webhook")
 IDENTITY_TOKEN = "webhook-live-attestation"
 SIGNING_SECRET = "webhook-live-signing-secret"
+IDENTITY_REFERENCE_V1 = "secret://webhook-delivery/identity-attestation-v1"
+IDENTITY_REFERENCE_V2 = "secret://webhook-delivery/identity-attestation-v2"
 SIGNING_REFERENCE = "secret://webhook-delivery/signing-key"
 RECEIVER_SIGNING_REFERENCE = "secret://webhook-delivery/receiver-signing-key"
 WORKER = ExecutionWorkerAuthority("webhook-live-worker", ("execution:operate",))
@@ -119,7 +121,9 @@ def empty_graph() -> DeploymentGraph:
     return DeploymentGraph("webhook-live-empty")
 
 
-def desired_graph() -> DeploymentGraph:
+def desired_graph(
+    identity_reference: str = IDENTITY_REFERENCE_V1,
+) -> DeploymentGraph:
     receiver_url = f"http://{RUNTIME_ID}-receiver:8090/hook"
     postgres = DataBlock(
         BlockSpec("postgres", "Ephemeral webhook Postgres"),
@@ -158,6 +162,7 @@ def desired_graph() -> DeploymentGraph:
             ),
         ),
         image=IMAGE,
+        identity_secret_reference=identity_reference,
     )
     return compile_recipe(
         DeploymentRecipe(
@@ -224,26 +229,61 @@ def resume_deploy(database_url: str) -> None:
         raise RuntimeError("webhook deployment did not advance")
 
 
-def verify() -> None:
+def verify_before_restart() -> None:
     base = f"http://{RUNTIME_ID}-webhook-delivery:8080"
-    receiver = f"http://{RUNTIME_ID}-receiver:8090"
-    payload = WebhookPayload(WebhookContentType.JSON, b'{"event":"live-proof"}')
-    intent = WebhookDeliveryIntent(
-        "enqueue-live",
-        WebhookDeliveryIdentity(WORKSPACE_ID, "delivery-live"),
-        WebhookEndpoint("receiver", f"{receiver}/hook"),
-        payload,
-        WebhookRetryPolicy(max_attempts=2, deadline_seconds=300),
-        datetime.now(timezone.utc),
-        WebhookSigning(SecretReference(SIGNING_REFERENCE)),
-    )
+    intent = _delivery_intent()
     unauthorized = _request(f"{base}/__deploy/webhooks", intent.descriptor(), authorized=False)
     if unauthorized[0] != 401:
         raise RuntimeError("unauthorized webhook enqueue did not fail closed")
     first = _request(f"{base}/__deploy/webhooks", intent.descriptor())[1]
+    if first["replayed"] or first["delivery"]["status"] != "queued":
+        raise RuntimeError("webhook enqueue did not create durable queued intent")
+    print("Webhook pre-restart proof passed: unauthorized rejected and intent persisted.")
+
+
+def restart_webhook(database_url: str) -> None:
+    deployed = _stored(database_url, "deploy")
+    current = desired_graph(IDENTITY_REFERENCE_V1)
+    desired = desired_graph(IDENTITY_REFERENCE_V2)
+    planned = _plan_and_approve(
+        database_url,
+        "restart",
+        deployed.desired_graph_id,
+        current,
+        desired,
+    )
+    result = _program(
+        database_url,
+        {
+            deployed.desired_graph_id: current,
+            planned.desired_graph_id: desired,
+        },
+    ).for_plan(planned.plan_id).run(
+        planned.approval_request_id,
+        _grant("restart", 16),
+    )
+    if isinstance(result, ExecutionContinuation):
+        result = _program(
+            database_url,
+            {
+                deployed.desired_graph_id: current,
+                planned.desired_graph_id: desired,
+            },
+        ).for_plan(planned.plan_id).run(
+            planned.approval_request_id,
+            _grant("restart", 16),
+        )
+    if not isinstance(result, AdvancedDeployment):
+        raise RuntimeError("webhook identity-reference reconciliation did not advance")
+
+
+def verify_after_restart() -> None:
+    base = f"http://{RUNTIME_ID}-webhook-delivery:8080"
+    receiver = f"http://{RUNTIME_ID}-receiver:8090"
+    intent = _delivery_intent()
     replay = _request(f"{base}/__deploy/webhooks", intent.descriptor())[1]
-    if first["replayed"] or not replay["replayed"]:
-        raise RuntimeError("webhook enqueue idempotency evidence is incorrect")
+    if not replay["replayed"] or replay["delivery"]["status"] != "queued":
+        raise RuntimeError("restarted webhook process did not reconstruct exact replay")
     claimed = _request(
         f"{base}/__deploy/webhooks/delivery-live/claims",
         {"command_id": "claim-live", "worker_id": "worker-live", "lease_seconds": 60},
@@ -264,9 +304,9 @@ def verify() -> None:
         "enqueue-denied",
         WebhookDeliveryIdentity(WORKSPACE_ID, "delivery-denied"),
         WebhookEndpoint("not-granted", f"{receiver}/hook"),
-        payload,
+        intent.payload,
         WebhookRetryPolicy(max_attempts=1, deadline_seconds=300),
-        datetime.now(timezone.utc),
+        _intent_created_at(),
     )
     _request(f"{base}/__deploy/webhooks", denied_intent.descriptor())
     denied_claim = _request(
@@ -283,21 +323,28 @@ def verify() -> None:
         or denied["delivery"]["last_outcome"] != "terminal-failure"
     ):
         raise RuntimeError("disallowed webhook endpoint did not fail closed")
-    print("Webhook live proof passed: auth, signature, durable history, replay, and allowlist.")
+    print(
+        "Webhook post-restart proof passed: replay, signature, durable history, "
+        "and allowlist."
+    )
 
 
 def begin_teardown(database_url: str) -> None:
-    deployed = _stored(database_url, "deploy")
+    restarted = _stored(database_url, "restart")
+    current = desired_graph(IDENTITY_REFERENCE_V2)
     planned = _plan_and_approve(
         database_url,
         "teardown",
-        deployed.desired_graph_id,
-        desired_graph(),
+        restarted.desired_graph_id,
+        current,
         empty_graph(),
     )
     result = _program(
         database_url,
-        {deployed.desired_graph_id: desired_graph(), planned.desired_graph_id: empty_graph()},
+        {
+            restarted.desired_graph_id: current,
+            planned.desired_graph_id: empty_graph(),
+        },
     ).for_plan(planned.plan_id).run(
         planned.approval_request_id,
         _grant("teardown", planned.activity_count - 1),
@@ -310,7 +357,10 @@ def finish_teardown(database_url: str) -> None:
     planned = _stored(database_url, "teardown")
     result = _program(
         database_url,
-        {planned.current_graph_id: desired_graph(), planned.desired_graph_id: empty_graph()},
+        {
+            planned.current_graph_id: desired_graph(IDENTITY_REFERENCE_V2),
+            planned.desired_graph_id: empty_graph(),
+        },
     ).for_plan(planned.plan_id).run(planned.approval_request_id, _grant("teardown", 16))
     if not isinstance(result, AdvancedDeployment):
         raise RuntimeError("webhook teardown did not advance")
@@ -434,7 +484,8 @@ def _effects(graphs: dict[str, DeploymentGraph]) -> CapabilityInterpreterRegistr
     secrets = LocalDevelopmentSecretResolver(
         SecretProviderAuthority(SecretProviderId("webhook-delivery")),
         {
-            "secret://webhook-delivery/identity-attestation": IDENTITY_TOKEN,
+            IDENTITY_REFERENCE_V1: IDENTITY_TOKEN,
+            IDENTITY_REFERENCE_V2: IDENTITY_TOKEN,
             SIGNING_REFERENCE: SIGNING_SECRET,
             RECEIVER_SIGNING_REFERENCE: SIGNING_SECRET,
         },
@@ -502,7 +553,37 @@ def _request(
             return response.status, json.loads(response.read())
     except HTTPError as error:
         with error:
-            return error.code, json.loads(error.read())
+            body = error.read()
+            try:
+                return error.code, json.loads(body)
+            except json.JSONDecodeError as decode_error:
+                raise RuntimeError(
+                    f"webhook live request returned non-JSON HTTP {error.code}"
+                ) from decode_error
+
+
+def _delivery_intent() -> WebhookDeliveryIntent:
+    receiver = f"http://{RUNTIME_ID}-receiver:8090"
+    return WebhookDeliveryIntent(
+        "enqueue-live",
+        WebhookDeliveryIdentity(WORKSPACE_ID, "delivery-live"),
+        WebhookEndpoint("receiver", f"{receiver}/hook"),
+        WebhookPayload(WebhookContentType.JSON, b'{"event":"live-proof"}'),
+        WebhookRetryPolicy(max_attempts=2, deadline_seconds=300),
+        _intent_created_at(),
+        WebhookSigning(SecretReference(SIGNING_REFERENCE)),
+    )
+
+
+def _intent_created_at() -> datetime:
+    value = os.environ.get("CPK_WEBHOOK_LIVE_CREATED_AT", "")
+    try:
+        parsed = datetime.fromisoformat(value.replace("Z", "+00:00"))
+    except ValueError as error:
+        raise RuntimeError("webhook live creation time is malformed") from error
+    if parsed.tzinfo is None:
+        raise RuntimeError("webhook live creation time must be timezone-aware")
+    return parsed.astimezone(timezone.utc)
 
 
 def _clock() -> str:
@@ -513,7 +594,15 @@ def main() -> None:
     parser = argparse.ArgumentParser()
     parser.add_argument(
         "command",
-        choices=("prepare", "resume-deploy", "verify", "begin-teardown", "finish-teardown"),
+        choices=(
+            "prepare",
+            "resume-deploy",
+            "verify-before-restart",
+            "restart-webhook",
+            "verify-after-restart",
+            "begin-teardown",
+            "finish-teardown",
+        ),
     )
     command = parser.parse_args().command
     database_url = os.environ.get("CPK_WEBHOOK_LIVE_DATABASE_URL", "")
@@ -521,8 +610,12 @@ def main() -> None:
         prepare(database_url)
     elif command == "resume-deploy":
         resume_deploy(database_url)
-    elif command == "verify":
-        verify()
+    elif command == "verify-before-restart":
+        verify_before_restart()
+    elif command == "restart-webhook":
+        restart_webhook(database_url)
+    elif command == "verify-after-restart":
+        verify_after_restart()
     elif command == "begin-teardown":
         begin_teardown(database_url)
     else:

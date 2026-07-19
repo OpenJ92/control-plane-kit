@@ -19,6 +19,7 @@ from control_plane_kit import (
     DockerRuntime,
     PinnedGraphSet,
     ReconcileNode,
+    ReconcileNodeMaterial,
     StartNode,
     StructuralField,
     compile_activity_plan,
@@ -186,8 +187,14 @@ class ConfigurationArtifactTests(unittest.TestCase):
             change.after.descriptor()[0]["source_digest"],
             desired_artifact.source_digest,
         )
+        self.assertIsInstance(materialized.material, ReconcileNodeMaterial)
+        material = materialized.material
         self.assertEqual(
-            materialized.material.implementation.configuration_artifacts,
+            material.before.implementation.configuration_artifacts,
+            (current_artifact,),
+        )
+        self.assertEqual(
+            material.after.implementation.configuration_artifacts,
             (desired_artifact,),
         )
 

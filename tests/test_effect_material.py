@@ -9,6 +9,7 @@ from control_plane_kit.effects import (
     MaterializationCode,
     MaterializedEffectRequest,
     PinnedGraphSet,
+    ReconcileNodeMaterial,
     SecretReferenceMaterialValue,
     effect_request_for_activity,
     effect_request_for_compensation,
@@ -20,10 +21,68 @@ from control_plane_kit.planning import Compensate, ReviewChange, compile_activit
 from control_plane_kit.topology import diff_graphs, validate_graph
 from examples.scenarios import planning_scenarios
 from examples.gate_d_live_smoke import router_recipe
+from examples.webhook_delivery_live import (
+    IDENTITY_REFERENCE_V1,
+    IDENTITY_REFERENCE_V2,
+    desired_graph as webhook_graph,
+)
 from control_plane_kit import HttpCheck, Protocol, VerificationContract, compile_recipe
 
 
 class EffectMaterialTests(unittest.TestCase):
+    def test_reconcile_material_pins_forward_and_compensation_graph_pairs(self) -> None:
+        base = webhook_graph(IDENTITY_REFERENCE_V1)
+        desired = webhook_graph(IDENTITY_REFERENCE_V2)
+        activity = compile_activity_plan(
+            diff_graphs(validate_graph(base), validate_graph(desired))
+        ).activities[0]
+        graphs = PinnedGraphSet("workspace", "plan", "base", "desired")
+
+        forward = materialize_effect_request(
+            effect_request_for_activity(
+                activity,
+                run_id="run",
+                attempt=1,
+                idempotency_key="reconcile:1",
+            ),
+            activity,
+            graphs,
+            base_graph_id="base",
+            base_graph=base,
+            desired_graph_id="desired",
+            desired_graph=desired,
+        )
+        compensation = materialize_compensation_effect_request(
+            effect_request_for_compensation(
+                activity,
+                run_id="run",
+                attempt=1,
+                idempotency_key="reconcile:compensate:1",
+            ),
+            activity,
+            graphs,
+            base_graph_id="base",
+            base_graph=base,
+            desired_graph_id="desired",
+            desired_graph=desired,
+        )
+
+        self.assertIsInstance(forward.material, ReconcileNodeMaterial)
+        self.assertIsInstance(compensation.material, ReconcileNodeMaterial)
+        self.assertEqual(forward.material_graph_id, "desired")
+        self.assertEqual(compensation.material_graph_id, "base")
+        self.assertEqual(
+            forward.material.before,
+            compensation.material.after,
+        )
+        self.assertEqual(
+            forward.material.after,
+            compensation.material.before,
+        )
+        descriptor = forward.descriptor()["material"]
+        self.assertEqual(descriptor["type"], "reconcile-node")
+        self.assertNotIn("webhook-live-attestation", forward.canonical_json())
+
     def test_verification_contract_resolves_only_from_pinned_node_material(self) -> None:
         scenario = planning_scenarios()[0]
         desired = scenario.desired_graph

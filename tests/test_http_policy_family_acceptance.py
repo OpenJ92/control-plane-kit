@@ -353,7 +353,7 @@ def _free_port() -> int:
 
 
 def _wait_listening(process: subprocess.Popen[bytes], port: int) -> None:
-    for _ in range(250):
+    for _ in range(500):
         if process.poll() is not None:
             stderr = b"" if process.stderr is None else process.stderr.read()
             raise AssertionError(

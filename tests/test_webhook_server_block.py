@@ -12,6 +12,8 @@ from control_plane_kit import (
     DockerPostgresImplementation,
     DockerRuntime,
     GraphDescriptorCodec,
+    MAX_WEBHOOK_ENDPOINT_GRANTS,
+    MAX_WEBHOOK_ENDPOINT_POLICY_BYTES,
     PackageServerProduct,
     ProductMaturity,
     Protocol,
@@ -25,6 +27,7 @@ from control_plane_kit import (
     parse_webhook_address_policy,
     render_webhook_address_policy,
     webhook_address_policy_from_descriptor,
+    webhook_address_policy_descriptor,
     webhook_delivery_block,
 )
 from control_plane_kit.implementations import DockerImageImplementation
@@ -205,6 +208,52 @@ class WebhookDeliveryBlockTests(unittest.TestCase):
                         }
                     ]
                 }
+            )
+
+    def test_policy_rejects_excessive_grants_and_encoded_content(self) -> None:
+        excessive = WebhookAddressPolicy(
+            tuple(
+                WebhookEndpointGrant(
+                    f"receiver-{index}",
+                    f"http://receiver-{index}:8080/hook",
+                    WebhookEndpointScope.RUNTIME_PRIVATE,
+                )
+                for index in range(MAX_WEBHOOK_ENDPOINT_GRANTS + 1)
+            )
+        )
+        with self.assertRaisesRegex(ValueError, "exceeds its grant bound"):
+            webhook_address_policy_descriptor(excessive)
+
+        long_path = "/" + "x" * 1_900
+        encoded = WebhookAddressPolicy(
+            tuple(
+                WebhookEndpointGrant(
+                    f"receiver-{index}",
+                    f"https://receiver-{index}.example.test{long_path}",
+                    WebhookEndpointScope.PUBLIC,
+                )
+                for index in range(MAX_WEBHOOK_ENDPOINT_GRANTS)
+            )
+        )
+        with self.assertRaisesRegex(ValueError, "exceeds its encoded bound"):
+            render_webhook_address_policy(encoded)
+        with self.assertRaisesRegex(ValueError, "is malformed"):
+            parse_webhook_address_policy("x" * (MAX_WEBHOOK_ENDPOINT_POLICY_BYTES + 1))
+
+        with self.assertRaisesRegex(ValueError, "identities must be unique"):
+            WebhookAddressPolicy(
+                (
+                    WebhookEndpointGrant(
+                        "receiver",
+                        "http://receiver:8080/one",
+                        WebhookEndpointScope.RUNTIME_PRIVATE,
+                    ),
+                    WebhookEndpointGrant(
+                        "receiver",
+                        "http://receiver:8080/two",
+                        WebhookEndpointScope.RUNTIME_PRIVATE,
+                    ),
+                )
             )
 
     def test_psycopg_interpreter_preserves_graph_identity_but_vends_driver_dsn(self) -> None:
