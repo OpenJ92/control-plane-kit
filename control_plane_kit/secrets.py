@@ -35,6 +35,19 @@ class SecretFileMode(StrEnum):
 
 
 @dataclass(frozen=True, order=True)
+class SecretFilePathBinding:
+    """Expose a mounted secret path through one non-secret environment slot."""
+
+    environment_name: str
+
+    def __post_init__(self) -> None:
+        _validate_environment_name(self.environment_name)
+
+    def descriptor(self) -> dict[str, str]:
+        return {"environment_name": self.environment_name}
+
+
+@dataclass(frozen=True, order=True)
 class SecretProviderId:
     value: str
 
@@ -91,14 +104,7 @@ class SecretEnvironmentDelivery:
     reference: SecretReference
 
     def __post_init__(self) -> None:
-        if (
-            not isinstance(self.environment_name, str)
-            or not re.fullmatch(r"[A-Z][A-Z0-9_]{0,127}", self.environment_name)
-        ):
-            raise SecretResolutionError(
-                SecretResolutionCode.MALFORMED_REFERENCE,
-                "secret environment name is malformed",
-            )
+        _validate_environment_name(self.environment_name)
         if not isinstance(self.reference, SecretReference):
             raise TypeError("secret environment delivery requires SecretReference")
 
@@ -117,38 +123,53 @@ class SecretFileDelivery:
     target_path: str
     reference: SecretReference
     file_mode: SecretFileMode = SecretFileMode.OWNER_READ_ONLY
+    path_binding: SecretFilePathBinding | None = None
 
     def __post_init__(self) -> None:
         if not isinstance(self.reference, SecretReference):
             raise TypeError("secret file delivery requires SecretReference")
         if not isinstance(self.file_mode, SecretFileMode):
             raise TypeError("secret file mode must be SecretFileMode")
+        if self.path_binding is not None and not isinstance(
+            self.path_binding, SecretFilePathBinding
+        ):
+            raise TypeError("secret file path binding must be SecretFilePathBinding")
         _validate_secret_target_path(self.target_path)
 
-    def descriptor(self) -> dict[str, str]:
+    def descriptor(self) -> dict[str, object]:
         return {
             "kind": "file",
             "target_path": self.target_path,
             "reference_id": self.reference.reference_id,
             "file_mode": self.file_mode.value,
+            "path_binding": (
+                None if self.path_binding is None else self.path_binding.descriptor()
+            ),
         }
 
 
 SecretDelivery: TypeAlias = SecretEnvironmentDelivery | SecretFileDelivery
 
 
-def secret_delivery_sort_key(value: SecretDelivery) -> tuple[str, str, str, str]:
+def secret_delivery_sort_key(value: SecretDelivery) -> tuple[str, str, str, str, str]:
     """Interpret either delivery constructor into one deterministic order."""
 
     match value:
         case SecretEnvironmentDelivery(environment_name=name, reference=reference):
-            return ("environment", name, reference.reference_id, "")
+            return ("environment", name, reference.reference_id, "", "")
         case SecretFileDelivery(
             target_path=path,
             reference=reference,
             file_mode=file_mode,
+            path_binding=path_binding,
         ):
-            return ("file", path, reference.reference_id, file_mode.value)
+            return (
+                "file",
+                path,
+                reference.reference_id,
+                file_mode.value,
+                "" if path_binding is None else path_binding.environment_name,
+            )
 
 
 def secret_delivery_from_descriptor(value: Mapping[str, object]) -> SecretDelivery:
@@ -169,11 +190,13 @@ def secret_delivery_from_descriptor(value: Mapping[str, object]) -> SecretDelive
                 "target_path",
                 "reference_id",
                 "file_mode",
+                "path_binding",
             }:
                 return SecretFileDelivery(
                     _descriptor_text(value, "target_path"),
                     SecretReference(_descriptor_text(value, "reference_id")),
                     SecretFileMode(_descriptor_text(value, "file_mode")),
+                    _path_binding_from_descriptor(value.get("path_binding")),
                 )
             case _:
                 raise SecretResolutionError(
@@ -197,6 +220,27 @@ def _descriptor_text(value: Mapping[str, object], key: str) -> str:
             "secret delivery descriptor is malformed",
         )
     return item
+
+
+def _path_binding_from_descriptor(value: object) -> SecretFilePathBinding | None:
+    if value is None:
+        return None
+    if not isinstance(value, Mapping) or set(value) != {"environment_name"}:
+        raise SecretResolutionError(
+            SecretResolutionCode.MALFORMED_REFERENCE,
+            "secret delivery descriptor is malformed",
+        )
+    return SecretFilePathBinding(_descriptor_text(value, "environment_name"))
+
+
+def _validate_environment_name(value: str) -> None:
+    if not isinstance(value, str) or not re.fullmatch(
+        r"[A-Z][A-Z0-9_]{0,127}", value
+    ):
+        raise SecretResolutionError(
+            SecretResolutionCode.MALFORMED_REFERENCE,
+            "secret environment name is malformed",
+        )
 
 
 def _validate_secret_target_path(value: str) -> None:

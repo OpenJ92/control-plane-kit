@@ -5,8 +5,8 @@ RUNNER_IMAGE="${CPK_SECRET_RUNNER_IMAGE:-control-plane-kit-live-test:secret}"
 RUNNER_NAME="${CPK_SECRET_RUNNER_NAME:-cpk-secret-live-runner}"
 PROJECT="cpk-live-secret"
 NETWORK_NAME="${PROJECT}-network"
-SERVICE_NAME="${PROJECT}-docker-consumer"
-VOLUME_NAME="${PROJECT}-docker-consumer-secret-1"
+SERVICE_NAME="docker-postgres"
+VOLUME_NAME="docker-postgres-secret-1"
 TEST_LABEL="io.control-plane-kit.test"
 TEST_ID="secret-live"
 
@@ -22,13 +22,24 @@ remove_runner() {
 }
 
 run_adapter() {
+  local mode="$1"
   remove_runner
-  docker run --rm \
-    --name "$RUNNER_NAME" \
-    --label "$TEST_LABEL=$TEST_ID" \
-    -v /var/run/docker.sock:/var/run/docker.sock \
-    "$RUNNER_IMAGE" \
-    python tests/live_docker_secret.py "$1"
+  if test "$mode" = "start" || test "$mode" = "verify"; then
+    docker run --rm \
+      --name "$RUNNER_NAME" \
+      --label "$TEST_LABEL=$TEST_ID" \
+      --network "$NETWORK_NAME" \
+      -v /var/run/docker.sock:/var/run/docker.sock \
+      "$RUNNER_IMAGE" \
+      python tests/live_docker_secret.py "$mode"
+  else
+    docker run --rm \
+      --name "$RUNNER_NAME" \
+      --label "$TEST_LABEL=$TEST_ID" \
+      -v /var/run/docker.sock:/var/run/docker.sock \
+      "$RUNNER_IMAGE" \
+      python tests/live_docker_secret.py "$mode"
+  fi
 }
 
 cleanup() {
@@ -50,13 +61,28 @@ if docker volume inspect "$VOLUME_NAME" >/dev/null 2>&1; then
   exit 1
 fi
 
+run_adapter bootstrap
 run_adapter start
 run_adapter start
 
-test "$(docker exec "$SERVICE_NAME" cat /tmp/secret-ready)" = "ready"
-test "$(docker exec "$SERVICE_NAME" stat -c '%a' /run/secrets/fixture-token)" = "400"
+attempt=0
+while test "$attempt" -lt 30; do
+  if docker exec "$SERVICE_NAME" pg_isready -U cpk -d cpk >/dev/null 2>&1; then
+    break
+  fi
+  attempt=$((attempt + 1))
+  sleep 1
+done
+docker exec "$SERVICE_NAME" pg_isready -U cpk -d cpk >/dev/null
 
-docker exec "$SERVICE_NAME" python -c $'from pathlib import Path\ntry:\n    Path("/run/secrets/fixture-token").write_text("changed")\nexcept OSError:\n    raise SystemExit(0)\nraise SystemExit(1)'
+run_adapter verify
+
+test "$(docker exec "$SERVICE_NAME" stat -c '%a' /run/secrets/postgres-password)" = "400"
+
+if docker exec "$SERVICE_NAME" sh -c 'echo changed > /run/secrets/postgres-password' >/dev/null 2>&1; then
+  echo "Postgres secret file was writable" >&2
+  exit 1
+fi
 
 run_adapter cleanup
 
@@ -75,4 +101,4 @@ fi
 
 cleanup
 trap - EXIT
-echo "Live Docker secret passed: denied bootstrap, protected delivery, replay, and cleanup"
+echo "Live Docker secret passed: denied bootstrap, Postgres authentication, protected delivery, replay, and cleanup"

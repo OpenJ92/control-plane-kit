@@ -8,6 +8,7 @@ from control_plane_kit.secrets import (
     SecretEnvironmentDelivery,
     SecretFileDelivery,
     SecretFileMode,
+    SecretFilePathBinding,
     SecretMissing,
     SecretProviderAuthority,
     SecretProviderId,
@@ -100,6 +101,7 @@ class SecretContractTests(unittest.TestCase):
                 "/run/secrets/database-password",
                 SecretReference("secret://local/workspace-a/database-password"),
                 SecretFileMode.OWNER_READ_ONLY,
+                SecretFilePathBinding("POSTGRES_PASSWORD_FILE"),
             ),
         )
 
@@ -129,6 +131,13 @@ class SecretContractTests(unittest.TestCase):
                 "environment_name": "TOKEN",
                 "reference_id": "secret://local/workspace-a/key",
                 "value": "must-not-enter",
+            },
+            {
+                "kind": "file",
+                "target_path": "/run/secrets/password",
+                "reference_id": "secret://local/workspace-a/key",
+                "file_mode": "0400",
+                "path_binding": {"environment_name": "PASSWORD_FILE", "extra": True},
             },
         )
         for descriptor in malformed:
