@@ -18,6 +18,11 @@ from control_plane_kit.configuration import (
     ConfigurationArtifact,
     ConfigurationArtifactError,
 )
+from control_plane_kit.secrets import (
+    SecretDelivery,
+    SecretResolutionError,
+    secret_delivery_from_descriptor,
+)
 from control_plane_kit.lifecycle import (
     DataResourceSpec,
     ResourceLifecycle,
@@ -308,6 +313,9 @@ class GraphDescriptorCodec:
             configuration_artifacts=_configuration_artifacts(
                 descriptor.get("configuration_artifacts", [])
             ),
+            secret_deliveries=_secret_deliveries(
+                descriptor.get("secret_deliveries", [])
+            ),
         )
 
     def _decode_edge(self, edge_id: str, descriptor: Mapping[str, object]) -> Edge:
@@ -504,6 +512,16 @@ def _configuration_artifacts(value: object) -> tuple[ConfigurationArtifact, ...]
             for item in _list(value)
         )
     except ConfigurationArtifactError as error:
+        raise MalformedGraphDescriptor(str(error)) from error
+
+
+def _secret_deliveries(value: object) -> tuple[SecretDelivery, ...]:
+    try:
+        return tuple(
+            secret_delivery_from_descriptor(_mapping(item, "secret_delivery"))
+            for item in _list(value)
+        )
+    except SecretResolutionError as error:
         raise MalformedGraphDescriptor(str(error)) from error
 
 

@@ -16,8 +16,8 @@ from control_plane_kit.contracts import EnvironmentContract, TextVariable
 from control_plane_kit.implementations import (
     DockerImageImplementation,
     HostPublication,
-    SecretEnvironmentReference,
 )
+from control_plane_kit.secrets import SecretEnvironmentDelivery, SecretReference
 from control_plane_kit.servers.block_control import BlockControlState, create_block_control_app
 from control_plane_kit.types import Protocol, SocketBinding
 
@@ -161,10 +161,13 @@ def managed_http_router_block(
             environment={
                 "CPK_ROUTER_BLOCK_ID": block_id,
                 "CPK_ROUTER_ACTIVE_TARGET": "hello-blue",
-                "CPK_CONTROL_TOKEN": SecretEnvironmentReference(
-                    control_secret_reference
-                ),
             },
+            secret_deliveries=(
+                SecretEnvironmentDelivery(
+                    "CPK_CONTROL_TOKEN",
+                    SecretReference(control_secret_reference),
+                ),
+            ),
             host_publications={
                 "internal": HostPublication.loopback_v4(host_port)
             },

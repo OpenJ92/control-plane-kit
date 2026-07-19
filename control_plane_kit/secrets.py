@@ -5,6 +5,7 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from enum import StrEnum
 import re
+from pathlib import PurePosixPath
 from types import MappingProxyType
 from typing import Mapping, Protocol, TypeAlias
 from urllib.parse import urlsplit
@@ -27,6 +28,10 @@ class SecretResolutionError(ValueError):
     def __init__(self, code: SecretResolutionCode, message: str) -> None:
         self.code = code
         super().__init__(message)
+
+
+class SecretFileMode(StrEnum):
+    OWNER_READ_ONLY = "0400"
 
 
 @dataclass(frozen=True, order=True)
@@ -76,6 +81,141 @@ class SecretReference:
 
 
 CredentialReference = SecretReference
+
+
+@dataclass(frozen=True, order=True)
+class SecretEnvironmentDelivery:
+    """Inject one opaque reference into a named process environment slot."""
+
+    environment_name: str
+    reference: SecretReference
+
+    def __post_init__(self) -> None:
+        if (
+            not isinstance(self.environment_name, str)
+            or not re.fullmatch(r"[A-Z][A-Z0-9_]{0,127}", self.environment_name)
+        ):
+            raise SecretResolutionError(
+                SecretResolutionCode.MALFORMED_REFERENCE,
+                "secret environment name is malformed",
+            )
+        if not isinstance(self.reference, SecretReference):
+            raise TypeError("secret environment delivery requires SecretReference")
+
+    def descriptor(self) -> dict[str, str]:
+        return {
+            "kind": "environment",
+            "environment_name": self.environment_name,
+            "reference_id": self.reference.reference_id,
+        }
+
+
+@dataclass(frozen=True, order=True)
+class SecretFileDelivery:
+    """Mount one opaque reference as a protected runtime-only file."""
+
+    target_path: str
+    reference: SecretReference
+    file_mode: SecretFileMode = SecretFileMode.OWNER_READ_ONLY
+
+    def __post_init__(self) -> None:
+        if not isinstance(self.reference, SecretReference):
+            raise TypeError("secret file delivery requires SecretReference")
+        if not isinstance(self.file_mode, SecretFileMode):
+            raise TypeError("secret file mode must be SecretFileMode")
+        _validate_secret_target_path(self.target_path)
+
+    def descriptor(self) -> dict[str, str]:
+        return {
+            "kind": "file",
+            "target_path": self.target_path,
+            "reference_id": self.reference.reference_id,
+            "file_mode": self.file_mode.value,
+        }
+
+
+SecretDelivery: TypeAlias = SecretEnvironmentDelivery | SecretFileDelivery
+
+
+def secret_delivery_sort_key(value: SecretDelivery) -> tuple[str, str, str, str]:
+    """Interpret either delivery constructor into one deterministic order."""
+
+    match value:
+        case SecretEnvironmentDelivery(environment_name=name, reference=reference):
+            return ("environment", name, reference.reference_id, "")
+        case SecretFileDelivery(
+            target_path=path,
+            reference=reference,
+            file_mode=file_mode,
+        ):
+            return ("file", path, reference.reference_id, file_mode.value)
+
+
+def secret_delivery_from_descriptor(value: Mapping[str, object]) -> SecretDelivery:
+    kind = value.get("kind")
+    try:
+        match kind:
+            case "environment" if set(value) == {
+                "kind",
+                "environment_name",
+                "reference_id",
+            }:
+                return SecretEnvironmentDelivery(
+                    _descriptor_text(value, "environment_name"),
+                    SecretReference(_descriptor_text(value, "reference_id")),
+                )
+            case "file" if set(value) == {
+                "kind",
+                "target_path",
+                "reference_id",
+                "file_mode",
+            }:
+                return SecretFileDelivery(
+                    _descriptor_text(value, "target_path"),
+                    SecretReference(_descriptor_text(value, "reference_id")),
+                    SecretFileMode(_descriptor_text(value, "file_mode")),
+                )
+            case _:
+                raise SecretResolutionError(
+                    SecretResolutionCode.MALFORMED_REFERENCE,
+                    "secret delivery descriptor is malformed",
+                )
+    except (TypeError, ValueError) as error:
+        if isinstance(error, SecretResolutionError):
+            raise
+        raise SecretResolutionError(
+            SecretResolutionCode.MALFORMED_REFERENCE,
+            "secret delivery descriptor is malformed",
+        ) from error
+
+
+def _descriptor_text(value: Mapping[str, object], key: str) -> str:
+    item = value.get(key)
+    if not isinstance(item, str):
+        raise SecretResolutionError(
+            SecretResolutionCode.MALFORMED_REFERENCE,
+            "secret delivery descriptor is malformed",
+        )
+    return item
+
+
+def _validate_secret_target_path(value: str) -> None:
+    if not isinstance(value, str) or not value.startswith("/run/secrets/"):
+        raise SecretResolutionError(
+            SecretResolutionCode.MALFORMED_REFERENCE,
+            "secret file target must use the protected secret namespace",
+        )
+    path = PurePosixPath(value)
+    if (
+        str(path) != value
+        or value.endswith("/")
+        or any(part in (".", "..") for part in path.parts)
+        or any(not _REFERENCE_SEGMENT.fullmatch(part) for part in path.parts[3:])
+    ):
+        raise SecretResolutionError(
+            SecretResolutionCode.MALFORMED_REFERENCE,
+            "secret file target is malformed",
+        )
 
 
 @dataclass(frozen=True, repr=False)

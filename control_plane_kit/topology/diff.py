@@ -14,6 +14,7 @@ from control_plane_kit.topology.changes import (
     EdgeValue,
     EndpointValue,
     ConfigurationArtifactsValue,
+    SecretDeliveriesValue,
     EnvironmentValue,
     FieldSubject,
     GraphDiff,
@@ -228,6 +229,14 @@ def _diff_nodes(
                     ),
                     ConfigurationArtifactsValue(before.configuration_artifacts),
                     ConfigurationArtifactsValue(after.configuration_artifacts),
+                )
+            )
+        if before.secret_deliveries != after.secret_deliveries:
+            changes.append(
+                ModifiedChange(
+                    FieldSubject(subject, StructuralField.SECRET_DELIVERIES),
+                    SecretDeliveriesValue(before.secret_deliveries),
+                    SecretDeliveriesValue(after.secret_deliveries),
                 )
             )
         if before.lifecycle != after.lifecycle:
