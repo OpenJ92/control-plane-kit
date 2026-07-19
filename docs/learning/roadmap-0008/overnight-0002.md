@@ -2502,3 +2502,103 @@ Handoff to #438:
   evidence;
 - run representative operations through `DeploymentProgram` and verify final
   cleanup.
+
+## #528 Heterogeneous Service Acceptance Recipe
+
+### Result
+
+The service-infrastructure acceptance graph is now an ordinary algebraic
+construction. It does not introduce a combined service-stack product or a
+second acceptance model:
+
+```python
+DeploymentRecipe(
+    "service-infrastructure",
+    DockerRuntime(
+        runtime_id="service-infrastructure",
+        children=(
+            discovery_postgres,
+            webhook_postgres,
+            webhook_receiver,
+            service_discovery_block(...),
+            opentelemetry_collector_block(...),
+            webhook_delivery_block(...),
+            SocketConnection(
+                "discovery-postgres", "internal",
+                "service-discovery", "database",
+            ),
+            SocketConnection(
+                "webhook-postgres", "internal",
+                "webhook-delivery", "database",
+            ),
+        ),
+    ),
+)
+```
+
+### Objects, Morphisms, And Laws
+
+The objects are independently identified package and application blocks:
+
+```text
+Ephemeral Postgres A -> Service Discovery
+Ephemeral Postgres B -> Webhook Delivery
+OpenTelemetry Collector
+Controlled Webhook Receiver
+```
+
+The two socket connections are the only topology morphisms. They carry exact
+Postgres protocol identity and compile to the application-owned environment
+assignments `DISCOVERY_DATABASE_URL` and `WEBHOOK_DATABASE_URL`.
+
+The recipe demonstrates these laws:
+
+- each stateful application owns an explicit and independent database
+  requirement;
+- provider health precedes consumer startup in the compiled `ActivityPlan`;
+- a missing requirement remains an explicit graph-validation finding;
+- an OTLP provider cannot satisfy a Postgres requirement;
+- product identity, protocol identity, and opaque secret references survive
+  graph descriptor round-trip;
+- webhook destination registration remains dynamic application truth rather
+  than a false socket edge;
+- no secret value enters the recipe, descriptor, plan, or test evidence.
+
+### Review And Test Integrity
+
+The first focused run exposed one test-only diagnostic mismatch. The pure
+compiler correctly rejected an OTLP-to-Postgres edge with:
+
+```text
+consumer webhook-delivery.database expects postgres,
+connection provides otlp-http
+```
+
+The test was tightened to assert those exact closed identities instead of the
+generic word `protocol`. No application behavior changed.
+
+```text
+focused acceptance tests:                                  4 passed
+complete Docker/Postgres suite:                         1027 passed
+assertions weakened:                                          0
+skips added:                                                  0
+parallel graph or product models introduced:                  0
+```
+
+### Handoff To #529 And #532
+
+- run this exact graph through the existing Postgres-backed
+  `DeploymentProgram`; do not recreate planning, approval, admission, claim,
+  execution, advancement, or read models;
+- preserve two separate application database requirements and one shared
+  operator-command transaction boundary;
+- the graph intentionally advertises canonical SQLAlchemy-style Postgres URLs
+  as `postgresql+psycopg://...`;
+- the webhook process already interprets that graph URL into a direct psycopg
+  DSN at its driver boundary;
+- the discovery process currently passes the graph URL directly to psycopg,
+  while its standalone live test masks the mismatch with `postgresql://`;
+- implement that narrow driver-boundary interpretation in #532 before the live
+  heterogeneous proof in #530;
+- do not change the graph protocol, socket language, or canonical topology URL
+  to accommodate one database driver.
