@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from dataclasses import dataclass
 import unittest
 
 from control_plane_kit import (
@@ -10,6 +11,7 @@ from control_plane_kit import (
     ConfigurationArtifactError,
     ConfigurationFileMode,
     ConfigurationMediaType,
+    ConfigurationTemplate,
     DEFAULT_GRAPH_CODEC,
     DeploymentGraph,
     DeploymentRecipe,
@@ -40,10 +42,15 @@ class ConfigurationArtifactTests(unittest.TestCase):
         )
         self.assertEqual(descriptor["file_mode"], "0444")
         self.assertEqual(len(descriptor["content_digest"]), 64)
+        self.assertEqual(descriptor["source_digest"], descriptor["content_digest"])
 
         tampered = {**descriptor, "content": "workers = 3\n"}
         with self.assertRaisesRegex(ConfigurationArtifactError, "digest"):
             ConfigurationArtifact.from_descriptor(tampered)
+
+        tampered_source = {**descriptor, "source_digest": "not-a-digest"}
+        with self.assertRaisesRegex(ConfigurationArtifactError, "malformed"):
+            ConfigurationArtifact.from_descriptor(tampered_source)
 
     def test_unsafe_paths_secrets_and_malformed_json_fail_closed(self) -> None:
         for path in (
@@ -80,6 +87,22 @@ class ConfigurationArtifactTests(unittest.TestCase):
                 ConfigurationMediaType.JSON,
                 "{not-json}",
             )
+
+        malformed_formats = (
+            (ConfigurationMediaType.TOML, "workers = ["),
+            (ConfigurationMediaType.YAML, "workers: ["),
+        )
+        for media_type, content in malformed_formats:
+            with self.subTest(media_type=media_type), self.assertRaisesRegex(
+                ConfigurationArtifactError,
+                "malformed",
+            ):
+                ConfigurationArtifact(
+                    "service-config",
+                    "/etc/service/config.conf",
+                    media_type,
+                    content,
+                )
 
     def test_graph_codec_preserves_exact_artifact_and_rejects_tampering(self) -> None:
         graph = compile_recipe(_recipe(_artifact("workers = 2\n")))
@@ -121,6 +144,52 @@ class ConfigurationArtifactTests(unittest.TestCase):
         )
         self.assertEqual(len(plan.activities), 1)
         self.assertIsInstance(plan.activities[0].operation, ReconcileNode)
+
+    def test_template_revision_reaches_graph_diff_and_pinned_material(self) -> None:
+        parameters = _TemplateParameters(workers=2)
+        current_artifact = _configuration_template("revision-a").render(parameters)
+        desired_artifact = _configuration_template("revision-b").render(parameters)
+        current = compile_recipe(_recipe(current_artifact))
+        desired = compile_recipe(_recipe(desired_artifact))
+
+        diff = diff_graphs(validate_graph(current), validate_graph(desired))
+        change = next(
+            value
+            for value in diff.changes
+            if isinstance(value, ModifiedChange)
+            and isinstance(value.subject, FieldSubject)
+            and value.subject.field is StructuralField.CONFIGURATION_ARTIFACTS
+        )
+        plan = compile_activity_plan(diff)
+        activity = next(
+            value for value in plan.activities if isinstance(value.operation, ReconcileNode)
+        )
+        request = effect_request_for_activity(
+            activity,
+            run_id="run",
+            attempt=1,
+            idempotency_key="run:reconcile-service:1",
+        )
+        materialized = materialize_effect_request(
+            request,
+            activity,
+            PinnedGraphSet("workspace", "plan", "current", "desired"),
+            base_graph_id="current",
+            base_graph=current,
+            desired_graph_id="desired",
+            desired_graph=desired,
+        )
+
+        self.assertEqual(current_artifact.content, desired_artifact.content)
+        self.assertNotEqual(current_artifact.source_digest, desired_artifact.source_digest)
+        self.assertEqual(
+            change.after.descriptor()[0]["source_digest"],
+            desired_artifact.source_digest,
+        )
+        self.assertEqual(
+            materialized.material.implementation.configuration_artifacts,
+            (desired_artifact,),
+        )
 
     def test_exact_artifact_reaches_pinned_start_material(self) -> None:
         artifact = _artifact("workers = 2\n")
@@ -174,6 +243,24 @@ def _artifact(content: str) -> ConfigurationArtifact:
         ConfigurationMediaType.TEXT,
         content,
         ConfigurationFileMode.READ_ONLY,
+    )
+
+
+@dataclass(frozen=True)
+class _TemplateParameters:
+    workers: int
+
+    def configuration_values(self):
+        return {"workers": self.workers}
+
+
+def _configuration_template(revision: str) -> ConfigurationTemplate:
+    return ConfigurationTemplate(
+        "service-config",
+        "service-config",
+        "/etc/service/config.conf",
+        ConfigurationMediaType.TEXT,
+        f"{{# {revision} #}}workers = {{{{ workers }}}}\n",
     )
 
 

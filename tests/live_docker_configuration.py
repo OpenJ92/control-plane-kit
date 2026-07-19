@@ -2,13 +2,14 @@
 
 from __future__ import annotations
 
+from dataclasses import dataclass
 import sys
 
 from control_plane_kit import (
     ActivityId,
-    ConfigurationArtifact,
     ConfigurationFileMode,
     ConfigurationMediaType,
+    ConfigurationTemplate,
     EffectIdentity,
     EffectRequest,
     EffectSucceeded,
@@ -32,6 +33,14 @@ from control_plane_kit.docker_runtime import DockerEffectInterpreter
 
 PROJECT = "cpk-live-configuration"
 CONTENT = '{"message":"configuration-live"}\n'
+
+
+@dataclass(frozen=True)
+class LiveConfiguration:
+    message: str
+
+    def configuration_values(self):
+        return {"message": self.message}
 
 
 def main(mode: str) -> None:
@@ -75,13 +84,18 @@ def _runtime() -> RuntimeMaterial:
 
 
 def _node() -> NodeMaterial:
-    artifact = ConfigurationArtifact(
+    artifact = ConfigurationTemplate(
+        "live-service-config",
         "service-config",
         "/etc/service/config.json",
         ConfigurationMediaType.JSON,
-        CONTENT,
+        '{"message":{{ message | json }}}\n',
         ConfigurationFileMode.READ_ONLY,
+    ).render(
+        LiveConfiguration("configuration-live")
     )
+    if artifact.content != CONTENT:
+        raise RuntimeError("live configuration template was not deterministic")
     return NodeMaterial(
         "configured",
         _runtime(),

@@ -6,6 +6,8 @@ import unittest
 from tests.architecture import (
     PackageDependencyPolicy,
     PackageDependencyRule,
+    ImportOwner,
+    ImportOwnershipPolicy,
     TransportOwner,
     TransportOwnershipPolicy,
     analyze_file,
@@ -25,6 +27,7 @@ PACKAGE_RULES = (
     PackageDependencyRule("cli", ()),
     PackageDependencyRule("contracts", ()),
     PackageDependencyRule("configuration", ()),
+    PackageDependencyRule("configuration_rendering", ("configuration",)),
     PackageDependencyRule("control_routes", ()),
     PackageDependencyRule(
         "docker_runtime",
@@ -70,6 +73,7 @@ PACKAGE_RULES = (
             "algebra",
             "capabilities",
             "contracts",
+            "configuration_rendering",
             "control_routes",
             "implementations",
             "read_services",
@@ -127,6 +131,17 @@ TRANSPORT_POLICY = TransportOwnershipPolicy(
         TransportOwner("urllib.request", ("control_plane_kit.cli",)),
     )
 )
+TEMPLATE_ENGINE_POLICY = ImportOwnershipPolicy(
+    (
+        ImportOwner(
+            "jinja2",
+            (
+                "control_plane_kit.configuration_rendering",
+                "control_plane_kit.servers._templates",
+            ),
+        ),
+    )
+)
 
 
 class ArchitectureDependencyTests(unittest.TestCase):
@@ -147,7 +162,10 @@ class ArchitectureDependencyTests(unittest.TestCase):
             {value.source_root for value in PACKAGE_RULES},
         )
         self.assertEqual(
-            evaluate_policies(facts, (DEPENDENCY_POLICY, TRANSPORT_POLICY)),
+            evaluate_policies(
+                facts,
+                (DEPENDENCY_POLICY, TRANSPORT_POLICY, TEMPLATE_ENGINE_POLICY),
+            ),
             (),
         )
 
@@ -221,6 +239,26 @@ class ArchitectureDependencyTests(unittest.TestCase):
                 "control_plane_kit/planning/http.py",
                 "control_plane_kit/saga/process.py",
             },
+        )
+
+    def test_jinja_environment_is_owned_by_declared_template_interpreters(self) -> None:
+        product = analyze_source(
+            "from jinja2 import Environment\n",
+            path="control_plane_kit/servers/product.py",
+            module="control_plane_kit.servers.product",
+        )
+        renderer = analyze_source(
+            "from jinja2.sandbox import ImmutableSandboxedEnvironment\n",
+            path="control_plane_kit/configuration_rendering.py",
+            module="control_plane_kit.configuration_rendering",
+        )
+
+        findings = evaluate_policies((product, renderer), (TEMPLATE_ENGINE_POLICY,))
+
+        self.assertEqual(len(findings), 1)
+        self.assertEqual(
+            findings[0].location.path,
+            "control_plane_kit/servers/product.py",
         )
 
 

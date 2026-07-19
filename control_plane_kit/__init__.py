@@ -21,6 +21,15 @@ from control_plane_kit.configuration import (
     ConfigurationFileMode,
     ConfigurationMediaType,
 )
+from control_plane_kit.configuration_rendering import (
+    ConfigurationParameters,
+    ConfigurationRenderingError,
+    ConfigurationScalar,
+    ConfigurationTemplate,
+    ConfigurationTemplateRenderError,
+    ConfigurationTemplateSyntaxError,
+    ConfigurationValue,
+)
 from control_plane_kit.algebra import (
     ApplicationBlock,
     BlockSpec,
@@ -523,6 +532,13 @@ __all__ = [
     "ConfigurationArtifactsValue",
     "ConfigurationFileMode",
     "ConfigurationMediaType",
+    "ConfigurationParameters",
+    "ConfigurationRenderingError",
+    "ConfigurationScalar",
+    "ConfigurationTemplate",
+    "ConfigurationTemplateRenderError",
+    "ConfigurationTemplateSyntaxError",
+    "ConfigurationValue",
     "BlockFamily",
     "BlockSpec",
     "BlockSpecValue",

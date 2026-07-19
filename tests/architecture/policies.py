@@ -146,6 +146,39 @@ class TransportOwnershipPolicy:
         return tuple(findings)
 
 
+@dataclass(frozen=True, order=True)
+class ImportOwner:
+    """Modules permitted to import one architecture-significant dependency."""
+
+    import_prefix: str
+    owner_modules: tuple[str, ...]
+
+
+@dataclass(frozen=True)
+class ImportOwnershipPolicy:
+    """Reserve an external interpreter dependency to explicit adapter owners."""
+
+    owners: tuple[ImportOwner, ...]
+
+    def evaluate(self, facts: SourceFacts) -> tuple[PolicyFinding, ...]:
+        findings: list[PolicyFinding] = []
+        for imported in facts.imports:
+            imported_name = _absolute_import_name(facts.module, imported.qualified_name)
+            for owner in self.owners:
+                if not _matches_prefix(imported_name, owner.import_prefix):
+                    continue
+                if facts.module in owner.owner_modules:
+                    continue
+                findings.append(
+                    PolicyFinding(
+                        "import-ownership",
+                        f"{imported_name} is not owned by {facts.module}",
+                        imported.location,
+                    )
+                )
+        return tuple(sorted(findings))
+
+
 @dataclass(frozen=True)
 class CommitOwnershipPolicy:
     """Restrict commit call sites without pretending to infer receiver types.
