@@ -375,11 +375,7 @@ def _validate_endpoint_identity(
 
 def _validate_literal_endpoint(value: str, protocol: Protocol) -> None:
     parsed = urlsplit(value)
-    expected_schemes = {
-        Protocol.HTTP: {"http", "https"},
-        Protocol.TCP: {"tcp"},
-        Protocol.POSTGRES: {"postgres", "postgresql", "postgresql+psycopg"},
-    }[protocol]
+    expected_schemes = protocol_endpoint_schemes(protocol)
     if (
         parsed.scheme not in expected_schemes
         or parsed.hostname is None
@@ -390,6 +386,29 @@ def _validate_literal_endpoint(value: str, protocol: Protocol) -> None:
         or parsed.fragment
     ):
         raise ValueError("runtime endpoint is not a safe authority")
+
+
+def protocol_endpoint_schemes(protocol: Protocol) -> frozenset[str]:
+    """Return closed safe URL schemes for one connection protocol."""
+
+    return {
+        Protocol.HTTP: frozenset(("http", "https")),
+        Protocol.POSTGRES: frozenset(
+            ("postgres", "postgresql", "postgresql+psycopg")
+        ),
+        Protocol.TCP: frozenset(("tcp",)),
+        Protocol.UDP: frozenset(("udp",)),
+        Protocol.DNS_TCP: frozenset(("dns+tcp",)),
+        Protocol.DNS_UDP: frozenset(("dns+udp",)),
+        Protocol.REDIS: frozenset(("redis", "rediss")),
+        Protocol.SMTP: frozenset(("smtp", "smtps")),
+        Protocol.OTLP_HTTP: frozenset(("http", "https")),
+        Protocol.OTLP_GRPC: frozenset(("grpc", "grpcs")),
+        Protocol.NATS: frozenset(("nats",)),
+        Protocol.AMQP: frozenset(("amqp", "amqps")),
+        Protocol.KAFKA: frozenset(("kafka",)),
+        Protocol.S3: frozenset(("s3", "http", "https")),
+    }[protocol]
 
 
 def _validate_health_path(value: str) -> None:

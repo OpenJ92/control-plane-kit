@@ -3,6 +3,7 @@ from __future__ import annotations
 import unittest
 
 from control_plane_kit import (
+    ApplicationProtocol,
     ApplicationHealthProbeIntent,
     EndpointContext,
     EndpointMaterial,
@@ -24,11 +25,13 @@ from control_plane_kit import (
     RuntimeMaterial,
     SecretEndpointMaterial,
     TimeoutPolicy,
+    Transport,
     TransportProbeIntent,
     application_health_probe,
     process_probe,
     transport_probe,
 )
+from control_plane_kit.effects.probes import protocol_endpoint_schemes
 
 
 class ProbeIntentTests(unittest.TestCase):
@@ -144,6 +147,50 @@ class ProbeIntentTests(unittest.TestCase):
                 EndpointContext.HOST_LOCAL,
                 LiteralEndpointMaterial("tcp://127.0.0.1:8000"),
             )
+
+    def test_every_protocol_has_explicit_safe_endpoint_schemes(self) -> None:
+        protocols = tuple(
+            Protocol(transport, application)
+            for application in ApplicationProtocol
+            for transport in Transport
+            if transport in Protocol.allowed_transports(application)
+        )
+
+        for protocol in protocols:
+            with self.subTest(protocol=protocol):
+                schemes = protocol_endpoint_schemes(protocol)
+                self.assertTrue(schemes)
+                for scheme in schemes:
+                    RuntimeEndpointObservation(
+                        "service",
+                        "internal",
+                        "graph-a",
+                        protocol,
+                        EndpointContext.RUNTIME_PRIVATE,
+                        LiteralEndpointMaterial(f"{scheme}://service:8000"),
+                    )
+
+    def test_endpoint_scheme_cannot_lie_about_semantic_protocol(self) -> None:
+        invalid = (
+            (Protocol.DNS_UDP, "tcp://dns:53"),
+            (Protocol.REDIS, "postgres://database:5432"),
+            (Protocol.SMTP, "http://mail:25"),
+            (Protocol.OTLP_GRPC, "https://collector:4317"),
+        )
+
+        for protocol, address in invalid:
+            with self.subTest(protocol=protocol, address=address), self.assertRaisesRegex(
+                ValueError,
+                "safe authority",
+            ):
+                RuntimeEndpointObservation(
+                    "service",
+                    "internal",
+                    "graph-a",
+                    protocol,
+                    EndpointContext.RUNTIME_PRIVATE,
+                    LiteralEndpointMaterial(address),
+                )
 
     def test_secret_endpoint_descriptors_retain_only_the_reference(self) -> None:
         endpoint = RuntimeEndpointObservation(

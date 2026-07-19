@@ -3,6 +3,8 @@
 from control_plane_kit.adapters.probes.clients import (
     ApplicationHealthProbeAdapter,
     DefaultSocketConnector,
+    DefaultDatagramExchangeClient,
+    DatagramExchangeClient,
     HttpApplicationHealthProbeAdapter,
     ProcessProbeAdapter,
     RuntimeEndpointProvider,
@@ -10,6 +12,9 @@ from control_plane_kit.adapters.probes.clients import (
     StaticRuntimeEndpointProvider,
     TcpTransportProbeAdapter,
     TransportProbeAdapter,
+    TransportProbeRouter,
+    UdpTransportProbeAdapter,
+    UnsupportedTransportProbe,
 )
 from control_plane_kit.adapters.probes.interpreter import ProbeEffectInterpreter
 from control_plane_kit.adapters.probes.security import (
@@ -26,6 +31,8 @@ __all__ = [
     "ApplicationHealthProbeAdapter",
     "AuthorizedProbeTarget",
     "DefaultSocketConnector",
+    "DefaultDatagramExchangeClient",
+    "DatagramExchangeClient",
     "HttpApplicationHealthProbeAdapter",
     "ProbeAddressPolicy",
     "ProbeEffectInterpreter",
@@ -39,5 +46,8 @@ __all__ = [
     "StaticRuntimeEndpointProvider",
     "TcpTransportProbeAdapter",
     "TransportProbeAdapter",
+    "TransportProbeRouter",
+    "UdpTransportProbeAdapter",
+    "UnsupportedTransportProbe",
     "authorize_probe_endpoint",
 ]

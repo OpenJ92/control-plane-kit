@@ -13,6 +13,7 @@ from control_plane_kit import (
     EffectIdentity,
     EffectRequest,
     EffectSucceeded,
+    EffectUnsupported,
     EndpointMaterial,
     EndpointContext,
     EndpointScope,
@@ -44,6 +45,9 @@ from control_plane_kit.adapters.probes import (
     ProbeSecurityError,
     StaticRuntimeEndpointProvider,
     TcpTransportProbeAdapter,
+    TransportProbeRouter,
+    UdpTransportProbeAdapter,
+    UnsupportedTransportProbe,
     authorize_probe_endpoint,
 )
 from control_plane_kit.docker_runtime import (
@@ -113,6 +117,28 @@ class SequenceHealthProbe:
             self.outcomes.pop(0),
             endpoint_context=intent.endpoint.context,
         )
+
+
+@dataclass
+class _DatagramClient:
+    outcome: str
+
+    def exchange(
+        self,
+        host,
+        port,
+        payload,
+        *,
+        maximum_response_bytes,
+        timeout_seconds,
+    ):
+        if self.outcome == "refused":
+            raise ConnectionRefusedError
+        if self.outcome == "timeout":
+            raise TimeoutError
+        if self.outcome == "oversized":
+            return b"x" * (maximum_response_bytes + 1)
+        return b"response"
 
 
 class ProbeEffectInterpreterTests(unittest.TestCase):
@@ -406,6 +432,87 @@ class ProbeAdapterTests(unittest.TestCase):
         self.assertIs(reachable.outcome, ProbeOutcome.REACHABLE)
         self.assertIs(refused.outcome, ProbeOutcome.REFUSED)
         self.assertIs(timed_out.outcome, ProbeOutcome.TIMED_OUT)
+
+    def test_udp_probe_requires_a_bounded_response_exchange(self) -> None:
+        policy = ProbeAddressPolicy(allow_host_local=True)
+        intent = transport_probe(
+            _node(Protocol.UDP),
+            _endpoint(Protocol.UDP),
+            ProbePolicy(),
+        )
+
+        reachable = UdpTransportProbeAdapter(
+            policy,
+            client=_DatagramClient("reachable"),
+        ).observe(intent, timeout_seconds=1)
+        refused = UdpTransportProbeAdapter(
+            policy,
+            client=_DatagramClient("refused"),
+        ).observe(intent, timeout_seconds=1)
+        timed_out = UdpTransportProbeAdapter(
+            policy,
+            client=_DatagramClient("timeout"),
+        ).observe(intent, timeout_seconds=1)
+        oversized = UdpTransportProbeAdapter(
+            policy,
+            client=_DatagramClient("oversized"),
+        ).observe(intent, timeout_seconds=1)
+
+        self.assertIs(reachable.outcome, ProbeOutcome.REACHABLE)
+        self.assertIs(refused.outcome, ProbeOutcome.REFUSED)
+        self.assertIs(timed_out.outcome, ProbeOutcome.TIMED_OUT)
+        self.assertIs(oversized.outcome, ProbeOutcome.UNKNOWN)
+
+    def test_transport_adapters_reject_the_other_transport_explicitly(self) -> None:
+        policy = ProbeAddressPolicy(allow_host_local=True)
+        udp_intent = transport_probe(
+            _node(Protocol.UDP),
+            _endpoint(Protocol.UDP),
+            ProbePolicy(),
+        )
+        tcp_intent = _transport_intent()
+
+        with self.assertRaises(UnsupportedTransportProbe):
+            TcpTransportProbeAdapter(policy).observe(
+                udp_intent,
+                timeout_seconds=1,
+            )
+        with self.assertRaises(UnsupportedTransportProbe):
+            UdpTransportProbeAdapter(
+                policy,
+                client=_DatagramClient("reachable"),
+            ).observe(tcp_intent, timeout_seconds=1)
+
+    def test_transport_router_dispatches_from_the_typed_transport_only(self) -> None:
+        policy = ProbeAddressPolicy(allow_host_local=True)
+        router = TransportProbeRouter(
+            TcpTransportProbeAdapter(policy, connector=_Connector("reachable")),
+            UdpTransportProbeAdapter(
+                policy,
+                client=_DatagramClient("reachable"),
+            ),
+        )
+        tcp = router.observe(_transport_intent(), timeout_seconds=1)
+        udp = router.observe(
+            transport_probe(
+                _node(Protocol.UDP),
+                _endpoint(Protocol.UDP),
+                ProbePolicy(),
+            ),
+            timeout_seconds=1,
+        )
+
+        self.assertIs(tcp.outcome, ProbeOutcome.REACHABLE)
+        self.assertIs(udp.outcome, ProbeOutcome.REACHABLE)
+
+    def test_unsupported_transport_adapter_becomes_effect_unsupported(self) -> None:
+        result = ProbeEffectInterpreter(
+            _endpoint_provider(Protocol.UDP),
+            TcpTransportProbeAdapter(ProbeAddressPolicy(allow_host_local=True)),
+            SequenceHealthProbe([]),
+        ).execute(_request(protocol=Protocol.UDP))
+
+        self.assertIsInstance(result, EffectUnsupported)
 
     def test_docker_process_probe_inspects_graph_owned_container(self) -> None:
         request = _request()

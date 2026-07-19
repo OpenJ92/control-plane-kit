@@ -282,6 +282,28 @@ def _url(protocol: Protocol, host: str, port: int) -> str:
             return f"postgresql+psycopg://{host}:{port}"
         case Protocol.TCP:
             return f"tcp://{host}:{port}"
+        case Protocol.UDP:
+            return f"udp://{host}:{port}"
+        case Protocol.DNS_TCP:
+            return f"dns+tcp://{host}:{port}"
+        case Protocol.DNS_UDP:
+            return f"dns+udp://{host}:{port}"
+        case Protocol.REDIS:
+            return f"redis://{host}:{port}"
+        case Protocol.SMTP:
+            return f"smtp://{host}:{port}"
+        case Protocol.OTLP_HTTP:
+            return f"http://{host}:{port}"
+        case Protocol.OTLP_GRPC:
+            return f"grpc://{host}:{port}"
+        case Protocol.NATS:
+            return f"nats://{host}:{port}"
+        case Protocol.AMQP:
+            return f"amqp://{host}:{port}"
+        case Protocol.KAFKA:
+            return f"kafka://{host}:{port}"
+        case Protocol.S3:
+            return f"s3://{host}:{port}"
 
 
 def _environment_descriptor(value: str | SecretEnvironmentReference) -> object:
@@ -297,7 +319,7 @@ def _validate_host_publications(
     sockets: BlockSockets,
     publications: dict[str, HostPublication],
 ) -> None:
-    providers = {provider.name for provider in sockets.providers}
+    providers = {provider.name: provider.protocol for provider in sockets.providers}
     unknown = set(publications).difference(providers)
     if unknown:
         names = ", ".join(sorted(unknown))
@@ -305,8 +327,12 @@ def _validate_host_publications(
             f"Docker block {block_id!r} publishes unknown provider sockets: {names}"
         )
     fixed = [
-        (publication.bind_address, publication.host_port)
-        for publication in publications.values()
+        (
+            publication.bind_address,
+            publication.host_port,
+            providers[socket_name].transport,
+        )
+        for socket_name, publication in publications.items()
         if publication.host_port is not None
     ]
     if len(set(fixed)) != len(fixed):

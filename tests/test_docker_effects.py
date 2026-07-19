@@ -22,8 +22,10 @@ from control_plane_kit import (
     RuntimeKind,
     RuntimeMaterial,
     Protocol,
+    Transport,
 )
 from control_plane_kit.docker_runtime import DockerPublishedPort, DockerPortBinding
+from control_plane_kit.docker_runtime import UnsupportedDockerRuntimeFeature
 from control_plane_kit.execution import ObservationStatus
 from control_plane_kit.planning import (
     ActivityId,
@@ -85,6 +87,7 @@ class NarrowClient:
             tuple(
                 DockerPublishedPort(
                     value.container_port,
+                    value.protocol.transport,
                     value.host_address,
                     value.host_port or 49_152 + index,
                 )
@@ -201,6 +204,37 @@ class DockerEffectTests(unittest.TestCase):
             "127.0.0.1::8000/tcp",
         )
 
+    def test_cli_renders_udp_from_the_protocol_transport(self) -> None:
+        class RecordingCli(DockerCliClient):
+            def _run(self, *args, **kwargs):
+                self.recorded = args
+                return subprocess.CompletedProcess(args, 0)
+
+        client = RecordingCli()
+        client.run_container(
+            name="dns",
+            image="dns:latest",
+            network="network",
+            environment={},
+            command=(),
+            labels={},
+            ports=(
+                DockerPortBinding(
+                    "dns-udp",
+                    Protocol.DNS_UDP,
+                    53,
+                    "127.0.0.1",
+                    10_053,
+                ),
+            ),
+        )
+
+        publish_index = client.recorded.index("--publish")
+        self.assertEqual(
+            client.recorded[publish_index + 1],
+            "127.0.0.1:10053:53/udp",
+        )
+
     def test_cli_inspection_preserves_private_and_host_port_distinction(self) -> None:
         class RecordingCli(DockerCliClient):
             def _resource_exists(self, *args, **kwargs):
@@ -213,7 +247,9 @@ class DockerEffectTests(unittest.TestCase):
                     stdout=(
                         'container-id\t/api\ttrue\tapi:latest\t{}\t'
                         '{"8000/tcp":[{"HostIp":"127.0.0.1",'
-                        '"HostPort":"49152"}]}\n'
+                        '"HostPort":"49152"}],'
+                        '"5353/udp":[{"HostIp":"127.0.0.1",'
+                        '"HostPort":"49153"}]}\n'
                     ),
                 )
 
@@ -222,8 +258,33 @@ class DockerEffectTests(unittest.TestCase):
         self.assertIsNotNone(inspected)
         self.assertEqual(
             inspected.published_ports,
-            (DockerPublishedPort(8000, "127.0.0.1", 49_152),),
+            (
+                DockerPublishedPort(5353, Transport.UDP, "127.0.0.1", 49_153),
+                DockerPublishedPort(8000, Transport.TCP, "127.0.0.1", 49_152),
+            ),
         )
+
+    def test_cli_inspection_rejects_unknown_transport_suffix(self) -> None:
+        class RecordingCli(DockerCliClient):
+            def _resource_exists(self, *args, **kwargs):
+                return True
+
+            def _capture(self, *args, **kwargs):
+                return subprocess.CompletedProcess(
+                    args,
+                    0,
+                    stdout=(
+                        'container-id\t/dns\ttrue\tdns:latest\t{}\t'
+                        '{"53/sctp":[{"HostIp":"127.0.0.1",'
+                        '"HostPort":"49153"}]}\n'
+                    ),
+                )
+
+        with self.assertRaisesRegex(
+            UnsupportedDockerRuntimeFeature,
+            "port inspection was malformed",
+        ):
+            RecordingCli().inspect_container("dns")
 
     def test_host_publication_is_distinct_from_private_node_material(self) -> None:
         client = NarrowClient()
