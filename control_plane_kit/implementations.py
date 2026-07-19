@@ -8,6 +8,7 @@ from ipaddress import IPv4Address, IPv6Address
 from control_plane_kit.algebra import BlockSockets, RuntimeContext
 from control_plane_kit.configuration import ConfigurationArtifact
 from control_plane_kit.lifecycle import ResourceLifecycle
+from control_plane_kit.secrets import SecretReference
 from control_plane_kit.topology.graph import Endpoint, EndpointAddress, LiteralAddress
 from control_plane_kit.types import EndpointScope, Protocol, RuntimeKind
 
@@ -19,8 +20,7 @@ class SecretEnvironmentReference:
     reference_id: str
 
     def __post_init__(self) -> None:
-        if not self.reference_id.strip():
-            raise ValueError("secret environment reference identity must not be empty")
+        SecretReference(self.reference_id)
 
 
 @dataclass(frozen=True)

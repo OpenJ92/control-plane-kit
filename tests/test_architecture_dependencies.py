@@ -26,6 +26,7 @@ PACKAGE_RULES = (
             "effects",
             "execution",
             "planning",
+            "secrets",
             "types",
             "verification",
         ),
@@ -48,6 +49,7 @@ PACKAGE_RULES = (
             "lifecycle",
             "planning",
             "runtimes",
+            "secrets",
             "topology",
             "types",
         ),
@@ -67,7 +69,7 @@ PACKAGE_RULES = (
     PackageDependencyRule("execution", ()),
     PackageDependencyRule(
         "implementations",
-        ("algebra", "configuration", "lifecycle", "topology", "types"),
+        ("algebra", "configuration", "lifecycle", "secrets", "topology", "types"),
     ),
     PackageDependencyRule("lifecycle", ()),
     PackageDependencyRule("mcp_read", ("read_services",)),
@@ -84,6 +86,7 @@ PACKAGE_RULES = (
     PackageDependencyRule("runtimes", ("topology", "types")),
     PackageDependencyRule("saga", ()),
     PackageDependencyRule("scheduling", ("planning", "saga")),
+    PackageDependencyRule("secrets", ()),
     PackageDependencyRule(
         "servers",
         (
