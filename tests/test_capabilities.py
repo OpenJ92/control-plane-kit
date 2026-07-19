@@ -32,6 +32,10 @@ class CapabilityTests(TestCase):
             capability_named(CapabilityName.CIRCUIT_RESETTABLE).route_set,
             ControlRouteSetName.CIRCUIT,
         )
+        self.assertEqual(
+            capability_named(CapabilityName.TRAFFIC_EVIDENCE_READABLE).route_set,
+            ControlRouteSetName.TRAFFIC_EVIDENCE,
+        )
 
     def test_lifecycle_does_not_claim_a_route_yet(self):
         self.assertIsNone(RESTARTABLE.route_set)

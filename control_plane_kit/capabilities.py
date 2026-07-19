@@ -26,6 +26,7 @@ class CapabilityName(StrEnum):
     RESTARTABLE = "restartable"
     CIRCUIT_STATE_READABLE = "circuit-state-readable"
     CIRCUIT_RESETTABLE = "circuit-resettable"
+    TRAFFIC_EVIDENCE_READABLE = "traffic-evidence-readable"
 
 
 @dataclass(frozen=True)
@@ -112,6 +113,12 @@ CIRCUIT_RESETTABLE = Capability(
     description="Node accepts an authenticated circuit reset signal.",
     route_set=ControlRouteSetName.CIRCUIT,
 )
+TRAFFIC_EVIDENCE_READABLE = Capability(
+    name=CapabilityName.TRAFFIC_EVIDENCE_READABLE,
+    label="Traffic evidence",
+    description="Node exposes bounded paginated HTTP traffic evidence.",
+    route_set=ControlRouteSetName.TRAFFIC_EVIDENCE,
+)
 
 CAPABILITIES = (
     HEALTH_CHECKABLE,
@@ -124,6 +131,7 @@ CAPABILITIES = (
     RESTARTABLE,
     CIRCUIT_STATE_READABLE,
     CIRCUIT_RESETTABLE,
+    TRAFFIC_EVIDENCE_READABLE,
 )
 CAPABILITY_BY_NAME = {capability.name: capability for capability in CAPABILITIES}
 

@@ -19,6 +19,7 @@ from control_plane_kit.servers.http_multiplexer import http_multiplexer_block
 from control_plane_kit.servers.http_proxy import http_proxy_block
 from control_plane_kit.servers.http_rate_limiter import http_rate_limiter_block
 from control_plane_kit.servers.http_retry import http_retry_block
+from control_plane_kit.servers.http_traffic_logger import http_traffic_logger_block
 from control_plane_kit.servers.http_weighted_balancer import http_weighted_load_balancer_block
 from control_plane_kit.servers.managed_http_router import managed_http_router_block
 from control_plane_kit.servers.request_observer import request_observer_block
@@ -218,6 +219,18 @@ PACKAGE_SERVER_CONTRACTS = (
         (
             _probe(path="/health"),
             _control(CapabilityName.METRICS_READABLE, ControlRouteSetName.METRICS),
+        ),
+    ),
+    PackageServerContract(
+        PackageServerProduct.HTTP_TRAFFIC_LOGGER,
+        ProductMaturity.TEACHING,
+        http_traffic_logger_block(),
+        (
+            _probe(path="/health"),
+            _control(
+                CapabilityName.TRAFFIC_EVIDENCE_READABLE,
+                ControlRouteSetName.TRAFFIC_EVIDENCE,
+            ),
         ),
     ),
     PackageServerContract(

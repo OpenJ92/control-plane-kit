@@ -91,6 +91,7 @@ class PackageServerProduct(StrEnum):
     HTTP_MULTIPLEXER = "http-multiplexer"
     HTTP_RATE_LIMITER = "http-rate-limiter"
     HTTP_RETRY = "http-retry"
+    HTTP_TRAFFIC_LOGGER = "http-traffic-logger"
     HTTP_WEIGHTED_LOAD_BALANCER = "http-weighted-load-balancer"
     MANAGED_HTTP_ROUTER = "managed-http-router"
     REQUEST_OBSERVER = "request-observer"

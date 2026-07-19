@@ -43,6 +43,7 @@ class PackageServerCatalogTests(unittest.TestCase):
             PackageServerProduct.HTTP_MULTIPLEXER: "/",
             PackageServerProduct.HTTP_RATE_LIMITER: "/",
             PackageServerProduct.HTTP_RETRY: "/health",
+            PackageServerProduct.HTTP_TRAFFIC_LOGGER: "/health",
             PackageServerProduct.HTTP_WEIGHTED_LOAD_BALANCER: "/",
             PackageServerProduct.REQUEST_OBSERVER: "/health",
         }
@@ -79,6 +80,19 @@ class PackageServerCatalogTests(unittest.TestCase):
         self.assertEqual(
             observer.capabilities[1].route_set,
             ControlRouteSetName.METRICS,
+        )
+
+        logger = package_server_contract(PackageServerProduct.HTTP_TRAFFIC_LOGGER)
+        self.assertEqual(
+            logger.block.spec.capabilities,
+            (
+                CapabilityName.HEALTH_CHECKABLE,
+                CapabilityName.TRAFFIC_EVIDENCE_READABLE,
+            ),
+        )
+        self.assertEqual(
+            logger.capabilities[1].route_set,
+            ControlRouteSetName.TRAFFIC_EVIDENCE,
         )
 
     def test_managed_router_capabilities_are_control_route_backed(self) -> None:
