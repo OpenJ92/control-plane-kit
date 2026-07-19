@@ -54,6 +54,24 @@ from control_plane_kit.webhook.protocols import (
     WebhookUnitOfWork,
 )
 from control_plane_kit.webhook.unit_of_work import PostgresWebhookUnitOfWork
+from control_plane_kit.webhook.service import (
+    ClaimWebhook,
+    DispatchWebhook,
+    EnqueueWebhook,
+    RecoverWebhook,
+    ReleaseWebhookClaim,
+    WebhookAuthorizationError,
+    WebhookCommand,
+    WebhookCommandConflict,
+    WebhookCommandKind,
+    WebhookCommandResult,
+    WebhookDeliveryService,
+    WebhookOutboundDelivery,
+    WebhookOutboundRequest,
+    WebhookOutboundResult,
+    WebhookServiceError,
+    WebhookStateConflict,
+)
 
 __all__ = [
     "MAX_WEBHOOK_PAYLOAD_BYTES",
@@ -104,4 +122,20 @@ __all__ = [
     "WebhookProjectionStore",
     "WebhookUnitOfWork",
     "install_webhook_schema",
+    "ClaimWebhook",
+    "DispatchWebhook",
+    "EnqueueWebhook",
+    "RecoverWebhook",
+    "ReleaseWebhookClaim",
+    "WebhookAuthorizationError",
+    "WebhookCommand",
+    "WebhookCommandConflict",
+    "WebhookCommandKind",
+    "WebhookCommandResult",
+    "WebhookDeliveryService",
+    "WebhookOutboundDelivery",
+    "WebhookOutboundRequest",
+    "WebhookOutboundResult",
+    "WebhookServiceError",
+    "WebhookStateConflict",
 ]
