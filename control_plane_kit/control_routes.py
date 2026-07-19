@@ -31,6 +31,8 @@ class ControlRouteScope(StrEnum):
     INJECT_FAULT = "fault:inject"
     PURGE_CACHE = "cache:purge"
     RUN_LOAD = "load:run"
+    READ_DISCOVERY = "discovery:read"
+    WRITE_DISCOVERY = "discovery:write"
 
 
 class ControlRouteSetName(StrEnum):
@@ -46,6 +48,7 @@ class ControlRouteSetName(StrEnum):
     FAULTS = "faults"
     CACHE = "cache"
     LOADS = "loads"
+    DISCOVERY = "discovery"
 
 
 @dataclass(frozen=True)
@@ -301,6 +304,40 @@ LOAD_ROUTES = ControlRouteSet(
     ),
 )
 
+DISCOVERY_ROUTES = ControlRouteSet(
+    name=ControlRouteSetName.DISCOVERY,
+    routes=(
+        ControlRoute(
+            name="resolve-service",
+            method=ControlRouteMethod.GET,
+            path=control_path("discovery/services/{service_id}"),
+            scope=ControlRouteScope.READ_DISCOVERY,
+            description="Resolve active lease-backed instances for one service.",
+        ),
+        ControlRoute(
+            name="register-instance",
+            method=ControlRouteMethod.POST,
+            path=control_path("discovery/registrations"),
+            scope=ControlRouteScope.WRITE_DISCOVERY,
+            description="Register one typed service endpoint with a bounded lease.",
+        ),
+        ControlRoute(
+            name="heartbeat-instance",
+            method=ControlRouteMethod.POST,
+            path=control_path("discovery/registrations/{instance_id}/heartbeat"),
+            scope=ControlRouteScope.WRITE_DISCOVERY,
+            description="Replace one owned registration lease.",
+        ),
+        ControlRoute(
+            name="deregister-instance",
+            method=ControlRouteMethod.POST,
+            path=control_path("discovery/registrations/{instance_id}/deregister"),
+            scope=ControlRouteScope.WRITE_DISCOVERY,
+            description="Retire one owned service registration.",
+        ),
+    ),
+)
+
 CONTROL_ROUTE_SETS = (
     COMMON_STATUS_ROUTES,
     LOG_ROUTES,
@@ -312,6 +349,7 @@ CONTROL_ROUTE_SETS = (
     FAULT_ROUTES,
     CACHE_ROUTES,
     LOAD_ROUTES,
+    DISCOVERY_ROUTES,
 )
 
 

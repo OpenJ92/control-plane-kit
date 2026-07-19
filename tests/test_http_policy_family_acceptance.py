@@ -56,7 +56,10 @@ class HttpPolicyFamilyAcceptanceTests(unittest.TestCase):
         }
 
         self.assertTrue(validated.valid, validated.descriptor())
-        self.assertEqual(products, set(PackageServerProduct))
+        self.assertEqual(
+            products,
+            set(PackageServerProduct) - {PackageServerProduct.SERVICE_DISCOVERY},
+        )
         codec = GraphDescriptorCodec()
         descriptor = codec.encode(graph)
         self.assertEqual(codec.encode(codec.decode(descriptor)), descriptor)

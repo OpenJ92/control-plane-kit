@@ -33,6 +33,8 @@ class CapabilityName(StrEnum):
     CACHE_PURGEABLE = "cache-purgeable"
     LOAD_STATE_READABLE = "load-state-readable"
     LOAD_MUTABLE = "load-mutable"
+    DISCOVERY_READABLE = "discovery-readable"
+    DISCOVERY_MUTABLE = "discovery-mutable"
 
 
 @dataclass(frozen=True)
@@ -161,6 +163,18 @@ LOAD_MUTABLE = Capability(
     description="Node can start and cancel bounded test-only load runs.",
     route_set=ControlRouteSetName.LOADS,
 )
+DISCOVERY_READABLE = Capability(
+    name=CapabilityName.DISCOVERY_READABLE,
+    label="Discovery",
+    description="Node resolves bounded lease-backed service registrations.",
+    route_set=ControlRouteSetName.DISCOVERY,
+)
+DISCOVERY_MUTABLE = Capability(
+    name=CapabilityName.DISCOVERY_MUTABLE,
+    label="Register service",
+    description="Node accepts authenticated service registration lifecycle commands.",
+    route_set=ControlRouteSetName.DISCOVERY,
+)
 
 CAPABILITIES = (
     HEALTH_CHECKABLE,
@@ -180,6 +194,8 @@ CAPABILITIES = (
     CACHE_PURGEABLE,
     LOAD_STATE_READABLE,
     LOAD_MUTABLE,
+    DISCOVERY_READABLE,
+    DISCOVERY_MUTABLE,
 )
 CAPABILITY_BY_NAME = {capability.name: capability for capability in CAPABILITIES}
 

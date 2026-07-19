@@ -102,6 +102,7 @@ class PackageServerProduct(StrEnum):
     HTTP_WEIGHTED_LOAD_BALANCER = "http-weighted-load-balancer"
     MANAGED_HTTP_ROUTER = "managed-http-router"
     REQUEST_OBSERVER = "request-observer"
+    SERVICE_DISCOVERY = "service-discovery"
 
 
 class ProductMaturity(StrEnum):

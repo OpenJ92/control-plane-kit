@@ -156,6 +156,7 @@ from control_plane_kit.servers.request_observer import (
     request_observer_block,
     request_observer_command,
 )
+from control_plane_kit.servers.service_discovery import service_discovery_block
 from control_plane_kit.servers.catalog import (
     PACKAGE_SERVER_CONTRACTS,
     CapabilityImplementation,
@@ -301,5 +302,6 @@ __all__ = [
     "managed_http_router_block",
     "package_server_contract",
     "request_observer_block",
+    "service_discovery_block",
     "request_observer_command",
 ]

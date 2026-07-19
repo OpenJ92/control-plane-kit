@@ -43,6 +43,7 @@ from control_plane_kit.servers.http_timeout import http_timeout_block
 from control_plane_kit.servers.http_weighted_balancer import http_weighted_load_balancer_block
 from control_plane_kit.servers.managed_http_router import managed_http_router_block
 from control_plane_kit.servers.request_observer import request_observer_block
+from control_plane_kit.servers.service_discovery import service_discovery_block
 
 
 class CapabilityImplementation(StrEnum):
@@ -181,6 +182,12 @@ def _control(
 
 
 PACKAGE_SERVER_CONTRACTS = (
+    PackageServerContract(
+        PackageServerProduct.SERVICE_DISCOVERY,
+        ProductMaturity.TEST_ONLY,
+        service_discovery_block(),
+        (),
+    ),
     PackageServerContract(
         PackageServerProduct.HTTP_LOAD_GENERATOR,
         ProductMaturity.TEST_ONLY,

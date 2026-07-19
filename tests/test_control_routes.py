@@ -3,6 +3,7 @@ from unittest import TestCase, main
 from control_plane_kit import (
     COMMON_STATUS_ROUTES,
     CONTROL_ROUTE_SETS,
+    DISCOVERY_ROUTES,
     ControlRouteMethod,
     ControlRouteScope,
     ControlRouteSetName,
@@ -61,6 +62,7 @@ class ControlRouteTests(TestCase):
                 ControlRouteSetName.FAULTS,
                 ControlRouteSetName.CACHE,
                 ControlRouteSetName.LOADS,
+                ControlRouteSetName.DISCOVERY,
             },
         )
         self.assertEqual(
@@ -119,6 +121,25 @@ class ControlRouteTests(TestCase):
                 (ControlRouteMethod.POST, "/__deploy/load-runs"),
                 (ControlRouteMethod.POST, "/__deploy/load-runs/{run_id}/cancel"),
             },
+        )
+        self.assertEqual(
+            descriptors[ControlRouteSetName.DISCOVERY],
+            {
+                (ControlRouteMethod.GET, "/__deploy/discovery/services/{service_id}"),
+                (ControlRouteMethod.POST, "/__deploy/discovery/registrations"),
+                (
+                    ControlRouteMethod.POST,
+                    "/__deploy/discovery/registrations/{instance_id}/heartbeat",
+                ),
+                (
+                    ControlRouteMethod.POST,
+                    "/__deploy/discovery/registrations/{instance_id}/deregister",
+                ),
+            },
+        )
+        self.assertIs(
+            DISCOVERY_ROUTES,
+            route_set_named(ControlRouteSetName.DISCOVERY),
         )
 
     def test_route_set_named_accepts_string_or_enum(self):

@@ -963,3 +963,100 @@ Handoff to #440, #441, and #405:
 - #407 must carry this graph through the existing Postgres-backed
   `DeploymentProgram`;
 - #408 owns canonical Docker materialization and resource cleanup.
+
+## #501 Closed Service-Discovery Language And Block Contract
+
+### Capability
+
+Service discovery now has a closed pure language before persistence or HTTP
+behavior is introduced:
+
+```text
+DiscoveryRegistration
+  = DiscoveryIdentity
+  x Endpoint
+  x DiscoveryRegistrationMode
+  x DiscoveryLease
+
+DiscoveryCommand
+  = RegisterDiscoveryInstance
+  | HeartbeatDiscoveryInstance
+  | DeregisterDiscoveryInstance
+  | ResolveDiscoveryService
+  | ExpireDiscoveryLeases
+```
+
+The package-owned block is ordinary deployment algebra:
+
+```python
+ApplicationBlock(
+    PackageServerSpec(product=PackageServerProduct.SERVICE_DISCOVERY),
+    PlanOnlyImplementation("service-discovery-contract"),
+    BlockSockets(
+        requirements=(
+            RequirementSocket(
+                "database",
+                Protocol.POSTGRES,
+                ("DISCOVERY_DATABASE_URL",),
+            ),
+        ),
+        providers=(ProviderSocket("internal", Protocol.HTTP),),
+    ),
+)
+```
+
+It is deliberately plan-only and advertises no executable capability yet.
+#503 must replace the implementation and add capability evidence only after the
+authenticated FastAPI routes exist.
+
+### Laws
+
+- registration identity always names workspace, service, and instance;
+- registration mode is either control-plane managed or self-registered;
+- leases use timezone-aware typed timestamps and expire strictly after issue;
+- registry endpoints reuse the canonical typed `Endpoint` and `Protocol`;
+- process-local and unresolved secret-reference addresses cannot become
+  resolvable registry truth;
+- command descriptors reject unknown variants and fields;
+- authority keeps workspace, scopes, and optional self-instance identity
+  explicit;
+- the block has an explicit Postgres requirement but no persistence owner in
+  the control-plane store.
+
+### Breakpoints And Resolutions
+
+1. Adding `SERVICE_DISCOVERY` enlarged the package product sum. The existing
+   #437 assertion had equated the HTTP policy family with every package product.
+   It now explicitly excludes the service-infrastructure product. This narrows
+   the assertion to its stated domain rather than weakening product coverage;
+   #438 owns service-family acceptance.
+2. The architecture dependency corpus rejected the new `discovery` package
+   root because it had no declared dependency rule. It now has the narrow rule
+   `discovery -> topology + types`. No store, workflow, adapter, server, or
+   process dependency was whitelisted.
+3. Capability and discovery route-set values were added before runtime
+   realization, but the block does not advertise them. This preserves the law
+   that catalogue capability claims require executable evidence.
+
+### Evidence
+
+```text
+focused discovery, catalogue, graph, route, and HTTP regression tests: 38 passed
+architecture policy corpus:                                         43 passed
+complete Docker/Postgres suite:                                    923 passed
+assertions weakened:                                                  0
+skips added:                                                          0
+```
+
+### Handoff To #502
+
+- create `control_plane_kit.discovery_registry` as the server-owned application
+  and persistence package;
+- give it a narrow `DiscoveryStore`, `DiscoveryUnitOfWork`, normalized Postgres
+  schema, and command service;
+- do not modify or import the control-plane `PostgresUnitOfWork`;
+- use the existing command and authority values rather than introducing store
+  DTOs or open status strings;
+- stores may execute and return rows but never commit;
+- explicit observed timestamps drive lease expiry;
+- preserve graph truth independently from registry lease truth.
