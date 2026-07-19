@@ -14,15 +14,131 @@ from control_plane_kit.effects import (
     effect_request_for_compensation,
     materialize_compensation_effect_request,
     materialize_effect_request,
+    materialize_verification_contract,
 )
 from control_plane_kit.planning import Compensate, ReviewChange, compile_activity_plan
 from control_plane_kit.topology import diff_graphs, validate_graph
 from examples.scenarios import planning_scenarios
 from examples.gate_d_live_smoke import router_recipe
-from control_plane_kit import compile_recipe
+from control_plane_kit import HttpCheck, Protocol, VerificationContract, compile_recipe
 
 
 class EffectMaterialTests(unittest.TestCase):
+    def test_verification_contract_resolves_only_from_pinned_node_material(self) -> None:
+        scenario = planning_scenarios()[0]
+        desired = scenario.desired_graph
+        api = desired.node("api")
+        contract = VerificationContract(
+            (
+                HttpCheck(
+                    check_id="api-semantic-check",
+                    provider_socket="internal",
+                    path="/internal/tests/dependencies",
+                ),
+            )
+        )
+        desired = desired.update_node(
+            replace(
+                api,
+                block_spec=replace(api.block_spec, verification=contract),
+            )
+        )
+        plan = compile_activity_plan(
+            diff_graphs(
+                validate_graph(scenario.current_graph),
+                validate_graph(desired),
+            )
+        )
+        activity = next(
+            value
+            for value in plan.activities
+            if type(value.operation).__name__ == "StartNode"
+            and value.operation.target.node_id == "api"
+        )
+        materialized = materialize_effect_request(
+            effect_request_for_activity(
+                activity,
+                run_id="run",
+                attempt=1,
+                idempotency_key="api-start:1",
+            ),
+            activity,
+            PinnedGraphSet("workspace", "plan", "base", "desired"),
+            base_graph_id="base",
+            base_graph=scenario.current_graph,
+            desired_graph_id="desired",
+            desired_graph=desired,
+        )
+
+        checks = materialize_verification_contract(materialized.material)
+
+        self.assertEqual(len(checks), 1)
+        self.assertEqual(checks[0].check, contract.checks[0])
+        self.assertEqual(checks[0].endpoint.socket_name, "internal")
+        self.assertEqual(checks[0].endpoint.protocol, Protocol.HTTP)
+        self.assertEqual(
+            materialized.descriptor()["material"]["verification"],
+            contract.descriptor(),
+        )
+
+    def test_verification_material_rejects_missing_pinned_endpoint(self) -> None:
+        scenario = planning_scenarios()[0]
+        desired = scenario.desired_graph
+        api = desired.node("api")
+        malformed = replace(
+            api,
+            block_spec=replace(
+                api.block_spec,
+                verification=VerificationContract(
+                    (
+                        HttpCheck(
+                            check_id="missing",
+                            provider_socket="missing",
+                            path="/verify",
+                        ),
+                    )
+                ),
+            ),
+        )
+        plan = compile_activity_plan(
+            diff_graphs(
+                validate_graph(scenario.current_graph),
+                validate_graph(desired),
+            )
+        )
+        activity = next(
+            value
+            for value in plan.activities
+            if type(value.operation).__name__ == "StartNode"
+            and value.operation.target.node_id == "api"
+        )
+        materialized = materialize_effect_request(
+            effect_request_for_activity(
+                activity,
+                run_id="run",
+                attempt=1,
+                idempotency_key="api-start:1",
+            ),
+            activity,
+            PinnedGraphSet("workspace", "plan", "base", "desired"),
+            base_graph_id="base",
+            base_graph=scenario.current_graph,
+            desired_graph_id="desired",
+            desired_graph=desired,
+        )
+        node_material = replace(
+            materialized.material,
+            verification=malformed.block_spec.verification,
+        )
+
+        with self.assertRaises(EffectMaterializationError) as raised:
+            materialize_verification_contract(node_material)
+
+        self.assertIs(
+            raised.exception.code,
+            MaterializationCode.INVALID_VERIFICATION_TARGET,
+        )
+
     def test_every_executable_scenario_operation_materializes_from_pinned_transition(self) -> None:
         materialized: list[MaterializedEffectRequest] = []
         for scenario in planning_scenarios():

@@ -147,3 +147,109 @@ Validate every check against the provider socket on its compiled node, preserve
 contract changes as graph differences, and materialize endpoint-bearing check
 requests only from the exact graph pinned by the approved plan. Adapters must
 not import stores or choose current graph truth.
+
+### #474: Review found a displaced pre-existing assertion
+
+The first focused implementation inserted the new graph-diff test immediately
+before the final assertion of the preceding no-change test. That assertion then
+appeared inside the new test and failed because its local value did not exist.
+
+The correction did not delete the assertion. Review restored it to its original
+test and added a separate planning assertion for the new behavior:
+
+```text
+graph == graph
+  -> empty diff
+  -> summary == "no changes"
+
+verification contract changes
+  -> BLOCK_SPECIFICATION change
+  -> exactly one ReconcileNode for the owner
+```
+
+This is why diff review remains part of the issue loop even after a green test
+run: a misplaced assertion can make one test fail while quietly weakening an
+adjacent test if the correction is made mechanically.
+
+### #474: Architecture ownership rejected an undeclared effect dependency
+
+The focused architecture policy reported that `effects.material` imported the
+new pure `verification` language without declaring that dependency. The policy
+was extended explicitly:
+
+```text
+effects -> verification
+```
+
+The rule was not bypassed and the package scan was not narrowed. Materialization
+may interpret a verification contract into immutable endpoint-bearing effect
+material; verification still cannot import effects, stores, runtimes, or
+adapters.
+
+## #474 Decision Log: Graph-Pinned Verification Material
+
+### Capability
+
+Verification contracts now participate in the complete pure transition from
+desired topology to executable material:
+
+```text
+BlockSpec.verification
+  -> graph validation
+  -> BLOCK_SPECIFICATION graph diff
+  -> ReconcileNode activity
+  -> pinned NodeMaterial
+  -> tuple[VerificationCheckMaterial, ...]
+```
+
+Each check is paired with the endpoint for its declared provider socket only
+after that endpoint has been materialized from the exact desired graph pinned
+by the approved plan:
+
+```python
+checks = materialize_verification_contract(node_material)
+
+VerificationCheckMaterial(
+    node_id="api",
+    check=HttpCheck(
+        check_id="api-semantic-check",
+        provider_socket="internal",
+        path="/internal/tests/dependencies",
+    ),
+    endpoint=EndpointMaterial(
+        socket_name="internal",
+        protocol=Protocol.HTTP,
+        ...,
+    ),
+)
+```
+
+### Laws
+
+- a check must reference a provider socket on the same node;
+- the provider protocol must belong to the check variant's closed protocol set;
+- contract changes remain explicit graph and plan data;
+- endpoint selection occurs only from `NodeMaterial.endpoints`;
+- arbitrary URLs and current-graph lookup never enter the materializer;
+- adapters do not import stores or choose topology truth;
+- semantic verification remains distinct from process, transport, health, and
+  readiness probes;
+- empty contracts preserve existing deployment behavior.
+
+### Evidence
+
+```text
+Focused Docker suite after corrections: 45 passed
+Complete Docker/Postgres suite: 799 passed
+Test skips added: 0
+Assertions weakened: 0
+Pre-existing assertions restored during review: 1
+```
+
+### Handoff To #475
+
+Interpret the closed `VerificationCheckMaterial` variants through registered
+capability adapters. Adapters receive graph-pinned endpoint material and bounded
+policy only. They must not receive stores, graph selectors, arbitrary commands,
+arbitrary SQL, or arbitrary URLs. Unsupported product checks remain explicit
+unsupported outcomes rather than optimistic success.

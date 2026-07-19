@@ -19,6 +19,9 @@ from control_plane_kit import (
     SocketConnection,
     ValidationCode,
     ValidationSeverity,
+    HttpCheck,
+    PostgresQueryCheck,
+    VerificationContract,
     compile_recipe,
     validate_graph,
 )
@@ -90,6 +93,52 @@ class GraphValidationTests(unittest.TestCase):
         self.assertTrue(result.valid)
         self.assertIs(result.require_valid(), graph)
         self.assertEqual(result.findings, ())
+
+    def test_verification_targets_require_declared_compatible_provider_sockets(self):
+        graph = graph_with_requirement()
+        provider = graph.node("provider")
+        missing = graph.update_node(
+            replace(
+                provider,
+                block_spec=replace(
+                    provider.block_spec,
+                    verification=VerificationContract(
+                        (
+                            HttpCheck(
+                                check_id="missing",
+                                provider_socket="missing",
+                                path="/verify",
+                            ),
+                        )
+                    ),
+                ),
+            )
+        )
+        incompatible = graph.update_node(
+            replace(
+                provider,
+                block_spec=replace(
+                    provider.block_spec,
+                    verification=VerificationContract(
+                        (
+                            PostgresQueryCheck(
+                                check_id="wrong-protocol",
+                                provider_socket="internal",
+                            ),
+                        )
+                    ),
+                ),
+            )
+        )
+
+        self.assertIn(
+            ValidationCode.VERIFICATION_PROVIDER,
+            {value.code for value in validate_graph(missing).errors},
+        )
+        self.assertIn(
+            ValidationCode.VERIFICATION_PROTOCOL,
+            {value.code for value in validate_graph(incompatible).errors},
+        )
 
     def test_required_and_optional_socket_findings_are_structured(self):
         required = validate_graph(graph_with_requirement(connected=False))

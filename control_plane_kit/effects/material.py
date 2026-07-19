@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from enum import StrEnum
 from ipaddress import IPv4Address, IPv6Address, ip_address
 import json
@@ -41,6 +41,11 @@ from control_plane_kit.topology import (
     SecretReferenceAddress,
 )
 from control_plane_kit.types import EndpointScope, Protocol, RuntimeKind
+from control_plane_kit.verification import (
+    VerificationCheck,
+    VerificationContract,
+    expected_protocols,
+)
 
 
 _SECRET_MARKERS = ("secret", "token", "password", "credential", "private_key", "api_key")
@@ -56,6 +61,7 @@ class MaterializationCode(StrEnum):
     MALFORMED_IMPLEMENTATION = "malformed-implementation"
     SECRET_VALUE = "secret-value"
     UNSUPPORTED_OPERATION = "unsupported-operation"
+    INVALID_VERIFICATION_TARGET = "invalid-verification-target"
 
 
 class EffectMaterializationError(ValueError):
@@ -206,6 +212,46 @@ class NodeMaterial:
     environment: tuple[EnvironmentBindingMaterial, ...]
     health_path: str | None
     lifecycle: ResourceLifecycle = OWNED_EPHEMERAL
+    verification: VerificationContract = field(default_factory=VerificationContract)
+
+    def __post_init__(self) -> None:
+        if not isinstance(self.verification, VerificationContract):
+            raise TypeError("node material verification must be VerificationContract")
+
+
+@dataclass(frozen=True)
+class VerificationCheckMaterial:
+    """One semantic check paired with its graph-pinned provider endpoint."""
+
+    node_id: str
+    check: VerificationCheck
+    endpoint: EndpointMaterial
+
+    def __post_init__(self) -> None:
+        VerificationContract((self.check,))
+        if not self.node_id.strip():
+            raise EffectMaterializationError(
+                MaterializationCode.INVALID_VERIFICATION_TARGET,
+                "verification material node identity must not be empty",
+            )
+        if self.endpoint.socket_name != self.check.provider_socket:
+            raise EffectMaterializationError(
+                MaterializationCode.INVALID_VERIFICATION_TARGET,
+                "verification endpoint does not match its declared provider socket",
+            )
+        if self.endpoint.protocol not in expected_protocols(self.check):
+            raise EffectMaterializationError(
+                MaterializationCode.INVALID_VERIFICATION_TARGET,
+                "verification endpoint protocol is incompatible with its check",
+            )
+
+    def descriptor(self) -> dict[str, object]:
+        return {
+            "type": "verification-check",
+            "node_id": self.node_id,
+            "check": self.check.descriptor(),
+            "endpoint": _descriptor(self.endpoint),
+        }
 
 
 @dataclass(frozen=True)
@@ -483,7 +529,29 @@ def _node_material(graph: DeploymentGraph, node_id: str) -> NodeMaterial:
         _environment_material(node.environment, node=node, graph=graph),
         node.block_spec.health_path,
         node.lifecycle,
+        node.block_spec.verification,
     )
+
+
+def materialize_verification_contract(
+    node: NodeMaterial,
+) -> tuple[VerificationCheckMaterial, ...]:
+    """Resolve a contract only against endpoints already pinned in node material."""
+
+    if not isinstance(node, NodeMaterial):
+        raise TypeError("verification materialization requires NodeMaterial")
+    endpoints = {value.socket_name: value for value in node.endpoints}
+    material: list[VerificationCheckMaterial] = []
+    for check in node.verification.checks:
+        try:
+            endpoint = endpoints[check.provider_socket]
+        except KeyError as error:
+            raise EffectMaterializationError(
+                MaterializationCode.INVALID_VERIFICATION_TARGET,
+                f"verification check {check.check_id!r} has no pinned provider endpoint",
+            ) from error
+        material.append(VerificationCheckMaterial(node.node_id, check, endpoint))
+    return tuple(material)
 
 
 def _edge_material(graph: DeploymentGraph, edge_id: str) -> SocketConnectionMaterial:
@@ -718,7 +786,10 @@ def _descriptor(value: object) -> object:
                 "environment": [_descriptor(item) for item in value.environment],
                 "health_path": value.health_path,
                 "lifecycle": value.lifecycle.descriptor(),
+                "verification": value.verification.descriptor(),
             }
+        case VerificationCheckMaterial():
+            return value.descriptor()
         case ImplementationMaterial():
             return {
                 "kind": value.kind,

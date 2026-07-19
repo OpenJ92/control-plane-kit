@@ -14,6 +14,7 @@ from control_plane_kit.topology.codec import (
     GraphDescriptorCodec,
     GraphDescriptorError,
 )
+from control_plane_kit.verification import expected_protocols
 
 
 class ValidationSeverity(StrEnum):
@@ -39,6 +40,8 @@ class ValidationCode(StrEnum):
     DUPLICATE_REQUIREMENT_SOCKET = "duplicate-requirement-socket"
     EDGE_ENV_BINDINGS = "edge-env-bindings"
     CONSUMER_ENVIRONMENT = "consumer-environment"
+    VERIFICATION_PROVIDER = "verification-provider"
+    VERIFICATION_PROTOCOL = "verification-protocol"
 
 
 class SocketDirection(StrEnum):
@@ -356,6 +359,31 @@ def validate_graph(
                         ValidationCode.CONTROL_ROUTE_SET,
                         NodeSubject(node_id),
                         f"capability references unknown route set {capability.route_set.value!r}",
+                    )
+                )
+        for check in node.block_spec.verification.checks:
+            subject = SocketSubject(
+                node_id,
+                check.provider_socket,
+                SocketDirection.PROVIDER,
+            )
+            try:
+                provider = node.provider_socket(check.provider_socket)
+            except KeyError:
+                findings.append(
+                    _error(
+                        ValidationCode.VERIFICATION_PROVIDER,
+                        subject,
+                        f"verification check {check.check_id!r} references a missing provider socket",
+                    )
+                )
+                continue
+            if provider.protocol not in expected_protocols(check):
+                findings.append(
+                    _error(
+                        ValidationCode.VERIFICATION_PROTOCOL,
+                        subject,
+                        f"verification check {check.check_id!r} is incompatible with the provider protocol",
                     )
                 )
 
