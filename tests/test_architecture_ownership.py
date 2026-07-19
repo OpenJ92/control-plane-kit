@@ -15,7 +15,11 @@ from tests.architecture import (
 
 
 COMMIT_POLICY = CommitOwnershipPolicy(
-    owner_modules=("control_plane_kit.stores.unit_of_work",),
+    owner_modules=(
+        "control_plane_kit.idempotency_gateway.service",
+        "control_plane_kit.idempotency_gateway.unit_of_work",
+        "control_plane_kit.stores.unit_of_work",
+    ),
     owner_module_prefixes=("control_plane_kit.workflows",),
 )
 ENVIRONMENT_POLICY = EnvironmentAccessPolicy(

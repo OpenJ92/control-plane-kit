@@ -72,6 +72,10 @@ PACKAGE_RULES = (
         "implementations",
         ("algebra", "configuration", "lifecycle", "secrets", "topology", "types"),
     ),
+    PackageDependencyRule("idempotency", ()),
+    PackageDependencyRule(
+        "idempotency_gateway", ("adapters", "contracts", "idempotency", "servers")
+    ),
     PackageDependencyRule("lifecycle", ()),
     PackageDependencyRule("mcp_read", ("read_services",)),
     PackageDependencyRule("planning", ("lifecycle", "policies", "topology")),
@@ -97,6 +101,7 @@ PACKAGE_RULES = (
             "contracts",
             "configuration_rendering",
             "control_routes",
+            "idempotency",
             "implementations",
             "read_services",
             "secrets",

@@ -25,6 +25,12 @@ from control_plane_kit.servers.http_auth_gateway import (
     RouteAuthorizationPolicy,
     http_auth_gateway_block,
 )
+from control_plane_kit.idempotency import (
+    IdempotencyGatewayPolicy,
+    IdempotencyMethod,
+    IdempotencyRoutePolicy,
+)
+from control_plane_kit.servers.http_idempotency_gateway import http_idempotency_gateway_block
 from control_plane_kit.servers.http_fault_injector import http_fault_injector_block
 from control_plane_kit.servers.http_multiplexer import http_multiplexer_block
 from control_plane_kit.servers.http_proxy import http_proxy_block
@@ -173,6 +179,16 @@ def _control(
 
 
 PACKAGE_SERVER_CONTRACTS = (
+    PackageServerContract(
+        PackageServerProduct.HTTP_IDEMPOTENCY_GATEWAY,
+        ProductMaturity.TEST_ONLY,
+        http_idempotency_gateway_block(
+            policy=IdempotencyGatewayPolicy(
+                (IdempotencyRoutePolicy("/", IdempotencyMethod.POST),),
+            ),
+        ),
+        (_probe(path="/health"),),
+    ),
     PackageServerContract(
         PackageServerProduct.HTTP_AUTH_GATEWAY,
         ProductMaturity.TEST_ONLY,

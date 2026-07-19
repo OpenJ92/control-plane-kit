@@ -153,6 +153,14 @@ class PackageServerCatalogTests(unittest.TestCase):
             tuple(value.capability for value in gateway.capabilities),
             (CapabilityName.HEALTH_CHECKABLE, CapabilityName.METRICS_READABLE),
         )
+        idempotency = package_server_contract(
+            PackageServerProduct.HTTP_IDEMPOTENCY_GATEWAY
+        )
+        self.assertIs(idempotency.maturity, ProductMaturity.TEST_ONLY)
+        self.assertEqual(
+            tuple(value.capability for value in idempotency.capabilities),
+            (CapabilityName.HEALTH_CHECKABLE,),
+        )
 
     def test_contract_rejects_capability_claim_without_evidence(self) -> None:
         block = package_server_contract(PackageServerProduct.HTTP_PROXY).block
