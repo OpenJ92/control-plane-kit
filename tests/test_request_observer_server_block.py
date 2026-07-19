@@ -158,8 +158,7 @@ class RequestObserverServerTests(unittest.TestCase):
         self.assertEqual(after["count"], 1)
 
     def test_live_multiplexer_copies_traffic_to_observer(self) -> None:
-        primary_port = _free_port()
-        observer_port = _free_port()
+        primary_port, observer_port = _free_ports(2)
         multiplexer_port = 8080
         observer_environment = dict(os.environ)
         observer_environment["CPK_CONTROL_TOKEN"] = "observer-control-token"
@@ -217,8 +216,20 @@ def _free_port() -> int:
         return listener.getsockname()[1]
 
 
+def _free_ports(count: int) -> tuple[int, ...]:
+    listeners = [socket.socket() for _ in range(count)]
+    try:
+        for listener in listeners:
+            listener.bind(("127.0.0.1", 0))
+        return tuple(listener.getsockname()[1] for listener in listeners)
+    finally:
+        for listener in listeners:
+            listener.close()
+
+
 def _wait_ready(port: int) -> None:
-    for _ in range(50):
+    deadline = time.monotonic() + 5
+    while time.monotonic() < deadline:
         try:
             status, _ = _request(port, "/health")
             if status == 200:
@@ -229,7 +240,8 @@ def _wait_ready(port: int) -> None:
 
 
 def _wait_listening(port: int) -> None:
-    for _ in range(50):
+    deadline = time.monotonic() + 5
+    while time.monotonic() < deadline:
         try:
             with socket.create_connection(("127.0.0.1", port), timeout=0.1):
                 return
