@@ -21,6 +21,8 @@ from control_plane_kit.algebra import (
     DeploymentRecipe,
     DockerRuntime,
     ExternalRuntime,
+    PackageServerProduct,
+    PackageServerSpec,
     ProxyBlock,
     RequirementSocket,
     ProviderSocket,
@@ -353,6 +355,7 @@ from control_plane_kit.topology.codec import (
     DEFAULT_GRAPH_CODEC,
     BlockSpecVariantCodec,
     GenericBlockSpecCodec,
+    PackageServerSpecCodec,
     GraphDescriptorCodec,
     GraphDescriptorError,
     InvalidGraphReference,
@@ -426,6 +429,13 @@ from control_plane_kit.servers import (
     HttpResponse,
     HttpWeightedLoadBalancerRuntime,
     HttpWeightedLoadBalancerServer,
+    CapabilityImplementation,
+    ExecutableCapability,
+    PackageServerContract,
+    ProductMaturity,
+    UnsupportedCapability,
+    PACKAGE_SERVER_CONTRACTS,
+    package_server_contract,
     create_block_control_app,
     create_instance_read_app,
     http_active_router_block,
@@ -805,6 +815,19 @@ __all__ += [
     "project_observation",
     "validate_recovery_decision",
     "recovery_decision_record_from_descriptor",
+]
+
+__all__ += [
+    "CapabilityImplementation",
+    "ExecutableCapability",
+    "PACKAGE_SERVER_CONTRACTS",
+    "PackageServerContract",
+    "PackageServerProduct",
+    "PackageServerSpec",
+    "PackageServerSpecCodec",
+    "ProductMaturity",
+    "UnsupportedCapability",
+    "package_server_contract",
 ]
 
 __all__ += [

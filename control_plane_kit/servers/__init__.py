@@ -41,6 +41,15 @@ from control_plane_kit.servers.managed_http_router import (
     create_managed_http_router_app,
     managed_http_router_block,
 )
+from control_plane_kit.servers.catalog import (
+    PACKAGE_SERVER_CONTRACTS,
+    CapabilityImplementation,
+    ExecutableCapability,
+    PackageServerContract,
+    ProductMaturity,
+    UnsupportedCapability,
+    package_server_contract,
+)
 
 __all__ = [
     "BlockControlState",
@@ -62,6 +71,12 @@ __all__ = [
     "HttpWeightedLoadBalancerServer",
     "ManagedRouterEnvironment",
     "ManagedRouterSettings",
+    "CapabilityImplementation",
+    "ExecutableCapability",
+    "PACKAGE_SERVER_CONTRACTS",
+    "PackageServerContract",
+    "ProductMaturity",
+    "UnsupportedCapability",
     "create_block_control_app",
     "create_instance_read_app",
     "create_managed_http_router_app",
@@ -78,4 +93,5 @@ __all__ = [
     "http_weighted_load_balancer_block",
     "http_weighted_load_balancer_command",
     "managed_http_router_block",
+    "package_server_contract",
 ]

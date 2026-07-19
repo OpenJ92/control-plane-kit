@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass, field
+from enum import StrEnum
 from typing import Protocol as TypingProtocol, TypeAlias
 
 from control_plane_kit.capabilities import CapabilityName
@@ -72,6 +73,25 @@ class BlockSpec:
     health_path: str | None = None
     capabilities: tuple[CapabilityName, ...] = ()
     metadata: dict[str, str] = field(default_factory=dict)
+
+
+class PackageServerProduct(StrEnum):
+    """Exact package-owned server products understood by the built-in codec."""
+
+    HELLO = "hello"
+    HTTP_PROXY = "http-proxy"
+    HTTP_ACTIVE_ROUTER = "http-active-router"
+    HTTP_MULTIPLEXER = "http-multiplexer"
+    HTTP_RATE_LIMITER = "http-rate-limiter"
+    HTTP_WEIGHTED_LOAD_BALANCER = "http-weighted-load-balancer"
+    MANAGED_HTTP_ROUTER = "managed-http-router"
+
+
+@dataclass(frozen=True, kw_only=True)
+class PackageServerSpec(BlockSpec):
+    """Block specification retaining exact package-server product identity."""
+
+    product: PackageServerProduct
 
 
 class RuntimeImplementation(TypingProtocol):
