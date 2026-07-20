@@ -815,6 +815,101 @@ Tests must not:
 Every broad vertical includes architecture, security, data-engineering,
 ownership, retained-data, and test-integrity review.
 
+### Isomorphic reference parity
+
+The frozen reference suite is an executable specification. Migration requires
+a structure-preserving map from every reference test and live demonstration to
+the new repository topology.
+
+Conceptually:
+
+```text
+ReferenceBehavior
+  -- ownership and representation map -->
+CoreBehavior x ServerProductBehavior x SystemBehavior
+```
+
+For a normalized scenario input `x`, the parity law is:
+
+```text
+normalize(reference(x))
+  = normalize(extracted(core_part(x), product_part(x)))
+```
+
+Normalization may remove incidental timestamps, generated UUIDs, allocated
+ports, and container names. It must not remove product identity, graph shape,
+activity order, failure classification, capability evidence, HTTP response
+semantics, observations, retained-resource outcomes, or cleanup evidence.
+
+This is semantic isomorphism, not a requirement to preserve filenames or test
+class organization. One reference test may become several focused successor
+tests, and several repetitive reference tests may become one stronger
+parameterized law. No assertion or negative case may disappear without an
+explicit reviewed supersession record.
+
+Maintain a machine-readable parity manifest with entries shaped approximately
+as:
+
+```json
+{
+  "reference": "tests/test_graph_diff.py::GraphDiffTests::test_socket_change",
+  "law": "topology.diff.socket-change",
+  "owner": "control-plane-kit-core",
+  "successors": [
+    "tests/test_graph_diff.py::test_socket_change_is_structural"
+  ],
+  "status": "passing",
+  "evidence": "core-ci-run-or-commit"
+}
+```
+
+Allowed owners are:
+
+```text
+control-plane-kit-core
+control-plane-kit-servers:<product>
+control-plane-kit-test:<scenario>
+```
+
+The harness fails when a reference test is unmapped, a successor is absent or
+not passing, a mapping weakens the original assertion, or a removed behavior
+lacks an approved supersession rationale.
+
+Pure and unit-level parity runs in the owning repository. Cross-boundary
+differential tests may run the frozen reference and extracted system in
+separate Docker containers, collect canonical result descriptors, normalize
+only approved incidental fields, and compare them from the neutral harness.
+
+### Live demonstration parity
+
+Every reference live script and documented demo receives an acceptance entry:
+
+```text
+reference demo
+new owning repository or system scenario
+required OCI images and descriptor digests
+observable requests and responses
+durable events and observations
+cleanup and retained-resource result
+status and evidence
+```
+
+At minimum, preserve the observable behavior of the existing:
+
+- generated Hello topology;
+- authenticated router switch;
+- transport and TCP switch proofs;
+- configuration and secret materialization proofs;
+- verification observation proof;
+- webhook delivery proof;
+- service discovery and telemetry proof;
+- heterogeneous service infrastructure proof;
+- and complete Gate F deployment transition.
+
+A rewritten script is not sufficient evidence. The new demo must execute
+through the extracted public product descriptor, pinned OCI image, core
+pipeline, real runtime interpreter, observations, and cleanup path.
+
 ### Core tests
 
 `control-plane-kit-core` retains or reconstructs:
@@ -903,16 +998,18 @@ Evidence:
 
 Deliver in `control-plane-kit-core`:
 
-1. namespaced `ProductIdentity`;
-2. language-neutral `ContainerServerProduct` descriptor;
-3. strict codec and bounded validation;
-4. pure product instantiation into `DeployBlock`;
-5. immutable `ProductCatalog` composition;
-6. duplicate and unknown identity rejection;
-7. runtime and capability implementation identities;
-8. admitted descriptor digest semantics;
-9. external fixture package proof;
-10. architecture and security review.
+1. inventory reference tests, laws, and live demonstrations;
+2. establish the machine-readable parity manifest and harness;
+3. namespaced `ProductIdentity`;
+4. language-neutral `ContainerServerProduct` descriptor;
+5. strict codec and bounded validation;
+6. pure product instantiation into `DeployBlock`;
+7. immutable `ProductCatalog` composition;
+8. duplicate and unknown identity rejection;
+9. runtime and capability implementation identities;
+10. admitted descriptor digest semantics;
+11. external fixture package proof;
+12. architecture, security, and test-parity review.
 
 Stop before moving a real product until an external descriptor can pass the
 entire pure pipeline and produce pinned runtime material.
@@ -1086,14 +1183,21 @@ Maintain a machine-readable and human-readable migration ledger:
 old module
 new owner
 source moved
-tests moved
+reference tests inventoried
+successor tests passing
+assertion parity reviewed
 descriptor published
 image published
-live proof
+reference demos inventoried
+live behavior reproduced
+cleanup evidence reproduced
 old core copy removed
 ```
 
-A product is not migrated merely because its Python source was copied.
+A product is not migrated merely because its Python source was copied. It is
+migrated only when every owned reference test has a passing isomorphic
+successor and every owned live demonstration has equivalent observable and
+cleanup evidence.
 
 ### Rollback
 
@@ -1119,22 +1223,24 @@ control-plane-kit-servers
   SERVER-BOOTSTRAP: Repository, catalogue, publication, and Hello proof
 
 control-plane-kit-test
-  SYSTEM-ACCEPTANCE: Deferred cross-repository harness decision
+  SYSTEM-ACCEPTANCE: Isomorphic parity and cross-repository harness
 ```
 
 Suggested core children:
 
 ```text
 1. Establish core repository and package baseline
-2. Define namespaced ProductIdentity
-3. Define ContainerServerProduct descriptor language
-4. Implement strict descriptor codec and validation
-5. Instantiate products into ordinary DeployBlocks
-6. Implement immutable ProductCatalog composition
-7. Propagate product identity through graph, plan, and effect material
-8. Prove unknown, duplicate, and malicious descriptors fail closed
-9. Prove an external fixture distribution
-10. Complete architecture/security/test-integrity review
+2. Inventory and identify every reference test law and live demo
+3. Establish the isomorphic parity manifest and failing-unmapped-test policy
+4. Define namespaced ProductIdentity
+5. Define ContainerServerProduct descriptor language
+6. Implement strict descriptor codec and validation
+7. Instantiate products into ordinary DeployBlocks
+8. Implement immutable ProductCatalog composition
+9. Propagate product identity through graph, plan, and effect material
+10. Prove unknown, duplicate, and malicious descriptors fail closed
+11. Prove an external fixture distribution
+12. Complete architecture/security/test-integrity/parity review
 ```
 
 Suggested server children:
@@ -1146,10 +1252,11 @@ Suggested server children:
 4. Define public descriptor catalogue and publication
 5. Implement Hello descriptor
 6. Build and publish Hello image
-7. Execute Hello through core Docker runtime
-8. Harden digest, capability, readiness, ownership, and cleanup behavior
-9. Move CoreDNS as the representative upstream-image product
-10. Complete bootstrap closeout and prepare product-family migration
+7. Map every Hello reference test to its owning successor
+8. Execute and compare the Hello live demos through core Docker runtime
+9. Harden digest, capability, readiness, ownership, and cleanup behavior
+10. Move CoreDNS with complete test and live-demo parity
+11. Complete bootstrap closeout and prepare product-family migration
 ```
 
 The core topology precedes the server topology wherever the server package
@@ -1208,3 +1315,14 @@ Laws
 
 The split is complete only when those laws are executable across repository
 boundaries with the same rigor as the frozen reference implementation.
+
+The mechanical closeout conditions are:
+
+```text
+unmapped reference tests                  = 0
+missing or failing successor tests        = 0
+unreviewed weakened assertions            = 0
+unmapped reference live demonstrations    = 0
+failed required live demonstrations       = 0
+unexpected owned runtime residue          = 0
+```
