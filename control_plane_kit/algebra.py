@@ -105,6 +105,7 @@ class PackageServerProduct(StrEnum):
     SERVICE_DISCOVERY = "service-discovery"
     OPENTELEMETRY_COLLECTOR = "opentelemetry-collector"
     WEBHOOK_DELIVERY = "webhook-delivery"
+    TCP_SWITCH = "tcp-switch"
 
 
 class ProductMaturity(StrEnum):

@@ -3094,3 +3094,93 @@ service mesh, managed discovery platform, telemetry backend, or webhook fleet.
   fail at pure validation before any execution request;
 - both downstream issues must retain exact product maturity, protocol, secret
   reference, ownership, and persistence identity.
+
+## #429 Protocol-Safe TCP Switch And Load Balancer
+
+### Capability
+
+Gate G now has its first non-HTTP network policy block:
+
+```text
+TcpSwitch
+  = TcpSwitchMode
+  x bounded Map TargetId TcpEndpoint
+  x authenticated target-control surface
+  x byte-transparent bidirectional TCP data plane
+```
+
+`TcpSwitchMode` is closed over `ACTIVE_TARGET` and `ROUND_ROBIN`. The package
+product is explicitly `TEST_ONLY`: it is a small acceptance implementation, not
+a claim to production load-balancer maturity.
+
+The block exposes one raw-TCP provider, two startup raw-TCP requirements, and
+one runtime-controlled active-target requirement. Its Docker implementation
+uses separate data and control ports:
+
+```text
+7000/tcp  application bytes
+8080/tcp  authenticated FastAPI control routes
+```
+
+The control endpoint is operational authority rather than an application
+dependency socket, so it is not advertised as another provider in graph data.
+
+### Laws And Review
+
+- target URLs must be exact bounded `tcp://host:port` values without
+  credentials, paths, queries, or fragments;
+- target count, target identity, connection concurrency, connect time, idle
+  time, and copy buffer are bounded;
+- payload bytes are never parsed or assigned application meaning;
+- active-target mutation reuses the canonical authenticated, idempotent target
+  control routes;
+- unauthenticated mutation leaves the selected target unchanged;
+- process/control health is separate from raw TCP reachability and target
+  application readiness;
+- the block owns no target or retained data resource;
+- the control token remains an opaque secret reference in graph material;
+- target selection is process state and does not mutate desired topology;
+- no Postgres transaction, store, planner, effect, or coordinator model was
+  introduced.
+
+### Breaking Points And Corrections
+
+The first focused run exposed a real half-close error. When a client sent bytes
+and closed only its write side, the initial proxy pump cancelled the reverse
+copy before the target response arrived. The correction propagates EOF with
+`write_eof()` while allowing the opposite direction to complete. This preserves
+TCP half-close semantics rather than teaching the fixture to keep writing.
+
+The first complete run then exposed a family-classification assumption in the
+HTTP acceptance test. That test had treated every package product except three
+service products as HTTP. The exact equality remains, but `TCP_SWITCH` is now
+explicitly classified outside that family. No assertion or HTTP recipe was
+weakened.
+
+### Evidence
+
+```text
+focused Docker tests:                 5 passed
+complete Docker/Postgres suite:    1043 passed
+real Docker semantic sequence:        blue
+                                      -> unauthorized 401
+                                      -> blue unchanged
+                                      -> authenticated switch
+                                      -> green
+remaining owned live containers:      0
+remaining owned live networks:        0
+skips or mocks introduced:             0
+```
+
+### Handoff To #430 And #439
+
+- CoreDNS may rely on the transport/application protocol product and explicit
+  TCP/UDP publication; it must not reuse the TCP switch for UDP;
+- protocol/data acceptance may compose this block as ordinary graph data and
+  must preserve byte transparency;
+- Postgres, Redis, SMTP, broker, and object-storage semantics remain their exact
+  application protocols and must not be routed through `Protocol.TCP` merely
+  because their transport is TCP;
+- the later canonical live corpus should execute the block through
+  `DeploymentProgram`; this issue's isolated Docker proof establishes server
+  semantics and cleanup only.

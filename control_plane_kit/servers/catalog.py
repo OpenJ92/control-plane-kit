@@ -48,6 +48,7 @@ from control_plane_kit.servers.webhook_delivery import webhook_delivery_block
 from control_plane_kit.servers.opentelemetry_collector import (
     opentelemetry_collector_block,
 )
+from control_plane_kit.servers.tcp_switch import tcp_switch_block
 
 
 class CapabilityImplementation(StrEnum):
@@ -186,6 +187,16 @@ def _control(
 
 
 PACKAGE_SERVER_CONTRACTS = (
+    PackageServerContract(
+        PackageServerProduct.TCP_SWITCH,
+        ProductMaturity.TEST_ONLY,
+        tcp_switch_block(),
+        (
+            _control(CapabilityName.HEALTH_CHECKABLE, ControlRouteSetName.COMMON_STATUS),
+            _control(CapabilityName.TARGET_MUTABLE, ControlRouteSetName.TARGETS),
+            _control(CapabilityName.SWITCHABLE, ControlRouteSetName.TARGETS),
+        ),
+    ),
     PackageServerContract(
         PackageServerProduct.WEBHOOK_DELIVERY,
         ProductMaturity.OPERATIONAL,

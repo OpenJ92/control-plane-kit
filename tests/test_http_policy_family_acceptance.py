@@ -63,6 +63,7 @@ class HttpPolicyFamilyAcceptanceTests(unittest.TestCase):
                 PackageServerProduct.SERVICE_DISCOVERY,
                 PackageServerProduct.OPENTELEMETRY_COLLECTOR,
                 PackageServerProduct.WEBHOOK_DELIVERY,
+                PackageServerProduct.TCP_SWITCH,
             },
         )
         codec = GraphDescriptorCodec()
