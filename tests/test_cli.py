@@ -3,7 +3,7 @@ from json import loads
 from unittest import TestCase, main
 from urllib.error import HTTPError
 
-from control_plane_kit.cli import run
+from control_plane_kit.entrypoints.cli import run
 
 
 class CliTests(TestCase):

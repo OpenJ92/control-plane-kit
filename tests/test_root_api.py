@@ -12,6 +12,7 @@ OPERATIONAL_ROOTS = (
     "control_plane_kit.discovery_registry",
     "control_plane_kit.discovery_server",
     "control_plane_kit.docker_runtime",
+    "control_plane_kit.entrypoints",
     "control_plane_kit.idempotency_gateway",
     "control_plane_kit.mcp_read",
     "control_plane_kit.operations",
@@ -32,6 +33,7 @@ PURE_PACKAGE_ROOTS = (
     "execution",
     "implementations",
     "interpreters",
+    "products",
     "saga",
     "scheduling",
 )

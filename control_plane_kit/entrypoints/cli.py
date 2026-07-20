@@ -1,4 +1,4 @@
-"""Read-only command line client for a control-plane instance API."""
+"""Read-only process entrypoint for a control-plane instance API."""
 
 from __future__ import annotations
 

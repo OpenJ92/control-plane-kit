@@ -28,7 +28,7 @@ dependencies = [
 Homepage = "https://github.com/OpenJ92/control-plane-kit"
 
 [project.scripts]
-control-plane-kit = "control_plane_kit.cli:main"
+control-plane-kit = "control_plane_kit.entrypoints.cli:main"
 
 [tool.setuptools.packages.find]
 where = ["."]

@@ -40,15 +40,25 @@ if any(name.startswith(OPTIONAL_MODULE_PREFIXES) for name in sys.modules):
     raise AssertionError("root import eagerly loaded an optional package surface")
 if any(name.startswith("control_plane_kit.domains") for name in sys.modules):
     raise AssertionError("root import eagerly loaded a domain language")
+if any(name.startswith("control_plane_kit.products") for name in sys.modules):
+    raise AssertionError("root import eagerly loaded a product catalog")
 if "jinja2" in sys.modules:
     raise AssertionError("root import eagerly loaded the rendering interpreter")
 
 from control_plane_kit.interpreters import ConfigurationTemplate  # noqa: E402
+from control_plane_kit.products.servers import (  # noqa: E402
+    ProductCatalog,
+    ProductDeclaration,
+)
 
 if ConfigurationTemplate.__module__ != (
     "control_plane_kit.interpreters.configuration_rendering"
 ):
     raise AssertionError("rendering did not load from its canonical interpreter home")
+if ProductDeclaration.__module__ != "control_plane_kit.products.servers.catalog":
+    raise AssertionError("product declarations did not load from the canonical catalog")
+if ProductCatalog.__module__ != "control_plane_kit.products.servers.catalog":
+    raise AssertionError("product catalog did not load from the canonical catalog")
 
 from control_plane_kit.domains.discovery import DiscoveryIdentity  # noqa: E402
 from control_plane_kit.domains.idempotency import IdempotencyIdentity  # noqa: E402
@@ -94,6 +104,10 @@ if find_spec("control_plane_kit.planning") is not None:
     raise AssertionError("installed base wheel retained the retired planning package")
 if find_spec("control_plane_kit.configuration_rendering") is not None:
     raise AssertionError("installed base wheel retained the retired rendering module")
+if find_spec("control_plane_kit.cli") is not None:
+    raise AssertionError("installed base wheel retained the retired CLI module")
+if find_spec("control_plane_kit.entrypoints.cli") is None:
+    raise AssertionError("installed base wheel is missing the canonical CLI entrypoint")
 
 for module in (
     "control_plane_kit.adapters",

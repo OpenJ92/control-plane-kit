@@ -29,7 +29,7 @@ from control_plane_kit import (
     RuntimeTarget,
     StartRuntime,
 )
-from control_plane_kit.cli import run as run_cli
+from control_plane_kit.entrypoints.cli import run as run_cli
 from control_plane_kit.core.topology.graph import DeploymentGraph
 from control_plane_kit.mcp_read import McpReadError, ReadOnlyMcpAdapter
 from control_plane_kit.read_services import InstanceReadService, ReadModelError

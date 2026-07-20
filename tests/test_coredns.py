@@ -34,8 +34,8 @@ from control_plane_kit.domains.discovery import (
     DiscoveryRegistrationRecord,
     DiscoveryRegistrationStatus,
 )
+from control_plane_kit.products.servers import CapabilityImplementation
 from control_plane_kit.servers import (
-    CapabilityImplementation,
     CoreDnsConfiguration,
     DnsARecord,
     DnsAaaaRecord,
