@@ -89,7 +89,10 @@ PACKAGE_RULES = (
     PackageDependencyRule("mcp_read", ("read_services",)),
     PackageDependencyRule("operations", ("core", "domains", "policies")),
     PackageDependencyRule("policies", ("core",)),
-    PackageDependencyRule("products", ("core", "domains", "implementations")),
+    PackageDependencyRule(
+        "products",
+        ("core", "domains", "implementations", "interpreters"),
+    ),
     PackageDependencyRule(
         "projections",
         ("core", "execution", "saga", "scheduling"),
@@ -307,6 +310,31 @@ class ArchitectureDependencyTests(unittest.TestCase):
         self.assertEqual(
             findings[0].location.path,
             "control_plane_kit/servers/product.py",
+        )
+
+    def test_product_interpreter_edge_is_exactly_coredns_to_configuration_rendering(
+        self,
+    ) -> None:
+        root = Path(__file__).parents[1]
+        facts = tuple(
+            analyze_file(path, root=root)
+            for path in sorted((root / "control_plane_kit" / "products").rglob("*.py"))
+        )
+        edges = {
+            (source.module, imported.qualified_name)
+            for source in facts
+            for imported in source.imports
+            if imported.qualified_name.startswith("control_plane_kit.interpreters")
+        }
+
+        self.assertEqual(
+            edges,
+            {
+                (
+                    "control_plane_kit.products.servers.coredns",
+                    "control_plane_kit.interpreters.configuration_rendering.ConfigurationTemplate",
+                ),
+            },
         )
 
     def test_raw_static_environment_mapping_is_rejected_at_docker_authoring(self) -> None:

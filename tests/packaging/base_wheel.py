@@ -48,6 +48,7 @@ if "jinja2" in sys.modules:
 
 from control_plane_kit.interpreters import ConfigurationTemplate  # noqa: E402
 from control_plane_kit.products.servers import (  # noqa: E402
+    COREDNS_PRODUCT,
     HTTP_AUTH_GATEWAY_PRODUCT,
     AuthGatewayPolicy,
     AuthenticationMechanism,
@@ -92,6 +93,8 @@ if HTTP_AUTH_GATEWAY_PRODUCT.block.spec != auth_gateway.spec:
     raise AssertionError("auth gateway declaration and block constructor disagree")
 if HTTP_AUTH_GATEWAY_PRODUCT.maturity.value != "test-only":
     raise AssertionError("package auth gateway must remain an explicit test-only fixture")
+if COREDNS_PRODUCT.block.implementation.image != "coredns/coredns:1.14.6":
+    raise AssertionError("base wheel lost the exact CoreDNS product declaration")
 if any(find_spec(dependency) is not None for dependency in OPTIONAL_DISTRIBUTIONS):
     raise AssertionError("pure webhook product import installed an optional dependency")
 if WebhookDeliveryService.__module__ != "control_plane_kit.operations.webhook.service":
@@ -111,6 +114,12 @@ if rendered_command[:2] != ("python", "-c"):
     raise AssertionError("installed server-support template did not render a command")
 if "BASE_WHEEL_TARGET_URL" not in rendered_command[2]:
     raise AssertionError("installed server-support template lost typed render input")
+
+coredns_template = resources.files(
+    "control_plane_kit.products.servers"
+).joinpath("templates", "coredns.Corefile.j2")
+if not coredns_template.is_file():
+    raise AssertionError("base wheel is missing the product-owned CoreDNS template")
 
 from control_plane_kit.domains.discovery import DiscoveryIdentity  # noqa: E402
 from control_plane_kit.domains.idempotency import IdempotencyIdentity  # noqa: E402
@@ -181,6 +190,12 @@ except ModuleNotFoundError:
     retired_auth_gateway = None
 if retired_auth_gateway is not None:
     raise AssertionError("installed base wheel retained the legacy auth gateway home")
+try:
+    retired_coredns = find_spec("control_plane_kit.servers.coredns")
+except ModuleNotFoundError:
+    retired_coredns = None
+if retired_coredns is not None:
+    raise AssertionError("installed base wheel retained the legacy CoreDNS home")
 
 for module in (
     "control_plane_kit.adapters",

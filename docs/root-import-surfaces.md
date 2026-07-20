@@ -42,7 +42,7 @@ Examples:
 from control_plane_kit import DeploymentRecipe, compile_recipe, diff_graphs
 from control_plane_kit.docker_runtime import DockerRuntimeInterpreter
 from control_plane_kit.discovery_registry import DiscoveryRegistryService
-from control_plane_kit.servers import coredns_block
+from control_plane_kit.products.servers import coredns_block
 from control_plane_kit.webhook import WebhookDeliveryService
 ```
 

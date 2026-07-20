@@ -150,6 +150,10 @@ class PackageStructureTests(unittest.TestCase):
             "control_plane_kit.domains.webhook.language",
         )
         self.assertEqual(
+            server_products.coredns_block.__module__,
+            "control_plane_kit.products.servers.coredns",
+        )
+        self.assertEqual(
             server_products.webhook_delivery_block.__module__,
             "control_plane_kit.products.servers.webhook_delivery",
         )
@@ -227,6 +231,7 @@ class PackageStructureTests(unittest.TestCase):
             "webhook.app",
             "webhook_server",
             "servers.http_auth_gateway",
+            "servers.coredns",
             "webhook_server.main",
             "servers.webhook_delivery",
             "servers.http_messages",

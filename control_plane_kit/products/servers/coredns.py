@@ -39,6 +39,11 @@ from control_plane_kit.core.verification import (
     HttpCheck,
     VerificationContract,
 )
+from control_plane_kit.products.servers.catalog import (
+    CapabilityImplementation,
+    ExecutableCapability,
+    ProductDeclaration,
+)
 
 
 COREDNS_IMAGE = "coredns/coredns:1.14.6"
@@ -229,7 +234,7 @@ def render_coredns_configuration(
 ) -> tuple[ConfigurationArtifact, ConfigurationArtifact]:
     if not isinstance(configuration, CoreDnsConfiguration):
         raise TypeError("CoreDNS renderer requires typed configuration")
-    templates = files("control_plane_kit").joinpath("product_templates")
+    templates = files("control_plane_kit.products.servers").joinpath("templates")
     corefile = ConfigurationTemplate(
         "coredns-corefile",
         "coredns-corefile",
@@ -358,3 +363,21 @@ def _dns_label(value: str, kind: str) -> str:
     if not _DNS_LABEL.fullmatch(candidate):
         raise ValueError(f"DNS projection {kind} identity is not a DNS label")
     return candidate
+
+
+COREDNS_PRODUCT = ProductDeclaration(
+    PackageServerProduct.COREDNS,
+    ProductMaturity.OPERATIONAL,
+    coredns_block(),
+    (
+        ExecutableCapability(
+            CapabilityName.HEALTH_CHECKABLE,
+            CapabilityImplementation.APPLICATION_PROBE,
+            path="/health",
+        ),
+        ExecutableCapability(
+            CapabilityName.RESTARTABLE,
+            CapabilityImplementation.RUNTIME_LIFECYCLE,
+        ),
+    ),
+)

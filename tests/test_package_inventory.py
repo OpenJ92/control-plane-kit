@@ -125,7 +125,7 @@ class PackageModuleInventoryTests(unittest.TestCase):
         record = next(
             value
             for value in self.records
-            if value["module"] == "control_plane_kit.servers.coredns"
+            if value["module"] == "control_plane_kit.products.servers.coredns"
         )
 
         self.assertEqual(record["destination"], "control_plane_kit.products.servers.coredns")
