@@ -246,19 +246,19 @@
       ],
       "destination": "control_plane_kit",
       "internal_dependencies": [
-        "control_plane_kit.algebra",
-        "control_plane_kit.capabilities",
-        "control_plane_kit.configuration",
+        "control_plane_kit.core.algebra",
+        "control_plane_kit.core.capabilities",
+        "control_plane_kit.core.configuration",
         "control_plane_kit.configuration_rendering",
         "control_plane_kit.contracts",
-        "control_plane_kit.control_routes",
+        "control_plane_kit.core.control_routes",
         "control_plane_kit.discovery",
         "control_plane_kit.effects",
-        "control_plane_kit.environment",
+        "control_plane_kit.core.environment",
         "control_plane_kit.execution",
         "control_plane_kit.idempotency",
         "control_plane_kit.implementations",
-        "control_plane_kit.lifecycle",
+        "control_plane_kit.core.lifecycle",
         "control_plane_kit.load_generation",
         "control_plane_kit.planning.activity_plan",
         "control_plane_kit.planning.codec",
@@ -266,15 +266,15 @@
         "control_plane_kit.planning.recovery",
         "control_plane_kit.saga",
         "control_plane_kit.scheduling",
-        "control_plane_kit.secrets",
+        "control_plane_kit.core.secrets",
         "control_plane_kit.topology.changes",
         "control_plane_kit.topology.codec",
         "control_plane_kit.topology.compiler",
         "control_plane_kit.topology.diff",
         "control_plane_kit.topology.graph",
         "control_plane_kit.topology.validation",
-        "control_plane_kit.types",
-        "control_plane_kit.verification"
+        "control_plane_kit.core.types",
+        "control_plane_kit.core.verification"
       ],
       "known_package_consumers": [
         "control_plane_kit.adapters",
@@ -286,12 +286,12 @@
         "control_plane_kit.adapters.probes.interpreter",
         "control_plane_kit.adapters.probes.security",
         "control_plane_kit.adapters.verification",
-        "control_plane_kit.algebra",
+        "control_plane_kit.core.algebra",
         "control_plane_kit.application.deploy",
         "control_plane_kit.application.deploy.program",
         "control_plane_kit.application.deploy.stages",
         "control_plane_kit.application.deploy.values",
-        "control_plane_kit.capabilities",
+        "control_plane_kit.core.capabilities",
         "control_plane_kit.configuration_rendering",
         "control_plane_kit.discovery",
         "control_plane_kit.discovery_registry",
@@ -381,7 +381,7 @@
         "control_plane_kit.topology.diff",
         "control_plane_kit.topology.graph",
         "control_plane_kit.topology.validation",
-        "control_plane_kit.verification",
+        "control_plane_kit.core.verification",
         "control_plane_kit.webhook",
         "control_plane_kit.webhook.app",
         "control_plane_kit.webhook.http",
@@ -710,12 +710,12 @@
       "destination": "control_plane_kit.interpreters.control_http.client",
       "internal_dependencies": [
         "control_plane_kit.adapters.control_http.security",
-        "control_plane_kit.capabilities",
-        "control_plane_kit.control_routes",
+        "control_plane_kit.core.capabilities",
+        "control_plane_kit.core.control_routes",
         "control_plane_kit.effects",
         "control_plane_kit.execution",
         "control_plane_kit.planning",
-        "control_plane_kit.types"
+        "control_plane_kit.core.types"
       ],
       "known_package_consumers": [
         "control_plane_kit.adapters.control_http"
@@ -761,8 +761,8 @@
       "destination": "control_plane_kit.interpreters.control_http.security",
       "internal_dependencies": [
         "control_plane_kit.effects",
-        "control_plane_kit.secrets",
-        "control_plane_kit.types"
+        "control_plane_kit.core.secrets",
+        "control_plane_kit.core.types"
       ],
       "known_package_consumers": [
         "control_plane_kit.adapters.control_http",
@@ -908,7 +908,7 @@
         "control_plane_kit.adapters.probes.security",
         "control_plane_kit.effects.material",
         "control_plane_kit.effects.probes",
-        "control_plane_kit.types"
+        "control_plane_kit.core.types"
       ],
       "known_package_consumers": [
         "control_plane_kit.adapters.probes",
@@ -951,7 +951,7 @@
         "control_plane_kit.effects.values",
         "control_plane_kit.execution",
         "control_plane_kit.planning",
-        "control_plane_kit.types"
+        "control_plane_kit.core.types"
       ],
       "known_package_consumers": [
         "control_plane_kit.adapters.probes"
@@ -1036,8 +1036,8 @@
         "control_plane_kit.effects.probes",
         "control_plane_kit.effects.verification",
         "control_plane_kit.execution",
-        "control_plane_kit.types",
-        "control_plane_kit.verification"
+        "control_plane_kit.core.types",
+        "control_plane_kit.core.verification"
       ],
       "known_package_consumers": [
         "control_plane_kit.adapters"
@@ -1066,86 +1066,6 @@
         "values"
       ],
       "source": "control_plane_kit/adapters/verification.py"
-    },
-    {
-      "canonical_public_exports": [
-        "RequirementSocket",
-        "ProviderSocket",
-        "BlockSockets",
-        "BlockSpec",
-        "PackageServerProduct",
-        "ProductMaturity",
-        "PackageServerSpec",
-        "RuntimeImplementation",
-        "ApplicationBlock",
-        "DataBlock",
-        "ProxyBlock",
-        "SocketConnection",
-        "RuntimeContext",
-        "DockerRuntime",
-        "ExternalRuntime",
-        "DeploymentRecipe"
-      ],
-      "destination": "control_plane_kit.core.algebra",
-      "internal_dependencies": [
-        "control_plane_kit.capabilities",
-        "control_plane_kit.lifecycle",
-        "control_plane_kit.types",
-        "control_plane_kit.verification"
-      ],
-      "known_package_consumers": [
-        "control_plane_kit",
-        "control_plane_kit.implementations",
-        "control_plane_kit.servers.catalog",
-        "control_plane_kit.servers.coredns",
-        "control_plane_kit.servers.hello",
-        "control_plane_kit.servers.http_active_router",
-        "control_plane_kit.servers.http_auth_gateway",
-        "control_plane_kit.servers.http_bulkhead",
-        "control_plane_kit.servers.http_cache",
-        "control_plane_kit.servers.http_circuit_breaker",
-        "control_plane_kit.servers.http_fault_injector",
-        "control_plane_kit.servers.http_idempotency_gateway",
-        "control_plane_kit.servers.http_load_generator",
-        "control_plane_kit.servers.http_multiplexer",
-        "control_plane_kit.servers.http_proxy",
-        "control_plane_kit.servers.http_rate_limiter",
-        "control_plane_kit.servers.http_retry",
-        "control_plane_kit.servers.http_timeout",
-        "control_plane_kit.servers.http_traffic_logger",
-        "control_plane_kit.servers.http_weighted_balancer",
-        "control_plane_kit.servers.managed_http_router",
-        "control_plane_kit.servers.opentelemetry_collector",
-        "control_plane_kit.servers.request_observer",
-        "control_plane_kit.servers.service_discovery",
-        "control_plane_kit.servers.tcp_switch",
-        "control_plane_kit.servers.webhook_delivery",
-        "control_plane_kit.topology.changes",
-        "control_plane_kit.topology.codec",
-        "control_plane_kit.topology.compiler",
-        "control_plane_kit.topology.diff",
-        "control_plane_kit.topology.graph",
-        "control_plane_kit.topology.validation"
-      ],
-      "migration_prerequisites": [
-        "#550",
-        "#551",
-        "#552 or #553 according to destination"
-      ],
-      "module": "control_plane_kit.algebra",
-      "motivation": "Required by the effect-free deployment description, validation, comparison, or planning pipeline.",
-      "movement": "move",
-      "optional_external_dependencies": [],
-      "owner": "core",
-      "protecting_tests": [
-        "tests/test_discovery_language.py",
-        "tests/test_operator_graph_projection.py"
-      ],
-      "role": "deployment-language",
-      "semantic_roles": [
-        "values"
-      ],
-      "source": "control_plane_kit/algebra.py"
     },
     {
       "canonical_public_exports": [],
@@ -1407,69 +1327,6 @@
     },
     {
       "canonical_public_exports": [
-        "CapabilityName",
-        "Capability",
-        "capability_named"
-      ],
-      "destination": "control_plane_kit.core.capabilities",
-      "internal_dependencies": [
-        "control_plane_kit.control_routes"
-      ],
-      "known_package_consumers": [
-        "control_plane_kit",
-        "control_plane_kit.adapters.control_http.client",
-        "control_plane_kit.algebra",
-        "control_plane_kit.servers.block_control",
-        "control_plane_kit.servers.catalog",
-        "control_plane_kit.servers.coredns",
-        "control_plane_kit.servers.hello",
-        "control_plane_kit.servers.http_active_router",
-        "control_plane_kit.servers.http_auth_gateway",
-        "control_plane_kit.servers.http_bulkhead",
-        "control_plane_kit.servers.http_cache",
-        "control_plane_kit.servers.http_circuit_breaker",
-        "control_plane_kit.servers.http_fault_injector",
-        "control_plane_kit.servers.http_idempotency_gateway",
-        "control_plane_kit.servers.http_load_generator",
-        "control_plane_kit.servers.http_multiplexer",
-        "control_plane_kit.servers.http_proxy",
-        "control_plane_kit.servers.http_rate_limiter",
-        "control_plane_kit.servers.http_retry",
-        "control_plane_kit.servers.http_timeout",
-        "control_plane_kit.servers.http_traffic_logger",
-        "control_plane_kit.servers.http_weighted_balancer",
-        "control_plane_kit.servers.managed_http_router",
-        "control_plane_kit.servers.opentelemetry_collector",
-        "control_plane_kit.servers.request_observer",
-        "control_plane_kit.servers.service_discovery",
-        "control_plane_kit.servers.tcp_switch",
-        "control_plane_kit.servers.webhook_delivery",
-        "control_plane_kit.topology.codec",
-        "control_plane_kit.topology.compiler",
-        "control_plane_kit.topology.validation"
-      ],
-      "migration_prerequisites": [
-        "#550",
-        "#551",
-        "#552 or #553 according to destination"
-      ],
-      "module": "control_plane_kit.capabilities",
-      "motivation": "Required by the effect-free deployment description, validation, comparison, or planning pipeline.",
-      "movement": "move",
-      "optional_external_dependencies": [],
-      "owner": "core",
-      "protecting_tests": [
-        "tests/test_control_http_client.py"
-      ],
-      "role": "deployment-language",
-      "semantic_roles": [
-        "transformations",
-        "values"
-      ],
-      "source": "control_plane_kit/capabilities.py"
-    },
-    {
-      "canonical_public_exports": [
         "main",
         "run"
       ],
@@ -1500,49 +1357,6 @@
     },
     {
       "canonical_public_exports": [
-        "ConfigurationMediaType",
-        "ConfigurationFileMode",
-        "ConfigurationArtifactError",
-        "ConfigurationArtifact",
-        "validate_configuration_target_path"
-      ],
-      "destination": "control_plane_kit.core.configuration",
-      "internal_dependencies": [],
-      "known_package_consumers": [
-        "control_plane_kit",
-        "control_plane_kit.configuration_rendering",
-        "control_plane_kit.docker_runtime",
-        "control_plane_kit.effects.material",
-        "control_plane_kit.implementations",
-        "control_plane_kit.servers.coredns",
-        "control_plane_kit.servers.opentelemetry_collector",
-        "control_plane_kit.topology.changes",
-        "control_plane_kit.topology.codec",
-        "control_plane_kit.topology.graph"
-      ],
-      "migration_prerequisites": [
-        "#550",
-        "#551",
-        "#552 or #553 according to destination"
-      ],
-      "module": "control_plane_kit.configuration",
-      "motivation": "Required by the effect-free deployment description, validation, comparison, or planning pipeline.",
-      "movement": "move",
-      "optional_external_dependencies": [],
-      "owner": "core",
-      "protecting_tests": [
-        "tests/test_architecture_dependencies.py",
-        "tests/test_package_inventory.py"
-      ],
-      "role": "deployment-language",
-      "semantic_roles": [
-        "transformations",
-        "values"
-      ],
-      "source": "control_plane_kit/configuration.py"
-    },
-    {
-      "canonical_public_exports": [
         "ConfigurationParameters",
         "ConfigurationRenderingError",
         "ConfigurationTemplateSyntaxError",
@@ -1551,7 +1365,7 @@
       ],
       "destination": "control_plane_kit.interpreters.configuration_rendering",
       "internal_dependencies": [
-        "control_plane_kit.configuration"
+        "control_plane_kit.core.configuration"
       ],
       "known_package_consumers": [
         "control_plane_kit",
@@ -1658,6 +1472,214 @@
       "source": "control_plane_kit/contracts.py"
     },
     {
+      "canonical_public_exports": [],
+      "destination": "control_plane_kit.core",
+      "internal_dependencies": [],
+      "known_package_consumers": [],
+      "migration_prerequisites": [
+        "#551"
+      ],
+      "module": "control_plane_kit.core",
+      "motivation": "Namespace for the effect-free deployment language dependency floor.",
+      "movement": "remain",
+      "optional_external_dependencies": [],
+      "owner": "core",
+      "protecting_tests": [
+        "tests/test_package_inventory.py"
+      ],
+      "role": "package-namespace",
+      "semantic_roles": [
+        "namespace"
+      ],
+      "source": "control_plane_kit/core/__init__.py"
+    },
+    {
+      "canonical_public_exports": [
+        "RequirementSocket",
+        "ProviderSocket",
+        "BlockSockets",
+        "BlockSpec",
+        "PackageServerProduct",
+        "ProductMaturity",
+        "PackageServerSpec",
+        "RuntimeImplementation",
+        "ApplicationBlock",
+        "DataBlock",
+        "ProxyBlock",
+        "SocketConnection",
+        "RuntimeContext",
+        "DockerRuntime",
+        "ExternalRuntime",
+        "DeploymentRecipe"
+      ],
+      "destination": "control_plane_kit.core.algebra",
+      "internal_dependencies": [
+        "control_plane_kit.core.capabilities",
+        "control_plane_kit.core.lifecycle",
+        "control_plane_kit.core.types",
+        "control_plane_kit.core.verification"
+      ],
+      "known_package_consumers": [
+        "control_plane_kit",
+        "control_plane_kit.implementations",
+        "control_plane_kit.servers.catalog",
+        "control_plane_kit.servers.coredns",
+        "control_plane_kit.servers.hello",
+        "control_plane_kit.servers.http_active_router",
+        "control_plane_kit.servers.http_auth_gateway",
+        "control_plane_kit.servers.http_bulkhead",
+        "control_plane_kit.servers.http_cache",
+        "control_plane_kit.servers.http_circuit_breaker",
+        "control_plane_kit.servers.http_fault_injector",
+        "control_plane_kit.servers.http_idempotency_gateway",
+        "control_plane_kit.servers.http_load_generator",
+        "control_plane_kit.servers.http_multiplexer",
+        "control_plane_kit.servers.http_proxy",
+        "control_plane_kit.servers.http_rate_limiter",
+        "control_plane_kit.servers.http_retry",
+        "control_plane_kit.servers.http_timeout",
+        "control_plane_kit.servers.http_traffic_logger",
+        "control_plane_kit.servers.http_weighted_balancer",
+        "control_plane_kit.servers.managed_http_router",
+        "control_plane_kit.servers.opentelemetry_collector",
+        "control_plane_kit.servers.request_observer",
+        "control_plane_kit.servers.service_discovery",
+        "control_plane_kit.servers.tcp_switch",
+        "control_plane_kit.servers.webhook_delivery",
+        "control_plane_kit.topology.changes",
+        "control_plane_kit.topology.codec",
+        "control_plane_kit.topology.compiler",
+        "control_plane_kit.topology.diff",
+        "control_plane_kit.topology.graph",
+        "control_plane_kit.topology.validation"
+      ],
+      "migration_prerequisites": [
+        "#550",
+        "#551",
+        "#552 or #553 according to destination"
+      ],
+      "module": "control_plane_kit.core.algebra",
+      "motivation": "Required by the effect-free deployment description, validation, comparison, or planning pipeline.",
+      "movement": "remain",
+      "optional_external_dependencies": [],
+      "owner": "core",
+      "protecting_tests": [
+        "tests/test_discovery_language.py",
+        "tests/test_operator_graph_projection.py"
+      ],
+      "role": "deployment-language",
+      "semantic_roles": [
+        "values"
+      ],
+      "source": "control_plane_kit/core/algebra.py"
+    },
+    {
+      "canonical_public_exports": [
+        "CapabilityName",
+        "Capability",
+        "capability_named"
+      ],
+      "destination": "control_plane_kit.core.capabilities",
+      "internal_dependencies": [
+        "control_plane_kit.core.control_routes"
+      ],
+      "known_package_consumers": [
+        "control_plane_kit",
+        "control_plane_kit.adapters.control_http.client",
+        "control_plane_kit.core.algebra",
+        "control_plane_kit.servers.block_control",
+        "control_plane_kit.servers.catalog",
+        "control_plane_kit.servers.coredns",
+        "control_plane_kit.servers.hello",
+        "control_plane_kit.servers.http_active_router",
+        "control_plane_kit.servers.http_auth_gateway",
+        "control_plane_kit.servers.http_bulkhead",
+        "control_plane_kit.servers.http_cache",
+        "control_plane_kit.servers.http_circuit_breaker",
+        "control_plane_kit.servers.http_fault_injector",
+        "control_plane_kit.servers.http_idempotency_gateway",
+        "control_plane_kit.servers.http_load_generator",
+        "control_plane_kit.servers.http_multiplexer",
+        "control_plane_kit.servers.http_proxy",
+        "control_plane_kit.servers.http_rate_limiter",
+        "control_plane_kit.servers.http_retry",
+        "control_plane_kit.servers.http_timeout",
+        "control_plane_kit.servers.http_traffic_logger",
+        "control_plane_kit.servers.http_weighted_balancer",
+        "control_plane_kit.servers.managed_http_router",
+        "control_plane_kit.servers.opentelemetry_collector",
+        "control_plane_kit.servers.request_observer",
+        "control_plane_kit.servers.service_discovery",
+        "control_plane_kit.servers.tcp_switch",
+        "control_plane_kit.servers.webhook_delivery",
+        "control_plane_kit.topology.codec",
+        "control_plane_kit.topology.compiler",
+        "control_plane_kit.topology.validation"
+      ],
+      "migration_prerequisites": [
+        "#550",
+        "#551",
+        "#552 or #553 according to destination"
+      ],
+      "module": "control_plane_kit.core.capabilities",
+      "motivation": "Required by the effect-free deployment description, validation, comparison, or planning pipeline.",
+      "movement": "remain",
+      "optional_external_dependencies": [],
+      "owner": "core",
+      "protecting_tests": [
+        "tests/test_control_http_client.py"
+      ],
+      "role": "deployment-language",
+      "semantic_roles": [
+        "transformations",
+        "values"
+      ],
+      "source": "control_plane_kit/core/capabilities.py"
+    },
+    {
+      "canonical_public_exports": [
+        "ConfigurationMediaType",
+        "ConfigurationFileMode",
+        "ConfigurationArtifactError",
+        "ConfigurationArtifact",
+        "validate_configuration_target_path"
+      ],
+      "destination": "control_plane_kit.core.configuration",
+      "internal_dependencies": [],
+      "known_package_consumers": [
+        "control_plane_kit",
+        "control_plane_kit.configuration_rendering",
+        "control_plane_kit.docker_runtime",
+        "control_plane_kit.effects.material",
+        "control_plane_kit.implementations",
+        "control_plane_kit.servers.coredns",
+        "control_plane_kit.servers.opentelemetry_collector",
+        "control_plane_kit.topology.changes",
+        "control_plane_kit.topology.codec",
+        "control_plane_kit.topology.graph"
+      ],
+      "migration_prerequisites": [
+        "#550",
+        "#551",
+        "#552 or #553 according to destination"
+      ],
+      "module": "control_plane_kit.core.configuration",
+      "motivation": "Required by the effect-free deployment description, validation, comparison, or planning pipeline.",
+      "movement": "remain",
+      "optional_external_dependencies": [],
+      "owner": "core",
+      "protecting_tests": [
+        "tests/test_architecture_dependencies.py",
+        "tests/test_package_inventory.py"
+      ],
+      "role": "deployment-language",
+      "semantic_roles": [
+        "transformations",
+        "values"
+      ],
+      "source": "control_plane_kit/core/configuration.py"
+    },
+    {
       "canonical_public_exports": [
         "ControlRouteMethod",
         "ControlRouteScope",
@@ -1672,7 +1694,7 @@
       "known_package_consumers": [
         "control_plane_kit",
         "control_plane_kit.adapters.control_http.client",
-        "control_plane_kit.capabilities",
+        "control_plane_kit.core.capabilities",
         "control_plane_kit.read_services.instance",
         "control_plane_kit.servers.block_control",
         "control_plane_kit.servers.catalog",
@@ -1683,9 +1705,9 @@
         "#551",
         "#552 or #553 according to destination"
       ],
-      "module": "control_plane_kit.control_routes",
+      "module": "control_plane_kit.core.control_routes",
       "motivation": "Required by the effect-free deployment description, validation, comparison, or planning pipeline.",
-      "movement": "move",
+      "movement": "remain",
       "optional_external_dependencies": [],
       "owner": "core",
       "protecting_tests": [
@@ -1697,7 +1719,330 @@
         "transformations",
         "values"
       ],
-      "source": "control_plane_kit/control_routes.py"
+      "source": "control_plane_kit/core/control_routes.py"
+    },
+    {
+      "canonical_public_exports": [
+        "PublicStaticEnvironmentBinding",
+        "SocketDerivedEnvironmentBinding",
+        "environment_binding_from_descriptor",
+        "validate_socket_environment_value"
+      ],
+      "destination": "control_plane_kit.core.environment",
+      "internal_dependencies": [],
+      "known_package_consumers": [
+        "control_plane_kit",
+        "control_plane_kit.effects.material",
+        "control_plane_kit.implementations",
+        "control_plane_kit.projections.operator_graph",
+        "control_plane_kit.servers.hello",
+        "control_plane_kit.servers.http_load_generator",
+        "control_plane_kit.servers.managed_http_router",
+        "control_plane_kit.servers.tcp_switch",
+        "control_plane_kit.servers.webhook_delivery",
+        "control_plane_kit.topology.changes",
+        "control_plane_kit.topology.codec",
+        "control_plane_kit.topology.compiler",
+        "control_plane_kit.topology.graph"
+      ],
+      "migration_prerequisites": [
+        "#550",
+        "#551",
+        "#552 or #553 according to destination"
+      ],
+      "module": "control_plane_kit.core.environment",
+      "motivation": "Required by the effect-free deployment description, validation, comparison, or planning pipeline.",
+      "movement": "remain",
+      "optional_external_dependencies": [],
+      "owner": "core",
+      "protecting_tests": [
+        "tests/test_hello_server_block.py"
+      ],
+      "role": "deployment-language",
+      "semantic_roles": [
+        "transformations",
+        "values"
+      ],
+      "source": "control_plane_kit/core/environment.py"
+    },
+    {
+      "canonical_public_exports": [
+        "ResourceOwnership",
+        "ResourcePersistence",
+        "DataResourceSpec",
+        "ResourceLifecycle"
+      ],
+      "destination": "control_plane_kit.core.lifecycle",
+      "internal_dependencies": [],
+      "known_package_consumers": [
+        "control_plane_kit",
+        "control_plane_kit.core.algebra",
+        "control_plane_kit.docker_runtime",
+        "control_plane_kit.effects.material",
+        "control_plane_kit.implementations",
+        "control_plane_kit.planning.compiler",
+        "control_plane_kit.topology.codec",
+        "control_plane_kit.topology.graph"
+      ],
+      "migration_prerequisites": [
+        "#550",
+        "#551",
+        "#552 or #553 according to destination"
+      ],
+      "module": "control_plane_kit.core.lifecycle",
+      "motivation": "Required by the effect-free deployment description, validation, comparison, or planning pipeline.",
+      "movement": "remain",
+      "optional_external_dependencies": [],
+      "owner": "core",
+      "protecting_tests": [
+        "tests/test_architecture_dependencies.py",
+        "tests/test_package_inventory.py"
+      ],
+      "role": "deployment-language",
+      "semantic_roles": [
+        "values"
+      ],
+      "source": "control_plane_kit/core/lifecycle.py"
+    },
+    {
+      "canonical_public_exports": [
+        "SecretResolutionCode",
+        "SecretResolutionError",
+        "SecretFileMode",
+        "SecretFilePathBinding",
+        "SecretProviderId",
+        "SecretReference",
+        "SecretEnvironmentDelivery",
+        "SecretReferenceEnvironmentDelivery",
+        "SecretFileDelivery",
+        "secret_delivery_sort_key",
+        "secret_delivery_from_descriptor",
+        "SecretValue",
+        "SecretResolved",
+        "SecretMissing",
+        "SecretDenied",
+        "SecretProviderAuthority",
+        "SecretResolver",
+        "LocalDevelopmentSecretResolver",
+        "require_resolved_secret"
+      ],
+      "destination": "control_plane_kit.core.secrets",
+      "internal_dependencies": [],
+      "known_package_consumers": [
+        "control_plane_kit",
+        "control_plane_kit.adapters.control_http.security",
+        "control_plane_kit.docker_runtime",
+        "control_plane_kit.effects.material",
+        "control_plane_kit.effects.values",
+        "control_plane_kit.implementations",
+        "control_plane_kit.projections.operator_graph",
+        "control_plane_kit.servers.http_auth_gateway",
+        "control_plane_kit.servers.http_bulkhead",
+        "control_plane_kit.servers.http_cache",
+        "control_plane_kit.servers.http_circuit_breaker",
+        "control_plane_kit.servers.http_fault_injector",
+        "control_plane_kit.servers.http_idempotency_gateway",
+        "control_plane_kit.servers.http_load_generator",
+        "control_plane_kit.servers.http_retry",
+        "control_plane_kit.servers.http_timeout",
+        "control_plane_kit.servers.http_traffic_logger",
+        "control_plane_kit.servers.managed_http_router",
+        "control_plane_kit.servers.opentelemetry_collector",
+        "control_plane_kit.servers.request_observer",
+        "control_plane_kit.servers.service_discovery",
+        "control_plane_kit.servers.tcp_switch",
+        "control_plane_kit.servers.webhook_delivery",
+        "control_plane_kit.topology.changes",
+        "control_plane_kit.topology.codec",
+        "control_plane_kit.topology.graph",
+        "control_plane_kit.webhook.http",
+        "control_plane_kit.webhook.language",
+        "control_plane_kit.webhook.postgres",
+        "control_plane_kit.webhook_server.main"
+      ],
+      "migration_prerequisites": [
+        "#550",
+        "#551",
+        "#552 or #553 according to destination"
+      ],
+      "module": "control_plane_kit.core.secrets",
+      "motivation": "Required by the effect-free deployment description, validation, comparison, or planning pipeline.",
+      "movement": "remain",
+      "optional_external_dependencies": [],
+      "owner": "core",
+      "protecting_tests": [
+        "tests/test_control_http_client.py",
+        "tests/test_control_http_live.py",
+        "tests/test_control_http_security.py",
+        "tests/test_secrets.py",
+        "tests/test_webhook_http.py"
+      ],
+      "role": "deployment-language",
+      "semantic_roles": [
+        "protocols",
+        "transformations",
+        "values"
+      ],
+      "source": "control_plane_kit/core/secrets.py"
+    },
+    {
+      "canonical_public_exports": [
+        "Transport",
+        "ApplicationProtocol",
+        "Protocol",
+        "SocketBinding",
+        "EndpointScope",
+        "RuntimeKind",
+        "WorkspaceLifecycle",
+        "BlockFamily"
+      ],
+      "destination": "control_plane_kit.core.types",
+      "internal_dependencies": [],
+      "known_package_consumers": [
+        "control_plane_kit",
+        "control_plane_kit.adapters.control_http.client",
+        "control_plane_kit.adapters.control_http.security",
+        "control_plane_kit.adapters.probes.clients",
+        "control_plane_kit.adapters.probes.interpreter",
+        "control_plane_kit.adapters.verification",
+        "control_plane_kit.core.algebra",
+        "control_plane_kit.discovery",
+        "control_plane_kit.discovery_registry.postgres",
+        "control_plane_kit.docker_runtime",
+        "control_plane_kit.effects.material",
+        "control_plane_kit.effects.probes",
+        "control_plane_kit.implementations",
+        "control_plane_kit.policies.lifecycle",
+        "control_plane_kit.read_services.instance",
+        "control_plane_kit.runtimes",
+        "control_plane_kit.servers.coredns",
+        "control_plane_kit.servers.hello",
+        "control_plane_kit.servers.http_active_router",
+        "control_plane_kit.servers.http_auth_gateway",
+        "control_plane_kit.servers.http_bulkhead",
+        "control_plane_kit.servers.http_cache",
+        "control_plane_kit.servers.http_circuit_breaker",
+        "control_plane_kit.servers.http_fault_injector",
+        "control_plane_kit.servers.http_idempotency_gateway",
+        "control_plane_kit.servers.http_load_generator",
+        "control_plane_kit.servers.http_multiplexer",
+        "control_plane_kit.servers.http_proxy",
+        "control_plane_kit.servers.http_rate_limiter",
+        "control_plane_kit.servers.http_retry",
+        "control_plane_kit.servers.http_timeout",
+        "control_plane_kit.servers.http_traffic_logger",
+        "control_plane_kit.servers.http_weighted_balancer",
+        "control_plane_kit.servers.managed_http_router",
+        "control_plane_kit.servers.opentelemetry_collector",
+        "control_plane_kit.servers.request_observer",
+        "control_plane_kit.servers.service_discovery",
+        "control_plane_kit.servers.tcp_switch",
+        "control_plane_kit.servers.webhook_delivery",
+        "control_plane_kit.stores.records",
+        "control_plane_kit.topology",
+        "control_plane_kit.topology.codec",
+        "control_plane_kit.topology.compiler",
+        "control_plane_kit.topology.graph",
+        "control_plane_kit.core.verification",
+        "control_plane_kit.workflows.execution_admission",
+        "control_plane_kit.workflows.verification"
+      ],
+      "migration_prerequisites": [
+        "#550",
+        "#551",
+        "#552 or #553 according to destination"
+      ],
+      "module": "control_plane_kit.core.types",
+      "motivation": "Required by the effect-free deployment description, validation, comparison, or planning pipeline.",
+      "movement": "remain",
+      "optional_external_dependencies": [],
+      "owner": "core",
+      "protecting_tests": [
+        "tests/test_algebra.py",
+        "tests/test_control_http_client.py",
+        "tests/test_control_http_live.py",
+        "tests/test_control_http_security.py",
+        "tests/test_effect_dispatch.py",
+        "tests/test_execution_coordinator.py",
+        "tests/test_execution_store.py",
+        "tests/test_generated_hello_live_scenario.py",
+        "tests/test_graph_validation.py",
+        "tests/test_hello_server_block.py",
+        "tests/test_http_active_router_server_block.py",
+        "tests/test_http_multiplexer_server_block.py",
+        "tests/test_http_proxy_server_block.py",
+        "tests/test_http_rate_limiter_server_block.py",
+        "tests/test_http_weighted_balancer_server_block.py"
+      ],
+      "role": "deployment-language",
+      "semantic_roles": [
+        "values"
+      ],
+      "source": "control_plane_kit/core/types.py"
+    },
+    {
+      "canonical_public_exports": [
+        "VerificationContractError",
+        "DnsRecordType",
+        "PostgresVerificationOperation",
+        "RedisVerificationOperation",
+        "VerificationCapability",
+        "VerificationOutcome",
+        "VerificationPolicy",
+        "HttpCheck",
+        "DnsResolveCheck",
+        "PostgresQueryCheck",
+        "RedisCheck",
+        "BrokerRoundTripCheck",
+        "ObjectStorageRoundTripCheck",
+        "SmtpAcceptanceCheck",
+        "VerificationContract",
+        "expected_protocols",
+        "verification_capability",
+        "VerificationIdentity",
+        "HttpVerificationEvidence",
+        "RedisVerificationEvidence",
+        "VerificationCompleted",
+        "VerificationUnsupported",
+        "verification_check_from_descriptor"
+      ],
+      "destination": "control_plane_kit.core.verification",
+      "internal_dependencies": [
+        "control_plane_kit.core.types"
+      ],
+      "known_package_consumers": [
+        "control_plane_kit",
+        "control_plane_kit.adapters.verification",
+        "control_plane_kit.core.algebra",
+        "control_plane_kit.effects.material",
+        "control_plane_kit.effects.verification",
+        "control_plane_kit.servers.coredns",
+        "control_plane_kit.servers.opentelemetry_collector",
+        "control_plane_kit.servers.webhook_delivery",
+        "control_plane_kit.topology.codec",
+        "control_plane_kit.topology.validation",
+        "control_plane_kit.workflows.verification"
+      ],
+      "migration_prerequisites": [
+        "#550",
+        "#551",
+        "#552 or #553 according to destination"
+      ],
+      "module": "control_plane_kit.core.verification",
+      "motivation": "Required by the effect-free deployment description, validation, comparison, or planning pipeline.",
+      "movement": "remain",
+      "optional_external_dependencies": [],
+      "owner": "core",
+      "protecting_tests": [
+        "tests/test_architecture_dependencies.py",
+        "tests/test_package_inventory.py"
+      ],
+      "role": "deployment-language",
+      "semantic_roles": [
+        "transformations",
+        "values"
+      ],
+      "source": "control_plane_kit/core/verification.py"
     },
     {
       "canonical_public_exports": [
@@ -1725,7 +2070,7 @@
       "destination": "control_plane_kit.domains.discovery",
       "internal_dependencies": [
         "control_plane_kit.topology.graph",
-        "control_plane_kit.types"
+        "control_plane_kit.core.types"
       ],
       "known_package_consumers": [
         "control_plane_kit",
@@ -1812,7 +2157,7 @@
       "internal_dependencies": [
         "control_plane_kit.discovery",
         "control_plane_kit.topology.graph",
-        "control_plane_kit.types"
+        "control_plane_kit.core.types"
       ],
       "known_package_consumers": [
         "control_plane_kit.discovery_registry",
@@ -2099,15 +2444,15 @@
       ],
       "destination": "control_plane_kit.interpreters.docker",
       "internal_dependencies": [
-        "control_plane_kit.configuration",
+        "control_plane_kit.core.configuration",
         "control_plane_kit.effects",
         "control_plane_kit.execution",
-        "control_plane_kit.lifecycle",
+        "control_plane_kit.core.lifecycle",
         "control_plane_kit.planning",
         "control_plane_kit.runtimes",
-        "control_plane_kit.secrets",
+        "control_plane_kit.core.secrets",
         "control_plane_kit.topology.graph",
-        "control_plane_kit.types"
+        "control_plane_kit.core.types"
       ],
       "known_package_consumers": [],
       "migration_prerequisites": [
@@ -2355,15 +2700,15 @@
       ],
       "destination": "control_plane_kit.operations.effects.material",
       "internal_dependencies": [
-        "control_plane_kit.configuration",
+        "control_plane_kit.core.configuration",
         "control_plane_kit.effects.values",
-        "control_plane_kit.environment",
-        "control_plane_kit.lifecycle",
+        "control_plane_kit.core.environment",
+        "control_plane_kit.core.lifecycle",
         "control_plane_kit.planning",
-        "control_plane_kit.secrets",
+        "control_plane_kit.core.secrets",
         "control_plane_kit.topology",
-        "control_plane_kit.types",
-        "control_plane_kit.verification"
+        "control_plane_kit.core.types",
+        "control_plane_kit.core.verification"
       ],
       "known_package_consumers": [
         "control_plane_kit.adapters.probes.clients",
@@ -2420,7 +2765,7 @@
         "control_plane_kit.effects.material",
         "control_plane_kit.effects.values",
         "control_plane_kit.execution",
-        "control_plane_kit.types"
+        "control_plane_kit.core.types"
       ],
       "known_package_consumers": [
         "control_plane_kit.adapters.probes.clients",
@@ -2479,7 +2824,7 @@
       "internal_dependencies": [
         "control_plane_kit.execution",
         "control_plane_kit.planning",
-        "control_plane_kit.secrets"
+        "control_plane_kit.core.secrets"
       ],
       "known_package_consumers": [
         "control_plane_kit.adapters.probes.interpreter",
@@ -2521,7 +2866,7 @@
       "destination": "control_plane_kit.operations.effects.verification",
       "internal_dependencies": [
         "control_plane_kit.effects.material",
-        "control_plane_kit.verification"
+        "control_plane_kit.core.verification"
       ],
       "known_package_consumers": [
         "control_plane_kit.adapters.verification",
@@ -2550,50 +2895,6 @@
         "values"
       ],
       "source": "control_plane_kit/effects/verification.py"
-    },
-    {
-      "canonical_public_exports": [
-        "PublicStaticEnvironmentBinding",
-        "SocketDerivedEnvironmentBinding",
-        "environment_binding_from_descriptor",
-        "validate_socket_environment_value"
-      ],
-      "destination": "control_plane_kit.core.environment",
-      "internal_dependencies": [],
-      "known_package_consumers": [
-        "control_plane_kit",
-        "control_plane_kit.effects.material",
-        "control_plane_kit.implementations",
-        "control_plane_kit.projections.operator_graph",
-        "control_plane_kit.servers.hello",
-        "control_plane_kit.servers.http_load_generator",
-        "control_plane_kit.servers.managed_http_router",
-        "control_plane_kit.servers.tcp_switch",
-        "control_plane_kit.servers.webhook_delivery",
-        "control_plane_kit.topology.changes",
-        "control_plane_kit.topology.codec",
-        "control_plane_kit.topology.compiler",
-        "control_plane_kit.topology.graph"
-      ],
-      "migration_prerequisites": [
-        "#550",
-        "#551",
-        "#552 or #553 according to destination"
-      ],
-      "module": "control_plane_kit.environment",
-      "motivation": "Required by the effect-free deployment description, validation, comparison, or planning pipeline.",
-      "movement": "move",
-      "optional_external_dependencies": [],
-      "owner": "core",
-      "protecting_tests": [
-        "tests/test_hello_server_block.py"
-      ],
-      "role": "deployment-language",
-      "semantic_roles": [
-        "transformations",
-        "values"
-      ],
-      "source": "control_plane_kit/environment.py"
     },
     {
       "canonical_public_exports": [
@@ -3211,13 +3512,13 @@
       ],
       "destination": "control_plane_kit.core.implementations",
       "internal_dependencies": [
-        "control_plane_kit.algebra",
-        "control_plane_kit.configuration",
-        "control_plane_kit.environment",
-        "control_plane_kit.lifecycle",
-        "control_plane_kit.secrets",
+        "control_plane_kit.core.algebra",
+        "control_plane_kit.core.configuration",
+        "control_plane_kit.core.environment",
+        "control_plane_kit.core.lifecycle",
+        "control_plane_kit.core.secrets",
         "control_plane_kit.topology.graph",
-        "control_plane_kit.types"
+        "control_plane_kit.core.types"
       ],
       "known_package_consumers": [
         "control_plane_kit",
@@ -3266,45 +3567,6 @@
         "values"
       ],
       "source": "control_plane_kit/implementations.py"
-    },
-    {
-      "canonical_public_exports": [
-        "ResourceOwnership",
-        "ResourcePersistence",
-        "DataResourceSpec",
-        "ResourceLifecycle"
-      ],
-      "destination": "control_plane_kit.core.lifecycle",
-      "internal_dependencies": [],
-      "known_package_consumers": [
-        "control_plane_kit",
-        "control_plane_kit.algebra",
-        "control_plane_kit.docker_runtime",
-        "control_plane_kit.effects.material",
-        "control_plane_kit.implementations",
-        "control_plane_kit.planning.compiler",
-        "control_plane_kit.topology.codec",
-        "control_plane_kit.topology.graph"
-      ],
-      "migration_prerequisites": [
-        "#550",
-        "#551",
-        "#552 or #553 according to destination"
-      ],
-      "module": "control_plane_kit.lifecycle",
-      "motivation": "Required by the effect-free deployment description, validation, comparison, or planning pipeline.",
-      "movement": "move",
-      "optional_external_dependencies": [],
-      "owner": "core",
-      "protecting_tests": [
-        "tests/test_architecture_dependencies.py",
-        "tests/test_package_inventory.py"
-      ],
-      "role": "deployment-language",
-      "semantic_roles": [
-        "values"
-      ],
-      "source": "control_plane_kit/lifecycle.py"
     },
     {
       "canonical_public_exports": [
@@ -3697,7 +3959,7 @@
       ],
       "destination": "control_plane_kit.core.planning.compiler",
       "internal_dependencies": [
-        "control_plane_kit.lifecycle",
+        "control_plane_kit.core.lifecycle",
         "control_plane_kit.planning.activity_plan",
         "control_plane_kit.topology",
         "control_plane_kit.topology.changes",
@@ -3828,7 +4090,7 @@
       ],
       "destination": "control_plane_kit.operations.policies.lifecycle",
       "internal_dependencies": [
-        "control_plane_kit.types"
+        "control_plane_kit.core.types"
       ],
       "known_package_consumers": [
         "control_plane_kit.policies"
@@ -3964,8 +4226,8 @@
       ],
       "destination": "control_plane_kit.operations.projections.operator_graph",
       "internal_dependencies": [
-        "control_plane_kit.environment",
-        "control_plane_kit.secrets",
+        "control_plane_kit.core.environment",
+        "control_plane_kit.core.secrets",
         "control_plane_kit.topology.graph"
       ],
       "known_package_consumers": [
@@ -4143,7 +4405,7 @@
       ],
       "destination": "control_plane_kit.operations.read_services.instance",
       "internal_dependencies": [
-        "control_plane_kit.control_routes",
+        "control_plane_kit.core.control_routes",
         "control_plane_kit.execution",
         "control_plane_kit.planning.activity_plan",
         "control_plane_kit.planning.codec",
@@ -4153,7 +4415,7 @@
         "control_plane_kit.stores.records",
         "control_plane_kit.topology.codec",
         "control_plane_kit.topology.validation",
-        "control_plane_kit.types"
+        "control_plane_kit.core.types"
       ],
       "known_package_consumers": [
         "control_plane_kit.read_services"
@@ -4194,7 +4456,7 @@
       "destination": "control_plane_kit.core.runtimes",
       "internal_dependencies": [
         "control_plane_kit.topology.graph",
-        "control_plane_kit.types"
+        "control_plane_kit.core.types"
       ],
       "known_package_consumers": [
         "control_plane_kit.docker_runtime"
@@ -4484,87 +4746,6 @@
         "values"
       ],
       "source": "control_plane_kit/scheduling/schedule.py"
-    },
-    {
-      "canonical_public_exports": [
-        "SecretResolutionCode",
-        "SecretResolutionError",
-        "SecretFileMode",
-        "SecretFilePathBinding",
-        "SecretProviderId",
-        "SecretReference",
-        "SecretEnvironmentDelivery",
-        "SecretReferenceEnvironmentDelivery",
-        "SecretFileDelivery",
-        "secret_delivery_sort_key",
-        "secret_delivery_from_descriptor",
-        "SecretValue",
-        "SecretResolved",
-        "SecretMissing",
-        "SecretDenied",
-        "SecretProviderAuthority",
-        "SecretResolver",
-        "LocalDevelopmentSecretResolver",
-        "require_resolved_secret"
-      ],
-      "destination": "control_plane_kit.core.secrets",
-      "internal_dependencies": [],
-      "known_package_consumers": [
-        "control_plane_kit",
-        "control_plane_kit.adapters.control_http.security",
-        "control_plane_kit.docker_runtime",
-        "control_plane_kit.effects.material",
-        "control_plane_kit.effects.values",
-        "control_plane_kit.implementations",
-        "control_plane_kit.projections.operator_graph",
-        "control_plane_kit.servers.http_auth_gateway",
-        "control_plane_kit.servers.http_bulkhead",
-        "control_plane_kit.servers.http_cache",
-        "control_plane_kit.servers.http_circuit_breaker",
-        "control_plane_kit.servers.http_fault_injector",
-        "control_plane_kit.servers.http_idempotency_gateway",
-        "control_plane_kit.servers.http_load_generator",
-        "control_plane_kit.servers.http_retry",
-        "control_plane_kit.servers.http_timeout",
-        "control_plane_kit.servers.http_traffic_logger",
-        "control_plane_kit.servers.managed_http_router",
-        "control_plane_kit.servers.opentelemetry_collector",
-        "control_plane_kit.servers.request_observer",
-        "control_plane_kit.servers.service_discovery",
-        "control_plane_kit.servers.tcp_switch",
-        "control_plane_kit.servers.webhook_delivery",
-        "control_plane_kit.topology.changes",
-        "control_plane_kit.topology.codec",
-        "control_plane_kit.topology.graph",
-        "control_plane_kit.webhook.http",
-        "control_plane_kit.webhook.language",
-        "control_plane_kit.webhook.postgres",
-        "control_plane_kit.webhook_server.main"
-      ],
-      "migration_prerequisites": [
-        "#550",
-        "#551",
-        "#552 or #553 according to destination"
-      ],
-      "module": "control_plane_kit.secrets",
-      "motivation": "Required by the effect-free deployment description, validation, comparison, or planning pipeline.",
-      "movement": "move",
-      "optional_external_dependencies": [],
-      "owner": "core",
-      "protecting_tests": [
-        "tests/test_control_http_client.py",
-        "tests/test_control_http_live.py",
-        "tests/test_control_http_security.py",
-        "tests/test_secrets.py",
-        "tests/test_webhook_http.py"
-      ],
-      "role": "deployment-language",
-      "semantic_roles": [
-        "protocols",
-        "transformations",
-        "values"
-      ],
-      "source": "control_plane_kit/secrets.py"
     },
     {
       "canonical_public_exports": [
@@ -5012,9 +5193,9 @@
         "process bootstrap"
       ],
       "internal_dependencies": [
-        "control_plane_kit.capabilities",
+        "control_plane_kit.core.capabilities",
         "control_plane_kit.contracts",
-        "control_plane_kit.control_routes",
+        "control_plane_kit.core.control_routes",
         "control_plane_kit.servers._fastapi"
       ],
       "known_package_consumers": [
@@ -5067,9 +5248,9 @@
         "process bootstrap"
       ],
       "internal_dependencies": [
-        "control_plane_kit.algebra",
-        "control_plane_kit.capabilities",
-        "control_plane_kit.control_routes",
+        "control_plane_kit.core.algebra",
+        "control_plane_kit.core.capabilities",
+        "control_plane_kit.core.control_routes",
         "control_plane_kit.idempotency",
         "control_plane_kit.load_generation",
         "control_plane_kit.servers.coredns",
@@ -5147,14 +5328,14 @@
         "process bootstrap"
       ],
       "internal_dependencies": [
-        "control_plane_kit.algebra",
-        "control_plane_kit.capabilities",
-        "control_plane_kit.configuration",
+        "control_plane_kit.core.algebra",
+        "control_plane_kit.core.capabilities",
+        "control_plane_kit.core.configuration",
         "control_plane_kit.configuration_rendering",
         "control_plane_kit.discovery",
         "control_plane_kit.implementations",
-        "control_plane_kit.types",
-        "control_plane_kit.verification"
+        "control_plane_kit.core.types",
+        "control_plane_kit.core.verification"
       ],
       "known_package_consumers": [
         "control_plane_kit.servers",
@@ -5205,13 +5386,13 @@
         "process bootstrap"
       ],
       "internal_dependencies": [
-        "control_plane_kit.algebra",
-        "control_plane_kit.capabilities",
+        "control_plane_kit.core.algebra",
+        "control_plane_kit.core.capabilities",
         "control_plane_kit.contracts",
-        "control_plane_kit.environment",
+        "control_plane_kit.core.environment",
         "control_plane_kit.implementations",
         "control_plane_kit.servers._templates",
-        "control_plane_kit.types"
+        "control_plane_kit.core.types"
       ],
       "known_package_consumers": [
         "control_plane_kit.servers",
@@ -5260,13 +5441,13 @@
         "process bootstrap"
       ],
       "internal_dependencies": [
-        "control_plane_kit.algebra",
-        "control_plane_kit.capabilities",
+        "control_plane_kit.core.algebra",
+        "control_plane_kit.core.capabilities",
         "control_plane_kit.contracts",
         "control_plane_kit.implementations",
         "control_plane_kit.servers._templates",
         "control_plane_kit.servers.http_messages",
-        "control_plane_kit.types"
+        "control_plane_kit.core.types"
       ],
       "known_package_consumers": [
         "control_plane_kit.servers",
@@ -5331,13 +5512,13 @@
         "process bootstrap"
       ],
       "internal_dependencies": [
-        "control_plane_kit.algebra",
-        "control_plane_kit.capabilities",
+        "control_plane_kit.core.algebra",
+        "control_plane_kit.core.capabilities",
         "control_plane_kit.implementations",
-        "control_plane_kit.secrets",
+        "control_plane_kit.core.secrets",
         "control_plane_kit.servers._templates",
         "control_plane_kit.servers.http_messages",
-        "control_plane_kit.types"
+        "control_plane_kit.core.types"
       ],
       "known_package_consumers": [
         "control_plane_kit.servers",
@@ -5389,13 +5570,13 @@
         "process bootstrap"
       ],
       "internal_dependencies": [
-        "control_plane_kit.algebra",
-        "control_plane_kit.capabilities",
+        "control_plane_kit.core.algebra",
+        "control_plane_kit.core.capabilities",
         "control_plane_kit.implementations",
-        "control_plane_kit.secrets",
+        "control_plane_kit.core.secrets",
         "control_plane_kit.servers._templates",
         "control_plane_kit.servers.http_messages",
-        "control_plane_kit.types"
+        "control_plane_kit.core.types"
       ],
       "known_package_consumers": [
         "control_plane_kit.servers",
@@ -5448,13 +5629,13 @@
         "process bootstrap"
       ],
       "internal_dependencies": [
-        "control_plane_kit.algebra",
-        "control_plane_kit.capabilities",
+        "control_plane_kit.core.algebra",
+        "control_plane_kit.core.capabilities",
         "control_plane_kit.implementations",
-        "control_plane_kit.secrets",
+        "control_plane_kit.core.secrets",
         "control_plane_kit.servers._templates",
         "control_plane_kit.servers.http_messages",
-        "control_plane_kit.types"
+        "control_plane_kit.core.types"
       ],
       "known_package_consumers": [
         "control_plane_kit.servers",
@@ -5507,13 +5688,13 @@
         "process bootstrap"
       ],
       "internal_dependencies": [
-        "control_plane_kit.algebra",
-        "control_plane_kit.capabilities",
+        "control_plane_kit.core.algebra",
+        "control_plane_kit.core.capabilities",
         "control_plane_kit.implementations",
-        "control_plane_kit.secrets",
+        "control_plane_kit.core.secrets",
         "control_plane_kit.servers._templates",
         "control_plane_kit.servers.http_messages",
-        "control_plane_kit.types"
+        "control_plane_kit.core.types"
       ],
       "known_package_consumers": [
         "control_plane_kit.servers",
@@ -5577,13 +5758,13 @@
         "process bootstrap"
       ],
       "internal_dependencies": [
-        "control_plane_kit.algebra",
-        "control_plane_kit.capabilities",
+        "control_plane_kit.core.algebra",
+        "control_plane_kit.core.capabilities",
         "control_plane_kit.implementations",
-        "control_plane_kit.secrets",
+        "control_plane_kit.core.secrets",
         "control_plane_kit.servers._templates",
         "control_plane_kit.servers.http_messages",
-        "control_plane_kit.types"
+        "control_plane_kit.core.types"
       ],
       "known_package_consumers": [
         "control_plane_kit.servers",
@@ -5631,13 +5812,13 @@
         "process bootstrap"
       ],
       "internal_dependencies": [
-        "control_plane_kit.algebra",
-        "control_plane_kit.capabilities",
+        "control_plane_kit.core.algebra",
+        "control_plane_kit.core.capabilities",
         "control_plane_kit.idempotency",
         "control_plane_kit.implementations",
-        "control_plane_kit.secrets",
+        "control_plane_kit.core.secrets",
         "control_plane_kit.servers.http_messages",
-        "control_plane_kit.types"
+        "control_plane_kit.core.types"
       ],
       "known_package_consumers": [
         "control_plane_kit.idempotency_gateway.main",
@@ -5692,14 +5873,14 @@
         "process bootstrap"
       ],
       "internal_dependencies": [
-        "control_plane_kit.algebra",
-        "control_plane_kit.capabilities",
-        "control_plane_kit.environment",
+        "control_plane_kit.core.algebra",
+        "control_plane_kit.core.capabilities",
+        "control_plane_kit.core.environment",
         "control_plane_kit.implementations",
         "control_plane_kit.load_generation",
-        "control_plane_kit.secrets",
+        "control_plane_kit.core.secrets",
         "control_plane_kit.servers.http_messages",
-        "control_plane_kit.types"
+        "control_plane_kit.core.types"
       ],
       "known_package_consumers": [
         "control_plane_kit.load_generator_server.main",
@@ -5816,13 +5997,13 @@
         "process bootstrap"
       ],
       "internal_dependencies": [
-        "control_plane_kit.algebra",
-        "control_plane_kit.capabilities",
+        "control_plane_kit.core.algebra",
+        "control_plane_kit.core.capabilities",
         "control_plane_kit.contracts",
         "control_plane_kit.implementations",
         "control_plane_kit.servers._templates",
         "control_plane_kit.servers.http_messages",
-        "control_plane_kit.types"
+        "control_plane_kit.core.types"
       ],
       "known_package_consumers": [
         "control_plane_kit.servers",
@@ -5872,13 +6053,13 @@
         "process bootstrap"
       ],
       "internal_dependencies": [
-        "control_plane_kit.algebra",
-        "control_plane_kit.capabilities",
+        "control_plane_kit.core.algebra",
+        "control_plane_kit.core.capabilities",
         "control_plane_kit.contracts",
         "control_plane_kit.implementations",
         "control_plane_kit.servers._templates",
         "control_plane_kit.servers.http_messages",
-        "control_plane_kit.types"
+        "control_plane_kit.core.types"
       ],
       "known_package_consumers": [
         "control_plane_kit.servers",
@@ -5928,13 +6109,13 @@
         "process bootstrap"
       ],
       "internal_dependencies": [
-        "control_plane_kit.algebra",
-        "control_plane_kit.capabilities",
+        "control_plane_kit.core.algebra",
+        "control_plane_kit.core.capabilities",
         "control_plane_kit.contracts",
         "control_plane_kit.implementations",
         "control_plane_kit.servers._templates",
         "control_plane_kit.servers.http_messages",
-        "control_plane_kit.types"
+        "control_plane_kit.core.types"
       ],
       "known_package_consumers": [
         "control_plane_kit.servers",
@@ -5987,13 +6168,13 @@
         "process bootstrap"
       ],
       "internal_dependencies": [
-        "control_plane_kit.algebra",
-        "control_plane_kit.capabilities",
+        "control_plane_kit.core.algebra",
+        "control_plane_kit.core.capabilities",
         "control_plane_kit.implementations",
-        "control_plane_kit.secrets",
+        "control_plane_kit.core.secrets",
         "control_plane_kit.servers._templates",
         "control_plane_kit.servers.http_messages",
-        "control_plane_kit.types"
+        "control_plane_kit.core.types"
       ],
       "known_package_consumers": [
         "control_plane_kit.servers",
@@ -6045,13 +6226,13 @@
         "process bootstrap"
       ],
       "internal_dependencies": [
-        "control_plane_kit.algebra",
-        "control_plane_kit.capabilities",
+        "control_plane_kit.core.algebra",
+        "control_plane_kit.core.capabilities",
         "control_plane_kit.implementations",
-        "control_plane_kit.secrets",
+        "control_plane_kit.core.secrets",
         "control_plane_kit.servers._templates",
         "control_plane_kit.servers.http_messages",
-        "control_plane_kit.types"
+        "control_plane_kit.core.types"
       ],
       "known_package_consumers": [
         "control_plane_kit.servers",
@@ -6106,13 +6287,13 @@
         "process bootstrap"
       ],
       "internal_dependencies": [
-        "control_plane_kit.algebra",
-        "control_plane_kit.capabilities",
+        "control_plane_kit.core.algebra",
+        "control_plane_kit.core.capabilities",
         "control_plane_kit.implementations",
-        "control_plane_kit.secrets",
+        "control_plane_kit.core.secrets",
         "control_plane_kit.servers._templates",
         "control_plane_kit.servers.http_messages",
-        "control_plane_kit.types"
+        "control_plane_kit.core.types"
       ],
       "known_package_consumers": [
         "control_plane_kit.servers",
@@ -6162,13 +6343,13 @@
         "process bootstrap"
       ],
       "internal_dependencies": [
-        "control_plane_kit.algebra",
-        "control_plane_kit.capabilities",
+        "control_plane_kit.core.algebra",
+        "control_plane_kit.core.capabilities",
         "control_plane_kit.contracts",
         "control_plane_kit.implementations",
         "control_plane_kit.servers._templates",
         "control_plane_kit.servers.http_messages",
-        "control_plane_kit.types"
+        "control_plane_kit.core.types"
       ],
       "known_package_consumers": [
         "control_plane_kit.servers",
@@ -6266,14 +6447,14 @@
       ],
       "internal_dependencies": [
         "control_plane_kit.adapters.http_forwarding",
-        "control_plane_kit.algebra",
-        "control_plane_kit.capabilities",
+        "control_plane_kit.core.algebra",
+        "control_plane_kit.core.capabilities",
         "control_plane_kit.contracts",
-        "control_plane_kit.environment",
+        "control_plane_kit.core.environment",
         "control_plane_kit.implementations",
-        "control_plane_kit.secrets",
+        "control_plane_kit.core.secrets",
         "control_plane_kit.servers.block_control",
-        "control_plane_kit.types"
+        "control_plane_kit.core.types"
       ],
       "known_package_consumers": [
         "control_plane_kit.servers",
@@ -6338,14 +6519,14 @@
         "process bootstrap"
       ],
       "internal_dependencies": [
-        "control_plane_kit.algebra",
-        "control_plane_kit.capabilities",
-        "control_plane_kit.configuration",
+        "control_plane_kit.core.algebra",
+        "control_plane_kit.core.capabilities",
+        "control_plane_kit.core.configuration",
         "control_plane_kit.configuration_rendering",
         "control_plane_kit.implementations",
-        "control_plane_kit.secrets",
-        "control_plane_kit.types",
-        "control_plane_kit.verification"
+        "control_plane_kit.core.secrets",
+        "control_plane_kit.core.types",
+        "control_plane_kit.core.verification"
       ],
       "known_package_consumers": [
         "control_plane_kit.servers",
@@ -6395,13 +6576,13 @@
         "process bootstrap"
       ],
       "internal_dependencies": [
-        "control_plane_kit.algebra",
-        "control_plane_kit.capabilities",
+        "control_plane_kit.core.algebra",
+        "control_plane_kit.core.capabilities",
         "control_plane_kit.implementations",
-        "control_plane_kit.secrets",
+        "control_plane_kit.core.secrets",
         "control_plane_kit.servers._templates",
         "control_plane_kit.servers.http_messages",
-        "control_plane_kit.types"
+        "control_plane_kit.core.types"
       ],
       "known_package_consumers": [
         "control_plane_kit.servers",
@@ -6448,11 +6629,11 @@
         "process bootstrap"
       ],
       "internal_dependencies": [
-        "control_plane_kit.algebra",
-        "control_plane_kit.capabilities",
+        "control_plane_kit.core.algebra",
+        "control_plane_kit.core.capabilities",
         "control_plane_kit.implementations",
-        "control_plane_kit.secrets",
-        "control_plane_kit.types"
+        "control_plane_kit.core.secrets",
+        "control_plane_kit.core.types"
       ],
       "known_package_consumers": [
         "control_plane_kit.servers",
@@ -6505,14 +6686,14 @@
         "process bootstrap"
       ],
       "internal_dependencies": [
-        "control_plane_kit.algebra",
-        "control_plane_kit.capabilities",
+        "control_plane_kit.core.algebra",
+        "control_plane_kit.core.capabilities",
         "control_plane_kit.contracts",
-        "control_plane_kit.environment",
+        "control_plane_kit.core.environment",
         "control_plane_kit.implementations",
-        "control_plane_kit.secrets",
+        "control_plane_kit.core.secrets",
         "control_plane_kit.servers.block_control",
-        "control_plane_kit.types"
+        "control_plane_kit.core.types"
       ],
       "known_package_consumers": [
         "control_plane_kit.servers",
@@ -6565,13 +6746,13 @@
         "process bootstrap"
       ],
       "internal_dependencies": [
-        "control_plane_kit.algebra",
-        "control_plane_kit.capabilities",
-        "control_plane_kit.environment",
+        "control_plane_kit.core.algebra",
+        "control_plane_kit.core.capabilities",
+        "control_plane_kit.core.environment",
         "control_plane_kit.implementations",
-        "control_plane_kit.secrets",
-        "control_plane_kit.types",
-        "control_plane_kit.verification",
+        "control_plane_kit.core.secrets",
+        "control_plane_kit.core.types",
+        "control_plane_kit.core.verification",
         "control_plane_kit.webhook.http"
       ],
       "known_package_consumers": [
@@ -6831,7 +7012,7 @@
         "control_plane_kit.planning.activity_plan",
         "control_plane_kit.topology.codec",
         "control_plane_kit.topology.graph",
-        "control_plane_kit.types"
+        "control_plane_kit.core.types"
       ],
       "known_package_consumers": [
         "control_plane_kit.read_services.instance",
@@ -6970,7 +7151,7 @@
         "control_plane_kit.topology.diff",
         "control_plane_kit.topology.graph",
         "control_plane_kit.topology.validation",
-        "control_plane_kit.types"
+        "control_plane_kit.core.types"
       ],
       "known_package_consumers": [
         "control_plane_kit",
@@ -7068,10 +7249,10 @@
       ],
       "destination": "control_plane_kit.core.topology.changes",
       "internal_dependencies": [
-        "control_plane_kit.algebra",
-        "control_plane_kit.configuration",
-        "control_plane_kit.environment",
-        "control_plane_kit.secrets",
+        "control_plane_kit.core.algebra",
+        "control_plane_kit.core.configuration",
+        "control_plane_kit.core.environment",
+        "control_plane_kit.core.secrets",
         "control_plane_kit.topology.graph",
         "control_plane_kit.topology.validation"
       ],
@@ -7118,15 +7299,15 @@
       ],
       "destination": "control_plane_kit.core.topology.codec",
       "internal_dependencies": [
-        "control_plane_kit.algebra",
-        "control_plane_kit.capabilities",
-        "control_plane_kit.configuration",
-        "control_plane_kit.environment",
-        "control_plane_kit.lifecycle",
-        "control_plane_kit.secrets",
+        "control_plane_kit.core.algebra",
+        "control_plane_kit.core.capabilities",
+        "control_plane_kit.core.configuration",
+        "control_plane_kit.core.environment",
+        "control_plane_kit.core.lifecycle",
+        "control_plane_kit.core.secrets",
         "control_plane_kit.topology.graph",
-        "control_plane_kit.types",
-        "control_plane_kit.verification"
+        "control_plane_kit.core.types",
+        "control_plane_kit.core.verification"
       ],
       "known_package_consumers": [
         "control_plane_kit",
@@ -7167,11 +7348,11 @@
       ],
       "destination": "control_plane_kit.core.topology.compiler",
       "internal_dependencies": [
-        "control_plane_kit.algebra",
-        "control_plane_kit.capabilities",
-        "control_plane_kit.environment",
+        "control_plane_kit.core.algebra",
+        "control_plane_kit.core.capabilities",
+        "control_plane_kit.core.environment",
         "control_plane_kit.topology.graph",
-        "control_plane_kit.types"
+        "control_plane_kit.core.types"
       ],
       "known_package_consumers": [
         "control_plane_kit",
@@ -7203,7 +7384,7 @@
       ],
       "destination": "control_plane_kit.core.topology.diff",
       "internal_dependencies": [
-        "control_plane_kit.algebra",
+        "control_plane_kit.core.algebra",
         "control_plane_kit.topology.changes",
         "control_plane_kit.topology.codec",
         "control_plane_kit.topology.graph",
@@ -7250,13 +7431,13 @@
       ],
       "destination": "control_plane_kit.core.topology.graph",
       "internal_dependencies": [
-        "control_plane_kit.algebra",
-        "control_plane_kit.configuration",
-        "control_plane_kit.environment",
-        "control_plane_kit.lifecycle",
-        "control_plane_kit.secrets",
+        "control_plane_kit.core.algebra",
+        "control_plane_kit.core.configuration",
+        "control_plane_kit.core.environment",
+        "control_plane_kit.core.lifecycle",
+        "control_plane_kit.core.secrets",
         "control_plane_kit.topology.codec",
-        "control_plane_kit.types"
+        "control_plane_kit.core.types"
       ],
       "known_package_consumers": [
         "control_plane_kit",
@@ -7322,12 +7503,12 @@
       ],
       "destination": "control_plane_kit.core.topology.validation",
       "internal_dependencies": [
-        "control_plane_kit.algebra",
-        "control_plane_kit.capabilities",
-        "control_plane_kit.control_routes",
+        "control_plane_kit.core.algebra",
+        "control_plane_kit.core.capabilities",
+        "control_plane_kit.core.control_routes",
         "control_plane_kit.topology.codec",
         "control_plane_kit.topology.graph",
-        "control_plane_kit.verification"
+        "control_plane_kit.core.verification"
       ],
       "known_package_consumers": [
         "control_plane_kit",
@@ -7361,165 +7542,6 @@
         "values"
       ],
       "source": "control_plane_kit/topology/validation.py"
-    },
-    {
-      "canonical_public_exports": [
-        "Transport",
-        "ApplicationProtocol",
-        "Protocol",
-        "SocketBinding",
-        "EndpointScope",
-        "RuntimeKind",
-        "WorkspaceLifecycle",
-        "BlockFamily"
-      ],
-      "destination": "control_plane_kit.core.types",
-      "internal_dependencies": [],
-      "known_package_consumers": [
-        "control_plane_kit",
-        "control_plane_kit.adapters.control_http.client",
-        "control_plane_kit.adapters.control_http.security",
-        "control_plane_kit.adapters.probes.clients",
-        "control_plane_kit.adapters.probes.interpreter",
-        "control_plane_kit.adapters.verification",
-        "control_plane_kit.algebra",
-        "control_plane_kit.discovery",
-        "control_plane_kit.discovery_registry.postgres",
-        "control_plane_kit.docker_runtime",
-        "control_plane_kit.effects.material",
-        "control_plane_kit.effects.probes",
-        "control_plane_kit.implementations",
-        "control_plane_kit.policies.lifecycle",
-        "control_plane_kit.read_services.instance",
-        "control_plane_kit.runtimes",
-        "control_plane_kit.servers.coredns",
-        "control_plane_kit.servers.hello",
-        "control_plane_kit.servers.http_active_router",
-        "control_plane_kit.servers.http_auth_gateway",
-        "control_plane_kit.servers.http_bulkhead",
-        "control_plane_kit.servers.http_cache",
-        "control_plane_kit.servers.http_circuit_breaker",
-        "control_plane_kit.servers.http_fault_injector",
-        "control_plane_kit.servers.http_idempotency_gateway",
-        "control_plane_kit.servers.http_load_generator",
-        "control_plane_kit.servers.http_multiplexer",
-        "control_plane_kit.servers.http_proxy",
-        "control_plane_kit.servers.http_rate_limiter",
-        "control_plane_kit.servers.http_retry",
-        "control_plane_kit.servers.http_timeout",
-        "control_plane_kit.servers.http_traffic_logger",
-        "control_plane_kit.servers.http_weighted_balancer",
-        "control_plane_kit.servers.managed_http_router",
-        "control_plane_kit.servers.opentelemetry_collector",
-        "control_plane_kit.servers.request_observer",
-        "control_plane_kit.servers.service_discovery",
-        "control_plane_kit.servers.tcp_switch",
-        "control_plane_kit.servers.webhook_delivery",
-        "control_plane_kit.stores.records",
-        "control_plane_kit.topology",
-        "control_plane_kit.topology.codec",
-        "control_plane_kit.topology.compiler",
-        "control_plane_kit.topology.graph",
-        "control_plane_kit.verification",
-        "control_plane_kit.workflows.execution_admission",
-        "control_plane_kit.workflows.verification"
-      ],
-      "migration_prerequisites": [
-        "#550",
-        "#551",
-        "#552 or #553 according to destination"
-      ],
-      "module": "control_plane_kit.types",
-      "motivation": "Required by the effect-free deployment description, validation, comparison, or planning pipeline.",
-      "movement": "move",
-      "optional_external_dependencies": [],
-      "owner": "core",
-      "protecting_tests": [
-        "tests/test_algebra.py",
-        "tests/test_control_http_client.py",
-        "tests/test_control_http_live.py",
-        "tests/test_control_http_security.py",
-        "tests/test_effect_dispatch.py",
-        "tests/test_execution_coordinator.py",
-        "tests/test_execution_store.py",
-        "tests/test_generated_hello_live_scenario.py",
-        "tests/test_graph_validation.py",
-        "tests/test_hello_server_block.py",
-        "tests/test_http_active_router_server_block.py",
-        "tests/test_http_multiplexer_server_block.py",
-        "tests/test_http_proxy_server_block.py",
-        "tests/test_http_rate_limiter_server_block.py",
-        "tests/test_http_weighted_balancer_server_block.py"
-      ],
-      "role": "deployment-language",
-      "semantic_roles": [
-        "values"
-      ],
-      "source": "control_plane_kit/types.py"
-    },
-    {
-      "canonical_public_exports": [
-        "VerificationContractError",
-        "DnsRecordType",
-        "PostgresVerificationOperation",
-        "RedisVerificationOperation",
-        "VerificationCapability",
-        "VerificationOutcome",
-        "VerificationPolicy",
-        "HttpCheck",
-        "DnsResolveCheck",
-        "PostgresQueryCheck",
-        "RedisCheck",
-        "BrokerRoundTripCheck",
-        "ObjectStorageRoundTripCheck",
-        "SmtpAcceptanceCheck",
-        "VerificationContract",
-        "expected_protocols",
-        "verification_capability",
-        "VerificationIdentity",
-        "HttpVerificationEvidence",
-        "RedisVerificationEvidence",
-        "VerificationCompleted",
-        "VerificationUnsupported",
-        "verification_check_from_descriptor"
-      ],
-      "destination": "control_plane_kit.core.verification",
-      "internal_dependencies": [
-        "control_plane_kit.types"
-      ],
-      "known_package_consumers": [
-        "control_plane_kit",
-        "control_plane_kit.adapters.verification",
-        "control_plane_kit.algebra",
-        "control_plane_kit.effects.material",
-        "control_plane_kit.effects.verification",
-        "control_plane_kit.servers.coredns",
-        "control_plane_kit.servers.opentelemetry_collector",
-        "control_plane_kit.servers.webhook_delivery",
-        "control_plane_kit.topology.codec",
-        "control_plane_kit.topology.validation",
-        "control_plane_kit.workflows.verification"
-      ],
-      "migration_prerequisites": [
-        "#550",
-        "#551",
-        "#552 or #553 according to destination"
-      ],
-      "module": "control_plane_kit.verification",
-      "motivation": "Required by the effect-free deployment description, validation, comparison, or planning pipeline.",
-      "movement": "move",
-      "optional_external_dependencies": [],
-      "owner": "core",
-      "protecting_tests": [
-        "tests/test_architecture_dependencies.py",
-        "tests/test_package_inventory.py"
-      ],
-      "role": "deployment-language",
-      "semantic_roles": [
-        "transformations",
-        "values"
-      ],
-      "source": "control_plane_kit/verification.py"
     },
     {
       "canonical_public_exports": [
@@ -7697,7 +7719,7 @@
       ],
       "destination": "control_plane_kit.interpreters.webhook.http",
       "internal_dependencies": [
-        "control_plane_kit.secrets",
+        "control_plane_kit.core.secrets",
         "control_plane_kit.webhook.language",
         "control_plane_kit.webhook.service"
       ],
@@ -7765,7 +7787,7 @@
       ],
       "destination": "control_plane_kit.domains.webhook.language",
       "internal_dependencies": [
-        "control_plane_kit.secrets"
+        "control_plane_kit.core.secrets"
       ],
       "known_package_consumers": [
         "control_plane_kit.webhook",
@@ -7809,7 +7831,7 @@
       ],
       "destination": "control_plane_kit.operations.webhook.postgres",
       "internal_dependencies": [
-        "control_plane_kit.secrets",
+        "control_plane_kit.core.secrets",
         "control_plane_kit.webhook.language"
       ],
       "known_package_consumers": [
@@ -8003,7 +8025,7 @@
       "destination": "control_plane_kit.entrypoints.webhook_server.main",
       "internal_dependencies": [
         "control_plane_kit.contracts",
-        "control_plane_kit.secrets",
+        "control_plane_kit.core.secrets",
         "control_plane_kit.servers.webhook_delivery",
         "control_plane_kit.webhook"
       ],
@@ -8445,7 +8467,7 @@
         "control_plane_kit.stores",
         "control_plane_kit.topology.codec",
         "control_plane_kit.topology.graph",
-        "control_plane_kit.types",
+        "control_plane_kit.core.types",
         "control_plane_kit.workflows.commands"
       ],
       "known_package_consumers": [
@@ -8687,8 +8709,8 @@
         "control_plane_kit.effects.verification",
         "control_plane_kit.execution",
         "control_plane_kit.stores",
-        "control_plane_kit.types",
-        "control_plane_kit.verification"
+        "control_plane_kit.core.types",
+        "control_plane_kit.core.verification"
       ],
       "known_package_consumers": [
         "control_plane_kit.workflows"

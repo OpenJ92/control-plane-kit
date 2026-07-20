@@ -47,8 +47,8 @@ from control_plane_kit.effects import (
     TimeoutPolicy,
 )
 from control_plane_kit.planning import ActivityId
-from control_plane_kit.types import EndpointScope, Protocol
-from control_plane_kit.secrets import SecretProviderAuthority, SecretProviderId, SecretResolved
+from control_plane_kit.core.types import EndpointScope, Protocol
+from control_plane_kit.core.secrets import SecretProviderAuthority, SecretProviderId, SecretResolved
 
 
 @dataclass

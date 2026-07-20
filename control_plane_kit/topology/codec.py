@@ -5,7 +5,7 @@ from __future__ import annotations
 from collections.abc import Iterable, Mapping
 from typing import Protocol as TypingProtocol
 
-from control_plane_kit.algebra import (
+from control_plane_kit.core.algebra import (
     BlockSockets,
     BlockSpec,
     ProviderSocket,
@@ -14,22 +14,22 @@ from control_plane_kit.algebra import (
     ProductMaturity,
     RequirementSocket,
 )
-from control_plane_kit.capabilities import CapabilityName
-from control_plane_kit.configuration import (
+from control_plane_kit.core.capabilities import CapabilityName
+from control_plane_kit.core.configuration import (
     ConfigurationArtifact,
     ConfigurationArtifactError,
 )
-from control_plane_kit.environment import (
+from control_plane_kit.core.environment import (
     PublicStaticEnvironmentBinding,
     SocketDerivedEnvironmentBinding,
     environment_binding_from_descriptor,
 )
-from control_plane_kit.secrets import (
+from control_plane_kit.core.secrets import (
     SecretDelivery,
     SecretResolutionError,
     secret_delivery_from_descriptor,
 )
-from control_plane_kit.lifecycle import (
+from control_plane_kit.core.lifecycle import (
     DataResourceSpec,
     ResourceLifecycle,
     ResourceOwnership,
@@ -44,14 +44,14 @@ from control_plane_kit.topology.graph import (
     RuntimeRecord,
     SecretReferenceAddress,
 )
-from control_plane_kit.types import (
+from control_plane_kit.core.types import (
     BlockFamily,
     EndpointScope,
     Protocol,
     RuntimeKind,
     SocketBinding,
 )
-from control_plane_kit.verification import VerificationContract
+from control_plane_kit.core.verification import VerificationContract
 
 
 class GraphDescriptorError(ValueError):

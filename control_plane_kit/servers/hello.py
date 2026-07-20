@@ -6,7 +6,7 @@ from dataclasses import dataclass
 import json
 import re
 
-from control_plane_kit.algebra import (
+from control_plane_kit.core.algebra import (
     ApplicationBlock,
     BlockSockets,
     PackageServerProduct,
@@ -15,11 +15,11 @@ from control_plane_kit.algebra import (
     RequirementSocket,
 )
 from control_plane_kit.contracts import EnvironmentContract, TextVariable
-from control_plane_kit.environment import PublicStaticEnvironmentBinding
+from control_plane_kit.core.environment import PublicStaticEnvironmentBinding
 from control_plane_kit.implementations import DockerImageImplementation, HostPublication
-from control_plane_kit.capabilities import CapabilityName
+from control_plane_kit.core.capabilities import CapabilityName
 from control_plane_kit.servers._templates import render_python_command
-from control_plane_kit.types import Protocol
+from control_plane_kit.core.types import Protocol
 
 
 _DEPENDENCY_NAME = re.compile(r"[a-z][a-z0-9-]*")

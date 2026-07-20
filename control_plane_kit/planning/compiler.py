@@ -6,7 +6,7 @@ import hashlib
 import json
 from dataclasses import dataclass, field
 
-from control_plane_kit.lifecycle import ResourceOwnership, ResourcePersistence
+from control_plane_kit.core.lifecycle import ResourceOwnership, ResourcePersistence
 
 from control_plane_kit.planning.activity_plan import (
     ActivityDependency,

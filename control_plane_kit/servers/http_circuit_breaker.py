@@ -7,7 +7,7 @@ from enum import StrEnum
 import time
 from typing import Mapping
 
-from control_plane_kit.algebra import (
+from control_plane_kit.core.algebra import (
     BlockSockets,
     PackageServerProduct,
     PackageServerSpec,
@@ -15,12 +15,12 @@ from control_plane_kit.algebra import (
     ProxyBlock,
     RequirementSocket,
 )
-from control_plane_kit.capabilities import CapabilityName
+from control_plane_kit.core.capabilities import CapabilityName
 from control_plane_kit.implementations import DockerImageImplementation
-from control_plane_kit.secrets import SecretEnvironmentDelivery, SecretReference
+from control_plane_kit.core.secrets import SecretEnvironmentDelivery, SecretReference
 from control_plane_kit.servers._templates import render_python_command
 from control_plane_kit.servers.http_messages import HttpHandler, HttpRequest, HttpResponse
-from control_plane_kit.types import Protocol
+from control_plane_kit.core.types import Protocol
 
 
 def _bounded(label: str, value: int, minimum: int, maximum: int) -> None:

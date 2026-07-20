@@ -5,14 +5,14 @@ from __future__ import annotations
 from dataclasses import dataclass
 from enum import StrEnum
 
-from control_plane_kit.algebra import (
+from control_plane_kit.core.algebra import (
     DeployBlock,
     PackageServerProduct,
     PackageServerSpec,
     ProductMaturity,
 )
-from control_plane_kit.capabilities import CapabilityName
-from control_plane_kit.control_routes import ControlRouteSetName
+from control_plane_kit.core.capabilities import CapabilityName
+from control_plane_kit.core.control_routes import ControlRouteSetName
 from control_plane_kit.servers.hello import hello_server_block
 from control_plane_kit.servers.http_active_router import http_active_router_block
 from control_plane_kit.servers.http_circuit_breaker import http_circuit_breaker_block

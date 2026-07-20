@@ -8,7 +8,7 @@ from re import fullmatch
 from typing import Mapping, TypeAlias
 from urllib.parse import urlsplit
 
-from control_plane_kit.types import Protocol
+from control_plane_kit.core.types import Protocol
 
 
 MAX_VERIFICATION_CHECKS = 100

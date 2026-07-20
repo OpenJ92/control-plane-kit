@@ -8,7 +8,7 @@ from importlib.resources import files
 import re
 from typing import Mapping, TypeAlias
 
-from control_plane_kit.algebra import (
+from control_plane_kit.core.algebra import (
     ApplicationBlock,
     BlockSockets,
     PackageServerProduct,
@@ -17,17 +17,17 @@ from control_plane_kit.algebra import (
     ProviderSocket,
     RequirementSocket,
 )
-from control_plane_kit.capabilities import CapabilityName
-from control_plane_kit.configuration import (
+from control_plane_kit.core.capabilities import CapabilityName
+from control_plane_kit.core.configuration import (
     ConfigurationArtifact,
     ConfigurationFileMode,
     ConfigurationMediaType,
 )
 from control_plane_kit.configuration_rendering import ConfigurationTemplate
 from control_plane_kit.implementations import DockerImageImplementation
-from control_plane_kit.secrets import SecretEnvironmentDelivery, SecretReference
-from control_plane_kit.types import Protocol
-from control_plane_kit.verification import HttpCheck, VerificationContract
+from control_plane_kit.core.secrets import SecretEnvironmentDelivery, SecretReference
+from control_plane_kit.core.types import Protocol
+from control_plane_kit.core.verification import HttpCheck, VerificationContract
 
 
 COLLECTOR_IMAGE = "otel/opentelemetry-collector-contrib:0.156.0"

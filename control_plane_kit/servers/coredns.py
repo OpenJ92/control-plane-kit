@@ -12,7 +12,7 @@ import re
 from typing import Mapping, TypeAlias
 from urllib.parse import urlsplit
 
-from control_plane_kit.algebra import (
+from control_plane_kit.core.algebra import (
     ApplicationBlock,
     BlockSockets,
     PackageServerProduct,
@@ -20,8 +20,8 @@ from control_plane_kit.algebra import (
     ProductMaturity,
     ProviderSocket,
 )
-from control_plane_kit.capabilities import CapabilityName
-from control_plane_kit.configuration import (
+from control_plane_kit.core.capabilities import CapabilityName
+from control_plane_kit.core.configuration import (
     ConfigurationArtifact,
     ConfigurationFileMode,
     ConfigurationMediaType,
@@ -32,8 +32,8 @@ from control_plane_kit.discovery import (
     DiscoveryRegistrationStatus,
 )
 from control_plane_kit.implementations import DockerImageImplementation, HostPublication
-from control_plane_kit.types import Protocol
-from control_plane_kit.verification import (
+from control_plane_kit.core.types import Protocol
+from control_plane_kit.core.verification import (
     DnsRecordType,
     DnsResolveCheck,
     HttpCheck,

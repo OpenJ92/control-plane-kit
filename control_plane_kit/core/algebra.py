@@ -6,10 +6,10 @@ from dataclasses import dataclass, field
 from enum import StrEnum
 from typing import Protocol as TypingProtocol, TypeAlias
 
-from control_plane_kit.capabilities import CapabilityName
-from control_plane_kit.lifecycle import EXTERNAL_RETAINED, OWNED_EPHEMERAL, ResourceLifecycle
-from control_plane_kit.types import Protocol, RuntimeKind, SocketBinding
-from control_plane_kit.verification import VerificationContract
+from control_plane_kit.core.capabilities import CapabilityName
+from control_plane_kit.core.lifecycle import EXTERNAL_RETAINED, OWNED_EPHEMERAL, ResourceLifecycle
+from control_plane_kit.core.types import Protocol, RuntimeKind, SocketBinding
+from control_plane_kit.core.verification import VerificationContract
 
 
 @dataclass(frozen=True)

@@ -7,7 +7,7 @@ from control_plane_kit import (
     compile_recipe,
 )
 from control_plane_kit.servers import HttpProxyServer, HttpRequest, HttpResponse, hello_server_block, http_proxy_block
-from control_plane_kit.types import Protocol
+from control_plane_kit.core.types import Protocol
 
 
 class HttpProxyServerBlockTests(TestCase):

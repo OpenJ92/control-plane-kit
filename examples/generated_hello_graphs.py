@@ -18,7 +18,7 @@ from control_plane_kit import (
     compile_recipe,
 )
 from control_plane_kit.servers import HelloDependency, hello_server_block
-from control_plane_kit.types import Protocol
+from control_plane_kit.core.types import Protocol
 
 
 @dataclass(frozen=True)

@@ -13,7 +13,7 @@ from urllib.parse import urlsplit, urlunsplit
 
 import httpx
 
-from control_plane_kit.secrets import SecretResolver, require_resolved_secret
+from control_plane_kit.core.secrets import SecretResolver, require_resolved_secret
 from control_plane_kit.webhook.language import (
     WebhookAttemptOutcome,
     WebhookEndpoint,

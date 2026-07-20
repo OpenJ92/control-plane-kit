@@ -36,7 +36,7 @@ from control_plane_kit.servers import (
     package_server_contract,
     service_discovery_block,
 )
-from control_plane_kit.algebra import DeploymentRecipe, DockerRuntime
+from control_plane_kit.core.algebra import DeploymentRecipe, DockerRuntime
 
 
 NOW = datetime(2026, 7, 19, 12, tzinfo=timezone.utc)

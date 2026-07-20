@@ -12,7 +12,7 @@ from typing import Mapping, Protocol, TypeAlias
 from jinja2 import StrictUndefined, TemplateError, TemplateSyntaxError
 from jinja2.sandbox import ImmutableSandboxedEnvironment
 
-from control_plane_kit.configuration import (
+from control_plane_kit.core.configuration import (
     MAX_CONFIGURATION_BYTES,
     ConfigurationArtifact,
     ConfigurationFileMode,

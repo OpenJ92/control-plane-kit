@@ -14,7 +14,7 @@ from control_plane_kit import (
     SocketConnection,
     compile_recipe,
 )
-from control_plane_kit.algebra import DeploymentRecipe
+from control_plane_kit.core.algebra import DeploymentRecipe
 from control_plane_kit.projections import project_operator_graph
 
 

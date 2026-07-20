@@ -10,7 +10,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 from enum import StrEnum
 
-from control_plane_kit.control_routes import ControlRouteSetName
+from control_plane_kit.core.control_routes import ControlRouteSetName
 
 
 class CapabilityName(StrEnum):

@@ -6,16 +6,16 @@ from collections import Counter
 from dataclasses import dataclass
 from enum import StrEnum
 
-from control_plane_kit.algebra import PackageServerSpec, ProductMaturity
-from control_plane_kit.capabilities import capability_named
-from control_plane_kit.control_routes import route_set_named
+from control_plane_kit.core.algebra import PackageServerSpec, ProductMaturity
+from control_plane_kit.core.capabilities import capability_named
+from control_plane_kit.core.control_routes import route_set_named
 from control_plane_kit.topology.graph import DeploymentGraph
 from control_plane_kit.topology.codec import (
     DEFAULT_GRAPH_CODEC,
     GraphDescriptorCodec,
     GraphDescriptorError,
 )
-from control_plane_kit.verification import expected_protocols
+from control_plane_kit.core.verification import expected_protocols
 
 
 class ValidationSeverity(StrEnum):

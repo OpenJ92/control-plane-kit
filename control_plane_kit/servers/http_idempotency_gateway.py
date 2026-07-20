@@ -9,7 +9,7 @@ from collections.abc import Callable
 from fastapi import FastAPI, Request
 from fastapi.responses import Response
 
-from control_plane_kit.algebra import (
+from control_plane_kit.core.algebra import (
     BlockSockets,
     PackageServerProduct,
     PackageServerSpec,
@@ -18,12 +18,12 @@ from control_plane_kit.algebra import (
     ProxyBlock,
     RequirementSocket,
 )
-from control_plane_kit.capabilities import CapabilityName
+from control_plane_kit.core.capabilities import CapabilityName
 from control_plane_kit.idempotency import IdempotencyGatewayPolicy
 from control_plane_kit.implementations import DockerImageImplementation
-from control_plane_kit.secrets import SecretEnvironmentDelivery, SecretReference
+from control_plane_kit.core.secrets import SecretEnvironmentDelivery, SecretReference
 from control_plane_kit.servers.http_messages import HttpRequest, HttpResponse
-from control_plane_kit.types import Protocol
+from control_plane_kit.core.types import Protocol
 
 
 IdempotencyRequestExecutor = Callable[[HttpRequest, str, str, str], HttpResponse]

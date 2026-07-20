@@ -45,7 +45,7 @@ from control_plane_kit.execution import (
     ObservationStatus,
 )
 from control_plane_kit.planning import WaitForHealthy
-from control_plane_kit.types import Protocol
+from control_plane_kit.core.types import Protocol
 
 
 MonotonicClock = Callable[[], float]

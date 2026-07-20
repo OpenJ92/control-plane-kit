@@ -6,13 +6,13 @@ from dataclasses import dataclass
 from enum import StrEnum
 from typing import Mapping, TypeAlias
 
-from control_plane_kit.algebra import BlockSockets, BlockSpec
-from control_plane_kit.configuration import ConfigurationArtifact
-from control_plane_kit.environment import (
+from control_plane_kit.core.algebra import BlockSockets, BlockSpec
+from control_plane_kit.core.configuration import ConfigurationArtifact
+from control_plane_kit.core.environment import (
     PublicStaticEnvironmentBinding,
     SocketDerivedEnvironmentBinding,
 )
-from control_plane_kit.secrets import SecretDelivery, secret_delivery_sort_key
+from control_plane_kit.core.secrets import SecretDelivery, secret_delivery_sort_key
 from control_plane_kit.topology.graph import (
     Edge,
     Endpoint,

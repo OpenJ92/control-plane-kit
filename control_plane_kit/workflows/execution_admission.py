@@ -36,7 +36,7 @@ from control_plane_kit.stores import (
 )
 from control_plane_kit.topology.codec import DEFAULT_GRAPH_CODEC, GraphDescriptorError
 from control_plane_kit.topology.graph import DeploymentGraph
-from control_plane_kit.types import Protocol, SocketBinding
+from control_plane_kit.core.types import Protocol, SocketBinding
 from control_plane_kit.workflows.commands import IdempotencyKey, InvalidOperationCommand
 
 

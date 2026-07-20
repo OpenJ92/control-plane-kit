@@ -7,7 +7,7 @@ from types import MappingProxyType
 from typing import Mapping, Protocol
 
 from control_plane_kit.effects.material import VerificationCheckMaterial
-from control_plane_kit.verification import (
+from control_plane_kit.core.verification import (
     VerificationCapability,
     VerificationIdentity,
     VerificationCompleted,

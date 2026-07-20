@@ -7,14 +7,14 @@ from enum import StrEnum
 from typing import Mapping
 from urllib.parse import urlsplit
 
-from control_plane_kit.algebra import BlockSockets, BlockSpec
-from control_plane_kit.configuration import ConfigurationArtifact
-from control_plane_kit.environment import (
+from control_plane_kit.core.algebra import BlockSockets, BlockSpec
+from control_plane_kit.core.configuration import ConfigurationArtifact
+from control_plane_kit.core.environment import (
     PublicStaticEnvironmentBinding,
     SocketDerivedEnvironmentBinding,
     validate_socket_environment_value,
 )
-from control_plane_kit.secrets import (
+from control_plane_kit.core.secrets import (
     SecretDelivery,
     SecretEnvironmentDelivery,
     SecretFileDelivery,
@@ -22,8 +22,8 @@ from control_plane_kit.secrets import (
     SecretReference,
     secret_delivery_sort_key,
 )
-from control_plane_kit.lifecycle import OWNED_EPHEMERAL, ResourceLifecycle
-from control_plane_kit.types import (
+from control_plane_kit.core.lifecycle import OWNED_EPHEMERAL, ResourceLifecycle
+from control_plane_kit.core.types import (
     BlockFamily,
     EndpointScope,
     Protocol,

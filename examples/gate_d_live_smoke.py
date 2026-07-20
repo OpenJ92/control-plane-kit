@@ -51,7 +51,7 @@ from control_plane_kit.adapters.control_http import (
     SecretValue,
     StaticControlAuthorityProvider,
 )
-from control_plane_kit.secrets import (
+from control_plane_kit.core.secrets import (
     SecretProviderAuthority,
     SecretProviderId,
     SecretReference,
@@ -86,7 +86,7 @@ from control_plane_kit.stores import (
     WorkspaceRecord,
     install_schema,
 )
-from control_plane_kit.types import EndpointScope, Protocol
+from control_plane_kit.core.types import EndpointScope, Protocol
 from control_plane_kit.workflows import (
     ActivityPlanningCommandService,
     AdvanceCurrentGraph,

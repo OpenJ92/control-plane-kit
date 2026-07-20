@@ -19,7 +19,7 @@ from control_plane_kit.adapters.control_http import (
     SecretValue,
     StaticControlAuthorityProvider,
 )
-from control_plane_kit.capabilities import CapabilityName, capability_named
+from control_plane_kit.core.capabilities import CapabilityName, capability_named
 from control_plane_kit.effects import (
     EffectCapability,
     EffectIdentity,
@@ -39,8 +39,8 @@ from control_plane_kit.planning import (
     SocketConnectionTarget,
     SwitchSocketConnection,
 )
-from control_plane_kit.types import EndpointScope, Protocol
-from control_plane_kit.secrets import SecretProviderAuthority, SecretProviderId, SecretResolved
+from control_plane_kit.core.types import EndpointScope, Protocol
+from control_plane_kit.core.secrets import SecretProviderAuthority, SecretProviderId, SecretResolved
 
 
 @dataclass

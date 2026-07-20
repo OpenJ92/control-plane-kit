@@ -14,7 +14,7 @@ from collections.abc import Callable
 from fastapi import FastAPI, Request
 from fastapi.responses import JSONResponse, Response
 
-from control_plane_kit.algebra import (
+from control_plane_kit.core.algebra import (
     ApplicationBlock,
     BlockSockets,
     PackageServerProduct,
@@ -23,8 +23,8 @@ from control_plane_kit.algebra import (
     ProviderSocket,
     RequirementSocket,
 )
-from control_plane_kit.capabilities import CapabilityName
-from control_plane_kit.environment import PublicStaticEnvironmentBinding
+from control_plane_kit.core.capabilities import CapabilityName
+from control_plane_kit.core.environment import PublicStaticEnvironmentBinding
 from control_plane_kit.implementations import DockerImageImplementation
 from control_plane_kit.load_generation import (
     LoadGeneratorPolicy,
@@ -37,9 +37,9 @@ from control_plane_kit.load_generation import (
     scheduled_offsets_ms,
     validate_load_command,
 )
-from control_plane_kit.secrets import SecretEnvironmentDelivery, SecretReference
+from control_plane_kit.core.secrets import SecretEnvironmentDelivery, SecretReference
 from control_plane_kit.servers.http_messages import HttpRequest, HttpResponse
-from control_plane_kit.types import Protocol
+from control_plane_kit.core.types import Protocol
 
 
 LoadTarget = Callable[[HttpRequest, int, int], HttpResponse]

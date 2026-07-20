@@ -10,8 +10,8 @@ from enum import StrEnum
 from dataclasses import dataclass, field, replace
 from typing import Mapping, Protocol, TypeAlias
 
-from control_plane_kit.configuration import ConfigurationArtifact
-from control_plane_kit.secrets import (
+from control_plane_kit.core.configuration import ConfigurationArtifact
+from control_plane_kit.core.secrets import (
     SecretFileMode,
     SecretReference,
     SecretResolutionCode,
@@ -48,7 +48,7 @@ from control_plane_kit.execution import (
     FailureEvidence,
     ObservationStatus,
 )
-from control_plane_kit.lifecycle import ResourceLifecycle, ResourceOwnership, ResourcePersistence
+from control_plane_kit.core.lifecycle import ResourceLifecycle, ResourceOwnership, ResourcePersistence
 from control_plane_kit.planning import (
     DestroyDataResource,
     ReconcileNode,
@@ -62,7 +62,7 @@ from control_plane_kit.planning import (
 
 from control_plane_kit.topology.graph import DeploymentGraph, Node
 from control_plane_kit.runtimes import CleanupPolicy, RuntimeActivity, RuntimeNodeState, RuntimePlan, RuntimeState
-from control_plane_kit.types import Protocol as SocketProtocol, RuntimeKind, Transport
+from control_plane_kit.core.types import Protocol as SocketProtocol, RuntimeKind, Transport
 
 
 _CONFIGURATION_HELPER_IMAGE = (
