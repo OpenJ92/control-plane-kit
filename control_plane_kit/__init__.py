@@ -609,6 +609,7 @@ from control_plane_kit.topology.changes import (
     UnsupportedReason,
 )
 from control_plane_kit.topology.diff import diff_graphs
+from control_plane_kit.environment import PublicStaticEnvironmentBinding
 from control_plane_kit.implementations import (
     DockerImageImplementation,
     DockerPostgresImplementation,
@@ -1092,6 +1093,7 @@ __all__ = [
     "DockerResourceKind",
     "DockerEffectInterpreter",
     "DockerImageImplementation",
+    "PublicStaticEnvironmentBinding",
     "DockerPostgresImplementation",
     "DockerRuntime",
     "DockerRuntimeInterpreter",

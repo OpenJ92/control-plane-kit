@@ -71,6 +71,25 @@ class BooleanArgumentFact:
     value: bool
 
 
+class ExpressionShape(StrEnum):
+    """Closed source-level shapes useful for boundary policies."""
+
+    DICTIONARY = "dictionary"
+    LIST = "list"
+    TUPLE = "tuple"
+    CALL = "call"
+    NAME = "name"
+    OTHER = "other"
+
+
+@dataclass(frozen=True, order=True)
+class KeywordArgumentFact:
+    """One named call argument classified without retaining its value."""
+
+    name: str
+    shape: ExpressionShape
+
+
 @dataclass(frozen=True, order=True)
 class CallFact:
     """A resolved call target when static qualification is possible."""
@@ -78,6 +97,7 @@ class CallFact:
     qualified_name: str
     location: SourceLocation
     boolean_arguments: tuple[BooleanArgumentFact, ...]
+    keyword_arguments: tuple[KeywordArgumentFact, ...]
     first_two_constants_equal: bool
 
 
@@ -217,6 +237,7 @@ def analyze_source(source: str, *, path: str, module: str) -> SourceFacts:
                 name,
                 _location(path, node),
                 _boolean_arguments(node),
+                _keyword_arguments(node),
                 _first_two_constants_equal(node),
             )
             for node in ast.walk(tree)
@@ -350,6 +371,32 @@ def _bound_qualified_name(value: ImportFact) -> str:
     ):
         return value.bound_name
     return value.qualified_name
+
+
+def _keyword_arguments(node: ast.Call) -> tuple[KeywordArgumentFact, ...]:
+    return tuple(
+        sorted(
+            KeywordArgumentFact(keyword.arg, _expression_shape(keyword.value))
+            for keyword in node.keywords
+            if keyword.arg is not None
+        )
+    )
+
+
+def _expression_shape(node: ast.AST) -> ExpressionShape:
+    match node:
+        case ast.Dict():
+            return ExpressionShape.DICTIONARY
+        case ast.List():
+            return ExpressionShape.LIST
+        case ast.Tuple():
+            return ExpressionShape.TUPLE
+        case ast.Call():
+            return ExpressionShape.CALL
+        case ast.Name() | ast.Attribute():
+            return ExpressionShape.NAME
+        case _:
+            return ExpressionShape.OTHER
 
 
 def _definitions(tree: ast.AST) -> tuple[tuple[ast.AST, tuple[str, ...]], ...]:

@@ -24,6 +24,7 @@ from control_plane_kit import (
     LocalDevelopmentSecretResolver,
     Protocol,
     ProviderSocket,
+    PublicStaticEnvironmentBinding,
     SecretProviderAuthority,
     SecretProviderId,
     SecretEnvironmentDelivery,
@@ -130,11 +131,11 @@ def desired_graph(
         DockerImageImplementation(
             image="postgres:16-alpine",
             ports={"internal": 5432},
-            environment={
-                "POSTGRES_DB": "root",
-                "POSTGRES_USER": "root",
-                "POSTGRES_HOST_AUTH_METHOD": "trust",
-            },
+            environment=(
+                PublicStaticEnvironmentBinding("POSTGRES_DB", "root"),
+                PublicStaticEnvironmentBinding("POSTGRES_USER", "root"),
+                PublicStaticEnvironmentBinding("POSTGRES_HOST_AUTH_METHOD", "trust"),
+            ),
         ),
         BlockSockets(providers=(ProviderSocket("internal", Protocol.POSTGRES),)),
     )

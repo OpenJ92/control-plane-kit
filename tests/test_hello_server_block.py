@@ -18,6 +18,7 @@ from control_plane_kit.servers import (
     hello_server_block,
 )
 from control_plane_kit.types import Protocol
+from control_plane_kit.environment import PublicStaticEnvironmentBinding
 
 
 class HelloServerBlockTests(TestCase):
@@ -32,7 +33,10 @@ class HelloServerBlockTests(TestCase):
 
         self.assertEqual(block.block_id, "hello")
         self.assertEqual(block.sockets.provider("internal").protocol, Protocol.HTTP)
-        self.assertEqual(block.implementation.environment, {"HELLO_MESSAGE": "Hello, block!"})
+        self.assertEqual(
+            block.implementation.environment,
+            (PublicStaticEnvironmentBinding("HELLO_MESSAGE", "Hello, block!"),),
+        )
         self.assertNotIn("Hello, block!", " ".join(block.implementation.command))
 
     def test_hello_server_block_compiles_under_docker_runtime(self):

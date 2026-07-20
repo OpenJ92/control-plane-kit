@@ -24,6 +24,7 @@ from control_plane_kit.algebra import (
     RequirementSocket,
 )
 from control_plane_kit.capabilities import CapabilityName
+from control_plane_kit.environment import PublicStaticEnvironmentBinding
 from control_plane_kit.implementations import DockerImageImplementation
 from control_plane_kit.load_generation import (
     LoadGeneratorPolicy,
@@ -284,7 +285,7 @@ def http_load_generator_block(
             image=image,
             command=http_load_generator_command(policy),
             ports={"control": 8080},
-            environment={"CPK_TEST_ONLY": "1"},
+            environment=(PublicStaticEnvironmentBinding("CPK_TEST_ONLY", "1"),),
             secret_deliveries=(
                 SecretEnvironmentDelivery(
                     "CPK_LOAD_CONTROL_TOKEN",

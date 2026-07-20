@@ -4,6 +4,8 @@ from pathlib import Path
 import unittest
 
 from tests.architecture import (
+    CallKeywordShapePolicy,
+    ExpressionShape,
     PackageDependencyPolicy,
     PackageDependencyRule,
     ImportOwner,
@@ -40,6 +42,7 @@ PACKAGE_RULES = (
     PackageDependencyRule("configuration", ()),
     PackageDependencyRule("configuration_rendering", ("configuration",)),
     PackageDependencyRule("control_routes", ()),
+    PackageDependencyRule("environment", ()),
     PackageDependencyRule("discovery", ("topology", "types")),
     PackageDependencyRule(
         "discovery_registry", ("discovery", "topology", "types")
@@ -77,7 +80,15 @@ PACKAGE_RULES = (
     PackageDependencyRule("execution", ()),
     PackageDependencyRule(
         "implementations",
-        ("algebra", "configuration", "lifecycle", "secrets", "topology", "types"),
+        (
+            "algebra",
+            "configuration",
+            "environment",
+            "lifecycle",
+            "secrets",
+            "topology",
+            "types",
+        ),
     ),
     PackageDependencyRule("idempotency", ()),
     PackageDependencyRule(
@@ -114,6 +125,7 @@ PACKAGE_RULES = (
             "configuration_rendering",
             "control_routes",
             "discovery",
+            "environment",
             "idempotency",
             "implementations",
             "load_generation",
@@ -204,6 +216,12 @@ TEMPLATE_ENGINE_POLICY = ImportOwnershipPolicy(
         ),
     )
 )
+STATIC_ENVIRONMENT_POLICY = CallKeywordShapePolicy(
+    rule_id="closed-static-environment",
+    call_names=("DockerImageImplementation",),
+    keyword_name="environment",
+    forbidden_shapes=(ExpressionShape.DICTIONARY, ExpressionShape.LIST),
+)
 
 
 class ArchitectureDependencyTests(unittest.TestCase):
@@ -226,7 +244,12 @@ class ArchitectureDependencyTests(unittest.TestCase):
         self.assertEqual(
             evaluate_policies(
                 facts,
-                (DEPENDENCY_POLICY, TRANSPORT_POLICY, TEMPLATE_ENGINE_POLICY),
+                (
+                    DEPENDENCY_POLICY,
+                    TRANSPORT_POLICY,
+                    TEMPLATE_ENGINE_POLICY,
+                    STATIC_ENVIRONMENT_POLICY,
+                ),
             ),
             (),
         )
@@ -322,6 +345,19 @@ class ArchitectureDependencyTests(unittest.TestCase):
             findings[0].location.path,
             "control_plane_kit/servers/product.py",
         )
+
+    def test_raw_static_environment_mapping_is_rejected_at_docker_authoring(self) -> None:
+        facts = analyze_source(
+            "from control_plane_kit import DockerImageImplementation\n"
+            "DockerImageImplementation('service:latest', environment={'MODE': 'safe'})\n",
+            path="control_plane_kit/servers/product.py",
+            module="control_plane_kit.servers.product",
+        )
+
+        findings = STATIC_ENVIRONMENT_POLICY.evaluate(facts)
+
+        self.assertEqual(len(findings), 1)
+        self.assertEqual(findings[0].rule_id, "closed-static-environment")
 
 
 if __name__ == "__main__":

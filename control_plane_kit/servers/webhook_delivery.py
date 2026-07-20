@@ -15,6 +15,7 @@ from control_plane_kit.algebra import (
     RequirementSocket,
 )
 from control_plane_kit.capabilities import CapabilityName
+from control_plane_kit.environment import PublicStaticEnvironmentBinding
 from control_plane_kit.implementations import DockerImageImplementation
 from control_plane_kit.secrets import SecretEnvironmentDelivery, SecretReference
 from control_plane_kit.types import Protocol
@@ -150,10 +151,16 @@ def webhook_delivery_block(
             image=image,
             command=("python", "-m", "control_plane_kit.webhook_server.main"),
             ports={"internal": 8080},
-            environment={
-                WEBHOOK_ENDPOINT_POLICY_ENVIRONMENT: render_webhook_address_policy(policy),
-                WEBHOOK_SIGNING_REFERENCE_ENVIRONMENT: signing_reference.reference_id,
-            },
+            environment=(
+                PublicStaticEnvironmentBinding(
+                    WEBHOOK_ENDPOINT_POLICY_ENVIRONMENT,
+                    render_webhook_address_policy(policy),
+                ),
+                PublicStaticEnvironmentBinding(
+                    WEBHOOK_SIGNING_REFERENCE_ENVIRONMENT,
+                    signing_reference.reference_id,
+                ),
+            ),
             secret_deliveries=(
                 SecretEnvironmentDelivery(
                     WEBHOOK_IDENTITY_ENVIRONMENT,

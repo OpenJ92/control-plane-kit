@@ -62,7 +62,10 @@ class TcpSwitchTests(unittest.TestCase):
             (Protocol.TCP, Protocol.TCP, Protocol.TCP),
         )
         self.assertEqual(block.implementation.ports, {"data": 7000, "control": 8080})
-        self.assertNotIn("CPK_CONTROL_TOKEN", block.implementation.environment)
+        self.assertNotIn(
+            "CPK_CONTROL_TOKEN",
+            {binding.name for binding in block.implementation.environment},
+        )
 
     def test_target_parser_rejects_credentials_paths_and_wrong_protocol(self) -> None:
         self.assertEqual(TcpTarget.parse("tcp://database:5432"), TcpTarget("database", 5432))

@@ -15,6 +15,7 @@ from control_plane_kit.algebra import (
     RequirementSocket,
 )
 from control_plane_kit.contracts import EnvironmentContract, TextVariable
+from control_plane_kit.environment import PublicStaticEnvironmentBinding
 from control_plane_kit.implementations import DockerImageImplementation, HostPublication
 from control_plane_kit.capabilities import CapabilityName
 from control_plane_kit.servers._templates import render_python_command
@@ -100,7 +101,9 @@ def hello_server_block(
             image=image,
             command=hello_command(normalized),
             ports={"internal": 8000},
-            environment={"HELLO_MESSAGE": env.get("message")},
+            environment=(
+                PublicStaticEnvironmentBinding("HELLO_MESSAGE", env.get("message")),
+            ),
             host_publications=(
                 {"internal": HostPublication.loopback_v4(host_port)}
                 if host_port is not None

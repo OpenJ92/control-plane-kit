@@ -90,17 +90,23 @@ class WebhookDeliveryBlockTests(unittest.TestCase):
                     "secret://webhook-delivery/signing-key",
             },
         )
+        public_environment = {
+            binding.name: binding.value
+            for binding in block.implementation.environment
+        }
         self.assertEqual(
-            block.implementation.environment[WEBHOOK_SIGNING_REFERENCE_ENVIRONMENT],
+            public_environment[WEBHOOK_SIGNING_REFERENCE_ENVIRONMENT],
             "secret://webhook-delivery/signing-key",
         )
         self.assertEqual(
             parse_webhook_address_policy(
-                block.implementation.environment[WEBHOOK_ENDPOINT_POLICY_ENVIRONMENT]
+                public_environment[WEBHOOK_ENDPOINT_POLICY_ENVIRONMENT]
             ),
             WebhookAddressPolicy((grant,)),
         )
-        serialized = json.dumps(block.implementation.environment)
+        serialized = json.dumps(
+            [binding.descriptor() for binding in block.implementation.environment]
+        )
         self.assertNotIn("identity-attestation-value", serialized)
         self.assertNotIn("signing-secret-value", serialized)
 
