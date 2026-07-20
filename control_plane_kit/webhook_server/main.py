@@ -20,13 +20,15 @@ from control_plane_kit.core.secrets import (
     SecretReference,
 )
 from control_plane_kit.servers.webhook_delivery import parse_webhook_address_policy
-from control_plane_kit.webhook import (
-    HttpWebhookDelivery,
+from control_plane_kit.operations.webhook import (
     PostgresWebhookUnitOfWork,
-    SystemWebhookPublicAddressResolver,
     WebhookDeliveryService,
-    create_webhook_delivery_app,
     install_webhook_schema,
+)
+from control_plane_kit.webhook.app import create_webhook_delivery_app
+from control_plane_kit.webhook.http import (
+    HttpWebhookDelivery,
+    SystemWebhookPublicAddressResolver,
 )
 
 

@@ -5,7 +5,7 @@ from __future__ import annotations
 from collections.abc import Callable
 from typing import Protocol, Self, TypeVar
 
-from control_plane_kit.webhook.postgres import (
+from control_plane_kit.operations.webhook.postgres import (
     PostgresWebhookCommandStore,
     PostgresWebhookIntentStore,
     PostgresWebhookJournalStore,

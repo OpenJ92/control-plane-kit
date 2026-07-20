@@ -19,7 +19,10 @@ from control_plane_kit.domains.webhook.language import (
     WebhookEndpoint,
     WebhookSigningAlgorithm,
 )
-from control_plane_kit.webhook.service import WebhookOutboundRequest, WebhookOutboundResult
+from control_plane_kit.operations.webhook import (
+    WebhookOutboundRequest,
+    WebhookOutboundResult,
+)
 
 
 class WebhookEndpointScope(StrEnum):

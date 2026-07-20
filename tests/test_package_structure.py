@@ -20,6 +20,7 @@ from control_plane_kit.core import (
     verification,
 )
 from control_plane_kit.operations import planning as operational_planning
+from control_plane_kit.operations import webhook as operational_webhook
 from control_plane_kit.domains import discovery, idempotency, load_generation, webhook
 
 
@@ -120,6 +121,10 @@ class PackageStructureTests(unittest.TestCase):
             operational_planning.RecoveryCandidate.__module__,
             "control_plane_kit.operations.planning.recovery",
         )
+        self.assertEqual(
+            operational_webhook.WebhookDeliveryService.__module__,
+            "control_plane_kit.operations.webhook.service",
+        )
         self.assertEqual(saga.SagaStep.__module__, "control_plane_kit.saga.program")
         self.assertEqual(
             scheduling.ExecutionSchedule.__module__,
@@ -178,6 +183,10 @@ class PackageStructureTests(unittest.TestCase):
             "idempotency",
             "load_generation",
             "webhook.language",
+            "webhook.postgres",
+            "webhook.protocols",
+            "webhook.service",
+            "webhook.unit_of_work",
         )
 
         for module in retired_modules:

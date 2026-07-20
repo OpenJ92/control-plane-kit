@@ -21,8 +21,8 @@ COMMIT_POLICY = CommitOwnershipPolicy(
         "control_plane_kit.discovery_registry.service",
         "control_plane_kit.discovery_registry.unit_of_work",
         "control_plane_kit.stores.unit_of_work",
-        "control_plane_kit.webhook.unit_of_work",
-        "control_plane_kit.webhook.service",
+        "control_plane_kit.operations.webhook.unit_of_work",
+        "control_plane_kit.operations.webhook.service",
     ),
     owner_module_prefixes=("control_plane_kit.workflows",),
 )
@@ -126,12 +126,12 @@ class ArchitectureOwnershipTests(unittest.TestCase):
         webhook_unit = analyze_source(
             "def finish(connection):\n    connection.commit()\n",
             path="control_plane_kit/webhook/unit_of_work.py",
-            module="control_plane_kit.webhook.unit_of_work",
+            module="control_plane_kit.operations.webhook.unit_of_work",
         )
         webhook_service = analyze_source(
             "def finish(work):\n    work.commit()\n",
             path="control_plane_kit/webhook/service.py",
-            module="control_plane_kit.webhook.service",
+            module="control_plane_kit.operations.webhook.service",
         )
 
         findings = evaluate_policies(

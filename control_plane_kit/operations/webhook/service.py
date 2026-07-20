@@ -35,7 +35,7 @@ from control_plane_kit.domains.webhook.language import (
     evolve_webhook_delivery,
     replay_webhook_events,
 )
-from control_plane_kit.webhook.protocols import (
+from control_plane_kit.operations.webhook.protocols import (
     WebhookProjectionRecord,
     WebhookUnitOfWork,
 )
