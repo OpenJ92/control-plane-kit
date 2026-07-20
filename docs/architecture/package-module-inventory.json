@@ -349,7 +349,7 @@
         "control_plane_kit.servers.request_observer",
         "control_plane_kit.servers.service_discovery",
         "control_plane_kit.servers.tcp_switch",
-        "control_plane_kit.servers.webhook_delivery",
+        "control_plane_kit.products.servers.webhook_delivery",
         "control_plane_kit.stores",
         "control_plane_kit.stores.postgres",
         "control_plane_kit.stores.protocols",
@@ -1438,9 +1438,22 @@
         "CapabilityImplementation",
         "CapabilityResolution",
         "ExecutableCapability",
+        "MAX_WEBHOOK_ENDPOINT_GRANTS",
+        "MAX_WEBHOOK_ENDPOINT_POLICY_BYTES",
         "ProductCatalog",
         "ProductDeclaration",
-        "UnsupportedCapability"
+        "UnsupportedCapability",
+        "WEBHOOK_DATABASE_ENVIRONMENT",
+        "WEBHOOK_DELIVERY_PRODUCT",
+        "WEBHOOK_ENDPOINT_POLICY_ENVIRONMENT",
+        "WEBHOOK_IDENTITY_ENVIRONMENT",
+        "WEBHOOK_SIGNING_REFERENCE_ENVIRONMENT",
+        "WEBHOOK_SIGNING_SECRET_ENVIRONMENT",
+        "parse_webhook_address_policy",
+        "render_webhook_address_policy",
+        "webhook_address_policy_descriptor",
+        "webhook_address_policy_from_descriptor",
+        "webhook_delivery_block"
       ],
       "destination": "control_plane_kit.products.servers",
       "domain_qualification": {
@@ -1456,7 +1469,8 @@
         "process bootstrap"
       ],
       "internal_dependencies": [
-        "control_plane_kit.products.servers.catalog"
+        "control_plane_kit.products.servers.catalog",
+        "control_plane_kit.products.servers.webhook_delivery"
       ],
       "known_package_consumers": [
         "control_plane_kit.servers",
@@ -1728,7 +1742,7 @@
         "control_plane_kit.servers.request_observer",
         "control_plane_kit.servers.service_discovery",
         "control_plane_kit.servers.tcp_switch",
-        "control_plane_kit.servers.webhook_delivery",
+        "control_plane_kit.products.servers.webhook_delivery",
         "control_plane_kit.core.topology.changes",
         "control_plane_kit.core.topology.codec",
         "control_plane_kit.core.topology.compiler",
@@ -1794,7 +1808,7 @@
         "control_plane_kit.servers.request_observer",
         "control_plane_kit.servers.service_discovery",
         "control_plane_kit.servers.tcp_switch",
-        "control_plane_kit.servers.webhook_delivery",
+        "control_plane_kit.products.servers.webhook_delivery",
         "control_plane_kit.core.topology.codec",
         "control_plane_kit.core.topology.compiler",
         "control_plane_kit.core.topology.validation"
@@ -1922,7 +1936,7 @@
         "control_plane_kit.servers.http_load_generator",
         "control_plane_kit.servers.managed_http_router",
         "control_plane_kit.servers.tcp_switch",
-        "control_plane_kit.servers.webhook_delivery",
+        "control_plane_kit.products.servers.webhook_delivery",
         "control_plane_kit.core.topology.changes",
         "control_plane_kit.core.topology.codec",
         "control_plane_kit.core.topology.compiler",
@@ -2034,7 +2048,7 @@
         "control_plane_kit.servers.request_observer",
         "control_plane_kit.servers.service_discovery",
         "control_plane_kit.servers.tcp_switch",
-        "control_plane_kit.servers.webhook_delivery",
+        "control_plane_kit.products.servers.webhook_delivery",
         "control_plane_kit.core.topology.changes",
         "control_plane_kit.core.topology.codec",
         "control_plane_kit.core.topology.graph",
@@ -2120,7 +2134,7 @@
         "control_plane_kit.servers.request_observer",
         "control_plane_kit.servers.service_discovery",
         "control_plane_kit.servers.tcp_switch",
-        "control_plane_kit.servers.webhook_delivery",
+        "control_plane_kit.products.servers.webhook_delivery",
         "control_plane_kit.stores.records",
         "control_plane_kit.core.topology",
         "control_plane_kit.core.topology.codec",
@@ -2201,7 +2215,7 @@
         "control_plane_kit.effects.verification",
         "control_plane_kit.servers.coredns",
         "control_plane_kit.servers.opentelemetry_collector",
-        "control_plane_kit.servers.webhook_delivery",
+        "control_plane_kit.products.servers.webhook_delivery",
         "control_plane_kit.core.topology.codec",
         "control_plane_kit.core.topology.validation",
         "control_plane_kit.workflows.verification"
@@ -3891,7 +3905,7 @@
         "control_plane_kit.servers.request_observer",
         "control_plane_kit.servers.service_discovery",
         "control_plane_kit.servers.tcp_switch",
-        "control_plane_kit.servers.webhook_delivery"
+        "control_plane_kit.products.servers.webhook_delivery"
       ],
       "migration_prerequisites": [
         "#550",
@@ -5218,13 +5232,6 @@
         "hello_server_block",
         "service_discovery_block",
         "tcp_switch_block",
-        "MAX_WEBHOOK_ENDPOINT_GRANTS",
-        "MAX_WEBHOOK_ENDPOINT_POLICY_BYTES",
-        "parse_webhook_address_policy",
-        "render_webhook_address_policy",
-        "webhook_address_policy_descriptor",
-        "webhook_address_policy_from_descriptor",
-        "webhook_delivery_block",
         "authorize_request",
         "http_auth_gateway_block",
         "http_auth_gateway_command",
@@ -5303,8 +5310,7 @@
         "control_plane_kit.servers.opentelemetry_collector",
         "control_plane_kit.servers.request_observer",
         "control_plane_kit.servers.service_discovery",
-        "control_plane_kit.servers.tcp_switch",
-        "control_plane_kit.servers.webhook_delivery"
+        "control_plane_kit.servers.tcp_switch"
       ],
       "known_package_consumers": [
         "control_plane_kit.discovery_server.app",
@@ -5332,8 +5338,7 @@
         "control_plane_kit.servers.instance_read",
         "control_plane_kit.servers.managed_http_router",
         "control_plane_kit.servers.request_observer",
-        "control_plane_kit.servers.tcp_switch",
-        "control_plane_kit.entrypoints.webhook_server.main"
+        "control_plane_kit.servers.tcp_switch"
       ],
       "migration_prerequisites": [
         "#550",
@@ -5604,7 +5609,7 @@
         "control_plane_kit.servers.request_observer",
         "control_plane_kit.servers.service_discovery",
         "control_plane_kit.servers.tcp_switch",
-        "control_plane_kit.servers.webhook_delivery"
+        "control_plane_kit.products.servers.webhook_delivery"
       ],
       "known_package_consumers": [
         "control_plane_kit.servers"
@@ -7055,10 +7060,18 @@
     },
     {
       "canonical_public_exports": [
+        "MAX_WEBHOOK_ENDPOINT_GRANTS",
+        "MAX_WEBHOOK_ENDPOINT_POLICY_BYTES",
+        "WEBHOOK_DATABASE_ENVIRONMENT",
+        "WEBHOOK_DELIVERY_PRODUCT",
+        "WEBHOOK_ENDPOINT_POLICY_ENVIRONMENT",
+        "WEBHOOK_IDENTITY_ENVIRONMENT",
+        "WEBHOOK_SIGNING_REFERENCE_ENVIRONMENT",
+        "WEBHOOK_SIGNING_SECRET_ENVIRONMENT",
+        "parse_webhook_address_policy",
+        "render_webhook_address_policy",
         "webhook_address_policy_descriptor",
         "webhook_address_policy_from_descriptor",
-        "render_webhook_address_policy",
-        "parse_webhook_address_policy",
         "webhook_delivery_block"
       ],
       "destination": "control_plane_kit.products.servers.webhook_delivery",
@@ -7078,25 +7091,26 @@
         "control_plane_kit.core.algebra",
         "control_plane_kit.core.capabilities",
         "control_plane_kit.core.environment",
-        "control_plane_kit.implementations",
         "control_plane_kit.core.secrets",
         "control_plane_kit.core.types",
         "control_plane_kit.core.verification",
-        "control_plane_kit.domains.webhook"
+        "control_plane_kit.domains.webhook",
+        "control_plane_kit.implementations",
+        "control_plane_kit.products.servers.catalog"
       ],
       "known_package_consumers": [
-        "control_plane_kit.servers",
-        "control_plane_kit.servers.catalog",
-        "control_plane_kit.entrypoints.webhook_server.main"
+        "control_plane_kit.entrypoints.webhook_server.main",
+        "control_plane_kit.products.servers",
+        "control_plane_kit.servers.catalog"
       ],
       "migration_prerequisites": [
         "#550",
         "#557",
         "#558/#559/#560 for representative splits"
       ],
-      "module": "control_plane_kit.servers.webhook_delivery",
+      "module": "control_plane_kit.products.servers.webhook_delivery",
       "motivation": "Declares a package-owned deployable server as graph-visible product data.",
-      "movement": "split-and-move",
+      "movement": "remain",
       "optional_external_dependencies": [],
       "owner": "product",
       "protecting_tests": [
@@ -7108,7 +7122,7 @@
         "transformations"
       ],
       "server_product_exterior": "control_plane_kit.products.servers",
-      "source": "control_plane_kit/servers/webhook_delivery.py"
+      "source": "control_plane_kit/products/servers/webhook_delivery.py"
     },
     {
       "canonical_public_exports": [
@@ -8104,7 +8118,7 @@
         "control_plane_kit.operations.webhook.postgres",
         "control_plane_kit.operations.webhook.protocols",
         "control_plane_kit.operations.webhook.service",
-        "control_plane_kit.servers.webhook_delivery",
+        "control_plane_kit.products.servers.webhook_delivery",
         "control_plane_kit.entrypoints.webhook_server.app"
       ],
       "migration_prerequisites": [
@@ -8341,7 +8355,7 @@
         "control_plane_kit.entrypoints.webhook_server.app",
         "control_plane_kit.interpreters.webhook_http",
         "control_plane_kit.operations.webhook",
-        "control_plane_kit.servers.webhook_delivery"
+        "control_plane_kit.products.servers.webhook_delivery"
       ],
       "known_package_consumers": [],
       "migration_prerequisites": [

@@ -178,15 +178,6 @@ from control_plane_kit.servers.coredns import (
     project_discovery_to_coredns,
     render_coredns_configuration,
 )
-from control_plane_kit.servers.webhook_delivery import (
-    MAX_WEBHOOK_ENDPOINT_GRANTS,
-    MAX_WEBHOOK_ENDPOINT_POLICY_BYTES,
-    parse_webhook_address_policy,
-    render_webhook_address_policy,
-    webhook_address_policy_descriptor,
-    webhook_address_policy_from_descriptor,
-    webhook_delivery_block,
-)
 from control_plane_kit.servers.opentelemetry_collector import (
     COLLECTOR_CONFIG_PATH,
     COLLECTOR_IMAGE,
@@ -362,13 +353,6 @@ __all__ = [
     "hello_server_block",
     "service_discovery_block",
     "tcp_switch_block",
-    "MAX_WEBHOOK_ENDPOINT_GRANTS",
-    "MAX_WEBHOOK_ENDPOINT_POLICY_BYTES",
-    "parse_webhook_address_policy",
-    "render_webhook_address_policy",
-    "webhook_address_policy_descriptor",
-    "webhook_address_policy_from_descriptor",
-    "webhook_delivery_block",
     "authorize_request",
     "http_auth_gateway_block",
     "http_auth_gateway_command",

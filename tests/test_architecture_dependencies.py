@@ -65,6 +65,7 @@ PACKAGE_RULES = (
             "domains",
             "interpreters",
             "operations",
+            "products",
             "servers",
         ),
     ),
@@ -86,7 +87,7 @@ PACKAGE_RULES = (
     PackageDependencyRule("mcp_read", ("read_services",)),
     PackageDependencyRule("operations", ("core", "domains", "policies")),
     PackageDependencyRule("policies", ("core",)),
-    PackageDependencyRule("products", ("core",)),
+    PackageDependencyRule("products", ("core", "domains", "implementations")),
     PackageDependencyRule(
         "projections",
         ("core", "execution", "saga", "scheduling"),

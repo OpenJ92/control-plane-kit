@@ -24,6 +24,7 @@ from control_plane_kit.products.servers import (
     ProductCatalog,
     ProductDeclaration,
     UnsupportedCapability,
+    WEBHOOK_DELIVERY_PRODUCT,
 )
 
 
@@ -39,6 +40,10 @@ class PackageServerCatalogTests(unittest.TestCase):
         self.assertEqual(
             ProductDeclaration.__module__,
             "control_plane_kit.products.servers.catalog",
+        )
+        self.assertIs(
+            package_server_contract(PackageServerProduct.WEBHOOK_DELIVERY),
+            WEBHOOK_DELIVERY_PRODUCT,
         )
 
         with self.assertRaises(ValueError):
