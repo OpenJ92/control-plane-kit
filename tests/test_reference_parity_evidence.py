@@ -114,6 +114,8 @@ class ReferenceParityEvidenceTests(unittest.TestCase):
         self.assertNotIn("docker network prune", runner)
         self.assertIn('docker volume rm "$volume_id"', runner)
         self.assertIn('docker ps -aq --filter "volume=$volume_id"', runner)
+        self.assertIn('head -c "$((MAXIMUM_OUTPUT_BYTES + 1))"', runner)
+        self.assertIn("cleanup_owned_volumes || true", runner)
 
 
 if __name__ == "__main__":

@@ -14,7 +14,23 @@ POSTGRES_CONTAINER="cpk-reference-postgres-${RUN_ID}"
 TEST_CONTAINER="cpk-reference-runner-${RUN_ID}"
 TEMP_DIR="$(mktemp -d "${TMPDIR:-/tmp}/cpk-reference.XXXXXX")"
 
+cleanup_owned_volumes() {
+  [ -f "$TEMP_DIR/volumes-before.txt" ] || return 0
+  docker volume ls -q | sort >"$TEMP_DIR/volumes-cleanup.txt"
+  comm -13 "$TEMP_DIR/volumes-before.txt" "$TEMP_DIR/volumes-cleanup.txt" \
+    >"$TEMP_DIR/owned-volume-candidates.txt"
+  while IFS= read -r volume_id; do
+    [ -n "$volume_id" ] || continue
+    if [ -n "$(docker ps -aq --filter "volume=$volume_id")" ]; then
+      printf 'Run-local volume %s is still attached; refusing cleanup\n' "$volume_id" >&2
+      return 1
+    fi
+    docker volume rm "$volume_id" >/dev/null
+  done <"$TEMP_DIR/owned-volume-candidates.txt"
+}
+
 cleanup() {
+  cleanup_owned_volumes || true
   docker image rm -f "$TEST_IMAGE" >/dev/null 2>&1 || true
   rm -rf "$TEMP_DIR"
 }
@@ -46,7 +62,9 @@ if ! (
   CPK_TEST_NETWORK_NAME="$NETWORK_NAME" \
   CPK_TEST_POSTGRES_CONTAINER="$POSTGRES_CONTAINER" \
   CPK_TEST_CONTAINER="$TEST_CONTAINER" \
-    ./test.sh >"$TEMP_DIR/test-output.txt" 2>&1
+    ./test.sh 2>&1 \
+      | head -c "$((MAXIMUM_OUTPUT_BYTES + 1))" \
+      >"$TEMP_DIR/test-output.txt"
 ); then
   tail -n 200 "$TEMP_DIR/test-output.txt" >&2
   exit 1
@@ -61,18 +79,8 @@ TEST_IMAGE_ID="$(docker image inspect "$TEST_IMAGE" --format '{{.Id}}')"
 
 snapshot_resources after
 
-comm -13 "$TEMP_DIR/volumes-before.txt" "$TEMP_DIR/volumes-after.txt" \
-  >"$TEMP_DIR/owned-volume-candidates.txt"
-while IFS= read -r volume_id; do
-  [ -n "$volume_id" ] || continue
-  if [ -n "$(docker ps -aq --filter "volume=$volume_id")" ]; then
-    printf 'Run-local volume %s is still attached; refusing cleanup\n' "$volume_id" >&2
-    exit 1
-  fi
-  docker volume rm "$volume_id" >/dev/null
-done <"$TEMP_DIR/owned-volume-candidates.txt"
-
 mv "$TEMP_DIR/volumes-after.txt" "$TEMP_DIR/volumes-observed.txt"
+cleanup_owned_volumes
 snapshot_resources after
 
 EVIDENCE_DIR="$(cd "$(dirname "$EVIDENCE_PATH")" && pwd)"
