@@ -242,14 +242,14 @@
         "control_plane_kit.configuration_rendering",
         "control_plane_kit.contracts",
         "control_plane_kit.core.control_routes",
-        "control_plane_kit.discovery",
+        "control_plane_kit.domains.discovery",
         "control_plane_kit.effects",
         "control_plane_kit.core.environment",
         "control_plane_kit.execution",
-        "control_plane_kit.idempotency",
+        "control_plane_kit.domains.idempotency",
         "control_plane_kit.implementations",
         "control_plane_kit.core.lifecycle",
-        "control_plane_kit.load_generation",
+        "control_plane_kit.domains.load_generation",
         "control_plane_kit.core.planning.activity_plan",
         "control_plane_kit.core.planning.codec",
         "control_plane_kit.core.planning.compiler",
@@ -282,7 +282,7 @@
         "control_plane_kit.application.deploy.values",
         "control_plane_kit.core.capabilities",
         "control_plane_kit.configuration_rendering",
-        "control_plane_kit.discovery",
+        "control_plane_kit.domains.discovery",
         "control_plane_kit.discovery_registry",
         "control_plane_kit.discovery_registry.postgres",
         "control_plane_kit.discovery_registry.protocols",
@@ -374,7 +374,7 @@
         "control_plane_kit.webhook",
         "control_plane_kit.webhook.app",
         "control_plane_kit.webhook.http",
-        "control_plane_kit.webhook.language",
+        "control_plane_kit.domains.webhook.language",
         "control_plane_kit.webhook.postgres",
         "control_plane_kit.webhook.protocols",
         "control_plane_kit.webhook.service",
@@ -1845,7 +1845,7 @@
         "control_plane_kit.core.topology.codec",
         "control_plane_kit.core.topology.graph",
         "control_plane_kit.webhook.http",
-        "control_plane_kit.webhook.language",
+        "control_plane_kit.domains.webhook.language",
         "control_plane_kit.webhook.postgres",
         "control_plane_kit.webhook_server.main"
       ],
@@ -1895,7 +1895,7 @@
         "control_plane_kit.adapters.probes.interpreter",
         "control_plane_kit.adapters.verification",
         "control_plane_kit.core.algebra",
-        "control_plane_kit.discovery",
+        "control_plane_kit.domains.discovery",
         "control_plane_kit.discovery_registry.postgres",
         "control_plane_kit.docker_runtime",
         "control_plane_kit.effects.material",
@@ -2059,6 +2059,122 @@
     },
     {
       "canonical_public_exports": [
+        "DiscoveryAuthority",
+        "DiscoveryCommand",
+        "DiscoveryIdentity",
+        "DiscoveryLease",
+        "DiscoveryOutcome",
+        "DiscoveryRegistration",
+        "DiscoveryRegistrationRecord",
+        "DiscoveryResult"
+      ],
+      "destination": "control_plane_kit.domains.discovery",
+      "internal_dependencies": [
+        "control_plane_kit.domains.discovery.language"
+      ],
+      "known_package_consumers": [],
+      "migration_prerequisites": ["#554", "#555"],
+      "module": "control_plane_kit.domains.discovery",
+      "motivation": "Provides the intentional package entrance for the closed discovery language.",
+      "movement": "remain",
+      "optional_external_dependencies": [],
+      "owner": "domain",
+      "protecting_tests": [
+        "tests/test_discovery_language.py",
+        "tests/test_package_inventory.py"
+      ],
+      "role": "domain-language-entrance",
+      "semantic_roles": ["namespace", "values"],
+      "source": "control_plane_kit/domains/discovery/__init__.py"
+    },
+    {
+      "canonical_public_exports": [
+        "IdempotencyGatewayPolicy",
+        "IdempotencyIdentity",
+        "IdempotencyMethod",
+        "IdempotencyOutcome",
+        "IdempotencyRecord",
+        "IdempotencyRecordStatus",
+        "IdempotencyRoutePolicy"
+      ],
+      "destination": "control_plane_kit.domains.idempotency",
+      "internal_dependencies": [
+        "control_plane_kit.domains.idempotency.language"
+      ],
+      "known_package_consumers": [],
+      "migration_prerequisites": ["#554", "#555"],
+      "module": "control_plane_kit.domains.idempotency",
+      "motivation": "Provides the intentional package entrance for the closed idempotency language.",
+      "movement": "remain",
+      "optional_external_dependencies": [],
+      "owner": "domain",
+      "protecting_tests": [
+        "tests/test_idempotency_gateway.py",
+        "tests/test_package_inventory.py"
+      ],
+      "role": "domain-language-entrance",
+      "semantic_roles": ["namespace", "values"],
+      "source": "control_plane_kit/domains/idempotency/__init__.py"
+    },
+    {
+      "canonical_public_exports": [
+        "LoadGeneratorPolicy",
+        "LoadMethod",
+        "LoadRequestOutcome",
+        "LoadRunCommand",
+        "LoadRunEvidence",
+        "LoadRunRecord",
+        "LoadRunStatus"
+      ],
+      "destination": "control_plane_kit.domains.load_generation",
+      "internal_dependencies": [
+        "control_plane_kit.domains.load_generation.language"
+      ],
+      "known_package_consumers": [],
+      "migration_prerequisites": ["#554", "#555"],
+      "module": "control_plane_kit.domains.load_generation",
+      "motivation": "Provides the intentional package entrance for the closed load-generation language.",
+      "movement": "remain",
+      "optional_external_dependencies": [],
+      "owner": "domain",
+      "protecting_tests": [
+        "tests/test_http_load_generator.py",
+        "tests/test_package_inventory.py"
+      ],
+      "role": "domain-language-entrance",
+      "semantic_roles": ["namespace", "values"],
+      "source": "control_plane_kit/domains/load_generation/__init__.py"
+    },
+    {
+      "canonical_public_exports": [
+        "WebhookDeliveryIdentity",
+        "WebhookDeliveryIntent",
+        "WebhookDeliveryState",
+        "WebhookEvent",
+        "evolve_webhook_delivery",
+        "replay_webhook_events"
+      ],
+      "destination": "control_plane_kit.domains.webhook",
+      "internal_dependencies": [
+        "control_plane_kit.domains.webhook.language"
+      ],
+      "known_package_consumers": [],
+      "migration_prerequisites": ["#554", "#555"],
+      "module": "control_plane_kit.domains.webhook",
+      "motivation": "Provides the intentional package entrance for the closed webhook-delivery language.",
+      "movement": "remain",
+      "optional_external_dependencies": [],
+      "owner": "domain",
+      "protecting_tests": [
+        "tests/test_webhook.py",
+        "tests/test_package_inventory.py"
+      ],
+      "role": "domain-language-entrance",
+      "semantic_roles": ["namespace", "values"],
+      "source": "control_plane_kit/domains/webhook/__init__.py"
+    },
+    {
+      "canonical_public_exports": [
         "DiscoveryRegistrationMode",
         "DiscoveryScope",
         "DiscoveryRegistrationStatus",
@@ -2098,9 +2214,9 @@
         "#554",
         "#555"
       ],
-      "module": "control_plane_kit.discovery",
+      "module": "control_plane_kit.domains.discovery.language",
       "motivation": "Owns an independent closed command/result language that does not know its products or processes.",
-      "movement": "move",
+      "movement": "remain",
       "optional_external_dependencies": [],
       "owner": "domain",
       "protecting_tests": [
@@ -2112,7 +2228,7 @@
         "transformations",
         "values"
       ],
-      "source": "control_plane_kit/discovery.py"
+      "source": "control_plane_kit/domains/discovery/language.py"
     },
     {
       "canonical_public_exports": [
@@ -2168,7 +2284,7 @@
       ],
       "destination": "control_plane_kit.operations.discovery_registry.postgres",
       "internal_dependencies": [
-        "control_plane_kit.discovery",
+        "control_plane_kit.domains.discovery",
         "control_plane_kit.core.topology.graph",
         "control_plane_kit.core.types"
       ],
@@ -2208,7 +2324,7 @@
       ],
       "destination": "control_plane_kit.operations.discovery_registry.protocols",
       "internal_dependencies": [
-        "control_plane_kit.discovery"
+        "control_plane_kit.domains.discovery"
       ],
       "known_package_consumers": [
         "control_plane_kit.discovery_registry.service"
@@ -2245,7 +2361,7 @@
       ],
       "destination": "control_plane_kit.operations.discovery_registry.service",
       "internal_dependencies": [
-        "control_plane_kit.discovery",
+        "control_plane_kit.domains.discovery",
         "control_plane_kit.discovery_registry.protocols"
       ],
       "known_package_consumers": [
@@ -2349,7 +2465,7 @@
       ],
       "destination": "control_plane_kit.entrypoints.discovery_server.app",
       "internal_dependencies": [
-        "control_plane_kit.discovery",
+        "control_plane_kit.domains.discovery",
         "control_plane_kit.discovery_registry",
         "control_plane_kit.servers._fastapi"
       ],
@@ -3257,9 +3373,9 @@
         "#554",
         "#555"
       ],
-      "module": "control_plane_kit.idempotency",
+      "module": "control_plane_kit.domains.idempotency.language",
       "motivation": "Owns an independent closed command/result language that does not know its products or processes.",
-      "movement": "move",
+      "movement": "remain",
       "optional_external_dependencies": [],
       "owner": "domain",
       "protecting_tests": [
@@ -3271,7 +3387,7 @@
         "transformations",
         "values"
       ],
-      "source": "control_plane_kit/idempotency.py"
+      "source": "control_plane_kit/domains/idempotency/language.py"
     },
     {
       "canonical_public_exports": [
@@ -3328,7 +3444,7 @@
       "internal_dependencies": [
         "control_plane_kit.adapters.http_forwarding",
         "control_plane_kit.contracts",
-        "control_plane_kit.idempotency",
+        "control_plane_kit.domains.idempotency",
         "control_plane_kit.idempotency_gateway.service",
         "control_plane_kit.idempotency_gateway.unit_of_work",
         "control_plane_kit.servers.http_idempotency_gateway",
@@ -3367,7 +3483,7 @@
       ],
       "destination": "control_plane_kit.operations.idempotency_gateway.postgres",
       "internal_dependencies": [
-        "control_plane_kit.idempotency"
+        "control_plane_kit.domains.idempotency"
       ],
       "known_package_consumers": [
         "control_plane_kit.idempotency_gateway",
@@ -3404,7 +3520,7 @@
       ],
       "destination": "control_plane_kit.operations.idempotency_gateway.protocols",
       "internal_dependencies": [
-        "control_plane_kit.idempotency"
+        "control_plane_kit.domains.idempotency"
       ],
       "known_package_consumers": [
         "control_plane_kit.idempotency_gateway.service"
@@ -3443,7 +3559,7 @@
       ],
       "destination": "control_plane_kit.operations.idempotency_gateway.service",
       "internal_dependencies": [
-        "control_plane_kit.idempotency",
+        "control_plane_kit.domains.idempotency",
         "control_plane_kit.idempotency_gateway.protocols",
         "control_plane_kit.servers.http_messages"
       ],
@@ -3608,9 +3724,9 @@
         "#554",
         "#555"
       ],
-      "module": "control_plane_kit.load_generation",
+      "module": "control_plane_kit.domains.load_generation.language",
       "motivation": "Owns an independent closed command/result language that does not know its products or processes.",
-      "movement": "move",
+      "movement": "remain",
       "optional_external_dependencies": [],
       "owner": "domain",
       "protecting_tests": [
@@ -3622,7 +3738,7 @@
         "transformations",
         "values"
       ],
-      "source": "control_plane_kit/load_generation.py"
+      "source": "control_plane_kit/domains/load_generation/language.py"
     },
     {
       "canonical_public_exports": [],
@@ -3636,7 +3752,7 @@
       ],
       "module": "control_plane_kit.load_generator_server",
       "motivation": "Composes dependencies and starts an operator-facing or server process.",
-      "movement": "move",
+      "movement": "remain",
       "optional_external_dependencies": [],
       "owner": "entrypoint",
       "protecting_tests": [
@@ -3658,7 +3774,7 @@
       "internal_dependencies": [
         "control_plane_kit.adapters.http_forwarding",
         "control_plane_kit.contracts",
-        "control_plane_kit.load_generation",
+        "control_plane_kit.domains.load_generation",
         "control_plane_kit.servers.http_load_generator",
         "control_plane_kit.servers.http_messages"
       ],
@@ -5251,8 +5367,8 @@
         "control_plane_kit.core.algebra",
         "control_plane_kit.core.capabilities",
         "control_plane_kit.core.control_routes",
-        "control_plane_kit.idempotency",
-        "control_plane_kit.load_generation",
+        "control_plane_kit.domains.idempotency",
+        "control_plane_kit.domains.load_generation",
         "control_plane_kit.servers.coredns",
         "control_plane_kit.servers.hello",
         "control_plane_kit.servers.http_active_router",
@@ -5332,7 +5448,7 @@
         "control_plane_kit.core.capabilities",
         "control_plane_kit.core.configuration",
         "control_plane_kit.configuration_rendering",
-        "control_plane_kit.discovery",
+        "control_plane_kit.domains.discovery",
         "control_plane_kit.implementations",
         "control_plane_kit.core.types",
         "control_plane_kit.core.verification"
@@ -5814,7 +5930,7 @@
       "internal_dependencies": [
         "control_plane_kit.core.algebra",
         "control_plane_kit.core.capabilities",
-        "control_plane_kit.idempotency",
+        "control_plane_kit.domains.idempotency",
         "control_plane_kit.implementations",
         "control_plane_kit.core.secrets",
         "control_plane_kit.servers.http_messages",
@@ -5877,7 +5993,7 @@
         "control_plane_kit.core.capabilities",
         "control_plane_kit.core.environment",
         "control_plane_kit.implementations",
-        "control_plane_kit.load_generation",
+        "control_plane_kit.domains.load_generation",
         "control_plane_kit.core.secrets",
         "control_plane_kit.servers.http_messages",
         "control_plane_kit.core.types"
@@ -7157,7 +7273,7 @@
         "control_plane_kit",
         "control_plane_kit.application.deploy.program",
         "control_plane_kit.application.deploy.values",
-        "control_plane_kit.discovery",
+        "control_plane_kit.domains.discovery",
         "control_plane_kit.discovery_registry.postgres",
         "control_plane_kit.docker_runtime",
         "control_plane_kit.effects.material",
@@ -7441,7 +7557,7 @@
       ],
       "known_package_consumers": [
         "control_plane_kit",
-        "control_plane_kit.discovery",
+        "control_plane_kit.domains.discovery",
         "control_plane_kit.discovery_registry.postgres",
         "control_plane_kit.docker_runtime",
         "control_plane_kit.implementations",
@@ -7628,7 +7744,7 @@
         "control_plane_kit._optional",
         "control_plane_kit.webhook.app",
         "control_plane_kit.webhook.http",
-        "control_plane_kit.webhook.language",
+        "control_plane_kit.domains.webhook.language",
         "control_plane_kit.webhook.postgres",
         "control_plane_kit.webhook.protocols",
         "control_plane_kit.webhook.service",
@@ -7677,7 +7793,7 @@
       ],
       "destination": "control_plane_kit.entrypoints.webhook.app",
       "internal_dependencies": [
-        "control_plane_kit.webhook.language",
+        "control_plane_kit.domains.webhook.language",
         "control_plane_kit.webhook.service"
       ],
       "known_package_consumers": [
@@ -7720,7 +7836,7 @@
       "destination": "control_plane_kit.interpreters.webhook.http",
       "internal_dependencies": [
         "control_plane_kit.core.secrets",
-        "control_plane_kit.webhook.language",
+        "control_plane_kit.domains.webhook.language",
         "control_plane_kit.webhook.service"
       ],
       "known_package_consumers": [
@@ -7802,9 +7918,9 @@
         "#554",
         "#555"
       ],
-      "module": "control_plane_kit.webhook.language",
+      "module": "control_plane_kit.domains.webhook.language",
       "motivation": "Owns an independent closed command/result language that does not know its products or processes.",
-      "movement": "move",
+      "movement": "remain",
       "optional_external_dependencies": [],
       "owner": "domain",
       "protecting_tests": [
@@ -7816,7 +7932,7 @@
         "transformations",
         "values"
       ],
-      "source": "control_plane_kit/webhook/language.py"
+      "source": "control_plane_kit/domains/webhook/language.py"
     },
     {
       "canonical_public_exports": [
@@ -7832,7 +7948,7 @@
       "destination": "control_plane_kit.operations.webhook.postgres",
       "internal_dependencies": [
         "control_plane_kit.core.secrets",
-        "control_plane_kit.webhook.language"
+        "control_plane_kit.domains.webhook.language"
       ],
       "known_package_consumers": [
         "control_plane_kit.webhook",
@@ -7874,7 +7990,7 @@
       ],
       "destination": "control_plane_kit.operations.webhook.protocols",
       "internal_dependencies": [
-        "control_plane_kit.webhook.language"
+        "control_plane_kit.domains.webhook.language"
       ],
       "known_package_consumers": [
         "control_plane_kit.webhook",
@@ -7924,7 +8040,7 @@
       ],
       "destination": "control_plane_kit.operations.webhook.service",
       "internal_dependencies": [
-        "control_plane_kit.webhook.language",
+        "control_plane_kit.domains.webhook.language",
         "control_plane_kit.webhook.protocols"
       ],
       "known_package_consumers": [

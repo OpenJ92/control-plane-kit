@@ -4,7 +4,7 @@ import hmac
 import json
 from collections.abc import Callable, Mapping
 
-from control_plane_kit.webhook.language import (
+from control_plane_kit.domains.webhook.language import (
     WebhookAuthority,
     WebhookDeliveryIdentity,
     webhook_authority_from_descriptor,

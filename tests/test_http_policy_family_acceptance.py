@@ -15,9 +15,6 @@ from control_plane_kit import (
     DeploymentGraph,
     GraphDescriptorCodec,
     GraphValidationPolicy,
-    LoadGeneratorPolicy,
-    LoadMethod,
-    LoadRunCommand,
     PackageServerSpec,
     PackageServerProduct,
     StartNode,
@@ -28,6 +25,11 @@ from control_plane_kit import (
     compile_recipe,
     diff_graphs,
     validate_graph,
+)
+from control_plane_kit.domains.load_generation import (
+    LoadGeneratorPolicy,
+    LoadMethod,
+    LoadRunCommand,
 )
 from control_plane_kit.servers import (
     http_bulkhead_command,

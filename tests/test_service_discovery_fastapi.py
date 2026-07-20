@@ -10,6 +10,12 @@ from fastapi.testclient import TestClient
 from control_plane_kit import (
     CapabilityName,
     ControlVariableError,
+    Endpoint,
+    EndpointScope,
+    LiteralAddress,
+    Protocol,
+)
+from control_plane_kit.domains.discovery import (
     DeregisterDiscoveryInstance,
     DiscoveryAuthority,
     DiscoveryIdentity,
@@ -17,12 +23,8 @@ from control_plane_kit import (
     DiscoveryRegistration,
     DiscoveryRegistrationMode,
     DiscoveryScope,
-    Endpoint,
-    EndpointScope,
     ExpireDiscoveryLeases,
     HeartbeatDiscoveryInstance,
-    LiteralAddress,
-    Protocol,
     RegisterDiscoveryInstance,
     discovery_command_descriptor,
 )

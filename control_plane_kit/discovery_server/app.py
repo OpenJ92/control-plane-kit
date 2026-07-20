@@ -4,7 +4,7 @@ import hmac
 import json
 from collections.abc import Callable, Mapping
 
-from control_plane_kit.discovery import (
+from control_plane_kit.domains.discovery import (
     DeregisterDiscoveryInstance,
     DiscoveryCommand,
     ExpireDiscoveryLeases,

@@ -114,6 +114,7 @@ class PackageModuleInventoryTests(unittest.TestCase):
             {
                 "control_plane_kit.domains",
                 "control_plane_kit.domains.discovery",
+                "control_plane_kit.domains.webhook",
                 "control_plane_kit.domains.webhook.language",
                 "control_plane_kit.domains.idempotency",
                 "control_plane_kit.domains.load_generation",
@@ -129,7 +130,7 @@ class PackageModuleInventoryTests(unittest.TestCase):
 
         self.assertEqual(record["destination"], "control_plane_kit.products.servers.coredns")
         self.assertIs(record["domain_qualification"]["qualifies"], False)
-        self.assertIn("control_plane_kit.discovery", record["internal_dependencies"])
+        self.assertIn("control_plane_kit.domains.discovery", record["internal_dependencies"])
         self.assertIn("tests/test_coredns.py", record["protecting_tests"])
 
     def test_current_core_tree_has_only_declared_pure_dependencies(self) -> None:

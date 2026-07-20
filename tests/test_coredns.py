@@ -8,12 +8,6 @@ import unittest
 from control_plane_kit import (
     CapabilityName,
     DeploymentRecipe,
-    DiscoveryIdentity,
-    DiscoveryLease,
-    DiscoveryRegistration,
-    DiscoveryRegistrationMode,
-    DiscoveryRegistrationRecord,
-    DiscoveryRegistrationStatus,
     DockerRuntime,
     Endpoint,
     EndpointScope,
@@ -31,6 +25,14 @@ from control_plane_kit import (
     effect_request_for_activity,
     materialize_effect_request,
     validate_graph,
+)
+from control_plane_kit.domains.discovery import (
+    DiscoveryIdentity,
+    DiscoveryLease,
+    DiscoveryRegistration,
+    DiscoveryRegistrationMode,
+    DiscoveryRegistrationRecord,
+    DiscoveryRegistrationStatus,
 )
 from control_plane_kit.servers import (
     CapabilityImplementation,

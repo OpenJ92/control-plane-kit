@@ -7,7 +7,7 @@ import unittest
 from control_plane_kit import (
     SecretReference,
 )
-from control_plane_kit.webhook import (
+from control_plane_kit.domains.webhook import (
     MAX_WEBHOOK_PAYLOAD_BYTES,
     WebhookAttemptFinished,
     WebhookAttemptOutcome,

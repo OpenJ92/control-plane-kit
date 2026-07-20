@@ -38,6 +38,24 @@ from control_plane_kit import (  # noqa: E402
 
 if any(name.startswith(OPTIONAL_MODULE_PREFIXES) for name in sys.modules):
     raise AssertionError("root import eagerly loaded an optional package surface")
+if any(name.startswith("control_plane_kit.domains") for name in sys.modules):
+    raise AssertionError("root import eagerly loaded a domain language")
+
+from control_plane_kit.domains.discovery import DiscoveryIdentity  # noqa: E402
+from control_plane_kit.domains.idempotency import IdempotencyIdentity  # noqa: E402
+from control_plane_kit.domains.load_generation import LoadMethod  # noqa: E402
+from control_plane_kit.domains.webhook import WebhookDeliveryIdentity  # noqa: E402
+
+if not all(
+    value.__module__.startswith("control_plane_kit.domains.")
+    for value in (
+        DiscoveryIdentity,
+        IdempotencyIdentity,
+        LoadMethod,
+        WebhookDeliveryIdentity,
+    )
+):
+    raise AssertionError("domain values did not load from canonical package entrances")
 
 application = ApplicationBlock(
     spec=BlockSpec("base-wheel-app", "Base wheel application"),

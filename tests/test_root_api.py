@@ -28,12 +28,10 @@ PURE_PACKAGE_ROOTS = (
     "core",
     "configuration_rendering",
     "contracts",
-    "discovery",
+    "domains",
     "effects",
     "execution",
-    "idempotency",
     "implementations",
-    "load_generation",
     "saga",
     "scheduling",
 )

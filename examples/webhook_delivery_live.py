@@ -36,12 +36,14 @@ from control_plane_kit.servers import (
     webhook_delivery_block,
 )
 from control_plane_kit.webhook import (
+    WebhookEndpointGrant,
+    WebhookEndpointScope,
+)
+from control_plane_kit.domains.webhook import (
     WebhookContentType,
     WebhookDeliveryIdentity,
     WebhookDeliveryIntent,
     WebhookEndpoint,
-    WebhookEndpointGrant,
-    WebhookEndpointScope,
     WebhookPayload,
     WebhookRetryPolicy,
     WebhookSigning,

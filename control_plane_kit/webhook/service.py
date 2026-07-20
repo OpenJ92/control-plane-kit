@@ -10,7 +10,7 @@ import hashlib
 import json
 from typing import Protocol, TypeAlias
 
-from control_plane_kit.webhook.language import (
+from control_plane_kit.domains.webhook.language import (
     WebhookAttemptFinished,
     WebhookAttemptOutcome,
     WebhookAttemptStarted,

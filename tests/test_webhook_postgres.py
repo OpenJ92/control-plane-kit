@@ -12,6 +12,9 @@ from control_plane_kit import (
 )
 from control_plane_kit.webhook import (
     PostgresWebhookUnitOfWork,
+    install_webhook_schema,
+)
+from control_plane_kit.domains.webhook import (
     WebhookClaim,
     WebhookClaimed,
     WebhookContentType,
@@ -24,7 +27,6 @@ from control_plane_kit.webhook import (
     WebhookRetryPolicy,
     WebhookSigning,
     evolve_webhook_delivery,
-    install_webhook_schema,
     replay_webhook_events,
 )
 

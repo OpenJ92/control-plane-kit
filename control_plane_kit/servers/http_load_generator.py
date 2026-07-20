@@ -26,7 +26,7 @@ from control_plane_kit.core.algebra import (
 from control_plane_kit.core.capabilities import CapabilityName
 from control_plane_kit.core.environment import PublicStaticEnvironmentBinding
 from control_plane_kit.implementations import DockerImageImplementation
-from control_plane_kit.load_generation import (
+from control_plane_kit.domains.load_generation import (
     LoadGeneratorPolicy,
     LoadRequestOutcome,
     LoadRunCommand,

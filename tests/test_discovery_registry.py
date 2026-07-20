@@ -8,6 +8,12 @@ import unittest
 import psycopg
 
 from control_plane_kit import (
+    Endpoint,
+    EndpointScope,
+    LiteralAddress,
+    Protocol,
+)
+from control_plane_kit.domains.discovery import (
     DeregisterDiscoveryInstance,
     DiscoveryAuthority,
     DiscoveryIdentity,
@@ -17,12 +23,8 @@ from control_plane_kit import (
     DiscoveryRegistrationMode,
     DiscoveryRegistrationStatus,
     DiscoveryScope,
-    Endpoint,
-    EndpointScope,
     ExpireDiscoveryLeases,
     HeartbeatDiscoveryInstance,
-    LiteralAddress,
-    Protocol,
     RegisterDiscoveryInstance,
     ResolveDiscoveryService,
 )
