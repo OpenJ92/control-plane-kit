@@ -1,14 +1,16 @@
 import ast
 from unittest import TestCase, main
 
-from control_plane_kit.servers import (
+from control_plane_kit.products.servers import (
     AuthenticationMechanism,
     AuthGatewayPolicy,
     GatewayMethod,
-    HelloDependency,
     RouteAuthorizationPolicy,
-    hello_command,
     http_auth_gateway_command,
+)
+from control_plane_kit.servers import (
+    HelloDependency,
+    hello_command,
     http_active_router_command,
     http_circuit_breaker_command,
     http_bulkhead_command,

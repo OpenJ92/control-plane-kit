@@ -18,7 +18,8 @@ from control_plane_kit import (
     PackageServerProduct,
     compile_recipe,
 )
-from control_plane_kit.servers import (
+from control_plane_kit.core.algebra import ProductMaturity
+from control_plane_kit.products.servers import (
     AuthGatewayPolicy,
     AuthenticatedIdentity,
     AuthenticationAccepted,
@@ -30,7 +31,6 @@ from control_plane_kit.servers import (
     GatewayMethod,
     HttpAuthGatewayServer,
     JwtAlgorithm,
-    ProductMaturity,
     RouteAuthorizationPolicy,
     StaticApiKeyValidator,
     auth_gateway_policy_from_descriptor,

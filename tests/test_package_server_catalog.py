@@ -24,6 +24,7 @@ from control_plane_kit.products.servers import (
     ProductCatalog,
     ProductDeclaration,
     UnsupportedCapability,
+    HTTP_AUTH_GATEWAY_PRODUCT,
     WEBHOOK_DELIVERY_PRODUCT,
 )
 
@@ -44,6 +45,10 @@ class PackageServerCatalogTests(unittest.TestCase):
         self.assertIs(
             package_server_contract(PackageServerProduct.WEBHOOK_DELIVERY),
             WEBHOOK_DELIVERY_PRODUCT,
+        )
+        self.assertIs(
+            package_server_contract(PackageServerProduct.HTTP_AUTH_GATEWAY),
+            HTTP_AUTH_GATEWAY_PRODUCT,
         )
 
         with self.assertRaises(ValueError):
