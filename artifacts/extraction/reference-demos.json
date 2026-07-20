@@ -1,0 +1,57 @@
+{
+  "demos": [
+    {
+      "bootstrap_state": "required", "cleanup": ["owned package-test images removed"], "documentation": [], "fixtures": [], "id": "validation.package-installation", "inputs": ["frozen source archive"], "kind": "validation", "normalization": ["generated-id"], "observables": ["base and optional-extra wheels import successfully"], "owner": "control-plane-kit-core", "owner_kind": "core", "prerequisites": ["Docker"], "scripts": ["packaging-test.sh"]
+    },
+    {
+      "bootstrap_state": "required", "cleanup": ["owned test container, Postgres container, network, and anonymous volume removed"], "documentation": ["README.md#tests"], "fixtures": [], "id": "validation.complete-suite", "inputs": ["frozen source archive"], "kind": "validation", "normalization": ["container-name", "generated-id", "timestamp"], "observables": ["1112 tests pass with zero skips"], "owner": "control-plane-kit-core", "owner_kind": "core", "prerequisites": ["Docker", "Postgres image"], "scripts": ["test.sh"]
+    },
+    {
+      "bootstrap_state": "required", "cleanup": ["owned containers and configuration volumes removed"], "documentation": [], "fixtures": ["tests/live_docker_configuration.py"], "id": "demo.configuration-artifact", "inputs": ["typed immutable configuration artifact"], "kind": "live-demo", "normalization": ["container-name"], "observables": ["configuration is mounted read-only and content is exact"], "owner": "control-plane-kit-core", "owner_kind": "core", "prerequisites": ["Docker"], "scripts": ["configuration-live-test.sh"]
+    },
+    {
+      "bootstrap_state": "deferred", "cleanup": ["owned CoreDNS resources removed"], "documentation": [], "fixtures": ["tests/live_coredns.py"], "id": "demo.coredns", "inputs": ["discovery records"], "kind": "live-demo", "normalization": ["container-name"], "observables": ["DNS TCP and UDP queries resolve projected records"], "owner": "control-plane-kit-servers:coredns", "owner_kind": "deferred-product", "prerequisites": ["Docker", "CoreDNS image"], "scripts": ["coredns-live-test.sh"]
+    },
+    {
+      "bootstrap_state": "deferred", "cleanup": ["owned discovery resources removed"], "documentation": [], "fixtures": ["tests/live_service_discovery.py"], "id": "demo.service-discovery", "inputs": ["authenticated registration and lookup"], "kind": "live-demo", "normalization": ["allocated-port", "container-name"], "observables": ["registry updates and resolves service endpoints"], "owner": "control-plane-kit-servers:service-discovery", "owner_kind": "deferred-product", "prerequisites": ["Docker"], "scripts": ["discovery-live-test.sh"]
+    },
+    {
+      "bootstrap_state": "required", "cleanup": ["owned Hello and router resources removed"], "documentation": ["docs/learning/roadmap-0008/run-0001.md"], "fixtures": ["examples/gate_d_live_smoke.py"], "id": "demo.gate-d-router-switch", "inputs": ["authenticated router switch"], "kind": "live-demo", "normalization": ["allocated-port", "container-name"], "observables": ["Hello response changes from blue to green and unauthorized mutation returns 401"], "owner": "control-plane-kit-test:cross-repository", "owner_kind": "system", "prerequisites": ["Docker"], "scripts": ["gate-d-live-test.sh"]
+    },
+    {
+      "bootstrap_state": "required", "cleanup": ["DeploymentProgram removes every owned runtime resource"], "documentation": ["README.md#deployment-program", "docs/DEPLOY_PROGRAM.md"], "fixtures": ["examples/backend_swap_planning.py", "examples/router_swap.py"], "id": "demo.gate-f-deployment-program", "inputs": ["current and desired deployment graphs", "approval grant", "execution grant"], "kind": "live-demo", "normalization": ["allocated-port", "container-name", "generated-id", "timestamp"], "observables": ["plan approve admit claim execute advance pipeline mutates live topology"], "owner": "control-plane-kit-test:cross-repository", "owner_kind": "system", "prerequisites": ["Docker", "Postgres image"], "scripts": ["gate-f-live-test.sh"]
+    },
+    {
+      "bootstrap_state": "required", "cleanup": ["owned generated Hello graph resources removed"], "documentation": ["README.md#generated-hello-graphs", "docs/GENERATED_HELLO_GRAPHS.md"], "fixtures": ["examples/generated_hello_live.py"], "id": "demo.generated-hello", "inputs": ["generated valid Hello deployment graph"], "kind": "live-demo", "normalization": ["allocated-port", "container-name"], "observables": ["HTTP and Postgres dependency edges perform end-to-end operations"], "owner": "control-plane-kit-servers:hello", "owner_kind": "hello", "prerequisites": ["Docker", "Postgres image"], "scripts": ["generated-hello-live-test.sh"]
+    },
+    {
+      "bootstrap_state": "required", "cleanup": ["owned publication container removed"], "documentation": [], "fixtures": ["tests/live_docker_publication.py"], "id": "demo.docker-publication", "inputs": ["explicit host publication"], "kind": "live-demo", "normalization": ["allocated-port", "container-name"], "observables": ["published endpoint is reachable and private-only remains default"], "owner": "control-plane-kit-core", "owner_kind": "core", "prerequisites": ["Docker"], "scripts": ["live-test.sh"]
+    },
+    {
+      "bootstrap_state": "deferred", "cleanup": ["owned collector resources removed"], "documentation": [], "fixtures": ["tests/live_opentelemetry_collector.py"], "id": "demo.opentelemetry", "inputs": ["OTLP telemetry"], "kind": "live-demo", "normalization": ["allocated-port", "container-name"], "observables": ["collector receives configured telemetry"], "owner": "control-plane-kit-servers:opentelemetry-collector", "owner_kind": "deferred-product", "prerequisites": ["Docker", "OpenTelemetry Collector image"], "scripts": ["opentelemetry-live-test.sh"]
+    },
+    {
+      "bootstrap_state": "required", "cleanup": ["down command removes owned demo resources"], "documentation": ["README.md#read-interface-demo", "docs/READ_INTERFACES.md"], "fixtures": ["examples/read_interface_demo_server.py"], "id": "demo.read-interface", "inputs": ["authenticated HTTP and MCP read requests"], "kind": "lifecycle", "normalization": ["allocated-port", "container-name"], "observables": ["API and MCP expose the same projections and unauthorized requests fail"], "owner": "control-plane-kit-core", "owner_kind": "core", "prerequisites": ["Docker", "Postgres image"], "scripts": ["scripts/read-demo-up.sh", "scripts/read-demo-down.sh"]
+    },
+    {
+      "bootstrap_state": "required", "cleanup": ["owned secret fixture and container removed"], "documentation": [], "fixtures": ["tests/live_docker_secret.py"], "id": "demo.secret-delivery", "inputs": ["secret reference resolved at runtime"], "kind": "live-demo", "normalization": ["container-name"], "observables": ["secret reaches process without entering descriptors or logs"], "owner": "control-plane-kit-core", "owner_kind": "core", "prerequisites": ["Docker"], "scripts": ["secret-live-test.sh"]
+    },
+    {
+      "bootstrap_state": "required", "cleanup": ["owned multi-service resources removed"], "documentation": [], "fixtures": ["examples/service_infrastructure_live.py"], "id": "demo.service-infrastructure", "inputs": ["heterogeneous service graph"], "kind": "live-demo", "normalization": ["allocated-port", "container-name", "generated-id"], "observables": ["startup order, dependency reachability, transition, and teardown are correct"], "owner": "control-plane-kit-test:cross-repository", "owner_kind": "system", "prerequisites": ["Docker", "Postgres image"], "scripts": ["service-infrastructure-live-test.sh"]
+    },
+    {
+      "bootstrap_state": "deferred", "cleanup": ["owned TCP switch resources removed"], "documentation": [], "fixtures": ["tests/live_tcp_switch.py"], "id": "demo.tcp-switch", "inputs": ["TCP target selection"], "kind": "live-demo", "normalization": ["allocated-port", "container-name"], "observables": ["same TCP request reaches the selected target"], "owner": "control-plane-kit-servers:tcp-switch", "owner_kind": "deferred-product", "prerequisites": ["Docker"], "scripts": ["tcp-switch-live-test.sh"]
+    },
+    {
+      "bootstrap_state": "required", "cleanup": ["owned TCP and UDP fixtures removed"], "documentation": [], "fixtures": ["tests/live_docker_transport.py"], "id": "demo.transport", "inputs": ["typed TCP and UDP sockets"], "kind": "live-demo", "normalization": ["allocated-port", "container-name"], "observables": ["transport-specific publication and reachability remain distinct"], "owner": "control-plane-kit-core", "owner_kind": "core", "prerequisites": ["Docker"], "scripts": ["transport-live-test.sh"]
+    },
+    {
+      "bootstrap_state": "required", "cleanup": ["owned verification fixtures removed"], "documentation": [], "fixtures": ["examples/verification_observation_live.py"], "id": "demo.verification-observation", "inputs": ["verification contract"], "kind": "live-demo", "normalization": ["allocated-port", "container-name", "timestamp"], "observables": ["readiness and semantic checks become immutable observations"], "owner": "control-plane-kit-core", "owner_kind": "core", "prerequisites": ["Docker"], "scripts": ["verification-live-test.sh"]
+    },
+    {
+      "bootstrap_state": "deferred", "cleanup": ["owned webhook sender, receiver, and Postgres resources removed"], "documentation": [], "fixtures": ["examples/webhook_delivery_live.py"], "id": "demo.webhook-delivery", "inputs": ["signed webhook intent"], "kind": "live-demo", "normalization": ["allocated-port", "container-name", "generated-id", "timestamp"], "observables": ["delivery, retry, idempotency, and durable result are visible"], "owner": "control-plane-kit-servers:webhook-delivery", "owner_kind": "deferred-product", "prerequisites": ["Docker", "Postgres image"], "scripts": ["webhook-live-test.sh"]
+    }
+  ],
+  "reference": {"commit": "20129959d3b0f8e8bd5dbdafdf51c0a5d592a9ec", "tag": "pre-server-product-extraction-2026-07-20"},
+  "schema": "cpk.reference-demo-inventory"
+}
