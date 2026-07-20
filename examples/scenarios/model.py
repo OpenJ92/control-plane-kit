@@ -30,9 +30,9 @@ from control_plane_kit.planning import (
     SwitchSocketConnection,
     WaitForHealthy,
 )
-from control_plane_kit.topology import DeploymentGraph
-from control_plane_kit.topology.changes import FieldSubject
-from control_plane_kit.topology.validation import (
+from control_plane_kit.core.topology import DeploymentGraph
+from control_plane_kit.core.topology.changes import FieldSubject
+from control_plane_kit.core.topology.validation import (
     EdgeSubject,
     GraphSubject,
     NodeSubject,

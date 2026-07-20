@@ -9,7 +9,7 @@ import re
 from typing import Mapping, TypeAlias
 from urllib.parse import urlsplit
 
-from control_plane_kit.topology.graph import (
+from control_plane_kit.core.topology.graph import (
     Endpoint,
     LiteralAddress,
 )

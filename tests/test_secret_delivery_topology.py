@@ -33,7 +33,7 @@ from control_plane_kit import (
     validate_graph,
 )
 from control_plane_kit.projections.operator_graph import project_operator_graph
-from control_plane_kit.topology import FieldSubject, ModifiedChange
+from control_plane_kit.core.topology import FieldSubject, ModifiedChange
 
 
 class SecretDeliveryTopologyTests(unittest.TestCase):

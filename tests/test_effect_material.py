@@ -20,7 +20,7 @@ from control_plane_kit.effects import (
     materialize_verification_contract,
 )
 from control_plane_kit.planning import Compensate, ReviewChange, compile_activity_plan
-from control_plane_kit.topology import diff_graphs, validate_graph
+from control_plane_kit.core.topology import diff_graphs, validate_graph
 from examples.scenarios import planning_scenarios
 from examples.gate_d_live_smoke import router_recipe
 from examples.webhook_delivery_live import (

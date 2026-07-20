@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from control_plane_kit import DeploymentRecipe, DockerRuntime, compile_recipe
 from control_plane_kit.docker_runtime import DockerClient, DockerRuntimeInterpreter
-from control_plane_kit.topology.graph import DeploymentGraph
+from control_plane_kit.core.topology.graph import DeploymentGraph
 from control_plane_kit.runtimes import RuntimePlan, RuntimeState
 from control_plane_kit.servers import hello_server_block
 

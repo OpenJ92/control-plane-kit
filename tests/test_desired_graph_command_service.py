@@ -5,7 +5,7 @@ import unittest
 
 import psycopg
 
-from control_plane_kit.topology.graph import DeploymentGraph
+from control_plane_kit.core.topology.graph import DeploymentGraph
 from control_plane_kit.stores import (
     OperationActionKind,
     PostgresUnitOfWork,

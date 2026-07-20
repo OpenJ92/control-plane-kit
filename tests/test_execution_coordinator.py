@@ -48,7 +48,7 @@ from control_plane_kit.planning import (
     RuntimeTarget,
     StartRuntime,
 )
-from control_plane_kit.topology import (
+from control_plane_kit.core.topology import (
     DeploymentGraph,
     RuntimeRecord,
     diff_graphs,

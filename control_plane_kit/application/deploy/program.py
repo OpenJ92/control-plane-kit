@@ -33,12 +33,12 @@ from control_plane_kit.application.deploy.values import (
     RecoverySuspension,
     classify_transition,
 )
-from control_plane_kit.topology.codec import (
+from control_plane_kit.core.topology.codec import (
     DEFAULT_GRAPH_CODEC,
     GraphDescriptorError,
 )
-from control_plane_kit.topology import DeploymentGraph
-from control_plane_kit.topology.validation import GraphValidationError, validate_graph
+from control_plane_kit.core.topology import DeploymentGraph
+from control_plane_kit.core.topology.validation import GraphValidationError, validate_graph
 from control_plane_kit.workflows import (
     ActivityPlanningResult,
     ApprovalCommandService,

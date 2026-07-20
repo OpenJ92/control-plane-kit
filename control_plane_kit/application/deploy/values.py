@@ -10,7 +10,7 @@ from dataclasses import dataclass
 from typing import TypeAlias
 
 from control_plane_kit.effects import TimeoutPolicy
-from control_plane_kit.topology import DeploymentGraph
+from control_plane_kit.core.topology import DeploymentGraph
 from control_plane_kit.workflows import (
     ActivityPlanningResult,
     ApprovalDecisionResult,

@@ -5,7 +5,7 @@ from control_plane_kit import (
     ObservationFreshness,
     ObservationStatus,
 )
-from control_plane_kit.topology.graph import DeploymentGraph
+from control_plane_kit.core.topology.graph import DeploymentGraph
 from control_plane_kit.stores import (
     ActivityPlanRecord,
     GraphVersionRecord,

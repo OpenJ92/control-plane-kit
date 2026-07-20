@@ -5,7 +5,7 @@ import unittest
 from control_plane_kit.planning import compile_activity_plan
 from control_plane_kit.saga import SagaState, SagaStepId, SagaStepState
 from control_plane_kit.scheduling import BlockReason, derive_schedule
-from control_plane_kit.topology import diff_graphs, validate_graph
+from control_plane_kit.core.topology import diff_graphs, validate_graph
 from examples.scenarios import planning_scenarios
 
 

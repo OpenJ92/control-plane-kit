@@ -44,7 +44,7 @@ from control_plane_kit.planning import (
     SwitchSocketConnection,
     WaitForHealthy,
 )
-from control_plane_kit.topology import (
+from control_plane_kit.core.topology import (
     DeploymentGraph,
     Edge,
     Endpoint,

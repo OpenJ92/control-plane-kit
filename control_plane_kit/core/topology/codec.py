@@ -35,7 +35,7 @@ from control_plane_kit.core.lifecycle import (
     ResourceOwnership,
     ResourcePersistence,
 )
-from control_plane_kit.topology.graph import (
+from control_plane_kit.core.topology.graph import (
     DeploymentGraph,
     Edge,
     Endpoint,

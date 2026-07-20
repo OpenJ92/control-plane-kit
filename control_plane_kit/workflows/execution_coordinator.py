@@ -45,7 +45,7 @@ from control_plane_kit.planning import (
 )
 from control_plane_kit.scheduling import ExecutionSchedule, derive_schedule
 from control_plane_kit.stores import ActivityPlanRecord, PostgresUnitOfWork
-from control_plane_kit.topology import DEFAULT_GRAPH_CODEC
+from control_plane_kit.core.topology import DEFAULT_GRAPH_CODEC
 from control_plane_kit.workflows.commands import IdempotencyKey, InvalidOperationCommand
 from control_plane_kit.workflows.run_lifecycle import (
     CompleteActivityRun,

@@ -26,6 +26,7 @@ from control_plane_kit import (  # noqa: E402
     BlockSpec,
     DeploymentRecipe,
     DockerRuntime,
+    GraphDescriptorCodec,
     PlanOnlyImplementation,
     compile_recipe,
     validate_graph,
@@ -49,6 +50,12 @@ graph = compile_recipe(
 validated = validate_graph(graph)
 if validated.graph.node("base-wheel-app").node_id != "base-wheel-app":
     raise AssertionError("installed base wheel did not compile the expected graph")
+codec = GraphDescriptorCodec()
+reconstructed = codec.decode(codec.encode(validated.graph))
+if reconstructed.descriptor() != validated.graph.descriptor():
+    raise AssertionError("installed base wheel did not round-trip the expected graph")
+if find_spec("control_plane_kit.topology") is not None:
+    raise AssertionError("installed base wheel retained the retired topology package")
 
 for module in (
     "control_plane_kit.adapters",

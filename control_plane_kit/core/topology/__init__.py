@@ -1,6 +1,6 @@
 """Deployment topology algebra, codecs, validation, and interpreters."""
 
-from control_plane_kit.topology.graph import (
+from control_plane_kit.core.topology.graph import (
     DeploymentGraph,
     Edge,
     Endpoint,
@@ -13,7 +13,7 @@ from control_plane_kit.topology.graph import (
     RuntimeRecord,
     SecretReferenceAddress,
 )
-from control_plane_kit.topology.codec import (
+from control_plane_kit.core.topology.codec import (
     DEFAULT_GRAPH_CODEC,
     BlockSpecVariantCodec,
     GenericBlockSpecCodec,
@@ -24,7 +24,7 @@ from control_plane_kit.topology.codec import (
     MalformedGraphDescriptor,
     UnknownGraphVariant,
 )
-from control_plane_kit.topology.validation import (
+from control_plane_kit.core.topology.validation import (
     EdgeSubject,
     GraphSubject,
     GraphValidationError,
@@ -39,7 +39,7 @@ from control_plane_kit.topology.validation import (
     ValidationSeverity,
     validate_graph,
 )
-from control_plane_kit.topology.changes import (
+from control_plane_kit.core.topology.changes import (
     AddedChange,
     AmbiguityReason,
     AmbiguousChange,
@@ -66,8 +66,8 @@ from control_plane_kit.topology.changes import (
     UnsupportedChange,
     UnsupportedReason,
 )
-from control_plane_kit.topology.diff import diff_graphs
-from control_plane_kit.topology.compiler import compile_recipe
+from control_plane_kit.core.topology.diff import diff_graphs
+from control_plane_kit.core.topology.compiler import compile_recipe
 from control_plane_kit.core.types import SocketBinding
 
 __all__ = [

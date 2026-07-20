@@ -17,7 +17,7 @@ from control_plane_kit.core.secrets import (
     SecretReferenceEnvironmentDelivery,
     secret_delivery_sort_key,
 )
-from control_plane_kit.topology.graph import Endpoint, EndpointAddress, LiteralAddress
+from control_plane_kit.core.topology.graph import Endpoint, EndpointAddress, LiteralAddress
 from control_plane_kit.core.types import EndpointScope, Protocol, RuntimeKind
 
 

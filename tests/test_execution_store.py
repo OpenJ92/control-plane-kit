@@ -42,7 +42,7 @@ from control_plane_kit.stores import (
     WorkspaceRecord,
     GraphVersionRecord,
 )
-from control_plane_kit.topology import DeploymentGraph, RuntimeRecord
+from control_plane_kit.core.topology import DeploymentGraph, RuntimeRecord
 from control_plane_kit.core.types import RuntimeKind
 from tests.postgres_case import PostgresStoreTestCase
 

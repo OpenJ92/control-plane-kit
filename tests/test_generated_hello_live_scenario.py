@@ -9,7 +9,7 @@ from control_plane_kit.planning import (
     SwitchSocketConnection,
     compile_activity_plan,
 )
-from control_plane_kit.topology import DeploymentGraph, diff_graphs, validate_graph
+from control_plane_kit.core.topology import DeploymentGraph, diff_graphs, validate_graph
 from control_plane_kit.core.types import Protocol
 from examples.generated_hello_graphs import HelloGraphShape, generated_hello_graph
 from examples.generated_hello_live import _probe_address, shape_from_environment

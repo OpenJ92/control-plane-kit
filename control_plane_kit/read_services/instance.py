@@ -9,7 +9,7 @@ from typing import Mapping
 from control_plane_kit.planning.activity_plan import ActivityImpact, ReviewChange, RiskLevel
 from control_plane_kit.planning.codec import DEFAULT_ACTIVITY_PLAN_CODEC
 from control_plane_kit.core.control_routes import route_set_named
-from control_plane_kit.topology.codec import (
+from control_plane_kit.core.topology.codec import (
     DEFAULT_GRAPH_CODEC,
     GraphDescriptorCodec,
     GraphDescriptorError,
@@ -44,7 +44,7 @@ from control_plane_kit.stores.records import (
     OperationSessionStatus,
     WorkspaceRecord,
 )
-from control_plane_kit.topology.validation import GraphValidationError, validate_graph
+from control_plane_kit.core.topology.validation import GraphValidationError, validate_graph
 from control_plane_kit.core.types import EndpointScope, Protocol, RuntimeKind
 
 _REDACTED = "<redacted>"
