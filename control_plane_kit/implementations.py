@@ -14,6 +14,7 @@ from control_plane_kit.secrets import (
     SecretEnvironmentDelivery,
     SecretFileDelivery,
     SecretFilePathBinding,
+    SecretReferenceEnvironmentDelivery,
     secret_delivery_sort_key,
 )
 from control_plane_kit.topology.graph import Endpoint, EndpointAddress, LiteralAddress
@@ -31,6 +32,12 @@ class MaterializedNode:
     lifecycle: ResourceLifecycle = field(default_factory=ResourceLifecycle.owned_ephemeral)
     configuration_artifacts: tuple[ConfigurationArtifact, ...] = ()
     secret_deliveries: tuple[SecretDelivery, ...] = ()
+
+    def __post_init__(self) -> None:
+        if "environment" in self.metadata:
+            raise ValueError(
+                "materialized node metadata must not contain environment values"
+            )
 
 
 @dataclass(frozen=True)
@@ -393,6 +400,8 @@ def _validate_secret_deliveries(
     for delivery in deliveries:
         match delivery:
             case SecretEnvironmentDelivery(environment_name=name):
+                environment_names.append(name)
+            case SecretReferenceEnvironmentDelivery(environment_name=name):
                 environment_names.append(name)
             case SecretFileDelivery(target_path=path, path_binding=path_binding):
                 file_paths.append(path)

@@ -12,6 +12,7 @@ from control_plane_kit import (
     DeploymentRecipe,
     DockerImageImplementation,
     DockerRuntime,
+    EnvironmentMaterialSource,
     PinnedGraphSet,
     PublicStaticEnvironmentBinding,
     ReconcileNode,
@@ -20,6 +21,7 @@ from control_plane_kit import (
     SecretFileMaterial,
     SecretFilePathBinding,
     SecretReference,
+    SecretReferenceEnvironmentDelivery,
     SecretReferenceMaterialValue,
     StartNode,
     StructuralField,
@@ -30,6 +32,7 @@ from control_plane_kit import (
     materialize_effect_request,
     validate_graph,
 )
+from control_plane_kit.projections.operator_graph import project_operator_graph
 from control_plane_kit.topology import FieldSubject, ModifiedChange
 
 
@@ -44,9 +47,27 @@ class SecretDeliveryTopologyTests(unittest.TestCase):
             reconstructed.node("service").secret_deliveries,
             graph.node("service").secret_deliveries,
         )
+        self.assertIn(
+            "environment-reference",
+            {
+                value["kind"]
+                for value in descriptor["nodes"]["service"]["secret_deliveries"]
+            },
+        )
         rendered = json.dumps(descriptor, sort_keys=True)
         self.assertIn("secret://local/workspace-a/database-a", rendered)
         self.assertNotIn("resolved-password", rendered)
+        operator_node = next(
+            value
+            for value in project_operator_graph(graph).descriptor()["nodes"]
+            if value["node_id"] == "service"
+        )
+        reference_identity = next(
+            value
+            for value in operator_node["environment_bindings"]
+            if value["kind"] == "secret-reference-identity"
+        )
+        self.assertEqual(reference_identity["reference"], "<redacted>")
 
     def test_delivery_change_is_explicit_diff_and_reconcile(self) -> None:
         current = validate_graph(compile_recipe(_recipe("database-a")))
@@ -99,6 +120,23 @@ class SecretDeliveryTopologyTests(unittest.TestCase):
         self.assertIsInstance(environment.value, SecretReferenceMaterialValue)
         self.assertEqual(
             environment.value.reference_id,
+            "secret://local/workspace-a/database-a",
+        )
+        reference_identity = next(
+            value
+            for value in implementation.environment
+            if value.name == "DATABASE_REFERENCE"
+        )
+        self.assertEqual(
+            reference_identity.value.value,
+            "secret://local/workspace-a/database-a",
+        )
+        self.assertIs(
+            reference_identity.source,
+            EnvironmentMaterialSource.SECRET_REFERENCE_IDENTITY,
+        )
+        self.assertEqual(
+            reference_identity.source_id,
             "secret://local/workspace-a/database-a",
         )
         self.assertEqual(
@@ -166,6 +204,10 @@ def _recipe(reference_name: str) -> DeploymentRecipe:
             "service:latest",
             secret_deliveries=(
                 SecretEnvironmentDelivery("DATABASE_URL", reference),
+                SecretReferenceEnvironmentDelivery(
+                    "DATABASE_REFERENCE",
+                    reference,
+                ),
                 SecretFileDelivery(
                     "/run/secrets/database-password",
                     reference,

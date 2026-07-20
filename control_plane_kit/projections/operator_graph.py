@@ -12,7 +12,11 @@ from typing import Mapping
 
 from control_plane_kit.topology.graph import DeploymentGraph, Edge, Node, RuntimeRecord
 from control_plane_kit.environment import SocketDerivedEnvironmentBinding
-from control_plane_kit.secrets import SecretEnvironmentDelivery, SecretFileDelivery
+from control_plane_kit.secrets import (
+    SecretEnvironmentDelivery,
+    SecretFileDelivery,
+    SecretReferenceEnvironmentDelivery,
+)
 
 _SECRET_MARKERS = ("secret", "token", "password", "private_key", "credential", "api_key")
 _REDACTED = "<redacted>"
@@ -246,6 +250,14 @@ def _project_environment(node: Node) -> tuple[Mapping[str, object], ...]:
             case SecretEnvironmentDelivery(environment_name=name):
                 secrets.append(
                     {"kind": "secret-reference", "name": name, "reference": _REDACTED}
+                )
+            case SecretReferenceEnvironmentDelivery(environment_name=name):
+                secrets.append(
+                    {
+                        "kind": "secret-reference-identity",
+                        "name": name,
+                        "reference": _REDACTED,
+                    }
                 )
             case SecretFileDelivery(target_path=path, path_binding=path_binding):
                 secrets.append(

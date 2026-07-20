@@ -134,6 +134,37 @@ class GraphDescriptorCodecTests(unittest.TestCase):
         with self.assertRaisesRegex(UnknownGraphVariant, "unknown environment"):
             codec.decode(descriptor)
 
+    def test_environment_passwords_fail_before_raw_descriptor_reconstruction(self):
+        codec = GraphDescriptorCodec()
+        descriptor = codec.encode(compile_recipe(recipe()))
+        supplied = "postgresql://app:do-not-disclose@database:5432/app"
+        descriptor["nodes"]["postgres"]["environment_bindings"][0]["value"] = supplied
+
+        with self.assertRaises(UnknownGraphVariant) as caught:
+            codec.decode(descriptor)
+
+        self.assertNotIn("do-not-disclose", str(caught.exception))
+
+    def test_direct_node_and_edge_cannot_restore_inline_environment_secrets(self):
+        graph = compile_recipe(recipe())
+        node = graph.node("orders-api")
+        edge = next(iter(graph.edges.values()))
+
+        with self.assertRaisesRegex(ValueError, "must not contain environment"):
+            replace(
+                node,
+                metadata={"environment": {"API_TOKEN": "do-not-disclose"}},
+            )
+        with self.assertRaises(ValueError) as caught:
+            replace(
+                edge,
+                env_assignments={
+                    "DATABASE_URL":
+                        "postgresql://app:do-not-disclose@database:5432/app"
+                },
+            )
+        self.assertNotIn("do-not-disclose", str(caught.exception))
+
     def test_missing_runtime_ownership_fails_loudly(self):
         descriptor = GraphDescriptorCodec().encode(compile_recipe(recipe()))
         descriptor["runtimes"]["docker"]["children"].remove("orders-api")

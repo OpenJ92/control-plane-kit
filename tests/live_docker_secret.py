@@ -36,6 +36,7 @@ from control_plane_kit import (
     LocalDevelopmentSecretResolver,
     PinnedGraphSet,
     Protocol,
+    PublicStaticEnvironmentBinding,
     ProviderSocket,
     RuntimeEndpointObservation,
     SecretFileDelivery,
@@ -119,7 +120,10 @@ def _recipe() -> DeploymentRecipe:
         DockerImageImplementation(
             image="postgres:16-alpine",
             ports={"internal": 5432},
-            environment={"POSTGRES_DB": "cpk", "POSTGRES_USER": "cpk"},
+            environment=(
+                PublicStaticEnvironmentBinding("POSTGRES_DB", "cpk"),
+                PublicStaticEnvironmentBinding("POSTGRES_USER", "cpk"),
+            ),
             secret_deliveries=(
                 SecretFileDelivery(
                     "/run/secrets/postgres-password",

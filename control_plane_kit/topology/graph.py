@@ -11,11 +11,13 @@ from control_plane_kit.configuration import ConfigurationArtifact
 from control_plane_kit.environment import (
     PublicStaticEnvironmentBinding,
     SocketDerivedEnvironmentBinding,
+    validate_socket_environment_value,
 )
 from control_plane_kit.secrets import (
     SecretDelivery,
     SecretEnvironmentDelivery,
     SecretFileDelivery,
+    SecretReferenceEnvironmentDelivery,
     SecretReference,
     secret_delivery_sort_key,
 )
@@ -107,6 +109,8 @@ class Node:
     secret_deliveries: tuple[SecretDelivery, ...] = ()
 
     def __post_init__(self) -> None:
+        if "environment" in self.metadata:
+            raise ValueError("node metadata must not contain environment values")
         if not isinstance(self.public_environment, tuple) or not all(
             isinstance(value, PublicStaticEnvironmentBinding)
             for value in self.public_environment
@@ -134,7 +138,14 @@ class Node:
         if len(set(paths)) != len(paths):
             raise ValueError("node configuration artifact target paths must be unique")
         if not isinstance(self.secret_deliveries, tuple) or not all(
-            isinstance(value, (SecretEnvironmentDelivery, SecretFileDelivery))
+            isinstance(
+                value,
+                (
+                    SecretEnvironmentDelivery,
+                    SecretReferenceEnvironmentDelivery,
+                    SecretFileDelivery,
+                ),
+            )
             for value in self.secret_deliveries
         ):
             raise TypeError("node secret deliveries must be a tuple")
@@ -144,6 +155,8 @@ class Node:
         for delivery in self.secret_deliveries:
             match delivery:
                 case SecretEnvironmentDelivery(environment_name=name):
+                    secret_environment_names.append(name)
+                case SecretReferenceEnvironmentDelivery(environment_name=name):
                     secret_environment_names.append(name)
                 case SecretFileDelivery(path_binding=path_binding) if path_binding is not None:
                     secret_environment_names.append(path_binding.environment_name)
@@ -241,6 +254,15 @@ class Edge:
     protocol: Protocol
     binding: SocketBinding
     env_assignments: Mapping[str, str] = field(default_factory=dict)
+
+    def __post_init__(self) -> None:
+        if not isinstance(self.env_assignments, Mapping) or not all(
+            isinstance(name, str) and isinstance(value, str)
+            for name, value in self.env_assignments.items()
+        ):
+            raise TypeError("edge environment assignments must map strings to strings")
+        for value in self.env_assignments.values():
+            validate_socket_environment_value(value)
 
     def descriptor(self) -> dict[str, object]:
         return {
