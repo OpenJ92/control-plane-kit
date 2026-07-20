@@ -36,7 +36,7 @@ from control_plane_kit import (
     StartNode,
     compile_recipe,
 )
-from control_plane_kit.topology.graph import DeploymentGraph
+from control_plane_kit.core.topology.graph import DeploymentGraph
 from control_plane_kit.read_services import InstanceReadService, ReadModelError
 from control_plane_kit.stores import (
     ActivityEventRecord,

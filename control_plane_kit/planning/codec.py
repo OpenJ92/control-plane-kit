@@ -39,8 +39,8 @@ from control_plane_kit.planning.activity_plan import (
     SwitchSocketConnection,
     WaitForHealthy,
 )
-from control_plane_kit.topology.changes import DiffSubject, FieldSubject, StructuralField
-from control_plane_kit.topology.validation import EdgeSubject, GraphSubject, NodeSubject, RuntimeSubject
+from control_plane_kit.core.topology.changes import DiffSubject, FieldSubject, StructuralField
+from control_plane_kit.core.topology.validation import EdgeSubject, GraphSubject, NodeSubject, RuntimeSubject
 
 
 ACTIVITY_PLAN_SCHEMA = "control-plane-kit.activity-plan"

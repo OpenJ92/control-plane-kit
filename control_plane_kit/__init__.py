@@ -324,7 +324,7 @@ from control_plane_kit.effects import (
     process_probe,
     transport_probe,
 )
-from control_plane_kit.topology.compiler import compile_recipe
+from control_plane_kit.core.topology.compiler import compile_recipe
 from control_plane_kit.contracts import (
     ConflictingContractMutation,
     ContractCleanupUncertainty,
@@ -435,7 +435,7 @@ from control_plane_kit.execution import (
     validate_recovery_decision,
     recovery_decision_record_from_descriptor,
 )
-from control_plane_kit.topology.graph import (
+from control_plane_kit.core.topology.graph import (
     DeploymentGraph,
     Edge,
     Endpoint,
@@ -448,7 +448,7 @@ from control_plane_kit.topology.graph import (
     RuntimeRecord,
     SecretReferenceAddress,
 )
-from control_plane_kit.topology.codec import (
+from control_plane_kit.core.topology.codec import (
     DEFAULT_GRAPH_CODEC,
     BlockSpecVariantCodec,
     GenericBlockSpecCodec,
@@ -460,7 +460,7 @@ from control_plane_kit.topology.codec import (
     MalformedGraphDescriptor,
     UnknownGraphVariant,
 )
-from control_plane_kit.topology.changes import (
+from control_plane_kit.core.topology.changes import (
     AddedChange,
     AmbiguityReason,
     AmbiguousChange,
@@ -487,7 +487,7 @@ from control_plane_kit.topology.changes import (
     UnsupportedChange,
     UnsupportedReason,
 )
-from control_plane_kit.topology.diff import diff_graphs
+from control_plane_kit.core.topology.diff import diff_graphs
 from control_plane_kit.core.environment import (
     EnvironmentBinding,
     PublicStaticEnvironmentBinding,
@@ -548,7 +548,7 @@ from control_plane_kit.core.types import (
     SocketBinding,
     Transport,
 )
-from control_plane_kit.topology.validation import (
+from control_plane_kit.core.topology.validation import (
     EdgeSubject,
     GraphSubject,
     GraphValidationError,

@@ -13,7 +13,7 @@ from tests.architecture import (
 
 PROTOCOL_PROJECTION_POLICY = ProtocolProjectionPolicy(
     scalar_display_owner_modules=(
-        "control_plane_kit.topology.compiler",
+        "control_plane_kit.core.topology.compiler",
     )
 )
 
@@ -40,7 +40,7 @@ class ProtocolArchitectureTests(unittest.TestCase):
         display = analyze_source(
             "def message(socket):\n    return socket.protocol.value\n",
             path="control_plane_kit/topology/compiler.py",
-            module="control_plane_kit.topology.compiler",
+            module="control_plane_kit.core.topology.compiler",
         )
 
         findings = evaluate_policies(

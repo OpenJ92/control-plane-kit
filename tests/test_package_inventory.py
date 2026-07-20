@@ -98,7 +98,7 @@ class PackageModuleInventoryTests(unittest.TestCase):
     def test_core_inventory_is_exactly_the_effect_free_pipeline_floor(self) -> None:
         core = {record["module"] for record in self.records if record["owner"] == "core"}
 
-        self.assertIn("control_plane_kit.topology.graph", core)
+        self.assertIn("control_plane_kit.core.topology.graph", core)
         self.assertIn("control_plane_kit.planning.compiler", core)
         self.assertIn("control_plane_kit.core.verification", core)
         self.assertNotIn("control_plane_kit.contracts", core)
@@ -118,24 +118,13 @@ class PackageModuleInventoryTests(unittest.TestCase):
         self.assertIn("control_plane_kit.discovery", record["internal_dependencies"])
         self.assertIn("tests/test_coredns.py", record["protecting_tests"])
 
-    def test_core_primitive_floor_has_only_declared_pure_dependencies(self) -> None:
-        primitive_modules = {
-            "control_plane_kit.core.algebra",
-            "control_plane_kit.core.capabilities",
-            "control_plane_kit.core.configuration",
-            "control_plane_kit.core.control_routes",
-            "control_plane_kit.core.environment",
-            "control_plane_kit.core.lifecycle",
-            "control_plane_kit.core.secrets",
-            "control_plane_kit.core.types",
-            "control_plane_kit.core.verification",
-        }
+    def test_current_core_tree_has_only_declared_pure_dependencies(self) -> None:
+        core_paths = tuple(
+            sorted((self.root / "control_plane_kit" / "core").rglob("*.py"))
+        )
         facts = tuple(
-            analyze_file(
-                self.root / (module.replace(".", "/") + ".py"),
-                root=self.root,
-            )
-            for module in sorted(primitive_modules)
+            analyze_file(path, root=self.root)
+            for path in core_paths
         )
         external = {
             imported.qualified_name.split(".", 1)[0]

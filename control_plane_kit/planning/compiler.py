@@ -35,7 +35,7 @@ from control_plane_kit.planning.activity_plan import (
     SwitchSocketConnection,
     WaitForHealthy,
 )
-from control_plane_kit.topology.changes import (
+from control_plane_kit.core.topology.changes import (
     AddedChange,
     AmbiguousChange,
     EdgeValue,
@@ -51,13 +51,13 @@ from control_plane_kit.topology.changes import (
     TextValue,
     UnsupportedChange,
 )
-from control_plane_kit.topology.validation import (
+from control_plane_kit.core.topology.validation import (
     EdgeSubject,
     GraphSubject,
     NodeSubject,
     RuntimeSubject,
 )
-from control_plane_kit.topology import SocketBinding
+from control_plane_kit.core.topology import SocketBinding
 
 
 @dataclass

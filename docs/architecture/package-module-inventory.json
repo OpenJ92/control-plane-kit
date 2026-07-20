@@ -267,12 +267,12 @@
         "control_plane_kit.saga",
         "control_plane_kit.scheduling",
         "control_plane_kit.core.secrets",
-        "control_plane_kit.topology.changes",
-        "control_plane_kit.topology.codec",
-        "control_plane_kit.topology.compiler",
-        "control_plane_kit.topology.diff",
-        "control_plane_kit.topology.graph",
-        "control_plane_kit.topology.validation",
+        "control_plane_kit.core.topology.changes",
+        "control_plane_kit.core.topology.codec",
+        "control_plane_kit.core.topology.compiler",
+        "control_plane_kit.core.topology.diff",
+        "control_plane_kit.core.topology.graph",
+        "control_plane_kit.core.topology.validation",
         "control_plane_kit.core.types",
         "control_plane_kit.core.verification"
       ],
@@ -374,13 +374,13 @@
         "control_plane_kit.stores.protocols",
         "control_plane_kit.stores.records",
         "control_plane_kit.stores.unit_of_work",
-        "control_plane_kit.topology",
-        "control_plane_kit.topology.changes",
-        "control_plane_kit.topology.codec",
-        "control_plane_kit.topology.compiler",
-        "control_plane_kit.topology.diff",
-        "control_plane_kit.topology.graph",
-        "control_plane_kit.topology.validation",
+        "control_plane_kit.core.topology",
+        "control_plane_kit.core.topology.changes",
+        "control_plane_kit.core.topology.codec",
+        "control_plane_kit.core.topology.compiler",
+        "control_plane_kit.core.topology.diff",
+        "control_plane_kit.core.topology.graph",
+        "control_plane_kit.core.topology.validation",
         "control_plane_kit.core.verification",
         "control_plane_kit.webhook",
         "control_plane_kit.webhook.app",
@@ -1196,9 +1196,9 @@
       "internal_dependencies": [
         "control_plane_kit.application.deploy.stages",
         "control_plane_kit.application.deploy.values",
-        "control_plane_kit.topology",
-        "control_plane_kit.topology.codec",
-        "control_plane_kit.topology.validation",
+        "control_plane_kit.core.topology",
+        "control_plane_kit.core.topology.codec",
+        "control_plane_kit.core.topology.validation",
         "control_plane_kit.workflows"
       ],
       "known_package_consumers": [
@@ -1295,7 +1295,7 @@
       "destination": "control_plane_kit.operations.application.deploy.values",
       "internal_dependencies": [
         "control_plane_kit.effects",
-        "control_plane_kit.topology",
+        "control_plane_kit.core.topology",
         "control_plane_kit.workflows"
       ],
       "known_package_consumers": [
@@ -1546,12 +1546,12 @@
         "control_plane_kit.servers.service_discovery",
         "control_plane_kit.servers.tcp_switch",
         "control_plane_kit.servers.webhook_delivery",
-        "control_plane_kit.topology.changes",
-        "control_plane_kit.topology.codec",
-        "control_plane_kit.topology.compiler",
-        "control_plane_kit.topology.diff",
-        "control_plane_kit.topology.graph",
-        "control_plane_kit.topology.validation"
+        "control_plane_kit.core.topology.changes",
+        "control_plane_kit.core.topology.codec",
+        "control_plane_kit.core.topology.compiler",
+        "control_plane_kit.core.topology.diff",
+        "control_plane_kit.core.topology.graph",
+        "control_plane_kit.core.topology.validation"
       ],
       "migration_prerequisites": [
         "#550",
@@ -1612,9 +1612,9 @@
         "control_plane_kit.servers.service_discovery",
         "control_plane_kit.servers.tcp_switch",
         "control_plane_kit.servers.webhook_delivery",
-        "control_plane_kit.topology.codec",
-        "control_plane_kit.topology.compiler",
-        "control_plane_kit.topology.validation"
+        "control_plane_kit.core.topology.codec",
+        "control_plane_kit.core.topology.compiler",
+        "control_plane_kit.core.topology.validation"
       ],
       "migration_prerequisites": [
         "#550",
@@ -1654,9 +1654,9 @@
         "control_plane_kit.implementations",
         "control_plane_kit.servers.coredns",
         "control_plane_kit.servers.opentelemetry_collector",
-        "control_plane_kit.topology.changes",
-        "control_plane_kit.topology.codec",
-        "control_plane_kit.topology.graph"
+        "control_plane_kit.core.topology.changes",
+        "control_plane_kit.core.topology.codec",
+        "control_plane_kit.core.topology.graph"
       ],
       "migration_prerequisites": [
         "#550",
@@ -1698,7 +1698,7 @@
         "control_plane_kit.read_services.instance",
         "control_plane_kit.servers.block_control",
         "control_plane_kit.servers.catalog",
-        "control_plane_kit.topology.validation"
+        "control_plane_kit.core.topology.validation"
       ],
       "migration_prerequisites": [
         "#550",
@@ -1740,10 +1740,10 @@
         "control_plane_kit.servers.managed_http_router",
         "control_plane_kit.servers.tcp_switch",
         "control_plane_kit.servers.webhook_delivery",
-        "control_plane_kit.topology.changes",
-        "control_plane_kit.topology.codec",
-        "control_plane_kit.topology.compiler",
-        "control_plane_kit.topology.graph"
+        "control_plane_kit.core.topology.changes",
+        "control_plane_kit.core.topology.codec",
+        "control_plane_kit.core.topology.compiler",
+        "control_plane_kit.core.topology.graph"
       ],
       "migration_prerequisites": [
         "#550",
@@ -1781,8 +1781,8 @@
         "control_plane_kit.effects.material",
         "control_plane_kit.implementations",
         "control_plane_kit.planning.compiler",
-        "control_plane_kit.topology.codec",
-        "control_plane_kit.topology.graph"
+        "control_plane_kit.core.topology.codec",
+        "control_plane_kit.core.topology.graph"
       ],
       "migration_prerequisites": [
         "#550",
@@ -1852,9 +1852,9 @@
         "control_plane_kit.servers.service_discovery",
         "control_plane_kit.servers.tcp_switch",
         "control_plane_kit.servers.webhook_delivery",
-        "control_plane_kit.topology.changes",
-        "control_plane_kit.topology.codec",
-        "control_plane_kit.topology.graph",
+        "control_plane_kit.core.topology.changes",
+        "control_plane_kit.core.topology.codec",
+        "control_plane_kit.core.topology.graph",
         "control_plane_kit.webhook.http",
         "control_plane_kit.webhook.language",
         "control_plane_kit.webhook.postgres",
@@ -1939,10 +1939,10 @@
         "control_plane_kit.servers.tcp_switch",
         "control_plane_kit.servers.webhook_delivery",
         "control_plane_kit.stores.records",
-        "control_plane_kit.topology",
-        "control_plane_kit.topology.codec",
-        "control_plane_kit.topology.compiler",
-        "control_plane_kit.topology.graph",
+        "control_plane_kit.core.topology",
+        "control_plane_kit.core.topology.codec",
+        "control_plane_kit.core.topology.compiler",
+        "control_plane_kit.core.topology.graph",
         "control_plane_kit.core.verification",
         "control_plane_kit.workflows.execution_admission",
         "control_plane_kit.workflows.verification"
@@ -2019,8 +2019,8 @@
         "control_plane_kit.servers.coredns",
         "control_plane_kit.servers.opentelemetry_collector",
         "control_plane_kit.servers.webhook_delivery",
-        "control_plane_kit.topology.codec",
-        "control_plane_kit.topology.validation",
+        "control_plane_kit.core.topology.codec",
+        "control_plane_kit.core.topology.validation",
         "control_plane_kit.workflows.verification"
       ],
       "migration_prerequisites": [
@@ -2069,7 +2069,7 @@
       ],
       "destination": "control_plane_kit.domains.discovery",
       "internal_dependencies": [
-        "control_plane_kit.topology.graph",
+        "control_plane_kit.core.topology.graph",
         "control_plane_kit.core.types"
       ],
       "known_package_consumers": [
@@ -2156,7 +2156,7 @@
       "destination": "control_plane_kit.operations.discovery_registry.postgres",
       "internal_dependencies": [
         "control_plane_kit.discovery",
-        "control_plane_kit.topology.graph",
+        "control_plane_kit.core.topology.graph",
         "control_plane_kit.core.types"
       ],
       "known_package_consumers": [
@@ -2451,7 +2451,7 @@
         "control_plane_kit.planning",
         "control_plane_kit.runtimes",
         "control_plane_kit.core.secrets",
-        "control_plane_kit.topology.graph",
+        "control_plane_kit.core.topology.graph",
         "control_plane_kit.core.types"
       ],
       "known_package_consumers": [],
@@ -2706,7 +2706,7 @@
         "control_plane_kit.core.lifecycle",
         "control_plane_kit.planning",
         "control_plane_kit.core.secrets",
-        "control_plane_kit.topology",
+        "control_plane_kit.core.topology",
         "control_plane_kit.core.types",
         "control_plane_kit.core.verification"
       ],
@@ -3517,7 +3517,7 @@
         "control_plane_kit.core.environment",
         "control_plane_kit.core.lifecycle",
         "control_plane_kit.core.secrets",
-        "control_plane_kit.topology.graph",
+        "control_plane_kit.core.topology.graph",
         "control_plane_kit.core.types"
       ],
       "known_package_consumers": [
@@ -3878,7 +3878,7 @@
       ],
       "destination": "control_plane_kit.core.planning.activity_plan",
       "internal_dependencies": [
-        "control_plane_kit.topology.changes"
+        "control_plane_kit.core.topology.changes"
       ],
       "known_package_consumers": [
         "control_plane_kit",
@@ -3922,8 +3922,8 @@
       "destination": "control_plane_kit.core.planning.codec",
       "internal_dependencies": [
         "control_plane_kit.planning.activity_plan",
-        "control_plane_kit.topology.changes",
-        "control_plane_kit.topology.validation"
+        "control_plane_kit.core.topology.changes",
+        "control_plane_kit.core.topology.validation"
       ],
       "known_package_consumers": [
         "control_plane_kit",
@@ -3961,9 +3961,9 @@
       "internal_dependencies": [
         "control_plane_kit.core.lifecycle",
         "control_plane_kit.planning.activity_plan",
-        "control_plane_kit.topology",
-        "control_plane_kit.topology.changes",
-        "control_plane_kit.topology.validation"
+        "control_plane_kit.core.topology",
+        "control_plane_kit.core.topology.changes",
+        "control_plane_kit.core.topology.validation"
       ],
       "known_package_consumers": [
         "control_plane_kit",
@@ -4009,9 +4009,9 @@
         "control_plane_kit.planning.codec",
         "control_plane_kit.planning.compiler",
         "control_plane_kit.policies",
-        "control_plane_kit.topology.diff",
-        "control_plane_kit.topology.graph",
-        "control_plane_kit.topology.validation"
+        "control_plane_kit.core.topology.diff",
+        "control_plane_kit.core.topology.graph",
+        "control_plane_kit.core.topology.validation"
       ],
       "known_package_consumers": [
         "control_plane_kit",
@@ -4228,7 +4228,7 @@
       "internal_dependencies": [
         "control_plane_kit.core.environment",
         "control_plane_kit.core.secrets",
-        "control_plane_kit.topology.graph"
+        "control_plane_kit.core.topology.graph"
       ],
       "known_package_consumers": [
         "control_plane_kit.projections"
@@ -4413,8 +4413,8 @@
         "control_plane_kit.projections",
         "control_plane_kit.stores.protocols",
         "control_plane_kit.stores.records",
-        "control_plane_kit.topology.codec",
-        "control_plane_kit.topology.validation",
+        "control_plane_kit.core.topology.codec",
+        "control_plane_kit.core.topology.validation",
         "control_plane_kit.core.types"
       ],
       "known_package_consumers": [
@@ -4455,7 +4455,7 @@
       ],
       "destination": "control_plane_kit.core.runtimes",
       "internal_dependencies": [
-        "control_plane_kit.topology.graph",
+        "control_plane_kit.core.topology.graph",
         "control_plane_kit.core.types"
       ],
       "known_package_consumers": [
@@ -7010,8 +7010,8 @@
       "destination": "control_plane_kit.operations.stores.records",
       "internal_dependencies": [
         "control_plane_kit.planning.activity_plan",
-        "control_plane_kit.topology.codec",
-        "control_plane_kit.topology.graph",
+        "control_plane_kit.core.topology.codec",
+        "control_plane_kit.core.topology.graph",
         "control_plane_kit.core.types"
       ],
       "known_package_consumers": [
@@ -7145,12 +7145,12 @@
       ],
       "destination": "control_plane_kit.core.topology",
       "internal_dependencies": [
-        "control_plane_kit.topology.changes",
-        "control_plane_kit.topology.codec",
-        "control_plane_kit.topology.compiler",
-        "control_plane_kit.topology.diff",
-        "control_plane_kit.topology.graph",
-        "control_plane_kit.topology.validation",
+        "control_plane_kit.core.topology.changes",
+        "control_plane_kit.core.topology.codec",
+        "control_plane_kit.core.topology.compiler",
+        "control_plane_kit.core.topology.diff",
+        "control_plane_kit.core.topology.graph",
+        "control_plane_kit.core.topology.validation",
         "control_plane_kit.core.types"
       ],
       "known_package_consumers": [
@@ -7170,12 +7170,12 @@
         "control_plane_kit.read_services.instance",
         "control_plane_kit.runtimes",
         "control_plane_kit.stores.records",
-        "control_plane_kit.topology.changes",
-        "control_plane_kit.topology.codec",
-        "control_plane_kit.topology.compiler",
-        "control_plane_kit.topology.diff",
-        "control_plane_kit.topology.graph",
-        "control_plane_kit.topology.validation",
+        "control_plane_kit.core.topology.changes",
+        "control_plane_kit.core.topology.codec",
+        "control_plane_kit.core.topology.compiler",
+        "control_plane_kit.core.topology.diff",
+        "control_plane_kit.core.topology.graph",
+        "control_plane_kit.core.topology.validation",
         "control_plane_kit.workflows.execution_admission",
         "control_plane_kit.workflows.execution_coordinator",
         "control_plane_kit.workflows.graph_edits",
@@ -7186,9 +7186,9 @@
         "#551",
         "#552 or #553 according to destination"
       ],
-      "module": "control_plane_kit.topology",
+      "module": "control_plane_kit.core.topology",
       "motivation": "Required by the effect-free deployment description, validation, comparison, or planning pipeline.",
-      "movement": "move",
+      "movement": "remain",
       "optional_external_dependencies": [],
       "owner": "core",
       "protecting_tests": [
@@ -7220,7 +7220,7 @@
       "semantic_roles": [
         "package-surface"
       ],
-      "source": "control_plane_kit/topology/__init__.py"
+      "source": "control_plane_kit/core/topology/__init__.py"
     },
     {
       "canonical_public_exports": [
@@ -7253,25 +7253,25 @@
         "control_plane_kit.core.configuration",
         "control_plane_kit.core.environment",
         "control_plane_kit.core.secrets",
-        "control_plane_kit.topology.graph",
-        "control_plane_kit.topology.validation"
+        "control_plane_kit.core.topology.graph",
+        "control_plane_kit.core.topology.validation"
       ],
       "known_package_consumers": [
         "control_plane_kit",
         "control_plane_kit.planning.activity_plan",
         "control_plane_kit.planning.codec",
         "control_plane_kit.planning.compiler",
-        "control_plane_kit.topology",
-        "control_plane_kit.topology.diff"
+        "control_plane_kit.core.topology",
+        "control_plane_kit.core.topology.diff"
       ],
       "migration_prerequisites": [
         "#550",
         "#551",
         "#552 or #553 according to destination"
       ],
-      "module": "control_plane_kit.topology.changes",
+      "module": "control_plane_kit.core.topology.changes",
       "motivation": "Required by the effect-free deployment description, validation, comparison, or planning pipeline.",
-      "movement": "move",
+      "movement": "remain",
       "optional_external_dependencies": [],
       "owner": "core",
       "protecting_tests": [
@@ -7283,7 +7283,7 @@
         "transformations",
         "values"
       ],
-      "source": "control_plane_kit/topology/changes.py"
+      "source": "control_plane_kit/core/topology/changes.py"
     },
     {
       "canonical_public_exports": [
@@ -7305,7 +7305,7 @@
         "control_plane_kit.core.environment",
         "control_plane_kit.core.lifecycle",
         "control_plane_kit.core.secrets",
-        "control_plane_kit.topology.graph",
+        "control_plane_kit.core.topology.graph",
         "control_plane_kit.core.types",
         "control_plane_kit.core.verification"
       ],
@@ -7314,10 +7314,10 @@
         "control_plane_kit.application.deploy.program",
         "control_plane_kit.read_services.instance",
         "control_plane_kit.stores.records",
-        "control_plane_kit.topology",
-        "control_plane_kit.topology.diff",
-        "control_plane_kit.topology.graph",
-        "control_plane_kit.topology.validation",
+        "control_plane_kit.core.topology",
+        "control_plane_kit.core.topology.diff",
+        "control_plane_kit.core.topology.graph",
+        "control_plane_kit.core.topology.validation",
         "control_plane_kit.workflows.execution_admission",
         "control_plane_kit.workflows.planning"
       ],
@@ -7326,9 +7326,9 @@
         "#551",
         "#552 or #553 according to destination"
       ],
-      "module": "control_plane_kit.topology.codec",
+      "module": "control_plane_kit.core.topology.codec",
       "motivation": "Required by the effect-free deployment description, validation, comparison, or planning pipeline.",
-      "movement": "move",
+      "movement": "remain",
       "optional_external_dependencies": [],
       "owner": "core",
       "protecting_tests": [
@@ -7340,7 +7340,7 @@
         "transformations",
         "values"
       ],
-      "source": "control_plane_kit/topology/codec.py"
+      "source": "control_plane_kit/core/topology/codec.py"
     },
     {
       "canonical_public_exports": [
@@ -7351,21 +7351,21 @@
         "control_plane_kit.core.algebra",
         "control_plane_kit.core.capabilities",
         "control_plane_kit.core.environment",
-        "control_plane_kit.topology.graph",
+        "control_plane_kit.core.topology.graph",
         "control_plane_kit.core.types"
       ],
       "known_package_consumers": [
         "control_plane_kit",
-        "control_plane_kit.topology"
+        "control_plane_kit.core.topology"
       ],
       "migration_prerequisites": [
         "#550",
         "#551",
         "#552 or #553 according to destination"
       ],
-      "module": "control_plane_kit.topology.compiler",
+      "module": "control_plane_kit.core.topology.compiler",
       "motivation": "Required by the effect-free deployment description, validation, comparison, or planning pipeline.",
-      "movement": "move",
+      "movement": "remain",
       "optional_external_dependencies": [],
       "owner": "core",
       "protecting_tests": [
@@ -7376,7 +7376,7 @@
       "semantic_roles": [
         "transformations"
       ],
-      "source": "control_plane_kit/topology/compiler.py"
+      "source": "control_plane_kit/core/topology/compiler.py"
     },
     {
       "canonical_public_exports": [
@@ -7385,15 +7385,15 @@
       "destination": "control_plane_kit.core.topology.diff",
       "internal_dependencies": [
         "control_plane_kit.core.algebra",
-        "control_plane_kit.topology.changes",
-        "control_plane_kit.topology.codec",
-        "control_plane_kit.topology.graph",
-        "control_plane_kit.topology.validation"
+        "control_plane_kit.core.topology.changes",
+        "control_plane_kit.core.topology.codec",
+        "control_plane_kit.core.topology.graph",
+        "control_plane_kit.core.topology.validation"
       ],
       "known_package_consumers": [
         "control_plane_kit",
         "control_plane_kit.planning.recovery",
-        "control_plane_kit.topology",
+        "control_plane_kit.core.topology",
         "control_plane_kit.workflows.planning"
       ],
       "migration_prerequisites": [
@@ -7401,9 +7401,9 @@
         "#551",
         "#552 or #553 according to destination"
       ],
-      "module": "control_plane_kit.topology.diff",
+      "module": "control_plane_kit.core.topology.diff",
       "motivation": "Required by the effect-free deployment description, validation, comparison, or planning pipeline.",
-      "movement": "move",
+      "movement": "remain",
       "optional_external_dependencies": [],
       "owner": "core",
       "protecting_tests": [
@@ -7414,7 +7414,7 @@
       "semantic_roles": [
         "transformations"
       ],
-      "source": "control_plane_kit/topology/diff.py"
+      "source": "control_plane_kit/core/topology/diff.py"
     },
     {
       "canonical_public_exports": [
@@ -7436,7 +7436,7 @@
         "control_plane_kit.core.environment",
         "control_plane_kit.core.lifecycle",
         "control_plane_kit.core.secrets",
-        "control_plane_kit.topology.codec",
+        "control_plane_kit.core.topology.codec",
         "control_plane_kit.core.types"
       ],
       "known_package_consumers": [
@@ -7449,12 +7449,12 @@
         "control_plane_kit.projections.operator_graph",
         "control_plane_kit.runtimes",
         "control_plane_kit.stores.records",
-        "control_plane_kit.topology",
-        "control_plane_kit.topology.changes",
-        "control_plane_kit.topology.codec",
-        "control_plane_kit.topology.compiler",
-        "control_plane_kit.topology.diff",
-        "control_plane_kit.topology.validation",
+        "control_plane_kit.core.topology",
+        "control_plane_kit.core.topology.changes",
+        "control_plane_kit.core.topology.codec",
+        "control_plane_kit.core.topology.compiler",
+        "control_plane_kit.core.topology.diff",
+        "control_plane_kit.core.topology.validation",
         "control_plane_kit.workflows.execution_admission",
         "control_plane_kit.workflows.graph_edits"
       ],
@@ -7463,9 +7463,9 @@
         "#551",
         "#552 or #553 according to destination"
       ],
-      "module": "control_plane_kit.topology.graph",
+      "module": "control_plane_kit.core.topology.graph",
       "motivation": "Required by the effect-free deployment description, validation, comparison, or planning pipeline.",
-      "movement": "move",
+      "movement": "remain",
       "optional_external_dependencies": [],
       "owner": "core",
       "protecting_tests": [
@@ -7483,7 +7483,7 @@
       "semantic_roles": [
         "values"
       ],
-      "source": "control_plane_kit/topology/graph.py"
+      "source": "control_plane_kit/core/topology/graph.py"
     },
     {
       "canonical_public_exports": [
@@ -7506,8 +7506,8 @@
         "control_plane_kit.core.algebra",
         "control_plane_kit.core.capabilities",
         "control_plane_kit.core.control_routes",
-        "control_plane_kit.topology.codec",
-        "control_plane_kit.topology.graph",
+        "control_plane_kit.core.topology.codec",
+        "control_plane_kit.core.topology.graph",
         "control_plane_kit.core.verification"
       ],
       "known_package_consumers": [
@@ -7517,9 +7517,9 @@
         "control_plane_kit.planning.compiler",
         "control_plane_kit.planning.recovery",
         "control_plane_kit.read_services.instance",
-        "control_plane_kit.topology",
-        "control_plane_kit.topology.changes",
-        "control_plane_kit.topology.diff",
+        "control_plane_kit.core.topology",
+        "control_plane_kit.core.topology.changes",
+        "control_plane_kit.core.topology.diff",
         "control_plane_kit.workflows.planning"
       ],
       "migration_prerequisites": [
@@ -7527,9 +7527,9 @@
         "#551",
         "#552 or #553 according to destination"
       ],
-      "module": "control_plane_kit.topology.validation",
+      "module": "control_plane_kit.core.topology.validation",
       "motivation": "Required by the effect-free deployment description, validation, comparison, or planning pipeline.",
-      "movement": "move",
+      "movement": "remain",
       "optional_external_dependencies": [],
       "owner": "core",
       "protecting_tests": [
@@ -7541,7 +7541,7 @@
         "transformations",
         "values"
       ],
-      "source": "control_plane_kit/topology/validation.py"
+      "source": "control_plane_kit/core/topology/validation.py"
     },
     {
       "canonical_public_exports": [
@@ -8465,8 +8465,8 @@
         "control_plane_kit.planning",
         "control_plane_kit.policies",
         "control_plane_kit.stores",
-        "control_plane_kit.topology.codec",
-        "control_plane_kit.topology.graph",
+        "control_plane_kit.core.topology.codec",
+        "control_plane_kit.core.topology.graph",
         "control_plane_kit.core.types",
         "control_plane_kit.workflows.commands"
       ],
@@ -8516,7 +8516,7 @@
         "control_plane_kit.projections.saga_journal",
         "control_plane_kit.scheduling",
         "control_plane_kit.stores",
-        "control_plane_kit.topology",
+        "control_plane_kit.core.topology",
         "control_plane_kit.workflows.commands",
         "control_plane_kit.workflows.run_lifecycle"
       ],
@@ -8559,7 +8559,7 @@
       "destination": "control_plane_kit.operations.workflows.graph_edits",
       "internal_dependencies": [
         "control_plane_kit.stores",
-        "control_plane_kit.topology.graph",
+        "control_plane_kit.core.topology.graph",
         "control_plane_kit.workflows.commands"
       ],
       "known_package_consumers": [
@@ -8603,9 +8603,9 @@
       "internal_dependencies": [
         "control_plane_kit.planning.compiler",
         "control_plane_kit.stores",
-        "control_plane_kit.topology.codec",
-        "control_plane_kit.topology.diff",
-        "control_plane_kit.topology.validation",
+        "control_plane_kit.core.topology.codec",
+        "control_plane_kit.core.topology.diff",
+        "control_plane_kit.core.topology.validation",
         "control_plane_kit.workflows.commands"
       ],
       "known_package_consumers": [

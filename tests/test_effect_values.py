@@ -46,7 +46,7 @@ from control_plane_kit.planning import (
     SwitchSocketConnection,
     WaitForHealthy,
 )
-from control_plane_kit.topology import GraphSubject
+from control_plane_kit.core.topology import GraphSubject
 
 
 class EffectValueTests(unittest.TestCase):

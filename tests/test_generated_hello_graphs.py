@@ -3,7 +3,7 @@ from __future__ import annotations
 from unittest import TestCase, main
 
 from control_plane_kit.planning import compile_activity_plan
-from control_plane_kit.topology import (
+from control_plane_kit.core.topology import (
     DEFAULT_GRAPH_CODEC,
     DeploymentGraph,
     ValidationCode,

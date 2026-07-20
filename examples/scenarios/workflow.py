@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 
-from control_plane_kit.topology import DeploymentGraph
+from control_plane_kit.core.topology import DeploymentGraph
 from control_plane_kit.workflows import (
     ActivityPlanningCommandService,
     ActivityPlanningResult,

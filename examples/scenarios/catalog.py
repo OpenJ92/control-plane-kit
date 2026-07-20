@@ -39,7 +39,7 @@ from control_plane_kit.servers import (
     hello_server_block,
     http_active_router_block,
 )
-from control_plane_kit.topology import DeploymentGraph
+from control_plane_kit.core.topology import DeploymentGraph
 from examples.http_block_compositions import (
     multiplexer_recipe,
     rate_limiter_recipe,

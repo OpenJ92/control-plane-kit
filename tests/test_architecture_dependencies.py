@@ -21,7 +21,7 @@ from tests.architecture import (
 
 PACKAGE_RULES = (
     PackageDependencyRule("_optional", ()),
-    PackageDependencyRule("application", ("effects", "topology", "workflows")),
+    PackageDependencyRule("application", ("core", "effects", "workflows")),
     PackageDependencyRule(
         "adapters",
         (
@@ -36,9 +36,9 @@ PACKAGE_RULES = (
     PackageDependencyRule("core", ()),
     PackageDependencyRule("contracts", ()),
     PackageDependencyRule("configuration_rendering", ("core",)),
-    PackageDependencyRule("discovery", ("core", "topology")),
+    PackageDependencyRule("discovery", ("core",)),
     PackageDependencyRule(
-        "discovery_registry", ("core", "discovery", "topology")
+        "discovery_registry", ("core", "discovery")
     ),
     PackageDependencyRule(
         "discovery_server", ("contracts", "discovery", "discovery_registry", "servers")
@@ -51,7 +51,6 @@ PACKAGE_RULES = (
             "execution",
             "planning",
             "runtimes",
-            "topology",
         ),
     ),
     PackageDependencyRule(
@@ -60,7 +59,6 @@ PACKAGE_RULES = (
             "core",
             "execution",
             "planning",
-            "topology",
         ),
     ),
     PackageDependencyRule("execution", ()),
@@ -68,7 +66,6 @@ PACKAGE_RULES = (
         "implementations",
         (
             "core",
-            "topology",
         ),
     ),
     PackageDependencyRule("idempotency", ()),
@@ -80,17 +77,17 @@ PACKAGE_RULES = (
         "load_generator_server", ("adapters", "contracts", "load_generation", "servers")
     ),
     PackageDependencyRule("mcp_read", ("read_services",)),
-    PackageDependencyRule("planning", ("core", "policies", "topology")),
+    PackageDependencyRule("planning", ("core", "policies")),
     PackageDependencyRule("policies", ("core", "planning")),
     PackageDependencyRule(
         "projections",
-        ("core", "execution", "planning", "saga", "scheduling", "topology"),
+        ("core", "execution", "planning", "saga", "scheduling"),
     ),
     PackageDependencyRule(
         "read_services",
-        ("core", "execution", "planning", "projections", "stores", "topology"),
+        ("core", "execution", "planning", "projections", "stores"),
     ),
-    PackageDependencyRule("runtimes", ("core", "topology")),
+    PackageDependencyRule("runtimes", ("core",)),
     PackageDependencyRule("saga", ()),
     PackageDependencyRule("scheduling", ("planning", "saga")),
     PackageDependencyRule(
@@ -109,8 +106,7 @@ PACKAGE_RULES = (
             "webhook",
         ),
     ),
-    PackageDependencyRule("stores", ("core", "execution", "planning", "topology")),
-    PackageDependencyRule("topology", ("core",)),
+    PackageDependencyRule("stores", ("core", "execution", "planning")),
     PackageDependencyRule("webhook", ("_optional", "core")),
     PackageDependencyRule(
         "webhook_server",
@@ -128,7 +124,6 @@ PACKAGE_RULES = (
             "saga",
             "scheduling",
             "stores",
-            "topology",
         ),
     ),
 )

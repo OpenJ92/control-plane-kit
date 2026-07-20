@@ -43,7 +43,7 @@ from control_plane_kit.planning import (
 )
 from control_plane_kit.saga import SagaState, SagaStepId, SagaStepState
 from control_plane_kit.scheduling import derive_schedule
-from control_plane_kit.topology import diff_graphs, validate_graph
+from control_plane_kit.core.topology import diff_graphs, validate_graph
 from control_plane_kit.core.types import RuntimeKind
 from examples.scenarios import planning_scenarios
 

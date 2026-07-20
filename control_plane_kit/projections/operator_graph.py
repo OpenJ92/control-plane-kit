@@ -10,7 +10,7 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from typing import Mapping
 
-from control_plane_kit.topology.graph import DeploymentGraph, Edge, Node, RuntimeRecord
+from control_plane_kit.core.topology.graph import DeploymentGraph, Edge, Node, RuntimeRecord
 from control_plane_kit.core.environment import SocketDerivedEnvironmentBinding
 from control_plane_kit.core.secrets import (
     SecretEnvironmentDelivery,

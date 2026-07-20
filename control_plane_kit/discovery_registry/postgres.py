@@ -15,7 +15,7 @@ from control_plane_kit.discovery import (
     DiscoveryRegistrationRecord,
     DiscoveryRegistrationStatus,
 )
-from control_plane_kit.topology.graph import Endpoint, LiteralAddress
+from control_plane_kit.core.topology.graph import Endpoint, LiteralAddress
 from control_plane_kit.core.types import EndpointScope, Protocol as ConnectionProtocol
 
 

@@ -9,8 +9,15 @@ import unittest
 
 import control_plane_kit
 from control_plane_kit.application import deploy as deployment
-from control_plane_kit import effects, planning, saga, scheduling, topology
-from control_plane_kit.core import algebra, configuration, secrets, types, verification
+from control_plane_kit import effects, planning, saga, scheduling
+from control_plane_kit.core import (
+    algebra,
+    configuration,
+    secrets,
+    topology,
+    types,
+    verification,
+)
 
 
 class PackageStructureTests(unittest.TestCase):
@@ -72,8 +79,8 @@ class PackageStructureTests(unittest.TestCase):
             verification.VerificationContract.__module__,
             "control_plane_kit.core.verification",
         )
-        self.assertEqual(topology.DeploymentGraph.__module__, "control_plane_kit.topology.graph")
-        self.assertEqual(topology.GraphDiff.__module__, "control_plane_kit.topology.changes")
+        self.assertEqual(topology.DeploymentGraph.__module__, "control_plane_kit.core.topology.graph")
+        self.assertEqual(topology.GraphDiff.__module__, "control_plane_kit.core.topology.changes")
         self.assertEqual(planning.ActivityPlan.__module__, "control_plane_kit.planning.activity_plan")
         self.assertEqual(planning.RecoveryCandidate.__module__, "control_plane_kit.planning.recovery")
         self.assertEqual(saga.SagaStep.__module__, "control_plane_kit.saga.program")
@@ -104,6 +111,12 @@ class PackageStructureTests(unittest.TestCase):
             "types",
             "validation",
             "verification",
+            "topology.changes",
+            "topology.codec",
+            "topology.compiler",
+            "topology.diff",
+            "topology.graph",
+            "topology.validation",
         )
 
         for module in retired_modules:

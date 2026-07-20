@@ -8,7 +8,7 @@ import json
 from collections.abc import Callable
 from uuid import uuid4
 
-from control_plane_kit.topology.graph import DeploymentGraph
+from control_plane_kit.core.topology.graph import DeploymentGraph
 from control_plane_kit.stores import (
     GraphVersionRecord,
     GraphTopologyStore,

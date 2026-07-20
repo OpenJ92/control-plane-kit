@@ -60,7 +60,7 @@ from control_plane_kit.planning import (
     StopRuntime,
 )
 
-from control_plane_kit.topology.graph import DeploymentGraph, Node
+from control_plane_kit.core.topology.graph import DeploymentGraph, Node
 from control_plane_kit.runtimes import CleanupPolicy, RuntimeActivity, RuntimeNodeState, RuntimePlan, RuntimeState
 from control_plane_kit.core.types import Protocol as SocketProtocol, RuntimeKind, Transport
 

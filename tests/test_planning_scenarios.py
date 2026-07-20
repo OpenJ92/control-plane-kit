@@ -12,7 +12,7 @@ from control_plane_kit.stores import (
     PostgresUnitOfWork,
     WorkspaceRecord,
 )
-from control_plane_kit.topology import diff_graphs, validate_graph
+from control_plane_kit.core.topology import diff_graphs, validate_graph
 from control_plane_kit.workflows import (
     ActivityPlanningCommandService,
     ApprovalCommandService,

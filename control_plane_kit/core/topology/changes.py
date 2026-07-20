@@ -13,7 +13,7 @@ from control_plane_kit.core.environment import (
     SocketDerivedEnvironmentBinding,
 )
 from control_plane_kit.core.secrets import SecretDelivery, secret_delivery_sort_key
-from control_plane_kit.topology.graph import (
+from control_plane_kit.core.topology.graph import (
     Edge,
     Endpoint,
     LiteralAddress,
@@ -21,7 +21,7 @@ from control_plane_kit.topology.graph import (
     RuntimeRecord,
     SecretReferenceAddress,
 )
-from control_plane_kit.topology.validation import (
+from control_plane_kit.core.topology.validation import (
     EdgeSubject,
     GraphSubject,
     NodeSubject,

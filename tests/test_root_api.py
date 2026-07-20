@@ -37,7 +37,6 @@ PURE_PACKAGE_ROOTS = (
     "policies",
     "saga",
     "scheduling",
-    "topology",
 )
 
 

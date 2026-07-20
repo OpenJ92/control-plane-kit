@@ -29,7 +29,7 @@ from control_plane_kit import (
     materialize_effect_request,
     validate_graph,
 )
-from control_plane_kit.topology import FieldSubject, ModifiedChange
+from control_plane_kit.core.topology import FieldSubject, ModifiedChange
 
 
 class ConfigurationArtifactTests(unittest.TestCase):
