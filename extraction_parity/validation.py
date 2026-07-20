@@ -1,0 +1,223 @@
+"""Cross-document parity validation and reporting."""
+
+from __future__ import annotations
+
+import argparse
+from collections import Counter
+from enum import Enum
+import json
+import os
+from pathlib import Path
+import re
+from typing import Iterable
+
+from extraction_parity.manifest import build_manifest, decode_manifest
+
+
+class ValidationError(ValueError):
+    pass
+
+
+class ValidationPolicy(str, Enum):
+    FOUNDATION = "foundation"
+    MIGRATION_COMPLETE = "migration-complete"
+
+
+EVIDENCE_SCHEMA = "cpk.successor-evidence-index"
+REPORT_SCHEMA = "cpk.parity-validation-report"
+MAXIMUM_INPUT_BYTES = 16 * 1024 * 1024
+MAXIMUM_TEXT_BYTES = 512
+_DIGEST = re.compile(r"sha256:[0-9a-f]{64}")
+
+
+def _text(value: object, label: str) -> str:
+    if not isinstance(value, str) or not value.strip():
+        raise ValidationError(f"{label} must be non-blank text")
+    if len(value.encode("utf-8")) > MAXIMUM_TEXT_BYTES:
+        raise ValidationError(f"{label} exceeds the byte bound")
+    return value
+
+
+def decode_evidence_index(document: dict[str, object]) -> dict[str, object]:
+    if set(document) != {"schema", "evidence"}:
+        raise ValidationError("evidence index has unknown or missing root fields")
+    if document["schema"] != EVIDENCE_SCHEMA:
+        raise ValidationError("unsupported evidence index schema")
+    records = document["evidence"]
+    if not isinstance(records, list):
+        raise ValidationError("evidence must be a list")
+    identities: set[str] = set()
+    for record in records:
+        if not isinstance(record, dict) or set(record) != {"id", "status", "digest"}:
+            raise ValidationError("evidence record is not closed")
+        identity = _text(record["id"], "evidence.id")
+        if identity in identities:
+            raise ValidationError("evidence identities must be unique")
+        identities.add(identity)
+        if record["status"] not in {"passing", "failed"}:
+            raise ValidationError("unknown evidence status")
+        digest = _text(record["digest"], "evidence.digest")
+        if _DIGEST.fullmatch(digest) is None:
+            raise ValidationError("evidence digest must be canonical SHA-256")
+    return document
+
+
+def _finding(code: str, kind: str, reference: str, detail: str) -> dict[str, str]:
+    return {"code": code, "kind": kind, "reference": reference, "detail": detail}
+
+
+def _completion(
+    entry: dict[str, object],
+    evidence: dict[str, dict[str, str]],
+    findings: list[dict[str, str]],
+) -> tuple[bool, int, int]:
+    if entry["supersession"] is not None:
+        return True, 0, 0
+    passing = 0
+    failed = 0
+    for successor in entry["successors"]:
+        proof = evidence.get(successor["evidence"])
+        if proof is None:
+            findings.append(_finding("missing_evidence", entry["kind"], entry["reference"], successor["evidence"]))
+            continue
+        if proof["status"] != successor["status"]:
+            findings.append(_finding("evidence_status_mismatch", entry["kind"], entry["reference"], successor["evidence"]))
+            continue
+        if proof["status"] == "passing":
+            passing += 1
+        else:
+            failed += 1
+    return passing > 0, passing, failed
+
+
+def validate_parity(
+    manifest: dict[str, object],
+    ownership: dict[str, object],
+    demos: dict[str, object],
+    evidence_index: dict[str, object],
+    *,
+    policy: ValidationPolicy,
+) -> dict[str, object]:
+    if not isinstance(policy, ValidationPolicy):
+        raise ValidationError("policy must be a closed ValidationPolicy")
+    decode_manifest(manifest)
+    decode_evidence_index(evidence_index)
+    expected = build_manifest(ownership, demos)
+    findings: list[dict[str, str]] = []
+    if manifest["reference"] != expected["reference"]:
+        findings.append(
+            _finding(
+                "reference_mismatch",
+                "manifest",
+                "frozen-reference",
+                "tag or commit differs from authoritative inventories",
+            )
+        )
+    expected_entries = {(entry["kind"], entry["reference"]): entry for entry in expected["entries"]}
+    actual_entries = {(entry["kind"], entry["reference"]): entry for entry in manifest["entries"]}
+    for identity, entry in expected_entries.items():
+        actual = actual_entries.get(identity)
+        if actual is None:
+            findings.append(_finding("missing_mapping", identity[0], identity[1], "frozen reference is absent"))
+            continue
+        for field in ("law", "owner_kind", "owner", "migration_state"):
+            if actual[field] != entry[field]:
+                findings.append(_finding("mapping_mismatch", identity[0], identity[1], field))
+    for identity in actual_entries.keys() - expected_entries.keys():
+        findings.append(_finding("stale_mapping", identity[0], identity[1], "reference is not in frozen inventories"))
+
+    evidence = {record["id"]: record for record in evidence_index["evidence"]}
+    required = 0
+    deferred = 0
+    passing_successors = 0
+    failed_successors = 0
+    reviewed_supersessions = 0
+    incomplete_required = 0
+    for entry in manifest["entries"]:
+        required += entry["migration_state"] == "required"
+        deferred += entry["migration_state"] == "deferred"
+        reviewed_supersessions += entry["supersession"] is not None
+        complete, passing, failed = _completion(entry, evidence, findings)
+        passing_successors += passing
+        failed_successors += failed
+        if entry["migration_state"] == "required" and not complete:
+            incomplete_required += 1
+            if policy is ValidationPolicy.MIGRATION_COMPLETE:
+                if failed:
+                    findings.append(_finding("failed_evidence", entry["kind"], entry["reference"], "no passing successor evidence"))
+                findings.append(_finding("required_without_completion", entry["kind"], entry["reference"], "passing successor or reviewed supersession is required"))
+
+    owner_counts = Counter(str(entry["owner_kind"]) for entry in manifest["entries"])
+    findings.sort(key=lambda finding: (finding["code"], finding["kind"], finding["reference"], finding["detail"]))
+    migration_complete = incomplete_required == 0 and not findings
+    return {
+        "schema": REPORT_SCHEMA,
+        "policy": policy.value,
+        "valid": not findings,
+        "migration_complete": migration_complete,
+        "counts": {
+            "entries": len(manifest["entries"]),
+            "required": required,
+            "deferred": deferred,
+            "passing_successors": passing_successors,
+            "failed_successors": failed_successors,
+            "reviewed_supersessions": reviewed_supersessions,
+            "incomplete_required": incomplete_required,
+            "findings": len(findings),
+            "by_owner": dict(sorted(owner_counts.items())),
+        },
+        "findings": findings,
+    }
+
+
+def read_bounded_json(path: Path) -> dict[str, object]:
+    payload = path.read_bytes()
+    if len(payload) > MAXIMUM_INPUT_BYTES:
+        raise ValidationError(f"input exceeds byte bound: {path}")
+    value = json.loads(payload)
+    if not isinstance(value, dict):
+        raise ValidationError(f"input must be a JSON object: {path}")
+    return value
+
+
+def write_report(path: Path, report: dict[str, object]) -> None:
+    path.parent.mkdir(parents=True, exist_ok=True)
+    temporary = path.with_suffix(path.suffix + ".tmp")
+    temporary.write_text(json.dumps(report, indent=2, sort_keys=True) + "\n", encoding="utf-8")
+    os.replace(temporary, path)
+
+
+def summary(report: dict[str, object]) -> str:
+    counts = report["counts"]
+    return (
+        f"policy={report['policy']} valid={str(report['valid']).lower()} "
+        f"migration_complete={str(report['migration_complete']).lower()} "
+        f"entries={counts['entries']} required={counts['required']} "
+        f"deferred={counts['deferred']} incomplete_required={counts['incomplete_required']} "
+        f"findings={counts['findings']}"
+    )
+
+
+def main(argv: Iterable[str] | None = None) -> int:
+    parser = argparse.ArgumentParser()
+    parser.add_argument("--manifest", type=Path, required=True)
+    parser.add_argument("--ownership", type=Path, required=True)
+    parser.add_argument("--demos", type=Path, required=True)
+    parser.add_argument("--evidence", type=Path, required=True)
+    parser.add_argument("--report", type=Path, required=True)
+    parser.add_argument("--policy", choices=[policy.value for policy in ValidationPolicy], required=True)
+    arguments = parser.parse_args(argv)
+    report = validate_parity(
+        read_bounded_json(arguments.manifest),
+        read_bounded_json(arguments.ownership),
+        read_bounded_json(arguments.demos),
+        read_bounded_json(arguments.evidence),
+        policy=ValidationPolicy(arguments.policy),
+    )
+    write_report(arguments.report, report)
+    print(summary(report))
+    return 0 if report["valid"] else 1
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())

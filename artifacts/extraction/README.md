@@ -38,3 +38,9 @@ claiming that migration has begun: 880 entries are required and 227 deferred,
 while successor and reviewed-supersession evidence are both empty. Future
 milestones may add passing successor evidence or an explicitly reviewed
 supersession, but may not silently remove a frozen reference.
+
+`successor-evidence.json` is the closed index of immutable successor proof. It
+is intentionally empty before migration begins. `parity-validation-report.json`
+is the deterministic foundation-policy report produced by
+`./validate-parity.sh foundation`; it proves complete mapping while reporting
+that required migration work remains incomplete.
