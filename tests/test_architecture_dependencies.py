@@ -35,6 +35,7 @@ PACKAGE_RULES = (
     PackageDependencyRule("core", ()),
     PackageDependencyRule("contracts", ()),
     PackageDependencyRule("configuration_rendering", ("core",)),
+    PackageDependencyRule("domains", ("core",)),
     PackageDependencyRule("discovery", ("core",)),
     PackageDependencyRule(
         "discovery_registry", ("core", "discovery")

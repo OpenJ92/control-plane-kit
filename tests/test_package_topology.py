@@ -217,6 +217,81 @@ class PackageTopologyPolicyTests(unittest.TestCase):
         self.assertEqual(len(findings), 1)
         self.assertEqual(findings[0].rule_id, "package-topology-edge")
 
+    def test_domain_language_rejects_operations_products_interpreters_and_entrypoints(self) -> None:
+        nodes = (
+            PackageNode("core", PackageOwnerKind.CORE),
+            PackageNode("domains.discovery", PackageOwnerKind.DOMAIN),
+            PackageNode("operations.discovery", PackageOwnerKind.OPERATION),
+            PackageNode("interpreters.http", PackageOwnerKind.INTERPRETER),
+            PackageNode("products.servers", PackageOwnerKind.PRODUCT),
+            PackageNode("entrypoints.discovery", PackageOwnerKind.ENTRYPOINT),
+        )
+        ownerships = tuple(
+            ModulePackageOwnership(f"control_plane_kit.{module}", node)
+            for module, node in (
+                ("core", "core"),
+                ("domains.discovery", "domains.discovery"),
+                ("operations.discovery", "operations.discovery"),
+                ("interpreters.http", "interpreters.http"),
+                ("products.servers", "products.servers"),
+                ("entrypoints.discovery", "entrypoints.discovery"),
+            )
+        )
+        policy = PackageTopologyPolicy(
+            package="control_plane_kit",
+            nodes=nodes,
+            ownerships=ownerships,
+            declared_edges=(DeclaredPackageEdge("domains.discovery", "core"),),
+        )
+
+        for forbidden in (
+            "operations.discovery",
+            "interpreters.http",
+            "products.servers",
+            "entrypoints.discovery",
+        ):
+            facts = self._fact(
+                f"from control_plane_kit.{forbidden} import value\n",
+                "control_plane_kit.domains.discovery.language",
+            )
+            findings = policy.evaluate((facts,))
+            self.assertEqual(len(findings), 1)
+            self.assertEqual(findings[0].rule_id, "package-topology-edge")
+
+    def test_product_to_domain_projection_does_not_authorize_reverse_edge(self) -> None:
+        policy = PackageTopologyPolicy(
+            package="control_plane_kit",
+            nodes=(
+                PackageNode("domains.discovery", PackageOwnerKind.DOMAIN),
+                PackageNode("products.servers", PackageOwnerKind.PRODUCT),
+            ),
+            ownerships=(
+                ModulePackageOwnership(
+                    "control_plane_kit.domains.discovery", "domains.discovery"
+                ),
+                ModulePackageOwnership(
+                    "control_plane_kit.products.servers", "products.servers"
+                ),
+            ),
+            declared_edges=(
+                DeclaredPackageEdge("products.servers", "domains.discovery"),
+            ),
+        )
+
+        product = self._fact(
+            "from control_plane_kit.domains.discovery import DiscoveryResult\n",
+            "control_plane_kit.products.servers.coredns",
+        )
+        self.assertEqual(policy.evaluate((product,)), ())
+
+        domain = self._fact(
+            "from control_plane_kit.products.servers import coredns\n",
+            "control_plane_kit.domains.discovery.language",
+        )
+        findings = policy.evaluate((domain,))
+        self.assertEqual(len(findings), 1)
+        self.assertEqual(findings[0].rule_id, "package-topology-edge")
+
     def test_transitive_product_to_process_path_is_rejected(self) -> None:
         facts = (
             self._fact("from control_plane_kit.domain import value\n", "control_plane_kit.product"),

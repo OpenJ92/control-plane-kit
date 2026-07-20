@@ -106,6 +106,20 @@ class PackageModuleInventoryTests(unittest.TestCase):
         self.assertNotIn("control_plane_kit.execution.values", core)
         self.assertNotIn("control_plane_kit.operations.planning.recovery", core)
 
+    def test_domain_inventory_is_exactly_the_admitted_closed_languages(self) -> None:
+        domains = {record["destination"] for record in self.records if record["owner"] == "domain"}
+
+        self.assertEqual(
+            domains,
+            {
+                "control_plane_kit.domains",
+                "control_plane_kit.domains.discovery",
+                "control_plane_kit.domains.webhook.language",
+                "control_plane_kit.domains.idempotency",
+                "control_plane_kit.domains.load_generation",
+            },
+        )
+
     def test_coredns_relocation_invariants_are_recorded(self) -> None:
         record = next(
             value

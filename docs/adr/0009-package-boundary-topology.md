@@ -116,6 +116,11 @@ domains.idempotency
 domains.load_generation
 ```
 
+The executable admission matrix and exact source-to-destination manifest live
+in `docs/architecture/domain-language-admission.md`. Admission is deliberately
+independent of deployability: all four behaviors also retain uniform
+graph-visible declarations under `products.servers`.
+
 Saga and execution languages remain operational because their meaning is the
 control plane's durable execution process. A proxy, multiplexer, retry server,
 or load balancer does not earn a domain merely because it has typed product
