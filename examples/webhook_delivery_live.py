@@ -7,7 +7,8 @@ from dataclasses import dataclass
 from datetime import datetime, timezone
 import json
 import os
-from urllib.error import HTTPError
+from time import monotonic, sleep
+from urllib.error import HTTPError, URLError
 from urllib.parse import urlsplit
 from urllib.request import Request, urlopen
 
@@ -32,9 +33,7 @@ from control_plane_kit import (
     SocketConnection,
     compile_recipe,
 )
-from control_plane_kit.servers import (
-    webhook_delivery_block,
-)
+from control_plane_kit.products.servers import webhook_delivery_block
 from control_plane_kit.domains.webhook import (
     WebhookEndpointGrant,
     WebhookEndpointScope,
@@ -287,6 +286,7 @@ def restart_webhook(database_url: str) -> None:
 def verify_after_restart() -> None:
     base = f"http://{RUNTIME_ID}-webhook-delivery:8080"
     receiver = f"http://{RUNTIME_ID}-receiver:8090"
+    _wait_for_webhook_ready(base)
     intent = _delivery_intent()
     replay = _request(f"{base}/__deploy/webhooks", intent.descriptor())[1]
     if not replay["replayed"] or replay["delivery"]["status"] != "queued":
@@ -333,6 +333,42 @@ def verify_after_restart() -> None:
     print(
         "Webhook post-restart proof passed: replay, signature, durable history, "
         "and allowlist."
+    )
+
+
+def _wait_for_webhook_ready(
+    base: str,
+    *,
+    timeout_seconds: float = 30,
+    poll_interval_seconds: float = 0.25,
+) -> None:
+    deadline = monotonic() + timeout_seconds
+    last_observation = "connection unavailable"
+    while monotonic() < deadline:
+        try:
+            status, body = _request(
+                f"{base}/health/ready",
+                method="GET",
+                authorized=False,
+            )
+        except (OSError, TimeoutError, URLError) as error:
+            last_observation = type(error).__name__
+        else:
+            if status == 200:
+                if body != {"status": "ready"}:
+                    raise RuntimeError(
+                        "restarted webhook readiness returned an invalid response"
+                    )
+                return
+            if status != 503:
+                raise RuntimeError(
+                    f"restarted webhook readiness returned HTTP {status}"
+                )
+            last_observation = "HTTP 503"
+        sleep(min(poll_interval_seconds, max(0, deadline - monotonic())))
+    raise RuntimeError(
+        "restarted webhook did not become ready within "
+        f"{timeout_seconds:g}s (last observation: {last_observation})"
     )
 
 

@@ -24,8 +24,8 @@ from control_plane_kit import (
 from control_plane_kit.servers import (
     opentelemetry_collector_block,
     service_discovery_block,
-    webhook_delivery_block,
 )
+from control_plane_kit.products.servers import webhook_delivery_block
 from control_plane_kit.domains.webhook import (
     WebhookEndpointGrant,
     WebhookEndpointScope,

@@ -49,6 +49,8 @@ from control_plane_kit.interpreters import ConfigurationTemplate  # noqa: E402
 from control_plane_kit.products.servers import (  # noqa: E402
     ProductCatalog,
     ProductDeclaration,
+    WEBHOOK_DELIVERY_PRODUCT,
+    webhook_delivery_block,
 )
 from control_plane_kit.operations.webhook import WebhookDeliveryService  # noqa: E402
 
@@ -60,6 +62,14 @@ if ProductDeclaration.__module__ != "control_plane_kit.products.servers.catalog"
     raise AssertionError("product declarations did not load from the canonical catalog")
 if ProductCatalog.__module__ != "control_plane_kit.products.servers.catalog":
     raise AssertionError("product catalog did not load from the canonical catalog")
+if webhook_delivery_block.__module__ != (
+    "control_plane_kit.products.servers.webhook_delivery"
+):
+    raise AssertionError("webhook block did not load from its canonical product home")
+if WEBHOOK_DELIVERY_PRODUCT.block.spec != webhook_delivery_block().spec:
+    raise AssertionError("webhook declaration and block constructor disagree")
+if any(find_spec(dependency) is not None for dependency in OPTIONAL_DISTRIBUTIONS):
+    raise AssertionError("pure webhook product import installed an optional dependency")
 if WebhookDeliveryService.__module__ != "control_plane_kit.operations.webhook.service":
     raise AssertionError("webhook service did not load from canonical operations")
 

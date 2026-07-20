@@ -22,6 +22,7 @@ from control_plane_kit.core import (
 from control_plane_kit.operations import planning as operational_planning
 from control_plane_kit.operations import webhook as operational_webhook
 from control_plane_kit.domains import discovery, idempotency, load_generation, webhook
+from control_plane_kit.products import servers as server_products
 
 
 class PackageStructureTests(unittest.TestCase):
@@ -147,6 +148,10 @@ class PackageStructureTests(unittest.TestCase):
             webhook.WebhookDeliveryIntent.__module__,
             "control_plane_kit.domains.webhook.language",
         )
+        self.assertEqual(
+            server_products.webhook_delivery_block.__module__,
+            "control_plane_kit.products.servers.webhook_delivery",
+        )
 
     def test_retired_flat_modules_are_not_importable(self) -> None:
         retired_modules = (
@@ -191,6 +196,7 @@ class PackageStructureTests(unittest.TestCase):
             "webhook.app",
             "webhook_server",
             "webhook_server.main",
+            "servers.webhook_delivery",
         )
 
         for module in retired_modules:

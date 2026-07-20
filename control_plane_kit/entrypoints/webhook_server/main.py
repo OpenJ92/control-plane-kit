@@ -19,7 +19,9 @@ from control_plane_kit.core.secrets import (
     SecretProviderAuthority,
     SecretReference,
 )
-from control_plane_kit.servers.webhook_delivery import parse_webhook_address_policy
+from control_plane_kit.products.servers.webhook_delivery import (
+    parse_webhook_address_policy,
+)
 from control_plane_kit.operations.webhook import (
     PostgresWebhookUnitOfWork,
     WebhookDeliveryService,

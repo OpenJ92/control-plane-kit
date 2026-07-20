@@ -29,6 +29,11 @@ from control_plane_kit.domains.webhook import (
     WebhookEndpointGrant,
     WebhookEndpointScope,
 )
+from control_plane_kit.products.servers.catalog import (
+    CapabilityImplementation,
+    ExecutableCapability,
+    ProductDeclaration,
+)
 
 
 WEBHOOK_DATABASE_ENVIRONMENT = "WEBHOOK_DATABASE_URL"
@@ -191,3 +196,17 @@ def webhook_delivery_block(
             providers=(ProviderSocket("internal", Protocol.HTTP),),
         ),
     )
+
+
+WEBHOOK_DELIVERY_PRODUCT = ProductDeclaration(
+    PackageServerProduct.WEBHOOK_DELIVERY,
+    ProductMaturity.OPERATIONAL,
+    webhook_delivery_block(),
+    (
+        ExecutableCapability(
+            CapabilityName.HEALTH_CHECKABLE,
+            CapabilityImplementation.APPLICATION_PROBE,
+            path="/health/ready",
+        ),
+    ),
+)
