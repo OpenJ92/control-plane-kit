@@ -2775,3 +2775,172 @@ shared UnitOfWork changes:                                       0
 - exercise the existing `DeploymentProgram`, coordinator, Docker adapters,
   probes, and semantic verification path rather than introducing an imperative
   live runner.
+
+## #530 Live Heterogeneous Service DeploymentProgram Acceptance
+
+### Capability Reached
+
+The exact #528 heterogeneous graph now runs live through the persisted
+application program and real adapters:
+
+```text
+empty graph
+  -> plan -> approve
+  -> durable reconstruction by plan_id
+  -> admit -> claim
+  -> real Docker lifecycle and health effects
+  -> current graph advancement
+  -> package semantic verification
+  -> discovery, OTLP, and webhook operations
+  -> teardown plan -> real owned cleanup
+  -> empty current graph
+```
+
+The graph-owned runtime contains six application/data nodes:
+
+```text
+discovery-postgres -> service-discovery
+webhook-postgres   -> webhook-delivery -> webhook-receiver
+opentelemetry-collector
+```
+
+The shell harness bootstraps only the external controller boundary: one control
+Postgres container, one controller container, and their control network. It
+does not start any graph-owned application, database, configuration, secret, or
+runtime resource directly.
+
+### Canonical Composition
+
+`examples/service_infrastructure_live.py` constructs the ordinary application
+composition rather than a product-specific runner:
+
+```python
+DeploymentProgram(
+    DeploymentProgramServices(
+        planning,
+        approvals,
+        admission,
+        lifecycle,
+        ExecutionCoordinator(
+            unit_of_work,
+            lifecycle,
+            real_effects,
+        ),
+        advancement,
+        contexts,
+    )
+)
+```
+
+`RecordingEffectInterpreter` is live-test evidence, not an interpreter choice.
+It rejects execution while a UnitOfWork is active, records the exact
+`MaterializedEffectRequest`, and delegates unchanged to the real typed registry:
+
+```python
+def execute(self, request):
+    if self.tracker.active:
+        raise AssertionError("external effect executed inside a Postgres UnitOfWork")
+    self.requests.append(request)
+    return self.inner.execute(request)
+```
+
+The registry is the existing composition:
+
+```text
+DockerEffectInterpreter
+  + ProbeEffectInterpreter
+      + DockerProcessProbeAdapter
+      + TcpTransportProbeAdapter
+      + HttpApplicationHealthProbeAdapter
+```
+
+Package verification is materialized from the exact graph-pinned `StartNode`
+requests actually executed by the coordinator. The existing
+`VerificationCommandService` records intent, performs real bounded HTTP checks
+outside the transaction, and records result observations in a second short
+transaction.
+
+### Live Product Evidence
+
+Service discovery proved against its own graph-created Postgres state:
+
+- unauthenticated mutation returns 401 without token disclosure;
+- register and resolve;
+- heartbeat revision advancement;
+- deregistration and absence from resolution;
+- lease expiry and bounded empty resolution.
+
+OpenTelemetry Collector proved:
+
+- graph-owned immutable configuration materialization;
+- process, transport, application-health, and package verification;
+- a real bounded OTLP/HTTP trace accepted at `/v1/traces`;
+- the configured debug exporter emitted the exact span identity.
+
+Durable webhook delivery proved against its independent graph-created Postgres
+state:
+
+- unauthenticated enqueue returns 401;
+- authenticated intent persists as queued;
+- claim and dispatch deliver a signed JSON request to the granted receiver;
+- receiver verifies the signature;
+- durable read omits payload and signing secret;
+- an ungranted endpoint reaches explicit terminal dead-letter truth.
+
+Operator projections contain the package-owned semantic-verification results
+for Collector and webhook readiness while omitting all three secret values and
+all `secret://service-acceptance/...` references.
+
+### Breaking Points And Corrections
+
+The first focused test attempted to assert that the root shell script was
+executable from inside the package test image. That image intentionally copies
+only package, examples, and tests; root orchestration scripts are outside its
+contract. Copying one exceptional script into the image would have distorted
+that boundary. The invalid packaging assertion was removed. This did not weaken
+application behavior: the shell passed `bash -n` directly and completed the
+real Docker proof twice.
+
+Review then found that failure cleanup removed every CPK-owned workspace volume.
+The current graph has only ephemeral configuration/secret volumes, but that
+assumption would become dangerous if a retained data resource were added. The
+fallback cleanup now:
+
+```text
+owned configuration volume -> removable
+owned secret volume        -> removable
+owned data-resource volume -> retained
+unknown volume semantics   -> refuse cleanup
+```
+
+Canonical teardown remains responsible for ordinary cleanup. The fallback path
+is ownership-checked and cannot erase retained data merely because it shares a
+workspace label.
+
+### Validation
+
+```text
+focused composition tests:                                      3 passed
+complete Docker/Postgres suite:                              1036 passed
+full heterogeneous live proof:                                  3 passed
+owned compute after teardown:                                   0
+owned runtime networks after teardown:                          0
+owned ephemeral volumes after teardown:                         0
+assertions weakened:                                             0
+skips or mocks added:                                            0
+production algebra/store/coordinator changes:                    0
+```
+
+### Handoff To #531
+
+- review the live composition as an acceptance adapter over existing models,
+  not as a new application architecture;
+- verify that direct Docker CLI use is limited to controller bootstrap,
+  read-only Collector log evidence, ownership audit, and failure cleanup;
+- verify the application program alone creates and removes graph-owned
+  resources;
+- preserve separate discovery and webhook databases and UnitOfWork ownership;
+- audit retained-data behavior, secret redaction, bounded requests, graph
+  pinning, replay, and test integrity;
+- leave the service recipe as the input to later compositional acceptance work
+  rather than introducing a combined product type.
