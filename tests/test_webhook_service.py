@@ -8,13 +8,15 @@ import unittest
 import psycopg
 
 from control_plane_kit import (
+    SecretReference,
+)
+from control_plane_kit.webhook import (
     ClaimWebhook,
     DispatchWebhook,
     EnqueueWebhook,
     PostgresWebhookUnitOfWork,
     RecoverWebhook,
     ReleaseWebhookClaim,
-    SecretReference,
     WebhookAttemptOutcome,
     WebhookAuthority,
     WebhookAuthorizationError,

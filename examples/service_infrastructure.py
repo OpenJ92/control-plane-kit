@@ -20,11 +20,15 @@ from control_plane_kit import (
     SecretEnvironmentDelivery,
     SecretReference,
     SocketConnection,
-    WebhookEndpointGrant,
-    WebhookEndpointScope,
+)
+from control_plane_kit.servers import (
     opentelemetry_collector_block,
     service_discovery_block,
     webhook_delivery_block,
+)
+from control_plane_kit.webhook import (
+    WebhookEndpointGrant,
+    WebhookEndpointScope,
 )
 from control_plane_kit.servers.opentelemetry_collector import COLLECTOR_IMAGE
 

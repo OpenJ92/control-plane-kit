@@ -16,18 +16,22 @@ from control_plane_kit import (
     DiscoveryLease,
     DiscoveryRegistration,
     DiscoveryRegistrationMode,
-    DiscoveryRegistryService,
     DiscoveryScope,
     Endpoint,
     EndpointScope,
     ExpireDiscoveryLeases,
     HeartbeatDiscoveryInstance,
     LiteralAddress,
-    PostgresDiscoveryUnitOfWork,
     Protocol,
     RegisterDiscoveryInstance,
     discovery_command_descriptor,
+)
+from control_plane_kit.discovery_registry import (
+    DiscoveryRegistryService,
+    PostgresDiscoveryUnitOfWork,
     install_discovery_schema,
+)
+from control_plane_kit.servers import (
     service_discovery_block,
 )
 from control_plane_kit.discovery_server.main import (

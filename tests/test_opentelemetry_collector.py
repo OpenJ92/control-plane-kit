@@ -6,30 +6,32 @@ import unittest
 import yaml
 
 from control_plane_kit import (
-    AttributeRedactionProcessor,
-    BatchProcessor,
-    DebugExporter,
     DeploymentRecipe,
     DockerRuntime,
     GraphDescriptorCodec,
+    PackageServerProduct,
+    Protocol,
+    SecretReference,
+    compile_recipe,
+    diff_graphs,
+    validate_graph,
+)
+from control_plane_kit.servers import (
+    AttributeRedactionProcessor,
+    BatchProcessor,
+    DebugExporter,
     ExporterHeader,
     MemoryLimiterProcessor,
     OpenTelemetryCollectorConfiguration,
     OtlpHttpExporter,
     OtlpReceiver,
-    PackageServerProduct,
     ProbabilisticSamplingProcessor,
-    Protocol,
-    SecretReference,
     TelemetryPipeline,
     TelemetrySignal,
-    compile_recipe,
     default_collector_configuration,
-    diff_graphs,
     opentelemetry_collector_block,
     package_server_contract,
     render_collector_configuration,
-    validate_graph,
 )
 
 

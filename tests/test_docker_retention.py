@@ -8,7 +8,6 @@ from control_plane_kit import (
     DataMountMaterial,
     DataResourceTarget,
     DestroyDataResource,
-    DockerEffectInterpreter,
     EffectFailed,
     EffectIdentity,
     EffectRequest,
@@ -29,6 +28,9 @@ from control_plane_kit import (
     RuntimeTarget,
     StartNode,
     StopNode,
+)
+from control_plane_kit.docker_runtime import (
+    DockerEffectInterpreter,
 )
 from control_plane_kit.docker_runtime import (
     DockerOwnership,

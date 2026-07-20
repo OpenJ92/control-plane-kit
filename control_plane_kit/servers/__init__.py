@@ -1,5 +1,13 @@
 """Optional server adapters for control-plane-kit."""
 
+from control_plane_kit._optional import require_optional_dependencies
+
+require_optional_dependencies(
+    "control_plane_kit.servers",
+    ("fastapi", "httpx"),
+    extra="server",
+)
+
 from control_plane_kit.servers._templates import GeneratedServerSyntaxError
 from control_plane_kit.servers.block_control import BlockControlState, create_block_control_app
 from control_plane_kit.servers.hello import (

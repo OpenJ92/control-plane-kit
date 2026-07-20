@@ -13,15 +13,17 @@ from urllib.request import Request, urlopen
 
 from control_plane_kit import (
     CapabilityName,
-    CircuitBreakerMethodPolicy,
-    CircuitBreakerPolicy,
-    CircuitBreakerState,
-    DockerRuntime,
     DeploymentRecipe,
+    DockerRuntime,
     GraphDescriptorCodec,
     PackageServerProduct,
     SecretEnvironmentDelivery,
     compile_recipe,
+)
+from control_plane_kit.servers import (
+    CircuitBreakerMethodPolicy,
+    CircuitBreakerPolicy,
+    CircuitBreakerState,
     http_circuit_breaker_block,
     http_circuit_breaker_command,
 )

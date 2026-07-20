@@ -25,8 +25,10 @@ from control_plane_kit import (
     diff_graphs,
     effect_request_for_activity,
     materialize_effect_request,
-    opentelemetry_collector_block,
     validate_graph,
+)
+from control_plane_kit.servers import (
+    opentelemetry_collector_block,
 )
 from control_plane_kit.docker_runtime import DockerEffectInterpreter
 

@@ -32,14 +32,19 @@ from control_plane_kit import (
     LocalDevelopmentSecretResolver,
     Protocol,
     RegisterDiscoveryInstance,
-    SecretReference,
     SecretProviderAuthority,
     SecretProviderId,
+    SecretReference,
     StartNode,
     VerificationCapability,
     VerificationCompleted,
     VerificationInterpreterRegistry,
     VerificationOutcome,
+    compile_recipe,
+    discovery_command_descriptor,
+    materialize_verification_contract,
+)
+from control_plane_kit.webhook import (
     WebhookContentType,
     WebhookDeliveryIdentity,
     WebhookDeliveryIntent,
@@ -47,9 +52,6 @@ from control_plane_kit import (
     WebhookPayload,
     WebhookRetryPolicy,
     WebhookSigning,
-    compile_recipe,
-    discovery_command_descriptor,
-    materialize_verification_contract,
 )
 from control_plane_kit.adapters.probes import (
     HttpApplicationHealthProbeAdapter,

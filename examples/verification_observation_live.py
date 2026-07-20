@@ -12,12 +12,14 @@ from control_plane_kit import (
     EndpointMaterial,
     EndpointScope,
     HttpCheck,
-    HttpVerificationInterpreter,
     LiteralEndpointMaterial,
     Protocol,
     VerificationCapability,
     VerificationCheckMaterial,
     VerificationInterpreterRegistry,
+)
+from control_plane_kit.adapters import (
+    HttpVerificationInterpreter,
 )
 from control_plane_kit.adapters.probes import ProbeAddressPolicy
 from control_plane_kit.read_services import InstanceReadService

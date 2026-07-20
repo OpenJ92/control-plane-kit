@@ -18,28 +18,32 @@ import psycopg
 from fastapi.testclient import TestClient
 
 from control_plane_kit import (
-    HttpRequest,
-    HttpResponse,
     IdempotencyGatewayPolicy,
-    IdempotencyGatewayAuthority,
-    IdempotencyGatewayDenied,
-    IdempotencyGatewayScope,
-    IdempotencyGatewayService,
-    IdempotencyGatewayUnitOfWork,
     IdempotencyMethod,
     IdempotencyOutcome,
     IdempotencyRecord,
     IdempotencyRecordStatus,
     IdempotencyRoutePolicy,
     PackageServerProduct,
+    idempotency_identity,
+    idempotency_policy_from_descriptor,
+)
+from control_plane_kit.idempotency_gateway import (
+    ExecuteIdempotentHttp,
+    IdempotencyGatewayAuthority,
+    IdempotencyGatewayDenied,
+    IdempotencyGatewayScope,
+    IdempotencyGatewayService,
+    IdempotencyGatewayUnitOfWork,
+    PostgresIdempotencyStore,
+    install_idempotency_gateway_schema,
+)
+from control_plane_kit.servers import (
+    HttpRequest,
+    HttpResponse,
     ProductMaturity,
     create_idempotency_gateway_app,
     http_idempotency_gateway_block,
-    idempotency_identity,
-    idempotency_policy_from_descriptor,
-    install_idempotency_gateway_schema,
-    PostgresIdempotencyStore,
-    ExecuteIdempotentHttp,
 )
 from control_plane_kit.stores import PostgresStoreBundle
 from tests.postgres_case import PostgresStoreTestCase

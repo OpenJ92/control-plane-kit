@@ -24,20 +24,18 @@ from control_plane_kit import (
     DataBlock,
     DeploymentGraph,
     DeploymentRecipe,
-    DockerEffectInterpreter,
-    DockerProcessProbeAdapter,
     DockerImageImplementation,
     DockerRuntime,
-    EffectFailed,
     EffectCapability,
+    EffectFailed,
     EffectSucceeded,
     EndpointContext,
     LiteralEndpointMaterial,
     LocalDevelopmentSecretResolver,
     PinnedGraphSet,
     Protocol,
-    PublicStaticEnvironmentBinding,
     ProviderSocket,
+    PublicStaticEnvironmentBinding,
     RuntimeEndpointObservation,
     SecretFileDelivery,
     SecretFilePathBinding,
@@ -54,6 +52,10 @@ from control_plane_kit import (
     materialize_effect_request,
     require_resolved_secret,
     validate_graph,
+)
+from control_plane_kit.docker_runtime import (
+    DockerEffectInterpreter,
+    DockerProcessProbeAdapter,
 )
 
 

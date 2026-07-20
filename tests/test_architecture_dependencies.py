@@ -20,10 +20,12 @@ from tests.architecture import (
 
 
 PACKAGE_RULES = (
+    PackageDependencyRule("_optional", ()),
     PackageDependencyRule("application", ("effects", "topology", "workflows")),
     PackageDependencyRule(
         "adapters",
         (
+            "_optional",
             "capabilities",
             "control_routes",
             "effects",
@@ -119,6 +121,7 @@ PACKAGE_RULES = (
     PackageDependencyRule(
         "servers",
         (
+            "_optional",
             "adapters",
             "algebra",
             "capabilities",
@@ -155,7 +158,7 @@ PACKAGE_RULES = (
     ),
     PackageDependencyRule("types", ()),
     PackageDependencyRule("verification", ("types",)),
-    PackageDependencyRule("webhook", ("secrets",)),
+    PackageDependencyRule("webhook", ("_optional", "secrets")),
     PackageDependencyRule(
         "webhook_server",
         ("contracts", "secrets", "servers", "webhook"),

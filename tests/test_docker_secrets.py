@@ -5,8 +5,6 @@ import subprocess
 import unittest
 
 from control_plane_kit import (
-    DockerCliClient,
-    DockerEffectInterpreter,
     EffectFailed,
     EffectIdentity,
     EffectRequest,
@@ -25,6 +23,10 @@ from control_plane_kit import (
     SecretProviderId,
     SecretReference,
     SecretValue,
+)
+from control_plane_kit.docker_runtime import (
+    DockerCliClient,
+    DockerEffectInterpreter,
 )
 from control_plane_kit.docker_runtime import (
     DockerOwnership,

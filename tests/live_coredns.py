@@ -11,11 +11,8 @@ import urllib.request
 
 from control_plane_kit import (
     ActivityPlan,
-    CoreDnsConfiguration,
     DeploymentGraph,
     DeploymentRecipe,
-    DnsARecord,
-    DnsName,
     DockerRuntime,
     EffectSucceeded,
     HostPublication,
@@ -26,13 +23,18 @@ from control_plane_kit import (
     StartRuntime,
     StopNode,
     StopRuntime,
-    coredns_block,
     compile_activity_plan,
     compile_recipe,
     diff_graphs,
     effect_request_for_activity,
     materialize_effect_request,
     validate_graph,
+)
+from control_plane_kit.servers import (
+    CoreDnsConfiguration,
+    DnsARecord,
+    DnsName,
+    coredns_block,
 )
 from control_plane_kit.docker_runtime import DockerEffectInterpreter
 

@@ -9,15 +9,12 @@ from __future__ import annotations
 from dataclasses import replace
 
 from control_plane_kit import (
-    AuthenticationMechanism,
-    AuthGatewayPolicy,
     BlockSockets,
     BlockSpec,
     DataBlock,
     DeploymentRecipe,
     DockerPostgresImplementation,
     DockerRuntime,
-    GatewayMethod,
     HttpCheck,
     IdempotencyGatewayPolicy,
     IdempotencyMethod,
@@ -25,9 +22,14 @@ from control_plane_kit import (
     LoadGeneratorPolicy,
     Protocol,
     ProviderSocket,
-    RouteAuthorizationPolicy,
     SocketConnection,
     VerificationContract,
+)
+from control_plane_kit.servers import (
+    AuthGatewayPolicy,
+    AuthenticationMechanism,
+    GatewayMethod,
+    RouteAuthorizationPolicy,
 )
 from control_plane_kit.servers import (
     hello_server_block,

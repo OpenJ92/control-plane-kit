@@ -6,10 +6,8 @@ import subprocess
 import unittest
 
 from control_plane_kit import (
-    DockerCliClient,
-    DockerEffectInterpreter,
-    EffectIdentity,
     EffectFailed,
+    EffectIdentity,
     EffectRequest,
     EffectSucceeded,
     EffectUnsupported,
@@ -21,12 +19,16 @@ from control_plane_kit import (
     MaterializedEffectRequest,
     NodeMaterial,
     PinnedGraphSet,
+    Protocol,
     ReconcileNodeMaterial,
     RuntimeKind,
     RuntimeMaterial,
     SecretReferenceMaterialValue,
-    Protocol,
     Transport,
+)
+from control_plane_kit.docker_runtime import (
+    DockerCliClient,
+    DockerEffectInterpreter,
 )
 from control_plane_kit.docker_runtime import DockerPublishedPort, DockerPortBinding
 from control_plane_kit.docker_runtime import UnsupportedDockerRuntimeFeature

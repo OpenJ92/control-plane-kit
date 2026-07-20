@@ -1,6 +1,13 @@
 from unittest import TestCase, main
 
-from control_plane_kit import CleanupPolicy, DryRunRuntime, RuntimeState, compile_recipe
+from control_plane_kit import (
+    compile_recipe,
+)
+from control_plane_kit.runtimes import (
+    CleanupPolicy,
+    DryRunRuntime,
+    RuntimeState,
+)
 from examples.app_with_postgres import recipe as app_recipe
 
 

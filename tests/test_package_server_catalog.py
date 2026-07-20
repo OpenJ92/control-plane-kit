@@ -4,20 +4,22 @@ import unittest
 
 from control_plane_kit import (
     ApplicationBlock,
-    CapabilityImplementation,
     CapabilityName,
     ControlRouteSetName,
-    DockerRuntime,
     DeploymentRecipe,
+    DockerRuntime,
     GraphDescriptorCodec,
+    PackageServerProduct,
+    UnknownGraphVariant,
+    compile_recipe,
+)
+from control_plane_kit.servers import (
+    CapabilityImplementation,
     ExecutableCapability,
     PACKAGE_SERVER_CONTRACTS,
     PackageServerContract,
-    PackageServerProduct,
     ProductMaturity,
     UnsupportedCapability,
-    UnknownGraphVariant,
-    compile_recipe,
     package_server_contract,
 )
 

@@ -1,6 +1,12 @@
 from unittest import TestCase, main, skipUnless
 
-from control_plane_kit import BlockControlState, CapabilityName, create_block_control_app
+from control_plane_kit import (
+    CapabilityName,
+)
+from control_plane_kit.servers import (
+    BlockControlState,
+    create_block_control_app,
+)
 
 try:
     from fastapi.testclient import TestClient

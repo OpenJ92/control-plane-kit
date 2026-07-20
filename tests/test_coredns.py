@@ -6,9 +6,7 @@ from ipaddress import IPv4Address, IPv6Address
 import unittest
 
 from control_plane_kit import (
-    CapabilityImplementation,
     CapabilityName,
-    CoreDnsConfiguration,
     DeploymentRecipe,
     DiscoveryIdentity,
     DiscoveryLease,
@@ -16,9 +14,6 @@ from control_plane_kit import (
     DiscoveryRegistrationMode,
     DiscoveryRegistrationRecord,
     DiscoveryRegistrationStatus,
-    DnsARecord,
-    DnsAaaaRecord,
-    DnsName,
     DockerRuntime,
     Endpoint,
     EndpointScope,
@@ -30,17 +25,24 @@ from control_plane_kit import (
     Protocol,
     ReconcileNode,
     ReconcileNodeMaterial,
-    coredns_block,
     compile_activity_plan,
     compile_recipe,
-    default_coredns_configuration,
     diff_graphs,
     effect_request_for_activity,
     materialize_effect_request,
+    validate_graph,
+)
+from control_plane_kit.servers import (
+    CapabilityImplementation,
+    CoreDnsConfiguration,
+    DnsARecord,
+    DnsAaaaRecord,
+    DnsName,
+    coredns_block,
+    default_coredns_configuration,
     package_server_contract,
     project_discovery_to_coredns,
     render_coredns_configuration,
-    validate_graph,
 )
 
 

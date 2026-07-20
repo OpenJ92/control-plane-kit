@@ -12,11 +12,13 @@ from urllib.error import HTTPError
 from urllib.request import Request, urlopen
 
 from control_plane_kit import (
+    PackageServerProduct,
+)
+from control_plane_kit.servers import (
     CircuitBreakerPolicy,
     CircuitBreakerState,
     HttpCircuitBreakerServer,
     HttpRetryServer,
-    PackageServerProduct,
     RetryMethodPolicy,
     RetryPolicy,
     RetryStatusPolicy,

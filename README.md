@@ -285,7 +285,9 @@ A compiled graph is still only topology. A runtime interpreter is the boundary
 where topology becomes effects:
 
 ```python
-from control_plane_kit import CleanupPolicy, DockerRuntimeInterpreter, compile_recipe
+from control_plane_kit import compile_recipe
+from control_plane_kit.docker_runtime import DockerRuntimeInterpreter
+from control_plane_kit.runtimes import CleanupPolicy
 from examples.hello_runtime import hello_recipe
 
 graph = compile_recipe(hello_recipe("Hello, runtime!"))

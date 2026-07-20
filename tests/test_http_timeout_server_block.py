@@ -12,10 +12,12 @@ from urllib.error import HTTPError
 from urllib.request import Request, urlopen
 
 from control_plane_kit import (
-    HttpTimeoutServer,
     PackageServerProduct,
-    TimeoutOutcome,
+)
+from control_plane_kit.servers import (
     HttpTimeoutPolicy,
+    HttpTimeoutServer,
+    TimeoutOutcome,
     http_timeout_block,
     http_timeout_command,
 )

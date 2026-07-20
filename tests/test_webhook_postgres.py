@@ -8,8 +8,10 @@ import unittest
 import psycopg
 
 from control_plane_kit import (
-    PostgresWebhookUnitOfWork,
     SecretReference,
+)
+from control_plane_kit.webhook import (
+    PostgresWebhookUnitOfWork,
     WebhookClaim,
     WebhookClaimed,
     WebhookContentType,

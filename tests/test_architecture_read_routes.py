@@ -3,7 +3,9 @@ from __future__ import annotations
 from pathlib import Path
 import unittest
 
-from control_plane_kit import create_instance_read_app
+from control_plane_kit.servers import (
+    create_instance_read_app,
+)
 from tests.architecture import (
     HttpRouteMethod,
     ReadOnlyRoutePolicy,
