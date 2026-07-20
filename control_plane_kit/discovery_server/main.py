@@ -31,9 +31,20 @@ class ServiceDiscoveryEnvironment(EnvironmentContract):
     )
 
 
+def psycopg_connection_string(value: str) -> str:
+    """Interpret graph Postgres URL identity for the direct psycopg driver."""
+
+    prefix = "postgresql+psycopg://"
+    return (
+        "postgresql://" + value[len(prefix) :]
+        if value.startswith(prefix)
+        else value
+    )
+
+
 def main() -> None:
     environment = ServiceDiscoveryEnvironment.from_process()
-    database_url = environment.get("database_url")
+    database_url = psycopg_connection_string(environment.get("database_url"))
     token = environment.get("identity_token")
     port = int(environment.get("port") or "8080")
     if port < 1 or port > 65_535:

@@ -9,6 +9,7 @@ from fastapi.testclient import TestClient
 
 from control_plane_kit import (
     CapabilityName,
+    ControlVariableError,
     DeregisterDiscoveryInstance,
     DiscoveryAuthority,
     DiscoveryIdentity,
@@ -28,6 +29,10 @@ from control_plane_kit import (
     discovery_command_descriptor,
     install_discovery_schema,
     service_discovery_block,
+)
+from control_plane_kit.discovery_server.main import (
+    ServiceDiscoveryEnvironment,
+    psycopg_connection_string,
 )
 from control_plane_kit.implementations import DockerImageImplementation
 from control_plane_kit.discovery_server import (
@@ -71,6 +76,44 @@ class ServiceDiscoveryFastAPITests(PostgresStoreTestCase):
 
         self.assertEqual(client.get("/health").json(), {"status": "healthy"})
         self.assertEqual(client.get("/health/ready").status_code, 503)
+
+    def test_process_boundary_vends_direct_psycopg_dsn_from_graph_identity(
+        self,
+    ) -> None:
+        graph_url = (
+            "postgresql+psycopg://registry:password@runtime-db:5432/discovery"
+        )
+        environment = ServiceDiscoveryEnvironment.from_mapping(
+            {
+                "DISCOVERY_DATABASE_URL": graph_url,
+                "CPK_DISCOVERY_IDENTITY_TOKEN": "attestation",
+            }
+        )
+
+        self.assertEqual(environment.get("database_url"), graph_url)
+        self.assertEqual(
+            psycopg_connection_string(environment.get("database_url")),
+            "postgresql://registry:password@runtime-db:5432/discovery",
+        )
+        for direct in (
+            "postgresql://registry@runtime-db:5432/discovery",
+            "postgres://registry@runtime-db:5432/discovery",
+        ):
+            with self.subTest(direct=direct):
+                self.assertEqual(psycopg_connection_string(direct), direct)
+
+        for invalid in (
+            "mysql://registry@runtime-db/discovery",
+            "postgresql+asyncpg://registry@runtime-db/discovery",
+        ):
+            with self.subTest(invalid=invalid):
+                with self.assertRaises(ControlVariableError):
+                    ServiceDiscoveryEnvironment.from_mapping(
+                        {
+                            "DISCOVERY_DATABASE_URL": invalid,
+                            "CPK_DISCOVERY_IDENTITY_TOKEN": "attestation",
+                        }
+                    )
 
     def test_register_and_resolve_use_scoped_authenticated_service_commands(self) -> None:
         descriptor = discovery_command_descriptor(

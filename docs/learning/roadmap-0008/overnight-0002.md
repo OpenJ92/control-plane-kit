@@ -2703,3 +2703,75 @@ parallel workflow or projection models:                         0
 - #530 must replace the typed synthetic capability provider with real Docker,
   probe, verification, and package-server adapters while retaining all durable
   lifecycle semantics proven here.
+
+## #532 Discovery Postgres Driver-Boundary Interpretation
+
+### Result
+
+Service discovery now accepts the canonical Postgres URL identity produced by
+socket materialization while vending the direct DSN syntax required by
+`psycopg` only at its process boundary:
+
+```python
+def psycopg_connection_string(value: str) -> str:
+    prefix = "postgresql+psycopg://"
+    return (
+        "postgresql://" + value[len(prefix) :]
+        if value.startswith(prefix)
+        else value
+    )
+```
+
+The interpretation is deliberately applied after
+`ServiceDiscoveryEnvironment` validates and vends the graph-supplied value:
+
+```text
+canonical graph identity: postgresql+psycopg://...
+  -> ServiceDiscoveryEnvironment
+    -> discovery process boundary
+      -> direct psycopg DSN: postgresql://...
+```
+
+The graph descriptor, Postgres socket protocol, environment assignment, and
+effect material retain the canonical URL. No durable topology is rewritten to
+fit a particular Python driver.
+
+### Ownership Decision
+
+Discovery retains its own schema, stores, service, and
+`PostgresDiscoveryUnitOfWork`. The tiny interpretation remains local to the
+discovery executable rather than importing webhook code or changing the CPI
+`PostgresUnitOfWork`. Webhook independently owns the equivalent interpretation
+at its process boundary. The shared meaning is the graph URL; direct-driver DSN
+syntax is an adapter concern.
+
+### Executable Laws
+
+- canonical `postgresql+psycopg://` input is preserved by the environment
+  contract and translated only for direct `psycopg` use;
+- already-direct `postgresql://` and `postgres://` DSNs remain unchanged;
+- MySQL and asyncpg URL identities fail at the typed Postgres environment
+  boundary;
+- no secret value is logged, projected, or added to graph data;
+- existing discovery authentication, authorization, readiness, redaction, and
+  capability tests remain unchanged and green.
+
+```text
+focused discovery FastAPI/Postgres module:                    11 passed
+complete Docker/Postgres suite:                            1033 passed
+assertions weakened:                                             0
+skips or mocks added:                                            0
+graph identity changes:                                          0
+shared UnitOfWork changes:                                       0
+```
+
+### Handoff To #530
+
+- use the unchanged canonical topology URL when realizing the heterogeneous
+  service graph;
+- the real discovery container may now connect through its graph-materialized
+  environment without a live-test-only DSN override;
+- retain per-server database and UnitOfWork ownership;
+- exercise the existing `DeploymentProgram`, coordinator, Docker adapters,
+  probes, and semantic verification path rather than introducing an imperative
+  live runner.
