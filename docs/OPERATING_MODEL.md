@@ -15,10 +15,12 @@ roadmap node
   -> roadmap parent issue
     -> ordered child issues
       -> roadmap integration branch
-        -> child PRs
-          -> decision logs
-          -> review
-          -> handoff
+        -> per-child test context
+          -> test-conditioned dry run
+            -> child PRs
+              -> decision logs
+              -> review
+              -> handoff
     -> roadmap PR
       -> closeout
       -> develop
@@ -38,6 +40,26 @@ main
 ```
 
 Child PRs target the roadmap branch. The roadmap branch targets `develop`.
+
+## Before Implementing A Child Issue
+
+```text
+governing frozen/new laws
+  -> translated target tests
+    -> reference green / target red evidence
+      -> source dry run with tests in view
+        -> implementation
+          -> target green
+```
+
+Classify tests as `isomorphic`, `strengthened`, `new-law`, or
+`non-executable-scaffold`. Preserve semantic assertions rather than obsolete
+file layout. Do not use skips, `xfail`, weakened assertions, or imports of the
+frozen implementation to manufacture a passing migration.
+
+The dry run records the governing test identities, expected failures, affected
+boundaries, risks, and any child-child decomposition before application code is
+changed.
 
 ## Before Starting A Roadmap Node
 
@@ -169,4 +191,3 @@ roadmap capstone example
 - or review requires holding too much state in memory.
 
 Prefer smaller topology over heroic PRs.
-

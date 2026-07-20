@@ -103,15 +103,18 @@ When the user asks to execute a roadmap item, use this outer loop:
 3. Produce or update a parent GitHub issue for that roadmap node.
 4. Break the roadmap node into ordered child issues.
 5. Ensure each child issue is reviewable and independently meaningful.
-6. Execute child issues in topological order.
-7. Create one PR per child issue unless the user explicitly asks for a larger
+6. Establish each child's test context before its source dry run.
+7. Dry-run each child against that test context and refine or split the issue
+   when the evidence requires it.
+8. Execute child issues in topological order.
+9. Create one PR per child issue unless the user explicitly asks for a larger
    batch.
-8. Review the PR before moving on.
-9. Run explicit hardening passes when the roadmap surface is broad enough to
+10. Review the PR before moving on.
+11. Run explicit hardening passes when the roadmap surface is broad enough to
    warrant them.
-10. Leave handoff comments from completed child issues to dependent child issues.
-11. Summarize the roadmap node on the parent issue when complete.
-12. Move to the next roadmap node only after the current node is coherent on
+12. Leave handoff comments from completed child issues to dependent child issues.
+13. Summarize the roadmap node on the parent issue when complete.
+14. Move to the next roadmap node only after the current node is coherent on
     develop.
 ```
 
@@ -186,27 +189,91 @@ docs/learning/<roadmap-id>/run-<nnnn>.md
 Those documents are the memory layer for future roadmap executions. Read the
 relevant learning documents before retrying or extending a roadmap.
 
+## Test Context Before Dry Run
+
+Tests guide the dry run; they are not added after implementation merely to
+confirm the shape already chosen.
+
+Before the source-level dry run for every non-trivial child issue:
+
+```text
+select governing test laws
+  -> translate target tests
+    -> run and record reference green / target red evidence
+      -> dry-run source and architecture with those tests in view
+        -> refine issue topology
+          -> implement
+```
+
+Classify every governing test as one of:
+
+```text
+isomorphic
+  translated frozen behavior; assertions and negative cases are preserved
+
+strengthened
+  frozen behavior plus a stricter law justified by review
+
+new-law
+  behavior introduced by a roadmap, ADR, security rule, or new public contract
+
+non-executable-scaffold
+  documentation or repository setup with an explicit validation contract
+```
+
+`deferred` is a parity-ledger state for work outside the current migration
+boundary. It is not a way to avoid tests for an issue being executed.
+
+For migration work, use the parity manifest to select the frozen tests owned by
+the issue. Translate setup, imports, fixtures, and public constructors as needed,
+but preserve the tested law. Blind file copying is not required, and preserving
+obsolete implementation structure is not a goal.
+
+Put translated tests on the issue branch before implementation. Run them and
+record the expected failures caused by genuinely missing target behavior. The
+red test commit or equivalent immutable evidence belongs in the issue/PR
+decision log. Do not merge failing tests, add `xfail`, skip collection, weaken
+assertions, or point translated tests back at the frozen implementation.
+
+The subsequent dry run must state:
+
+- which tests and law identities govern the issue;
+- what already passes and why;
+- what fails because behavior is genuinely absent;
+- what application modules and boundaries must change;
+- what architecture, security, data, and effect risks the tests expose;
+- whether the issue needs child-child decomposition; and
+- which additional strengthened or new-law tests are required.
+
+Only after that dry run should implementation begin. The final PR shows the
+same target tests green and runs the broader package/parity suites required by
+the issue.
+
 ## Issue Execution Loop
 
 For each child issue, use this inner loop:
 
 ```text
 1. Re-read the child issue and parent roadmap issue.
-2. Inspect the relevant source before planning.
-3. State the implementation plan in the issue or PR when useful.
-4. Create a feature branch from develop.
-5. Implement the smallest coherent vertical.
-6. Add or update tests.
-7. Update examples/docs when public behavior changes.
-8. Run validation.
-9. Open a PR into develop.
-10. Perform a code-review pass on the PR.
-11. Add a hardening PR when review shows the implementation surface needs
+2. Select and classify the governing frozen, strengthened, new-law, or scaffold
+   test context.
+3. Create a feature branch from develop.
+4. Translate or write the target tests before implementation.
+5. Run reference-green and target-red validation and record the evidence.
+6. Inspect and dry-run the relevant source with that test context in view.
+7. Refine or split the issue when the dry run exposes a wider topology.
+8. State the implementation plan in the issue or PR when useful.
+9. Implement the smallest coherent vertical until the target tests pass.
+10. Update examples/docs when public behavior changes.
+11. Run focused, package, parity, and live validation required by the issue.
+12. Open a PR into develop.
+13. Perform a code-review pass on the PR.
+14. Add a hardening PR when review shows the implementation surface needs
     additional edge tests, security checks, data checks, or adapter consistency
     checks.
-12. Leave a PR decision log.
-13. Merge only when checks pass and the result is coherent.
-14. Leave handoff comments for dependent issues.
+15. Leave a PR decision log, including test provenance and red-to-green evidence.
+16. Merge only when checks pass and the result is coherent.
+17. Leave handoff comments for dependent issues.
 ```
 
 The issue loop should preserve topological order. If issue B depends on a

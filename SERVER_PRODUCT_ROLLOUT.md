@@ -1005,6 +1005,46 @@ differential tests may run the frozen reference and extracted system in
 separate Docker containers, collect canonical result descriptors, normalize
 only approved incidental fields, and compare them from the neutral harness.
 
+### Per-issue test context and dry run
+
+Every implementation child begins with tests, not source changes:
+
+```text
+parity manifest and governing laws
+  -> translate target tests
+    -> record reference green / target red
+      -> dry-run the issue with those tests in view
+        -> refine topology
+          -> implement to green
+```
+
+The existing AGENTS.md issue and PR loop remains authoritative. This phase is
+inserted before its implementation dry run; it does not replace issue branches,
+PR review, hardening, decision logs, handoffs, or milestone stops.
+
+For migration issues, translated tests preserve the frozen behavior's semantic
+assertions and negative cases while changing imports, fixtures, and constructors
+to the new public package. For genuinely new behavior, tests derive from the
+rollout, ADR, security policy, or new public contract and are classified as
+`new-law`. Strengthened tests retain the frozen law and add a separately
+justified invariant. Documentation and repository scaffolds use an explicit
+`non-executable-scaffold` validation contract.
+
+The red target evidence must prove missing target behavior rather than a broken
+test harness. It is recorded on the issue branch before implementation and is
+never merged as a failing test. Tests must not be skipped, marked `xfail`,
+weakened, pointed back at the frozen implementation, or hidden from collection.
+
+Each issue dry run reports:
+
+- governing reference tests and law identities;
+- classification and target test locations;
+- reference-green and target-red evidence;
+- affected modules and ownership boundaries;
+- architecture, security, data, and effect risks exposed by the tests;
+- required child-child issues;
+- and the focused, package, parity, and live suites needed for green closeout.
+
 ### Live demonstration parity
 
 Every reference live script and documented demo receives an acceptance entry:
@@ -1398,7 +1438,7 @@ At every gate:
 The bootstrap issue topology was created in the frozen coordination repository
 on 2026-07-20 because the target repositories do not exist yet. Root issue
 [#594](https://github.com/OpenJ92/control-plane-kit/issues/594) owns seven
-mandatory milestone parents and 67 implementation, review, and closeout
+mandatory milestone parents and 69 implementation, review, and closeout
 children:
 
 ```text
@@ -1416,11 +1456,11 @@ evidence, stop conditions, and attached sub-issues. The child ranges are:
 
 ```text
 #595 -> #602-#609
-#596 -> #610-#619
+#596 -> #610-#619 plus #677 test-context rehearsal
 #597 -> #620-#629
 #598 -> #630-#642
 #599 -> #643-#648
-#600 -> #649-#658
+#600 -> #649-#658 plus #678 Hello test translation
 #601 -> #659-#668
 ```
 
@@ -1444,6 +1484,11 @@ the parent topology and this section in the same coordination PR.
 The core topology completes and stops at #648 before #649 creates the server
 repository. The Hello live proof in #658 is the first product-level
 cross-repository gate. Full system acceptance begins at #659.
+
+The first core source migration is blocked by #677, which rehearses
+reference-green and target-red evidence before the source dry run. Hello
+descriptor and image implementation are blocked by #678, which translates the
+complete Hello test context before either implementation begins.
 
 Post-bootstrap Gates 3-9 are preserved separately under deferred parent
 [#669](https://github.com/OpenJ92/control-plane-kit/issues/669):
