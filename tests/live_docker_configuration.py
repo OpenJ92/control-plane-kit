@@ -9,7 +9,6 @@ from control_plane_kit import (
     ActivityId,
     ConfigurationFileMode,
     ConfigurationMediaType,
-    ConfigurationTemplate,
     EffectIdentity,
     EffectRequest,
     EffectSucceeded,
@@ -28,6 +27,7 @@ from control_plane_kit import (
     StopNode,
     StopRuntime,
 )
+from control_plane_kit.interpreters.configuration_rendering import ConfigurationTemplate
 from control_plane_kit.docker_runtime import DockerEffectInterpreter
 
 

@@ -6,6 +6,8 @@ import unittest
 from control_plane_kit import (
     ConfigurationArtifactError,
     ConfigurationMediaType,
+)
+from control_plane_kit.interpreters.configuration_rendering import (
     ConfigurationRenderingError,
     ConfigurationTemplate,
     ConfigurationTemplateRenderError,

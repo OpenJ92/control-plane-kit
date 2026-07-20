@@ -26,12 +26,12 @@ OPERATIONAL_ROOTS = (
 OPTIONAL_DEPENDENCIES = ("fastapi", "httpx", "psycopg", "uvicorn")
 PURE_PACKAGE_ROOTS = (
     "core",
-    "configuration_rendering",
     "contracts",
     "domains",
     "effects",
     "execution",
     "implementations",
+    "interpreters",
     "saga",
     "scheduling",
 )
