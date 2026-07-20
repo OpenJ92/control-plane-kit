@@ -26,7 +26,7 @@ from control_plane_kit.core.configuration import (
     ConfigurationFileMode,
     ConfigurationMediaType,
 )
-from control_plane_kit.configuration_rendering import ConfigurationTemplate
+from control_plane_kit.interpreters.configuration_rendering import ConfigurationTemplate
 from control_plane_kit.domains.discovery import (
     DiscoveryRegistrationRecord,
     DiscoveryRegistrationStatus,

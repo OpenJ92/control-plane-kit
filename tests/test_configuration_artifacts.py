@@ -11,7 +11,6 @@ from control_plane_kit import (
     ConfigurationArtifactError,
     ConfigurationFileMode,
     ConfigurationMediaType,
-    ConfigurationTemplate,
     DEFAULT_GRAPH_CODEC,
     DeploymentGraph,
     DeploymentRecipe,
@@ -29,6 +28,7 @@ from control_plane_kit import (
     materialize_effect_request,
     validate_graph,
 )
+from control_plane_kit.interpreters.configuration_rendering import ConfigurationTemplate
 from control_plane_kit.core.topology import FieldSubject, ModifiedChange
 
 

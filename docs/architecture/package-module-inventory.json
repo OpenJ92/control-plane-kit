@@ -19,13 +19,6 @@
         "SecretDeliveriesValue",
         "ConfigurationFileMode",
         "ConfigurationMediaType",
-        "ConfigurationParameters",
-        "ConfigurationRenderingError",
-        "ConfigurationScalar",
-        "ConfigurationTemplate",
-        "ConfigurationTemplateRenderError",
-        "ConfigurationTemplateSyntaxError",
-        "ConfigurationValue",
         "BlockFamily",
         "BlockSpec",
         "BlockSpecValue",
@@ -239,7 +232,6 @@
         "control_plane_kit.core.algebra",
         "control_plane_kit.core.capabilities",
         "control_plane_kit.core.configuration",
-        "control_plane_kit.configuration_rendering",
         "control_plane_kit.contracts",
         "control_plane_kit.core.control_routes",
         "control_plane_kit.domains.discovery",
@@ -281,7 +273,7 @@
         "control_plane_kit.application.deploy.stages",
         "control_plane_kit.application.deploy.values",
         "control_plane_kit.core.capabilities",
-        "control_plane_kit.configuration_rendering",
+        "control_plane_kit.interpreters.configuration_rendering",
         "control_plane_kit.domains.discovery",
         "control_plane_kit.discovery_registry",
         "control_plane_kit.discovery_registry.postgres",
@@ -556,6 +548,41 @@
         "package-surface"
       ],
       "source": "control_plane_kit/__init__.py"
+    },
+    {
+      "canonical_public_exports": [
+        "ConfigurationParameters",
+        "ConfigurationRenderingError",
+        "ConfigurationScalar",
+        "ConfigurationTemplate",
+        "ConfigurationTemplateRenderError",
+        "ConfigurationTemplateSyntaxError",
+        "ConfigurationValue"
+      ],
+      "destination": "control_plane_kit.interpreters",
+      "internal_dependencies": [
+        "control_plane_kit.interpreters.configuration_rendering"
+      ],
+      "known_package_consumers": [],
+      "migration_prerequisites": [
+        "#550",
+        "#556"
+      ],
+      "module": "control_plane_kit.interpreters",
+      "motivation": "Provides explicit entrances for representational and external-effect interpreters without importing products or operations.",
+      "movement": "remain",
+      "optional_external_dependencies": [],
+      "owner": "interpreter",
+      "protecting_tests": [
+        "tests/test_architecture_dependencies.py",
+        "tests/test_package_inventory.py",
+        "tests/test_package_structure.py"
+      ],
+      "role": "package-entrance",
+      "semantic_roles": [
+        "transformations"
+      ],
+      "source": "control_plane_kit/interpreters/__init__.py"
     },
     {
       "canonical_public_exports": [
@@ -1357,7 +1384,6 @@
         "control_plane_kit.core.configuration"
       ],
       "known_package_consumers": [
-        "control_plane_kit",
         "control_plane_kit.servers.coredns",
         "control_plane_kit.servers.opentelemetry_collector"
       ],
@@ -1366,9 +1392,9 @@
         "#551",
         "#556"
       ],
-      "module": "control_plane_kit.configuration_rendering",
+      "module": "control_plane_kit.interpreters.configuration_rendering",
       "motivation": "Interprets typed values into rendering, transport, probing, Docker, or another external effect.",
-      "movement": "move",
+      "movement": "remain",
       "optional_external_dependencies": [
         "jinja2",
         "jinja2.sandbox"
@@ -1385,7 +1411,7 @@
         "transformations",
         "values"
       ],
-      "source": "control_plane_kit/configuration_rendering.py"
+      "source": "control_plane_kit/interpreters/configuration_rendering.py"
     },
     {
       "canonical_public_exports": [
@@ -1637,7 +1663,7 @@
       "internal_dependencies": [],
       "known_package_consumers": [
         "control_plane_kit",
-        "control_plane_kit.configuration_rendering",
+        "control_plane_kit.interpreters.configuration_rendering",
         "control_plane_kit.docker_runtime",
         "control_plane_kit.effects.material",
         "control_plane_kit.implementations",
@@ -5447,7 +5473,7 @@
         "control_plane_kit.core.algebra",
         "control_plane_kit.core.capabilities",
         "control_plane_kit.core.configuration",
-        "control_plane_kit.configuration_rendering",
+        "control_plane_kit.interpreters.configuration_rendering",
         "control_plane_kit.domains.discovery",
         "control_plane_kit.implementations",
         "control_plane_kit.core.types",
@@ -6638,7 +6664,7 @@
         "control_plane_kit.core.algebra",
         "control_plane_kit.core.capabilities",
         "control_plane_kit.core.configuration",
-        "control_plane_kit.configuration_rendering",
+        "control_plane_kit.interpreters.configuration_rendering",
         "control_plane_kit.implementations",
         "control_plane_kit.core.secrets",
         "control_plane_kit.core.types",

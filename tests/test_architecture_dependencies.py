@@ -34,7 +34,6 @@ PACKAGE_RULES = (
     PackageDependencyRule("cli", ()),
     PackageDependencyRule("core", ()),
     PackageDependencyRule("contracts", ()),
-    PackageDependencyRule("configuration_rendering", ("core",)),
     PackageDependencyRule("domains", ("core",)),
     PackageDependencyRule(
         "discovery_registry", ("core", "domains")
@@ -65,6 +64,7 @@ PACKAGE_RULES = (
             "core",
         ),
     ),
+    PackageDependencyRule("interpreters", ("core",)),
     PackageDependencyRule(
         "idempotency_gateway", ("adapters", "contracts", "domains", "servers")
     ),
@@ -92,7 +92,7 @@ PACKAGE_RULES = (
             "adapters",
             "core",
             "contracts",
-            "configuration_rendering",
+            "interpreters",
             "domains",
             "implementations",
             "read_services",
@@ -155,7 +155,7 @@ TEMPLATE_ENGINE_POLICY = ImportOwnershipPolicy(
         ImportOwner(
             "jinja2",
             (
-                "control_plane_kit.configuration_rendering",
+                "control_plane_kit.interpreters.configuration_rendering",
                 "control_plane_kit.servers._templates",
             ),
         ),
@@ -286,8 +286,8 @@ class ArchitectureDependencyTests(unittest.TestCase):
         )
         renderer = analyze_source(
             "from jinja2.sandbox import ImmutableSandboxedEnvironment\n",
-            path="control_plane_kit/configuration_rendering.py",
-            module="control_plane_kit.configuration_rendering",
+            path="control_plane_kit/interpreters/configuration_rendering.py",
+            module="control_plane_kit.interpreters.configuration_rendering",
         )
 
         findings = evaluate_policies((product, renderer), (TEMPLATE_ENGINE_POLICY,))

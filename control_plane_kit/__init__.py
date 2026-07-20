@@ -32,15 +32,6 @@ from control_plane_kit.core.configuration import (
     ConfigurationFileMode,
     ConfigurationMediaType,
 )
-from control_plane_kit.configuration_rendering import (
-    ConfigurationParameters,
-    ConfigurationRenderingError,
-    ConfigurationScalar,
-    ConfigurationTemplate,
-    ConfigurationTemplateRenderError,
-    ConfigurationTemplateSyntaxError,
-    ConfigurationValue,
-)
 from control_plane_kit.core.secrets import (
     CredentialReference,
     LocalDevelopmentSecretResolver,
@@ -522,13 +513,6 @@ __all__ = [
     "SecretDeliveriesValue",
     "ConfigurationFileMode",
     "ConfigurationMediaType",
-    "ConfigurationParameters",
-    "ConfigurationRenderingError",
-    "ConfigurationScalar",
-    "ConfigurationTemplate",
-    "ConfigurationTemplateRenderError",
-    "ConfigurationTemplateSyntaxError",
-    "ConfigurationValue",
     "BlockFamily",
     "BlockSpec",
     "BlockSpecValue",

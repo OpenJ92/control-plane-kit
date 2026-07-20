@@ -1,4 +1,4 @@
-"""Pure strict rendering of typed product configuration into artifacts."""
+"""Interpret typed product configuration as immutable artifacts."""
 
 from __future__ import annotations
 
