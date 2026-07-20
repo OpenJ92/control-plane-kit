@@ -62,6 +62,30 @@ new kernel preserves the established public vocabulary. The frozen reference
 distribution and the new core distribution must not be installed together;
 the reference repository is historical, not a compatibility dependency.
 
+The dependency direction is:
+
+```text
+control-plane-kit-core
+  <- control-plane-kit-servers
+  <- application-owned product packages
+```
+
+Core contains the complete generic deployment pipeline without references to
+Hello, CoreDNS, PgBouncer, webhook delivery, Pottery Factory, or any other
+server identity. Server packages may consume core in two deliberate ways:
+
+```text
+authoring dependency
+  Python constructors and validators emit the canonical product descriptor
+
+optional runtime dependency
+  a CPK-aware image uses authenticated control-route helpers
+```
+
+Neither dependency is mandatory for a non-Python or CPK-unaware application.
+Core consumes admitted language-neutral descriptors; it never imports the
+server catalogue or discovers products by importing arbitrary modules.
+
 ### Initial workload constraint
 
 ```text
@@ -378,7 +402,10 @@ or a default server catalogue.
 
 ### Server repository
 
-Products are grouped by product, not by file type:
+Each server is one self-contained product vertical. Its descriptor,
+configuration language, internal domain, durable operations, protocol
+adapters, process source, Dockerfile, templates, and tests remain under one
+owning directory:
 
 ```text
 control-plane-kit-servers/
@@ -395,6 +422,8 @@ control-plane-kit-servers/
       hello/
         product.cpk.json
         declaration.py
+        language.py
+        verification.py
         image/
           Dockerfile
           src/
@@ -403,7 +432,9 @@ control-plane-kit-servers/
       coredns/
         product.cpk.json
         declaration.py
-        configuration/
+        language.py
+        verification.py
+        templates/
           Corefile.j2
           zone.j2
         tests/
@@ -411,39 +442,52 @@ control-plane-kit-servers/
       pgbouncer/
         product.cpk.json
         declaration.py
+        language.py
+        verification.py
+        adapters/
+          admin.py
         image/
           Dockerfile
-        configuration/
+        templates/
           pgbouncer.ini.j2
         tests/
 
-    domains/
-      discovery/
-      webhook/
-      idempotency/
-      load_generation/
-
-    operations/
-      discovery/
-      webhook/
-      idempotency/
-
-    interpreters/
-      webhook_http/
-      pgbouncer_admin/
-
-    entrypoints/
-      discovery_server/
-      webhook_server/
-      idempotency_gateway/
+      webhook_delivery/
+        product.cpk.json
+        declaration.py
+        language.py
+        verification.py
+        domain/
+          commands.py
+          events.py
+          state.py
+          codec.py
+        operations/
+          service.py
+          stores.py
+          unit_of_work.py
+        adapters/
+          outbound_http.py
+        image/
+          Dockerfile
+          app.py
+          bootstrap.py
+        tests/
 ```
 
-The descriptor and implementation are separated inside one product directory:
+The descriptor and implementation are separated inside one product directory,
+not separated from the product itself:
 
 ```text
 products/<product>/product.cpk.json
+products/<product>/declaration.py
+products/<product>/language.py
+products/<product>/verification.py
 products/<product>/image/
-products/<product>/configuration/
+products/<product>/templates/
+products/<product>/domain/        # only when the product owns a real language
+products/<product>/operations/    # only when the product owns durable truth
+products/<product>/adapters/      # only for product-specific effects
 products/<product>/tests/
 ```
 
@@ -454,6 +498,39 @@ inconsistently.
 An integration backed by an upstream image may omit `image/`. It still pins an
 admitted image digest and owns configuration, sockets, capability evidence,
 and verification. A CPK-authored server includes its source and Dockerfile.
+
+The package-level catalogue only assembles completed product declarations:
+
+```python
+from .products.coredns import COREDNS_PRODUCT
+from .products.pgbouncer import PGBOUNCER_PRODUCT
+from .products.webhook_delivery import WEBHOOK_DELIVERY_PRODUCT
+
+PRODUCTS = (
+    COREDNS_PRODUCT,
+    PGBOUNCER_PRODUCT,
+    WEBHOOK_DELIVERY_PRODUCT,
+)
+```
+
+Shared support is extracted only after at least two products demonstrate a
+genuine common language or interpreter. Physical similarity alone is not
+enough to split one product across global `domains`, `operations`,
+`interpreters`, or `entrypoints` folders.
+
+The local ownership law is:
+
+```text
+one server product
+  -> one owning directory
+    -> descriptor
+    -> typed declaration
+    -> configuration and verification
+    -> optional internal language and operations
+    -> optional product-specific adapters
+    -> image source or pinned upstream image
+    -> complete tests
+```
 
 ### Cross-repository test repository
 
@@ -890,7 +967,7 @@ capability, socket, verification, and scenario behavior.
 
 ### Gate 5: Domain-Backed Products
 
-Move product-specific interiors deliberately:
+Move each product-specific interior into its owning product directory:
 
 ```text
 service discovery
@@ -904,16 +981,20 @@ TCP switch
 Each substantial product preserves:
 
 ```text
-product exterior
-domain language
-durable operations
-effect interpreters
-process entrypoint
-OCI image
+products/<product>/
+  product.cpk.json
+  declaration.py
+  domain/
+  operations/
+  adapters/
+  image/
+  tests/
 ```
 
-Core retains only behavior genuinely required by generic control-plane
-operations.
+Not every directory is required for every product. A directory exists only
+when the product owns that concern. Core retains only behavior genuinely
+required by generic control-plane operations, and the server repository does
+not create global product-internal domain or operation drawers.
 
 ### Gate 6: Remaining Product Catalogue
 
@@ -1060,7 +1141,7 @@ Suggested server children:
 
 ```text
 1. Establish server repository and package boundaries
-2. Establish per-product directory convention
+2. Establish and architecture-test the one-product-one-directory convention
 3. Establish public image build and GHCR publication
 4. Define public descriptor catalogue and publication
 5. Implement Hello descriptor
@@ -1074,6 +1155,19 @@ Suggested server children:
 The core topology precedes the server topology wherever the server package
 consumes a new descriptor or catalogue law. The Hello live proof is the first
 cross-repository gate.
+
+Server architecture policy must reject:
+
+- product-specific domain modules outside their owning product directory;
+- product-specific stores or services outside their owning product directory;
+- product-specific runtime adapters hidden in generic interpreter packages;
+- product applications imported eagerly by the public catalogue;
+- imports from one product's internals into another product;
+- and a shared helper extraction supported by only one product.
+
+The public catalogue may import each product's lightweight declaration
+entrance. It must not import image applications, stores, network clients, or
+process bootstrap.
 
 ## Definition Of Success
 
