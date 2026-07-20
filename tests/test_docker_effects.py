@@ -14,6 +14,7 @@ from control_plane_kit import (
     EffectSucceeded,
     EffectUnsupported,
     EnvironmentBindingMaterial,
+    EnvironmentMaterialSource,
     HostPublicationMaterial,
     ImplementationMaterial,
     LiteralMaterialValue,
@@ -212,6 +213,8 @@ class DockerEffectTests(unittest.TestCase):
                     EnvironmentBindingMaterial(
                         "API_TOKEN",
                         SecretReferenceMaterialValue("secret://api/token"),
+                        EnvironmentMaterialSource.SECRET_REFERENCE,
+                        "secret://api/token",
                     ),
                 ),
             ),
@@ -517,7 +520,11 @@ def _runtime() -> RuntimeMaterial:
 
 def _node(*, mode: str = "live") -> NodeMaterial:
     environment = (
-        EnvironmentBindingMaterial("MODE", LiteralMaterialValue(mode)),
+        EnvironmentBindingMaterial(
+            "MODE",
+            LiteralMaterialValue(mode),
+            EnvironmentMaterialSource.PUBLIC_STATIC,
+        ),
     )
     return NodeMaterial(
         "api",

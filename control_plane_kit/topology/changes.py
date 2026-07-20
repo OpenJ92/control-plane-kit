@@ -8,6 +8,10 @@ from typing import Mapping, TypeAlias
 
 from control_plane_kit.algebra import BlockSockets, BlockSpec
 from control_plane_kit.configuration import ConfigurationArtifact
+from control_plane_kit.environment import (
+    PublicStaticEnvironmentBinding,
+    SocketDerivedEnvironmentBinding,
+)
 from control_plane_kit.secrets import SecretDelivery, secret_delivery_sort_key
 from control_plane_kit.topology.graph import (
     Edge,
@@ -46,7 +50,8 @@ class StructuralField(StrEnum):
     RUNTIME_MEMBERSHIP = "runtime-membership"
     SOCKET_CONTRACT = "socket-contract"
     ENDPOINT = "endpoint"
-    ENVIRONMENT = "environment"
+    PUBLIC_ENVIRONMENT = "public-environment"
+    SOCKET_ENVIRONMENT = "socket-environment"
     NODE_METADATA = "node-metadata"
     CONFIGURATION_ARTIFACTS = "configuration-artifacts"
     SECRET_DELIVERIES = "secret-deliveries"
@@ -102,11 +107,26 @@ class MetadataValue:
 
 
 @dataclass(frozen=True)
-class EnvironmentValue:
-    values: Mapping[str, str]
+class EnvironmentBindingsValue:
+    values: tuple[
+        PublicStaticEnvironmentBinding | SocketDerivedEnvironmentBinding,
+        ...,
+    ]
 
-    def descriptor(self) -> dict[str, str]:
-        return {name: _REDACTED for name in sorted(self.values)}
+    def descriptor(self) -> list[dict[str, str]]:
+        return [
+            {
+                "kind": value.descriptor()["kind"],
+                "name": value.name,
+                "value": _REDACTED,
+                **(
+                    {"edge_id": value.edge_id}
+                    if isinstance(value, SocketDerivedEnvironmentBinding)
+                    else {}
+                ),
+            }
+            for value in sorted(self.values, key=lambda item: item.name)
+        ]
 
 
 @dataclass(frozen=True)
@@ -214,7 +234,9 @@ class NodeValue:
                 name: EndpointValue(endpoint).descriptor()
                 for name, endpoint in sorted(self.node.endpoints.items())
             },
-            "environment": EnvironmentValue(self.node.environment).descriptor(),
+            "environment_bindings": EnvironmentBindingsValue(
+                self.node.public_environment + self.node.socket_environment
+            ).descriptor(),
             "metadata": _redact_mapping(self.node.metadata),
             "lifecycle": self.node.lifecycle.descriptor(),
             "configuration_artifacts": ConfigurationArtifactsValue(
@@ -243,9 +265,9 @@ class EdgeValue:
             },
             "protocol": self.edge.protocol.descriptor(),
             "binding": self.edge.binding.value,
-            "env_assignments": EnvironmentValue(
-                self.edge.env_assignments
-            ).descriptor(),
+            "env_assignments": {
+                name: _REDACTED for name in sorted(self.edge.env_assignments)
+            },
         }
 
 
@@ -253,7 +275,7 @@ DiffValue: TypeAlias = (
     TextValue
     | StringTupleValue
     | MetadataValue
-    | EnvironmentValue
+    | EnvironmentBindingsValue
     | ConfigurationArtifactsValue
     | SecretDeliveriesValue
     | EndpointValue

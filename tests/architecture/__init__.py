@@ -25,6 +25,7 @@ from tests.architecture.source import (
 )
 from tests.architecture.policies import (
     CallOwner,
+    CallKeywordMappingKeyPolicy,
     CallKeywordShapePolicy,
     CallOwnershipPolicy,
     CommitOwnershipPolicy,
@@ -56,6 +57,7 @@ __all__ = [
     "BooleanAssertionFact",
     "CallFact",
     "CallKeywordShapePolicy",
+    "CallKeywordMappingKeyPolicy",
     "ClassFact",
     "CallOwner",
     "CallOwnershipPolicy",

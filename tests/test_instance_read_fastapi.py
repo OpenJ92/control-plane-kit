@@ -54,7 +54,14 @@ class InstanceReadFastAPITests(PostgresStoreTestCase):
 
         self.assertEqual(workspace["workspace"]["workspace_id"], "workspace-a")
         self.assertEqual(current["graph_name"], "control-surface")
-        self.assertEqual(current["graph_descriptor"]["nodes"]["api-router"]["environment"], "<redacted>")
+        bindings = current["graph_descriptor"]["nodes"]["api-router"]["environment_bindings"]
+        self.assertTrue(bindings)
+        self.assertTrue(
+            all(
+                binding["value"] == "<redacted>"
+                for binding in bindings
+            )
+        )
         self.assertNotIn("http://api-v1", str(current))
 
     def test_projection_routes_delegate_to_read_service(self):

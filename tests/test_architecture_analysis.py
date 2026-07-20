@@ -36,6 +36,8 @@ class ArchitectureAnalysisTests(unittest.TestCase):
                 "values": ExpressionShape.TUPLE,
             },
         )
+        mapping = next(value for value in facts.calls[0].keyword_arguments if value.name == "mapping")
+        self.assertEqual(mapping.literal_mapping_keys, ("secret",))
 
     def test_import_aliases_calls_decorators_and_locations_are_resolved(self) -> None:
         facts = analyze_source(

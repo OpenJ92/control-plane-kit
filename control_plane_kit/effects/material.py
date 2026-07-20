@@ -11,6 +11,10 @@ from urllib.parse import urlsplit
 
 from control_plane_kit.lifecycle import OWNED_EPHEMERAL, ResourceLifecycle
 from control_plane_kit.configuration import ConfigurationArtifact
+from control_plane_kit.environment import (
+    PublicStaticEnvironmentBinding,
+    SocketDerivedEnvironmentBinding,
+)
 from control_plane_kit.secrets import (
     SecretEnvironmentDelivery,
     SecretFileDelivery,
@@ -53,9 +57,6 @@ from control_plane_kit.verification import (
     VerificationContract,
     expected_protocols,
 )
-
-
-_SECRET_MARKERS = ("secret", "token", "password", "credential", "private_key", "api_key")
 
 
 class MaterializationCode(StrEnum):
@@ -105,10 +106,19 @@ class SecretReferenceMaterialValue:
 EnvironmentMaterialValue: TypeAlias = LiteralMaterialValue | SecretReferenceMaterialValue
 
 
+class EnvironmentMaterialSource(StrEnum):
+    PUBLIC_STATIC = "public-static"
+    SOCKET_DERIVED = "socket-derived"
+    SECRET_REFERENCE = "secret-reference"
+    SECRET_FILE_PATH = "secret-file-path"
+
+
 @dataclass(frozen=True, order=True)
 class EnvironmentBindingMaterial:
     name: str
     value: EnvironmentMaterialValue
+    source: EnvironmentMaterialSource
+    source_id: str | None = None
 
 
 @dataclass(frozen=True, order=True)
@@ -601,7 +611,7 @@ def _node_material(graph: DeploymentGraph, node_id: str) -> NodeMaterial:
         runtime,
         _implementation_material(node, graph),
         tuple(_endpoint_material(name, endpoint) for name, endpoint in sorted(node.endpoints.items())),
-        _environment_material(node.environment, node=node, graph=graph),
+        _socket_environment_material(node.socket_environment, node=node, graph=graph),
         node.block_spec.health_path,
         node.lifecycle,
         node.block_spec.verification,
@@ -665,7 +675,15 @@ def _edge_material(graph: DeploymentGraph, edge_id: str) -> SocketConnectionMate
         _endpoint_material(edge.provider_socket, endpoint),
         consumer.node_id,
         edge.requirement_socket,
-        _environment_material(edge.env_assignments, endpoint=endpoint),
+        tuple(
+            EnvironmentBindingMaterial(
+                name,
+                _endpoint_environment_value(value, endpoint),
+                EnvironmentMaterialSource.SOCKET_DERIVED,
+                edge.edge_id,
+            )
+            for name, value in sorted(edge.env_assignments.items())
+        ),
     )
 
 
@@ -676,12 +694,13 @@ def _implementation_material(node: Node, graph: DeploymentGraph) -> Implementati
     command_value = metadata.get("command", ())
     if not isinstance(command_value, (list, tuple)) or not all(isinstance(value, str) for value in command_value):
         raise _malformed("command")
-    static_environment = metadata.get("environment", {})
-    if not isinstance(static_environment, Mapping) or not all(
-        isinstance(key, str) for key in static_environment
-    ):
-        raise _malformed("environment")
-    environment = {**dict(static_environment), **dict(node.environment)}
+    if "environment" in metadata:
+        raise EffectMaterializationError(
+            MaterializationCode.SECRET_VALUE,
+            "implementation metadata must not contain environment values",
+        )
+    environment = list(_public_environment_material(node.public_environment))
+    environment.extend(_socket_environment_material(node.socket_environment, node=node, graph=graph))
     mounts_value = metadata.get("data_mounts", ())
     if not isinstance(mounts_value, (list, tuple)):
         raise _malformed("data_mounts")
@@ -744,7 +763,6 @@ def _implementation_material(node: Node, graph: DeploymentGraph) -> Implementati
         [value for value in publications if value.host_port is not None]
     ):
         raise _malformed("host_publications")
-    environment = list(_environment_material(environment, node=node, graph=graph))
     secret_files: list[SecretFileMaterial] = []
     for delivery in node.secret_deliveries:
         match delivery:
@@ -753,6 +771,8 @@ def _implementation_material(node: Node, graph: DeploymentGraph) -> Implementati
                     EnvironmentBindingMaterial(
                         name,
                         SecretReferenceMaterialValue(reference.reference_id),
+                        EnvironmentMaterialSource.SECRET_REFERENCE,
+                        reference.reference_id,
                     )
                 )
             case SecretFileDelivery(
@@ -774,6 +794,8 @@ def _implementation_material(node: Node, graph: DeploymentGraph) -> Implementati
                         EnvironmentBindingMaterial(
                             path_binding.environment_name,
                             LiteralMaterialValue(target_path),
+                            EnvironmentMaterialSource.SECRET_FILE_PATH,
+                            reference.reference_id,
                         )
                     )
     if len({value.name for value in environment}) != len(environment):
@@ -791,45 +813,49 @@ def _implementation_material(node: Node, graph: DeploymentGraph) -> Implementati
     )
 
 
-def _environment_material(
-    values: Mapping[str, object],
+def _public_environment_material(
+    values: tuple[PublicStaticEnvironmentBinding, ...],
+) -> tuple[EnvironmentBindingMaterial, ...]:
+    return tuple(
+        EnvironmentBindingMaterial(
+            binding.name,
+            LiteralMaterialValue(binding.value),
+            EnvironmentMaterialSource.PUBLIC_STATIC,
+        )
+        for binding in sorted(values)
+    )
+
+
+def _socket_environment_material(
+    values: tuple[SocketDerivedEnvironmentBinding, ...],
     *,
     node: Node | None = None,
     graph: DeploymentGraph | None = None,
-    endpoint: Endpoint | None = None,
 ) -> tuple[EnvironmentBindingMaterial, ...]:
     bindings: list[EnvironmentBindingMaterial] = []
-    for name, literal in sorted(values.items()):
-        explicit_reference = _secret_reference(literal)
-        source = endpoint or _environment_endpoint(name, node, graph)
-        if explicit_reference is not None:
-            value: EnvironmentMaterialValue = SecretReferenceMaterialValue(
-                explicit_reference
+    for binding in sorted(values):
+        source = _environment_endpoint(binding.name, node, graph)
+        if source is None:
+            raise _malformed("socket_environment")
+        value = _endpoint_environment_value(binding.value, source)
+        bindings.append(
+            EnvironmentBindingMaterial(
+                binding.name,
+                value,
+                EnvironmentMaterialSource.SOCKET_DERIVED,
+                binding.edge_id,
             )
-        elif source is not None and isinstance(source.address, SecretReferenceAddress):
-            value: EnvironmentMaterialValue = SecretReferenceMaterialValue(source.address.secret_ref)
-        else:
-            if not isinstance(literal, str):
-                raise _malformed("environment")
-            if any(marker in name.lower() for marker in _SECRET_MARKERS):
-                raise EffectMaterializationError(
-                    MaterializationCode.SECRET_VALUE,
-                    f"environment field {name!r} must use an opaque secret reference",
-                )
-            value = LiteralMaterialValue(literal)
-        bindings.append(EnvironmentBindingMaterial(name, value))
+        )
     return tuple(bindings)
 
 
-def _secret_reference(value: object) -> str | None:
-    if not isinstance(value, Mapping):
-        return None
-    if set(value) != {"kind", "reference_id"} or value.get("kind") != "secret-reference":
-        raise _malformed("environment")
-    reference_id = value.get("reference_id")
-    if not isinstance(reference_id, str) or not reference_id.strip():
-        raise _malformed("environment")
-    return reference_id
+def _endpoint_environment_value(
+    literal: str,
+    endpoint: Endpoint,
+) -> EnvironmentMaterialValue:
+    if isinstance(endpoint.address, SecretReferenceAddress):
+        return SecretReferenceMaterialValue(endpoint.address.secret_ref)
+    return LiteralMaterialValue(literal)
 
 
 def _environment_endpoint(name: str, node: Node | None, graph: DeploymentGraph | None) -> Endpoint | None:
@@ -989,7 +1015,12 @@ def _descriptor(value: object) -> object:
         case SecretEndpointMaterial():
             return {"kind": "secret-reference", "reference_id": value.reference_id}
         case EnvironmentBindingMaterial():
-            return {"name": value.name, "value": _descriptor(value.value)}
+            return {
+                "name": value.name,
+                "source": value.source.value,
+                "source_id": value.source_id,
+                "value": _descriptor(value.value),
+            }
         case LiteralMaterialValue():
             return {"kind": "literal", "value": "<redacted>"}
         case SecretReferenceMaterialValue():

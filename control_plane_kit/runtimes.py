@@ -142,7 +142,7 @@ class DryRunRuntime:
                 DryRunActivity(
                     "observe-node",
                     node.node_id,
-                    {"kind": node.kind, "env": sorted(node.environment)},
+                    {"kind": node.kind, "env": sorted(node.non_secret_environment())},
                 )
             )
         return RuntimePlan(runtime_id=runtime_id, action="start", activities=tuple(activities))
@@ -155,7 +155,7 @@ class DryRunRuntime:
                 kind=graph.node(child).kind,
                 runtime_id=runtime_id,
                 healthy=True,
-                environment=graph.node(child).environment,
+                environment=graph.node(child).non_secret_environment(),
                 endpoints=graph.node(child).endpoints,
                 metadata={"planned": True},
             )

@@ -19,6 +19,11 @@ from control_plane_kit.configuration import (
     ConfigurationArtifact,
     ConfigurationArtifactError,
 )
+from control_plane_kit.environment import (
+    PublicStaticEnvironmentBinding,
+    SocketDerivedEnvironmentBinding,
+    environment_binding_from_descriptor,
+)
 from control_plane_kit.secrets import (
     SecretDelivery,
     SecretResolutionError,
@@ -303,6 +308,9 @@ class GraphDescriptorCodec:
                 _mapping(descriptor.get("endpoints", {}), "endpoints").items()
             )
         }
+        environment_bindings = _environment_bindings(
+            descriptor.get("environment_bindings", [])
+        )
         return Node(
             node_id=node_id,
             block_family=family,
@@ -311,7 +319,16 @@ class GraphDescriptorCodec:
             runtime_id=_text(descriptor, "runtime_id"),
             sockets=BlockSockets(requirements=requirements, providers=providers),
             endpoints=endpoints,
-            environment=_string_mapping(descriptor.get("environment", {}), "node.environment"),
+            public_environment=tuple(
+                value
+                for value in environment_bindings
+                if isinstance(value, PublicStaticEnvironmentBinding)
+            ),
+            socket_environment=tuple(
+                value
+                for value in environment_bindings
+                if isinstance(value, SocketDerivedEnvironmentBinding)
+            ),
             metadata=_object_mapping(descriptor.get("metadata", {}), "node.metadata"),
             lifecycle=_lifecycle(descriptor.get("lifecycle"), "node.lifecycle"),
             configuration_artifacts=_configuration_artifacts(
@@ -527,6 +544,18 @@ def _secret_deliveries(value: object) -> tuple[SecretDelivery, ...]:
         )
     except SecretResolutionError as error:
         raise MalformedGraphDescriptor(str(error)) from error
+
+
+def _environment_bindings(
+    value: object,
+) -> tuple[PublicStaticEnvironmentBinding | SocketDerivedEnvironmentBinding, ...]:
+    try:
+        return tuple(
+            environment_binding_from_descriptor(_mapping(item, "environment_binding"))
+            for item in _list(value)
+        )
+    except ValueError as error:
+        raise UnknownGraphVariant(str(error)) from error
 
 
 def _json_value(value: object) -> object:

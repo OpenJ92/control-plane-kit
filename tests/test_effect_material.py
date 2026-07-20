@@ -6,6 +6,7 @@ import unittest
 from control_plane_kit.effects import (
     EffectMaterializationError,
     EffectPurpose,
+    EnvironmentMaterialSource,
     MaterializationCode,
     MaterializedEffectRequest,
     PinnedGraphSet,
@@ -430,6 +431,25 @@ class EffectMaterialTests(unittest.TestCase):
         )
 
         self.assertIsInstance(control_token.value, SecretReferenceMaterialValue)
+        sources = {
+            value.name: (value.source, value.source_id)
+            for value in materialized.material.implementation.environment
+        }
+        self.assertEqual(
+            sources["CPK_CONTROL_TOKEN"],
+            (
+                EnvironmentMaterialSource.SECRET_REFERENCE,
+                "secret://gate-d/router-control",
+            ),
+        )
+        self.assertEqual(
+            sources["CPK_ROUTER_ACTIVE_TARGET"],
+            (EnvironmentMaterialSource.PUBLIC_STATIC, None),
+        )
+        self.assertEqual(
+            sources["CPK_ROUTER_BLUE_URL"],
+            (EnvironmentMaterialSource.SOCKET_DERIVED, "router.target-blue"),
+        )
         self.assertNotIn("gate-d-synthetic-control-token", materialized.canonical_json())
 
 

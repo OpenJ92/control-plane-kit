@@ -30,7 +30,7 @@ class HttpProxyServerBlockTests(TestCase):
 
         graph = compile_recipe(recipe)
 
-        self.assertEqual(graph.node("proxy").environment["PROXY_TARGET_URL"], graph.node("app").endpoint("internal").url)
+        self.assertEqual(graph.node("proxy").non_secret_environment()["PROXY_TARGET_URL"], graph.node("app").endpoint("internal").url)
 
     def test_proxy_forwards_request_to_active_target(self):
         seen: list[HttpRequest] = []

@@ -31,7 +31,7 @@ class HttpActiveRouterServerBlockTests(TestCase):
 
         graph = compile_recipe(recipe)
 
-        self.assertEqual(graph.node("router").environment["ACTIVE_TARGET_URL"], graph.node("app").endpoint("internal").url)
+        self.assertEqual(graph.node("router").non_secret_environment()["ACTIVE_TARGET_URL"], graph.node("app").endpoint("internal").url)
 
     def test_active_router_forwards_to_active_target(self):
         def first(_request: HttpRequest) -> HttpResponse:

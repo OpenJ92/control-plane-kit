@@ -120,6 +120,20 @@ class GraphDescriptorCodecTests(unittest.TestCase):
         with self.assertRaisesRegex(UnknownGraphVariant, "block spec variant"):
             GraphDescriptorCodec().decode(descriptor)
 
+    def test_environment_binding_variants_round_trip_and_unknown_kind_fails_closed(self):
+        codec = GraphDescriptorCodec()
+        descriptor = codec.encode(compile_recipe(recipe()))
+        postgres = descriptor["nodes"]["postgres"]["environment_bindings"]
+        api = descriptor["nodes"]["orders-api"]["environment_bindings"]
+
+        self.assertEqual({value["kind"] for value in postgres}, {"public-static"})
+        self.assertEqual({value["kind"] for value in api}, {"socket-derived"})
+        self.assertEqual(codec.encode(codec.decode(descriptor)), descriptor)
+
+        api[0]["kind"] = "future-environment"
+        with self.assertRaisesRegex(UnknownGraphVariant, "unknown environment"):
+            codec.decode(descriptor)
+
     def test_missing_runtime_ownership_fails_loudly(self):
         descriptor = GraphDescriptorCodec().encode(compile_recipe(recipe()))
         descriptor["runtimes"]["docker"]["children"].remove("orders-api")

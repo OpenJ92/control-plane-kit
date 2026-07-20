@@ -271,7 +271,10 @@ def validate_graph(
                 )
             )
         if any(
-            consumer_node.environment.get(name) != value
+            {
+                binding.name: binding.value
+                for binding in consumer_node.socket_environment
+            }.get(name) != value
             for name, value in edge.env_assignments.items()
         ):
             findings.append(
@@ -282,7 +285,35 @@ def validate_graph(
                 )
             )
 
+        if any(
+            binding.edge_id != edge_id
+            for binding in consumer_node.socket_environment
+            if binding.name in edge.env_assignments
+        ):
+            findings.append(
+                _error(
+                    ValidationCode.CONSUMER_ENVIRONMENT,
+                    EdgeSubject(edge_id),
+                    "consumer socket environment must retain its producing edge",
+                )
+            )
+
     for node_id, node in sorted(graph.nodes.items()):
+        for binding in node.socket_environment:
+            source = graph.edges.get(binding.edge_id)
+            if (
+                source is None
+                or source.consumer_role != node_id
+                or binding.name not in source.env_assignments
+                or source.env_assignments[binding.name] != binding.value
+            ):
+                findings.append(
+                    _error(
+                        ValidationCode.CONSUMER_ENVIRONMENT,
+                        NodeSubject(node_id),
+                        "socket environment binding must identify its exact producing edge",
+                    )
+                )
         if (
             isinstance(node.block_spec, PackageServerSpec)
             and node.block_spec.maturity not in policy.allowed_package_maturities

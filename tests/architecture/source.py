@@ -88,6 +88,7 @@ class KeywordArgumentFact:
 
     name: str
     shape: ExpressionShape
+    literal_mapping_keys: tuple[str, ...] = ()
 
 
 @dataclass(frozen=True, order=True)
@@ -376,7 +377,11 @@ def _bound_qualified_name(value: ImportFact) -> str:
 def _keyword_arguments(node: ast.Call) -> tuple[KeywordArgumentFact, ...]:
     return tuple(
         sorted(
-            KeywordArgumentFact(keyword.arg, _expression_shape(keyword.value))
+            KeywordArgumentFact(
+                keyword.arg,
+                _expression_shape(keyword.value),
+                _literal_mapping_keys(keyword.value),
+            )
             for keyword in node.keywords
             if keyword.arg is not None
         )
@@ -397,6 +402,18 @@ def _expression_shape(node: ast.AST) -> ExpressionShape:
             return ExpressionShape.NAME
         case _:
             return ExpressionShape.OTHER
+
+
+def _literal_mapping_keys(node: ast.AST) -> tuple[str, ...]:
+    if not isinstance(node, ast.Dict):
+        return ()
+    return tuple(
+        sorted(
+            key.value
+            for key in node.keys
+            if isinstance(key, ast.Constant) and isinstance(key.value, str)
+        )
+    )
 
 
 def _definitions(tree: ast.AST) -> tuple[tuple[ast.AST, tuple[str, ...]], ...]:

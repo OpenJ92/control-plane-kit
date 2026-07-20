@@ -11,6 +11,7 @@ from control_plane_kit import (
     EffectRequest,
     EffectSucceeded,
     EnvironmentBindingMaterial,
+    EnvironmentMaterialSource,
     ImplementationMaterial,
     LiteralMaterialValue,
     MaterializedEffectRequest,
@@ -213,7 +214,13 @@ def _runtime() -> RuntimeMaterial:
 
 
 def _node(*, image: str = "api:latest") -> NodeMaterial:
-    environment = (EnvironmentBindingMaterial("MODE", LiteralMaterialValue("live")),)
+    environment = (
+        EnvironmentBindingMaterial(
+            "MODE",
+            LiteralMaterialValue("live"),
+            EnvironmentMaterialSource.PUBLIC_STATIC,
+        ),
+    )
     return NodeMaterial(
         "api",
         _runtime(),

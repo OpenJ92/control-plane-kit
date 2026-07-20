@@ -2439,7 +2439,13 @@ class DockerRuntimeInterpreter:
                         kind=graph_node.kind,
                         runtime_id=runtime_id,
                         healthy=False,
-                        environment=graph_node.environment,
+                        environment={
+                            binding.name: binding.value
+                            for binding in (
+                                graph_node.public_environment
+                                + graph_node.socket_environment
+                            )
+                        },
                         endpoints=graph_node.endpoints,
                         metadata={
                             "container_name": start.container_name,
@@ -2517,10 +2523,9 @@ def _start_activity(node: Node, runtime_id: str, network_name: str, project_name
                 for socket_name, endpoint in node.endpoints.items()
             }
             container_name = _container_name(project_name, runtime_id, node.node_id)
-            static_environment = node.metadata.get("environment", {})
-            if not isinstance(static_environment, Mapping):
+            if "environment" in node.metadata:
                 raise UnsupportedDockerRuntimeFeature(
-                    f"node {node.node_id!r} metadata environment must be a mapping"
+                    f"node {node.node_id!r} uses obsolete metadata environment"
                 )
             return StartDockerContainer(
                 runtime_id=runtime_id,
@@ -2528,7 +2533,10 @@ def _start_activity(node: Node, runtime_id: str, network_name: str, project_name
                 container_name=container_name,
                 image=image,
                 network_name=network_name,
-                environment={**dict(static_environment), **node.environment},
+                environment={
+                    binding.name: binding.value
+                    for binding in node.public_environment + node.socket_environment
+                },
                 command=command,
                 ports=ports,
                 metadata={"kind": node.kind},

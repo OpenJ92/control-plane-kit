@@ -317,7 +317,7 @@ class GraphValidationTests(unittest.TestCase):
     def test_consumer_environment_must_retain_edge_assignments(self):
         graph = graph_with_requirement()
         consumer = graph.node("consumer")
-        malformed = graph.update_node(replace(consumer, environment={}))
+        malformed = graph.update_node(replace(consumer, socket_environment=()))
 
         result = validate_graph(malformed)
 
