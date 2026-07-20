@@ -1395,61 +1395,73 @@ At every gate:
 
 ## Immediate Issue Topology
 
-Before implementation, create these parent issues:
+The bootstrap issue topology was created in the frozen coordination repository
+on 2026-07-20 because the target repositories do not exist yet. Root issue
+[#594](https://github.com/OpenJ92/control-plane-kit/issues/594) owns seven
+mandatory milestone parents and 67 implementation, review, and closeout
+children:
 
 ```text
-control-plane-kit-core
-  CORE-PRODUCTS: External product identity, descriptor, and catalogue
-
-control-plane-kit-servers
-  SERVER-BOOTSTRAP: Repository, catalogue, publication, and Hello proof
-
-control-plane-kit-test
-  SYSTEM-ACCEPTANCE: Isomorphic parity and cross-repository harness
+#595 reference parity
+  -> #596 core repository genesis and generic migration
+    -> #597 external OCI product language
+      -> #598 CPI image, HTTP API, and MCP
+        -> #599 core release-candidate mandatory stop
+          -> #600 server repository and Hello-only transfer
+            -> #601 cross-repository bootstrap acceptance
 ```
 
-Suggested core children:
+Each GitHub parent contains its exact dependency graph, acceptance laws, test
+evidence, stop conditions, and attached sub-issues. The child ranges are:
 
 ```text
-1. Establish core repository and package baseline
-2. Inventory and identify every reference test law and live demo
-3. Establish the isomorphic parity manifest and failing-unmapped-test policy
-4. Define namespaced ProductIdentity
-5. Define ContainerServerProduct descriptor language
-6. Implement strict descriptor codec and validation
-7. Instantiate products into ordinary DeployBlocks
-8. Implement immutable ProductCatalog composition
-9. Propagate product identity through graph, plan, and effect material
-10. Prove unknown, duplicate, and malicious descriptors fail closed
-11. Package and publish the runnable CPI OCI image
-12. Publish the external CPI product descriptor
-13. Host the authenticated operator HTTP API gateway in the CPI image
-14. Host MCP Streamable HTTP and project its public endpoint
-15. Prove HTTP/MCP service, authorization, and transaction parity
-16. Prove image, descriptor, health, digest, and import-boundary coherence
-17. Prove an external fixture distribution
-18. Complete architecture/security/test-integrity/parity review
+#595 -> #602-#609
+#596 -> #610-#619
+#597 -> #620-#629
+#598 -> #630-#642
+#599 -> #643-#648
+#600 -> #649-#658
+#601 -> #659-#668
 ```
 
-Suggested server children:
+Issue ownership migrates only after the target repository exists:
 
 ```text
-1. Establish server repository and package boundaries
-2. Establish and architecture-test the one-product-one-directory convention
-3. Establish public image build and GHCR publication
-4. Define public descriptor catalogue and publication
-5. Implement Hello descriptor
-6. Build and publish Hello image
-7. Map every Hello reference test to its owning successor
-8. Execute and compare the Hello live demos through core Docker runtime
-9. Harden digest, capability, readiness, ownership, and cleanup behavior
-10. Complete bootstrap parity and architecture closeout
-11. Stop and produce the post-bootstrap accumulation handoff
+#610 creates control-plane-kit-core
+  -> core implementation issues may transfer there
+
+#649 creates control-plane-kit-servers after #648 operator approval
+  -> server and Hello implementation issues may transfer there
+
+#659 decides whether cross-repository evidence justifies control-plane-kit-test
+  -> no empty acceptance repository is created prematurely
 ```
 
-The core topology precedes the server topology wherever the server package
-consumes a new descriptor or catalogue law. The Hello live proof is the first
-cross-repository gate.
+The GitHub sub-issue relationships are canonical. Textual predecessor lists in
+each child explain cross-parent edges. If transfer changes issue numbers, update
+the parent topology and this section in the same coordination PR.
+
+The core topology completes and stops at #648 before #649 creates the server
+repository. The Hello live proof in #658 is the first product-level
+cross-repository gate. Full system acceptance begins at #659.
+
+Post-bootstrap Gates 3-9 are preserved separately under deferred parent
+[#669](https://github.com/OpenJ92/control-plane-kit/issues/669):
+
+```text
+#668 operator acceptance
+  -> #669 deferred accumulation
+    -> #670 CoreDNS
+      -> #671 teaching HTTP products
+        -> #672 domain-backed products
+          -> #673 remaining catalogue and recipes
+            -> #674 Pottery Factory registration
+              -> #675 catalogue admission and iOS
+                -> #676 recursive CPI
+```
+
+These are future roadmap parents, not bootstrap implementation issues. Each
+must be rehydrated and decomposed after bootstrap learning before execution.
 
 CoreDNS and every remaining product belong to a new post-bootstrap issue
 topology. They are not children of `SERVER-BOOTSTRAP`, and work on them must not
