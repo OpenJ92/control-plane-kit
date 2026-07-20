@@ -8,11 +8,10 @@ from control_plane_kit import (
 )
 from control_plane_kit.servers import (
     HttpRateLimiterServer,
-    HttpRequest,
-    HttpResponse,
     hello_server_block,
     http_rate_limiter_block,
 )
+from control_plane_kit.products.servers.support.http_messages import HttpRequest, HttpResponse
 from control_plane_kit.core.types import Protocol
 
 

@@ -23,7 +23,7 @@ from control_plane_kit.servers import (
     http_traffic_logger_block,
     http_traffic_logger_command,
 )
-from control_plane_kit.servers import HttpRequest, HttpResponse
+from control_plane_kit.products.servers.support.http_messages import HttpRequest, HttpResponse
 
 
 class HttpTrafficLoggerTests(unittest.TestCase):

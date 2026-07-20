@@ -17,7 +17,7 @@ from control_plane_kit.domains.idempotency import (
     idempotency_identity,
 )
 from control_plane_kit.idempotency_gateway.protocols import IdempotencyUnitOfWork
-from control_plane_kit.servers.http_messages import HttpHandler, HttpRequest, HttpResponse
+from control_plane_kit.products.servers.support.http_messages import HttpHandler, HttpRequest, HttpResponse
 
 
 class IdempotencyGatewayScope(StrEnum):

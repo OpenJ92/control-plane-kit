@@ -14,7 +14,7 @@ from control_plane_kit.servers.http_load_generator import (
     HttpLoadGeneratorServer,
     create_load_generator_app,
 )
-from control_plane_kit.servers.http_messages import HttpRequest, HttpResponse
+from control_plane_kit.products.servers.support.http_messages import HttpRequest, HttpResponse
 
 
 class LoadGeneratorEnvironment(EnvironmentContract):

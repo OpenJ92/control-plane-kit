@@ -15,7 +15,10 @@ from control_plane_kit.interpreters.webhook_http import HttpWebhookDelivery
 command = hello_command()
 if command[:2] != ("python", "-c"):
     raise AssertionError("installed strict Hello template did not render a Python command")
-template = files("control_plane_kit").joinpath("servers", "templates", "hello.py.j2")
+template = files("control_plane_kit.products.servers.support").joinpath(
+    "templates",
+    "hello.py.j2",
+)
 if not template.is_file() or "StrictUndefined" in template.read_text():
     raise AssertionError("installed wheel is missing the expected Hello package template")
 if not fastapi.__version__ or not httpx.__version__:

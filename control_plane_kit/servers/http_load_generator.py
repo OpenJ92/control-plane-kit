@@ -38,7 +38,7 @@ from control_plane_kit.domains.load_generation import (
     validate_load_command,
 )
 from control_plane_kit.core.secrets import SecretEnvironmentDelivery, SecretReference
-from control_plane_kit.servers.http_messages import HttpRequest, HttpResponse
+from control_plane_kit.products.servers.support.http_messages import HttpRequest, HttpResponse
 from control_plane_kit.core.types import Protocol
 
 

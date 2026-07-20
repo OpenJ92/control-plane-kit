@@ -29,7 +29,7 @@ from control_plane_kit.idempotency_gateway.unit_of_work import (
     install_idempotency_gateway_schema,
 )
 from control_plane_kit.servers.http_idempotency_gateway import create_idempotency_gateway_app
-from control_plane_kit.servers.http_messages import HttpRequest, HttpResponse
+from control_plane_kit.products.servers.support.http_messages import HttpRequest, HttpResponse
 
 
 class IdempotencyGatewayEnvironment(EnvironmentContract):

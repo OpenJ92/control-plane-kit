@@ -21,7 +21,7 @@ from control_plane_kit.servers import (
     http_bulkhead_block,
     http_bulkhead_command,
 )
-from control_plane_kit.servers import HttpRequest, HttpResponse
+from control_plane_kit.products.servers.support.http_messages import HttpRequest, HttpResponse
 
 
 class HttpBulkheadTests(unittest.TestCase):

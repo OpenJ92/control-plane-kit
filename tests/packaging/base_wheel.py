@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from importlib.util import find_spec
 import importlib
+from importlib import resources
 import sys
 
 
@@ -52,6 +53,9 @@ from control_plane_kit.products.servers import (  # noqa: E402
     WEBHOOK_DELIVERY_PRODUCT,
     webhook_delivery_block,
 )
+from control_plane_kit.products.servers.support.command_rendering import (  # noqa: E402
+    render_python_command,
+)
 from control_plane_kit.operations.webhook import WebhookDeliveryService  # noqa: E402
 
 if ConfigurationTemplate.__module__ != (
@@ -72,6 +76,21 @@ if any(find_spec(dependency) is not None for dependency in OPTIONAL_DISTRIBUTION
     raise AssertionError("pure webhook product import installed an optional dependency")
 if WebhookDeliveryService.__module__ != "control_plane_kit.operations.webhook.service":
     raise AssertionError("webhook service did not load from canonical operations")
+
+template = resources.files(
+    "control_plane_kit.products.servers.support"
+).joinpath("templates", "http_forwarder.py.j2")
+if not template.is_file():
+    raise AssertionError("base wheel is missing packaged server-support templates")
+rendered_command = render_python_command(
+    "http_forwarder.py.j2",
+    target_env="BASE_WHEEL_TARGET_URL",
+    port=8080,
+)
+if rendered_command[:2] != ("python", "-c"):
+    raise AssertionError("installed server-support template did not render a command")
+if "BASE_WHEEL_TARGET_URL" not in rendered_command[2]:
+    raise AssertionError("installed server-support template lost typed render input")
 
 from control_plane_kit.domains.discovery import DiscoveryIdentity  # noqa: E402
 from control_plane_kit.domains.idempotency import IdempotencyIdentity  # noqa: E402
