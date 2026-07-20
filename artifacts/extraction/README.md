@@ -31,3 +31,10 @@ unlisted product module from falling through into core.
 under a closed observable contract. Incidental normalization is enumerated;
 HTTP semantics, graph effects, observations, retention, and cleanup remain
 observable rather than being normalized away.
+
+`parity-manifest.json` is the closed migration ledger generated from the law
+ownership and demo inventories. It maps all 1,107 frozen references without
+claiming that migration has begun: 880 entries are required and 227 deferred,
+while successor and reviewed-supersession evidence are both empty. Future
+milestones may add passing successor evidence or an explicitly reviewed
+supersession, but may not silently remove a frozen reference.
