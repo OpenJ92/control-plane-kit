@@ -42,10 +42,19 @@ from control_plane_kit.servers.webhook_delivery import (
     WEBHOOK_SIGNING_REFERENCE_ENVIRONMENT,
     WEBHOOK_SIGNING_SECRET_ENVIRONMENT,
 )
-from control_plane_kit.webhook_server.main import psycopg_connection_string
+from control_plane_kit.entrypoints.webhook_server.main import (
+    create_app_from_environment,
+    psycopg_connection_string,
+)
 
 
 class WebhookDeliveryBlockTests(unittest.TestCase):
+    def test_process_factory_reports_its_entrypoint_home(self) -> None:
+        self.assertEqual(
+            create_app_from_environment.__module__,
+            "control_plane_kit.entrypoints.webhook_server.main",
+        )
+
     def test_block_declares_product_database_http_and_opaque_secrets(self) -> None:
         grant = WebhookEndpointGrant(
             "orders",
@@ -80,7 +89,11 @@ class WebhookDeliveryBlockTests(unittest.TestCase):
         self.assertIs(block.sockets.provider("internal").protocol, Protocol.HTTP)
         self.assertEqual(
             block.implementation.command,
-            ("python", "-m", "control_plane_kit.webhook_server.main"),
+            (
+                "python",
+                "-m",
+                "control_plane_kit.entrypoints.webhook_server.main",
+            ),
         )
         self.assertEqual(
             {

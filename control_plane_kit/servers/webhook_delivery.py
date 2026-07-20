@@ -153,7 +153,11 @@ def webhook_delivery_block(
         ),
         DockerImageImplementation(
             image=image,
-            command=("python", "-m", "control_plane_kit.webhook_server.main"),
+            command=(
+                "python",
+                "-m",
+                "control_plane_kit.entrypoints.webhook_server.main",
+            ),
             ports={"internal": 8080},
             environment=(
                 PublicStaticEnvironmentBinding(

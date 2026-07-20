@@ -116,12 +116,16 @@ if find_spec("control_plane_kit.cli") is not None:
     raise AssertionError("installed base wheel retained the retired CLI module")
 if find_spec("control_plane_kit.entrypoints.cli") is None:
     raise AssertionError("installed base wheel is missing the canonical CLI entrypoint")
-for retired in ("http", "postgres", "protocols", "service", "unit_of_work"):
-    if find_spec(f"control_plane_kit.webhook.{retired}") is not None:
+for retired in ("app", "http", "postgres", "protocols", "service", "unit_of_work"):
+    try:
+        retired_spec = find_spec(f"control_plane_kit.webhook.{retired}")
+    except ModuleNotFoundError:
+        retired_spec = None
+    if retired_spec is not None:
         raise AssertionError(f"installed base wheel retained webhook.{retired}")
-transitional_webhook = importlib.import_module("control_plane_kit.webhook")
-if transitional_webhook.__all__:
-    raise AssertionError("transitional webhook package retained eager exports")
+for retired in ("control_plane_kit.webhook", "control_plane_kit.webhook_server"):
+    if find_spec(retired) is not None:
+        raise AssertionError(f"installed base wheel retained {retired}")
 
 for module in (
     "control_plane_kit.adapters",

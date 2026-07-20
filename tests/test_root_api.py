@@ -21,7 +21,6 @@ OPERATIONAL_ROOTS = (
     "control_plane_kit.servers",
     "control_plane_kit.stores",
     "control_plane_kit.webhook",
-    "control_plane_kit.webhook_server",
     "control_plane_kit.workflows",
 )
 OPTIONAL_DEPENDENCIES = ("fastapi", "httpx", "psycopg", "uvicorn")

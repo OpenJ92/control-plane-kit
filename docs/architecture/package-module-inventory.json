@@ -363,15 +363,14 @@
         "control_plane_kit.core.topology.graph",
         "control_plane_kit.core.topology.validation",
         "control_plane_kit.core.verification",
-        "control_plane_kit.webhook",
-        "control_plane_kit.webhook.app",
+        "control_plane_kit.entrypoints.webhook_server.app",
         "control_plane_kit.interpreters.webhook_http",
         "control_plane_kit.domains.webhook.language",
         "control_plane_kit.operations.webhook.postgres",
         "control_plane_kit.operations.webhook.protocols",
         "control_plane_kit.operations.webhook.service",
         "control_plane_kit.operations.webhook.unit_of_work",
-        "control_plane_kit.webhook_server.main",
+        "control_plane_kit.entrypoints.webhook_server.main",
         "control_plane_kit.workflows",
         "control_plane_kit.workflows.approvals",
         "control_plane_kit.workflows.command_service",
@@ -592,8 +591,8 @@
       "internal_dependencies": [],
       "known_package_consumers": [
         "control_plane_kit.adapters",
-        "control_plane_kit.servers",
-        "control_plane_kit.webhook"
+        "control_plane_kit.interpreters.webhook_http",
+        "control_plane_kit.servers"
       ],
       "migration_prerequisites": [
         "#550",
@@ -1629,7 +1628,7 @@
         "control_plane_kit.servers.http_weighted_balancer",
         "control_plane_kit.servers.managed_http_router",
         "control_plane_kit.servers.tcp_switch",
-        "control_plane_kit.webhook_server.main"
+        "control_plane_kit.entrypoints.webhook_server.main"
       ],
       "migration_prerequisites": [
         "#550",
@@ -2042,7 +2041,7 @@
         "control_plane_kit.interpreters.webhook_http",
         "control_plane_kit.domains.webhook.language",
         "control_plane_kit.operations.webhook.postgres",
-        "control_plane_kit.webhook_server.main"
+        "control_plane_kit.entrypoints.webhook_server.main"
       ],
       "migration_prerequisites": [
         "#550",
@@ -5334,7 +5333,7 @@
         "control_plane_kit.servers.managed_http_router",
         "control_plane_kit.servers.request_observer",
         "control_plane_kit.servers.tcp_switch",
-        "control_plane_kit.webhook_server.main"
+        "control_plane_kit.entrypoints.webhook_server.main"
       ],
       "migration_prerequisites": [
         "#550",
@@ -7088,7 +7087,7 @@
       "known_package_consumers": [
         "control_plane_kit.servers",
         "control_plane_kit.servers.catalog",
-        "control_plane_kit.webhook_server.main"
+        "control_plane_kit.entrypoints.webhook_server.main"
       ],
       "migration_prerequisites": [
         "#550",
@@ -7950,9 +7949,9 @@
         "control_plane_kit.operations.webhook.unit_of_work"
       ],
       "known_package_consumers": [
-        "control_plane_kit.webhook.app",
+        "control_plane_kit.entrypoints.webhook_server.app",
         "control_plane_kit.interpreters.webhook_http",
-        "control_plane_kit.webhook_server.main"
+        "control_plane_kit.entrypoints.webhook_server.main"
       ],
       "migration_prerequisites": [
         "#550",
@@ -7985,22 +7984,22 @@
       "canonical_public_exports": [
         "create_webhook_delivery_app"
       ],
-      "destination": "control_plane_kit.entrypoints.webhook.app",
+      "destination": "control_plane_kit.entrypoints.webhook_server.app",
       "internal_dependencies": [
         "control_plane_kit.domains.webhook.language",
-        "control_plane_kit.operations.webhook.service"
+        "control_plane_kit.operations.webhook"
       ],
       "known_package_consumers": [
-        "control_plane_kit.webhook_server.main"
+        "control_plane_kit.entrypoints.webhook_server.main"
       ],
       "migration_prerequisites": [
         "#550",
         "#557",
         "#558 or #559 where applicable"
       ],
-      "module": "control_plane_kit.webhook.app",
+      "module": "control_plane_kit.entrypoints.webhook_server.app",
       "motivation": "Composes dependencies and starts an operator-facing or server process.",
-      "movement": "move",
+      "movement": "remain",
       "optional_external_dependencies": [
         "fastapi"
       ],
@@ -8014,7 +8013,7 @@
         "process-composition",
         "transformations"
       ],
-      "source": "control_plane_kit/webhook/app.py"
+      "source": "control_plane_kit/entrypoints/webhook_server/app.py"
     },
     {
       "canonical_public_exports": [
@@ -8032,7 +8031,7 @@
         "control_plane_kit.operations.webhook"
       ],
       "known_package_consumers": [
-        "control_plane_kit.webhook_server.main"
+        "control_plane_kit.entrypoints.webhook_server.main"
       ],
       "migration_prerequisites": [
         "#550",
@@ -8106,7 +8105,7 @@
         "control_plane_kit.operations.webhook.protocols",
         "control_plane_kit.operations.webhook.service",
         "control_plane_kit.servers.webhook_delivery",
-        "control_plane_kit.webhook.app"
+        "control_plane_kit.entrypoints.webhook_server.app"
       ],
       "migration_prerequisites": [
         "#550",
@@ -8240,9 +8239,9 @@
       ],
       "known_package_consumers": [
         "control_plane_kit.operations.webhook",
-        "control_plane_kit.webhook.app",
+        "control_plane_kit.entrypoints.webhook_server.app",
         "control_plane_kit.interpreters.webhook_http",
-        "control_plane_kit.webhook_server.main"
+        "control_plane_kit.entrypoints.webhook_server.main"
       ],
       "migration_prerequisites": [
         "#550",
@@ -8278,7 +8277,7 @@
       ],
       "known_package_consumers": [
         "control_plane_kit.operations.webhook",
-        "control_plane_kit.webhook_server.main"
+        "control_plane_kit.entrypoints.webhook_server.main"
       ],
       "migration_prerequisites": [
         "#550",
@@ -8313,9 +8312,9 @@
         "#557",
         "#558 or #559 where applicable"
       ],
-      "module": "control_plane_kit.webhook_server",
+      "module": "control_plane_kit.entrypoints.webhook_server",
       "motivation": "Composes dependencies and starts an operator-facing or server process.",
-      "movement": "move",
+      "movement": "remain",
       "optional_external_dependencies": [],
       "owner": "entrypoint",
       "protecting_tests": [
@@ -8326,7 +8325,7 @@
       "semantic_roles": [
         "process-composition"
       ],
-      "source": "control_plane_kit/webhook_server/__init__.py"
+      "source": "control_plane_kit/entrypoints/webhook_server/__init__.py"
     },
     {
       "canonical_public_exports": [
@@ -8339,8 +8338,10 @@
       "internal_dependencies": [
         "control_plane_kit.contracts",
         "control_plane_kit.core.secrets",
-        "control_plane_kit.servers.webhook_delivery",
-        "control_plane_kit.webhook"
+        "control_plane_kit.entrypoints.webhook_server.app",
+        "control_plane_kit.interpreters.webhook_http",
+        "control_plane_kit.operations.webhook",
+        "control_plane_kit.servers.webhook_delivery"
       ],
       "known_package_consumers": [],
       "migration_prerequisites": [
@@ -8348,9 +8349,9 @@
         "#557",
         "#558 or #559 where applicable"
       ],
-      "module": "control_plane_kit.webhook_server.main",
+      "module": "control_plane_kit.entrypoints.webhook_server.main",
       "motivation": "Composes dependencies and starts an operator-facing or server process.",
-      "movement": "move",
+      "movement": "remain",
       "optional_external_dependencies": [
         "psycopg",
         "uvicorn"
@@ -8367,7 +8368,7 @@
         "transformations",
         "values"
       ],
-      "source": "control_plane_kit/webhook_server/main.py"
+      "source": "control_plane_kit/entrypoints/webhook_server/main.py"
     },
     {
       "canonical_public_exports": [
@@ -9110,30 +9111,6 @@
         "tests/test_package_structure.py",
         "tests/test_recovery_planning.py"
       ]
-    },
-    {
-      "canonical_public_exports": [],
-      "destination": "control_plane_kit.interpreters.webhook",
-      "internal_dependencies": [],
-      "known_package_consumers": [],
-      "migration_prerequisites": [
-        "#579",
-        "#580"
-      ],
-      "module": "control_plane_kit.webhook",
-      "motivation": "Temporary empty adapter package while HTTP and FastAPI modules move to their canonical ownership homes.",
-      "movement": "remove",
-      "optional_external_dependencies": [],
-      "owner": "interpreter",
-      "protecting_tests": [
-        "tests/test_package_inventory.py",
-        "tests/test_root_api.py"
-      ],
-      "role": "temporary-adapter-package",
-      "semantic_roles": [
-        "package-surface"
-      ],
-      "source": "control_plane_kit/webhook/__init__.py"
     }
   ],
   "owner_vocabulary": [
