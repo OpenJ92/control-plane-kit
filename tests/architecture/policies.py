@@ -188,22 +188,6 @@ class ForbiddenPackagePath:
     rule_id: str
 
 
-@dataclass(frozen=True, order=True)
-class PackageMigrationAllowance:
-    """Named migration debt without permission to suppress a finding."""
-
-    source: str
-    target: str
-    retirement_issue: str
-
-    def __post_init__(self) -> None:
-        if not (
-            self.retirement_issue.startswith("#")
-            and self.retirement_issue[1:].isdigit()
-        ):
-            raise ValueError("package migration allowance requires a GitHub issue")
-
-
 @dataclass(frozen=True)
 class PackageTopologyPolicy:
     """Interpret all source facts as one typed acyclic package graph."""

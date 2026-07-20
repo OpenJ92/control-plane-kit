@@ -441,6 +441,23 @@ coordinator, or Docker lifecycle model. Package servers reuse current control
 and server patterns. Mature products become exact typed specs over the shared
 Docker implementation, artifact, secret, probe, and verification boundaries.
 
+Before PgBouncer, the package-consolidation vertical establishes an acyclic
+ownership DAG and representative physical boundaries:
+
+```text
+core         <- domains
+core/domains <- operations
+core/...     <- interpreters <- products <- entrypoints
+```
+
+The arrows denote permitted dependency direction, not mandatory equal-depth
+rings. Webhook delivery proves a substantial five-part product; the auth gateway
+proves declaration/process separation; CoreDNS proves a product-specific domain
+projection. Closeout removes cycle allowances, keeps the package root a
+lightweight pure facade, records deferred non-duplicate relocations honestly,
+and requires all new products beginning with PgBouncer to use the canonical
+`products.servers` exterior.
+
 Request or response body transformation is deliberately outside the
 package-owned Gate G server catalog. XML/JSON conversion, field mapping, schema
 evolution, defaults, and semantic validation are application behavior. A user

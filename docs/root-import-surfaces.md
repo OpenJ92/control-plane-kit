@@ -1,8 +1,9 @@
 # Public Import Surfaces
 
-The package root is the stable, pure entry surface for the deployment language.
-It must remain importable with the base installation and without FastAPI,
-HTTPX, psycopg, Uvicorn, Docker, or a running service.
+`control_plane_kit.core` is the minimal deployment kernel. The package root is
+a stable, lightweight facade over that kernel and selected pure operational
+value languages. It must remain importable with the base installation and
+without FastAPI, HTTPX, psycopg, Uvicorn, Docker, or a running service.
 
 The root pipeline is:
 
@@ -23,18 +24,20 @@ every originating module.
 
 | Classification | Import surfaces |
 | --- | --- |
-| Pure deployment language | `algebra`, `capabilities`, `configuration`, `configuration_rendering`, `contracts`, `control_routes`, `environment`, `implementations`, `lifecycle`, `secrets`, `types`, `verification` |
-| Pure topology pipeline | `topology.compiler`, `topology.graph`, `topology.codec`, `topology.changes`, `topology.diff`, `topology.validation` |
-| Pure planning and execution languages | `planning.activity_plan`, `planning.codec`, `planning.compiler`, `planning.recovery`, `effects`, `execution`, `saga`, `scheduling` |
-| Independent pure domain languages | `discovery`, `idempotency`, `load_generation` |
-| Optional HTTP and process adapters | `adapters`, `mcp_read`, `webhook`, `servers`, `discovery_server`, `idempotency_gateway` |
+| Deployment kernel | `core.algebra`, `core.capabilities`, `core.configuration`, `core.control_routes`, `core.environment`, `core.implementations`, `core.lifecycle`, `core.secrets`, `core.types`, `core.verification` |
+| Pure topology and planning pipeline | `core.topology`, `core.planning` |
+| Pure operational value languages | `contracts`, `effects`, `execution`, `saga`, `scheduling` |
+| Independent domain languages | `domains.discovery`, `domains.idempotency`, `domains.load_generation`, `domains.webhook` |
+| Optional HTTP and process adapters | `adapters`, `entrypoints`, transitional `servers`, `discovery_server`, `idempotency_gateway` |
 | Optional Postgres operations | `discovery_registry`, `stores`, operational portions of `webhook` |
 | Runtime interpreters | `docker_runtime`, `runtimes` |
 | Durable control-plane operations | `workflows`, `read_services` |
 
-Only the first four rows may be re-exported by `control_plane_kit`. The other
-rows are explicit subpackage entrances and must be imported from their owning
-package.
+Only deployment-kernel and pure operational value names may be re-exported by
+`control_plane_kit`. Domains, products, concrete interpreters, durable services,
+and process entrypoints use their owning package entrances. The architecture
+policy treats the root as this explicit facade; it does not redefine
+operational values as core.
 
 Examples:
 
@@ -43,7 +46,7 @@ from control_plane_kit import DeploymentRecipe, compile_recipe, diff_graphs
 from control_plane_kit.docker_runtime import DockerRuntimeInterpreter
 from control_plane_kit.discovery_registry import DiscoveryRegistryService
 from control_plane_kit.products.servers import coredns_block
-from control_plane_kit.webhook import WebhookDeliveryService
+from control_plane_kit.operations.webhook import WebhookDeliveryService
 ```
 
 ## Dependency Diagnostics
@@ -55,7 +58,7 @@ remains the broad runnable-server bundle. They do not use lazy imports,
 silently swallow missing dependencies, or make those dependencies mandatory for
 the pure package root.
 
-The temporary broad `servers` and `webhook` entrances still combine product
-declarations with runnable application code. The package-consolidation vertical
-will separate those concerns into products, domains, operations, interpreters,
-and entrypoints without changing the graph-visible product model.
+Representative product boundaries now prove the split for webhook delivery,
+the test-only auth gateway, and CoreDNS. Broader teaching-server and operational
+module relocations remain explicit inventory work; they do not receive duplicate
+canonical implementations or compatibility facades.

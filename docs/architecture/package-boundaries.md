@@ -86,18 +86,30 @@ The graph observes identity, sockets, capabilities, verification, configuration,
 and runtime implementation. It does not observe internal stores or application
 composition.
 
-## Migration State
+## Consolidation State
 
-The canonical declaration and catalog values now live in
-`control_plane_kit.products.servers`. Concrete declarations still assembled in
-`control_plane_kit.servers.catalog` move one representative at a time:
+The consolidation proof is complete for the dependency floor and representative
+verticals:
 
 ```text
-webhook delivery -> #558
-embedded FastAPI product -> #559
-CoreDNS -> #560
+core topology and planning       canonical physical homes
+admitted domain languages        canonical physical homes
+strict configuration rendering  canonical interpreter home
+webhook delivery                 product + domain + operations + interpreter + entrypoint
+auth gateway                     product declaration separated from generated process
+CoreDNS                          product-owned projection and templates
 ```
 
-This temporary assembly location is not a second product language. It consumes
-the canonical `ProductDeclaration` and `ProductCatalog` values. Each migration
-must retire its old module home rather than leave a compatibility facade.
+The package graph is unconditionally acyclic. There is no migration allowance
+that can excuse a cycle.
+
+The inventory remains both an ownership map and a relocation backlog. A
+`movement` value of `move` or `split-and-move` records an intentionally deferred
+physical relocation; it does not claim that a second canonical implementation
+exists. The broader operational packages and teaching-server family remain in
+their existing homes because moving every file for visual symmetry was not a
+goal of this vertical. New products, beginning with PgBouncer, use the canonical
+`control_plane_kit.products.servers` exterior directly.
+
+When a deferred relocation is undertaken, the old home must be retired in the
+same change. The package is unreleased, so compatibility facades are not kept.

@@ -316,6 +316,34 @@ relocation.
 - Some migration PRs will be mechanically large, so topology order,
   architecture tests, and exact behavior characterization are mandatory.
 
+## Consolidation Closeout Interpretation
+
+The representative consolidation closes with two distinct public entrances:
+
+```text
+control_plane_kit.core
+  = minimal effect-free deployment kernel
+
+control_plane_kit
+  = lightweight pure facade over core and selected operational value languages
+```
+
+The facade may expose immutable saga, scheduling, execution, effect-request,
+and contract values. It may not import domains, product catalogs, concrete
+interpreters, stores, network clients, FastAPI applications, environment
+bootstrap, or process entrypoints. This does not make those operational
+languages members of core.
+
+The observed package graph must be acyclic without exceptions. The temporary
+`PackageMigrationAllowance` review value was removed at closeout; future cycles
+are architecture failures, not debt that can be named and tolerated.
+
+The inventory remains honest about deferred physical movement. `move` and
+`split-and-move` mean the existing module has a canonical ownership destination
+but has not been relocated. They do not authorize a parallel implementation.
+The representative moves retire old homes immediately; new products begin in
+their canonical package.
+
 ## Non-Goals
 
 - separate repositories or distributions;

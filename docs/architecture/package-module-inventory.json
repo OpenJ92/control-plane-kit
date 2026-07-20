@@ -1,5 +1,5 @@
 {
-  "generated_from": "current unreleased source; canonical imports replace old homes during migration",
+  "generated_from": "current unreleased source; destinations record canonical ownership while movement records distinguish completed, retained, and explicitly deferred physical relocation",
   "modules": [
     {
       "canonical_public_exports": [

@@ -69,6 +69,14 @@ class PackageModuleInventoryTests(unittest.TestCase):
                 set(record["known_package_consumers"]).issubset(actual)
             )
 
+    def test_inventory_distinguishes_completed_and_deferred_movement(self) -> None:
+        movements = {record["movement"] for record in self.records}
+
+        self.assertEqual(movements, {"remain", "move", "moved", "split-and-move"})
+        for record in self.records:
+            if record["movement"] == "moved":
+                self.assertEqual(record["module"], record["destination"])
+
     def test_every_current_server_module_has_uniform_product_exterior(self) -> None:
         server_records = [
             record
