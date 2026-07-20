@@ -1342,6 +1342,31 @@
       "source": "control_plane_kit/application/deploy/values.py"
     },
     {
+      "canonical_public_exports": [],
+      "destination": "control_plane_kit.entrypoints",
+      "internal_dependencies": [],
+      "known_package_consumers": [],
+      "migration_prerequisites": [
+        "#550",
+        "#557"
+      ],
+      "module": "control_plane_kit.entrypoints",
+      "motivation": "Names the outer process-composition ring without eagerly importing any runnable process.",
+      "movement": "remain",
+      "optional_external_dependencies": [],
+      "owner": "entrypoint",
+      "protecting_tests": [
+        "tests/test_architecture_dependencies.py",
+        "tests/test_package_inventory.py",
+        "tests/test_package_structure.py"
+      ],
+      "role": "package-entrance",
+      "semantic_roles": [
+        "process-composition"
+      ],
+      "source": "control_plane_kit/entrypoints/__init__.py"
+    },
+    {
       "canonical_public_exports": [
         "main",
         "run"
@@ -1354,9 +1379,9 @@
         "#557",
         "#558 or #559 where applicable"
       ],
-      "module": "control_plane_kit.cli",
+      "module": "control_plane_kit.entrypoints.cli",
       "motivation": "Composes dependencies and starts an operator-facing or server process.",
-      "movement": "move",
+      "movement": "remain",
       "optional_external_dependencies": [],
       "owner": "entrypoint",
       "protecting_tests": [
@@ -1369,7 +1394,151 @@
         "process-composition",
         "transformations"
       ],
-      "source": "control_plane_kit/cli.py"
+      "source": "control_plane_kit/entrypoints/cli.py"
+    },
+    {
+      "canonical_public_exports": [],
+      "destination": "control_plane_kit.products",
+      "domain_qualification": {
+        "domain": null,
+        "qualifies": false,
+        "reason": "The package names graph-visible product ownership rather than an independent command/result language."
+      },
+      "forbidden_product_imports": [
+        "FastAPI apps",
+        "stores",
+        "UnitOfWork",
+        "HTTP/Docker clients",
+        "process bootstrap"
+      ],
+      "internal_dependencies": [],
+      "known_package_consumers": [],
+      "migration_prerequisites": [
+        "#550",
+        "#557"
+      ],
+      "module": "control_plane_kit.products",
+      "motivation": "Names graph-visible package-owned product declarations without importing runnable applications.",
+      "movement": "remain",
+      "optional_external_dependencies": [],
+      "owner": "product",
+      "protecting_tests": [
+        "tests/test_architecture_dependencies.py",
+        "tests/test_package_inventory.py",
+        "tests/test_package_structure.py"
+      ],
+      "role": "package-entrance",
+      "semantic_roles": [
+        "product-declaration"
+      ],
+      "server_product_exterior": "control_plane_kit.products.servers",
+      "source": "control_plane_kit/products/__init__.py"
+    },
+    {
+      "canonical_public_exports": [
+        "CapabilityImplementation",
+        "CapabilityResolution",
+        "ExecutableCapability",
+        "ProductCatalog",
+        "ProductDeclaration",
+        "UnsupportedCapability"
+      ],
+      "destination": "control_plane_kit.products.servers",
+      "domain_qualification": {
+        "domain": null,
+        "qualifies": false,
+        "reason": "The package exposes the uniform graph-visible server-product exterior."
+      },
+      "forbidden_product_imports": [
+        "FastAPI apps",
+        "stores",
+        "UnitOfWork",
+        "HTTP/Docker clients",
+        "process bootstrap"
+      ],
+      "internal_dependencies": [
+        "control_plane_kit.products.servers.catalog"
+      ],
+      "known_package_consumers": [
+        "control_plane_kit.servers",
+        "control_plane_kit.servers.catalog"
+      ],
+      "migration_prerequisites": [
+        "#550",
+        "#557"
+      ],
+      "module": "control_plane_kit.products.servers",
+      "motivation": "Provides one lightweight declaration entrance for every package-owned deployable server exterior.",
+      "movement": "remain",
+      "optional_external_dependencies": [],
+      "owner": "product",
+      "protecting_tests": [
+        "tests/test_architecture_dependencies.py",
+        "tests/test_package_inventory.py",
+        "tests/test_package_server_catalog.py",
+        "tests/test_package_structure.py"
+      ],
+      "role": "server-product-exterior",
+      "semantic_roles": [
+        "product-declaration",
+        "values"
+      ],
+      "server_product_exterior": "control_plane_kit.products.servers",
+      "source": "control_plane_kit/products/servers/__init__.py"
+    },
+    {
+      "canonical_public_exports": [
+        "CapabilityImplementation",
+        "CapabilityResolution",
+        "ExecutableCapability",
+        "ProductCatalog",
+        "ProductDeclaration",
+        "UnsupportedCapability"
+      ],
+      "destination": "control_plane_kit.products.servers.catalog",
+      "domain_qualification": {
+        "domain": null,
+        "qualifies": false,
+        "reason": "The module owns product declaration and catalog values, not an independent command/result language."
+      },
+      "forbidden_product_imports": [
+        "FastAPI apps",
+        "stores",
+        "UnitOfWork",
+        "HTTP/Docker clients",
+        "process bootstrap"
+      ],
+      "internal_dependencies": [
+        "control_plane_kit.core.algebra",
+        "control_plane_kit.core.capabilities",
+        "control_plane_kit.core.control_routes"
+      ],
+      "known_package_consumers": [
+        "control_plane_kit.products.servers"
+      ],
+      "migration_prerequisites": [
+        "#550",
+        "#557"
+      ],
+      "module": "control_plane_kit.products.servers.catalog",
+      "motivation": "Owns the immutable identity-unique graph-visible product declaration collection.",
+      "movement": "remain",
+      "optional_external_dependencies": [],
+      "owner": "product",
+      "protecting_tests": [
+        "tests/test_architecture_dependencies.py",
+        "tests/test_package_inventory.py",
+        "tests/test_package_server_catalog.py",
+        "tests/test_package_structure.py"
+      ],
+      "role": "product-catalog-language",
+      "semantic_roles": [
+        "product-declaration",
+        "transformations",
+        "values"
+      ],
+      "server_product_exterior": "control_plane_kit.products.servers",
+      "source": "control_plane_kit/products/servers/catalog.py"
     },
     {
       "canonical_public_exports": [
@@ -4989,10 +5158,7 @@
         "OtlpHttpExporter",
         "OtlpReceiver",
         "OtlpReceiverProtocol",
-        "CapabilityImplementation",
-        "ExecutableCapability",
         "PACKAGE_SERVER_CONTRACTS",
-        "PackageServerContract",
         "ProductMaturity",
         "RequestObservation",
         "RequestObserverServer",
@@ -5019,7 +5185,6 @@
         "TcpSwitchSettings",
         "TcpSwitchState",
         "TcpTarget",
-        "UnsupportedCapability",
         "create_block_control_app",
         "create_instance_read_app",
         "create_managed_http_router_app",
@@ -5370,13 +5535,11 @@
     },
     {
       "canonical_public_exports": [
-        "CapabilityImplementation",
-        "ExecutableCapability",
-        "UnsupportedCapability",
-        "PackageServerContract",
+        "PACKAGE_SERVER_CATALOG",
+        "PACKAGE_SERVER_CONTRACTS",
         "package_server_contract"
       ],
-      "destination": "control_plane_kit.products.servers.catalog",
+      "destination": "control_plane_kit.products.servers",
       "domain_qualification": {
         "domain": null,
         "qualifies": false,
@@ -5395,6 +5558,7 @@
         "control_plane_kit.core.control_routes",
         "control_plane_kit.domains.idempotency",
         "control_plane_kit.domains.load_generation",
+        "control_plane_kit.products.servers",
         "control_plane_kit.servers.coredns",
         "control_plane_kit.servers.hello",
         "control_plane_kit.servers.http_active_router",
@@ -5429,7 +5593,7 @@
       ],
       "module": "control_plane_kit.servers.catalog",
       "motivation": "Declares a package-owned deployable server as graph-visible product data.",
-      "movement": "split-and-move",
+      "movement": "move",
       "optional_external_dependencies": [],
       "owner": "product",
       "protecting_tests": [

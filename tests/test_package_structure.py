@@ -24,6 +24,36 @@ from control_plane_kit.domains import discovery, idempotency, load_generation, w
 
 
 class PackageStructureTests(unittest.TestCase):
+    def test_product_and_entrypoint_foundations_have_one_way_ownership(self) -> None:
+        root = Path(__file__).parents[1]
+        product_catalog = root / "control_plane_kit" / "products" / "servers" / "catalog.py"
+        entrypoint = root / "control_plane_kit" / "entrypoints" / "cli.py"
+
+        tree = ast.parse(product_catalog.read_text(encoding="utf-8"))
+        product_imports = {
+            module
+            for node in ast.walk(tree)
+            for module in self._imported_modules(node)
+            if module.startswith("control_plane_kit")
+        }
+        self.assertTrue(
+            all(value.startswith("control_plane_kit.core") for value in product_imports)
+        )
+        self.assertFalse(
+            any(
+                value.startswith(
+                    (
+                        "control_plane_kit.entrypoints",
+                        "control_plane_kit.stores",
+                        "control_plane_kit.workflows",
+                    )
+                )
+                for value in product_imports
+            )
+        )
+        self.assertTrue(entrypoint.is_file())
+        self.assertFalse((root / "control_plane_kit" / "cli.py").exists())
+
     def test_deployment_program_has_one_intentional_package_entrance(self) -> None:
         public = set(deployment.__all__)
 

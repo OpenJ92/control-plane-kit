@@ -220,11 +220,8 @@ from control_plane_kit.servers.tcp_switch import (
 )
 from control_plane_kit.servers.catalog import (
     PACKAGE_SERVER_CONTRACTS,
-    CapabilityImplementation,
-    ExecutableCapability,
-    PackageServerContract,
+    PACKAGE_SERVER_CATALOG,
     ProductMaturity,
-    UnsupportedCapability,
     package_server_contract,
 )
 
@@ -327,10 +324,8 @@ __all__ = [
     "OtlpHttpExporter",
     "OtlpReceiver",
     "OtlpReceiverProtocol",
-    "CapabilityImplementation",
-    "ExecutableCapability",
     "PACKAGE_SERVER_CONTRACTS",
-    "PackageServerContract",
+    "PACKAGE_SERVER_CATALOG",
     "ProductMaturity",
     "RequestObservation",
     "RequestObserverServer",
@@ -357,7 +352,6 @@ __all__ = [
     "TcpSwitchSettings",
     "TcpSwitchState",
     "TcpTarget",
-    "UnsupportedCapability",
     "create_block_control_app",
     "create_instance_read_app",
     "create_managed_http_router_app",

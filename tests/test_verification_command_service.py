@@ -29,7 +29,7 @@ from control_plane_kit.mcp_read import (
 from control_plane_kit.servers import (
     create_instance_read_app,
 )
-from control_plane_kit.cli import run as run_cli
+from control_plane_kit.entrypoints.cli import run as run_cli
 from control_plane_kit.read_services import InstanceReadService
 from control_plane_kit.stores import (
     GraphVersionRecord,

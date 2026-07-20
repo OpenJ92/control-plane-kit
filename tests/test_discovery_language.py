@@ -32,9 +32,11 @@ from control_plane_kit.domains.discovery import (
     discovery_command_from_descriptor,
     discovery_registration_from_descriptor,
 )
-from control_plane_kit.servers import (
+from control_plane_kit.products.servers import (
     CapabilityImplementation,
     ExecutableCapability,
+)
+from control_plane_kit.servers import (
     package_server_contract,
     service_discovery_block,
 )

@@ -4,12 +4,26 @@ This catalogue records implementation truth for package-owned servers. It is
 generated from explicit typed contracts, never from free-form block metadata.
 
 ```text
-PackageServerContract
+ProductDeclaration
   = PackageServerProduct
   x ProductMaturity
   x DeployBlock
   x tuple[ExecutableCapability, ...]
 ```
+
+The declaration language is importable without runnable server extras:
+
+```python
+from control_plane_kit.products.servers import (
+    ProductCatalog,
+    ProductDeclaration,
+)
+```
+
+Concrete products are moving into this uniform catalog one representative at a
+time. Runnable FastAPI applications, stores, HTTP clients, and process bootstrap
+belong to operations, interpreters, or entrypoints rather than this declaration
+surface.
 
 `BlockSpec.capabilities` contains only powers implemented by the realized
 server. An in-memory teaching model does not make its Docker server mutable.
@@ -55,7 +69,7 @@ A future package server must:
 
 1. add an exact `PackageServerProduct` variant;
 2. construct a `PackageServerSpec` carrying that variant;
-3. register one `PackageServerContract`;
+3. register one `ProductDeclaration`;
 4. advertise only capabilities backed by a probe, authenticated control route,
    or runtime adapter operation;
 5. declare provider and requirement sockets explicitly;

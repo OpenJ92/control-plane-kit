@@ -28,7 +28,7 @@ COMMIT_POLICY = CommitOwnershipPolicy(
 )
 ENVIRONMENT_POLICY = EnvironmentAccessPolicy(
     owner_modules=(
-        "control_plane_kit.cli",
+        "control_plane_kit.entrypoints.cli",
         "control_plane_kit.contracts",
         "control_plane_kit.docker_runtime",
     )

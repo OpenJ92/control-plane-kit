@@ -31,7 +31,6 @@ PACKAGE_RULES = (
             "execution",
         ),
     ),
-    PackageDependencyRule("cli", ()),
     PackageDependencyRule("core", ()),
     PackageDependencyRule("contracts", ()),
     PackageDependencyRule("domains", ("core",)),
@@ -58,6 +57,7 @@ PACKAGE_RULES = (
         ),
     ),
     PackageDependencyRule("execution", ()),
+    PackageDependencyRule("entrypoints", ()),
     PackageDependencyRule(
         "implementations",
         (
@@ -74,6 +74,7 @@ PACKAGE_RULES = (
     PackageDependencyRule("mcp_read", ("read_services",)),
     PackageDependencyRule("operations", ("core", "policies")),
     PackageDependencyRule("policies", ("core",)),
+    PackageDependencyRule("products", ("core",)),
     PackageDependencyRule(
         "projections",
         ("core", "execution", "saga", "scheduling"),
@@ -96,6 +97,7 @@ PACKAGE_RULES = (
             "domains",
             "implementations",
             "read_services",
+            "products",
             "webhook",
         ),
     ),
@@ -131,11 +133,11 @@ TRANSPORT_POLICY = TransportOwnershipPolicy(
                 "control_plane_kit.adapters.http_forwarding",
                 "control_plane_kit.adapters.probes.clients",
                 "control_plane_kit.adapters.verification",
-                "control_plane_kit.cli",
+                "control_plane_kit.entrypoints.cli",
                 "control_plane_kit.webhook.http",
             ),
         ),
-        TransportOwner("requests", ("control_plane_kit.cli",)),
+        TransportOwner("requests", ("control_plane_kit.entrypoints.cli",)),
         TransportOwner("aiohttp", ()),
         TransportOwner("http.client", ()),
         TransportOwner(
@@ -147,7 +149,7 @@ TRANSPORT_POLICY = TransportOwnershipPolicy(
             ),
         ),
         TransportOwner("urllib3", ()),
-        TransportOwner("urllib.request", ("control_plane_kit.cli",)),
+        TransportOwner("urllib.request", ("control_plane_kit.entrypoints.cli",)),
     )
 )
 TEMPLATE_ENGINE_POLICY = ImportOwnershipPolicy(

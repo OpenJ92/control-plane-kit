@@ -14,17 +14,41 @@ from control_plane_kit import (
     compile_recipe,
 )
 from control_plane_kit.servers import (
+    PACKAGE_SERVER_CONTRACTS,
+    ProductMaturity,
+    package_server_contract,
+)
+from control_plane_kit.products.servers import (
     CapabilityImplementation,
     ExecutableCapability,
-    PACKAGE_SERVER_CONTRACTS,
-    PackageServerContract,
-    ProductMaturity,
+    ProductCatalog,
+    ProductDeclaration,
     UnsupportedCapability,
-    package_server_contract,
 )
 
 
 class PackageServerCatalogTests(unittest.TestCase):
+    def test_catalog_is_the_canonical_product_declaration_collection(self) -> None:
+        catalog = ProductCatalog(PACKAGE_SERVER_CONTRACTS)
+
+        self.assertEqual(catalog.declarations, PACKAGE_SERVER_CONTRACTS)
+        self.assertEqual(
+            catalog.declaration(PackageServerProduct.HELLO),
+            package_server_contract(PackageServerProduct.HELLO),
+        )
+        self.assertEqual(
+            ProductDeclaration.__module__,
+            "control_plane_kit.products.servers.catalog",
+        )
+
+        with self.assertRaises(ValueError):
+            ProductCatalog(
+                (
+                    PACKAGE_SERVER_CONTRACTS[0],
+                    PACKAGE_SERVER_CONTRACTS[0],
+                )
+            )
+
     def test_catalogue_contains_each_closed_product_exactly_once(self) -> None:
         self.assertEqual(
             {contract.product for contract in PACKAGE_SERVER_CONTRACTS},
@@ -186,7 +210,7 @@ class PackageServerCatalogTests(unittest.TestCase):
         block = package_server_contract(PackageServerProduct.HTTP_PROXY).block
 
         with self.assertRaisesRegex(ValueError, "exactly match"):
-            PackageServerContract(
+            ProductDeclaration(
                 PackageServerProduct.HTTP_PROXY,
                 ProductMaturity.TEACHING,
                 block,
