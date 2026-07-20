@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from enum import StrEnum
 import hashlib
 import hmac
 from ipaddress import ip_address
@@ -11,62 +10,29 @@ import socket
 from typing import Protocol
 from urllib.parse import urlsplit, urlunsplit
 
+from control_plane_kit._optional import require_optional_dependencies
+
+require_optional_dependencies(
+    "control_plane_kit.interpreters.webhook_http",
+    ("httpx",),
+    extra="http",
+)
+
 import httpx
 
 from control_plane_kit.core.secrets import SecretResolver, require_resolved_secret
 from control_plane_kit.domains.webhook.language import (
+    WebhookAddressPolicy,
     WebhookAttemptOutcome,
     WebhookEndpoint,
+    WebhookEndpointGrant,
+    WebhookEndpointScope,
     WebhookSigningAlgorithm,
 )
 from control_plane_kit.operations.webhook import (
     WebhookOutboundRequest,
     WebhookOutboundResult,
 )
-
-
-class WebhookEndpointScope(StrEnum):
-    PUBLIC = "public"
-    HOST_LOCAL = "host-local"
-    RUNTIME_PRIVATE = "runtime-private"
-
-
-@dataclass(frozen=True, slots=True)
-class WebhookEndpointGrant:
-    """Exact endpoint authority granted by process bootstrap configuration."""
-
-    endpoint_id: str
-    url: str
-    scope: WebhookEndpointScope
-
-    def __post_init__(self) -> None:
-        endpoint = WebhookEndpoint(self.endpoint_id, self.url)
-        if endpoint.url != self.url:
-            raise ValueError("webhook endpoint grant must be canonical")
-        if not isinstance(self.scope, WebhookEndpointScope):
-            raise TypeError("webhook endpoint grant scope must be typed")
-
-
-@dataclass(frozen=True, slots=True)
-class WebhookAddressPolicy:
-    """Closed exact allowlist for outbound webhook destinations."""
-
-    grants: tuple[WebhookEndpointGrant, ...]
-
-    def __post_init__(self) -> None:
-        if not isinstance(self.grants, tuple) or any(
-            not isinstance(grant, WebhookEndpointGrant) for grant in self.grants
-        ):
-            raise TypeError("webhook address policy grants must be typed")
-        identities = tuple(grant.endpoint_id for grant in self.grants)
-        if len(set(identities)) != len(identities):
-            raise ValueError("webhook address policy endpoint identities must be unique")
-
-    def grant_for(self, endpoint: WebhookEndpoint) -> WebhookEndpointGrant:
-        matches = tuple(grant for grant in self.grants if grant.endpoint_id == endpoint.endpoint_id)
-        if len(matches) != 1 or matches[0].url != endpoint.url:
-            raise WebhookHttpSecurityError("webhook endpoint is not explicitly authorized")
-        return matches[0]
 
 
 class WebhookPublicAddressResolver(Protocol):

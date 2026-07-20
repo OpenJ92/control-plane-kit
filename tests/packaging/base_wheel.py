@@ -66,7 +66,10 @@ if WebhookDeliveryService.__module__ != "control_plane_kit.operations.webhook.se
 from control_plane_kit.domains.discovery import DiscoveryIdentity  # noqa: E402
 from control_plane_kit.domains.idempotency import IdempotencyIdentity  # noqa: E402
 from control_plane_kit.domains.load_generation import LoadMethod  # noqa: E402
-from control_plane_kit.domains.webhook import WebhookDeliveryIdentity  # noqa: E402
+from control_plane_kit.domains.webhook import (  # noqa: E402
+    WebhookAddressPolicy,
+    WebhookDeliveryIdentity,
+)
 
 if not all(
     value.__module__.startswith("control_plane_kit.domains.")
@@ -78,6 +81,8 @@ if not all(
     )
 ):
     raise AssertionError("domain values did not load from canonical package entrances")
+if WebhookAddressPolicy.__module__ != "control_plane_kit.domains.webhook.language":
+    raise AssertionError("webhook endpoint authority did not load from its domain")
 
 application = ApplicationBlock(
     spec=BlockSpec("base-wheel-app", "Base wheel application"),
@@ -111,7 +116,7 @@ if find_spec("control_plane_kit.cli") is not None:
     raise AssertionError("installed base wheel retained the retired CLI module")
 if find_spec("control_plane_kit.entrypoints.cli") is None:
     raise AssertionError("installed base wheel is missing the canonical CLI entrypoint")
-for retired in ("postgres", "protocols", "service", "unit_of_work"):
+for retired in ("http", "postgres", "protocols", "service", "unit_of_work"):
     if find_spec(f"control_plane_kit.webhook.{retired}") is not None:
         raise AssertionError(f"installed base wheel retained webhook.{retired}")
 transitional_webhook = importlib.import_module("control_plane_kit.webhook")
@@ -129,5 +134,13 @@ for module in (
             raise AssertionError(f"{module} did not give actionable HTTP-extra guidance") from error
     else:
         raise AssertionError(f"{module} imported without its declared HTTP extra")
+
+try:
+    importlib.import_module("control_plane_kit.interpreters.webhook_http")
+except ModuleNotFoundError as error:
+    if "control-plane-kit[http]" not in str(error):
+        raise AssertionError("webhook HTTP interpreter lacks extra guidance") from error
+else:
+    raise AssertionError("webhook HTTP interpreter imported without its HTTP extra")
 
 print("base wheel acceptance passed")

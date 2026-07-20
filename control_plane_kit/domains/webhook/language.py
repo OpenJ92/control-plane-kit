@@ -67,6 +67,18 @@ class WebhookScope(StrEnum):
     READ = "webhook:read"
 
 
+class WebhookEndpointScope(StrEnum):
+    """Closed network authority granted to one webhook endpoint."""
+
+    PUBLIC = "public"
+    HOST_LOCAL = "host-local"
+    RUNTIME_PRIVATE = "runtime-private"
+
+
+class WebhookEndpointAuthorizationError(ValueError):
+    """An endpoint is not present in the exact bootstrap authority."""
+
+
 @dataclass(frozen=True, slots=True)
 class WebhookDeliveryIdentity:
     workspace_id: str
@@ -125,6 +137,52 @@ class WebhookEndpoint:
             "url": self.url,
             "scheme": self.scheme.value,
         }
+
+
+@dataclass(frozen=True, slots=True)
+class WebhookEndpointGrant:
+    """Exact endpoint identity, URL, and network scope granted at bootstrap."""
+
+    endpoint_id: str
+    url: str
+    scope: WebhookEndpointScope
+
+    def __post_init__(self) -> None:
+        endpoint = WebhookEndpoint(self.endpoint_id, self.url)
+        if endpoint.url != self.url:
+            raise ValueError("webhook endpoint grant must be canonical")
+        if not isinstance(self.scope, WebhookEndpointScope):
+            raise TypeError("webhook endpoint grant scope must be typed")
+
+
+@dataclass(frozen=True, slots=True)
+class WebhookAddressPolicy:
+    """Closed exact allowlist for outbound webhook destinations."""
+
+    grants: tuple[WebhookEndpointGrant, ...]
+
+    def __post_init__(self) -> None:
+        if not isinstance(self.grants, tuple) or any(
+            not isinstance(grant, WebhookEndpointGrant) for grant in self.grants
+        ):
+            raise TypeError("webhook address policy grants must be typed")
+        identities = tuple(grant.endpoint_id for grant in self.grants)
+        if len(set(identities)) != len(identities):
+            raise ValueError("webhook address policy endpoint identities must be unique")
+
+    def grant_for(self, endpoint: WebhookEndpoint) -> WebhookEndpointGrant:
+        """Return the exact grant or fail without exposing endpoint material."""
+
+        if not isinstance(endpoint, WebhookEndpoint):
+            raise TypeError("webhook address policy requires a typed endpoint")
+        matches = tuple(
+            grant for grant in self.grants if grant.endpoint_id == endpoint.endpoint_id
+        )
+        if len(matches) != 1 or matches[0].url != endpoint.url:
+            raise WebhookEndpointAuthorizationError(
+                "webhook endpoint is not explicitly authorized"
+            )
+        return matches[0]
 
 
 @dataclass(frozen=True, slots=True)

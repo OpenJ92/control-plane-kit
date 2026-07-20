@@ -187,6 +187,7 @@ class PackageStructureTests(unittest.TestCase):
             "webhook.protocols",
             "webhook.service",
             "webhook.unit_of_work",
+            "webhook.http",
         )
 
         for module in retired_modules:

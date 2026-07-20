@@ -24,7 +24,7 @@ from control_plane_kit.core.secrets import (
 )
 from control_plane_kit.core.types import Protocol
 from control_plane_kit.core.verification import HttpCheck, VerificationContract
-from control_plane_kit.webhook.http import (
+from control_plane_kit.domains.webhook import (
     WebhookAddressPolicy,
     WebhookEndpointGrant,
     WebhookEndpointScope,

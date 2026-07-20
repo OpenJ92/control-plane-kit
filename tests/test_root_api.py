@@ -32,7 +32,6 @@ PURE_PACKAGE_ROOTS = (
     "effects",
     "execution",
     "implementations",
-    "interpreters",
     "products",
     "saga",
     "scheduling",
@@ -56,6 +55,11 @@ def optional_imports(source: str) -> set[str]:
 
 
 class RootApiTests(unittest.TestCase):
+    def test_interpreter_entrance_does_not_eagerly_import_optional_dependencies(self) -> None:
+        entrance = ROOT / "control_plane_kit" / "interpreters" / "__init__.py"
+
+        self.assertEqual(optional_imports(entrance.read_text()), set())
+
     def test_root_api_imports_only_pure_package_surfaces(self) -> None:
         tree = ast.parse(PACKAGE_ROOT.read_text())
         imported = {

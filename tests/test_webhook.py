@@ -9,6 +9,7 @@ from control_plane_kit import (
 )
 from control_plane_kit.domains.webhook import (
     MAX_WEBHOOK_PAYLOAD_BYTES,
+    WebhookAddressPolicy,
     WebhookAttemptFinished,
     WebhookAttemptOutcome,
     WebhookAttemptStarted,
@@ -24,6 +25,9 @@ from control_plane_kit.domains.webhook import (
     WebhookDeliveryState,
     WebhookDeliveryStatus,
     WebhookEndpoint,
+    WebhookEndpointAuthorizationError,
+    WebhookEndpointGrant,
+    WebhookEndpointScope,
     WebhookEnqueued,
     WebhookOperatorRequired,
     WebhookPayload,
@@ -44,6 +48,29 @@ NOW = datetime(2026, 7, 19, 20, 0, tzinfo=timezone.utc)
 
 
 class WebhookAlgebraTests(unittest.TestCase):
+    def test_endpoint_authority_is_closed_exact_and_interpreter_independent(self) -> None:
+        grant = WebhookEndpointGrant(
+            "orders",
+            "https://orders.example.test/hooks",
+            WebhookEndpointScope.PUBLIC,
+        )
+        policy = WebhookAddressPolicy((grant,))
+
+        self.assertEqual(
+            policy.grant_for(WebhookEndpoint(grant.endpoint_id, grant.url)),
+            grant,
+        )
+        with self.assertRaises(WebhookEndpointAuthorizationError):
+            policy.grant_for(
+                WebhookEndpoint("orders", "https://other.example.test/hooks")
+            )
+        with self.assertRaisesRegex(ValueError, "identities must be unique"):
+            WebhookAddressPolicy((grant, grant))
+        self.assertEqual(
+            WebhookAddressPolicy.__module__,
+            "control_plane_kit.domains.webhook.language",
+        )
+
     def test_intent_is_closed_bounded_and_deterministically_fingerprinted(self) -> None:
         first = _intent()
         second = _intent()

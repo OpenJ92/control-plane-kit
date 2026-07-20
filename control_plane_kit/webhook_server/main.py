@@ -26,7 +26,7 @@ from control_plane_kit.operations.webhook import (
     install_webhook_schema,
 )
 from control_plane_kit.webhook.app import create_webhook_delivery_app
-from control_plane_kit.webhook.http import (
+from control_plane_kit.interpreters.webhook_http import (
     HttpWebhookDelivery,
     SystemWebhookPublicAddressResolver,
 )

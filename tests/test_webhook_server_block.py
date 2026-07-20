@@ -29,7 +29,7 @@ from control_plane_kit.servers import (
     webhook_address_policy_from_descriptor,
     webhook_delivery_block,
 )
-from control_plane_kit.webhook.http import (
+from control_plane_kit.domains.webhook import (
     WebhookAddressPolicy,
     WebhookEndpointGrant,
     WebhookEndpointScope,
