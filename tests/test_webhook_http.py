@@ -17,14 +17,16 @@ from control_plane_kit.core.secrets import (
 from control_plane_kit.webhook import (
     HttpWebhookDelivery,
     WebhookAddressPolicy,
-    WebhookAttemptOutcome,
-    WebhookContentType,
-    WebhookDeliveryIdentity,
-    WebhookEndpoint,
     WebhookEndpointGrant,
     WebhookEndpointScope,
     WebhookHttpLimits,
     WebhookOutboundRequest,
+)
+from control_plane_kit.domains.webhook import (
+    WebhookAttemptOutcome,
+    WebhookContentType,
+    WebhookDeliveryIdentity,
+    WebhookEndpoint,
     WebhookPayload,
     WebhookSigning,
 )

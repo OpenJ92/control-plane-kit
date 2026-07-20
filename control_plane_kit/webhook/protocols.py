@@ -5,7 +5,7 @@ from __future__ import annotations
 from datetime import datetime
 from typing import Protocol, Self
 
-from control_plane_kit.webhook.language import (
+from control_plane_kit.domains.webhook.language import (
     WebhookDeliveryIdentity,
     WebhookDeliveryIntent,
     WebhookDeliveryState,

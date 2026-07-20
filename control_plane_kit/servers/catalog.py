@@ -25,13 +25,13 @@ from control_plane_kit.servers.http_auth_gateway import (
     RouteAuthorizationPolicy,
     http_auth_gateway_block,
 )
-from control_plane_kit.idempotency import (
+from control_plane_kit.domains.idempotency import (
     IdempotencyGatewayPolicy,
     IdempotencyMethod,
     IdempotencyRoutePolicy,
 )
 from control_plane_kit.servers.http_idempotency_gateway import http_idempotency_gateway_block
-from control_plane_kit.load_generation import LoadGeneratorPolicy
+from control_plane_kit.domains.load_generation import LoadGeneratorPolicy
 from control_plane_kit.servers.http_load_generator import http_load_generator_block
 from control_plane_kit.servers.http_fault_injector import http_fault_injector_block
 from control_plane_kit.servers.http_multiplexer import http_multiplexer_block

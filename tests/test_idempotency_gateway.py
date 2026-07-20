@@ -18,13 +18,15 @@ import psycopg
 from fastapi.testclient import TestClient
 
 from control_plane_kit import (
+    PackageServerProduct,
+)
+from control_plane_kit.domains.idempotency import (
     IdempotencyGatewayPolicy,
     IdempotencyMethod,
     IdempotencyOutcome,
     IdempotencyRecord,
     IdempotencyRecordStatus,
     IdempotencyRoutePolicy,
-    PackageServerProduct,
     idempotency_identity,
     idempotency_policy_from_descriptor,
 )

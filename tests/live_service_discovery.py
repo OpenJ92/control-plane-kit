@@ -8,17 +8,19 @@ import os
 import httpx
 
 from control_plane_kit import (
+    Endpoint,
+    EndpointScope,
+    LiteralAddress,
+    Protocol,
+)
+from control_plane_kit.domains.discovery import (
     DeregisterDiscoveryInstance,
     DiscoveryIdentity,
     DiscoveryLease,
     DiscoveryRegistration,
     DiscoveryRegistrationMode,
-    Endpoint,
-    EndpointScope,
     ExpireDiscoveryLeases,
     HeartbeatDiscoveryInstance,
-    LiteralAddress,
-    Protocol,
     RegisterDiscoveryInstance,
     discovery_command_descriptor,
 )

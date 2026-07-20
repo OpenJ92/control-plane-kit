@@ -19,7 +19,7 @@ from control_plane_kit.core.algebra import (
     RequirementSocket,
 )
 from control_plane_kit.core.capabilities import CapabilityName
-from control_plane_kit.idempotency import IdempotencyGatewayPolicy
+from control_plane_kit.domains.idempotency import IdempotencyGatewayPolicy
 from control_plane_kit.implementations import DockerImageImplementation
 from control_plane_kit.core.secrets import SecretEnvironmentDelivery, SecretReference
 from control_plane_kit.servers.http_messages import HttpRequest, HttpResponse

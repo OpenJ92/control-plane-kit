@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from typing import Any, Protocol
 
-from control_plane_kit.idempotency import (
+from control_plane_kit.domains.idempotency import (
     IdempotencyIdentity,
     IdempotencyMethod,
     IdempotencyRecord,

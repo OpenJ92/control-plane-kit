@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from typing import Protocol, Self
 
-from control_plane_kit.idempotency import IdempotencyRecord, IdempotencyRecordStatus
+from control_plane_kit.domains.idempotency import IdempotencyRecord, IdempotencyRecordStatus
 
 
 class IdempotencyStore(Protocol):

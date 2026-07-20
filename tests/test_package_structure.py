@@ -20,6 +20,7 @@ from control_plane_kit.core import (
     verification,
 )
 from control_plane_kit.operations import planning as operational_planning
+from control_plane_kit.domains import discovery, idempotency, load_generation, webhook
 
 
 class PackageStructureTests(unittest.TestCase):
@@ -95,6 +96,22 @@ class PackageStructureTests(unittest.TestCase):
             "control_plane_kit.scheduling.schedule",
         )
         self.assertEqual(effects.EffectRequest.__module__, "control_plane_kit.effects.values")
+        self.assertEqual(
+            discovery.DiscoveryIdentity.__module__,
+            "control_plane_kit.domains.discovery.language",
+        )
+        self.assertEqual(
+            idempotency.IdempotencyIdentity.__module__,
+            "control_plane_kit.domains.idempotency.language",
+        )
+        self.assertEqual(
+            load_generation.LoadRunCommand.__module__,
+            "control_plane_kit.domains.load_generation.language",
+        )
+        self.assertEqual(
+            webhook.WebhookDeliveryIntent.__module__,
+            "control_plane_kit.domains.webhook.language",
+        )
 
     def test_retired_flat_modules_are_not_importable(self) -> None:
         retired_modules = (
@@ -127,6 +144,10 @@ class PackageStructureTests(unittest.TestCase):
             "planning.codec",
             "planning.compiler",
             "planning.recovery",
+            "discovery",
+            "idempotency",
+            "load_generation",
+            "webhook.language",
         )
 
         for module in retired_modules:

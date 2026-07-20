@@ -7,7 +7,7 @@ from datetime import datetime
 import json
 from typing import Any, Mapping, Protocol
 
-from control_plane_kit.webhook.language import (
+from control_plane_kit.domains.webhook.language import (
     MAX_WEBHOOK_PAYLOAD_BYTES,
     WebhookAttemptOutcome,
     WebhookClaim,

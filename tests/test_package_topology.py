@@ -169,7 +169,7 @@ class PackageTopologyPolicyTests(unittest.TestCase):
     def test_product_may_project_domain_but_not_registry_or_process(self) -> None:
         facts = (
             self._fact(
-                "from control_plane_kit.discovery import DiscoveryRecord\n",
+                "from control_plane_kit.domains.discovery import DiscoveryRecord\n",
                 "control_plane_kit.products.coredns",
             ),
             self._fact(
@@ -187,7 +187,7 @@ class PackageTopologyPolicyTests(unittest.TestCase):
             ),
             ownerships=(
                 ModulePackageOwnership("control_plane_kit.discovery_registry", "operations.discovery"),
-                ModulePackageOwnership("control_plane_kit.discovery", "domains.discovery"),
+                ModulePackageOwnership("control_plane_kit.domains.discovery", "domains.discovery"),
                 ModulePackageOwnership("control_plane_kit.products.coredns", "products.coredns"),
                 ModulePackageOwnership("control_plane_kit.entrypoints.coredns", "entrypoints.coredns"),
             ),

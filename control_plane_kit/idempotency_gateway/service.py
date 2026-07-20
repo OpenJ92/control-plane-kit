@@ -8,7 +8,7 @@ from datetime import datetime, timedelta, timezone
 from enum import StrEnum
 from typing import TypeAlias
 
-from control_plane_kit.idempotency import (
+from control_plane_kit.domains.idempotency import (
     IdempotencyGatewayPolicy,
     IdempotencyMethod,
     IdempotencyOutcome,

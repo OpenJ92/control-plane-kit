@@ -17,7 +17,7 @@ from control_plane_kit.contracts import (
     SecretVariable,
     TextVariable,
 )
-from control_plane_kit.idempotency import idempotency_policy_from_descriptor
+from control_plane_kit.domains.idempotency import idempotency_policy_from_descriptor
 from control_plane_kit.idempotency_gateway.service import (
     ExecuteIdempotentHttp,
     IdempotencyGatewayAuthority,

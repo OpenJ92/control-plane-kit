@@ -18,18 +18,20 @@ from control_plane_kit import (
     DeploymentRecipe,
     DockerRuntime,
     GraphDescriptorCodec,
-    LoadGeneratorPolicy,
-    LoadMethod,
-    LoadRunCommand,
-    LoadRunStatus,
     PackageServerProduct,
     SocketConnection,
     ValidationCode,
     compile_recipe,
+    validate_graph,
+)
+from control_plane_kit.domains.load_generation import (
+    LoadGeneratorPolicy,
+    LoadMethod,
+    LoadRunCommand,
+    LoadRunStatus,
     load_generator_policy_from_descriptor,
     load_run_command_from_descriptor,
     scheduled_offsets_ms,
-    validate_graph,
 )
 from control_plane_kit.servers import (
     ProductMaturity,

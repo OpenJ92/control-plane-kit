@@ -9,7 +9,7 @@ import uvicorn
 
 from control_plane_kit.adapters.http_forwarding import forward_http_request_sync
 from control_plane_kit.contracts import EnvironmentContract, HttpVariable, SecretVariable, TextVariable
-from control_plane_kit.load_generation import load_generator_policy_from_descriptor
+from control_plane_kit.domains.load_generation import load_generator_policy_from_descriptor
 from control_plane_kit.servers.http_load_generator import (
     HttpLoadGeneratorServer,
     create_load_generator_app,

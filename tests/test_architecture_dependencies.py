@@ -36,12 +36,11 @@ PACKAGE_RULES = (
     PackageDependencyRule("contracts", ()),
     PackageDependencyRule("configuration_rendering", ("core",)),
     PackageDependencyRule("domains", ("core",)),
-    PackageDependencyRule("discovery", ("core",)),
     PackageDependencyRule(
-        "discovery_registry", ("core", "discovery")
+        "discovery_registry", ("core", "domains")
     ),
     PackageDependencyRule(
-        "discovery_server", ("contracts", "discovery", "discovery_registry", "servers")
+        "discovery_server", ("contracts", "discovery_registry", "domains", "servers")
     ),
     PackageDependencyRule(
         "docker_runtime",
@@ -66,13 +65,11 @@ PACKAGE_RULES = (
             "core",
         ),
     ),
-    PackageDependencyRule("idempotency", ()),
     PackageDependencyRule(
-        "idempotency_gateway", ("adapters", "contracts", "idempotency", "servers")
+        "idempotency_gateway", ("adapters", "contracts", "domains", "servers")
     ),
-    PackageDependencyRule("load_generation", ()),
     PackageDependencyRule(
-        "load_generator_server", ("adapters", "contracts", "load_generation", "servers")
+        "load_generator_server", ("adapters", "contracts", "domains", "servers")
     ),
     PackageDependencyRule("mcp_read", ("read_services",)),
     PackageDependencyRule("operations", ("core", "policies")),
@@ -96,16 +93,14 @@ PACKAGE_RULES = (
             "core",
             "contracts",
             "configuration_rendering",
-            "discovery",
-            "idempotency",
+            "domains",
             "implementations",
-            "load_generation",
             "read_services",
             "webhook",
         ),
     ),
     PackageDependencyRule("stores", ("core", "execution")),
-    PackageDependencyRule("webhook", ("_optional", "core")),
+    PackageDependencyRule("webhook", ("_optional", "core", "domains")),
     PackageDependencyRule(
         "webhook_server",
         ("contracts", "core", "servers", "webhook"),

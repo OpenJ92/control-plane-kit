@@ -16,15 +16,17 @@ from control_plane_kit import (
     DockerPostgresImplementation,
     DockerRuntime,
     HttpCheck,
-    IdempotencyGatewayPolicy,
-    IdempotencyMethod,
-    IdempotencyRoutePolicy,
-    LoadGeneratorPolicy,
     Protocol,
     ProviderSocket,
     SocketConnection,
     VerificationContract,
 )
+from control_plane_kit.domains.idempotency import (
+    IdempotencyGatewayPolicy,
+    IdempotencyMethod,
+    IdempotencyRoutePolicy,
+)
+from control_plane_kit.domains.load_generation import LoadGeneratorPolicy
 from control_plane_kit.servers import (
     AuthGatewayPolicy,
     AuthenticationMechanism,

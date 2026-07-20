@@ -9,7 +9,7 @@ import hashlib
 import json
 from typing import TypeAlias
 
-from control_plane_kit.discovery import (
+from control_plane_kit.domains.discovery import (
     DeregisterDiscoveryInstance,
     DiscoveryAuthority,
     DiscoveryCommand,

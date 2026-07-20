@@ -7,7 +7,7 @@ from datetime import datetime
 import json
 from typing import Any, Protocol
 
-from control_plane_kit.discovery import (
+from control_plane_kit.domains.discovery import (
     DiscoveryIdentity,
     DiscoveryLease,
     DiscoveryRegistration,

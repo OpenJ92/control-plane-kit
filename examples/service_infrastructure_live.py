@@ -18,20 +18,12 @@ import httpx
 import psycopg
 
 from control_plane_kit import (
-    DeregisterDiscoveryInstance,
-    DiscoveryIdentity,
-    DiscoveryLease,
-    DiscoveryRegistration,
-    DiscoveryRegistrationMode,
     EffectResult,
     Endpoint,
     EndpointScope,
-    ExpireDiscoveryLeases,
-    HeartbeatDiscoveryInstance,
     LiteralAddress,
     LocalDevelopmentSecretResolver,
     Protocol,
-    RegisterDiscoveryInstance,
     SecretProviderAuthority,
     SecretProviderId,
     SecretReference,
@@ -41,10 +33,20 @@ from control_plane_kit import (
     VerificationInterpreterRegistry,
     VerificationOutcome,
     compile_recipe,
-    discovery_command_descriptor,
     materialize_verification_contract,
 )
-from control_plane_kit.webhook import (
+from control_plane_kit.domains.discovery import (
+    DeregisterDiscoveryInstance,
+    DiscoveryIdentity,
+    DiscoveryLease,
+    DiscoveryRegistration,
+    DiscoveryRegistrationMode,
+    ExpireDiscoveryLeases,
+    HeartbeatDiscoveryInstance,
+    RegisterDiscoveryInstance,
+    discovery_command_descriptor,
+)
+from control_plane_kit.domains.webhook import (
     WebhookContentType,
     WebhookDeliveryIdentity,
     WebhookDeliveryIntent,
