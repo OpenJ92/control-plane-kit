@@ -157,6 +157,19 @@ from control_plane_kit.servers.request_observer import (
     request_observer_command,
 )
 from control_plane_kit.servers.service_discovery import service_discovery_block
+from control_plane_kit.servers.coredns import (
+    COREDNS_CONFIG_PATH,
+    COREDNS_IMAGE,
+    COREDNS_ZONE_PATH,
+    CoreDnsConfiguration,
+    DnsARecord,
+    DnsAaaaRecord,
+    DnsName,
+    coredns_block,
+    default_coredns_configuration,
+    project_discovery_to_coredns,
+    render_coredns_configuration,
+)
 from control_plane_kit.servers.webhook_delivery import (
     MAX_WEBHOOK_ENDPOINT_GRANTS,
     MAX_WEBHOOK_ENDPOINT_POLICY_BYTES,
@@ -208,6 +221,17 @@ from control_plane_kit.servers.catalog import (
 )
 
 __all__ = [
+    "COREDNS_CONFIG_PATH",
+    "COREDNS_IMAGE",
+    "COREDNS_ZONE_PATH",
+    "CoreDnsConfiguration",
+    "DnsARecord",
+    "DnsAaaaRecord",
+    "DnsName",
+    "coredns_block",
+    "default_coredns_configuration",
+    "project_discovery_to_coredns",
+    "render_coredns_configuration",
     "AuthGatewayObservation",
     "AuthGatewayPolicy",
     "AuthenticatedIdentity",

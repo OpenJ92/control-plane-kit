@@ -61,6 +61,7 @@ class HttpPolicyFamilyAcceptanceTests(unittest.TestCase):
             set(PackageServerProduct)
             - {
                 PackageServerProduct.SERVICE_DISCOVERY,
+                PackageServerProduct.COREDNS,
                 PackageServerProduct.OPENTELEMETRY_COLLECTOR,
                 PackageServerProduct.WEBHOOK_DELIVERY,
                 PackageServerProduct.TCP_SWITCH,

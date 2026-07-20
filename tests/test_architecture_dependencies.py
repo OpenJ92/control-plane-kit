@@ -113,6 +113,7 @@ PACKAGE_RULES = (
             "configuration",
             "configuration_rendering",
             "control_routes",
+            "discovery",
             "idempotency",
             "implementations",
             "load_generation",

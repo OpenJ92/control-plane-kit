@@ -1,0 +1,8 @@
+{{ zone }}:53 {
+    errors
+    health :8080
+    ready :8181 {
+        monitor continuously
+    }
+    file {{ zone_path }} {{ zone }}
+}

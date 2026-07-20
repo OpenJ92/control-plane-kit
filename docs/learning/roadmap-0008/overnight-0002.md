@@ -3184,3 +3184,133 @@ skips or mocks introduced:             0
 - the later canonical live corpus should execute the block through
   `DeploymentProgram`; this issue's isolated Docker proof establishes server
   semantics and cleanup only.
+
+## #430 Official CoreDNS Integration
+
+### Capability
+
+The package now interprets bounded discovery registry results into an explicit
+authoritative DNS projection and realizes that projection with the official
+CoreDNS image:
+
+```text
+tuple DiscoveryRegistrationRecord
+  -> project_discovery_to_coredns
+    -> CoreDnsConfiguration
+      -> strict Corefile and RFC zone templates
+        -> immutable ConfigurationArtifact pair
+          -> coredns/coredns:1.14.6
+```
+
+`DnsName`, `DnsARecord`, and `DnsAaaaRecord` are closed typed values. A
+`CoreDnsConfiguration` is a bounded nonempty product of one authoritative zone
+and exact address records. Registry rows remain registry truth; the projection
+function neither imports the registry store nor mutates a graph. An operator
+must place newly rendered artifacts in a desired graph and use the ordinary
+diff, plan, approval, and execution pipeline to change a running server.
+
+The package block advertises four exact providers:
+
+```text
+dns-tcp : DNS x TCP
+dns-udp : DNS x UDP
+health  : HTTP x TCP
+ready   : HTTP x TCP
+```
+
+Health and readiness are separate HTTP checks. Semantic DNS verification sends
+exact A/AAAA checks over both DNS transports. `RESTARTABLE` is represented by a
+new closed `runtime-lifecycle` capability implementation kind, rather than
+misrepresenting runtime restart as an application route.
+
+### Laws And Review
+
+- DNS names are normalized to lower-case absolute names and validated label by
+  label;
+- records must belong to their authoritative zone and duplicate exact records
+  fail at construction;
+- stale, expired, deregistered, malformed, non-DNS-label, and hostname-backed
+  registry rows fail closed at the projection boundary;
+- the first projection intentionally accepts only literal IP endpoint targets;
+  it does not perform hidden recursive resolution;
+- endpoint ports are validated but are not encoded into A/AAAA records;
+- Corefile and zone content are strict Jinja2 output from typed secret-free
+  values;
+- both artifacts are immutable and mounted read-only;
+- artifact identity participates in graph descriptors and graph diff;
+- the official image is pinned exactly and no package-owned DNS implementation
+  was introduced;
+- DNS TCP and UDP publications remain distinct Docker transport bindings;
+- process health, plugin readiness, transport reachability, DNS resolution, and
+  registry membership remain different evidence;
+- restart is the controlled graph-change mechanism for an immutable projection;
+  registry changes do not silently rewrite the mounted files;
+- no store, UnitOfWork, transaction, secret delivery, retained data, or mutable
+  DNS state was introduced.
+
+### Breaking Points And Corrections
+
+The first strict-rendering test exposed an accidental Python ordering
+assumption. `DnsARecord | DnsAaaaRecord` is a sum type, and dataclass ordering
+cannot compare two different variants. Deterministic projection now uses one
+explicit key:
+
+```python
+def _record_sort_key(record: CoreDnsRecord) -> tuple[str, str, str]:
+    return _record_identity(record)
+```
+
+This correction strengthens the algebra: ordering is defined over the record
+language itself rather than inherited from whichever concrete dataclass Python
+happens to see. No assertion was changed.
+
+The live test initially appeared silent while the Docker interpreter pulled and
+inspected the official image. Inspection confirmed no CoreDNS resource existed
+until materialization completed; the proof then passed normally. No timeout or
+assertion was relaxed.
+
+The complete suite then rejected `servers.coredns -> discovery` because the
+declared package dependency graph predated a product adapter that consumed the
+discovery language. The server package already owns official product adapters
+over pure domain languages such as webhook, idempotency, and load generation.
+The architecture declaration now explicitly permits `servers -> discovery`.
+It still forbids `servers -> discovery_registry`, stores, network clients, and
+UnitOfWork implementations. Moving this one projection into a new parallel
+domain package would have obscured rather than clarified ownership.
+
+The first complete run was also terminated by Docker with exit 137 after
+hundreds of passing tests while another independently started CPK suite had
+recently occupied the same fixed test resources. No assertion identified an
+application defect. After the shared runner and Postgres resources were free,
+the complete suite was rebuilt from the final branch and passed all 1,052
+tests. Pottery Factory containers remained running throughout.
+
+### Evidence
+
+```text
+focused Docker tests:                 29 passed
+complete Docker/Postgres suite:     1052 passed
+real Docker image:                    coredns/coredns:1.14.6
+real health endpoint:                 200 OK
+real readiness endpoint:              200 OK
+real UDP A resolution:                orders.cpk.internal -> 10.42.0.17
+real TCP A resolution:                orders.cpk.internal -> 10.42.0.17
+configuration mounts:                 Corefile read-only
+                                      zone file read-only
+replayed startup:                     converged
+remaining owned live resources:       0
+skips, mocks, weakened assertions:     0
+```
+
+### Handoff To #431 And #439
+
+- #431 may consume the exact DNS protocol and verification precedent but must
+  retain its own Redis semantics;
+- #439 may compose CoreDNS and service discovery as separate nodes connected by
+  an explicit projection/update workflow, never an implicit store listener;
+- later acceptance should prove a registry change creates a changed desired
+  graph artifact and a reviewed restart plan;
+- hostname and SRV projection remain explicit future language extensions, not
+  free-form escape hatches;
+- dynamic zone-file reload is not claimed by this immutable first integration;
+  graph-controlled replacement/restart is the supported mutation path.

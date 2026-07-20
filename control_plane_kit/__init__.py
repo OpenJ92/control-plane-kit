@@ -670,6 +670,13 @@ from control_plane_kit.planning.recovery import (
     plan_recovery_transition,
 )
 from control_plane_kit.servers import (
+    COREDNS_CONFIG_PATH,
+    COREDNS_IMAGE,
+    COREDNS_ZONE_PATH,
+    CoreDnsConfiguration,
+    DnsARecord,
+    DnsAaaaRecord,
+    DnsName,
     AuthGatewayObservation,
     AuthGatewayPolicy,
     AuthenticatedIdentity,
@@ -779,6 +786,10 @@ from control_plane_kit.servers import (
     PACKAGE_SERVER_CONTRACTS,
     package_server_contract,
     default_collector_configuration,
+    default_coredns_configuration,
+    coredns_block,
+    project_discovery_to_coredns,
+    render_coredns_configuration,
     opentelemetry_collector_block,
     render_collector_configuration,
     request_observer_block,
@@ -887,6 +898,17 @@ from control_plane_kit.topology.validation import (
 )
 
 __all__ = [
+    "COREDNS_CONFIG_PATH",
+    "COREDNS_IMAGE",
+    "COREDNS_ZONE_PATH",
+    "CoreDnsConfiguration",
+    "DnsARecord",
+    "DnsAaaaRecord",
+    "DnsName",
+    "coredns_block",
+    "default_coredns_configuration",
+    "project_discovery_to_coredns",
+    "render_coredns_configuration",
     "ActivityDependency",
     "ActivityId",
     "ActivityImpact",

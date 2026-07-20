@@ -103,6 +103,7 @@ class PackageServerProduct(StrEnum):
     MANAGED_HTTP_ROUTER = "managed-http-router"
     REQUEST_OBSERVER = "request-observer"
     SERVICE_DISCOVERY = "service-discovery"
+    COREDNS = "coredns"
     OPENTELEMETRY_COLLECTOR = "opentelemetry-collector"
     WEBHOOK_DELIVERY = "webhook-delivery"
     TCP_SWITCH = "tcp-switch"

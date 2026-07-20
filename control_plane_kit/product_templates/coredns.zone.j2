@@ -1,0 +1,6 @@
+$ORIGIN {{ zone }}
+@ 60 IN SOA ns.{{ zone }} hostmaster.{{ zone }} {{ serial }} 7200 3600 1209600 60
+@ 60 IN NS ns.{{ zone }}
+ns 60 IN A 127.0.0.1
+{% for record in records %}{{ record.name }} {{ record.ttl }} IN {{ record.kind }} {{ record.target }}
+{% endfor %}
