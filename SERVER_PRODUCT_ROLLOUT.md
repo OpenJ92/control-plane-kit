@@ -128,6 +128,79 @@ published core descriptor
 The same descriptor and image digest must be used later. Gate 9 must not invent
 a second CPI product declaration or a privileged self-registration path.
 
+#### Core operator entry surfaces
+
+The core OCI image is not complete if it only starts internal application
+services. It must host both operator-facing protocol adapters:
+
+```text
+authenticated operator HTTP API gateway
+  -> shared application command/read services
+
+authenticated MCP Streamable HTTP server
+  -> the same application command/read services
+```
+
+The HTTP and MCP adapters are entrypoints, not independent owners of graph,
+activity, execution, or observation truth. They must not import stores directly,
+open their own transaction conventions, or implement competing projections.
+Every mutating call delegates to the same authorization, approval, UnitOfWork,
+idempotency, and activity-history boundaries. MCP must not provide a shortcut
+around an HTTP-visible safety law.
+
+The frozen reference already owns a `ReadOnlyMcpAdapter` tool vocabulary, but it
+is intentionally transport-neutral and is not a hosted MCP server. Extraction
+extends that canonical vocabulary into the hosted transport rather than creating
+a parallel tool table. Mutation tools are added only where an existing
+application command service and authorization law can be reused exactly.
+
+The initial remote surfaces are declared explicitly by the self descriptor:
+
+```text
+operator-api
+  authenticated HTTP API-gateway provider
+
+operator-mcp
+  authenticated MCP Streamable HTTP provider
+  canonical endpoint path: /mcp
+```
+
+The implementation may serve both logical providers from one HTTP listener or
+separate listeners, but the product descriptor and read model preserve their
+distinct semantic contracts. The connection-protocol language must represent
+MCP Streamable HTTP as a closed typed application protocol over TCP rather than
+free-form metadata. Endpoint paths, authentication requirements, readiness,
+and verification remain explicit.
+
+OCI answers how the MCP process is built, distributed, and run. It does not
+answer how an MCP client discovers or registers the remote server. Keep three
+records distinct:
+
+```text
+OCI image reference
+  deployable process bytes
+
+control-plane-instance.product.cpk.json
+  CPK product registration, sockets, requirements, and runtime contract
+
+MCP remote registration metadata
+  Streamable HTTP URL and client authentication information
+```
+
+After deployment, observations expose the selected CPI's public MCP URL, such
+as `https://instance.example/mcp`. A Hub, iOS client, or operator UI may vend
+that URL to an MCP client. Publishing MCP Registry `server.json` metadata is an
+optional later distribution concern and must not replace CPK product admission.
+
+Local `stdio` MCP may be supplied as a developer adapter, where the MCP client
+launches the process. It is not the remotely registered production surface and
+is not required for the OCI self-hosting proof.
+
+Normative protocol references:
+
+- [MCP transports](https://modelcontextprotocol.io/specification/draft/basic/transports)
+- [Publishing remote MCP servers](https://modelcontextprotocol.io/registry/remote-servers)
+
 ### Initial workload constraint
 
 ```text
@@ -977,6 +1050,9 @@ pipeline, real runtime interpreter, observations, and cleanup path.
 - package DAG and AST architecture policies;
 - base-wheel and optional-dependency tests;
 - CPI image build, external self-descriptor, and import-isolation tests;
+- authenticated HTTP API-gateway and hosted MCP Streamable HTTP contract tests;
+- HTTP/MCP authorization, projection, command, and transaction parity tests;
+- invalid MCP origin, authentication, payload, method, and tool tests;
 - one external fixture-product proof;
 - and existing DeploymentProgram acceptance.
 
@@ -1076,9 +1152,13 @@ Deliver in `control-plane-kit-core`:
 10. admitted descriptor digest semantics;
 11. runnable CPI OCI image and pinned publication workflow;
 12. external `control-plane-instance.product.cpk.json` self descriptor;
-13. image/descriptor coherence and base live-health proof;
-14. external fixture package proof;
-15. architecture, security, and test-parity review.
+13. authenticated operator HTTP API-gateway entrypoint;
+14. hosted MCP Streamable HTTP entrypoint and closed protocol identity;
+15. shared authorization, application-service, projection, and transaction
+    behavior across HTTP and MCP;
+16. image/descriptor coherence and base live-health proof;
+17. external fixture package proof;
+18. architecture, security, and test-parity review.
 
 Stop before moving a real product until an external descriptor can pass the
 entire pure pipeline and produce pinned runtime material.
@@ -1343,9 +1423,12 @@ Suggested core children:
 10. Prove unknown, duplicate, and malicious descriptors fail closed
 11. Package and publish the runnable CPI OCI image
 12. Publish the external CPI product descriptor
-13. Prove image, descriptor, health, digest, and import-boundary coherence
-14. Prove an external fixture distribution
-15. Complete architecture/security/test-integrity/parity review
+13. Host the authenticated operator HTTP API gateway in the CPI image
+14. Host MCP Streamable HTTP and project its public endpoint
+15. Prove HTTP/MCP service, authorization, and transaction parity
+16. Prove image, descriptor, health, digest, and import-boundary coherence
+17. Prove an external fixture distribution
+18. Complete architecture/security/test-integrity/parity review
 ```
 
 Suggested server children:
@@ -1392,7 +1475,8 @@ The bootstrap extraction succeeds when:
 ```text
 control-plane-kit-core
   owns the complete generic pipeline without built-in server-product identity
-  and publishes its CPI image plus external self descriptor
+  and publishes its CPI image plus external self descriptor, authenticated HTTP
+  API gateway, and hosted MCP Streamable HTTP endpoint
 
 control-plane-kit-servers
   owns one complete Hello product descriptor and pinned OCI image
