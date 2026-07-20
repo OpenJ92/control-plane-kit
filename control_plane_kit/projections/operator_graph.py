@@ -11,6 +11,8 @@ from dataclasses import dataclass, field
 from typing import Mapping
 
 from control_plane_kit.topology.graph import DeploymentGraph, Edge, Node, RuntimeRecord
+from control_plane_kit.environment import SocketDerivedEnvironmentBinding
+from control_plane_kit.secrets import SecretEnvironmentDelivery, SecretFileDelivery
 
 _SECRET_MARKERS = ("secret", "token", "password", "private_key", "credential", "api_key")
 _REDACTED = "<redacted>"
@@ -58,6 +60,7 @@ class OperatorNode:
     display_name: str
     providers: tuple[OperatorSocket, ...] = ()
     requirements: tuple[OperatorSocket, ...] = ()
+    environment_bindings: tuple[Mapping[str, object], ...] = ()
     metadata: Mapping[str, object] = field(default_factory=dict)
 
     def descriptor(self) -> dict[str, object]:
@@ -68,6 +71,7 @@ class OperatorNode:
             "display_name": self.display_name,
             "providers": [socket.descriptor() for socket in self.providers],
             "requirements": [socket.descriptor() for socket in self.requirements],
+            "environment_bindings": [dict(value) for value in self.environment_bindings],
             "metadata": dict(self.metadata),
         }
 
@@ -214,8 +218,49 @@ def _project_node(
             )
             for socket in sorted(node.sockets.requirements, key=lambda candidate: candidate.name)
         ),
+        environment_bindings=_project_environment(node),
         metadata=_redact_mapping(node.metadata),
     )
+
+
+def _project_environment(node: Node) -> tuple[Mapping[str, object], ...]:
+    public_and_socket = tuple(
+        {
+            "kind": binding.descriptor()["kind"],
+            "name": binding.name,
+            "value": _REDACTED,
+            **(
+                {"edge_id": binding.edge_id}
+                if isinstance(binding, SocketDerivedEnvironmentBinding)
+                else {}
+            ),
+        }
+        for binding in sorted(
+            node.public_environment + node.socket_environment,
+            key=lambda value: value.name,
+        )
+    )
+    secrets: list[Mapping[str, object]] = []
+    for delivery in node.secret_deliveries:
+        match delivery:
+            case SecretEnvironmentDelivery(environment_name=name):
+                secrets.append(
+                    {"kind": "secret-reference", "name": name, "reference": _REDACTED}
+                )
+            case SecretFileDelivery(target_path=path, path_binding=path_binding):
+                secrets.append(
+                    {
+                        "kind": "secret-file",
+                        "target_path": path,
+                        "reference": _REDACTED,
+                        "environment_name": (
+                            None
+                            if path_binding is None
+                            else path_binding.environment_name
+                        ),
+                    }
+                )
+    return public_and_socket + tuple(sorted(secrets, key=lambda value: str(value)))
 
 
 def _project_runtime(runtime: RuntimeRecord) -> OperatorRuntime:

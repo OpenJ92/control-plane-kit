@@ -29,7 +29,10 @@ class HelloRuntimeExampleTests(TestCase):
 
         self.assertEqual(tuple(graph.nodes), ("hello",))
         self.assertEqual(graph.node("hello").metadata["image"], "python:3.13-alpine")
-        self.assertEqual(graph.node("hello").metadata["environment"], {"HELLO_MESSAGE": "Hello, Earth!"})
+        self.assertEqual(
+            graph.node("hello").non_secret_environment(),
+            {"HELLO_MESSAGE": "Hello, Earth!"},
+        )
         self.assertNotIn("Hello, Earth!", " ".join(graph.node("hello").metadata["command"]))
 
     def test_hello_plan_uses_docker_interpreter(self):

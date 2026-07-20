@@ -46,6 +46,30 @@ class CallKeywordShapePolicy:
         return tuple(findings)
 
 
+@dataclass(frozen=True)
+class CallKeywordMappingKeyPolicy:
+    """Reject forbidden literal keys inside one constructor keyword mapping."""
+
+    rule_id: str
+    call_names: tuple[str, ...]
+    keyword_name: str
+    forbidden_keys: tuple[str, ...]
+
+    def evaluate(self, facts: SourceFacts) -> tuple[PolicyFinding, ...]:
+        return tuple(
+            PolicyFinding(
+                self.rule_id,
+                f"{self.keyword_name} contains a forbidden typed-boundary key",
+                call.location,
+            )
+            for call in facts.calls
+            if call.qualified_name.rsplit(".", 1)[-1] in self.call_names
+            for keyword in call.keyword_arguments
+            if keyword.name == self.keyword_name
+            and set(keyword.literal_mapping_keys).intersection(self.forbidden_keys)
+        )
+
+
 @dataclass(frozen=True, order=True)
 class PackageDependencyRule:
     """Allowed internal package roots for one source package root."""

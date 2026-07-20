@@ -79,7 +79,17 @@ class InstanceReadServiceTests(PostgresStoreTestCase):
         api = descriptor["nodes"]["orders-api"]
         edge = descriptor["edges"]["postgres.internal-to-orders-api.DATABASE_URL"]
         self.assertEqual(postgres["endpoints"]["internal"]["address"], "<redacted>")
-        self.assertEqual(api["environment"], "<redacted>")
+        self.assertEqual(
+            api["environment_bindings"],
+            [
+                {
+                    "edge_id": "postgres.internal-to-orders-api.DATABASE_URL",
+                    "kind": "socket-derived",
+                    "name": "DATABASE_URL",
+                    "value": "<redacted>",
+                }
+            ],
+        )
         self.assertEqual(edge["env_assignments"], "<redacted>")
         self.assertNotIn("postgres:postgres", str(descriptor))
 

@@ -90,7 +90,7 @@ class ActivityPlanDescriptorCodecTests(unittest.TestCase):
                         ChangeTarget(
                             FieldSubject(
                                 GraphSubject(),
-                                StructuralField.ENVIRONMENT,
+                                StructuralField.PUBLIC_ENVIRONMENT,
                                 "DATABASE_PASSWORD",
                             )
                         ),
@@ -190,7 +190,7 @@ class ActivityPlanDescriptorCodecTests(unittest.TestCase):
             ),
             FieldSubject(
                 NodeSubject("api"),
-                StructuralField.ENVIRONMENT,
+                StructuralField.PUBLIC_ENVIRONMENT,
                 "DATABASE_URL",
             ),
         )

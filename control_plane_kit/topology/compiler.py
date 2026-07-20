@@ -14,6 +14,7 @@ from control_plane_kit.algebra import (
     SocketConnection,
 )
 from control_plane_kit.capabilities import capability_named
+from control_plane_kit.environment import SocketDerivedEnvironmentBinding
 from control_plane_kit.topology.graph import DeploymentGraph, Edge, Node, RuntimeRecord
 from control_plane_kit.types import BlockFamily
 
@@ -80,6 +81,7 @@ def _materialize_block(block: DeployBlock, runtime: RuntimeContext) -> Node:
         runtime_id=runtime.runtime_id,
         sockets=block.sockets,
         endpoints=materialized.endpoints,
+        public_environment=materialized.public_environment,
         metadata=metadata,
         lifecycle=materialized.lifecycle,
         configuration_artifacts=materialized.configuration_artifacts,
@@ -131,9 +133,10 @@ def _apply_connection(graph: DeploymentGraph, connection: SocketConnection) -> D
             f"connection provides {protocol.value}"
         )
     endpoint = provider.endpoint(provider_socket.name)
+    edge_id = connection.edge_id or _edge_id(connection)
     assignments = {env_var: endpoint.url for env_var in requirement_socket.env_bindings}
     edge = Edge(
-        edge_id=connection.edge_id or _edge_id(connection),
+        edge_id=edge_id,
         provider_role=provider.node_id,
         provider_socket=provider_socket.name,
         consumer_role=consumer.node_id,
@@ -142,7 +145,11 @@ def _apply_connection(graph: DeploymentGraph, connection: SocketConnection) -> D
         binding=requirement_socket.binding,
         env_assignments=assignments,
     )
-    return graph.update_node(consumer.with_environment(assignments)).add_edge(edge)
+    bindings = tuple(
+        SocketDerivedEnvironmentBinding(name, value, edge_id)
+        for name, value in sorted(assignments.items())
+    )
+    return graph.update_node(consumer.with_socket_environment(bindings)).add_edge(edge)
 
 
 def _edge_id(connection: SocketConnection) -> str:

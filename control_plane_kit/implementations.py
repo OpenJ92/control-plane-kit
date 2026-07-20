@@ -27,6 +27,7 @@ class MaterializedNode:
     kind: str
     endpoints: dict[str, Endpoint]
     metadata: dict[str, object] = field(default_factory=dict)
+    public_environment: tuple[PublicStaticEnvironmentBinding, ...] = ()
     lifecycle: ResourceLifecycle = field(default_factory=ResourceLifecycle.owned_ephemeral)
     configuration_artifacts: tuple[ConfigurationArtifact, ...] = ()
     secret_deliveries: tuple[SecretDelivery, ...] = ()
@@ -108,10 +109,6 @@ class DockerImageImplementation:
             metadata={
                 "image": self.image,
                 "command": list(self.command),
-                "environment": {
-                    binding.name: binding.value
-                    for binding in sorted(self.environment)
-                },
                 "data_mounts": [
                     {"resource_id": resource_id, "target_path": target_path}
                     for resource_id, target_path in sorted(self.data_mounts.items())
@@ -120,6 +117,7 @@ class DockerImageImplementation:
                     self.host_publications
                 ),
             },
+            public_environment=tuple(sorted(self.environment)),
             lifecycle=self.lifecycle,
             configuration_artifacts=tuple(sorted(self.configuration_artifacts)),
             secret_deliveries=tuple(
@@ -250,11 +248,6 @@ class DockerPostgresImplementation:
             metadata={
                 "image": self.image,
                 "database": self.database,
-                "environment": {
-                    "POSTGRES_DB": self.database,
-                    "POSTGRES_USER": self.username,
-                    "POSTGRES_HOST_AUTH_METHOD": "trust",
-                },
                 "data_mounts": [
                     {
                         "resource_id": self.data_resource_id,
@@ -265,6 +258,15 @@ class DockerPostgresImplementation:
                     self.host_publications
                 ),
             },
+            public_environment=tuple(
+                sorted(
+                    (
+                        PublicStaticEnvironmentBinding("POSTGRES_DB", self.database),
+                        PublicStaticEnvironmentBinding("POSTGRES_USER", self.username),
+                        PublicStaticEnvironmentBinding("POSTGRES_HOST_AUTH_METHOD", "trust"),
+                    )
+                )
+            ),
             lifecycle=ResourceLifecycle.owned_with_retained_data(
                 self.data_resource_id
             ),

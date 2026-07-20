@@ -248,7 +248,7 @@ class HttpLoadGeneratorTests(unittest.TestCase):
         )
         graph = compile_recipe(recipe)
         self.assertEqual(
-            graph.node(block.block_id).environment["LOAD_TARGET_URL"],
+            graph.node(block.block_id).non_secret_environment()["LOAD_TARGET_URL"],
             graph.node("target").endpoint("internal").url,
         )
         descriptor = GraphDescriptorCodec().encode(graph)

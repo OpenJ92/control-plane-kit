@@ -13,6 +13,7 @@ from control_plane_kit import (
     EndpointMaterial,
     EndpointScope,
     EnvironmentBindingMaterial,
+    EnvironmentMaterialSource,
     HostPublicationMaterial,
     ImplementationMaterial,
     LiteralEndpointMaterial,
@@ -79,6 +80,7 @@ def _node() -> NodeMaterial:
         EnvironmentBindingMaterial(
             "HELLO_MESSAGE",
             LiteralMaterialValue("Hello, published world!"),
+            EnvironmentMaterialSource.PUBLIC_STATIC,
         ),
     )
     return NodeMaterial(

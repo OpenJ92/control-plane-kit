@@ -83,11 +83,26 @@ class GeneratedHelloGraphTests(TestCase):
     def test_invalidities_produce_exact_structured_findings(self):
         shape = HelloGraphShape(2, 1)
         cases = (
-            (MissingHttpConnection(), {ValidationCode.MISSING_REQUIRED_CONNECTION}),
-            (MissingDatabaseConnection(), {ValidationCode.MISSING_REQUIRED_CONNECTION}),
+            (
+                MissingHttpConnection(),
+                {
+                    ValidationCode.MISSING_REQUIRED_CONNECTION,
+                    ValidationCode.CONSUMER_ENVIRONMENT,
+                },
+            ),
+            (
+                MissingDatabaseConnection(),
+                {
+                    ValidationCode.MISSING_REQUIRED_CONNECTION,
+                    ValidationCode.CONSUMER_ENVIRONMENT,
+                },
+            ),
             (
                 DuplicateRequirementConnection(),
-                {ValidationCode.MULTIPLE_REQUIREMENT_CONNECTIONS},
+                {
+                    ValidationCode.MULTIPLE_REQUIREMENT_CONNECTIONS,
+                    ValidationCode.CONSUMER_ENVIRONMENT,
+                },
             ),
             (
                 CorruptEnvironmentAssignment(),

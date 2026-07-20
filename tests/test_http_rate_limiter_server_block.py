@@ -37,7 +37,7 @@ class HttpRateLimiterServerBlockTests(TestCase):
         graph = compile_recipe(recipe)
 
         self.assertEqual(
-            graph.node("limiter").environment["RATE_LIMIT_TARGET_URL"],
+            graph.node("limiter").non_secret_environment()["RATE_LIMIT_TARGET_URL"],
             graph.node("app").endpoint("internal").url,
         )
 

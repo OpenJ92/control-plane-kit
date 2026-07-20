@@ -40,11 +40,11 @@ class HttpWeightedLoadBalancerServerBlockTests(TestCase):
         graph = compile_recipe(recipe)
 
         self.assertEqual(
-            graph.node("balancer").environment["BALANCER_TARGET_A_URL"],
+            graph.node("balancer").non_secret_environment()["BALANCER_TARGET_A_URL"],
             graph.node("app-a").endpoint("internal").url,
         )
         self.assertEqual(
-            graph.node("balancer").environment["BALANCER_TARGET_B_URL"],
+            graph.node("balancer").non_secret_environment()["BALANCER_TARGET_B_URL"],
             graph.node("app-b").endpoint("internal").url,
         )
 

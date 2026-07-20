@@ -47,7 +47,10 @@ class HelloServerBlockTests(TestCase):
 
         graph = compile_recipe(recipe)
 
-        self.assertEqual(graph.node("hello").metadata["environment"], {"HELLO_MESSAGE": "Hello, graph!"})
+        self.assertEqual(
+            graph.node("hello").public_environment,
+            (PublicStaticEnvironmentBinding("HELLO_MESSAGE", "Hello, graph!"),),
+        )
         self.assertEqual(graph.node("hello").endpoint("internal").protocol, Protocol.HTTP)
 
     def test_dependencies_expand_to_paired_http_and_postgres_requirements(self):
@@ -140,7 +143,10 @@ class HelloServerBlockTests(TestCase):
         )
 
         graph = compile_recipe(recipe)
-        environment = graph.node("gateway").environment
+        environment = {
+            binding.name: binding.value
+            for binding in graph.node("gateway").socket_environment
+        }
 
         self.assertEqual(
             environment[dependency.http_environment],

@@ -5,6 +5,7 @@ import unittest
 
 from tests.architecture import (
     CallKeywordShapePolicy,
+    CallKeywordMappingKeyPolicy,
     ExpressionShape,
     PackageDependencyPolicy,
     PackageDependencyRule,
@@ -68,6 +69,7 @@ PACKAGE_RULES = (
         "effects",
         (
             "configuration",
+            "environment",
             "execution",
             "lifecycle",
             "planning",
@@ -104,7 +106,7 @@ PACKAGE_RULES = (
     PackageDependencyRule("policies", ("planning", "types")),
     PackageDependencyRule(
         "projections",
-        ("execution", "planning", "saga", "scheduling", "topology"),
+        ("environment", "execution", "planning", "saga", "scheduling", "secrets", "topology"),
     ),
     PackageDependencyRule(
         "read_services",
@@ -144,6 +146,7 @@ PACKAGE_RULES = (
             "capabilities",
             "configuration",
             "control_routes",
+            "environment",
             "lifecycle",
             "secrets",
             "types",
@@ -222,6 +225,12 @@ STATIC_ENVIRONMENT_POLICY = CallKeywordShapePolicy(
     keyword_name="environment",
     forbidden_shapes=(ExpressionShape.DICTIONARY, ExpressionShape.LIST),
 )
+ENVIRONMENT_METADATA_POLICY = CallKeywordMappingKeyPolicy(
+    rule_id="no-environment-metadata",
+    call_names=("Node", "MaterializedNode"),
+    keyword_name="metadata",
+    forbidden_keys=("environment",),
+)
 
 
 class ArchitectureDependencyTests(unittest.TestCase):
@@ -249,6 +258,7 @@ class ArchitectureDependencyTests(unittest.TestCase):
                     TRANSPORT_POLICY,
                     TEMPLATE_ENGINE_POLICY,
                     STATIC_ENVIRONMENT_POLICY,
+                    ENVIRONMENT_METADATA_POLICY,
                 ),
             ),
             (),
@@ -358,6 +368,18 @@ class ArchitectureDependencyTests(unittest.TestCase):
 
         self.assertEqual(len(findings), 1)
         self.assertEqual(findings[0].rule_id, "closed-static-environment")
+
+    def test_environment_metadata_escape_hatch_is_rejected(self) -> None:
+        facts = analyze_source(
+            "Node(metadata={'environment': {'MODE': 'unsafe'}})\n",
+            path="control_plane_kit/product.py",
+            module="control_plane_kit.product",
+        )
+
+        findings = ENVIRONMENT_METADATA_POLICY.evaluate(facts)
+
+        self.assertEqual(len(findings), 1)
+        self.assertEqual(findings[0].rule_id, "no-environment-metadata")
 
 
 if __name__ == "__main__":

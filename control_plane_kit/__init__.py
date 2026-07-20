@@ -366,6 +366,7 @@ from control_plane_kit.effects import (
     EndpointContext,
     EndpointMaterial,
     EnvironmentBindingMaterial,
+    EnvironmentMaterialSource,
     HostPublicationMaterial,
     HttpResponseExpectation,
     ImplementationMaterial,
@@ -592,7 +593,7 @@ from control_plane_kit.topology.changes import (
     DiffValue,
     EdgeValue,
     EndpointValue,
-    EnvironmentValue,
+    EnvironmentBindingsValue,
     FieldSubject,
     GraphDiff,
     MetadataValue,
@@ -609,7 +610,11 @@ from control_plane_kit.topology.changes import (
     UnsupportedReason,
 )
 from control_plane_kit.topology.diff import diff_graphs
-from control_plane_kit.environment import PublicStaticEnvironmentBinding
+from control_plane_kit.environment import (
+    EnvironmentBinding,
+    PublicStaticEnvironmentBinding,
+    SocketDerivedEnvironmentBinding,
+)
 from control_plane_kit.implementations import (
     DockerImageImplementation,
     DockerPostgresImplementation,
@@ -1094,6 +1099,7 @@ __all__ = [
     "DockerEffectInterpreter",
     "DockerImageImplementation",
     "PublicStaticEnvironmentBinding",
+    "SocketDerivedEnvironmentBinding",
     "DockerPostgresImplementation",
     "DockerRuntime",
     "DockerRuntimeInterpreter",
@@ -1111,7 +1117,8 @@ __all__ = [
     "ExternalPostgresImplementation",
     "ExternalRuntime",
     "ExternalTcpImplementation",
-    "EnvironmentValue",
+    "EnvironmentBinding",
+    "EnvironmentBindingsValue",
     "MAX_CONFIGURATION_BYTES",
     "FieldSubject",
     "GraphDiff",
@@ -1615,6 +1622,7 @@ __all__ += [
     "EndpointContext",
     "EndpointMaterial",
     "EnvironmentBindingMaterial",
+    "EnvironmentMaterialSource",
     "HostPublicationMaterial",
     "HttpResponseExpectation",
     "ImplementationMaterial",

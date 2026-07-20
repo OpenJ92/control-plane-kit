@@ -45,11 +45,11 @@ class HttpMultiplexerServerBlockTests(TestCase):
 
         self.assertTrue(validate_graph(graph).valid)
         self.assertEqual(
-            graph.node("multiplexer").environment["MULTIPLEXER_PRIMARY_URL"],
+            graph.node("multiplexer").non_secret_environment()["MULTIPLEXER_PRIMARY_URL"],
             graph.node("app").endpoint("internal").url,
         )
         self.assertEqual(
-            graph.node("multiplexer").environment["MULTIPLEXER_OBSERVER_A_URL"],
+            graph.node("multiplexer").non_secret_environment()["MULTIPLEXER_OBSERVER_A_URL"],
             graph.node("observer").endpoint("internal").url,
         )
 

@@ -25,6 +25,7 @@ from control_plane_kit import (
     ModifiedChange,
     NodeSubject,
     PlanOnlyImplementation,
+    PublicStaticEnvironmentBinding,
     Protocol,
     ProviderSocket,
     ReconcileNode,
@@ -35,6 +36,7 @@ from control_plane_kit import (
     RuntimeSubject,
     SecretReferenceAddress,
     SocketConnection,
+    SocketDerivedEnvironmentBinding,
     StructuralField,
     UnsupportedChange,
     UnsupportedReason,
@@ -170,6 +172,38 @@ class GraphDiffTests(unittest.TestCase):
             and isinstance(change.subject, EdgeSubject)
         }
         self.assertIn("api-router.active", changed_edges)
+
+    def test_public_and_socket_environment_changes_have_distinct_fields(self):
+        current = compile_recipe(router_recipe("api-v1"))
+        router = current.node("api-router")
+        desired = current.update_node(
+            replace(
+                router,
+                public_environment=(
+                    PublicStaticEnvironmentBinding("MODE", "desired"),
+                ),
+            )
+        )
+
+        public_diff = diff_graphs(validate_graph(current), validate_graph(desired))
+        public_fields = {
+            value.subject.field
+            for value in public_diff.changes
+            if isinstance(value, ModifiedChange)
+            and isinstance(value.subject, FieldSubject)
+        }
+        self.assertIn(StructuralField.PUBLIC_ENVIRONMENT, public_fields)
+        self.assertNotIn(StructuralField.SOCKET_ENVIRONMENT, public_fields)
+
+        switched = compile_recipe(router_recipe("api-v2"))
+        socket_diff = diff_graphs(validate_graph(current), validate_graph(switched))
+        socket_fields = {
+            value.subject.field
+            for value in socket_diff.changes
+            if isinstance(value, ModifiedChange)
+            and isinstance(value.subject, FieldSubject)
+        }
+        self.assertIn(StructuralField.SOCKET_ENVIRONMENT, socket_fields)
 
     def test_added_and_removed_runtime_node_and_edge_forms_are_explicit(self):
         populated = validate_graph(compile_recipe(router_recipe("api-v1")))
@@ -420,7 +454,14 @@ class GraphDiffTests(unittest.TestCase):
         secret_assignment = {"UPSTREAM_URL": secret_endpoint.url}
         current = replace(
             current.update_node(
-                replace(current.node("consumer"), environment=secret_assignment)
+                replace(
+                    current.node("consumer"),
+                    socket_environment=(
+                        SocketDerivedEnvironmentBinding(
+                            "UPSTREAM_URL", secret_endpoint.url, edge_id
+                        ),
+                    ),
+                )
             ),
             edges={edge_id: replace(edge, env_assignments=secret_assignment)},
         )
@@ -437,7 +478,14 @@ class GraphDiffTests(unittest.TestCase):
             )
         )
         desired = desired.update_node(
-            replace(desired.node("consumer"), environment=desired_assignment)
+            replace(
+                desired.node("consumer"),
+                socket_environment=(
+                    SocketDerivedEnvironmentBinding(
+                        "UPSTREAM_URL", desired_endpoint.url, edge_id
+                    ),
+                ),
+            )
         )
         desired = replace(
             desired,

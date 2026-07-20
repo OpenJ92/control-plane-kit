@@ -138,12 +138,15 @@ class WebhookDeliveryBlockTests(unittest.TestCase):
 
         node = graph.node("webhook-delivery")
         self.assertEqual(
-            node.environment[WEBHOOK_DATABASE_ENVIRONMENT],
+            node.non_secret_environment()[WEBHOOK_DATABASE_ENVIRONMENT],
             graph.node("webhook-postgres").endpoint("internal").url,
         )
-        self.assertEqual(set(node.environment), {WEBHOOK_DATABASE_ENVIRONMENT})
         self.assertEqual(
-            set(node.metadata["environment"]),
+            {binding.name for binding in node.socket_environment},
+            {WEBHOOK_DATABASE_ENVIRONMENT},
+        )
+        self.assertEqual(
+            {binding.name for binding in node.public_environment},
             {
                 WEBHOOK_ENDPOINT_POLICY_ENVIRONMENT,
                 WEBHOOK_SIGNING_REFERENCE_ENVIRONMENT,

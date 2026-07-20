@@ -15,7 +15,7 @@ from control_plane_kit.topology.changes import (
     EndpointValue,
     ConfigurationArtifactsValue,
     SecretDeliveriesValue,
-    EnvironmentValue,
+    EnvironmentBindingsValue,
     FieldSubject,
     GraphDiff,
     MetadataValue,
@@ -204,12 +204,20 @@ def _diff_nodes(
                 )
             )
         _diff_endpoints(subject, before, after, changes)
-        if before.environment != after.environment:
+        if before.public_environment != after.public_environment:
             changes.append(
                 ModifiedChange(
-                    FieldSubject(subject, StructuralField.ENVIRONMENT),
-                    EnvironmentValue(before.environment),
-                    EnvironmentValue(after.environment),
+                    FieldSubject(subject, StructuralField.PUBLIC_ENVIRONMENT),
+                    EnvironmentBindingsValue(before.public_environment),
+                    EnvironmentBindingsValue(after.public_environment),
+                )
+            )
+        if before.socket_environment != after.socket_environment:
+            changes.append(
+                ModifiedChange(
+                    FieldSubject(subject, StructuralField.SOCKET_ENVIRONMENT),
+                    EnvironmentBindingsValue(before.socket_environment),
+                    EnvironmentBindingsValue(after.socket_environment),
                 )
             )
         if before.metadata != after.metadata:

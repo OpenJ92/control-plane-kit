@@ -43,8 +43,8 @@ class RuntimeCompositionExampleTests(TestCase):
         v1 = router_graph("api-v1")
         v2 = router_graph("api-v2")
 
-        self.assertEqual(v1.node("api-router").environment["ACTIVE_TARGET_URL"], v1.node("api-v1").endpoint("internal").url)
-        self.assertEqual(v2.node("api-router").environment["ACTIVE_TARGET_URL"], v2.node("api-v2").endpoint("internal").url)
+        self.assertEqual(v1.node("api-router").non_secret_environment()["ACTIVE_TARGET_URL"], v1.node("api-v1").endpoint("internal").url)
+        self.assertEqual(v2.node("api-router").non_secret_environment()["ACTIVE_TARGET_URL"], v2.node("api-v2").endpoint("internal").url)
 
     def test_router_plan_runs_three_docker_containers(self):
         plan = router_plan("api-v2")

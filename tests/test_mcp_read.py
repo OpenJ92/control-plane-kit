@@ -72,7 +72,14 @@ class McpReadAdapterTests(PostgresStoreTestCase):
         )["content"][0]["json"]
 
         self.assertEqual(graph["graph_name"], "mcp-demo")
-        self.assertEqual(graph["graph_descriptor"]["nodes"]["api-router"]["environment"], "<redacted>")
+        bindings = graph["graph_descriptor"]["nodes"]["api-router"]["environment_bindings"]
+        self.assertTrue(bindings)
+        self.assertTrue(
+            all(
+                binding["value"] == "<redacted>"
+                for binding in bindings
+            )
+        )
         self.assertNotIn("http://api-v1", str(graph))
         router = _node(surface, "api-router")
         self.assertEqual([capability["name"] for capability in router["capabilities"]], ["health-checkable"])

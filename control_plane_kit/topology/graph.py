@@ -8,6 +8,10 @@ from urllib.parse import urlsplit
 
 from control_plane_kit.algebra import BlockSockets, BlockSpec
 from control_plane_kit.configuration import ConfigurationArtifact
+from control_plane_kit.environment import (
+    PublicStaticEnvironmentBinding,
+    SocketDerivedEnvironmentBinding,
+)
 from control_plane_kit.secrets import (
     SecretDelivery,
     SecretEnvironmentDelivery,
@@ -95,13 +99,27 @@ class Node:
     runtime_id: str
     sockets: BlockSockets
     endpoints: Mapping[str, Endpoint] = field(default_factory=dict)
-    environment: Mapping[str, str] = field(default_factory=dict)
+    public_environment: tuple[PublicStaticEnvironmentBinding, ...] = ()
+    socket_environment: tuple[SocketDerivedEnvironmentBinding, ...] = ()
     metadata: Mapping[str, object] = field(default_factory=dict)
     lifecycle: ResourceLifecycle = OWNED_EPHEMERAL
     configuration_artifacts: tuple[ConfigurationArtifact, ...] = ()
     secret_deliveries: tuple[SecretDelivery, ...] = ()
 
     def __post_init__(self) -> None:
+        if not isinstance(self.public_environment, tuple) or not all(
+            isinstance(value, PublicStaticEnvironmentBinding)
+            for value in self.public_environment
+        ):
+            raise TypeError("node public environment must use typed bindings")
+        if not isinstance(self.socket_environment, tuple) or not all(
+            isinstance(value, SocketDerivedEnvironmentBinding)
+            for value in self.socket_environment
+        ):
+            raise TypeError("node socket environment must use typed bindings")
+        environment_names = tuple(
+            value.name for value in self.public_environment + self.socket_environment
+        )
         if not isinstance(self.configuration_artifacts, tuple) or not all(
             isinstance(value, ConfigurationArtifact)
             for value in self.configuration_artifacts
@@ -122,6 +140,16 @@ class Node:
             raise TypeError("node secret deliveries must be a tuple")
         if len(set(self.secret_deliveries)) != len(self.secret_deliveries):
             raise ValueError("node secret deliveries must be unique")
+        secret_environment_names: list[str] = []
+        for delivery in self.secret_deliveries:
+            match delivery:
+                case SecretEnvironmentDelivery(environment_name=name):
+                    secret_environment_names.append(name)
+                case SecretFileDelivery(path_binding=path_binding) if path_binding is not None:
+                    secret_environment_names.append(path_binding.environment_name)
+        all_environment_names = environment_names + tuple(secret_environment_names)
+        if len(set(all_environment_names)) != len(all_environment_names):
+            raise ValueError("node environment binding names must be unique across sources")
 
     def requirement_socket(self, name: str):
         return self.sockets.requirement(name)
@@ -136,8 +164,19 @@ class Node:
             available = ", ".join(sorted(self.endpoints)) or "<none>"
             raise KeyError(f"node {self.node_id!r} has no endpoint {name!r}; available: {available}") from exc
 
-    def with_environment(self, values: Mapping[str, str]) -> Node:
-        return replace(self, environment={**self.environment, **values})
+    def with_socket_environment(
+        self,
+        values: tuple[SocketDerivedEnvironmentBinding, ...],
+    ) -> Node:
+        return replace(self, socket_environment=self.socket_environment + values)
+
+    def non_secret_environment(self) -> dict[str, str]:
+        """Interpret public and socket-derived bindings as process literals."""
+
+        return {
+            binding.name: binding.value
+            for binding in self.public_environment + self.socket_environment
+        }
 
     def descriptor(self) -> dict[str, object]:
         return {
@@ -155,7 +194,13 @@ class Node:
             "kind": self.kind,
             "runtime_id": self.runtime_id,
             "endpoints": {key: value.descriptor() for key, value in sorted(self.endpoints.items())},
-            "environment": dict(sorted(self.environment.items())),
+            "environment_bindings": [
+                value.descriptor()
+                for value in sorted(
+                    self.public_environment + self.socket_environment,
+                    key=lambda binding: (binding.name, binding.descriptor()["kind"]),
+                )
+            ],
             "requirements": {
                 socket.name: {
                     "protocol": socket.protocol.descriptor(),
