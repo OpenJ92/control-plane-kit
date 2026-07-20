@@ -50,6 +50,7 @@ from control_plane_kit.products.servers import (  # noqa: E402
     ProductCatalog,
     ProductDeclaration,
 )
+from control_plane_kit.operations.webhook import WebhookDeliveryService  # noqa: E402
 
 if ConfigurationTemplate.__module__ != (
     "control_plane_kit.interpreters.configuration_rendering"
@@ -59,6 +60,8 @@ if ProductDeclaration.__module__ != "control_plane_kit.products.servers.catalog"
     raise AssertionError("product declarations did not load from the canonical catalog")
 if ProductCatalog.__module__ != "control_plane_kit.products.servers.catalog":
     raise AssertionError("product catalog did not load from the canonical catalog")
+if WebhookDeliveryService.__module__ != "control_plane_kit.operations.webhook.service":
+    raise AssertionError("webhook service did not load from canonical operations")
 
 from control_plane_kit.domains.discovery import DiscoveryIdentity  # noqa: E402
 from control_plane_kit.domains.idempotency import IdempotencyIdentity  # noqa: E402
@@ -108,11 +111,16 @@ if find_spec("control_plane_kit.cli") is not None:
     raise AssertionError("installed base wheel retained the retired CLI module")
 if find_spec("control_plane_kit.entrypoints.cli") is None:
     raise AssertionError("installed base wheel is missing the canonical CLI entrypoint")
+for retired in ("postgres", "protocols", "service", "unit_of_work"):
+    if find_spec(f"control_plane_kit.webhook.{retired}") is not None:
+        raise AssertionError(f"installed base wheel retained webhook.{retired}")
+transitional_webhook = importlib.import_module("control_plane_kit.webhook")
+if transitional_webhook.__all__:
+    raise AssertionError("transitional webhook package retained eager exports")
 
 for module in (
     "control_plane_kit.adapters",
     "control_plane_kit.servers",
-    "control_plane_kit.webhook",
 ):
     try:
         importlib.import_module(module)

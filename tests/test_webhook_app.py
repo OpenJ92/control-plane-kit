@@ -7,13 +7,15 @@ import unittest
 from fastapi.testclient import TestClient
 import psycopg
 
-from control_plane_kit.webhook import (
-    MAX_WEBHOOK_API_REQUEST_BYTES,
+from control_plane_kit.operations.webhook import (
     PostgresWebhookUnitOfWork,
     WebhookDeliveryService,
     WebhookOutboundResult,
-    create_webhook_delivery_app,
     install_webhook_schema,
+)
+from control_plane_kit.webhook.app import (
+    MAX_WEBHOOK_API_REQUEST_BYTES,
+    create_webhook_delivery_app,
 )
 from control_plane_kit.domains.webhook import (
     WebhookAttemptOutcome,

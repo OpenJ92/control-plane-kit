@@ -72,7 +72,7 @@ PACKAGE_RULES = (
         "load_generator_server", ("adapters", "contracts", "domains", "servers")
     ),
     PackageDependencyRule("mcp_read", ("read_services",)),
-    PackageDependencyRule("operations", ("core", "policies")),
+    PackageDependencyRule("operations", ("core", "domains", "policies")),
     PackageDependencyRule("policies", ("core",)),
     PackageDependencyRule("products", ("core",)),
     PackageDependencyRule(
@@ -102,10 +102,12 @@ PACKAGE_RULES = (
         ),
     ),
     PackageDependencyRule("stores", ("core", "execution")),
-    PackageDependencyRule("webhook", ("_optional", "core", "domains")),
+    PackageDependencyRule(
+        "webhook", ("_optional", "core", "domains", "operations")
+    ),
     PackageDependencyRule(
         "webhook_server",
-        ("contracts", "core", "servers", "webhook"),
+        ("contracts", "core", "operations", "servers", "webhook"),
     ),
     PackageDependencyRule(
         "workflows",

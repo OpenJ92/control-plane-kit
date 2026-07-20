@@ -14,13 +14,13 @@ from control_plane_kit.core.secrets import (
     SecretResolved,
     SecretValue,
 )
-from control_plane_kit.webhook import (
+from control_plane_kit.operations.webhook import WebhookOutboundRequest
+from control_plane_kit.webhook.http import (
     HttpWebhookDelivery,
     WebhookAddressPolicy,
     WebhookEndpointGrant,
     WebhookEndpointScope,
     WebhookHttpLimits,
-    WebhookOutboundRequest,
 )
 from control_plane_kit.domains.webhook import (
     WebhookAttemptOutcome,

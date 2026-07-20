@@ -9,7 +9,7 @@ import httpx
 
 from control_plane_kit.adapters import HttpVerificationInterpreter
 from control_plane_kit.servers import hello_command
-from control_plane_kit.webhook import HttpWebhookDelivery
+from control_plane_kit.webhook.http import HttpWebhookDelivery
 
 
 command = hello_command()

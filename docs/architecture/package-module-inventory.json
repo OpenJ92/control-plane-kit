@@ -367,10 +367,10 @@
         "control_plane_kit.webhook.app",
         "control_plane_kit.webhook.http",
         "control_plane_kit.domains.webhook.language",
-        "control_plane_kit.webhook.postgres",
-        "control_plane_kit.webhook.protocols",
-        "control_plane_kit.webhook.service",
-        "control_plane_kit.webhook.unit_of_work",
+        "control_plane_kit.operations.webhook.postgres",
+        "control_plane_kit.operations.webhook.protocols",
+        "control_plane_kit.operations.webhook.service",
+        "control_plane_kit.operations.webhook.unit_of_work",
         "control_plane_kit.webhook_server.main",
         "control_plane_kit.workflows",
         "control_plane_kit.workflows.approvals",
@@ -2041,7 +2041,7 @@
         "control_plane_kit.core.topology.graph",
         "control_plane_kit.webhook.http",
         "control_plane_kit.domains.webhook.language",
-        "control_plane_kit.webhook.postgres",
+        "control_plane_kit.operations.webhook.postgres",
         "control_plane_kit.webhook_server.main"
       ],
       "migration_prerequisites": [
@@ -2268,7 +2268,10 @@
         "control_plane_kit.domains.discovery.language"
       ],
       "known_package_consumers": [],
-      "migration_prerequisites": ["#554", "#555"],
+      "migration_prerequisites": [
+        "#554",
+        "#555"
+      ],
       "module": "control_plane_kit.domains.discovery",
       "motivation": "Provides the intentional package entrance for the closed discovery language.",
       "movement": "remain",
@@ -2279,7 +2282,10 @@
         "tests/test_package_inventory.py"
       ],
       "role": "domain-language-entrance",
-      "semantic_roles": ["namespace", "values"],
+      "semantic_roles": [
+        "namespace",
+        "values"
+      ],
       "source": "control_plane_kit/domains/discovery/__init__.py"
     },
     {
@@ -2297,7 +2303,10 @@
         "control_plane_kit.domains.idempotency.language"
       ],
       "known_package_consumers": [],
-      "migration_prerequisites": ["#554", "#555"],
+      "migration_prerequisites": [
+        "#554",
+        "#555"
+      ],
       "module": "control_plane_kit.domains.idempotency",
       "motivation": "Provides the intentional package entrance for the closed idempotency language.",
       "movement": "remain",
@@ -2308,7 +2317,10 @@
         "tests/test_package_inventory.py"
       ],
       "role": "domain-language-entrance",
-      "semantic_roles": ["namespace", "values"],
+      "semantic_roles": [
+        "namespace",
+        "values"
+      ],
       "source": "control_plane_kit/domains/idempotency/__init__.py"
     },
     {
@@ -2326,7 +2338,10 @@
         "control_plane_kit.domains.load_generation.language"
       ],
       "known_package_consumers": [],
-      "migration_prerequisites": ["#554", "#555"],
+      "migration_prerequisites": [
+        "#554",
+        "#555"
+      ],
       "module": "control_plane_kit.domains.load_generation",
       "motivation": "Provides the intentional package entrance for the closed load-generation language.",
       "movement": "remain",
@@ -2337,7 +2352,10 @@
         "tests/test_package_inventory.py"
       ],
       "role": "domain-language-entrance",
-      "semantic_roles": ["namespace", "values"],
+      "semantic_roles": [
+        "namespace",
+        "values"
+      ],
       "source": "control_plane_kit/domains/load_generation/__init__.py"
     },
     {
@@ -2354,7 +2372,10 @@
         "control_plane_kit.domains.webhook.language"
       ],
       "known_package_consumers": [],
-      "migration_prerequisites": ["#554", "#555"],
+      "migration_prerequisites": [
+        "#554",
+        "#555"
+      ],
       "module": "control_plane_kit.domains.webhook",
       "motivation": "Provides the intentional package entrance for the closed webhook-delivery language.",
       "movement": "remain",
@@ -2365,7 +2386,10 @@
         "tests/test_package_inventory.py"
       ],
       "role": "domain-language-entrance",
-      "semantic_roles": ["namespace", "values"],
+      "semantic_roles": [
+        "namespace",
+        "values"
+      ],
       "source": "control_plane_kit/domains/webhook/__init__.py"
     },
     {
@@ -7851,8 +7875,6 @@
     },
     {
       "canonical_public_exports": [
-        "MAX_WEBHOOK_API_REQUEST_BYTES",
-        "MAX_WEBHOOK_API_RESPONSE_BYTES",
         "MAX_WEBHOOK_PAYLOAD_BYTES",
         "WebhookAttemptFinished",
         "WebhookAttemptOutcome",
@@ -7916,38 +7938,20 @@
         "WebhookOutboundRequest",
         "WebhookOutboundResult",
         "WebhookReadResult",
-        "HttpWebhookDelivery",
-        "SystemWebhookPublicAddressResolver",
-        "WebhookAddressPolicy",
-        "WebhookEndpointGrant",
-        "WebhookEndpointScope",
-        "WebhookHttpLimits",
-        "WebhookHttpSecurityError",
-        "WebhookPublicAddressResolver",
-        "create_webhook_delivery_app",
         "WebhookServiceError",
         "WebhookStateConflict",
         "webhook_delivery_descriptor"
       ],
       "destination": "control_plane_kit.operations.webhook",
       "internal_dependencies": [
-        "control_plane_kit._optional",
-        "control_plane_kit.webhook.app",
-        "control_plane_kit.webhook.http",
-        "control_plane_kit.domains.webhook.language",
-        "control_plane_kit.webhook.postgres",
-        "control_plane_kit.webhook.protocols",
-        "control_plane_kit.webhook.service",
-        "control_plane_kit.webhook.unit_of_work"
+        "control_plane_kit.operations.webhook.postgres",
+        "control_plane_kit.operations.webhook.protocols",
+        "control_plane_kit.operations.webhook.service",
+        "control_plane_kit.operations.webhook.unit_of_work"
       ],
       "known_package_consumers": [
-        "control_plane_kit.servers.webhook_delivery",
         "control_plane_kit.webhook.app",
         "control_plane_kit.webhook.http",
-        "control_plane_kit.webhook.postgres",
-        "control_plane_kit.webhook.protocols",
-        "control_plane_kit.webhook.service",
-        "control_plane_kit.webhook.unit_of_work",
         "control_plane_kit.webhook_server.main"
       ],
       "migration_prerequisites": [
@@ -7956,9 +7960,9 @@
         "#555",
         "#558 where domain-specific"
       ],
-      "module": "control_plane_kit.webhook",
+      "module": "control_plane_kit.operations.webhook",
       "motivation": "Owns durable control-plane workflow, history, policy, scheduling, projection, or persistence behavior.",
-      "movement": "split-and-move",
+      "movement": "remain",
       "optional_external_dependencies": [],
       "owner": "operation",
       "protecting_tests": [
@@ -7971,11 +7975,11 @@
         "tests/test_webhook_service.py",
         "tests/test_webhook_service_hardening.py"
       ],
-      "role": "mixed-webhook-entrance",
+      "role": "durable-webhook-operation",
       "semantic_roles": [
         "package-surface"
       ],
-      "source": "control_plane_kit/webhook/__init__.py"
+      "source": "control_plane_kit/operations/webhook/__init__.py"
     },
     {
       "canonical_public_exports": [
@@ -7984,10 +7988,10 @@
       "destination": "control_plane_kit.entrypoints.webhook.app",
       "internal_dependencies": [
         "control_plane_kit.domains.webhook.language",
-        "control_plane_kit.webhook.service"
+        "control_plane_kit.operations.webhook.service"
       ],
       "known_package_consumers": [
-        "control_plane_kit.webhook"
+        "control_plane_kit.webhook_server.main"
       ],
       "migration_prerequisites": [
         "#550",
@@ -8027,11 +8031,11 @@
       "internal_dependencies": [
         "control_plane_kit.core.secrets",
         "control_plane_kit.domains.webhook.language",
-        "control_plane_kit.webhook.service"
+        "control_plane_kit.operations.webhook"
       ],
       "known_package_consumers": [
         "control_plane_kit.servers.webhook_delivery",
-        "control_plane_kit.webhook"
+        "control_plane_kit.webhook_server.main"
       ],
       "migration_prerequisites": [
         "#550",
@@ -8096,12 +8100,11 @@
         "control_plane_kit.core.secrets"
       ],
       "known_package_consumers": [
-        "control_plane_kit.webhook",
         "control_plane_kit.webhook.app",
         "control_plane_kit.webhook.http",
-        "control_plane_kit.webhook.postgres",
-        "control_plane_kit.webhook.protocols",
-        "control_plane_kit.webhook.service"
+        "control_plane_kit.operations.webhook.postgres",
+        "control_plane_kit.operations.webhook.protocols",
+        "control_plane_kit.operations.webhook.service"
       ],
       "migration_prerequisites": [
         "#550",
@@ -8141,8 +8144,8 @@
         "control_plane_kit.domains.webhook.language"
       ],
       "known_package_consumers": [
-        "control_plane_kit.webhook",
-        "control_plane_kit.webhook.unit_of_work"
+        "control_plane_kit.operations.webhook",
+        "control_plane_kit.operations.webhook.unit_of_work"
       ],
       "migration_prerequisites": [
         "#550",
@@ -8150,9 +8153,9 @@
         "#555",
         "#558 where domain-specific"
       ],
-      "module": "control_plane_kit.webhook.postgres",
+      "module": "control_plane_kit.operations.webhook.postgres",
       "motivation": "Owns durable control-plane workflow, history, policy, scheduling, projection, or persistence behavior.",
-      "movement": "move",
+      "movement": "remain",
       "optional_external_dependencies": [],
       "owner": "operation",
       "protecting_tests": [
@@ -8166,7 +8169,7 @@
         "transformations",
         "values"
       ],
-      "source": "control_plane_kit/webhook/postgres.py"
+      "source": "control_plane_kit/operations/webhook/postgres.py"
     },
     {
       "canonical_public_exports": [
@@ -8183,8 +8186,8 @@
         "control_plane_kit.domains.webhook.language"
       ],
       "known_package_consumers": [
-        "control_plane_kit.webhook",
-        "control_plane_kit.webhook.service"
+        "control_plane_kit.operations.webhook",
+        "control_plane_kit.operations.webhook.service"
       ],
       "migration_prerequisites": [
         "#550",
@@ -8192,9 +8195,9 @@
         "#555",
         "#558 where domain-specific"
       ],
-      "module": "control_plane_kit.webhook.protocols",
+      "module": "control_plane_kit.operations.webhook.protocols",
       "motivation": "Owns durable control-plane workflow, history, policy, scheduling, projection, or persistence behavior.",
-      "movement": "move",
+      "movement": "remain",
       "optional_external_dependencies": [],
       "owner": "operation",
       "protecting_tests": [
@@ -8206,7 +8209,7 @@
         "protocols",
         "values"
       ],
-      "source": "control_plane_kit/webhook/protocols.py"
+      "source": "control_plane_kit/operations/webhook/protocols.py"
     },
     {
       "canonical_public_exports": [
@@ -8231,12 +8234,13 @@
       "destination": "control_plane_kit.operations.webhook.service",
       "internal_dependencies": [
         "control_plane_kit.domains.webhook.language",
-        "control_plane_kit.webhook.protocols"
+        "control_plane_kit.operations.webhook.protocols"
       ],
       "known_package_consumers": [
-        "control_plane_kit.webhook",
+        "control_plane_kit.operations.webhook",
         "control_plane_kit.webhook.app",
-        "control_plane_kit.webhook.http"
+        "control_plane_kit.webhook.http",
+        "control_plane_kit.webhook_server.main"
       ],
       "migration_prerequisites": [
         "#550",
@@ -8244,9 +8248,9 @@
         "#555",
         "#558 where domain-specific"
       ],
-      "module": "control_plane_kit.webhook.service",
+      "module": "control_plane_kit.operations.webhook.service",
       "motivation": "Owns durable control-plane workflow, history, policy, scheduling, projection, or persistence behavior.",
-      "movement": "move",
+      "movement": "remain",
       "optional_external_dependencies": [],
       "owner": "operation",
       "protecting_tests": [
@@ -8259,7 +8263,7 @@
         "transformations",
         "values"
       ],
-      "source": "control_plane_kit/webhook/service.py"
+      "source": "control_plane_kit/operations/webhook/service.py"
     },
     {
       "canonical_public_exports": [
@@ -8268,10 +8272,11 @@
       ],
       "destination": "control_plane_kit.operations.webhook.unit_of_work",
       "internal_dependencies": [
-        "control_plane_kit.webhook.postgres"
+        "control_plane_kit.operations.webhook.postgres"
       ],
       "known_package_consumers": [
-        "control_plane_kit.webhook"
+        "control_plane_kit.operations.webhook",
+        "control_plane_kit.webhook_server.main"
       ],
       "migration_prerequisites": [
         "#550",
@@ -8279,9 +8284,9 @@
         "#555",
         "#558 where domain-specific"
       ],
-      "module": "control_plane_kit.webhook.unit_of_work",
+      "module": "control_plane_kit.operations.webhook.unit_of_work",
       "motivation": "Owns durable control-plane workflow, history, policy, scheduling, projection, or persistence behavior.",
-      "movement": "move",
+      "movement": "remain",
       "optional_external_dependencies": [],
       "owner": "operation",
       "protecting_tests": [
@@ -8294,7 +8299,7 @@
         "protocols",
         "values"
       ],
-      "source": "control_plane_kit/webhook/unit_of_work.py"
+      "source": "control_plane_kit/operations/webhook/unit_of_work.py"
     },
     {
       "canonical_public_exports": [],
@@ -9103,6 +9108,30 @@
         "tests/test_package_structure.py",
         "tests/test_recovery_planning.py"
       ]
+    },
+    {
+      "canonical_public_exports": [],
+      "destination": "control_plane_kit.interpreters.webhook",
+      "internal_dependencies": [],
+      "known_package_consumers": [],
+      "migration_prerequisites": [
+        "#579",
+        "#580"
+      ],
+      "module": "control_plane_kit.webhook",
+      "motivation": "Temporary empty adapter package while HTTP and FastAPI modules move to their canonical ownership homes.",
+      "movement": "remove",
+      "optional_external_dependencies": [],
+      "owner": "interpreter",
+      "protecting_tests": [
+        "tests/test_package_inventory.py",
+        "tests/test_root_api.py"
+      ],
+      "role": "temporary-adapter-package",
+      "semantic_roles": [
+        "package-surface"
+      ],
+      "source": "control_plane_kit/webhook/__init__.py"
     }
   ],
   "owner_vocabulary": [

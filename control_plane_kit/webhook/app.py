@@ -10,7 +10,7 @@ from control_plane_kit.domains.webhook.language import (
     webhook_authority_from_descriptor,
     webhook_intent_from_descriptor,
 )
-from control_plane_kit.webhook.service import (
+from control_plane_kit.operations.webhook import (
     ClaimWebhook,
     DispatchWebhook,
     EnqueueWebhook,
