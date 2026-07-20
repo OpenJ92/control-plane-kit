@@ -15,10 +15,12 @@ roadmap node
   -> roadmap parent issue
     -> ordered child issues
       -> roadmap integration branch
-        -> child PRs
-          -> decision logs
-          -> review
-          -> handoff
+        -> per-child test context
+          -> test-conditioned dry run
+            -> child PRs
+              -> decision logs
+              -> review
+              -> handoff
     -> roadmap PR
       -> closeout
       -> develop
@@ -38,6 +40,40 @@ main
 ```
 
 Child PRs target the roadmap branch. The roadmap branch targets `develop`.
+
+## Before Implementing A Child Issue
+
+```text
+governing frozen/new laws
+  -> behavioral law cards
+    -> source dry run with those laws in view
+      -> target public-interface design
+        -> focused target tests
+          -> focused target-red evidence
+            -> implementation
+              -> target green
+```
+
+Classify tests as `isomorphic`, `strengthened`, `new-law`, or
+`non-executable-scaffold`. Preserve semantic assertions rather than obsolete
+file layout. Do not use skips, `xfail`, weakened assertions, or imports of the
+frozen implementation to manufacture a passing migration.
+
+Before the dry run, inspect the governing frozen tests and extract compact law
+cards: test identity, observable law, negative cases, old structural
+assumptions to discard, and future owner. Do not copy their imports, fixtures,
+constructors, or file layout into the target package yet.
+
+The dry run uses those laws as context and records the affected boundaries,
+risks, target public interface, and any child-child decomposition before target
+tests or application code are written. After that design exists, write the
+focused target tests and prove that they fail because behavior is missing, not
+because collection, imports, fixtures, or Docker setup are broken.
+
+The frozen parity foundation supplies the reference-green baseline. Do not run
+the complete frozen `./test.sh` suite before every issue dry run unless that
+baseline is missing, stale, or disputed. Run the broader target package, parity,
+and live suites after implementation and at PR or milestone gates.
 
 ## Before Starting A Roadmap Node
 
@@ -169,4 +205,3 @@ roadmap capstone example
 - or review requires holding too much state in memory.
 
 Prefer smaller topology over heroic PRs.
-
