@@ -2034,6 +2034,30 @@
       "source": "control_plane_kit/core/verification.py"
     },
     {
+      "canonical_public_exports": [],
+      "destination": "control_plane_kit.domains",
+      "internal_dependencies": [],
+      "known_package_consumers": [],
+      "migration_prerequisites": [
+        "#550",
+        "#554"
+      ],
+      "module": "control_plane_kit.domains",
+      "motivation": "Names the namespace reserved for independently admitted closed languages without importing them eagerly.",
+      "movement": "remain",
+      "optional_external_dependencies": [],
+      "owner": "domain",
+      "protecting_tests": [
+        "tests/test_package_inventory.py",
+        "tests/test_package_topology.py"
+      ],
+      "role": "domain-language-namespace",
+      "semantic_roles": [
+        "namespace"
+      ],
+      "source": "control_plane_kit/domains/__init__.py"
+    },
+    {
       "canonical_public_exports": [
         "DiscoveryRegistrationMode",
         "DiscoveryScope",
