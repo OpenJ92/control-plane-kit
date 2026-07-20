@@ -18,6 +18,7 @@ from control_plane_kit.environment import (
 from control_plane_kit.secrets import (
     SecretEnvironmentDelivery,
     SecretFileDelivery,
+    SecretReferenceEnvironmentDelivery,
     SecretFilePathBinding,
     SecretFileMode,
     SecretReference,
@@ -110,6 +111,7 @@ class EnvironmentMaterialSource(StrEnum):
     PUBLIC_STATIC = "public-static"
     SOCKET_DERIVED = "socket-derived"
     SECRET_REFERENCE = "secret-reference"
+    SECRET_REFERENCE_IDENTITY = "secret-reference-identity"
     SECRET_FILE_PATH = "secret-file-path"
 
 
@@ -772,6 +774,18 @@ def _implementation_material(node: Node, graph: DeploymentGraph) -> Implementati
                         name,
                         SecretReferenceMaterialValue(reference.reference_id),
                         EnvironmentMaterialSource.SECRET_REFERENCE,
+                        reference.reference_id,
+                    )
+                )
+            case SecretReferenceEnvironmentDelivery(
+                environment_name=name,
+                reference=reference,
+            ):
+                environment.append(
+                    EnvironmentBindingMaterial(
+                        name,
+                        LiteralMaterialValue(reference.reference_id),
+                        EnvironmentMaterialSource.SECRET_REFERENCE_IDENTITY,
                         reference.reference_id,
                     )
                 )

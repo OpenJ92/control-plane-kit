@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import copy
 from dataclasses import replace
 import unittest
 
@@ -351,12 +352,13 @@ class EffectMaterialTests(unittest.TestCase):
         scenario = planning_scenarios()[0]
         desired = scenario.desired_graph
         node = desired.node("api")
-        malformed = desired.update_node(
-            replace(
-                node,
-                metadata={**node.metadata, "environment": {"API_TOKEN": "do-not-disclose"}},
-            )
+        corrupted_node = copy.copy(node)
+        object.__setattr__(
+            corrupted_node,
+            "metadata",
+            {**node.metadata, "environment": {"API_TOKEN": "do-not-disclose"}},
         )
+        malformed = desired.update_node(corrupted_node)
         plan = compile_activity_plan(diff_graphs(validate_graph(scenario.current_graph), validate_graph(scenario.desired_graph)))
         activity = next(value for value in plan.activities if type(value.operation).__name__ == "StartNode")
         request = effect_request_for_activity(activity, run_id="run", attempt=1, idempotency_key="key")

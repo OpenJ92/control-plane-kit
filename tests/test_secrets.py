@@ -13,6 +13,7 @@ from control_plane_kit.secrets import (
     SecretProviderAuthority,
     SecretProviderId,
     SecretReference,
+    SecretReferenceEnvironmentDelivery,
     SecretResolutionCode,
     SecretResolutionError,
     SecretResolved,
@@ -95,6 +96,10 @@ class SecretContractTests(unittest.TestCase):
         values = (
             SecretEnvironmentDelivery(
                 "DATABASE_URL",
+                SecretReference("secret://local/workspace-a/database"),
+            ),
+            SecretReferenceEnvironmentDelivery(
+                "DATABASE_REFERENCE",
                 SecretReference("secret://local/workspace-a/database"),
             ),
             SecretFileDelivery(

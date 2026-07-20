@@ -117,6 +117,28 @@ class SecretEnvironmentDelivery:
 
 
 @dataclass(frozen=True, order=True)
+class SecretReferenceEnvironmentDelivery:
+    """Inject an opaque secret identity without resolving its referenced value."""
+
+    environment_name: str
+    reference: SecretReference
+
+    def __post_init__(self) -> None:
+        _validate_environment_name(self.environment_name)
+        if not isinstance(self.reference, SecretReference):
+            raise TypeError(
+                "secret reference environment delivery requires SecretReference"
+            )
+
+    def descriptor(self) -> dict[str, str]:
+        return {
+            "kind": "environment-reference",
+            "environment_name": self.environment_name,
+            "reference_id": self.reference.reference_id,
+        }
+
+
+@dataclass(frozen=True, order=True)
 class SecretFileDelivery:
     """Mount one opaque reference as a protected runtime-only file."""
 
@@ -148,15 +170,24 @@ class SecretFileDelivery:
         }
 
 
-SecretDelivery: TypeAlias = SecretEnvironmentDelivery | SecretFileDelivery
+SecretDelivery: TypeAlias = (
+    SecretEnvironmentDelivery
+    | SecretReferenceEnvironmentDelivery
+    | SecretFileDelivery
+)
 
 
 def secret_delivery_sort_key(value: SecretDelivery) -> tuple[str, str, str, str, str]:
-    """Interpret either delivery constructor into one deterministic order."""
+    """Interpret every delivery constructor into one deterministic order."""
 
     match value:
         case SecretEnvironmentDelivery(environment_name=name, reference=reference):
             return ("environment", name, reference.reference_id, "", "")
+        case SecretReferenceEnvironmentDelivery(
+            environment_name=name,
+            reference=reference,
+        ):
+            return ("environment-reference", name, reference.reference_id, "", "")
         case SecretFileDelivery(
             target_path=path,
             reference=reference,
@@ -182,6 +213,15 @@ def secret_delivery_from_descriptor(value: Mapping[str, object]) -> SecretDelive
                 "reference_id",
             }:
                 return SecretEnvironmentDelivery(
+                    _descriptor_text(value, "environment_name"),
+                    SecretReference(_descriptor_text(value, "reference_id")),
+                )
+            case "environment-reference" if set(value) == {
+                "kind",
+                "environment_name",
+                "reference_id",
+            }:
+                return SecretReferenceEnvironmentDelivery(
                     _descriptor_text(value, "environment_name"),
                     SecretReference(_descriptor_text(value, "reference_id")),
                 )

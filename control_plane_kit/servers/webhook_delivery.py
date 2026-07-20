@@ -17,7 +17,11 @@ from control_plane_kit.algebra import (
 from control_plane_kit.capabilities import CapabilityName
 from control_plane_kit.environment import PublicStaticEnvironmentBinding
 from control_plane_kit.implementations import DockerImageImplementation
-from control_plane_kit.secrets import SecretEnvironmentDelivery, SecretReference
+from control_plane_kit.secrets import (
+    SecretEnvironmentDelivery,
+    SecretReference,
+    SecretReferenceEnvironmentDelivery,
+)
 from control_plane_kit.types import Protocol
 from control_plane_kit.verification import HttpCheck, VerificationContract
 from control_plane_kit.webhook.http import (
@@ -156,10 +160,6 @@ def webhook_delivery_block(
                     WEBHOOK_ENDPOINT_POLICY_ENVIRONMENT,
                     render_webhook_address_policy(policy),
                 ),
-                PublicStaticEnvironmentBinding(
-                    WEBHOOK_SIGNING_REFERENCE_ENVIRONMENT,
-                    signing_reference.reference_id,
-                ),
             ),
             secret_deliveries=(
                 SecretEnvironmentDelivery(
@@ -168,6 +168,10 @@ def webhook_delivery_block(
                 ),
                 SecretEnvironmentDelivery(
                     WEBHOOK_SIGNING_SECRET_ENVIRONMENT,
+                    signing_reference,
+                ),
+                SecretReferenceEnvironmentDelivery(
+                    WEBHOOK_SIGNING_REFERENCE_ENVIRONMENT,
                     signing_reference,
                 ),
             ),

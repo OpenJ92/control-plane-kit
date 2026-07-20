@@ -80,13 +80,16 @@ class WebhookDeliveryBlockTests(unittest.TestCase):
         )
         self.assertEqual(
             {
-                item.environment_name: item.reference.reference_id
+                (item.descriptor()["kind"], item.environment_name):
+                    item.reference.reference_id
                 for item in block.implementation.secret_deliveries
             },
             {
-                WEBHOOK_IDENTITY_ENVIRONMENT:
+                ("environment", WEBHOOK_IDENTITY_ENVIRONMENT):
                     "secret://webhook-delivery/identity-attestation",
-                WEBHOOK_SIGNING_SECRET_ENVIRONMENT:
+                ("environment", WEBHOOK_SIGNING_SECRET_ENVIRONMENT):
+                    "secret://webhook-delivery/signing-key",
+                ("environment-reference", WEBHOOK_SIGNING_REFERENCE_ENVIRONMENT):
                     "secret://webhook-delivery/signing-key",
             },
         )
@@ -94,10 +97,7 @@ class WebhookDeliveryBlockTests(unittest.TestCase):
             binding.name: binding.value
             for binding in block.implementation.environment
         }
-        self.assertEqual(
-            public_environment[WEBHOOK_SIGNING_REFERENCE_ENVIRONMENT],
-            "secret://webhook-delivery/signing-key",
-        )
+        self.assertNotIn(WEBHOOK_SIGNING_REFERENCE_ENVIRONMENT, public_environment)
         self.assertEqual(
             parse_webhook_address_policy(
                 public_environment[WEBHOOK_ENDPOINT_POLICY_ENVIRONMENT]
@@ -147,9 +147,14 @@ class WebhookDeliveryBlockTests(unittest.TestCase):
         )
         self.assertEqual(
             {binding.name for binding in node.public_environment},
+            {WEBHOOK_ENDPOINT_POLICY_ENVIRONMENT},
+        )
+        self.assertIn(
+            WEBHOOK_SIGNING_REFERENCE_ENVIRONMENT,
             {
-                WEBHOOK_ENDPOINT_POLICY_ENVIRONMENT,
-                WEBHOOK_SIGNING_REFERENCE_ENVIRONMENT,
+                delivery.environment_name
+                for delivery in node.secret_deliveries
+                if delivery.descriptor()["kind"] == "environment-reference"
             },
         )
 

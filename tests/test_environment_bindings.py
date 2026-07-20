@@ -9,7 +9,9 @@ from control_plane_kit import (
     PublicStaticEnvironmentBinding,
     SecretEnvironmentDelivery,
     SecretReference,
+    SocketDerivedEnvironmentBinding,
 )
+from control_plane_kit.implementations import MaterializedNode
 
 
 class PublicStaticEnvironmentBindingTests(unittest.TestCase):
@@ -33,6 +35,39 @@ class PublicStaticEnvironmentBindingTests(unittest.TestCase):
         with self.assertRaisesRegex(ValueError, "SecretEnvironmentDelivery") as caught:
             PublicStaticEnvironmentBinding("API_TOKEN", "do-not-disclose")
         self.assertNotIn("do-not-disclose", str(caught.exception))
+
+    def test_inline_passwords_and_public_secret_references_fail_without_disclosure(self) -> None:
+        supplied = (
+            "postgresql://app:do-not-disclose@database:5432/app",
+            "secret://local/workspace/do-not-disclose",
+        )
+        for value in supplied:
+            with self.subTest(value=value), self.assertRaises(ValueError) as caught:
+                PublicStaticEnvironmentBinding("DATABASE_URL", value)
+            self.assertNotIn("do-not-disclose", str(caught.exception))
+
+        self.assertEqual(
+            PublicStaticEnvironmentBinding(
+                "DATABASE_URL", "postgresql://app@database:5432/app"
+            ).value,
+            "postgresql://app@database:5432/app",
+        )
+
+        with self.assertRaises(ValueError) as caught:
+            SocketDerivedEnvironmentBinding(
+                "DATABASE_URL",
+                "postgresql://app:do-not-disclose@database:5432/app",
+                "database.internal-to-api.database",
+            )
+        self.assertNotIn("do-not-disclose", str(caught.exception))
+
+    def test_materialized_node_rejects_environment_metadata_before_graph_compilation(self) -> None:
+        with self.assertRaisesRegex(ValueError, "must not contain environment"):
+            MaterializedNode(
+                "docker-image",
+                {},
+                metadata={"environment": {"API_TOKEN": "do-not-disclose"}},
+            )
 
     def test_docker_implementation_rejects_open_mappings_and_duplicate_names(self) -> None:
         with self.assertRaisesRegex(TypeError, "tuple"):
