@@ -1,0 +1,23 @@
+{
+  "counts": {
+    "by_owner": {
+      "core": 780,
+      "deferred-product": 227,
+      "hello": 23,
+      "system": 77
+    },
+    "deferred": 227,
+    "entries": 1107,
+    "failed_successors": 0,
+    "findings": 0,
+    "incomplete_required": 880,
+    "passing_successors": 0,
+    "required": 880,
+    "reviewed_supersessions": 0
+  },
+  "findings": [],
+  "migration_complete": false,
+  "policy": "foundation",
+  "schema": "cpk.parity-validation-report",
+  "valid": true
+}
