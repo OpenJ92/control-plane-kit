@@ -365,7 +365,7 @@
         "control_plane_kit.core.verification",
         "control_plane_kit.webhook",
         "control_plane_kit.webhook.app",
-        "control_plane_kit.webhook.http",
+        "control_plane_kit.interpreters.webhook_http",
         "control_plane_kit.domains.webhook.language",
         "control_plane_kit.operations.webhook.postgres",
         "control_plane_kit.operations.webhook.protocols",
@@ -2039,7 +2039,7 @@
         "control_plane_kit.core.topology.changes",
         "control_plane_kit.core.topology.codec",
         "control_plane_kit.core.topology.graph",
-        "control_plane_kit.webhook.http",
+        "control_plane_kit.interpreters.webhook_http",
         "control_plane_kit.domains.webhook.language",
         "control_plane_kit.operations.webhook.postgres",
         "control_plane_kit.webhook_server.main"
@@ -7083,7 +7083,7 @@
         "control_plane_kit.core.secrets",
         "control_plane_kit.core.types",
         "control_plane_kit.core.verification",
-        "control_plane_kit.webhook.http"
+        "control_plane_kit.domains.webhook"
       ],
       "known_package_consumers": [
         "control_plane_kit.servers",
@@ -7951,7 +7951,7 @@
       ],
       "known_package_consumers": [
         "control_plane_kit.webhook.app",
-        "control_plane_kit.webhook.http",
+        "control_plane_kit.interpreters.webhook_http",
         "control_plane_kit.webhook_server.main"
       ],
       "migration_prerequisites": [
@@ -8018,23 +8018,20 @@
     },
     {
       "canonical_public_exports": [
-        "WebhookEndpointScope",
-        "WebhookEndpointGrant",
-        "WebhookAddressPolicy",
         "WebhookPublicAddressResolver",
         "SystemWebhookPublicAddressResolver",
         "WebhookHttpSecurityError",
         "WebhookHttpLimits",
         "HttpWebhookDelivery"
       ],
-      "destination": "control_plane_kit.interpreters.webhook.http",
+      "destination": "control_plane_kit.interpreters.webhook_http",
       "internal_dependencies": [
+        "control_plane_kit._optional",
         "control_plane_kit.core.secrets",
         "control_plane_kit.domains.webhook.language",
         "control_plane_kit.operations.webhook"
       ],
       "known_package_consumers": [
-        "control_plane_kit.servers.webhook_delivery",
         "control_plane_kit.webhook_server.main"
       ],
       "migration_prerequisites": [
@@ -8042,9 +8039,9 @@
         "#551",
         "#556"
       ],
-      "module": "control_plane_kit.webhook.http",
+      "module": "control_plane_kit.interpreters.webhook_http",
       "motivation": "Interprets typed values into rendering, transport, probing, Docker, or another external effect.",
-      "movement": "move",
+      "movement": "remain",
       "optional_external_dependencies": [
         "httpx"
       ],
@@ -8060,7 +8057,7 @@
         "transformations",
         "values"
       ],
-      "source": "control_plane_kit/webhook/http.py"
+      "source": "control_plane_kit/interpreters/webhook_http.py"
     },
     {
       "canonical_public_exports": [
@@ -8093,18 +8090,23 @@
         "webhook_event_descriptor",
         "webhook_event_from_descriptor",
         "webhook_intent_from_descriptor",
-        "webhook_authority_from_descriptor"
+        "webhook_authority_from_descriptor",
+        "WebhookEndpointScope",
+        "WebhookEndpointAuthorizationError",
+        "WebhookEndpointGrant",
+        "WebhookAddressPolicy"
       ],
       "destination": "control_plane_kit.domains.webhook.language",
       "internal_dependencies": [
         "control_plane_kit.core.secrets"
       ],
       "known_package_consumers": [
-        "control_plane_kit.webhook.app",
-        "control_plane_kit.webhook.http",
+        "control_plane_kit.interpreters.webhook_http",
         "control_plane_kit.operations.webhook.postgres",
         "control_plane_kit.operations.webhook.protocols",
-        "control_plane_kit.operations.webhook.service"
+        "control_plane_kit.operations.webhook.service",
+        "control_plane_kit.servers.webhook_delivery",
+        "control_plane_kit.webhook.app"
       ],
       "migration_prerequisites": [
         "#550",
@@ -8239,7 +8241,7 @@
       "known_package_consumers": [
         "control_plane_kit.operations.webhook",
         "control_plane_kit.webhook.app",
-        "control_plane_kit.webhook.http",
+        "control_plane_kit.interpreters.webhook_http",
         "control_plane_kit.webhook_server.main"
       ],
       "migration_prerequisites": [

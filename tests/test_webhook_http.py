@@ -14,14 +14,16 @@ from control_plane_kit.core.secrets import (
     SecretResolved,
     SecretValue,
 )
-from control_plane_kit.operations.webhook import WebhookOutboundRequest
-from control_plane_kit.webhook.http import (
-    HttpWebhookDelivery,
+from control_plane_kit.domains.webhook import (
     WebhookAddressPolicy,
     WebhookEndpointGrant,
     WebhookEndpointScope,
+)
+from control_plane_kit.interpreters.webhook_http import (
+    HttpWebhookDelivery,
     WebhookHttpLimits,
 )
+from control_plane_kit.operations.webhook import WebhookOutboundRequest
 from control_plane_kit.domains.webhook import (
     WebhookAttemptOutcome,
     WebhookContentType,
@@ -56,6 +58,12 @@ class PublicResolver:
 
 
 class WebhookHttpTests(unittest.TestCase):
+    def test_http_delivery_reports_its_interpreter_home(self) -> None:
+        self.assertEqual(
+            HttpWebhookDelivery.__module__,
+            "control_plane_kit.interpreters.webhook_http",
+        )
+
     def test_exact_local_grant_signs_body_only_at_dispatch_boundary(self) -> None:
         seen: list[httpx.Request] = []
         resolver = Resolver()

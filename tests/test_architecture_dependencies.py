@@ -64,7 +64,9 @@ PACKAGE_RULES = (
             "core",
         ),
     ),
-    PackageDependencyRule("interpreters", ("core",)),
+    PackageDependencyRule(
+        "interpreters", ("_optional", "core", "domains", "operations")
+    ),
     PackageDependencyRule(
         "idempotency_gateway", ("adapters", "contracts", "domains", "servers")
     ),
@@ -107,7 +109,14 @@ PACKAGE_RULES = (
     ),
     PackageDependencyRule(
         "webhook_server",
-        ("contracts", "core", "operations", "servers", "webhook"),
+        (
+            "contracts",
+            "core",
+            "interpreters",
+            "operations",
+            "servers",
+            "webhook",
+        ),
     ),
     PackageDependencyRule(
         "workflows",
@@ -136,7 +145,7 @@ TRANSPORT_POLICY = TransportOwnershipPolicy(
                 "control_plane_kit.adapters.probes.clients",
                 "control_plane_kit.adapters.verification",
                 "control_plane_kit.entrypoints.cli",
-                "control_plane_kit.webhook.http",
+                "control_plane_kit.interpreters.webhook_http",
             ),
         ),
         TransportOwner("requests", ("control_plane_kit.entrypoints.cli",)),
@@ -147,7 +156,7 @@ TRANSPORT_POLICY = TransportOwnershipPolicy(
             (
                 "control_plane_kit.adapters.probes.clients",
                 "control_plane_kit.adapters.verification",
-                "control_plane_kit.webhook.http",
+                "control_plane_kit.interpreters.webhook_http",
             ),
         ),
         TransportOwner("urllib3", ()),

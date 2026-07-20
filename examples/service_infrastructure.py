@@ -26,7 +26,7 @@ from control_plane_kit.servers import (
     service_discovery_block,
     webhook_delivery_block,
 )
-from control_plane_kit.webhook.http import (
+from control_plane_kit.domains.webhook import (
     WebhookEndpointGrant,
     WebhookEndpointScope,
 )
