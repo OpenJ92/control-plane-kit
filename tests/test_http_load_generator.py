@@ -40,14 +40,13 @@ from control_plane_kit.servers import (
 )
 from control_plane_kit.servers import (
     HttpLoadGeneratorServer,
-    HttpRequest,
-    HttpResponse,
     LoadRunConflict,
     LoadGeneratorCapacityExhausted,
     hello_server_block,
     http_rate_limiter_command,
     http_weighted_load_balancer_command,
 )
+from control_plane_kit.products.servers.support.http_messages import HttpRequest, HttpResponse
 
 
 class HttpLoadGeneratorTests(unittest.TestCase):

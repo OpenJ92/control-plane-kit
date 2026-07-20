@@ -22,11 +22,11 @@ from control_plane_kit.servers import (
     request_observer_block,
 )
 from control_plane_kit.servers import (
-    HttpRequest,
     RequestObserverServer,
     http_multiplexer_command,
     request_observer_command,
 )
+from control_plane_kit.products.servers.support.http_messages import HttpRequest
 
 
 class RequestObserverServerTests(unittest.TestCase):

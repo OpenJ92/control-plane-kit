@@ -23,6 +23,7 @@ from control_plane_kit.operations import planning as operational_planning
 from control_plane_kit.operations import webhook as operational_webhook
 from control_plane_kit.domains import discovery, idempotency, load_generation, webhook
 from control_plane_kit.products import servers as server_products
+from control_plane_kit.products.servers import support as server_product_support
 
 
 class PackageStructureTests(unittest.TestCase):
@@ -152,6 +153,18 @@ class PackageStructureTests(unittest.TestCase):
             server_products.webhook_delivery_block.__module__,
             "control_plane_kit.products.servers.webhook_delivery",
         )
+        self.assertEqual(
+            server_product_support.HttpRequest.__module__,
+            "control_plane_kit.products.servers.support.http_messages",
+        )
+        self.assertEqual(
+            server_product_support.GeneratedServerSyntaxError.__module__,
+            "control_plane_kit.products.servers.support.command_rendering",
+        )
+        self.assertNotIn("ProductDeclaration", server_product_support.__all__)
+        self.assertFalse(
+            any(name.endswith("_PRODUCT") for name in server_product_support.__all__)
+        )
 
     def test_retired_flat_modules_are_not_importable(self) -> None:
         retired_modules = (
@@ -197,6 +210,8 @@ class PackageStructureTests(unittest.TestCase):
             "webhook_server",
             "webhook_server.main",
             "servers.webhook_delivery",
+            "servers.http_messages",
+            "servers._templates",
         )
 
         for module in retired_modules:

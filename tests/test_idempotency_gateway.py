@@ -41,12 +41,11 @@ from control_plane_kit.idempotency_gateway import (
     install_idempotency_gateway_schema,
 )
 from control_plane_kit.servers import (
-    HttpRequest,
-    HttpResponse,
     ProductMaturity,
     create_idempotency_gateway_app,
     http_idempotency_gateway_block,
 )
+from control_plane_kit.products.servers.support.http_messages import HttpRequest, HttpResponse
 from control_plane_kit.stores import PostgresStoreBundle
 from tests.postgres_case import PostgresStoreTestCase
 

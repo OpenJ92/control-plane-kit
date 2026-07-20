@@ -27,7 +27,8 @@ from control_plane_kit.servers import (
     http_circuit_breaker_block,
     http_circuit_breaker_command,
 )
-from control_plane_kit.servers import HttpCircuitBreakerServer, HttpRequest, HttpResponse
+from control_plane_kit.products.servers.support.http_messages import HttpRequest, HttpResponse
+from control_plane_kit.servers import HttpCircuitBreakerServer
 
 
 class HttpCircuitBreakerTests(unittest.TestCase):

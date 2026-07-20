@@ -25,7 +25,7 @@ from control_plane_kit.servers import (
     http_retry_block,
     http_retry_command,
 )
-from control_plane_kit.servers import HttpRequest, HttpResponse
+from control_plane_kit.products.servers.support.http_messages import HttpRequest, HttpResponse
 
 
 class HttpRetryTests(unittest.TestCase):

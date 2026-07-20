@@ -3,11 +3,10 @@ from unittest import TestCase, main
 from control_plane_kit import DeploymentRecipe, DockerRuntime, SocketConnection, compile_recipe
 from control_plane_kit.servers import (
     HttpActiveRouterServer,
-    HttpRequest,
-    HttpResponse,
     hello_server_block,
     http_active_router_block,
 )
+from control_plane_kit.products.servers.support.http_messages import HttpRequest, HttpResponse
 from control_plane_kit.core.types import Protocol
 
 

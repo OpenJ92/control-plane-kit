@@ -19,12 +19,11 @@ from control_plane_kit.servers import (
     CacheVaryHeader,
     HttpCachePolicy,
     HttpCacheServer,
-    HttpRequest,
-    HttpResponse,
     ProductMaturity,
     http_cache_block,
     http_cache_command,
 )
+from control_plane_kit.products.servers.support.http_messages import HttpRequest, HttpResponse
 
 
 class HttpCacheTests(unittest.TestCase):

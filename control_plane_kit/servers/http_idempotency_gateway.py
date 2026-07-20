@@ -22,7 +22,7 @@ from control_plane_kit.core.capabilities import CapabilityName
 from control_plane_kit.domains.idempotency import IdempotencyGatewayPolicy
 from control_plane_kit.implementations import DockerImageImplementation
 from control_plane_kit.core.secrets import SecretEnvironmentDelivery, SecretReference
-from control_plane_kit.servers.http_messages import HttpRequest, HttpResponse
+from control_plane_kit.products.servers.support.http_messages import HttpRequest, HttpResponse
 from control_plane_kit.core.types import Protocol
 
 

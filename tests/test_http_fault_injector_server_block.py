@@ -34,8 +34,6 @@ from control_plane_kit.servers import (
     FaultKind,
     HttpCircuitBreakerServer,
     HttpFaultInjectionServer,
-    HttpRequest,
-    HttpResponse,
     HttpRetryServer,
     InjectedConnectionTermination,
     InjectedHttpStatus,
@@ -51,6 +49,7 @@ from control_plane_kit.servers import (
     http_fault_injector_block,
     http_fault_injector_command,
 )
+from control_plane_kit.products.servers.support.http_messages import HttpRequest, HttpResponse
 
 
 class HttpFaultInjectionTests(unittest.TestCase):

@@ -18,7 +18,7 @@ from control_plane_kit.contracts import EnvironmentContract, TextVariable
 from control_plane_kit.core.environment import PublicStaticEnvironmentBinding
 from control_plane_kit.implementations import DockerImageImplementation, HostPublication
 from control_plane_kit.core.capabilities import CapabilityName
-from control_plane_kit.servers._templates import render_python_command
+from control_plane_kit.products.servers.support.command_rendering import render_python_command
 from control_plane_kit.core.types import Protocol
 
 

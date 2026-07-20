@@ -23,7 +23,7 @@ from control_plane_kit.servers import (
     http_weighted_load_balancer_command,
     request_observer_command,
 )
-from control_plane_kit.servers._templates import (
+from control_plane_kit.products.servers.support.command_rendering import (
     GeneratedServerSyntaxError,
     validated_python_command,
 )

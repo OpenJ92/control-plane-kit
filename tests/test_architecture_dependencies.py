@@ -79,10 +79,12 @@ PACKAGE_RULES = (
         "interpreters", ("_optional", "core", "domains", "operations")
     ),
     PackageDependencyRule(
-        "idempotency_gateway", ("adapters", "contracts", "domains", "servers")
+        "idempotency_gateway",
+        ("adapters", "contracts", "domains", "products", "servers"),
     ),
     PackageDependencyRule(
-        "load_generator_server", ("adapters", "contracts", "domains", "servers")
+        "load_generator_server",
+        ("adapters", "contracts", "domains", "products", "servers"),
     ),
     PackageDependencyRule("mcp_read", ("read_services",)),
     PackageDependencyRule("operations", ("core", "domains", "policies")),
@@ -165,7 +167,7 @@ TEMPLATE_ENGINE_POLICY = ImportOwnershipPolicy(
             "jinja2",
             (
                 "control_plane_kit.interpreters.configuration_rendering",
-                "control_plane_kit.servers._templates",
+                "control_plane_kit.products.servers.support.command_rendering",
             ),
         ),
     )

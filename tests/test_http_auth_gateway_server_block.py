@@ -29,8 +29,6 @@ from control_plane_kit.servers import (
     ForwardedIdentityHeader,
     GatewayMethod,
     HttpAuthGatewayServer,
-    HttpRequest,
-    HttpResponse,
     JwtAlgorithm,
     ProductMaturity,
     RouteAuthorizationPolicy,
@@ -39,6 +37,7 @@ from control_plane_kit.servers import (
     http_auth_gateway_block,
     http_auth_gateway_command,
 )
+from control_plane_kit.products.servers.support.http_messages import HttpRequest, HttpResponse
 
 
 def _policy() -> AuthGatewayPolicy:

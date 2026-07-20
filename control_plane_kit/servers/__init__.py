@@ -8,7 +8,6 @@ require_optional_dependencies(
     extra="http",
 )
 
-from control_plane_kit.servers._templates import GeneratedServerSyntaxError
 from control_plane_kit.servers.block_control import BlockControlState, create_block_control_app
 from control_plane_kit.servers.hello import (
     HelloDependency,
@@ -103,7 +102,6 @@ from control_plane_kit.servers.http_fault_injector import (
     http_fault_injector_block,
     http_fault_injector_command,
 )
-from control_plane_kit.servers.http_messages import HttpHandler, HttpRequest, HttpResponse
 from control_plane_kit.servers.http_multiplexer import (
     HttpMultiplexerRuntime,
     HttpMultiplexerServer,
@@ -251,7 +249,6 @@ __all__ = [
     "ExporterHeader",
     "ForwardedIdentityHeader",
     "GatewayMethod",
-    "GeneratedServerSyntaxError",
     "HelloDependency",
     "HelloEnvironment",
     "HealthCheckExtension",
@@ -264,7 +261,6 @@ __all__ = [
     "HttpCircuitBreakerServer",
     "HttpBulkheadPolicy",
     "HttpBulkheadServer",
-    "HttpHandler",
     "HttpAuthGatewayServer",
     "create_idempotency_gateway_app",
     "http_idempotency_gateway_block",
@@ -290,8 +286,6 @@ __all__ = [
     "HttpTrafficLoggerServer",
     "HttpTimeoutServer",
     "HttpTimeoutPolicy",
-    "HttpRequest",
-    "HttpResponse",
     "ConnectionTerminationFault",
     "DelayFault",
     "DisabledFaultInjection",
