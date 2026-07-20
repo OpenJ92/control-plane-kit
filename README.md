@@ -256,7 +256,23 @@ Stop it with:
 ./scripts/read-demo-down.sh
 ```
 
-The optional server adapters require FastAPI:
+The base installation contains the pure deployment language and planning
+pipeline:
+
+```bash
+pip install control-plane-kit
+```
+
+Install focused HTTP or Postgres boundaries independently when that is the
+only operational capability required:
+
+```bash
+pip install control-plane-kit[http]
+pip install control-plane-kit[postgres]
+```
+
+The broad runnable-server bundle includes both boundaries plus process-server
+dependencies:
 
 ```bash
 pip install control-plane-kit[server]

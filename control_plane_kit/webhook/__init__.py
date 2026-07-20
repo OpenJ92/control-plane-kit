@@ -5,7 +5,7 @@ from control_plane_kit._optional import require_optional_dependencies
 require_optional_dependencies(
     "control_plane_kit.webhook",
     ("fastapi", "httpx"),
-    extra="server",
+    extra="http",
 )
 
 from control_plane_kit.webhook.language import (

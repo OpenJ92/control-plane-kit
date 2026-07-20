@@ -5,7 +5,7 @@ from control_plane_kit._optional import require_optional_dependencies
 require_optional_dependencies(
     "control_plane_kit.adapters",
     ("httpx",),
-    extra="server",
+    extra="http",
 )
 
 from control_plane_kit.adapters.verification import (
