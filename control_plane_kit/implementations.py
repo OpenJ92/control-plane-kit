@@ -7,6 +7,7 @@ from ipaddress import IPv4Address, IPv6Address
 
 from control_plane_kit.algebra import BlockSockets, RuntimeContext
 from control_plane_kit.configuration import ConfigurationArtifact
+from control_plane_kit.environment import PublicStaticEnvironmentBinding
 from control_plane_kit.lifecycle import ResourceLifecycle
 from control_plane_kit.secrets import (
     SecretDelivery,
@@ -64,13 +65,26 @@ class DockerImageImplementation:
     image: str
     command: tuple[str, ...] = ()
     ports: dict[str, int] = field(default_factory=dict)
-    environment: dict[str, str] = field(default_factory=dict)
+    environment: tuple[PublicStaticEnvironmentBinding, ...] = ()
     data_mounts: dict[str, str] = field(default_factory=dict)
     host_publications: dict[str, HostPublication] = field(default_factory=dict)
     configuration_artifacts: tuple[ConfigurationArtifact, ...] = ()
     secret_deliveries: tuple[SecretDelivery, ...] = ()
     lifecycle: ResourceLifecycle = field(default_factory=ResourceLifecycle.owned_ephemeral)
     kind: str = "docker-image"
+
+    def __post_init__(self) -> None:
+        if not isinstance(self.environment, tuple) or not all(
+            isinstance(value, PublicStaticEnvironmentBinding)
+            for value in self.environment
+        ):
+            raise TypeError(
+                "Docker image public environment must be a tuple of "
+                "PublicStaticEnvironmentBinding values"
+            )
+        names = tuple(value.name for value in self.environment)
+        if len(set(names)) != len(names):
+            raise ValueError("public environment binding names must be unique")
 
     def materialize(self, block_id: str, sockets: BlockSockets, runtime: RuntimeContext) -> MaterializedNode:
         _require_runtime(runtime, RuntimeKind.DOCKER, self.kind)
@@ -94,7 +108,10 @@ class DockerImageImplementation:
             metadata={
                 "image": self.image,
                 "command": list(self.command),
-                "environment": dict(self.environment),
+                "environment": {
+                    binding.name: binding.value
+                    for binding in sorted(self.environment)
+                },
                 "data_mounts": [
                     {"resource_id": resource_id, "target_path": target_path}
                     for resource_id, target_path in sorted(self.data_mounts.items())
@@ -364,7 +381,7 @@ def _validate_configuration_artifacts(
 
 
 def _validate_secret_deliveries(
-    environment: dict[str, str],
+    environment: tuple[PublicStaticEnvironmentBinding, ...],
     deliveries: tuple[SecretDelivery, ...],
 ) -> None:
     if not isinstance(deliveries, tuple):
@@ -381,7 +398,7 @@ def _validate_secret_deliveries(
                     environment_names.append(path_binding.environment_name)
             case _:
                 raise TypeError("secret delivery must use the closed SecretDelivery language")
-    if set(environment_names).intersection(environment):
+    if set(environment_names).intersection(value.name for value in environment):
         raise ValueError("literal and secret environment bindings must not overlap")
     if len(set(environment_names)) != len(environment_names):
         raise ValueError("secret environment names must be unique")

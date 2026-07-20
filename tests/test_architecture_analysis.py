@@ -6,6 +6,7 @@ import tempfile
 import unittest
 
 from tests.architecture import (
+    ExpressionShape,
     PolicyFinding,
     SourceAnalysisError,
     SourceFacts,
@@ -16,6 +17,26 @@ from tests.architecture import (
 
 
 class ArchitectureAnalysisTests(unittest.TestCase):
+    def test_call_keyword_shapes_are_recorded_without_values(self) -> None:
+        facts = analyze_source(
+            "build(mapping={'secret': 'not-retained'}, values=(item,), source=config)\n",
+            path="sample.py",
+            module="sample",
+        )
+
+        arguments = {
+            value.name: value.shape for value in facts.calls[0].keyword_arguments
+        }
+
+        self.assertEqual(
+            arguments,
+            {
+                "mapping": ExpressionShape.DICTIONARY,
+                "source": ExpressionShape.NAME,
+                "values": ExpressionShape.TUPLE,
+            },
+        )
+
     def test_import_aliases_calls_decorators_and_locations_are_resolved(self) -> None:
         facts = analyze_source(
             '''"""requests in prose is not an import."""

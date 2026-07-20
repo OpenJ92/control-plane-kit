@@ -8,12 +8,42 @@ from importlib.util import resolve_name
 
 from tests.architecture.source import (
     CallFact,
+    ExpressionShape,
     DecoratorFact,
     PolicyFinding,
     SourceFacts,
     SourceLocation,
     evaluate_policies,
 )
+
+
+@dataclass(frozen=True)
+class CallKeywordShapePolicy:
+    """Reject forbidden source shapes at one named constructor boundary."""
+
+    rule_id: str
+    call_names: tuple[str, ...]
+    keyword_name: str
+    forbidden_shapes: tuple[ExpressionShape, ...]
+
+    def evaluate(self, facts: SourceFacts) -> tuple[PolicyFinding, ...]:
+        findings: list[PolicyFinding] = []
+        for call in facts.calls:
+            if call.qualified_name.rsplit(".", 1)[-1] not in self.call_names:
+                continue
+            for keyword in call.keyword_arguments:
+                if (
+                    keyword.name == self.keyword_name
+                    and keyword.shape in self.forbidden_shapes
+                ):
+                    findings.append(
+                        PolicyFinding(
+                            self.rule_id,
+                            f"{self.keyword_name} must use the closed typed constructor language",
+                            call.location,
+                        )
+                    )
+        return tuple(findings)
 
 
 @dataclass(frozen=True, order=True)

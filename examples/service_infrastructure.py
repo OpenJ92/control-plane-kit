@@ -16,6 +16,7 @@ from control_plane_kit import (
     DockerRuntime,
     Protocol,
     ProviderSocket,
+    PublicStaticEnvironmentBinding,
     SecretEnvironmentDelivery,
     SecretReference,
     SocketConnection,
@@ -93,11 +94,11 @@ def _ephemeral_postgres(block_id: str) -> DataBlock:
         DockerImageImplementation(
             image="postgres:16-alpine",
             ports={"internal": 5432},
-            environment={
-                "POSTGRES_DB": "root",
-                "POSTGRES_USER": "root",
-                "POSTGRES_HOST_AUTH_METHOD": "trust",
-            },
+            environment=(
+                PublicStaticEnvironmentBinding("POSTGRES_DB", "root"),
+                PublicStaticEnvironmentBinding("POSTGRES_USER", "root"),
+                PublicStaticEnvironmentBinding("POSTGRES_HOST_AUTH_METHOD", "trust"),
+            ),
         ),
         BlockSockets(
             providers=(ProviderSocket("internal", Protocol.POSTGRES),)

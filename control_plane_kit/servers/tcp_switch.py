@@ -20,6 +20,7 @@ from control_plane_kit.algebra import (
 )
 from control_plane_kit.capabilities import CapabilityName
 from control_plane_kit.contracts import EnvironmentContract, TextVariable
+from control_plane_kit.environment import PublicStaticEnvironmentBinding
 from control_plane_kit.implementations import DockerImageImplementation, HostPublication
 from control_plane_kit.secrets import SecretEnvironmentDelivery, SecretReference
 from control_plane_kit.servers.block_control import BlockControlState, create_block_control_app
@@ -260,11 +261,13 @@ def tcp_switch_block(
                 "8080",
             ),
             ports={"data": 7000, "control": 8080},
-            environment={
-                "CPK_TCP_SWITCH_BLOCK_ID": block_id,
-                "CPK_TCP_SWITCH_ACTIVE_TARGET": "target-a",
-                "CPK_TCP_SWITCH_MODE": mode.value,
-            },
+            environment=(
+                PublicStaticEnvironmentBinding("CPK_TCP_SWITCH_BLOCK_ID", block_id),
+                PublicStaticEnvironmentBinding(
+                    "CPK_TCP_SWITCH_ACTIVE_TARGET", "target-a"
+                ),
+                PublicStaticEnvironmentBinding("CPK_TCP_SWITCH_MODE", mode.value),
+            ),
             secret_deliveries=(
                 SecretEnvironmentDelivery(
                     "CPK_CONTROL_TOKEN", SecretReference(control_secret_reference)

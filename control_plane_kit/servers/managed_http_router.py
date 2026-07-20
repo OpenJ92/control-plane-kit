@@ -14,6 +14,7 @@ from control_plane_kit.algebra import (
 from control_plane_kit.adapters.http_forwarding import forward_http_request
 from control_plane_kit.capabilities import CapabilityName
 from control_plane_kit.contracts import EnvironmentContract, TextVariable
+from control_plane_kit.environment import PublicStaticEnvironmentBinding
 from control_plane_kit.implementations import (
     DockerImageImplementation,
     HostPublication,
@@ -160,10 +161,12 @@ def managed_http_router_block(
                 "8080",
             ),
             ports={"internal": 8080},
-            environment={
-                "CPK_ROUTER_BLOCK_ID": block_id,
-                "CPK_ROUTER_ACTIVE_TARGET": "hello-blue",
-            },
+            environment=(
+                PublicStaticEnvironmentBinding("CPK_ROUTER_BLOCK_ID", block_id),
+                PublicStaticEnvironmentBinding(
+                    "CPK_ROUTER_ACTIVE_TARGET", "hello-blue"
+                ),
+            ),
             secret_deliveries=(
                 SecretEnvironmentDelivery(
                     "CPK_CONTROL_TOKEN",

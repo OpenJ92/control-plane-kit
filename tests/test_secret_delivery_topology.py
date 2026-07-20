@@ -13,6 +13,7 @@ from control_plane_kit import (
     DockerImageImplementation,
     DockerRuntime,
     PinnedGraphSet,
+    PublicStaticEnvironmentBinding,
     ReconcileNode,
     SecretEnvironmentDelivery,
     SecretFileDelivery,
@@ -126,7 +127,9 @@ class SecretDeliveryTopologyTests(unittest.TestCase):
         with self.assertRaisesRegex(ValueError, "overlap"):
             DockerImageImplementation(
                 "service:latest",
-                environment={"DATABASE_URL": "literal"},
+                environment=(
+                    PublicStaticEnvironmentBinding("DATABASE_URL", "literal"),
+                ),
                 secret_deliveries=(
                     SecretEnvironmentDelivery(
                         "DATABASE_URL",
@@ -135,10 +138,14 @@ class SecretDeliveryTopologyTests(unittest.TestCase):
                 ),
             ).materialize("service", BlockSockets(), DockerRuntime())
 
-        with self.assertRaisesRegex(ValueError, "overlap"):
+        with self.assertRaisesRegex(ValueError, "SecretEnvironmentDelivery"):
             DockerImageImplementation(
                 "postgres:16-alpine",
-                environment={"POSTGRES_PASSWORD_FILE": "/tmp/untyped"},
+                environment=(
+                    PublicStaticEnvironmentBinding(
+                        "POSTGRES_PASSWORD_FILE", "/tmp/untyped"
+                    ),
+                ),
                 secret_deliveries=(
                     SecretFileDelivery(
                         "/run/secrets/database-password",
