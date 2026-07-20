@@ -44,6 +44,7 @@ from control_plane_kit.servers.http_weighted_balancer import http_weighted_load_
 from control_plane_kit.servers.managed_http_router import managed_http_router_block
 from control_plane_kit.servers.request_observer import request_observer_block
 from control_plane_kit.servers.service_discovery import service_discovery_block
+from control_plane_kit.servers.coredns import coredns_block
 from control_plane_kit.servers.webhook_delivery import webhook_delivery_block
 from control_plane_kit.servers.opentelemetry_collector import (
     opentelemetry_collector_block,
@@ -56,6 +57,7 @@ class CapabilityImplementation(StrEnum):
 
     APPLICATION_PROBE = "application-probe"
     CONTROL_ROUTE = "control-route"
+    RUNTIME_LIFECYCLE = "runtime-lifecycle"
 
 
 @dataclass(frozen=True)
@@ -79,6 +81,11 @@ class ExecutableCapability:
                     raise ValueError("control route requires a route set")
                 if self.path is not None:
                     raise ValueError("control route cannot name an application path")
+            case CapabilityImplementation.RUNTIME_LIFECYCLE:
+                if self.route_set is not None or self.path is not None:
+                    raise ValueError(
+                        "runtime lifecycle capability cannot name an application route"
+                    )
 
 
 @dataclass(frozen=True)
@@ -186,7 +193,23 @@ def _control(
     )
 
 
+def _runtime(capability: CapabilityName) -> ExecutableCapability:
+    return ExecutableCapability(
+        capability,
+        CapabilityImplementation.RUNTIME_LIFECYCLE,
+    )
+
+
 PACKAGE_SERVER_CONTRACTS = (
+    PackageServerContract(
+        PackageServerProduct.COREDNS,
+        ProductMaturity.OPERATIONAL,
+        coredns_block(),
+        (
+            _probe(path="/health"),
+            _runtime(CapabilityName.RESTARTABLE),
+        ),
+    ),
     PackageServerContract(
         PackageServerProduct.TCP_SWITCH,
         ProductMaturity.TEST_ONLY,
