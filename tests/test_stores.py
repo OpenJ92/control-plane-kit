@@ -1,10 +1,13 @@
 import unittest
 
-from control_plane_kit import ActivityPlan
-from control_plane_kit.topology.graph import DeploymentGraph
+from control_plane_kit import (
+    ActivityPlan,
+    ObservationFreshness,
+    ObservationStatus,
+)
+from control_plane_kit.core.topology.graph import DeploymentGraph
 from control_plane_kit.stores import (
     ActivityPlanRecord,
-    ActivityRunRecord,
     GraphVersionRecord,
     InstanceRecord,
     ObservationRecord,
@@ -127,30 +130,23 @@ class StoreContractTests(PostgresStoreTestCase):
                 plan=ActivityPlan(()),
             )
         )
-        store.add_run(
-            ActivityRunRecord(
-                run_id="run-a",
-                plan_id="plan-a",
-                status="running",
-                started_at="2026-07-15T00:03:00Z",
-            )
-        )
-
         self.assertEqual(
             [record.session_id for record in store.sessions_for_workspace("workspace-a")],
             ["session-a"],
         )
         self.assertEqual([record.plan_id for record in store.plans_for_session("session-a")], ["plan-a"])
-        self.assertEqual([record.run_id for record in store.runs_for_plan("plan-a")], ["run-a"])
 
     def test_observed_state_is_separate_from_graph_truth(self):
+        self.stores.workspace.create(
+            WorkspaceRecord(workspace_id="workspace-a", name="Demo")
+        )
         store = self.stores.observed_state
         store.put(
             ObservationRecord(
                 observation_id="obs-1",
                 workspace_id="workspace-a",
                 subject_id="api",
-                status="healthy",
+                status=ObservationStatus.HEALTHY,
                 observed_at="2026-07-15T00:00:00Z",
             )
         )
@@ -159,24 +155,27 @@ class StoreContractTests(PostgresStoreTestCase):
                 observation_id="obs-2",
                 workspace_id="workspace-a",
                 subject_id="api",
-                status="stale",
+                status=ObservationStatus.UNKNOWN,
                 observed_at="2026-07-15T00:01:00Z",
-                stale=True,
+                freshness=ObservationFreshness.STALE,
             )
         )
 
         latest = store.latest("workspace-a", "api")
         self.assertIsNotNone(latest)
-        self.assertTrue(latest.stale)
+        self.assertIs(latest.freshness, ObservationFreshness.STALE)
 
     def test_observed_state_lists_latest_per_workspace_subject(self):
+        self.stores.workspace.create(
+            WorkspaceRecord(workspace_id="workspace-a", name="Demo")
+        )
         store = self.stores.observed_state
         store.put(
             ObservationRecord(
                 observation_id="obs-api-1",
                 workspace_id="workspace-a",
                 subject_id="api",
-                status="starting",
+                status=ObservationStatus.STARTING,
                 observed_at="2026-07-15T00:00:00Z",
             )
         )
@@ -185,7 +184,7 @@ class StoreContractTests(PostgresStoreTestCase):
                 observation_id="obs-api-2",
                 workspace_id="workspace-a",
                 subject_id="api",
-                status="healthy",
+                status=ObservationStatus.HEALTHY,
                 observed_at="2026-07-15T00:01:00Z",
             )
         )
@@ -194,16 +193,43 @@ class StoreContractTests(PostgresStoreTestCase):
                 observation_id="obs-router",
                 workspace_id="workspace-a",
                 subject_id="router",
-                status="stale",
+                status=ObservationStatus.UNKNOWN,
                 observed_at="2026-07-15T00:02:00Z",
-                stale=True,
+                freshness=ObservationFreshness.STALE,
             )
         )
 
         self.assertEqual(
-            [(record.subject_id, record.status, record.stale) for record in store.latest_for_workspace("workspace-a")],
-            [("api", "healthy", False), ("router", "stale", True)],
+            [
+                (record.subject_id, record.status.value, record.freshness.value)
+                for record in store.latest_for_workspace("workspace-a")
+            ],
+            [("api", "healthy", "fresh"), ("router", "unknown", "stale")],
         )
+
+    def test_observed_state_uses_observation_id_to_break_equal_time_ties(self):
+        self.stores.workspace.create(
+            WorkspaceRecord(workspace_id="workspace-a", name="Demo")
+        )
+        for observation_id, status in (
+            ("obs-a", ObservationStatus.STARTING),
+            ("obs-b", ObservationStatus.HEALTHY),
+        ):
+            self.stores.observed_state.put(
+                ObservationRecord(
+                    observation_id=observation_id,
+                    workspace_id="workspace-a",
+                    subject_id="api",
+                    status=status,
+                    observed_at="2026-07-15T00:00:00Z",
+                )
+            )
+
+        latest = self.stores.observed_state.latest("workspace-a", "api")
+        history = self.stores.observed_state.history("workspace-a", "api")
+
+        self.assertEqual(latest.observation_id, "obs-b")
+        self.assertEqual([value.observation_id for value in history], ["obs-a", "obs-b"])
 
     def test_instance_registry_lists_by_owner_and_updates_lifecycle(self):
         store = self.stores.instance_registry

@@ -1,9 +1,10 @@
 # control-plane-kit
 
-`control-plane-kit` is a small Python algebra for describing deployable systems
-as values: blocks, runtimes, sockets, and connections. It is designed for tools
-that want to let a user build deployment topology visually, diff that topology,
-and hand the result to a runtime interpreter.
+`control-plane-kit` is a Python algebra and control-plane application for
+describing deployable systems as values: blocks, runtimes, sockets, and
+connections. Tools can build topology visually, diff it, compile an activity
+plan, request explicit approval, and execute the approved transition through
+runtime adapters.
 
 The central equation is:
 
@@ -193,6 +194,51 @@ Operation sessions, desired graph edits, typed activity planning, approvals,
 recovery candidates, and focused workflow reads are documented in
 [Activity Sessions And Planning](docs/ACTIVITY_PLANNING.md).
 
+## Deployment Program
+
+The intentional long-lived application entrance is:
+
+```python
+from control_plane_kit.application.deploy import DeploymentProgram
+```
+
+One program binds every graph-pair transition:
+
+```text
+initial deployment = program.between(EmptyGraph, desired)
+update             = program.between(current, desired)
+teardown           = program.between(current, EmptyGraph)
+no-op              = program.between(graph, graph)
+```
+
+It composes `Plan -> Approve -> Admit -> Claim -> Execute -> Advance` while
+keeping approval and recovery as explicit suspension boundaries. Later HTTP
+requests reconstruct with `program.for_plan(plan_id)` rather than retaining a
+Python object as workflow state. See
+[Deployment Application Program](docs/DEPLOY_PROGRAM.md) for construction,
+typed outcomes, operator grants, transaction laws, recovery, and live examples.
+
+Run the complete Docker/Postgres live proof with:
+
+```bash
+./gate-f-live-test.sh
+```
+
+Run a generated Hello topology with paired HTTP and Postgres dependencies through
+the same canonical deployment program:
+
+```bash
+./generated-hello-live-test.sh
+```
+
+The default is a two-branch, one-level graph. Set
+`CPK_GENERATED_HELLO_BRANCHING_FACTOR` and `CPK_GENERATED_HELLO_DEPTH` to exercise
+a larger bounded generated topology. Live execution defaults to at most 31
+application and database containers. Raising
+`CPK_GENERATED_HELLO_MAX_LIVE_NODES` is an explicit acknowledgement that a
+larger graph will consume correspondingly more local Docker resources; it does
+not change the larger bound of the pure graph generator.
+
 Run the local read demo with:
 
 ```bash
@@ -210,7 +256,23 @@ Stop it with:
 ./scripts/read-demo-down.sh
 ```
 
-The optional server adapters require FastAPI:
+The base installation contains the pure deployment language and planning
+pipeline:
+
+```bash
+pip install control-plane-kit
+```
+
+Install focused HTTP or Postgres boundaries independently when that is the
+only operational capability required:
+
+```bash
+pip install control-plane-kit[http]
+pip install control-plane-kit[postgres]
+```
+
+The broad runnable-server bundle includes both boundaries plus process-server
+dependencies:
 
 ```bash
 pip install control-plane-kit[server]
@@ -239,7 +301,9 @@ A compiled graph is still only topology. A runtime interpreter is the boundary
 where topology becomes effects:
 
 ```python
-from control_plane_kit import CleanupPolicy, DockerRuntimeInterpreter, compile_recipe
+from control_plane_kit import compile_recipe
+from control_plane_kit.docker_runtime import DockerRuntimeInterpreter
+from control_plane_kit.runtimes import CleanupPolicy
 from examples.hello_runtime import hello_recipe
 
 graph = compile_recipe(hello_recipe("Hello, runtime!"))
@@ -260,7 +324,9 @@ The Docker interpreter operates on one `RuntimeRecord` at a time. It consumes
 live facts in `RuntimeState`. Container names, cleanup metadata, and health
 belong to runtime state; they do not belong to the graph.
 
-Current Docker support is intentionally narrow:
+The older `DockerRuntimeInterpreter.up/down` surface is a focused low-level
+runtime example. New control-plane workflows should use the deployment program
+above. Current Docker support is intentionally narrow:
 
 - supported: one Docker runtime at a time,
 - supported: Docker image blocks and Docker Postgres blocks,
@@ -268,7 +334,9 @@ Current Docker support is intentionally narrow:
 - supported: default cleanup that removes owned containers and network,
 - supported: preserve cleanup that stops containers but keeps resources,
 - unsupported: cross-runtime Docker realization,
-- unsupported: host port publishing and host health checks,
+- supported: explicit typed loopback host publication,
+- supported: distinct process, reachability, application-health, and readiness
+  probes,
 - unsupported: Kubernetes, ECS, EC2, RDS, and Cloudflare interpreters.
 
 Activity descriptors redact environment values. The executor still receives the

@@ -1,22 +1,42 @@
+from datetime import datetime, timezone
 from unittest import main
 
 from control_plane_kit import (
+    ActivityId,
     ActivityPlan,
+    ActivityEventKind,
+    ActivityRunStatus,
+    AdmittedRun,
+    BoundedEvidence,
     BlockSockets,
     BlockSpec,
     CapabilityName,
     DeploymentRecipe,
     DockerRuntime,
     PlanOnlyImplementation,
+    PlannedActivity,
+    ObservationFreshness,
+    EndpointContext,
+    ProbeKind,
+    ProbeOutcome,
+    ObservationStatus,
+    ExecutionIdempotency,
+    ExecutionRequestIdentity,
+    ExecutionRequestRecord,
+    ExecutionRequestStatus,
+    RetryIdentity,
     Protocol,
     ProxyBlock,
     ProviderSocket,
     RequirementSocket,
     RiskLevel,
+    NodeTarget,
+    SocketBinding,
     SocketConnection,
+    StartNode,
     compile_recipe,
 )
-from control_plane_kit.topology.graph import DeploymentGraph
+from control_plane_kit.core.topology.graph import DeploymentGraph
 from control_plane_kit.read_services import InstanceReadService, ReadModelError
 from control_plane_kit.stores import (
     ActivityEventRecord,
@@ -59,7 +79,17 @@ class InstanceReadServiceTests(PostgresStoreTestCase):
         api = descriptor["nodes"]["orders-api"]
         edge = descriptor["edges"]["postgres.internal-to-orders-api.DATABASE_URL"]
         self.assertEqual(postgres["endpoints"]["internal"]["address"], "<redacted>")
-        self.assertEqual(api["environment"], "<redacted>")
+        self.assertEqual(
+            api["environment_bindings"],
+            [
+                {
+                    "edge_id": "postgres.internal-to-orders-api.DATABASE_URL",
+                    "kind": "socket-derived",
+                    "name": "DATABASE_URL",
+                    "value": "<redacted>",
+                }
+            ],
+        )
         self.assertEqual(edge["env_assignments"], "<redacted>")
         self.assertNotIn("postgres:postgres", str(descriptor))
 
@@ -119,7 +149,9 @@ class InstanceReadServiceTests(PostgresStoreTestCase):
             session["plans"][0]["payload"]["schema"],
             "control-plane-kit.activity-plan",
         )
-        self.assertEqual(session["plans"][0]["runs"][0]["events"][0]["payload"]["password"], "<redacted>")
+        event_payload = session["plans"][0]["runs"][0]["events"][0]["payload"]
+        self.assertEqual(event_payload["target"], "api")
+        self.assertNotIn("password", event_payload)
 
     def test_activity_timeline_rejects_invalid_limits(self):
         service = self._service_with_activity()
@@ -132,6 +164,7 @@ class InstanceReadServiceTests(PostgresStoreTestCase):
             workspace_store=self.stores.workspace,
             graph_topology_store=self.stores.graph_topology,
             activity_history_store=self.stores.activity_history,
+            execution_store=self.stores.execution,
             observed_state_store=self.stores.observed_state,
         )
 
@@ -165,7 +198,10 @@ class InstanceReadServiceTests(PostgresStoreTestCase):
             [(record["subject_id"], record["status"], record["stale"]) for record in payload["observations"]],
             [("api", "healthy", False), ("router", "unknown", True)],
         )
-        self.assertEqual(payload["observations"][0]["payload"]["token"], "<redacted>")
+        self.assertEqual(
+            payload["observations"][0]["payload"]["callback_url"],
+            "<redacted>",
+        )
         self.assertEqual(payload["observations"][1]["payload"]["details"], "not checked yet")
 
     def test_observed_state_requires_configured_observed_state_store(self):
@@ -191,8 +227,13 @@ class InstanceReadServiceTests(PostgresStoreTestCase):
 
         payload = service.activity_timeline("workspace-a").descriptor()
 
-        event_payload = payload["sessions"][0]["plans"][0]["runs"][0]["events"][0]["payload"]
-        self.assertEqual(event_payload["nested"]["client_secret"], "<redacted>")
+        events = payload["sessions"][0]["plans"][0]["runs"][0]["events"]
+        event_payload = next(
+            event["payload"]
+            for event in events
+            if event["event_type"] == ActivityEventKind.STEP_SUCCEEDED.value
+        )
+        self.assertEqual(event_payload["nested"]["label"], "visible")
         self.assertEqual(event_payload["items"][0]["callback_url"], "<redacted>")
         self.assertEqual(event_payload["items"][0]["label"], "visible")
 
@@ -223,10 +264,35 @@ class InstanceReadServiceTests(PostgresStoreTestCase):
             },
             target_routes,
         )
-        self.assertEqual(router["providers"]["internal"]["protocol"], "http")
+        self.assertEqual(
+            router["providers"]["internal"]["protocol"],
+            {"transport": "tcp", "application": "http"},
+        )
         self.assertEqual(
             router["requirements"]["active"],
-            {"protocol": "http", "env_bindings": ["ACTIVE_TARGET_URL"], "required": True},
+            {
+                "protocol": {"transport": "tcp", "application": "http"},
+                "binding": "environment",
+                "env_bindings": ["ACTIVE_TARGET_URL"],
+                "required": True,
+            },
+        )
+
+    def test_control_surface_distinguishes_runtime_control_from_environment_binding(self):
+        service = self._service_with_control_surface_descriptor(
+            _control_surface_graph(SocketBinding.RUNTIME_CONTROL).descriptor()
+        )
+
+        router = _node(service.control_surface("workspace-a").descriptor(), "api-router")
+
+        self.assertEqual(
+            router["requirements"]["active"],
+            {
+                "protocol": {"transport": "tcp", "application": "http"},
+                "binding": "runtime-control",
+                "env_bindings": [],
+                "required": True,
+            },
         )
 
     def test_control_surface_redacts_address_metadata_but_keeps_labels(self):
@@ -293,6 +359,7 @@ class InstanceReadServiceTests(PostgresStoreTestCase):
             workspace_store=self.stores.workspace,
             graph_topology_store=self.stores.graph_topology,
             activity_history_store=self.stores.activity_history,
+            execution_store=self.stores.execution,
             observed_state_store=self.stores.observed_state,
         )
 
@@ -349,7 +416,7 @@ class InstanceReadServiceTests(PostgresStoreTestCase):
                 desired_graph_id="graph-b",
                 status="planned",
                 created_at="2026-07-15T00:03:00Z",
-                plan=ActivityPlan(()),
+                plan=_start_api_plan(),
             )
         )
         self.stores.activity_history.add_approval_request(
@@ -374,42 +441,79 @@ class InstanceReadServiceTests(PostgresStoreTestCase):
                 decided_at="2026-07-15T00:02:30Z",
             )
         )
-        self.stores.activity_history.add_run(
+        self.stores.execution.add_request(
+            ExecutionRequestRecord(
+                identity=ExecutionRequestIdentity(
+                    "execution-request-a", "workspace-a", "session-a", "plan-a"
+                ),
+                status=ExecutionRequestStatus.QUEUED,
+                requested_by="jacob",
+                requested_at="2026-07-15T00:03:00Z",
+                approval_request_id="approval-request-a",
+                approval_decision_id="approval-decision-a",
+                idempotency=ExecutionIdempotency("execute-a", "fingerprint-a"),
+            )
+        )
+        self.stores.execution.add_run(
             ActivityRunRecord(
                 run_id="run-a",
                 plan_id="plan-a",
-                status="running",
+                admission=AdmittedRun("execution-request-a"),
+                retry=RetryIdentity(1),
+                status=ActivityRunStatus.RUNNING,
+                created_at="2026-07-15T00:04:00Z",
                 started_at="2026-07-15T00:04:00Z",
-                metadata={"worker_token": "secret"},
+                metadata=BoundedEvidence.from_mapping({"worker": "agent-a"}),
             )
         )
-        self.stores.activity_history.add_event(
+        self.stores.execution.add_event(
             ActivityEventRecord(
                 event_id="event-a",
                 run_id="run-a",
                 ordinal=1,
-                event_type="step",
+                kind=ActivityEventKind.STEP_STARTED,
                 occurred_at="2026-07-15T00:05:00Z",
-                payload={"password": "secret"},
+                activity_id="start-api",
+                evidence=BoundedEvidence.from_mapping({"target": "api"}),
             )
         )
         return InstanceReadService(
             workspace_store=self.stores.workspace,
             graph_topology_store=self.stores.graph_topology,
             activity_history_store=self.stores.activity_history,
+            execution_store=self.stores.execution,
             observed_state_store=self.stores.observed_state,
         )
 
     def _service_with_observations(self) -> InstanceReadService:
-        self.stores.workspace.create(WorkspaceRecord(workspace_id="workspace-a", name="Demo"))
+        self.stores.workspace.create(
+            WorkspaceRecord(
+                workspace_id="workspace-a",
+                name="Demo",
+                current_graph_id="graph-current",
+            )
+        )
+        self.stores.graph_topology.save(
+            GraphVersionRecord(
+                graph_id="graph-current",
+                workspace_id="workspace-a",
+                version=1,
+                graph_descriptor=DeploymentGraph("current").descriptor(),
+                created_by="jacob",
+                created_at="2026-07-15T00:00:00Z",
+            )
+        )
         self.stores.workspace.create(WorkspaceRecord(workspace_id="workspace-b", name="Other"))
         self.stores.observed_state.put(
             ObservationRecord(
                 observation_id="obs-api-old",
                 workspace_id="workspace-a",
                 subject_id="api",
-                status="starting",
+                status=ObservationStatus.STARTING,
                 observed_at="2026-07-15T00:00:00Z",
+                graph_id="graph-current",
+                probe_kind=ProbeKind.PROCESS,
+                probe_outcome=ProbeOutcome.PROCESS_RUNNING,
             )
         )
         self.stores.observed_state.put(
@@ -417,9 +521,15 @@ class InstanceReadServiceTests(PostgresStoreTestCase):
                 observation_id="obs-api-new",
                 workspace_id="workspace-a",
                 subject_id="api",
-                status="healthy",
+                status=ObservationStatus.HEALTHY,
                 observed_at="2026-07-15T00:01:00Z",
-                payload={"token": "secret"},
+                evidence=BoundedEvidence.from_mapping(
+                    {"callback_url": "http://private"}
+                ),
+                graph_id="graph-current",
+                probe_kind=ProbeKind.APPLICATION_HEALTH,
+                probe_outcome=ProbeOutcome.HEALTHY,
+                endpoint_context=EndpointContext.RUNTIME_PRIVATE,
             )
         )
         self.stores.observed_state.put(
@@ -427,10 +537,12 @@ class InstanceReadServiceTests(PostgresStoreTestCase):
                 observation_id="obs-router",
                 workspace_id="workspace-a",
                 subject_id="router",
-                status="unknown",
+                status=ObservationStatus.UNKNOWN,
                 observed_at="2026-07-15T00:01:00Z",
-                payload={"details": "not checked yet"},
-                stale=True,
+                evidence=BoundedEvidence.from_mapping(
+                    {"details": "not checked yet"}
+                ),
+                freshness=ObservationFreshness.STALE,
             )
         )
         self.stores.observed_state.put(
@@ -438,7 +550,7 @@ class InstanceReadServiceTests(PostgresStoreTestCase):
                 observation_id="obs-other",
                 workspace_id="workspace-b",
                 subject_id="other-api",
-                status="healthy",
+                status=ObservationStatus.HEALTHY,
                 observed_at="2026-07-15T00:02:00Z",
             )
         )
@@ -446,7 +558,9 @@ class InstanceReadServiceTests(PostgresStoreTestCase):
             workspace_store=self.stores.workspace,
             graph_topology_store=self.stores.graph_topology,
             activity_history_store=self.stores.activity_history,
+            execution_store=self.stores.execution,
             observed_state_store=self.stores.observed_state,
+            clock=lambda: datetime(2026, 7, 15, 0, 2, tzinfo=timezone.utc),
         )
 
     def _service_with_nested_payloads(self) -> InstanceReadService:
@@ -469,34 +583,84 @@ class InstanceReadServiceTests(PostgresStoreTestCase):
                 desired_graph_id="graph-b",
                 status="planned",
                 created_at="2026-07-15T00:01:00Z",
-                plan=ActivityPlan(()),
+                plan=_start_api_plan(),
             )
         )
-        self.stores.activity_history.add_run(
+        self.stores.activity_history.add_approval_request(
+            ApprovalRequestRecord(
+                request_id="approval-request-a",
+                session_id="session-a",
+                plan_id="plan-a",
+                requested_by="jacob",
+                requested_at="2026-07-15T00:01:15Z",
+                required_scope="plan:approve",
+                max_risk=RiskLevel.LOW,
+                destructive=False,
+            )
+        )
+        self.stores.activity_history.add_approval_decision(
+            ApprovalDecisionRecord(
+                decision_id="approval-decision-a",
+                request_id="approval-request-a",
+                actor_id="manager",
+                decision=ApprovalDecisionKind.APPROVED,
+                scope="plan:approve",
+                decided_at="2026-07-15T00:01:30Z",
+            )
+        )
+        self.stores.execution.add_request(
+            ExecutionRequestRecord(
+                identity=ExecutionRequestIdentity(
+                    "execution-request-a", "workspace-a", "session-a", "plan-a"
+                ),
+                status=ExecutionRequestStatus.QUEUED,
+                requested_by="jacob",
+                requested_at="2026-07-15T00:01:45Z",
+                approval_request_id="approval-request-a",
+                approval_decision_id="approval-decision-a",
+                idempotency=ExecutionIdempotency("execute-a", "fingerprint-a"),
+            )
+        )
+        self.stores.execution.add_run(
             ActivityRunRecord(
                 run_id="run-a",
                 plan_id="plan-a",
-                status="running",
+                admission=AdmittedRun("execution-request-a"),
+                retry=RetryIdentity(1),
+                status=ActivityRunStatus.RUNNING,
+                created_at="2026-07-15T00:02:00Z",
                 started_at="2026-07-15T00:02:00Z",
             )
         )
-        self.stores.activity_history.add_event(
+        self.stores.execution.add_event(
             ActivityEventRecord(
                 event_id="event-a",
                 run_id="run-a",
                 ordinal=1,
-                event_type="nested",
+                kind=ActivityEventKind.STEP_STARTED,
+                occurred_at="2026-07-15T00:02:30Z",
+                activity_id="start-api",
+            )
+        )
+        self.stores.execution.add_event(
+            ActivityEventRecord(
+                event_id="event-b",
+                run_id="run-a",
+                ordinal=2,
+                kind=ActivityEventKind.STEP_SUCCEEDED,
                 occurred_at="2026-07-15T00:03:00Z",
-                payload={
-                    "nested": {"client_secret": "secret"},
+                activity_id="start-api",
+                evidence=BoundedEvidence.from_mapping({
+                    "nested": {"label": "visible"},
                     "items": [{"callback_url": "http://private", "label": "visible"}],
-                },
+                }),
             )
         )
         return InstanceReadService(
             workspace_store=self.stores.workspace,
             graph_topology_store=self.stores.graph_topology,
             activity_history_store=self.stores.activity_history,
+            execution_store=self.stores.execution,
             observed_state_store=self.stores.observed_state,
         )
 
@@ -520,8 +684,18 @@ class InstanceReadServiceTests(PostgresStoreTestCase):
             workspace_store=self.stores.workspace,
             graph_topology_store=self.stores.graph_topology,
             activity_history_store=self.stores.activity_history,
+            execution_store=self.stores.execution,
             observed_state_store=self.stores.observed_state,
         )
+
+
+def _start_api_plan() -> ActivityPlan:
+    return ActivityPlan((
+        PlannedActivity(
+            ActivityId("start-api"),
+            StartNode(NodeTarget("api")),
+        ),
+    ))
 
 
 def _compiled_graph_named(name: str) -> DeploymentGraph:
@@ -534,7 +708,9 @@ def _compiled_graph_named(name: str) -> DeploymentGraph:
     )
 
 
-def _control_surface_graph() -> DeploymentGraph:
+def _control_surface_graph(
+    binding: SocketBinding = SocketBinding.ENVIRONMENT,
+) -> DeploymentGraph:
     target = ProxyBlock(
         spec=BlockSpec("api-v1", display_name="API v1"),
         implementation=PlanOnlyImplementation(kind="plan-api", output_urls={"internal": "http://api-v1:8080"}),
@@ -554,7 +730,16 @@ def _control_surface_graph() -> DeploymentGraph:
         ),
         implementation=PlanOnlyImplementation(kind="plan-router", output_urls={"internal": "http://router:8080"}),
         sockets=BlockSockets(
-            requirements=(RequirementSocket("active", Protocol.HTTP, ("ACTIVE_TARGET_URL",)),),
+            requirements=(
+                RequirementSocket(
+                    "active",
+                    Protocol.HTTP,
+                    ("ACTIVE_TARGET_URL",)
+                    if binding is SocketBinding.ENVIRONMENT
+                    else (),
+                    binding=binding,
+                ),
+            ),
             providers=(ProviderSocket("internal", Protocol.HTTP),),
         ),
     )

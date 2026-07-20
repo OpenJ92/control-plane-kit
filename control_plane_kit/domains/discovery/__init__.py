@@ -1,0 +1,25 @@
+"""Closed service-discovery language."""
+
+from .language import (
+    DeregisterDiscoveryInstance,
+    DiscoveryAuthority,
+    DiscoveryCommand,
+    DiscoveryIdentity,
+    DiscoveryLease,
+    DiscoveryOutcome,
+    DiscoveryRegistration,
+    DiscoveryRegistrationMode,
+    DiscoveryRegistrationRecord,
+    DiscoveryRegistrationStatus,
+    DiscoveryResult,
+    DiscoveryScope,
+    ExpireDiscoveryLeases,
+    HeartbeatDiscoveryInstance,
+    RegisterDiscoveryInstance,
+    ResolveDiscoveryService,
+    discovery_authority_from_descriptor,
+    discovery_command_descriptor,
+    discovery_command_from_descriptor,
+    discovery_registration_from_descriptor,
+    discovery_result_from_descriptor,
+)

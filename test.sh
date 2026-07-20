@@ -16,6 +16,8 @@ trap cleanup EXIT
 
 cleanup
 
+./packaging-test.sh
+
 docker build --target test -t "$IMAGE_NAME" .
 
 docker network create "$NETWORK_NAME" >/dev/null

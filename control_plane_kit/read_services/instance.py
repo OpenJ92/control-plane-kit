@@ -3,34 +3,49 @@
 from __future__ import annotations
 
 from dataclasses import dataclass, field
+from datetime import datetime, timezone
 from typing import Mapping
 
-from control_plane_kit.planning.activity_plan import ActivityImpact, ReviewChange, RiskLevel
-from control_plane_kit.planning.codec import DEFAULT_ACTIVITY_PLAN_CODEC
-from control_plane_kit.control_routes import route_set_named
-from control_plane_kit.topology.codec import (
+from control_plane_kit.core.planning.activity_plan import ActivityImpact, ReviewChange, RiskLevel
+from control_plane_kit.core.planning.codec import DEFAULT_ACTIVITY_PLAN_CODEC
+from control_plane_kit.core.control_routes import route_set_named
+from control_plane_kit.core.topology.codec import (
     DEFAULT_GRAPH_CODEC,
     GraphDescriptorCodec,
     GraphDescriptorError,
 )
-from control_plane_kit.projections import project_operator_graph
-from control_plane_kit.planning.recovery import plan_recovery_transition
+from control_plane_kit.projections import (
+    ClaimObservation,
+    OperatorRecoveryView,
+    project_operator_graph,
+    project_operator_recovery,
+)
+from control_plane_kit.operations.planning.recovery import plan_recovery_transition
 from control_plane_kit.stores.protocols import (
     ActivityHistoryStore,
+    ExecutionStore,
     GraphTopologyStore,
     ObservedStateStore,
     WorkspaceStore,
 )
+from control_plane_kit.execution import (
+    ActivityRunRecord,
+    DEFAULT_EXECUTION_CODEC,
+    FailureEvidence,
+    ObservationFreshnessPolicy,
+    ObservationRecord,
+    ProjectedObservation,
+    project_observation,
+)
 from control_plane_kit.stores.records import (
     ActivityPlanRecord,
     GraphVersionRecord,
-    ObservationRecord,
     OperationSessionRecord,
     OperationSessionStatus,
     WorkspaceRecord,
 )
-from control_plane_kit.topology.validation import GraphValidationError, validate_graph
-from control_plane_kit.types import EndpointScope, Protocol, RuntimeKind
+from control_plane_kit.core.topology.validation import GraphValidationError, validate_graph
+from control_plane_kit.core.types import EndpointScope, Protocol, RuntimeKind
 
 _REDACTED = "<redacted>"
 _SECRET_MARKERS = ("secret", "token", "password", "private_key", "credential", "api_key")
@@ -236,14 +251,20 @@ class InstanceReadService:
         workspace_store: WorkspaceStore,
         graph_topology_store: GraphTopologyStore,
         activity_history_store: ActivityHistoryStore | None = None,
+        execution_store: ExecutionStore | None = None,
         observed_state_store: ObservedStateStore | None = None,
         graph_codec: GraphDescriptorCodec = DEFAULT_GRAPH_CODEC,
+        clock=lambda: datetime.now(timezone.utc),
+        observation_freshness: ObservationFreshnessPolicy = ObservationFreshnessPolicy(),
     ) -> None:
         self._workspace_store = workspace_store
         self._graph_topology_store = graph_topology_store
         self._activity_history_store = activity_history_store
+        self._execution_store = execution_store
         self._observed_state_store = observed_state_store
         self._graph_codec = graph_codec
+        self._clock = clock
+        self._observation_freshness = observation_freshness
 
     def workspace(self, workspace_id: str) -> WorkspaceReadModel:
         """Return the workspace summary and graph pointer read models."""
@@ -284,11 +305,22 @@ class InstanceReadService:
         limit = _positive_limit(limit)
         self._workspace(workspace_id)
         store = self._activity_history()
+        execution = self._execution()
+        observed_at = _observation_time(self._clock())
         sessions = store.sessions_for_workspace(workspace_id)[:limit]
         return ActivityTimelineReadModel(
             workspace_id=workspace_id,
             limit=limit,
-            sessions=tuple(_session_descriptor(store, session, limit=limit) for session in sessions),
+            sessions=tuple(
+                _session_descriptor(
+                    store,
+                    execution,
+                    session,
+                    limit=limit,
+                    observed_at=observed_at,
+                )
+                for session in sessions
+            ),
         )
 
     def open_sessions(
@@ -332,10 +364,19 @@ class InstanceReadService:
         self._workspace(workspace_id)
         store = self._activity_history()
         session = _session_in_workspace(store, workspace_id, session_id)
+        observed_at = _observation_time(self._clock())
         return FocusedDetailReadModel(
             workspace_id=workspace_id,
             kind="session-detail",
-            payload={"session": _session_descriptor(store, session, limit=limit)},
+            payload={
+                "session": _session_descriptor(
+                    store,
+                    self._execution(),
+                    session,
+                    limit=limit,
+                    observed_at=observed_at,
+                )
+            },
         )
 
     def plan_detail(
@@ -351,7 +392,14 @@ class InstanceReadService:
         self._workspace(workspace_id)
         store = self._activity_history()
         plan = _plan_in_workspace(store, workspace_id, plan_id)
-        payload = _plan_descriptor(store, plan, limit=limit)
+        payload = _plan_descriptor(
+            store,
+            self._execution(),
+            plan,
+            workspace_id=workspace_id,
+            limit=limit,
+            observed_at=_observation_time(self._clock()),
+        )
         payload["risk_summary"] = _risk_summary(plan)
         payload["recovery"] = self._recovery_for_plan(workspace_id, plan)
         return FocusedDetailReadModel(
@@ -395,9 +443,17 @@ class InstanceReadService:
     def observed_state(self, workspace_id: str) -> ObservedStateReadModel:
         """Return latest observed state per subject for one workspace."""
 
-        self._workspace(workspace_id)
+        workspace = self._workspace(workspace_id)
+        as_of = self._clock()
         observations = tuple(
-            _observation_descriptor(record)
+            _observation_descriptor(
+                project_observation(
+                    record,
+                    current_graph_id=workspace.current_graph_id,
+                    as_of=as_of,
+                    policy=self._observation_freshness,
+                )
+            )
             for record in self._observed_state().latest_for_workspace(workspace_id)
         )
         return ObservedStateReadModel(workspace_id=workspace_id, observations=observations)
@@ -434,6 +490,11 @@ class InstanceReadService:
         if self._activity_history_store is None:
             raise ReadModelError("activity history store is not configured")
         return self._activity_history_store
+
+    def _execution(self) -> ExecutionStore:
+        if self._execution_store is None:
+            raise ReadModelError("execution store is not configured")
+        return self._execution_store
 
     def _observed_state(self) -> ObservedStateStore:
         if self._observed_state_store is None:
@@ -606,9 +667,11 @@ def _session_summary_descriptor(session: OperationSessionRecord) -> dict[str, ob
 
 def _session_descriptor(
     store: ActivityHistoryStore,
+    execution: ExecutionStore,
     session: OperationSessionRecord,
     *,
     limit: int,
+    observed_at: str,
 ) -> dict[str, object]:
     session_id = session.session_id
     plans = store.plans_for_session(session_id)[:limit]
@@ -623,7 +686,14 @@ def _session_descriptor(
             for approval in store.approval_requests_for_session(session_id)[:limit]
         ],
         "plans": [
-            _plan_descriptor(store, plan, limit=limit)
+            _plan_descriptor(
+                store,
+                execution,
+                plan,
+                workspace_id=session.workspace_id,
+                limit=limit,
+                observed_at=observed_at,
+            )
             for plan in plans
         ],
     }
@@ -671,9 +741,12 @@ def _approval_descriptor(
 
 def _plan_descriptor(
     store: ActivityHistoryStore,
+    execution: ExecutionStore,
     plan: ActivityPlanRecord,
     *,
+    workspace_id: str,
     limit: int,
+    observed_at: str,
 ) -> dict[str, object]:
     plan_id = plan.plan_id
     return {
@@ -685,24 +758,123 @@ def _plan_descriptor(
         "created_at": plan.created_at,
         "payload": DEFAULT_ACTIVITY_PLAN_CODEC.encode(plan.plan),
         "runs": [
-            _run_descriptor(store, run, limit=limit)
-            for run in store.runs_for_plan(plan_id)[:limit]
+            _run_descriptor(
+                execution,
+                plan,
+                run,
+                workspace_id=workspace_id,
+                limit=limit,
+                observed_at=observed_at,
+            )
+            for run in execution.runs_for_plan(plan_id)[:limit]
         ],
     }
 
 
-def _run_descriptor(store: ActivityHistoryStore, run: object, *, limit: int) -> dict[str, object]:
-    run_id = getattr(run, "run_id")
+def _run_descriptor(
+    store: ExecutionStore,
+    plan: ActivityPlanRecord,
+    run: ActivityRunRecord,
+    *,
+    workspace_id: str,
+    limit: int,
+    observed_at: str,
+) -> dict[str, object]:
+    run_id = run.run_id
+    events = store.events_for_run(run_id)
+    try:
+        request = store.get_request(run.admission.request_id)
+    except KeyError as exc:
+        raise ReadModelError(
+            f"run {run_id!r} references missing execution request"
+        ) from exc
+    if (
+        request.identity.workspace_id != workspace_id
+        or request.identity.session_id != plan.session_id
+        or request.identity.plan_id != plan.plan_id
+    ):
+        raise ReadModelError(
+            f"run {run_id!r} references execution truth outside its plan workspace"
+        )
+    try:
+        recovery = project_operator_recovery(
+            plan.plan,
+            request,
+            run,
+            events,
+            ClaimObservation(observed_at),
+        )
+    except (TypeError, ValueError) as exc:
+        raise ReadModelError(
+            f"run {run_id!r} contains incoherent recovery evidence"
+        ) from exc
     return {
         "run_id": run_id,
-        "plan_id": getattr(run, "plan_id"),
-        "status": getattr(run, "status"),
-        "started_at": getattr(run, "started_at"),
-        "finished_at": getattr(run, "finished_at"),
-        "metadata": _redact_descriptor_value("metadata", getattr(run, "metadata")),
+        "plan_id": run.plan_id,
+        "admission": DEFAULT_EXECUTION_CODEC.encode(run.admission),
+        "retry": DEFAULT_EXECUTION_CODEC.encode(run.retry),
+        "status": run.status.value,
+        "created_at": run.created_at,
+        "started_at": run.started_at,
+        "settled_at": run.settled_at,
+        "metadata": _redact_descriptor_value("metadata", run.metadata.descriptor()),
+        "recovery": _operator_recovery_descriptor(recovery),
         "events": [
             _event_descriptor(event)
-            for event in store.events_for_run(run_id)[:limit]
+            for event in events[:limit]
+        ],
+    }
+
+
+def _operator_recovery_descriptor(view: OperatorRecoveryView) -> dict[str, object]:
+    schedule = view.schedule
+    return {
+        "run_status": view.run_status.value,
+        "saga_status": view.saga_status.value,
+        "claim_status": view.claim_status.value,
+        "schedule": {
+            "ready": list(schedule.ready),
+            "running": list(schedule.running),
+            "waiting": list(schedule.waiting),
+            "blocked": list(schedule.blocked),
+            "succeeded": list(schedule.succeeded),
+            "failed": list(schedule.failed),
+            "compensating": list(schedule.compensating),
+            "compensated": list(schedule.compensated),
+            "compensation_failed": list(schedule.compensation_failed),
+            "compensation_ready": list(schedule.compensation_ready),
+        },
+        "in_flight": {
+            "forward": list(view.forward_in_flight),
+            "compensation": list(view.compensation_in_flight),
+        },
+        "uncertainty": {
+            "forward": list(view.forward_uncertain),
+            "compensation": list(view.compensation_uncertain),
+        },
+        "failures": {
+            "original": [
+                _event_descriptor(event) for event in view.original_failures
+            ],
+            "compensation": [
+                _event_descriptor(event) for event in view.compensation_failures
+            ],
+        },
+        "non_compensatable_activity_ids": list(
+            view.non_compensatable_activity_ids
+        ),
+        "decisions": [
+            _redact_descriptor_value("decision", decision.descriptor())
+            for decision in view.decisions
+        ],
+        "allowed_decisions": [
+            {
+                "kind": option.kind.value,
+                "required_scope": option.required_scope.value,
+                "activity_id": option.activity_id,
+                "required_parameters": list(option.required_parameters),
+            }
+            for option in view.allowed_decisions
         ],
     }
 
@@ -712,21 +884,50 @@ def _event_descriptor(event: object) -> dict[str, object]:
         "event_id": getattr(event, "event_id"),
         "run_id": getattr(event, "run_id"),
         "ordinal": getattr(event, "ordinal"),
-        "event_type": getattr(event, "event_type"),
+        "event_type": getattr(event, "kind").value,
         "occurred_at": getattr(event, "occurred_at"),
-        "payload": _redact_descriptor_value("payload", getattr(event, "payload")),
+        "activity_id": getattr(event, "activity_id"),
+        "payload": _redact_descriptor_value("payload", getattr(event, "evidence").descriptor()),
+        "failure": _failure_descriptor(getattr(event, "failure")),
     }
 
 
-def _observation_descriptor(record: ObservationRecord) -> dict[str, object]:
+def _failure_descriptor(failure: FailureEvidence | None) -> dict[str, object] | None:
+    if failure is None:
+        return None
+    return {
+        "category": failure.category.value,
+        "code": failure.code,
+        "message": failure.message,
+        "details": _redact_descriptor_value(
+            "details",
+            failure.details.descriptor(),
+        ),
+    }
+
+
+def _observation_descriptor(projected: ProjectedObservation) -> dict[str, object]:
+    record = projected.record
     return {
         "observation_id": record.observation_id,
         "workspace_id": record.workspace_id,
         "subject_id": record.subject_id,
-        "status": record.status,
+        "status": record.status.value,
         "observed_at": record.observed_at,
-        "stale": record.stale,
-        "payload": _redact_descriptor_value("payload", record.payload),
+        "graph_id": record.graph_id,
+        "probe_kind": None if record.probe_kind is None else record.probe_kind.value,
+        "probe_outcome": (
+            None if record.probe_outcome is None else record.probe_outcome.value
+        ),
+        "endpoint_context": (
+            None if record.endpoint_context is None else record.endpoint_context.value
+        ),
+        "freshness": projected.freshness.value,
+        "stale": projected.freshness.value == "stale",
+        "stale_reason": (
+            None if projected.stale_reason is None else projected.stale_reason.value
+        ),
+        "payload": _redact_descriptor_value("payload", record.evidence.descriptor()),
     }
 
 
@@ -734,6 +935,12 @@ def _positive_limit(limit: int) -> int:
     if type(limit) is not int or limit < 1:
         raise ReadModelError(f"limit must be positive, got {limit}")
     return limit
+
+
+def _observation_time(value: datetime) -> str:
+    if not isinstance(value, datetime) or value.tzinfo is None:
+        raise ReadModelError("read-service clock must return a timezone-aware datetime")
+    return value.isoformat()
 
 
 def _bounded_limit(limit: int) -> int:
@@ -828,6 +1035,8 @@ def _redact_graph_descriptor(descriptor: Mapping[str, object]) -> dict[str, obje
 
 
 def _redact_descriptor_value(key: str, value: object) -> object:
+    if key.lower().replace("-", "_") == "environment_bindings":
+        return _redact_environment_bindings(value)
     if _looks_sensitive_key(key):
         return _REDACTED
     if isinstance(value, Mapping):
@@ -840,6 +1049,27 @@ def _redact_descriptor_value(key: str, value: object) -> object:
     if isinstance(value, tuple):
         return tuple(_redact_descriptor_value(key, child) for child in value)
     return value
+
+
+def _redact_environment_bindings(value: object) -> object:
+    if not isinstance(value, (list, tuple)):
+        return _REDACTED
+    redacted: list[object] = []
+    for binding in value:
+        if not isinstance(binding, Mapping):
+            redacted.append(_REDACTED)
+            continue
+        redacted.append(
+            {
+                str(child_key): (
+                    _REDACTED
+                    if str(child_key) in {"value", "reference", "reference_id"}
+                    else _redact_descriptor_value(str(child_key), child_value)
+                )
+                for child_key, child_value in sorted(binding.items())
+            }
+        )
+    return redacted
 
 
 def _looks_sensitive_key(key: str) -> bool:

@@ -5,7 +5,7 @@ from unittest import main
 
 import psycopg
 
-from control_plane_kit import SwitchSocketConnection
+from control_plane_kit import ReconcileNode
 from control_plane_kit.stores import (
     GraphVersionRecord,
     OperationActionKind,
@@ -85,14 +85,14 @@ class BackendSwapPlanningExampleTests(PostgresStoreTestCase):
         )
         self.assertTrue(
             any(
-                isinstance(activity.operation, SwitchSocketConnection)
+                isinstance(activity.operation, ReconcileNode)
                 for activity in persisted_plan.plan.activities
             )
         )
         self.assertEqual(pending.plan_id, "plan-a")
         self.assertEqual(descriptor["approval"]["state"], "pending")
         self.assertFalse(descriptor["runtime_effects_executed"])
-        self.assertEqual(self.stores.activity_history.runs_for_plan("plan-a"), ())
+        self.assertEqual(self.stores.execution.runs_for_plan("plan-a"), ())
 
     def test_replaying_the_complete_workflow_reuses_every_durable_fact(self):
         command = {

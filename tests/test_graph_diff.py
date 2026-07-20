@@ -20,12 +20,15 @@ from control_plane_kit import (
     GraphDescriptorCodec,
     GraphDiff,
     GraphValidationError,
+    HttpCheck,
     LiteralAddress,
     ModifiedChange,
     NodeSubject,
     PlanOnlyImplementation,
+    PublicStaticEnvironmentBinding,
     Protocol,
     ProviderSocket,
+    ReconcileNode,
     RequirementSocket,
     RemovedChange,
     RuntimeContext,
@@ -33,9 +36,12 @@ from control_plane_kit import (
     RuntimeSubject,
     SecretReferenceAddress,
     SocketConnection,
+    SocketDerivedEnvironmentBinding,
     StructuralField,
     UnsupportedChange,
     UnsupportedReason,
+    VerificationContract,
+    compile_activity_plan,
     compile_recipe,
     diff_graphs,
     validate_graph,
@@ -97,8 +103,8 @@ def simple_graph(
 
 class GraphDiffTests(unittest.TestCase):
     def test_change_algebra_and_interpreter_have_separate_module_boundaries(self):
-        self.assertEqual(GraphDiff.__module__, "control_plane_kit.topology.changes")
-        self.assertEqual(diff_graphs.__module__, "control_plane_kit.topology.diff")
+        self.assertEqual(GraphDiff.__module__, "control_plane_kit.core.topology.changes")
+        self.assertEqual(diff_graphs.__module__, "control_plane_kit.core.topology.diff")
 
     def test_identical_validated_graphs_have_deterministic_empty_diff(self):
         graph = validate_graph(simple_graph())
@@ -109,6 +115,49 @@ class GraphDiffTests(unittest.TestCase):
         self.assertTrue(first.empty)
         self.assertEqual(first.descriptor(), second.descriptor())
         self.assertEqual(first.summary(), "no changes")
+
+    def test_verification_contract_change_is_explicit_block_specification_data(self):
+        current = simple_graph()
+        node = current.node("application")
+        desired = current.update_node(
+            replace(
+                node,
+                block_spec=replace(
+                    node.block_spec,
+                    verification=VerificationContract(
+                        (
+                            HttpCheck(
+                                check_id="application-response",
+                                provider_socket="public",
+                                path="/verify",
+                            ),
+                        )
+                    ),
+                ),
+            )
+        )
+
+        diff = diff_graphs(validate_graph(current), validate_graph(desired))
+
+        change = next(
+            value
+            for value in diff.changes
+            if isinstance(value, ModifiedChange)
+            and isinstance(value.subject, FieldSubject)
+            and value.subject.field is StructuralField.BLOCK_SPECIFICATION
+        )
+        self.assertEqual(
+            change.after.descriptor()["verification"],
+            desired.node("application").block_spec.verification.descriptor(),
+        )
+        plan = compile_activity_plan(diff)
+        reconciliations = [
+            activity
+            for activity in plan.activities
+            if isinstance(activity.operation, ReconcileNode)
+            and activity.operation.target.node_id == "application"
+        ]
+        self.assertEqual(len(reconciliations), 1)
 
     def test_router_swap_is_a_typed_socket_connection_change(self):
         current = validate_graph(compile_recipe(router_recipe("api-v1")))
@@ -123,6 +172,38 @@ class GraphDiffTests(unittest.TestCase):
             and isinstance(change.subject, EdgeSubject)
         }
         self.assertIn("api-router.active", changed_edges)
+
+    def test_public_and_socket_environment_changes_have_distinct_fields(self):
+        current = compile_recipe(router_recipe("api-v1"))
+        router = current.node("api-router")
+        desired = current.update_node(
+            replace(
+                router,
+                public_environment=(
+                    PublicStaticEnvironmentBinding("MODE", "desired"),
+                ),
+            )
+        )
+
+        public_diff = diff_graphs(validate_graph(current), validate_graph(desired))
+        public_fields = {
+            value.subject.field
+            for value in public_diff.changes
+            if isinstance(value, ModifiedChange)
+            and isinstance(value.subject, FieldSubject)
+        }
+        self.assertIn(StructuralField.PUBLIC_ENVIRONMENT, public_fields)
+        self.assertNotIn(StructuralField.SOCKET_ENVIRONMENT, public_fields)
+
+        switched = compile_recipe(router_recipe("api-v2"))
+        socket_diff = diff_graphs(validate_graph(current), validate_graph(switched))
+        socket_fields = {
+            value.subject.field
+            for value in socket_diff.changes
+            if isinstance(value, ModifiedChange)
+            and isinstance(value.subject, FieldSubject)
+        }
+        self.assertIn(StructuralField.SOCKET_ENVIRONMENT, socket_fields)
 
     def test_added_and_removed_runtime_node_and_edge_forms_are_explicit(self):
         populated = validate_graph(compile_recipe(router_recipe("api-v1")))
@@ -201,6 +282,35 @@ class GraphDiffTests(unittest.TestCase):
                 for change in result.changes
             )
         )
+
+    def test_protocol_product_change_is_an_explicit_socket_and_endpoint_change(self):
+        current = simple_graph()
+        node = current.node("application")
+        desired = current.update_node(
+            replace(
+                node,
+                sockets=BlockSockets(
+                    providers=(ProviderSocket("public", Protocol.TCP),)
+                ),
+                endpoints={
+                    "public": Endpoint(
+                        LiteralAddress("tcp://application:8000"),
+                        Protocol.TCP,
+                    )
+                },
+            )
+        )
+
+        result = diff_graphs(validate_graph(current), validate_graph(desired))
+
+        fields = {
+            change.subject.field
+            for change in result.changes
+            if isinstance(change, ModifiedChange)
+            and isinstance(change.subject, FieldSubject)
+        }
+        self.assertIn(StructuralField.SOCKET_CONTRACT, fields)
+        self.assertIn(StructuralField.ENDPOINT, fields)
 
     def test_block_spec_endpoint_and_metadata_changes_are_separate_fields(self):
         current = simple_graph(display_name="Version A", endpoint="http://a")
@@ -344,7 +454,14 @@ class GraphDiffTests(unittest.TestCase):
         secret_assignment = {"UPSTREAM_URL": secret_endpoint.url}
         current = replace(
             current.update_node(
-                replace(current.node("consumer"), environment=secret_assignment)
+                replace(
+                    current.node("consumer"),
+                    socket_environment=(
+                        SocketDerivedEnvironmentBinding(
+                            "UPSTREAM_URL", secret_endpoint.url, edge_id
+                        ),
+                    ),
+                )
             ),
             edges={edge_id: replace(edge, env_assignments=secret_assignment)},
         )
@@ -361,7 +478,14 @@ class GraphDiffTests(unittest.TestCase):
             )
         )
         desired = desired.update_node(
-            replace(desired.node("consumer"), environment=desired_assignment)
+            replace(
+                desired.node("consumer"),
+                socket_environment=(
+                    SocketDerivedEnvironmentBinding(
+                        "UPSTREAM_URL", desired_endpoint.url, edge_id
+                    ),
+                ),
+            )
         )
         desired = replace(
             desired,

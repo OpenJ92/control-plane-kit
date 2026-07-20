@@ -6,16 +6,20 @@ from control_plane_kit import (
     CapabilityName,
     DeploymentRecipe,
     DockerRuntime,
-    InstanceReadService,
-    McpReadError,
     PlanOnlyImplementation,
     Protocol,
-    ProxyBlock,
     ProviderSocket,
-    ReadOnlyMcpAdapter,
+    ProxyBlock,
     RequirementSocket,
     SocketConnection,
     compile_recipe,
+)
+from control_plane_kit.mcp_read import (
+    McpReadError,
+    ReadOnlyMcpAdapter,
+)
+from control_plane_kit.read_services import (
+    InstanceReadService,
 )
 from control_plane_kit.stores import (
     GraphVersionRecord,
@@ -72,7 +76,14 @@ class McpReadAdapterTests(PostgresStoreTestCase):
         )["content"][0]["json"]
 
         self.assertEqual(graph["graph_name"], "mcp-demo")
-        self.assertEqual(graph["graph_descriptor"]["nodes"]["api-router"]["environment"], "<redacted>")
+        bindings = graph["graph_descriptor"]["nodes"]["api-router"]["environment_bindings"]
+        self.assertTrue(bindings)
+        self.assertTrue(
+            all(
+                binding["value"] == "<redacted>"
+                for binding in bindings
+            )
+        )
         self.assertNotIn("http://api-v1", str(graph))
         router = _node(surface, "api-router")
         self.assertEqual([capability["name"] for capability in router["capabilities"]], ["health-checkable"])
@@ -183,6 +194,7 @@ class McpReadAdapterTests(PostgresStoreTestCase):
             workspace_store=self.stores.workspace,
             graph_topology_store=self.stores.graph_topology,
             activity_history_store=self.stores.activity_history,
+            execution_store=self.stores.execution,
             observed_state_store=self.stores.observed_state,
         )
 

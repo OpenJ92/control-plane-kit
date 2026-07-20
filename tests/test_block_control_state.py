@@ -1,6 +1,11 @@
 from unittest import TestCase, main
 
-from control_plane_kit import BlockControlState, CapabilityName
+from control_plane_kit import (
+    CapabilityName,
+)
+from control_plane_kit.servers import (
+    BlockControlState,
+)
 
 
 class BlockControlStateTests(TestCase):

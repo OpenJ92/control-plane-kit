@@ -6,13 +6,13 @@ from unittest import TestCase, main
 
 import psycopg
 
-from control_plane_kit.planning import RiskLevel, compile_activity_plan
+from control_plane_kit.core.planning import RiskLevel, compile_activity_plan
 from control_plane_kit.stores import (
     GraphVersionRecord,
     PostgresUnitOfWork,
     WorkspaceRecord,
 )
-from control_plane_kit.topology import diff_graphs, validate_graph
+from control_plane_kit.core.topology import diff_graphs, validate_graph
 from control_plane_kit.workflows import (
     ActivityPlanningCommandService,
     ApprovalCommandService,
@@ -174,7 +174,10 @@ class PlanningScenarioWorkflowTests(PostgresStoreTestCase):
                     ),
                     Counter(scenario.expectation.operations),
                 )
-                if scenario.expectation.ready_for_execution:
+                if (
+                    scenario.expectation.ready_for_execution
+                    and scenario.expectation.operations
+                ):
                     self.assertIsNotNone(result.approval)
                     assert result.approval is not None
                     self.assertEqual(
@@ -194,7 +197,7 @@ class PlanningScenarioWorkflowTests(PostgresStoreTestCase):
                     False,
                 )
                 self.assertEqual(
-                    self.stores.activity_history.runs_for_plan(
+                    self.stores.execution.runs_for_plan(
                         result.plan.plan_record.plan_id
                     ),
                     (),

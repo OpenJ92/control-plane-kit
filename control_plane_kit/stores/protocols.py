@@ -4,17 +4,22 @@ from __future__ import annotations
 
 from typing import Protocol
 
-from control_plane_kit.stores.records import (
+from control_plane_kit.execution import (
     ActivityEventRecord,
-    ActivityPlanRecord,
     ActivityRunRecord,
+    ExecutionRequestRecord,
+    ActivityRunStatus,
+    ObservationRecord,
+)
+from control_plane_kit.stores.records import (
+    ActivityPlanRecord,
     ApprovalDecisionRecord,
     ApprovalRequestRecord,
     GraphVersionRecord,
     InstanceRecord,
-    ObservationRecord,
     OperationActionRecord,
     OperationSessionRecord,
+    OperationSessionStatus,
     SecretReferenceRecord,
     WorkspaceLifecycle,
     WorkspaceRecord,
@@ -29,6 +34,13 @@ class WorkspaceStore(Protocol):
     def get_for_update(self, workspace_id: str) -> WorkspaceRecord: ...
     def set_lifecycle(self, workspace_id: str, lifecycle: WorkspaceLifecycle) -> WorkspaceRecord: ...
     def set_current_graph(self, workspace_id: str, graph_id: str) -> WorkspaceRecord: ...
+    def compare_and_set_current_graph(
+        self,
+        workspace_id: str,
+        *,
+        expected_graph_id: str,
+        replacement_graph_id: str,
+    ) -> WorkspaceRecord | None: ...
     def set_desired_graph(self, workspace_id: str, graph_id: str) -> WorkspaceRecord: ...
 
 
@@ -51,7 +63,13 @@ class ActivityHistoryStore(Protocol):
         self, workspace_id: str, idempotency_key: str
     ) -> OperationSessionRecord | None: ...
     def sessions_for_workspace(self, workspace_id: str) -> tuple[OperationSessionRecord, ...]: ...
-    def update_session(self, record: OperationSessionRecord) -> OperationSessionRecord: ...
+    def transition_open_session(
+        self,
+        session_id: str,
+        *,
+        replacement: OperationSessionStatus,
+        closed_at: str,
+    ) -> OperationSessionRecord | None: ...
     def add_action(self, record: OperationActionRecord) -> OperationActionRecord: ...
     def action_for_idempotency(
         self, session_id: str, idempotency_key: str
@@ -80,9 +98,68 @@ class ActivityHistoryStore(Protocol):
     def add_plan(self, record: ActivityPlanRecord) -> ActivityPlanRecord: ...
     def get_plan(self, plan_id: str) -> ActivityPlanRecord: ...
     def plans_for_session(self, session_id: str) -> tuple[ActivityPlanRecord, ...]: ...
+
+
+class ExecutionStore(Protocol):
+    """Owns admitted execution requests, run attempts, and canonical events."""
+
+    def add_request(self, record: ExecutionRequestRecord) -> ExecutionRequestRecord: ...
+    def get_request(self, request_id: str) -> ExecutionRequestRecord: ...
+    def get_request_for_update(self, request_id: str) -> ExecutionRequestRecord: ...
+    def request_for_idempotency(
+        self, workspace_id: str, idempotency_key: str
+    ) -> ExecutionRequestRecord | None: ...
+    def claim_request(
+        self,
+        request_id: str,
+        worker_id: str,
+        claimed_at: str,
+        lease_expires_at: str,
+    ) -> ExecutionRequestRecord | None: ...
+    def cancel_claimed_request(
+        self, request_id: str, *, worker_id: str
+    ) -> ExecutionRequestRecord | None: ...
+    def renew_expired_request_claim(
+        self,
+        request_id: str,
+        *,
+        expected_worker_id: str,
+        observed_at: str,
+        lease_expires_at: str,
+    ) -> ExecutionRequestRecord | None: ...
+    def take_over_expired_request_claim(
+        self,
+        request_id: str,
+        *,
+        expected_worker_id: str,
+        replacement_worker_id: str,
+        observed_at: str,
+        lease_expires_at: str,
+    ) -> ExecutionRequestRecord | None: ...
+    def abandon_expired_request_claim(
+        self,
+        request_id: str,
+        *,
+        expected_worker_id: str,
+        observed_at: str,
+    ) -> ExecutionRequestRecord | None: ...
     def add_run(self, record: ActivityRunRecord) -> ActivityRunRecord: ...
+    def get_run(self, run_id: str) -> ActivityRunRecord: ...
+    def get_run_for_update(self, run_id: str) -> ActivityRunRecord: ...
+    def compare_and_set_run_status(
+        self,
+        run_id: str,
+        *,
+        expected: ActivityRunStatus,
+        replacement: ActivityRunStatus,
+        started_at: str | None = None,
+        settled_at: str | None = None,
+    ) -> ActivityRunRecord | None: ...
     def runs_for_plan(self, plan_id: str) -> tuple[ActivityRunRecord, ...]: ...
+    def runs_for_request(self, request_id: str) -> tuple[ActivityRunRecord, ...]: ...
     def add_event(self, record: ActivityEventRecord) -> ActivityEventRecord: ...
+    def get_event(self, event_id: str) -> ActivityEventRecord: ...
+    def next_event_ordinal(self, run_id: str) -> int: ...
     def events_for_run(self, run_id: str) -> tuple[ActivityEventRecord, ...]: ...
 
 

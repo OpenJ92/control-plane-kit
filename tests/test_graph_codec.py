@@ -23,6 +23,7 @@ from control_plane_kit import (
     compile_recipe,
 )
 from examples.app_with_postgres import recipe
+from examples.gate_d_live_smoke import router_recipe
 
 
 @dataclass(frozen=True)
@@ -119,6 +120,51 @@ class GraphDescriptorCodecTests(unittest.TestCase):
         with self.assertRaisesRegex(UnknownGraphVariant, "block spec variant"):
             GraphDescriptorCodec().decode(descriptor)
 
+    def test_environment_binding_variants_round_trip_and_unknown_kind_fails_closed(self):
+        codec = GraphDescriptorCodec()
+        descriptor = codec.encode(compile_recipe(recipe()))
+        postgres = descriptor["nodes"]["postgres"]["environment_bindings"]
+        api = descriptor["nodes"]["orders-api"]["environment_bindings"]
+
+        self.assertEqual({value["kind"] for value in postgres}, {"public-static"})
+        self.assertEqual({value["kind"] for value in api}, {"socket-derived"})
+        self.assertEqual(codec.encode(codec.decode(descriptor)), descriptor)
+
+        api[0]["kind"] = "future-environment"
+        with self.assertRaisesRegex(UnknownGraphVariant, "unknown environment"):
+            codec.decode(descriptor)
+
+    def test_environment_passwords_fail_before_raw_descriptor_reconstruction(self):
+        codec = GraphDescriptorCodec()
+        descriptor = codec.encode(compile_recipe(recipe()))
+        supplied = "postgresql://app:do-not-disclose@database:5432/app"
+        descriptor["nodes"]["postgres"]["environment_bindings"][0]["value"] = supplied
+
+        with self.assertRaises(UnknownGraphVariant) as caught:
+            codec.decode(descriptor)
+
+        self.assertNotIn("do-not-disclose", str(caught.exception))
+
+    def test_direct_node_and_edge_cannot_restore_inline_environment_secrets(self):
+        graph = compile_recipe(recipe())
+        node = graph.node("orders-api")
+        edge = next(iter(graph.edges.values()))
+
+        with self.assertRaisesRegex(ValueError, "must not contain environment"):
+            replace(
+                node,
+                metadata={"environment": {"API_TOKEN": "do-not-disclose"}},
+            )
+        with self.assertRaises(ValueError) as caught:
+            replace(
+                edge,
+                env_assignments={
+                    "DATABASE_URL":
+                        "postgresql://app:do-not-disclose@database:5432/app"
+                },
+            )
+        self.assertNotIn("do-not-disclose", str(caught.exception))
+
     def test_missing_runtime_ownership_fails_loudly(self):
         descriptor = GraphDescriptorCodec().encode(compile_recipe(recipe()))
         descriptor["runtimes"]["docker"]["children"].remove("orders-api")
@@ -133,6 +179,43 @@ class GraphDescriptorCodecTests(unittest.TestCase):
 
         with self.assertRaises(InvalidGraphReference):
             GraphDescriptorCodec().decode(descriptor)
+
+    def test_edge_binding_round_trips_as_a_closed_value(self):
+        codec = GraphDescriptorCodec()
+        descriptor = codec.encode(compile_recipe(recipe()))
+        edge = descriptor["edges"]["postgres.internal-to-orders-api.DATABASE_URL"]
+
+        self.assertEqual(edge["binding"], "environment")
+        self.assertEqual(codec.encode(codec.decode(descriptor)), descriptor)
+
+        edge["binding"] = "future-binding"
+        with self.assertRaises(UnknownGraphVariant):
+            codec.decode(descriptor)
+
+        runtime_control = codec.encode(
+            compile_recipe(router_recipe("hello-blue"))
+        )
+        active = runtime_control["edges"]["router.active"]
+        self.assertEqual(active["binding"], "runtime-control")
+        self.assertEqual(
+            codec.encode(codec.decode(runtime_control)),
+            runtime_control,
+        )
+
+    def test_protocol_product_round_trips_and_unknown_factors_fail_closed(self):
+        codec = GraphDescriptorCodec()
+        descriptor = codec.encode(compile_recipe(recipe()))
+        edge = descriptor["edges"]["postgres.internal-to-orders-api.DATABASE_URL"]
+
+        self.assertEqual(
+            edge["protocol"],
+            {"transport": "tcp", "application": "postgres"},
+        )
+        self.assertEqual(codec.encode(codec.decode(descriptor)), descriptor)
+
+        edge["protocol"]["transport"] = "future"
+        with self.assertRaisesRegex(UnknownGraphVariant, "unknown protocol"):
+            codec.decode(descriptor)
 
     def test_unknown_fields_are_rejected_as_lossy(self):
         descriptor = GraphDescriptorCodec().encode(compile_recipe(recipe()))

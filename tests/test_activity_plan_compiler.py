@@ -14,6 +14,8 @@ from control_plane_kit import (
     ModifiedChange,
     NodeSubject,
     ReconcileNode,
+    RemoveNodeResource,
+    RemoveRuntimeResource,
     RemovedChange,
     RemoveSocketConnection,
     ReviewChange,
@@ -37,7 +39,8 @@ from control_plane_kit import (
     diff_graphs,
     validate_graph,
 )
-from examples.router_swap import recipe as router_recipe
+from examples.gate_d_live_smoke import router_recipe
+from examples.generated_hello_graphs import HelloGraphShape, generated_hello_graph
 from examples.scenarios import operation_expectation, switch_database_endpoint
 
 
@@ -62,7 +65,7 @@ class ActivityPlanCompilerTests(unittest.TestCase):
         self.assertEqual(compile_activity_plan(rename).activities, ())
 
     def test_startup_dependencies_follow_runtime_node_health_connection_order(self):
-        populated = validate_graph(compile_recipe(router_recipe("api-v1")))
+        populated = validate_graph(compile_recipe(router_recipe("hello-blue")))
         empty = validate_graph(DeploymentGraph(populated.graph.name))
 
         plan = compile_activity_plan(diff_graphs(empty, populated))
@@ -117,8 +120,24 @@ class ActivityPlanCompilerTests(unittest.TestCase):
             )
         )
 
+    def test_environment_connections_are_startup_material_not_socket_effects(self):
+        desired = validate_graph(generated_hello_graph(HelloGraphShape(2, 1)))
+        current = validate_graph(DeploymentGraph("generated-empty"))
+
+        plan = compile_activity_plan(diff_graphs(current, desired))
+
+        self.assertFalse(
+            any(
+                isinstance(
+                    activity.operation,
+                    (AddSocketConnection, SwitchSocketConnection, RemoveSocketConnection),
+                )
+                for activity in plan.activities
+            )
+        )
+
     def test_teardown_dependencies_remove_connections_before_nodes_and_runtime(self):
-        populated = validate_graph(compile_recipe(router_recipe("api-v1")))
+        populated = validate_graph(compile_recipe(router_recipe("hello-blue")))
         empty = validate_graph(DeploymentGraph(populated.graph.name))
 
         plan = compile_activity_plan(diff_graphs(populated, empty))
@@ -136,51 +155,66 @@ class ActivityPlanCompilerTests(unittest.TestCase):
         runtime_stop = next(
             activity for activity in plan.activities if isinstance(activity.operation, StopRuntime)
         )
+        node_removals = {
+            activity.operation.target.node_id: activity
+            for activity in plan.activities
+            if isinstance(activity.operation, RemoveNodeResource)
+        }
+        runtime_remove = next(
+            activity
+            for activity in plan.activities
+            if isinstance(activity.operation, RemoveRuntimeResource)
+        )
         graph = populated.graph
         for node_id, activity in stops.items():
             expected = {
                 removals[edge.edge_id].activity_id
                 for edge in graph.edges.values()
-                if node_id in (edge.provider_role, edge.consumer_role)
+                if edge.edge_id in removals
+                and node_id in (edge.provider_role, edge.consumer_role)
             }
             self.assertEqual(
                 {dependency.predecessor for dependency in activity.dependencies},
                 expected,
             )
+            self.assertEqual(
+                {dependency.predecessor for dependency in node_removals[node_id].dependencies},
+                {activity.activity_id},
+            )
         self.assertEqual(
             {dependency.predecessor for dependency in runtime_stop.dependencies},
-            {activity.activity_id for activity in stops.values()},
+            {activity.activity_id for activity in node_removals.values()},
         )
-        self.assertEqual(runtime_stop.risk, RiskLevel.CRITICAL)
-        self.assertEqual(runtime_stop.impact, ActivityImpact.DESTRUCTIVE)
+        self.assertEqual(
+            {dependency.predecessor for dependency in runtime_remove.dependencies},
+            {runtime_stop.activity_id},
+        )
+        self.assertEqual(runtime_stop.risk, RiskLevel.HIGH)
+        self.assertEqual(runtime_stop.impact, ActivityImpact.DISRUPTIVE)
+        self.assertEqual(runtime_remove.risk, RiskLevel.HIGH)
+        self.assertEqual(runtime_remove.impact, ActivityImpact.DESTRUCTIVE)
 
     def test_router_change_compiles_to_typed_switch_and_is_deterministic(self):
-        current = validate_graph(compile_recipe(router_recipe("api-v1")))
-        desired = validate_graph(compile_recipe(router_recipe("api-v2")))
+        current = validate_graph(compile_recipe(router_recipe("hello-blue")))
+        desired = validate_graph(compile_recipe(router_recipe("hello-green")))
         diff = diff_graphs(current, desired)
 
         first = compile_activity_plan(diff)
         second = compile_activity_plan(diff)
 
         self.assertEqual(first, second)
-        self.assertTrue(
-            any(
-                isinstance(activity.operation, SwitchSocketConnection)
-                for activity in first.activities
-            )
-        )
-        self.assertTrue(
-            any(isinstance(activity.operation, ReconcileNode) for activity in first.activities)
-        )
-        reconciles = [
+        switches = [
             activity
             for activity in first.activities
-            if isinstance(activity.operation, ReconcileNode)
-            and activity.operation.target.node_id == "api-router"
+            if isinstance(activity.operation, SwitchSocketConnection)
+            and activity.operation.target.edge_id == "router.active"
         ]
-        self.assertEqual(len(reconciles), 1)
+        self.assertEqual(len(switches), 1)
+        self.assertFalse(
+            any(isinstance(activity.operation, ReconcileNode) for activity in first.activities)
+        )
 
-    def test_modified_edge_switch_precedes_removed_endpoint_stop(self):
+    def test_environment_reconcile_precedes_removed_endpoint_stop(self):
         scenario = switch_database_endpoint()
         current = self._without_node(scenario.current_graph, "postgres-b")
         desired = self._without_node(scenario.desired_graph, "postgres-a")
@@ -194,10 +228,11 @@ class ActivityPlanCompilerTests(unittest.TestCase):
             operation_expectation(activity.operation): activity
             for activity in plan.activities
         }
-        switch = next(
+        reconcile = next(
             activity
             for expectation, activity in activities.items()
-            if expectation.operation_type is SwitchSocketConnection
+            if expectation.operation_type is ReconcileNode
+            and expectation.target_id == "api"
         )
         old_provider_stop = next(
             activity
@@ -207,7 +242,7 @@ class ActivityPlanCompilerTests(unittest.TestCase):
         )
 
         self.assertIn(
-            switch.activity_id,
+            reconcile.activity_id,
             {
                 dependency.predecessor
                 for dependency in old_provider_stop.dependencies

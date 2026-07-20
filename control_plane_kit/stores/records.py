@@ -6,22 +6,10 @@ from dataclasses import dataclass, field
 from enum import StrEnum
 from typing import Mapping
 
-from control_plane_kit.planning.activity_plan import ActivityPlan, RiskLevel
-from control_plane_kit.topology.graph import DeploymentGraph
-from control_plane_kit.topology.codec import DEFAULT_GRAPH_CODEC
-
-
-class WorkspaceLifecycle(StrEnum):
-    """Lifecycle states shared by early workspace and instance records."""
-
-    CREATED = "created"
-    RUNNING = "running"
-    PAUSED = "paused"
-    STOPPED = "stopped"
-    ARCHIVED = "archived"
-    DECONSTRUCTED = "deconstructed"
-    DELETED = "deleted"
-    FAILED = "failed"
+from control_plane_kit.core.planning.activity_plan import ActivityPlan, RiskLevel
+from control_plane_kit.core.topology.graph import DeploymentGraph
+from control_plane_kit.core.topology.codec import DEFAULT_GRAPH_CODEC
+from control_plane_kit.core.types import WorkspaceLifecycle
 
 
 class OperationSessionStatus(StrEnum):
@@ -49,6 +37,9 @@ class OperationActionKind(StrEnum):
     PLAN_REQUESTED = "plan_requested"
     APPROVAL_REQUESTED = "approval_requested"
     APPROVAL_DECIDED = "approval_decided"
+    EXECUTION_REQUESTED = "execution_requested"
+    EXECUTION_RUN_TRANSITIONED = "execution_run_transitioned"
+    CURRENT_GRAPH_ADVANCED = "current_graph_advanced"
     RECOVERY_REQUESTED = "recovery_requested"
 
 
@@ -202,43 +193,6 @@ class ActivityPlanRecord:
     def __post_init__(self) -> None:
         if not isinstance(self.plan, ActivityPlan):
             raise TypeError("activity plan record requires a typed ActivityPlan")
-
-
-@dataclass(frozen=True)
-class ActivityRunRecord:
-    """Execution attempt for an approved activity plan."""
-
-    run_id: str
-    plan_id: str
-    status: str
-    started_at: str
-    finished_at: str | None = None
-    metadata: Mapping[str, str] = field(default_factory=dict)
-
-
-@dataclass(frozen=True)
-class ActivityEventRecord:
-    """Structured operational memory for an activity run."""
-
-    event_id: str
-    run_id: str
-    ordinal: int
-    event_type: str
-    occurred_at: str
-    payload: Mapping[str, object] = field(default_factory=dict)
-
-
-@dataclass(frozen=True)
-class ObservationRecord:
-    """Observed runtime evidence, separate from desired topology."""
-
-    observation_id: str
-    workspace_id: str
-    subject_id: str
-    status: str
-    observed_at: str
-    payload: Mapping[str, object] = field(default_factory=dict)
-    stale: bool = False
 
 
 @dataclass(frozen=True)

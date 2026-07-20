@@ -119,6 +119,7 @@ class FocusedWorkflowReadTests(PostgresStoreTestCase):
             workspace_store=self.stores.workspace,
             graph_topology_store=self.stores.graph_topology,
             activity_history_store=self.stores.activity_history,
+            execution_store=self.stores.execution,
         )
 
     def _session(self, session_id: str, workspace_id: str, created_at: str) -> None:
@@ -176,7 +177,7 @@ class FocusedWorkflowReadTests(PostgresStoreTestCase):
         plan = self._service().plan_detail("workspace-a", "plan-a").descriptor()["plan"]
 
         self.assertEqual(plan["payload"]["schema"], "control-plane-kit.activity-plan")
-        self.assertEqual(plan["risk_summary"]["max_risk"], RiskLevel.CRITICAL.value)
+        self.assertEqual(plan["risk_summary"]["max_risk"], RiskLevel.HIGH.value)
         self.assertGreater(plan["risk_summary"]["destructive_count"], 0)
         self.assertEqual(
             plan["recovery"]["schema"],
@@ -196,6 +197,7 @@ class FocusedWorkflowReadTests(PostgresStoreTestCase):
             workspace_store=self.stores.workspace,
             graph_topology_store=self.stores.graph_topology,
             activity_history_store=self.stores.activity_history,
+            execution_store=self.stores.execution,
             graph_codec=codec,
         )
 

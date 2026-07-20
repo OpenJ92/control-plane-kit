@@ -15,19 +15,26 @@ from control_plane_kit import (
     ApplicationBlock,
     BlockSockets,
     BlockSpec,
+    BoundedEvidence,
     CapabilityName,
     DataBlock,
     DeploymentRecipe,
     DockerPostgresImplementation,
     DockerRuntime,
-    InstanceReadService,
+    ObservationFreshness,
+    ObservationStatus,
     PlanOnlyImplementation,
     Protocol,
-    ProxyBlock,
     ProviderSocket,
+    ProxyBlock,
     RequirementSocket,
     SocketConnection,
     compile_recipe,
+)
+from control_plane_kit.read_services import (
+    InstanceReadService,
+)
+from control_plane_kit.servers import (
     create_instance_read_app,
 )
 from control_plane_kit.stores import (
@@ -97,6 +104,7 @@ def create_demo_app(settings: DemoSettings):
         workspace_store=stores.workspace,
         graph_topology_store=stores.graph_topology,
         activity_history_store=stores.activity_history,
+        execution_store=stores.execution,
         observed_state_store=stores.observed_state,
     )
     app = create_instance_read_app(service, token=settings.token)
@@ -167,9 +175,9 @@ def seed_demo_data(stores: PostgresStoreBundle) -> None:
             observation_id="demo-observation-router",
             workspace_id=DEMO_WORKSPACE_ID,
             subject_id="api-router",
-            status="healthy",
+            status=ObservationStatus.HEALTHY,
             observed_at="2026-07-15T00:12:00Z",
-            payload={"source": "demo-seed"},
+            evidence=BoundedEvidence.from_mapping({"source": "demo-seed"}),
         )
     )
     stores.observed_state.put(
@@ -177,10 +185,10 @@ def seed_demo_data(stores: PostgresStoreBundle) -> None:
             observation_id="demo-observation-api",
             workspace_id=DEMO_WORKSPACE_ID,
             subject_id="api",
-            status="unknown",
+            status=ObservationStatus.UNKNOWN,
             observed_at="2026-07-15T00:12:30Z",
-            payload={"source": "demo-seed"},
-            stale=True,
+            evidence=BoundedEvidence.from_mapping({"source": "demo-seed"}),
+            freshness=ObservationFreshness.STALE,
         )
     )
 

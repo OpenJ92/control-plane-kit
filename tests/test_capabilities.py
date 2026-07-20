@@ -23,10 +23,22 @@ class CapabilityTests(TestCase):
         self.assertEqual(SWITCHABLE.route_set, ControlRouteSetName.TARGETS)
         self.assertEqual(DRAINABLE.route_set, ControlRouteSetName.TARGETS)
         self.assertEqual(OBSERVER_MUTABLE.route_set, ControlRouteSetName.OBSERVERS)
+        self.assertEqual(METRICS_READABLE.route_set, ControlRouteSetName.METRICS)
+        self.assertEqual(
+            capability_named(CapabilityName.CIRCUIT_STATE_READABLE).route_set,
+            ControlRouteSetName.CIRCUIT,
+        )
+        self.assertEqual(
+            capability_named(CapabilityName.CIRCUIT_RESETTABLE).route_set,
+            ControlRouteSetName.CIRCUIT,
+        )
+        self.assertEqual(
+            capability_named(CapabilityName.TRAFFIC_EVIDENCE_READABLE).route_set,
+            ControlRouteSetName.TRAFFIC_EVIDENCE,
+        )
 
-    def test_lifecycle_and_future_metrics_do_not_claim_routes_yet(self):
+    def test_lifecycle_does_not_claim_a_route_yet(self):
         self.assertIsNone(RESTARTABLE.route_set)
-        self.assertIsNone(METRICS_READABLE.route_set)
 
     def test_capability_descriptor_is_json_friendly(self):
         self.assertEqual(

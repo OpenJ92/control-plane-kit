@@ -55,6 +55,49 @@ endpoints already exist. The corpus does not claim that starting a database
 copies data, catches up replication, validates schema compatibility, or makes
 retirement of an old database safe.
 
+## Execution Expectations
+
+Roadmap 0008 composes one closed execution expectation over each unchanged
+planning scenario:
+
+```text
+ExecutionScenario
+  = PlanningScenario x ExecutionScenarioExpectation
+```
+
+The expectation names approval, admission, run projection, semantic event
+partial order, observations, failure, uncertainty, compensation, and guarded
+current-graph advancement. It contains no generated IDs, adapter callbacks, or
+provider-specific commands. The Postgres scenario runner interprets these
+values; they do not replace atomic coordinator, transaction, or recovery tests.
+
+Database endpoint cutover remains explicitly readiness-gated and does not imply
+schema migration, copying, replication, or consistency verification.
+
+## Postgres Runner
+
+The execution runner composes the production command and read services around
+an isolated, pre-provisioned workspace:
+
+```text
+plan -> request approval -> decide approval -> admit -> claim -> execute
+     -> advance when lawful -> canonical read projections -> evaluate
+```
+
+Only the provider boundary is synthetic. `ScenarioEffectProgram` selects typed
+success, failure, or uncertainty outcomes for semantic plan operations, while
+`ScenarioEffectInterpreter` still receives graph-pinned
+`MaterializedEffectRequest` values from the real coordinator. The runner does
+not import command stores, write SQL, reproduce scheduling, or infer recovery
+state. Fixture code may establish workspace identity and its initial graph, but
+all application outcomes pass through canonical services and Postgres.
+
+Evaluation compares typed expectations with exact plan/run projections. It
+checks approval and admission presence, run and coordinator state, event
+partial order, failure categories, uncertainty, compensation order,
+observations, and guarded current-graph advancement. Diagnostics name semantic
+differences rather than generated identifiers or timestamps.
+
 ## Downstream Extension
 
 Roadmap 0008 should extend scenario expectations rather than replace them:

@@ -5,13 +5,13 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from typing import Mapping
 
-from control_plane_kit.algebra import BlockSockets, BlockSpec, ProviderSocket, ProxyBlock, RequirementSocket
-from control_plane_kit.capabilities import CapabilityName
+from control_plane_kit.core.algebra import BlockSockets, PackageServerProduct, PackageServerSpec, ProviderSocket, ProxyBlock, RequirementSocket
+from control_plane_kit.core.capabilities import CapabilityName
 from control_plane_kit.contracts import RuntimeContract, RuntimeValueVariable
 from control_plane_kit.implementations import DockerImageImplementation
-from control_plane_kit.servers._templates import render_python_command
-from control_plane_kit.servers.http_messages import HttpHandler, HttpRequest, HttpResponse
-from control_plane_kit.types import Protocol
+from control_plane_kit.products.servers.support.command_rendering import render_python_command
+from control_plane_kit.products.servers.support.http_messages import HttpHandler, HttpRequest, HttpResponse
+from control_plane_kit.core.types import Protocol
 
 
 class HttpProxyRuntime(RuntimeContract):
@@ -62,11 +62,12 @@ def http_proxy_block(
     """
 
     return ProxyBlock(
-        BlockSpec(
-            block_id,
-            display_name,
+        PackageServerSpec(
+            role_id=block_id,
+            product=PackageServerProduct.HTTP_PROXY,
+            display_name=display_name,
             health_path="/",
-            capabilities=(CapabilityName.HEALTH_CHECKABLE, CapabilityName.TARGET_MUTABLE),
+            capabilities=(CapabilityName.HEALTH_CHECKABLE,),
             metadata={"behavior": "http-proxy"},
         ),
         DockerImageImplementation(

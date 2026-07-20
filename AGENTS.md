@@ -119,6 +119,40 @@ This is recursive. If a child issue is still too large, split it into a smaller
 issue topology before implementing. Do not push through an issue that has become
 too broad to review.
 
+### Milestone Review Gates
+
+A broad roadmap that crosses qualitatively different architectural boundaries
+must define mandatory milestone review gates in its roadmap learning document.
+Examples include moving from pure values to persistence, from persistence to
+external effects, from fake effects to real runtime adapters, or from happy-path
+execution to compensation and destructive behavior.
+
+Milestone gates are internal stops on the existing roadmap branch. They are not
+releases, new roadmap branches, or substitutes for per-issue review. At each
+declared gate, stop the issue chain and:
+
+1. run the gate's full validation;
+2. perform the specified architecture, security, data-engineering, and test-
+   integrity reviews;
+3. update the roadmap learning document with implementation truth;
+4. report the gate result to the user; and
+5. proceed only when the next milestone is genuinely unblocked.
+
+Every milestone report must state:
+
+- what capability now exists;
+- which objects and transformations were introduced;
+- which laws are executable as tests;
+- what review found and what was fixed;
+- what remains provisional;
+- which security and data risks remain;
+- whether implementation deviated from the roadmap; and
+- whether the next milestone is safe to begin.
+
+Do not accumulate work across a declared gate merely because later issues are
+already specified. If a gate exposes an unresolved architectural, security,
+data, destructive-operation, or test-integrity decision, stop for the user.
+
 Hardening is part of the roadmap loop, not an afterthought. A hardening pass
 should become its own issue and PR when an implementation creates a broad
 interface, persistence, security, runtime, or adapter surface. Prefer
@@ -265,6 +299,28 @@ Before merging a PR, do a review pass from a code-review stance:
 - and future issue handoff.
 
 ## Module Ownership Law
+
+Read `docs/adr/0009-package-boundary-topology.md` before changing package
+ownership, import direction, root exports, product declarations, domain
+languages, interpreters, or process entrypoints. Keep
+`docs/architecture/package-module-inventory.json` exhaustive as modules move.
+
+Preserve this package ownership vocabulary:
+
+```text
+core         owns the deployment language
+domains      own independent closed languages
+operations   own durable control-plane truth
+interpreters perform representation and external effects
+products     are graph-visible deployable values
+entrypoints  compose dependencies and run processes
+```
+
+The observed package graph must remain acyclic without migration allowances.
+An inventory destination records canonical ownership; it does not authorize a
+duplicate implementation or compatibility facade. Package-owned servers share
+the `products.servers` exterior even when their domain, operation, interpreter,
+or entrypoint interiors differ.
 
 Backend modules should be separable enough that a future service boundary is
 obvious.  Use this source-of-truth order when adding backend behavior:

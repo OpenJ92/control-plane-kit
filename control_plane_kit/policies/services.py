@@ -9,7 +9,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import Iterable
 
-from control_plane_kit.planning.activity_plan import ActivityImpact, ActivityPlan, RiskLevel
+from control_plane_kit.core.planning.activity_plan import ActivityImpact, ActivityPlan, RiskLevel
 
 
 @dataclass(frozen=True)

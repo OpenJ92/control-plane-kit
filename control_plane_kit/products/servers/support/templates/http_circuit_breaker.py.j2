@@ -1,0 +1,229 @@
+import hmac
+import json
+import os
+import threading
+import time
+from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
+from urllib.error import HTTPError, URLError
+from urllib.request import HTTPRedirectHandler, Request, build_opener
+
+TARGET = os.environ["CIRCUIT_TARGET_URL"].rstrip("/")
+CONTROL_TOKEN = os.environ["CPK_CONTROL_TOKEN"]
+FAILURE_THRESHOLD = {{ failure_threshold }}
+RECOVERY_TIMEOUT_SECONDS = {{ recovery_timeout_ms }} / 1000
+HALF_OPEN_TRIAL_BUDGET = {{ half_open_trial_budget }}
+UPSTREAM_TIMEOUT_SECONDS = {{ upstream_timeout_ms }} / 1000
+MAX_REQUEST_BYTES = {{ max_request_bytes }}
+MAX_RESPONSE_BYTES = {{ max_response_bytes }}
+ALLOW_ALL_METHODS = {{ allow_all_methods }}
+LOCK = threading.Lock()
+STATE = "closed"
+CONSECUTIVE_FAILURES = 0
+HALF_OPEN_TRIALS_REMAINING = 0
+OPENED_AT = None
+TRANSITION_SEQUENCE = 0
+
+
+class NoRedirects(HTTPRedirectHandler):
+    def redirect_request(self, request, file_pointer, code, message, headers, new_url):
+        return None
+
+
+OPENER = build_opener(NoRedirects)
+
+
+def transition(next_state):
+    global STATE, TRANSITION_SEQUENCE
+    if STATE == next_state:
+        return
+    STATE = next_state
+    TRANSITION_SEQUENCE += 1
+
+
+def open_circuit(now):
+    global OPENED_AT, HALF_OPEN_TRIALS_REMAINING
+    OPENED_AT = now
+    HALF_OPEN_TRIALS_REMAINING = 0
+    transition("open")
+
+
+def admit(now):
+    global HALF_OPEN_TRIALS_REMAINING
+    with LOCK:
+        if STATE == "open":
+            if now - OPENED_AT < RECOVERY_TIMEOUT_SECONDS:
+                return False
+            transition("half-open")
+            HALF_OPEN_TRIALS_REMAINING = HALF_OPEN_TRIAL_BUDGET
+        if STATE == "half-open":
+            if HALF_OPEN_TRIALS_REMAINING <= 0:
+                return False
+            HALF_OPEN_TRIALS_REMAINING -= 1
+        return True
+
+
+def record_failure(now):
+    global CONSECUTIVE_FAILURES
+    with LOCK:
+        if STATE == "half-open":
+            open_circuit(now)
+            return
+        CONSECUTIVE_FAILURES += 1
+        if CONSECUTIVE_FAILURES >= FAILURE_THRESHOLD:
+            open_circuit(now)
+
+
+def record_success():
+    global CONSECUTIVE_FAILURES, OPENED_AT, HALF_OPEN_TRIALS_REMAINING
+    with LOCK:
+        CONSECUTIVE_FAILURES = 0
+        if STATE == "half-open":
+            OPENED_AT = None
+            HALF_OPEN_TRIALS_REMAINING = 0
+            transition("closed")
+
+
+def reset_circuit():
+    global CONSECUTIVE_FAILURES, OPENED_AT, HALF_OPEN_TRIALS_REMAINING
+    with LOCK:
+        CONSECUTIVE_FAILURES = 0
+        OPENED_AT = None
+        HALF_OPEN_TRIALS_REMAINING = 0
+        transition("closed")
+
+
+def circuit_descriptor():
+    with LOCK:
+        return {
+            "state": STATE,
+            "consecutive_failures": CONSECUTIVE_FAILURES,
+            "half_open_trials_remaining": HALF_OPEN_TRIALS_REMAINING,
+            "transition_sequence": TRANSITION_SEQUENCE,
+            "latest_transition_id": (
+                None
+                if TRANSITION_SEQUENCE == 0
+                else f"circuit-transition-{TRANSITION_SEQUENCE:020d}"
+            ),
+        }
+
+
+class Handler(BaseHTTPRequestHandler):
+    def _json(self, status, payload):
+        body = json.dumps(payload, sort_keys=True, separators=(",", ":")).encode()
+        self.send_response(status)
+        self.send_header("content-type", "application/json")
+        self.send_header("content-length", str(len(body)))
+        self.end_headers()
+        if self.command != "HEAD":
+            self.wfile.write(body)
+
+    def _authorized(self):
+        authorization = self.headers.get("authorization", "")
+        alternate = self.headers.get("x-control-plane-token", "")
+        return hmac.compare_digest(authorization, f"Bearer {CONTROL_TOKEN}") or hmac.compare_digest(alternate, CONTROL_TOKEN)
+
+    def _read_body(self):
+        try:
+            length = int(self.headers.get("content-length", "0") or "0")
+        except ValueError:
+            return None, 400
+        if length < 0 or length > MAX_REQUEST_BYTES:
+            return None, 413
+        self.connection.settimeout(UPSTREAM_TIMEOUT_SECONDS)
+        return self.rfile.read(length), None
+
+    def _forward(self):
+        if not ALLOW_ALL_METHODS and self.command not in {"GET", "HEAD"}:
+            self._json(405, {"detail": "method not allowed by circuit policy"})
+            return
+        body, error_status = self._read_body()
+        if error_status is not None:
+            self._json(error_status, {"detail": "invalid or oversized request"})
+            return
+        now = time.monotonic()
+        if not admit(now):
+            self._json(503, {"detail": "circuit open"})
+            return
+        headers = {
+            key: value
+            for key, value in self.headers.items()
+            if key.lower() not in {"host", "content-length"}
+        }
+        request = Request(
+            TARGET + self.path,
+            data=body or None,
+            headers=headers,
+            method=self.command,
+        )
+        try:
+            response = OPENER.open(request, timeout=UPSTREAM_TIMEOUT_SECONDS)
+            with response:
+                payload = response.read(MAX_RESPONSE_BYTES + 1)
+                status = response.status
+                response_headers = tuple(response.headers.items())
+        except HTTPError as error:
+            with error:
+                payload = error.read(MAX_RESPONSE_BYTES + 1)
+                status = error.code
+                response_headers = tuple(error.headers.items())
+        except (OSError, TimeoutError, URLError):
+            record_failure(now)
+            self._json(502, {"detail": "upstream unavailable"})
+            return
+        if len(payload) > MAX_RESPONSE_BYTES:
+            record_failure(now)
+            self._json(502, {"detail": "upstream response exceeded limit"})
+            return
+        if status >= 500:
+            record_failure(now)
+        else:
+            record_success()
+        self.send_response(status)
+        for key, value in response_headers:
+            if key.lower() not in {"transfer-encoding", "connection", "content-length"}:
+                self.send_header(key, value)
+        self.send_header("content-length", str(len(payload)))
+        self.end_headers()
+        if self.command != "HEAD":
+            self.wfile.write(payload)
+
+    def do_GET(self):
+        path = self.path.split("?", 1)[0]
+        if path == "/health":
+            self._json(200, {"status": "healthy"})
+            return
+        if path == "/__deploy/circuit":
+            if not self._authorized():
+                self._json(401, {"detail": "unauthorized"})
+                return
+            self._json(200, circuit_descriptor())
+            return
+        self._forward()
+
+    def do_HEAD(self):
+        self._forward()
+
+    def do_POST(self):
+        if self.path.split("?", 1)[0] == "/__deploy/circuit/reset":
+            if not self._authorized():
+                self._json(401, {"detail": "unauthorized"})
+                return
+            reset_circuit()
+            self._json(200, circuit_descriptor())
+            return
+        self._forward()
+
+    def do_PUT(self):
+        self._forward()
+
+    def do_PATCH(self):
+        self._forward()
+
+    def do_DELETE(self):
+        self._forward()
+
+    def log_message(self, format, *args):
+        pass
+
+
+ThreadingHTTPServer(("0.0.0.0", {{ port }}), Handler).serve_forever()

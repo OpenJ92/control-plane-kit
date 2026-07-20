@@ -80,7 +80,7 @@ metadata is redacted from graph and operator payloads by default.
 The FastAPI adapter is created with `create_instance_read_app`.
 
 ```python
-from control_plane_kit import create_instance_read_app
+from control_plane_kit.servers import create_instance_read_app
 
 app = create_instance_read_app(
     service,
@@ -153,7 +153,7 @@ It is not a hosted MCP server yet. It is the tool descriptor table and dispatch
 object that a runtime-specific MCP server can wrap later.
 
 ```python
-from control_plane_kit import ReadOnlyMcpAdapter
+from control_plane_kit.mcp_read import ReadOnlyMcpAdapter
 
 adapter = ReadOnlyMcpAdapter(service)
 

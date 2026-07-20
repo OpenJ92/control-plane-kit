@@ -10,7 +10,13 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from typing import Mapping
 
-from control_plane_kit.topology.graph import DeploymentGraph, Edge, Node, RuntimeRecord
+from control_plane_kit.core.topology.graph import DeploymentGraph, Edge, Node, RuntimeRecord
+from control_plane_kit.core.environment import SocketDerivedEnvironmentBinding
+from control_plane_kit.core.secrets import (
+    SecretEnvironmentDelivery,
+    SecretFileDelivery,
+    SecretReferenceEnvironmentDelivery,
+)
 
 _SECRET_MARKERS = ("secret", "token", "password", "private_key", "credential", "api_key")
 _REDACTED = "<redacted>"
@@ -21,8 +27,10 @@ class OperatorSocket:
     """A provider or requirement socket visible to an operator."""
 
     name: str
-    protocol: str
+    transport: str
+    application_protocol: str
     direction: str
+    binding: str | None = None
     required: bool | None = None
     env_bindings: tuple[str, ...] = ()
     connected: bool = False
@@ -30,12 +38,17 @@ class OperatorSocket:
     def descriptor(self) -> dict[str, object]:
         payload: dict[str, object] = {
             "name": self.name,
-            "protocol": self.protocol,
+            "protocol": {
+                "transport": self.transport,
+                "application": self.application_protocol,
+            },
             "direction": self.direction,
             "connected": self.connected,
         }
         if self.required is not None:
             payload["required"] = self.required
+        if self.binding is not None:
+            payload["binding"] = self.binding
         if self.env_bindings:
             payload["env_bindings"] = list(self.env_bindings)
         return payload
@@ -51,6 +64,7 @@ class OperatorNode:
     display_name: str
     providers: tuple[OperatorSocket, ...] = ()
     requirements: tuple[OperatorSocket, ...] = ()
+    environment_bindings: tuple[Mapping[str, object], ...] = ()
     metadata: Mapping[str, object] = field(default_factory=dict)
 
     def descriptor(self) -> dict[str, object]:
@@ -61,6 +75,7 @@ class OperatorNode:
             "display_name": self.display_name,
             "providers": [socket.descriptor() for socket in self.providers],
             "requirements": [socket.descriptor() for socket in self.requirements],
+            "environment_bindings": [dict(value) for value in self.environment_bindings],
             "metadata": dict(self.metadata),
         }
 
@@ -74,14 +89,18 @@ class OperatorEdge:
     provider_socket: str
     consumer_node_id: str
     requirement_socket: str
-    protocol: str
+    transport: str
+    application_protocol: str
 
     def descriptor(self) -> dict[str, object]:
         return {
             "edge_id": self.edge_id,
             "provider": {"node_id": self.provider_node_id, "socket": self.provider_socket},
             "consumer": {"node_id": self.consumer_node_id, "socket": self.requirement_socket},
-            "protocol": self.protocol,
+            "protocol": {
+                "transport": self.transport,
+                "application": self.application_protocol,
+            },
         }
 
 
@@ -183,7 +202,8 @@ def _project_node(
         providers=tuple(
             OperatorSocket(
                 name=socket.name,
-                protocol=socket.protocol.value,
+                transport=socket.protocol.transport.value,
+                application_protocol=socket.protocol.application.value,
                 direction="provider",
                 connected=(node.node_id, socket.name) in connected_providers,
             )
@@ -192,16 +212,67 @@ def _project_node(
         requirements=tuple(
             OperatorSocket(
                 name=socket.name,
-                protocol=socket.protocol.value,
+                transport=socket.protocol.transport.value,
+                application_protocol=socket.protocol.application.value,
                 direction="requirement",
+                binding=socket.binding.value,
                 required=socket.required,
                 env_bindings=tuple(socket.env_bindings),
                 connected=(node.node_id, socket.name) in connected_requirements,
             )
             for socket in sorted(node.sockets.requirements, key=lambda candidate: candidate.name)
         ),
+        environment_bindings=_project_environment(node),
         metadata=_redact_mapping(node.metadata),
     )
+
+
+def _project_environment(node: Node) -> tuple[Mapping[str, object], ...]:
+    public_and_socket = tuple(
+        {
+            "kind": binding.descriptor()["kind"],
+            "name": binding.name,
+            "value": _REDACTED,
+            **(
+                {"edge_id": binding.edge_id}
+                if isinstance(binding, SocketDerivedEnvironmentBinding)
+                else {}
+            ),
+        }
+        for binding in sorted(
+            node.public_environment + node.socket_environment,
+            key=lambda value: value.name,
+        )
+    )
+    secrets: list[Mapping[str, object]] = []
+    for delivery in node.secret_deliveries:
+        match delivery:
+            case SecretEnvironmentDelivery(environment_name=name):
+                secrets.append(
+                    {"kind": "secret-reference", "name": name, "reference": _REDACTED}
+                )
+            case SecretReferenceEnvironmentDelivery(environment_name=name):
+                secrets.append(
+                    {
+                        "kind": "secret-reference-identity",
+                        "name": name,
+                        "reference": _REDACTED,
+                    }
+                )
+            case SecretFileDelivery(target_path=path, path_binding=path_binding):
+                secrets.append(
+                    {
+                        "kind": "secret-file",
+                        "target_path": path,
+                        "reference": _REDACTED,
+                        "environment_name": (
+                            None
+                            if path_binding is None
+                            else path_binding.environment_name
+                        ),
+                    }
+                )
+    return public_and_socket + tuple(sorted(secrets, key=lambda value: str(value)))
 
 
 def _project_runtime(runtime: RuntimeRecord) -> OperatorRuntime:
@@ -220,7 +291,8 @@ def _project_edge(edge: Edge) -> OperatorEdge:
         provider_socket=edge.provider_socket,
         consumer_node_id=edge.consumer_role,
         requirement_socket=edge.requirement_socket,
-        protocol=edge.protocol.value,
+        transport=edge.protocol.transport.value,
+        application_protocol=edge.protocol.application.value,
     )
 
 

@@ -1,10 +1,10 @@
-"""Generic Roadmap 0007 workflow for planning any graph transition."""
+"""Roadmap 0007 planning-only fixture; use application.deploy for execution."""
 
 from __future__ import annotations
 
 from dataclasses import dataclass
 
-from control_plane_kit.topology import DeploymentGraph
+from control_plane_kit.core.topology import DeploymentGraph
 from control_plane_kit.workflows import (
     ActivityPlanningCommandService,
     ActivityPlanningResult,
@@ -103,7 +103,7 @@ def plan_graph_transition(
         )
     )
     approval: ApprovalRequestResult | None = None
-    if plan.plan_record.plan.ready_for_execution:
+    if plan.plan_record.plan.ready_for_execution and plan.plan_record.plan.activities:
         approval = services.approvals.execute(
             RequestPlanApproval(
                 session_id=session.session.session_id,

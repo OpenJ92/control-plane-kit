@@ -6,14 +6,18 @@ from control_plane_kit import (
     CapabilityName,
     DeploymentRecipe,
     DockerRuntime,
-    InstanceReadService,
     PlanOnlyImplementation,
     Protocol,
-    ProxyBlock,
     ProviderSocket,
+    ProxyBlock,
     RequirementSocket,
     SocketConnection,
     compile_recipe,
+)
+from control_plane_kit.read_services import (
+    InstanceReadService,
+)
+from control_plane_kit.servers import (
     create_instance_read_app,
 )
 from control_plane_kit.read_services import ReadModelError
@@ -54,7 +58,14 @@ class InstanceReadFastAPITests(PostgresStoreTestCase):
 
         self.assertEqual(workspace["workspace"]["workspace_id"], "workspace-a")
         self.assertEqual(current["graph_name"], "control-surface")
-        self.assertEqual(current["graph_descriptor"]["nodes"]["api-router"]["environment"], "<redacted>")
+        bindings = current["graph_descriptor"]["nodes"]["api-router"]["environment_bindings"]
+        self.assertTrue(bindings)
+        self.assertTrue(
+            all(
+                binding["value"] == "<redacted>"
+                for binding in bindings
+            )
+        )
         self.assertNotIn("http://api-v1", str(current))
 
     def test_projection_routes_delegate_to_read_service(self):
@@ -191,6 +202,7 @@ class InstanceReadFastAPITests(PostgresStoreTestCase):
             workspace_store=self.stores.workspace,
             graph_topology_store=self.stores.graph_topology,
             activity_history_store=self.stores.activity_history,
+            execution_store=self.stores.execution,
             observed_state_store=self.stores.observed_state,
         )
 

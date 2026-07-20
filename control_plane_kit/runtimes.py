@@ -6,8 +6,8 @@ from dataclasses import dataclass, field, replace
 from enum import StrEnum
 from typing import Mapping, Protocol
 
-from control_plane_kit.topology.graph import DeploymentGraph, Endpoint, RuntimeRecord
-from control_plane_kit.types import RuntimeKind
+from control_plane_kit.core.topology.graph import DeploymentGraph, Endpoint, RuntimeRecord
+from control_plane_kit.core.types import RuntimeKind
 
 
 class CleanupPolicy(StrEnum):
@@ -142,7 +142,7 @@ class DryRunRuntime:
                 DryRunActivity(
                     "observe-node",
                     node.node_id,
-                    {"kind": node.kind, "env": sorted(node.environment)},
+                    {"kind": node.kind, "env": sorted(node.non_secret_environment())},
                 )
             )
         return RuntimePlan(runtime_id=runtime_id, action="start", activities=tuple(activities))
@@ -155,7 +155,7 @@ class DryRunRuntime:
                 kind=graph.node(child).kind,
                 runtime_id=runtime_id,
                 healthy=True,
-                environment=graph.node(child).environment,
+                environment=graph.node(child).non_secret_environment(),
                 endpoints=graph.node(child).endpoints,
                 metadata={"planned": True},
             )

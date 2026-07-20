@@ -9,8 +9,8 @@ import unittest
 
 import psycopg
 
-from control_plane_kit.planning.activity_plan import SwitchSocketConnection
-from control_plane_kit.topology.graph import DeploymentGraph
+from control_plane_kit.core.planning.activity_plan import ReconcileNode
+from control_plane_kit.core.topology.graph import DeploymentGraph
 from control_plane_kit.stores import (
     GraphVersionRecord,
     OperationActionKind,
@@ -116,7 +116,7 @@ class ActivityPlanningCommandServiceTests(PostgresStoreTestCase):
         self.assertEqual(persisted.plan, result.plan_record.plan)
         self.assertTrue(
             any(
-                isinstance(activity.operation, SwitchSocketConnection)
+                isinstance(activity.operation, ReconcileNode)
                 for activity in persisted.plan.activities
             )
         )

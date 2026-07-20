@@ -2,19 +2,21 @@ import unittest
 
 from control_plane_kit import (
     DeploymentGraph,
-    RecoveryDisposition,
-    RECOVERY_CANDIDATE_SCHEMA,
-    RECOVERY_CANDIDATE_VERSION,
-    RecoveryLimitationCode,
-    RecoveryMode,
     StartNode,
     StartRuntime,
     StopNode,
     StopRuntime,
     compile_recipe,
+    validate_graph,
+)
+from control_plane_kit.operations.planning import (
+    RECOVERY_CANDIDATE_SCHEMA,
+    RECOVERY_CANDIDATE_VERSION,
+    RecoveryDisposition,
+    RecoveryLimitationCode,
+    RecoveryMode,
     plan_reconstruction,
     plan_recovery_transition,
-    validate_graph,
 )
 from examples.router_swap import recipe as router_recipe
 
@@ -78,7 +80,10 @@ class RecoveryPlanningTests(unittest.TestCase):
         self.assertEqual(first.descriptor(), second.descriptor())
         self.assertEqual(first.descriptor()["schema"], RECOVERY_CANDIDATE_SCHEMA)
         self.assertEqual(first.descriptor()["version"], RECOVERY_CANDIDATE_VERSION)
-        self.assertEqual(first.plan.__class__.__module__, "control_plane_kit.planning.activity_plan")
+        self.assertEqual(
+            first.plan.__class__.__module__,
+            "control_plane_kit.core.planning.activity_plan",
+        )
         self.assertNotIn("rollback", str(first.descriptor()).lower())
 
     def test_invalid_inputs_fail_before_planning(self):

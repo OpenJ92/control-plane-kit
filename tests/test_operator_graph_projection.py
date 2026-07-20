@@ -14,7 +14,7 @@ from control_plane_kit import (
     SocketConnection,
     compile_recipe,
 )
-from control_plane_kit.algebra import DeploymentRecipe
+from control_plane_kit.core.algebra import DeploymentRecipe
 from control_plane_kit.projections import project_operator_graph
 
 
@@ -71,7 +71,10 @@ class OperatorGraphProjectionTests(TestCase):
                 "edge_id": "postgres.internal-to-api.DATABASE_URL",
                 "provider": {"node_id": "postgres", "socket": "internal"},
                 "consumer": {"node_id": "api", "socket": "DATABASE_URL"},
-                "protocol": "postgres",
+                "protocol": {
+                    "transport": "tcp",
+                    "application": "postgres",
+                },
             },
         )
 
@@ -109,6 +112,27 @@ class OperatorGraphProjectionTests(TestCase):
         self.assertEqual(postgres["metadata"]["admin_token"], "<redacted>")
         self.assertEqual(runtime["metadata"]["runtime_secret"], "<redacted>")
         self.assertEqual(runtime["metadata"]["owner"], "dev")
+
+    def test_projection_exposes_typed_environment_sources_without_values(self):
+        graph = compile_recipe(_recipe_with_dangling_requirement())
+        nodes = {
+            value["node_id"]: value
+            for value in project_operator_graph(graph).descriptor()["nodes"]
+        }
+
+        api_binding = nodes["api"]["environment_bindings"][0]
+        postgres_bindings = nodes["postgres"]["environment_bindings"]
+        self.assertEqual(api_binding["kind"], "socket-derived")
+        self.assertEqual(api_binding["name"], "DATABASE_URL")
+        self.assertEqual(api_binding["value"], "<redacted>")
+        self.assertEqual(
+            {value["kind"] for value in postgres_bindings},
+            {"public-static"},
+        )
+        self.assertEqual(
+            {value["value"] for value in postgres_bindings},
+            {"<redacted>"},
+        )
 
     def test_projection_is_deterministic(self):
         graph = compile_recipe(_recipe_with_dangling_requirement())

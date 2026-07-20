@@ -9,13 +9,15 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 
-from control_plane_kit.planning import (
+from control_plane_kit.core.planning import (
     ActivityOperation,
     AddSocketConnection,
     ChangeTarget,
     NodeTarget,
     ReconcileNode,
     ReconcileRuntime,
+    RemoveNodeResource,
+    RemoveRuntimeResource,
     RemoveSocketConnection,
     ReviewChange,
     RiskLevel,
@@ -28,9 +30,9 @@ from control_plane_kit.planning import (
     SwitchSocketConnection,
     WaitForHealthy,
 )
-from control_plane_kit.topology import DeploymentGraph
-from control_plane_kit.topology.changes import FieldSubject
-from control_plane_kit.topology.validation import (
+from control_plane_kit.core.topology import DeploymentGraph
+from control_plane_kit.core.topology.changes import FieldSubject
+from control_plane_kit.core.topology.validation import (
     EdgeSubject,
     GraphSubject,
     NodeSubject,
@@ -83,6 +85,7 @@ def operation_expectation(operation: ActivityOperation) -> OperationExpectation:
         case (
             StartNode(target=NodeTarget(node_id=target_id))
             | StopNode(target=NodeTarget(node_id=target_id))
+            | RemoveNodeResource(target=NodeTarget(node_id=target_id))
             | WaitForHealthy(target=NodeTarget(node_id=target_id))
             | ReconcileNode(target=NodeTarget(node_id=target_id))
         ):
@@ -90,6 +93,7 @@ def operation_expectation(operation: ActivityOperation) -> OperationExpectation:
         case (
             StartRuntime(target=RuntimeTarget(runtime_id=target_id))
             | StopRuntime(target=RuntimeTarget(runtime_id=target_id))
+            | RemoveRuntimeResource(target=RuntimeTarget(runtime_id=target_id))
             | ReconcileRuntime(target=RuntimeTarget(runtime_id=target_id))
         ):
             return OperationExpectation(type(operation), target_id)

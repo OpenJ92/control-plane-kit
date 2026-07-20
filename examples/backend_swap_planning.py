@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from control_plane_kit.topology.graph import DeploymentGraph
+from control_plane_kit.core.topology.graph import DeploymentGraph
 from examples.scenarios.workflow import (
     GraphTransitionPlanningResult,
     PlanningWorkflowServices,

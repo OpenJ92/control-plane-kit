@@ -8,12 +8,11 @@ from control_plane_kit import (
 )
 from control_plane_kit.servers import (
     HttpRateLimiterServer,
-    HttpRequest,
-    HttpResponse,
     hello_server_block,
     http_rate_limiter_block,
 )
-from control_plane_kit.types import Protocol
+from control_plane_kit.products.servers.support.http_messages import HttpRequest, HttpResponse
+from control_plane_kit.core.types import Protocol
 
 
 class HttpRateLimiterServerBlockTests(TestCase):
@@ -37,7 +36,7 @@ class HttpRateLimiterServerBlockTests(TestCase):
         graph = compile_recipe(recipe)
 
         self.assertEqual(
-            graph.node("limiter").environment["RATE_LIMIT_TARGET_URL"],
+            graph.node("limiter").non_secret_environment()["RATE_LIMIT_TARGET_URL"],
             graph.node("app").endpoint("internal").url,
         )
 

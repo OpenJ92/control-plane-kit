@@ -9,12 +9,11 @@ from control_plane_kit import (
 )
 from control_plane_kit.servers import (
     HttpMultiplexerServer,
-    HttpRequest,
-    HttpResponse,
     hello_server_block,
     http_multiplexer_block,
 )
-from control_plane_kit.types import Protocol
+from control_plane_kit.products.servers.support.http_messages import HttpRequest, HttpResponse
+from control_plane_kit.core.types import Protocol
 
 
 class HttpMultiplexerServerBlockTests(TestCase):
@@ -45,11 +44,11 @@ class HttpMultiplexerServerBlockTests(TestCase):
 
         self.assertTrue(validate_graph(graph).valid)
         self.assertEqual(
-            graph.node("multiplexer").environment["MULTIPLEXER_PRIMARY_URL"],
+            graph.node("multiplexer").non_secret_environment()["MULTIPLEXER_PRIMARY_URL"],
             graph.node("app").endpoint("internal").url,
         )
         self.assertEqual(
-            graph.node("multiplexer").environment["MULTIPLEXER_OBSERVER_A_URL"],
+            graph.node("multiplexer").non_secret_environment()["MULTIPLEXER_OBSERVER_A_URL"],
             graph.node("observer").endpoint("internal").url,
         )
 

@@ -60,6 +60,42 @@ PROXY_TARGET_URL=http://app:8000
 Application code and package block code do not need to know who provided the
 value. They only receive the value appropriate for their runtime.
 
+## Example: Parameterized Hello Dependencies
+
+The Hello application can expose an arbitrary typed dependency surface for
+topology exercises:
+
+```python
+from control_plane_kit.servers import HelloDependency, hello_server_block
+
+gateway = hello_server_block(
+    "gateway",
+    dependencies=(
+        HelloDependency("orders"),
+        HelloDependency("inventory"),
+    ),
+)
+```
+
+Each value contributes paired requirements:
+
+```text
+http-orders      -> HELLO_HTTP_ORDERS_URL
+database-orders  -> HELLO_DATABASE_ORDERS_URL
+```
+
+Once socket connections fill those requirements, the application exposes:
+
+```text
+GET /dependencies/orders/http
+GET /dependencies/orders/database
+```
+
+The HTTP route performs bounded redirect-free forwarding. The database route
+performs a bounded TCP reachability check and returns only availability; it
+never returns the connection string or credentials. This remains a topology
+fixture rather than a production gateway or database health system.
+
 ## Example: Proxy
 
 ```python

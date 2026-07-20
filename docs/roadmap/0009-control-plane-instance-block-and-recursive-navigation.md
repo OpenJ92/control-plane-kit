@@ -137,6 +137,66 @@ retaining Postgres according to cleanup policy
 compensating completed external steps where safe
 ```
 
+Roadmap 0008 completed that handoff through the intentional application
+entrance. The CPI composes one `DeploymentProgram` at startup and binds or
+reconstructs short-lived deployments per HTTP request:
+
+```python
+from control_plane_kit.application.deploy import DeploymentProgram
+```
+
+The inherited program binds a graph pair with `program.between(current,
+desired)` and reconstructs later commands with `program.for_plan(plan_id)`.
+It supports initial deployment, update, teardown, and no-op through one
+language. Approval and recovery are explicit suspensions; admission, claim,
+execution, and guarded advancement are compositions of the canonical command
+services. Roadmap 0009 must use this program to deploy a CPI recipe rather than
+reconstructing its stages in a server route or startup script.
+
+The CPI API should map request boundaries directly:
+
+```text
+POST /workspaces/{workspace_id}/plans
+  -> program.between(current, desired).plan(command)
+
+POST /plans/{plan_id}/approvals/{approval_request_id}
+  -> program.for_plan(plan_id).approve(approval_request_id, grant)
+
+POST /plans/{plan_id}/executions
+  -> program.for_plan(plan_id).run(approval_request_id, execution_grant)
+```
+
+No route may retain a `Deploy` instance between requests. Plan and approval IDs
+refer to Postgres truth; the durable-context query reconstructs pinned graph and
+workflow evidence in one read-only UnitOfWork before the canonical mutating
+command begins.
+
+The executable Roadmap 0008 handoff includes:
+
+```text
+typed graph-pinned activity plans
+durable approval, admission, worker claim, run, and event truth
+pure saga scheduling and reconstructible compensation
+authenticated bounded HTTP control effects
+ownership-checked Docker effects and retained-resource policy
+explicit host publication
+separate process, reachability, health, and readiness evidence
+observations that never rewrite desired topology
+operator-visible uncertainty and recovery
+```
+
+`./gate-f-live-test.sh` proves an authenticated blue-to-green update through
+`Deploy` and the real adapters. Its initial bootstrap and final teardown retain
+a local harness boundary because a controller cannot join a Docker network
+before that network exists. Roadmap 0009 may improve generic bootstrap
+allocation, but it must not interpret that limitation as permission for a
+CPI-specialized executor.
+
+Guarded instance lifecycle issue #246 remains the first destructive-lifecycle
+prerequisite. CPI packaging may begin from the generic `ApplicationBlock`
+contract, but stop, pause, deconstruct, archive, and delete must not expose the
+older raw registry setter.
+
 If either handoff is absent, Roadmap 0009 stops and repairs the prerequisite
 roadmap. It must not add a CPI-specific transaction manager, activity executor,
 Docker startup script, or optimistic `started == healthy` shortcut.
@@ -707,6 +767,13 @@ root = the ControlPlaneInstanceBlock whose public endpoint was bootstrapped
 
 No `Hub` class, `HubServer`, `HubGraph`, or `HubAdmission` type is required.
 
+Before this roadmap exposes instance lifecycle mutation, issue #246 must replace
+the raw registry projection setter with guarded commands and append-only
+evidence. A ControlPlaneInstance is an ordinary application block, so its
+lifecycle must consume Roadmap 0008's generic execution outcomes rather than a
+CPI-specific executor. Stop, pause, deconstruct, archive, and delete remain
+distinct operations with explicit authority, idempotency, and retention laws.
+
 ## Discovery Is A Projection, Not Another Registry
 
 The current code contains instance-registry concepts introduced while Hub was
@@ -1240,6 +1307,29 @@ graph pair
   -> authenticated adapter projection
 ```
 
+The generated Hello corpus from Roadmap 0008 is also a mandatory CPI acceptance
+input. It supplies arbitrary bounded trees in which every application edge has
+paired HTTP and Postgres requirements, plus typed invalid graph variants. CPI
+tests must submit these graphs through the public planning and execution routes
+rather than constructing a CPI-specific fixture or bypassing `DeploymentProgram`:
+
+```text
+HelloGraphShape(branching_factor, depth)
+  -> valid or intentionally invalid DeploymentGraph
+    -> CPI plan request
+      -> validation evidence or approval suspension
+        -> approved execution
+          -> HTTP and Postgres edge verification
+            -> canonical teardown
+```
+
+The pure corpus may describe more resources than a developer should accidentally
+start on a laptop. Live CPI tests must therefore retain a separate explicit
+resource ceiling, fail before admission when the ceiling is exceeded, and allow
+an operator to raise it deliberately. At least one non-default multi-level shape
+must pass through the CPI API, and representative invalidities must produce no
+plan, approval, run, or Docker resources.
+
 - `ControlPlaneInstanceBlock` is an ordinary `ApplicationBlock` and therefore a
   `DeployBlock`.
 - `ControlPlaneInstanceSpec` survives recipe compilation, descriptor
@@ -1248,6 +1338,11 @@ graph pair
   metadata strings.
 - Existing recipe, graph, diff, and execution code accepts it without a new node
   alternative.
+- Generated valid Hello trees pass through CPI planning, approval, execution,
+  edge verification, and teardown without a specialized execution path.
+- Generated invalid Hello graphs fail before durable planning or runtime
+  mutation, and the live resource ceiling prevents accidental container
+  explosion unless an operator explicitly raises it.
 - Socket connections supply its Postgres and HTTP requirements normally.
 - The Stage A core recipe runs the real CPI image with Postgres, an intentionally
   published development endpoint, truthful health, and a real read route.

@@ -6,8 +6,9 @@ from control_plane_kit import (
     SocketConnection,
     compile_recipe,
 )
-from control_plane_kit.servers import HttpProxyServer, HttpRequest, HttpResponse, hello_server_block, http_proxy_block
-from control_plane_kit.types import Protocol
+from control_plane_kit.products.servers.support.http_messages import HttpRequest, HttpResponse
+from control_plane_kit.servers import HttpProxyServer, hello_server_block, http_proxy_block
+from control_plane_kit.core.types import Protocol
 
 
 class HttpProxyServerBlockTests(TestCase):
@@ -30,7 +31,7 @@ class HttpProxyServerBlockTests(TestCase):
 
         graph = compile_recipe(recipe)
 
-        self.assertEqual(graph.node("proxy").environment["PROXY_TARGET_URL"], graph.node("app").endpoint("internal").url)
+        self.assertEqual(graph.node("proxy").non_secret_environment()["PROXY_TARGET_URL"], graph.node("app").endpoint("internal").url)
 
     def test_proxy_forwards_request_to_active_target(self):
         seen: list[HttpRequest] = []

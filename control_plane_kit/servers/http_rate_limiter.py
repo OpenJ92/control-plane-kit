@@ -5,13 +5,13 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from typing import Mapping
 
-from control_plane_kit.algebra import BlockSockets, BlockSpec, ProviderSocket, ProxyBlock, RequirementSocket
-from control_plane_kit.capabilities import CapabilityName
+from control_plane_kit.core.algebra import BlockSockets, PackageServerProduct, PackageServerSpec, ProviderSocket, ProxyBlock, RequirementSocket
+from control_plane_kit.core.capabilities import CapabilityName
 from control_plane_kit.contracts import RuntimeContract, RuntimeValueVariable
 from control_plane_kit.implementations import DockerImageImplementation
-from control_plane_kit.servers._templates import render_python_command
-from control_plane_kit.servers.http_messages import HttpHandler, HttpRequest, HttpResponse
-from control_plane_kit.types import Protocol
+from control_plane_kit.products.servers.support.command_rendering import render_python_command
+from control_plane_kit.products.servers.support.http_messages import HttpHandler, HttpRequest, HttpResponse
+from control_plane_kit.core.types import Protocol
 
 
 class HttpRateLimiterRuntime(RuntimeContract):
@@ -76,15 +76,12 @@ def http_rate_limiter_block(
     """Return a Docker-backed HTTP rate-limiter block."""
 
     return ProxyBlock(
-        BlockSpec(
-            block_id,
-            display_name,
+        PackageServerSpec(
+            role_id=block_id,
+            product=PackageServerProduct.HTTP_RATE_LIMITER,
+            display_name=display_name,
             health_path="/",
-            capabilities=(
-                CapabilityName.HEALTH_CHECKABLE,
-                CapabilityName.TARGET_MUTABLE,
-                CapabilityName.METRICS_READABLE,
-            ),
+            capabilities=(CapabilityName.HEALTH_CHECKABLE,),
             metadata={"behavior": "http-rate-limiter"},
         ),
         DockerImageImplementation(
@@ -99,13 +96,16 @@ def http_rate_limiter_block(
     )
 
 
-def http_rate_limiter_command() -> tuple[str, ...]:
+def http_rate_limiter_command(*, port: int = 8080) -> tuple[str, ...]:
     """Return a tiny stdlib quota-gated HTTP forwarding command."""
+
+    if type(port) is not int or port < 1 or port > 65_535:
+        raise ValueError("rate limiter port must be between 1 and 65535")
 
     return render_python_command(
         "http_rate_limiter.py.j2",
         target_env="RATE_LIMIT_TARGET_URL",
         limit_env="RATE_LIMIT_REQUESTS",
         default_limit=60,
-        port=8080,
+        port=port,
     )

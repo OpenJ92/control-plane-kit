@@ -1,8 +1,14 @@
 """Source-of-truth store contracts for control-plane backend state."""
 
+from control_plane_kit.execution import (
+    ActivityEventRecord,
+    ActivityRunRecord,
+    ObservationRecord,
+)
 from control_plane_kit.stores.postgres import (
     POSTGRES_SCHEMA,
     PostgresActivityHistoryStore,
+    PostgresExecutionStore,
     PostgresGraphTopologyStore,
     PostgresInstanceRegistryStore,
     PostgresObservedStateStore,
@@ -18,15 +24,12 @@ from control_plane_kit.stores.unit_of_work import (
     UnitOfWorkStateError,
 )
 from control_plane_kit.stores.records import (
-    ActivityEventRecord,
     ActivityPlanRecord,
-    ActivityRunRecord,
     ApprovalDecisionKind,
     ApprovalDecisionRecord,
     ApprovalRequestRecord,
     GraphVersionRecord,
     InstanceRecord,
-    ObservationRecord,
     OperationActionKind,
     OperationActionRecord,
     OperationSessionRecord,
@@ -37,6 +40,7 @@ from control_plane_kit.stores.records import (
 )
 from control_plane_kit.stores.protocols import (
     ActivityHistoryStore,
+    ExecutionStore,
     GraphTopologyStore,
     InstanceRegistryStore,
     ObservedStateStore,
@@ -49,6 +53,7 @@ __all__ = [
     "ActivityHistoryStore",
     "ActivityPlanRecord",
     "ActivityRunRecord",
+    "ExecutionStore",
     "ApprovalDecisionKind",
     "ApprovalDecisionRecord",
     "ApprovalRequestRecord",
@@ -64,6 +69,7 @@ __all__ = [
     "OperationSessionStatus",
     "POSTGRES_SCHEMA",
     "PostgresActivityHistoryStore",
+    "PostgresExecutionStore",
     "PostgresGraphTopologyStore",
     "PostgresInstanceRegistryStore",
     "PostgresObservedStateStore",

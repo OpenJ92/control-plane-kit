@@ -12,7 +12,7 @@ class CompileTests(TestCase):
         api = graph.node("orders-api")
         postgres = graph.node("postgres")
         self.assertEqual(
-            api.environment["DATABASE_URL"],
+            api.non_secret_environment()["DATABASE_URL"],
             postgres.endpoint("internal").url,
         )
         edge = graph.edges["postgres.internal-to-orders-api.DATABASE_URL"]
@@ -38,8 +38,8 @@ class CompileTests(TestCase):
         api = graph.node("api")
         inventory = graph.node("inventory-service")
         postgres = graph.node("postgres")
-        self.assertEqual(api.environment["INVENTORY_SERVICE_URL"], inventory.endpoint("internal").url)
-        self.assertEqual(inventory.environment["DATABASE_URL"], postgres.endpoint("internal").url)
+        self.assertEqual(api.non_secret_environment()["INVENTORY_SERVICE_URL"], inventory.endpoint("internal").url)
+        self.assertEqual(inventory.non_secret_environment()["DATABASE_URL"], postgres.endpoint("internal").url)
 
     def test_protocol_mismatch_fails(self):
         source = app_recipe()

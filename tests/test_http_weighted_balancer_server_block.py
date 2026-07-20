@@ -7,13 +7,12 @@ from control_plane_kit import (
     compile_recipe,
 )
 from control_plane_kit.servers import (
-    HttpRequest,
-    HttpResponse,
     HttpWeightedLoadBalancerServer,
     hello_server_block,
     http_weighted_load_balancer_block,
 )
-from control_plane_kit.types import Protocol
+from control_plane_kit.products.servers.support.http_messages import HttpRequest, HttpResponse
+from control_plane_kit.core.types import Protocol
 
 
 class HttpWeightedLoadBalancerServerBlockTests(TestCase):
@@ -40,11 +39,11 @@ class HttpWeightedLoadBalancerServerBlockTests(TestCase):
         graph = compile_recipe(recipe)
 
         self.assertEqual(
-            graph.node("balancer").environment["BALANCER_TARGET_A_URL"],
+            graph.node("balancer").non_secret_environment()["BALANCER_TARGET_A_URL"],
             graph.node("app-a").endpoint("internal").url,
         )
         self.assertEqual(
-            graph.node("balancer").environment["BALANCER_TARGET_B_URL"],
+            graph.node("balancer").non_secret_environment()["BALANCER_TARGET_B_URL"],
             graph.node("app-b").endpoint("internal").url,
         )
 
