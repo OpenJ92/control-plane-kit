@@ -38,6 +38,7 @@ The initial extraction has a deliberately narrow completion boundary:
 
 ```text
 complete generic control-plane-kit-core
+  + core-owned CPI OCI image and external self descriptor
   + one external Hello server product
   + isomorphic unit and live-demo evidence
 ```
@@ -97,6 +98,35 @@ optional runtime dependency
 Neither dependency is mandatory for a non-Python or CPK-unaware application.
 Core consumes admitted language-neutral descriptors; it never imports the
 server catalogue or discovers products by importing arbitrary modules.
+
+### Core self-description
+
+`control-plane-kit-core` also publishes the runnable control-plane instance as
+an immutable OCI image and publishes a companion language-neutral descriptor:
+
+```text
+ghcr.io/openj92/control-plane-kit-core/control-plane-instance@sha256:...
+control-plane-instance.product.cpk.json
+```
+
+This does not make the control-plane instance a built-in case in the core
+algebra. The descriptor is ordinary external product data that declares the
+image, provider and requirement sockets, configuration, verification, and
+capabilities of the process hosted by core. Core must not automatically import,
+trust, or register its own descriptor.
+
+The bootstrap build proves that the image and descriptor are publishable and
+internally coherent. Recursive self-hosting remains later work:
+
+```text
+published core descriptor
+  -> ordinary catalogue admission
+    -> ordinary graph node
+      -> parent CPI deploys child CPI
+```
+
+The same descriptor and image digest must be used later. Gate 9 must not invent
+a second CPI product declaration or a privileged self-registration path.
 
 ### Initial workload constraint
 
@@ -779,12 +809,14 @@ Catalogue composition occurs at CPI startup:
 ```text
 ProductCatalog.empty()
   + control-plane-kit-servers base catalogue
-  + control-plane-instance products
   + operator-admitted products
+  + admitted core CPI descriptor, when explicitly selected
 ```
 
 The core package does not import or automatically register the server package.
-The CPI entrypoint is the composition root.
+The CPI entrypoint is the composition root. The self descriptor is not in the
+catalogue merely because its image hosts the running process; an operator or
+parent CPI admits it through the ordinary authenticated workflow.
 
 Recursion is graph recursion:
 
@@ -944,6 +976,7 @@ pipeline, real runtime interpreter, observations, and cleanup path.
 - HTTP, probe, configuration, and secret interpreter tests;
 - package DAG and AST architecture policies;
 - base-wheel and optional-dependency tests;
+- CPI image build, external self-descriptor, and import-isolation tests;
 - one external fixture-product proof;
 - and existing DeploymentProgram acceptance.
 
@@ -1041,8 +1074,11 @@ Deliver in `control-plane-kit-core`:
 8. duplicate and unknown identity rejection;
 9. runtime and capability implementation identities;
 10. admitted descriptor digest semantics;
-11. external fixture package proof;
-12. architecture, security, and test-parity review.
+11. runnable CPI OCI image and pinned publication workflow;
+12. external `control-plane-instance.product.cpk.json` self descriptor;
+13. image/descriptor coherence and base live-health proof;
+14. external fixture package proof;
+15. architecture, security, and test-parity review.
 
 Stop before moving a real product until an external descriptor can pass the
 entire pure pipeline and produce pinned runtime material.
@@ -1051,6 +1087,12 @@ Gate 1 is completed before `control-plane-kit-servers` receives product code.
 An intentionally tiny fixture may prove the extension boundary, but it is not a
 catalogue product and must not introduce Hello or another server identity into
 core.
+
+The core-owned CPI descriptor is the sole deliberate product declaration in the
+core repository. It lives at a publication boundary rather than inside the
+generic graph, planning, execution, or catalogue language. Architecture tests
+must prove that importing core does not load the descriptor, process entrypoint,
+HTTP stack, or image implementation.
 
 ### Gate 2: Server Repository And Hello Proof
 
@@ -1073,7 +1115,8 @@ It is also the complete bootstrap server scope. At Gate 2 closeout:
 
 ```text
 control-plane-kit-core
-  contains the full generic pipeline and no product identities
+  contains the full generic pipeline plus one external self-description
+  for its runnable CPI image; the pipeline contains no product identities
 
 control-plane-kit-servers
   contains exactly one migrated product: Hello
@@ -1200,8 +1243,8 @@ The iOS app speaks only to the selected CPI.
 
 ### Gate 9: Recursive CPI Product
 
-Package the CPI as an external OCI server product, compose its base catalogue,
-and prove:
+Admit the already-published core CPI descriptor as an ordinary external server
+product, compose the selected base catalogue, and prove:
 
 ```text
 bootstrap CPI
@@ -1298,8 +1341,11 @@ Suggested core children:
 8. Implement immutable ProductCatalog composition
 9. Propagate product identity through graph, plan, and effect material
 10. Prove unknown, duplicate, and malicious descriptors fail closed
-11. Prove an external fixture distribution
-12. Complete architecture/security/test-integrity/parity review
+11. Package and publish the runnable CPI OCI image
+12. Publish the external CPI product descriptor
+13. Prove image, descriptor, health, digest, and import-boundary coherence
+14. Prove an external fixture distribution
+15. Complete architecture/security/test-integrity/parity review
 ```
 
 Suggested server children:
@@ -1345,7 +1391,8 @@ The bootstrap extraction succeeds when:
 
 ```text
 control-plane-kit-core
-  owns the complete generic pipeline without server-product identity
+  owns the complete generic pipeline without built-in server-product identity
+  and publishes its CPI image plus external self descriptor
 
 control-plane-kit-servers
   owns one complete Hello product descriptor and pinned OCI image
