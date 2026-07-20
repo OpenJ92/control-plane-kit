@@ -1,6 +1,6 @@
 """Pure public API for describing, validating, comparing, and planning deployments."""
 
-from control_plane_kit.capabilities import (
+from control_plane_kit.core.capabilities import (
     CAPABILITIES,
     CIRCUIT_RESETTABLE,
     CIRCUIT_STATE_READABLE,
@@ -48,7 +48,7 @@ from control_plane_kit.discovery import (
     discovery_registration_from_descriptor,
     discovery_result_from_descriptor,
 )
-from control_plane_kit.configuration import (
+from control_plane_kit.core.configuration import (
     MAX_CONFIGURATION_BYTES,
     ConfigurationArtifact,
     ConfigurationArtifactError,
@@ -64,7 +64,7 @@ from control_plane_kit.configuration_rendering import (
     ConfigurationTemplateSyntaxError,
     ConfigurationValue,
 )
-from control_plane_kit.secrets import (
+from control_plane_kit.core.secrets import (
     CredentialReference,
     LocalDevelopmentSecretResolver,
     SecretDelivery,
@@ -88,7 +88,7 @@ from control_plane_kit.secrets import (
     secret_delivery_from_descriptor,
     secret_delivery_sort_key,
 )
-from control_plane_kit.verification import (
+from control_plane_kit.core.verification import (
     MAX_VERIFICATION_CHECKS,
     MAX_VERIFICATION_TEXT,
     BrokerRoundTripCheck,
@@ -118,7 +118,7 @@ from control_plane_kit.verification import (
     verification_capability,
     verification_check_from_descriptor,
 )
-from control_plane_kit.algebra import (
+from control_plane_kit.core.algebra import (
     ApplicationBlock,
     BlockSpec,
     DataBlock,
@@ -134,7 +134,7 @@ from control_plane_kit.algebra import (
     RuntimeContext,
     SocketConnection,
 )
-from control_plane_kit.lifecycle import (
+from control_plane_kit.core.lifecycle import (
     EXTERNAL_RETAINED,
     OWNED_EPHEMERAL,
     DataResourceSpec,
@@ -355,7 +355,7 @@ from control_plane_kit.contracts import (
     StaleContractVersion,
     ValidationErrorDetail,
 )
-from control_plane_kit.control_routes import (
+from control_plane_kit.core.control_routes import (
     CIRCUIT_ROUTES,
     CACHE_ROUTES,
     COMMON_STATUS_ROUTES,
@@ -488,7 +488,7 @@ from control_plane_kit.topology.changes import (
     UnsupportedReason,
 )
 from control_plane_kit.topology.diff import diff_graphs
-from control_plane_kit.environment import (
+from control_plane_kit.core.environment import (
     EnvironmentBinding,
     PublicStaticEnvironmentBinding,
     SocketDerivedEnvironmentBinding,
@@ -539,7 +539,7 @@ from control_plane_kit.planning.recovery import (
     plan_reconstruction,
     plan_recovery_transition,
 )
-from control_plane_kit.types import (
+from control_plane_kit.core.types import (
     ApplicationProtocol,
     BlockFamily,
     EndpointScope,

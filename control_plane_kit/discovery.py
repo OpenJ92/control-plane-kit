@@ -13,7 +13,7 @@ from control_plane_kit.topology.graph import (
     Endpoint,
     LiteralAddress,
 )
-from control_plane_kit.types import EndpointScope, Protocol
+from control_plane_kit.core.types import EndpointScope, Protocol
 
 
 _IDENTIFIER = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$")

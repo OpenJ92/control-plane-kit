@@ -24,7 +24,7 @@ from control_plane_kit.effects.probes import (
     RuntimeEndpointObservation,
     TransportProbeIntent,
 )
-from control_plane_kit.types import Transport
+from control_plane_kit.core.types import Transport
 
 
 class UnsupportedTransportProbe(ValueError):

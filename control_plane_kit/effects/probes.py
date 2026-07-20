@@ -19,7 +19,7 @@ from control_plane_kit.execution import (
     ProbeOutcome,
     probe_outcome_is_valid,
 )
-from control_plane_kit.types import Protocol
+from control_plane_kit.core.types import Protocol
 
 
 class ProbeConstructionCode(StrEnum):

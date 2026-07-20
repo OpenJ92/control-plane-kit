@@ -16,7 +16,7 @@ from control_plane_kit.discovery import (
     DiscoveryRegistrationStatus,
 )
 from control_plane_kit.topology.graph import Endpoint, LiteralAddress
-from control_plane_kit.types import EndpointScope, Protocol as ConnectionProtocol
+from control_plane_kit.core.types import EndpointScope, Protocol as ConnectionProtocol
 
 
 DISCOVERY_POSTGRES_SCHEMA = """

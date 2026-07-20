@@ -13,7 +13,7 @@ from control_plane_kit.servers import (
     hello_server_block,
     http_rate_limiter_block,
 )
-from control_plane_kit.types import Protocol
+from control_plane_kit.core.types import Protocol
 
 
 class HttpRateLimiterServerBlockTests(TestCase):

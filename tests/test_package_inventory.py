@@ -2,7 +2,10 @@ from __future__ import annotations
 
 import json
 from pathlib import Path
+import sys
 import unittest
+
+from tests.architecture import analyze_file
 
 
 OWNERS = {
@@ -97,7 +100,7 @@ class PackageModuleInventoryTests(unittest.TestCase):
 
         self.assertIn("control_plane_kit.topology.graph", core)
         self.assertIn("control_plane_kit.planning.compiler", core)
-        self.assertIn("control_plane_kit.verification", core)
+        self.assertIn("control_plane_kit.core.verification", core)
         self.assertNotIn("control_plane_kit.contracts", core)
         self.assertNotIn("control_plane_kit.saga.state", core)
         self.assertNotIn("control_plane_kit.execution.values", core)
@@ -114,6 +117,46 @@ class PackageModuleInventoryTests(unittest.TestCase):
         self.assertIs(record["domain_qualification"]["qualifies"], False)
         self.assertIn("control_plane_kit.discovery", record["internal_dependencies"])
         self.assertIn("tests/test_coredns.py", record["protecting_tests"])
+
+    def test_core_primitive_floor_has_only_declared_pure_dependencies(self) -> None:
+        primitive_modules = {
+            "control_plane_kit.core.algebra",
+            "control_plane_kit.core.capabilities",
+            "control_plane_kit.core.configuration",
+            "control_plane_kit.core.control_routes",
+            "control_plane_kit.core.environment",
+            "control_plane_kit.core.lifecycle",
+            "control_plane_kit.core.secrets",
+            "control_plane_kit.core.types",
+            "control_plane_kit.core.verification",
+        }
+        facts = tuple(
+            analyze_file(
+                self.root / (module.replace(".", "/") + ".py"),
+                root=self.root,
+            )
+            for module in sorted(primitive_modules)
+        )
+        external = {
+            imported.qualified_name.split(".", 1)[0]
+            for source in facts
+            for imported in source.imports
+            if not imported.qualified_name.startswith("control_plane_kit.core")
+            and imported.qualified_name.split(".", 1)[0]
+            not in sys.stdlib_module_names
+            and imported.qualified_name != "__future__.annotations"
+        }
+        internal = {
+            imported.qualified_name
+            for source in facts
+            for imported in source.imports
+            if imported.qualified_name.startswith("control_plane_kit")
+        }
+
+        self.assertEqual(external, {"yaml"})
+        self.assertTrue(
+            all(value.startswith("control_plane_kit.core") for value in internal)
+        )
 
     def _module_name(self, path: Path) -> str:
         relative = path.relative_to(self.root).with_suffix("")

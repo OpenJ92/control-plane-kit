@@ -12,7 +12,7 @@ import re
 from typing import Mapping, TypeAlias
 from urllib.parse import urlsplit
 
-from control_plane_kit.secrets import SecretReference
+from control_plane_kit.core.secrets import SecretReference
 
 
 MAX_WEBHOOK_PAYLOAD_BYTES = 1_048_576

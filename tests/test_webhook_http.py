@@ -7,7 +7,7 @@ import unittest
 
 import httpx
 
-from control_plane_kit.secrets import (
+from control_plane_kit.core.secrets import (
     SecretProviderAuthority,
     SecretProviderId,
     SecretReference,

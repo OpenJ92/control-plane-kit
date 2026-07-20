@@ -35,7 +35,7 @@ from control_plane_kit.planning import (
     SwitchSocketConnection,
     WaitForHealthy,
 )
-from control_plane_kit.secrets import SecretReference, SecretResolutionError
+from control_plane_kit.core.secrets import SecretReference, SecretResolutionError
 
 
 MAX_EFFECT_TIMEOUT_SECONDS = 300

@@ -5,7 +5,7 @@ from __future__ import annotations
 import json
 from collections.abc import Mapping
 
-from control_plane_kit.algebra import (
+from control_plane_kit.core.algebra import (
     ApplicationBlock,
     BlockSockets,
     PackageServerProduct,
@@ -14,16 +14,16 @@ from control_plane_kit.algebra import (
     ProviderSocket,
     RequirementSocket,
 )
-from control_plane_kit.capabilities import CapabilityName
-from control_plane_kit.environment import PublicStaticEnvironmentBinding
+from control_plane_kit.core.capabilities import CapabilityName
+from control_plane_kit.core.environment import PublicStaticEnvironmentBinding
 from control_plane_kit.implementations import DockerImageImplementation
-from control_plane_kit.secrets import (
+from control_plane_kit.core.secrets import (
     SecretEnvironmentDelivery,
     SecretReference,
     SecretReferenceEnvironmentDelivery,
 )
-from control_plane_kit.types import Protocol
-from control_plane_kit.verification import HttpCheck, VerificationContract
+from control_plane_kit.core.types import Protocol
+from control_plane_kit.core.verification import HttpCheck, VerificationContract
 from control_plane_kit.webhook.http import (
     WebhookAddressPolicy,
     WebhookEndpointGrant,

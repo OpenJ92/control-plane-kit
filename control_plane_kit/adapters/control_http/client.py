@@ -16,8 +16,8 @@ from control_plane_kit.adapters.control_http.security import (
     SecretResolver,
     authorize_control_endpoint,
 )
-from control_plane_kit.capabilities import CapabilityName
-from control_plane_kit.control_routes import control_path
+from control_plane_kit.core.capabilities import CapabilityName
+from control_plane_kit.core.control_routes import control_path
 from control_plane_kit.effects import (
     ActivateTarget,
     DrainTarget,
@@ -48,7 +48,7 @@ from control_plane_kit.planning import (
     SwitchSocketConnection,
     WaitForHealthy,
 )
-from control_plane_kit.types import Protocol as NetworkProtocol
+from control_plane_kit.core.types import Protocol as NetworkProtocol
 
 
 @dataclass(frozen=True)

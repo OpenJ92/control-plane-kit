@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import json
 
-from control_plane_kit.algebra import BlockSpec
+from control_plane_kit.core.algebra import BlockSpec
 from control_plane_kit.topology.graph import DeploymentGraph, Node
 from control_plane_kit.topology.changes import (
     AddedChange,

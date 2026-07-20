@@ -25,7 +25,7 @@ from control_plane_kit import (
     compile_recipe,
     validate_graph,
 )
-from control_plane_kit.types import SocketBinding
+from control_plane_kit.core.types import SocketBinding
 
 
 @dataclass(frozen=True)

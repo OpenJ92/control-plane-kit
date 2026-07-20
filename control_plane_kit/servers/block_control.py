@@ -9,9 +9,9 @@ import hmac
 import json
 from threading import RLock
 
-from control_plane_kit.capabilities import CapabilityName, capability_named
+from control_plane_kit.core.capabilities import CapabilityName, capability_named
 from control_plane_kit.contracts import RuntimeContract, RuntimeMapVariable, RuntimeValueVariable
-from control_plane_kit.control_routes import DEFAULT_CONTROL_PREFIX
+from control_plane_kit.core.control_routes import DEFAULT_CONTROL_PREFIX
 from control_plane_kit.servers._fastapi import require_fastapi
 
 StatusProvider = Callable[[], Mapping[str, object]]

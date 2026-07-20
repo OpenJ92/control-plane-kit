@@ -15,13 +15,13 @@ from control_plane_kit.adapters.control_http import (
     authorize_control_endpoint,
 )
 from control_plane_kit.effects import EndpointMaterial, LiteralEndpointMaterial, SecretEndpointMaterial
-from control_plane_kit.secrets import (
+from control_plane_kit.core.secrets import (
     SecretProviderAuthority,
     SecretProviderId,
     SecretResolutionError,
     SecretResolved,
 )
-from control_plane_kit.types import EndpointScope, Protocol
+from control_plane_kit.core.types import EndpointScope, Protocol
 
 
 @dataclass

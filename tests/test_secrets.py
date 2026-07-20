@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import unittest
 
-from control_plane_kit.secrets import (
+from control_plane_kit.core.secrets import (
     LocalDevelopmentSecretResolver,
     SecretDenied,
     SecretEnvironmentDelivery,

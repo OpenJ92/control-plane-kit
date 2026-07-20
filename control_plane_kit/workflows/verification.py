@@ -19,8 +19,8 @@ from control_plane_kit.execution import (
     ProbeOutcome,
 )
 from control_plane_kit.stores import PostgresUnitOfWork
-from control_plane_kit.types import EndpointScope
-from control_plane_kit.verification import (
+from control_plane_kit.core.types import EndpointScope
+from control_plane_kit.core.verification import (
     VerificationCompleted,
     VerificationOutcome,
     VerificationResult,

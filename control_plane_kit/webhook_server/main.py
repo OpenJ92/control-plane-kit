@@ -14,7 +14,7 @@ from control_plane_kit.contracts import (
     SecretVariable,
     TextVariable,
 )
-from control_plane_kit.secrets import (
+from control_plane_kit.core.secrets import (
     LocalDevelopmentSecretResolver,
     SecretProviderAuthority,
     SecretReference,

@@ -5,11 +5,11 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from ipaddress import IPv4Address, IPv6Address
 
-from control_plane_kit.algebra import BlockSockets, RuntimeContext
-from control_plane_kit.configuration import ConfigurationArtifact
-from control_plane_kit.environment import PublicStaticEnvironmentBinding
-from control_plane_kit.lifecycle import ResourceLifecycle
-from control_plane_kit.secrets import (
+from control_plane_kit.core.algebra import BlockSockets, RuntimeContext
+from control_plane_kit.core.configuration import ConfigurationArtifact
+from control_plane_kit.core.environment import PublicStaticEnvironmentBinding
+from control_plane_kit.core.lifecycle import ResourceLifecycle
+from control_plane_kit.core.secrets import (
     SecretDelivery,
     SecretEnvironmentDelivery,
     SecretFileDelivery,
@@ -18,7 +18,7 @@ from control_plane_kit.secrets import (
     secret_delivery_sort_key,
 )
 from control_plane_kit.topology.graph import Endpoint, EndpointAddress, LiteralAddress
-from control_plane_kit.types import EndpointScope, Protocol, RuntimeKind
+from control_plane_kit.core.types import EndpointScope, Protocol, RuntimeKind
 
 
 @dataclass(frozen=True)

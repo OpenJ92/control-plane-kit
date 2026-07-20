@@ -54,7 +54,7 @@ from control_plane_kit.topology import (
     diff_graphs,
     validate_graph,
 )
-from control_plane_kit.types import RuntimeKind
+from control_plane_kit.core.types import RuntimeKind
 from examples.scenarios import planning_scenarios
 from control_plane_kit.workflows import (
     CoordinatorCheckpoint,

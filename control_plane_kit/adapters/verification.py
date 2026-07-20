@@ -19,8 +19,8 @@ from control_plane_kit.effects.material import VerificationCheckMaterial
 from control_plane_kit.effects.probes import RuntimeEndpointObservation
 from control_plane_kit.effects.verification import verification_identity
 from control_plane_kit.execution import EndpointContext
-from control_plane_kit.types import EndpointScope
-from control_plane_kit.verification import (
+from control_plane_kit.core.types import EndpointScope
+from control_plane_kit.core.verification import (
     HttpCheck,
     HttpVerificationEvidence,
     RedisCheck,

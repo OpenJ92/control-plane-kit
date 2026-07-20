@@ -10,6 +10,7 @@ import unittest
 import control_plane_kit
 from control_plane_kit.application import deploy as deployment
 from control_plane_kit import effects, planning, saga, scheduling, topology
+from control_plane_kit.core import algebra, configuration, secrets, types, verification
 
 
 class PackageStructureTests(unittest.TestCase):
@@ -54,6 +55,23 @@ class PackageStructureTests(unittest.TestCase):
         self.assertIs(control_plane_kit.EffectInterpreter, effects.EffectInterpreter)
 
     def test_canonical_types_report_their_new_module_homes(self) -> None:
+        self.assertEqual(
+            algebra.DeploymentRecipe.__module__,
+            "control_plane_kit.core.algebra",
+        )
+        self.assertEqual(
+            configuration.ConfigurationArtifact.__module__,
+            "control_plane_kit.core.configuration",
+        )
+        self.assertEqual(
+            secrets.SecretReference.__module__,
+            "control_plane_kit.core.secrets",
+        )
+        self.assertEqual(types.Protocol.__module__, "control_plane_kit.core.types")
+        self.assertEqual(
+            verification.VerificationContract.__module__,
+            "control_plane_kit.core.verification",
+        )
         self.assertEqual(topology.DeploymentGraph.__module__, "control_plane_kit.topology.graph")
         self.assertEqual(topology.GraphDiff.__module__, "control_plane_kit.topology.changes")
         self.assertEqual(planning.ActivityPlan.__module__, "control_plane_kit.planning.activity_plan")
@@ -67,16 +85,25 @@ class PackageStructureTests(unittest.TestCase):
 
     def test_retired_flat_modules_are_not_importable(self) -> None:
         retired_modules = (
+            "algebra",
             "activity_plan",
             "activity_plan_codec",
             "activity_plan_compiler",
             "compiler",
+            "capabilities",
+            "configuration",
+            "control_routes",
+            "environment",
             "graph",
             "graph_changes",
             "graph_codec",
             "graph_diff",
             "recovery",
+            "lifecycle",
+            "secrets",
+            "types",
             "validation",
+            "verification",
         )
 
         for module in retired_modules:

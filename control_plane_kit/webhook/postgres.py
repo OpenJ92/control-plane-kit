@@ -27,7 +27,7 @@ from control_plane_kit.webhook.language import (
     webhook_event_descriptor,
     webhook_event_from_descriptor,
 )
-from control_plane_kit.secrets import SecretReference
+from control_plane_kit.core.secrets import SecretReference
 
 
 WEBHOOK_POSTGRES_SCHEMA = f"""

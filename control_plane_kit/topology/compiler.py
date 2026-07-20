@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from control_plane_kit.algebra import (
+from control_plane_kit.core.algebra import (
     ApplicationBlock,
     DataBlock,
     DeployBlock,
@@ -13,10 +13,10 @@ from control_plane_kit.algebra import (
     RuntimeContext,
     SocketConnection,
 )
-from control_plane_kit.capabilities import capability_named
-from control_plane_kit.environment import SocketDerivedEnvironmentBinding
+from control_plane_kit.core.capabilities import capability_named
+from control_plane_kit.core.environment import SocketDerivedEnvironmentBinding
 from control_plane_kit.topology.graph import DeploymentGraph, Edge, Node, RuntimeRecord
-from control_plane_kit.types import BlockFamily
+from control_plane_kit.core.types import BlockFamily
 
 
 def compile_recipe(recipe: DeploymentRecipe) -> DeploymentGraph:

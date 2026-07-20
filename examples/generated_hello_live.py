@@ -54,7 +54,7 @@ from control_plane_kit.stores import (
     install_schema,
 )
 from control_plane_kit.topology import DeploymentGraph
-from control_plane_kit.types import Protocol
+from control_plane_kit.core.types import Protocol
 from control_plane_kit.workflows import (
     ActivityPlanningCommandService,
     ActivityPlanningGraphInvalid,

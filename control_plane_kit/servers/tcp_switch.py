@@ -9,7 +9,7 @@ from enum import StrEnum
 from threading import Lock
 from urllib.parse import urlsplit
 
-from control_plane_kit.algebra import (
+from control_plane_kit.core.algebra import (
     BlockSockets,
     PackageServerProduct,
     PackageServerSpec,
@@ -18,13 +18,13 @@ from control_plane_kit.algebra import (
     ProxyBlock,
     RequirementSocket,
 )
-from control_plane_kit.capabilities import CapabilityName
+from control_plane_kit.core.capabilities import CapabilityName
 from control_plane_kit.contracts import EnvironmentContract, TextVariable
-from control_plane_kit.environment import PublicStaticEnvironmentBinding
+from control_plane_kit.core.environment import PublicStaticEnvironmentBinding
 from control_plane_kit.implementations import DockerImageImplementation, HostPublication
-from control_plane_kit.secrets import SecretEnvironmentDelivery, SecretReference
+from control_plane_kit.core.secrets import SecretEnvironmentDelivery, SecretReference
 from control_plane_kit.servers.block_control import BlockControlState, create_block_control_app
-from control_plane_kit.types import Protocol, SocketBinding
+from control_plane_kit.core.types import Protocol, SocketBinding
 
 
 class TcpSwitchMode(StrEnum):

@@ -1,7 +1,7 @@
 from unittest import TestCase, main
 
 from control_plane_kit import Protocol, RequirementSocket, ProviderSocket, BlockSockets
-from control_plane_kit.types import SocketBinding
+from control_plane_kit.core.types import SocketBinding
 
 
 class AlgebraTests(TestCase):

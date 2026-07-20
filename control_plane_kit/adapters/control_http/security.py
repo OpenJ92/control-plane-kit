@@ -9,14 +9,14 @@ from typing import Protocol
 from urllib.parse import urlsplit
 
 from control_plane_kit.effects import EndpointMaterial, LiteralEndpointMaterial
-from control_plane_kit.secrets import (
+from control_plane_kit.core.secrets import (
     CredentialReference,
     SecretResolutionError,
     SecretResolver,
     SecretValue,
     require_resolved_secret,
 )
-from control_plane_kit.types import EndpointScope, Protocol as NetworkProtocol
+from control_plane_kit.core.types import EndpointScope, Protocol as NetworkProtocol
 
 
 class ControlAddressSource(StrEnum):

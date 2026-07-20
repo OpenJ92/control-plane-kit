@@ -24,28 +24,20 @@ OPERATIONAL_ROOTS = (
 )
 OPTIONAL_DEPENDENCIES = ("fastapi", "httpx", "psycopg", "uvicorn")
 PURE_PACKAGE_ROOTS = (
-    "algebra",
-    "capabilities",
-    "configuration",
+    "core",
     "configuration_rendering",
     "contracts",
-    "control_routes",
     "discovery",
     "effects",
-    "environment",
     "execution",
     "idempotency",
     "implementations",
-    "lifecycle",
     "load_generation",
     "planning",
     "policies",
     "saga",
     "scheduling",
-    "secrets",
     "topology",
-    "types",
-    "verification",
 )
 
 

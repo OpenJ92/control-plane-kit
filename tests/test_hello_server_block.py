@@ -17,8 +17,8 @@ from control_plane_kit.servers import (
     hello_command,
     hello_server_block,
 )
-from control_plane_kit.types import Protocol
-from control_plane_kit.environment import PublicStaticEnvironmentBinding
+from control_plane_kit.core.types import Protocol
+from control_plane_kit.core.environment import PublicStaticEnvironmentBinding
 
 
 class HelloServerBlockTests(TestCase):

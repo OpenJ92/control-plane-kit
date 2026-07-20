@@ -9,13 +9,13 @@ import json
 from typing import Mapping, TypeAlias
 from urllib.parse import urlsplit
 
-from control_plane_kit.lifecycle import OWNED_EPHEMERAL, ResourceLifecycle
-from control_plane_kit.configuration import ConfigurationArtifact
-from control_plane_kit.environment import (
+from control_plane_kit.core.lifecycle import OWNED_EPHEMERAL, ResourceLifecycle
+from control_plane_kit.core.configuration import ConfigurationArtifact
+from control_plane_kit.core.environment import (
     PublicStaticEnvironmentBinding,
     SocketDerivedEnvironmentBinding,
 )
-from control_plane_kit.secrets import (
+from control_plane_kit.core.secrets import (
     SecretEnvironmentDelivery,
     SecretFileDelivery,
     SecretReferenceEnvironmentDelivery,
@@ -52,8 +52,8 @@ from control_plane_kit.topology import (
     Node,
     SecretReferenceAddress,
 )
-from control_plane_kit.types import EndpointScope, Protocol, RuntimeKind
-from control_plane_kit.verification import (
+from control_plane_kit.core.types import EndpointScope, Protocol, RuntimeKind
+from control_plane_kit.core.verification import (
     VerificationCheck,
     VerificationContract,
     expected_protocols,
