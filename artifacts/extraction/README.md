@@ -21,3 +21,8 @@ collection of one canonical reference is represented by
 `collection_occurrences`; it is not mislabeled as several independent laws.
 `law-overrides.json` contains the small reviewed set of behavior qualifiers
 needed when distinct products use the same test method name.
+
+`reference-law-ownership.json` assigns every semantic law exactly one future
+owner. `ownership-rules.json` names all Hello, system, and deferred-product
+modules. Core is the only default, and a product-vocabulary guard prevents an
+unlisted product module from falling through into core.
