@@ -15,3 +15,9 @@ anonymous Postgres volume; the outer runner removes only a volume absent from
 the before-snapshot, present after the run, and detached from every container.
 The exact removed identity and final residue are part of the evidence.
 
+`reference-tests.json` inventories every unittest collection occurrence from the
+same frozen tag and maps it to a stable semantic law identity. Repeated
+collection of one canonical reference is represented by
+`collection_occurrences`; it is not mislabeled as several independent laws.
+`law-overrides.json` contains the small reviewed set of behavior qualifiers
+needed when distinct products use the same test method name.
