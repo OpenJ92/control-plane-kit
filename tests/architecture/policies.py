@@ -5,6 +5,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 from enum import StrEnum
 from importlib.util import resolve_name
+from typing import Iterable
 
 from tests.architecture.source import (
     CallFact,
@@ -108,6 +109,398 @@ class PackageDependencyPolicy:
                 )
             )
         return tuple(findings)
+
+
+class PackageOwnerKind(StrEnum):
+    """Closed semantic owners used by the target package topology."""
+
+    CORE = "core"
+    DOMAIN = "domain"
+    OPERATION = "operation"
+    INTERPRETER = "interpreter"
+    PRODUCT = "product"
+    ENTRYPOINT = "entrypoint"
+
+
+@dataclass(frozen=True, order=True)
+class PackageNode:
+    """One named node in the semantic package dependency graph."""
+
+    name: str
+    owner: PackageOwnerKind
+
+
+@dataclass(frozen=True, order=True)
+class ModulePackageOwnership:
+    """Assign one current source module to one target package node."""
+
+    module: str
+    package_node: str
+
+
+@dataclass(frozen=True, order=True)
+class DeclaredPackageEdge:
+    """One permitted direct edge in the target package graph."""
+
+    source: str
+    target: str
+
+
+@dataclass(frozen=True, order=True)
+class ExternalDependencyOwner:
+    """Package nodes permitted to import one optional external dependency."""
+
+    import_prefix: str
+    package_nodes: tuple[str, ...]
+
+
+@dataclass(frozen=True, order=True)
+class PackageGraphEdge:
+    """One observed source import interpreted as a package edge."""
+
+    source: str
+    target: str
+    location: SourceLocation
+
+
+@dataclass(frozen=True)
+class PackageGraph:
+    """Deterministic observed package topology with source evidence."""
+
+    nodes: tuple[PackageNode, ...]
+    edges: tuple[PackageGraphEdge, ...]
+
+
+@dataclass(frozen=True, order=True)
+class PackageCycle:
+    """One canonical directed cycle, including its repeated start node."""
+
+    path: tuple[str, ...]
+    location: SourceLocation
+
+
+@dataclass(frozen=True, order=True)
+class ForbiddenPackagePath:
+    """Reject transitive reachability between semantic ownership kinds."""
+
+    source_owner: PackageOwnerKind
+    target_owner: PackageOwnerKind
+    rule_id: str
+
+
+@dataclass(frozen=True, order=True)
+class PackageMigrationAllowance:
+    """Named migration debt without permission to suppress a finding."""
+
+    source: str
+    target: str
+    retirement_issue: str
+
+    def __post_init__(self) -> None:
+        if not (
+            self.retirement_issue.startswith("#")
+            and self.retirement_issue[1:].isdigit()
+        ):
+            raise ValueError("package migration allowance requires a GitHub issue")
+
+
+@dataclass(frozen=True)
+class PackageTopologyPolicy:
+    """Interpret all source facts as one typed acyclic package graph."""
+
+    package: str
+    nodes: tuple[PackageNode, ...]
+    ownerships: tuple[ModulePackageOwnership, ...]
+    declared_edges: tuple[DeclaredPackageEdge, ...]
+    external_owners: tuple[ExternalDependencyOwner, ...] = ()
+    forbidden_paths: tuple[ForbiddenPackagePath, ...] = ()
+    root_module: str | None = None
+    root_allowed_owners: tuple[PackageOwnerKind, ...] = (PackageOwnerKind.CORE,)
+
+    def graph(self, facts: Iterable[SourceFacts]) -> PackageGraph:
+        node_names = {value.name for value in self.nodes}
+        ownerships = tuple(sorted(self.ownerships, key=lambda value: (-len(value.module), value.module)))
+        external_prefixes = tuple(
+            sorted(
+                {value.import_prefix for value in self.external_owners},
+                key=lambda value: (-len(value), value),
+            )
+        )
+        edges: set[PackageGraphEdge] = set()
+        for source in facts:
+            source_node = _owned_package_node(source.module, ownerships)
+            if source_node is None:
+                continue
+            if source_node not in node_names:
+                raise ValueError("module ownership names an unknown package node")
+            for imported in source.imports:
+                imported_name = _absolute_import_name(
+                    source.module, imported.qualified_name
+                )
+                target_node = _owned_package_node(imported_name, ownerships)
+                if target_node is not None:
+                    if target_node != source_node:
+                        edges.add(
+                            PackageGraphEdge(
+                                source_node, target_node, imported.location
+                            )
+                        )
+                    continue
+                external = next(
+                    (
+                        prefix
+                        for prefix in external_prefixes
+                        if _matches_prefix(imported_name, prefix)
+                    ),
+                    None,
+                )
+                if external is not None:
+                    edges.add(
+                        PackageGraphEdge(
+                            source_node,
+                            f"external:{external}",
+                            imported.location,
+                        )
+                    )
+        return PackageGraph(tuple(sorted(self.nodes)), tuple(sorted(edges)))
+
+    def evaluate(self, facts: Iterable[SourceFacts]) -> tuple[PolicyFinding, ...]:
+        sources = tuple(facts)
+        graph = self.graph(sources)
+        declared = {(value.source, value.target) for value in self.declared_edges}
+        external = {
+            value.import_prefix: set(value.package_nodes)
+            for value in self.external_owners
+        }
+        findings: list[PolicyFinding] = []
+        for edge in graph.edges:
+            if edge.target.startswith("external:"):
+                prefix = edge.target.removeprefix("external:")
+                if edge.source not in external[prefix]:
+                    findings.append(
+                        PolicyFinding(
+                            "optional-dependency-owner",
+                            f"{edge.source} does not own optional dependency {prefix}",
+                            edge.location,
+                        )
+                    )
+                continue
+            if (edge.source, edge.target) not in declared:
+                findings.append(
+                    PolicyFinding(
+                        "package-topology-edge",
+                        f"{edge.source} must not depend on undeclared package {edge.target}",
+                        edge.location,
+                    )
+                )
+
+        owners = {value.name: value.owner for value in self.nodes}
+        ownerships = tuple(
+            sorted(
+                self.ownerships,
+                key=lambda value: (-len(value.module), value.module),
+            )
+        )
+        if self.root_module is not None:
+            for source in sources:
+                if source.module != self.root_module:
+                    continue
+                for exported in source.exports:
+                    exported_name = _absolute_import_name(
+                        source.module, exported.qualified_name
+                    )
+                    target = _owned_package_node(exported_name, ownerships)
+                    if target is None or owners[target] in self.root_allowed_owners:
+                        continue
+                    findings.append(
+                        PolicyFinding(
+                            "root-export-provenance",
+                            f"{source.module} must not export {target} owned by {owners[target]}",
+                            exported.location,
+                        )
+                    )
+                for unsupported in source.unsupported_exports:
+                    findings.append(
+                        PolicyFinding(
+                            "root-export-provenance",
+                            f"{source.module} has a computed export declaration",
+                            unsupported.location,
+                        )
+                    )
+
+        for cycle in package_cycles(graph):
+            findings.append(
+                PolicyFinding(
+                    "package-topology-cycle",
+                    "package dependency cycle: " + " -> ".join(cycle.path),
+                    cycle.location,
+                )
+            )
+
+        for forbidden in self.forbidden_paths:
+            for source in sorted(
+                name for name, owner in owners.items() if owner is forbidden.source_owner
+            ):
+                path = _first_forbidden_path(
+                    graph,
+                    source=source,
+                    target_nodes={
+                        name
+                        for name, owner in owners.items()
+                        if owner is forbidden.target_owner
+                    },
+                )
+                if path is None:
+                    continue
+                location = _edge_location(graph, path[0], path[1])
+                findings.append(
+                    PolicyFinding(
+                        forbidden.rule_id,
+                        "forbidden transitive package path: " + " -> ".join(path),
+                        location,
+                    )
+                )
+        return tuple(sorted(findings))
+
+
+def package_cycles(graph: PackageGraph) -> tuple[PackageCycle, ...]:
+    """Return one deterministic complete path for each cyclic component."""
+
+    adjacency = _internal_adjacency(graph)
+    components = _strongly_connected_components(adjacency)
+    cycles: list[PackageCycle] = []
+    for component in components:
+        if len(component) == 1 and component[0] not in adjacency.get(component[0], ()):
+            continue
+        path = _cycle_path(adjacency, component)
+        cycles.append(
+            PackageCycle(
+                path,
+                _edge_location(graph, path[0], path[1]),
+            )
+        )
+    return tuple(sorted(cycles))
+
+
+def _owned_package_node(
+    module: str,
+    ownerships: tuple[ModulePackageOwnership, ...],
+) -> str | None:
+    for ownership in ownerships:
+        if _matches_prefix(module, ownership.module):
+            return ownership.package_node
+    return None
+
+
+def _internal_adjacency(graph: PackageGraph) -> dict[str, tuple[str, ...]]:
+    names = {value.name for value in graph.nodes}
+    return {
+        name: tuple(
+            sorted(
+                {
+                    edge.target
+                    for edge in graph.edges
+                    if edge.source == name and edge.target in names
+                }
+            )
+        )
+        for name in sorted(names)
+    }
+
+
+def _strongly_connected_components(
+    adjacency: dict[str, tuple[str, ...]],
+) -> tuple[tuple[str, ...], ...]:
+    index = 0
+    stack: list[str] = []
+    stacked: set[str] = set()
+    indices: dict[str, int] = {}
+    lowlinks: dict[str, int] = {}
+    components: list[tuple[str, ...]] = []
+
+    def visit(node: str) -> None:
+        nonlocal index
+        indices[node] = index
+        lowlinks[node] = index
+        index += 1
+        stack.append(node)
+        stacked.add(node)
+        for target in adjacency.get(node, ()):
+            if target not in indices:
+                visit(target)
+                lowlinks[node] = min(lowlinks[node], lowlinks[target])
+            elif target in stacked:
+                lowlinks[node] = min(lowlinks[node], indices[target])
+        if lowlinks[node] != indices[node]:
+            return
+        component: list[str] = []
+        while True:
+            value = stack.pop()
+            stacked.remove(value)
+            component.append(value)
+            if value == node:
+                break
+        components.append(tuple(sorted(component)))
+
+    for node in sorted(adjacency):
+        if node not in indices:
+            visit(node)
+    return tuple(sorted(components))
+
+
+def _cycle_path(
+    adjacency: dict[str, tuple[str, ...]],
+    component: tuple[str, ...],
+) -> tuple[str, ...]:
+    allowed = set(component)
+    start = min(component)
+
+    def visit(node: str, path: tuple[str, ...]) -> tuple[str, ...] | None:
+        for target in adjacency.get(node, ()):
+            if target not in allowed:
+                continue
+            if target == start:
+                return (*path, target)
+            if target in path:
+                continue
+            result = visit(target, (*path, target))
+            if result is not None:
+                return result
+        return None
+
+    result = visit(start, (start,))
+    if result is None:
+        raise ValueError("strongly connected component did not yield a cycle")
+    return result
+
+
+def _first_forbidden_path(
+    graph: PackageGraph,
+    *,
+    source: str,
+    target_nodes: set[str],
+) -> tuple[str, ...] | None:
+    adjacency = _internal_adjacency(graph)
+    queue: list[tuple[str, ...]] = [(source,)]
+    seen = {source}
+    while queue:
+        path = queue.pop(0)
+        for target in adjacency.get(path[-1], ()):
+            if target in target_nodes:
+                return (*path, target)
+            if target in seen:
+                continue
+            seen.add(target)
+            queue.append((*path, target))
+    return None
+
+
+def _edge_location(graph: PackageGraph, source: str, target: str) -> SourceLocation:
+    return min(
+        edge.location
+        for edge in graph.edges
+        if edge.source == source and edge.target == target
+    )
 
 
 @dataclass(frozen=True)

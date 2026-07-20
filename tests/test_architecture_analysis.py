@@ -132,6 +132,45 @@ VALUE = "os.environ"
         self.assertEqual(facts.calls, ())
         self.assertFalse(any("requests" in value.qualified_name for value in facts.references))
 
+    def test_literal_all_exports_resolve_imported_and_local_provenance(self) -> None:
+        facts = analyze_source(
+            "from package.service import Service as PublicService\n"
+            "class LocalValue:\n"
+            "    pass\n"
+            "__all__ = ('PublicService',)\n"
+            "__all__ += ['LocalValue']\n",
+            path="package/__init__.py",
+            module="package",
+        )
+
+        self.assertEqual(
+            tuple((value.name, value.qualified_name) for value in facts.exports),
+            (
+                ("LocalValue", "package.LocalValue"),
+                ("PublicService", "package.service.Service"),
+            ),
+        )
+
+    def test_prose_does_not_become_export_provenance(self) -> None:
+        facts = analyze_source(
+            '"""__all__ = ["Hidden"]"""\n# __all__ = ["Commented"]\n',
+            path="package/__init__.py",
+            module="package",
+        )
+
+        self.assertEqual(facts.exports, ())
+        self.assertEqual(facts.unsupported_exports, ())
+
+    def test_computed_all_is_explicitly_unsupported(self) -> None:
+        facts = analyze_source(
+            "PUBLIC = ('Value',)\n__all__ += PUBLIC\n",
+            path="package/__init__.py",
+            module="package",
+        )
+
+        self.assertEqual(facts.exports, ())
+        self.assertEqual(len(facts.unsupported_exports), 1)
+
     def test_malformed_source_fails_without_echoing_source(self) -> None:
         secret_source = "TOKEN = 'do-not-echo'\ndef broken(:\n"
         with self.assertRaises(SourceAnalysisError) as raised:

@@ -56,6 +56,22 @@ class ImportFact:
 
 
 @dataclass(frozen=True, order=True)
+class ExportFact:
+    """One literal ``__all__`` name and the symbol it exposes."""
+
+    name: str
+    qualified_name: str
+    location: SourceLocation
+
+
+@dataclass(frozen=True, order=True)
+class UnsupportedExportFact:
+    """One computed ``__all__`` declaration that cannot be resolved statically."""
+
+    location: SourceLocation
+
+
+@dataclass(frozen=True, order=True)
 class ReferenceFact:
     """A resolved name or attribute reference."""
 
@@ -157,6 +173,8 @@ class SourceFacts:
     module: str
     aliases: tuple[AliasBinding, ...]
     imports: tuple[ImportFact, ...]
+    exports: tuple[ExportFact, ...]
+    unsupported_exports: tuple[UnsupportedExportFact, ...]
     references: tuple[ReferenceFact, ...]
     calls: tuple[CallFact, ...]
     decorators: tuple[DecoratorFact, ...]
@@ -224,6 +242,9 @@ def analyze_source(source: str, *, path: str, module: str) -> SourceFacts:
         )
     )
     alias_map = {value.local_name: value.qualified_name for value in aliases}
+    exports, unsupported_exports = _exports(
+        tree, path=path, module=module, aliases=alias_map
+    )
     references = tuple(
         sorted(
             ReferenceFact(name, _location(path, node))
@@ -308,6 +329,8 @@ def analyze_source(source: str, *, path: str, module: str) -> SourceFacts:
         module=module,
         aliases=aliases,
         imports=imports,
+        exports=exports,
+        unsupported_exports=unsupported_exports,
         references=references,
         calls=calls,
         decorators=decorators,
@@ -372,6 +395,59 @@ def _bound_qualified_name(value: ImportFact) -> str:
     ):
         return value.bound_name
     return value.qualified_name
+
+
+def _exports(
+    tree: ast.AST,
+    *,
+    path: str,
+    module: str,
+    aliases: dict[str, str],
+) -> tuple[tuple[ExportFact, ...], tuple[UnsupportedExportFact, ...]]:
+    values: list[ExportFact] = []
+    unsupported: list[UnsupportedExportFact] = []
+    for node in ast.walk(tree):
+        expression = _all_expression(node)
+        if expression is None:
+            continue
+        if not isinstance(expression, (ast.List, ast.Tuple)):
+            unsupported.append(UnsupportedExportFact(_location(path, node)))
+            continue
+        if any(
+            not isinstance(item, ast.Constant) or not isinstance(item.value, str)
+            for item in expression.elts
+        ):
+            unsupported.append(UnsupportedExportFact(_location(path, node)))
+            continue
+        for item in expression.elts:
+            name = item.value
+            values.append(
+                ExportFact(
+                    name=name,
+                    qualified_name=aliases.get(name, f"{module}.{name}"),
+                    location=_location(path, item),
+                )
+            )
+    return tuple(sorted(values)), tuple(sorted(unsupported))
+
+
+def _all_expression(node: ast.AST) -> ast.AST | None:
+    match node:
+        case ast.Assign(targets=targets, value=value) if any(
+            isinstance(target, ast.Name) and target.id == "__all__"
+            for target in targets
+        ):
+            return value
+        case ast.AnnAssign(
+            target=ast.Name(id="__all__"), value=value
+        ) if value is not None:
+            return value
+        case ast.AugAssign(
+            target=ast.Name(id="__all__"), op=ast.Add(), value=value
+        ):
+            return value
+        case _:
+            return None
 
 
 def _keyword_arguments(node: ast.Call) -> tuple[KeywordArgumentFact, ...]:
