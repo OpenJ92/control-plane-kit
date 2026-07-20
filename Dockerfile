@@ -73,6 +73,7 @@ CMD ["python", "-c", "import control_plane_kit; print('control-plane-kit ready')
 FROM package AS test
 
 COPY examples ./examples
+COPY docs ./docs
 COPY tests ./tests
 
 RUN python -m pip install ".[test-server]"

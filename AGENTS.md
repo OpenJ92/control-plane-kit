@@ -300,6 +300,11 @@ Before merging a PR, do a review pass from a code-review stance:
 
 ## Module Ownership Law
 
+Read `docs/adr/0009-package-boundary-topology.md` before changing package
+ownership, import direction, root exports, product declarations, domain
+languages, interpreters, or process entrypoints. Keep
+`docs/architecture/package-module-inventory.json` exhaustive as modules move.
+
 Backend modules should be separable enough that a future service boundary is
 obvious.  Use this source-of-truth order when adding backend behavior:
 
