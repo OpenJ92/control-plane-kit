@@ -34,6 +34,18 @@ The existing `control-plane-kit` repository is not rewritten in place. It
 remains available at the reference tag above while the new repositories reach
 behavioral and test parity.
 
+The initial extraction has a deliberately narrow completion boundary:
+
+```text
+complete generic control-plane-kit-core
+  + one external Hello server product
+  + isomorphic unit and live-demo evidence
+```
+
+No other server product is part of the bootstrap. CoreDNS, routers, gateways,
+proxies, resilience products, discovery, telemetry, and the remaining catalogue
+are accumulated only after this boundary is green and reviewable.
+
 ## Decisions
 
 ### Repository names
@@ -875,6 +887,14 @@ The harness fails when a reference test is unmapped, a successor is absent or
 not passing, a mapping weakens the original assertion, or a removed behavior
 lacks an approved supersession rationale.
 
+Parity is evaluated per transferred ownership boundary. The bootstrap cannot
+claim completion until every core-owned reference test and every Hello-owned
+reference test has an isomorphic passing successor. Tests belonging to products
+that have not yet transferred remain explicitly `deferred` against the frozen
+reference; they are neither deleted nor counted as migrated. A later product
+transfer changes its entries from `deferred` to `required` and cannot complete
+until their successors pass.
+
 Pure and unit-level parity runs in the owning repository. Cross-boundary
 differential tests may run the frozen reference and extracted system in
 separate Docker containers, collect canonical result descriptors, normalize
@@ -984,6 +1004,19 @@ generations.
 
 The extraction is a roadmap with mandatory gates, not one uninterrupted move.
 
+There are two execution horizons:
+
+```text
+Bootstrap extraction
+  Gate 0 -> Gate 1 -> Gate 2 -> mandatory stop
+
+Post-bootstrap accumulation
+  Gate 3 onward, started only by a later operator decision
+```
+
+The bootstrap exists to prove the architecture with the smallest nontrivial
+external product. It must not opportunistically transfer a second server.
+
 ### Gate 0: Freeze And Recovery Point - Complete
 
 Evidence:
@@ -1014,6 +1047,11 @@ Deliver in `control-plane-kit-core`:
 Stop before moving a real product until an external descriptor can pass the
 entire pure pipeline and produce pinned runtime material.
 
+Gate 1 is completed before `control-plane-kit-servers` receives product code.
+An intentionally tiny fixture may prove the extension boundary, but it is not a
+catalogue product and must not introduce Hello or another server identity into
+core.
+
 ### Gate 2: Server Repository And Hello Proof
 
 Deliver in `control-plane-kit-servers`:
@@ -1031,7 +1069,24 @@ Deliver in `control-plane-kit-servers`:
 
 This is the first complete external product vertical.
 
-### Gate 3: Representative External Integration
+It is also the complete bootstrap server scope. At Gate 2 closeout:
+
+```text
+control-plane-kit-core
+  contains the full generic pipeline and no product identities
+
+control-plane-kit-servers
+  contains exactly one migrated product: Hello
+```
+
+Run the complete core and Hello parity manifests, reproduce every transferred
+live demonstration, verify cleanup, and stop. Do not begin CoreDNS or any other
+catalogue transfer as part of the bootstrap run.
+
+### Gate 3: Post-Bootstrap Representative Integration
+
+This begins a separate accumulation roadmap after the bootstrap has been
+reviewed and accepted.
 
 Move CoreDNS first because it exercises:
 
@@ -1052,7 +1107,7 @@ compatibility facade is added to core.
 Move in reviewable families:
 
 ```text
-Hello and proxy
+proxy
 routers and multiplexer
 balancer and rate limiter
 retry, timeout, circuit breaker, and bulkhead
@@ -1175,6 +1230,10 @@ Create `control-plane-kit-servers` as a new repository. Move products by
 coherent vertical, carrying their tests, examples, and decision history in PR
 documentation. Do not leave duplicate canonical implementations in core.
 
+Initially, move only Hello. Do not scaffold empty directories or premature
+catalogue registrations for later products. Each later product enters through
+its own topologically ordered transfer issue after the bootstrap is accepted.
+
 ### Parity ledger
 
 Maintain a machine-readable and human-readable migration ledger:
@@ -1255,13 +1314,17 @@ Suggested server children:
 7. Map every Hello reference test to its owning successor
 8. Execute and compare the Hello live demos through core Docker runtime
 9. Harden digest, capability, readiness, ownership, and cleanup behavior
-10. Move CoreDNS with complete test and live-demo parity
-11. Complete bootstrap closeout and prepare product-family migration
+10. Complete bootstrap parity and architecture closeout
+11. Stop and produce the post-bootstrap accumulation handoff
 ```
 
 The core topology precedes the server topology wherever the server package
 consumes a new descriptor or catalogue law. The Hello live proof is the first
 cross-repository gate.
+
+CoreDNS and every remaining product belong to a new post-bootstrap issue
+topology. They are not children of `SERVER-BOOTSTRAP`, and work on them must not
+begin merely because their frozen implementations already exist.
 
 Server architecture policy must reject:
 
@@ -1278,7 +1341,24 @@ process bootstrap.
 
 ## Definition Of Success
 
-The extraction succeeds when:
+The bootstrap extraction succeeds when:
+
+```text
+control-plane-kit-core
+  owns the complete generic pipeline without server-product identity
+
+control-plane-kit-servers
+  owns one complete Hello product descriptor and pinned OCI image
+
+control-plane-kit-test
+  proves core and Hello isomorphic test and live-demo parity
+```
+
+This is a real release boundary, not completion of the eventual server
+catalogue. Subsequent products accumulate one vertical at a time under the same
+parity law.
+
+The broader ecosystem succeeds when:
 
 ```text
 control-plane-kit-core
