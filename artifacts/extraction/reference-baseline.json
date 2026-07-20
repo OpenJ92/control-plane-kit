@@ -1,0 +1,55 @@
+{
+  "commands": {
+    "compile": [
+      "python",
+      "-m",
+      "compileall",
+      "-q",
+      "control_plane_kit",
+      "tests",
+      "examples"
+    ],
+    "test": [
+      "./test.sh"
+    ]
+  },
+  "dependency_inputs": {
+    "Dockerfile": "sha256:154f4b5793ea0927f83ab3aec3ed16ddb38db5aa30d2bcc54910f4f971cc26a2",
+    "packaging-test.sh": "sha256:b45644405d5203e64825bd1c96cd9b8b372c748e70c7037d57789ddd658d2ec0",
+    "pyproject.toml": "sha256:50528ba74a5777f76cfc864fcf42cee550000d421647718007ddcfe79e70ecbf",
+    "test.sh": "sha256:e796b101dec698399e128b889717a39ad431867a22905b5ed4fe665f4d9cad86"
+  },
+  "owned_cleanup": {
+    "volumes": [
+      "8b6396b91702da9a130d53e0f30cf632e696371eccc5810e15fa544c102d4450"
+    ]
+  },
+  "reference": {
+    "commit": "20129959d3b0f8e8bd5dbdafdf51c0a5d592a9ec",
+    "tag": "pre-server-product-extraction-2026-07-20"
+  },
+  "runtime": {
+    "postgres_image": {
+      "id": "sha256:fd1e8d0274f13f5a03a2673a207b28e14823c2f2efc3ca4bb4197c8a9f841bdc",
+      "reference": "postgres:16-alpine"
+    },
+    "python_image": {
+      "id": "sha256:cea0e6040540fb2b965b6e7fb5ffa00871e632eef63719f0ea54bca189ce14a6",
+      "reference": "python:3.14-slim"
+    },
+    "test_image": {
+      "id": "sha256:bac32288f5e58c794d74a18854f97fd6508feb62159549b469ed2adffe794a7b"
+    }
+  },
+  "schema": "cpk.frozen-reference-evidence",
+  "tests": {
+    "run": 1112,
+    "skipped": 0,
+    "successful": true
+  },
+  "unexpected_resource_additions": {
+    "containers": [],
+    "networks": [],
+    "volumes": []
+  }
+}
