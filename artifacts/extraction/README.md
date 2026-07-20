@@ -26,3 +26,8 @@ needed when distinct products use the same test method name.
 owner. `ownership-rules.json` names all Hello, system, and deferred-product
 modules. Core is the only default, and a product-vocabulary guard prevents an
 unlisted product module from falling through into core.
+
+`reference-demos.json` groups every frozen executable script and live fixture
+under a closed observable contract. Incidental normalization is enumerated;
+HTTP semantics, graph effects, observations, retention, and cleanup remain
+observable rather than being normalized away.
