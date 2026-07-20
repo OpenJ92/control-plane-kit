@@ -5,7 +5,6 @@ import subprocess
 import unittest
 
 from control_plane_kit import (
-    DockerEffectInterpreter,
     EffectFailed,
     EffectIdentity,
     EffectRequest,
@@ -19,6 +18,9 @@ from control_plane_kit import (
     PinnedGraphSet,
     RuntimeKind,
     RuntimeMaterial,
+)
+from control_plane_kit.docker_runtime import (
+    DockerEffectInterpreter,
 )
 from control_plane_kit.docker_runtime import (
     DockerOwnership,

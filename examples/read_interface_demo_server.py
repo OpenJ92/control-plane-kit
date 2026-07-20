@@ -15,22 +15,26 @@ from control_plane_kit import (
     ApplicationBlock,
     BlockSockets,
     BlockSpec,
-    CapabilityName,
     BoundedEvidence,
+    CapabilityName,
     DataBlock,
     DeploymentRecipe,
     DockerPostgresImplementation,
     DockerRuntime,
-    InstanceReadService,
     ObservationFreshness,
     ObservationStatus,
     PlanOnlyImplementation,
     Protocol,
-    ProxyBlock,
     ProviderSocket,
+    ProxyBlock,
     RequirementSocket,
     SocketConnection,
     compile_recipe,
+)
+from control_plane_kit.read_services import (
+    InstanceReadService,
+)
+from control_plane_kit.servers import (
     create_instance_read_app,
 )
 from control_plane_kit.stores import (

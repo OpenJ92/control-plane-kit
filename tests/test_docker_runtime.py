@@ -2,9 +2,8 @@ from unittest import TestCase, main
 
 from control_plane_kit import (
     ApplicationBlock,
-    BlockSpec,
     BlockSockets,
-    CleanupPolicy,
+    BlockSpec,
     DeploymentRecipe,
     DockerImageImplementation,
     DockerRuntime,
@@ -15,6 +14,9 @@ from control_plane_kit import (
     RequirementSocket,
     SocketConnection,
     compile_recipe,
+)
+from control_plane_kit.runtimes import (
+    CleanupPolicy,
 )
 from control_plane_kit.docker_runtime import DockerRuntimeInterpreter, UnsupportedDockerRuntimeFeature
 from examples.app_with_postgres import recipe as app_recipe

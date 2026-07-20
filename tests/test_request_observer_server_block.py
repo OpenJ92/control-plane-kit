@@ -11,12 +11,14 @@ from urllib.request import Request, urlopen
 
 from control_plane_kit import (
     CapabilityName,
-    DockerRuntime,
     DeploymentRecipe,
+    DockerRuntime,
     GraphDescriptorCodec,
     PackageServerProduct,
     SecretEnvironmentDelivery,
     compile_recipe,
+)
+from control_plane_kit.servers import (
     request_observer_block,
 )
 from control_plane_kit.servers import (

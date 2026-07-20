@@ -11,10 +11,6 @@ from control_plane_kit import (
     ConfigurationFileMode,
     ConfigurationMediaType,
     DataMountMaterial,
-    DockerCliClient,
-    DockerEffectInterpreter,
-    DockerResourceInspection,
-    DockerResourceKind,
     EffectFailed,
     EffectIdentity,
     EffectRequest,
@@ -28,6 +24,12 @@ from control_plane_kit import (
     RuntimeKind,
     RuntimeMaterial,
     StartNode,
+)
+from control_plane_kit.docker_runtime import (
+    DockerCliClient,
+    DockerEffectInterpreter,
+    DockerResourceInspection,
+    DockerResourceKind,
 )
 from control_plane_kit.planning import ActivityId
 from control_plane_kit.docker_runtime import plan_docker_effect

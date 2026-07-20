@@ -12,7 +12,13 @@ from fastapi.responses import JSONResponse, PlainTextResponse, RedirectResponse,
 import httpx
 import uvicorn
 
-from control_plane_kit import BlockControlState, CapabilityName, create_block_control_app
+from control_plane_kit import (
+    CapabilityName,
+)
+from control_plane_kit.servers import (
+    BlockControlState,
+    create_block_control_app,
+)
 from control_plane_kit.adapters.control_http import (
     BlockControlHttpInterpreter,
     ControlAddressPolicy,

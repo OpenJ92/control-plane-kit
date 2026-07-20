@@ -22,7 +22,11 @@ from control_plane_kit import (
     VerificationIdentity,
     VerificationInterpreterRegistry,
     VerificationOutcome,
+)
+from control_plane_kit.mcp_read import (
     ReadOnlyMcpAdapter,
+)
+from control_plane_kit.servers import (
     create_instance_read_app,
 )
 from control_plane_kit.cli import run as run_cli

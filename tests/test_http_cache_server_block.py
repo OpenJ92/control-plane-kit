@@ -12,13 +12,15 @@ from urllib.error import HTTPError
 from urllib.request import Request, urlopen
 
 from control_plane_kit import (
+    PackageServerProduct,
+)
+from control_plane_kit.servers import (
     CacheOutcome,
     CacheVaryHeader,
     HttpCachePolicy,
     HttpCacheServer,
     HttpRequest,
     HttpResponse,
-    PackageServerProduct,
     ProductMaturity,
     http_cache_block,
     http_cache_command,

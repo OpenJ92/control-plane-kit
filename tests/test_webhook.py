@@ -5,16 +5,18 @@ from datetime import datetime, timedelta, timezone
 import unittest
 
 from control_plane_kit import (
-    MAX_WEBHOOK_PAYLOAD_BYTES,
     SecretReference,
+)
+from control_plane_kit.webhook import (
+    MAX_WEBHOOK_PAYLOAD_BYTES,
     WebhookAttemptFinished,
     WebhookAttemptOutcome,
     WebhookAttemptStarted,
     WebhookAuthority,
     WebhookClaim,
-    WebhookClaimed,
-    WebhookClaimReleased,
     WebhookClaimReleaseReason,
+    WebhookClaimReleased,
+    WebhookClaimed,
     WebhookContentType,
     WebhookDeadLettered,
     WebhookDeliveryIdentity,

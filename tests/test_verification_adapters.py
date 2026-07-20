@@ -8,16 +8,18 @@ from control_plane_kit import (
     EndpointScope,
     HttpCheck,
     HttpVerificationEvidence,
-    HttpVerificationInterpreter,
     LiteralEndpointMaterial,
     Protocol,
     RedisCheck,
     RedisVerificationEvidence,
-    RedisVerificationInterpreter,
     VerificationCapability,
     VerificationCheckMaterial,
     VerificationOutcome,
     VerificationPolicy,
+)
+from control_plane_kit.adapters import (
+    HttpVerificationInterpreter,
+    RedisVerificationInterpreter,
 )
 from control_plane_kit.adapters.probes import ProbeAddressPolicy
 

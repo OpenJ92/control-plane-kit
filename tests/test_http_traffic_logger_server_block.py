@@ -12,8 +12,10 @@ from urllib.error import HTTPError
 from urllib.request import Request, urlopen
 
 from control_plane_kit import (
-    HttpTrafficLoggerServer,
     PackageServerProduct,
+)
+from control_plane_kit.servers import (
+    HttpTrafficLoggerServer,
     TrafficEvidencePolicy,
     TrafficMethod,
     TrafficPathPolicy,

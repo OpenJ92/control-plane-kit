@@ -4,7 +4,6 @@ from datetime import datetime, timedelta, timezone
 import unittest
 
 from control_plane_kit import (
-    CapabilityImplementation,
     CapabilityName,
     ControlRouteSetName,
     DeregisterDiscoveryInstance,
@@ -16,7 +15,6 @@ from control_plane_kit import (
     DiscoveryScope,
     Endpoint,
     EndpointScope,
-    ExecutableCapability,
     ExpireDiscoveryLeases,
     GraphDescriptorCodec,
     HeartbeatDiscoveryInstance,
@@ -27,10 +25,14 @@ from control_plane_kit import (
     ResolveDiscoveryService,
     SecretReferenceAddress,
     compile_recipe,
+    discovery_authority_from_descriptor,
     discovery_command_descriptor,
     discovery_command_from_descriptor,
-    discovery_authority_from_descriptor,
     discovery_registration_from_descriptor,
+)
+from control_plane_kit.servers import (
+    CapabilityImplementation,
+    ExecutableCapability,
     package_server_contract,
     service_discovery_block,
 )

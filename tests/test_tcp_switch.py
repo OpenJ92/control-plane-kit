@@ -7,7 +7,13 @@ import unittest
 
 from fastapi.testclient import TestClient
 
-from control_plane_kit import PackageServerProduct, ProductMaturity, Protocol
+from control_plane_kit import (
+    PackageServerProduct,
+    Protocol,
+)
+from control_plane_kit.servers import (
+    ProductMaturity,
+)
 from control_plane_kit.servers.tcp_switch import (
     TcpSwitchMode,
     TcpSwitchSettings,

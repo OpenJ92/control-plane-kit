@@ -10,26 +10,28 @@ import psycopg
 from control_plane_kit import (
     DeregisterDiscoveryInstance,
     DiscoveryAuthority,
-    DiscoveryConflict,
-    DiscoveryDenied,
     DiscoveryIdentity,
     DiscoveryLease,
-    DiscoveryMissing,
     DiscoveryOutcome,
     DiscoveryRegistration,
     DiscoveryRegistrationMode,
     DiscoveryRegistrationStatus,
-    DiscoveryRegistryService,
     DiscoveryScope,
     Endpoint,
     EndpointScope,
     ExpireDiscoveryLeases,
     HeartbeatDiscoveryInstance,
     LiteralAddress,
-    PostgresDiscoveryUnitOfWork,
     Protocol,
     RegisterDiscoveryInstance,
     ResolveDiscoveryService,
+)
+from control_plane_kit.discovery_registry import (
+    DiscoveryConflict,
+    DiscoveryDenied,
+    DiscoveryMissing,
+    DiscoveryRegistryService,
+    PostgresDiscoveryUnitOfWork,
     install_discovery_schema,
 )
 from tests.postgres_case import PostgresStoreTestCase
