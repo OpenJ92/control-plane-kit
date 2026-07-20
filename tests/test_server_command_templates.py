@@ -1,0 +1,114 @@
+import ast
+from unittest import TestCase, main
+
+from control_plane_kit.products.servers import (
+    AuthenticationMechanism,
+    AuthGatewayPolicy,
+    GatewayMethod,
+    RouteAuthorizationPolicy,
+    http_auth_gateway_command,
+)
+from control_plane_kit.servers import (
+    HelloDependency,
+    hello_command,
+    http_active_router_command,
+    http_circuit_breaker_command,
+    http_bulkhead_command,
+    http_cache_command,
+    http_fault_injector_command,
+    http_multiplexer_command,
+    http_proxy_command,
+    http_rate_limiter_command,
+    http_retry_command,
+    http_traffic_logger_command,
+    http_timeout_command,
+    http_weighted_load_balancer_command,
+    request_observer_command,
+)
+from control_plane_kit.products.servers.support.command_rendering import (
+    GeneratedServerSyntaxError,
+    validated_python_command,
+)
+
+
+class ServerCommandTemplateTests(TestCase):
+    def test_server_commands_render_python_scripts(self):
+        auth_policy = AuthGatewayPolicy(
+            AuthenticationMechanism.API_KEY,
+            (RouteAuthorizationPolicy("/", (GatewayMethod.GET,)),),
+        )
+        commands = (
+            http_auth_gateway_command(auth_policy),
+            hello_command(),
+            http_proxy_command(),
+            http_active_router_command(),
+            http_circuit_breaker_command(),
+            http_bulkhead_command(),
+            http_cache_command(),
+            http_fault_injector_command(),
+            http_weighted_load_balancer_command(),
+            http_multiplexer_command(),
+            http_rate_limiter_command(),
+            http_retry_command(),
+            http_traffic_logger_command(),
+            http_timeout_command(),
+            request_observer_command(),
+        )
+
+        for command in commands:
+            self.assertEqual(command[:2], ("python", "-c"))
+            self.assertIsInstance(ast.parse(command[2]), ast.Module)
+
+    def test_rendered_commands_include_expected_environment_names(self):
+        auth_policy = AuthGatewayPolicy(
+            AuthenticationMechanism.API_KEY,
+            (RouteAuthorizationPolicy("/", (GatewayMethod.GET,)),),
+        )
+        self.assertIn(
+            "AUTH_GATEWAY_TARGET_URL",
+            http_auth_gateway_command(auth_policy)[2],
+        )
+        self.assertIn("HELLO_MESSAGE", hello_command()[2])
+        dependency_source = hello_command((HelloDependency("orders"),))[2]
+        self.assertIn("HELLO_HTTP_ORDERS_URL", dependency_source)
+        self.assertIn("HELLO_DATABASE_ORDERS_URL", dependency_source)
+        self.assertIn("PROXY_TARGET_URL", http_proxy_command()[2])
+        self.assertIn("ACTIVE_TARGET_URL", http_active_router_command()[2])
+        self.assertIn("CIRCUIT_TARGET_URL", http_circuit_breaker_command()[2])
+        self.assertIn("BULKHEAD_TARGET_URL", http_bulkhead_command()[2])
+        self.assertIn("CACHE_TARGET_URL", http_cache_command()[2])
+        self.assertIn("FAULT_TARGET_URL", http_fault_injector_command()[2])
+        self.assertIn("BALANCER_TARGET_A_URL", http_weighted_load_balancer_command()[2])
+        self.assertIn("MULTIPLEXER_PRIMARY_URL", http_multiplexer_command()[2])
+        self.assertIn("RATE_LIMIT_TARGET_URL", http_rate_limiter_command()[2])
+        self.assertIn("RETRY_TARGET_URL", http_retry_command()[2])
+        self.assertIn("LOGGER_TARGET_URL", http_traffic_logger_command()[2])
+        self.assertIn("TIMEOUT_TARGET_URL", http_timeout_command()[2])
+        self.assertIn("CPK_CONTROL_TOKEN", request_observer_command()[2])
+
+    def test_invalid_rendered_source_fails_without_retaining_source(self):
+        sensitive_source = "TOKEN = 'do-not-retain'\ndef broken(:\n"
+
+        with self.assertRaises(GeneratedServerSyntaxError) as raised:
+            validated_python_command(
+                sensitive_source,
+                template_name="broken.py.j2",
+            )
+
+        error = raised.exception
+        self.assertEqual(error.template_name, "broken.py.j2")
+        self.assertEqual(error.line, 2)
+        self.assertNotIn("do-not-retain", str(error))
+        self.assertIsNone(error.__context__)
+
+    def test_validated_command_preserves_valid_source_exactly(self):
+        source = "print('hello')\n"
+
+        self.assertEqual(
+            validated_python_command(source, template_name="hello.py.j2"),
+            ("python", "-c", source),
+        )
+
+
+if __name__ == "__main__":
+    main()

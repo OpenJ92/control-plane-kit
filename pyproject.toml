@@ -19,10 +19,42 @@ classifiers = [
   "Topic :: Software Development :: Build Tools",
   "Topic :: System :: Systems Administration",
 ]
+dependencies = [
+  "Jinja2>=3.1",
+  "PyYAML>=6.0",
+]
 
 [project.urls]
 Homepage = "https://github.com/OpenJ92/control-plane-kit"
 
+[project.scripts]
+control-plane-kit = "control_plane_kit.entrypoints.cli:main"
+
 [tool.setuptools.packages.find]
 where = ["."]
 include = ["control_plane_kit*"]
+
+[tool.setuptools.package-data]
+"control_plane_kit.products.servers.support" = ["templates/*.py.j2"]
+"control_plane_kit.products.servers" = ["templates/*.j2"]
+"control_plane_kit" = ["product_templates/*.j2"]
+
+[project.optional-dependencies]
+http = [
+  "fastapi>=0.115",
+  "httpx>=0.27",
+]
+postgres = [
+  "psycopg[binary]>=3.2",
+]
+server = [
+  "fastapi>=0.115",
+  "httpx>=0.27",
+  "psycopg[binary]>=3.2",
+  "uvicorn>=0.30",
+]
+test-server = [
+  "fastapi>=0.115",
+  "httpx>=0.27",
+  "psycopg[binary]>=3.2",
+]

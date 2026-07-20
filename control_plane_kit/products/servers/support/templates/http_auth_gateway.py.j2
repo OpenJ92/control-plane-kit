@@ -1,0 +1,214 @@
+import hmac
+import json
+import os
+import threading
+from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
+from urllib.error import HTTPError, URLError
+from urllib.request import HTTPRedirectHandler, Request, build_opener
+
+TARGET = os.environ["AUTH_GATEWAY_TARGET_URL"].rstrip("/")
+API_KEY = os.environ["CPK_GATEWAY_API_KEY"]
+CONTROL_TOKEN = os.environ["CPK_GATEWAY_CONTROL_TOKEN"]
+ROUTES = {{ routes | tojson }}
+FORWARDED_HEADERS = {{ forwarded_headers | tojson }}
+API_KEY_SCOPES = frozenset({{ api_key_scopes | tojson }})
+MAX_REQUEST_BYTES = {{ max_request_bytes }}
+MAX_RESPONSE_BYTES = {{ max_response_bytes }}
+UPSTREAM_TIMEOUT_SECONDS = 5
+TRUSTED_HEADERS = {
+    "x-cpk-authenticated-subject",
+    "x-cpk-authenticated-issuer",
+    "x-cpk-authenticated-scopes",
+}
+LOCK = threading.Lock()
+REQUEST_COUNT = 0
+AUTHENTICATED_COUNT = 0
+REJECTED_COUNT = 0
+FORBIDDEN_COUNT = 0
+FORWARDED_COUNT = 0
+LATEST_AUTHENTICATION = None
+LATEST_AUTHORIZATION = None
+
+
+class NoRedirects(HTTPRedirectHandler):
+    def redirect_request(self, request, file_pointer, code, message, headers, new_url):
+        return None
+
+
+OPENER = build_opener(NoRedirects)
+
+
+def increment(name):
+    global REQUEST_COUNT, AUTHENTICATED_COUNT, REJECTED_COUNT, FORBIDDEN_COUNT, FORWARDED_COUNT
+    with LOCK:
+        if name == "request":
+            REQUEST_COUNT += 1
+        elif name == "authenticated":
+            AUTHENTICATED_COUNT += 1
+        elif name == "rejected":
+            REJECTED_COUNT += 1
+        elif name == "forbidden":
+            FORBIDDEN_COUNT += 1
+        elif name == "forwarded":
+            FORWARDED_COUNT += 1
+
+
+def record(authentication=None, authorization=None):
+    global LATEST_AUTHENTICATION, LATEST_AUTHORIZATION
+    with LOCK:
+        LATEST_AUTHENTICATION = authentication
+        LATEST_AUTHORIZATION = authorization
+
+
+def descriptor():
+    with LOCK:
+        return {
+            "request_count": REQUEST_COUNT,
+            "authenticated_count": AUTHENTICATED_COUNT,
+            "rejected_count": REJECTED_COUNT,
+            "forbidden_count": FORBIDDEN_COUNT,
+            "forwarded_count": FORWARDED_COUNT,
+            "latest_authentication": LATEST_AUTHENTICATION,
+            "latest_authorization": LATEST_AUTHORIZATION,
+        }
+
+
+def authorization_decision(method, path):
+    matches = [
+        route for route in ROUTES
+        if (
+            route["path_prefix"] == "/"
+            or path == route["path_prefix"]
+            or path.startswith(route["path_prefix"].rstrip("/") + "/")
+        )
+        and method in route["methods"]
+    ]
+    if not matches:
+        return "route-not-allowed"
+    route = max(matches, key=lambda value: len(value["path_prefix"]))
+    if not set(route["required_scopes"]).issubset(API_KEY_SCOPES):
+        return "missing-scope"
+    return "allowed"
+
+
+class Handler(BaseHTTPRequestHandler):
+    def _json(self, status, payload):
+        body = json.dumps(payload, sort_keys=True, separators=(",", ":")).encode()
+        self.send_response(status)
+        self.send_header("content-type", "application/json")
+        self.send_header("content-length", str(len(body)))
+        self.end_headers()
+        if self.command != "HEAD":
+            self.wfile.write(body)
+
+    def _control_authorized(self):
+        authorization = self.headers.get("authorization", "")
+        alternate = self.headers.get("x-control-plane-token", "")
+        return hmac.compare_digest(authorization, f"Bearer {CONTROL_TOKEN}") or hmac.compare_digest(alternate, CONTROL_TOKEN)
+
+    def _read_body(self):
+        try:
+            length = int(self.headers.get("content-length", "0") or "0")
+        except ValueError:
+            return None, 400
+        if length < 0 or length > MAX_REQUEST_BYTES:
+            return None, 413
+        return self.rfile.read(length), None
+
+    def _forward(self):
+        increment("request")
+        body, error_status = self._read_body()
+        if error_status is not None:
+            increment("rejected")
+            self._json(error_status, {"detail": "invalid or oversized request"})
+            return
+        supplied = self.headers.get("x-api-key", "")
+        if not supplied:
+            increment("rejected")
+            record(authentication="missing-credential")
+            self._json(401, {"detail": "unauthorized"})
+            return
+        if not hmac.compare_digest(supplied, API_KEY):
+            increment("rejected")
+            record(authentication="invalid-credential")
+            self._json(401, {"detail": "unauthorized"})
+            return
+        increment("authenticated")
+        path = self.path.split("?", 1)[0]
+        decision = authorization_decision(self.command, path)
+        record(authorization=decision)
+        if decision != "allowed":
+            increment("forbidden")
+            self._json(403, {"detail": "forbidden"})
+            return
+        headers = {
+            key: value for key, value in self.headers.items()
+            if key.lower() not in TRUSTED_HEADERS | {"host", "content-length", "connection", "authorization", "x-api-key"}
+        }
+        if "x-cpk-authenticated-subject" in FORWARDED_HEADERS:
+            headers["x-cpk-authenticated-subject"] = "api-key-client"
+        if "x-cpk-authenticated-issuer" in FORWARDED_HEADERS:
+            headers["x-cpk-authenticated-issuer"] = "cpk-test-api-key"
+        if "x-cpk-authenticated-scopes" in FORWARDED_HEADERS:
+            headers["x-cpk-authenticated-scopes"] = " ".join(sorted(API_KEY_SCOPES))
+        request = Request(TARGET + self.path, data=body or None, headers=headers, method=self.command)
+        try:
+            response = OPENER.open(request, timeout=UPSTREAM_TIMEOUT_SECONDS)
+            with response:
+                payload = response.read(MAX_RESPONSE_BYTES + 1)
+                status = response.status
+                response_headers = tuple(response.headers.items())
+        except HTTPError as error:
+            with error:
+                payload = error.read(MAX_RESPONSE_BYTES + 1)
+                status = error.code
+                response_headers = tuple(error.headers.items())
+        except (OSError, TimeoutError, URLError):
+            self._json(502, {"detail": "upstream unavailable"})
+            return
+        if len(payload) > MAX_RESPONSE_BYTES:
+            self._json(502, {"detail": "upstream response exceeded limit"})
+            return
+        increment("forwarded")
+        self.send_response(status)
+        for key, value in response_headers:
+            if key.lower() not in {"transfer-encoding", "connection", "content-length"}:
+                self.send_header(key, value)
+        self.send_header("content-length", str(len(payload)))
+        self.end_headers()
+        if self.command != "HEAD":
+            self.wfile.write(payload)
+
+    def do_GET(self):
+        path = self.path.split("?", 1)[0]
+        if path == "/health":
+            self._json(200, {"status": "healthy"})
+            return
+        if path == "/__deploy/metrics":
+            if not self._control_authorized():
+                self._json(401, {"detail": "unauthorized"})
+                return
+            self._json(200, descriptor())
+            return
+        self._forward()
+
+    def do_HEAD(self):
+        self._forward()
+
+    def do_POST(self):
+        self._forward()
+
+    def do_PUT(self):
+        self._forward()
+
+    def do_PATCH(self):
+        self._forward()
+
+    def do_DELETE(self):
+        self._forward()
+
+    def log_message(self, format, *args):
+        pass
+
+
+ThreadingHTTPServer(("0.0.0.0", {{ port }}), Handler).serve_forever()

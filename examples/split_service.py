@@ -1,46 +1,45 @@
 """A monolith split into API plus extracted service."""
 
 from control_plane_kit import (
-    AppSpec,
     ApplicationBlock,
-    DataSpec,
+    BlockSpec,
     DataBlock,
     DeploymentRecipe,
     DockerImageImplementation,
     DockerPostgresImplementation,
     DockerRuntime,
     Protocol,
-    RoleInputSocket,
-    RoleOutputSocket,
-    RoleSockets,
+    RequirementSocket,
+    ProviderSocket,
+    BlockSockets,
     SocketConnection,
 )
 
 
 def recipe() -> DeploymentRecipe:
     api = ApplicationBlock(
-        spec=AppSpec("api", "Main API"),
+        spec=BlockSpec("api", "Main API"),
         implementation=DockerImageImplementation("api:latest", ports={"internal": 8000}),
-        sockets=RoleSockets(
-            inputs=(
-                RoleInputSocket("DATABASE_URL", Protocol.POSTGRES, ("DATABASE_URL",)),
-                RoleInputSocket("INVENTORY_SERVICE_URL", Protocol.HTTP, ("INVENTORY_SERVICE_URL",)),
+        sockets=BlockSockets(
+            requirements=(
+                RequirementSocket("DATABASE_URL", Protocol.POSTGRES, ("DATABASE_URL",)),
+                RequirementSocket("INVENTORY_SERVICE_URL", Protocol.HTTP, ("INVENTORY_SERVICE_URL",)),
             ),
-            outputs=(RoleOutputSocket("internal", Protocol.HTTP),),
+            providers=(ProviderSocket("internal", Protocol.HTTP),),
         ),
     )
     inventory = ApplicationBlock(
-        spec=AppSpec("inventory-service", "Inventory Service"),
+        spec=BlockSpec("inventory-service", "Inventory Service"),
         implementation=DockerImageImplementation("inventory:latest", ports={"internal": 8015}),
-        sockets=RoleSockets(
-            inputs=(RoleInputSocket("DATABASE_URL", Protocol.POSTGRES, ("DATABASE_URL",)),),
-            outputs=(RoleOutputSocket("internal", Protocol.HTTP),),
+        sockets=BlockSockets(
+            requirements=(RequirementSocket("DATABASE_URL", Protocol.POSTGRES, ("DATABASE_URL",)),),
+            providers=(ProviderSocket("internal", Protocol.HTTP),),
         ),
     )
     postgres = DataBlock(
-        spec=DataSpec("postgres", database_name="pottery"),
+        spec=BlockSpec("postgres"),
         implementation=DockerPostgresImplementation(database="pottery"),
-        sockets=RoleSockets(outputs=(RoleOutputSocket("internal", Protocol.POSTGRES),)),
+        sockets=BlockSockets(providers=(ProviderSocket("internal", Protocol.POSTGRES),)),
     )
     return DeploymentRecipe(
         "split-service",

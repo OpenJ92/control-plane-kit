@@ -1,0 +1,64 @@
+extensions:
+  {{ health.component_id }}:
+    endpoint: {{ health.endpoint | json }}
+receivers:
+{% for receiver in receivers %}
+  {{ receiver.component_id }}:
+    protocols:
+{% for protocol in receiver.protocols %}
+      {{ protocol.kind }}:
+        endpoint: {{ protocol.endpoint | json }}
+{% endfor %}
+{% endfor %}
+processors:
+{% for processor in processors %}
+  {{ processor.component_id }}:
+{% if processor.kind == "memory-limiter" %}
+    check_interval: {{ processor.check_interval | json }}
+    limit_mib: {{ processor.limit_mib }}
+    spike_limit_mib: {{ processor.spike_limit_mib }}
+{% elif processor.kind == "batch" %}
+    timeout: {{ processor.timeout | json }}
+    send_batch_size: {{ processor.send_batch_size }}
+    send_batch_max_size: {{ processor.send_batch_max_size }}
+{% elif processor.kind == "redaction" %}
+    actions:
+{% for attribute_key in processor.attribute_keys %}
+      - key: {{ attribute_key | json }}
+        action: delete
+{% endfor %}
+{% elif processor.kind == "probabilistic-sampling" %}
+    sampling_percentage: {{ processor.sampling_percentage }}
+{% endif %}
+{% endfor %}
+exporters:
+{% for exporter in exporters %}
+  {{ exporter.component_id }}:
+{% if exporter.kind == "debug" %}
+    verbosity: {{ exporter.verbosity | json }}
+{% elif exporter.kind == "otlp-http" %}
+    endpoint: {{ ('${env:' ~ exporter.endpoint_environment_name ~ '}') | json }}
+{% if exporter.headers %}
+    headers:
+{% for header in exporter.headers %}
+      {{ header.name | json }}: {{ ('${env:' ~ header.environment_name ~ '}') | json }}
+{% endfor %}
+{% endif %}
+    sending_queue:
+      enabled: true
+      queue_size: {{ exporter.queue_size }}
+    retry_on_failure:
+      enabled: true
+      max_elapsed_time: {{ exporter.retry_max_elapsed | json }}
+{% endif %}
+{% endfor %}
+service:
+  extensions:
+    - {{ health.component_id | json }}
+  pipelines:
+{% for pipeline in pipelines %}
+    {{ pipeline.signal }}:
+      receivers: {{ pipeline.receivers | json }}
+      processors: {{ pipeline.processors | json }}
+      exporters: {{ pipeline.exporters | json }}
+{% endfor %}

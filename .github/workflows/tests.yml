@@ -1,0 +1,37 @@
+name: Tests
+
+on:
+  push:
+    branches:
+      - develop
+      - main
+  pull_request:
+    branches:
+      - develop
+      - main
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: tests-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  test:
+    name: Docker and Postgres test suite
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Run Docker-first tests
+        run: ./test.sh
+
+      - name: Compile Python sources
+        run: >-
+          docker run --rm control-plane-kit-test:local
+          python -m compileall -q control_plane_kit tests examples

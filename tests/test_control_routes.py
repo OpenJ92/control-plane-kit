@@ -3,6 +3,7 @@ from unittest import TestCase, main
 from control_plane_kit import (
     COMMON_STATUS_ROUTES,
     CONTROL_ROUTE_SETS,
+    DISCOVERY_ROUTES,
     ControlRouteMethod,
     ControlRouteScope,
     ControlRouteSetName,
@@ -55,6 +56,13 @@ class ControlRouteTests(TestCase):
                 ControlRouteSetName.LOGS,
                 ControlRouteSetName.TARGETS,
                 ControlRouteSetName.OBSERVERS,
+                ControlRouteSetName.METRICS,
+                ControlRouteSetName.CIRCUIT,
+                ControlRouteSetName.TRAFFIC_EVIDENCE,
+                ControlRouteSetName.FAULTS,
+                ControlRouteSetName.CACHE,
+                ControlRouteSetName.LOADS,
+                ControlRouteSetName.DISCOVERY,
             },
         )
         self.assertEqual(
@@ -76,6 +84,63 @@ class ControlRouteTests(TestCase):
                 (ControlRouteMethod.GET, "/__deploy/observers"),
                 (ControlRouteMethod.POST, "/__deploy/observers"),
             },
+        )
+        self.assertEqual(
+            descriptors[ControlRouteSetName.METRICS],
+            {(ControlRouteMethod.GET, "/__deploy/metrics")},
+        )
+        self.assertEqual(
+            descriptors[ControlRouteSetName.CIRCUIT],
+            {
+                (ControlRouteMethod.GET, "/__deploy/circuit"),
+                (ControlRouteMethod.POST, "/__deploy/circuit/reset"),
+            },
+        )
+        self.assertEqual(
+            descriptors[ControlRouteSetName.TRAFFIC_EVIDENCE],
+            {(ControlRouteMethod.GET, "/__deploy/traffic-evidence")},
+        )
+        self.assertEqual(
+            descriptors[ControlRouteSetName.FAULTS],
+            {
+                (ControlRouteMethod.GET, "/__deploy/fault"),
+                (ControlRouteMethod.POST, "/__deploy/fault"),
+            },
+        )
+        self.assertEqual(
+            descriptors[ControlRouteSetName.CACHE],
+            {
+                (ControlRouteMethod.GET, "/__deploy/cache"),
+                (ControlRouteMethod.POST, "/__deploy/cache/purge"),
+            },
+        )
+        self.assertEqual(
+            descriptors[ControlRouteSetName.LOADS],
+            {
+                (ControlRouteMethod.GET, "/__deploy/load-runs/{run_id}"),
+                (ControlRouteMethod.POST, "/__deploy/load-runs"),
+                (ControlRouteMethod.POST, "/__deploy/load-runs/{run_id}/cancel"),
+            },
+        )
+        self.assertEqual(
+            descriptors[ControlRouteSetName.DISCOVERY],
+            {
+                (ControlRouteMethod.GET, "/__deploy/discovery/services/{service_id}"),
+                (ControlRouteMethod.POST, "/__deploy/discovery/registrations"),
+                (
+                    ControlRouteMethod.POST,
+                    "/__deploy/discovery/registrations/{instance_id}/heartbeat",
+                ),
+                (
+                    ControlRouteMethod.POST,
+                    "/__deploy/discovery/registrations/{instance_id}/deregister",
+                ),
+                (ControlRouteMethod.POST, "/__deploy/discovery/expiry"),
+            },
+        )
+        self.assertIs(
+            DISCOVERY_ROUTES,
+            route_set_named(ControlRouteSetName.DISCOVERY),
         )
 
     def test_route_set_named_accepts_string_or_enum(self):

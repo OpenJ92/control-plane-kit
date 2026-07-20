@@ -1,25 +1,29 @@
 # control-plane-kit
 
-`control-plane-kit` is a small Python algebra for describing deployable systems
-as values: blocks, runtimes, sockets, and connections. It is designed for tools
-that want to let a user build deployment topology visually, diff that topology,
-and hand the result to a runtime interpreter.
+`control-plane-kit` is a Python algebra and control-plane application for
+describing deployable systems as values: blocks, runtimes, sockets, and
+connections. Tools can build topology visually, diff it, compile an activity
+plan, request explicit approval, and execute the approved transition through
+runtime adapters.
 
 The central equation is:
 
 ```text
-DeployBlock = Spec x RuntimeImplementation x RoleSockets
+DeployBlock = BlockSpec x RuntimeImplementation x BlockSockets
 ```
 
-For application code this becomes:
+The block variant carries the domain distinction:
 
 ```text
-ApplicationBlock = AppSpec x RuntimeImplementation x RoleSockets
+Block
+  = ApplicationBlock(BlockSpec, RuntimeImplementation, BlockSockets)
+  | DataBlock(BlockSpec, RuntimeImplementation, BlockSockets)
+  | ProxyBlock(BlockSpec, RuntimeImplementation, BlockSockets)
 ```
 
 A developer brings ordinary server code. The code listens on a port and reads
 unknown addresses from environment variables. `control-plane-kit` gives those
-unknown addresses meaning by wiring provider output sockets into consumer input
+unknown addresses meaning by wiring provider sockets into consumer requirement
 sockets.
 
 ## Developer Contract
@@ -35,40 +39,40 @@ The deployment graph declares how those values are fulfilled:
 
 ```python
 from control_plane_kit import (
-    AppSpec,
     ApplicationBlock,
+    BlockSpec,
     DeploymentRecipe,
     DockerImageImplementation,
     DockerPostgresImplementation,
     DockerRuntime,
     Protocol,
-    RoleInputSocket,
-    RoleOutputSocket,
-    RoleSockets,
+    RequirementSocket,
+    ProviderSocket,
+    BlockSockets,
     SocketConnection,
     compile_recipe,
 )
 
 api = ApplicationBlock(
-    spec=AppSpec(role_id="orders-api", display_name="Orders API"),
+    spec=BlockSpec(role_id="orders-api", display_name="Orders API"),
     implementation=DockerImageImplementation(
         image="orders-api:latest",
         command=("java", "-jar", "orders.jar"),
         ports={"internal": 8080},
     ),
-    sockets=RoleSockets(
-        inputs=(
-            RoleInputSocket("DATABASE_URL", Protocol.POSTGRES, ("DATABASE_URL",)),
-            RoleInputSocket("PAYMENTS_BASE_URL", Protocol.HTTP, ("PAYMENTS_BASE_URL",)),
+    sockets=BlockSockets(
+        requirements=(
+            RequirementSocket("DATABASE_URL", Protocol.POSTGRES, ("DATABASE_URL",)),
+            RequirementSocket("PAYMENTS_BASE_URL", Protocol.HTTP, ("PAYMENTS_BASE_URL",)),
         ),
-        outputs=(RoleOutputSocket("internal", Protocol.HTTP),),
+        providers=(ProviderSocket("internal", Protocol.HTTP),),
     ),
 )
 
 postgres = ApplicationBlock(
-    spec=AppSpec(role_id="postgres"),
+    spec=BlockSpec(role_id="postgres"),
     implementation=DockerPostgresImplementation(database="orders"),
-    sockets=RoleSockets(outputs=(RoleOutputSocket("internal", Protocol.POSTGRES),)),
+    sockets=BlockSockets(providers=(ProviderSocket("internal", Protocol.POSTGRES),)),
 )
 
 recipe = DeploymentRecipe(
@@ -79,9 +83,9 @@ recipe = DeploymentRecipe(
             postgres,
             SocketConnection(
                 provider_role="postgres",
-                output_socket="internal",
+                provider_socket="internal",
                 consumer_role="orders-api",
-                input_socket="DATABASE_URL",
+                requirement_socket="DATABASE_URL",
             ),
         ),
     ),
@@ -103,7 +107,7 @@ DeployBlock
   sockets: what it needs and what it exposes
 
 SocketConnection
-  provider output socket -> consumer input socket
+  provider socket -> consumer requirement socket
 ```
 
 A runtime is ambient. A Docker image implementation does not create Docker; it
@@ -115,14 +119,35 @@ Kubernetes, ECS, or a dry-run runtime.
 
 Sockets are the UI/editor boundary.
 
-- Output sockets are provided endpoints: HTTP base URLs, Postgres connection
+- Provider sockets are provided endpoints: HTTP base URLs, Postgres connection
   strings, TCP addresses.
-- Input sockets are environment expectations: env vars that need to be filled
-  from a compatible provider output.
+- Requirement sockets are environment expectations: env vars that need to be
+  filled from a compatible provider.
 
-A visual editor can render output sockets on one side of a block and input
-sockets on the other. Dragging from a provider output to a consumer input creates
-a `SocketConnection`.
+A visual editor can render provider sockets on one side of a block and
+requirement sockets on the other. Dragging from a provider to a requirement
+creates a `SocketConnection`.
+
+## Capabilities
+
+Blocks may advertise operator capabilities independently from their application
+traffic sockets. A capability says what the control plane or UI may ask a
+running block to do. When a capability is backed by protocol routes, it points
+at a route set such as `common-status`, `logs`, `targets`, or `observers`.
+
+```python
+BlockSpec(
+    role_id="api-router",
+    capabilities=(
+        CapabilityName.HEALTH_CHECKABLE,
+        CapabilityName.TARGET_MUTABLE,
+        CapabilityName.SWITCHABLE,
+    ),
+)
+```
+
+The compiled node descriptor then exposes JSON-friendly capability descriptors
+for inspectors and graph editors.
 
 ## Included Blocks and Implementations
 
@@ -141,6 +166,217 @@ The first implementation is deliberately small:
 
 The package also includes graph diffing and a conservative activity planner.
 
+## Control Plane Reads
+
+The first control-plane instance read surfaces are available through one shared
+service boundary:
+
+```text
+Postgres-backed stores
+  -> InstanceReadService
+    -> FastAPI read routes
+    -> CLI read commands
+    -> MCP-shaped read adapter
+```
+
+Read interfaces are intentionally non-mutating. They expose workspace summaries,
+current/desired graph descriptors, operator graph projections, activity
+timelines, observed state, and declared control surfaces.
+
+See [Control Plane Read Interfaces](docs/READ_INTERFACES.md) for route, CLI,
+and MCP-shaped examples.
+
+Mutation command services use an explicit caller-owned Postgres transaction.
+See [Postgres Unit Of Work](docs/POSTGRES_UNIT_OF_WORK.md) for the connection,
+store, commit, rollback, and saga boundaries.
+
+Operation sessions, desired graph edits, typed activity planning, approvals,
+recovery candidates, and focused workflow reads are documented in
+[Activity Sessions And Planning](docs/ACTIVITY_PLANNING.md).
+
+## Deployment Program
+
+The intentional long-lived application entrance is:
+
+```python
+from control_plane_kit.application.deploy import DeploymentProgram
+```
+
+One program binds every graph-pair transition:
+
+```text
+initial deployment = program.between(EmptyGraph, desired)
+update             = program.between(current, desired)
+teardown           = program.between(current, EmptyGraph)
+no-op              = program.between(graph, graph)
+```
+
+It composes `Plan -> Approve -> Admit -> Claim -> Execute -> Advance` while
+keeping approval and recovery as explicit suspension boundaries. Later HTTP
+requests reconstruct with `program.for_plan(plan_id)` rather than retaining a
+Python object as workflow state. See
+[Deployment Application Program](docs/DEPLOY_PROGRAM.md) for construction,
+typed outcomes, operator grants, transaction laws, recovery, and live examples.
+
+Run the complete Docker/Postgres live proof with:
+
+```bash
+./gate-f-live-test.sh
+```
+
+Run a generated Hello topology with paired HTTP and Postgres dependencies through
+the same canonical deployment program:
+
+```bash
+./generated-hello-live-test.sh
+```
+
+The default is a two-branch, one-level graph. Set
+`CPK_GENERATED_HELLO_BRANCHING_FACTOR` and `CPK_GENERATED_HELLO_DEPTH` to exercise
+a larger bounded generated topology. Live execution defaults to at most 31
+application and database containers. Raising
+`CPK_GENERATED_HELLO_MAX_LIVE_NODES` is an explicit acknowledgement that a
+larger graph will consume correspondingly more local Docker resources; it does
+not change the larger bound of the pure graph generator.
+
+Run the local read demo with:
+
+```bash
+./scripts/read-demo-up.sh
+```
+
+Then query `http://localhost:8011/workspaces/demo-workspace` with bearer token
+`demo-token`.
+
+If `8011` is busy, set `CPK_DEMO_HOST_PORT` before running the script.
+
+Stop it with:
+
+```bash
+./scripts/read-demo-down.sh
+```
+
+The base installation contains the pure deployment language and planning
+pipeline:
+
+```bash
+pip install control-plane-kit
+```
+
+Install focused HTTP or Postgres boundaries independently when that is the
+only operational capability required:
+
+```bash
+pip install control-plane-kit[http]
+pip install control-plane-kit[postgres]
+```
+
+The broad runnable-server bundle includes both boundaries plus process-server
+dependencies:
+
+```bash
+pip install control-plane-kit[server]
+```
+
+They expose control protocol routes for package-provided block servers while
+leaving application traffic to concrete block implementations.
+
+## Testing
+
+The test suite is Docker-first because the control-plane stores use real
+Postgres.  Run:
+
+```bash
+./test.sh
+```
+
+The script builds the test image, starts a Postgres container, installs the
+control-plane schema, runs the tests, and removes the containers/volumes on
+exit.
+
+
+## Runtime Interpreters
+
+A compiled graph is still only topology. A runtime interpreter is the boundary
+where topology becomes effects:
+
+```python
+from control_plane_kit import compile_recipe
+from control_plane_kit.docker_runtime import DockerRuntimeInterpreter
+from control_plane_kit.runtimes import CleanupPolicy
+from examples.hello_runtime import hello_recipe
+
+graph = compile_recipe(hello_recipe("Hello, runtime!"))
+interpreter = DockerRuntimeInterpreter(
+    project_name="hello-demo",
+    cleanup_policy=CleanupPolicy.REMOVE_ON_STOP,
+)
+
+state = interpreter.up(graph, runtime_id="docker")
+try:
+    assert state.node("hello").healthy
+finally:
+    interpreter.down(state)
+```
+
+The Docker interpreter operates on one `RuntimeRecord` at a time. It consumes
+`DeploymentGraph` values, produces inspectable `RuntimePlan` values, and records
+live facts in `RuntimeState`. Container names, cleanup metadata, and health
+belong to runtime state; they do not belong to the graph.
+
+The older `DockerRuntimeInterpreter.up/down` surface is a focused low-level
+runtime example. New control-plane workflows should use the deployment program
+above. Current Docker support is intentionally narrow:
+
+- supported: one Docker runtime at a time,
+- supported: Docker image blocks and Docker Postgres blocks,
+- supported: fake-client tests that do not require Docker,
+- supported: default cleanup that removes owned containers and network,
+- supported: preserve cleanup that stops containers but keeps resources,
+- unsupported: cross-runtime Docker realization,
+- supported: explicit typed loopback host publication,
+- supported: distinct process, reachability, application-health, and readiness
+  probes,
+- unsupported: Kubernetes, ECS, EC2, RDS, and Cloudflare interpreters.
+
+Activity descriptors redact environment values. The executor still receives the
+real environment map because containers need those values to start.
+
+### Runtime Examples
+
+The example ladder is:
+
+- `examples/hello_runtime.py`: one HTTP application block through Docker.
+- `examples/postgres_runtime.py`: an application wired to Docker Postgres.
+- `examples/router_runtime.py`: two HTTP backends behind a Docker-backed active
+  router.
+- `examples/http_block_compositions.py`: graph-level compositions of the
+  package-provided HTTP proxy, router, weighted balancer, multiplexer, and rate
+  limiter blocks.
+
+Graph-only examples such as `examples/app_with_postgres.py` and
+`examples/router_swap.py` remain useful when you want to stop at topology.
+
+## Docker
+
+The project Docker image uses Python 3.14 by default:
+
+```bash
+docker build -t control-plane-kit:local .
+```
+
+Run the container smoke check:
+
+```bash
+docker run --rm control-plane-kit:local
+```
+
+Run the Docker test target, including optional FastAPI adapter tests:
+
+```bash
+docker build --target test -t control-plane-kit:test .
+```
+
 ## Design Boundary
 
 This package is not Terraform, Kubernetes, Docker Compose, or a secret manager.
@@ -149,3 +385,11 @@ Docker, Kubernetes, AWS, Cloudflare, or any other substrate.
 
 The graph owns topology. Runtime interpreters own effects. Application code
 stays ordinary application code.
+
+## Design Documents
+
+- [Operating Model](docs/OPERATING_MODEL.md)
+- [HTTP Block Compositions](docs/HTTP_BLOCK_COMPOSITIONS.md)
+- [Control Plane Kit Architecture Design](docs/design/0001-control-plane-kit-architecture.md)
+- [Mathematical Design Preference](docs/design/0002-mathematical-design-preference.md)
+- [Control Plane Kit Roadmap](docs/roadmap/README.md)

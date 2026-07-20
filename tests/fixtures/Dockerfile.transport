@@ -1,0 +1,6 @@
+FROM python:3.14-alpine
+
+WORKDIR /fixture
+COPY dual_transport_server.py ./dual_transport_server.py
+
+CMD ["python", "dual_transport_server.py", "serve"]

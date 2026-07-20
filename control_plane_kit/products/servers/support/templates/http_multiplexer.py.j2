@@ -1,0 +1,58 @@
+import os
+import urllib.request
+from http.server import BaseHTTPRequestHandler, HTTPServer
+
+PRIMARY = os.environ["{{ primary_env }}"].rstrip("/")
+OBSERVERS = [
+    value.rstrip("/")
+    for value in (
+        os.environ.get("{{ observer_a_env }}"),
+        os.environ.get("{{ observer_b_env }}"),
+    )
+    if value
+]
+
+
+class Handler(BaseHTTPRequestHandler):
+    def _request(self, target, body, headers):
+        return urllib.request.Request(target + self.path, data=body or None, headers=headers, method=self.command)
+
+    def _forward(self):
+        body = self.rfile.read(int(self.headers.get("content-length", "0") or "0"))
+        headers = {key: value for key, value in self.headers.items() if key.lower() != "host"}
+        with urllib.request.urlopen(self._request(PRIMARY, body, headers)) as response:
+            payload = response.read()
+            status = response.status
+            response_headers = [
+                (key, value)
+                for key, value in response.headers.items()
+                if key.lower() not in {"transfer-encoding", "connection"}
+            ]
+        for observer in OBSERVERS:
+            try:
+                urllib.request.urlopen(self._request(observer, body, headers), timeout=1).read()
+            except Exception:
+                pass
+        self.send_response(status)
+        for key, value in response_headers:
+            self.send_header(key, value)
+        self.end_headers()
+        self.wfile.write(payload)
+
+    def do_GET(self):
+        self._forward()
+
+    def do_POST(self):
+        self._forward()
+
+    def do_PUT(self):
+        self._forward()
+
+    def do_DELETE(self):
+        self._forward()
+
+    def log_message(self, format, *args):
+        pass
+
+
+HTTPServer(("0.0.0.0", {{ port }}), Handler).serve_forever()

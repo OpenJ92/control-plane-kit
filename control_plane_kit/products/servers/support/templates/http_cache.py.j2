@@ -1,0 +1,324 @@
+import hashlib
+import hmac
+import json
+import os
+import threading
+import time
+from collections import OrderedDict
+from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
+from urllib.error import HTTPError, URLError
+from urllib.request import HTTPRedirectHandler, Request, build_opener
+
+TARGET = os.environ["CACHE_TARGET_URL"].rstrip("/")
+CONTROL_TOKEN = os.environ["CPK_CACHE_CONTROL_TOKEN"]
+TTL_SECONDS = {{ ttl_ms }} / 1000
+STALE_SECONDS = {{ stale_while_revalidate_ms }} / 1000
+MAX_OBJECT_BYTES = {{ max_object_bytes }}
+TOTAL_CAPACITY_BYTES = {{ total_capacity_bytes }}
+MAX_ENTRIES = {{ max_entries }}
+MAX_KEY_BYTES = {{ max_key_bytes }}
+MAX_REQUEST_BYTES = {{ max_request_bytes }}
+MAX_RESPONSE_BYTES = {{ max_response_bytes }}
+VARY_HEADERS = {{ vary_headers | tojson }}
+UPSTREAM_TIMEOUT_SECONDS = 5
+LOCK = threading.Lock()
+ENTRIES = OrderedDict()
+RETAINED_BYTES = 0
+HIT_COUNT = 0
+MISS_COUNT = 0
+STALE_COUNT = 0
+BYPASS_COUNT = 0
+EVICTION_COUNT = 0
+PURGE_COUNT = 0
+LATEST_OUTCOME = None
+
+
+class NoRedirects(HTTPRedirectHandler):
+    def redirect_request(self, request, file_pointer, code, message, headers, new_url):
+        return None
+
+
+OPENER = build_opener(NoRedirects)
+
+
+def header(headers, name):
+    for key, value in headers:
+        if key.lower() == name:
+            return value
+    return ""
+
+
+def has_header(headers, names):
+    return any(key.lower() in names for key, _value in headers)
+
+
+def cache_key(method, path, headers):
+    if method != "GET" or has_header(headers, {"authorization", "cookie"}):
+        return None
+    components = [method, path]
+    for name in VARY_HEADERS:
+        components.extend((name, header(headers, name)))
+    material = "\0".join(components).encode()
+    if len(material) > MAX_KEY_BYTES:
+        return None
+    return hashlib.sha256(material).hexdigest()
+
+
+def cacheable(method, status, headers, body):
+    if method != "GET" or status != 200 or len(body) > MAX_OBJECT_BYTES:
+        return False
+    if has_header(headers, {"set-cookie"}):
+        return False
+    cache_control = header(headers, "cache-control").lower()
+    directives = {
+        value.strip().split("=", 1)[0]
+        for value in cache_control.split(",")
+        if value.strip()
+    }
+    if directives.intersection({"private", "no-store", "no-cache"}):
+        return False
+    vary = {
+        value.strip().lower()
+        for value in header(headers, "vary").split(",")
+        if value.strip()
+    }
+    return "*" not in vary and vary.issubset(set(VARY_HEADERS))
+
+
+def record_outcome(outcome):
+    global LATEST_OUTCOME
+    with LOCK:
+        LATEST_OUTCOME = outcome
+
+
+def lookup(key, now):
+    global HIT_COUNT, STALE_COUNT, RETAINED_BYTES
+    with LOCK:
+        entry = ENTRIES.get(key)
+        if entry is None:
+            return None, "miss"
+        age = now - entry[0]
+        if age <= TTL_SECONDS:
+            ENTRIES.move_to_end(key)
+            HIT_COUNT += 1
+            return entry, "hit"
+        if age <= TTL_SECONDS + STALE_SECONDS:
+            STALE_COUNT += 1
+            return entry, "stale"
+        ENTRIES.pop(key)
+        RETAINED_BYTES -= len(entry[3])
+        return None, "miss"
+
+
+def store(key, now, status, headers, body):
+    global RETAINED_BYTES, EVICTION_COUNT
+    with LOCK:
+        previous = ENTRIES.pop(key, None)
+        if previous is not None:
+            RETAINED_BYTES -= len(previous[3])
+        ENTRIES[key] = (now, status, tuple(headers), body)
+        RETAINED_BYTES += len(body)
+        while len(ENTRIES) > MAX_ENTRIES or RETAINED_BYTES > TOTAL_CAPACITY_BYTES:
+            _oldest_key, oldest = ENTRIES.popitem(last=False)
+            RETAINED_BYTES -= len(oldest[3])
+            EVICTION_COUNT += 1
+
+
+def increment(name):
+    global MISS_COUNT, BYPASS_COUNT
+    with LOCK:
+        if name == "miss":
+            MISS_COUNT += 1
+        elif name == "bypass":
+            BYPASS_COUNT += 1
+
+
+def purge():
+    global RETAINED_BYTES, PURGE_COUNT
+    with LOCK:
+        ENTRIES.clear()
+        RETAINED_BYTES = 0
+        PURGE_COUNT += 1
+
+
+def descriptor():
+    with LOCK:
+        return {
+            "entry_count": len(ENTRIES),
+            "retained_bytes": RETAINED_BYTES,
+            "hit_count": HIT_COUNT,
+            "miss_count": MISS_COUNT,
+            "stale_count": STALE_COUNT,
+            "bypass_count": BYPASS_COUNT,
+            "eviction_count": EVICTION_COUNT,
+            "purge_count": PURGE_COUNT,
+            "latest_outcome": LATEST_OUTCOME,
+        }
+
+
+def target_request(method, path, headers, body):
+    request_headers = {
+        key: value
+        for key, value in headers
+        if key.lower() not in {"host", "content-length", "connection"}
+    }
+    request = Request(
+        TARGET + path,
+        data=body or None,
+        headers=request_headers,
+        method=method,
+    )
+    try:
+        response = OPENER.open(request, timeout=UPSTREAM_TIMEOUT_SECONDS)
+        with response:
+            payload = response.read(MAX_RESPONSE_BYTES + 1)
+            return response.status, tuple(response.headers.items()), payload
+    except HTTPError as error:
+        with error:
+            payload = error.read(MAX_RESPONSE_BYTES + 1)
+            return error.code, tuple(error.headers.items()), payload
+    except (OSError, TimeoutError, URLError):
+        return None
+
+
+class Handler(BaseHTTPRequestHandler):
+    def _json(self, status, payload):
+        body = json.dumps(payload, sort_keys=True, separators=(",", ":")).encode()
+        self.send_response(status)
+        self.send_header("content-type", "application/json")
+        self.send_header("content-length", str(len(body)))
+        self.end_headers()
+        if self.command != "HEAD":
+            self.wfile.write(body)
+
+    def _authorized(self):
+        authorization = self.headers.get("authorization", "")
+        alternate = self.headers.get("x-control-plane-token", "")
+        return hmac.compare_digest(
+            authorization, f"Bearer {CONTROL_TOKEN}"
+        ) or hmac.compare_digest(alternate, CONTROL_TOKEN)
+
+    def _read_body(self):
+        try:
+            length = int(self.headers.get("content-length", "0") or "0")
+        except ValueError:
+            return None, 400
+        if length < 0 or length > MAX_REQUEST_BYTES:
+            return None, 413
+        return self.rfile.read(length), None
+
+    def _send_target(self, status, headers, body):
+        self.send_response(status)
+        for key, value in headers:
+            if key.lower() not in {"transfer-encoding", "connection", "content-length"}:
+                self.send_header(key, value)
+        self.send_header("content-length", str(len(body)))
+        self.end_headers()
+        if self.command != "HEAD":
+            self.wfile.write(body)
+
+    def _forward(self):
+        body, error_status = self._read_body()
+        if error_status is not None:
+            record_outcome("request-rejected")
+            self._json(error_status, {"detail": "invalid or oversized request"})
+            return
+        headers = tuple(self.headers.items())
+        key = cache_key(self.command, self.path, headers)
+        if key is None:
+            increment("bypass")
+            result = target_request(self.command, self.path, headers, body)
+            if result is None:
+                record_outcome("target-unavailable")
+                self._json(502, {"detail": "upstream unavailable"})
+                return
+            status, response_headers, payload = result
+            if len(payload) > MAX_RESPONSE_BYTES:
+                record_outcome("response-rejected")
+                self._json(502, {"detail": "upstream response exceeded limit"})
+                return
+            record_outcome("bypass")
+            self._send_target(status, response_headers, payload)
+            return
+
+        now = time.monotonic()
+        entry, state = lookup(key, now)
+        if state == "hit":
+            record_outcome("hit")
+            self._send_target(entry[1], entry[2], entry[3])
+            return
+        if state == "stale":
+            result = target_request(self.command, self.path, headers, body)
+            if result is not None:
+                status, response_headers, payload = result
+                if len(payload) <= MAX_RESPONSE_BYTES and cacheable(
+                    self.command, status, response_headers, payload
+                ):
+                    store(key, now, status, response_headers, payload)
+                    record_outcome("stale-refreshed")
+                else:
+                    record_outcome("stale-refresh-failed")
+            else:
+                record_outcome("stale-refresh-failed")
+            self._send_target(entry[1], entry[2], entry[3])
+            return
+
+        increment("miss")
+        result = target_request(self.command, self.path, headers, body)
+        if result is None:
+            record_outcome("target-unavailable")
+            self._json(502, {"detail": "upstream unavailable"})
+            return
+        status, response_headers, payload = result
+        if len(payload) > MAX_RESPONSE_BYTES:
+            record_outcome("response-rejected")
+            self._json(502, {"detail": "upstream response exceeded limit"})
+            return
+        if cacheable(self.command, status, response_headers, payload):
+            store(key, now, status, response_headers, payload)
+            record_outcome("miss")
+        else:
+            increment("bypass")
+            record_outcome("bypass")
+        self._send_target(status, response_headers, payload)
+
+    def do_GET(self):
+        path = self.path.split("?", 1)[0]
+        if path == "/health":
+            self._json(200, {"status": "healthy"})
+            return
+        if path == "/__deploy/cache":
+            if not self._authorized():
+                self._json(401, {"detail": "unauthorized"})
+                return
+            self._json(200, descriptor())
+            return
+        self._forward()
+
+    def do_HEAD(self):
+        self._forward()
+
+    def do_POST(self):
+        if self.path.split("?", 1)[0] == "/__deploy/cache/purge":
+            if not self._authorized():
+                self._json(401, {"detail": "unauthorized"})
+                return
+            purge()
+            self._json(200, descriptor())
+            return
+        self._forward()
+
+    def do_PUT(self):
+        self._forward()
+
+    def do_PATCH(self):
+        self._forward()
+
+    def do_DELETE(self):
+        self._forward()
+
+    def log_message(self, format, *args):
+        pass
+
+
+ThreadingHTTPServer(("0.0.0.0", {{ port }}), Handler).serve_forever()
