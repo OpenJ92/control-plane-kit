@@ -8,6 +8,20 @@ from control_plane_kit.products.servers.catalog import (
     ProductDeclaration,
     UnsupportedCapability,
 )
+from control_plane_kit.products.servers.coredns import (
+    COREDNS_CONFIG_PATH,
+    COREDNS_IMAGE,
+    COREDNS_PRODUCT,
+    COREDNS_ZONE_PATH,
+    CoreDnsConfiguration,
+    DnsARecord,
+    DnsAaaaRecord,
+    DnsName,
+    coredns_block,
+    default_coredns_configuration,
+    project_discovery_to_coredns,
+    render_coredns_configuration,
+)
 from control_plane_kit.products.servers.http_auth_gateway import (
     HTTP_AUTH_GATEWAY_PRODUCT,
     AuthGatewayObservation,
@@ -47,6 +61,18 @@ from control_plane_kit.products.servers.webhook_delivery import (
 )
 
 __all__ = [
+    "COREDNS_CONFIG_PATH",
+    "COREDNS_IMAGE",
+    "COREDNS_PRODUCT",
+    "COREDNS_ZONE_PATH",
+    "CoreDnsConfiguration",
+    "DnsARecord",
+    "DnsAaaaRecord",
+    "DnsName",
+    "coredns_block",
+    "default_coredns_configuration",
+    "project_discovery_to_coredns",
+    "render_coredns_configuration",
     "CapabilityImplementation",
     "CapabilityResolution",
     "ExecutableCapability",

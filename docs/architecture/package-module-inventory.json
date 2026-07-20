@@ -326,7 +326,7 @@
         "control_plane_kit.servers",
         "control_plane_kit.servers.block_control",
         "control_plane_kit.servers.catalog",
-        "control_plane_kit.servers.coredns",
+        "control_plane_kit.products.servers.coredns",
         "control_plane_kit.servers.hello",
         "control_plane_kit.servers.http_active_router",
         "control_plane_kit.products.servers.http_auth_gateway",
@@ -1566,7 +1566,7 @@
         "control_plane_kit.core.configuration"
       ],
       "known_package_consumers": [
-        "control_plane_kit.servers.coredns",
+        "control_plane_kit.products.servers.coredns",
         "control_plane_kit.servers.opentelemetry_collector"
       ],
       "migration_prerequisites": [
@@ -1720,7 +1720,7 @@
         "control_plane_kit",
         "control_plane_kit.implementations",
         "control_plane_kit.servers.catalog",
-        "control_plane_kit.servers.coredns",
+        "control_plane_kit.products.servers.coredns",
         "control_plane_kit.servers.hello",
         "control_plane_kit.servers.http_active_router",
         "control_plane_kit.products.servers.http_auth_gateway",
@@ -1786,7 +1786,7 @@
         "control_plane_kit.core.algebra",
         "control_plane_kit.servers.block_control",
         "control_plane_kit.servers.catalog",
-        "control_plane_kit.servers.coredns",
+        "control_plane_kit.products.servers.coredns",
         "control_plane_kit.servers.hello",
         "control_plane_kit.servers.http_active_router",
         "control_plane_kit.products.servers.http_auth_gateway",
@@ -1849,7 +1849,7 @@
         "control_plane_kit.docker_runtime",
         "control_plane_kit.effects.material",
         "control_plane_kit.implementations",
-        "control_plane_kit.servers.coredns",
+        "control_plane_kit.products.servers.coredns",
         "control_plane_kit.servers.opentelemetry_collector",
         "control_plane_kit.core.topology.changes",
         "control_plane_kit.core.topology.codec",
@@ -2112,7 +2112,7 @@
         "control_plane_kit.policies.lifecycle",
         "control_plane_kit.read_services.instance",
         "control_plane_kit.runtimes",
-        "control_plane_kit.servers.coredns",
+        "control_plane_kit.products.servers.coredns",
         "control_plane_kit.servers.hello",
         "control_plane_kit.servers.http_active_router",
         "control_plane_kit.products.servers.http_auth_gateway",
@@ -2213,7 +2213,7 @@
         "control_plane_kit.core.algebra",
         "control_plane_kit.effects.material",
         "control_plane_kit.effects.verification",
-        "control_plane_kit.servers.coredns",
+        "control_plane_kit.products.servers.coredns",
         "control_plane_kit.servers.opentelemetry_collector",
         "control_plane_kit.products.servers.webhook_delivery",
         "control_plane_kit.core.topology.codec",
@@ -2439,7 +2439,7 @@
         "control_plane_kit.discovery_registry.protocols",
         "control_plane_kit.discovery_registry.service",
         "control_plane_kit.discovery_server.app",
-        "control_plane_kit.servers.coredns"
+        "control_plane_kit.products.servers.coredns"
       ],
       "migration_prerequisites": [
         "#550",
@@ -3883,7 +3883,7 @@
       ],
       "known_package_consumers": [
         "control_plane_kit",
-        "control_plane_kit.servers.coredns",
+        "control_plane_kit.products.servers.coredns",
         "control_plane_kit.servers.hello",
         "control_plane_kit.servers.http_active_router",
         "control_plane_kit.products.servers.http_auth_gateway",
@@ -5287,7 +5287,7 @@
         "control_plane_kit.products.servers.support.command_rendering",
         "control_plane_kit.servers.block_control",
         "control_plane_kit.servers.catalog",
-        "control_plane_kit.servers.coredns",
+        "control_plane_kit.products.servers.coredns",
         "control_plane_kit.servers.hello",
         "control_plane_kit.servers.http_active_router",
         "control_plane_kit.products.servers.http_auth_gateway",
@@ -5633,7 +5633,7 @@
         "control_plane_kit.domains.idempotency",
         "control_plane_kit.domains.load_generation",
         "control_plane_kit.products.servers",
-        "control_plane_kit.servers.coredns",
+        "control_plane_kit.products.servers.coredns",
         "control_plane_kit.servers.hello",
         "control_plane_kit.servers.http_active_router",
         "control_plane_kit.products.servers.http_auth_gateway",
@@ -5692,7 +5692,8 @@
         "project_discovery_to_coredns",
         "default_coredns_configuration",
         "render_coredns_configuration",
-        "coredns_block"
+        "coredns_block",
+        "COREDNS_PRODUCT"
       ],
       "destination": "control_plane_kit.products.servers.coredns",
       "domain_qualification": {
@@ -5718,7 +5719,7 @@
         "control_plane_kit.core.verification"
       ],
       "known_package_consumers": [
-        "control_plane_kit.servers",
+        "control_plane_kit.products.servers",
         "control_plane_kit.servers.catalog"
       ],
       "migration_prerequisites": [
@@ -5726,9 +5727,9 @@
         "#557",
         "#558/#559/#560 for representative splits"
       ],
-      "module": "control_plane_kit.servers.coredns",
+      "module": "control_plane_kit.products.servers.coredns",
       "motivation": "Declares a package-owned deployable server as graph-visible product data.",
-      "movement": "split-and-move",
+      "movement": "moved",
       "optional_external_dependencies": [],
       "owner": "product",
       "protecting_tests": [
@@ -5743,7 +5744,7 @@
         "values"
       ],
       "server_product_exterior": "control_plane_kit.products.servers",
-      "source": "control_plane_kit/servers/coredns.py"
+      "source": "control_plane_kit/products/servers/coredns.py"
     },
     {
       "canonical_public_exports": [

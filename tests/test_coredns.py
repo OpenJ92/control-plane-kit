@@ -34,24 +34,44 @@ from control_plane_kit.domains.discovery import (
     DiscoveryRegistrationRecord,
     DiscoveryRegistrationStatus,
 )
-from control_plane_kit.products.servers import CapabilityImplementation
-from control_plane_kit.servers import (
+from control_plane_kit.products.servers import (
+    COREDNS_PRODUCT,
+    CapabilityImplementation,
     CoreDnsConfiguration,
     DnsARecord,
     DnsAaaaRecord,
     DnsName,
     coredns_block,
     default_coredns_configuration,
-    package_server_contract,
     project_discovery_to_coredns,
     render_coredns_configuration,
 )
+from control_plane_kit.servers import package_server_contract
+from examples.coredns_product_projection import coredns_product_projection
 
 
 NOW = datetime(2026, 7, 20, tzinfo=timezone.utc)
 
 
 class CoreDnsTests(unittest.TestCase):
+    def test_public_example_exposes_the_complete_pure_projection(self) -> None:
+        registration, configuration, artifacts, block, desired, change = (
+            coredns_product_projection()
+        )
+
+        self.assertEqual(
+            registration.registration.endpoint.address.value,
+            "http://10.0.0.42:8080",
+        )
+        self.assertEqual(
+            tuple(record.name.value for record in configuration.records),
+            ("blue.orders.cpk.internal.", "orders.cpk.internal."),
+        )
+        self.assertEqual(len(artifacts), 2)
+        self.assertEqual(block.spec.product, PackageServerProduct.COREDNS)
+        self.assertIsNotNone(desired.node("coredns"))
+        self.assertTrue(change.changes)
+
     def test_names_and_records_are_closed_typed_values(self) -> None:
         self.assertEqual(DnsName("Orders.CPK.Internal").value, "orders.cpk.internal.")
         with self.assertRaisesRegex(ValueError, "DNS name is invalid"):
@@ -94,6 +114,20 @@ class CoreDnsTests(unittest.TestCase):
         )
         self.assertTrue(all(record.address == IPv4Address("10.0.0.42") for record in first.records))
         self.assertEqual(registration.status, DiscoveryRegistrationStatus.ACTIVE)
+
+    def test_a_and_aaaa_projection_deliberately_discards_endpoint_port(self) -> None:
+        first = project_discovery_to_coredns(
+            DnsName("cpk.internal"),
+            (_record("orders", "blue", "http://10.0.0.42:8080"),),
+            observed_at=NOW,
+        )
+        second = project_discovery_to_coredns(
+            DnsName("cpk.internal"),
+            (_record("orders", "blue", "http://10.0.0.42:9090"),),
+            observed_at=NOW,
+        )
+
+        self.assertEqual(first, second)
 
     def test_configuration_canonicalizes_record_permutations(self) -> None:
         zone = DnsName("cpk.internal")
@@ -228,6 +262,8 @@ class CoreDnsTests(unittest.TestCase):
 
     def test_catalogue_exposes_probe_and_runtime_restart_evidence(self) -> None:
         contract = package_server_contract(PackageServerProduct.COREDNS)
+
+        self.assertIs(contract, COREDNS_PRODUCT)
 
         self.assertEqual(
             tuple(value.capability for value in contract.capabilities),

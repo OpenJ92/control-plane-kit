@@ -19,6 +19,7 @@ from control_plane_kit.servers import (
     package_server_contract,
 )
 from control_plane_kit.products.servers import (
+    COREDNS_PRODUCT,
     CapabilityImplementation,
     ExecutableCapability,
     ProductCatalog,
@@ -41,6 +42,10 @@ class PackageServerCatalogTests(unittest.TestCase):
         self.assertEqual(
             ProductDeclaration.__module__,
             "control_plane_kit.products.servers.catalog",
+        )
+        self.assertIs(
+            package_server_contract(PackageServerProduct.COREDNS),
+            COREDNS_PRODUCT,
         )
         self.assertIs(
             package_server_contract(PackageServerProduct.WEBHOOK_DELIVERY),

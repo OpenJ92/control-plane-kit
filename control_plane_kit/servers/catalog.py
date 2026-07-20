@@ -9,6 +9,7 @@ from control_plane_kit.core.algebra import (
 from control_plane_kit.core.capabilities import CapabilityName
 from control_plane_kit.core.control_routes import ControlRouteSetName
 from control_plane_kit.products.servers import (
+    COREDNS_PRODUCT,
     CapabilityImplementation,
     ExecutableCapability,
     ProductCatalog,
@@ -38,7 +39,6 @@ from control_plane_kit.servers.http_weighted_balancer import http_weighted_load_
 from control_plane_kit.servers.managed_http_router import managed_http_router_block
 from control_plane_kit.servers.request_observer import request_observer_block
 from control_plane_kit.servers.service_discovery import service_discovery_block
-from control_plane_kit.servers.coredns import coredns_block
 from control_plane_kit.products.servers.webhook_delivery import WEBHOOK_DELIVERY_PRODUCT
 from control_plane_kit.products.servers.http_auth_gateway import HTTP_AUTH_GATEWAY_PRODUCT
 from control_plane_kit.servers.opentelemetry_collector import (
@@ -78,15 +78,7 @@ def _runtime(capability: CapabilityName) -> ExecutableCapability:
 
 
 PACKAGE_SERVER_CONTRACTS = (
-    ProductDeclaration(
-        PackageServerProduct.COREDNS,
-        ProductMaturity.OPERATIONAL,
-        coredns_block(),
-        (
-            _probe(path="/health"),
-            _runtime(CapabilityName.RESTARTABLE),
-        ),
-    ),
+    COREDNS_PRODUCT,
     ProductDeclaration(
         PackageServerProduct.TCP_SWITCH,
         ProductMaturity.TEST_ONLY,

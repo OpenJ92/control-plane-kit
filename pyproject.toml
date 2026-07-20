@@ -36,6 +36,7 @@ include = ["control_plane_kit*"]
 
 [tool.setuptools.package-data]
 "control_plane_kit.products.servers.support" = ["templates/*.py.j2"]
+"control_plane_kit.products.servers" = ["templates/*.j2"]
 "control_plane_kit" = ["product_templates/*.j2"]
 
 [project.optional-dependencies]

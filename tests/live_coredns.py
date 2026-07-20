@@ -30,7 +30,7 @@ from control_plane_kit import (
     materialize_effect_request,
     validate_graph,
 )
-from control_plane_kit.servers import (
+from control_plane_kit.products.servers import (
     CoreDnsConfiguration,
     DnsARecord,
     DnsName,
