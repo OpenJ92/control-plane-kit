@@ -197,12 +197,13 @@ confirm the shape already chosen.
 Before the source-level dry run for every non-trivial child issue:
 
 ```text
-select governing test laws
-  -> translate target tests
-    -> run and record reference green / target red evidence
-      -> dry-run source and architecture with those tests in view
-        -> refine issue topology
-          -> implement
+inspect governing frozen tests and new requirements
+  -> extract behavioral law cards
+    -> dry-run source and architecture with those laws in view
+      -> design the target public interface and refine issue topology
+        -> translate or write focused target tests
+          -> record focused target-red evidence
+            -> implement
 ```
 
 Classify every governing test as one of:
@@ -225,29 +226,56 @@ non-executable-scaffold
 boundary. It is not a way to avoid tests for an issue being executed.
 
 For migration work, use the parity manifest to select the frozen tests owned by
-the issue. Translate setup, imports, fixtures, and public constructors as needed,
-but preserve the tested law. Blind file copying is not required, and preserving
-obsolete implementation structure is not a goal.
+the issue. Before the dry run, inspect those tests and extract compact law cards:
 
-Put translated tests on the issue branch before implementation. Run them and
-record the expected failures caused by genuinely missing target behavior. The
-red test commit or equivalent immutable evidence belongs in the issue/PR
-decision log. Do not merge failing tests, add `xfail`, skip collection, weaken
-assertions, or point translated tests back at the frozen implementation.
+```text
+reference test identity
+behavioral law
+observable result
+negative cases
+old structural assumptions to discard
+future owner
+```
+
+The law cards are context, not copied test files. Do not translate imports,
+fixtures, constructors, or module layout until the dry run has established the
+target public interface. This prevents the old test structure from pulling the
+new architecture back toward obsolete ownership boundaries.
+
+The parity foundation establishes immutable green evidence for the frozen
+baseline. An individual issue does not rerun the complete frozen `./test.sh`
+bundle before its dry run unless the reference evidence is missing, stale, or
+directly disputed.
+
+After the dry run and target-interface design, translate or write focused target
+tests on the issue branch before application implementation. Preserve the law,
+not the old file organization. Run only the focused target tests needed to prove
+that they fail for genuinely missing behavior rather than broken collection,
+imports, fixtures, or Docker setup. The red test commit or equivalent immutable
+evidence belongs in the issue/PR decision log.
+
+Do not merge failing tests, add `xfail`, skip collection, weaken assertions, or
+point translated tests back at the frozen implementation. Run broader package,
+parity, and `./test.sh` validation after focused implementation and at the PR or
+milestone boundaries required by the issue.
 
 The subsequent dry run must state:
 
 - which tests and law identities govern the issue;
-- what already passes and why;
-- what fails because behavior is genuinely absent;
+- what frozen green evidence already exists;
+- which observable laws and negative cases must survive;
+- which old test structures must not constrain the target design;
 - what application modules and boundaries must change;
 - what architecture, security, data, and effect risks the tests expose;
 - whether the issue needs child-child decomposition; and
-- which additional strengthened or new-law tests are required.
+- what target public interface the tests should exercise; and
+- which isomorphic, strengthened, or new-law target tests must be written after
+  the dry run.
 
-Only after that dry run should implementation begin. The final PR shows the
-same target tests green and runs the broader package/parity suites required by
-the issue.
+Only after that dry run should target tests be written. Application
+implementation begins after those focused tests fail for the intended reason.
+The final PR shows the same target tests green and runs the broader
+package/parity suites required by the issue.
 
 ## Issue Execution Loop
 
@@ -258,22 +286,25 @@ For each child issue, use this inner loop:
 2. Select and classify the governing frozen, strengthened, new-law, or scaffold
    test context.
 3. Create a feature branch from develop.
-4. Translate or write the target tests before implementation.
-5. Run reference-green and target-red validation and record the evidence.
-6. Inspect and dry-run the relevant source with that test context in view.
-7. Refine or split the issue when the dry run exposes a wider topology.
-8. State the implementation plan in the issue or PR when useful.
-9. Implement the smallest coherent vertical until the target tests pass.
-10. Update examples/docs when public behavior changes.
-11. Run focused, package, parity, and live validation required by the issue.
-12. Open a PR into develop.
-13. Perform a code-review pass on the PR.
-14. Add a hardening PR when review shows the implementation surface needs
+4. Inspect the governing tests and extract behavioral law cards; do not copy
+   target test files yet.
+5. Inspect and dry-run the relevant source with those laws in view.
+6. Design the target public interface and refine or split the issue when the dry
+   run exposes a wider topology.
+7. State the implementation plan in the issue or PR when useful.
+8. Translate or write focused target tests against the designed interface.
+9. Run focused target-red validation and record why it fails.
+10. Implement the smallest coherent vertical until the target tests pass.
+11. Update examples/docs when public behavior changes.
+12. Run focused, package, parity, and live validation required by the issue.
+13. Open a PR into develop.
+14. Perform a code-review pass on the PR.
+15. Add a hardening PR when review shows the implementation surface needs
     additional edge tests, security checks, data checks, or adapter consistency
     checks.
-15. Leave a PR decision log, including test provenance and red-to-green evidence.
-16. Merge only when checks pass and the result is coherent.
-17. Leave handoff comments for dependent issues.
+16. Leave a PR decision log, including law provenance and red-to-green evidence.
+17. Merge only when checks pass and the result is coherent.
+18. Leave handoff comments for dependent issues.
 ```
 
 The issue loop should preserve topological order. If issue B depends on a

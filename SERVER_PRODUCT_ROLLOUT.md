@@ -1007,20 +1007,30 @@ only approved incidental fields, and compare them from the neutral harness.
 
 ### Per-issue test context and dry run
 
-Every implementation child begins with tests, not source changes:
+Every implementation child begins by recovering the laws that its tests must
+protect, not by copying old test structure:
 
 ```text
 parity manifest and governing laws
-  -> translate target tests
-    -> record reference green / target red
-      -> dry-run the issue with those tests in view
-        -> refine topology
-          -> implement to green
+  -> extract behavioral law cards
+    -> dry-run the issue with those laws in view
+      -> design the target public interface and refine topology
+        -> translate or write focused target tests
+          -> record focused target-red evidence
+            -> implement to green
 ```
 
-The existing AGENTS.md issue and PR loop remains authoritative. This phase is
-inserted before its implementation dry run; it does not replace issue branches,
-PR review, hardening, decision logs, handoffs, or milestone stops.
+The existing AGENTS.md issue and PR loop remains authoritative. Test-context
+extraction precedes the implementation dry run; target-test translation follows
+the dry run and target-interface design but still precedes application
+implementation. This does not replace issue branches, PR review, hardening,
+decision logs, handoffs, or milestone stops.
+
+Before the dry run, inspect the governing frozen tests and record their
+identities, observable laws, negative cases, obsolete structural assumptions,
+and future owners as compact law cards. These cards are context, not copied
+test files. Do not let frozen imports, fixtures, constructors, or module layout
+prematurely determine the extracted package's public interface.
 
 For migration issues, translated tests preserve the frozen behavior's semantic
 assertions and negative cases while changing imports, fixtures, and constructors
@@ -1030,20 +1040,29 @@ rollout, ADR, security policy, or new public contract and are classified as
 justified invariant. Documentation and repository scaffolds use an explicit
 `non-executable-scaffold` validation contract.
 
-The red target evidence must prove missing target behavior rather than a broken
-test harness. It is recorded on the issue branch before implementation and is
-never merged as a failing test. Tests must not be skipped, marked `xfail`,
-weakened, pointed back at the frozen implementation, or hidden from collection.
+After the dry run establishes the target interface, the red target evidence
+must prove missing target behavior rather than a broken test harness. It is
+recorded on the issue branch before implementation and is never merged as a
+failing test. Tests must not be skipped, marked `xfail`, weakened, pointed back
+at the frozen implementation, or hidden from collection.
+
+The parity foundation supplies immutable reference-green evidence. Individual
+issues do not rerun the complete frozen `./test.sh` bundle before their dry run
+unless that evidence is missing, stale, or disputed. Focused target tests prove
+red and green locally; broader package, parity, and live suites run after
+implementation and at the PR or milestone boundaries named by the issue.
 
 Each issue dry run reports:
 
 - governing reference tests and law identities;
-- classification and target test locations;
-- reference-green and target-red evidence;
+- frozen reference-green evidence and extracted behavioral law cards;
+- negative cases and obsolete structures that must not be copied;
 - affected modules and ownership boundaries;
 - architecture, security, data, and effect risks exposed by the tests;
 - required child-child issues;
-- and the focused, package, parity, and live suites needed for green closeout.
+- the proposed target public interface and target test locations;
+- and the focused, package, parity, and live suites needed for red/green and
+  closeout evidence.
 
 ### Live demonstration parity
 
@@ -1485,10 +1504,11 @@ The core topology completes and stops at #648 before #649 creates the server
 repository. The Hello live proof in #658 is the first product-level
 cross-repository gate. Full system acceptance begins at #659.
 
-The first core source migration is blocked by #677, which rehearses
-reference-green and target-red evidence before the source dry run. Hello
-descriptor and image implementation are blocked by #678, which translates the
-complete Hello test context before either implementation begins.
+The first core source migration is blocked by #677, which rehearses the full
+frozen-law-card -> dry-run -> target-interface -> focused-test -> red -> green
+sequence. Hello descriptor and image implementation are blocked by #678, which
+extracts complete Hello law context before the dry run, then translates target
+tests after interface design and before either implementation begins.
 
 Post-bootstrap Gates 3-9 are preserved separately under deferred parent
 [#669](https://github.com/OpenJ92/control-plane-kit/issues/669):
