@@ -305,6 +305,23 @@ ownership, import direction, root exports, product declarations, domain
 languages, interpreters, or process entrypoints. Keep
 `docs/architecture/package-module-inventory.json` exhaustive as modules move.
 
+Preserve this package ownership vocabulary:
+
+```text
+core         owns the deployment language
+domains      own independent closed languages
+operations   own durable control-plane truth
+interpreters perform representation and external effects
+products     are graph-visible deployable values
+entrypoints  compose dependencies and run processes
+```
+
+The observed package graph must remain acyclic without migration allowances.
+An inventory destination records canonical ownership; it does not authorize a
+duplicate implementation or compatibility facade. Package-owned servers share
+the `products.servers` exterior even when their domain, operation, interpreter,
+or entrypoint interiors differ.
+
 Backend modules should be separable enough that a future service boundary is
 obvious.  Use this source-of-truth order when adding backend behavior:
 

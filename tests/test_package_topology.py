@@ -10,7 +10,6 @@ from tests.architecture import (
     ForbiddenPackagePath,
     ModulePackageOwnership,
     PackageNode,
-    PackageMigrationAllowance,
     PackageOwnerKind,
     PackageTopologyPolicy,
     analyze_file,
@@ -328,39 +327,6 @@ class PackageTopologyPolicyTests(unittest.TestCase):
         self.assertEqual(findings[0].rule_id, "product-process-dependency")
         self.assertIn("product -> domain -> entrypoint", findings[0].message)
 
-    def test_migration_allowance_requires_issue_and_does_not_hide_cycles(self) -> None:
-        with self.assertRaises(ValueError):
-            PackageMigrationAllowance("a", "b", "later")
-
-        allowance = PackageMigrationAllowance("a", "b", "#553")
-        facts = (
-            self._fact("from control_plane_kit.b import value\n", "control_plane_kit.a"),
-            self._fact("from control_plane_kit.a import value\n", "control_plane_kit.b"),
-        )
-        policy = PackageTopologyPolicy(
-            package="control_plane_kit",
-            nodes=(
-                PackageNode("a", PackageOwnerKind.CORE),
-                PackageNode("b", PackageOwnerKind.OPERATION),
-            ),
-            ownerships=(
-                ModulePackageOwnership("control_plane_kit.a", "a"),
-                ModulePackageOwnership("control_plane_kit.b", "b"),
-            ),
-            declared_edges=(
-                DeclaredPackageEdge("a", "b"),
-                DeclaredPackageEdge("b", "a"),
-            ),
-        )
-
-        self.assertEqual(allowance.retirement_issue, "#553")
-        self.assertTrue(
-            any(
-                finding.rule_id == "package-topology-cycle"
-                for finding in policy.evaluate(facts)
-            )
-        )
-
     @staticmethod
     def _fact(source: str, module: str):
         return analyze_source(
@@ -428,13 +394,17 @@ class CurrentPackageTopologyTests(unittest.TestCase):
             )
         )
 
-    def test_current_root_operational_contract_edge_is_visible(self) -> None:
+    def test_root_pure_facade_has_a_closed_owner_set(self) -> None:
         policy = PackageTopologyPolicy(
             package="control_plane_kit",
             nodes=self.nodes,
             ownerships=self.ownerships,
             declared_edges=(),
             root_module="control_plane_kit",
+            root_allowed_owners=(
+                PackageOwnerKind.CORE,
+                PackageOwnerKind.OPERATION,
+            ),
         )
         graph = policy.graph(self.facts)
 
@@ -452,16 +422,29 @@ class CurrentPackageTopologyTests(unittest.TestCase):
                 for edge in graph.edges
             )
         )
-        findings = policy.evaluate(self.facts)
-        self.assertTrue(
-            any(
-                finding.rule_id == "root-export-provenance"
-                and "operations.contracts" in finding.message
-                for finding in findings
-            )
+        self.assertEqual(
+            {
+                edge.target
+                for edge in graph.edges
+                if edge.source == "core.root"
+                and edge.target.startswith("operations.")
+            },
+            {
+                "operations.contracts",
+                "operations.effects",
+                "operations.execution",
+                "operations.saga",
+                "operations.scheduling",
+            },
         )
+        root_findings = tuple(
+            finding
+            for finding in policy.evaluate(self.facts)
+            if finding.rule_id == "root-export-provenance"
+        )
+        self.assertEqual(root_findings, ())
 
-    def test_every_current_cycle_has_a_named_retirement_issue(self) -> None:
+    def test_current_package_graph_is_acyclic(self) -> None:
         policy = PackageTopologyPolicy(
             package="control_plane_kit",
             nodes=self.nodes,
@@ -469,12 +452,7 @@ class CurrentPackageTopologyTests(unittest.TestCase):
             declared_edges=(),
         )
 
-        for cycle in package_cycles(policy.graph(self.facts)):
-            allowance = self._migration_allowance(cycle.path)
-            self.assertIn(
-                allowance.retirement_issue,
-                {"#553", "#557", "#558", "#559", "#560"},
-            )
+        self.assertEqual(package_cycles(policy.graph(self.facts)), ())
 
     @staticmethod
     def _package_node(destination: str) -> str:
@@ -487,24 +465,6 @@ class CurrentPackageTopologyTests(unittest.TestCase):
         if len(parts) >= 3:
             return ".".join(parts[1:3])
         return ".".join(parts[1:])
-
-    @staticmethod
-    def _migration_allowance(
-        path: tuple[str, ...],
-    ) -> PackageMigrationAllowance:
-        nodes = set(path)
-        if any(value.startswith("products.") for value in nodes):
-            issue = "#559"
-        elif any("webhook" in value for value in nodes):
-            issue = "#558"
-        elif any("coredns" in value for value in nodes):
-            issue = "#560"
-        elif any(value.startswith("entrypoints.") for value in nodes):
-            issue = "#557"
-        else:
-            issue = "#553"
-        return PackageMigrationAllowance(path[0], path[-2], issue)
-
 
 if __name__ == "__main__":
     unittest.main()

@@ -20,10 +20,11 @@ from control_plane_kit.products.servers import (
 )
 ```
 
-Concrete products are moving into this uniform catalog one representative at a
-time. Runnable FastAPI applications, stores, HTTP clients, and process bootstrap
-belong to operations, interpreters, or entrypoints rather than this declaration
-surface.
+Webhook delivery, the test-only auth gateway, and CoreDNS establish the
+canonical product exterior. Runnable FastAPI applications, stores, HTTP clients,
+and process bootstrap belong to operations, interpreters, or entrypoints rather
+than this declaration surface. Teaching-server relocations may proceed
+incrementally, but new products enter directly through this package.
 
 `BlockSpec.capabilities` contains only powers implemented by the realized
 server. An in-memory teaching model does not make its Docker server mutable.
