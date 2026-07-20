@@ -19,7 +19,7 @@ from control_plane_kit.execution import (
     ExecutionRequestRecord,
     ExecutionRequestStatus,
 )
-from control_plane_kit.planning import (
+from control_plane_kit.core.planning import (
     PlannedActivity,
     ReconcileNode,
     SwitchSocketConnection,

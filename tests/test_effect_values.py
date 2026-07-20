@@ -22,7 +22,7 @@ from control_plane_kit.effects import (
     effect_request_for_activity,
     required_capability,
 )
-from control_plane_kit.planning import (
+from control_plane_kit.core.planning import (
     ActivityId,
     AddSocketConnection,
     ChangeTarget,

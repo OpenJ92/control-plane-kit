@@ -1,6 +1,6 @@
 import unittest
 
-from control_plane_kit.planning import (
+from control_plane_kit.core.planning import (
     DEFAULT_ACTIVITY_PLAN_CODEC,
     ActivityId,
     ActivityPlan,

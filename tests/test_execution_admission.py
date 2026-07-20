@@ -38,7 +38,7 @@ from control_plane_kit.stores import (
     WorkspaceRecord,
 )
 from control_plane_kit.core.topology import FieldSubject, GraphSubject, StructuralField
-from control_plane_kit.planning import compile_activity_plan
+from control_plane_kit.core.planning import compile_activity_plan
 from control_plane_kit.policies import ApprovalPolicy
 from control_plane_kit.core.topology import diff_graphs, validate_graph
 from control_plane_kit.workflows import (

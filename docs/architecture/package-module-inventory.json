@@ -152,14 +152,6 @@
         "Protocol",
         "ApplicationProtocol",
         "ProxyBlock",
-        "RECOVERY_CANDIDATE_SCHEMA",
-        "RECOVERY_CANDIDATE_VERSION",
-        "RecoveryActivityAssessment",
-        "RecoveryCandidate",
-        "RecoveryDisposition",
-        "RecoveryLimitation",
-        "RecoveryLimitationCode",
-        "RecoveryMode",
         "RequirementSocket",
         "ProviderSocket",
         "ReloadPolicy",
@@ -240,8 +232,6 @@
         "compile_recipe",
         "compile_activity_plan",
         "diff_graphs",
-        "plan_reconstruction",
-        "plan_recovery_transition",
         "validate_graph"
       ],
       "destination": "control_plane_kit",
@@ -260,10 +250,9 @@
         "control_plane_kit.implementations",
         "control_plane_kit.core.lifecycle",
         "control_plane_kit.load_generation",
-        "control_plane_kit.planning.activity_plan",
-        "control_plane_kit.planning.codec",
-        "control_plane_kit.planning.compiler",
-        "control_plane_kit.planning.recovery",
+        "control_plane_kit.core.planning.activity_plan",
+        "control_plane_kit.core.planning.codec",
+        "control_plane_kit.core.planning.compiler",
         "control_plane_kit.saga",
         "control_plane_kit.scheduling",
         "control_plane_kit.core.secrets",
@@ -323,11 +312,11 @@
         "control_plane_kit.implementations",
         "control_plane_kit.load_generator_server.main",
         "control_plane_kit.mcp_read",
-        "control_plane_kit.planning",
-        "control_plane_kit.planning.activity_plan",
-        "control_plane_kit.planning.codec",
-        "control_plane_kit.planning.compiler",
-        "control_plane_kit.planning.recovery",
+        "control_plane_kit.core.planning",
+        "control_plane_kit.core.planning.activity_plan",
+        "control_plane_kit.core.planning.codec",
+        "control_plane_kit.core.planning.compiler",
+        "control_plane_kit.operations.planning.recovery",
         "control_plane_kit.policies",
         "control_plane_kit.policies.lifecycle",
         "control_plane_kit.policies.services",
@@ -714,7 +703,7 @@
         "control_plane_kit.core.control_routes",
         "control_plane_kit.effects",
         "control_plane_kit.execution",
-        "control_plane_kit.planning",
+        "control_plane_kit.core.planning",
         "control_plane_kit.core.types"
       ],
       "known_package_consumers": [
@@ -950,7 +939,7 @@
         "control_plane_kit.effects.probes",
         "control_plane_kit.effects.values",
         "control_plane_kit.execution",
-        "control_plane_kit.planning",
+        "control_plane_kit.core.planning",
         "control_plane_kit.core.types"
       ],
       "known_package_consumers": [
@@ -1780,7 +1769,7 @@
         "control_plane_kit.docker_runtime",
         "control_plane_kit.effects.material",
         "control_plane_kit.implementations",
-        "control_plane_kit.planning.compiler",
+        "control_plane_kit.core.planning.compiler",
         "control_plane_kit.core.topology.codec",
         "control_plane_kit.core.topology.graph"
       ],
@@ -2448,7 +2437,7 @@
         "control_plane_kit.effects",
         "control_plane_kit.execution",
         "control_plane_kit.core.lifecycle",
-        "control_plane_kit.planning",
+        "control_plane_kit.core.planning",
         "control_plane_kit.runtimes",
         "control_plane_kit.core.secrets",
         "control_plane_kit.core.topology.graph",
@@ -2704,7 +2693,7 @@
         "control_plane_kit.effects.values",
         "control_plane_kit.core.environment",
         "control_plane_kit.core.lifecycle",
-        "control_plane_kit.planning",
+        "control_plane_kit.core.planning",
         "control_plane_kit.core.secrets",
         "control_plane_kit.core.topology",
         "control_plane_kit.core.types",
@@ -2823,7 +2812,7 @@
       "destination": "control_plane_kit.operations.effects.values",
       "internal_dependencies": [
         "control_plane_kit.execution",
-        "control_plane_kit.planning",
+        "control_plane_kit.core.planning",
         "control_plane_kit.core.secrets"
       ],
       "known_package_consumers": [
@@ -3737,16 +3726,8 @@
         "PlanViolation",
         "PlanViolationCode",
         "PlannedActivity",
-        "RECOVERY_CANDIDATE_SCHEMA",
-        "RECOVERY_CANDIDATE_VERSION",
         "ReconcileNode",
         "ReconcileRuntime",
-        "RecoveryActivityAssessment",
-        "RecoveryCandidate",
-        "RecoveryDisposition",
-        "RecoveryLimitation",
-        "RecoveryLimitationCode",
-        "RecoveryMode",
         "RemoveSocketConnection",
         "RemoveNodeResource",
         "RemoveRuntimeResource",
@@ -3763,16 +3744,13 @@
         "UnknownActivityPlanVariant",
         "WaitForHealthy",
         "compensation_for_operation",
-        "compile_activity_plan",
-        "plan_reconstruction",
-        "plan_recovery_transition"
+        "compile_activity_plan"
       ],
       "destination": "control_plane_kit.core.planning",
       "internal_dependencies": [
-        "control_plane_kit.planning.activity_plan",
-        "control_plane_kit.planning.codec",
-        "control_plane_kit.planning.compiler",
-        "control_plane_kit.planning.recovery"
+        "control_plane_kit.core.planning.activity_plan",
+        "control_plane_kit.core.planning.codec",
+        "control_plane_kit.core.planning.compiler"
       ],
       "known_package_consumers": [
         "control_plane_kit",
@@ -3781,9 +3759,9 @@
         "control_plane_kit.docker_runtime",
         "control_plane_kit.effects.material",
         "control_plane_kit.effects.values",
-        "control_plane_kit.planning.codec",
-        "control_plane_kit.planning.compiler",
-        "control_plane_kit.planning.recovery",
+        "control_plane_kit.core.planning.codec",
+        "control_plane_kit.core.planning.compiler",
+        "control_plane_kit.operations.planning.recovery",
         "control_plane_kit.policies.services",
         "control_plane_kit.projections.operator_recovery",
         "control_plane_kit.projections.saga_journal",
@@ -3801,9 +3779,9 @@
         "#551",
         "#552 or #553 according to destination"
       ],
-      "module": "control_plane_kit.planning",
+      "module": "control_plane_kit.core.planning",
       "motivation": "Required by the effect-free deployment description, validation, comparison, or planning pipeline.",
-      "movement": "move",
+      "movement": "remain",
       "optional_external_dependencies": [],
       "owner": "core",
       "protecting_tests": [
@@ -3836,7 +3814,7 @@
       "semantic_roles": [
         "package-surface"
       ],
-      "source": "control_plane_kit/planning/__init__.py"
+      "source": "control_plane_kit/core/planning/__init__.py"
     },
     {
       "canonical_public_exports": [
@@ -3882,10 +3860,10 @@
       ],
       "known_package_consumers": [
         "control_plane_kit",
-        "control_plane_kit.planning",
-        "control_plane_kit.planning.codec",
-        "control_plane_kit.planning.compiler",
-        "control_plane_kit.planning.recovery",
+        "control_plane_kit.core.planning",
+        "control_plane_kit.core.planning.codec",
+        "control_plane_kit.core.planning.compiler",
+        "control_plane_kit.operations.planning.recovery",
         "control_plane_kit.policies.services",
         "control_plane_kit.read_services.instance",
         "control_plane_kit.stores.postgres",
@@ -3896,9 +3874,9 @@
         "#551",
         "#552 or #553 according to destination"
       ],
-      "module": "control_plane_kit.planning.activity_plan",
+      "module": "control_plane_kit.core.planning.activity_plan",
       "motivation": "Required by the effect-free deployment description, validation, comparison, or planning pipeline.",
-      "movement": "move",
+      "movement": "remain",
       "optional_external_dependencies": [],
       "owner": "core",
       "protecting_tests": [
@@ -3909,7 +3887,7 @@
         "transformations",
         "values"
       ],
-      "source": "control_plane_kit/planning/activity_plan.py"
+      "source": "control_plane_kit/core/planning/activity_plan.py"
     },
     {
       "canonical_public_exports": [
@@ -3921,14 +3899,14 @@
       ],
       "destination": "control_plane_kit.core.planning.codec",
       "internal_dependencies": [
-        "control_plane_kit.planning.activity_plan",
+        "control_plane_kit.core.planning.activity_plan",
         "control_plane_kit.core.topology.changes",
         "control_plane_kit.core.topology.validation"
       ],
       "known_package_consumers": [
         "control_plane_kit",
-        "control_plane_kit.planning",
-        "control_plane_kit.planning.recovery",
+        "control_plane_kit.core.planning",
+        "control_plane_kit.operations.planning.recovery",
         "control_plane_kit.read_services.instance",
         "control_plane_kit.stores.postgres"
       ],
@@ -3937,9 +3915,9 @@
         "#551",
         "#552 or #553 according to destination"
       ],
-      "module": "control_plane_kit.planning.codec",
+      "module": "control_plane_kit.core.planning.codec",
       "motivation": "Required by the effect-free deployment description, validation, comparison, or planning pipeline.",
-      "movement": "move",
+      "movement": "remain",
       "optional_external_dependencies": [],
       "owner": "core",
       "protecting_tests": [
@@ -3951,7 +3929,7 @@
         "transformations",
         "values"
       ],
-      "source": "control_plane_kit/planning/codec.py"
+      "source": "control_plane_kit/core/planning/codec.py"
     },
     {
       "canonical_public_exports": [
@@ -3960,15 +3938,15 @@
       "destination": "control_plane_kit.core.planning.compiler",
       "internal_dependencies": [
         "control_plane_kit.core.lifecycle",
-        "control_plane_kit.planning.activity_plan",
+        "control_plane_kit.core.planning.activity_plan",
         "control_plane_kit.core.topology",
         "control_plane_kit.core.topology.changes",
         "control_plane_kit.core.topology.validation"
       ],
       "known_package_consumers": [
         "control_plane_kit",
-        "control_plane_kit.planning",
-        "control_plane_kit.planning.recovery",
+        "control_plane_kit.core.planning",
+        "control_plane_kit.operations.planning.recovery",
         "control_plane_kit.workflows.planning"
       ],
       "migration_prerequisites": [
@@ -3976,9 +3954,9 @@
         "#551",
         "#552 or #553 according to destination"
       ],
-      "module": "control_plane_kit.planning.compiler",
+      "module": "control_plane_kit.core.planning.compiler",
       "motivation": "Required by the effect-free deployment description, validation, comparison, or planning pipeline.",
-      "movement": "move",
+      "movement": "remain",
       "optional_external_dependencies": [],
       "owner": "core",
       "protecting_tests": [
@@ -3990,7 +3968,7 @@
         "transformations",
         "values"
       ],
-      "source": "control_plane_kit/planning/compiler.py"
+      "source": "control_plane_kit/core/planning/compiler.py"
     },
     {
       "canonical_public_exports": [
@@ -4005,17 +3983,15 @@
       ],
       "destination": "control_plane_kit.operations.planning.recovery",
       "internal_dependencies": [
-        "control_plane_kit.planning.activity_plan",
-        "control_plane_kit.planning.codec",
-        "control_plane_kit.planning.compiler",
+        "control_plane_kit.core.planning.activity_plan",
+        "control_plane_kit.core.planning.codec",
+        "control_plane_kit.core.planning.compiler",
         "control_plane_kit.policies",
         "control_plane_kit.core.topology.diff",
         "control_plane_kit.core.topology.graph",
         "control_plane_kit.core.topology.validation"
       ],
       "known_package_consumers": [
-        "control_plane_kit",
-        "control_plane_kit.planning",
         "control_plane_kit.read_services.instance"
       ],
       "migration_prerequisites": [
@@ -4024,9 +4000,9 @@
         "#555",
         "#558 where domain-specific"
       ],
-      "module": "control_plane_kit.planning.recovery",
+      "module": "control_plane_kit.operations.planning.recovery",
       "motivation": "Owns durable control-plane workflow, history, policy, scheduling, projection, or persistence behavior.",
-      "movement": "move",
+      "movement": "remain",
       "optional_external_dependencies": [],
       "owner": "operation",
       "protecting_tests": [
@@ -4038,7 +4014,7 @@
         "transformations",
         "values"
       ],
-      "source": "control_plane_kit/planning/recovery.py"
+      "source": "control_plane_kit/operations/planning/recovery.py"
     },
     {
       "canonical_public_exports": [
@@ -4057,7 +4033,7 @@
         "control_plane_kit.policies.services"
       ],
       "known_package_consumers": [
-        "control_plane_kit.planning.recovery",
+        "control_plane_kit.operations.planning.recovery",
         "control_plane_kit.workflows.approvals",
         "control_plane_kit.workflows.execution_admission"
       ],
@@ -4128,7 +4104,7 @@
       ],
       "destination": "control_plane_kit.operations.policies.services",
       "internal_dependencies": [
-        "control_plane_kit.planning.activity_plan"
+        "control_plane_kit.core.planning.activity_plan"
       ],
       "known_package_consumers": [
         "control_plane_kit.policies"
@@ -4268,7 +4244,7 @@
       "destination": "control_plane_kit.operations.projections.operator_recovery",
       "internal_dependencies": [
         "control_plane_kit.execution",
-        "control_plane_kit.planning",
+        "control_plane_kit.core.planning",
         "control_plane_kit.projections.saga_journal",
         "control_plane_kit.saga",
         "control_plane_kit.scheduling"
@@ -4308,7 +4284,7 @@
       "destination": "control_plane_kit.operations.projections.saga_journal",
       "internal_dependencies": [
         "control_plane_kit.execution",
-        "control_plane_kit.planning",
+        "control_plane_kit.core.planning",
         "control_plane_kit.saga"
       ],
       "known_package_consumers": [
@@ -4407,9 +4383,9 @@
       "internal_dependencies": [
         "control_plane_kit.core.control_routes",
         "control_plane_kit.execution",
-        "control_plane_kit.planning.activity_plan",
-        "control_plane_kit.planning.codec",
-        "control_plane_kit.planning.recovery",
+        "control_plane_kit.core.planning.activity_plan",
+        "control_plane_kit.core.planning.codec",
+        "control_plane_kit.operations.planning.recovery",
         "control_plane_kit.projections",
         "control_plane_kit.stores.protocols",
         "control_plane_kit.stores.records",
@@ -4719,7 +4695,7 @@
       ],
       "destination": "control_plane_kit.operations.scheduling.schedule",
       "internal_dependencies": [
-        "control_plane_kit.planning",
+        "control_plane_kit.core.planning",
         "control_plane_kit.saga"
       ],
       "known_package_consumers": [
@@ -6918,8 +6894,8 @@
       "destination": "control_plane_kit.operations.stores.postgres",
       "internal_dependencies": [
         "control_plane_kit.execution",
-        "control_plane_kit.planning.activity_plan",
-        "control_plane_kit.planning.codec",
+        "control_plane_kit.core.planning.activity_plan",
+        "control_plane_kit.core.planning.codec",
         "control_plane_kit.stores.records"
       ],
       "known_package_consumers": [
@@ -7009,7 +6985,7 @@
       ],
       "destination": "control_plane_kit.operations.stores.records",
       "internal_dependencies": [
-        "control_plane_kit.planning.activity_plan",
+        "control_plane_kit.core.planning.activity_plan",
         "control_plane_kit.core.topology.codec",
         "control_plane_kit.core.topology.graph",
         "control_plane_kit.core.types"
@@ -7162,10 +7138,10 @@
         "control_plane_kit.docker_runtime",
         "control_plane_kit.effects.material",
         "control_plane_kit.implementations",
-        "control_plane_kit.planning.activity_plan",
-        "control_plane_kit.planning.codec",
-        "control_plane_kit.planning.compiler",
-        "control_plane_kit.planning.recovery",
+        "control_plane_kit.core.planning.activity_plan",
+        "control_plane_kit.core.planning.codec",
+        "control_plane_kit.core.planning.compiler",
+        "control_plane_kit.operations.planning.recovery",
         "control_plane_kit.projections.operator_graph",
         "control_plane_kit.read_services.instance",
         "control_plane_kit.runtimes",
@@ -7258,9 +7234,9 @@
       ],
       "known_package_consumers": [
         "control_plane_kit",
-        "control_plane_kit.planning.activity_plan",
-        "control_plane_kit.planning.codec",
-        "control_plane_kit.planning.compiler",
+        "control_plane_kit.core.planning.activity_plan",
+        "control_plane_kit.core.planning.codec",
+        "control_plane_kit.core.planning.compiler",
         "control_plane_kit.core.topology",
         "control_plane_kit.core.topology.diff"
       ],
@@ -7392,7 +7368,7 @@
       ],
       "known_package_consumers": [
         "control_plane_kit",
-        "control_plane_kit.planning.recovery",
+        "control_plane_kit.operations.planning.recovery",
         "control_plane_kit.core.topology",
         "control_plane_kit.workflows.planning"
       ],
@@ -7445,7 +7421,7 @@
         "control_plane_kit.discovery_registry.postgres",
         "control_plane_kit.docker_runtime",
         "control_plane_kit.implementations",
-        "control_plane_kit.planning.recovery",
+        "control_plane_kit.operations.planning.recovery",
         "control_plane_kit.projections.operator_graph",
         "control_plane_kit.runtimes",
         "control_plane_kit.stores.records",
@@ -7513,9 +7489,9 @@
       "known_package_consumers": [
         "control_plane_kit",
         "control_plane_kit.application.deploy.program",
-        "control_plane_kit.planning.codec",
-        "control_plane_kit.planning.compiler",
-        "control_plane_kit.planning.recovery",
+        "control_plane_kit.core.planning.codec",
+        "control_plane_kit.core.planning.compiler",
+        "control_plane_kit.operations.planning.recovery",
         "control_plane_kit.read_services.instance",
         "control_plane_kit.core.topology",
         "control_plane_kit.core.topology.changes",
@@ -8377,7 +8353,7 @@
       "destination": "control_plane_kit.operations.workflows.current_graph",
       "internal_dependencies": [
         "control_plane_kit.execution",
-        "control_plane_kit.planning",
+        "control_plane_kit.core.planning",
         "control_plane_kit.projections.saga_journal",
         "control_plane_kit.saga",
         "control_plane_kit.scheduling",
@@ -8462,7 +8438,7 @@
       "destination": "control_plane_kit.operations.workflows.execution_admission",
       "internal_dependencies": [
         "control_plane_kit.execution",
-        "control_plane_kit.planning",
+        "control_plane_kit.core.planning",
         "control_plane_kit.policies",
         "control_plane_kit.stores",
         "control_plane_kit.core.topology.codec",
@@ -8512,7 +8488,7 @@
       "internal_dependencies": [
         "control_plane_kit.effects",
         "control_plane_kit.execution",
-        "control_plane_kit.planning",
+        "control_plane_kit.core.planning",
         "control_plane_kit.projections.saga_journal",
         "control_plane_kit.scheduling",
         "control_plane_kit.stores",
@@ -8601,7 +8577,7 @@
       ],
       "destination": "control_plane_kit.operations.workflows.planning",
       "internal_dependencies": [
-        "control_plane_kit.planning.compiler",
+        "control_plane_kit.core.planning.compiler",
         "control_plane_kit.stores",
         "control_plane_kit.core.topology.codec",
         "control_plane_kit.core.topology.diff",
@@ -8736,6 +8712,67 @@
         "values"
       ],
       "source": "control_plane_kit/workflows/verification.py"
+    },
+    {
+      "module": "control_plane_kit.operations",
+      "source": "control_plane_kit/operations/__init__.py",
+      "owner": "operation",
+      "destination": "control_plane_kit.operations",
+      "role": "package-surface",
+      "motivation": "Names the durable control-plane operation ring without importing concrete operations eagerly.",
+      "internal_dependencies": [],
+      "optional_external_dependencies": [],
+      "semantic_roles": [
+        "package-surface"
+      ],
+      "canonical_public_exports": [],
+      "known_package_consumers": [],
+      "migration_prerequisites": [
+        "#553"
+      ],
+      "movement": "remain",
+      "protecting_tests": [
+        "tests/test_package_inventory.py",
+        "tests/test_package_topology.py"
+      ]
+    },
+    {
+      "module": "control_plane_kit.operations.planning",
+      "source": "control_plane_kit/operations/planning/__init__.py",
+      "owner": "operation",
+      "destination": "control_plane_kit.operations.planning",
+      "role": "recovery-orchestration",
+      "motivation": "Exposes approval-aware recovery composition over core graph and ActivityPlan values.",
+      "internal_dependencies": [
+        "control_plane_kit.operations.planning.recovery"
+      ],
+      "optional_external_dependencies": [],
+      "semantic_roles": [
+        "package-surface"
+      ],
+      "canonical_public_exports": [
+        "RECOVERY_CANDIDATE_SCHEMA",
+        "RECOVERY_CANDIDATE_VERSION",
+        "RecoveryActivityAssessment",
+        "RecoveryCandidate",
+        "RecoveryDisposition",
+        "RecoveryLimitation",
+        "RecoveryLimitationCode",
+        "RecoveryMode",
+        "plan_reconstruction",
+        "plan_recovery_transition"
+      ],
+      "known_package_consumers": [
+        "control_plane_kit.read_services.instance"
+      ],
+      "migration_prerequisites": [
+        "#553"
+      ],
+      "movement": "remain",
+      "protecting_tests": [
+        "tests/test_package_structure.py",
+        "tests/test_recovery_planning.py"
+      ]
     }
   ],
   "owner_vocabulary": [

@@ -6,7 +6,7 @@ from unittest import TestCase, main
 
 import psycopg
 
-from control_plane_kit.planning import RiskLevel, compile_activity_plan
+from control_plane_kit.core.planning import RiskLevel, compile_activity_plan
 from control_plane_kit.stores import (
     GraphVersionRecord,
     PostgresUnitOfWork,

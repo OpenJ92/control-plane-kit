@@ -29,7 +29,6 @@ PACKAGE_RULES = (
             "core",
             "effects",
             "execution",
-            "planning",
         ),
     ),
     PackageDependencyRule("cli", ()),
@@ -49,7 +48,6 @@ PACKAGE_RULES = (
             "core",
             "effects",
             "execution",
-            "planning",
             "runtimes",
         ),
     ),
@@ -58,7 +56,6 @@ PACKAGE_RULES = (
         (
             "core",
             "execution",
-            "planning",
         ),
     ),
     PackageDependencyRule("execution", ()),
@@ -77,19 +74,19 @@ PACKAGE_RULES = (
         "load_generator_server", ("adapters", "contracts", "load_generation", "servers")
     ),
     PackageDependencyRule("mcp_read", ("read_services",)),
-    PackageDependencyRule("planning", ("core", "policies")),
-    PackageDependencyRule("policies", ("core", "planning")),
+    PackageDependencyRule("operations", ("core", "policies")),
+    PackageDependencyRule("policies", ("core",)),
     PackageDependencyRule(
         "projections",
-        ("core", "execution", "planning", "saga", "scheduling"),
+        ("core", "execution", "saga", "scheduling"),
     ),
     PackageDependencyRule(
         "read_services",
-        ("core", "execution", "planning", "projections", "stores"),
+        ("core", "execution", "operations", "projections", "stores"),
     ),
     PackageDependencyRule("runtimes", ("core",)),
     PackageDependencyRule("saga", ()),
-    PackageDependencyRule("scheduling", ("planning", "saga")),
+    PackageDependencyRule("scheduling", ("core", "saga")),
     PackageDependencyRule(
         "servers",
         (
@@ -106,7 +103,7 @@ PACKAGE_RULES = (
             "webhook",
         ),
     ),
-    PackageDependencyRule("stores", ("core", "execution", "planning")),
+    PackageDependencyRule("stores", ("core", "execution")),
     PackageDependencyRule("webhook", ("_optional", "core")),
     PackageDependencyRule(
         "webhook_server",
@@ -118,7 +115,6 @@ PACKAGE_RULES = (
             "core",
             "effects",
             "execution",
-            "planning",
             "policies",
             "projections",
             "saga",

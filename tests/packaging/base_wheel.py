@@ -24,11 +24,14 @@ from control_plane_kit import (  # noqa: E402
     ApplicationBlock,
     BlockSockets,
     BlockSpec,
+    DeploymentGraph,
     DeploymentRecipe,
     DockerRuntime,
     GraphDescriptorCodec,
     PlanOnlyImplementation,
+    compile_activity_plan,
     compile_recipe,
+    diff_graphs,
     validate_graph,
 )
 
@@ -54,8 +57,14 @@ codec = GraphDescriptorCodec()
 reconstructed = codec.decode(codec.encode(validated.graph))
 if reconstructed.descriptor() != validated.graph.descriptor():
     raise AssertionError("installed base wheel did not round-trip the expected graph")
+empty = validate_graph(DeploymentGraph(graph.name))
+plan = compile_activity_plan(diff_graphs(empty, validated))
+if not plan.activities:
+    raise AssertionError("installed base wheel did not compile a nonempty ActivityPlan")
 if find_spec("control_plane_kit.topology") is not None:
     raise AssertionError("installed base wheel retained the retired topology package")
+if find_spec("control_plane_kit.planning") is not None:
+    raise AssertionError("installed base wheel retained the retired planning package")
 
 for module in (
     "control_plane_kit.adapters",

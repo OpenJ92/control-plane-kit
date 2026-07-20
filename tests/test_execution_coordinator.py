@@ -39,8 +39,8 @@ from control_plane_kit.execution import (
     RecoveryScope,
 )
 from control_plane_kit.stores import GraphVersionRecord, PostgresUnitOfWork, WorkspaceRecord
-from control_plane_kit.planning import DEFAULT_ACTIVITY_PLAN_CODEC, compile_activity_plan
-from control_plane_kit.planning import (
+from control_plane_kit.core.planning import DEFAULT_ACTIVITY_PLAN_CODEC, compile_activity_plan
+from control_plane_kit.core.planning import (
     ActivityId,
     ActivityPlan,
     PlannedActivity,

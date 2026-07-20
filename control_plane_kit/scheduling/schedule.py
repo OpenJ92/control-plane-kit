@@ -5,7 +5,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 from enum import StrEnum
 
-from control_plane_kit.planning import (
+from control_plane_kit.core.planning import (
     ActivityId,
     ActivityPlan,
     PlannedActivity,

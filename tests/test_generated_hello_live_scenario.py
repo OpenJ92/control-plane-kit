@@ -3,7 +3,7 @@ from __future__ import annotations
 import unittest
 from unittest.mock import patch
 
-from control_plane_kit.planning import (
+from control_plane_kit.core.planning import (
     AddSocketConnection,
     RemoveSocketConnection,
     SwitchSocketConnection,

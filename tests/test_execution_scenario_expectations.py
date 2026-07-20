@@ -4,7 +4,7 @@ from dataclasses import replace
 from unittest import TestCase, main
 
 from control_plane_kit.execution import ActivityEventKind, ActivityRunStatus
-from control_plane_kit.planning import WaitForHealthy
+from control_plane_kit.core.planning import WaitForHealthy
 from control_plane_kit.workflows import CoordinatorStatus
 from examples.scenarios import (
     AdmissionExpectation,

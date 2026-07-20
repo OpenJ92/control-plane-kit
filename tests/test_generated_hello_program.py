@@ -15,7 +15,7 @@ from control_plane_kit.application.deploy import (
     DeploymentProgramServices,
     PlanningServices,
 )
-from control_plane_kit.planning import compile_activity_plan
+from control_plane_kit.core.planning import compile_activity_plan
 from control_plane_kit.stores import (
     GraphVersionRecord,
     PostgresUnitOfWork,

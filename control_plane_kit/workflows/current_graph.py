@@ -23,7 +23,7 @@ from control_plane_kit.execution import (
     ExecutionRequestRecord,
     ExecutionRequestStatus,
 )
-from control_plane_kit.planning import ActivityPlan
+from control_plane_kit.core.planning import ActivityPlan
 from control_plane_kit.stores import (
     ActivityPlanRecord,
     GraphTopologyStore,

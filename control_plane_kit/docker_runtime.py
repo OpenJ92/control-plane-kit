@@ -49,7 +49,7 @@ from control_plane_kit.execution import (
     ObservationStatus,
 )
 from control_plane_kit.core.lifecycle import ResourceLifecycle, ResourceOwnership, ResourcePersistence
-from control_plane_kit.planning import (
+from control_plane_kit.core.planning import (
     DestroyDataResource,
     ReconcileNode,
     RemoveNodeResource,

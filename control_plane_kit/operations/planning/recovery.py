@@ -11,7 +11,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 from enum import StrEnum
 
-from control_plane_kit.planning.activity_plan import (
+from control_plane_kit.core.planning.activity_plan import (
     ActivityImpact,
     ActivityPlan,
     AddSocketConnection,
@@ -30,8 +30,8 @@ from control_plane_kit.planning.activity_plan import (
     SwitchSocketConnection,
     WaitForHealthy,
 )
-from control_plane_kit.planning.codec import DEFAULT_ACTIVITY_PLAN_CODEC
-from control_plane_kit.planning.compiler import compile_activity_plan
+from control_plane_kit.core.planning.codec import DEFAULT_ACTIVITY_PLAN_CODEC
+from control_plane_kit.core.planning.compiler import compile_activity_plan
 from control_plane_kit.core.topology.graph import DeploymentGraph
 from control_plane_kit.core.topology.diff import diff_graphs
 from control_plane_kit.policies import ApprovalPolicy, ApprovalRequirement

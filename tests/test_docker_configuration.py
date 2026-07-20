@@ -31,7 +31,7 @@ from control_plane_kit.docker_runtime import (
     DockerResourceInspection,
     DockerResourceKind,
 )
-from control_plane_kit.planning import ActivityId
+from control_plane_kit.core.planning import ActivityId
 from control_plane_kit.docker_runtime import plan_docker_effect
 
 

@@ -3,7 +3,7 @@ from __future__ import annotations
 from dataclasses import replace
 import unittest
 
-from control_plane_kit.planning import (
+from control_plane_kit.core.planning import (
     ActivityDependency,
     ActivityId,
     ActivityPlan,

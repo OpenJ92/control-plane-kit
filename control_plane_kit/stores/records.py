@@ -6,7 +6,7 @@ from dataclasses import dataclass, field
 from enum import StrEnum
 from typing import Mapping
 
-from control_plane_kit.planning.activity_plan import ActivityPlan, RiskLevel
+from control_plane_kit.core.planning.activity_plan import ActivityPlan, RiskLevel
 from control_plane_kit.core.topology.graph import DeploymentGraph
 from control_plane_kit.core.topology.codec import DEFAULT_GRAPH_CODEC
 from control_plane_kit.core.types import WorkspaceLifecycle

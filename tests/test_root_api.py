@@ -14,6 +14,7 @@ OPERATIONAL_ROOTS = (
     "control_plane_kit.docker_runtime",
     "control_plane_kit.idempotency_gateway",
     "control_plane_kit.mcp_read",
+    "control_plane_kit.operations",
     "control_plane_kit.read_services",
     "control_plane_kit.runtimes",
     "control_plane_kit.servers",
@@ -33,8 +34,6 @@ PURE_PACKAGE_ROOTS = (
     "idempotency",
     "implementations",
     "load_generation",
-    "planning",
-    "policies",
     "saga",
     "scheduling",
 )

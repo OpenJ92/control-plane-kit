@@ -21,7 +21,7 @@ from control_plane_kit.execution import (
     ProbeOutcome,
     activity_event_scope,
 )
-from control_plane_kit.planning import WaitForHealthy
+from control_plane_kit.core.planning import WaitForHealthy
 from control_plane_kit.workflows import CoordinatorStatus
 from examples.scenarios.catalog import planning_scenarios
 from examples.scenarios.model import OperationExpectation, PlanningScenario

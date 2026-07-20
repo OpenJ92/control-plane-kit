@@ -38,7 +38,7 @@ from control_plane_kit.execution import (
     FailureEvidence,
     ObservationRecord,
 )
-from control_plane_kit.planning import (
+from control_plane_kit.core.planning import (
     ActivityPlan,
     NonCompensatable,
     PlannedActivity,

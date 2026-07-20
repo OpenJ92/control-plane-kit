@@ -1,6 +1,6 @@
-"""Activity-plan algebra, codecs, compilation, and recovery planning."""
+"""Pure activity-plan algebra, codec, and GraphDiff compiler."""
 
-from control_plane_kit.planning.activity_plan import (
+from control_plane_kit.core.planning.activity_plan import (
     ActivityDependency,
     ActivityId,
     ActivityImpact,
@@ -39,7 +39,7 @@ from control_plane_kit.planning.activity_plan import (
     WaitForHealthy,
     compensation_for_operation,
 )
-from control_plane_kit.planning.codec import (
+from control_plane_kit.core.planning.codec import (
     ACTIVITY_PLAN_SCHEMA,
     ACTIVITY_PLAN_VERSION,
     DEFAULT_ACTIVITY_PLAN_CODEC,
@@ -49,20 +49,7 @@ from control_plane_kit.planning.codec import (
     MalformedActivityPlanDescriptor,
     UnknownActivityPlanVariant,
 )
-from control_plane_kit.planning.compiler import compile_activity_plan
-from control_plane_kit.planning.recovery import (
-    RECOVERY_CANDIDATE_SCHEMA,
-    RECOVERY_CANDIDATE_VERSION,
-    RecoveryActivityAssessment,
-    RecoveryCandidate,
-    RecoveryDisposition,
-    RecoveryLimitation,
-    RecoveryLimitationCode,
-    RecoveryMode,
-    plan_reconstruction,
-    plan_recovery_transition,
-)
-
+from control_plane_kit.core.planning.compiler import compile_activity_plan
 __all__ = [
     "ACTIVITY_PLAN_SCHEMA",
     "ACTIVITY_PLAN_VERSION",
@@ -91,16 +78,8 @@ __all__ = [
     "PlanViolation",
     "PlanViolationCode",
     "PlannedActivity",
-    "RECOVERY_CANDIDATE_SCHEMA",
-    "RECOVERY_CANDIDATE_VERSION",
     "ReconcileNode",
     "ReconcileRuntime",
-    "RecoveryActivityAssessment",
-    "RecoveryCandidate",
-    "RecoveryDisposition",
-    "RecoveryLimitation",
-    "RecoveryLimitationCode",
-    "RecoveryMode",
     "RemoveSocketConnection",
     "RemoveNodeResource",
     "RemoveRuntimeResource",
@@ -118,6 +97,4 @@ __all__ = [
     "WaitForHealthy",
     "compensation_for_operation",
     "compile_activity_plan",
-    "plan_reconstruction",
-    "plan_recovery_transition",
 ]

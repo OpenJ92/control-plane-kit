@@ -321,7 +321,7 @@ class CurrentPackageTopologyTests(unittest.TestCase):
         )
         self.ownerships = tuple(ownerships)
 
-    def test_current_source_exposes_known_planning_policy_cycle(self) -> None:
+    def test_current_source_has_one_way_recovery_policy_planning_edges(self) -> None:
         discovery = PackageTopologyPolicy(
             package="control_plane_kit",
             nodes=self.nodes,
@@ -345,11 +345,13 @@ class CurrentPackageTopologyTests(unittest.TestCase):
                 for edge in graph.edges
             )
         )
-        planning_cycle = next(
-            cycle for cycle in cycles if "core.planning" in cycle.path
+        self.assertFalse(
+            any(
+                "core.planning" in cycle.path
+                or "operations.planning" in cycle.path
+                for cycle in cycles
+            )
         )
-        self.assertEqual(planning_cycle.path[0], planning_cycle.path[-1])
-        self.assertTrue(planning_cycle.location.path.endswith(".py"))
 
     def test_current_root_operational_contract_edge_is_visible(self) -> None:
         policy = PackageTopologyPolicy(
@@ -365,6 +367,13 @@ class CurrentPackageTopologyTests(unittest.TestCase):
             any(
                 edge.source == "core.root"
                 and edge.target == "operations.contracts"
+                for edge in graph.edges
+            )
+        )
+        self.assertFalse(
+            any(
+                edge.source == "core.root"
+                and edge.target == "operations.planning"
                 for edge in graph.edges
             )
         )

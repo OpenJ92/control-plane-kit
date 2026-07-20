@@ -5,7 +5,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 
 from control_plane_kit.execution import ActivityEventKind, ActivityEventRecord
-from control_plane_kit.planning import ActivityPlan, Compensate
+from control_plane_kit.core.planning import ActivityPlan, Compensate
 from control_plane_kit.saga import (
     SagaCompensationFailed,
     SagaCompensationRequested,

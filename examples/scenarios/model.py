@@ -9,7 +9,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 
-from control_plane_kit.planning import (
+from control_plane_kit.core.planning import (
     ActivityOperation,
     AddSocketConnection,
     ChangeTarget,

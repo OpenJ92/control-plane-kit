@@ -99,12 +99,12 @@ class PackageModuleInventoryTests(unittest.TestCase):
         core = {record["module"] for record in self.records if record["owner"] == "core"}
 
         self.assertIn("control_plane_kit.core.topology.graph", core)
-        self.assertIn("control_plane_kit.planning.compiler", core)
+        self.assertIn("control_plane_kit.core.planning.compiler", core)
         self.assertIn("control_plane_kit.core.verification", core)
         self.assertNotIn("control_plane_kit.contracts", core)
         self.assertNotIn("control_plane_kit.saga.state", core)
         self.assertNotIn("control_plane_kit.execution.values", core)
-        self.assertNotIn("control_plane_kit.planning.recovery", core)
+        self.assertNotIn("control_plane_kit.operations.planning.recovery", core)
 
     def test_coredns_relocation_invariants_are_recorded(self) -> None:
         record = next(

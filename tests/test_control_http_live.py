@@ -46,7 +46,7 @@ from control_plane_kit.effects import (
     SocketConnectionMaterial,
     TimeoutPolicy,
 )
-from control_plane_kit.planning import ActivityId
+from control_plane_kit.core.planning import ActivityId
 from control_plane_kit.core.types import EndpointScope, Protocol
 from control_plane_kit.core.secrets import SecretProviderAuthority, SecretProviderId, SecretResolved
 

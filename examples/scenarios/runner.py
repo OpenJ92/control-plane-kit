@@ -68,7 +68,7 @@ from control_plane_kit.execution import (
     RecoveryScope,
     ResumeSameIntent,
 )
-from control_plane_kit.planning import WaitForHealthy
+from control_plane_kit.core.planning import WaitForHealthy
 from control_plane_kit.read_services import (
     FocusedDetailReadModel,
     InstanceReadService,

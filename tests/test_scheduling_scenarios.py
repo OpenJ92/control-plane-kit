@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import unittest
 
-from control_plane_kit.planning import compile_activity_plan
+from control_plane_kit.core.planning import compile_activity_plan
 from control_plane_kit.saga import SagaState, SagaStepId, SagaStepState
 from control_plane_kit.scheduling import BlockReason, derive_schedule
 from control_plane_kit.core.topology import diff_graphs, validate_graph

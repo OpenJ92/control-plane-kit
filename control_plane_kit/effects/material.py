@@ -25,7 +25,7 @@ from control_plane_kit.core.secrets import (
 )
 
 from control_plane_kit.effects.values import EffectPurpose, EffectRequest
-from control_plane_kit.planning import (
+from control_plane_kit.core.planning import (
     ActivityOperation,
     AddSocketConnection,
     Compensate,

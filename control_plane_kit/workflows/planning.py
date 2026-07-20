@@ -8,7 +8,7 @@ from collections.abc import Callable
 from dataclasses import dataclass
 from uuid import uuid4
 
-from control_plane_kit.planning.compiler import compile_activity_plan
+from control_plane_kit.core.planning.compiler import compile_activity_plan
 from control_plane_kit.core.topology.codec import (
     DEFAULT_GRAPH_CODEC,
     GraphDescriptorCodec,
