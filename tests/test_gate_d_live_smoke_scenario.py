@@ -3,7 +3,7 @@ from __future__ import annotations
 import unittest
 
 from control_plane_kit import compile_recipe
-from control_plane_kit.planning import SwitchSocketConnection, compile_activity_plan
+from control_plane_kit.core.planning import SwitchSocketConnection, compile_activity_plan
 from control_plane_kit.core.topology import diff_graphs, validate_graph
 from examples.gate_d_live_smoke import router_recipe
 from control_plane_kit.docker_runtime import docker_container_name

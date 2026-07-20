@@ -35,7 +35,7 @@ from control_plane_kit.docker_runtime import (
     plan_docker_effect,
 )
 from control_plane_kit.execution import FailureCategory
-from control_plane_kit.planning import ActivityId, NodeTarget, StartNode
+from control_plane_kit.core.planning import ActivityId, NodeTarget, StartNode
 
 
 SECRET_TEXT = "correct-horse-battery-staple"

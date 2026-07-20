@@ -142,7 +142,7 @@ from control_plane_kit.core.lifecycle import (
     ResourceOwnership,
     ResourcePersistence,
 )
-from control_plane_kit.planning.activity_plan import (
+from control_plane_kit.core.planning.activity_plan import (
     ActivityDependency,
     ActivityId,
     ActivityImpact,
@@ -181,7 +181,7 @@ from control_plane_kit.planning.activity_plan import (
     WaitForHealthy,
     compensation_for_operation,
 )
-from control_plane_kit.planning.codec import (
+from control_plane_kit.core.planning.codec import (
     ACTIVITY_PLAN_SCHEMA,
     ACTIVITY_PLAN_VERSION,
     DEFAULT_ACTIVITY_PLAN_CODEC,
@@ -191,7 +191,7 @@ from control_plane_kit.planning.codec import (
     MalformedActivityPlanDescriptor,
     UnknownActivityPlanVariant,
 )
-from control_plane_kit.planning.compiler import compile_activity_plan
+from control_plane_kit.core.planning.compiler import compile_activity_plan
 from control_plane_kit.saga import (
     BeginSagaCompensation,
     CancelSaga,
@@ -527,18 +527,6 @@ from control_plane_kit.load_generation import (
     scheduled_offsets_ms,
     validate_load_command,
 )
-from control_plane_kit.planning.recovery import (
-    RECOVERY_CANDIDATE_SCHEMA,
-    RECOVERY_CANDIDATE_VERSION,
-    RecoveryActivityAssessment,
-    RecoveryCandidate,
-    RecoveryDisposition,
-    RecoveryLimitation,
-    RecoveryLimitationCode,
-    RecoveryMode,
-    plan_reconstruction,
-    plan_recovery_transition,
-)
 from control_plane_kit.core.types import (
     ApplicationProtocol,
     BlockFamily,
@@ -714,14 +702,6 @@ __all__ = [
     "Protocol",
     "ApplicationProtocol",
     "ProxyBlock",
-    "RECOVERY_CANDIDATE_SCHEMA",
-    "RECOVERY_CANDIDATE_VERSION",
-    "RecoveryActivityAssessment",
-    "RecoveryCandidate",
-    "RecoveryDisposition",
-    "RecoveryLimitation",
-    "RecoveryLimitationCode",
-    "RecoveryMode",
     "RequirementSocket",
     "ProviderSocket",
     "ReloadPolicy",
@@ -802,8 +782,6 @@ __all__ = [
     "compile_recipe",
     "compile_activity_plan",
     "diff_graphs",
-    "plan_reconstruction",
-    "plan_recovery_transition",
     "validate_graph",
 ]
 

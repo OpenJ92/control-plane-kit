@@ -9,15 +9,17 @@ import unittest
 
 import control_plane_kit
 from control_plane_kit.application import deploy as deployment
-from control_plane_kit import effects, planning, saga, scheduling
+from control_plane_kit import effects, saga, scheduling
 from control_plane_kit.core import (
     algebra,
     configuration,
     secrets,
+    planning,
     topology,
     types,
     verification,
 )
+from control_plane_kit.operations import planning as operational_planning
 
 
 class PackageStructureTests(unittest.TestCase):
@@ -55,7 +57,8 @@ class PackageStructureTests(unittest.TestCase):
             planning.ActivityPlanDescriptorCodec,
         )
         self.assertIs(control_plane_kit.compile_activity_plan, planning.compile_activity_plan)
-        self.assertIs(control_plane_kit.RecoveryCandidate, planning.RecoveryCandidate)
+        self.assertFalse(hasattr(control_plane_kit, "RecoveryCandidate"))
+        self.assertFalse(hasattr(planning, "RecoveryCandidate"))
         self.assertIs(control_plane_kit.SagaStep, saga.SagaStep)
         self.assertIs(control_plane_kit.ExecutionSchedule, scheduling.ExecutionSchedule)
         self.assertIs(control_plane_kit.EffectRequest, effects.EffectRequest)
@@ -81,8 +84,11 @@ class PackageStructureTests(unittest.TestCase):
         )
         self.assertEqual(topology.DeploymentGraph.__module__, "control_plane_kit.core.topology.graph")
         self.assertEqual(topology.GraphDiff.__module__, "control_plane_kit.core.topology.changes")
-        self.assertEqual(planning.ActivityPlan.__module__, "control_plane_kit.planning.activity_plan")
-        self.assertEqual(planning.RecoveryCandidate.__module__, "control_plane_kit.planning.recovery")
+        self.assertEqual(planning.ActivityPlan.__module__, "control_plane_kit.core.planning.activity_plan")
+        self.assertEqual(
+            operational_planning.RecoveryCandidate.__module__,
+            "control_plane_kit.operations.planning.recovery",
+        )
         self.assertEqual(saga.SagaStep.__module__, "control_plane_kit.saga.program")
         self.assertEqual(
             scheduling.ExecutionSchedule.__module__,
@@ -117,6 +123,10 @@ class PackageStructureTests(unittest.TestCase):
             "topology.diff",
             "topology.graph",
             "topology.validation",
+            "planning.activity_plan",
+            "planning.codec",
+            "planning.compiler",
+            "planning.recovery",
         )
 
         for module in retired_modules:
@@ -125,11 +135,13 @@ class PackageStructureTests(unittest.TestCase):
 
     def test_pure_packages_do_not_import_workflow_or_store_layers(self) -> None:
         topology_forbidden = (
-            "control_plane_kit.planning",
+            "control_plane_kit.operations",
             "control_plane_kit.stores",
             "control_plane_kit.workflows",
         )
         planning_forbidden = (
+            "control_plane_kit.operations",
+            "control_plane_kit.policies",
             "control_plane_kit.stores",
             "control_plane_kit.workflows",
         )

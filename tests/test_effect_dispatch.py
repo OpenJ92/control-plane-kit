@@ -19,8 +19,8 @@ from control_plane_kit.effects import (
     prepare_effect,
 )
 from control_plane_kit.execution import BoundedEvidence, FailureCategory, FailureEvidence
-from control_plane_kit.planning import compile_activity_plan
-from control_plane_kit.planning import (
+from control_plane_kit.core.planning import compile_activity_plan
+from control_plane_kit.core.planning import (
     ActivityId,
     AddSocketConnection,
     DataResourceTarget,

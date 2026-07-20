@@ -27,7 +27,7 @@ from control_plane_kit.docker_runtime import (
     DockerResourceInspection,
     DockerResourceKind,
 )
-from control_plane_kit.planning import ActivityId, NodeTarget, StartNode, StopNode
+from control_plane_kit.core.planning import ActivityId, NodeTarget, StartNode, StopNode
 
 
 @dataclass

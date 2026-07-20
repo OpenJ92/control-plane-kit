@@ -8,7 +8,7 @@ from dataclasses import dataclass, field
 
 from control_plane_kit.core.lifecycle import ResourceOwnership, ResourcePersistence
 
-from control_plane_kit.planning.activity_plan import (
+from control_plane_kit.core.planning.activity_plan import (
     ActivityDependency,
     ActivityId,
     ActivityImpact,

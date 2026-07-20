@@ -23,7 +23,7 @@ from control_plane_kit import (
     materialize_effect_request,
     validate_graph,
 )
-from control_plane_kit.planning import ReconcileNode, RiskLevel, StartNode
+from control_plane_kit.core.planning import ReconcileNode, RiskLevel, StartNode
 
 
 class HostPublicationTests(unittest.TestCase):

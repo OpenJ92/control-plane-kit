@@ -27,7 +27,7 @@ from control_plane_kit.execution import (
     RetryAsNewRun,
     validate_recovery_decision,
 )
-from control_plane_kit.planning import ActivityPlan, PlannedActivity
+from control_plane_kit.core.planning import ActivityPlan, PlannedActivity
 from control_plane_kit.projections.saga_journal import project_activity_journal
 from control_plane_kit.saga import SagaStatus
 from control_plane_kit.scheduling import ExecutionSchedule, derive_schedule

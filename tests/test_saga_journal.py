@@ -3,7 +3,7 @@ from __future__ import annotations
 import unittest
 
 from control_plane_kit.execution import ActivityEventKind, ActivityEventRecord
-from control_plane_kit.planning import (
+from control_plane_kit.core.planning import (
     ActivityId,
     ActivityPlan,
     PlannedActivity,

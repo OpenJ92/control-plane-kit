@@ -37,8 +37,8 @@ from control_plane_kit.execution import (
     recovery_decision_record_from_descriptor,
     RetryIdentity,
 )
-from control_plane_kit.planning.activity_plan import RiskLevel
-from control_plane_kit.planning.codec import DEFAULT_ACTIVITY_PLAN_CODEC
+from control_plane_kit.core.planning.activity_plan import RiskLevel
+from control_plane_kit.core.planning.codec import DEFAULT_ACTIVITY_PLAN_CODEC
 from control_plane_kit.stores.records import (
     ActivityPlanRecord,
     ApprovalDecisionKind,

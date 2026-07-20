@@ -5,7 +5,7 @@ from __future__ import annotations
 import json
 from collections.abc import Mapping
 
-from control_plane_kit.planning.activity_plan import (
+from control_plane_kit.core.planning.activity_plan import (
     ActivityDependency,
     ActivityId,
     ActivityImpact,

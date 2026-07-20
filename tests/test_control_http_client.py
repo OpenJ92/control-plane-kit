@@ -32,7 +32,7 @@ from control_plane_kit.effects import (
     PinnedGraphSet,
     SocketConnectionMaterial,
 )
-from control_plane_kit.planning import (
+from control_plane_kit.core.planning import (
     ActivityId,
     AddSocketConnection,
     RemoveSocketConnection,

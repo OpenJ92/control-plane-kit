@@ -15,7 +15,7 @@ from control_plane_kit.execution import (
     ProbeKind,
     ProbeOutcome,
 )
-from control_plane_kit.planning import (
+from control_plane_kit.core.planning import (
     ActivityId,
     ActivityOperation,
     AddSocketConnection,

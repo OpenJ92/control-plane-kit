@@ -9,7 +9,7 @@ from control_plane_kit.execution import (
     ActivityRunStatus,
     FailureCategory,
 )
-from control_plane_kit.planning import (
+from control_plane_kit.core.planning import (
     StartNode,
     StartRuntime,
     StopNode,

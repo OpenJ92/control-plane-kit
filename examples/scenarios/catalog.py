@@ -22,7 +22,7 @@ from control_plane_kit import (
     SocketConnection,
     compile_recipe,
 )
-from control_plane_kit.planning import (
+from control_plane_kit.core.planning import (
     ReconcileNode,
     ReconcileRuntime,
     RemoveNodeResource,

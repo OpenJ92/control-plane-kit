@@ -44,7 +44,7 @@ from control_plane_kit.execution import (
     FailureEvidence,
     ObservationStatus,
 )
-from control_plane_kit.planning import WaitForHealthy
+from control_plane_kit.core.planning import WaitForHealthy
 from control_plane_kit.core.types import Protocol
 
 

@@ -6,8 +6,8 @@ from dataclasses import dataclass, field
 from datetime import datetime, timezone
 from typing import Mapping
 
-from control_plane_kit.planning.activity_plan import ActivityImpact, ReviewChange, RiskLevel
-from control_plane_kit.planning.codec import DEFAULT_ACTIVITY_PLAN_CODEC
+from control_plane_kit.core.planning.activity_plan import ActivityImpact, ReviewChange, RiskLevel
+from control_plane_kit.core.planning.codec import DEFAULT_ACTIVITY_PLAN_CODEC
 from control_plane_kit.core.control_routes import route_set_named
 from control_plane_kit.core.topology.codec import (
     DEFAULT_GRAPH_CODEC,
@@ -20,7 +20,7 @@ from control_plane_kit.projections import (
     project_operator_graph,
     project_operator_recovery,
 )
-from control_plane_kit.planning.recovery import plan_recovery_transition
+from control_plane_kit.operations.planning.recovery import plan_recovery_transition
 from control_plane_kit.stores.protocols import (
     ActivityHistoryStore,
     ExecutionStore,

@@ -33,7 +33,7 @@ from control_plane_kit.docker_runtime import (
 from control_plane_kit.docker_runtime import DockerPublishedPort, DockerPortBinding
 from control_plane_kit.docker_runtime import UnsupportedDockerRuntimeFeature
 from control_plane_kit.execution import ObservationStatus
-from control_plane_kit.planning import (
+from control_plane_kit.core.planning import (
     ActivityId,
     NodeTarget,
     RuntimeTarget,
