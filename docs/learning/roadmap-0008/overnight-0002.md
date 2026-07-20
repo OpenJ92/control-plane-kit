@@ -2944,3 +2944,153 @@ production algebra/store/coordinator changes:                    0
   pinning, replay, and test integrity;
 - leave the service recipe as the input to later compositional acceptance work
   rather than introducing a combined product type.
+
+## #531 Service Integration Acceptance Hardening And Closeout
+
+### Review Scope
+
+The hardening pass reviewed the complete service track delivered through #528,
+#529, #532, and #530:
+
+```text
+pure heterogeneous recipe
+  -> graph validation and ActivityPlan
+  -> Postgres-backed DeploymentProgram lifecycle
+  -> discovery driver-boundary interpretation
+  -> real Docker/probe/verification execution
+  -> product semantics and owned teardown
+```
+
+### Architecture Review
+
+No duplicate graph, product, planning, workflow, store, UnitOfWork,
+coordinator, verification, or projection model was found. The service recipe is
+ordinary `DeploymentRecipe` data. The live composition constructs existing
+application services and adapters; it does not define an alternate execution
+language.
+
+The package products retain truthful maturity and capability boundaries:
+
+```text
+service discovery        test-only package server
+                         health + discovery read/mutation routes
+
+OpenTelemetry Collector  operational official-image integration
+                         health + OTLP providers + immutable config
+
+webhook delivery         operational package server
+                         health + authenticated application routes
+```
+
+Service discovery registry truth remains in its own database and language. It
+does not become DNS truth, graph truth, or observed-health truth. Collector
+output remains observational and never advances graph pointers. Webhook intent,
+journal, projection, and command truth remain application-owned behind its own
+Postgres requirement.
+
+### Enforceable Boundary
+
+Hardening added an AST policy over the live composition. It rejects:
+
+- the synthetic scenario runner;
+- direct `effect_request_for_activity` or `materialize_effect_request` use;
+- direct `plan_docker_effect` use;
+- duplicate `DeploymentGraph`, `DeploymentProgram`, `ExecutionCoordinator`,
+  `PostgresUnitOfWork`, or `VerificationCommandService` classes.
+
+The positive test analyzes the real file. The negative test injects an aliased
+synthetic import, aliased direct materializer call, and duplicate canonical type
+and proves all three findings remain visible.
+
+This protects the distinction:
+
+```text
+acceptance composition
+  = parameterization of canonical application and adapter services
+
+not
+
+acceptance composition
+  = second execution implementation
+```
+
+### Security And Data Review
+
+- all discovery and webhook mutations authenticate and fail closed;
+- unauthorized responses are checked for token disclosure;
+- secret values enter only the live secret resolver and target process
+  environments;
+- graph data contains opaque secret references, never secret values;
+- operator graph, observation, webhook-read, errors, and test output are checked
+  for redaction;
+- discovery and webhook use different graph-created Postgres nodes and their own
+  server-local UnitOfWork implementations;
+- controller persistence remains one Postgres database with one transaction per
+  operator command;
+- the live recorder proves no controller UnitOfWork is active during Docker,
+  probe, or verification effects;
+- no shell or Python path creates graph-owned application resources outside the
+  coordinator;
+- fallback cleanup removes only proven-owned configuration/secret volumes,
+  retains data-resource volumes, and refuses unknown semantics.
+
+### Runtime And Observability Review
+
+- exact desired graph identity survives planning, reconstruction, material, and
+  current-graph advancement;
+- startup waits for each database provider before its consumer;
+- process, transport, application health, semantic verification, and product
+  operations remain distinct evidence;
+- package verification records intent and result observations without changing
+  desired or current topology;
+- webhook replay converges on its durable intent;
+- discovery expiry removes only the exact lease and subsequent resolution is
+  empty;
+- canonical teardown removes all owned ephemeral compute, network,
+  configuration, and secret material;
+- no retained data is treated as ephemeral cleanup.
+
+### Test-Integrity Review
+
+No existing assertion was weakened or removed. No skip, mock, fake service,
+fixture replacement, or compatibility language was added. The one discarded
+test asserted a file-packaging condition outside the Docker test-image contract;
+the shell syntax check and repeated real live proof are stronger evidence for
+that behavior.
+
+```text
+service recipe pure acceptance tests:                            4
+service persisted-program tests:                                4
+discovery driver-boundary tests:                                1
+live composition and AST-boundary tests:                         5
+complete Docker/Postgres suite before final closeout:         1038 passed
+complete heterogeneous live executions:                         3 passed
+known skipped service-vertical tests:                            0
+known service-vertical mocks/fakes:                              0
+```
+
+### Residual Risk
+
+`examples/service_infrastructure_live.py` is deliberately explicit and large.
+It curates a complete acceptance workflow in one inspectable place, but repeats
+some controller-bootstrap composition also visible in other live examples. It
+does not belong in production package code. Extract shared live-example support
+only when another acceptance track demonstrates a stable repeated interface;
+do not generalize it into a second deployment framework.
+
+The package products remain local/demo-grade or official-image integrations as
+their maturity values state. This acceptance does not claim a production-grade
+service mesh, managed discovery platform, telemetry backend, or webhook fleet.
+
+### Handoff To #441 And #405
+
+- #441 may use service discovery, telemetry, and HTTP resilience products as an
+  ordinary expandable subgraph; it must not imply sidecar injection or service
+  mesh magic;
+- discovery truth and observed health must remain separate in that recipe;
+- #405 may use the #528 graph and #530 live program as representative service
+  scenario evidence;
+- invalid scenarios should mutate typed socket/product/configuration values and
+  fail at pure validation before any execution request;
+- both downstream issues must retain exact product maturity, protocol, secret
+  reference, ownership, and persistence identity.

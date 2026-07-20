@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from pathlib import Path
 import unittest
 
 from control_plane_kit import (
@@ -30,8 +31,69 @@ from examples.service_infrastructure_live import (
     _endpoint_policy,
     desired_graph,
 )
+from tests.architecture import (
+    SourceBoundaryPolicy,
+    analyze_file,
+    analyze_source,
+    evaluate_policies,
+)
+
+
+SERVICE_LIVE_BOUNDARY_POLICY = SourceBoundaryPolicy(
+    rule_prefix="service-live-canonical-boundary",
+    module_prefix="examples.service_infrastructure_live",
+    forbidden_import_prefixes=("examples.scenarios",),
+    forbidden_call_prefixes=(
+        "control_plane_kit.docker_runtime.plan_docker_effect",
+        "control_plane_kit.effects.effect_request_for_activity",
+        "control_plane_kit.effects.materialize_effect_request",
+    ),
+    forbidden_class_names=(
+        "DeploymentGraph",
+        "DeploymentProgram",
+        "ExecutionCoordinator",
+        "PostgresUnitOfWork",
+        "VerificationCommandService",
+    ),
+)
 
 class ServiceInfrastructureLiveCompositionTests(unittest.TestCase):
+    def test_live_composition_obeys_the_canonical_application_boundary(self) -> None:
+        root = Path(__file__).parents[1]
+        facts = analyze_file(
+            root / "examples" / "service_infrastructure_live.py",
+            root=root,
+        )
+
+        self.assertEqual(
+            evaluate_policies((facts,), (SERVICE_LIVE_BOUNDARY_POLICY,)),
+            (),
+        )
+
+    def test_architecture_policy_rejects_synthetic_and_direct_bypasses(self) -> None:
+        facts = analyze_source(
+            "from examples.scenarios.runner import ScenarioEffectInterpreter\n"
+            "from control_plane_kit.effects import materialize_effect_request as materialize\n"
+            "class DeploymentProgram:\n"
+            "    pass\n"
+            "def bypass(request):\n"
+            "    return materialize(request)\n",
+            path="examples/service_infrastructure_live.py",
+            module="examples.service_infrastructure_live",
+        )
+
+        findings = SERVICE_LIVE_BOUNDARY_POLICY.evaluate(facts)
+
+        self.assertEqual(len(findings), 3)
+        self.assertEqual(
+            {finding.rule_id for finding in findings},
+            {
+                "service-live-canonical-boundary-call",
+                "service-live-canonical-boundary-duplicate-type",
+                "service-live-canonical-boundary-import",
+            },
+        )
+
     def test_real_registry_covers_graph_lifecycle_and_health_capabilities(self) -> None:
         graph_id = "service-live-desired"
         registry = _effects({graph_id: desired_graph()})
