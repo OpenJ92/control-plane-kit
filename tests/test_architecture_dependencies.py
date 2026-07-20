@@ -57,7 +57,17 @@ PACKAGE_RULES = (
         ),
     ),
     PackageDependencyRule("execution", ()),
-    PackageDependencyRule("entrypoints", ()),
+    PackageDependencyRule(
+        "entrypoints",
+        (
+            "contracts",
+            "core",
+            "domains",
+            "interpreters",
+            "operations",
+            "servers",
+        ),
+    ),
     PackageDependencyRule(
         "implementations",
         (
@@ -100,24 +110,9 @@ PACKAGE_RULES = (
             "implementations",
             "read_services",
             "products",
-            "webhook",
         ),
     ),
     PackageDependencyRule("stores", ("core", "execution")),
-    PackageDependencyRule(
-        "webhook", ("_optional", "core", "domains", "operations")
-    ),
-    PackageDependencyRule(
-        "webhook_server",
-        (
-            "contracts",
-            "core",
-            "interpreters",
-            "operations",
-            "servers",
-            "webhook",
-        ),
-    ),
     PackageDependencyRule(
         "workflows",
         (

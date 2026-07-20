@@ -13,7 +13,7 @@ from control_plane_kit.operations.webhook import (
     WebhookOutboundResult,
     install_webhook_schema,
 )
-from control_plane_kit.webhook.app import (
+from control_plane_kit.entrypoints.webhook_server.app import (
     MAX_WEBHOOK_API_REQUEST_BYTES,
     create_webhook_delivery_app,
 )
@@ -59,6 +59,12 @@ class IncrementingIds:
 
 
 class WebhookFastApiTests(unittest.TestCase):
+    def test_app_factory_reports_its_entrypoint_home(self) -> None:
+        self.assertEqual(
+            create_webhook_delivery_app.__module__,
+            "control_plane_kit.entrypoints.webhook_server.app",
+        )
+
     @classmethod
     def setUpClass(cls) -> None:
         cls.database_url = os.environ.get("CPK_TEST_DATABASE_URL")

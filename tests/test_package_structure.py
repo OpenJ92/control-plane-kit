@@ -188,11 +188,18 @@ class PackageStructureTests(unittest.TestCase):
             "webhook.service",
             "webhook.unit_of_work",
             "webhook.http",
+            "webhook.app",
+            "webhook_server",
+            "webhook_server.main",
         )
 
         for module in retired_modules:
             with self.subTest(module=module):
-                self.assertIsNone(importlib.util.find_spec(f"control_plane_kit.{module}"))
+                try:
+                    spec = importlib.util.find_spec(f"control_plane_kit.{module}")
+                except ModuleNotFoundError:
+                    spec = None
+                self.assertIsNone(spec)
 
     def test_pure_packages_do_not_import_workflow_or_store_layers(self) -> None:
         topology_forbidden = (

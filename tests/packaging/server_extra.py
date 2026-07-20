@@ -7,7 +7,7 @@ import uvicorn
 
 from control_plane_kit.discovery_server.main import main as run_discovery_server
 from control_plane_kit.idempotency_gateway.main import main as run_idempotency_server
-from control_plane_kit.webhook_server.main import create_app_from_environment
+from control_plane_kit.entrypoints.webhook_server.main import create_app_from_environment
 
 
 if not psycopg.__version__ or not uvicorn.__version__:
