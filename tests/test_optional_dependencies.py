@@ -12,12 +12,12 @@ class OptionalDependencyTests(TestCase):
             with self.assertRaisesRegex(
                 ModuleNotFoundError,
                 r"control_plane_kit\.servers requires optional dependencies: "
-                r"fastapi, httpx\. Install control-plane-kit\[server\]",
+                r"fastapi, httpx\. Install control-plane-kit\[http\]",
             ):
                 require_optional_dependencies(
                     "control_plane_kit.servers",
                     ("fastapi", "httpx"),
-                    extra="server",
+                    extra="http",
                 )
 
     def test_available_dependencies_are_accepted(self) -> None:
@@ -25,7 +25,7 @@ class OptionalDependencyTests(TestCase):
             require_optional_dependencies(
                 "control_plane_kit.adapters",
                 ("httpx",),
-                extra="server",
+                extra="http",
             )
 
 

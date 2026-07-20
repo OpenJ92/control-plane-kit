@@ -1,0 +1,66 @@
+"""Acceptance proof for the installed base wheel outside the source tree."""
+
+from __future__ import annotations
+
+from importlib.util import find_spec
+import importlib
+import sys
+
+
+OPTIONAL_DISTRIBUTIONS = ("fastapi", "httpx", "psycopg", "uvicorn")
+OPTIONAL_MODULE_PREFIXES = (
+    "control_plane_kit.adapters",
+    "control_plane_kit.docker_runtime",
+    "control_plane_kit.servers",
+    "control_plane_kit.webhook",
+)
+
+
+for dependency in OPTIONAL_DISTRIBUTIONS:
+    if find_spec(dependency) is not None:
+        raise AssertionError(f"base wheel unexpectedly installed {dependency}")
+
+from control_plane_kit import (  # noqa: E402
+    ApplicationBlock,
+    BlockSockets,
+    BlockSpec,
+    DeploymentRecipe,
+    DockerRuntime,
+    PlanOnlyImplementation,
+    compile_recipe,
+    validate_graph,
+)
+
+
+if any(name.startswith(OPTIONAL_MODULE_PREFIXES) for name in sys.modules):
+    raise AssertionError("root import eagerly loaded an optional package surface")
+
+application = ApplicationBlock(
+    spec=BlockSpec("base-wheel-app", "Base wheel application"),
+    implementation=PlanOnlyImplementation("base-wheel"),
+    sockets=BlockSockets(),
+)
+graph = compile_recipe(
+    DeploymentRecipe(
+        "base-wheel-proof",
+        DockerRuntime(runtime_id="base-wheel-runtime", children=(application,)),
+    )
+)
+validated = validate_graph(graph)
+if validated.graph.node("base-wheel-app").node_id != "base-wheel-app":
+    raise AssertionError("installed base wheel did not compile the expected graph")
+
+for module in (
+    "control_plane_kit.adapters",
+    "control_plane_kit.servers",
+    "control_plane_kit.webhook",
+):
+    try:
+        importlib.import_module(module)
+    except ModuleNotFoundError as error:
+        if "control-plane-kit[http]" not in str(error):
+            raise AssertionError(f"{module} did not give actionable HTTP-extra guidance") from error
+    else:
+        raise AssertionError(f"{module} imported without its declared HTTP extra")
+
+print("base wheel acceptance passed")

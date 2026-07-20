@@ -49,7 +49,9 @@ from control_plane_kit.webhook import WebhookDeliveryService
 ## Dependency Diagnostics
 
 Operational packages fail immediately with an actionable installation message
-when their optional dependencies are absent. They do not use lazy imports,
+when their optional dependencies are absent. HTTP adapters name the focused
+`[http]` extra, Postgres process composition names `[postgres]`, and `[server]`
+remains the broad runnable-server bundle. They do not use lazy imports,
 silently swallow missing dependencies, or make those dependencies mandatory for
 the pure package root.
 

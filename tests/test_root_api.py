@@ -23,6 +23,46 @@ OPERATIONAL_ROOTS = (
     "control_plane_kit.workflows",
 )
 OPTIONAL_DEPENDENCIES = ("fastapi", "httpx", "psycopg", "uvicorn")
+PURE_PACKAGE_ROOTS = (
+    "algebra",
+    "capabilities",
+    "configuration",
+    "configuration_rendering",
+    "contracts",
+    "control_routes",
+    "discovery",
+    "effects",
+    "environment",
+    "execution",
+    "idempotency",
+    "implementations",
+    "lifecycle",
+    "load_generation",
+    "planning",
+    "policies",
+    "saga",
+    "scheduling",
+    "secrets",
+    "topology",
+    "types",
+    "verification",
+)
+
+
+def optional_imports(source: str) -> set[str]:
+    tree = ast.parse(source)
+    imported = {
+        node.module.split(".", 1)[0]
+        for node in tree.body
+        if isinstance(node, ast.ImportFrom) and node.module is not None
+    }
+    imported.update(
+        alias.name.split(".", 1)[0]
+        for node in tree.body
+        if isinstance(node, ast.Import)
+        for alias in node.names
+    )
+    return imported.intersection(OPTIONAL_DEPENDENCIES)
 
 
 class RootApiTests(unittest.TestCase):
@@ -43,20 +83,26 @@ class RootApiTests(unittest.TestCase):
         self.assertEqual(forbidden, set())
 
     def test_root_api_does_not_import_optional_dependencies_directly(self) -> None:
-        tree = ast.parse(PACKAGE_ROOT.read_text())
-        imported = {
-            node.module.split(".", 1)[0]
-            for node in tree.body
-            if isinstance(node, ast.ImportFrom) and node.module is not None
-        }
-        imported.update(
-            alias.name.split(".", 1)[0]
-            for node in tree.body
-            if isinstance(node, ast.Import)
-            for alias in node.names
-        )
+        self.assertEqual(optional_imports(PACKAGE_ROOT.read_text()), set())
 
-        self.assertEqual(imported.intersection(OPTIONAL_DEPENDENCIES), set())
+    def test_pure_package_roots_do_not_import_optional_dependencies(self) -> None:
+        package = ROOT / "control_plane_kit"
+        violations: dict[str, set[str]] = {}
+        for name in PURE_PACKAGE_ROOTS:
+            path = package / name
+            candidates = sorted(path.rglob("*.py")) if path.is_dir() else [path.with_suffix(".py")]
+            for candidate in candidates:
+                imported = optional_imports(candidate.read_text())
+                if imported:
+                    violations[str(candidate.relative_to(ROOT))] = imported
+
+        self.assertEqual(violations, {})
+
+    def test_optional_import_fixture_is_rejected(self) -> None:
+        self.assertEqual(
+            optional_imports("import httpx\nfrom psycopg import connect\n"),
+            {"httpx", "psycopg"},
+        )
 
     def test_root_all_names_are_bound(self) -> None:
         namespace: dict[str, object] = {}
