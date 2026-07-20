@@ -27,16 +27,16 @@ from control_plane_kit.domains.idempotency import (
     IdempotencyRoutePolicy,
 )
 from control_plane_kit.domains.load_generation import LoadGeneratorPolicy
-from control_plane_kit.servers import (
+from control_plane_kit.products.servers import (
     AuthGatewayPolicy,
     AuthenticationMechanism,
     GatewayMethod,
     RouteAuthorizationPolicy,
+    http_auth_gateway_block,
 )
 from control_plane_kit.servers import (
     hello_server_block,
     http_active_router_block,
-    http_auth_gateway_block,
     http_bulkhead_block,
     http_cache_block,
     http_circuit_breaker_block,

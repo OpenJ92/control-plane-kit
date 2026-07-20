@@ -329,7 +329,7 @@
         "control_plane_kit.servers.coredns",
         "control_plane_kit.servers.hello",
         "control_plane_kit.servers.http_active_router",
-        "control_plane_kit.servers.http_auth_gateway",
+        "control_plane_kit.products.servers.http_auth_gateway",
         "control_plane_kit.servers.http_bulkhead",
         "control_plane_kit.servers.http_cache",
         "control_plane_kit.servers.http_circuit_breaker",
@@ -1723,7 +1723,7 @@
         "control_plane_kit.servers.coredns",
         "control_plane_kit.servers.hello",
         "control_plane_kit.servers.http_active_router",
-        "control_plane_kit.servers.http_auth_gateway",
+        "control_plane_kit.products.servers.http_auth_gateway",
         "control_plane_kit.servers.http_bulkhead",
         "control_plane_kit.servers.http_cache",
         "control_plane_kit.servers.http_circuit_breaker",
@@ -1789,7 +1789,7 @@
         "control_plane_kit.servers.coredns",
         "control_plane_kit.servers.hello",
         "control_plane_kit.servers.http_active_router",
-        "control_plane_kit.servers.http_auth_gateway",
+        "control_plane_kit.products.servers.http_auth_gateway",
         "control_plane_kit.servers.http_bulkhead",
         "control_plane_kit.servers.http_cache",
         "control_plane_kit.servers.http_circuit_breaker",
@@ -2033,7 +2033,7 @@
         "control_plane_kit.effects.values",
         "control_plane_kit.implementations",
         "control_plane_kit.projections.operator_graph",
-        "control_plane_kit.servers.http_auth_gateway",
+        "control_plane_kit.products.servers.http_auth_gateway",
         "control_plane_kit.servers.http_bulkhead",
         "control_plane_kit.servers.http_cache",
         "control_plane_kit.servers.http_circuit_breaker",
@@ -2115,7 +2115,7 @@
         "control_plane_kit.servers.coredns",
         "control_plane_kit.servers.hello",
         "control_plane_kit.servers.http_active_router",
-        "control_plane_kit.servers.http_auth_gateway",
+        "control_plane_kit.products.servers.http_auth_gateway",
         "control_plane_kit.servers.http_bulkhead",
         "control_plane_kit.servers.http_cache",
         "control_plane_kit.servers.http_circuit_breaker",
@@ -3886,7 +3886,7 @@
         "control_plane_kit.servers.coredns",
         "control_plane_kit.servers.hello",
         "control_plane_kit.servers.http_active_router",
-        "control_plane_kit.servers.http_auth_gateway",
+        "control_plane_kit.products.servers.http_auth_gateway",
         "control_plane_kit.servers.http_bulkhead",
         "control_plane_kit.servers.http_cache",
         "control_plane_kit.servers.http_circuit_breaker",
@@ -5290,7 +5290,7 @@
         "control_plane_kit.servers.coredns",
         "control_plane_kit.servers.hello",
         "control_plane_kit.servers.http_active_router",
-        "control_plane_kit.servers.http_auth_gateway",
+        "control_plane_kit.products.servers.http_auth_gateway",
         "control_plane_kit.servers.http_bulkhead",
         "control_plane_kit.servers.http_cache",
         "control_plane_kit.servers.http_circuit_breaker",
@@ -5321,7 +5321,7 @@
         "control_plane_kit.servers.catalog",
         "control_plane_kit.servers.hello",
         "control_plane_kit.servers.http_active_router",
-        "control_plane_kit.servers.http_auth_gateway",
+        "control_plane_kit.products.servers.http_auth_gateway",
         "control_plane_kit.servers.http_bulkhead",
         "control_plane_kit.servers.http_cache",
         "control_plane_kit.servers.http_circuit_breaker",
@@ -5515,7 +5515,7 @@
         "control_plane_kit.products.servers.support",
         "control_plane_kit.servers.hello",
         "control_plane_kit.servers.http_active_router",
-        "control_plane_kit.servers.http_auth_gateway",
+        "control_plane_kit.products.servers.http_auth_gateway",
         "control_plane_kit.servers.http_bulkhead",
         "control_plane_kit.servers.http_cache",
         "control_plane_kit.servers.http_circuit_breaker",
@@ -5636,7 +5636,7 @@
         "control_plane_kit.servers.coredns",
         "control_plane_kit.servers.hello",
         "control_plane_kit.servers.http_active_router",
-        "control_plane_kit.servers.http_auth_gateway",
+        "control_plane_kit.products.servers.http_auth_gateway",
         "control_plane_kit.servers.http_bulkhead",
         "control_plane_kit.servers.http_cache",
         "control_plane_kit.servers.http_circuit_breaker",
@@ -5876,7 +5876,8 @@
         "HttpAuthGatewayServer",
         "authorize_request",
         "http_auth_gateway_block",
-        "http_auth_gateway_command"
+        "http_auth_gateway_command",
+        "HTTP_AUTH_GATEWAY_PRODUCT"
       ],
       "destination": "control_plane_kit.products.servers.http_auth_gateway",
       "domain_qualification": {
@@ -5894,14 +5895,16 @@
       "internal_dependencies": [
         "control_plane_kit.core.algebra",
         "control_plane_kit.core.capabilities",
+        "control_plane_kit.core.control_routes",
         "control_plane_kit.implementations",
         "control_plane_kit.core.secrets",
         "control_plane_kit.products.servers.support.command_rendering",
         "control_plane_kit.products.servers.support.http_messages",
-        "control_plane_kit.core.types"
+        "control_plane_kit.core.types",
+        "control_plane_kit.products.servers.catalog"
       ],
       "known_package_consumers": [
-        "control_plane_kit.servers",
+        "control_plane_kit.products.servers",
         "control_plane_kit.servers.catalog"
       ],
       "migration_prerequisites": [
@@ -5909,9 +5912,9 @@
         "#557",
         "#558/#559/#560 for representative splits"
       ],
-      "module": "control_plane_kit.servers.http_auth_gateway",
+      "module": "control_plane_kit.products.servers.http_auth_gateway",
       "motivation": "Declares a package-owned deployable server as graph-visible product data.",
-      "movement": "split-and-move",
+      "movement": "moved",
       "optional_external_dependencies": [],
       "owner": "product",
       "protecting_tests": [
@@ -5925,7 +5928,7 @@
         "values"
       ],
       "server_product_exterior": "control_plane_kit.products.servers",
-      "source": "control_plane_kit/servers/http_auth_gateway.py"
+      "source": "control_plane_kit/products/servers/http_auth_gateway.py"
     },
     {
       "canonical_public_exports": [
@@ -6318,7 +6321,7 @@
         "control_plane_kit.load_generator_server.main",
         "control_plane_kit.products.servers.support",
         "control_plane_kit.servers.http_active_router",
-        "control_plane_kit.servers.http_auth_gateway",
+        "control_plane_kit.products.servers.http_auth_gateway",
         "control_plane_kit.servers.http_bulkhead",
         "control_plane_kit.servers.http_cache",
         "control_plane_kit.servers.http_circuit_breaker",

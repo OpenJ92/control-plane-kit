@@ -19,13 +19,6 @@ from control_plane_kit.servers.http_active_router import http_active_router_bloc
 from control_plane_kit.servers.http_circuit_breaker import http_circuit_breaker_block
 from control_plane_kit.servers.http_bulkhead import http_bulkhead_block
 from control_plane_kit.servers.http_cache import http_cache_block
-from control_plane_kit.servers.http_auth_gateway import (
-    AuthenticationMechanism,
-    AuthGatewayPolicy,
-    GatewayMethod,
-    RouteAuthorizationPolicy,
-    http_auth_gateway_block,
-)
 from control_plane_kit.domains.idempotency import (
     IdempotencyGatewayPolicy,
     IdempotencyMethod,
@@ -47,6 +40,7 @@ from control_plane_kit.servers.request_observer import request_observer_block
 from control_plane_kit.servers.service_discovery import service_discovery_block
 from control_plane_kit.servers.coredns import coredns_block
 from control_plane_kit.products.servers.webhook_delivery import WEBHOOK_DELIVERY_PRODUCT
+from control_plane_kit.products.servers.http_auth_gateway import HTTP_AUTH_GATEWAY_PRODUCT
 from control_plane_kit.servers.opentelemetry_collector import (
     opentelemetry_collector_block,
 )
@@ -140,20 +134,7 @@ PACKAGE_SERVER_CONTRACTS = (
         ),
         (_probe(path="/health"),),
     ),
-    ProductDeclaration(
-        PackageServerProduct.HTTP_AUTH_GATEWAY,
-        ProductMaturity.TEST_ONLY,
-        http_auth_gateway_block(
-            policy=AuthGatewayPolicy(
-                AuthenticationMechanism.API_KEY,
-                (RouteAuthorizationPolicy("/", (GatewayMethod.GET,)),),
-            ),
-        ),
-        (
-            _probe(path="/health"),
-            _control(CapabilityName.METRICS_READABLE, ControlRouteSetName.METRICS),
-        ),
-    ),
+    HTTP_AUTH_GATEWAY_PRODUCT,
     ProductDeclaration(
         PackageServerProduct.HELLO,
         ProductMaturity.TEACHING,

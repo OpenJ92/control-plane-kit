@@ -154,6 +154,24 @@ class PackageStructureTests(unittest.TestCase):
             "control_plane_kit.products.servers.webhook_delivery",
         )
         self.assertEqual(
+            server_products.http_auth_gateway_block.__module__,
+            "control_plane_kit.products.servers.http_auth_gateway",
+        )
+        self.assertEqual(
+            server_products.HTTP_AUTH_GATEWAY_PRODUCT.block.spec,
+            server_products.http_auth_gateway_block(
+                policy=server_products.AuthGatewayPolicy(
+                    server_products.AuthenticationMechanism.API_KEY,
+                    (
+                        server_products.RouteAuthorizationPolicy(
+                            "/",
+                            (server_products.GatewayMethod.GET,),
+                        ),
+                    ),
+                ),
+            ).spec,
+        )
+        self.assertEqual(
             server_product_support.HttpRequest.__module__,
             "control_plane_kit.products.servers.support.http_messages",
         )
@@ -208,6 +226,7 @@ class PackageStructureTests(unittest.TestCase):
             "webhook.http",
             "webhook.app",
             "webhook_server",
+            "servers.http_auth_gateway",
             "webhook_server.main",
             "servers.webhook_delivery",
             "servers.http_messages",

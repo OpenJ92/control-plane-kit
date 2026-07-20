@@ -18,8 +18,14 @@ from control_plane_kit.core.algebra import (
     RequirementSocket,
 )
 from control_plane_kit.core.capabilities import CapabilityName
+from control_plane_kit.core.control_routes import ControlRouteSetName
 from control_plane_kit.implementations import DockerImageImplementation
 from control_plane_kit.core.secrets import SecretEnvironmentDelivery, SecretReference
+from control_plane_kit.products.servers.catalog import (
+    CapabilityImplementation,
+    ExecutableCapability,
+    ProductDeclaration,
+)
 from control_plane_kit.products.servers.support.command_rendering import render_python_command
 from control_plane_kit.products.servers.support.http_messages import HttpHandler, HttpRequest, HttpResponse
 from control_plane_kit.core.types import Protocol
@@ -474,3 +480,27 @@ def _integer(value: object, label: str) -> int:
     if type(value) is not int:
         raise TypeError(f"{label} descriptor must be an integer")
     return value
+
+
+HTTP_AUTH_GATEWAY_PRODUCT = ProductDeclaration(
+    PackageServerProduct.HTTP_AUTH_GATEWAY,
+    ProductMaturity.TEST_ONLY,
+    http_auth_gateway_block(
+        policy=AuthGatewayPolicy(
+            AuthenticationMechanism.API_KEY,
+            (RouteAuthorizationPolicy("/", (GatewayMethod.GET,)),),
+        ),
+    ),
+    (
+        ExecutableCapability(
+            CapabilityName.HEALTH_CHECKABLE,
+            CapabilityImplementation.APPLICATION_PROBE,
+            path="/health",
+        ),
+        ExecutableCapability(
+            CapabilityName.METRICS_READABLE,
+            CapabilityImplementation.CONTROL_ROUTE,
+            route_set=ControlRouteSetName.METRICS,
+        ),
+    ),
+)

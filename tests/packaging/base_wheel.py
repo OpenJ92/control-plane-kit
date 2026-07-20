@@ -48,9 +48,15 @@ if "jinja2" in sys.modules:
 
 from control_plane_kit.interpreters import ConfigurationTemplate  # noqa: E402
 from control_plane_kit.products.servers import (  # noqa: E402
+    HTTP_AUTH_GATEWAY_PRODUCT,
+    AuthGatewayPolicy,
+    AuthenticationMechanism,
+    GatewayMethod,
     ProductCatalog,
     ProductDeclaration,
+    RouteAuthorizationPolicy,
     WEBHOOK_DELIVERY_PRODUCT,
+    http_auth_gateway_block,
     webhook_delivery_block,
 )
 from control_plane_kit.products.servers.support.command_rendering import (  # noqa: E402
@@ -72,6 +78,20 @@ if webhook_delivery_block.__module__ != (
     raise AssertionError("webhook block did not load from its canonical product home")
 if WEBHOOK_DELIVERY_PRODUCT.block.spec != webhook_delivery_block().spec:
     raise AssertionError("webhook declaration and block constructor disagree")
+if http_auth_gateway_block.__module__ != (
+    "control_plane_kit.products.servers.http_auth_gateway"
+):
+    raise AssertionError("auth gateway block did not load from its canonical product home")
+auth_gateway = http_auth_gateway_block(
+    policy=AuthGatewayPolicy(
+        AuthenticationMechanism.API_KEY,
+        (RouteAuthorizationPolicy("/", (GatewayMethod.GET,)),),
+    ),
+)
+if HTTP_AUTH_GATEWAY_PRODUCT.block.spec != auth_gateway.spec:
+    raise AssertionError("auth gateway declaration and block constructor disagree")
+if HTTP_AUTH_GATEWAY_PRODUCT.maturity.value != "test-only":
+    raise AssertionError("package auth gateway must remain an explicit test-only fixture")
 if any(find_spec(dependency) is not None for dependency in OPTIONAL_DISTRIBUTIONS):
     raise AssertionError("pure webhook product import installed an optional dependency")
 if WebhookDeliveryService.__module__ != "control_plane_kit.operations.webhook.service":
@@ -155,6 +175,12 @@ for retired in ("app", "http", "postgres", "protocols", "service", "unit_of_work
 for retired in ("control_plane_kit.webhook", "control_plane_kit.webhook_server"):
     if find_spec(retired) is not None:
         raise AssertionError(f"installed base wheel retained {retired}")
+try:
+    retired_auth_gateway = find_spec("control_plane_kit.servers.http_auth_gateway")
+except ModuleNotFoundError:
+    retired_auth_gateway = None
+if retired_auth_gateway is not None:
+    raise AssertionError("installed base wheel retained the legacy auth gateway home")
 
 for module in (
     "control_plane_kit.adapters",
