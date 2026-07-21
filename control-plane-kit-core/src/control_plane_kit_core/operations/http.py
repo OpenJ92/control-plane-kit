@@ -362,6 +362,86 @@ def operator_read_http_routes() -> tuple[HttpApiRouteContract, ...]:
     )
 
 
+def operator_command_http_routes() -> tuple[HttpApiRouteContract, ...]:
+    """Return the operator command-route contract without hosting an API."""
+
+    return tuple(
+        _command_route(
+            route_id=route_id,
+            path_template=path,
+            service_role=service_role,
+            auth_scope=auth_scope,
+            safety=safety,
+            request_schema=request_schema,
+            response_schema=response_schema,
+        )
+        for (
+            route_id,
+            path,
+            service_role,
+            auth_scope,
+            safety,
+            request_schema,
+            response_schema,
+        ) in (
+            (
+                "command.deployment.plan",
+                "/workspaces/{workspace_id}/plans",
+                ControlPlaneServiceRole.PLANNING,
+                HttpAuthScope.PLAN_WRITE,
+                HttpOperationSafety.COMMAND,
+                "PlanDeploymentRequest",
+                "PlanDeploymentResponse",
+            ),
+            (
+                "command.approval.decide",
+                "/workspaces/{workspace_id}/approvals/{approval_id}/decision",
+                ControlPlaneServiceRole.APPROVAL,
+                HttpAuthScope.APPROVAL_DECIDE,
+                HttpOperationSafety.COMMAND,
+                "ApprovalDecisionRequest",
+                "ApprovalDecisionResponse",
+            ),
+            (
+                "command.deployment.admit",
+                "/workspaces/{workspace_id}/plans/{plan_id}/admission",
+                ControlPlaneServiceRole.ADMISSION,
+                HttpAuthScope.EXECUTION_RUN,
+                HttpOperationSafety.COMMAND,
+                "AdmitDeploymentRequest",
+                "AdmittedRunResponse",
+            ),
+            (
+                "command.run.claim",
+                "/workspaces/{workspace_id}/runs/{run_id}/claim",
+                ControlPlaneServiceRole.LIFECYCLE,
+                HttpAuthScope.EXECUTION_RUN,
+                HttpOperationSafety.COMMAND,
+                "ClaimRunRequest",
+                "ClaimRunResponse",
+            ),
+            (
+                "command.deployment.execute",
+                "/workspaces/{workspace_id}/runs/{run_id}/execute",
+                ControlPlaneServiceRole.EXECUTION,
+                HttpAuthScope.EXECUTION_RUN,
+                HttpOperationSafety.DESTRUCTIVE,
+                "ExecuteDeploymentRequest",
+                "ExecutionRunResponse",
+            ),
+            (
+                "command.recovery.decide",
+                "/workspaces/{workspace_id}/runs/{run_id}/recovery",
+                ControlPlaneServiceRole.RECOVERY,
+                HttpAuthScope.EXECUTION_RUN,
+                HttpOperationSafety.COMMAND,
+                "RecoveryDecisionRequest",
+                "RecoveryDecisionResponse",
+            ),
+        )
+    )
+
+
 def _read_route(
     route_id: str,
     path_template: str,
@@ -374,6 +454,28 @@ def _read_route(
         service_role=ControlPlaneServiceRole.READS,
         auth_scope=HttpAuthScope.READ,
         safety=HttpOperationSafety.READ_ONLY,
+        response_schema=HttpSchemaRef(response_schema),
+    )
+
+
+def _command_route(
+    *,
+    route_id: str,
+    path_template: str,
+    service_role: ControlPlaneServiceRole,
+    auth_scope: HttpAuthScope,
+    safety: HttpOperationSafety,
+    request_schema: str,
+    response_schema: str,
+) -> HttpApiRouteContract:
+    return HttpApiRouteContract(
+        route_id=route_id,
+        method=HttpMethod.POST,
+        path_template=path_template,
+        service_role=service_role,
+        auth_scope=auth_scope,
+        safety=safety,
+        request_schema=HttpSchemaRef(request_schema),
         response_schema=HttpSchemaRef(response_schema),
     )
 

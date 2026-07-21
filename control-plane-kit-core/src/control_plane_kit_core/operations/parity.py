@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
+from enum import StrEnum
 from typing import Mapping
 
 from control_plane_kit_core.operations.http import (
@@ -11,10 +12,31 @@ from control_plane_kit_core.operations.http import (
 )
 from control_plane_kit_core.operations.mcp import McpStreamableHttpContract
 from control_plane_kit_core.operations.services import ControlPlaneServiceRole
+from control_plane_kit_core.operations.transactions import (
+    ExternalEffectPolicy,
+    StoreParticipation,
+    UnitOfWorkBoundary,
+)
 
 
 class InvalidAdapterParityContract(ValueError):
     """Raised when adapter parity is incoherent."""
+
+
+class CommandIdempotencyPolicy(StrEnum):
+    """Closed command retry and duplicate-request policy."""
+
+    REQUIRED = "required"
+    BEST_EFFORT = "best-effort"
+
+
+class ApprovalPolicy(StrEnum):
+    """Closed command approval relation at the shared service boundary."""
+
+    NOT_REQUIRED = "not-required"
+    SUBMITS_FOR_APPROVAL = "submits-for-approval"
+    DECIDES_APPROVAL = "decides-approval"
+    REQUIRES_CURRENT_APPROVAL = "requires-current-approval"
 
 
 @dataclass(frozen=True)
@@ -73,6 +95,85 @@ class AdapterProjectionBinding:
                 ),
                 http_route_id=_text(value["http_route_id"], "http_route_id"),
                 mcp_tool_name=_text(value["mcp_tool_name"], "mcp_tool_name"),
+            )
+        except ValueError as error:
+            raise InvalidAdapterParityContract(str(error)) from error
+
+
+@dataclass(frozen=True)
+class AdapterCommandBinding:
+    """One canonical command exposed through HTTP and MCP."""
+
+    operation_id: str
+    service_role: ControlPlaneServiceRole
+    request_schema: str
+    response_schema: str
+    http_route_id: str
+    mcp_tool_name: str
+    idempotency: CommandIdempotencyPolicy
+    approval: ApprovalPolicy
+
+    def __post_init__(self) -> None:
+        _validate_identity(self.operation_id, "operation_id")
+        if not isinstance(self.service_role, ControlPlaneServiceRole):
+            raise InvalidAdapterParityContract(
+                "service_role must be ControlPlaneServiceRole"
+            )
+        _validate_identity(self.request_schema, "request_schema")
+        _validate_identity(self.response_schema, "response_schema")
+        _validate_identity(self.http_route_id, "http_route_id")
+        _validate_identity(self.mcp_tool_name, "mcp_tool_name")
+        if not isinstance(self.idempotency, CommandIdempotencyPolicy):
+            raise InvalidAdapterParityContract(
+                "idempotency must be CommandIdempotencyPolicy"
+            )
+        if not isinstance(self.approval, ApprovalPolicy):
+            raise InvalidAdapterParityContract("approval must be ApprovalPolicy")
+
+    def descriptor(self) -> dict[str, object]:
+        return {
+            "operation_id": self.operation_id,
+            "service_role": self.service_role.value,
+            "request_schema": self.request_schema,
+            "response_schema": self.response_schema,
+            "http_route_id": self.http_route_id,
+            "mcp_tool_name": self.mcp_tool_name,
+            "idempotency": self.idempotency.value,
+            "approval": self.approval.value,
+        }
+
+    @classmethod
+    def from_descriptor(
+        cls,
+        value: Mapping[str, object],
+    ) -> "AdapterCommandBinding":
+        if set(value) != {
+            "operation_id",
+            "service_role",
+            "request_schema",
+            "response_schema",
+            "http_route_id",
+            "mcp_tool_name",
+            "idempotency",
+            "approval",
+        }:
+            raise InvalidAdapterParityContract(
+                "command binding descriptor has unexpected keys"
+            )
+        try:
+            return cls(
+                operation_id=_text(value["operation_id"], "operation_id"),
+                service_role=ControlPlaneServiceRole(
+                    _text(value["service_role"], "service_role")
+                ),
+                request_schema=_text(value["request_schema"], "request_schema"),
+                response_schema=_text(value["response_schema"], "response_schema"),
+                http_route_id=_text(value["http_route_id"], "http_route_id"),
+                mcp_tool_name=_text(value["mcp_tool_name"], "mcp_tool_name"),
+                idempotency=CommandIdempotencyPolicy(
+                    _text(value["idempotency"], "idempotency")
+                ),
+                approval=ApprovalPolicy(_text(value["approval"], "approval")),
             )
         except ValueError as error:
             raise InvalidAdapterParityContract(str(error)) from error
@@ -170,6 +271,145 @@ class AdapterParityContract:
             raise InvalidAdapterParityContract(str(error)) from error
 
 
+@dataclass(frozen=True)
+class AdapterCommandParityContract:
+    """Prove HTTP and MCP expose one shared command-policy vocabulary."""
+
+    http_api: HttpApiContract
+    mcp: McpStreamableHttpContract
+    unit_of_work: UnitOfWorkBoundary
+    commands: tuple[AdapterCommandBinding, ...]
+
+    def __post_init__(self) -> None:
+        if not isinstance(self.http_api, HttpApiContract):
+            raise InvalidAdapterParityContract("http_api must be HttpApiContract")
+        if not isinstance(self.mcp, McpStreamableHttpContract):
+            raise InvalidAdapterParityContract("mcp must be McpStreamableHttpContract")
+        if not isinstance(self.unit_of_work, UnitOfWorkBoundary):
+            raise InvalidAdapterParityContract("unit_of_work must be UnitOfWorkBoundary")
+        if not isinstance(self.commands, tuple) or not all(
+            isinstance(binding, AdapterCommandBinding)
+            for binding in self.commands
+        ):
+            raise InvalidAdapterParityContract(
+                "commands must be AdapterCommandBinding values"
+            )
+        _reject_duplicates(
+            "operation_id",
+            (binding.operation_id for binding in self.commands),
+        )
+        _reject_duplicates(
+            "http_route_id",
+            (binding.http_route_id for binding in self.commands),
+        )
+        _reject_duplicates(
+            "mcp_tool_name",
+            (binding.mcp_tool_name for binding in self.commands),
+        )
+        for binding in self.commands:
+            self._validate_binding(binding)
+        ordered = tuple(sorted(self.commands, key=lambda binding: binding.operation_id))
+        object.__setattr__(self, "commands", ordered)
+
+    def _validate_binding(self, binding: AdapterCommandBinding) -> None:
+        route = self.http_api.route(binding.http_route_id)
+        if route.service_role is not binding.service_role:
+            raise InvalidAdapterParityContract(
+                f"{binding.operation_id!r} service role does not match HTTP route"
+            )
+        if route.request_schema.name != binding.request_schema:
+            raise InvalidAdapterParityContract(
+                f"{binding.operation_id!r} request schema does not match HTTP route"
+            )
+        if route.response_schema.name != binding.response_schema:
+            raise InvalidAdapterParityContract(
+                f"{binding.operation_id!r} response schema does not match HTTP route"
+            )
+        if route.safety is HttpOperationSafety.READ_ONLY:
+            raise InvalidAdapterParityContract(
+                f"{binding.operation_id!r} command must not use read-only route"
+            )
+
+        boundary = self.unit_of_work.service(binding.service_role)
+        if boundary.store_participation is not StoreParticipation.READ_WRITE:
+            raise InvalidAdapterParityContract(
+                f"{binding.operation_id!r} command service must be read-write"
+            )
+        if not boundary.owns_transaction:
+            raise InvalidAdapterParityContract(
+                f"{binding.operation_id!r} command service must own transaction"
+            )
+        if route.safety is HttpOperationSafety.DESTRUCTIVE:
+            if binding.idempotency is not CommandIdempotencyPolicy.REQUIRED:
+                raise InvalidAdapterParityContract(
+                    f"{binding.operation_id!r} destructive command requires idempotency"
+                )
+            if binding.approval is not ApprovalPolicy.REQUIRES_CURRENT_APPROVAL:
+                raise InvalidAdapterParityContract(
+                    f"{binding.operation_id!r} destructive command requires current approval"
+                )
+            if (
+                boundary.external_effect_policy
+                is not ExternalEffectPolicy.AFTER_COMMIT
+            ):
+                raise InvalidAdapterParityContract(
+                    f"{binding.operation_id!r} external effects must occur after commit"
+                )
+        if (
+            binding.approval is ApprovalPolicy.REQUIRES_CURRENT_APPROVAL
+            and binding.idempotency is not CommandIdempotencyPolicy.REQUIRED
+        ):
+            raise InvalidAdapterParityContract(
+                f"{binding.operation_id!r} approval-gated command requires idempotency"
+            )
+
+    def descriptor(self) -> dict[str, object]:
+        return {
+            "kind": "adapter-command-parity-contract",
+            "http_api": self.http_api.descriptor(),
+            "mcp": self.mcp.descriptor(),
+            "unit_of_work": self.unit_of_work.descriptor(),
+            "commands": [binding.descriptor() for binding in self.commands],
+        }
+
+    @classmethod
+    def from_descriptor(
+        cls,
+        value: Mapping[str, object],
+    ) -> "AdapterCommandParityContract":
+        if set(value) != {"kind", "http_api", "mcp", "unit_of_work", "commands"}:
+            raise InvalidAdapterParityContract(
+                "adapter command parity descriptor has unexpected keys"
+            )
+        if value["kind"] != "adapter-command-parity-contract":
+            raise InvalidAdapterParityContract(
+                "adapter command parity descriptor has wrong kind"
+            )
+        commands = value["commands"]
+        if not isinstance(commands, list):
+            raise InvalidAdapterParityContract("commands must be a list")
+        try:
+            return cls(
+                http_api=HttpApiContract.from_descriptor(
+                    _mapping(value["http_api"], "http_api")
+                ),
+                mcp=McpStreamableHttpContract.from_descriptor(
+                    _mapping(value["mcp"], "mcp")
+                ),
+                unit_of_work=UnitOfWorkBoundary.from_descriptor(
+                    _mapping(value["unit_of_work"], "unit_of_work")
+                ),
+                commands=tuple(
+                    AdapterCommandBinding.from_descriptor(
+                        _mapping(command, "command")
+                    )
+                    for command in commands
+                ),
+            )
+        except ValueError as error:
+            raise InvalidAdapterParityContract(str(error)) from error
+
+
 def operator_read_projection_parity(
     http_api: HttpApiContract,
     mcp: McpStreamableHttpContract,
@@ -193,6 +433,41 @@ def operator_read_projection_parity(
                 mcp_tool_name,
                 projection_schema,
             ) in _OPERATOR_READ_PROJECTIONS
+        ),
+    )
+
+
+def operator_command_parity(
+    http_api: HttpApiContract,
+    mcp: McpStreamableHttpContract,
+    unit_of_work: UnitOfWorkBoundary,
+) -> AdapterCommandParityContract:
+    """Bind operator command routes to MCP tools and service policy."""
+
+    return AdapterCommandParityContract(
+        http_api=http_api,
+        mcp=mcp,
+        unit_of_work=unit_of_work,
+        commands=tuple(
+            AdapterCommandBinding(
+                operation_id=operation_id,
+                service_role=service_role,
+                request_schema=request_schema,
+                response_schema=response_schema,
+                http_route_id=http_route_id,
+                mcp_tool_name=mcp_tool_name,
+                idempotency=CommandIdempotencyPolicy.REQUIRED,
+                approval=approval,
+            )
+            for (
+                operation_id,
+                http_route_id,
+                mcp_tool_name,
+                service_role,
+                request_schema,
+                response_schema,
+                approval,
+            ) in _OPERATOR_COMMANDS
         ),
     )
 
@@ -263,6 +538,64 @@ _OPERATOR_READ_PROJECTIONS = (
         "read.control-surface",
         "get_control_surface",
         "ControlSurfaceReadResponse",
+    ),
+)
+
+
+_OPERATOR_COMMANDS = (
+    (
+        "deployment.plan",
+        "command.deployment.plan",
+        "plan_deployment",
+        ControlPlaneServiceRole.PLANNING,
+        "PlanDeploymentRequest",
+        "PlanDeploymentResponse",
+        ApprovalPolicy.SUBMITS_FOR_APPROVAL,
+    ),
+    (
+        "approval.decide",
+        "command.approval.decide",
+        "decide_approval",
+        ControlPlaneServiceRole.APPROVAL,
+        "ApprovalDecisionRequest",
+        "ApprovalDecisionResponse",
+        ApprovalPolicy.DECIDES_APPROVAL,
+    ),
+    (
+        "deployment.admit",
+        "command.deployment.admit",
+        "admit_deployment",
+        ControlPlaneServiceRole.ADMISSION,
+        "AdmitDeploymentRequest",
+        "AdmittedRunResponse",
+        ApprovalPolicy.REQUIRES_CURRENT_APPROVAL,
+    ),
+    (
+        "run.claim",
+        "command.run.claim",
+        "claim_run",
+        ControlPlaneServiceRole.LIFECYCLE,
+        "ClaimRunRequest",
+        "ClaimRunResponse",
+        ApprovalPolicy.REQUIRES_CURRENT_APPROVAL,
+    ),
+    (
+        "deployment.execute",
+        "command.deployment.execute",
+        "execute_deployment",
+        ControlPlaneServiceRole.EXECUTION,
+        "ExecuteDeploymentRequest",
+        "ExecutionRunResponse",
+        ApprovalPolicy.REQUIRES_CURRENT_APPROVAL,
+    ),
+    (
+        "recovery.decide",
+        "command.recovery.decide",
+        "decide_recovery",
+        ControlPlaneServiceRole.RECOVERY,
+        "RecoveryDecisionRequest",
+        "RecoveryDecisionResponse",
+        ApprovalPolicy.REQUIRES_CURRENT_APPROVAL,
     ),
 )
 

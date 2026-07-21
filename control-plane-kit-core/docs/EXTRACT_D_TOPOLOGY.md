@@ -91,7 +91,12 @@ D.5 Mandatory Stop
   and retained-data preservation as pure handoff contracts.
 - HTTP/MCP projection parity as a pure binding between canonical operations,
   HTTP route ids, and MCP tool names.
-- Parity laws proving transport adapters will call the same services.
+- HTTP/MCP command parity as a pure binding between canonical command ids,
+  service roles, request/response schemas, approval policies, idempotency
+  policies, transaction laws, HTTP route ids, and MCP tool names.
+- Parity laws proving transport adapters will call the same services and cannot
+  bypass approval, idempotency, or UnitOfWork policy by choosing a different
+  transport.
 
 ## Deferred cpk-server Work
 

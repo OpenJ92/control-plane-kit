@@ -4,8 +4,12 @@ __version__ = "0.1.0"
 
 from control_plane_kit_core.operations import (
     ApplicationServiceBinding,
+    AdapterCommandBinding,
+    AdapterCommandParityContract,
     AdapterParityContract,
     AdapterProjectionBinding,
+    ApprovalPolicy,
+    CommandIdempotencyPolicy,
     ControlPlaneServiceRole,
     ControlPlaneProcessContract,
     DependencyReadinessKind,
@@ -36,6 +40,8 @@ from control_plane_kit_core.operations import (
     ShutdownContract,
     StoreParticipation,
     UnitOfWorkBoundary,
+    operator_command_http_routes,
+    operator_command_parity,
     operator_read_http_routes,
     operator_read_projection_parity,
 )
@@ -72,8 +78,12 @@ from control_plane_kit_core.products import (
 
 __all__ = [
     "ApplicationServiceBinding",
+    "AdapterCommandBinding",
+    "AdapterCommandParityContract",
     "AdapterParityContract",
     "AdapterProjectionBinding",
+    "ApprovalPolicy",
+    "CommandIdempotencyPolicy",
     "ContainerServerProduct",
     "ContainerServerProductCodec",
     "ContainerServerProductError",
@@ -131,6 +141,8 @@ __all__ = [
     "UnitOfWorkBoundary",
     "instantiate_catalog_product",
     "instantiate_product",
+    "operator_command_http_routes",
+    "operator_command_parity",
     "operator_read_http_routes",
     "operator_read_projection_parity",
     "require_unique_product_identities",

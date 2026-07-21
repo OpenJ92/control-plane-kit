@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from enum import StrEnum
+from typing import Mapping
 
 from control_plane_kit_core.operations.services import (
     ControlPlaneServiceRole,
@@ -102,6 +103,44 @@ class ServiceTransactionBoundary:
             "uses_runtime_authority": self.uses_runtime_authority,
         }
 
+    @classmethod
+    def from_descriptor(
+        cls,
+        value: Mapping[str, object],
+    ) -> "ServiceTransactionBoundary":
+        if set(value) != {
+            "role",
+            "store_participation",
+            "owns_transaction",
+            "external_effect_policy",
+            "uses_worker",
+            "uses_runtime_authority",
+        }:
+            raise InvalidUnitOfWorkBoundary(
+                "transaction service descriptor has unexpected keys"
+            )
+        try:
+            return cls(
+                role=ControlPlaneServiceRole(_text(value["role"], "role")),
+                store_participation=StoreParticipation(
+                    _text(value["store_participation"], "store_participation")
+                ),
+                owns_transaction=_bool(
+                    value["owns_transaction"],
+                    "owns_transaction",
+                ),
+                external_effect_policy=ExternalEffectPolicy(
+                    _text(value["external_effect_policy"], "external_effect_policy")
+                ),
+                uses_worker=_bool(value["uses_worker"], "uses_worker"),
+                uses_runtime_authority=_bool(
+                    value["uses_runtime_authority"],
+                    "uses_runtime_authority",
+                ),
+            )
+        except ValueError as error:
+            raise InvalidUnitOfWorkBoundary(str(error)) from error
+
 
 @dataclass(frozen=True)
 class UnitOfWorkBoundary:
@@ -161,5 +200,61 @@ class UnitOfWorkBoundary:
         return {
             "transaction_boundary": self.transaction_boundary,
             "store_commit_policy": self.store_commit_policy,
+            "program": self.program.descriptor(),
             "services": [service.descriptor() for service in self.services],
         }
+
+    @classmethod
+    def from_descriptor(
+        cls,
+        value: Mapping[str, object],
+    ) -> "UnitOfWorkBoundary":
+        if set(value) != {
+            "transaction_boundary",
+            "store_commit_policy",
+            "program",
+            "services",
+        }:
+            raise InvalidUnitOfWorkBoundary(
+                "unit of work descriptor has unexpected keys"
+            )
+        services = value["services"]
+        if not isinstance(services, list):
+            raise InvalidUnitOfWorkBoundary("services must be a list")
+        return cls(
+            program=DeploymentProgramBoundary.from_descriptor(
+                _mapping(value["program"], "program")
+            ),
+            services=tuple(
+                ServiceTransactionBoundary.from_descriptor(
+                    _mapping(service, "service")
+                )
+                for service in services
+            ),
+            transaction_boundary=_text(
+                value["transaction_boundary"],
+                "transaction_boundary",
+            ),
+            store_commit_policy=_text(
+                value["store_commit_policy"],
+                "store_commit_policy",
+            ),
+        )
+
+
+def _text(value: object, field: str) -> str:
+    if not isinstance(value, str):
+        raise InvalidUnitOfWorkBoundary(f"{field} must be text")
+    return value
+
+
+def _bool(value: object, field: str) -> bool:
+    if type(value) is not bool:
+        raise InvalidUnitOfWorkBoundary(f"{field} must be bool")
+    return value
+
+
+def _mapping(value: object, field: str) -> Mapping[str, object]:
+    if not isinstance(value, Mapping):
+        raise InvalidUnitOfWorkBoundary(f"{field} must be a descriptor")
+    return value
