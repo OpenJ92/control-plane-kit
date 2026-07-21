@@ -15,6 +15,7 @@ EXPECTED_MODULES = {
     "environment",
     "lifecycle",
     "operations.__init__",
+    "operations.handoff",
     "operations.http",
     "operations.mcp",
     "operations.parity",

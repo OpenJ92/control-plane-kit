@@ -99,6 +99,8 @@ D.5 Mandatory Stop
 - Parity laws proving transport adapters will call the same services and cannot
   bypass approval, idempotency, or UnitOfWork policy by choosing a different
   transport.
+- Core-to-`cpk-server` entrypoint handoff as a pure contract over the already
+  defined process, service, transaction, and parity contracts.
 
 ## Deferred cpk-server Work
 

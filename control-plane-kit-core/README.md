@@ -146,6 +146,22 @@ safety classification, activity-history requirement, and bounded redacted error
 policy. Accepted and rejected commands require activity evidence; read
 projections remain read-scoped and read-only.
 
+The future `cpk-server` process is represented only as a handoff contract:
+
+```text
+CpkServerEntrypointHandoffContract
+  = ControlPlaneProcessContract
+  x DeploymentProgramBoundary
+  x UnitOfWorkBoundary
+  x AdapterParityContract
+  x AdapterCommandParityContract
+  x AdapterOperationSecurityParityContract
+```
+
+This states that `control-plane-kit-servers/cpk-server` imports core and
+composes one `DeploymentProgram`. Core still does not own the FastAPI process,
+hosted MCP server, Dockerfile, OCI image, or product descriptor.
+
 ## Extraction Law
 
 Every migrated behavior must be justified by a frozen law card from the
