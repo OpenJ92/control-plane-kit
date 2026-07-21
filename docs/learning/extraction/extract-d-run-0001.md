@@ -171,3 +171,116 @@ start from frozen `workflows/*`, `stores/*`, `read_services/*`, and
 
 #631 must not import or implement FastAPI, hosted MCP, Dockerfile, OCI image,
 product descriptor, or `cpk-server`.
+
+## #631 Core Application Service Composition
+
+### Law Card
+
+- Reference identity: `EXTRACT.D.1.service-composition-boundary`
+- Evidence source: frozen `control_plane_kit/workflows/*`,
+  `control_plane_kit/stores/*`, `control_plane_kit/read_services/*`,
+  `control_plane_kit/execution/*`, #631, and #630.
+- Observable law: a `DeploymentProgram` is composed from generic service roles;
+  entrypoints bind transports to those roles but do not own graph, activity,
+  execution, recovery, observation, authorization, or read truth.
+- Expected result: every required generic role is present exactly once,
+  descriptors are deterministic, and the boundary is importable without
+  process or product packages.
+- Negative cases: missing roles, duplicate roles, process-packaging names such
+  as FastAPI or Dockerfile, and service parameters that smuggle process
+  packaging into the core boundary.
+- Obsolete assumptions not migrated: frozen FastAPI route modules as core
+  modules, hosted MCP server as core, Docker/image publication as core.
+- Future owner: core.
+
+### Objects
+
+```text
+ControlPlaneServiceRole
+  = planning
+  | approval
+  | admission
+  | lifecycle
+  | execution
+  | recovery
+  | observation
+  | reads
+  | authorization
+
+ApplicationServiceBinding
+  = role
+  x service_name
+  x parameters
+
+DeploymentProgramBoundary
+  = exactly-one ApplicationServiceBinding per ControlPlaneServiceRole
+```
+
+### Transformations
+
+```text
+tuple[ApplicationServiceBinding]
+  -> DeploymentProgramBoundary
+    -> deterministic descriptor
+```
+
+### Implementation Decision
+
+#631 introduces `control_plane_kit_core.operations` as a pure boundary package.
+It does not implement the workflow services themselves yet. The boundary exists
+so later issues can attach UnitOfWork, stores, worker authority, HTTP contracts,
+and MCP contracts to a closed set of roles instead of inventing service names
+inside routes or tools.
+
+The boundary deliberately rejects obvious process-packaging terms in service
+names and parameters:
+
+```python
+_FORBIDDEN_PROCESS_TERMS = (
+    "cpi",
+    "cpk-server",
+    "dockerfile",
+    "fastapi",
+    "mcp-server",
+    "oci-image",
+    "product-descriptor",
+    "uvicorn",
+)
+```
+
+This is not a general security sanitizer. It is an architecture guardrail: core
+service composition must not become a hiding place for the server process.
+
+The first implementation draft included a product-name literal in this guard.
+The existing package-boundary test rejected that, correctly: core must not learn
+package-owned product identities even as strings inside defensive code. The
+final guard only names generic process-packaging terms.
+
+### Test Evidence
+
+#631 adds `control-plane-kit-core/tests/test_deployment_program_boundary.py`.
+
+The focused red run failed with:
+
+```text
+ModuleNotFoundError: No module named 'control_plane_kit_core.operations'
+```
+
+That proved the successor test was collected and failed because the service
+composition boundary was missing.
+
+The green run must continue to prove:
+
+- exact role coverage;
+- duplicate/missing role rejection;
+- deterministic descriptor order;
+- generic naming, with no CPI, product, FastAPI, or Dockerfile leakage;
+- no process/product imports from the operations package.
+
+### Handoff To #632
+
+#632 should now define the UnitOfWork, store, worker, runtime-authority, and
+transaction boundaries against this closed service-role surface. It should not
+add Postgres implementations yet unless the issue evidence requires it; the
+first step is to state which roles participate in one operator command and
+where commit/rollback ownership lives.

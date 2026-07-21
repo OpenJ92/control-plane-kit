@@ -24,6 +24,24 @@ The package deliberately excludes:
 - live runtime effects;
 - Hello and other acceptance products.
 
+EXTRACT.D adds the pure control-plane service composition boundary. It names
+the generic service roles a future `DeploymentProgram` composes, but still does
+not implement stores, process entrypoints, hosted MCP, Docker images, or
+server-product descriptors:
+
+```text
+DeploymentProgramBoundary
+  = planning
+  x approval
+  x admission
+  x lifecycle
+  x execution
+  x recovery
+  x observation
+  x reads
+  x authorization
+```
+
 ## Extraction Law
 
 Every migrated behavior must be justified by a frozen law card from the
