@@ -40,6 +40,26 @@ class PackageBoundaryTests(unittest.TestCase):
 
         self.assertFalse(imports & forbidden)
 
+    def test_extracted_core_does_not_name_package_owned_server_products(self) -> None:
+        forbidden = (
+            "PackageServerProduct",
+            "PackageServerSpec",
+            "ProductMaturity",
+            "hello",
+            "coredns",
+            "webhook-delivery",
+            "managed-http-router",
+            "http-auth-gateway",
+        )
+        source = "\n".join(
+            path.read_text(encoding="utf-8")
+            for path in (PACKAGE_ROOT / "src" / "control_plane_kit_core").rglob("*.py")
+        )
+
+        for value in forbidden:
+            with self.subTest(value=value):
+                self.assertNotIn(value, source)
+
 
 if __name__ == "__main__":
     unittest.main()
