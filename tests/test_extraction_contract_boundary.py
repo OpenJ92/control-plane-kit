@@ -13,21 +13,32 @@ class ExtractionContractBoundaryTests(unittest.TestCase):
     def classification(self) -> dict[str, object]:
         return read_bounded_json(ARTIFACT_ROOT / "contract-boundary-classification.json")
 
-    def test_contract_classification_covers_remaining_contract_laws_once(self) -> None:
+    def test_contract_classification_covers_classified_contract_laws_once(self) -> None:
         inventory = read_bounded_json(ARTIFACT_ROOT / "required-core-family-inventory.json")
+        manifest = read_bounded_json(ARTIFACT_ROOT / "parity-manifest.json")
         classification = self.classification()
 
-        source = next(
+        remaining = next(
             family for family in inventory["families"]
             if family["family"] == "test_contracts"
         )
-        source_references = {
+        remaining_references = {
             entry["reference"]
-            for entry in source["entries"]
+            for entry in remaining["entries"]
+        }
+        manifest_references = {
+            entry["reference"]
+            for entry in manifest["entries"]
+            if entry["reference"].startswith("tests.test_contracts.")
         }
         classified_references = {
             decision["reference"]
             for decision in classification["decisions"]
+        }
+        operations_references = {
+            decision["reference"]
+            for decision in classification["decisions"]
+            if decision["decision"] == "move-to-operations"
         }
 
         self.assertEqual(
@@ -35,7 +46,8 @@ class ExtractionContractBoundaryTests(unittest.TestCase):
             "cpk.contract-boundary-classification",
         )
         self.assertEqual(classification["source_family"], "test_contracts")
-        self.assertEqual(classified_references, source_references)
+        self.assertTrue(classified_references <= manifest_references)
+        self.assertEqual(remaining_references, operations_references)
         self.assertEqual(
             classification["summary"]["entries"],
             len(classification["decisions"]),
