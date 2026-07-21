@@ -53,6 +53,46 @@ class ConnectionProtocolTests(unittest.TestCase):
         with self.assertRaisesRegex(ValueError, "postgres does not support udp"):
             Protocol(Transport.UDP, ApplicationProtocol.POSTGRES)
 
+    def test_dns_and_raw_protocols_represent_both_transports(self) -> None:
+        self.assertEqual(Protocol.DNS_TCP.value, "dns+tcp")
+        self.assertEqual(Protocol.DNS_UDP.value, "dns+udp")
+        self.assertEqual(Protocol.UDP.value, "udp")
+        self.assertNotEqual(Protocol.DNS_TCP, Protocol.DNS_UDP)
+
+    def test_compatibility_requires_transport_and_application_semantics(self) -> None:
+        self.assertTrue(Protocol.HTTP.compatible_with(Protocol.HTTP))
+        self.assertFalse(Protocol.HTTP.compatible_with(Protocol.TCP))
+        self.assertFalse(Protocol.DNS_TCP.compatible_with(Protocol.DNS_UDP))
+
+    def test_every_protocol_has_one_closed_endpoint_scheme_set(self) -> None:
+        values = (
+            Protocol.TCP,
+            Protocol.UDP,
+            Protocol.HTTP,
+            Protocol.POSTGRES,
+            Protocol.DNS_TCP,
+            Protocol.DNS_UDP,
+            Protocol.REDIS,
+            Protocol.SMTP,
+            Protocol.OTLP_HTTP,
+            Protocol.OTLP_GRPC,
+            Protocol.NATS,
+            Protocol.AMQP,
+            Protocol.KAFKA,
+            Protocol.S3,
+            Protocol.MCP_STREAMABLE_HTTP,
+        )
+
+        for protocol in values:
+            with self.subTest(protocol=protocol.value):
+                self.assertTrue(protocol.endpoint_schemes())
+                self.assertTrue(
+                    all(
+                        isinstance(scheme, str) and scheme
+                        for scheme in protocol.endpoint_schemes()
+                    )
+                )
+
     def test_protocol_descriptor_is_closed_and_round_trips(self) -> None:
         values = (
             Protocol.TCP,

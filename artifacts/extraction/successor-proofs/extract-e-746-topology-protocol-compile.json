@@ -1,0 +1,30 @@
+{
+  "command": "docker run --rm -v /Users/jacobvartuli/Software/self/control-plane-kit/control-plane-kit-core:/pkg:ro -w /pkg -e PYTHONPATH=/pkg/src -e PYTHONDONTWRITEBYTECODE=1 python:3.14-slim python -m unittest tests.test_protocol tests.test_kernel_pipeline tests.test_topology_graph",
+  "evidence": "The extracted core topology, protocol, and compile unittest modules directly prove the remaining frozen #746 laws without importing the frozen package. Successor tests preserve socket binding structure, split HTTP/Postgres wiring, protocol transport/application compatibility, duplicate topology identity failures, and explicit update-node behavior.",
+  "frozen_laws": [
+    "behavior.requirement-socket-requires-env-binding",
+    "behavior.runtime-control-socket-forbids-startup-environment-binding",
+    "behavior.socket-names-are-accessible",
+    "behavior.split-service-wires-http-and-postgres",
+    "behavior.compatibility-requires-both-transport-and-application-semantics",
+    "behavior.dns-and-raw-protocols-represent-both-transports",
+    "behavior.every-protocol-has-one-closed-endpoint-scheme-set",
+    "behavior.nested-runtimes-cannot-reuse-node-or-runtime-identity",
+    "behavior.recipe-compilation-rejects-duplicate-block-identity",
+    "behavior.recipe-compilation-rejects-duplicate-edge-identity",
+    "behavior.update-node-remains-explicit-and-requires-existing-identity"
+  ],
+  "schema": "cpk.successor-proof",
+  "status": "passing",
+  "successor_tests": [
+    "control-plane-kit-core.tests.test_kernel_pipeline.PureKernelPipelineTests.test_socket_names_are_accessible_and_binding_laws_are_structural",
+    "control-plane-kit-core.tests.test_kernel_pipeline.PureKernelPipelineTests.test_split_service_wires_http_and_postgres_requirements",
+    "control-plane-kit-core.tests.test_protocol.ConnectionProtocolTests.test_compatibility_requires_transport_and_application_semantics",
+    "control-plane-kit-core.tests.test_protocol.ConnectionProtocolTests.test_dns_and_raw_protocols_represent_both_transports",
+    "control-plane-kit-core.tests.test_protocol.ConnectionProtocolTests.test_every_protocol_has_one_closed_endpoint_scheme_set",
+    "control-plane-kit-core.tests.test_topology_graph.DeploymentGraphConstructionTests.test_nested_runtimes_cannot_reuse_node_or_runtime_identity",
+    "control-plane-kit-core.tests.test_topology_graph.DeploymentGraphConstructionTests.test_topology_compilation_rejects_duplicate_block_identity",
+    "control-plane-kit-core.tests.test_topology_graph.DeploymentGraphConstructionTests.test_topology_compilation_rejects_duplicate_edge_identity",
+    "control-plane-kit-core.tests.test_topology_graph.DeploymentGraphConstructionTests.test_update_node_remains_explicit_and_requires_existing_identity"
+  ]
+}

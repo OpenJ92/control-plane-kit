@@ -537,3 +537,71 @@ The refined #738 topology is:
         -> #749 policy, probe intent, control-contract boundary
           -> #750 pure-core mapping batch closeout
 ```
+
+## #746 Topology, Protocol, And Compile Successors
+
+#746 mapped the retained pure topology slice from the #745 audit:
+
+```text
+test_algebra:             3 laws
+test_compile:             1 law
+test_connection_protocol: 3 laws
+test_graph_construction:  4 laws
+```
+
+Successor evidence:
+
+```text
+artifacts/extraction/successor-proofs/extract-e-746-topology-protocol-compile.json
+```
+
+The new successor tests live in extracted core:
+
+```text
+control-plane-kit-core/tests/test_kernel_pipeline.py
+control-plane-kit-core/tests/test_protocol.py
+control-plane-kit-core/tests/test_topology_graph.py
+```
+
+Curated shape:
+
+```python
+DeploymentTopology
+  -> compile_topology
+    -> DeploymentGraph
+```
+
+The added tests preserve:
+
+- requirement sockets must have startup environment bindings unless they are
+  runtime-control sockets;
+- runtime-control sockets cannot smuggle startup environment names;
+- HTTP and Postgres dependencies can compose through a split service topology;
+- protocol compatibility requires both transport and application semantics;
+- DNS and raw protocols retain distinct TCP/UDP meanings;
+- every protocol has a closed endpoint scheme set;
+- duplicate node, edge, and runtime identities fail during pure construction
+  without last-write-wins replacement.
+
+Required-core inventory after #746:
+
+```text
+incomplete required-core laws: 738
+unmapped required-core families: 95
+```
+
+Batch-plan validation was corrected during #746. The #737 batch plan is an
+immutable snapshot of the original required-core partition, while each successor
+mapping intentionally shrinks the live required-core inventory. The test now
+proves:
+
+```text
+batch plan source counts
+  == exactly one partition of the original planned references
+
+current required-core inventory
+  <= original batch-plan snapshot
+```
+
+That keeps the extraction law strict without pretending the live inventory
+should remain equal after mappings have been completed.
