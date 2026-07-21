@@ -5233,7 +5233,13 @@
       "owner": "control-plane-kit-core",
       "owner_kind": "core",
       "reference": "tests.test_graph_codec.GraphDescriptorCodecTests.test_direct_node_and_edge_cannot_restore_inline_environment_secrets",
-      "successors": [],
+      "successors": [
+        {
+          "evidence": "extract-e-747.graph-codec-validation-diff.unittest",
+          "id": "control-plane-kit-core.tests.test_graph_codec.GraphDescriptorCodecTests.test_direct_node_and_edge_cannot_restore_inline_environment_secrets",
+          "status": "passing"
+        }
+      ],
       "supersession": null
     },
     {
@@ -5243,7 +5249,13 @@
       "owner": "control-plane-kit-core",
       "owner_kind": "core",
       "reference": "tests.test_graph_codec.GraphDescriptorCodecTests.test_edge_binding_round_trips_as_a_closed_value",
-      "successors": [],
+      "successors": [
+        {
+          "evidence": "extract-e-747.graph-codec-validation-diff.unittest",
+          "id": "control-plane-kit-core.tests.test_graph_codec.GraphDescriptorCodecTests.test_edge_binding_and_protocol_products_are_closed",
+          "status": "passing"
+        }
+      ],
       "supersession": null
     },
     {
@@ -5253,7 +5265,13 @@
       "owner": "control-plane-kit-core",
       "owner_kind": "core",
       "reference": "tests.test_graph_codec.GraphDescriptorCodecTests.test_environment_binding_variants_round_trip_and_unknown_kind_fails_closed",
-      "successors": [],
+      "successors": [
+        {
+          "evidence": "extract-e-747.graph-codec-validation-diff.unittest",
+          "id": "control-plane-kit-core.tests.test_graph_codec.GraphDescriptorCodecTests.test_environment_binding_variants_round_trip_and_unknown_kind_fails_closed",
+          "status": "passing"
+        }
+      ],
       "supersession": null
     },
     {
@@ -5263,7 +5281,13 @@
       "owner": "control-plane-kit-core",
       "owner_kind": "core",
       "reference": "tests.test_graph_codec.GraphDescriptorCodecTests.test_environment_passwords_fail_before_raw_descriptor_reconstruction",
-      "successors": [],
+      "successors": [
+        {
+          "evidence": "extract-e-747.graph-codec-validation-diff.unittest",
+          "id": "control-plane-kit-core.tests.test_graph_codec.GraphDescriptorCodecTests.test_environment_passwords_fail_before_raw_descriptor_reconstruction",
+          "status": "passing"
+        }
+      ],
       "supersession": null
     },
     {
@@ -5305,7 +5329,13 @@
       "owner": "control-plane-kit-core",
       "owner_kind": "core",
       "reference": "tests.test_graph_codec.GraphDescriptorCodecTests.test_malformed_top_level_shape_fails_with_typed_error",
-      "successors": [],
+      "successors": [
+        {
+          "evidence": "extract-e-747.graph-codec-validation-diff.unittest",
+          "id": "control-plane-kit-core.tests.test_graph_codec.GraphDescriptorCodecTests.test_tuple_input_malformed_shape_and_unknown_fields_fail_closed",
+          "status": "passing"
+        }
+      ],
       "supersession": null
     },
     {
@@ -5315,7 +5345,13 @@
       "owner": "control-plane-kit-core",
       "owner_kind": "core",
       "reference": "tests.test_graph_codec.GraphDescriptorCodecTests.test_missing_edge_socket_fails_loudly",
-      "successors": [],
+      "successors": [
+        {
+          "evidence": "extract-e-747.graph-codec-validation-diff.unittest",
+          "id": "control-plane-kit-core.tests.test_graph_codec.GraphDescriptorCodecTests.test_missing_runtime_and_edge_socket_fail_loudly",
+          "status": "passing"
+        }
+      ],
       "supersession": null
     },
     {
@@ -5325,7 +5361,13 @@
       "owner": "control-plane-kit-core",
       "owner_kind": "core",
       "reference": "tests.test_graph_codec.GraphDescriptorCodecTests.test_missing_runtime_ownership_fails_loudly",
-      "successors": [],
+      "successors": [
+        {
+          "evidence": "extract-e-747.graph-codec-validation-diff.unittest",
+          "id": "control-plane-kit-core.tests.test_graph_codec.GraphDescriptorCodecTests.test_missing_runtime_and_edge_socket_fail_loudly",
+          "status": "passing"
+        }
+      ],
       "supersession": null
     },
     {
@@ -5335,7 +5377,13 @@
       "owner": "control-plane-kit-core",
       "owner_kind": "core",
       "reference": "tests.test_graph_codec.GraphDescriptorCodecTests.test_protocol_product_round_trips_and_unknown_factors_fail_closed",
-      "successors": [],
+      "successors": [
+        {
+          "evidence": "extract-e-747.graph-codec-validation-diff.unittest",
+          "id": "control-plane-kit-core.tests.test_graph_codec.GraphDescriptorCodecTests.test_edge_binding_and_protocol_products_are_closed",
+          "status": "passing"
+        }
+      ],
       "supersession": null
     },
     {
@@ -5345,7 +5393,13 @@
       "owner": "control-plane-kit-core",
       "owner_kind": "core",
       "reference": "tests.test_graph_codec.GraphDescriptorCodecTests.test_registered_spec_variant_round_trips_without_string_inference",
-      "successors": [],
+      "successors": [
+        {
+          "evidence": "extract-e-747.graph-codec-validation-diff.unittest",
+          "id": "control-plane-kit-core.tests.test_graph_codec.GraphDescriptorCodecTests.test_registered_spec_variant_round_trips_without_string_inference",
+          "status": "passing"
+        }
+      ],
       "supersession": null
     },
     {
@@ -5355,7 +5409,13 @@
       "owner": "control-plane-kit-core",
       "owner_kind": "core",
       "reference": "tests.test_graph_codec.GraphDescriptorCodecTests.test_secret_reference_address_round_trips_without_secret_resolution",
-      "successors": [],
+      "successors": [
+        {
+          "evidence": "extract-e-747.graph-codec-validation-diff.unittest",
+          "id": "control-plane-kit-core.tests.test_graph_codec.GraphDescriptorCodecTests.test_secret_reference_address_round_trips_without_secret_resolution",
+          "status": "passing"
+        }
+      ],
       "supersession": null
     },
     {
@@ -5365,7 +5425,13 @@
       "owner": "control-plane-kit-core",
       "owner_kind": "core",
       "reference": "tests.test_graph_codec.GraphDescriptorCodecTests.test_tuple_input_is_semantically_equivalent_to_json_list",
-      "successors": [],
+      "successors": [
+        {
+          "evidence": "extract-e-747.graph-codec-validation-diff.unittest",
+          "id": "control-plane-kit-core.tests.test_graph_codec.GraphDescriptorCodecTests.test_tuple_input_malformed_shape_and_unknown_fields_fail_closed",
+          "status": "passing"
+        }
+      ],
       "supersession": null
     },
     {
@@ -5487,7 +5553,13 @@
       "owner": "control-plane-kit-core",
       "owner_kind": "core",
       "reference": "tests.test_graph_diff.GraphDiffTests.test_added_and_removed_runtime_node_and_edge_forms_are_explicit",
-      "successors": [],
+      "successors": [
+        {
+          "evidence": "extract-e-747.graph-codec-validation-diff.unittest",
+          "id": "control-plane-kit-core.tests.test_graph_diff.GraphDiffTests.test_added_and_removed_runtime_node_and_edge_forms_are_explicit",
+          "status": "passing"
+        }
+      ],
       "supersession": null
     },
     {
@@ -5497,7 +5569,13 @@
       "owner": "control-plane-kit-core",
       "owner_kind": "core",
       "reference": "tests.test_graph_diff.GraphDiffTests.test_block_spec_endpoint_and_metadata_changes_are_separate_fields",
-      "successors": [],
+      "successors": [
+        {
+          "evidence": "extract-e-747.graph-codec-validation-diff.unittest",
+          "id": "control-plane-kit-core.tests.test_graph_diff.GraphDiffTests.test_structural_subjects_are_separate_for_node_fields",
+          "status": "passing"
+        }
+      ],
       "supersession": null
     },
     {
@@ -5507,7 +5585,13 @@
       "owner": "control-plane-kit-core",
       "owner_kind": "core",
       "reference": "tests.test_graph_diff.GraphDiffTests.test_change_algebra_and_interpreter_have_separate_module_boundaries",
-      "successors": [],
+      "successors": [
+        {
+          "evidence": "extract-e-747.graph-codec-validation-diff.unittest",
+          "id": "control-plane-kit-core.tests.test_graph_diff.GraphDiffTests.test_change_algebra_and_interpreter_have_separate_module_boundaries",
+          "status": "passing"
+        }
+      ],
       "supersession": null
     },
     {
@@ -5517,7 +5601,13 @@
       "owner": "control-plane-kit-core",
       "owner_kind": "core",
       "reference": "tests.test_graph_diff.GraphDiffTests.test_custom_block_spec_variant_survives_before_and_after",
-      "successors": [],
+      "successors": [
+        {
+          "evidence": "extract-e-747.graph-codec-validation-diff.unittest",
+          "id": "control-plane-kit-core.tests.test_graph_diff.GraphDiffTests.test_custom_block_spec_variant_survives_before_and_after",
+          "status": "passing"
+        }
+      ],
       "supersession": null
     },
     {
@@ -5527,7 +5617,13 @@
       "owner": "control-plane-kit-core",
       "owner_kind": "core",
       "reference": "tests.test_graph_diff.GraphDiffTests.test_descriptors_redact_secret_references_environment_and_metadata",
-      "successors": [],
+      "successors": [
+        {
+          "evidence": "extract-e-747.graph-codec-validation-diff.unittest",
+          "id": "control-plane-kit-core.tests.test_graph_diff.GraphDiffTests.test_configuration_secret_and_redacted_material_are_typed_diff_fields",
+          "status": "passing"
+        }
+      ],
       "supersession": null
     },
     {
@@ -5537,7 +5633,13 @@
       "owner": "control-plane-kit-core",
       "owner_kind": "core",
       "reference": "tests.test_graph_diff.GraphDiffTests.test_identical_validated_graphs_have_deterministic_empty_diff",
-      "successors": [],
+      "successors": [
+        {
+          "evidence": "extract-e-747.graph-codec-validation-diff.unittest",
+          "id": "control-plane-kit-core.tests.test_graph_diff.GraphDiffTests.test_identical_validated_graphs_have_deterministic_empty_diff",
+          "status": "passing"
+        }
+      ],
       "supersession": null
     },
     {
@@ -5547,7 +5649,13 @@
       "owner": "control-plane-kit-core",
       "owner_kind": "core",
       "reference": "tests.test_graph_diff.GraphDiffTests.test_incompatible_spec_languages_are_explicitly_ambiguous",
-      "successors": [],
+      "successors": [
+        {
+          "evidence": "extract-e-747.graph-codec-validation-diff.unittest",
+          "id": "control-plane-kit-core.tests.test_graph_diff.GraphDiffTests.test_node_identity_reuse_and_codec_language_mismatch_are_ambiguous",
+          "status": "passing"
+        }
+      ],
       "supersession": null
     },
     {
@@ -5557,7 +5665,13 @@
       "owner": "control-plane-kit-core",
       "owner_kind": "core",
       "reference": "tests.test_graph_diff.GraphDiffTests.test_invalid_graphs_and_raw_graphs_are_refused",
-      "successors": [],
+      "successors": [
+        {
+          "evidence": "extract-e-747.graph-codec-validation-diff.unittest",
+          "id": "control-plane-kit-core.tests.test_graph_diff.GraphDiffTests.test_invalid_graphs_and_raw_graphs_are_refused",
+          "status": "passing"
+        }
+      ],
       "supersession": null
     },
     {
@@ -5567,7 +5681,13 @@
       "owner": "control-plane-kit-core",
       "owner_kind": "core",
       "reference": "tests.test_graph_diff.GraphDiffTests.test_protocol_product_change_is_an_explicit_socket_and_endpoint_change",
-      "successors": [],
+      "successors": [
+        {
+          "evidence": "extract-e-747.graph-codec-validation-diff.unittest",
+          "id": "control-plane-kit-core.tests.test_graph_diff.GraphDiffTests.test_socket_protocol_public_and_socket_environment_changes_are_distinct",
+          "status": "passing"
+        }
+      ],
       "supersession": null
     },
     {
@@ -5577,7 +5697,13 @@
       "owner": "control-plane-kit-core",
       "owner_kind": "core",
       "reference": "tests.test_graph_diff.GraphDiffTests.test_public_and_socket_environment_changes_have_distinct_fields",
-      "successors": [],
+      "successors": [
+        {
+          "evidence": "extract-e-747.graph-codec-validation-diff.unittest",
+          "id": "control-plane-kit-core.tests.test_graph_diff.GraphDiffTests.test_socket_protocol_public_and_socket_environment_changes_are_distinct",
+          "status": "passing"
+        }
+      ],
       "supersession": null
     },
     {
@@ -5587,7 +5713,13 @@
       "owner": "control-plane-kit-core",
       "owner_kind": "core",
       "reference": "tests.test_graph_diff.GraphDiffTests.test_reusing_node_identity_for_another_block_family_is_ambiguous",
-      "successors": [],
+      "successors": [
+        {
+          "evidence": "extract-e-747.graph-codec-validation-diff.unittest",
+          "id": "control-plane-kit-core.tests.test_graph_diff.GraphDiffTests.test_node_identity_reuse_and_codec_language_mismatch_are_ambiguous",
+          "status": "passing"
+        }
+      ],
       "supersession": null
     },
     {
@@ -5597,7 +5729,13 @@
       "owner": "control-plane-kit-core",
       "owner_kind": "core",
       "reference": "tests.test_graph_diff.GraphDiffTests.test_router_swap_is_a_typed_socket_connection_change",
-      "successors": [],
+      "successors": [
+        {
+          "evidence": "extract-e-747.graph-codec-validation-diff.unittest",
+          "id": "control-plane-kit-core.tests.test_graph_diff.GraphDiffTests.test_router_swap_is_a_typed_socket_connection_change",
+          "status": "passing"
+        }
+      ],
       "supersession": null
     },
     {
@@ -5607,7 +5745,13 @@
       "owner": "control-plane-kit-core",
       "owner_kind": "core",
       "reference": "tests.test_graph_diff.GraphDiffTests.test_runtime_and_implementation_kind_transitions_are_unsupported_data",
-      "successors": [],
+      "successors": [
+        {
+          "evidence": "extract-e-747.graph-codec-validation-diff.unittest",
+          "id": "control-plane-kit-core.tests.test_graph_diff.GraphDiffTests.test_runtime_and_implementation_kind_transitions_are_unsupported_data",
+          "status": "passing"
+        }
+      ],
       "supersession": null
     },
     {
@@ -5617,7 +5761,13 @@
       "owner": "control-plane-kit-core",
       "owner_kind": "core",
       "reference": "tests.test_graph_diff.GraphDiffTests.test_socket_contract_and_endpoint_addition_are_separate_changes",
-      "successors": [],
+      "successors": [
+        {
+          "evidence": "extract-e-747.graph-codec-validation-diff.unittest",
+          "id": "control-plane-kit-core.tests.test_graph_diff.GraphDiffTests.test_socket_protocol_public_and_socket_environment_changes_are_distinct",
+          "status": "passing"
+        }
+      ],
       "supersession": null
     },
     {
@@ -5627,7 +5777,13 @@
       "owner": "control-plane-kit-core",
       "owner_kind": "core",
       "reference": "tests.test_graph_diff.GraphDiffTests.test_verification_contract_change_is_explicit_block_specification_data",
-      "successors": [],
+      "successors": [
+        {
+          "evidence": "extract-e-747.graph-codec-validation-diff.unittest",
+          "id": "control-plane-kit-core.tests.test_graph_diff.GraphDiffTests.test_structural_subjects_are_separate_for_node_fields",
+          "status": "passing"
+        }
+      ],
       "supersession": null
     },
     {
@@ -5637,7 +5793,13 @@
       "owner": "control-plane-kit-core",
       "owner_kind": "core",
       "reference": "tests.test_graph_validation.GraphValidationTests.test_consumer_environment_must_retain_edge_assignments",
-      "successors": [],
+      "successors": [
+        {
+          "evidence": "extract-e-747.graph-codec-validation-diff.unittest",
+          "id": "control-plane-kit-core.tests.test_graph_validation.GraphValidationTests.test_edge_assignments_binding_and_consumer_environment_must_match",
+          "status": "passing"
+        }
+      ],
       "supersession": null
     },
     {
@@ -5647,7 +5809,13 @@
       "owner": "control-plane-kit-core",
       "owner_kind": "core",
       "reference": "tests.test_graph_validation.GraphValidationTests.test_duplicate_socket_names_are_rejected",
-      "successors": [],
+      "successors": [
+        {
+          "evidence": "extract-e-747.graph-codec-validation-diff.unittest",
+          "id": "control-plane-kit-core.tests.test_graph_validation.GraphValidationTests.test_duplicate_sockets_and_multiple_requirement_connections_are_rejected",
+          "status": "passing"
+        }
+      ],
       "supersession": null
     },
     {
@@ -5657,7 +5825,13 @@
       "owner": "control-plane-kit-core",
       "owner_kind": "core",
       "reference": "tests.test_graph_validation.GraphValidationTests.test_edge_assignments_must_match_requirement_and_provider",
-      "successors": [],
+      "successors": [
+        {
+          "evidence": "extract-e-747.graph-codec-validation-diff.unittest",
+          "id": "control-plane-kit-core.tests.test_graph_validation.GraphValidationTests.test_edge_assignments_binding_and_consumer_environment_must_match",
+          "status": "passing"
+        }
+      ],
       "supersession": null
     },
     {
@@ -5667,7 +5841,13 @@
       "owner": "control-plane-kit-core",
       "owner_kind": "core",
       "reference": "tests.test_graph_validation.GraphValidationTests.test_edge_binding_must_match_consumer_requirement",
-      "successors": [],
+      "successors": [
+        {
+          "evidence": "extract-e-747.graph-codec-validation-diff.unittest",
+          "id": "control-plane-kit-core.tests.test_graph_validation.GraphValidationTests.test_edge_assignments_binding_and_consumer_environment_must_match",
+          "status": "passing"
+        }
+      ],
       "supersession": null
     },
     {
@@ -5677,7 +5857,13 @@
       "owner": "control-plane-kit-core",
       "owner_kind": "core",
       "reference": "tests.test_graph_validation.GraphValidationTests.test_findings_are_deterministic_and_renderable",
-      "successors": [],
+      "successors": [
+        {
+          "evidence": "extract-e-747.graph-codec-validation-diff.unittest",
+          "id": "control-plane-kit-core.tests.test_graph_validation.GraphValidationTests.test_required_optional_and_rendered_findings_are_structured",
+          "status": "passing"
+        }
+      ],
       "supersession": null
     },
     {
@@ -5687,7 +5873,13 @@
       "owner": "control-plane-kit-core",
       "owner_kind": "core",
       "reference": "tests.test_graph_validation.GraphValidationTests.test_multiple_connections_to_one_requirement_are_rejected",
-      "successors": [],
+      "successors": [
+        {
+          "evidence": "extract-e-747.graph-codec-validation-diff.unittest",
+          "id": "control-plane-kit-core.tests.test_graph_validation.GraphValidationTests.test_duplicate_sockets_and_multiple_requirement_connections_are_rejected",
+          "status": "passing"
+        }
+      ],
       "supersession": null
     },
     {
@@ -5697,7 +5889,13 @@
       "owner": "control-plane-kit-core",
       "owner_kind": "core",
       "reference": "tests.test_graph_validation.GraphValidationTests.test_registered_block_spec_codec_is_retained_as_validation_evidence",
-      "successors": [],
+      "successors": [
+        {
+          "evidence": "extract-e-747.graph-codec-validation-diff.unittest",
+          "id": "control-plane-kit-core.tests.test_graph_validation.GraphValidationTests.test_registered_block_spec_codec_is_retained_as_validation_evidence",
+          "status": "passing"
+        }
+      ],
       "supersession": null
     },
     {
@@ -5739,7 +5937,13 @@
       "owner": "control-plane-kit-core",
       "owner_kind": "core",
       "reference": "tests.test_graph_validation.GraphValidationTests.test_runtime_and_endpoint_invariants_fail_closed",
-      "successors": [],
+      "successors": [
+        {
+          "evidence": "extract-e-747.graph-codec-validation-diff.unittest",
+          "id": "control-plane-kit-core.tests.test_graph_validation.GraphValidationTests.test_runtime_endpoint_and_undeclared_endpoint_invariants_fail_closed",
+          "status": "passing"
+        }
+      ],
       "supersession": null
     },
     {
@@ -5749,7 +5953,13 @@
       "owner": "control-plane-kit-core",
       "owner_kind": "core",
       "reference": "tests.test_graph_validation.GraphValidationTests.test_undeclared_endpoint_is_a_structured_failure_not_a_codec_exception",
-      "successors": [],
+      "successors": [
+        {
+          "evidence": "extract-e-747.graph-codec-validation-diff.unittest",
+          "id": "control-plane-kit-core.tests.test_graph_validation.GraphValidationTests.test_runtime_endpoint_and_undeclared_endpoint_invariants_fail_closed",
+          "status": "passing"
+        }
+      ],
       "supersession": null
     },
     {
@@ -5759,7 +5969,13 @@
       "owner": "control-plane-kit-core",
       "owner_kind": "core",
       "reference": "tests.test_graph_validation.GraphValidationTests.test_unregistered_block_spec_variant_fails_closed",
-      "successors": [],
+      "successors": [
+        {
+          "evidence": "extract-e-747.graph-codec-validation-diff.unittest",
+          "id": "control-plane-kit-core.tests.test_graph_validation.GraphValidationTests.test_unregistered_block_spec_variant_fails_closed",
+          "status": "passing"
+        }
+      ],
       "supersession": null
     },
     {
@@ -5769,7 +5985,13 @@
       "owner": "control-plane-kit-core",
       "owner_kind": "core",
       "reference": "tests.test_graph_validation.GraphValidationTests.test_valid_graph_returns_original_typed_value_without_effects",
-      "successors": [],
+      "successors": [
+        {
+          "evidence": "extract-e-747.graph-codec-validation-diff.unittest",
+          "id": "control-plane-kit-core.tests.test_graph_validation.GraphValidationTests.test_valid_graph_returns_original_typed_value_without_effects",
+          "status": "passing"
+        }
+      ],
       "supersession": null
     },
     {
@@ -5779,7 +6001,13 @@
       "owner": "control-plane-kit-core",
       "owner_kind": "core",
       "reference": "tests.test_graph_validation.GraphValidationTests.test_verification_targets_require_declared_compatible_provider_sockets",
-      "successors": [],
+      "successors": [
+        {
+          "evidence": "extract-e-747.graph-codec-validation-diff.unittest",
+          "id": "control-plane-kit-core.tests.test_graph_validation.GraphValidationTests.test_verification_targets_require_declared_compatible_provider_sockets",
+          "status": "passing"
+        }
+      ],
       "supersession": null
     },
     {

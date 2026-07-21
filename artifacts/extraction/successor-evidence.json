@@ -19,6 +19,11 @@
       "digest": "sha256:b1b16296e8228f796cb4ad893dfb15bf66f58027ce5c242e7f7221d95e4ea3d6",
       "id": "extract-e-746.topology-protocol-compile.unittest",
       "status": "passing"
+    },
+    {
+      "digest": "sha256:4129f9ec7c1d9d74710e55fa9f2114b577da9f8b8e7ae031eac2d5df61a0773c",
+      "id": "extract-e-747.graph-codec-validation-diff.unittest",
+      "status": "passing"
     }
   ],
   "schema": "cpk.successor-evidence-index"
