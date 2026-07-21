@@ -42,6 +42,18 @@ DeploymentProgramBoundary
   x authorization
 ```
 
+It also names the transaction boundary each role must obey:
+
+```text
+UnitOfWorkBoundary
+  = DeploymentProgramBoundary
+  x ServiceTransactionBoundary*
+
+one operator command = one explicit transaction
+stores never commit
+external effects happen only after commit
+```
+
 ## Extraction Law
 
 Every migrated behavior must be justified by a frozen law card from the
