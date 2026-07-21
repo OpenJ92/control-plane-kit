@@ -186,6 +186,35 @@ class ExtractionBatchPlanTests(unittest.TestCase):
             )
         )
 
+    def test_operations_contract_batch_audit_partitions_live_scope(
+        self,
+    ) -> None:
+        audit = read_bounded_json(
+            ARTIFACT_ROOT / "operations-contract-batch-audit.json"
+        )
+
+        self.assertEqual(audit["schema"], "cpk.operations-contract-batch-audit")
+        self.assertEqual(audit["issue"], "#785")
+        self.assertEqual(audit["parent"], "#740")
+        self.assertEqual(audit["summary"]["families"], 34)
+        self.assertEqual(audit["summary"]["entries"], 298)
+        self.assertEqual(audit["summary"]["original_batch_families"], 33)
+        self.assertEqual(audit["summary"]["split_contract_families"], 1)
+        self.assertEqual(audit["summary"]["split_contract_entries"], 23)
+
+        families = audit["families"]
+        self.assertEqual(families["test_backend_boundaries"]["target_issue"], "#786")
+        self.assertEqual(families["test_operation_commands"]["target_issue"], "#787")
+        self.assertEqual(families["test_instance_read_service"]["target_issue"], "#788")
+        self.assertEqual(families["test_run_lifecycle"]["target_issue"], "#789")
+        self.assertEqual(families["test_execution_coordinator"]["target_issue"], "#790")
+        self.assertEqual(families["test_contracts"]["target_issue"], "#791")
+        self.assertEqual(families["test_contracts"]["count"], 23)
+        self.assertEqual(
+            families["test_contracts"]["source"],
+            "artifacts/extraction/contract-boundary-classification.json",
+        )
+
 
 if __name__ == "__main__":
     unittest.main()
