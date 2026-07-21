@@ -27,8 +27,9 @@
     },
     "test_contracts": {
       "count": 23,
-      "decision": "map-store-transaction-mutation-handoff",
-      "rationale": "Split mutable contract laws exercise holder mutation, publication, cleanup, derived-resource rebuild/staleness, stale-version behavior, and retained/unowned resource preservation; this is operations behavior, not pure core values.",
+      "decision": "map-split-mutation-boundary-and-operations-handoff",
+      "operations_handoff_issue": "#792",
+      "rationale": "The 23 mutation-holder laws are split-boundary laws: extracted core maps the closed EnvironmentContract / RuntimeContract / DerivedResource vocabulary, descriptor no-value/no-secret law, and operations-owned handoff in #791; operations / cpk-server must later prove executable holder mutation, publication, cleanup, rollback, retained-resource, and concurrency behavior.",
       "references": [
         "tests.test_contracts.DerivedResourceTests.test_candidate_builder_cannot_publish_nested_contract_mutation",
         "tests.test_contracts.DerivedResourceTests.test_competing_prepared_mutations_have_one_publication_winner",

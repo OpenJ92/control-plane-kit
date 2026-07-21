@@ -2712,3 +2712,167 @@ focused #790 successor tests: 6 tests passed
 focused #790 mapping guard: 1 test passed
 validate-parity.sh foundation: valid=true, findings=0, incomplete_required=391
 ```
+
+## #791 Store UnitOfWork Postgres And Mutation Holder Mapping
+
+#791 maps the persistence and mutation-holder slice from #740. The issue body
+expected approximately 53 laws, and the live inventory confirmed the exact
+scope:
+
+```text
+test_contracts:                      23 laws
+test_stores:                         10 laws
+test_unit_of_work:                    9 laws
+test_operation_postgres_primitives:   5 laws
+test_execution_schema_migration:      3 laws
+test_execution_store:                 3 laws
+
+total: 6 families / 53 laws
+```
+
+Successor evidence:
+
+```text
+artifacts/extraction/successor-proofs/extract-e-791-persistence-boundary-contract.json
+extract-e-791.persistence-boundary-contract.unittest
+sha256:88e255d5eda11ffd2a0f9fe377ccbf60a4d88ee517a60077096579e6ce61c3df
+```
+
+The key implementation addition is a pure persistence-boundary contract set. It
+names durable store roles, store ordering policies, mutation-holder subjects,
+mutation phases, handoff kinds, and failure visibility policies without moving
+Postgres schemas, psycopg connections, repositories, DDL, UnitOfWork
+implementations, locks, mutable holder publication, or cleanup execution into
+core:
+
+```python
+@dataclass(frozen=True)
+class PersistenceBoundaryContractSet:
+    stores: tuple[DurableStoreContract, ...]
+    mutations: tuple[MutationHolderContract, ...]
+    handoffs: tuple[PersistenceHandoffContract, ...]
+```
+
+The algebraic shape is:
+
+```text
+PersistenceBoundaryContractSet
+  = DurableStoreContract*
+  x MutationHolderContract*
+  x PersistenceHandoffContract*
+
+DurableStoreContract
+  = store role
+  x ordering policy
+  x transaction requirement
+  x no-store-commit law
+  x secret-value policy
+  x descriptor-only schema name
+  x operations-owned enforcement marker
+
+MutationHolderContract
+  = mutation subject
+  x phase vocabulary
+  x candidate identity preservation
+  x no durable value publication
+  x cleanup / retained-resource policy
+  x operations-owned enforcement marker
+```
+
+The most important design decision is that database behavior is not simulated
+or reimplemented in extracted core. Core records exactly which stores and
+mutation holders exist, what shape their contracts have, and which enforcement
+owner is responsible:
+
+```python
+PersistenceHandoffContract(
+    kind=PersistenceHandoffKind.UNIT_OF_WORK,
+    implementation_owner=ContractEnforcementOwner.OPERATIONS,
+    allows_core_database_driver=False,
+    allows_core_schema_ddl=False,
+    requires_shared_transaction=True,
+    requires_store_no_commit=True,
+)
+```
+
+This preserves the boundary:
+
+```text
+core
+  owns durable store role names, mutation subject and phase names, ordering
+  policy names, failure visibility policy names, descriptor shapes, and
+  operations-owned handoff obligations.
+
+operations / cpk-server
+  owns Postgres schemas, psycopg connections, repositories, UnitOfWork
+  implementations, DDL, locks, idempotency indexes, ordinal assignment,
+  mutable holder publication, cleanup execution, authorization, and route
+  handlers.
+```
+
+A focused test-integrity correction happened during #791. One initial successor
+test asserted that the rendered descriptor must not contain the substring
+`ddl`. That was too blunt because the descriptor correctly says
+`allows_core_schema_ddl: false`. The corrected test still forbids database
+drivers such as `psycopg` and `sqlalchemy` and separately asserts the DDL flag
+is false. This preserved the architectural law instead of hiding it.
+
+The first artifact mapping exposed a second, more important topology correction.
+The 23 mutation-holder laws in `test_contracts` were previously classified as
+`move-to-operations`. That was too coarse once #791 introduced
+`PersistenceBoundaryContractSet`. These laws have two halves:
+
+```text
+core half
+  EnvironmentContract / RuntimeContract / DerivedResource subject identity
+  mutation phase vocabulary
+  descriptor law: no values and no secrets are published
+  explicit operations-owned enforcement marker
+
+operations / cpk-server half
+  holder mutation
+  version checks
+  one-winner publication
+  idempotent replay and conflict
+  derived-resource build/dispose
+  cleanup, rollback, retained-resource, and concurrency behavior
+```
+
+The classification artifact now records those laws as `split-boundary`, with
+core successor evidence pointing to:
+
+```text
+extract-e-791.persistence-boundary-contract.unittest
+```
+
+and an explicit operations handoff to #792. The corresponding tests now enforce
+that split-boundary laws are mapped in core only when they also carry the
+operations handoff. This avoids both bad outcomes:
+
+```text
+bad: core absorbs mutable holder execution
+bad: operations owns everything and core loses the boundary algebra
+```
+
+The test-integrity red evidence was meaningful:
+
+```text
+before mapping: 6 #791 subtests failed
+test_contracts still had 23 unmapped laws
+test_stores still had 10 unmapped laws
+test_unit_of_work still had 9 unmapped laws
+test_operation_postgres_primitives still had 5 unmapped laws
+test_execution_schema_migration still had 3 unmapped laws
+test_execution_store still had 3 unmapped laws
+```
+
+After mapping:
+
+```text
+focused #791 successor tests: 6 tests passed
+focused core persistence / UoW / closeout tests: 14 tests passed
+focused contract-boundary / successor-mapping / parity tests: 39 tests passed
+control-plane-kit-core/test.sh: 374 tests passed, compileall passed, import ok
+top-level ./test.sh: 1200 tests passed
+validate-parity.sh foundation: valid=true, findings=0, incomplete_required=338
+```

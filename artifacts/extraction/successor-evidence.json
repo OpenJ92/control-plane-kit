@@ -109,6 +109,11 @@
       "digest": "sha256:6d468eefb5e530fb56224c770961255c2271886f7efeaeba358a67a42e54a4a5",
       "id": "extract-e-790.execution-coordinator-contract.unittest",
       "status": "passing"
+    },
+    {
+      "digest": "sha256:88e255d5eda11ffd2a0f9fe377ccbf60a4d88ee517a60077096579e6ce61c3df",
+      "id": "extract-e-791.persistence-boundary-contract.unittest",
+      "status": "passing"
     }
   ],
   "schema": "cpk.successor-evidence-index"

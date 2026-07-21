@@ -35,10 +35,10 @@ class ExtractionContractBoundaryTests(unittest.TestCase):
             decision["reference"]
             for decision in classification["decisions"]
         }
-        operations_references = {
+        split_references = {
             decision["reference"]
             for decision in classification["decisions"]
-            if decision["decision"] == "move-to-operations"
+            if decision["decision"] == "split-boundary"
         }
 
         self.assertEqual(
@@ -47,7 +47,7 @@ class ExtractionContractBoundaryTests(unittest.TestCase):
         )
         self.assertEqual(classification["source_family"], "test_contracts")
         self.assertTrue(classified_references <= manifest_references)
-        self.assertEqual(remaining_references, operations_references)
+        self.assertEqual(remaining_references, split_references)
         self.assertEqual(
             classification["summary"]["entries"],
             len(classification["decisions"]),
@@ -59,10 +59,12 @@ class ExtractionContractBoundaryTests(unittest.TestCase):
         target_by_decision = {
             "pure-successor": "#764",
             "move-to-operations": "#740",
+            "split-boundary": "#791",
         }
         counts = {
             "pure-successor": 0,
             "move-to-operations": 0,
+            "split-boundary": 0,
         }
 
         for decision in classification["decisions"]:
@@ -73,6 +75,13 @@ class ExtractionContractBoundaryTests(unittest.TestCase):
                     target_by_decision[decision["decision"]],
                 )
                 self.assertTrue(decision["rationale"])
+                if decision["decision"] == "split-boundary":
+                    self.assertEqual(
+                        decision["core_successor"],
+                        "extract-e-791.persistence-boundary-contract.unittest",
+                    )
+                    self.assertEqual(decision["operations_target_issue"], "#792")
+                    self.assertIn("holder mutation", decision["operations_handoff"])
                 counts[decision["decision"]] += 1
 
         self.assertEqual(classification["summary"]["pure_successor"], counts["pure-successor"])
@@ -80,8 +89,12 @@ class ExtractionContractBoundaryTests(unittest.TestCase):
             classification["summary"]["moved_to_operations"],
             counts["move-to-operations"],
         )
+        self.assertEqual(
+            classification["summary"]["split_boundary"],
+            counts["split-boundary"],
+        )
 
-    def test_derived_resource_and_publication_laws_move_to_operations(self) -> None:
+    def test_derived_resource_and_publication_laws_are_split_boundaries(self) -> None:
         classification = self.classification()
         decisions = {
             decision["reference"]: decision
@@ -104,8 +117,14 @@ class ExtractionContractBoundaryTests(unittest.TestCase):
         for reference, decision in decisions.items():
             if any(marker in reference for marker in operation_markers):
                 with self.subTest(reference=reference):
-                    self.assertEqual(decision["decision"], "move-to-operations")
-                    self.assertEqual(decision["target_issue"], "#740")
+                    self.assertEqual(decision["decision"], "split-boundary")
+                    self.assertEqual(decision["target_issue"], "#791")
+                    self.assertEqual(decision["operations_target_issue"], "#792")
+                    self.assertEqual(
+                        decision["core_successor"],
+                        "extract-e-791.persistence-boundary-contract.unittest",
+                    )
+                    self.assertIn("publication", decision["operations_handoff"])
 
     def test_pure_value_laws_are_reserved_for_control_contract_mapping(self) -> None:
         classification = self.classification()

@@ -2623,7 +2623,38 @@
       "owner": "control-plane-kit-core",
       "owner_kind": "core",
       "reference": "tests.test_contracts.DerivedResourceTests.test_candidate_builder_cannot_publish_nested_contract_mutation",
-      "successors": [],
+      "successors": [
+        {
+          "evidence": "extract-e-791.persistence-boundary-contract.unittest",
+          "id": "control-plane-kit-core.tests.test_persistence_boundary_contract.PersistenceBoundaryContractTests.test_canonical_contract_covers_stores_mutations_and_handoffs",
+          "status": "passing"
+        },
+        {
+          "evidence": "extract-e-791.persistence-boundary-contract.unittest",
+          "id": "control-plane-kit-core.tests.test_persistence_boundary_contract.PersistenceBoundaryContractTests.test_descriptor_round_trips_strictly_and_rejects_open_values",
+          "status": "passing"
+        },
+        {
+          "evidence": "extract-e-791.persistence-boundary-contract.unittest",
+          "id": "control-plane-kit-core.tests.test_persistence_boundary_contract.PersistenceBoundaryContractTests.test_store_contracts_name_durable_roles_without_database_implementation",
+          "status": "passing"
+        },
+        {
+          "evidence": "extract-e-791.persistence-boundary-contract.unittest",
+          "id": "control-plane-kit-core.tests.test_persistence_boundary_contract.PersistenceBoundaryContractTests.test_handoffs_keep_uow_schema_and_repositories_outside_core",
+          "status": "passing"
+        },
+        {
+          "evidence": "extract-e-791.persistence-boundary-contract.unittest",
+          "id": "control-plane-kit-core.tests.test_persistence_boundary_contract.PersistenceBoundaryContractTests.test_mutation_contracts_preserve_candidate_identity_without_values",
+          "status": "passing"
+        },
+        {
+          "evidence": "extract-e-791.persistence-boundary-contract.unittest",
+          "id": "control-plane-kit-core.tests.test_persistence_boundary_contract.PersistenceBoundaryContractTests.test_invalid_contracts_fail_before_mutable_holder_behavior_enters_core",
+          "status": "passing"
+        }
+      ],
       "supersession": null
     },
     {
@@ -2633,7 +2664,38 @@
       "owner": "control-plane-kit-core",
       "owner_kind": "core",
       "reference": "tests.test_contracts.DerivedResourceTests.test_competing_prepared_mutations_have_one_publication_winner",
-      "successors": [],
+      "successors": [
+        {
+          "evidence": "extract-e-791.persistence-boundary-contract.unittest",
+          "id": "control-plane-kit-core.tests.test_persistence_boundary_contract.PersistenceBoundaryContractTests.test_canonical_contract_covers_stores_mutations_and_handoffs",
+          "status": "passing"
+        },
+        {
+          "evidence": "extract-e-791.persistence-boundary-contract.unittest",
+          "id": "control-plane-kit-core.tests.test_persistence_boundary_contract.PersistenceBoundaryContractTests.test_descriptor_round_trips_strictly_and_rejects_open_values",
+          "status": "passing"
+        },
+        {
+          "evidence": "extract-e-791.persistence-boundary-contract.unittest",
+          "id": "control-plane-kit-core.tests.test_persistence_boundary_contract.PersistenceBoundaryContractTests.test_store_contracts_name_durable_roles_without_database_implementation",
+          "status": "passing"
+        },
+        {
+          "evidence": "extract-e-791.persistence-boundary-contract.unittest",
+          "id": "control-plane-kit-core.tests.test_persistence_boundary_contract.PersistenceBoundaryContractTests.test_handoffs_keep_uow_schema_and_repositories_outside_core",
+          "status": "passing"
+        },
+        {
+          "evidence": "extract-e-791.persistence-boundary-contract.unittest",
+          "id": "control-plane-kit-core.tests.test_persistence_boundary_contract.PersistenceBoundaryContractTests.test_mutation_contracts_preserve_candidate_identity_without_values",
+          "status": "passing"
+        },
+        {
+          "evidence": "extract-e-791.persistence-boundary-contract.unittest",
+          "id": "control-plane-kit-core.tests.test_persistence_boundary_contract.PersistenceBoundaryContractTests.test_invalid_contracts_fail_before_mutable_holder_behavior_enters_core",
+          "status": "passing"
+        }
+      ],
       "supersession": null
     },
     {
@@ -2643,7 +2705,38 @@
       "owner": "control-plane-kit-core",
       "owner_kind": "core",
       "reference": "tests.test_contracts.DerivedResourceTests.test_completed_identity_rejects_changed_intent_without_retaining_values",
-      "successors": [],
+      "successors": [
+        {
+          "evidence": "extract-e-791.persistence-boundary-contract.unittest",
+          "id": "control-plane-kit-core.tests.test_persistence_boundary_contract.PersistenceBoundaryContractTests.test_canonical_contract_covers_stores_mutations_and_handoffs",
+          "status": "passing"
+        },
+        {
+          "evidence": "extract-e-791.persistence-boundary-contract.unittest",
+          "id": "control-plane-kit-core.tests.test_persistence_boundary_contract.PersistenceBoundaryContractTests.test_descriptor_round_trips_strictly_and_rejects_open_values",
+          "status": "passing"
+        },
+        {
+          "evidence": "extract-e-791.persistence-boundary-contract.unittest",
+          "id": "control-plane-kit-core.tests.test_persistence_boundary_contract.PersistenceBoundaryContractTests.test_store_contracts_name_durable_roles_without_database_implementation",
+          "status": "passing"
+        },
+        {
+          "evidence": "extract-e-791.persistence-boundary-contract.unittest",
+          "id": "control-plane-kit-core.tests.test_persistence_boundary_contract.PersistenceBoundaryContractTests.test_handoffs_keep_uow_schema_and_repositories_outside_core",
+          "status": "passing"
+        },
+        {
+          "evidence": "extract-e-791.persistence-boundary-contract.unittest",
+          "id": "control-plane-kit-core.tests.test_persistence_boundary_contract.PersistenceBoundaryContractTests.test_mutation_contracts_preserve_candidate_identity_without_values",
+          "status": "passing"
+        },
+        {
+          "evidence": "extract-e-791.persistence-boundary-contract.unittest",
+          "id": "control-plane-kit-core.tests.test_persistence_boundary_contract.PersistenceBoundaryContractTests.test_invalid_contracts_fail_before_mutable_holder_behavior_enters_core",
+          "status": "passing"
+        }
+      ],
       "supersession": null
     },
     {
@@ -2653,7 +2746,38 @@
       "owner": "control-plane-kit-core",
       "owner_kind": "core",
       "reference": "tests.test_contracts.DerivedResourceTests.test_concurrent_identical_mutations_build_dispose_and_publish_once",
-      "successors": [],
+      "successors": [
+        {
+          "evidence": "extract-e-791.persistence-boundary-contract.unittest",
+          "id": "control-plane-kit-core.tests.test_persistence_boundary_contract.PersistenceBoundaryContractTests.test_canonical_contract_covers_stores_mutations_and_handoffs",
+          "status": "passing"
+        },
+        {
+          "evidence": "extract-e-791.persistence-boundary-contract.unittest",
+          "id": "control-plane-kit-core.tests.test_persistence_boundary_contract.PersistenceBoundaryContractTests.test_descriptor_round_trips_strictly_and_rejects_open_values",
+          "status": "passing"
+        },
+        {
+          "evidence": "extract-e-791.persistence-boundary-contract.unittest",
+          "id": "control-plane-kit-core.tests.test_persistence_boundary_contract.PersistenceBoundaryContractTests.test_store_contracts_name_durable_roles_without_database_implementation",
+          "status": "passing"
+        },
+        {
+          "evidence": "extract-e-791.persistence-boundary-contract.unittest",
+          "id": "control-plane-kit-core.tests.test_persistence_boundary_contract.PersistenceBoundaryContractTests.test_handoffs_keep_uow_schema_and_repositories_outside_core",
+          "status": "passing"
+        },
+        {
+          "evidence": "extract-e-791.persistence-boundary-contract.unittest",
+          "id": "control-plane-kit-core.tests.test_persistence_boundary_contract.PersistenceBoundaryContractTests.test_mutation_contracts_preserve_candidate_identity_without_values",
+          "status": "passing"
+        },
+        {
+          "evidence": "extract-e-791.persistence-boundary-contract.unittest",
+          "id": "control-plane-kit-core.tests.test_persistence_boundary_contract.PersistenceBoundaryContractTests.test_invalid_contracts_fail_before_mutable_holder_behavior_enters_core",
+          "status": "passing"
+        }
+      ],
       "supersession": null
     },
     {
@@ -2663,7 +2787,38 @@
       "owner": "control-plane-kit-core",
       "owner_kind": "core",
       "reference": "tests.test_contracts.DerivedResourceTests.test_descriptor_reports_derived_resource_status_without_resource_value",
-      "successors": [],
+      "successors": [
+        {
+          "evidence": "extract-e-791.persistence-boundary-contract.unittest",
+          "id": "control-plane-kit-core.tests.test_persistence_boundary_contract.PersistenceBoundaryContractTests.test_canonical_contract_covers_stores_mutations_and_handoffs",
+          "status": "passing"
+        },
+        {
+          "evidence": "extract-e-791.persistence-boundary-contract.unittest",
+          "id": "control-plane-kit-core.tests.test_persistence_boundary_contract.PersistenceBoundaryContractTests.test_descriptor_round_trips_strictly_and_rejects_open_values",
+          "status": "passing"
+        },
+        {
+          "evidence": "extract-e-791.persistence-boundary-contract.unittest",
+          "id": "control-plane-kit-core.tests.test_persistence_boundary_contract.PersistenceBoundaryContractTests.test_store_contracts_name_durable_roles_without_database_implementation",
+          "status": "passing"
+        },
+        {
+          "evidence": "extract-e-791.persistence-boundary-contract.unittest",
+          "id": "control-plane-kit-core.tests.test_persistence_boundary_contract.PersistenceBoundaryContractTests.test_handoffs_keep_uow_schema_and_repositories_outside_core",
+          "status": "passing"
+        },
+        {
+          "evidence": "extract-e-791.persistence-boundary-contract.unittest",
+          "id": "control-plane-kit-core.tests.test_persistence_boundary_contract.PersistenceBoundaryContractTests.test_mutation_contracts_preserve_candidate_identity_without_values",
+          "status": "passing"
+        },
+        {
+          "evidence": "extract-e-791.persistence-boundary-contract.unittest",
+          "id": "control-plane-kit-core.tests.test_persistence_boundary_contract.PersistenceBoundaryContractTests.test_invalid_contracts_fail_before_mutable_holder_behavior_enters_core",
+          "status": "passing"
+        }
+      ],
       "supersession": null
     },
     {
@@ -2673,7 +2828,38 @@
       "owner": "control-plane-kit-core",
       "owner_kind": "core",
       "reference": "tests.test_contracts.DerivedResourceTests.test_drain_required_patch_marks_derived_resource_stale",
-      "successors": [],
+      "successors": [
+        {
+          "evidence": "extract-e-791.persistence-boundary-contract.unittest",
+          "id": "control-plane-kit-core.tests.test_persistence_boundary_contract.PersistenceBoundaryContractTests.test_canonical_contract_covers_stores_mutations_and_handoffs",
+          "status": "passing"
+        },
+        {
+          "evidence": "extract-e-791.persistence-boundary-contract.unittest",
+          "id": "control-plane-kit-core.tests.test_persistence_boundary_contract.PersistenceBoundaryContractTests.test_descriptor_round_trips_strictly_and_rejects_open_values",
+          "status": "passing"
+        },
+        {
+          "evidence": "extract-e-791.persistence-boundary-contract.unittest",
+          "id": "control-plane-kit-core.tests.test_persistence_boundary_contract.PersistenceBoundaryContractTests.test_store_contracts_name_durable_roles_without_database_implementation",
+          "status": "passing"
+        },
+        {
+          "evidence": "extract-e-791.persistence-boundary-contract.unittest",
+          "id": "control-plane-kit-core.tests.test_persistence_boundary_contract.PersistenceBoundaryContractTests.test_handoffs_keep_uow_schema_and_repositories_outside_core",
+          "status": "passing"
+        },
+        {
+          "evidence": "extract-e-791.persistence-boundary-contract.unittest",
+          "id": "control-plane-kit-core.tests.test_persistence_boundary_contract.PersistenceBoundaryContractTests.test_mutation_contracts_preserve_candidate_identity_without_values",
+          "status": "passing"
+        },
+        {
+          "evidence": "extract-e-791.persistence-boundary-contract.unittest",
+          "id": "control-plane-kit-core.tests.test_persistence_boundary_contract.PersistenceBoundaryContractTests.test_invalid_contracts_fail_before_mutable_holder_behavior_enters_core",
+          "status": "passing"
+        }
+      ],
       "supersession": null
     },
     {
@@ -2683,7 +2869,38 @@
       "owner": "control-plane-kit-core",
       "owner_kind": "core",
       "reference": "tests.test_contracts.DerivedResourceTests.test_explicit_rebuild_refreshes_stale_resource",
-      "successors": [],
+      "successors": [
+        {
+          "evidence": "extract-e-791.persistence-boundary-contract.unittest",
+          "id": "control-plane-kit-core.tests.test_persistence_boundary_contract.PersistenceBoundaryContractTests.test_canonical_contract_covers_stores_mutations_and_handoffs",
+          "status": "passing"
+        },
+        {
+          "evidence": "extract-e-791.persistence-boundary-contract.unittest",
+          "id": "control-plane-kit-core.tests.test_persistence_boundary_contract.PersistenceBoundaryContractTests.test_descriptor_round_trips_strictly_and_rejects_open_values",
+          "status": "passing"
+        },
+        {
+          "evidence": "extract-e-791.persistence-boundary-contract.unittest",
+          "id": "control-plane-kit-core.tests.test_persistence_boundary_contract.PersistenceBoundaryContractTests.test_store_contracts_name_durable_roles_without_database_implementation",
+          "status": "passing"
+        },
+        {
+          "evidence": "extract-e-791.persistence-boundary-contract.unittest",
+          "id": "control-plane-kit-core.tests.test_persistence_boundary_contract.PersistenceBoundaryContractTests.test_handoffs_keep_uow_schema_and_repositories_outside_core",
+          "status": "passing"
+        },
+        {
+          "evidence": "extract-e-791.persistence-boundary-contract.unittest",
+          "id": "control-plane-kit-core.tests.test_persistence_boundary_contract.PersistenceBoundaryContractTests.test_mutation_contracts_preserve_candidate_identity_without_values",
+          "status": "passing"
+        },
+        {
+          "evidence": "extract-e-791.persistence-boundary-contract.unittest",
+          "id": "control-plane-kit-core.tests.test_persistence_boundary_contract.PersistenceBoundaryContractTests.test_invalid_contracts_fail_before_mutable_holder_behavior_enters_core",
+          "status": "passing"
+        }
+      ],
       "supersession": null
     },
     {
@@ -2693,7 +2910,38 @@
       "owner": "control-plane-kit-core",
       "owner_kind": "core",
       "reference": "tests.test_contracts.DerivedResourceTests.test_late_preparation_failure_preserves_old_projection_and_cleans_candidate",
-      "successors": [],
+      "successors": [
+        {
+          "evidence": "extract-e-791.persistence-boundary-contract.unittest",
+          "id": "control-plane-kit-core.tests.test_persistence_boundary_contract.PersistenceBoundaryContractTests.test_canonical_contract_covers_stores_mutations_and_handoffs",
+          "status": "passing"
+        },
+        {
+          "evidence": "extract-e-791.persistence-boundary-contract.unittest",
+          "id": "control-plane-kit-core.tests.test_persistence_boundary_contract.PersistenceBoundaryContractTests.test_descriptor_round_trips_strictly_and_rejects_open_values",
+          "status": "passing"
+        },
+        {
+          "evidence": "extract-e-791.persistence-boundary-contract.unittest",
+          "id": "control-plane-kit-core.tests.test_persistence_boundary_contract.PersistenceBoundaryContractTests.test_store_contracts_name_durable_roles_without_database_implementation",
+          "status": "passing"
+        },
+        {
+          "evidence": "extract-e-791.persistence-boundary-contract.unittest",
+          "id": "control-plane-kit-core.tests.test_persistence_boundary_contract.PersistenceBoundaryContractTests.test_handoffs_keep_uow_schema_and_repositories_outside_core",
+          "status": "passing"
+        },
+        {
+          "evidence": "extract-e-791.persistence-boundary-contract.unittest",
+          "id": "control-plane-kit-core.tests.test_persistence_boundary_contract.PersistenceBoundaryContractTests.test_mutation_contracts_preserve_candidate_identity_without_values",
+          "status": "passing"
+        },
+        {
+          "evidence": "extract-e-791.persistence-boundary-contract.unittest",
+          "id": "control-plane-kit-core.tests.test_persistence_boundary_contract.PersistenceBoundaryContractTests.test_invalid_contracts_fail_before_mutable_holder_behavior_enters_core",
+          "status": "passing"
+        }
+      ],
       "supersession": null
     },
     {
@@ -2703,7 +2951,38 @@
       "owner": "control-plane-kit-core",
       "owner_kind": "core",
       "reference": "tests.test_contracts.DerivedResourceTests.test_live_patch_rebuilds_and_disposes_derived_resource",
-      "successors": [],
+      "successors": [
+        {
+          "evidence": "extract-e-791.persistence-boundary-contract.unittest",
+          "id": "control-plane-kit-core.tests.test_persistence_boundary_contract.PersistenceBoundaryContractTests.test_canonical_contract_covers_stores_mutations_and_handoffs",
+          "status": "passing"
+        },
+        {
+          "evidence": "extract-e-791.persistence-boundary-contract.unittest",
+          "id": "control-plane-kit-core.tests.test_persistence_boundary_contract.PersistenceBoundaryContractTests.test_descriptor_round_trips_strictly_and_rejects_open_values",
+          "status": "passing"
+        },
+        {
+          "evidence": "extract-e-791.persistence-boundary-contract.unittest",
+          "id": "control-plane-kit-core.tests.test_persistence_boundary_contract.PersistenceBoundaryContractTests.test_store_contracts_name_durable_roles_without_database_implementation",
+          "status": "passing"
+        },
+        {
+          "evidence": "extract-e-791.persistence-boundary-contract.unittest",
+          "id": "control-plane-kit-core.tests.test_persistence_boundary_contract.PersistenceBoundaryContractTests.test_handoffs_keep_uow_schema_and_repositories_outside_core",
+          "status": "passing"
+        },
+        {
+          "evidence": "extract-e-791.persistence-boundary-contract.unittest",
+          "id": "control-plane-kit-core.tests.test_persistence_boundary_contract.PersistenceBoundaryContractTests.test_mutation_contracts_preserve_candidate_identity_without_values",
+          "status": "passing"
+        },
+        {
+          "evidence": "extract-e-791.persistence-boundary-contract.unittest",
+          "id": "control-plane-kit-core.tests.test_persistence_boundary_contract.PersistenceBoundaryContractTests.test_invalid_contracts_fail_before_mutable_holder_behavior_enters_core",
+          "status": "passing"
+        }
+      ],
       "supersession": null
     },
     {
@@ -2713,7 +2992,38 @@
       "owner": "control-plane-kit-core",
       "owner_kind": "core",
       "reference": "tests.test_contracts.DerivedResourceTests.test_multi_resource_mutation_prepares_against_candidate_then_publishes_once",
-      "successors": [],
+      "successors": [
+        {
+          "evidence": "extract-e-791.persistence-boundary-contract.unittest",
+          "id": "control-plane-kit-core.tests.test_persistence_boundary_contract.PersistenceBoundaryContractTests.test_canonical_contract_covers_stores_mutations_and_handoffs",
+          "status": "passing"
+        },
+        {
+          "evidence": "extract-e-791.persistence-boundary-contract.unittest",
+          "id": "control-plane-kit-core.tests.test_persistence_boundary_contract.PersistenceBoundaryContractTests.test_descriptor_round_trips_strictly_and_rejects_open_values",
+          "status": "passing"
+        },
+        {
+          "evidence": "extract-e-791.persistence-boundary-contract.unittest",
+          "id": "control-plane-kit-core.tests.test_persistence_boundary_contract.PersistenceBoundaryContractTests.test_store_contracts_name_durable_roles_without_database_implementation",
+          "status": "passing"
+        },
+        {
+          "evidence": "extract-e-791.persistence-boundary-contract.unittest",
+          "id": "control-plane-kit-core.tests.test_persistence_boundary_contract.PersistenceBoundaryContractTests.test_handoffs_keep_uow_schema_and_repositories_outside_core",
+          "status": "passing"
+        },
+        {
+          "evidence": "extract-e-791.persistence-boundary-contract.unittest",
+          "id": "control-plane-kit-core.tests.test_persistence_boundary_contract.PersistenceBoundaryContractTests.test_mutation_contracts_preserve_candidate_identity_without_values",
+          "status": "passing"
+        },
+        {
+          "evidence": "extract-e-791.persistence-boundary-contract.unittest",
+          "id": "control-plane-kit-core.tests.test_persistence_boundary_contract.PersistenceBoundaryContractTests.test_invalid_contracts_fail_before_mutable_holder_behavior_enters_core",
+          "status": "passing"
+        }
+      ],
       "supersession": null
     },
     {
@@ -2723,7 +3033,38 @@
       "owner": "control-plane-kit-core",
       "owner_kind": "core",
       "reference": "tests.test_contracts.DerivedResourceTests.test_preparation_cleanup_failure_is_bounded_and_does_not_publish",
-      "successors": [],
+      "successors": [
+        {
+          "evidence": "extract-e-791.persistence-boundary-contract.unittest",
+          "id": "control-plane-kit-core.tests.test_persistence_boundary_contract.PersistenceBoundaryContractTests.test_canonical_contract_covers_stores_mutations_and_handoffs",
+          "status": "passing"
+        },
+        {
+          "evidence": "extract-e-791.persistence-boundary-contract.unittest",
+          "id": "control-plane-kit-core.tests.test_persistence_boundary_contract.PersistenceBoundaryContractTests.test_descriptor_round_trips_strictly_and_rejects_open_values",
+          "status": "passing"
+        },
+        {
+          "evidence": "extract-e-791.persistence-boundary-contract.unittest",
+          "id": "control-plane-kit-core.tests.test_persistence_boundary_contract.PersistenceBoundaryContractTests.test_store_contracts_name_durable_roles_without_database_implementation",
+          "status": "passing"
+        },
+        {
+          "evidence": "extract-e-791.persistence-boundary-contract.unittest",
+          "id": "control-plane-kit-core.tests.test_persistence_boundary_contract.PersistenceBoundaryContractTests.test_handoffs_keep_uow_schema_and_repositories_outside_core",
+          "status": "passing"
+        },
+        {
+          "evidence": "extract-e-791.persistence-boundary-contract.unittest",
+          "id": "control-plane-kit-core.tests.test_persistence_boundary_contract.PersistenceBoundaryContractTests.test_mutation_contracts_preserve_candidate_identity_without_values",
+          "status": "passing"
+        },
+        {
+          "evidence": "extract-e-791.persistence-boundary-contract.unittest",
+          "id": "control-plane-kit-core.tests.test_persistence_boundary_contract.PersistenceBoundaryContractTests.test_invalid_contracts_fail_before_mutable_holder_behavior_enters_core",
+          "status": "passing"
+        }
+      ],
       "supersession": null
     },
     {
@@ -2733,7 +3074,38 @@
       "owner": "control-plane-kit-core",
       "owner_kind": "core",
       "reference": "tests.test_contracts.DerivedResourceTests.test_retained_or_unowned_superseded_resources_are_never_disposed",
-      "successors": [],
+      "successors": [
+        {
+          "evidence": "extract-e-791.persistence-boundary-contract.unittest",
+          "id": "control-plane-kit-core.tests.test_persistence_boundary_contract.PersistenceBoundaryContractTests.test_canonical_contract_covers_stores_mutations_and_handoffs",
+          "status": "passing"
+        },
+        {
+          "evidence": "extract-e-791.persistence-boundary-contract.unittest",
+          "id": "control-plane-kit-core.tests.test_persistence_boundary_contract.PersistenceBoundaryContractTests.test_descriptor_round_trips_strictly_and_rejects_open_values",
+          "status": "passing"
+        },
+        {
+          "evidence": "extract-e-791.persistence-boundary-contract.unittest",
+          "id": "control-plane-kit-core.tests.test_persistence_boundary_contract.PersistenceBoundaryContractTests.test_store_contracts_name_durable_roles_without_database_implementation",
+          "status": "passing"
+        },
+        {
+          "evidence": "extract-e-791.persistence-boundary-contract.unittest",
+          "id": "control-plane-kit-core.tests.test_persistence_boundary_contract.PersistenceBoundaryContractTests.test_handoffs_keep_uow_schema_and_repositories_outside_core",
+          "status": "passing"
+        },
+        {
+          "evidence": "extract-e-791.persistence-boundary-contract.unittest",
+          "id": "control-plane-kit-core.tests.test_persistence_boundary_contract.PersistenceBoundaryContractTests.test_mutation_contracts_preserve_candidate_identity_without_values",
+          "status": "passing"
+        },
+        {
+          "evidence": "extract-e-791.persistence-boundary-contract.unittest",
+          "id": "control-plane-kit-core.tests.test_persistence_boundary_contract.PersistenceBoundaryContractTests.test_invalid_contracts_fail_before_mutable_holder_behavior_enters_core",
+          "status": "passing"
+        }
+      ],
       "supersession": null
     },
     {
@@ -2743,7 +3115,38 @@
       "owner": "control-plane-kit-core",
       "owner_kind": "core",
       "reference": "tests.test_contracts.DerivedResourceTests.test_superseded_cleanup_failure_keeps_new_projection_and_replays_evidence",
-      "successors": [],
+      "successors": [
+        {
+          "evidence": "extract-e-791.persistence-boundary-contract.unittest",
+          "id": "control-plane-kit-core.tests.test_persistence_boundary_contract.PersistenceBoundaryContractTests.test_canonical_contract_covers_stores_mutations_and_handoffs",
+          "status": "passing"
+        },
+        {
+          "evidence": "extract-e-791.persistence-boundary-contract.unittest",
+          "id": "control-plane-kit-core.tests.test_persistence_boundary_contract.PersistenceBoundaryContractTests.test_descriptor_round_trips_strictly_and_rejects_open_values",
+          "status": "passing"
+        },
+        {
+          "evidence": "extract-e-791.persistence-boundary-contract.unittest",
+          "id": "control-plane-kit-core.tests.test_persistence_boundary_contract.PersistenceBoundaryContractTests.test_store_contracts_name_durable_roles_without_database_implementation",
+          "status": "passing"
+        },
+        {
+          "evidence": "extract-e-791.persistence-boundary-contract.unittest",
+          "id": "control-plane-kit-core.tests.test_persistence_boundary_contract.PersistenceBoundaryContractTests.test_handoffs_keep_uow_schema_and_repositories_outside_core",
+          "status": "passing"
+        },
+        {
+          "evidence": "extract-e-791.persistence-boundary-contract.unittest",
+          "id": "control-plane-kit-core.tests.test_persistence_boundary_contract.PersistenceBoundaryContractTests.test_mutation_contracts_preserve_candidate_identity_without_values",
+          "status": "passing"
+        },
+        {
+          "evidence": "extract-e-791.persistence-boundary-contract.unittest",
+          "id": "control-plane-kit-core.tests.test_persistence_boundary_contract.PersistenceBoundaryContractTests.test_invalid_contracts_fail_before_mutable_holder_behavior_enters_core",
+          "status": "passing"
+        }
+      ],
       "supersession": null
     },
     {
@@ -2753,7 +3156,38 @@
       "owner": "control-plane-kit-core",
       "owner_kind": "core",
       "reference": "tests.test_contracts.EnvironmentContractTests.test_access_is_always_lookup",
-      "successors": [],
+      "successors": [
+        {
+          "evidence": "extract-e-791.persistence-boundary-contract.unittest",
+          "id": "control-plane-kit-core.tests.test_persistence_boundary_contract.PersistenceBoundaryContractTests.test_canonical_contract_covers_stores_mutations_and_handoffs",
+          "status": "passing"
+        },
+        {
+          "evidence": "extract-e-791.persistence-boundary-contract.unittest",
+          "id": "control-plane-kit-core.tests.test_persistence_boundary_contract.PersistenceBoundaryContractTests.test_descriptor_round_trips_strictly_and_rejects_open_values",
+          "status": "passing"
+        },
+        {
+          "evidence": "extract-e-791.persistence-boundary-contract.unittest",
+          "id": "control-plane-kit-core.tests.test_persistence_boundary_contract.PersistenceBoundaryContractTests.test_store_contracts_name_durable_roles_without_database_implementation",
+          "status": "passing"
+        },
+        {
+          "evidence": "extract-e-791.persistence-boundary-contract.unittest",
+          "id": "control-plane-kit-core.tests.test_persistence_boundary_contract.PersistenceBoundaryContractTests.test_handoffs_keep_uow_schema_and_repositories_outside_core",
+          "status": "passing"
+        },
+        {
+          "evidence": "extract-e-791.persistence-boundary-contract.unittest",
+          "id": "control-plane-kit-core.tests.test_persistence_boundary_contract.PersistenceBoundaryContractTests.test_mutation_contracts_preserve_candidate_identity_without_values",
+          "status": "passing"
+        },
+        {
+          "evidence": "extract-e-791.persistence-boundary-contract.unittest",
+          "id": "control-plane-kit-core.tests.test_persistence_boundary_contract.PersistenceBoundaryContractTests.test_invalid_contracts_fail_before_mutable_holder_behavior_enters_core",
+          "status": "passing"
+        }
+      ],
       "supersession": null
     },
     {
@@ -2763,7 +3197,38 @@
       "owner": "control-plane-kit-core",
       "owner_kind": "core",
       "reference": "tests.test_contracts.EnvironmentContractTests.test_apply_patch_updates_holder_not_process_environment",
-      "successors": [],
+      "successors": [
+        {
+          "evidence": "extract-e-791.persistence-boundary-contract.unittest",
+          "id": "control-plane-kit-core.tests.test_persistence_boundary_contract.PersistenceBoundaryContractTests.test_canonical_contract_covers_stores_mutations_and_handoffs",
+          "status": "passing"
+        },
+        {
+          "evidence": "extract-e-791.persistence-boundary-contract.unittest",
+          "id": "control-plane-kit-core.tests.test_persistence_boundary_contract.PersistenceBoundaryContractTests.test_descriptor_round_trips_strictly_and_rejects_open_values",
+          "status": "passing"
+        },
+        {
+          "evidence": "extract-e-791.persistence-boundary-contract.unittest",
+          "id": "control-plane-kit-core.tests.test_persistence_boundary_contract.PersistenceBoundaryContractTests.test_store_contracts_name_durable_roles_without_database_implementation",
+          "status": "passing"
+        },
+        {
+          "evidence": "extract-e-791.persistence-boundary-contract.unittest",
+          "id": "control-plane-kit-core.tests.test_persistence_boundary_contract.PersistenceBoundaryContractTests.test_handoffs_keep_uow_schema_and_repositories_outside_core",
+          "status": "passing"
+        },
+        {
+          "evidence": "extract-e-791.persistence-boundary-contract.unittest",
+          "id": "control-plane-kit-core.tests.test_persistence_boundary_contract.PersistenceBoundaryContractTests.test_mutation_contracts_preserve_candidate_identity_without_values",
+          "status": "passing"
+        },
+        {
+          "evidence": "extract-e-791.persistence-boundary-contract.unittest",
+          "id": "control-plane-kit-core.tests.test_persistence_boundary_contract.PersistenceBoundaryContractTests.test_invalid_contracts_fail_before_mutable_holder_behavior_enters_core",
+          "status": "passing"
+        }
+      ],
       "supersession": null
     },
     {
@@ -2837,7 +3302,38 @@
       "owner": "control-plane-kit-core",
       "owner_kind": "core",
       "reference": "tests.test_contracts.EnvironmentContractTests.test_mutation_and_candidate_descriptors_never_publish_values",
-      "successors": [],
+      "successors": [
+        {
+          "evidence": "extract-e-791.persistence-boundary-contract.unittest",
+          "id": "control-plane-kit-core.tests.test_persistence_boundary_contract.PersistenceBoundaryContractTests.test_canonical_contract_covers_stores_mutations_and_handoffs",
+          "status": "passing"
+        },
+        {
+          "evidence": "extract-e-791.persistence-boundary-contract.unittest",
+          "id": "control-plane-kit-core.tests.test_persistence_boundary_contract.PersistenceBoundaryContractTests.test_descriptor_round_trips_strictly_and_rejects_open_values",
+          "status": "passing"
+        },
+        {
+          "evidence": "extract-e-791.persistence-boundary-contract.unittest",
+          "id": "control-plane-kit-core.tests.test_persistence_boundary_contract.PersistenceBoundaryContractTests.test_store_contracts_name_durable_roles_without_database_implementation",
+          "status": "passing"
+        },
+        {
+          "evidence": "extract-e-791.persistence-boundary-contract.unittest",
+          "id": "control-plane-kit-core.tests.test_persistence_boundary_contract.PersistenceBoundaryContractTests.test_handoffs_keep_uow_schema_and_repositories_outside_core",
+          "status": "passing"
+        },
+        {
+          "evidence": "extract-e-791.persistence-boundary-contract.unittest",
+          "id": "control-plane-kit-core.tests.test_persistence_boundary_contract.PersistenceBoundaryContractTests.test_mutation_contracts_preserve_candidate_identity_without_values",
+          "status": "passing"
+        },
+        {
+          "evidence": "extract-e-791.persistence-boundary-contract.unittest",
+          "id": "control-plane-kit-core.tests.test_persistence_boundary_contract.PersistenceBoundaryContractTests.test_invalid_contracts_fail_before_mutable_holder_behavior_enters_core",
+          "status": "passing"
+        }
+      ],
       "supersession": null
     },
     {
@@ -2847,7 +3343,38 @@
       "owner": "control-plane-kit-core",
       "owner_kind": "core",
       "reference": "tests.test_contracts.EnvironmentContractTests.test_mutation_prepares_immutable_candidate_without_publication",
-      "successors": [],
+      "successors": [
+        {
+          "evidence": "extract-e-791.persistence-boundary-contract.unittest",
+          "id": "control-plane-kit-core.tests.test_persistence_boundary_contract.PersistenceBoundaryContractTests.test_canonical_contract_covers_stores_mutations_and_handoffs",
+          "status": "passing"
+        },
+        {
+          "evidence": "extract-e-791.persistence-boundary-contract.unittest",
+          "id": "control-plane-kit-core.tests.test_persistence_boundary_contract.PersistenceBoundaryContractTests.test_descriptor_round_trips_strictly_and_rejects_open_values",
+          "status": "passing"
+        },
+        {
+          "evidence": "extract-e-791.persistence-boundary-contract.unittest",
+          "id": "control-plane-kit-core.tests.test_persistence_boundary_contract.PersistenceBoundaryContractTests.test_store_contracts_name_durable_roles_without_database_implementation",
+          "status": "passing"
+        },
+        {
+          "evidence": "extract-e-791.persistence-boundary-contract.unittest",
+          "id": "control-plane-kit-core.tests.test_persistence_boundary_contract.PersistenceBoundaryContractTests.test_handoffs_keep_uow_schema_and_repositories_outside_core",
+          "status": "passing"
+        },
+        {
+          "evidence": "extract-e-791.persistence-boundary-contract.unittest",
+          "id": "control-plane-kit-core.tests.test_persistence_boundary_contract.PersistenceBoundaryContractTests.test_mutation_contracts_preserve_candidate_identity_without_values",
+          "status": "passing"
+        },
+        {
+          "evidence": "extract-e-791.persistence-boundary-contract.unittest",
+          "id": "control-plane-kit-core.tests.test_persistence_boundary_contract.PersistenceBoundaryContractTests.test_invalid_contracts_fail_before_mutable_holder_behavior_enters_core",
+          "status": "passing"
+        }
+      ],
       "supersession": null
     },
     {
@@ -2857,7 +3384,38 @@
       "owner": "control-plane-kit-core",
       "owner_kind": "core",
       "reference": "tests.test_contracts.EnvironmentContractTests.test_mutation_rejects_stale_version_before_preparation",
-      "successors": [],
+      "successors": [
+        {
+          "evidence": "extract-e-791.persistence-boundary-contract.unittest",
+          "id": "control-plane-kit-core.tests.test_persistence_boundary_contract.PersistenceBoundaryContractTests.test_canonical_contract_covers_stores_mutations_and_handoffs",
+          "status": "passing"
+        },
+        {
+          "evidence": "extract-e-791.persistence-boundary-contract.unittest",
+          "id": "control-plane-kit-core.tests.test_persistence_boundary_contract.PersistenceBoundaryContractTests.test_descriptor_round_trips_strictly_and_rejects_open_values",
+          "status": "passing"
+        },
+        {
+          "evidence": "extract-e-791.persistence-boundary-contract.unittest",
+          "id": "control-plane-kit-core.tests.test_persistence_boundary_contract.PersistenceBoundaryContractTests.test_store_contracts_name_durable_roles_without_database_implementation",
+          "status": "passing"
+        },
+        {
+          "evidence": "extract-e-791.persistence-boundary-contract.unittest",
+          "id": "control-plane-kit-core.tests.test_persistence_boundary_contract.PersistenceBoundaryContractTests.test_handoffs_keep_uow_schema_and_repositories_outside_core",
+          "status": "passing"
+        },
+        {
+          "evidence": "extract-e-791.persistence-boundary-contract.unittest",
+          "id": "control-plane-kit-core.tests.test_persistence_boundary_contract.PersistenceBoundaryContractTests.test_mutation_contracts_preserve_candidate_identity_without_values",
+          "status": "passing"
+        },
+        {
+          "evidence": "extract-e-791.persistence-boundary-contract.unittest",
+          "id": "control-plane-kit-core.tests.test_persistence_boundary_contract.PersistenceBoundaryContractTests.test_invalid_contracts_fail_before_mutable_holder_behavior_enters_core",
+          "status": "passing"
+        }
+      ],
       "supersession": null
     },
     {
@@ -2867,7 +3425,38 @@
       "owner": "control-plane-kit-core",
       "owner_kind": "core",
       "reference": "tests.test_contracts.EnvironmentContractTests.test_noop_candidate_does_not_advance_version",
-      "successors": [],
+      "successors": [
+        {
+          "evidence": "extract-e-791.persistence-boundary-contract.unittest",
+          "id": "control-plane-kit-core.tests.test_persistence_boundary_contract.PersistenceBoundaryContractTests.test_canonical_contract_covers_stores_mutations_and_handoffs",
+          "status": "passing"
+        },
+        {
+          "evidence": "extract-e-791.persistence-boundary-contract.unittest",
+          "id": "control-plane-kit-core.tests.test_persistence_boundary_contract.PersistenceBoundaryContractTests.test_descriptor_round_trips_strictly_and_rejects_open_values",
+          "status": "passing"
+        },
+        {
+          "evidence": "extract-e-791.persistence-boundary-contract.unittest",
+          "id": "control-plane-kit-core.tests.test_persistence_boundary_contract.PersistenceBoundaryContractTests.test_store_contracts_name_durable_roles_without_database_implementation",
+          "status": "passing"
+        },
+        {
+          "evidence": "extract-e-791.persistence-boundary-contract.unittest",
+          "id": "control-plane-kit-core.tests.test_persistence_boundary_contract.PersistenceBoundaryContractTests.test_handoffs_keep_uow_schema_and_repositories_outside_core",
+          "status": "passing"
+        },
+        {
+          "evidence": "extract-e-791.persistence-boundary-contract.unittest",
+          "id": "control-plane-kit-core.tests.test_persistence_boundary_contract.PersistenceBoundaryContractTests.test_mutation_contracts_preserve_candidate_identity_without_values",
+          "status": "passing"
+        },
+        {
+          "evidence": "extract-e-791.persistence-boundary-contract.unittest",
+          "id": "control-plane-kit-core.tests.test_persistence_boundary_contract.PersistenceBoundaryContractTests.test_invalid_contracts_fail_before_mutable_holder_behavior_enters_core",
+          "status": "passing"
+        }
+      ],
       "supersession": null
     },
     {
@@ -2877,7 +3466,38 @@
       "owner": "control-plane-kit-core",
       "owner_kind": "core",
       "reference": "tests.test_contracts.EnvironmentContractTests.test_preparation_validates_all_assignments_before_any_publication",
-      "successors": [],
+      "successors": [
+        {
+          "evidence": "extract-e-791.persistence-boundary-contract.unittest",
+          "id": "control-plane-kit-core.tests.test_persistence_boundary_contract.PersistenceBoundaryContractTests.test_canonical_contract_covers_stores_mutations_and_handoffs",
+          "status": "passing"
+        },
+        {
+          "evidence": "extract-e-791.persistence-boundary-contract.unittest",
+          "id": "control-plane-kit-core.tests.test_persistence_boundary_contract.PersistenceBoundaryContractTests.test_descriptor_round_trips_strictly_and_rejects_open_values",
+          "status": "passing"
+        },
+        {
+          "evidence": "extract-e-791.persistence-boundary-contract.unittest",
+          "id": "control-plane-kit-core.tests.test_persistence_boundary_contract.PersistenceBoundaryContractTests.test_store_contracts_name_durable_roles_without_database_implementation",
+          "status": "passing"
+        },
+        {
+          "evidence": "extract-e-791.persistence-boundary-contract.unittest",
+          "id": "control-plane-kit-core.tests.test_persistence_boundary_contract.PersistenceBoundaryContractTests.test_handoffs_keep_uow_schema_and_repositories_outside_core",
+          "status": "passing"
+        },
+        {
+          "evidence": "extract-e-791.persistence-boundary-contract.unittest",
+          "id": "control-plane-kit-core.tests.test_persistence_boundary_contract.PersistenceBoundaryContractTests.test_mutation_contracts_preserve_candidate_identity_without_values",
+          "status": "passing"
+        },
+        {
+          "evidence": "extract-e-791.persistence-boundary-contract.unittest",
+          "id": "control-plane-kit-core.tests.test_persistence_boundary_contract.PersistenceBoundaryContractTests.test_invalid_contracts_fail_before_mutable_holder_behavior_enters_core",
+          "status": "passing"
+        }
+      ],
       "supersession": null
     },
     {
@@ -2887,7 +3507,38 @@
       "owner": "control-plane-kit-core",
       "owner_kind": "core",
       "reference": "tests.test_contracts.EnvironmentContractTests.test_prepared_mutation_identity_replays_or_rejects_conflicting_intent",
-      "successors": [],
+      "successors": [
+        {
+          "evidence": "extract-e-791.persistence-boundary-contract.unittest",
+          "id": "control-plane-kit-core.tests.test_persistence_boundary_contract.PersistenceBoundaryContractTests.test_canonical_contract_covers_stores_mutations_and_handoffs",
+          "status": "passing"
+        },
+        {
+          "evidence": "extract-e-791.persistence-boundary-contract.unittest",
+          "id": "control-plane-kit-core.tests.test_persistence_boundary_contract.PersistenceBoundaryContractTests.test_descriptor_round_trips_strictly_and_rejects_open_values",
+          "status": "passing"
+        },
+        {
+          "evidence": "extract-e-791.persistence-boundary-contract.unittest",
+          "id": "control-plane-kit-core.tests.test_persistence_boundary_contract.PersistenceBoundaryContractTests.test_store_contracts_name_durable_roles_without_database_implementation",
+          "status": "passing"
+        },
+        {
+          "evidence": "extract-e-791.persistence-boundary-contract.unittest",
+          "id": "control-plane-kit-core.tests.test_persistence_boundary_contract.PersistenceBoundaryContractTests.test_handoffs_keep_uow_schema_and_repositories_outside_core",
+          "status": "passing"
+        },
+        {
+          "evidence": "extract-e-791.persistence-boundary-contract.unittest",
+          "id": "control-plane-kit-core.tests.test_persistence_boundary_contract.PersistenceBoundaryContractTests.test_mutation_contracts_preserve_candidate_identity_without_values",
+          "status": "passing"
+        },
+        {
+          "evidence": "extract-e-791.persistence-boundary-contract.unittest",
+          "id": "control-plane-kit-core.tests.test_persistence_boundary_contract.PersistenceBoundaryContractTests.test_invalid_contracts_fail_before_mutable_holder_behavior_enters_core",
+          "status": "passing"
+        }
+      ],
       "supersession": null
     },
     {
@@ -2897,7 +3548,38 @@
       "owner": "control-plane-kit-core",
       "owner_kind": "core",
       "reference": "tests.test_contracts.EnvironmentContractTests.test_published_mutation_identity_replays_without_reexecution",
-      "successors": [],
+      "successors": [
+        {
+          "evidence": "extract-e-791.persistence-boundary-contract.unittest",
+          "id": "control-plane-kit-core.tests.test_persistence_boundary_contract.PersistenceBoundaryContractTests.test_canonical_contract_covers_stores_mutations_and_handoffs",
+          "status": "passing"
+        },
+        {
+          "evidence": "extract-e-791.persistence-boundary-contract.unittest",
+          "id": "control-plane-kit-core.tests.test_persistence_boundary_contract.PersistenceBoundaryContractTests.test_descriptor_round_trips_strictly_and_rejects_open_values",
+          "status": "passing"
+        },
+        {
+          "evidence": "extract-e-791.persistence-boundary-contract.unittest",
+          "id": "control-plane-kit-core.tests.test_persistence_boundary_contract.PersistenceBoundaryContractTests.test_store_contracts_name_durable_roles_without_database_implementation",
+          "status": "passing"
+        },
+        {
+          "evidence": "extract-e-791.persistence-boundary-contract.unittest",
+          "id": "control-plane-kit-core.tests.test_persistence_boundary_contract.PersistenceBoundaryContractTests.test_handoffs_keep_uow_schema_and_repositories_outside_core",
+          "status": "passing"
+        },
+        {
+          "evidence": "extract-e-791.persistence-boundary-contract.unittest",
+          "id": "control-plane-kit-core.tests.test_persistence_boundary_contract.PersistenceBoundaryContractTests.test_mutation_contracts_preserve_candidate_identity_without_values",
+          "status": "passing"
+        },
+        {
+          "evidence": "extract-e-791.persistence-boundary-contract.unittest",
+          "id": "control-plane-kit-core.tests.test_persistence_boundary_contract.PersistenceBoundaryContractTests.test_invalid_contracts_fail_before_mutable_holder_behavior_enters_core",
+          "status": "passing"
+        }
+      ],
       "supersession": null
     },
     {
@@ -2955,7 +3637,38 @@
       "owner": "control-plane-kit-core",
       "owner_kind": "core",
       "reference": "tests.test_contracts.RuntimeContractTests.test_runtime_contract_patch_updates_holder",
-      "successors": [],
+      "successors": [
+        {
+          "evidence": "extract-e-791.persistence-boundary-contract.unittest",
+          "id": "control-plane-kit-core.tests.test_persistence_boundary_contract.PersistenceBoundaryContractTests.test_canonical_contract_covers_stores_mutations_and_handoffs",
+          "status": "passing"
+        },
+        {
+          "evidence": "extract-e-791.persistence-boundary-contract.unittest",
+          "id": "control-plane-kit-core.tests.test_persistence_boundary_contract.PersistenceBoundaryContractTests.test_descriptor_round_trips_strictly_and_rejects_open_values",
+          "status": "passing"
+        },
+        {
+          "evidence": "extract-e-791.persistence-boundary-contract.unittest",
+          "id": "control-plane-kit-core.tests.test_persistence_boundary_contract.PersistenceBoundaryContractTests.test_store_contracts_name_durable_roles_without_database_implementation",
+          "status": "passing"
+        },
+        {
+          "evidence": "extract-e-791.persistence-boundary-contract.unittest",
+          "id": "control-plane-kit-core.tests.test_persistence_boundary_contract.PersistenceBoundaryContractTests.test_handoffs_keep_uow_schema_and_repositories_outside_core",
+          "status": "passing"
+        },
+        {
+          "evidence": "extract-e-791.persistence-boundary-contract.unittest",
+          "id": "control-plane-kit-core.tests.test_persistence_boundary_contract.PersistenceBoundaryContractTests.test_mutation_contracts_preserve_candidate_identity_without_values",
+          "status": "passing"
+        },
+        {
+          "evidence": "extract-e-791.persistence-boundary-contract.unittest",
+          "id": "control-plane-kit-core.tests.test_persistence_boundary_contract.PersistenceBoundaryContractTests.test_invalid_contracts_fail_before_mutable_holder_behavior_enters_core",
+          "status": "passing"
+        }
+      ],
       "supersession": null
     },
     {
@@ -6497,7 +7210,38 @@
       "owner": "control-plane-kit-core",
       "owner_kind": "core",
       "reference": "tests.test_execution_schema_migration.ExecutionSchemaTests.test_current_schema_rejects_unknown_retired_and_malformed_events",
-      "successors": [],
+      "successors": [
+        {
+          "evidence": "extract-e-791.persistence-boundary-contract.unittest",
+          "id": "control-plane-kit-core.tests.test_persistence_boundary_contract.PersistenceBoundaryContractTests.test_canonical_contract_covers_stores_mutations_and_handoffs",
+          "status": "passing"
+        },
+        {
+          "evidence": "extract-e-791.persistence-boundary-contract.unittest",
+          "id": "control-plane-kit-core.tests.test_persistence_boundary_contract.PersistenceBoundaryContractTests.test_descriptor_round_trips_strictly_and_rejects_open_values",
+          "status": "passing"
+        },
+        {
+          "evidence": "extract-e-791.persistence-boundary-contract.unittest",
+          "id": "control-plane-kit-core.tests.test_persistence_boundary_contract.PersistenceBoundaryContractTests.test_store_contracts_name_durable_roles_without_database_implementation",
+          "status": "passing"
+        },
+        {
+          "evidence": "extract-e-791.persistence-boundary-contract.unittest",
+          "id": "control-plane-kit-core.tests.test_persistence_boundary_contract.PersistenceBoundaryContractTests.test_handoffs_keep_uow_schema_and_repositories_outside_core",
+          "status": "passing"
+        },
+        {
+          "evidence": "extract-e-791.persistence-boundary-contract.unittest",
+          "id": "control-plane-kit-core.tests.test_persistence_boundary_contract.PersistenceBoundaryContractTests.test_mutation_contracts_preserve_candidate_identity_without_values",
+          "status": "passing"
+        },
+        {
+          "evidence": "extract-e-791.persistence-boundary-contract.unittest",
+          "id": "control-plane-kit-core.tests.test_persistence_boundary_contract.PersistenceBoundaryContractTests.test_invalid_contracts_fail_before_mutable_holder_behavior_enters_core",
+          "status": "passing"
+        }
+      ],
       "supersession": null
     },
     {
@@ -6507,7 +7251,38 @@
       "owner": "control-plane-kit-core",
       "owner_kind": "core",
       "reference": "tests.test_execution_schema_migration.ExecutionSchemaTests.test_incompatible_schema_install_rolls_back_partial_ddl",
-      "successors": [],
+      "successors": [
+        {
+          "evidence": "extract-e-791.persistence-boundary-contract.unittest",
+          "id": "control-plane-kit-core.tests.test_persistence_boundary_contract.PersistenceBoundaryContractTests.test_canonical_contract_covers_stores_mutations_and_handoffs",
+          "status": "passing"
+        },
+        {
+          "evidence": "extract-e-791.persistence-boundary-contract.unittest",
+          "id": "control-plane-kit-core.tests.test_persistence_boundary_contract.PersistenceBoundaryContractTests.test_descriptor_round_trips_strictly_and_rejects_open_values",
+          "status": "passing"
+        },
+        {
+          "evidence": "extract-e-791.persistence-boundary-contract.unittest",
+          "id": "control-plane-kit-core.tests.test_persistence_boundary_contract.PersistenceBoundaryContractTests.test_store_contracts_name_durable_roles_without_database_implementation",
+          "status": "passing"
+        },
+        {
+          "evidence": "extract-e-791.persistence-boundary-contract.unittest",
+          "id": "control-plane-kit-core.tests.test_persistence_boundary_contract.PersistenceBoundaryContractTests.test_handoffs_keep_uow_schema_and_repositories_outside_core",
+          "status": "passing"
+        },
+        {
+          "evidence": "extract-e-791.persistence-boundary-contract.unittest",
+          "id": "control-plane-kit-core.tests.test_persistence_boundary_contract.PersistenceBoundaryContractTests.test_mutation_contracts_preserve_candidate_identity_without_values",
+          "status": "passing"
+        },
+        {
+          "evidence": "extract-e-791.persistence-boundary-contract.unittest",
+          "id": "control-plane-kit-core.tests.test_persistence_boundary_contract.PersistenceBoundaryContractTests.test_invalid_contracts_fail_before_mutable_holder_behavior_enters_core",
+          "status": "passing"
+        }
+      ],
       "supersession": null
     },
     {
@@ -6517,7 +7292,38 @@
       "owner": "control-plane-kit-core",
       "owner_kind": "core",
       "reference": "tests.test_execution_schema_migration.ExecutionSchemaTests.test_repeated_install_preserves_rows_and_constraint_identity",
-      "successors": [],
+      "successors": [
+        {
+          "evidence": "extract-e-791.persistence-boundary-contract.unittest",
+          "id": "control-plane-kit-core.tests.test_persistence_boundary_contract.PersistenceBoundaryContractTests.test_canonical_contract_covers_stores_mutations_and_handoffs",
+          "status": "passing"
+        },
+        {
+          "evidence": "extract-e-791.persistence-boundary-contract.unittest",
+          "id": "control-plane-kit-core.tests.test_persistence_boundary_contract.PersistenceBoundaryContractTests.test_descriptor_round_trips_strictly_and_rejects_open_values",
+          "status": "passing"
+        },
+        {
+          "evidence": "extract-e-791.persistence-boundary-contract.unittest",
+          "id": "control-plane-kit-core.tests.test_persistence_boundary_contract.PersistenceBoundaryContractTests.test_store_contracts_name_durable_roles_without_database_implementation",
+          "status": "passing"
+        },
+        {
+          "evidence": "extract-e-791.persistence-boundary-contract.unittest",
+          "id": "control-plane-kit-core.tests.test_persistence_boundary_contract.PersistenceBoundaryContractTests.test_handoffs_keep_uow_schema_and_repositories_outside_core",
+          "status": "passing"
+        },
+        {
+          "evidence": "extract-e-791.persistence-boundary-contract.unittest",
+          "id": "control-plane-kit-core.tests.test_persistence_boundary_contract.PersistenceBoundaryContractTests.test_mutation_contracts_preserve_candidate_identity_without_values",
+          "status": "passing"
+        },
+        {
+          "evidence": "extract-e-791.persistence-boundary-contract.unittest",
+          "id": "control-plane-kit-core.tests.test_persistence_boundary_contract.PersistenceBoundaryContractTests.test_invalid_contracts_fail_before_mutable_holder_behavior_enters_core",
+          "status": "passing"
+        }
+      ],
       "supersession": null
     },
     {
@@ -6527,7 +7333,38 @@
       "owner": "control-plane-kit-core",
       "owner_kind": "core",
       "reference": "tests.test_execution_store.ExecutionStoreTests.test_canonical_request_run_and_event_round_trip",
-      "successors": [],
+      "successors": [
+        {
+          "evidence": "extract-e-791.persistence-boundary-contract.unittest",
+          "id": "control-plane-kit-core.tests.test_persistence_boundary_contract.PersistenceBoundaryContractTests.test_canonical_contract_covers_stores_mutations_and_handoffs",
+          "status": "passing"
+        },
+        {
+          "evidence": "extract-e-791.persistence-boundary-contract.unittest",
+          "id": "control-plane-kit-core.tests.test_persistence_boundary_contract.PersistenceBoundaryContractTests.test_descriptor_round_trips_strictly_and_rejects_open_values",
+          "status": "passing"
+        },
+        {
+          "evidence": "extract-e-791.persistence-boundary-contract.unittest",
+          "id": "control-plane-kit-core.tests.test_persistence_boundary_contract.PersistenceBoundaryContractTests.test_store_contracts_name_durable_roles_without_database_implementation",
+          "status": "passing"
+        },
+        {
+          "evidence": "extract-e-791.persistence-boundary-contract.unittest",
+          "id": "control-plane-kit-core.tests.test_persistence_boundary_contract.PersistenceBoundaryContractTests.test_handoffs_keep_uow_schema_and_repositories_outside_core",
+          "status": "passing"
+        },
+        {
+          "evidence": "extract-e-791.persistence-boundary-contract.unittest",
+          "id": "control-plane-kit-core.tests.test_persistence_boundary_contract.PersistenceBoundaryContractTests.test_mutation_contracts_preserve_candidate_identity_without_values",
+          "status": "passing"
+        },
+        {
+          "evidence": "extract-e-791.persistence-boundary-contract.unittest",
+          "id": "control-plane-kit-core.tests.test_persistence_boundary_contract.PersistenceBoundaryContractTests.test_invalid_contracts_fail_before_mutable_holder_behavior_enters_core",
+          "status": "passing"
+        }
+      ],
       "supersession": null
     },
     {
@@ -6537,7 +7374,38 @@
       "owner": "control-plane-kit-core",
       "owner_kind": "core",
       "reference": "tests.test_execution_store.ExecutionStoreTests.test_recovery_and_forward_compensation_failures_round_trip_together",
-      "successors": [],
+      "successors": [
+        {
+          "evidence": "extract-e-791.persistence-boundary-contract.unittest",
+          "id": "control-plane-kit-core.tests.test_persistence_boundary_contract.PersistenceBoundaryContractTests.test_canonical_contract_covers_stores_mutations_and_handoffs",
+          "status": "passing"
+        },
+        {
+          "evidence": "extract-e-791.persistence-boundary-contract.unittest",
+          "id": "control-plane-kit-core.tests.test_persistence_boundary_contract.PersistenceBoundaryContractTests.test_descriptor_round_trips_strictly_and_rejects_open_values",
+          "status": "passing"
+        },
+        {
+          "evidence": "extract-e-791.persistence-boundary-contract.unittest",
+          "id": "control-plane-kit-core.tests.test_persistence_boundary_contract.PersistenceBoundaryContractTests.test_store_contracts_name_durable_roles_without_database_implementation",
+          "status": "passing"
+        },
+        {
+          "evidence": "extract-e-791.persistence-boundary-contract.unittest",
+          "id": "control-plane-kit-core.tests.test_persistence_boundary_contract.PersistenceBoundaryContractTests.test_handoffs_keep_uow_schema_and_repositories_outside_core",
+          "status": "passing"
+        },
+        {
+          "evidence": "extract-e-791.persistence-boundary-contract.unittest",
+          "id": "control-plane-kit-core.tests.test_persistence_boundary_contract.PersistenceBoundaryContractTests.test_mutation_contracts_preserve_candidate_identity_without_values",
+          "status": "passing"
+        },
+        {
+          "evidence": "extract-e-791.persistence-boundary-contract.unittest",
+          "id": "control-plane-kit-core.tests.test_persistence_boundary_contract.PersistenceBoundaryContractTests.test_invalid_contracts_fail_before_mutable_holder_behavior_enters_core",
+          "status": "passing"
+        }
+      ],
       "supersession": null
     },
     {
@@ -6547,7 +7415,38 @@
       "owner": "control-plane-kit-core",
       "owner_kind": "core",
       "reference": "tests.test_execution_store.ExecutionStoreTests.test_uncommitted_unit_of_work_rolls_back_execution_and_history_together",
-      "successors": [],
+      "successors": [
+        {
+          "evidence": "extract-e-791.persistence-boundary-contract.unittest",
+          "id": "control-plane-kit-core.tests.test_persistence_boundary_contract.PersistenceBoundaryContractTests.test_canonical_contract_covers_stores_mutations_and_handoffs",
+          "status": "passing"
+        },
+        {
+          "evidence": "extract-e-791.persistence-boundary-contract.unittest",
+          "id": "control-plane-kit-core.tests.test_persistence_boundary_contract.PersistenceBoundaryContractTests.test_descriptor_round_trips_strictly_and_rejects_open_values",
+          "status": "passing"
+        },
+        {
+          "evidence": "extract-e-791.persistence-boundary-contract.unittest",
+          "id": "control-plane-kit-core.tests.test_persistence_boundary_contract.PersistenceBoundaryContractTests.test_store_contracts_name_durable_roles_without_database_implementation",
+          "status": "passing"
+        },
+        {
+          "evidence": "extract-e-791.persistence-boundary-contract.unittest",
+          "id": "control-plane-kit-core.tests.test_persistence_boundary_contract.PersistenceBoundaryContractTests.test_handoffs_keep_uow_schema_and_repositories_outside_core",
+          "status": "passing"
+        },
+        {
+          "evidence": "extract-e-791.persistence-boundary-contract.unittest",
+          "id": "control-plane-kit-core.tests.test_persistence_boundary_contract.PersistenceBoundaryContractTests.test_mutation_contracts_preserve_candidate_identity_without_values",
+          "status": "passing"
+        },
+        {
+          "evidence": "extract-e-791.persistence-boundary-contract.unittest",
+          "id": "control-plane-kit-core.tests.test_persistence_boundary_contract.PersistenceBoundaryContractTests.test_invalid_contracts_fail_before_mutable_holder_behavior_enters_core",
+          "status": "passing"
+        }
+      ],
       "supersession": null
     },
     {
@@ -10263,7 +11162,38 @@
       "owner": "control-plane-kit-core",
       "owner_kind": "core",
       "reference": "tests.test_operation_postgres_primitives.OperationPostgresPrimitiveTests.test_concurrent_action_writers_receive_distinct_ordinals",
-      "successors": [],
+      "successors": [
+        {
+          "evidence": "extract-e-791.persistence-boundary-contract.unittest",
+          "id": "control-plane-kit-core.tests.test_persistence_boundary_contract.PersistenceBoundaryContractTests.test_canonical_contract_covers_stores_mutations_and_handoffs",
+          "status": "passing"
+        },
+        {
+          "evidence": "extract-e-791.persistence-boundary-contract.unittest",
+          "id": "control-plane-kit-core.tests.test_persistence_boundary_contract.PersistenceBoundaryContractTests.test_descriptor_round_trips_strictly_and_rejects_open_values",
+          "status": "passing"
+        },
+        {
+          "evidence": "extract-e-791.persistence-boundary-contract.unittest",
+          "id": "control-plane-kit-core.tests.test_persistence_boundary_contract.PersistenceBoundaryContractTests.test_store_contracts_name_durable_roles_without_database_implementation",
+          "status": "passing"
+        },
+        {
+          "evidence": "extract-e-791.persistence-boundary-contract.unittest",
+          "id": "control-plane-kit-core.tests.test_persistence_boundary_contract.PersistenceBoundaryContractTests.test_handoffs_keep_uow_schema_and_repositories_outside_core",
+          "status": "passing"
+        },
+        {
+          "evidence": "extract-e-791.persistence-boundary-contract.unittest",
+          "id": "control-plane-kit-core.tests.test_persistence_boundary_contract.PersistenceBoundaryContractTests.test_mutation_contracts_preserve_candidate_identity_without_values",
+          "status": "passing"
+        },
+        {
+          "evidence": "extract-e-791.persistence-boundary-contract.unittest",
+          "id": "control-plane-kit-core.tests.test_persistence_boundary_contract.PersistenceBoundaryContractTests.test_invalid_contracts_fail_before_mutable_holder_behavior_enters_core",
+          "status": "passing"
+        }
+      ],
       "supersession": null
     },
     {
@@ -10273,7 +11203,38 @@
       "owner": "control-plane-kit-core",
       "owner_kind": "core",
       "reference": "tests.test_operation_postgres_primitives.OperationPostgresPrimitiveTests.test_idempotency_keys_are_unique_within_their_scope",
-      "successors": [],
+      "successors": [
+        {
+          "evidence": "extract-e-791.persistence-boundary-contract.unittest",
+          "id": "control-plane-kit-core.tests.test_persistence_boundary_contract.PersistenceBoundaryContractTests.test_canonical_contract_covers_stores_mutations_and_handoffs",
+          "status": "passing"
+        },
+        {
+          "evidence": "extract-e-791.persistence-boundary-contract.unittest",
+          "id": "control-plane-kit-core.tests.test_persistence_boundary_contract.PersistenceBoundaryContractTests.test_descriptor_round_trips_strictly_and_rejects_open_values",
+          "status": "passing"
+        },
+        {
+          "evidence": "extract-e-791.persistence-boundary-contract.unittest",
+          "id": "control-plane-kit-core.tests.test_persistence_boundary_contract.PersistenceBoundaryContractTests.test_store_contracts_name_durable_roles_without_database_implementation",
+          "status": "passing"
+        },
+        {
+          "evidence": "extract-e-791.persistence-boundary-contract.unittest",
+          "id": "control-plane-kit-core.tests.test_persistence_boundary_contract.PersistenceBoundaryContractTests.test_handoffs_keep_uow_schema_and_repositories_outside_core",
+          "status": "passing"
+        },
+        {
+          "evidence": "extract-e-791.persistence-boundary-contract.unittest",
+          "id": "control-plane-kit-core.tests.test_persistence_boundary_contract.PersistenceBoundaryContractTests.test_mutation_contracts_preserve_candidate_identity_without_values",
+          "status": "passing"
+        },
+        {
+          "evidence": "extract-e-791.persistence-boundary-contract.unittest",
+          "id": "control-plane-kit-core.tests.test_persistence_boundary_contract.PersistenceBoundaryContractTests.test_invalid_contracts_fail_before_mutable_holder_behavior_enters_core",
+          "status": "passing"
+        }
+      ],
       "supersession": null
     },
     {
@@ -10283,7 +11244,38 @@
       "owner": "control-plane-kit-core",
       "owner_kind": "core",
       "reference": "tests.test_operation_postgres_primitives.OperationPostgresPrimitiveTests.test_schema_install_forward_migrates_legacy_operation_tables",
-      "successors": [],
+      "successors": [
+        {
+          "evidence": "extract-e-791.persistence-boundary-contract.unittest",
+          "id": "control-plane-kit-core.tests.test_persistence_boundary_contract.PersistenceBoundaryContractTests.test_canonical_contract_covers_stores_mutations_and_handoffs",
+          "status": "passing"
+        },
+        {
+          "evidence": "extract-e-791.persistence-boundary-contract.unittest",
+          "id": "control-plane-kit-core.tests.test_persistence_boundary_contract.PersistenceBoundaryContractTests.test_descriptor_round_trips_strictly_and_rejects_open_values",
+          "status": "passing"
+        },
+        {
+          "evidence": "extract-e-791.persistence-boundary-contract.unittest",
+          "id": "control-plane-kit-core.tests.test_persistence_boundary_contract.PersistenceBoundaryContractTests.test_store_contracts_name_durable_roles_without_database_implementation",
+          "status": "passing"
+        },
+        {
+          "evidence": "extract-e-791.persistence-boundary-contract.unittest",
+          "id": "control-plane-kit-core.tests.test_persistence_boundary_contract.PersistenceBoundaryContractTests.test_handoffs_keep_uow_schema_and_repositories_outside_core",
+          "status": "passing"
+        },
+        {
+          "evidence": "extract-e-791.persistence-boundary-contract.unittest",
+          "id": "control-plane-kit-core.tests.test_persistence_boundary_contract.PersistenceBoundaryContractTests.test_mutation_contracts_preserve_candidate_identity_without_values",
+          "status": "passing"
+        },
+        {
+          "evidence": "extract-e-791.persistence-boundary-contract.unittest",
+          "id": "control-plane-kit-core.tests.test_persistence_boundary_contract.PersistenceBoundaryContractTests.test_invalid_contracts_fail_before_mutable_holder_behavior_enters_core",
+          "status": "passing"
+        }
+      ],
       "supersession": null
     },
     {
@@ -10293,7 +11285,38 @@
       "owner": "control-plane-kit-core",
       "owner_kind": "core",
       "reference": "tests.test_operation_postgres_primitives.OperationPostgresPrimitiveTests.test_scoped_session_and_action_idempotency_lookup_round_trips",
-      "successors": [],
+      "successors": [
+        {
+          "evidence": "extract-e-791.persistence-boundary-contract.unittest",
+          "id": "control-plane-kit-core.tests.test_persistence_boundary_contract.PersistenceBoundaryContractTests.test_canonical_contract_covers_stores_mutations_and_handoffs",
+          "status": "passing"
+        },
+        {
+          "evidence": "extract-e-791.persistence-boundary-contract.unittest",
+          "id": "control-plane-kit-core.tests.test_persistence_boundary_contract.PersistenceBoundaryContractTests.test_descriptor_round_trips_strictly_and_rejects_open_values",
+          "status": "passing"
+        },
+        {
+          "evidence": "extract-e-791.persistence-boundary-contract.unittest",
+          "id": "control-plane-kit-core.tests.test_persistence_boundary_contract.PersistenceBoundaryContractTests.test_store_contracts_name_durable_roles_without_database_implementation",
+          "status": "passing"
+        },
+        {
+          "evidence": "extract-e-791.persistence-boundary-contract.unittest",
+          "id": "control-plane-kit-core.tests.test_persistence_boundary_contract.PersistenceBoundaryContractTests.test_handoffs_keep_uow_schema_and_repositories_outside_core",
+          "status": "passing"
+        },
+        {
+          "evidence": "extract-e-791.persistence-boundary-contract.unittest",
+          "id": "control-plane-kit-core.tests.test_persistence_boundary_contract.PersistenceBoundaryContractTests.test_mutation_contracts_preserve_candidate_identity_without_values",
+          "status": "passing"
+        },
+        {
+          "evidence": "extract-e-791.persistence-boundary-contract.unittest",
+          "id": "control-plane-kit-core.tests.test_persistence_boundary_contract.PersistenceBoundaryContractTests.test_invalid_contracts_fail_before_mutable_holder_behavior_enters_core",
+          "status": "passing"
+        }
+      ],
       "supersession": null
     },
     {
@@ -10303,7 +11326,38 @@
       "owner": "control-plane-kit-core",
       "owner_kind": "core",
       "reference": "tests.test_operation_postgres_primitives.OperationPostgresPrimitiveTests.test_terminal_transition_preserves_identity_and_rejects_stale_writes",
-      "successors": [],
+      "successors": [
+        {
+          "evidence": "extract-e-791.persistence-boundary-contract.unittest",
+          "id": "control-plane-kit-core.tests.test_persistence_boundary_contract.PersistenceBoundaryContractTests.test_canonical_contract_covers_stores_mutations_and_handoffs",
+          "status": "passing"
+        },
+        {
+          "evidence": "extract-e-791.persistence-boundary-contract.unittest",
+          "id": "control-plane-kit-core.tests.test_persistence_boundary_contract.PersistenceBoundaryContractTests.test_descriptor_round_trips_strictly_and_rejects_open_values",
+          "status": "passing"
+        },
+        {
+          "evidence": "extract-e-791.persistence-boundary-contract.unittest",
+          "id": "control-plane-kit-core.tests.test_persistence_boundary_contract.PersistenceBoundaryContractTests.test_store_contracts_name_durable_roles_without_database_implementation",
+          "status": "passing"
+        },
+        {
+          "evidence": "extract-e-791.persistence-boundary-contract.unittest",
+          "id": "control-plane-kit-core.tests.test_persistence_boundary_contract.PersistenceBoundaryContractTests.test_handoffs_keep_uow_schema_and_repositories_outside_core",
+          "status": "passing"
+        },
+        {
+          "evidence": "extract-e-791.persistence-boundary-contract.unittest",
+          "id": "control-plane-kit-core.tests.test_persistence_boundary_contract.PersistenceBoundaryContractTests.test_mutation_contracts_preserve_candidate_identity_without_values",
+          "status": "passing"
+        },
+        {
+          "evidence": "extract-e-791.persistence-boundary-contract.unittest",
+          "id": "control-plane-kit-core.tests.test_persistence_boundary_contract.PersistenceBoundaryContractTests.test_invalid_contracts_fail_before_mutable_holder_behavior_enters_core",
+          "status": "passing"
+        }
+      ],
       "supersession": null
     },
     {
@@ -13435,7 +14489,38 @@
       "owner": "control-plane-kit-core",
       "owner_kind": "core",
       "reference": "tests.test_stores.StoreContractTests.test_activity_history_preserves_action_order",
-      "successors": [],
+      "successors": [
+        {
+          "evidence": "extract-e-791.persistence-boundary-contract.unittest",
+          "id": "control-plane-kit-core.tests.test_persistence_boundary_contract.PersistenceBoundaryContractTests.test_canonical_contract_covers_stores_mutations_and_handoffs",
+          "status": "passing"
+        },
+        {
+          "evidence": "extract-e-791.persistence-boundary-contract.unittest",
+          "id": "control-plane-kit-core.tests.test_persistence_boundary_contract.PersistenceBoundaryContractTests.test_descriptor_round_trips_strictly_and_rejects_open_values",
+          "status": "passing"
+        },
+        {
+          "evidence": "extract-e-791.persistence-boundary-contract.unittest",
+          "id": "control-plane-kit-core.tests.test_persistence_boundary_contract.PersistenceBoundaryContractTests.test_store_contracts_name_durable_roles_without_database_implementation",
+          "status": "passing"
+        },
+        {
+          "evidence": "extract-e-791.persistence-boundary-contract.unittest",
+          "id": "control-plane-kit-core.tests.test_persistence_boundary_contract.PersistenceBoundaryContractTests.test_handoffs_keep_uow_schema_and_repositories_outside_core",
+          "status": "passing"
+        },
+        {
+          "evidence": "extract-e-791.persistence-boundary-contract.unittest",
+          "id": "control-plane-kit-core.tests.test_persistence_boundary_contract.PersistenceBoundaryContractTests.test_mutation_contracts_preserve_candidate_identity_without_values",
+          "status": "passing"
+        },
+        {
+          "evidence": "extract-e-791.persistence-boundary-contract.unittest",
+          "id": "control-plane-kit-core.tests.test_persistence_boundary_contract.PersistenceBoundaryContractTests.test_invalid_contracts_fail_before_mutable_holder_behavior_enters_core",
+          "status": "passing"
+        }
+      ],
       "supersession": null
     },
     {
@@ -13445,7 +14530,38 @@
       "owner": "control-plane-kit-core",
       "owner_kind": "core",
       "reference": "tests.test_stores.StoreContractTests.test_activity_history_supports_workspace_timeline_queries",
-      "successors": [],
+      "successors": [
+        {
+          "evidence": "extract-e-791.persistence-boundary-contract.unittest",
+          "id": "control-plane-kit-core.tests.test_persistence_boundary_contract.PersistenceBoundaryContractTests.test_canonical_contract_covers_stores_mutations_and_handoffs",
+          "status": "passing"
+        },
+        {
+          "evidence": "extract-e-791.persistence-boundary-contract.unittest",
+          "id": "control-plane-kit-core.tests.test_persistence_boundary_contract.PersistenceBoundaryContractTests.test_descriptor_round_trips_strictly_and_rejects_open_values",
+          "status": "passing"
+        },
+        {
+          "evidence": "extract-e-791.persistence-boundary-contract.unittest",
+          "id": "control-plane-kit-core.tests.test_persistence_boundary_contract.PersistenceBoundaryContractTests.test_store_contracts_name_durable_roles_without_database_implementation",
+          "status": "passing"
+        },
+        {
+          "evidence": "extract-e-791.persistence-boundary-contract.unittest",
+          "id": "control-plane-kit-core.tests.test_persistence_boundary_contract.PersistenceBoundaryContractTests.test_handoffs_keep_uow_schema_and_repositories_outside_core",
+          "status": "passing"
+        },
+        {
+          "evidence": "extract-e-791.persistence-boundary-contract.unittest",
+          "id": "control-plane-kit-core.tests.test_persistence_boundary_contract.PersistenceBoundaryContractTests.test_mutation_contracts_preserve_candidate_identity_without_values",
+          "status": "passing"
+        },
+        {
+          "evidence": "extract-e-791.persistence-boundary-contract.unittest",
+          "id": "control-plane-kit-core.tests.test_persistence_boundary_contract.PersistenceBoundaryContractTests.test_invalid_contracts_fail_before_mutable_holder_behavior_enters_core",
+          "status": "passing"
+        }
+      ],
       "supersession": null
     },
     {
@@ -13455,7 +14571,38 @@
       "owner": "control-plane-kit-core",
       "owner_kind": "core",
       "reference": "tests.test_stores.StoreContractTests.test_graph_topology_store_keeps_latest_workspace_version",
-      "successors": [],
+      "successors": [
+        {
+          "evidence": "extract-e-791.persistence-boundary-contract.unittest",
+          "id": "control-plane-kit-core.tests.test_persistence_boundary_contract.PersistenceBoundaryContractTests.test_canonical_contract_covers_stores_mutations_and_handoffs",
+          "status": "passing"
+        },
+        {
+          "evidence": "extract-e-791.persistence-boundary-contract.unittest",
+          "id": "control-plane-kit-core.tests.test_persistence_boundary_contract.PersistenceBoundaryContractTests.test_descriptor_round_trips_strictly_and_rejects_open_values",
+          "status": "passing"
+        },
+        {
+          "evidence": "extract-e-791.persistence-boundary-contract.unittest",
+          "id": "control-plane-kit-core.tests.test_persistence_boundary_contract.PersistenceBoundaryContractTests.test_store_contracts_name_durable_roles_without_database_implementation",
+          "status": "passing"
+        },
+        {
+          "evidence": "extract-e-791.persistence-boundary-contract.unittest",
+          "id": "control-plane-kit-core.tests.test_persistence_boundary_contract.PersistenceBoundaryContractTests.test_handoffs_keep_uow_schema_and_repositories_outside_core",
+          "status": "passing"
+        },
+        {
+          "evidence": "extract-e-791.persistence-boundary-contract.unittest",
+          "id": "control-plane-kit-core.tests.test_persistence_boundary_contract.PersistenceBoundaryContractTests.test_mutation_contracts_preserve_candidate_identity_without_values",
+          "status": "passing"
+        },
+        {
+          "evidence": "extract-e-791.persistence-boundary-contract.unittest",
+          "id": "control-plane-kit-core.tests.test_persistence_boundary_contract.PersistenceBoundaryContractTests.test_invalid_contracts_fail_before_mutable_holder_behavior_enters_core",
+          "status": "passing"
+        }
+      ],
       "supersession": null
     },
     {
@@ -13465,7 +14612,38 @@
       "owner": "control-plane-kit-core",
       "owner_kind": "core",
       "reference": "tests.test_stores.StoreContractTests.test_instance_registry_lists_by_owner_and_updates_lifecycle",
-      "successors": [],
+      "successors": [
+        {
+          "evidence": "extract-e-791.persistence-boundary-contract.unittest",
+          "id": "control-plane-kit-core.tests.test_persistence_boundary_contract.PersistenceBoundaryContractTests.test_canonical_contract_covers_stores_mutations_and_handoffs",
+          "status": "passing"
+        },
+        {
+          "evidence": "extract-e-791.persistence-boundary-contract.unittest",
+          "id": "control-plane-kit-core.tests.test_persistence_boundary_contract.PersistenceBoundaryContractTests.test_descriptor_round_trips_strictly_and_rejects_open_values",
+          "status": "passing"
+        },
+        {
+          "evidence": "extract-e-791.persistence-boundary-contract.unittest",
+          "id": "control-plane-kit-core.tests.test_persistence_boundary_contract.PersistenceBoundaryContractTests.test_store_contracts_name_durable_roles_without_database_implementation",
+          "status": "passing"
+        },
+        {
+          "evidence": "extract-e-791.persistence-boundary-contract.unittest",
+          "id": "control-plane-kit-core.tests.test_persistence_boundary_contract.PersistenceBoundaryContractTests.test_handoffs_keep_uow_schema_and_repositories_outside_core",
+          "status": "passing"
+        },
+        {
+          "evidence": "extract-e-791.persistence-boundary-contract.unittest",
+          "id": "control-plane-kit-core.tests.test_persistence_boundary_contract.PersistenceBoundaryContractTests.test_mutation_contracts_preserve_candidate_identity_without_values",
+          "status": "passing"
+        },
+        {
+          "evidence": "extract-e-791.persistence-boundary-contract.unittest",
+          "id": "control-plane-kit-core.tests.test_persistence_boundary_contract.PersistenceBoundaryContractTests.test_invalid_contracts_fail_before_mutable_holder_behavior_enters_core",
+          "status": "passing"
+        }
+      ],
       "supersession": null
     },
     {
@@ -13475,7 +14653,38 @@
       "owner": "control-plane-kit-core",
       "owner_kind": "core",
       "reference": "tests.test_stores.StoreContractTests.test_observed_state_is_separate_from_graph_truth",
-      "successors": [],
+      "successors": [
+        {
+          "evidence": "extract-e-791.persistence-boundary-contract.unittest",
+          "id": "control-plane-kit-core.tests.test_persistence_boundary_contract.PersistenceBoundaryContractTests.test_canonical_contract_covers_stores_mutations_and_handoffs",
+          "status": "passing"
+        },
+        {
+          "evidence": "extract-e-791.persistence-boundary-contract.unittest",
+          "id": "control-plane-kit-core.tests.test_persistence_boundary_contract.PersistenceBoundaryContractTests.test_descriptor_round_trips_strictly_and_rejects_open_values",
+          "status": "passing"
+        },
+        {
+          "evidence": "extract-e-791.persistence-boundary-contract.unittest",
+          "id": "control-plane-kit-core.tests.test_persistence_boundary_contract.PersistenceBoundaryContractTests.test_store_contracts_name_durable_roles_without_database_implementation",
+          "status": "passing"
+        },
+        {
+          "evidence": "extract-e-791.persistence-boundary-contract.unittest",
+          "id": "control-plane-kit-core.tests.test_persistence_boundary_contract.PersistenceBoundaryContractTests.test_handoffs_keep_uow_schema_and_repositories_outside_core",
+          "status": "passing"
+        },
+        {
+          "evidence": "extract-e-791.persistence-boundary-contract.unittest",
+          "id": "control-plane-kit-core.tests.test_persistence_boundary_contract.PersistenceBoundaryContractTests.test_mutation_contracts_preserve_candidate_identity_without_values",
+          "status": "passing"
+        },
+        {
+          "evidence": "extract-e-791.persistence-boundary-contract.unittest",
+          "id": "control-plane-kit-core.tests.test_persistence_boundary_contract.PersistenceBoundaryContractTests.test_invalid_contracts_fail_before_mutable_holder_behavior_enters_core",
+          "status": "passing"
+        }
+      ],
       "supersession": null
     },
     {
@@ -13485,7 +14694,38 @@
       "owner": "control-plane-kit-core",
       "owner_kind": "core",
       "reference": "tests.test_stores.StoreContractTests.test_observed_state_lists_latest_per_workspace_subject",
-      "successors": [],
+      "successors": [
+        {
+          "evidence": "extract-e-791.persistence-boundary-contract.unittest",
+          "id": "control-plane-kit-core.tests.test_persistence_boundary_contract.PersistenceBoundaryContractTests.test_canonical_contract_covers_stores_mutations_and_handoffs",
+          "status": "passing"
+        },
+        {
+          "evidence": "extract-e-791.persistence-boundary-contract.unittest",
+          "id": "control-plane-kit-core.tests.test_persistence_boundary_contract.PersistenceBoundaryContractTests.test_descriptor_round_trips_strictly_and_rejects_open_values",
+          "status": "passing"
+        },
+        {
+          "evidence": "extract-e-791.persistence-boundary-contract.unittest",
+          "id": "control-plane-kit-core.tests.test_persistence_boundary_contract.PersistenceBoundaryContractTests.test_store_contracts_name_durable_roles_without_database_implementation",
+          "status": "passing"
+        },
+        {
+          "evidence": "extract-e-791.persistence-boundary-contract.unittest",
+          "id": "control-plane-kit-core.tests.test_persistence_boundary_contract.PersistenceBoundaryContractTests.test_handoffs_keep_uow_schema_and_repositories_outside_core",
+          "status": "passing"
+        },
+        {
+          "evidence": "extract-e-791.persistence-boundary-contract.unittest",
+          "id": "control-plane-kit-core.tests.test_persistence_boundary_contract.PersistenceBoundaryContractTests.test_mutation_contracts_preserve_candidate_identity_without_values",
+          "status": "passing"
+        },
+        {
+          "evidence": "extract-e-791.persistence-boundary-contract.unittest",
+          "id": "control-plane-kit-core.tests.test_persistence_boundary_contract.PersistenceBoundaryContractTests.test_invalid_contracts_fail_before_mutable_holder_behavior_enters_core",
+          "status": "passing"
+        }
+      ],
       "supersession": null
     },
     {
@@ -13495,7 +14735,38 @@
       "owner": "control-plane-kit-core",
       "owner_kind": "core",
       "reference": "tests.test_stores.StoreContractTests.test_observed_state_uses_observation_id_to_break_equal_time_ties",
-      "successors": [],
+      "successors": [
+        {
+          "evidence": "extract-e-791.persistence-boundary-contract.unittest",
+          "id": "control-plane-kit-core.tests.test_persistence_boundary_contract.PersistenceBoundaryContractTests.test_canonical_contract_covers_stores_mutations_and_handoffs",
+          "status": "passing"
+        },
+        {
+          "evidence": "extract-e-791.persistence-boundary-contract.unittest",
+          "id": "control-plane-kit-core.tests.test_persistence_boundary_contract.PersistenceBoundaryContractTests.test_descriptor_round_trips_strictly_and_rejects_open_values",
+          "status": "passing"
+        },
+        {
+          "evidence": "extract-e-791.persistence-boundary-contract.unittest",
+          "id": "control-plane-kit-core.tests.test_persistence_boundary_contract.PersistenceBoundaryContractTests.test_store_contracts_name_durable_roles_without_database_implementation",
+          "status": "passing"
+        },
+        {
+          "evidence": "extract-e-791.persistence-boundary-contract.unittest",
+          "id": "control-plane-kit-core.tests.test_persistence_boundary_contract.PersistenceBoundaryContractTests.test_handoffs_keep_uow_schema_and_repositories_outside_core",
+          "status": "passing"
+        },
+        {
+          "evidence": "extract-e-791.persistence-boundary-contract.unittest",
+          "id": "control-plane-kit-core.tests.test_persistence_boundary_contract.PersistenceBoundaryContractTests.test_mutation_contracts_preserve_candidate_identity_without_values",
+          "status": "passing"
+        },
+        {
+          "evidence": "extract-e-791.persistence-boundary-contract.unittest",
+          "id": "control-plane-kit-core.tests.test_persistence_boundary_contract.PersistenceBoundaryContractTests.test_invalid_contracts_fail_before_mutable_holder_behavior_enters_core",
+          "status": "passing"
+        }
+      ],
       "supersession": null
     },
     {
@@ -13505,7 +14776,38 @@
       "owner": "control-plane-kit-core",
       "owner_kind": "core",
       "reference": "tests.test_stores.StoreContractTests.test_postgres_schema_is_the_durable_target_and_excludes_secret_values",
-      "successors": [],
+      "successors": [
+        {
+          "evidence": "extract-e-791.persistence-boundary-contract.unittest",
+          "id": "control-plane-kit-core.tests.test_persistence_boundary_contract.PersistenceBoundaryContractTests.test_canonical_contract_covers_stores_mutations_and_handoffs",
+          "status": "passing"
+        },
+        {
+          "evidence": "extract-e-791.persistence-boundary-contract.unittest",
+          "id": "control-plane-kit-core.tests.test_persistence_boundary_contract.PersistenceBoundaryContractTests.test_descriptor_round_trips_strictly_and_rejects_open_values",
+          "status": "passing"
+        },
+        {
+          "evidence": "extract-e-791.persistence-boundary-contract.unittest",
+          "id": "control-plane-kit-core.tests.test_persistence_boundary_contract.PersistenceBoundaryContractTests.test_store_contracts_name_durable_roles_without_database_implementation",
+          "status": "passing"
+        },
+        {
+          "evidence": "extract-e-791.persistence-boundary-contract.unittest",
+          "id": "control-plane-kit-core.tests.test_persistence_boundary_contract.PersistenceBoundaryContractTests.test_handoffs_keep_uow_schema_and_repositories_outside_core",
+          "status": "passing"
+        },
+        {
+          "evidence": "extract-e-791.persistence-boundary-contract.unittest",
+          "id": "control-plane-kit-core.tests.test_persistence_boundary_contract.PersistenceBoundaryContractTests.test_mutation_contracts_preserve_candidate_identity_without_values",
+          "status": "passing"
+        },
+        {
+          "evidence": "extract-e-791.persistence-boundary-contract.unittest",
+          "id": "control-plane-kit-core.tests.test_persistence_boundary_contract.PersistenceBoundaryContractTests.test_invalid_contracts_fail_before_mutable_holder_behavior_enters_core",
+          "status": "passing"
+        }
+      ],
       "supersession": null
     },
     {
@@ -13515,7 +14817,38 @@
       "owner": "control-plane-kit-core",
       "owner_kind": "core",
       "reference": "tests.test_stores.StoreContractTests.test_secret_reference_store_never_accepts_secret_values",
-      "successors": [],
+      "successors": [
+        {
+          "evidence": "extract-e-791.persistence-boundary-contract.unittest",
+          "id": "control-plane-kit-core.tests.test_persistence_boundary_contract.PersistenceBoundaryContractTests.test_canonical_contract_covers_stores_mutations_and_handoffs",
+          "status": "passing"
+        },
+        {
+          "evidence": "extract-e-791.persistence-boundary-contract.unittest",
+          "id": "control-plane-kit-core.tests.test_persistence_boundary_contract.PersistenceBoundaryContractTests.test_descriptor_round_trips_strictly_and_rejects_open_values",
+          "status": "passing"
+        },
+        {
+          "evidence": "extract-e-791.persistence-boundary-contract.unittest",
+          "id": "control-plane-kit-core.tests.test_persistence_boundary_contract.PersistenceBoundaryContractTests.test_store_contracts_name_durable_roles_without_database_implementation",
+          "status": "passing"
+        },
+        {
+          "evidence": "extract-e-791.persistence-boundary-contract.unittest",
+          "id": "control-plane-kit-core.tests.test_persistence_boundary_contract.PersistenceBoundaryContractTests.test_handoffs_keep_uow_schema_and_repositories_outside_core",
+          "status": "passing"
+        },
+        {
+          "evidence": "extract-e-791.persistence-boundary-contract.unittest",
+          "id": "control-plane-kit-core.tests.test_persistence_boundary_contract.PersistenceBoundaryContractTests.test_mutation_contracts_preserve_candidate_identity_without_values",
+          "status": "passing"
+        },
+        {
+          "evidence": "extract-e-791.persistence-boundary-contract.unittest",
+          "id": "control-plane-kit-core.tests.test_persistence_boundary_contract.PersistenceBoundaryContractTests.test_invalid_contracts_fail_before_mutable_holder_behavior_enters_core",
+          "status": "passing"
+        }
+      ],
       "supersession": null
     },
     {
@@ -13525,7 +14858,38 @@
       "owner": "control-plane-kit-core",
       "owner_kind": "core",
       "reference": "tests.test_stores.StoreContractTests.test_workspace_tracks_current_and_desired_graph_pointers",
-      "successors": [],
+      "successors": [
+        {
+          "evidence": "extract-e-791.persistence-boundary-contract.unittest",
+          "id": "control-plane-kit-core.tests.test_persistence_boundary_contract.PersistenceBoundaryContractTests.test_canonical_contract_covers_stores_mutations_and_handoffs",
+          "status": "passing"
+        },
+        {
+          "evidence": "extract-e-791.persistence-boundary-contract.unittest",
+          "id": "control-plane-kit-core.tests.test_persistence_boundary_contract.PersistenceBoundaryContractTests.test_descriptor_round_trips_strictly_and_rejects_open_values",
+          "status": "passing"
+        },
+        {
+          "evidence": "extract-e-791.persistence-boundary-contract.unittest",
+          "id": "control-plane-kit-core.tests.test_persistence_boundary_contract.PersistenceBoundaryContractTests.test_store_contracts_name_durable_roles_without_database_implementation",
+          "status": "passing"
+        },
+        {
+          "evidence": "extract-e-791.persistence-boundary-contract.unittest",
+          "id": "control-plane-kit-core.tests.test_persistence_boundary_contract.PersistenceBoundaryContractTests.test_handoffs_keep_uow_schema_and_repositories_outside_core",
+          "status": "passing"
+        },
+        {
+          "evidence": "extract-e-791.persistence-boundary-contract.unittest",
+          "id": "control-plane-kit-core.tests.test_persistence_boundary_contract.PersistenceBoundaryContractTests.test_mutation_contracts_preserve_candidate_identity_without_values",
+          "status": "passing"
+        },
+        {
+          "evidence": "extract-e-791.persistence-boundary-contract.unittest",
+          "id": "control-plane-kit-core.tests.test_persistence_boundary_contract.PersistenceBoundaryContractTests.test_invalid_contracts_fail_before_mutable_holder_behavior_enters_core",
+          "status": "passing"
+        }
+      ],
       "supersession": null
     },
     {
@@ -13585,7 +14949,38 @@
       "owner": "control-plane-kit-core",
       "owner_kind": "core",
       "reference": "tests.test_unit_of_work.PostgresUnitOfWorkIntegrationTests.test_commit_publishes_all_participating_store_writes_together",
-      "successors": [],
+      "successors": [
+        {
+          "evidence": "extract-e-791.persistence-boundary-contract.unittest",
+          "id": "control-plane-kit-core.tests.test_persistence_boundary_contract.PersistenceBoundaryContractTests.test_canonical_contract_covers_stores_mutations_and_handoffs",
+          "status": "passing"
+        },
+        {
+          "evidence": "extract-e-791.persistence-boundary-contract.unittest",
+          "id": "control-plane-kit-core.tests.test_persistence_boundary_contract.PersistenceBoundaryContractTests.test_descriptor_round_trips_strictly_and_rejects_open_values",
+          "status": "passing"
+        },
+        {
+          "evidence": "extract-e-791.persistence-boundary-contract.unittest",
+          "id": "control-plane-kit-core.tests.test_persistence_boundary_contract.PersistenceBoundaryContractTests.test_store_contracts_name_durable_roles_without_database_implementation",
+          "status": "passing"
+        },
+        {
+          "evidence": "extract-e-791.persistence-boundary-contract.unittest",
+          "id": "control-plane-kit-core.tests.test_persistence_boundary_contract.PersistenceBoundaryContractTests.test_handoffs_keep_uow_schema_and_repositories_outside_core",
+          "status": "passing"
+        },
+        {
+          "evidence": "extract-e-791.persistence-boundary-contract.unittest",
+          "id": "control-plane-kit-core.tests.test_persistence_boundary_contract.PersistenceBoundaryContractTests.test_mutation_contracts_preserve_candidate_identity_without_values",
+          "status": "passing"
+        },
+        {
+          "evidence": "extract-e-791.persistence-boundary-contract.unittest",
+          "id": "control-plane-kit-core.tests.test_persistence_boundary_contract.PersistenceBoundaryContractTests.test_invalid_contracts_fail_before_mutable_holder_behavior_enters_core",
+          "status": "passing"
+        }
+      ],
       "supersession": null
     },
     {
@@ -13595,7 +14990,38 @@
       "owner": "control-plane-kit-core",
       "owner_kind": "core",
       "reference": "tests.test_unit_of_work.PostgresUnitOfWorkIntegrationTests.test_exception_after_commit_request_rolls_back_real_postgres_writes",
-      "successors": [],
+      "successors": [
+        {
+          "evidence": "extract-e-791.persistence-boundary-contract.unittest",
+          "id": "control-plane-kit-core.tests.test_persistence_boundary_contract.PersistenceBoundaryContractTests.test_canonical_contract_covers_stores_mutations_and_handoffs",
+          "status": "passing"
+        },
+        {
+          "evidence": "extract-e-791.persistence-boundary-contract.unittest",
+          "id": "control-plane-kit-core.tests.test_persistence_boundary_contract.PersistenceBoundaryContractTests.test_descriptor_round_trips_strictly_and_rejects_open_values",
+          "status": "passing"
+        },
+        {
+          "evidence": "extract-e-791.persistence-boundary-contract.unittest",
+          "id": "control-plane-kit-core.tests.test_persistence_boundary_contract.PersistenceBoundaryContractTests.test_store_contracts_name_durable_roles_without_database_implementation",
+          "status": "passing"
+        },
+        {
+          "evidence": "extract-e-791.persistence-boundary-contract.unittest",
+          "id": "control-plane-kit-core.tests.test_persistence_boundary_contract.PersistenceBoundaryContractTests.test_handoffs_keep_uow_schema_and_repositories_outside_core",
+          "status": "passing"
+        },
+        {
+          "evidence": "extract-e-791.persistence-boundary-contract.unittest",
+          "id": "control-plane-kit-core.tests.test_persistence_boundary_contract.PersistenceBoundaryContractTests.test_mutation_contracts_preserve_candidate_identity_without_values",
+          "status": "passing"
+        },
+        {
+          "evidence": "extract-e-791.persistence-boundary-contract.unittest",
+          "id": "control-plane-kit-core.tests.test_persistence_boundary_contract.PersistenceBoundaryContractTests.test_invalid_contracts_fail_before_mutable_holder_behavior_enters_core",
+          "status": "passing"
+        }
+      ],
       "supersession": null
     },
     {
@@ -13605,7 +15031,38 @@
       "owner": "control-plane-kit-core",
       "owner_kind": "core",
       "reference": "tests.test_unit_of_work.PostgresUnitOfWorkIntegrationTests.test_late_store_failure_rolls_back_every_earlier_write",
-      "successors": [],
+      "successors": [
+        {
+          "evidence": "extract-e-791.persistence-boundary-contract.unittest",
+          "id": "control-plane-kit-core.tests.test_persistence_boundary_contract.PersistenceBoundaryContractTests.test_canonical_contract_covers_stores_mutations_and_handoffs",
+          "status": "passing"
+        },
+        {
+          "evidence": "extract-e-791.persistence-boundary-contract.unittest",
+          "id": "control-plane-kit-core.tests.test_persistence_boundary_contract.PersistenceBoundaryContractTests.test_descriptor_round_trips_strictly_and_rejects_open_values",
+          "status": "passing"
+        },
+        {
+          "evidence": "extract-e-791.persistence-boundary-contract.unittest",
+          "id": "control-plane-kit-core.tests.test_persistence_boundary_contract.PersistenceBoundaryContractTests.test_store_contracts_name_durable_roles_without_database_implementation",
+          "status": "passing"
+        },
+        {
+          "evidence": "extract-e-791.persistence-boundary-contract.unittest",
+          "id": "control-plane-kit-core.tests.test_persistence_boundary_contract.PersistenceBoundaryContractTests.test_handoffs_keep_uow_schema_and_repositories_outside_core",
+          "status": "passing"
+        },
+        {
+          "evidence": "extract-e-791.persistence-boundary-contract.unittest",
+          "id": "control-plane-kit-core.tests.test_persistence_boundary_contract.PersistenceBoundaryContractTests.test_mutation_contracts_preserve_candidate_identity_without_values",
+          "status": "passing"
+        },
+        {
+          "evidence": "extract-e-791.persistence-boundary-contract.unittest",
+          "id": "control-plane-kit-core.tests.test_persistence_boundary_contract.PersistenceBoundaryContractTests.test_invalid_contracts_fail_before_mutable_holder_behavior_enters_core",
+          "status": "passing"
+        }
+      ],
       "supersession": null
     },
     {
@@ -13615,7 +15072,38 @@
       "owner": "control-plane-kit-core",
       "owner_kind": "core",
       "reference": "tests.test_unit_of_work.PostgresUnitOfWorkTests.test_exception_after_commit_request_still_rolls_back",
-      "successors": [],
+      "successors": [
+        {
+          "evidence": "extract-e-791.persistence-boundary-contract.unittest",
+          "id": "control-plane-kit-core.tests.test_persistence_boundary_contract.PersistenceBoundaryContractTests.test_canonical_contract_covers_stores_mutations_and_handoffs",
+          "status": "passing"
+        },
+        {
+          "evidence": "extract-e-791.persistence-boundary-contract.unittest",
+          "id": "control-plane-kit-core.tests.test_persistence_boundary_contract.PersistenceBoundaryContractTests.test_descriptor_round_trips_strictly_and_rejects_open_values",
+          "status": "passing"
+        },
+        {
+          "evidence": "extract-e-791.persistence-boundary-contract.unittest",
+          "id": "control-plane-kit-core.tests.test_persistence_boundary_contract.PersistenceBoundaryContractTests.test_store_contracts_name_durable_roles_without_database_implementation",
+          "status": "passing"
+        },
+        {
+          "evidence": "extract-e-791.persistence-boundary-contract.unittest",
+          "id": "control-plane-kit-core.tests.test_persistence_boundary_contract.PersistenceBoundaryContractTests.test_handoffs_keep_uow_schema_and_repositories_outside_core",
+          "status": "passing"
+        },
+        {
+          "evidence": "extract-e-791.persistence-boundary-contract.unittest",
+          "id": "control-plane-kit-core.tests.test_persistence_boundary_contract.PersistenceBoundaryContractTests.test_mutation_contracts_preserve_candidate_identity_without_values",
+          "status": "passing"
+        },
+        {
+          "evidence": "extract-e-791.persistence-boundary-contract.unittest",
+          "id": "control-plane-kit-core.tests.test_persistence_boundary_contract.PersistenceBoundaryContractTests.test_invalid_contracts_fail_before_mutable_holder_behavior_enters_core",
+          "status": "passing"
+        }
+      ],
       "supersession": null
     },
     {
@@ -13625,7 +15113,38 @@
       "owner": "control-plane-kit-core",
       "owner_kind": "core",
       "reference": "tests.test_unit_of_work.PostgresUnitOfWorkTests.test_exceptional_exit_rolls_back_and_preserves_exception",
-      "successors": [],
+      "successors": [
+        {
+          "evidence": "extract-e-791.persistence-boundary-contract.unittest",
+          "id": "control-plane-kit-core.tests.test_persistence_boundary_contract.PersistenceBoundaryContractTests.test_canonical_contract_covers_stores_mutations_and_handoffs",
+          "status": "passing"
+        },
+        {
+          "evidence": "extract-e-791.persistence-boundary-contract.unittest",
+          "id": "control-plane-kit-core.tests.test_persistence_boundary_contract.PersistenceBoundaryContractTests.test_descriptor_round_trips_strictly_and_rejects_open_values",
+          "status": "passing"
+        },
+        {
+          "evidence": "extract-e-791.persistence-boundary-contract.unittest",
+          "id": "control-plane-kit-core.tests.test_persistence_boundary_contract.PersistenceBoundaryContractTests.test_store_contracts_name_durable_roles_without_database_implementation",
+          "status": "passing"
+        },
+        {
+          "evidence": "extract-e-791.persistence-boundary-contract.unittest",
+          "id": "control-plane-kit-core.tests.test_persistence_boundary_contract.PersistenceBoundaryContractTests.test_handoffs_keep_uow_schema_and_repositories_outside_core",
+          "status": "passing"
+        },
+        {
+          "evidence": "extract-e-791.persistence-boundary-contract.unittest",
+          "id": "control-plane-kit-core.tests.test_persistence_boundary_contract.PersistenceBoundaryContractTests.test_mutation_contracts_preserve_candidate_identity_without_values",
+          "status": "passing"
+        },
+        {
+          "evidence": "extract-e-791.persistence-boundary-contract.unittest",
+          "id": "control-plane-kit-core.tests.test_persistence_boundary_contract.PersistenceBoundaryContractTests.test_invalid_contracts_fail_before_mutable_holder_behavior_enters_core",
+          "status": "passing"
+        }
+      ],
       "supersession": null
     },
     {
@@ -13635,7 +15154,38 @@
       "owner": "control-plane-kit-core",
       "owner_kind": "core",
       "reference": "tests.test_unit_of_work.PostgresUnitOfWorkTests.test_explicit_commit_commits_once_and_closes",
-      "successors": [],
+      "successors": [
+        {
+          "evidence": "extract-e-791.persistence-boundary-contract.unittest",
+          "id": "control-plane-kit-core.tests.test_persistence_boundary_contract.PersistenceBoundaryContractTests.test_canonical_contract_covers_stores_mutations_and_handoffs",
+          "status": "passing"
+        },
+        {
+          "evidence": "extract-e-791.persistence-boundary-contract.unittest",
+          "id": "control-plane-kit-core.tests.test_persistence_boundary_contract.PersistenceBoundaryContractTests.test_descriptor_round_trips_strictly_and_rejects_open_values",
+          "status": "passing"
+        },
+        {
+          "evidence": "extract-e-791.persistence-boundary-contract.unittest",
+          "id": "control-plane-kit-core.tests.test_persistence_boundary_contract.PersistenceBoundaryContractTests.test_store_contracts_name_durable_roles_without_database_implementation",
+          "status": "passing"
+        },
+        {
+          "evidence": "extract-e-791.persistence-boundary-contract.unittest",
+          "id": "control-plane-kit-core.tests.test_persistence_boundary_contract.PersistenceBoundaryContractTests.test_handoffs_keep_uow_schema_and_repositories_outside_core",
+          "status": "passing"
+        },
+        {
+          "evidence": "extract-e-791.persistence-boundary-contract.unittest",
+          "id": "control-plane-kit-core.tests.test_persistence_boundary_contract.PersistenceBoundaryContractTests.test_mutation_contracts_preserve_candidate_identity_without_values",
+          "status": "passing"
+        },
+        {
+          "evidence": "extract-e-791.persistence-boundary-contract.unittest",
+          "id": "control-plane-kit-core.tests.test_persistence_boundary_contract.PersistenceBoundaryContractTests.test_invalid_contracts_fail_before_mutable_holder_behavior_enters_core",
+          "status": "passing"
+        }
+      ],
       "supersession": null
     },
     {
@@ -13645,7 +15195,38 @@
       "owner": "control-plane-kit-core",
       "owner_kind": "core",
       "reference": "tests.test_unit_of_work.PostgresUnitOfWorkTests.test_physical_commit_failure_rolls_back_closes_and_propagates",
-      "successors": [],
+      "successors": [
+        {
+          "evidence": "extract-e-791.persistence-boundary-contract.unittest",
+          "id": "control-plane-kit-core.tests.test_persistence_boundary_contract.PersistenceBoundaryContractTests.test_canonical_contract_covers_stores_mutations_and_handoffs",
+          "status": "passing"
+        },
+        {
+          "evidence": "extract-e-791.persistence-boundary-contract.unittest",
+          "id": "control-plane-kit-core.tests.test_persistence_boundary_contract.PersistenceBoundaryContractTests.test_descriptor_round_trips_strictly_and_rejects_open_values",
+          "status": "passing"
+        },
+        {
+          "evidence": "extract-e-791.persistence-boundary-contract.unittest",
+          "id": "control-plane-kit-core.tests.test_persistence_boundary_contract.PersistenceBoundaryContractTests.test_store_contracts_name_durable_roles_without_database_implementation",
+          "status": "passing"
+        },
+        {
+          "evidence": "extract-e-791.persistence-boundary-contract.unittest",
+          "id": "control-plane-kit-core.tests.test_persistence_boundary_contract.PersistenceBoundaryContractTests.test_handoffs_keep_uow_schema_and_repositories_outside_core",
+          "status": "passing"
+        },
+        {
+          "evidence": "extract-e-791.persistence-boundary-contract.unittest",
+          "id": "control-plane-kit-core.tests.test_persistence_boundary_contract.PersistenceBoundaryContractTests.test_mutation_contracts_preserve_candidate_identity_without_values",
+          "status": "passing"
+        },
+        {
+          "evidence": "extract-e-791.persistence-boundary-contract.unittest",
+          "id": "control-plane-kit-core.tests.test_persistence_boundary_contract.PersistenceBoundaryContractTests.test_invalid_contracts_fail_before_mutable_holder_behavior_enters_core",
+          "status": "passing"
+        }
+      ],
       "supersession": null
     },
     {
@@ -13655,7 +15236,38 @@
       "owner": "control-plane-kit-core",
       "owner_kind": "core",
       "reference": "tests.test_unit_of_work.PostgresUnitOfWorkTests.test_stores_and_lifecycle_methods_require_active_unfinished_unit",
-      "successors": [],
+      "successors": [
+        {
+          "evidence": "extract-e-791.persistence-boundary-contract.unittest",
+          "id": "control-plane-kit-core.tests.test_persistence_boundary_contract.PersistenceBoundaryContractTests.test_canonical_contract_covers_stores_mutations_and_handoffs",
+          "status": "passing"
+        },
+        {
+          "evidence": "extract-e-791.persistence-boundary-contract.unittest",
+          "id": "control-plane-kit-core.tests.test_persistence_boundary_contract.PersistenceBoundaryContractTests.test_descriptor_round_trips_strictly_and_rejects_open_values",
+          "status": "passing"
+        },
+        {
+          "evidence": "extract-e-791.persistence-boundary-contract.unittest",
+          "id": "control-plane-kit-core.tests.test_persistence_boundary_contract.PersistenceBoundaryContractTests.test_store_contracts_name_durable_roles_without_database_implementation",
+          "status": "passing"
+        },
+        {
+          "evidence": "extract-e-791.persistence-boundary-contract.unittest",
+          "id": "control-plane-kit-core.tests.test_persistence_boundary_contract.PersistenceBoundaryContractTests.test_handoffs_keep_uow_schema_and_repositories_outside_core",
+          "status": "passing"
+        },
+        {
+          "evidence": "extract-e-791.persistence-boundary-contract.unittest",
+          "id": "control-plane-kit-core.tests.test_persistence_boundary_contract.PersistenceBoundaryContractTests.test_mutation_contracts_preserve_candidate_identity_without_values",
+          "status": "passing"
+        },
+        {
+          "evidence": "extract-e-791.persistence-boundary-contract.unittest",
+          "id": "control-plane-kit-core.tests.test_persistence_boundary_contract.PersistenceBoundaryContractTests.test_invalid_contracts_fail_before_mutable_holder_behavior_enters_core",
+          "status": "passing"
+        }
+      ],
       "supersession": null
     },
     {
@@ -13665,7 +15277,38 @@
       "owner": "control-plane-kit-core",
       "owner_kind": "core",
       "reference": "tests.test_unit_of_work.PostgresUnitOfWorkTests.test_uncommitted_exit_rolls_back_and_closes",
-      "successors": [],
+      "successors": [
+        {
+          "evidence": "extract-e-791.persistence-boundary-contract.unittest",
+          "id": "control-plane-kit-core.tests.test_persistence_boundary_contract.PersistenceBoundaryContractTests.test_canonical_contract_covers_stores_mutations_and_handoffs",
+          "status": "passing"
+        },
+        {
+          "evidence": "extract-e-791.persistence-boundary-contract.unittest",
+          "id": "control-plane-kit-core.tests.test_persistence_boundary_contract.PersistenceBoundaryContractTests.test_descriptor_round_trips_strictly_and_rejects_open_values",
+          "status": "passing"
+        },
+        {
+          "evidence": "extract-e-791.persistence-boundary-contract.unittest",
+          "id": "control-plane-kit-core.tests.test_persistence_boundary_contract.PersistenceBoundaryContractTests.test_store_contracts_name_durable_roles_without_database_implementation",
+          "status": "passing"
+        },
+        {
+          "evidence": "extract-e-791.persistence-boundary-contract.unittest",
+          "id": "control-plane-kit-core.tests.test_persistence_boundary_contract.PersistenceBoundaryContractTests.test_handoffs_keep_uow_schema_and_repositories_outside_core",
+          "status": "passing"
+        },
+        {
+          "evidence": "extract-e-791.persistence-boundary-contract.unittest",
+          "id": "control-plane-kit-core.tests.test_persistence_boundary_contract.PersistenceBoundaryContractTests.test_mutation_contracts_preserve_candidate_identity_without_values",
+          "status": "passing"
+        },
+        {
+          "evidence": "extract-e-791.persistence-boundary-contract.unittest",
+          "id": "control-plane-kit-core.tests.test_persistence_boundary_contract.PersistenceBoundaryContractTests.test_invalid_contracts_fail_before_mutable_holder_behavior_enters_core",
+          "status": "passing"
+        }
+      ],
       "supersession": null
     },
     {

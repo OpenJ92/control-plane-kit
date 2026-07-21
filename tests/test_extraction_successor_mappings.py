@@ -183,10 +183,15 @@ class ExtractionSuccessorMappingTests(unittest.TestCase):
         classification = read_bounded_json(
             ARTIFACT_ROOT / "contract-boundary-classification.json"
         )
+        manifest = read_bounded_json(ARTIFACT_ROOT / "parity-manifest.json")
 
         incomplete = {
             entry["reference"]
             for entry in closeout["incomplete_required_core_entries"]
+        }
+        manifest_by_reference = {
+            entry["reference"]: entry
+            for entry in manifest["entries"]
         }
         pure_references = {
             decision["reference"]
@@ -198,10 +203,37 @@ class ExtractionSuccessorMappingTests(unittest.TestCase):
             for decision in classification["decisions"]
             if decision["decision"] == "move-to-operations"
         }
+        split_decisions = [
+            decision
+            for decision in classification["decisions"]
+            if decision["decision"] == "split-boundary"
+        ]
+        split_references = {
+            decision["reference"]
+            for decision in split_decisions
+        }
 
         self.assertEqual(len(pure_references), 18)
+        self.assertEqual(len(split_references), 23)
         self.assertFalse(pure_references & incomplete)
         self.assertTrue(operations_references <= incomplete)
+        self.assertFalse(split_references & incomplete)
+        for decision in split_decisions:
+            with self.subTest(reference=decision["reference"]):
+                self.assertEqual(
+                    decision["core_successor"],
+                    "extract-e-791.persistence-boundary-contract.unittest",
+                )
+                self.assertEqual(decision["operations_target_issue"], "#792")
+                self.assertIn("holder mutation", decision["operations_handoff"])
+                successors = manifest_by_reference[decision["reference"]]["successors"]
+                self.assertTrue(
+                    any(
+                        successor["evidence"] == decision["core_successor"]
+                        and successor["status"] == "passing"
+                        for successor in successors
+                    )
+                )
 
     def test_policy_family_is_fully_mapped_to_passing_successor_evidence(self) -> None:
         inventory = inventory_unmapped_required_core_families(self.closeout())
@@ -355,6 +387,30 @@ class ExtractionSuccessorMappingTests(unittest.TestCase):
         for family_name in (
             "test_execution_coordinator",
             "test_verification_command_service",
+        ):
+            with self.subTest(family=family_name):
+                remaining = families.get(family_name)
+                self.assertIsNone(
+                    remaining,
+                    f"{family_name} still has {remaining['count']} unmapped laws"
+                    if remaining is not None
+                    else "",
+                )
+
+    def test_store_uow_postgres_and_mutation_holder_families_are_fully_mapped(self) -> None:
+        inventory = inventory_unmapped_required_core_families(self.closeout())
+        families = {
+            family["family"]: family
+            for family in inventory["families"]
+        }
+
+        for family_name in (
+            "test_stores",
+            "test_unit_of_work",
+            "test_operation_postgres_primitives",
+            "test_execution_schema_migration",
+            "test_execution_store",
+            "test_contracts",
         ):
             with self.subTest(family=family_name):
                 remaining = families.get(family_name)
