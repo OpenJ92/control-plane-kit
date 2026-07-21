@@ -9,6 +9,7 @@ import json
 import re
 
 from control_plane_kit_core.algebra import BlockSockets, ProviderSocket, RequirementSocket
+from control_plane_kit_core.algebra import ApplicationBlock, BlockSpec, RuntimeContext
 from control_plane_kit_core.capabilities import CapabilityName
 from control_plane_kit_core.configuration import ConfigurationArtifact
 from control_plane_kit_core.environment import (
@@ -26,6 +27,7 @@ from control_plane_kit_core.secrets import (
     secret_delivery_from_descriptor,
     secret_delivery_sort_key,
 )
+from control_plane_kit_core.topology.graph import Endpoint, LiteralAddress
 from control_plane_kit_core.types import Protocol, SocketBinding
 from control_plane_kit_core.verification import VerificationContract, expected_protocols
 
@@ -84,6 +86,7 @@ _FORBIDDEN_PRODUCT_TEXT = (
     "/proc/",
     "/sys/",
 )
+_ROLE_ID = re.compile(r"[a-z][a-z0-9-]{0,62}\Z")
 
 
 class ProductIdentityError(ValueError):
@@ -124,6 +127,10 @@ class ProductCatalogConflict(ProductCatalogError):
 
 class UnknownProductIdentity(ProductCatalogError):
     """Raised when a catalogue lookup names an absent product identity."""
+
+
+class ProductInstantiationError(ValueError):
+    """Raised when a product cannot be purely instantiated into topology."""
 
 
 @dataclass(frozen=True, order=True)
@@ -750,6 +757,156 @@ class ProductCatalog:
         return hashlib.sha256(self.content).hexdigest()
 
 
+@dataclass(frozen=True)
+class ProductInstanceConfiguration:
+    """Per-role product material selected before pure topology compilation."""
+
+    public_environment: tuple[PublicStaticEnvironmentBinding, ...] = ()
+    configuration_artifacts: tuple[ConfigurationArtifact, ...] = ()
+    secret_deliveries: tuple[SecretDelivery, ...] = ()
+
+    def __post_init__(self) -> None:
+        public_environment = tuple(self.public_environment)
+        if not all(
+            isinstance(value, PublicStaticEnvironmentBinding)
+            for value in public_environment
+        ):
+            raise ProductInstantiationError(
+                "configuration public environment must use PublicStaticEnvironmentBinding"
+            )
+        configuration_artifacts = tuple(sorted(self.configuration_artifacts))
+        if not all(
+            isinstance(value, ConfigurationArtifact)
+            for value in configuration_artifacts
+        ):
+            raise ProductInstantiationError(
+                "configuration artifacts must use ConfigurationArtifact"
+            )
+        secret_deliveries = tuple(
+            sorted(self.secret_deliveries, key=secret_delivery_sort_key)
+        )
+        if not all(isinstance(value, SecretDelivery) for value in secret_deliveries):
+            raise ProductInstantiationError(
+                "configuration secret deliveries must use SecretDelivery"
+            )
+        object.__setattr__(self, "public_environment", tuple(sorted(public_environment)))
+        object.__setattr__(self, "configuration_artifacts", configuration_artifacts)
+        object.__setattr__(self, "secret_deliveries", secret_deliveries)
+
+    @classmethod
+    def from_contract(
+        cls,
+        contract: ProductRuntimeContract,
+    ) -> "ProductInstanceConfiguration":
+        if not isinstance(contract, ProductRuntimeContract):
+            raise ProductInstantiationError("configuration requires ProductRuntimeContract")
+        return cls(
+            public_environment=contract.public_environment,
+            configuration_artifacts=contract.configuration_artifacts,
+            secret_deliveries=contract.secret_deliveries,
+        )
+
+
+@dataclass(frozen=True)
+class ProductMaterializedBlock:
+    """Pure graph material for one configured external product block."""
+
+    kind: str
+    endpoints: dict[str, Endpoint]
+    public_environment: tuple[PublicStaticEnvironmentBinding, ...]
+    metadata: dict[str, object]
+    lifecycle: ResourceLifecycle
+    configuration_artifacts: tuple[ConfigurationArtifact, ...]
+    secret_deliveries: tuple[SecretDelivery, ...]
+
+
+@dataclass(frozen=True)
+class OciContainerProductImplementation:
+    """Pure runtime implementation value for a configured OCI server product."""
+
+    document: ProductDescriptorDocument
+    configuration: ProductInstanceConfiguration
+    kind: str = field(default="oci-container", init=False)
+
+    def materialize(
+        self,
+        block_id: str,
+        sockets: BlockSockets,
+        runtime: RuntimeContext,
+    ) -> ProductMaterializedBlock:
+        del runtime
+        return ProductMaterializedBlock(
+            kind=self.kind,
+            endpoints={
+                socket.name: Endpoint(
+                    LiteralAddress(_private_endpoint(block_id, socket.name, socket.protocol)),
+                    socket.protocol,
+                )
+                for socket in sockets.providers
+            },
+            public_environment=self.configuration.public_environment,
+            metadata={
+                "product_identity": self.document.product.identity.key,
+                "product_descriptor_digest": self.document.content_digest,
+                "oci_image": self.document.product.image.execution_reference,
+            },
+            lifecycle=self.document.product.runtime_contract.lifecycle,
+            configuration_artifacts=self.configuration.configuration_artifacts,
+            secret_deliveries=self.configuration.secret_deliveries,
+        )
+
+
+def instantiate_product(
+    product: ContainerServerProduct,
+    role_id: str,
+    configuration: ProductInstanceConfiguration,
+) -> ApplicationBlock:
+    """Purely instantiate one external product into an ordinary application block."""
+
+    if not isinstance(product, ContainerServerProduct):
+        raise ProductInstantiationError("instantiate_product requires ContainerServerProduct")
+    document = ProductDescriptorCodec().encode_document(product)
+    return _instantiate_document(document, role_id, configuration)
+
+
+def instantiate_catalog_product(
+    catalog: ProductCatalog,
+    identity: ProductIdentity,
+    *,
+    role_id: str,
+    configuration: ProductInstanceConfiguration,
+) -> ApplicationBlock:
+    """Purely instantiate a product selected from an immutable catalogue."""
+
+    if not isinstance(catalog, ProductCatalog):
+        raise ProductInstantiationError("catalog must be ProductCatalog")
+    return _instantiate_document(catalog.lookup(identity), role_id, configuration)
+
+
+def _instantiate_document(
+    document: ProductDescriptorDocument,
+    role_id: str,
+    configuration: ProductInstanceConfiguration,
+) -> ApplicationBlock:
+    if not isinstance(document, ProductDescriptorDocument):
+        raise ProductInstantiationError("product document must be ProductDescriptorDocument")
+    _validate_role_id(role_id)
+    if not isinstance(configuration, ProductInstanceConfiguration):
+        raise ProductInstantiationError("configuration must be ProductInstanceConfiguration")
+    product = document.product
+    _validate_instance_configuration(product.runtime_contract, configuration)
+    return ApplicationBlock(
+        spec=BlockSpec(
+            role_id=role_id,
+            display_name=product.display_name,
+            capabilities=product.runtime_contract.capabilities,
+            verification=product.runtime_contract.verification,
+        ),
+        implementation=OciContainerProductImplementation(document, configuration),
+        sockets=product.runtime_contract.sockets,
+    )
+
+
 def _validate_identity_part(value: str, field: str) -> None:
     if not isinstance(value, str):
         raise ProductIdentityError(f"{field} must be a string")
@@ -1176,3 +1333,89 @@ def _require_descriptor_keys(
     if missing:
         details.append(f"missing keys: {', '.join(missing)}")
     raise ProductDescriptorError(f"invalid {label}; " + "; ".join(details))
+
+
+def _validate_role_id(value: str) -> None:
+    if not isinstance(value, str) or not _ROLE_ID.fullmatch(value):
+        raise ProductInstantiationError("role_id is malformed")
+
+
+def _validate_instance_configuration(
+    contract: ProductRuntimeContract,
+    configuration: ProductInstanceConfiguration,
+) -> None:
+    _require_same_keys(
+        _public_environment_keys(contract.public_environment),
+        _public_environment_keys(configuration.public_environment),
+        "public environment",
+    )
+    _require_same_keys(
+        _configuration_artifact_keys(contract.configuration_artifacts),
+        _configuration_artifact_keys(configuration.configuration_artifacts),
+        "configuration artifacts",
+    )
+    _require_same_keys(
+        _secret_delivery_keys(contract.secret_deliveries),
+        _secret_delivery_keys(configuration.secret_deliveries),
+        "secret deliveries",
+    )
+
+
+def _public_environment_keys(
+    values: tuple[PublicStaticEnvironmentBinding, ...],
+) -> tuple[str, ...]:
+    return tuple(sorted(value.name for value in values))
+
+
+def _configuration_artifact_keys(
+    values: tuple[ConfigurationArtifact, ...],
+) -> tuple[tuple[str, str, str, str], ...]:
+    return tuple(
+        sorted(
+            (
+                value.artifact_id,
+                value.target_path,
+                value.media_type.value,
+                value.file_mode.value,
+            )
+            for value in values
+        )
+    )
+
+
+def _secret_delivery_keys(
+    values: tuple[SecretDelivery, ...],
+) -> tuple[tuple[str, str, str, str, str], ...]:
+    return tuple(sorted(secret_delivery_sort_key(value) for value in values))
+
+
+def _require_same_keys(
+    expected: tuple[object, ...],
+    actual: tuple[object, ...],
+    label: str,
+) -> None:
+    if expected == actual:
+        return
+    missing = [value for value in expected if value not in actual]
+    extra = [value for value in actual if value not in expected]
+    details: list[str] = []
+    if missing:
+        details.append(f"missing {len(missing)}")
+    if extra:
+        details.append(f"extra {len(extra)}")
+    raise ProductInstantiationError(
+        f"product configuration {label} does not match contract: "
+        + ", ".join(details)
+    )
+
+
+def _private_endpoint(role_id: str, socket_name: str, protocol: Protocol) -> str:
+    host = f"{role_id}-{socket_name}"
+    scheme = _endpoint_scheme(protocol)
+    return f"{scheme}://{host}"
+
+
+def _endpoint_scheme(protocol: Protocol) -> str:
+    if protocol is Protocol.POSTGRES:
+        return "postgresql"
+    return sorted(protocol.endpoint_schemes())[0]

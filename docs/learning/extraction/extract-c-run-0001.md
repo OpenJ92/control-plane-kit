@@ -740,3 +740,141 @@ through `lookup()`, and produce ordinary core topology values. Do not let the
 topology compiler import product packages, read `product.cpk.json` files, pull
 OCI images, or infer package-owned servers. Unknown product identity must remain
 an explicit failure.
+
+## #626 Pure Product Instantiation Into DeployBlock
+
+### Law Card
+
+- Reference identity: `EXTRACT.C.7.product-instantiation`
+- Evidence source: rollout issue #626, #625 handoff, and the existing topology
+  compiler/graph descriptor pipeline.
+- Observable law: an admitted external product can be instantiated into an
+  ordinary `ApplicationBlock` without importing product code, reading files,
+  resolving secrets, pulling OCI images, creating connections, or performing a
+  runtime effect.
+- Objects:
+
+```text
+ProductInstanceConfiguration
+  = public environment bindings
+  x configuration artifacts
+  x secret deliveries
+
+OciContainerProductImplementation
+  = ProductDescriptorDocument
+  x ProductInstanceConfiguration
+
+ProductMaterializedBlock
+  = endpoints
+  x non-secret env
+  x config artifacts
+  x unresolved secret deliveries
+  x lifecycle
+  x metadata
+```
+
+- Transformations:
+
+```text
+ContainerServerProduct x RoleId x ProductInstanceConfiguration
+  -> instantiate_product
+    -> ApplicationBlock
+
+ProductCatalog x ProductIdentity x RoleId x ProductInstanceConfiguration
+  -> instantiate_catalog_product
+    -> ApplicationBlock
+
+ApplicationBlock
+  -> compile_topology
+    -> DeploymentGraph
+```
+
+- Expected result: instantiated products compile into ordinary graph nodes,
+  preserve socket identity, retain unresolved secret references, preserve
+  configuration artifacts, expose descriptor digest/image/product metadata, and
+  round-trip through the existing `GraphDescriptorCodec`.
+- Negative cases: malformed role ids, missing configuration, extra
+  configuration, unknown catalogue lookup, non-product values, non-configuration
+  values, filesystem loading, dynamic imports, Docker pulls, registry calls, and
+  product-owned socket connections.
+- Obsolete structural assumptions not migrated: package-specific block classes,
+  class paths, command strings, Dockerfile fields, automatic connection
+  construction, and runtime-specific host publication during pure instantiation.
+- Future owner: core.
+
+### Implementation
+
+The public configuration object is intentionally just the currently extracted
+configuration material. It proves strict matching today without inventing
+placeholder/template semantics prematurely:
+
+```python
+@dataclass(frozen=True)
+class ProductInstanceConfiguration:
+    public_environment: tuple[PublicStaticEnvironmentBinding, ...] = ()
+    configuration_artifacts: tuple[ConfigurationArtifact, ...] = ()
+    secret_deliveries: tuple[SecretDelivery, ...] = ()
+```
+
+The catalogue path resolves product truth first and then instantiates the exact
+descriptor document:
+
+```python
+def instantiate_catalog_product(catalog, identity, *, role_id, configuration):
+    return _instantiate_document(catalog.lookup(identity), role_id, configuration)
+```
+
+The resulting block is a normal `ApplicationBlock`; the existing topology
+compiler is not taught a special product lane:
+
+```python
+return ApplicationBlock(
+    spec=BlockSpec(...),
+    implementation=OciContainerProductImplementation(document, configuration),
+    sockets=product.runtime_contract.sockets,
+)
+```
+
+Materialization remains pure. The implementation creates deterministic private
+placeholder endpoints from role/socket/protocol so graph edges can still derive
+environment bindings without claiming live reachability:
+
+```python
+endpoints={
+    socket.name: Endpoint(
+        LiteralAddress(_private_endpoint(block_id, socket.name, socket.protocol)),
+        socket.protocol,
+    )
+    for socket in sockets.providers
+}
+```
+
+### Decisions
+
+- `instantiate_product()` computes a canonical `ProductDescriptorDocument` from
+  the product so descriptor digest remains available even without a catalogue.
+- `instantiate_catalog_product()` is preferred once catalogue admission exists
+  because it uses the exact admitted document from `ProductCatalog.lookup()`.
+- Connections remain graph-owned. Instantiation only emits a block with the
+  product's provider and requirement sockets.
+- Configuration matching is exact by public environment names, configuration
+  artifact identity/path/media/file mode, and secret delivery identity. Values
+  may differ where the identity permits it, such as public environment values.
+- Provider endpoints are deterministic graph placeholders. Runtime observation
+  and health remain later interpreter responsibilities.
+
+### Evidence
+
+- Red evidence: focused core test collection failed only because
+  `ProductInstanceConfiguration` and instantiation functions did not yet exist.
+- Green evidence: `./control-plane-kit-core/test.sh` passed 76 unittest tests,
+  compileall, and base import verification.
+
+### Handoff To #627
+
+#627 should prove the instantiated external product participates in the existing
+topology/diff/planning path. Use `ProductCatalog`, `instantiate_catalog_product`,
+`compile_topology`, `validate_graph`, `diff_graphs`, and `compile_activity_plan`
+as composition points. Do not add a parallel product graph, product diff, or
+product plan. Unknown products and invalid configuration should remain pure
+failures before planning.
