@@ -104,6 +104,9 @@ D.5 Mandatory Stop
 - Core-to-`cpk-server` material handoff as pure requirements over environment
   names, opaque secret deliveries, bounded configuration artifacts, and ordinary
   external product descriptor admission.
+- Core-to-`cpk-server` publication handoff as pure requirements over pinned OCI
+  image reference, non-root execution, no runtime installs, explicit
+  publication, live HTTP/MCP smoke, cleanup, and retained-data evidence.
 
 ## Deferred cpk-server Work
 

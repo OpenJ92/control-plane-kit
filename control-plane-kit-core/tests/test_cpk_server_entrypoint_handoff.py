@@ -6,6 +6,7 @@ from control_plane_kit_core.operations import (
     ControlPlaneServiceRole,
     CpkServerEntrypointHandoffContract,
     CpkServerMaterialHandoffContract,
+    CpkServerPublicationHandoffContract,
     DependencyReadinessKind,
     DeploymentProgramBoundary,
     EntrypointCompositionPolicy,
@@ -14,12 +15,14 @@ from control_plane_kit_core.operations import (
     InvalidCpkServerHandoffContract,
     McpStreamableHttpContract,
     ProcessStatePolicy,
+    PublicationPolicy,
     ReadinessDependency,
     ServiceTransactionBoundary,
     StoreParticipation,
     UnitOfWorkBoundary,
     canonical_cpk_server_entrypoint_handoff,
     canonical_cpk_server_material_handoff,
+    canonical_cpk_server_publication_handoff,
     operator_adapter_security_parity,
     operator_command_http_routes,
     operator_command_parity,
@@ -31,7 +34,7 @@ from control_plane_kit_core.configuration import (
     ConfigurationMediaType,
 )
 from control_plane_kit_core.environment import PublicStaticEnvironmentBinding
-from control_plane_kit_core.products import ProductIdentity
+from control_plane_kit_core.products import OciImageReference, OciPlatform, ProductIdentity
 from control_plane_kit_core.secrets import (
     SecretEnvironmentDelivery,
     SecretReference,
@@ -149,6 +152,19 @@ def _material_handoff() -> CpkServerMaterialHandoffContract:
     )
 
 
+def _publication_handoff() -> CpkServerPublicationHandoffContract:
+    return canonical_cpk_server_publication_handoff(
+        material=_material_handoff(),
+        image=OciImageReference(
+            registry="ghcr.io",
+            repository="openj92/control-plane-kit-servers/cpk-server",
+            digest="sha256:" + "a" * 64,
+            tag="0.1.0",
+            platforms=(OciPlatform("linux", "amd64"),),
+        ),
+    )
+
+
 class CpkServerEntrypointHandoffTests(unittest.TestCase):
     def test_handoff_names_external_server_owner_and_core_contracts(self) -> None:
         handoff = _handoff()
@@ -187,6 +203,102 @@ class CpkServerEntrypointHandoffTests(unittest.TestCase):
         with self.assertRaises(InvalidCpkServerHandoffContract):
             CpkServerEntrypointHandoffContract.from_descriptor(
                 {**descriptor, "extra": True}
+            )
+
+
+class CpkServerPublicationHandoffTests(unittest.TestCase):
+    def test_publication_handoff_requires_pinned_image_and_live_evidence(self) -> None:
+        handoff = _publication_handoff()
+
+        self.assertTrue(handoff.runs_as_non_root)
+        self.assertEqual(handoff.mutable_runtime_install_policy, "forbidden")
+        self.assertEqual(handoff.filesystem_policy, "least-privilege-read-only-root")
+        self.assertEqual(
+            handoff.publication_policy,
+            PublicationPolicy.PRIVATE_BY_DEFAULT_PUBLIC_ENDPOINT_EXPLICIT,
+        )
+        self.assertEqual(
+            handoff.live_smoke_obligations,
+            (
+                "http-readiness",
+                "http-read-route",
+                "mcp-tool-call",
+                "shutdown-cleanup",
+            ),
+        )
+        self.assertEqual(
+            handoff.cleanup_evidence_policy,
+            "owned-resources-cleaned-retained-data-preserved",
+        )
+
+    def test_publication_descriptor_is_closed_and_round_trips(self) -> None:
+        handoff = _publication_handoff()
+        descriptor = handoff.descriptor()
+
+        self.assertEqual(descriptor["kind"], "cpk-server-publication-handoff")
+        self.assertEqual(
+            CpkServerPublicationHandoffContract.from_descriptor(descriptor),
+            handoff,
+        )
+        self.assertEqual(
+            descriptor["image"]["digest"],
+            "sha256:" + "a" * 64,
+        )
+
+        rendered = repr(descriptor).lower()
+        self.assertNotIn("dockerfile", rendered)
+        self.assertNotIn("pip install", rendered)
+        self.assertNotIn("apt-get", rendered)
+
+        with self.assertRaises(InvalidCpkServerHandoffContract):
+            CpkServerPublicationHandoffContract.from_descriptor(
+                {**descriptor, "extra": True}
+            )
+
+    def test_publication_rejects_runtime_install_root_and_latest_tag(self) -> None:
+        handoff = _publication_handoff()
+
+        with self.assertRaises(InvalidCpkServerHandoffContract):
+            CpkServerPublicationHandoffContract(
+                material=handoff.material,
+                image=handoff.image,
+                runs_as_non_root=False,
+            )
+
+        with self.assertRaises(InvalidCpkServerHandoffContract):
+            CpkServerPublicationHandoffContract(
+                material=handoff.material,
+                image=handoff.image,
+                mutable_runtime_install_policy="allowed",
+            )
+
+        with self.assertRaises(InvalidCpkServerHandoffContract):
+            CpkServerPublicationHandoffContract(
+                material=handoff.material,
+                image=OciImageReference(
+                    registry="ghcr.io",
+                    repository="openj92/control-plane-kit-servers/cpk-server",
+                    digest="sha256:" + "b" * 64,
+                    tag="latest",
+                    platforms=(OciPlatform("linux", "amd64"),),
+                ),
+            )
+
+    def test_publication_requires_retained_data_and_public_contract_smoke(self) -> None:
+        handoff = _publication_handoff()
+
+        with self.assertRaises(InvalidCpkServerHandoffContract):
+            CpkServerPublicationHandoffContract(
+                material=handoff.material,
+                image=handoff.image,
+                live_smoke_obligations=("http-readiness",),
+            )
+
+        with self.assertRaises(InvalidCpkServerHandoffContract):
+            CpkServerPublicationHandoffContract(
+                material=handoff.material,
+                image=handoff.image,
+                cleanup_evidence_policy="delete-retained-data",
             )
 
 

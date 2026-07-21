@@ -9,11 +9,14 @@ from control_plane_kit_core.operations.services import (
 from control_plane_kit_core.operations.handoff import (
     CpkServerEntrypointHandoffContract,
     CpkServerMaterialHandoffContract,
+    CpkServerPublicationHandoffContract,
     EntrypointCompositionPolicy,
     InvalidCpkServerHandoffContract,
     ProcessStatePolicy,
+    PublicationPolicy,
     canonical_cpk_server_entrypoint_handoff,
     canonical_cpk_server_material_handoff,
+    canonical_cpk_server_publication_handoff,
 )
 from control_plane_kit_core.operations.mcp import (
     InvalidMcpStreamableHttpContract,
@@ -83,6 +86,7 @@ __all__ = [
     "ControlPlaneProcessContract",
     "CpkServerEntrypointHandoffContract",
     "CpkServerMaterialHandoffContract",
+    "CpkServerPublicationHandoffContract",
     "DependencyReadinessKind",
     "DeploymentProgramBoundary",
     "EntrypointCompositionPolicy",
@@ -110,6 +114,7 @@ __all__ = [
     "ObservationHandoffContract",
     "ProcessEndpointKind",
     "ProcessStatePolicy",
+    "PublicationPolicy",
     "ReadinessDependency",
     "ServiceTransactionBoundary",
     "ShutdownContract",
@@ -117,6 +122,7 @@ __all__ = [
     "UnitOfWorkBoundary",
     "canonical_cpk_server_entrypoint_handoff",
     "canonical_cpk_server_material_handoff",
+    "canonical_cpk_server_publication_handoff",
     "operator_adapter_security_parity",
     "operator_command_http_routes",
     "operator_command_parity",

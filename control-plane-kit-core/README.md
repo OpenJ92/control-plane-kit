@@ -179,6 +179,23 @@ runtime lookups or secret references. They are not baked into an image or
 descriptor, and the future product descriptor is ordinary external product data,
 not auto-trusted self-registration.
 
+The publication handoff records future OCI and live-evidence obligations:
+
+```text
+CpkServerPublicationHandoffContract
+  = CpkServerMaterialHandoffContract
+  x OciImageReference
+  x non-root execution
+  x no runtime package installation
+  x explicit publication policy
+  x live HTTP/MCP smoke obligations
+  x cleanup and retained-data evidence
+```
+
+Core may describe these obligations, but the image build, publication, live
+Docker smoke, and product descriptor still belong to
+`control-plane-kit-servers/cpk-server`.
+
 ## Extraction Law
 
 Every migrated behavior must be justified by a frozen law card from the
