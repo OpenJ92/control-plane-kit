@@ -1,0 +1,32 @@
+{
+  "command": "docker run --rm -v /Users/jacobvartuli/Software/self/control-plane-kit/control-plane-kit-core:/pkg:ro -w /pkg -e PYTHONPATH=/pkg/src -e PYTHONDONTWRITEBYTECODE=1 python:3.14-slim sh -c 'pip install -q Jinja2 PyYAML && python -m unittest tests.test_configuration_artifacts'",
+  "evidence": "The extracted core configuration artifact and rendering unittest module proves the #754 pure configuration laws without importing the frozen package. Successor tests preserve immutable digest-verified artifacts, safe target paths, parser-backed content, graph codec preservation, typed graph diffs, and strict deterministic Jinja rendering from bounded secret-free values.",
+  "frozen_laws": [
+    "behavior.artifact-change-is-explicit-diff-and-reconcile-work",
+    "behavior.artifact-is-bounded-deterministic-and-digest-verified",
+    "behavior.context-is-closed-bounded-and-secret-free-before-render",
+    "behavior.duplicate-artifact-identity-or-target-fails-at-authoring",
+    "behavior.exact-artifact-reaches-pinned-start-material",
+    "behavior.graph-codec-preserves-exact-artifact-and-rejects-tampering",
+    "behavior.rendered-output-is-bounded-and-format-validated",
+    "behavior.template-definition-changes-artifact-identity-even-when-output-does-not",
+    "behavior.template-revision-reaches-graph-diff-and-pinned-material",
+    "behavior.typed-parameters-render-one-deterministic-json-artifact",
+    "behavior.undefined-and-malformed-templates-fail-without-source-or-values",
+    "behavior.unsafe-paths-secrets-and-malformed-json-fail-closed"
+  ],
+  "schema": "cpk.successor-proof",
+  "status": "passing",
+  "successor_tests": [
+    "control-plane-kit-core.tests.test_configuration_artifacts.ConfigurationArtifactTests.test_artifact_and_template_revision_changes_are_explicit_diff_fields",
+    "control-plane-kit-core.tests.test_configuration_artifacts.ConfigurationArtifactTests.test_artifact_is_bounded_deterministic_and_digest_verified",
+    "control-plane-kit-core.tests.test_configuration_artifacts.ConfigurationArtifactTests.test_duplicate_artifact_identity_or_target_fails_at_authoring",
+    "control-plane-kit-core.tests.test_configuration_artifacts.ConfigurationArtifactTests.test_graph_codec_preserves_exact_artifact_and_rejects_tampering",
+    "control-plane-kit-core.tests.test_configuration_artifacts.ConfigurationArtifactTests.test_paths_parser_shapes_and_secret_shaped_content_fail_closed",
+    "control-plane-kit-core.tests.test_configuration_artifacts.ConfigurationRenderingTests.test_context_is_closed_bounded_and_secret_free_before_render",
+    "control-plane-kit-core.tests.test_configuration_artifacts.ConfigurationRenderingTests.test_rendered_output_is_bounded_and_format_validated",
+    "control-plane-kit-core.tests.test_configuration_artifacts.ConfigurationRenderingTests.test_template_definition_changes_identity_even_when_output_does_not",
+    "control-plane-kit-core.tests.test_configuration_artifacts.ConfigurationRenderingTests.test_typed_parameters_render_one_deterministic_json_artifact",
+    "control-plane-kit-core.tests.test_configuration_artifacts.ConfigurationRenderingTests.test_undefined_and_malformed_templates_fail_without_source_or_values"
+  ]
+}

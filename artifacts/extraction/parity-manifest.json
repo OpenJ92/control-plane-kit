@@ -1799,7 +1799,13 @@
       "owner": "control-plane-kit-core",
       "owner_kind": "core",
       "reference": "tests.test_configuration_artifacts.ConfigurationArtifactTests.test_artifact_change_is_explicit_diff_and_reconcile_work",
-      "successors": [],
+      "successors": [
+        {
+          "evidence": "extract-e-754.configuration-rendering.unittest",
+          "id": "control-plane-kit-core.tests.test_configuration_artifacts.ConfigurationArtifactTests.test_artifact_and_template_revision_changes_are_explicit_diff_fields",
+          "status": "passing"
+        }
+      ],
       "supersession": null
     },
     {
@@ -1809,7 +1815,13 @@
       "owner": "control-plane-kit-core",
       "owner_kind": "core",
       "reference": "tests.test_configuration_artifacts.ConfigurationArtifactTests.test_artifact_is_bounded_deterministic_and_digest_verified",
-      "successors": [],
+      "successors": [
+        {
+          "evidence": "extract-e-754.configuration-rendering.unittest",
+          "id": "control-plane-kit-core.tests.test_configuration_artifacts.ConfigurationArtifactTests.test_artifact_is_bounded_deterministic_and_digest_verified",
+          "status": "passing"
+        }
+      ],
       "supersession": null
     },
     {
@@ -1819,7 +1831,13 @@
       "owner": "control-plane-kit-core",
       "owner_kind": "core",
       "reference": "tests.test_configuration_artifacts.ConfigurationArtifactTests.test_duplicate_artifact_identity_or_target_fails_at_authoring",
-      "successors": [],
+      "successors": [
+        {
+          "evidence": "extract-e-754.configuration-rendering.unittest",
+          "id": "control-plane-kit-core.tests.test_configuration_artifacts.ConfigurationArtifactTests.test_duplicate_artifact_identity_or_target_fails_at_authoring",
+          "status": "passing"
+        }
+      ],
       "supersession": null
     },
     {
@@ -1829,7 +1847,13 @@
       "owner": "control-plane-kit-core",
       "owner_kind": "core",
       "reference": "tests.test_configuration_artifacts.ConfigurationArtifactTests.test_exact_artifact_reaches_pinned_start_material",
-      "successors": [],
+      "successors": [
+        {
+          "evidence": "extract-e-754.configuration-rendering.unittest",
+          "id": "control-plane-kit-core.tests.test_configuration_artifacts.ConfigurationArtifactTests.test_graph_codec_preserves_exact_artifact_and_rejects_tampering",
+          "status": "passing"
+        }
+      ],
       "supersession": null
     },
     {
@@ -1839,7 +1863,13 @@
       "owner": "control-plane-kit-core",
       "owner_kind": "core",
       "reference": "tests.test_configuration_artifacts.ConfigurationArtifactTests.test_graph_codec_preserves_exact_artifact_and_rejects_tampering",
-      "successors": [],
+      "successors": [
+        {
+          "evidence": "extract-e-754.configuration-rendering.unittest",
+          "id": "control-plane-kit-core.tests.test_configuration_artifacts.ConfigurationArtifactTests.test_graph_codec_preserves_exact_artifact_and_rejects_tampering",
+          "status": "passing"
+        }
+      ],
       "supersession": null
     },
     {
@@ -1849,7 +1879,13 @@
       "owner": "control-plane-kit-core",
       "owner_kind": "core",
       "reference": "tests.test_configuration_artifacts.ConfigurationArtifactTests.test_template_revision_reaches_graph_diff_and_pinned_material",
-      "successors": [],
+      "successors": [
+        {
+          "evidence": "extract-e-754.configuration-rendering.unittest",
+          "id": "control-plane-kit-core.tests.test_configuration_artifacts.ConfigurationArtifactTests.test_artifact_and_template_revision_changes_are_explicit_diff_fields",
+          "status": "passing"
+        }
+      ],
       "supersession": null
     },
     {
@@ -1859,7 +1895,13 @@
       "owner": "control-plane-kit-core",
       "owner_kind": "core",
       "reference": "tests.test_configuration_artifacts.ConfigurationArtifactTests.test_unsafe_paths_secrets_and_malformed_json_fail_closed",
-      "successors": [],
+      "successors": [
+        {
+          "evidence": "extract-e-754.configuration-rendering.unittest",
+          "id": "control-plane-kit-core.tests.test_configuration_artifacts.ConfigurationArtifactTests.test_paths_parser_shapes_and_secret_shaped_content_fail_closed",
+          "status": "passing"
+        }
+      ],
       "supersession": null
     },
     {
@@ -1869,7 +1911,13 @@
       "owner": "control-plane-kit-core",
       "owner_kind": "core",
       "reference": "tests.test_configuration_rendering.ConfigurationRenderingTests.test_context_is_closed_bounded_and_secret_free_before_render",
-      "successors": [],
+      "successors": [
+        {
+          "evidence": "extract-e-754.configuration-rendering.unittest",
+          "id": "control-plane-kit-core.tests.test_configuration_artifacts.ConfigurationRenderingTests.test_context_is_closed_bounded_and_secret_free_before_render",
+          "status": "passing"
+        }
+      ],
       "supersession": null
     },
     {
@@ -1879,7 +1927,13 @@
       "owner": "control-plane-kit-core",
       "owner_kind": "core",
       "reference": "tests.test_configuration_rendering.ConfigurationRenderingTests.test_rendered_output_is_bounded_and_format_validated",
-      "successors": [],
+      "successors": [
+        {
+          "evidence": "extract-e-754.configuration-rendering.unittest",
+          "id": "control-plane-kit-core.tests.test_configuration_artifacts.ConfigurationRenderingTests.test_rendered_output_is_bounded_and_format_validated",
+          "status": "passing"
+        }
+      ],
       "supersession": null
     },
     {
@@ -1889,7 +1943,13 @@
       "owner": "control-plane-kit-core",
       "owner_kind": "core",
       "reference": "tests.test_configuration_rendering.ConfigurationRenderingTests.test_template_definition_changes_artifact_identity_even_when_output_does_not",
-      "successors": [],
+      "successors": [
+        {
+          "evidence": "extract-e-754.configuration-rendering.unittest",
+          "id": "control-plane-kit-core.tests.test_configuration_artifacts.ConfigurationRenderingTests.test_template_definition_changes_identity_even_when_output_does_not",
+          "status": "passing"
+        }
+      ],
       "supersession": null
     },
     {
@@ -1899,7 +1959,13 @@
       "owner": "control-plane-kit-core",
       "owner_kind": "core",
       "reference": "tests.test_configuration_rendering.ConfigurationRenderingTests.test_typed_parameters_render_one_deterministic_json_artifact",
-      "successors": [],
+      "successors": [
+        {
+          "evidence": "extract-e-754.configuration-rendering.unittest",
+          "id": "control-plane-kit-core.tests.test_configuration_artifacts.ConfigurationRenderingTests.test_typed_parameters_render_one_deterministic_json_artifact",
+          "status": "passing"
+        }
+      ],
       "supersession": null
     },
     {
@@ -1909,7 +1975,13 @@
       "owner": "control-plane-kit-core",
       "owner_kind": "core",
       "reference": "tests.test_configuration_rendering.ConfigurationRenderingTests.test_undefined_and_malformed_templates_fail_without_source_or_values",
-      "successors": [],
+      "successors": [
+        {
+          "evidence": "extract-e-754.configuration-rendering.unittest",
+          "id": "control-plane-kit-core.tests.test_configuration_artifacts.ConfigurationRenderingTests.test_undefined_and_malformed_templates_fail_without_source_or_values",
+          "status": "passing"
+        }
+      ],
       "supersession": null
     },
     {

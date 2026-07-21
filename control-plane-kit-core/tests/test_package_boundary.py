@@ -15,7 +15,7 @@ class PackageBoundaryTests(unittest.TestCase):
 
         project = metadata["project"]
         self.assertEqual(project["name"], "control-plane-kit-core")
-        self.assertEqual(project["dependencies"], ["PyYAML>=6.0"])
+        self.assertEqual(project["dependencies"], ["Jinja2>=3.1", "PyYAML>=6.0"])
         self.assertNotIn("optional-dependencies", project)
         self.assertNotIn("scripts", project)
 

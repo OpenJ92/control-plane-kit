@@ -676,3 +676,75 @@ Required-core inventory after #747:
 incomplete required-core laws: 700
 unmapped required-core families: 92
 ```
+
+## #748 Topology Split
+
+#748 was split because the original surface grouped several different pure
+languages into one large issue. The child topology is now:
+
+```text
+#754 configuration artifacts and rendering
+  -> #755 environment bindings and secret deliveries
+    -> #756 verification contracts and capabilities
+      -> #748 parent closeout
+```
+
+The old `test_contracts` family remains deliberately split. Pure descriptor and
+value laws may map through the #754/#755/#756 children, but derived-resource
+mutation, live patching, publication winners, and operation-like semantics must
+not be pulled into extracted core here.
+
+## #754 Configuration Artifact And Rendering Successors
+
+#754 mapped the pure configuration artifact/rendering slice:
+
+```text
+test_configuration_artifacts: 7 laws
+test_configuration_rendering: 5 laws
+```
+
+Successor evidence:
+
+```text
+artifacts/extraction/successor-proofs/extract-e-754-configuration-rendering.json
+```
+
+The extracted-core successor tests live in:
+
+```text
+control-plane-kit-core/tests/test_configuration_artifacts.py
+```
+
+Curated shape:
+
+```text
+ConfigurationTemplate x ConfigurationParameters
+  -> strict Jinja2 rendering
+    -> ConfigurationArtifact
+
+ConfigurationArtifact
+  -> descriptor
+    -> digest-verified durable graph value
+```
+
+The implementation added `control_plane_kit_core.configuration_rendering` as a
+pure data-to-data interpreter. It uses a sandboxed strict Jinja2 environment
+with only the deterministic `json` filter exposed. It does not touch Docker,
+filesystems, stores, or product-server code.
+
+Important boundary decision: frozen tests that mentioned pinned start material
+or reconcile work were mapped only to their pure core content-preservation and
+graph-diff laws. Runtime effect materialization remains outside extracted core.
+
+Validation:
+
+```text
+focused extracted-core #754 unittest: 10 tests passed
+```
+
+Required-core inventory after #754:
+
+```text
+incomplete required-core laws: 688
+unmapped required-core families: 90
+```
