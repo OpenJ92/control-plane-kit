@@ -813,3 +813,70 @@ Required-core inventory after #755:
 incomplete required-core laws: 670
 unmapped required-core families: 87
 ```
+
+## #756 Verification Contract And Capability Successors
+
+#756 mapped the pure verification/capability slice:
+
+```text
+test_verification_contract: 11 laws
+test_verification_dispatch: 3 laws
+test_capabilities: 5 laws
+test_capability_compile: 1 law
+```
+
+Successor evidence:
+
+```text
+artifacts/extraction/successor-proofs/extract-e-756-verification-capabilities.json
+```
+
+The extracted-core successor tests live in:
+
+```text
+control-plane-kit-core/tests/test_verification_capabilities.py
+```
+
+Curated shape:
+
+```text
+VerificationContract
+  = tuple[VerificationCheck, ...]
+
+VerificationCheck
+  -> descriptor
+    -> closed protocol-scoped declaration
+
+VerificationCheck
+  -> expected_protocols
+    -> frozenset[Protocol]
+
+VerificationCheck
+  -> verification_capability
+    -> VerificationCapability
+
+CapabilityName
+  -> capability_named
+    -> Capability
+      -> route-set-backed descriptor | capability-only descriptor
+```
+
+Boundary decision: #756 maps only the pure declaration and result language.
+Probe execution, adapter dispatch, command services, stores, API, CLI, MCP, and
+Docker probe behavior remain outside extracted core. Frozen dispatch tests were
+therefore mapped to the pure `VerificationCompleted` and
+`VerificationUnsupported` result values, not to an interpreter registry inside
+core.
+
+Validation:
+
+```text
+focused extracted-core #756 unittest: 17 tests passed
+```
+
+Required-core inventory after #756:
+
+```text
+incomplete required-core laws: 650
+unmapped required-core families: 83
+```

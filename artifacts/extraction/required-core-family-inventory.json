@@ -1,7 +1,7 @@
 {
   "counts": {
-    "entries": 670,
-    "families": 87
+    "entries": 650,
+    "families": 83
   },
   "families": [
     {
@@ -1920,89 +1920,6 @@
         }
       ],
       "family": "test_execution_admission"
-    },
-    {
-      "count": 11,
-      "entries": [
-        {
-          "kind": "test",
-          "law": "behavior.block-contract-survives-the-authoritative-graph-codec",
-          "owner": "control-plane-kit-core",
-          "owner_kind": "core",
-          "reference": "tests.test_verification_contract.VerificationContractTests.test_block_contract_survives_the_authoritative_graph_codec"
-        },
-        {
-          "kind": "test",
-          "law": "behavior.block-spec-rejects-an-untyped-contract",
-          "owner": "control-plane-kit-core",
-          "owner_kind": "core",
-          "reference": "tests.test_verification_contract.VerificationContractTests.test_block_spec_rejects_an_untyped_contract"
-        },
-        {
-          "kind": "test",
-          "law": "behavior.complete-closed-language-round-trips-exactly",
-          "owner": "control-plane-kit-core",
-          "owner_kind": "core",
-          "reference": "tests.test_verification_contract.VerificationContractTests.test_complete_closed_language_round_trips_exactly"
-        },
-        {
-          "kind": "test",
-          "law": "behavior.contract-requires-unique-closed-checks",
-          "owner": "control-plane-kit-core",
-          "owner_kind": "core",
-          "reference": "tests.test_verification_contract.VerificationContractTests.test_contract_requires_unique_closed_checks"
-        },
-        {
-          "kind": "test",
-          "law": "behavior.each-check-variant-has-an-explicit-protocol-set",
-          "owner": "control-plane-kit-core",
-          "owner_kind": "core",
-          "reference": "tests.test_verification_contract.VerificationContractTests.test_each_check_variant_has_an_explicit_protocol_set"
-        },
-        {
-          "kind": "test",
-          "law": "behavior.http-target-is-a-socket-and-relative-path-not-an-arbitrary-url",
-          "owner": "control-plane-kit-core",
-          "owner_kind": "core",
-          "reference": "tests.test_verification_contract.VerificationContractTests.test_http_target_is_a_socket_and_relative_path_not_an_arbitrary_url"
-        },
-        {
-          "kind": "test",
-          "law": "behavior.identity-accepts-bounded-canonical-durable-graph-ids",
-          "owner": "control-plane-kit-core",
-          "owner_kind": "core",
-          "reference": "tests.test_verification_contract.VerificationContractTests.test_identity_accepts_bounded_canonical_durable_graph_ids"
-        },
-        {
-          "kind": "test",
-          "law": "behavior.policy-and-evidence-are-bounded",
-          "owner": "control-plane-kit-core",
-          "owner_kind": "core",
-          "reference": "tests.test_verification_contract.VerificationContractTests.test_policy_and_evidence_are_bounded"
-        },
-        {
-          "kind": "test",
-          "law": "behavior.postgres-language-has-no-arbitrary-query-field",
-          "owner": "control-plane-kit-core",
-          "owner_kind": "core",
-          "reference": "tests.test_verification_contract.VerificationContractTests.test_postgres_language_has_no_arbitrary_query_field"
-        },
-        {
-          "kind": "test",
-          "law": "behavior.result-values-are-closed-bounded-and-deterministic",
-          "owner": "control-plane-kit-core",
-          "owner_kind": "core",
-          "reference": "tests.test_verification_contract.VerificationContractTests.test_result_values_are_closed_bounded_and_deterministic"
-        },
-        {
-          "kind": "test",
-          "law": "behavior.unknown-variants-fields-and-closed-values-fail-closed",
-          "owner": "control-plane-kit-core",
-          "owner_kind": "core",
-          "reference": "tests.test_verification_contract.VerificationContractTests.test_unknown_variants_fields_and_closed_values_fail_closed"
-        }
-      ],
-      "family": "test_verification_contract"
     },
     {
       "count": 10,
@@ -4301,47 +4218,6 @@
       "entries": [
         {
           "kind": "test",
-          "law": "behavior.capabilities-reference-expected-route-sets",
-          "owner": "control-plane-kit-core",
-          "owner_kind": "core",
-          "reference": "tests.test_capabilities.CapabilityTests.test_capabilities_reference_expected_route_sets"
-        },
-        {
-          "kind": "test",
-          "law": "behavior.capability-descriptor-is-json-friendly",
-          "owner": "control-plane-kit-core",
-          "owner_kind": "core",
-          "reference": "tests.test_capabilities.CapabilityTests.test_capability_descriptor_is_json_friendly"
-        },
-        {
-          "kind": "test",
-          "law": "behavior.capability-named-accepts-string-or-enum",
-          "owner": "control-plane-kit-core",
-          "owner_kind": "core",
-          "reference": "tests.test_capabilities.CapabilityTests.test_capability_named_accepts_string_or_enum"
-        },
-        {
-          "kind": "test",
-          "law": "behavior.lifecycle-does-not-claim-a-route-yet",
-          "owner": "control-plane-kit-core",
-          "owner_kind": "core",
-          "reference": "tests.test_capabilities.CapabilityTests.test_lifecycle_does_not_claim_a_route_yet"
-        },
-        {
-          "kind": "test",
-          "law": "behavior.unknown-capability-fails-loudly",
-          "owner": "control-plane-kit-core",
-          "owner_kind": "core",
-          "reference": "tests.test_capabilities.CapabilityTests.test_unknown_capability_fails_loudly"
-        }
-      ],
-      "family": "test_capabilities"
-    },
-    {
-      "count": 5,
-      "entries": [
-        {
-          "kind": "test",
           "law": "behavior.missing-remote-capability-is-unsupported-without-mutation",
           "owner": "control-plane-kit-core",
           "owner_kind": "core",
@@ -5008,33 +4884,6 @@
       "entries": [
         {
           "kind": "test",
-          "law": "behavior.missing-capability-is-explicitly-unsupported",
-          "owner": "control-plane-kit-core",
-          "owner_kind": "core",
-          "reference": "tests.test_verification_dispatch.VerificationDispatchTests.test_missing_capability_is_explicitly_unsupported"
-        },
-        {
-          "kind": "test",
-          "law": "behavior.registry-rejects-capability-and-result-identity-lies",
-          "owner": "control-plane-kit-core",
-          "owner_kind": "core",
-          "reference": "tests.test_verification_dispatch.VerificationDispatchTests.test_registry_rejects_capability_and_result_identity_lies"
-        },
-        {
-          "kind": "test",
-          "law": "behavior.static-interpreter-is-pure-deterministic-and-identity-checked",
-          "owner": "control-plane-kit-core",
-          "owner_kind": "core",
-          "reference": "tests.test_verification_dispatch.VerificationDispatchTests.test_static_interpreter_is_pure_deterministic_and_identity_checked"
-        }
-      ],
-      "family": "test_verification_dispatch"
-    },
-    {
-      "count": 3,
-      "entries": [
-        {
-          "kind": "test",
           "law": "behavior.action-service-preserves-session-action-order",
           "owner": "control-plane-kit-core",
           "owner_kind": "core",
@@ -5176,19 +5025,6 @@
         }
       ],
       "family": "validation"
-    },
-    {
-      "count": 1,
-      "entries": [
-        {
-          "kind": "test",
-          "law": "behavior.proxy-block-advertises-capabilities-in-compiled-metadata",
-          "owner": "control-plane-kit-core",
-          "owner_kind": "core",
-          "reference": "tests.test_capability_compile.CapabilityCompileTests.test_proxy_block_advertises_capabilities_in_compiled_metadata"
-        }
-      ],
-      "family": "test_capability_compile"
     },
     {
       "count": 1,
