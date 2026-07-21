@@ -748,3 +748,68 @@ Required-core inventory after #754:
 incomplete required-core laws: 688
 unmapped required-core families: 90
 ```
+
+## #755 Environment Binding And Secret Delivery Successors
+
+#755 mapped the pure environment/secret slice:
+
+```text
+test_environment_bindings: 5 laws
+test_secret_delivery_topology: 4 laws
+test_secrets: 9 laws
+```
+
+Successor evidence:
+
+```text
+artifacts/extraction/successor-proofs/extract-e-755-environment-secrets.json
+```
+
+The extracted-core successor tests live in:
+
+```text
+control-plane-kit-core/tests/test_environment_secrets.py
+```
+
+Curated shape:
+
+```text
+PublicStaticEnvironmentBinding
+  -> descriptor
+    -> durable non-secret graph value
+
+SocketDerivedEnvironmentBinding
+  -> edge identity x endpoint literal
+    -> durable non-secret graph value
+
+SecretReference x SecretDelivery
+  -> descriptor
+    -> opaque graph secret intent
+
+SecretResolver x SecretReference
+  -> SecretResolution
+    -> explicit runtime-only SecretValue release
+```
+
+Important boundary decision: exact `SecretReference` identity is allowed in
+durable graph descriptors because it is opaque identity, not resolved secret
+content. Diff descriptors are a different projection boundary: they now redact
+`reference_id` and include a stable SHA-256 `reference_fingerprint` so operators
+can see that an opaque reference changed without printing the exact secret path.
+
+Runtime secret provider integration remains outside extracted core. The local
+development resolver laws are retained here only as a pure boundary language:
+authority, missing/denied/resolved outcomes, and redacted explicit release.
+
+Validation:
+
+```text
+focused extracted-core #755 unittest: 17 tests passed
+```
+
+Required-core inventory after #755:
+
+```text
+incomplete required-core laws: 670
+unmapped required-core families: 87
+```
