@@ -313,3 +313,119 @@ Do not collapse these pieces into one string blob. The product descriptor should
 reuse the strict current codecs for each sublanguage, fail closed on unknown
 descriptor keys, and continue to avoid Docker, registry, HTTP, MCP, Postgres, or
 server-entrypoint imports.
+
+## #622 Runtime Contract Composition
+
+### Law Card
+
+- Reference identity: `EXTRACT.C.3.product-runtime-contract`
+- Evidence source: rollout issue #622, #621 handoff, and extracted core contract
+  modules.
+- Observable law: product runtime material is a typed product of existing closed
+  sublanguages, not a free-form metadata dictionary.
+- Object:
+
+```text
+ProductRuntimeContract
+  = BlockSockets
+  x PublicStaticEnvironmentBinding*
+  x ConfigurationArtifact*
+  x SecretDelivery*
+  x CapabilityName*
+  x VerificationContract
+  x ResourceLifecycle
+```
+
+- Expected result: a product can describe its sockets, non-secret environment,
+  immutable configuration artifacts, secret references, advertised capabilities,
+  verification checks, and lifecycle data through one strict descriptor that
+  round-trips deterministically.
+- Negative cases: verification checks for missing or incompatible provider
+  sockets, secret-shaped public environment, secret-shaped configuration
+  content, unknown descriptor fields, non-string socket names, secret literals
+  in descriptor input, and retained data resource identities overlapping
+  configuration artifact identities.
+- Obsolete structural assumptions not migrated: capability inference from
+  metadata, product-specific environment classes, raw string protocols, inline
+  secrets, runtime-derived environment values in product descriptors, and data
+  resources represented as configuration files.
+- Future owner: core.
+
+### Implementation
+
+The new value composes the already extracted languages directly:
+
+```python
+@dataclass(frozen=True)
+class ProductRuntimeContract:
+    sockets: BlockSockets = field(default_factory=BlockSockets)
+    public_environment: tuple[PublicStaticEnvironmentBinding, ...] = ()
+    configuration_artifacts: tuple[ConfigurationArtifact, ...] = ()
+    secret_deliveries: tuple[SecretDelivery, ...] = ()
+    capabilities: tuple[CapabilityName, ...] = ()
+    verification: VerificationContract = field(default_factory=VerificationContract)
+    lifecycle: ResourceLifecycle = field(default_factory=ResourceLifecycle.owned_ephemeral)
+```
+
+Verification is validated against the product's provider sockets before any
+runtime effect can occur:
+
+```python
+def _validate_verification(
+    sockets: BlockSockets,
+    verification: VerificationContract,
+) -> None:
+    providers = {provider.name: provider for provider in sockets.providers}
+    for check in verification.checks:
+        provider = providers[check.provider_socket]
+        if provider.protocol not in expected_protocols(check):
+            raise ProductRuntimeContractError(...)
+```
+
+Lifecycle data and configuration artifacts are kept separate:
+
+```python
+def _validate_lifecycle_distinctions(lifecycle, configuration_artifacts) -> None:
+    retained_data_ids = {value.resource_id for value in lifecycle.data}
+    artifact_ids = {value.artifact_id for value in configuration_artifacts}
+    if retained_data_ids & artifact_ids:
+        raise ProductRuntimeContractError(...)
+```
+
+### Decisions
+
+- `ProductRuntimeContract` is not yet `ContainerServerProduct`; it is the shared
+  descriptor-safe runtime contract component that #623 will compose with
+  `ProductIdentity` and `OciImageReference`.
+- Public environment only admits `PublicStaticEnvironmentBinding`. Socket-derived
+  values belong to graph realization, not product descriptor authorship.
+- Secrets are represented only by `SecretDelivery` values, which contain opaque
+  `SecretReference` ids. Resolved secret values remain outside durable graph
+  data.
+- Capabilities are explicit `CapabilityName` values. The codec does not infer
+  them from metadata, routes, labels, or free-form declarations.
+- Retained data resources remain lifecycle/data objects and may not be smuggled
+  in as configuration artifact identities.
+
+### Evidence
+
+- Red evidence: focused core test collection failed only because
+  `ProductRuntimeContract` did not yet exist.
+- Green evidence: `./control-plane-kit-core/test.sh` passed 51 unittest tests,
+  compileall, and base import verification.
+
+### Handoff To #623
+
+#623 can now define `ContainerServerProduct` as the direct product:
+
+```text
+ContainerServerProduct
+  = ProductIdentity
+  x OciImageReference
+  x ProductRuntimeContract
+```
+
+The issue may add a display/server-spec layer if repository evidence shows it is
+needed, but it should not duplicate sockets, verification, lifecycle, secret,
+configuration, or capability models. Reuse `ProductRuntimeContract` and its
+strict codec.

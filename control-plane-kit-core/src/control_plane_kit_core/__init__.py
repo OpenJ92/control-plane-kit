@@ -12,6 +12,9 @@ from control_plane_kit_core.products import (
     ProductIdentity,
     ProductIdentityCodec,
     ProductIdentityError,
+    ProductRuntimeContract,
+    ProductRuntimeContractCodec,
+    ProductRuntimeContractError,
     require_unique_product_identities,
 )
 
@@ -25,5 +28,8 @@ __all__ = [
     "ProductIdentity",
     "ProductIdentityCodec",
     "ProductIdentityError",
+    "ProductRuntimeContract",
+    "ProductRuntimeContractCodec",
+    "ProductRuntimeContractError",
     "require_unique_product_identities",
 ]
