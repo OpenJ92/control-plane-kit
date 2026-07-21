@@ -1,0 +1,6 @@
+{
+  "tests.test_http_bulkhead_server_block.HttpBulkheadTests.test_policy_and_block_identity_are_closed_and_bounded": "behavior.http-bulkhead.policy-and-block-identity-are-closed-and-bounded",
+  "tests.test_http_cache_server_block.HttpCacheTests.test_policy_and_block_identity_are_closed_and_bounded": "behavior.http-cache.policy-and-block-identity-are-closed-and-bounded",
+  "tests.test_idempotency_gateway.IdempotencyGatewayTests.test_schema_reinstall_preserves_rows_and_constraint_identity": "behavior.idempotency-gateway.schema-reinstall-preserves-rows-and-constraint-identity",
+  "tests.test_webhook_postgres.WebhookPostgresTests.test_schema_reinstall_preserves_rows_and_constraint_identity": "behavior.webhook-postgres.schema-reinstall-preserves-rows-and-constraint-identity"
+}

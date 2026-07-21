@@ -74,6 +74,8 @@ FROM package AS test
 
 COPY examples ./examples
 COPY docs ./docs
+COPY extraction_parity ./extraction_parity
+COPY reference-inventory.sh reference-test.sh ./
 COPY tests ./tests
 
 RUN python -m pip install ".[test-server]"
