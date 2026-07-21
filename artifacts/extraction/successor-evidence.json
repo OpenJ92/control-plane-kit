@@ -69,6 +69,11 @@
       "digest": "sha256:b5e074c1460f3fa607dc0568ca46fd33e993dd771b406eeed5e08f25a264aebf",
       "id": "extract-e-773.planning-scenario-expectations.unittest",
       "status": "passing"
+    },
+    {
+      "digest": "sha256:45a6aab9876e18e75278f9ba929cc87701d41d65f631f0bb8a63e7772694b480",
+      "id": "extract-e-774.saga-program-state-journal.unittest",
+      "status": "passing"
     }
   ],
   "schema": "cpk.successor-evidence-index"

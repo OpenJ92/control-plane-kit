@@ -29,6 +29,7 @@ EXPECTED_MODULES = {
     "planning.codec",
     "planning.compiler",
     "planning.scenarios",
+    "planning.saga",
     "policies",
     "probe_intents",
     "products",
