@@ -10,12 +10,12 @@ INIT = PACKAGE_ROOT / "src" / "control_plane_kit_core" / "__init__.py"
 
 
 class PackageBoundaryTests(unittest.TestCase):
-    def test_base_package_has_no_runtime_dependencies(self) -> None:
+    def test_base_package_declares_only_core_language_dependencies(self) -> None:
         metadata = tomllib.loads(PYPROJECT.read_text(encoding="utf-8"))
 
         project = metadata["project"]
         self.assertEqual(project["name"], "control-plane-kit-core")
-        self.assertEqual(project["dependencies"], [])
+        self.assertEqual(project["dependencies"], ["PyYAML>=6.0"])
         self.assertNotIn("optional-dependencies", project)
         self.assertNotIn("scripts", project)
 
@@ -63,4 +63,3 @@ class PackageBoundaryTests(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
-

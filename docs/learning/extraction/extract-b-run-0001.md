@@ -88,7 +88,7 @@ The package boundary now has executable metadata/import laws:
 ```python
 project = metadata["project"]
 self.assertEqual(project["name"], "control-plane-kit-core")
-self.assertEqual(project["dependencies"], [])
+self.assertEqual(project["dependencies"], ["PyYAML>=6.0"])
 self.assertNotIn("optional-dependencies", project)
 self.assertNotIn("scripts", project)
 ```
@@ -348,9 +348,10 @@ source.
 
 ### Dependency Boundary
 
-The copied configuration language imported PyYAML eagerly. Since extracted core
-currently has no dependencies, YAML validation is now lazy at the exact YAML
-configuration boundary:
+The configuration language includes YAML as a first-class media type, and
+Python does not ship a YAML parser in the standard library. Extracted core now
+declares PyYAML as a core language dependency while still importing it at the
+exact YAML configuration boundary:
 
 ```python
 elif media_type is ConfigurationMediaType.YAML:
@@ -362,8 +363,9 @@ elif media_type is ConfigurationMediaType.YAML:
         ) from error
 ```
 
-This keeps `import control_plane_kit_core` and non-YAML kernel use dependency-free
-without pretending YAML content was validated when the parser is unavailable.
+This keeps `import control_plane_kit_core` lightweight and avoids pretending
+YAML content was validated when source-tree use has not installed the package
+dependencies.
 
 ### Public Boundary
 
@@ -629,7 +631,8 @@ Security posture:
 - secret values remain outside descriptors and durable graph data;
 - product-owned server identities are absent from core;
 - optional effect and transport dependencies remain outside core;
-- YAML parsing is lazy and fails closed when PyYAML is unavailable.
+- PyYAML is the only declared core package dependency because YAML is part of
+  the configuration artifact language.
 
 Data-engineering posture:
 
