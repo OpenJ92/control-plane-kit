@@ -26,6 +26,7 @@ class ValidationPolicy(str, Enum):
 EVIDENCE_SCHEMA = "cpk.successor-evidence-index"
 REPORT_SCHEMA = "cpk.parity-validation-report"
 CORE_CLOSEOUT_REPORT_SCHEMA = "cpk.required-core-parity-closeout"
+CORE_FAMILY_INVENTORY_SCHEMA = "cpk.required-core-family-inventory"
 MAXIMUM_INPUT_BYTES = 16 * 1024 * 1024
 MAXIMUM_TEXT_BYTES = 512
 _DIGEST = re.compile(r"sha256:[0-9a-f]{64}")
@@ -175,8 +176,77 @@ def _entry_reference(entry: dict[str, object]) -> dict[str, str]:
     return {
         "kind": str(entry["kind"]),
         "reference": str(entry["reference"]),
+        "law": str(entry["law"]),
         "owner_kind": str(entry["owner_kind"]),
         "owner": str(entry["owner"]),
+    }
+
+
+def _family_for_reference(reference: str) -> str:
+    if reference.startswith("tests."):
+        parts = reference.split(".")
+        if len(parts) >= 2 and parts[1]:
+            return parts[1]
+    if reference.startswith("demo."):
+        return "demo"
+    if reference.startswith("validation."):
+        return "validation"
+    return reference.split(".", maxsplit=1)[0]
+
+
+def _decode_core_closeout_entry(value: object) -> dict[str, str]:
+    expected = {"kind", "reference", "law", "owner_kind", "owner"}
+    if not isinstance(value, dict) or set(value) != expected:
+        raise ValidationError("required-core inventory entry is not closed")
+    return {
+        "kind": _text(value["kind"], "entry.kind"),
+        "reference": _text(value["reference"], "entry.reference"),
+        "law": _text(value["law"], "entry.law"),
+        "owner_kind": _text(value["owner_kind"], "entry.owner_kind"),
+        "owner": _text(value["owner"], "entry.owner"),
+    }
+
+
+def inventory_unmapped_required_core_families(
+    closeout_report: dict[str, object],
+) -> dict[str, object]:
+    if closeout_report.get("schema") != CORE_CLOSEOUT_REPORT_SCHEMA:
+        raise ValidationError("unsupported required-core closeout schema")
+    entries = closeout_report.get("incomplete_required_core_entries")
+    if not isinstance(entries, list):
+        raise ValidationError("incomplete required-core entries must be a list")
+
+    laws: set[str] = set()
+    grouped: dict[str, list[dict[str, str]]] = {}
+    for raw_entry in entries:
+        entry = _decode_core_closeout_entry(raw_entry)
+        if entry["law"] in laws:
+            raise ValidationError("required-core law identities must be unique")
+        laws.add(entry["law"])
+        grouped.setdefault(_family_for_reference(entry["reference"]), []).append(entry)
+
+    families = []
+    for family, family_entries in grouped.items():
+        ordered_entries = sorted(
+            family_entries,
+            key=lambda entry: (entry["kind"], entry["reference"], entry["law"]),
+        )
+        families.append(
+            {
+                "family": family,
+                "count": len(ordered_entries),
+                "entries": ordered_entries,
+            }
+        )
+    families.sort(key=lambda family: (-int(family["count"]), str(family["family"])))
+    return {
+        "schema": CORE_FAMILY_INVENTORY_SCHEMA,
+        "valid": True,
+        "counts": {
+            "entries": len(entries),
+            "families": len(families),
+        },
+        "families": families,
     }
 
 

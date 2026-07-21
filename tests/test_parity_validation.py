@@ -8,6 +8,7 @@ from extraction_parity.validation import (
     ValidationError,
     ValidationPolicy,
     decode_evidence_index,
+    inventory_unmapped_required_core_families,
     validate_required_core_closeout,
     validate_parity,
 )
@@ -193,8 +194,21 @@ class ParityValidationTests(unittest.TestCase):
                 {
                     "kind": "test",
                     "reference": "tests.product",
+                    "law": "behavior.product",
                     "owner_kind": "deferred-product",
                     "owner": "control-plane-kit-servers:x",
+                }
+            ],
+        )
+        self.assertEqual(
+            report["incomplete_required_core_entries"],
+            [
+                {
+                    "kind": "test",
+                    "reference": "tests.core",
+                    "law": "behavior.core",
+                    "owner_kind": "core",
+                    "owner": "control-plane-kit-core",
                 }
             ],
         )
@@ -282,6 +296,96 @@ class ParityValidationTests(unittest.TestCase):
             "evidence_status_mismatch",
             {finding["code"] for finding in failed["findings"]},
         )
+
+    def test_required_core_family_inventory_groups_unmapped_laws_deterministically(self) -> None:
+        ownership, demos = inventories()
+        ownership["laws"].extend(
+            [
+                {
+                    "reference": "tests.test_graph.GraphTests.test_adds_node",
+                    "law": "graph.adds-node",
+                    "collection_occurrences": 1,
+                    "owner_kind": "core",
+                    "owner": "control-plane-kit-core",
+                },
+                {
+                    "reference": "tests.test_graph.GraphTests.test_rejects_edge",
+                    "law": "graph.rejects-edge",
+                    "collection_occurrences": 1,
+                    "owner_kind": "core",
+                    "owner": "control-plane-kit-core",
+                },
+                {
+                    "reference": "tests.test_diff.DiffTests.test_detects_change",
+                    "law": "diff.detects-change",
+                    "collection_occurrences": 1,
+                    "owner_kind": "core",
+                    "owner": "control-plane-kit-core",
+                },
+            ]
+        )
+        ownership["count"] = len(ownership["laws"])
+        ownership["law_count"] = len(ownership["laws"])
+        closeout = validate_required_core_closeout(
+            build_manifest(ownership, demos),
+            ownership,
+            demos,
+            empty_evidence(),
+        )
+
+        inventory = inventory_unmapped_required_core_families(closeout)
+
+        self.assertEqual(inventory["schema"], "cpk.required-core-family-inventory")
+        self.assertEqual(inventory["counts"]["entries"], 4)
+        self.assertEqual(inventory["counts"]["families"], 3)
+        self.assertEqual(
+            [
+                (family["family"], family["count"])
+                for family in inventory["families"]
+            ],
+            [
+                ("test_graph", 2),
+                ("core", 1),
+                ("test_diff", 1),
+            ],
+        )
+        laws = [
+            entry["law"]
+            for family in inventory["families"]
+            for entry in family["entries"]
+        ]
+        self.assertEqual(
+            laws,
+            [
+                "graph.adds-node",
+                "graph.rejects-edge",
+                "behavior.core",
+                "diff.detects-change",
+            ],
+        )
+
+    def test_required_core_family_inventory_fails_closed_on_invalid_report_shape(self) -> None:
+        closeout = {
+            "schema": "cpk.required-core-parity-closeout",
+            "counts": {},
+            "incomplete_required_core_entries": [
+                {
+                    "kind": "test",
+                    "reference": "tests.core",
+                    "owner_kind": "core",
+                    "owner": "control-plane-kit-core",
+                }
+            ],
+        }
+        with self.assertRaises(ValidationError):
+            inventory_unmapped_required_core_families(closeout)
+
+        closeout["incomplete_required_core_entries"][0]["law"] = "duplicate"
+        closeout["incomplete_required_core_entries"].append(
+            dict(closeout["incomplete_required_core_entries"][0])
+        )
+        with self.assertRaises(ValidationError):
+            inventory_unmapped_required_core_families(closeout)
 
 
 if __name__ == "__main__":
