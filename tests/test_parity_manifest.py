@@ -12,6 +12,16 @@ from extraction_parity.manifest import (
 )
 
 
+def reviewed_supersession() -> dict[str, str]:
+    return {
+        "rationale": "obsolete structural assertion replaced by stronger boundary",
+        "review": "issue-732",
+        "obsolete_assumption": "frozen test asserted the old package path",
+        "replacement": "successor law asserts the public core import boundary",
+        "negative_case_disposition": "invalid imports still fail in architecture tests",
+    }
+
+
 class ParityManifestTests(unittest.TestCase):
     def test_closed_manifest_round_trips_required_and_deferred_entries(self) -> None:
         document = {
@@ -33,6 +43,10 @@ class ParityManifestTests(unittest.TestCase):
             decode_manifest({**base, "entries": [entry, entry]})
         with self.assertRaises(ManifestError):
             decode_manifest({**base, "entries": [{**entry, "supersession": {"rationale": "removed"}}]})
+        incomplete = reviewed_supersession()
+        incomplete.pop("negative_case_disposition")
+        with self.assertRaises(ManifestError):
+            decode_manifest({**base, "entries": [{**entry, "supersession": incomplete}]})
 
     def test_successor_and_supersession_states_are_closed_bounded_and_exclusive(self) -> None:
         base = {"schema": "cpk.parity-manifest", "reference": {"tag": "tag", "commit": "commit"}, "entries": []}
@@ -51,8 +65,25 @@ class ParityManifestTests(unittest.TestCase):
             with self.subTest(invalid=invalid):
                 with self.assertRaises(ManifestError):
                     decode_manifest({**base, "entries": [{**entry, "successors": [invalid]}]})
+        self.assertEqual(
+            decode_manifest(
+                {**base, "entries": [{**entry, "supersession": reviewed_supersession()}]}
+            )["entries"][0]["supersession"],
+            reviewed_supersession(),
+        )
         with self.assertRaises(ManifestError):
-            decode_manifest({**base, "entries": [{**entry, "successors": [valid_successor], "supersession": {"rationale": "replaced", "review": "issue-1"}}]})
+            decode_manifest(
+                {
+                    **base,
+                    "entries": [
+                        {
+                            **entry,
+                            "successors": [valid_successor],
+                            "supersession": reviewed_supersession(),
+                        }
+                    ],
+                }
+            )
         with self.assertRaises(ManifestError):
             decode_manifest({**base, "reference": {"tag": "t" * 513, "commit": "commit"}})
 
