@@ -1637,3 +1637,116 @@ manifest supersessions
 
 This keeps supersession exceptional and reviewable without making the old
 issue-732 review artifact carry future decisions.
+
+## #774 Saga Program, State, Schedule, And Journal Mapping
+
+#774 maps the pure saga side of the planning/saga batch.
+
+The exact mapped families are:
+
+```text
+test_saga_program: 3 successor laws
+test_saga_state:   9 successor laws
+test_saga_journal: 8 successor laws
+```
+
+New successor module:
+
+```text
+control_plane_kit_core.planning.saga
+```
+
+New successor tests:
+
+```text
+control-plane-kit-core/tests/test_saga.py
+```
+
+New proof artifact:
+
+```text
+artifacts/extraction/successor-proofs/extract-e-774-saga-program-state-journal.json
+```
+
+Important shape:
+
+```text
+SagaProgram[Effect]
+  = End
+  | StepNode[SagaStep[Effect], SagaProgram[Effect]]
+  | ParallelNode[tuple[SagaProgram[Effect], ...], SagaProgram[Effect]]
+
+SagaState
+  = tuple[SagaStepState]
+  x completion_order
+  x failed_steps
+  x cancelled
+  x compensation_requested
+
+ActivityPlan x tuple[ActivityJournalEvent]
+  -> SagaJournalProjection[SagaState, in_flight, uncertain]
+
+ActivityPlan x SagaState
+  -> ExecutionSchedule
+```
+
+Boundary decision:
+
+The extracted module is still pure core. It owns immutable syntax, immutable
+events, replay, and dependency scheduling over `ActivityPlan`. It does not own
+Postgres activity events, worker leases, stores, recovery commands, adapters,
+coordinator execution, Docker, FastAPI, MCP, or runtime effects.
+
+The activity journal type introduced here is a pure closed value:
+
+```text
+ActivityJournalEvent
+  = event_id
+  x run_id
+  x ordinal
+  x ActivityJournalEventKind
+  x optional activity_id
+```
+
+It is intentionally not the operations-layer store row. Later operations work
+may adapt durable `ActivityEventRecord` rows into this pure value before
+projection.
+
+Implementation notes:
+
+```text
+SagaStep.effect is typed data and explicitly need not be callable.
+parallel(...) rejects fewer than two branches and empty branches.
+program_steps(...) rejects duplicate stable identities.
+SagaCompensationRequested is replayable immutable state, not a coordinator flag.
+compensation_candidates(...) follows reverse durable completion order.
+project_activity_journal(...) folds canonical activity events into saga events
+without creating a second journal.
+derive_schedule(...) interprets ActivityPlan + SagaState without effects.
+```
+
+Test-integrity note:
+
+The first bridge test assumed constructor order for `ActivityPlan`. That was an
+obsolete structural assumption: `ActivityPlan` already canonicalizes activity
+order. The corrected assertion compares saga step order to
+`plan.activities`, preserving the semantic law instead of weakening it.
+
+The first compensation-admission implementation also rejected
+`RUN_COMPENSATION_STARTED` after a successfully completed one-step plan. The
+journal law requires that a completed compensatable plan can enter compensation
+from reconstructed state. The fix admits compensation from `SUCCEEDED` only
+when durable completed compensatable work exists, so successful forward work can
+be reversed without allowing arbitrary compensation admission.
+
+Validation evidence:
+
+```text
+focused #774 extracted-core successor tests: 25 tests passed
+focused #774 core closeout slice:           28 tests passed
+focused root parity guard slice:            23 tests passed
+./validate-parity.sh foundation:            valid=true, findings=0
+control-plane-kit-core/test.sh:             330 tests passed
+./test.sh:                                  1190 tests passed
+git diff --check:                           clean
+```

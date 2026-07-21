@@ -10297,7 +10297,13 @@
       "owner": "control-plane-kit-core",
       "owner_kind": "core",
       "reference": "tests.test_saga_journal.SagaJournalTests.test_foreign_and_impossible_histories_fail_closed",
-      "successors": [],
+      "successors": [
+        {
+          "evidence": "extract-e-774.saga-program-state-journal.unittest",
+          "id": "control-plane-kit-core.tests.test_saga",
+          "status": "passing"
+        }
+      ],
       "supersession": null
     },
     {
@@ -10307,7 +10313,13 @@
       "owner": "control-plane-kit-core",
       "owner_kind": "core",
       "reference": "tests.test_saga_journal.SagaJournalTests.test_mixed_runs_and_nonmonotonic_ordinals_fail_closed",
-      "successors": [],
+      "successors": [
+        {
+          "evidence": "extract-e-774.saga-program-state-journal.unittest",
+          "id": "control-plane-kit-core.tests.test_saga",
+          "status": "passing"
+        }
+      ],
       "supersession": null
     },
     {
@@ -10317,7 +10329,13 @@
       "owner": "control-plane-kit-core",
       "owner_kind": "core",
       "reference": "tests.test_saga_journal.SagaJournalTests.test_run_compensation_admission_reconstructs_pure_saga_intent",
-      "successors": [],
+      "successors": [
+        {
+          "evidence": "extract-e-774.saga-program-state-journal.unittest",
+          "id": "control-plane-kit-core.tests.test_saga",
+          "status": "passing"
+        }
+      ],
       "supersession": null
     },
     {
@@ -10327,7 +10345,13 @@
       "owner": "control-plane-kit-core",
       "owner_kind": "core",
       "reference": "tests.test_saga_journal.SagaJournalTests.test_success_reconstructs_from_canonical_activity_events",
-      "successors": [],
+      "successors": [
+        {
+          "evidence": "extract-e-774.saga-program-state-journal.unittest",
+          "id": "control-plane-kit-core.tests.test_saga",
+          "status": "passing"
+        }
+      ],
       "supersession": null
     },
     {
@@ -10337,7 +10361,13 @@
       "owner": "control-plane-kit-core",
       "owner_kind": "core",
       "reference": "tests.test_saga_journal.SagaJournalTests.test_uncertain_attempt_remains_running_but_is_not_in_flight",
-      "successors": [],
+      "successors": [
+        {
+          "evidence": "extract-e-774.saga-program-state-journal.unittest",
+          "id": "control-plane-kit-core.tests.test_saga",
+          "status": "passing"
+        }
+      ],
       "supersession": null
     },
     {
@@ -10347,7 +10377,13 @@
       "owner": "control-plane-kit-core",
       "owner_kind": "core",
       "reference": "tests.test_saga_journal.SagaJournalTests.test_uncertainty_resolution_replays_into_terminal_step_evidence",
-      "successors": [],
+      "successors": [
+        {
+          "evidence": "extract-e-774.saga-program-state-journal.unittest",
+          "id": "control-plane-kit-core.tests.test_saga",
+          "status": "passing"
+        }
+      ],
       "supersession": null
     },
     {
@@ -10357,7 +10393,13 @@
       "owner": "control-plane-kit-core",
       "owner_kind": "core",
       "reference": "tests.test_saga_journal.SagaJournalTests.test_uncertainty_resolution_requires_prior_uncertain_evidence",
-      "successors": [],
+      "successors": [
+        {
+          "evidence": "extract-e-774.saga-program-state-journal.unittest",
+          "id": "control-plane-kit-core.tests.test_saga",
+          "status": "passing"
+        }
+      ],
       "supersession": null
     },
     {
@@ -10367,7 +10409,13 @@
       "owner": "control-plane-kit-core",
       "owner_kind": "core",
       "reference": "tests.test_saga_journal.SagaJournalTests.test_unsupported_is_distinct_durable_failure_evidence",
-      "successors": [],
+      "successors": [
+        {
+          "evidence": "extract-e-774.saga-program-state-journal.unittest",
+          "id": "control-plane-kit-core.tests.test_saga",
+          "status": "passing"
+        }
+      ],
       "supersession": null
     },
     {
@@ -10377,7 +10425,13 @@
       "owner": "control-plane-kit-core",
       "owner_kind": "core",
       "reference": "tests.test_saga_program.SagaProgramTests.test_chain_and_then_build_immutable_callback_free_syntax",
-      "successors": [],
+      "successors": [
+        {
+          "evidence": "extract-e-774.saga-program-state-journal.unittest",
+          "id": "control-plane-kit-core.tests.test_saga",
+          "status": "passing"
+        }
+      ],
       "supersession": null
     },
     {
@@ -10387,7 +10441,13 @@
       "owner": "control-plane-kit-core",
       "owner_kind": "core",
       "reference": "tests.test_saga_program.SagaProgramTests.test_invalid_parallel_and_duplicate_identity_fail_structurally",
-      "successors": [],
+      "successors": [
+        {
+          "evidence": "extract-e-774.saga-program-state-journal.unittest",
+          "id": "control-plane-kit-core.tests.test_saga",
+          "status": "passing"
+        }
+      ],
       "supersession": null
     },
     {
@@ -10397,7 +10457,13 @@
       "owner": "control-plane-kit-core",
       "owner_kind": "core",
       "reference": "tests.test_saga_program.SagaProgramTests.test_parallel_preserves_declared_fan_out_and_shared_continuation",
-      "successors": [],
+      "successors": [
+        {
+          "evidence": "extract-e-774.saga-program-state-journal.unittest",
+          "id": "control-plane-kit-core.tests.test_saga",
+          "status": "passing"
+        }
+      ],
       "supersession": null
     },
     {
@@ -10407,7 +10473,13 @@
       "owner": "control-plane-kit-core",
       "owner_kind": "core",
       "reference": "tests.test_saga_state.SagaStateTests.test_compensation_admission_preserves_in_flight_forward_evidence",
-      "successors": [],
+      "successors": [
+        {
+          "evidence": "extract-e-774.saga-program-state-journal.unittest",
+          "id": "control-plane-kit-core.tests.test_saga",
+          "status": "passing"
+        }
+      ],
       "supersession": null
     },
     {
@@ -10417,7 +10489,13 @@
       "owner": "control-plane-kit-core",
       "owner_kind": "core",
       "reference": "tests.test_saga_state.SagaStateTests.test_compensation_admission_without_completed_inverse_fails_closed",
-      "successors": [],
+      "successors": [
+        {
+          "evidence": "extract-e-774.saga-program-state-journal.unittest",
+          "id": "control-plane-kit-core.tests.test_saga",
+          "status": "passing"
+        }
+      ],
       "supersession": null
     },
     {
@@ -10427,7 +10505,13 @@
       "owner": "control-plane-kit-core",
       "owner_kind": "core",
       "reference": "tests.test_saga_state.SagaStateTests.test_event_variants_are_data_and_replay_rejects_impossible_history",
-      "successors": [],
+      "successors": [
+        {
+          "evidence": "extract-e-774.saga-program-state-journal.unittest",
+          "id": "control-plane-kit-core.tests.test_saga",
+          "status": "passing"
+        }
+      ],
       "supersession": null
     },
     {
@@ -10437,7 +10521,13 @@
       "owner": "control-plane-kit-core",
       "owner_kind": "core",
       "reference": "tests.test_saga_state.SagaStateTests.test_explicit_compensation_admission_is_pure_replayable_state",
-      "successors": [],
+      "successors": [
+        {
+          "evidence": "extract-e-774.saga-program-state-journal.unittest",
+          "id": "control-plane-kit-core.tests.test_saga",
+          "status": "passing"
+        }
+      ],
       "supersession": null
     },
     {
@@ -10447,7 +10537,13 @@
       "owner": "control-plane-kit-core",
       "owner_kind": "core",
       "reference": "tests.test_saga_state.SagaStateTests.test_failure_and_compensation_failure_remain_explicit",
-      "successors": [],
+      "successors": [
+        {
+          "evidence": "extract-e-774.saga-program-state-journal.unittest",
+          "id": "control-plane-kit-core.tests.test_saga",
+          "status": "passing"
+        }
+      ],
       "supersession": null
     },
     {
@@ -10457,7 +10553,13 @@
       "owner": "control-plane-kit-core",
       "owner_kind": "core",
       "reference": "tests.test_saga_state.SagaStateTests.test_invalid_transitions_and_compensation_order_fail_closed",
-      "successors": [],
+      "successors": [
+        {
+          "evidence": "extract-e-774.saga-program-state-journal.unittest",
+          "id": "control-plane-kit-core.tests.test_saga",
+          "status": "passing"
+        }
+      ],
       "supersession": null
     },
     {
@@ -10467,7 +10569,13 @@
       "owner": "control-plane-kit-core",
       "owner_kind": "core",
       "reference": "tests.test_saga_state.SagaStateTests.test_parallel_completion_evidence_determines_reverse_compensation",
-      "successors": [],
+      "successors": [
+        {
+          "evidence": "extract-e-774.saga-program-state-journal.unittest",
+          "id": "control-plane-kit-core.tests.test_saga",
+          "status": "passing"
+        }
+      ],
       "supersession": null
     },
     {
@@ -10477,7 +10585,13 @@
       "owner": "control-plane-kit-core",
       "owner_kind": "core",
       "reference": "tests.test_saga_state.SagaStateTests.test_partial_parallel_failure_compensates_only_completed_siblings",
-      "successors": [],
+      "successors": [
+        {
+          "evidence": "extract-e-774.saga-program-state-journal.unittest",
+          "id": "control-plane-kit-core.tests.test_saga",
+          "status": "passing"
+        }
+      ],
       "supersession": null
     },
     {
@@ -10487,7 +10601,13 @@
       "owner": "control-plane-kit-core",
       "owner_kind": "core",
       "reference": "tests.test_saga_state.SagaStateTests.test_successful_sequence_reconstructs_from_the_same_events",
-      "successors": [],
+      "successors": [
+        {
+          "evidence": "extract-e-774.saga-program-state-journal.unittest",
+          "id": "control-plane-kit-core.tests.test_saga",
+          "status": "passing"
+        }
+      ],
       "supersession": null
     },
     {
