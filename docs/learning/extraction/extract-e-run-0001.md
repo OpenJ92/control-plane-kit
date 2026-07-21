@@ -605,3 +605,74 @@ current required-core inventory
 
 That keeps the extraction law strict without pretending the live inventory
 should remain equal after mappings have been completed.
+
+## #747 Graph Codec, Validation, And Diff Successors
+
+#747 mapped the remaining pure graph-language slice from #738:
+
+```text
+test_graph_codec:      11 laws
+test_graph_validation: 12 laws
+test_graph_diff:       15 laws
+```
+
+Successor evidence:
+
+```text
+artifacts/extraction/successor-proofs/extract-e-747-graph-codec-validation-diff.json
+```
+
+The new successor tests live in extracted core:
+
+```text
+control-plane-kit-core/tests/test_graph_codec.py
+control-plane-kit-core/tests/test_graph_validation.py
+control-plane-kit-core/tests/test_graph_diff.py
+```
+
+Curated shape:
+
+```text
+DeploymentGraph
+  -> GraphDescriptorCodec
+    -> closed durable descriptor
+
+DeploymentGraph
+  -> validate_graph
+    -> ValidatedGraph[ValidationFinding]
+
+ValidatedGraph x ValidatedGraph
+  -> diff_graphs
+    -> GraphDiff[StructuralChange]
+```
+
+The added tests preserve:
+
+- graph descriptors reject unknown variants, malformed shapes, inline secret
+  environment values, unknown protocol factors, and lossy unknown fields;
+- secret-reference endpoints round-trip as opaque graph data without secret
+  resolution;
+- custom block-spec codecs preserve typed identity instead of reconstructing
+  from strings;
+- validation returns deterministic structured findings for runtime ownership,
+  provider endpoints, edge assignment, duplicate socket, missing connection,
+  verification target, and descriptor invalidity laws;
+- diff output is typed structural data with separate subjects for endpoints,
+  sockets, block specifications, metadata, environments, configuration
+  artifacts, secret deliveries, runtime containment, unsupported transitions,
+  and ambiguity;
+- diff descriptors redact secret references, secret-shaped metadata, and
+  environment assignments.
+
+One dry-run correction was important: a runtime-control router switch is not a
+socket-derived environment change. The successor for the socket-environment
+diff law now uses a startup environment-bound service dependency whose provider
+endpoint changes, while runtime-control routing remains covered as a typed edge
+change.
+
+Required-core inventory after #747:
+
+```text
+incomplete required-core laws: 700
+unmapped required-core families: 92
+```
