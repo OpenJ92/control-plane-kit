@@ -4,6 +4,11 @@
       "digest": "sha256:4bff6481ba3871f90aeae2735b6b6085f24413506a4bae9a0aaae61384af99ae",
       "id": "extract-b-677.graph-duplicate-identity.unittest",
       "status": "passing"
+    },
+    {
+      "digest": "sha256:a10e898280dcbb8360dcde26de49f605f42b5472c8a8ceeaf03f982865e00074",
+      "id": "extract-b-614.pure-kernel.unittest",
+      "status": "passing"
     }
   ],
   "schema": "cpk.successor-evidence-index"

@@ -233,7 +233,7 @@ Foundation validation remains green:
 
 ```text
 policy=foundation valid=true migration_complete=false entries=1107 required=880
-deferred=227 incomplete_required=879 findings=0
+dedeferred=227 incomplete_required=879 findings=0
 ```
 
 ### Handoff
@@ -241,3 +241,184 @@ deferred=227 incomplete_required=879 findings=0
 #614 should migrate the full pure kernel using this exact loop, but it should
 not treat the minimal #677 topology module as final structure. It may extend,
 rename, or split the surface where the broader law set demands it.
+
+
+## #614 Pure Kernel Migration
+
+### Capability
+
+The extracted package now contains the first real pure deployment kernel:
+
+```text
+control-plane-kit-core/src/control_plane_kit_core/
+  algebra.py
+  capabilities.py
+  configuration.py
+  control_routes.py
+  environment.py
+  lifecycle.py
+  secrets.py
+  types.py
+  verification.py
+  topology/
+    graph.py
+    codec.py
+    validation.py
+    changes.py
+    diff.py
+    compiler.py
+  planning/
+    activity_plan.py
+    codec.py
+    compiler.py
+```
+
+The executable kernel is still the intended pure pipeline:
+
+```text
+DeploymentRecipe
+  -> compile_recipe
+    -> DeploymentGraph
+      -> validate_graph
+        -> ValidatedGraph
+          -> diff_graphs
+            -> GraphDiff
+              -> compile_activity_plan
+                -> ActivityPlan
+```
+
+No Docker interpreter, Postgres store, FastAPI app, HTTP client, MCP transport,
+Hello server, CoreDNS product, webhook service, or other server product was
+migrated into `control-plane-kit-core`.
+
+### Law Cards Migrated
+
+#614 migrated representative laws from these frozen families:
+
+```text
+connection protocol:
+  closed Transport x ApplicationProtocol values
+  invalid transport/application combinations fail at construction
+  descriptors are exact and fail closed
+
+graph construction and compilation:
+  provider/requirement vocabulary survives descriptors
+  socket-derived environment wiring is pure graph material
+  protocol mismatch fails at compile time
+
+graph codec:
+  generic BlockSpec identity round-trips
+  unknown variants and unknown fields fail closed
+  literal credentials are rejected before durable graph entry
+
+graph validation:
+  missing required connections are structured findings
+  require_valid raises with the complete validation result
+
+graph diff and activity planning:
+  initial deployment compiles to runtime/node/health work
+  environment connections are startup material, not socket effects
+  runtime-control edge switches become typed switch activities
+
+activity plan algebra:
+  plans sort topologically, not by input order
+  fan-out/fan-in order is deterministic across permutations
+  structural violations are deterministic
+  review work blocks execution unless explicitly reviewed
+  invalid target shapes cannot enter the plan
+```
+
+### Architectural Correction
+
+The mechanical migration initially brought `PackageServerProduct`,
+`PackageServerSpec`, and `ProductMaturity` into extracted core. That would have
+made core name Hello, CoreDNS, webhook delivery, routers, and other package-owned
+servers. This contradicts the rollout law:
+
+```text
+core consumes registered product descriptors;
+core does not own the product catalogue.
+```
+
+The correction was to remove package-owned server identities from core and keep
+`BlockSpecVariantCodec` as the extension point. Future server packages can
+provide product-specific specs and codecs without teaching core product names.
+An architecture unittest now proves those names are absent from extracted core
+source.
+
+### Dependency Boundary
+
+The copied configuration language imported PyYAML eagerly. Since extracted core
+currently has no dependencies, YAML validation is now lazy at the exact YAML
+configuration boundary:
+
+```python
+elif media_type is ConfigurationMediaType.YAML:
+    try:
+        import yaml
+    except ModuleNotFoundError as error:
+        raise ConfigurationArtifactError(
+            "YAML configuration validation requires PyYAML"
+        ) from error
+```
+
+This keeps `import control_plane_kit_core` and non-YAML kernel use dependency-free
+without pretending YAML content was validated when the parser is unavailable.
+
+### Public Boundary
+
+The root package remains intentionally lightweight:
+
+```python
+import control_plane_kit_core
+control_plane_kit_core.__version__
+```
+
+Kernel use imports from explicit language homes:
+
+```python
+from control_plane_kit_core.algebra import DeploymentRecipe
+from control_plane_kit_core.topology import compile_recipe, validate_graph, diff_graphs
+from control_plane_kit_core.planning import ActivityPlan, compile_activity_plan
+```
+
+### Evidence
+
+Focused package validation:
+
+```text
+./control-plane-kit-core/test.sh
+Ran 21 tests
+OK
+control-plane-kit-core import ok
+```
+
+Parity foundation validation:
+
+```text
+policy=foundation valid=true migration_complete=false entries=1107 required=880
+deferred=227 incomplete_required=856 findings=0
+```
+
+Successor evidence bundle:
+
+```text
+extract-b-614.pure-kernel.unittest
+sha256:a10e898280dcbb8360dcde26de49f605f42b5472c8a8ceeaf03f982865e00074
+```
+
+### Handoff
+
+#619 should treat #614 as a representative pure-kernel migration, not as full
+migration completion. The zero-unmapped manifest still reports 856 required laws
+without successor evidence. #619 should decide whether EXTRACT.B closeout is a
+kernel-foundation milestone or whether additional law families must move before
+opening the milestone PR to main.
+
+#619 should also preserve these decisions:
+
+- only stdlib `unittest` in `control-plane-kit-core`;
+- no package-owned server names in extracted core;
+- no old/current `control_plane_kit` imports in successor tests;
+- no PyYAML dependency for base package import;
+- no parity claim without successor evidence.

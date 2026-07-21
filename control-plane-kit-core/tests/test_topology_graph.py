@@ -1,6 +1,7 @@
 from dataclasses import replace
 import unittest
 
+from control_plane_kit_core.algebra import BlockSockets, BlockSpec
 from control_plane_kit_core.topology import (
     DeploymentGraph,
     Edge,
@@ -10,19 +11,30 @@ from control_plane_kit_core.topology import (
     Node,
     RuntimeRecord,
 )
+from control_plane_kit_core.types import BlockFamily, Protocol, RuntimeKind, SocketBinding
 
 
 class DeploymentGraphConstructionTests(unittest.TestCase):
     def test_add_operations_reject_duplicates_without_erasing_first_values(self) -> None:
-        original_node = Node("api", kind="application")
+        original_node = Node(
+            node_id="api",
+            block_family=BlockFamily.APPLICATION,
+            block_spec=BlockSpec("api"),
+            kind="application",
+            runtime_id="docker",
+            sockets=BlockSockets(),
+        )
         original_edge = Edge(
             edge_id="database-edge",
             provider_role="database",
             provider_socket="postgres",
             consumer_role="api",
             requirement_socket="database",
+            protocol=Protocol.POSTGRES,
+            binding=SocketBinding.ENVIRONMENT,
+            env_assignments={"DATABASE_URL": "postgres://database/app"},
         )
-        original_runtime = RuntimeRecord("docker", kind="docker")
+        original_runtime = RuntimeRecord("docker", kind=RuntimeKind.DOCKER)
         graph = (
             DeploymentGraph("orders")
             .add_node(original_node)
