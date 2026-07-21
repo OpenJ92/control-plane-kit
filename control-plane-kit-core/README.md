@@ -132,6 +132,20 @@ service role, request/response schema, approval policy, idempotency policy, and
 transaction law. Destructive commands require current approval, required
 idempotency, and after-commit external-effect timing.
 
+Authorization/history parity closes the adapter contract:
+
+```text
+AdapterOperationSecurityParityContract
+  = AdapterParityContract
+  x AdapterCommandParityContract
+  x AdapterOperationSecurityBinding*
+```
+
+Each operation binding proves that HTTP and MCP share the same auth scope,
+safety classification, activity-history requirement, and bounded redacted error
+policy. Accepted and rejected commands require activity evidence; read
+projections remain read-scoped and read-only.
+
 ## Extraction Law
 
 Every migrated behavior must be justified by a frozen law card from the

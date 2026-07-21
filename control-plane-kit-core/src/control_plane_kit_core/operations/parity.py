@@ -8,6 +8,7 @@ from typing import Mapping
 
 from control_plane_kit_core.operations.http import (
     HttpApiContract,
+    HttpAuthScope,
     HttpOperationSafety,
 )
 from control_plane_kit_core.operations.mcp import McpStreamableHttpContract
@@ -37,6 +38,20 @@ class ApprovalPolicy(StrEnum):
     SUBMITS_FOR_APPROVAL = "submits-for-approval"
     DECIDES_APPROVAL = "decides-approval"
     REQUIRES_CURRENT_APPROVAL = "requires-current-approval"
+
+
+class ActivityHistoryPolicy(StrEnum):
+    """Closed activity-history evidence requirement for adapter operations."""
+
+    NOT_RECORDED = "not-recorded"
+    RECORD_ACCEPTED_AND_REJECTED_COMMANDS = "record-accepted-and-rejected-commands"
+
+
+class ErrorDisclosurePolicy(StrEnum):
+    """Closed error disclosure policy shared by adapter transports."""
+
+    BOUNDED_REDACTED = "bounded-redacted"
+    TRANSPORT_PRIVATE = "transport-private"
 
 
 @dataclass(frozen=True)
@@ -174,6 +189,91 @@ class AdapterCommandBinding:
                     _text(value["idempotency"], "idempotency")
                 ),
                 approval=ApprovalPolicy(_text(value["approval"], "approval")),
+            )
+        except ValueError as error:
+            raise InvalidAdapterParityContract(str(error)) from error
+
+
+@dataclass(frozen=True)
+class AdapterOperationSecurityBinding:
+    """Authorization, history, and redaction law for one adapter operation."""
+
+    operation_id: str
+    service_role: ControlPlaneServiceRole
+    http_route_id: str
+    mcp_name: str
+    auth_scope: HttpAuthScope
+    safety: HttpOperationSafety
+    activity_history: ActivityHistoryPolicy
+    error_disclosure: ErrorDisclosurePolicy
+
+    def __post_init__(self) -> None:
+        _validate_identity(self.operation_id, "operation_id")
+        if not isinstance(self.service_role, ControlPlaneServiceRole):
+            raise InvalidAdapterParityContract(
+                "service_role must be ControlPlaneServiceRole"
+            )
+        _validate_identity(self.http_route_id, "http_route_id")
+        _validate_identity(self.mcp_name, "mcp_name")
+        if not isinstance(self.auth_scope, HttpAuthScope):
+            raise InvalidAdapterParityContract("auth_scope must be HttpAuthScope")
+        if not isinstance(self.safety, HttpOperationSafety):
+            raise InvalidAdapterParityContract("safety must be HttpOperationSafety")
+        if not isinstance(self.activity_history, ActivityHistoryPolicy):
+            raise InvalidAdapterParityContract(
+                "activity_history must be ActivityHistoryPolicy"
+            )
+        if not isinstance(self.error_disclosure, ErrorDisclosurePolicy):
+            raise InvalidAdapterParityContract(
+                "error_disclosure must be ErrorDisclosurePolicy"
+            )
+
+    def descriptor(self) -> dict[str, object]:
+        return {
+            "operation_id": self.operation_id,
+            "service_role": self.service_role.value,
+            "http_route_id": self.http_route_id,
+            "mcp_name": self.mcp_name,
+            "auth_scope": self.auth_scope.value,
+            "safety": self.safety.value,
+            "activity_history": self.activity_history.value,
+            "error_disclosure": self.error_disclosure.value,
+        }
+
+    @classmethod
+    def from_descriptor(
+        cls,
+        value: Mapping[str, object],
+    ) -> "AdapterOperationSecurityBinding":
+        if set(value) != {
+            "operation_id",
+            "service_role",
+            "http_route_id",
+            "mcp_name",
+            "auth_scope",
+            "safety",
+            "activity_history",
+            "error_disclosure",
+        }:
+            raise InvalidAdapterParityContract(
+                "operation security descriptor has unexpected keys"
+            )
+        try:
+            return cls(
+                operation_id=_text(value["operation_id"], "operation_id"),
+                service_role=ControlPlaneServiceRole(
+                    _text(value["service_role"], "service_role")
+                ),
+                http_route_id=_text(value["http_route_id"], "http_route_id"),
+                mcp_name=_text(value["mcp_name"], "mcp_name"),
+                auth_scope=HttpAuthScope(_text(value["auth_scope"], "auth_scope")),
+                safety=HttpOperationSafety(_text(value["safety"], "safety")),
+                activity_history=ActivityHistoryPolicy(
+                    _text(value["activity_history"], "activity_history")
+                ),
+                error_disclosure=ErrorDisclosurePolicy(
+                    _text(value["error_disclosure"], "error_disclosure")
+                ),
             )
         except ValueError as error:
             raise InvalidAdapterParityContract(str(error)) from error
@@ -410,6 +510,204 @@ class AdapterCommandParityContract:
             raise InvalidAdapterParityContract(str(error)) from error
 
 
+@dataclass(frozen=True)
+class AdapterOperationSecurityParityContract:
+    """Prove auth, safety, activity, and error laws across adapters."""
+
+    projection_parity: AdapterParityContract
+    command_parity: AdapterCommandParityContract
+    operations: tuple[AdapterOperationSecurityBinding, ...]
+
+    def __post_init__(self) -> None:
+        if not isinstance(self.projection_parity, AdapterParityContract):
+            raise InvalidAdapterParityContract(
+                "projection_parity must be AdapterParityContract"
+            )
+        if not isinstance(self.command_parity, AdapterCommandParityContract):
+            raise InvalidAdapterParityContract(
+                "command_parity must be AdapterCommandParityContract"
+            )
+        if self.projection_parity.mcp != self.command_parity.mcp:
+            raise InvalidAdapterParityContract(
+                "projection and command parity must use one MCP contract"
+            )
+        if not isinstance(self.operations, tuple) or not all(
+            isinstance(operation, AdapterOperationSecurityBinding)
+            for operation in self.operations
+        ):
+            raise InvalidAdapterParityContract(
+                "operations must be AdapterOperationSecurityBinding values"
+            )
+        _reject_duplicates(
+            "operation_id",
+            (operation.operation_id for operation in self.operations),
+        )
+        expected = {
+            binding.operation_id
+            for binding in self.projection_parity.projections
+        } | {
+            binding.operation_id
+            for binding in self.command_parity.commands
+        }
+        actual = {operation.operation_id for operation in self.operations}
+        if actual != expected:
+            raise InvalidAdapterParityContract(
+                "operation security parity must cover every read and command operation"
+            )
+        projection_by_id = {
+            binding.operation_id: binding
+            for binding in self.projection_parity.projections
+        }
+        command_by_id = {
+            binding.operation_id: binding
+            for binding in self.command_parity.commands
+        }
+        for operation in self.operations:
+            if operation.operation_id in projection_by_id:
+                self._validate_projection(operation, projection_by_id[operation.operation_id])
+            elif operation.operation_id in command_by_id:
+                self._validate_command(operation, command_by_id[operation.operation_id])
+            if operation.error_disclosure is not ErrorDisclosurePolicy.BOUNDED_REDACTED:
+                raise InvalidAdapterParityContract(
+                    f"{operation.operation_id!r} errors must be bounded and redacted"
+                )
+        ordered = tuple(
+            sorted(self.operations, key=lambda operation: operation.operation_id)
+        )
+        object.__setattr__(self, "operations", ordered)
+
+    def _validate_projection(
+        self,
+        operation: AdapterOperationSecurityBinding,
+        binding: AdapterProjectionBinding,
+    ) -> None:
+        route = self.projection_parity.http_api.route(binding.http_route_id)
+        if operation.service_role is not binding.service_role:
+            raise InvalidAdapterParityContract(
+                f"{operation.operation_id!r} projection service role mismatch"
+            )
+        if operation.http_route_id != binding.http_route_id:
+            raise InvalidAdapterParityContract(
+                f"{operation.operation_id!r} projection HTTP route mismatch"
+            )
+        if operation.mcp_name != binding.mcp_tool_name:
+            raise InvalidAdapterParityContract(
+                f"{operation.operation_id!r} projection MCP name mismatch"
+            )
+        if operation.auth_scope is not route.auth_scope:
+            raise InvalidAdapterParityContract(
+                f"{operation.operation_id!r} projection auth scope mismatch"
+            )
+        if operation.auth_scope is not HttpAuthScope.READ:
+            raise InvalidAdapterParityContract(
+                f"{operation.operation_id!r} read projection requires read auth"
+            )
+        if operation.safety is not HttpOperationSafety.READ_ONLY:
+            raise InvalidAdapterParityContract(
+                f"{operation.operation_id!r} read projection must be read-only"
+            )
+        if operation.activity_history is not ActivityHistoryPolicy.NOT_RECORDED:
+            raise InvalidAdapterParityContract(
+                f"{operation.operation_id!r} read projection must not claim command history"
+            )
+
+    def _validate_command(
+        self,
+        operation: AdapterOperationSecurityBinding,
+        binding: AdapterCommandBinding,
+    ) -> None:
+        route = self.command_parity.http_api.route(binding.http_route_id)
+        if operation.service_role is not binding.service_role:
+            raise InvalidAdapterParityContract(
+                f"{operation.operation_id!r} command service role mismatch"
+            )
+        if operation.http_route_id != binding.http_route_id:
+            raise InvalidAdapterParityContract(
+                f"{operation.operation_id!r} command HTTP route mismatch"
+            )
+        if operation.mcp_name != binding.mcp_tool_name:
+            raise InvalidAdapterParityContract(
+                f"{operation.operation_id!r} command MCP name mismatch"
+            )
+        if operation.auth_scope is not route.auth_scope:
+            raise InvalidAdapterParityContract(
+                f"{operation.operation_id!r} command auth scope mismatch"
+            )
+        if operation.auth_scope is HttpAuthScope.READ:
+            raise InvalidAdapterParityContract(
+                f"{operation.operation_id!r} command must not use read auth"
+            )
+        if operation.safety is not route.safety:
+            raise InvalidAdapterParityContract(
+                f"{operation.operation_id!r} command safety mismatch"
+            )
+        if (
+            operation.activity_history
+            is not ActivityHistoryPolicy.RECORD_ACCEPTED_AND_REJECTED_COMMANDS
+        ):
+            raise InvalidAdapterParityContract(
+                f"{operation.operation_id!r} accepted and rejected commands require activity history"
+            )
+
+    def operation(
+        self,
+        operation_id: str,
+    ) -> AdapterOperationSecurityBinding:
+        for operation in self.operations:
+            if operation.operation_id == operation_id:
+                return operation
+        raise InvalidAdapterParityContract(f"unknown operation_id {operation_id!r}")
+
+    def descriptor(self) -> dict[str, object]:
+        return {
+            "kind": "adapter-operation-security-parity",
+            "projection_parity": self.projection_parity.descriptor(),
+            "command_parity": self.command_parity.descriptor(),
+            "operations": [
+                operation.descriptor() for operation in self.operations
+            ],
+        }
+
+    @classmethod
+    def from_descriptor(
+        cls,
+        value: Mapping[str, object],
+    ) -> "AdapterOperationSecurityParityContract":
+        if set(value) != {
+            "kind",
+            "projection_parity",
+            "command_parity",
+            "operations",
+        }:
+            raise InvalidAdapterParityContract(
+                "adapter operation security descriptor has unexpected keys"
+            )
+        if value["kind"] != "adapter-operation-security-parity":
+            raise InvalidAdapterParityContract(
+                "adapter operation security descriptor has wrong kind"
+            )
+        operations = value["operations"]
+        if not isinstance(operations, list):
+            raise InvalidAdapterParityContract("operations must be a list")
+        try:
+            return cls(
+                projection_parity=AdapterParityContract.from_descriptor(
+                    _mapping(value["projection_parity"], "projection_parity")
+                ),
+                command_parity=AdapterCommandParityContract.from_descriptor(
+                    _mapping(value["command_parity"], "command_parity")
+                ),
+                operations=tuple(
+                    AdapterOperationSecurityBinding.from_descriptor(
+                        _mapping(operation, "operation")
+                    )
+                    for operation in operations
+                ),
+            )
+        except ValueError as error:
+            raise InvalidAdapterParityContract(str(error)) from error
+
+
 def operator_read_projection_parity(
     http_api: HttpApiContract,
     mcp: McpStreamableHttpContract,
@@ -434,6 +732,52 @@ def operator_read_projection_parity(
                 projection_schema,
             ) in _OPERATOR_READ_PROJECTIONS
         ),
+    )
+
+
+def operator_adapter_security_parity(
+    *,
+    projection_parity: AdapterParityContract,
+    command_parity: AdapterCommandParityContract,
+) -> AdapterOperationSecurityParityContract:
+    """Bind auth, safety, history, and error policy across adapter surfaces."""
+
+    projection_operations = tuple(
+        AdapterOperationSecurityBinding(
+            operation_id=binding.operation_id,
+            service_role=binding.service_role,
+            http_route_id=binding.http_route_id,
+            mcp_name=binding.mcp_tool_name,
+            auth_scope=projection_parity.http_api.route(
+                binding.http_route_id
+            ).auth_scope,
+            safety=HttpOperationSafety.READ_ONLY,
+            activity_history=ActivityHistoryPolicy.NOT_RECORDED,
+            error_disclosure=ErrorDisclosurePolicy.BOUNDED_REDACTED,
+        )
+        for binding in projection_parity.projections
+    )
+    command_operations = tuple(
+        AdapterOperationSecurityBinding(
+            operation_id=binding.operation_id,
+            service_role=binding.service_role,
+            http_route_id=binding.http_route_id,
+            mcp_name=binding.mcp_tool_name,
+            auth_scope=command_parity.http_api.route(
+                binding.http_route_id
+            ).auth_scope,
+            safety=command_parity.http_api.route(binding.http_route_id).safety,
+            activity_history=(
+                ActivityHistoryPolicy.RECORD_ACCEPTED_AND_REJECTED_COMMANDS
+            ),
+            error_disclosure=ErrorDisclosurePolicy.BOUNDED_REDACTED,
+        )
+        for binding in command_parity.commands
+    )
+    return AdapterOperationSecurityParityContract(
+        projection_parity=projection_parity,
+        command_parity=command_parity,
+        operations=projection_operations + command_operations,
     )
 
 

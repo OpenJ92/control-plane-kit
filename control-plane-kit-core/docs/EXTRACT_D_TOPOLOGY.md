@@ -94,6 +94,8 @@ D.5 Mandatory Stop
 - HTTP/MCP command parity as a pure binding between canonical command ids,
   service roles, request/response schemas, approval policies, idempotency
   policies, transaction laws, HTTP route ids, and MCP tool names.
+- Authorization, destructive-command, activity-history, and error-disclosure
+  parity as pure adapter-surface law.
 - Parity laws proving transport adapters will call the same services and cannot
   bypass approval, idempotency, or UnitOfWork policy by choosing a different
   transport.

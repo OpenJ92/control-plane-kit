@@ -24,13 +24,18 @@ from control_plane_kit_core.operations.process import (
     ShutdownContract,
 )
 from control_plane_kit_core.operations.parity import (
+    ActivityHistoryPolicy,
     AdapterCommandBinding,
     AdapterCommandParityContract,
+    AdapterOperationSecurityBinding,
+    AdapterOperationSecurityParityContract,
     AdapterParityContract,
     AdapterProjectionBinding,
     ApprovalPolicy,
     CommandIdempotencyPolicy,
+    ErrorDisclosurePolicy,
     InvalidAdapterParityContract,
+    operator_adapter_security_parity,
     operator_command_parity,
     operator_read_projection_parity,
 )
@@ -55,9 +60,12 @@ from control_plane_kit_core.operations.transactions import (
 )
 
 __all__ = [
+    "ActivityHistoryPolicy",
     "ApplicationServiceBinding",
     "AdapterCommandBinding",
     "AdapterCommandParityContract",
+    "AdapterOperationSecurityBinding",
+    "AdapterOperationSecurityParityContract",
     "AdapterParityContract",
     "AdapterProjectionBinding",
     "ApprovalPolicy",
@@ -66,6 +74,7 @@ __all__ = [
     "ControlPlaneProcessContract",
     "DependencyReadinessKind",
     "DeploymentProgramBoundary",
+    "ErrorDisclosurePolicy",
     "ExternalEffectPolicy",
     "HttpApiContract",
     "HttpApiRouteContract",
@@ -92,6 +101,7 @@ __all__ = [
     "ShutdownContract",
     "StoreParticipation",
     "UnitOfWorkBoundary",
+    "operator_adapter_security_parity",
     "operator_command_http_routes",
     "operator_command_parity",
     "operator_read_http_routes",

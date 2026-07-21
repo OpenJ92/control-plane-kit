@@ -1266,3 +1266,185 @@ UnitOfWorkBoundary
 
 #638 should keep the same rule: core proves the shared policy vocabulary; the
 future `cpk-server` process implements adapters against that vocabulary.
+
+## #638 Authorization, Safety, And Activity-History Parity
+
+### Law Card
+
+- Reference identity: `EXTRACT.D.3.authorization-history-parity`
+- Evidence source: frozen authorization behavior, bounded error laws, command
+  services, activity-history requirements, #636 projection parity, #637 command
+  parity, and #638.
+- Observable law: HTTP and MCP expose the same authorization scope, safety
+  classification, activity-history requirement, and error disclosure policy for
+  every shared operation.
+- Expected result: every projection and command operation has exactly one
+  security binding; read projections are read scoped/read-only; accepted and
+  rejected commands require durable activity evidence; errors are bounded and
+  redacted.
+- Negative cases: missing operation coverage, read projection with command/admin
+  scope, read projection claiming command history, command using read scope,
+  command safety mismatch, command without activity history, duplicate
+  operation ids, and transport-private error disclosure.
+- Obsolete assumptions not migrated: route-local authorization rules,
+  MCP-private safety rules, hosted adapter code as the source of error policy,
+  and unbounded transport errors.
+- Future owner: core parity contract; hosted adapters prove implementation
+  later in `control-plane-kit-servers/cpk-server`.
+
+### Objects
+
+```text
+ActivityHistoryPolicy
+  = not-recorded
+  | record-accepted-and-rejected-commands
+
+ErrorDisclosurePolicy
+  = bounded-redacted
+  | transport-private
+
+AdapterOperationSecurityBinding
+  = operation_id
+  x ControlPlaneServiceRole
+  x http_route_id
+  x mcp_name
+  x HttpAuthScope
+  x HttpOperationSafety
+  x ActivityHistoryPolicy
+  x ErrorDisclosurePolicy
+
+AdapterOperationSecurityParityContract
+  = AdapterParityContract
+  x AdapterCommandParityContract
+  x unique AdapterOperationSecurityBinding*
+```
+
+### Transformations
+
+```text
+AdapterParityContract
+  x AdapterCommandParityContract
+    -> operator_adapter_security_parity
+      -> AdapterOperationSecurityParityContract
+        -> closed descriptor
+          -> AdapterOperationSecurityParityContract
+```
+
+### Implementation Decision
+
+#638 layers security/history law over the already-closed projection and command
+parity contracts:
+
+```python
+AdapterOperationSecurityBinding(
+    operation_id="deployment.execute",
+    service_role=ControlPlaneServiceRole.EXECUTION,
+    http_route_id="command.deployment.execute",
+    mcp_name="execute_deployment",
+    auth_scope=HttpAuthScope.EXECUTION_RUN,
+    safety=HttpOperationSafety.DESTRUCTIVE,
+    activity_history=(
+        ActivityHistoryPolicy.RECORD_ACCEPTED_AND_REJECTED_COMMANDS
+    ),
+    error_disclosure=ErrorDisclosurePolicy.BOUNDED_REDACTED,
+)
+```
+
+The contract checks reads and commands differently:
+
+```python
+if operation.auth_scope is not HttpAuthScope.READ:
+    raise InvalidAdapterParityContract(...)
+if operation.safety is not HttpOperationSafety.READ_ONLY:
+    raise InvalidAdapterParityContract(...)
+if operation.activity_history is not ActivityHistoryPolicy.NOT_RECORDED:
+    raise InvalidAdapterParityContract(...)
+```
+
+and:
+
+```python
+if operation.auth_scope is HttpAuthScope.READ:
+    raise InvalidAdapterParityContract(...)
+if operation.safety is not route.safety:
+    raise InvalidAdapterParityContract(...)
+if operation.activity_history is not (
+    ActivityHistoryPolicy.RECORD_ACCEPTED_AND_REJECTED_COMMANDS
+):
+    raise InvalidAdapterParityContract(...)
+```
+
+This preserves the key law:
+
+```text
+transport choice
+  must not change auth scope
+  must not change safety classification
+  must not skip activity evidence
+  must not change error disclosure
+```
+
+The first #638 green attempt failed a test that rejected the substring
+`localhost` anywhere in the full descriptor. That assertion was too broad:
+`McpStreamableHttpContract.local_bind_policy == "localhost-only"` is an
+intentional safety policy, not an internal endpoint leak. The assertion now
+rejects secret/private material such as token/secret/password/private_url while
+preserving descriptor closure and bounded-redacted error policy.
+
+### Test Evidence
+
+#638 adds `control-plane-kit-core/tests/test_authorization_history_parity_contract.py`.
+
+The focused red run failed with:
+
+```text
+ImportError: cannot import name 'ActivityHistoryPolicy'
+```
+
+After implementation, one overbroad test assertion failed:
+
+```text
+AssertionError: 'localhost' unexpectedly found ...
+```
+
+The correction narrowed the assertion to actual secret/private material. The
+final green run passed:
+
+```text
+Ran 131 tests in 0.920s
+OK
+control-plane-kit-core import ok
+```
+
+### Review Notes
+
+- Architecture: the security/history layer depends only on pure parity, HTTP,
+  MCP, and UnitOfWork contracts.
+- Security: read operations remain read-scoped; commands cannot use read scope;
+  errors must be bounded and redacted.
+- Data engineering: accepted and rejected commands require activity-history
+  evidence.
+- Test integrity: the `localhost-only` correction removed a false positive
+  without weakening secret redaction or parity assertions.
+- Design: #638 completes D.3 without implementing hosted adapters or process
+  code.
+
+### Handoff To #639
+
+D.3 is now complete. #639 can begin the `cpk-server` handoff contract phase over
+these core values:
+
+```text
+DeploymentProgramBoundary
+UnitOfWorkBoundary
+HttpApiContract
+McpStreamableHttpContract
+ControlPlaneProcessContract
+AdapterParityContract
+AdapterCommandParityContract
+AdapterOperationSecurityParityContract
+```
+
+#639 should describe how the future `control-plane-kit-servers/cpk-server`
+process composes entrypoints against these contracts. It must not move process
+implementation into core.
