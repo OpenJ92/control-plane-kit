@@ -1448,3 +1448,159 @@ AdapterOperationSecurityParityContract
 #639 should describe how the future `control-plane-kit-servers/cpk-server`
 process composes entrypoints against these contracts. It must not move process
 implementation into core.
+
+## #639 cpk-server Entrypoint Handoff Contract
+
+### Law Card
+
+- Reference identity: `EXTRACT.D.4.cpk-server-entrypoint-handoff`
+- Evidence source: frozen FastAPI/MCP adapter shape, #635 process contract,
+  D.3 parity contracts, clarified server-product split, and #639.
+- Observable law: the future `control-plane-kit-servers/cpk-server` process
+  imports core, composes one deployment program, exposes HTTP and MCP adapters
+  over the same contracts, and never stores workflow truth in process globals.
+- Expected result: a pure handoff contract names the external implementation
+  package, import direction, process contract, program boundary, UnitOfWork
+  boundary, projection parity, command parity, and security parity.
+- Negative cases: wrong implementation owner, wrong import direction, process
+  globals owning truth, process HTTP contract missing command routes, process
+  MCP contract diverging from parity, UnitOfWork describing a different program,
+  or security parity built over different parity objects.
+- Obsolete assumptions not migrated: core-owned FastAPI process, core-owned
+  hosted MCP server, core-owned Dockerfile, core-owned OCI image, and core-owned
+  canonical cpk-server product descriptor.
+- Future owner: core owns the handoff contract; `control-plane-kit-servers`
+  later owns the implementation.
+
+### Objects
+
+```text
+EntrypointCompositionPolicy
+  = one-deployment-program
+
+ProcessStatePolicy
+  = process-globals-are-not-truth
+  | process-globals-own-truth
+
+CpkServerEntrypointHandoffContract
+  = ControlPlaneProcessContract
+  x DeploymentProgramBoundary
+  x UnitOfWorkBoundary
+  x AdapterParityContract
+  x AdapterCommandParityContract
+  x AdapterOperationSecurityParityContract
+  x implementation_package
+  x import_direction
+  x EntrypointCompositionPolicy
+  x ProcessStatePolicy
+```
+
+### Transformations
+
+```text
+process contract
+  x program boundary
+  x transaction boundary
+  x parity contracts
+    -> canonical_cpk_server_entrypoint_handoff
+      -> CpkServerEntrypointHandoffContract
+        -> closed descriptor
+          -> CpkServerEntrypointHandoffContract
+```
+
+### Implementation Decision
+
+#639 adds `control_plane_kit_core.operations.handoff` rather than growing the
+parity module again. The central contract is:
+
+```python
+CpkServerEntrypointHandoffContract(
+    process=process,
+    program=program,
+    unit_of_work=unit_of_work,
+    projection_parity=projection_parity,
+    command_parity=command_parity,
+    security_parity=security_parity,
+    implementation_package="control-plane-kit-servers/cpk-server",
+    import_direction="cpk-server-imports-core",
+)
+```
+
+The handoff explicitly rejects process-global truth:
+
+```python
+if self.state_policy is not ProcessStatePolicy.PROCESS_GLOBALS_ARE_NOT_TRUTH:
+    raise InvalidCpkServerHandoffContract(
+        "process globals must not own workflow truth"
+    )
+```
+
+and verifies that the process contract and parity contracts are the same
+surface:
+
+```python
+if self.process.http_api != self.projection_parity.http_api:
+    raise InvalidCpkServerHandoffContract(...)
+if self.process.http_api != self.command_parity.http_api:
+    raise InvalidCpkServerHandoffContract(...)
+if self.security_parity.command_parity != self.command_parity:
+    raise InvalidCpkServerHandoffContract(...)
+```
+
+This is the precise middle ground we wanted:
+
+```text
+core
+  describes what cpk-server must compose
+
+control-plane-kit-servers/cpk-server
+  implements FastAPI, hosted MCP, Dockerfile, OCI image, and product descriptor
+```
+
+### Test Evidence
+
+#639 adds `control-plane-kit-core/tests/test_cpk_server_entrypoint_handoff.py`
+and `control_plane_kit_core.operations.handoff`.
+
+The focused red run failed with:
+
+```text
+ImportError: cannot import name 'CpkServerEntrypointHandoffContract'
+```
+
+After implementation, the green run passed:
+
+```text
+Ran 135 tests in 0.963s
+OK
+control-plane-kit-core import ok
+```
+
+### Review Notes
+
+- Architecture: the handoff module depends on process/service/UoW/parity
+  contracts only; it does not import server packages.
+- Security: HTTP/MCP parity and security parity must be the exact contracts the
+  process advertises.
+- Data engineering: the handoff preserves one DeploymentProgram and one
+  UnitOfWork boundary.
+- Process ownership: implementation package is fixed to
+  `control-plane-kit-servers/cpk-server`.
+- Test integrity: red evidence was a missing contract; no assertion was
+  weakened.
+
+### Handoff To #640
+
+#640 can define environment, secret, configuration, and descriptor obligations
+for the future `cpk-server` product wrapper. It should build on:
+
+```text
+CpkServerEntrypointHandoffContract
+ControlPlaneProcessContract
+ContainerServerProduct / product descriptor language
+ConfigurationArtifact language
+SecretEnvironmentDelivery / secret exclusion laws
+```
+
+#640 must still not create the cpk-server Dockerfile, OCI image, or product
+descriptor inside core.
