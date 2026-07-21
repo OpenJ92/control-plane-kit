@@ -23,6 +23,7 @@ EXPECTED_MODULES = {
     "operations.mcp",
     "operations.parity",
     "operations.process",
+    "operations.projections",
     "operations.services",
     "operations.transactions",
     "planning.__init__",

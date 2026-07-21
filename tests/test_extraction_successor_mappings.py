@@ -294,6 +294,32 @@ class ExtractionSuccessorMappingTests(unittest.TestCase):
                     else "",
                 )
 
+    def test_read_projection_contract_families_are_fully_mapped(self) -> None:
+        inventory = inventory_unmapped_required_core_families(self.closeout())
+        families = {
+            family["family"]: family
+            for family in inventory["families"]
+        }
+
+        for family_name in (
+            "test_instance_read_service",
+            "test_instance_read_fastapi",
+            "test_mcp_read",
+            "test_focused_read_hardening",
+            "test_focused_workflow_reads",
+            "test_operator_graph_projection",
+            "test_observation_projection",
+            "test_operator_recovery_projection",
+        ):
+            with self.subTest(family=family_name):
+                remaining = families.get(family_name)
+                self.assertIsNone(
+                    remaining,
+                    f"{family_name} still has {remaining['count']} unmapped laws"
+                    if remaining is not None
+                    else "",
+                )
+
 
 if __name__ == "__main__":
     unittest.main()

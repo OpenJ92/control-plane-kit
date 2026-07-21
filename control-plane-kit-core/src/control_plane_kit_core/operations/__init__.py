@@ -48,6 +48,14 @@ from control_plane_kit_core.operations.process import (
     ReadinessDependency,
     ShutdownContract,
 )
+from control_plane_kit_core.operations.projections import (
+    InvalidReadProjectionContract,
+    ReadProjectionContract,
+    ReadProjectionKind,
+    ReadProjectionPolicy,
+    ReadProjectionSet,
+    canonical_operator_read_projection_set,
+)
 from control_plane_kit_core.operations.parity import (
     ActivityHistoryPolicy,
     AdapterCommandBinding,
@@ -124,6 +132,7 @@ __all__ = [
     "InvalidMcpStreamableHttpContract",
     "InvalidDeploymentProgramBoundary",
     "InvalidProcessOperationalContract",
+    "InvalidReadProjectionContract",
     "InvalidUnitOfWorkBoundary",
     "McpContentType",
     "McpHttpMethod",
@@ -138,6 +147,10 @@ __all__ = [
     "ProcessStatePolicy",
     "PublicationPolicy",
     "ReadinessDependency",
+    "ReadProjectionContract",
+    "ReadProjectionKind",
+    "ReadProjectionPolicy",
+    "ReadProjectionSet",
     "ServiceTransactionBoundary",
     "ShutdownContract",
     "StoreParticipation",
@@ -147,6 +160,7 @@ __all__ = [
     "canonical_cpk_server_publication_handoff",
     "canonical_deployment_stage_pipeline",
     "canonical_operator_command_workflow_contract",
+    "canonical_operator_read_projection_set",
     "operator_adapter_security_parity",
     "operator_command_http_routes",
     "operator_command_parity",

@@ -2354,3 +2354,112 @@ adjacent command/stage focused tests: 16 tests passed
 focused #787 mapping guard: 1 test passed
 validate-parity.sh foundation: valid=true, findings=0, incomplete_required=573
 ```
+
+## #788 Read Projection And API/MCP Parity Mapping
+
+#788 maps the read, projection, API, MCP, and operator-view parity slice from
+#740. The operations audit artifact and issue body agreed on the scope:
+
+```text
+test_instance_read_service:       21 laws
+test_instance_read_fastapi:       10 laws
+test_mcp_read:                     8 laws
+test_focused_read_hardening:       7 laws
+test_focused_workflow_reads:       7 laws
+test_operator_graph_projection:    5 laws
+test_observation_projection:       5 laws
+test_operator_recovery_projection: 9 laws
+
+total: 8 families / 72 laws
+```
+
+Successor evidence:
+
+```text
+artifacts/extraction/successor-proofs/extract-e-788-read-projection-contract.json
+extract-e-788.read-projection-contract.unittest
+sha256:d964936d20df974850dddb388e8efa83d2b193f7fbc7a914c348c664a7d3b67d
+```
+
+The key implementation addition is a pure projection contract. It names read
+projection identity, response schema, redaction/evidence policy, workspace
+scope, paging bounds, and read-only safety without implementing a read service,
+FastAPI route, MCP server loop, store, auth middleware, or token validator:
+
+```python
+class ReadProjectionKind(StrEnum):
+    WORKSPACE = "workspace"
+    CURRENT_GRAPH = "current-graph"
+    DESIRED_GRAPH = "desired-graph"
+    OPERATOR_GRAPH = "operator-graph"
+    ACTIVITY_TIMELINE = "activity-timeline"
+    OPEN_SESSIONS = "open-sessions"
+    SESSION_DETAIL = "session-detail"
+    PLAN_DETAIL = "plan-detail"
+    PENDING_APPROVALS = "pending-approvals"
+    OBSERVED_STATE = "observed-state"
+    CONTROL_SURFACE = "control-surface"
+```
+
+Each projection contract is a product of closed values:
+
+```python
+@dataclass(frozen=True)
+class ReadProjectionContract:
+    operation_id: str
+    kind: ReadProjectionKind
+    service_role: ControlPlaneServiceRole
+    response_schema: str
+    policy: ReadProjectionPolicy
+    auth_scope: HttpAuthScope
+    safety: HttpOperationSafety
+    requires_workspace_scope: bool
+    paged: bool
+    max_page_size: int | None = None
+```
+
+The contract shape is:
+
+```text
+ReadProjectionSet
+  = [ReadProjectionContract]
+
+ReadProjectionContract
+  = projection identity
+  x projection kind
+  x response schema
+  x redaction/evidence policy
+  x read auth scope
+  x read-only safety
+  x workspace-scope requirement
+  x optional bounded paging
+```
+
+This preserves the boundary:
+
+```text
+core
+  owns read projection identities, response schema names, redaction/evidence
+  policy, workspace-scope flags, paging bounds, read-only safety, HTTP/MCP
+  parity contracts, and successor evidence.
+
+operations / cpk-server
+  owns read services, stores, FastAPI app construction, MCP server loops,
+  auth middleware, token validation, route handlers, service error mapping,
+  and mutable projection computation.
+```
+
+The test-integrity red evidence was meaningful:
+
+```text
+before mapping: 8 #788 subtests failed, one for each unmapped family
+```
+
+After mapping:
+
+```text
+focused #788 successor tests: 4 tests passed
+adjacent read/command/package focused tests: 17 tests passed
+focused #788 mapping guard: 1 test passed
+validate-parity.sh foundation: valid=true, findings=0, incomplete_required=501
+```
