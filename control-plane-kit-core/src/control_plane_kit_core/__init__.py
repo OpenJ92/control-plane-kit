@@ -2,6 +2,12 @@
 
 __version__ = "0.1.0"
 
+from control_plane_kit_core.operations import (
+    ApplicationServiceBinding,
+    ControlPlaneServiceRole,
+    DeploymentProgramBoundary,
+    InvalidDeploymentProgramBoundary,
+)
 from control_plane_kit_core.products import (
     ContainerServerProduct,
     ContainerServerProductCodec,
@@ -34,10 +40,14 @@ from control_plane_kit_core.products import (
 )
 
 __all__ = [
+    "ApplicationServiceBinding",
     "ContainerServerProduct",
     "ContainerServerProductCodec",
     "ContainerServerProductError",
+    "ControlPlaneServiceRole",
+    "DeploymentProgramBoundary",
     "DuplicateProductIdentity",
+    "InvalidDeploymentProgramBoundary",
     "OciImageReference",
     "OciImageReferenceCodec",
     "OciImageReferenceError",

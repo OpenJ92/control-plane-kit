@@ -14,6 +14,8 @@ EXPECTED_MODULES = {
     "control_routes",
     "environment",
     "lifecycle",
+    "operations.__init__",
+    "operations.services",
     "planning.__init__",
     "planning.activity_plan",
     "planning.codec",
