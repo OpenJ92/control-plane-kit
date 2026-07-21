@@ -880,3 +880,70 @@ Required-core inventory after #756:
 incomplete required-core laws: 650
 unmapped required-core families: 83
 ```
+
+## #760 Contract Boundary Classification
+
+#760 refined the last mixed family in the #738 pure-core batch:
+
+```text
+source family: tests.test_contracts
+remaining laws: 41
+pure value successor laws: 18 -> #764
+operations-owned laws: 23 -> #740
+```
+
+Artifact:
+
+```text
+artifacts/extraction/contract-boundary-classification.json
+```
+
+The important boundary is:
+
+```text
+ControlVariableSpec / ControlValueKind / redacted descriptors
+  -> pure control-contract value language
+  -> #764
+
+EnvironmentContract / RuntimeContract mutable holder behavior
+  -> patching, publication, idempotency, derived resources, cleanup
+  -> #740
+```
+
+Curated decision:
+
+```text
+pure successor candidates
+  = descriptor shape
+  + required/optional validation
+  + protocol shape validation
+  + secret redaction
+  + explicit runtime state construction
+  + no process environment read
+
+operations-owned candidates
+  = apply_patch
+  + prepare/apply mutation
+  + stale version and replay identity
+  + derived resource build/dispose/staleness
+  + cleanup uncertainty
+  + concurrent publication winner
+```
+
+#760 created #764 because policy and probe-intent work should not absorb the
+control-contract value slice. The topology under #749 is now:
+
+```text
+#760 classify remaining test_contracts boundary laws
+  -> #764 map pure control-contract value laws
+  -> #763 map pure policy decision laws
+  -> #761 map pure probe-intent and observation value laws
+  -> #762 reclassify control-route process laws and close #749
+```
+
+Validation:
+
+```text
+focused #760 classification unittest: 4 tests passed
+full Docker/Postgres ./test.sh suite: 1179 tests passed
+```
