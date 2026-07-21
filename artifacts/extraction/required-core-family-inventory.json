@@ -1,7 +1,7 @@
 {
   "counts": {
-    "entries": 613,
-    "families": 81
+    "entries": 607,
+    "families": 80
   },
   "families": [
     {
@@ -3571,54 +3571,6 @@
         }
       ],
       "family": "test_compensation_planning"
-    },
-    {
-      "count": 6,
-      "entries": [
-        {
-          "kind": "test",
-          "law": "behavior.all-required-route-sets-are-present",
-          "owner": "control-plane-kit-core",
-          "owner_kind": "core",
-          "reference": "tests.test_control_routes.ControlRouteTests.test_all_required_route_sets_are_present"
-        },
-        {
-          "kind": "test",
-          "law": "behavior.common-status-routes-match-protocol-contract",
-          "owner": "control-plane-kit-core",
-          "owner_kind": "core",
-          "reference": "tests.test_control_routes.ControlRouteTests.test_common_status_routes_match_protocol_contract"
-        },
-        {
-          "kind": "test",
-          "law": "behavior.control-path-uses-configurable-prefix",
-          "owner": "control-plane-kit-core",
-          "owner_kind": "core",
-          "reference": "tests.test_control_routes.ControlRouteTests.test_control_path_uses_configurable_prefix"
-        },
-        {
-          "kind": "test",
-          "law": "behavior.route-set-named-accepts-string-or-enum",
-          "owner": "control-plane-kit-core",
-          "owner_kind": "core",
-          "reference": "tests.test_control_routes.ControlRouteTests.test_route_set_named_accepts_string_or_enum"
-        },
-        {
-          "kind": "test",
-          "law": "behavior.route-sets-have-json-friendly-descriptors",
-          "owner": "control-plane-kit-core",
-          "owner_kind": "core",
-          "reference": "tests.test_control_routes.ControlRouteTests.test_route_sets_have_json_friendly_descriptors"
-        },
-        {
-          "kind": "test",
-          "law": "behavior.unknown-route-set-fails-loudly",
-          "owner": "control-plane-kit-core",
-          "owner_kind": "core",
-          "reference": "tests.test_control_routes.ControlRouteTests.test_unknown_route_set_fails_loudly"
-        }
-      ],
-      "family": "test_control_routes"
     },
     {
       "count": 6,

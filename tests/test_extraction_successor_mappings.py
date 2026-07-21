@@ -135,6 +135,21 @@ class ExtractionSuccessorMappingTests(unittest.TestCase):
             else "",
         )
 
+    def test_control_route_family_is_fully_mapped_to_passing_successor_evidence(self) -> None:
+        inventory = inventory_unmapped_required_core_families(self.closeout())
+        families = {
+            family["family"]: family
+            for family in inventory["families"]
+        }
+
+        remaining = families.get("test_control_routes")
+        self.assertIsNone(
+            remaining,
+            f"test_control_routes still has {remaining['count']} unmapped laws"
+            if remaining is not None
+            else "",
+        )
+
 
 if __name__ == "__main__":
     unittest.main()

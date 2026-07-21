@@ -46,6 +46,11 @@
       "status": "passing"
     },
     {
+      "digest": "sha256:0ec33eab1c43173b03c8957301f3b64cffa81410af9897649f83100b41a5e69a",
+      "id": "extract-e-762-control-routes.unittest",
+      "status": "passing"
+    },
+    {
       "digest": "sha256:a0b94bc54eb5b11df95ecc4de8032fa46ebafac34cf5e966da7355428944f0f0",
       "id": "extract-e-763.policy-decisions.unittest",
       "status": "passing"

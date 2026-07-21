@@ -2829,7 +2829,13 @@
       "owner": "control-plane-kit-core",
       "owner_kind": "core",
       "reference": "tests.test_control_routes.ControlRouteTests.test_all_required_route_sets_are_present",
-      "successors": [],
+      "successors": [
+        {
+          "evidence": "extract-e-762-control-routes.unittest",
+          "id": "control-plane-kit-core.tests.test_control_routes.ControlRouteTests.test_all_required_route_sets_are_present",
+          "status": "passing"
+        }
+      ],
       "supersession": null
     },
     {
@@ -2839,7 +2845,13 @@
       "owner": "control-plane-kit-core",
       "owner_kind": "core",
       "reference": "tests.test_control_routes.ControlRouteTests.test_common_status_routes_match_protocol_contract",
-      "successors": [],
+      "successors": [
+        {
+          "evidence": "extract-e-762-control-routes.unittest",
+          "id": "control-plane-kit-core.tests.test_control_routes.ControlRouteTests.test_common_status_routes_match_protocol_contract",
+          "status": "passing"
+        }
+      ],
       "supersession": null
     },
     {
@@ -2849,7 +2861,13 @@
       "owner": "control-plane-kit-core",
       "owner_kind": "core",
       "reference": "tests.test_control_routes.ControlRouteTests.test_control_path_uses_configurable_prefix",
-      "successors": [],
+      "successors": [
+        {
+          "evidence": "extract-e-762-control-routes.unittest",
+          "id": "control-plane-kit-core.tests.test_control_routes.ControlRouteTests.test_control_path_uses_configurable_prefix",
+          "status": "passing"
+        }
+      ],
       "supersession": null
     },
     {
@@ -2859,7 +2877,13 @@
       "owner": "control-plane-kit-core",
       "owner_kind": "core",
       "reference": "tests.test_control_routes.ControlRouteTests.test_route_set_named_accepts_string_or_enum",
-      "successors": [],
+      "successors": [
+        {
+          "evidence": "extract-e-762-control-routes.unittest",
+          "id": "control-plane-kit-core.tests.test_control_routes.ControlRouteTests.test_route_set_named_accepts_string_or_enum",
+          "status": "passing"
+        }
+      ],
       "supersession": null
     },
     {
@@ -2869,7 +2893,13 @@
       "owner": "control-plane-kit-core",
       "owner_kind": "core",
       "reference": "tests.test_control_routes.ControlRouteTests.test_route_sets_have_json_friendly_descriptors",
-      "successors": [],
+      "successors": [
+        {
+          "evidence": "extract-e-762-control-routes.unittest",
+          "id": "control-plane-kit-core.tests.test_control_routes.ControlRouteTests.test_route_sets_have_json_friendly_descriptors",
+          "status": "passing"
+        }
+      ],
       "supersession": null
     },
     {
@@ -2879,7 +2909,13 @@
       "owner": "control-plane-kit-core",
       "owner_kind": "core",
       "reference": "tests.test_control_routes.ControlRouteTests.test_unknown_route_set_fails_loudly",
-      "successors": [],
+      "successors": [
+        {
+          "evidence": "extract-e-762-control-routes.unittest",
+          "id": "control-plane-kit-core.tests.test_control_routes.ControlRouteTests.test_unknown_route_set_fails_loudly",
+          "status": "passing"
+        }
+      ],
       "supersession": null
     },
     {
