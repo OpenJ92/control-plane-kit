@@ -369,7 +369,13 @@
       "owner": "control-plane-kit-core",
       "owner_kind": "core",
       "reference": "tests.test_activity_plan_codec.ActivityPlanDescriptorCodecTests.test_dependency_and_activity_permutations_have_one_descriptor",
-      "successors": [],
+      "successors": [
+        {
+          "evidence": "extract-e-772.activity-plan-codec-compiler.unittest",
+          "id": "control-plane-kit-core.tests.test_activity_plan_codec.ActivityPlanDescriptorCodecTests.test_dependency_and_activity_permutations_have_one_descriptor",
+          "status": "passing"
+        }
+      ],
       "supersession": null
     },
     {
@@ -379,7 +385,13 @@
       "owner": "control-plane-kit-core",
       "owner_kind": "core",
       "reference": "tests.test_activity_plan_codec.ActivityPlanDescriptorCodecTests.test_durable_record_rejects_arbitrary_payload_mapping",
-      "successors": [],
+      "successors": [
+        {
+          "evidence": "extract-e-772.activity-plan-codec-compiler.unittest",
+          "id": "control-plane-kit-core.tests.test_activity_plan_codec.ActivityPlanDescriptorCodecTests.test_codec_boundary_rejects_arbitrary_payload_mapping",
+          "status": "passing"
+        }
+      ],
       "supersession": null
     },
     {
@@ -389,7 +401,13 @@
       "owner": "control-plane-kit-core",
       "owner_kind": "core",
       "reference": "tests.test_activity_plan_codec.ActivityPlanDescriptorCodecTests.test_every_closed_operation_and_target_variant_round_trips",
-      "successors": [],
+      "successors": [
+        {
+          "evidence": "extract-e-772.activity-plan-codec-compiler.unittest",
+          "id": "control-plane-kit-core.tests.test_activity_plan_codec.ActivityPlanDescriptorCodecTests.test_every_closed_operation_and_target_variant_round_trips",
+          "status": "passing"
+        }
+      ],
       "supersession": null
     },
     {
@@ -399,7 +417,13 @@
       "owner": "control-plane-kit-core",
       "owner_kind": "core",
       "reference": "tests.test_activity_plan_codec.ActivityPlanDescriptorCodecTests.test_every_review_subject_variant_round_trips",
-      "successors": [],
+      "successors": [
+        {
+          "evidence": "extract-e-772.activity-plan-codec-compiler.unittest",
+          "id": "control-plane-kit-core.tests.test_activity_plan_codec.ActivityPlanDescriptorCodecTests.test_every_review_subject_variant_round_trips",
+          "status": "passing"
+        }
+      ],
       "supersession": null
     },
     {
@@ -409,7 +433,13 @@
       "owner": "control-plane-kit-core",
       "owner_kind": "core",
       "reference": "tests.test_activity_plan_codec.ActivityPlanDescriptorCodecTests.test_invalid_dag_and_target_shapes_are_descriptor_errors",
-      "successors": [],
+      "successors": [
+        {
+          "evidence": "extract-e-772.activity-plan-codec-compiler.unittest",
+          "id": "control-plane-kit-core.tests.test_activity_plan_codec.ActivityPlanDescriptorCodecTests.test_wrong_shapes_lossy_fields_and_invalid_dag_fail_closed",
+          "status": "passing"
+        }
+      ],
       "supersession": null
     },
     {
@@ -419,7 +449,13 @@
       "owner": "control-plane-kit-core",
       "owner_kind": "core",
       "reference": "tests.test_activity_plan_codec.ActivityPlanDescriptorCodecTests.test_json_rendering_is_deterministic",
-      "successors": [],
+      "successors": [
+        {
+          "evidence": "extract-e-772.activity-plan-codec-compiler.unittest",
+          "id": "control-plane-kit-core.tests.test_activity_plan_codec.ActivityPlanDescriptorCodecTests.test_json_rendering_is_deterministic",
+          "status": "passing"
+        }
+      ],
       "supersession": null
     },
     {
@@ -429,7 +465,13 @@
       "owner": "control-plane-kit-core",
       "owner_kind": "core",
       "reference": "tests.test_activity_plan_codec.ActivityPlanDescriptorCodecTests.test_review_diagnostic_carries_subject_not_changed_secret_value",
-      "successors": [],
+      "successors": [
+        {
+          "evidence": "extract-e-772.activity-plan-codec-compiler.unittest",
+          "id": "control-plane-kit-core.tests.test_activity_plan_codec.ActivityPlanDescriptorCodecTests.test_review_diagnostic_carries_subject_not_changed_secret_value",
+          "status": "passing"
+        }
+      ],
       "supersession": null
     },
     {
@@ -439,7 +481,13 @@
       "owner": "control-plane-kit-core",
       "owner_kind": "core",
       "reference": "tests.test_activity_plan_codec.ActivityPlanDescriptorCodecTests.test_risk_and_destructive_markers_survive_the_descriptor_boundary",
-      "successors": [],
+      "successors": [
+        {
+          "evidence": "extract-e-772.activity-plan-codec-compiler.unittest",
+          "id": "control-plane-kit-core.tests.test_activity_plan_codec.ActivityPlanDescriptorCodecTests.test_risk_and_destructive_markers_survive_the_descriptor_boundary",
+          "status": "passing"
+        }
+      ],
       "supersession": null
     },
     {
@@ -449,7 +497,13 @@
       "owner": "control-plane-kit-core",
       "owner_kind": "core",
       "reference": "tests.test_activity_plan_codec.ActivityPlanDescriptorCodecTests.test_round_trip_preserves_closed_plan_semantics",
-      "successors": [],
+      "successors": [
+        {
+          "evidence": "extract-e-772.activity-plan-codec-compiler.unittest",
+          "id": "control-plane-kit-core.tests.test_activity_plan_codec.ActivityPlanDescriptorCodecTests.test_round_trip_preserves_closed_plan_semantics",
+          "status": "passing"
+        }
+      ],
       "supersession": null
     },
     {
@@ -459,7 +513,13 @@
       "owner": "control-plane-kit-core",
       "owner_kind": "core",
       "reference": "tests.test_activity_plan_codec.ActivityPlanDescriptorCodecTests.test_unknown_review_reason_and_non_json_values_fail_closed",
-      "successors": [],
+      "successors": [
+        {
+          "evidence": "extract-e-772.activity-plan-codec-compiler.unittest",
+          "id": "control-plane-kit-core.tests.test_activity_plan_codec.ActivityPlanDescriptorCodecTests.test_unknown_schema_operation_review_reason_and_non_json_fail_closed",
+          "status": "passing"
+        }
+      ],
       "supersession": null
     },
     {
@@ -469,7 +529,13 @@
       "owner": "control-plane-kit-core",
       "owner_kind": "core",
       "reference": "tests.test_activity_plan_codec.ActivityPlanDescriptorCodecTests.test_unknown_schema_and_operation_fail_closed",
-      "successors": [],
+      "successors": [
+        {
+          "evidence": "extract-e-772.activity-plan-codec-compiler.unittest",
+          "id": "control-plane-kit-core.tests.test_activity_plan_codec.ActivityPlanDescriptorCodecTests.test_unknown_schema_operation_review_reason_and_non_json_fail_closed",
+          "status": "passing"
+        }
+      ],
       "supersession": null
     },
     {
@@ -479,7 +545,13 @@
       "owner": "control-plane-kit-core",
       "owner_kind": "core",
       "reference": "tests.test_activity_plan_codec.ActivityPlanDescriptorCodecTests.test_wrong_shapes_and_unrepresentable_extra_fields_fail",
-      "successors": [],
+      "successors": [
+        {
+          "evidence": "extract-e-772.activity-plan-codec-compiler.unittest",
+          "id": "control-plane-kit-core.tests.test_activity_plan_codec.ActivityPlanDescriptorCodecTests.test_wrong_shapes_lossy_fields_and_invalid_dag_fail_closed",
+          "status": "passing"
+        }
+      ],
       "supersession": null
     },
     {
@@ -489,7 +561,13 @@
       "owner": "control-plane-kit-core",
       "owner_kind": "core",
       "reference": "tests.test_activity_plan_compiler.ActivityPlanCompilerTests.test_empty_and_graph_metadata_only_diffs_need_no_runtime_activity",
-      "successors": [],
+      "successors": [
+        {
+          "evidence": "extract-e-772.activity-plan-codec-compiler.unittest",
+          "id": "control-plane-kit-core.tests.test_activity_plan_compiler.ActivityPlanCompilerTests.test_empty_and_graph_metadata_only_diffs_need_no_runtime_activity",
+          "status": "passing"
+        }
+      ],
       "supersession": null
     },
     {
@@ -515,7 +593,13 @@
       "owner": "control-plane-kit-core",
       "owner_kind": "core",
       "reference": "tests.test_activity_plan_compiler.ActivityPlanCompilerTests.test_environment_reconcile_precedes_removed_endpoint_stop",
-      "successors": [],
+      "successors": [
+        {
+          "evidence": "extract-e-772.activity-plan-codec-compiler.unittest",
+          "id": "control-plane-kit-core.tests.test_activity_plan_compiler.ActivityPlanCompilerTests.test_environment_reconcile_precedes_removed_endpoint_stop",
+          "status": "passing"
+        }
+      ],
       "supersession": null
     },
     {
@@ -541,7 +625,13 @@
       "owner": "control-plane-kit-core",
       "owner_kind": "core",
       "reference": "tests.test_activity_plan_compiler.ActivityPlanCompilerTests.test_runtime_move_orders_start_reconcile_and_stop",
-      "successors": [],
+      "successors": [
+        {
+          "evidence": "extract-e-772.activity-plan-codec-compiler.unittest",
+          "id": "control-plane-kit-core.tests.test_activity_plan_compiler.ActivityPlanCompilerTests.test_runtime_move_orders_start_reconcile_and_stop",
+          "status": "passing"
+        }
+      ],
       "supersession": null
     },
     {
@@ -567,7 +657,13 @@
       "owner": "control-plane-kit-core",
       "owner_kind": "core",
       "reference": "tests.test_activity_plan_compiler.ActivityPlanCompilerTests.test_teardown_dependencies_remove_connections_before_nodes_and_runtime",
-      "successors": [],
+      "successors": [
+        {
+          "evidence": "extract-e-772.activity-plan-codec-compiler.unittest",
+          "id": "control-plane-kit-core.tests.test_activity_plan_compiler.ActivityPlanCompilerTests.test_teardown_dependencies_remove_connections_before_nodes_and_runtime",
+          "status": "passing"
+        }
+      ],
       "supersession": null
     },
     {
@@ -577,7 +673,13 @@
       "owner": "control-plane-kit-core",
       "owner_kind": "core",
       "reference": "tests.test_activity_plan_compiler.ActivityPlanCompilerTests.test_unsupported_and_unrecognized_forms_become_review_blockers",
-      "successors": [],
+      "successors": [
+        {
+          "evidence": "extract-e-772.activity-plan-codec-compiler.unittest",
+          "id": "control-plane-kit-core.tests.test_activity_plan_compiler.ActivityPlanCompilerTests.test_unsupported_and_ambiguous_forms_become_review_blockers",
+          "status": "passing"
+        }
+      ],
       "supersession": null
     },
     {
