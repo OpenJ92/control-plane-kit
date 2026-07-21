@@ -59,6 +59,11 @@
       "digest": "sha256:5b16b47efae4e8d423dfbd19f9d5f4d8db73cff8f44035549ca790a11ee8c6e2",
       "id": "extract-e-764.control-contracts.unittest",
       "status": "passing"
+    },
+    {
+      "digest": "sha256:351c12c19e29f02ca4cfe4ce418ff1f23b7dd0ef0a3a4cc67c5a4971cbe71e93",
+      "id": "extract-e-772.activity-plan-codec-compiler.unittest",
+      "status": "passing"
     }
   ],
   "schema": "cpk.successor-evidence-index"

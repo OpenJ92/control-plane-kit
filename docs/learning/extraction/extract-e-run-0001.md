@@ -1439,3 +1439,93 @@ git diff --check:                      clean
 
 This means `ActivityPlan` remains the result of graph interpretation. It is not
 a user-authored arbitrary workflow language.
+
+## #772 ActivityPlan Codec And Compiler Mapping
+
+#772 maps the first implementation slice of the #739 planning/saga batch.
+
+The exact mapped families are:
+
+```text
+test_activity_plan_codec:     12 laws
+test_activity_plan_compiler:   5 remaining unmapped laws
+```
+
+The compiler family has 8 frozen laws in the full parity manifest. Three were
+already covered by `extract-b-614.pure-kernel.unittest`; #772 adds dedicated
+extracted-core compiler tests and maps the five still-unmapped compiler laws.
+The dedicated tests still exercise all 8 compiler behaviors, but the manifest
+mapping is intentionally limited to the remaining unmapped work.
+
+New successor tests:
+
+```text
+control-plane-kit-core/tests/test_activity_plan_codec.py
+control-plane-kit-core/tests/test_activity_plan_compiler.py
+```
+
+New proof artifact:
+
+```text
+artifacts/extraction/successor-proofs/extract-e-772-activity-plan-codec-compiler.json
+```
+
+Important shape:
+
+```text
+GraphDiff
+  -> compile_activity_plan
+    -> ActivityPlan
+      -> ActivityPlanDescriptorCodec
+        -> deterministic durable descriptor
+```
+
+Objects:
+
+```text
+ActivityPlan
+PlannedActivity
+ActivityOperation
+ActivityDependency
+RiskLevel
+ActivityImpact
+CompensationSpec
+GraphDiff
+StructuralChange
+```
+
+Laws proved:
+
+```text
+codec variants are closed and fail on unknown schema/operation/review values;
+codec output is deterministic and permutation-stable;
+codec rejects arbitrary payload mappings and lossy descriptor fields;
+review diagnostics carry structural subjects, not changed secret values;
+risk and destructive markers survive descriptor encoding;
+compiler maps graph metadata-only diffs to no runtime work;
+compiler preserves startup and teardown dependency order;
+environment socket bindings remain startup material, not socket effects;
+runtime-control socket switches become typed SwitchSocketConnection work;
+environment reconciliation precedes removal of the old provider endpoint;
+runtime moves order start -> reconcile -> stop;
+unsupported and ambiguous graph changes become high-risk review blockers.
+```
+
+Boundary decision:
+
+```text
+ActivityPlan is still graph-interpretation output.
+It is not a user-authored arbitrary workflow language.
+No stores, workers, Docker, FastAPI, MCP, coordinator, or runtime effects enter
+the extracted-core mapping.
+```
+
+Validation evidence:
+
+```text
+focused #772 extracted-core successor tests: 18 tests passed
+focused root parity guard slice:            20 tests passed
+./validate-parity.sh foundation:            valid=true, findings=0
+control-plane-kit-core slice:               287 tests passed
+full Docker/Postgres ./test.sh suite:       1188 tests passed
+```
