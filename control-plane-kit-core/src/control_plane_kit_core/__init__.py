@@ -3,9 +3,12 @@
 __version__ = "0.1.0"
 
 from control_plane_kit_core.operations import (
+    ActivityHistoryPolicy,
     ApplicationServiceBinding,
     AdapterCommandBinding,
     AdapterCommandParityContract,
+    AdapterOperationSecurityBinding,
+    AdapterOperationSecurityParityContract,
     AdapterParityContract,
     AdapterProjectionBinding,
     ApprovalPolicy,
@@ -14,6 +17,7 @@ from control_plane_kit_core.operations import (
     ControlPlaneProcessContract,
     DependencyReadinessKind,
     DeploymentProgramBoundary,
+    ErrorDisclosurePolicy,
     ExternalEffectPolicy,
     HttpApiContract,
     HttpApiRouteContract,
@@ -40,6 +44,7 @@ from control_plane_kit_core.operations import (
     ShutdownContract,
     StoreParticipation,
     UnitOfWorkBoundary,
+    operator_adapter_security_parity,
     operator_command_http_routes,
     operator_command_parity,
     operator_read_http_routes,
@@ -77,9 +82,12 @@ from control_plane_kit_core.products import (
 )
 
 __all__ = [
+    "ActivityHistoryPolicy",
     "ApplicationServiceBinding",
     "AdapterCommandBinding",
     "AdapterCommandParityContract",
+    "AdapterOperationSecurityBinding",
+    "AdapterOperationSecurityParityContract",
     "AdapterParityContract",
     "AdapterProjectionBinding",
     "ApprovalPolicy",
@@ -92,6 +100,7 @@ __all__ = [
     "DependencyReadinessKind",
     "DeploymentProgramBoundary",
     "DuplicateProductIdentity",
+    "ErrorDisclosurePolicy",
     "ExternalEffectPolicy",
     "HttpApiContract",
     "HttpApiRouteContract",
@@ -141,6 +150,7 @@ __all__ = [
     "UnitOfWorkBoundary",
     "instantiate_catalog_product",
     "instantiate_product",
+    "operator_adapter_security_parity",
     "operator_command_http_routes",
     "operator_command_parity",
     "operator_read_http_routes",
