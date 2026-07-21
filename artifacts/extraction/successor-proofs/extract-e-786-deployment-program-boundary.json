@@ -1,0 +1,33 @@
+{
+  "command": "docker run --rm -v /Users/jacobvartuli/Software/self/control-plane-kit/control-plane-kit-core:/pkg:ro -w /pkg -e PYTHONPATH=/pkg/src -e PYTHONDONTWRITEBYTECODE=1 python:3.14-slim python -m unittest tests.test_deployment_program_boundary tests.test_cpk_server_entrypoint_handoff tests.test_process_operational_contract",
+  "evidence": "The extracted core DeploymentProgram boundary successor maps the frozen public Deploy-stage laws to closed contract data. Core names the service roles, plan/approve/admit/claim/execute/advance stage sequence, and durable handoff contract for each public boundary. It preserves generic graph-transition vocabulary and records cpk-server handoff requirements without implementing a store-backed workflow, FastAPI/MCP process, coordinator, worker, Docker runtime, or graph-store mutation.",
+  "frozen_laws": [
+    "behavior.acceptance-corpus-exercises-all-four-deploy-transition-forms",
+    "behavior.approve-preserves-canonical-authorization-failure",
+    "behavior.approved-plan-reaches-execution-through-callable-stages",
+    "behavior.destructive-classification-is-data-before-execution",
+    "behavior.no-op-preserves-plan-evidence-without-requesting-approval",
+    "behavior.one-interpreter-classifies-all-transition-forms",
+    "behavior.plan-suspends-then-approve-records-explicit-authorized-decision",
+    "behavior.policy-decisions-do-not-create-workflow-records",
+    "behavior.transition-constructors-make-invalid-forms-unrepresentable",
+    "behavior.two-distinct-empty-graphs-are-an-update-not-a-no-op",
+    "behavior.workflow-records-intent-without-writing-graph-truth",
+    "behavior.workspace-and-graph-truth-are-owned-by-stores"
+  ],
+  "schema": "cpk.successor-proof",
+  "status": "passing",
+  "successor_tests": [
+    "control-plane-kit-core.tests.test_deployment_program_boundary.DeploymentProgramBoundaryTests.test_boundary_descriptor_is_deterministic_and_generic",
+    "control-plane-kit-core.tests.test_deployment_program_boundary.DeploymentProgramBoundaryTests.test_boundary_rejects_missing_or_duplicate_service_roles",
+    "control-plane-kit-core.tests.test_deployment_program_boundary.DeploymentProgramBoundaryTests.test_boundary_requires_exactly_one_generic_service_per_role",
+    "control-plane-kit-core.tests.test_deployment_program_boundary.DeploymentProgramBoundaryTests.test_operations_modules_do_not_import_process_or_product_packages",
+    "control-plane-kit-core.tests.test_deployment_program_boundary.DeploymentProgramBoundaryTests.test_service_binding_rejects_process_packaging_terms",
+    "control-plane-kit-core.tests.test_deployment_program_boundary.DeploymentProgramBoundaryTests.test_stage_pipeline_is_closed_ordered_public_contract_data",
+    "control-plane-kit-core.tests.test_deployment_program_boundary.DeploymentProgramBoundaryTests.test_stage_pipeline_rejects_reordered_or_role_mismatched_stages",
+    "control-plane-kit-core.tests.test_cpk_server_entrypoint_handoff.CpkServerEntrypointHandoffTests.test_descriptor_is_closed_and_round_trips_without_process_packaging",
+    "control-plane-kit-core.tests.test_cpk_server_entrypoint_handoff.CpkServerEntrypointHandoffTests.test_handoff_names_external_server_owner_and_core_contracts",
+    "control-plane-kit-core.tests.test_process_operational_contract.ProcessOperationalContractTests.test_contract_does_not_smuggle_process_or_secret_state",
+    "control-plane-kit-core.tests.test_process_operational_contract.ProcessOperationalContractTests.test_process_contract_names_required_dependencies_without_hosting_process"
+  ]
+}

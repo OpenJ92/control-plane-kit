@@ -25,6 +25,26 @@ class ControlPlaneServiceRole(StrEnum):
     AUTHORIZATION = "authorization"
 
 
+class DeploymentProgramStage(StrEnum):
+    """Closed public stage names for a graph transition program."""
+
+    PLAN = "plan"
+    APPROVE = "approve"
+    ADMIT = "admit"
+    CLAIM = "claim"
+    EXECUTE = "execute"
+    ADVANCE = "advance"
+
+
+_STAGE_ROLES = {
+    DeploymentProgramStage.PLAN: ControlPlaneServiceRole.PLANNING,
+    DeploymentProgramStage.APPROVE: ControlPlaneServiceRole.APPROVAL,
+    DeploymentProgramStage.ADMIT: ControlPlaneServiceRole.ADMISSION,
+    DeploymentProgramStage.CLAIM: ControlPlaneServiceRole.LIFECYCLE,
+    DeploymentProgramStage.EXECUTE: ControlPlaneServiceRole.EXECUTION,
+    DeploymentProgramStage.ADVANCE: ControlPlaneServiceRole.LIFECYCLE,
+}
+
 _FORBIDDEN_PROCESS_TERMS = (
     "cpi",
     "cpk-server",
@@ -161,6 +181,167 @@ class DeploymentProgramBoundary:
         )
 
 
+@dataclass(frozen=True)
+class DeploymentStageContract:
+    """One public operation stage without an implementation callback."""
+
+    stage: DeploymentProgramStage
+    service_role: ControlPlaneServiceRole
+    requires_prior_stage: DeploymentProgramStage | None
+    creates_durable_handoff: bool
+
+    def __post_init__(self) -> None:
+        if not isinstance(self.stage, DeploymentProgramStage):
+            raise InvalidDeploymentProgramBoundary(
+                "stage must be DeploymentProgramStage"
+            )
+        if not isinstance(self.service_role, ControlPlaneServiceRole):
+            raise InvalidDeploymentProgramBoundary(
+                "service_role must be ControlPlaneServiceRole"
+            )
+        expected_role = _STAGE_ROLES[self.stage]
+        if self.service_role is not expected_role:
+            raise InvalidDeploymentProgramBoundary(
+                f"{self.stage.value} must use {expected_role.value} service"
+            )
+        if (
+            self.requires_prior_stage is not None
+            and not isinstance(self.requires_prior_stage, DeploymentProgramStage)
+        ):
+            raise InvalidDeploymentProgramBoundary(
+                "requires_prior_stage must be DeploymentProgramStage"
+            )
+        if type(self.creates_durable_handoff) is not bool:
+            raise InvalidDeploymentProgramBoundary(
+                "creates_durable_handoff must be bool"
+            )
+
+    def descriptor(self) -> dict[str, object]:
+        return {
+            "stage": self.stage.value,
+            "service_role": self.service_role.value,
+            "requires_prior_stage": (
+                None
+                if self.requires_prior_stage is None
+                else self.requires_prior_stage.value
+            ),
+            "creates_durable_handoff": self.creates_durable_handoff,
+        }
+
+    @classmethod
+    def from_descriptor(
+        cls,
+        value: Mapping[str, object],
+    ) -> "DeploymentStageContract":
+        if set(value) != {
+            "stage",
+            "service_role",
+            "requires_prior_stage",
+            "creates_durable_handoff",
+        }:
+            raise InvalidDeploymentProgramBoundary(
+                "deployment stage descriptor has unexpected keys"
+            )
+        prior = value["requires_prior_stage"]
+        try:
+            return cls(
+                stage=DeploymentProgramStage(_text(value["stage"], "stage")),
+                service_role=ControlPlaneServiceRole(
+                    _text(value["service_role"], "service_role")
+                ),
+                requires_prior_stage=(
+                    None
+                    if prior is None
+                    else DeploymentProgramStage(
+                        _text(prior, "requires_prior_stage")
+                    )
+                ),
+                creates_durable_handoff=_bool(
+                    value["creates_durable_handoff"],
+                    "creates_durable_handoff",
+                ),
+            )
+        except ValueError as error:
+            raise InvalidDeploymentProgramBoundary(str(error)) from error
+
+
+@dataclass(frozen=True)
+class DeploymentStagePipeline:
+    """Pure public stage sequence for deploying one graph transition."""
+
+    stages: tuple[DeploymentStageContract, ...] = ()
+
+    def __post_init__(self) -> None:
+        stages = self.stages or canonical_deployment_stage_pipeline().stages
+        if not isinstance(stages, tuple) or not all(
+            isinstance(stage, DeploymentStageContract)
+            for stage in stages
+        ):
+            raise InvalidDeploymentProgramBoundary(
+                "stages must be DeploymentStageContract values"
+            )
+        expected = tuple(DeploymentProgramStage)
+        actual = tuple(stage.stage for stage in stages)
+        if actual != expected:
+            raise InvalidDeploymentProgramBoundary(
+                "deployment stages must be canonical plan/approve/admit/claim/execute/advance"
+            )
+        prior_by_stage = {
+            stage.stage: stage.requires_prior_stage
+            for stage in stages
+        }
+        for index, stage in enumerate(expected):
+            expected_prior = None if index == 0 else expected[index - 1]
+            if prior_by_stage[stage] is not expected_prior:
+                raise InvalidDeploymentProgramBoundary(
+                    f"{stage.value} has incoherent predecessor"
+                )
+        object.__setattr__(self, "stages", stages)
+
+    def descriptor(self) -> dict[str, object]:
+        return {
+            "stages": [stage.descriptor() for stage in self.stages],
+        }
+
+    @classmethod
+    def from_descriptor(
+        cls,
+        value: Mapping[str, object],
+    ) -> "DeploymentStagePipeline":
+        if set(value) != {"stages"}:
+            raise InvalidDeploymentProgramBoundary(
+                "deployment stage pipeline descriptor has unexpected keys"
+            )
+        stages = value["stages"]
+        if not isinstance(stages, list):
+            raise InvalidDeploymentProgramBoundary("stages must be a list")
+        return cls(
+            tuple(
+                DeploymentStageContract.from_descriptor(
+                    _mapping(stage, "stage")
+                )
+                for stage in stages
+            )
+        )
+
+
+def canonical_deployment_stage_pipeline() -> DeploymentStagePipeline:
+    """Return the public stage law for a graph transition program."""
+
+    stages = tuple(DeploymentProgramStage)
+    return DeploymentStagePipeline(
+        tuple(
+            DeploymentStageContract(
+                stage=stage,
+                service_role=_STAGE_ROLES[stage],
+                requires_prior_stage=None if index == 0 else stages[index - 1],
+                creates_durable_handoff=True,
+            )
+            for index, stage in enumerate(stages)
+        )
+    )
+
+
 def _reject_process_terms(value: str) -> None:
     normalized = value.casefold().replace("_", "-")
     for term in _FORBIDDEN_PROCESS_TERMS:
@@ -173,6 +354,12 @@ def _reject_process_terms(value: str) -> None:
 def _text(value: object, field: str) -> str:
     if not isinstance(value, str):
         raise InvalidDeploymentProgramBoundary(f"{field} must be text")
+    return value
+
+
+def _bool(value: object, field: str) -> bool:
+    if type(value) is not bool:
+        raise InvalidDeploymentProgramBoundary(f"{field} must be bool")
     return value
 
 

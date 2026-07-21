@@ -1427,7 +1427,13 @@
       "owner": "control-plane-kit-core",
       "owner_kind": "core",
       "reference": "tests.test_backend_boundaries.BackendBoundaryTests.test_destructive_classification_is_data_before_execution",
-      "successors": [],
+      "successors": [
+        {
+          "evidence": "extract-e-786.deployment-program-boundary.unittest",
+          "id": "control-plane-kit-core.tests.test_backend_boundaries.BackendBoundaryTests.test_destructive_classification_is_data_before_execution",
+          "status": "passing"
+        }
+      ],
       "supersession": null
     },
     {
@@ -1437,7 +1443,13 @@
       "owner": "control-plane-kit-core",
       "owner_kind": "core",
       "reference": "tests.test_backend_boundaries.BackendBoundaryTests.test_policy_decisions_do_not_create_workflow_records",
-      "successors": [],
+      "successors": [
+        {
+          "evidence": "extract-e-786.deployment-program-boundary.unittest",
+          "id": "control-plane-kit-core.tests.test_backend_boundaries.BackendBoundaryTests.test_policy_decisions_do_not_create_workflow_records",
+          "status": "passing"
+        }
+      ],
       "supersession": null
     },
     {
@@ -1447,7 +1459,13 @@
       "owner": "control-plane-kit-core",
       "owner_kind": "core",
       "reference": "tests.test_backend_boundaries.BackendBoundaryTests.test_workflow_records_intent_without_writing_graph_truth",
-      "successors": [],
+      "successors": [
+        {
+          "evidence": "extract-e-786.deployment-program-boundary.unittest",
+          "id": "control-plane-kit-core.tests.test_backend_boundaries.BackendBoundaryTests.test_workflow_records_intent_without_writing_graph_truth",
+          "status": "passing"
+        }
+      ],
       "supersession": null
     },
     {
@@ -1457,7 +1475,13 @@
       "owner": "control-plane-kit-core",
       "owner_kind": "core",
       "reference": "tests.test_backend_boundaries.BackendBoundaryTests.test_workspace_and_graph_truth_are_owned_by_stores",
-      "successors": [],
+      "successors": [
+        {
+          "evidence": "extract-e-786.deployment-program-boundary.unittest",
+          "id": "control-plane-kit-core.tests.test_backend_boundaries.BackendBoundaryTests.test_workspace_and_graph_truth_are_owned_by_stores",
+          "status": "passing"
+        }
+      ],
       "supersession": null
     },
     {
@@ -3283,7 +3307,13 @@
       "owner": "control-plane-kit-core",
       "owner_kind": "core",
       "reference": "tests.test_deployment_admit_claim_stages.DeploymentAdmitClaimStageTests.test_approved_plan_reaches_execution_through_callable_stages",
-      "successors": [],
+      "successors": [
+        {
+          "evidence": "extract-e-786.deployment-program-boundary.unittest",
+          "id": "control-plane-kit-core.tests.test_deployment_admit_claim_stages.DeploymentAdmitClaimStageTests.test_approved_plan_reaches_execution_through_callable_stages",
+          "status": "passing"
+        }
+      ],
       "supersession": null
     },
     {
@@ -3293,7 +3323,13 @@
       "owner": "control-plane-kit-core",
       "owner_kind": "core",
       "reference": "tests.test_deployment_application_values.DeploymentApplicationValueTests.test_acceptance_corpus_exercises_all_four_deploy_transition_forms",
-      "successors": [],
+      "successors": [
+        {
+          "evidence": "extract-e-786.deployment-program-boundary.unittest",
+          "id": "control-plane-kit-core.tests.test_deployment_application_values.DeploymentApplicationValueTests.test_acceptance_corpus_exercises_all_four_deploy_transition_forms",
+          "status": "passing"
+        }
+      ],
       "supersession": null
     },
     {
@@ -3303,7 +3339,13 @@
       "owner": "control-plane-kit-core",
       "owner_kind": "core",
       "reference": "tests.test_deployment_application_values.DeploymentApplicationValueTests.test_one_interpreter_classifies_all_transition_forms",
-      "successors": [],
+      "successors": [
+        {
+          "evidence": "extract-e-786.deployment-program-boundary.unittest",
+          "id": "control-plane-kit-core.tests.test_deployment_application_values.DeploymentApplicationValueTests.test_one_interpreter_classifies_all_transition_forms",
+          "status": "passing"
+        }
+      ],
       "supersession": null
     },
     {
@@ -3313,7 +3355,13 @@
       "owner": "control-plane-kit-core",
       "owner_kind": "core",
       "reference": "tests.test_deployment_application_values.DeploymentApplicationValueTests.test_transition_constructors_make_invalid_forms_unrepresentable",
-      "successors": [],
+      "successors": [
+        {
+          "evidence": "extract-e-786.deployment-program-boundary.unittest",
+          "id": "control-plane-kit-core.tests.test_deployment_application_values.DeploymentApplicationValueTests.test_transition_constructors_make_invalid_forms_unrepresentable",
+          "status": "passing"
+        }
+      ],
       "supersession": null
     },
     {
@@ -3323,7 +3371,13 @@
       "owner": "control-plane-kit-core",
       "owner_kind": "core",
       "reference": "tests.test_deployment_application_values.DeploymentApplicationValueTests.test_two_distinct_empty_graphs_are_an_update_not_a_no_op",
-      "successors": [],
+      "successors": [
+        {
+          "evidence": "extract-e-786.deployment-program-boundary.unittest",
+          "id": "control-plane-kit-core.tests.test_deployment_application_values.DeploymentApplicationValueTests.test_two_distinct_empty_graphs_are_an_update_not_a_no_op",
+          "status": "passing"
+        }
+      ],
       "supersession": null
     },
     {
@@ -3333,7 +3387,13 @@
       "owner": "control-plane-kit-core",
       "owner_kind": "core",
       "reference": "tests.test_deployment_plan_approve_stages.DeploymentPlanApproveStageTests.test_approve_preserves_canonical_authorization_failure",
-      "successors": [],
+      "successors": [
+        {
+          "evidence": "extract-e-786.deployment-program-boundary.unittest",
+          "id": "control-plane-kit-core.tests.test_deployment_plan_approve_stages.DeploymentPlanApproveStageTests.test_approve_preserves_canonical_authorization_failure",
+          "status": "passing"
+        }
+      ],
       "supersession": null
     },
     {
@@ -3343,7 +3403,13 @@
       "owner": "control-plane-kit-core",
       "owner_kind": "core",
       "reference": "tests.test_deployment_plan_approve_stages.DeploymentPlanApproveStageTests.test_no_op_preserves_plan_evidence_without_requesting_approval",
-      "successors": [],
+      "successors": [
+        {
+          "evidence": "extract-e-786.deployment-program-boundary.unittest",
+          "id": "control-plane-kit-core.tests.test_deployment_plan_approve_stages.DeploymentPlanApproveStageTests.test_no_op_preserves_plan_evidence_without_requesting_approval",
+          "status": "passing"
+        }
+      ],
       "supersession": null
     },
     {
@@ -3353,7 +3419,13 @@
       "owner": "control-plane-kit-core",
       "owner_kind": "core",
       "reference": "tests.test_deployment_plan_approve_stages.DeploymentPlanApproveStageTests.test_plan_suspends_then_approve_records_explicit_authorized_decision",
-      "successors": [],
+      "successors": [
+        {
+          "evidence": "extract-e-786.deployment-program-boundary.unittest",
+          "id": "control-plane-kit-core.tests.test_deployment_plan_approve_stages.DeploymentPlanApproveStageTests.test_plan_suspends_then_approve_records_explicit_authorized_decision",
+          "status": "passing"
+        }
+      ],
       "supersession": null
     },
     {

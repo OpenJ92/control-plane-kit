@@ -3,8 +3,12 @@
 from control_plane_kit_core.operations.services import (
     ApplicationServiceBinding,
     ControlPlaneServiceRole,
+    DeploymentProgramStage,
     DeploymentProgramBoundary,
+    DeploymentStageContract,
+    DeploymentStagePipeline,
     InvalidDeploymentProgramBoundary,
+    canonical_deployment_stage_pipeline,
 )
 from control_plane_kit_core.operations.handoff import (
     CpkServerEntrypointHandoffContract,
@@ -88,7 +92,10 @@ __all__ = [
     "CpkServerMaterialHandoffContract",
     "CpkServerPublicationHandoffContract",
     "DependencyReadinessKind",
+    "DeploymentProgramStage",
     "DeploymentProgramBoundary",
+    "DeploymentStageContract",
+    "DeploymentStagePipeline",
     "EntrypointCompositionPolicy",
     "ErrorDisclosurePolicy",
     "ExternalEffectPolicy",
@@ -123,6 +130,7 @@ __all__ = [
     "canonical_cpk_server_entrypoint_handoff",
     "canonical_cpk_server_material_handoff",
     "canonical_cpk_server_publication_handoff",
+    "canonical_deployment_stage_pipeline",
     "operator_adapter_security_parity",
     "operator_command_http_routes",
     "operator_command_parity",

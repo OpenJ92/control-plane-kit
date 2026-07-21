@@ -5,8 +5,11 @@ import unittest
 from control_plane_kit_core.operations import (
     ApplicationServiceBinding,
     ControlPlaneServiceRole,
+    DeploymentProgramStage,
     DeploymentProgramBoundary,
+    DeploymentStagePipeline,
     InvalidDeploymentProgramBoundary,
+    canonical_deployment_stage_pipeline,
 )
 
 
@@ -80,6 +83,56 @@ class DeploymentProgramBoundaryTests(unittest.TestCase):
                 role=ControlPlaneServiceRole.EXECUTION,
                 service_name="execution-service",
                 parameters=("dockerfile",),
+            )
+
+    def test_stage_pipeline_is_closed_ordered_public_contract_data(self) -> None:
+        pipeline = canonical_deployment_stage_pipeline()
+
+        self.assertEqual(
+            [stage.stage for stage in pipeline.stages],
+            [
+                DeploymentProgramStage.PLAN,
+                DeploymentProgramStage.APPROVE,
+                DeploymentProgramStage.ADMIT,
+                DeploymentProgramStage.CLAIM,
+                DeploymentProgramStage.EXECUTE,
+                DeploymentProgramStage.ADVANCE,
+            ],
+        )
+        self.assertEqual(
+            [stage.service_role for stage in pipeline.stages],
+            [
+                ControlPlaneServiceRole.PLANNING,
+                ControlPlaneServiceRole.APPROVAL,
+                ControlPlaneServiceRole.ADMISSION,
+                ControlPlaneServiceRole.LIFECYCLE,
+                ControlPlaneServiceRole.EXECUTION,
+                ControlPlaneServiceRole.LIFECYCLE,
+            ],
+        )
+        self.assertTrue(
+            all(stage.creates_durable_handoff for stage in pipeline.stages)
+        )
+
+        descriptor = pipeline.descriptor()
+        self.assertEqual(DeploymentStagePipeline.from_descriptor(descriptor), pipeline)
+        self.assertNotIn("fastapi", repr(descriptor).lower())
+        self.assertNotIn("postgres", repr(descriptor).lower())
+        self.assertNotIn("docker", repr(descriptor).lower())
+
+    def test_stage_pipeline_rejects_reordered_or_role_mismatched_stages(self) -> None:
+        pipeline = canonical_deployment_stage_pipeline()
+
+        with self.assertRaises(InvalidDeploymentProgramBoundary):
+            DeploymentStagePipeline(tuple(reversed(pipeline.stages)))
+
+        execute = pipeline.stages[4]
+        with self.assertRaises(InvalidDeploymentProgramBoundary):
+            type(execute)(
+                stage=DeploymentProgramStage.EXECUTE,
+                service_role=ControlPlaneServiceRole.LIFECYCLE,
+                requires_prior_stage=DeploymentProgramStage.CLAIM,
+                creates_durable_handoff=True,
             )
 
     def test_operations_modules_do_not_import_process_or_product_packages(self) -> None:
