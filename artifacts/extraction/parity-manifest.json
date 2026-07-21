@@ -5197,7 +5197,13 @@
       "owner": "control-plane-kit-core",
       "owner_kind": "core",
       "reference": "tests.test_graph_construction.GraphConstructionTests.test_add_operations_reject_duplicates_without_erasing_first_values",
-      "successors": [],
+      "successors": [
+        {
+          "evidence": "extract-b-677.graph-duplicate-identity.unittest",
+          "id": "control-plane-kit-core.tests.test_topology_graph.DeploymentGraphConstructionTests.test_add_operations_reject_duplicates_without_erasing_first_values",
+          "status": "passing"
+        }
+      ],
       "supersession": null
     },
     {

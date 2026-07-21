@@ -148,3 +148,96 @@ frozen/reference package and the extracted core scaffold.
 #677 can rely on a reusable core package harness while rehearsing the
 law-context-before-dry-run loop. It should still avoid claiming parity from
 scaffold or harness tests alone.
+
+## #677 Law-Context Rehearsal
+
+### Law Card
+
+```text
+frozen reference:
+  tests.test_graph_construction.GraphConstructionTests.test_add_operations_reject_duplicates_without_erasing_first_values
+
+stable law:
+  behavior.add-operations-reject-duplicates-without-erasing-first-values
+
+observable behavior:
+  DeploymentGraph.add_node, add_edge, and add_runtime reject duplicate
+  identities with a closed GraphConstructionError.
+
+negative cases:
+  duplicate node identity
+  duplicate edge identity
+  duplicate runtime identity
+  replacement value must not overwrite the first value
+  error string must not leak replacement body text
+
+obsolete assumptions:
+  frozen examples, Docker implementations, recipe fixtures, and root
+  control_plane_kit imports are not part of the successor law
+
+successor owner:
+  control-plane-kit-core
+
+successor test:
+  control-plane-kit-core/tests/test_topology_graph.py
+
+evidence status:
+  passing
+```
+
+### Target Boundary
+
+The rehearsal introduced the first real pure value surface:
+
+```python
+from control_plane_kit_core.topology import (
+    DeploymentGraph,
+    Edge,
+    GraphConstructionCode,
+    GraphConstructionError,
+    GraphIdentityKind,
+    Node,
+    RuntimeRecord,
+)
+```
+
+This is intentionally smaller than the frozen graph language. It proves the
+process with one central identity law before #614 migrates the complete kernel.
+
+### Red-To-Green Evidence
+
+Red failed for the expected reason:
+
+```text
+ModuleNotFoundError: No module named 'control_plane_kit_core.topology'
+```
+
+Green passed through the package harness:
+
+```text
+Ran 4 tests
+OK
+control-plane-kit-core import ok
+```
+
+### Parity Evidence
+
+The manifest now points the frozen law to one successor proof:
+
+```text
+extract-b-677.graph-duplicate-identity.unittest
+sha256:4bff6481ba3871f90aeae2735b6b6085f24413506a4bae9a0aaae61384af99ae
+```
+
+Foundation validation remains green:
+
+```text
+policy=foundation valid=true migration_complete=false entries=1107 required=880
+deferred=227 incomplete_required=879 findings=0
+```
+
+### Handoff
+
+#614 should migrate the full pure kernel using this exact loop, but it should
+not treat the minimal #677 topology module as final structure. It may extend,
+rename, or split the surface where the broader law set demands it.
