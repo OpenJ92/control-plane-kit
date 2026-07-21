@@ -1525,7 +1525,13 @@
       "owner": "control-plane-kit-core",
       "owner_kind": "core",
       "reference": "tests.test_capabilities.CapabilityTests.test_capabilities_reference_expected_route_sets",
-      "successors": [],
+      "successors": [
+        {
+          "evidence": "extract-e-756.verification-capabilities.unittest",
+          "id": "control-plane-kit-core.tests.test_verification_capabilities.CapabilityTests.test_capabilities_reference_expected_route_sets",
+          "status": "passing"
+        }
+      ],
       "supersession": null
     },
     {
@@ -1535,7 +1541,13 @@
       "owner": "control-plane-kit-core",
       "owner_kind": "core",
       "reference": "tests.test_capabilities.CapabilityTests.test_capability_descriptor_is_json_friendly",
-      "successors": [],
+      "successors": [
+        {
+          "evidence": "extract-e-756.verification-capabilities.unittest",
+          "id": "control-plane-kit-core.tests.test_verification_capabilities.CapabilityTests.test_capability_descriptor_is_json_friendly",
+          "status": "passing"
+        }
+      ],
       "supersession": null
     },
     {
@@ -1545,7 +1557,13 @@
       "owner": "control-plane-kit-core",
       "owner_kind": "core",
       "reference": "tests.test_capabilities.CapabilityTests.test_capability_named_accepts_string_or_enum",
-      "successors": [],
+      "successors": [
+        {
+          "evidence": "extract-e-756.verification-capabilities.unittest",
+          "id": "control-plane-kit-core.tests.test_verification_capabilities.CapabilityTests.test_capability_named_accepts_string_or_enum",
+          "status": "passing"
+        }
+      ],
       "supersession": null
     },
     {
@@ -1555,7 +1573,13 @@
       "owner": "control-plane-kit-core",
       "owner_kind": "core",
       "reference": "tests.test_capabilities.CapabilityTests.test_lifecycle_does_not_claim_a_route_yet",
-      "successors": [],
+      "successors": [
+        {
+          "evidence": "extract-e-756.verification-capabilities.unittest",
+          "id": "control-plane-kit-core.tests.test_verification_capabilities.CapabilityTests.test_lifecycle_does_not_claim_a_route_yet",
+          "status": "passing"
+        }
+      ],
       "supersession": null
     },
     {
@@ -1565,7 +1589,13 @@
       "owner": "control-plane-kit-core",
       "owner_kind": "core",
       "reference": "tests.test_capabilities.CapabilityTests.test_unknown_capability_fails_loudly",
-      "successors": [],
+      "successors": [
+        {
+          "evidence": "extract-e-756.verification-capabilities.unittest",
+          "id": "control-plane-kit-core.tests.test_verification_capabilities.CapabilityTests.test_unknown_capability_fails_loudly",
+          "status": "passing"
+        }
+      ],
       "supersession": null
     },
     {
@@ -1575,7 +1605,13 @@
       "owner": "control-plane-kit-core",
       "owner_kind": "core",
       "reference": "tests.test_capability_compile.CapabilityCompileTests.test_proxy_block_advertises_capabilities_in_compiled_metadata",
-      "successors": [],
+      "successors": [
+        {
+          "evidence": "extract-e-756.verification-capabilities.unittest",
+          "id": "control-plane-kit-core.tests.test_verification_capabilities.CapabilityTests.test_compiled_metadata_contains_route_backed_capability_descriptors",
+          "status": "passing"
+        }
+      ],
       "supersession": null
     },
     {
@@ -10927,7 +10963,13 @@
       "owner": "control-plane-kit-core",
       "owner_kind": "core",
       "reference": "tests.test_verification_contract.VerificationContractTests.test_block_contract_survives_the_authoritative_graph_codec",
-      "successors": [],
+      "successors": [
+        {
+          "evidence": "extract-e-756.verification-capabilities.unittest",
+          "id": "control-plane-kit-core.tests.test_verification_capabilities.VerificationContractTests.test_block_contract_survives_the_authoritative_graph_codec",
+          "status": "passing"
+        }
+      ],
       "supersession": null
     },
     {
@@ -10937,7 +10979,13 @@
       "owner": "control-plane-kit-core",
       "owner_kind": "core",
       "reference": "tests.test_verification_contract.VerificationContractTests.test_block_spec_rejects_an_untyped_contract",
-      "successors": [],
+      "successors": [
+        {
+          "evidence": "extract-e-756.verification-capabilities.unittest",
+          "id": "control-plane-kit-core.tests.test_verification_capabilities.VerificationContractTests.test_block_spec_rejects_an_untyped_contract",
+          "status": "passing"
+        }
+      ],
       "supersession": null
     },
     {
@@ -10947,7 +10995,13 @@
       "owner": "control-plane-kit-core",
       "owner_kind": "core",
       "reference": "tests.test_verification_contract.VerificationContractTests.test_complete_closed_language_round_trips_exactly",
-      "successors": [],
+      "successors": [
+        {
+          "evidence": "extract-e-756.verification-capabilities.unittest",
+          "id": "control-plane-kit-core.tests.test_verification_capabilities.VerificationContractTests.test_complete_closed_language_round_trips_exactly",
+          "status": "passing"
+        }
+      ],
       "supersession": null
     },
     {
@@ -10957,7 +11011,13 @@
       "owner": "control-plane-kit-core",
       "owner_kind": "core",
       "reference": "tests.test_verification_contract.VerificationContractTests.test_contract_requires_unique_closed_checks",
-      "successors": [],
+      "successors": [
+        {
+          "evidence": "extract-e-756.verification-capabilities.unittest",
+          "id": "control-plane-kit-core.tests.test_verification_capabilities.VerificationContractTests.test_contract_requires_unique_closed_checks",
+          "status": "passing"
+        }
+      ],
       "supersession": null
     },
     {
@@ -10967,7 +11027,13 @@
       "owner": "control-plane-kit-core",
       "owner_kind": "core",
       "reference": "tests.test_verification_contract.VerificationContractTests.test_each_check_variant_has_an_explicit_protocol_set",
-      "successors": [],
+      "successors": [
+        {
+          "evidence": "extract-e-756.verification-capabilities.unittest",
+          "id": "control-plane-kit-core.tests.test_verification_capabilities.VerificationContractTests.test_each_check_variant_has_an_explicit_protocol_set",
+          "status": "passing"
+        }
+      ],
       "supersession": null
     },
     {
@@ -10977,7 +11043,13 @@
       "owner": "control-plane-kit-core",
       "owner_kind": "core",
       "reference": "tests.test_verification_contract.VerificationContractTests.test_http_target_is_a_socket_and_relative_path_not_an_arbitrary_url",
-      "successors": [],
+      "successors": [
+        {
+          "evidence": "extract-e-756.verification-capabilities.unittest",
+          "id": "control-plane-kit-core.tests.test_verification_capabilities.VerificationContractTests.test_http_target_is_a_socket_and_relative_path_not_an_arbitrary_url",
+          "status": "passing"
+        }
+      ],
       "supersession": null
     },
     {
@@ -10987,7 +11059,13 @@
       "owner": "control-plane-kit-core",
       "owner_kind": "core",
       "reference": "tests.test_verification_contract.VerificationContractTests.test_identity_accepts_bounded_canonical_durable_graph_ids",
-      "successors": [],
+      "successors": [
+        {
+          "evidence": "extract-e-756.verification-capabilities.unittest",
+          "id": "control-plane-kit-core.tests.test_verification_capabilities.VerificationContractTests.test_identity_accepts_bounded_canonical_durable_graph_ids",
+          "status": "passing"
+        }
+      ],
       "supersession": null
     },
     {
@@ -10997,7 +11075,13 @@
       "owner": "control-plane-kit-core",
       "owner_kind": "core",
       "reference": "tests.test_verification_contract.VerificationContractTests.test_policy_and_evidence_are_bounded",
-      "successors": [],
+      "successors": [
+        {
+          "evidence": "extract-e-756.verification-capabilities.unittest",
+          "id": "control-plane-kit-core.tests.test_verification_capabilities.VerificationContractTests.test_policy_and_evidence_are_bounded",
+          "status": "passing"
+        }
+      ],
       "supersession": null
     },
     {
@@ -11007,7 +11091,13 @@
       "owner": "control-plane-kit-core",
       "owner_kind": "core",
       "reference": "tests.test_verification_contract.VerificationContractTests.test_postgres_language_has_no_arbitrary_query_field",
-      "successors": [],
+      "successors": [
+        {
+          "evidence": "extract-e-756.verification-capabilities.unittest",
+          "id": "control-plane-kit-core.tests.test_verification_capabilities.VerificationContractTests.test_postgres_language_has_no_arbitrary_query_field",
+          "status": "passing"
+        }
+      ],
       "supersession": null
     },
     {
@@ -11017,7 +11107,13 @@
       "owner": "control-plane-kit-core",
       "owner_kind": "core",
       "reference": "tests.test_verification_contract.VerificationContractTests.test_result_values_are_closed_bounded_and_deterministic",
-      "successors": [],
+      "successors": [
+        {
+          "evidence": "extract-e-756.verification-capabilities.unittest",
+          "id": "control-plane-kit-core.tests.test_verification_capabilities.VerificationContractTests.test_result_values_are_closed_bounded_and_deterministic",
+          "status": "passing"
+        }
+      ],
       "supersession": null
     },
     {
@@ -11027,7 +11123,13 @@
       "owner": "control-plane-kit-core",
       "owner_kind": "core",
       "reference": "tests.test_verification_contract.VerificationContractTests.test_unknown_variants_fields_and_closed_values_fail_closed",
-      "successors": [],
+      "successors": [
+        {
+          "evidence": "extract-e-756.verification-capabilities.unittest",
+          "id": "control-plane-kit-core.tests.test_verification_capabilities.VerificationContractTests.test_unknown_variants_fields_and_closed_values_fail_closed",
+          "status": "passing"
+        }
+      ],
       "supersession": null
     },
     {
@@ -11037,7 +11139,13 @@
       "owner": "control-plane-kit-core",
       "owner_kind": "core",
       "reference": "tests.test_verification_dispatch.VerificationDispatchTests.test_missing_capability_is_explicitly_unsupported",
-      "successors": [],
+      "successors": [
+        {
+          "evidence": "extract-e-756.verification-capabilities.unittest",
+          "id": "control-plane-kit-core.tests.test_verification_capabilities.VerificationContractTests.test_result_values_are_closed_bounded_and_deterministic",
+          "status": "passing"
+        }
+      ],
       "supersession": null
     },
     {
@@ -11047,7 +11155,13 @@
       "owner": "control-plane-kit-core",
       "owner_kind": "core",
       "reference": "tests.test_verification_dispatch.VerificationDispatchTests.test_registry_rejects_capability_and_result_identity_lies",
-      "successors": [],
+      "successors": [
+        {
+          "evidence": "extract-e-756.verification-capabilities.unittest",
+          "id": "control-plane-kit-core.tests.test_verification_capabilities.VerificationContractTests.test_result_values_are_closed_bounded_and_deterministic",
+          "status": "passing"
+        }
+      ],
       "supersession": null
     },
     {
@@ -11057,7 +11171,13 @@
       "owner": "control-plane-kit-core",
       "owner_kind": "core",
       "reference": "tests.test_verification_dispatch.VerificationDispatchTests.test_static_interpreter_is_pure_deterministic_and_identity_checked",
-      "successors": [],
+      "successors": [
+        {
+          "evidence": "extract-e-756.verification-capabilities.unittest",
+          "id": "control-plane-kit-core.tests.test_verification_capabilities.VerificationContractTests.test_result_values_are_closed_bounded_and_deterministic",
+          "status": "passing"
+        }
+      ],
       "supersession": null
     },
     {
