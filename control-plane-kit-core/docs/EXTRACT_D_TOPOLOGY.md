@@ -117,3 +117,32 @@ D.5 Mandatory Stop
 - Live process publication evidence.
 - Health/readiness process bootstrap.
 - Docker/Postgres live cleanup proof.
+
+## Handoff To EXTRACT.E
+
+EXTRACT.E inherits a stricter boundary than its first issue text assumed.
+
+Core may produce a release-candidate wheel, parity manifests, architecture
+evidence, and handoff contracts. Core must not publish the canonical
+`cpk-server` OCI image, product descriptor, FastAPI process, hosted MCP server,
+or live process evidence.
+
+Any EXTRACT.E wording that asks for a "CPI image", "self descriptor", or live
+HTTP/MCP process proof inside core is stale. Translate it as:
+
+```text
+control-plane-kit-core
+  -> release-candidate wheel
+  -> parity and architecture evidence
+  -> exact cpk-server handoff contract
+
+control-plane-kit-servers/cpk-server
+  -> OCI image
+  -> product descriptor
+  -> FastAPI/MCP process
+  -> live process smoke evidence
+```
+
+In short: EXTRACT.E must be refreshed before execution. Its valid core output
+is a core wheel plus parity evidence; the cpk-server image and descriptor remain
+external.
