@@ -1308,3 +1308,68 @@ completed required-core laws: 173
 incomplete required-core laws: 607
 unmapped required-core families: 80
 ```
+
+## #750 Pure-Core Mapping Batch Closeout
+
+#750 closed the #738 pure-core batch by checking the original #737 batch plan
+against the #745 audit, the live parity manifest, and the current required-core
+inventory.
+
+The new closeout artifact is:
+
+```text
+artifacts/extraction/pure-core-batch-closeout.json
+```
+
+Its governing shape is:
+
+```text
+RequiredCoreBatchPlan
+  x PureCoreBatchAudit
+  x CurrentRequiredCoreInventory
+    -> PureCoreBatchCloseout
+```
+
+The important law is not "no required-core laws remain." #738 was only one
+batch. The law is:
+
+```text
+retained pure-core families
+  -> mapped successor evidence
+
+moved families
+  -> visible on their active downstream issue
+
+split families
+  -> pure slice mapped, non-core slice still visible downstream
+```
+
+Closeout counts:
+
+```text
+source families:                         20
+source laws:                             179
+retained source laws:                    115
+moved source laws:                        23
+split source laws:                        41
+retained families still live:              0
+remaining moved-or-split live laws:        46
+```
+
+The remaining live laws are intentional:
+
+```text
+test_postgres_scenario_runner -> #740 operations contracts
+test_block_control_fastapi    -> #743 interpreter/runtime substrate
+test_contracts                -> #740 operations slice after #748/#764 pure mapping
+```
+
+This closes #738 without pretending operations, FastAPI process behavior, or
+interpreter/runtime substrate laws were migrated into extracted core.
+
+Validation:
+
+```text
+focused #750 batch/parity guard slice: 21 tests passed
+validate-parity.sh foundation: valid=true, findings=0
+```
