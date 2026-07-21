@@ -8,6 +8,7 @@ from extraction_parity.validation import (
     ValidationError,
     ValidationPolicy,
     decode_evidence_index,
+    validate_required_core_closeout,
     validate_parity,
 )
 
@@ -164,6 +165,123 @@ class ParityValidationTests(unittest.TestCase):
         self.assertTrue(report["migration_complete"])
         self.assertEqual(report["counts"]["reviewed_supersessions"], 2)
         self.assertEqual(report["counts"]["deferred"], 1)
+
+    def test_required_core_closeout_fails_on_unmapped_core_only(self) -> None:
+        ownership, demos = inventories()
+        manifest = build_manifest(ownership, demos)
+
+        report = validate_required_core_closeout(
+            manifest,
+            ownership,
+            demos,
+            empty_evidence(),
+        )
+
+        self.assertFalse(report["valid"])
+        self.assertFalse(report["required_core_complete"])
+        self.assertEqual(report["counts"]["required_core"], 1)
+        self.assertEqual(report["counts"]["required_non_core"], 1)
+        self.assertEqual(report["counts"]["deferred"], 1)
+        self.assertEqual(report["counts"]["incomplete_required_core"], 1)
+        self.assertEqual(
+            {finding["code"] for finding in report["findings"]},
+            {"required_core_without_completion"},
+        )
+        self.assertEqual(
+            report["deferred_entries"],
+            [
+                {
+                    "kind": "test",
+                    "reference": "tests.product",
+                    "owner_kind": "deferred-product",
+                    "owner": "control-plane-kit-servers:x",
+                }
+            ],
+        )
+
+    def test_required_core_closeout_accepts_explicit_successor_or_supersession(self) -> None:
+        ownership, demos = inventories()
+        manifest = build_manifest(ownership, demos)
+        for entry in manifest["entries"]:
+            if entry["owner_kind"] == "core":
+                entry["successors"] = [
+                    {
+                        "id": "control-plane-kit-core.tests.test_core.CoreTests.test_core_law",
+                        "status": "passing",
+                        "evidence": "core-proof",
+                    }
+                ]
+        evidence = {
+            "schema": "cpk.successor-evidence-index",
+            "evidence": [
+                {"id": "core-proof", "status": "passing", "digest": "sha256:" + "a" * 64},
+            ],
+        }
+
+        report = validate_required_core_closeout(
+            manifest,
+            ownership,
+            demos,
+            evidence,
+        )
+
+        self.assertTrue(report["valid"])
+        self.assertTrue(report["required_core_complete"])
+        self.assertEqual(report["counts"]["completed_required_core"], 1)
+        self.assertEqual(report["counts"]["incomplete_required_core"], 0)
+
+        superseded = build_manifest(ownership, demos)
+        for entry in superseded["entries"]:
+            if entry["owner_kind"] == "core":
+                entry["supersession"] = {
+                    "rationale": "obsolete structural assertion replaced by stronger core boundary",
+                    "review": "issue-728",
+                }
+        supersession_report = validate_required_core_closeout(
+            superseded,
+            ownership,
+            demos,
+            empty_evidence(),
+        )
+        self.assertTrue(supersession_report["valid"])
+        self.assertEqual(supersession_report["counts"]["reviewed_core_supersessions"], 1)
+
+    def test_required_core_closeout_rejects_missing_or_failed_successor_evidence(self) -> None:
+        ownership, demos = inventories()
+        manifest = build_manifest(ownership, demos)
+        for entry in manifest["entries"]:
+            if entry["owner_kind"] == "core":
+                entry["successors"] = [
+                    {"id": "successor", "status": "passing", "evidence": "missing-proof"}
+                ]
+
+        missing = validate_required_core_closeout(
+            manifest,
+            ownership,
+            demos,
+            empty_evidence(),
+        )
+        self.assertEqual(
+            {finding["code"] for finding in missing["findings"]},
+            {"missing_evidence", "required_core_without_completion"},
+        )
+
+        failed_evidence = {
+            "schema": "cpk.successor-evidence-index",
+            "evidence": [
+                {"id": "missing-proof", "status": "failed", "digest": "sha256:" + "b" * 64},
+            ],
+        }
+        failed = validate_required_core_closeout(
+            manifest,
+            ownership,
+            demos,
+            failed_evidence,
+        )
+        self.assertIn(
+            "evidence_status_mismatch",
+            {finding["code"] for finding in failed["findings"]},
+        )
 
 
 if __name__ == "__main__":
