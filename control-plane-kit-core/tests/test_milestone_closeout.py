@@ -15,6 +15,7 @@ EXPECTED_MODULES = {
     "environment",
     "lifecycle",
     "operations.__init__",
+    "operations.mcp",
     "operations.services",
     "operations.transactions",
     "planning.__init__",

@@ -436,3 +436,156 @@ surface that already names both service roles and transaction/effect laws. It
 must not implement a hosted MCP process in core. MCP should be a typed contract
 language that a future `control-plane-kit-servers/cpk-server` entrypoint
 implements.
+
+## #633 MCP Streamable HTTP Protocol Contract
+
+### Law Card
+
+- Reference identity: `EXTRACT.D.2.mcp-streamable-http-contract`
+- Evidence source: frozen `control_plane_kit/mcp_read.py`,
+  `tests/test_mcp_read.py`, the EXTRACT.D rollout, #633, and the official MCP
+  Streamable HTTP transport documentation.
+- Observable law: MCP is a typed protocol and endpoint contract over shared
+  control-plane services. It is not an untyped HTTP metadata flag and not a
+  hosted server process inside core.
+- Expected result: core distinguishes an operator HTTP API from MCP Streamable
+  HTTP even though both can use HTTP schemes; the MCP contract describes the
+  endpoint path, POST/GET method contract, accepted media, required headers,
+  authentication, and origin-validation requirements as deterministic data.
+- Negative cases: unknown descriptor keys, missing GET/POST support,
+  non-absolute endpoint paths, query/fragment endpoint paths, HTTP protocol
+  mistaken for MCP protocol, hosted process terms, stdio state, and session
+  cursor leakage into the core descriptor.
+- Obsolete assumptions not migrated: frozen `ReadOnlyMcpAdapter` service
+  dispatch as the hosted server, MCP runtime imports, FastAPI process wiring,
+  and per-transport private projections.
+- Future owner: core for the protocol/endpoint contract;
+  `control-plane-kit-servers/cpk-server` for the hosted MCP process.
+
+### Objects
+
+```text
+ApplicationProtocol
+  += mcp-streamable-http
+
+Protocol.MCP_STREAMABLE_HTTP
+  = tcp x mcp-streamable-http
+
+McpStreamableHttpContract
+  = endpoint_path
+  x Protocol.MCP_STREAMABLE_HTTP
+  x (POST, GET)
+  x accepted content types
+  x required request headers
+  x named request methods
+  x authentication_required
+  x origin_validation_required
+  x local_bind_policy
+  x message_encoding
+  x remote_registration
+```
+
+### Transformations
+
+```text
+McpStreamableHttpContract
+  -> closed descriptor
+    -> McpStreamableHttpContract
+```
+
+and:
+
+```text
+Protocol.HTTP != Protocol.MCP_STREAMABLE_HTTP
+```
+
+That second law matters. The future descriptor can advertise both
+`operator-api` and `operator-mcp` without collapsing them because they share
+HTTP URL schemes.
+
+### Implementation Decision
+
+#633 extends the core protocol product rather than attaching MCP as arbitrary
+metadata:
+
+```python
+Protocol.MCP_STREAMABLE_HTTP = Protocol(
+    Transport.TCP,
+    ApplicationProtocol.MCP_STREAMABLE_HTTP,
+)
+```
+
+The endpoint contract is intentionally closed:
+
+```python
+McpStreamableHttpContract(
+    endpoint_path="/mcp",
+    methods=(McpHttpMethod.POST, McpHttpMethod.GET),
+    authentication_required=True,
+    origin_validation_required=True,
+)
+```
+
+The descriptor carries current transport obligations but no hosted process:
+
+```python
+{
+    "kind": "mcp-streamable-http",
+    "endpoint_path": "/mcp",
+    "methods": ["POST", "GET"],
+    "accept_content_types": ["application/json", "text/event-stream"],
+    "required_post_headers": [
+        "Accept",
+        "MCP-Protocol-Version",
+        "Mcp-Method",
+    ],
+    "required_get_headers": ["Accept"],
+}
+```
+
+Core deliberately avoids durable session state in this contract. The 2025-06-18
+MCP transport spec describes optional session headers, while the current draft
+changelog removes protocol-level sessions. Because CPK is not yet implementing
+the hosted server, the safer core contract records endpoint, security, media,
+and header obligations without claiming a session lifecycle.
+
+### Test Evidence
+
+#633 adds `control-plane-kit-core/tests/test_mcp_streamable_http_contract.py`.
+
+The focused red run failed with:
+
+```text
+ImportError: cannot import name 'InvalidMcpStreamableHttpContract'
+```
+
+That proved the successor test was collected and failed because the contract
+language did not exist yet.
+
+The green run passed:
+
+```text
+Ran 102 tests in 0.981s
+OK
+control-plane-kit-core import ok
+```
+
+### Review Notes
+
+- Architecture: MCP is now a typed core protocol/contract, but no MCP runtime,
+  server host, or process packaging was added.
+- Security: the contract requires authentication and Origin validation.
+- Data engineering: no store or UnitOfWork implementation changed; MCP remains
+  a future adapter over existing services.
+- Protocol accuracy: POST and GET, JSON-RPC UTF-8, JSON/SSE Accept behavior,
+  and protocol/name headers are represented as data.
+- Test integrity: tests distinguish MCP-over-HTTP from generic HTTP and reject
+  unknown descriptor shape rather than broadening parsing.
+
+### Handoff To #634
+
+#634 should define the HTTP API route, request, response, auth-scope, and error
+contract language. It should reuse the same service-role and UnitOfWork laws
+from #631/#632 and must remain distinct from `McpStreamableHttpContract`.
+HTTP API routes and MCP tools may share services, but they should not share a
+transport descriptor merely because both use HTTP schemes.
