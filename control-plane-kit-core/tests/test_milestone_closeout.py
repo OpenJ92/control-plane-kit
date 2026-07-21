@@ -11,6 +11,7 @@ EXPECTED_MODULES = {
     "algebra",
     "capabilities",
     "configuration",
+    "configuration_rendering",
     "control_routes",
     "environment",
     "lifecycle",

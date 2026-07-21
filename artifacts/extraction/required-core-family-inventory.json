@@ -1,7 +1,7 @@
 {
   "counts": {
-    "entries": 700,
-    "families": 92
+    "entries": 688,
+    "families": 90
   },
   "families": [
     {
@@ -1046,102 +1046,6 @@
         }
       ],
       "family": "test_compensation_planning"
-    },
-    {
-      "count": 7,
-      "entries": [
-        {
-          "kind": "test",
-          "law": "behavior.artifact-change-is-explicit-diff-and-reconcile-work",
-          "owner": "control-plane-kit-core",
-          "owner_kind": "core",
-          "reference": "tests.test_configuration_artifacts.ConfigurationArtifactTests.test_artifact_change_is_explicit_diff_and_reconcile_work"
-        },
-        {
-          "kind": "test",
-          "law": "behavior.artifact-is-bounded-deterministic-and-digest-verified",
-          "owner": "control-plane-kit-core",
-          "owner_kind": "core",
-          "reference": "tests.test_configuration_artifacts.ConfigurationArtifactTests.test_artifact_is_bounded_deterministic_and_digest_verified"
-        },
-        {
-          "kind": "test",
-          "law": "behavior.duplicate-artifact-identity-or-target-fails-at-authoring",
-          "owner": "control-plane-kit-core",
-          "owner_kind": "core",
-          "reference": "tests.test_configuration_artifacts.ConfigurationArtifactTests.test_duplicate_artifact_identity_or_target_fails_at_authoring"
-        },
-        {
-          "kind": "test",
-          "law": "behavior.exact-artifact-reaches-pinned-start-material",
-          "owner": "control-plane-kit-core",
-          "owner_kind": "core",
-          "reference": "tests.test_configuration_artifacts.ConfigurationArtifactTests.test_exact_artifact_reaches_pinned_start_material"
-        },
-        {
-          "kind": "test",
-          "law": "behavior.graph-codec-preserves-exact-artifact-and-rejects-tampering",
-          "owner": "control-plane-kit-core",
-          "owner_kind": "core",
-          "reference": "tests.test_configuration_artifacts.ConfigurationArtifactTests.test_graph_codec_preserves_exact_artifact_and_rejects_tampering"
-        },
-        {
-          "kind": "test",
-          "law": "behavior.template-revision-reaches-graph-diff-and-pinned-material",
-          "owner": "control-plane-kit-core",
-          "owner_kind": "core",
-          "reference": "tests.test_configuration_artifacts.ConfigurationArtifactTests.test_template_revision_reaches_graph_diff_and_pinned_material"
-        },
-        {
-          "kind": "test",
-          "law": "behavior.unsafe-paths-secrets-and-malformed-json-fail-closed",
-          "owner": "control-plane-kit-core",
-          "owner_kind": "core",
-          "reference": "tests.test_configuration_artifacts.ConfigurationArtifactTests.test_unsafe_paths_secrets_and_malformed_json_fail_closed"
-        }
-      ],
-      "family": "test_configuration_artifacts"
-    },
-    {
-      "count": 5,
-      "entries": [
-        {
-          "kind": "test",
-          "law": "behavior.context-is-closed-bounded-and-secret-free-before-render",
-          "owner": "control-plane-kit-core",
-          "owner_kind": "core",
-          "reference": "tests.test_configuration_rendering.ConfigurationRenderingTests.test_context_is_closed_bounded_and_secret_free_before_render"
-        },
-        {
-          "kind": "test",
-          "law": "behavior.rendered-output-is-bounded-and-format-validated",
-          "owner": "control-plane-kit-core",
-          "owner_kind": "core",
-          "reference": "tests.test_configuration_rendering.ConfigurationRenderingTests.test_rendered_output_is_bounded_and_format_validated"
-        },
-        {
-          "kind": "test",
-          "law": "behavior.template-definition-changes-artifact-identity-even-when-output-does-not",
-          "owner": "control-plane-kit-core",
-          "owner_kind": "core",
-          "reference": "tests.test_configuration_rendering.ConfigurationRenderingTests.test_template_definition_changes_artifact_identity_even_when_output_does_not"
-        },
-        {
-          "kind": "test",
-          "law": "behavior.typed-parameters-render-one-deterministic-json-artifact",
-          "owner": "control-plane-kit-core",
-          "owner_kind": "core",
-          "reference": "tests.test_configuration_rendering.ConfigurationRenderingTests.test_typed_parameters_render_one_deterministic_json_artifact"
-        },
-        {
-          "kind": "test",
-          "law": "behavior.undefined-and-malformed-templates-fail-without-source-or-values",
-          "owner": "control-plane-kit-core",
-          "owner_kind": "core",
-          "reference": "tests.test_configuration_rendering.ConfigurationRenderingTests.test_undefined_and_malformed_templates_fail_without_source_or_values"
-        }
-      ],
-      "family": "test_configuration_rendering"
     },
     {
       "count": 41,
@@ -5457,6 +5361,5 @@
       "family": "validation"
     }
   ],
-  "schema": "cpk.required-core-family-inventory",
-  "valid": true
+  "schema": "cpk.required-core-family-inventory"
 }

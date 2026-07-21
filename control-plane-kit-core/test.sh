@@ -5,12 +5,10 @@ IMAGE="${CPK_CORE_TEST_IMAGE:-python:3.14-slim}"
 ROOT="$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)"
 
 docker run --rm \
-  -v "$ROOT:/pkg:ro" \
-  -w /pkg \
-  -e PYTHONPATH=/pkg/src \
+  -v "$ROOT:/source:ro" \
   -e PYTHONDONTWRITEBYTECODE=1 \
   "$IMAGE" \
-  python -m unittest discover -s tests
+  sh -c 'cp -a /source /tmp/pkg && cd /tmp/pkg && python -m pip install --root-user-action=ignore . >/tmp/pip.log && python -m unittest discover -s tests'
 
 docker run --rm \
   -v "$ROOT:/source:ro" \
