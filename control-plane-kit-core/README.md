@@ -70,6 +70,24 @@ McpStreamableHttpContract
 The future `cpk-server` process implements this contract. Core only describes
 and validates it.
 
+HTTP API routes are also values:
+
+```text
+HttpApiRouteContract
+  = route id
+  x method
+  x path template
+  x ControlPlaneServiceRole
+  x auth scope
+  x safety classification
+  x bounded request schema
+  x bounded response schema
+  x bounded error contract
+```
+
+This lets future HTTP adapters bind routes to services without inventing route
+local workflow semantics.
+
 ## Extraction Law
 
 Every migrated behavior must be justified by a frozen law card from the
