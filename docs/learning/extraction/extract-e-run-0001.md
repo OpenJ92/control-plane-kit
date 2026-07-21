@@ -443,3 +443,54 @@ required-core incomplete: 749
 #731 must therefore treat every remaining required-core law as unmapped unless
 it receives explicit successor evidence in a later mapping pass. It should not
 expect #732 to reduce the count.
+
+## #737 Required-Core Batch Partition
+
+#731 was not executable immediately after #732. The closeout still had:
+
+```text
+incomplete required-core laws: 749
+unmapped required-core families: 99
+```
+
+So #737 inserted the reviewable topology between #732 and #731:
+
+```text
+#737
+  -> #738 pure core language
+  -> #739 planning, scheduling, and saga
+  -> #740 operations contracts
+  -> #741 architecture and test harness
+  -> #742 validation, packaging, and demos
+  -> #743 interpreters and runtime substrate
+    -> #731 zero-unmapped closeout
+```
+
+#743 was added during the dry run. Docker, probe, effect-materialization,
+control HTTP, host publication, ownership, and retention laws are not server
+products, but they are also not pure core language. They need their own
+interpreter/runtime batch.
+
+The machine-readable partition is:
+
+```text
+artifacts/extraction/required-core-batch-plan.json
+```
+
+Batch counts:
+
+```text
+#738 pure core language:                 179 laws / 20 families
+#739 planning, scheduling, and saga:       74 laws / 11 families
+#740 operations contracts:                275 laws / 33 families
+#741 architecture and test harness:        58 laws / 10 families
+#742 validation, packaging, and demos:     17 laws /  4 families
+#743 interpreters and runtime substrate:  146 laws / 21 families
+```
+
+The batch-plan test proves every family from
+`required-core-family-inventory.json` appears exactly once in the plan and that
+the partition still totals 749 laws across 99 families.
+
+#731 remains blocked until these batches map or explicitly supersede the
+remaining laws.
