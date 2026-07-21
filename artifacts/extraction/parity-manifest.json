@@ -1813,7 +1813,13 @@
       "owner": "control-plane-kit-core",
       "owner_kind": "core",
       "reference": "tests.test_compensation_planning.CompensationPlanningTests.test_candidates_follow_reverse_durable_completion_order",
-      "successors": [],
+      "successors": [
+        {
+          "evidence": "extract-e-776.compensation-recovery-planning.unittest",
+          "id": "control-plane-kit-core.tests.test_compensation_planning",
+          "status": "passing"
+        }
+      ],
       "supersession": null
     },
     {
@@ -1823,7 +1829,13 @@
       "owner": "control-plane-kit-core",
       "owner_kind": "core",
       "reference": "tests.test_compensation_planning.CompensationPlanningTests.test_observation_and_destruction_are_not_given_fake_inverses",
-      "successors": [],
+      "successors": [
+        {
+          "evidence": "extract-e-776.compensation-recovery-planning.unittest",
+          "id": "control-plane-kit-core.tests.test_compensation_planning",
+          "status": "passing"
+        }
+      ],
       "supersession": null
     },
     {
@@ -1833,7 +1845,13 @@
       "owner": "control-plane-kit-core",
       "owner_kind": "core",
       "reference": "tests.test_compensation_planning.CompensationPlanningTests.test_operation_matrix_has_one_explicit_compensation_meaning",
-      "successors": [],
+      "successors": [
+        {
+          "evidence": "extract-e-776.compensation-recovery-planning.unittest",
+          "id": "control-plane-kit-core.tests.test_compensation_planning",
+          "status": "passing"
+        }
+      ],
       "supersession": null
     },
     {
@@ -1843,7 +1861,13 @@
       "owner": "control-plane-kit-core",
       "owner_kind": "core",
       "reference": "tests.test_compensation_planning.CompensationPlanningTests.test_plan_codec_persists_exact_compensation_and_source",
-      "successors": [],
+      "successors": [
+        {
+          "evidence": "extract-e-776.compensation-recovery-planning.unittest",
+          "id": "control-plane-kit-core.tests.test_compensation_planning",
+          "status": "passing"
+        }
+      ],
       "supersession": null
     },
     {
@@ -1853,7 +1877,13 @@
       "owner": "control-plane-kit-core",
       "owner_kind": "core",
       "reference": "tests.test_compensation_planning.CompensationPlanningTests.test_saga_availability_comes_from_persisted_plan_meaning",
-      "successors": [],
+      "successors": [
+        {
+          "evidence": "extract-e-776.compensation-recovery-planning.unittest",
+          "id": "control-plane-kit-core.tests.test_compensation_planning",
+          "status": "passing"
+        }
+      ],
       "supersession": null
     },
     {
@@ -1863,7 +1893,13 @@
       "owner": "control-plane-kit-core",
       "owner_kind": "core",
       "reference": "tests.test_compensation_planning.CompensationPlanningTests.test_version_one_requires_compensation_without_legacy_upgrade",
-      "successors": [],
+      "successors": [
+        {
+          "evidence": "extract-e-776.compensation-recovery-planning.unittest",
+          "id": "control-plane-kit-core.tests.test_compensation_planning",
+          "status": "passing"
+        }
+      ],
       "supersession": null
     },
     {
@@ -9787,7 +9823,13 @@
       "owner": "control-plane-kit-core",
       "owner_kind": "core",
       "reference": "tests.test_recovery_planning.RecoveryPlanningTests.test_invalid_inputs_fail_before_planning",
-      "successors": [],
+      "successors": [
+        {
+          "evidence": "extract-e-776.compensation-recovery-planning.unittest",
+          "id": "control-plane-kit-core.tests.test_recovery_planning",
+          "status": "passing"
+        }
+      ],
       "supersession": null
     },
     {
@@ -9797,7 +9839,13 @@
       "owner": "control-plane-kit-core",
       "owner_kind": "core",
       "reference": "tests.test_recovery_planning.RecoveryPlanningTests.test_reconstruction_uses_empty_baseline_without_claiming_absence",
-      "successors": [],
+      "successors": [
+        {
+          "evidence": "extract-e-776.compensation-recovery-planning.unittest",
+          "id": "control-plane-kit-core.tests.test_recovery_planning",
+          "status": "passing"
+        }
+      ],
       "supersession": null
     },
     {
@@ -9807,7 +9855,13 @@
       "owner": "control-plane-kit-core",
       "owner_kind": "core",
       "reference": "tests.test_recovery_planning.RecoveryPlanningTests.test_reverse_transition_is_a_fresh_canonical_plan_with_limitations",
-      "successors": [],
+      "successors": [
+        {
+          "evidence": "extract-e-776.compensation-recovery-planning.unittest",
+          "id": "control-plane-kit-core.tests.test_recovery_planning",
+          "status": "passing"
+        }
+      ],
       "supersession": null
     },
     {
@@ -9817,7 +9871,13 @@
       "owner": "control-plane-kit-core",
       "owner_kind": "core",
       "reference": "tests.test_recovery_planning.RecoveryPlanningTests.test_router_recovery_uses_same_compiler_and_is_deterministic",
-      "successors": [],
+      "successors": [
+        {
+          "evidence": "extract-e-776.compensation-recovery-planning.unittest",
+          "id": "control-plane-kit-core.tests.test_recovery_planning",
+          "status": "passing"
+        }
+      ],
       "supersession": null
     },
     {

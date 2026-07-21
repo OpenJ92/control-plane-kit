@@ -28,6 +28,7 @@ EXPECTED_MODULES = {
     "planning.activity_plan",
     "planning.codec",
     "planning.compiler",
+    "planning.recovery",
     "planning.scenarios",
     "planning.saga",
     "policies",
