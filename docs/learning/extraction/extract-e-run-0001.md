@@ -494,3 +494,46 @@ the partition still totals 749 laws across 99 families.
 
 #731 remains blocked until these batches map or explicitly supersede the
 remaining laws.
+
+## #745 Pure-Core Batch Ownership Audit
+
+The first #738 dry run found that the #737 partition was too coarse for
+execution. `pure_core_language` had 179 laws across 20 families, but not every
+family really belongs to extracted core.
+
+The audit artifact is:
+
+```text
+artifacts/extraction/pure-core-batch-audit.json
+```
+
+It keeps the original #737 batch plan immutable and records a review amendment:
+
+```text
+retain: 17 families
+move:    2 families
+split:   1 family
+```
+
+Important reclassifications:
+
+```text
+test_postgres_scenario_runner -> #740 operations contracts
+test_block_control_fastapi    -> #743 interpreter/runtime substrate
+test_contracts                -> split between #748 pure contracts and #740 operations
+```
+
+This prevents extracted core from absorbing Postgres scenario execution,
+FastAPI process behavior, or derived-resource publication workflow merely
+because those tests mention graph values.
+
+The refined #738 topology is:
+
+```text
+#745 audit pure-core batch ownership
+  -> #746 topology, sockets, protocol, compile
+    -> #747 graph codec, validation, diff
+      -> #748 configuration, environment, secrets, verification contracts
+        -> #749 policy, probe intent, control-contract boundary
+          -> #750 pure-core mapping batch closeout
+```
