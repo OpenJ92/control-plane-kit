@@ -1938,3 +1938,136 @@ CpkServerPublicationHandoffContract
 #642 should run the full validation required by the milestone, update learning,
 open the roadmap PR if required, and stop before any cpk-server process
 implementation begins.
+
+## #642 EXTRACT.D Closeout
+
+EXTRACT.D closes with the core/server boundary intact:
+
+```text
+control-plane-kit-core
+  owns generic service contracts
+  owns UnitOfWork and transaction laws
+  owns HTTP/MCP contract language
+  owns adapter parity contracts
+  owns cpk-server handoff contracts
+
+control-plane-kit-servers/cpk-server
+  owns FastAPI process composition
+  owns hosted MCP Streamable HTTP process composition
+  owns Dockerfile and OCI image
+  owns product descriptor
+  owns live process publication evidence
+```
+
+### Capability Now Established
+
+Core can describe the application service composition needed by a future
+`DeploymentProgram` wrapper without importing runtime infrastructure. It can
+also describe the transport contracts and handoff obligations a future
+`cpk-server` product must satisfy.
+
+The closeout object set is:
+
+```text
+DeploymentProgramBoundary
+UnitOfWorkBoundary
+McpStreamableHttpContract
+HttpApiContract
+ControlPlaneProcessContract
+AdapterParityContract
+AdapterCommandParityContract
+AdapterOperationSecurityParityContract
+CpkServerEntrypointHandoffContract
+CpkServerMaterialHandoffContract
+CpkServerPublicationHandoffContract
+```
+
+### Important Laws
+
+- `cpk-server` imports core; core never imports `cpk-server`.
+- Core may expose handoff contracts, but not process packaging.
+- HTTP and MCP must delegate to the same services.
+- MCP must not bypass authorization, approval, idempotency, UnitOfWork,
+  activity history, or destructive-operation policy.
+- One operator command owns one explicit transaction.
+- Stores never commit independently.
+- External effects occur after commit.
+- Secret values, private endpoints, and unbounded payloads do not enter
+  descriptors, events, logs, errors, or product data.
+
+### Curated Snippet
+
+The publication handoff is deliberately a contract over future server-package
+work:
+
+```python
+CpkServerPublicationHandoffContract(
+    material=material_handoff,
+    image=pinned_oci_image_reference,
+    runs_as_non_root=True,
+    mutable_runtime_install_policy="forbidden",
+    filesystem_policy="least-privilege-read-only-root",
+    publication_policy=PublicationPolicy.PRIVATE_BY_DEFAULT_PUBLIC_ENDPOINT_EXPLICIT,
+    live_smoke_obligations=(
+        "http-readiness",
+        "http-read-route",
+        "mcp-tool-call",
+        "shutdown-cleanup",
+    ),
+    cleanup_evidence_policy="owned-resources-cleaned-retained-data-preserved",
+)
+```
+
+This is not an image build, Dockerfile, FastAPI app, or hosted MCP server.
+
+### EXTRACT.E Rewrite Warning
+
+EXTRACT.E must be refreshed before execution. Its existing parent and child
+issues still contain stale wording from the older plan where core produced a
+CPI image and self descriptor.
+
+The updated interpretation is:
+
+```text
+core wheel
+  + parity manifest
+  + architecture/security/data/test-integrity evidence
+  + exact cpk-server handoff contract
+
+cpk-server image and descriptor remain external
+  + implemented later in control-plane-kit-servers/cpk-server
+```
+
+Concretely:
+
+- #643 remains valid as required-core law reconciliation.
+- #644 should become contract/demo parity for core-owned public interfaces, not
+  live Docker/Postgres/FastAPI/MCP process reproduction.
+- #645 remains valid as architecture, packaging, import, and public-language
+  review.
+- #646 should review core security/data/supply-chain/test integrity for
+  contracts and wheel packaging, while handing live image/process findings to
+  the server milestone.
+- #647 must be retitled or rewritten. Core may publish a pinned wheel and
+  manifest evidence, but not a CPI image, cpk-server OCI image, or self
+  descriptor.
+- #648 remains the mandatory operator stop before server-product migration.
+
+### Review Findings
+
+- Architecture: no process module, Dockerfile, cpk-server product descriptor, or
+  hosted MCP/FastAPI implementation was added to core.
+- Security: private runtime endpoints and secret values remain runtime material
+  or opaque secret references, not descriptor data.
+- Data engineering: Postgres is represented here as UnitOfWork law and store
+  participation contracts. Concrete Postgres interpreters are not part of
+  extracted core.
+- Test integrity: closeout adds guardrail tests rather than weakening existing
+  assertions.
+
+### Handoff
+
+EXTRACT.E should perform a D.0-style confidence pass before implementation. It
+should rewrite the milestone as core release-candidate parity plus
+server-product handoff readiness, then stop for operator approval before any
+server repository process packaging begins.
