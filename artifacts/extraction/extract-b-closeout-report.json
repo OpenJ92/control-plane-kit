@@ -1,0 +1,103 @@
+{
+  "schema": "cpk.extract-b-closeout-report",
+  "milestone": "EXTRACT.B",
+  "issue": 619,
+  "status": "kernel_floor_complete",
+  "package": {
+    "name": "control-plane-kit-core",
+    "import_name": "control_plane_kit_core",
+    "version": "0.1.0",
+    "test_framework": "unittest"
+  },
+  "scope": {
+    "included": [
+      "pure deployment topology language",
+      "graph descriptor codecs",
+      "graph validation",
+      "graph diff",
+      "activity planning language",
+      "protocol and socket values",
+      "configuration artifacts",
+      "secret references and deliveries",
+      "environment contracts",
+      "capability and control-route declarations",
+      "verification contracts"
+    ],
+    "excluded": [
+      "Docker interpreters",
+      "Postgres stores",
+      "FastAPI applications",
+      "MCP transports",
+      "HTTP clients",
+      "runtime effect execution",
+      "durable operation services",
+      "package-owned server product identities",
+      "Hello, CoreDNS, webhook, router, gateway, and other product vocabulary"
+    ]
+  },
+  "module_inventory": [
+    "__init__",
+    "algebra",
+    "capabilities",
+    "configuration",
+    "control_routes",
+    "environment",
+    "lifecycle",
+    "planning.__init__",
+    "planning.activity_plan",
+    "planning.codec",
+    "planning.compiler",
+    "secrets",
+    "topology.__init__",
+    "topology.changes",
+    "topology.codec",
+    "topology.compiler",
+    "topology.diff",
+    "topology.graph",
+    "topology.validation",
+    "types",
+    "verification"
+  ],
+  "pure_pipeline": [
+    "DeploymentRecipe",
+    "compile_recipe",
+    "DeploymentGraph",
+    "validate_graph",
+    "ValidatedGraph",
+    "diff_graphs",
+    "GraphDiff",
+    "compile_activity_plan",
+    "ActivityPlan"
+  ],
+  "parity": {
+    "entries": 1107,
+    "required": 880,
+    "deferred": 227,
+    "passing_successors": 24,
+    "failed_successors": 0,
+    "incomplete_required": 856,
+    "findings": 0,
+    "migration_complete": false,
+    "successor_evidence_ids": [
+      "extract-b-677.graph-duplicate-identity.unittest",
+      "extract-b-614.pure-kernel.unittest"
+    ]
+  },
+  "validation": {
+    "control_plane_kit_core_test_sh": "passed 24 unittest tests",
+    "validate_parity_foundation": "passed",
+    "git_diff_check": "passed",
+    "root_test_sh": "passed 1158 unittest tests after Docker storage cleanup",
+    "docker_residue_audit": "Pottery Factory containers preserved; disposable anonymous test volumes and unused build cache/images were reclaimed before rerun"
+  },
+  "handoff": {
+    "next_issue": 596,
+    "next_milestone": "EXTRACT.B milestone PR into main",
+    "notes": [
+      "EXTRACT.B closes as a kernel-floor milestone, not a full law migration.",
+      "Later milestones must continue moving remaining required laws through successor evidence.",
+      "Operations, interpreters, products, and entrypoints remain external to control-plane-kit-core.",
+      "Server-product extraction should consume core as a pure language package rather than reintroducing product names into core."
+    ]
+  }
+}

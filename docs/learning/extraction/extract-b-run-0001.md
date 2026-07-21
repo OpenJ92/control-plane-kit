@@ -233,7 +233,7 @@ Foundation validation remains green:
 
 ```text
 policy=foundation valid=true migration_complete=false entries=1107 required=880
-dedeferred=227 incomplete_required=879 findings=0
+deferred=227 incomplete_required=879 findings=0
 ```
 
 ### Handoff
@@ -422,3 +422,256 @@ opening the milestone PR to main.
 - no old/current `control_plane_kit` imports in successor tests;
 - no PyYAML dependency for base package import;
 - no parity claim without successor evidence.
+
+## #619 Pure Core Kernel Closeout
+
+### Capability
+
+EXTRACT.B now has a reviewable kernel-floor package:
+
+```text
+control-plane-kit-core
+  = pure deployment language
+  + descriptor/codecs
+  + validation
+  + diff
+  + planning
+  + contract values needed before effects
+```
+
+The closeout deliberately does not claim full migration. It claims that the
+first coherent extracted package exists, has a Docker-first `unittest` harness,
+has package-boundary tests, has successor parity evidence for the laws migrated
+so far, and is ready to be treated as the destination for later core-owned law
+migration.
+
+### Objects
+
+The objects of this milestone are the pure values that can be built, inspected,
+serialized, validated, compared, and planned without talking to Docker,
+Postgres, FastAPI, MCP, HTTP clients, package-owned servers, or external
+systems:
+
+```text
+DeploymentRecipe
+DeploymentGraph
+ValidatedGraph
+GraphDiff
+ActivityPlan
+ProviderSocket
+RequirementSocket
+SocketConnection
+ConfigurationArtifact
+SecretReference
+EnvironmentContract
+VerificationContract
+```
+
+### Morphisms
+
+The intended morphisms remain the pure deployment pipeline:
+
+```text
+DeploymentRecipe
+  -> compile_recipe
+    -> DeploymentGraph
+      -> validate_graph
+        -> ValidatedGraph
+          -> diff_graphs
+            -> GraphDiff
+              -> compile_activity_plan
+                -> ActivityPlan
+```
+
+Those arrows are the kernel. Anything that performs an effect, owns durable
+workflow truth, starts a process, serves HTTP, or declares a package-owned
+server product stays outside this package.
+
+### Module Inventory
+
+The closeout artifact records the exact package inventory:
+
+```text
+artifacts/extraction/extract-b-closeout-report.json
+```
+
+The executable inventory is also guarded by `unittest`:
+
+```python
+EXPECTED_MODULES = {
+    "algebra",
+    "capabilities",
+    "configuration",
+    "control_routes",
+    "environment",
+    "lifecycle",
+    "planning.activity_plan",
+    "planning.codec",
+    "planning.compiler",
+    "secrets",
+    "topology.changes",
+    "topology.codec",
+    "topology.compiler",
+    "topology.diff",
+    "topology.graph",
+    "topology.validation",
+    "types",
+    "verification",
+}
+```
+
+The test includes package `__init__` modules too, but the snippet above shows
+the meaningful language modules.
+
+### Laws
+
+The closeout law is intentionally conservative:
+
+```text
+migrated law
+  = frozen reference law
+  + focused successor unittest evidence
+  + parity manifest mapping
+  + passing validation
+```
+
+Anything without successor evidence remains incomplete. It is not counted as
+migrated just because a similar module now exists.
+
+Current parity state:
+
+```text
+entries=1107
+required=880
+deferred=227
+passing_successors=24
+failed_successors=0
+incomplete_required=856
+findings=0
+migration_complete=false
+```
+
+The two successor evidence records are:
+
+```text
+extract-b-677.graph-duplicate-identity.unittest
+extract-b-614.pure-kernel.unittest
+```
+
+### Boundary Enforcement
+
+#619 adds a package-local closeout test:
+
+```text
+control-plane-kit-core/tests/test_milestone_closeout.py
+```
+
+It proves:
+
+- the source module inventory is exact;
+- core modules do not import forbidden runtime, product, or optional transport
+  dependency roots;
+- successor tests do not import pytest.
+
+The forbidden roots include:
+
+```python
+FORBIDDEN_IMPORT_ROOTS = {
+    "control_plane_kit",
+    "docker",
+    "fastapi",
+    "httpx",
+    "mcp",
+    "psycopg",
+    "pytest",
+    "uvicorn",
+}
+```
+
+### Validation
+
+Validation for the closeout run:
+
+```text
+./control-plane-kit-core/test.sh
+  Ran 24 tests
+  OK
+  control-plane-kit-core import ok
+
+./validate-parity.sh foundation
+  policy=foundation valid=true migration_complete=false entries=1107
+  required=880 deferred=227 incomplete_required=856 findings=0
+
+git diff --check
+  passed
+
+./test.sh
+  Ran 1158 tests in 195.316s
+  OK
+```
+
+The first full `./test.sh` attempt failed from Docker/Postgres storage pressure,
+not application behavior:
+
+```text
+psycopg.errors.DiskFull: No space left on device
+```
+
+Docker cleanup preserved the running Pottery Factory containers and removed
+only unused build cache, unused images, and anonymous unused test volumes. The
+full suite was then rerun from the beginning and passed.
+
+### Security And Data Review
+
+Security posture:
+
+- root import remains dependency-light;
+- secret values remain outside descriptors and durable graph data;
+- product-owned server identities are absent from core;
+- optional effect and transport dependencies remain outside core;
+- YAML parsing is lazy and fails closed when PyYAML is unavailable.
+
+Data-engineering posture:
+
+- no store, UnitOfWork, Postgres schema, transaction boundary, or durable
+  operation service was added to core;
+- parity evidence is deterministic JSON;
+- unmigrated laws remain explicit instead of being silently normalized away.
+
+Test-integrity posture:
+
+- no pytest was introduced;
+- no skips or xfails were added;
+- successor counts only move when evidence exists;
+- the full reference suite still passes.
+
+### Deviations
+
+The implementation made one important correction during #614: product-server
+catalogue identities were removed from the extracted kernel. That was not a
+retreat from the product system; it is the boundary that lets products become
+external packages later.
+
+### Handoff
+
+EXTRACT.B should close as a kernel-floor milestone. The next milestone PR into
+main should say plainly:
+
+```text
+control-plane-kit-core now exists as a pure package, but the complete law
+migration is not done.
+```
+
+Future extraction work should migrate remaining law families through the same
+process:
+
+```text
+inspect frozen law
+  -> write focused unittest successor
+    -> prove meaningful red where possible
+      -> implement green
+        -> record parity evidence
+```
+
+Do not reintroduce product-owned server names, operations, interpreters,
+stores, entrypoints, or optional runtime dependencies into the core package.
