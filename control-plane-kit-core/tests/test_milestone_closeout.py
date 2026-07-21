@@ -17,6 +17,7 @@ EXPECTED_MODULES = {
     "operations.__init__",
     "operations.http",
     "operations.mcp",
+    "operations.parity",
     "operations.process",
     "operations.services",
     "operations.transactions",

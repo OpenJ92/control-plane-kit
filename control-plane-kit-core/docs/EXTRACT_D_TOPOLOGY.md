@@ -89,6 +89,8 @@ D.5 Mandatory Stop
   contracts as typed values.
 - Liveness, readiness, dependency readiness, verification, observation, shutdown,
   and retained-data preservation as pure handoff contracts.
+- HTTP/MCP projection parity as a pure binding between canonical operations,
+  HTTP route ids, and MCP tool names.
 - Parity laws proving transport adapters will call the same services.
 
 ## Deferred cpk-server Work
