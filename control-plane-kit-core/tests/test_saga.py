@@ -17,9 +17,7 @@ from control_plane_kit_core.planning.saga import (
     ActivityJournalEvent,
     ActivityJournalEventKind,
     BeginSagaCompensation,
-    BlockReason,
     CancelSaga,
-    ExecutionSchedule,
     FailSagaCompensation,
     FailSagaStep,
     RequestSagaCompensation,
@@ -38,14 +36,12 @@ from control_plane_kit_core.planning.saga import (
     SagaStepState,
     SagaStepStatus,
     SagaStepSucceeded,
-    ScheduleEvidenceError,
     StartSagaStep,
     SucceedSagaCompensation,
     SucceedSagaStep,
     chain,
     compensation_candidates,
     decide,
-    derive_schedule,
     evolve_all,
     initial_state,
     parallel,
@@ -349,112 +345,6 @@ class SagaStateSuccessorTests(unittest.TestCase):
                     SagaCompensationFailed(SagaStepId("first")),
                 ),
             )
-
-
-class SchedulingSuccessorTests(unittest.TestCase):
-    def setUp(self) -> None:
-        self.plan = ActivityPlan(
-            (
-                activity("root"),
-                activity("left", "root"),
-                activity("right", "root"),
-                activity("after", "left", "right"),
-            )
-        )
-
-    def test_diamond_exposes_ready_fan_out_without_layer_barriers(self) -> None:
-        initial = derive_schedule(self.plan, evidence_for(self.plan))
-        self.assertEqual(self._ids(initial.ready), ("root",))
-        self.assertEqual(self._ids(initial.waiting), ("left", "right", "after"))
-
-        fan_out = derive_schedule(
-            self.plan,
-            evidence_for(
-                self.plan,
-                {"root": SagaStepStatus.SUCCEEDED},
-                completion_order=("root",),
-            ),
-        )
-        self.assertEqual(self._ids(fan_out.ready), ("left", "right"))
-        self.assertEqual(self._ids(fan_out.waiting), ("after",))
-
-    def test_failed_branch_blocks_join_and_unstarted_forward_work(self) -> None:
-        independent = activity("independent")
-        plan = ActivityPlan((*self.plan.activities, independent))
-        schedule = derive_schedule(
-            plan,
-            evidence_for(
-                plan,
-                {
-                    "root": SagaStepStatus.SUCCEEDED,
-                    "left": SagaStepStatus.FAILED,
-                    "right": SagaStepStatus.SUCCEEDED,
-                },
-                compensatable=("root", "right"),
-                completion_order=("root", "right"),
-                failed_steps=("left",),
-            ),
-        )
-
-        blocked = {value.activity.activity_id.value: value for value in schedule.blocked}
-        self.assertIs(blocked["after"].reason, BlockReason.FAILED_PREDECESSOR)
-        self.assertEqual(
-            tuple(value.value for value in blocked["after"].predecessors),
-            ("left",),
-        )
-        self.assertIs(blocked["independent"].reason, BlockReason.SAGA_FAILED)
-        self.assertEqual(self._ids(schedule.compensation_ready), ("right", "root"))
-        self.assertFalse(schedule.terminal)
-
-    def test_explicit_compensation_admission_drives_reverse_schedule(self) -> None:
-        schedule = derive_schedule(
-            self.plan,
-            evidence_for(
-                self.plan,
-                {
-                    "root": SagaStepStatus.SUCCEEDED,
-                    "left": SagaStepStatus.SUCCEEDED,
-                },
-                compensatable=("root", "left"),
-                completion_order=("root", "left"),
-                compensation_requested=True,
-            ),
-        )
-
-        self.assertEqual(self._ids(schedule.compensation_ready), ("left", "root"))
-        self.assertFalse(schedule.ready)
-
-    def test_missing_foreign_duplicate_and_incoherent_evidence_fail_closed(self) -> None:
-        complete = evidence_for(self.plan)
-        with self.assertRaises(ScheduleEvidenceError):
-            derive_schedule(self.plan, replace(complete, steps=complete.steps[:-1]))
-        with self.assertRaises(ScheduleEvidenceError):
-            derive_schedule(
-                self.plan,
-                replace(
-                    complete,
-                    steps=(
-                        *complete.steps[:-1],
-                        SagaStepState(SagaStepId("foreign")),
-                    ),
-                ),
-            )
-        with self.assertRaises(ScheduleEvidenceError):
-            derive_schedule(
-                self.plan,
-                replace(complete, steps=(*complete.steps, complete.steps[0])),
-            )
-
-        succeeded_without_order = evidence_for(
-            self.plan,
-            {"root": SagaStepStatus.SUCCEEDED},
-        )
-        with self.assertRaises(ScheduleEvidenceError):
-            derive_schedule(self.plan, succeeded_without_order)
-
-    @staticmethod
-    def _ids(values: tuple[PlannedActivity, ...]) -> tuple[str, ...]:
-        return tuple(value.activity_id.value for value in values)
 
 
 class ActivityPlanSagaBridgeTests(unittest.TestCase):

@@ -74,6 +74,11 @@
       "digest": "sha256:45a6aab9876e18e75278f9ba929cc87701d41d65f631f0bb8a63e7772694b480",
       "id": "extract-e-774.saga-program-state-journal.unittest",
       "status": "passing"
+    },
+    {
+      "digest": "sha256:65c1cc124be739d939068e778711ea8ba5d10ed92de3e32915be371e55020415",
+      "id": "extract-e-775.pure-scheduling-laws.unittest",
+      "status": "passing"
     }
   ],
   "schema": "cpk.successor-evidence-index"

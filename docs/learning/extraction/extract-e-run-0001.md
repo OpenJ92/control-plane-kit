@@ -1750,3 +1750,72 @@ control-plane-kit-core/test.sh:             330 tests passed
 ./test.sh:                                  1190 tests passed
 git diff --check:                           clean
 ```
+
+## #775 Pure Scheduling Law Mapping
+
+#775 maps the frozen scheduling families onto the extracted core scheduler.
+
+Mapped families:
+
+```text
+test_scheduling:           9 successor laws
+test_scheduling_scenarios: 1 successor law
+```
+
+New successor tests:
+
+```text
+control-plane-kit-core/tests/test_scheduling.py
+```
+
+New proof artifact:
+
+```text
+artifacts/extraction/successor-proofs/extract-e-775-pure-scheduling-laws.json
+```
+
+Important shape:
+
+```text
+ActivityPlan x SagaState
+  -> ExecutionSchedule
+
+ExecutionSchedule
+  = ready
+  x running
+  x waiting
+  x blocked
+  x succeeded
+  x failed
+  x compensating
+  x compensated
+  x compensation_failed
+  x compensation_ready
+```
+
+Boundary decision:
+
+Scheduling remains a pure core interpreter over the #774 saga state language.
+It does not own worker claims, durable leases, coordinator loops, stores,
+adapters, Docker effects, FastAPI, MCP, or runtime mutation. Those layers may
+consume `ExecutionSchedule`, but they do not define it.
+
+Implementation decision:
+
+The #774 support tests for scheduling were moved out of `test_saga.py` and into
+`test_scheduling.py`, then expanded to cover the complete frozen scheduling
+families. This keeps saga replay and schedule derivation adjacent in the
+implementation while making the law families separate and inspectable in tests.
+
+Validation evidence:
+
+```text
+focused #775 scheduling + saga slice: 31 tests passed
+focused #775 closeout slice:          13 tests passed
+focused root parity guard slice:      24 tests passed
+./validate-parity.sh foundation:      valid=true, findings=0
+control-plane-kit-core/test.sh:       336 tests passed
+./test.sh:                            1191 tests passed
+git diff --check:                     clean
+required incomplete core laws:        653 -> 643
+```

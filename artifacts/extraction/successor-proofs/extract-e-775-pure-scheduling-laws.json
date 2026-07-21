@@ -1,0 +1,30 @@
+{
+  "command": "docker run --rm -v /Users/jacobvartuli/Software/self/control-plane-kit/control-plane-kit-core:/pkg:ro -w /pkg -e PYTHONPATH=/pkg/src -e PYTHONDONTWRITEBYTECODE=1 python:3.14-slim python -m unittest tests.test_scheduling tests.test_saga",
+  "evidence": "The extracted core scheduling successor maps the frozen scheduling families as a pure deterministic interpreter from ActivityPlan and SagaState to ready, running, waiting, blocked, compensation-ready, and terminal projections. It reuses the #774 saga state language and does not import coordinator loops, stores, worker claims, adapters, Docker, FastAPI, MCP, or runtime effects.",
+  "frozen_laws": [
+    "behavior.blocking-propagates-transitively",
+    "behavior.cancellation-blocks-pending-but-preserves-running-evidence",
+    "behavior.compensation-waits-for-in-flight-forward-and-compensation",
+    "behavior.diamond-exposes-ready-fan-out-without-layer-barriers",
+    "behavior.explicit-compensation-admission-drives-reverse-schedule",
+    "behavior.failed-branch-blocks-join-and-unstarted-forward-work",
+    "behavior.incoherent-completion-and-failure-evidence-fail-closed",
+    "behavior.missing-foreign-and-duplicate-evidence-fail-closed",
+    "behavior.same-plan-and-evidence-reconstruct-the-same-schedule",
+    "behavior.every-planning-scenario-has-a-deterministic-initial-schedule"
+  ],
+  "schema": "cpk.successor-proof",
+  "status": "passing",
+  "successor_tests": [
+    "control-plane-kit-core.tests.test_scheduling.SchedulingSuccessorTests.test_blocking_propagates_transitively",
+    "control-plane-kit-core.tests.test_scheduling.SchedulingSuccessorTests.test_cancellation_blocks_pending_but_preserves_running_evidence",
+    "control-plane-kit-core.tests.test_scheduling.SchedulingSuccessorTests.test_compensation_waits_for_in_flight_forward_and_compensation",
+    "control-plane-kit-core.tests.test_scheduling.SchedulingSuccessorTests.test_diamond_exposes_ready_fan_out_without_layer_barriers",
+    "control-plane-kit-core.tests.test_scheduling.SchedulingSuccessorTests.test_explicit_compensation_admission_drives_reverse_schedule",
+    "control-plane-kit-core.tests.test_scheduling.SchedulingSuccessorTests.test_failed_branch_blocks_join_and_unstarted_forward_work",
+    "control-plane-kit-core.tests.test_scheduling.SchedulingSuccessorTests.test_incoherent_completion_and_failure_evidence_fail_closed",
+    "control-plane-kit-core.tests.test_scheduling.SchedulingSuccessorTests.test_missing_foreign_and_duplicate_evidence_fail_closed",
+    "control-plane-kit-core.tests.test_scheduling.SchedulingSuccessorTests.test_same_plan_and_evidence_reconstruct_the_same_schedule",
+    "control-plane-kit-core.tests.test_scheduling.SchedulingScenarioSuccessorTests.test_every_planning_scenario_has_a_deterministic_initial_schedule"
+  ]
+}

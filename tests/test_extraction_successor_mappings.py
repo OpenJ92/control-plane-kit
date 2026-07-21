@@ -95,6 +95,26 @@ class ExtractionSuccessorMappingTests(unittest.TestCase):
                     else "",
                 )
 
+    def test_scheduling_families_are_fully_mapped(self) -> None:
+        inventory = inventory_unmapped_required_core_families(self.closeout())
+        families = {
+            family["family"]: family
+            for family in inventory["families"]
+        }
+
+        for family_name in (
+            "test_scheduling",
+            "test_scheduling_scenarios",
+        ):
+            with self.subTest(family=family_name):
+                remaining = families.get(family_name)
+                self.assertIsNone(
+                    remaining,
+                    f"{family_name} still has {remaining['count']} unmapped laws"
+                    if remaining is not None
+                    else "",
+                )
+
     def test_environment_secret_families_are_fully_mapped_to_passing_successor_evidence(self) -> None:
         inventory = inventory_unmapped_required_core_families(self.closeout())
         families = {
