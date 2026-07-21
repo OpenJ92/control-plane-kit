@@ -117,6 +117,21 @@ AdapterParityContract
 Each projection binding names one canonical operation and the corresponding HTTP
 route id and MCP tool name.
 
+Command parity is explicit too:
+
+```text
+AdapterCommandParityContract
+  = HttpApiContract
+  x McpStreamableHttpContract
+  x UnitOfWorkBoundary
+  x AdapterCommandBinding*
+```
+
+Each command binding proves that HTTP and MCP share the same operation id,
+service role, request/response schema, approval policy, idempotency policy, and
+transaction law. Destructive commands require current approval, required
+idempotency, and after-commit external-effect timing.
+
 ## Extraction Law
 
 Every migrated behavior must be justified by a frozen law card from the

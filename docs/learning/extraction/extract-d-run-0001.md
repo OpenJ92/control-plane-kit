@@ -1063,3 +1063,206 @@ control-plane-kit-core import ok
 idempotency, and approval parity. It can depend on `AdapterParityContract`,
 `UnitOfWorkBoundary`, and the HTTP route safety/auth-scope language. It should
 not implement command execution or hosted adapters.
+
+## #637 Command Policy Parity
+
+### Law Card
+
+- Reference identity: `EXTRACT.D.3.command-policy-parity`
+- Evidence source: frozen command services, Roadmap 0008 UnitOfWork laws, #632
+  transaction boundary, #634 HTTP command contract, #636 parity contract, and
+  #637.
+- Observable law: HTTP and MCP command adapters are two transport
+  representations of one canonical operator-command policy. They cannot diverge
+  on service role, request/response schema, idempotency, approval requirement,
+  or transaction boundary.
+- Expected result: every canonical operator command binds to one HTTP route id,
+  one MCP tool name, one service role, one request schema, one response schema,
+  one idempotency policy, and one approval policy.
+- Negative cases: duplicate command ids, duplicate route/tool ids, route
+  service mismatch, route schema mismatch, read-only route used as a command,
+  command service without read-write UnitOfWork participation, command service
+  without transaction ownership, destructive command without required
+  idempotency, destructive command without current approval, and destructive
+  effect policy not `after-commit`.
+- Obsolete assumptions not migrated: hosted FastAPI/MCP command dispatch as
+  truth, transport-specific command policy, and process code in core.
+- Future owner: core parity contract; `control-plane-kit-servers/cpk-server`
+  later proves hosted HTTP/MCP adapters implement it.
+
+### Objects
+
+```text
+CommandIdempotencyPolicy
+  = required
+  | best-effort
+
+ApprovalPolicy
+  = not-required
+  | submits-for-approval
+  | decides-approval
+  | requires-current-approval
+
+AdapterCommandBinding
+  = operation_id
+  x ControlPlaneServiceRole
+  x request_schema
+  x response_schema
+  x http_route_id
+  x mcp_tool_name
+  x CommandIdempotencyPolicy
+  x ApprovalPolicy
+
+AdapterCommandParityContract
+  = HttpApiContract
+  x McpStreamableHttpContract
+  x UnitOfWorkBoundary
+  x unique AdapterCommandBinding*
+```
+
+### Transformations
+
+```text
+HttpApiContract
+  x McpStreamableHttpContract
+  x UnitOfWorkBoundary
+    -> operator_command_parity
+      -> AdapterCommandParityContract
+        -> closed descriptor
+          -> AdapterCommandParityContract
+```
+
+### Implementation Decision
+
+#637 extends `control_plane_kit_core.operations.parity` instead of creating a
+second parity module. Projection parity and command parity are different
+objects, but they share the same architectural function:
+
+```text
+canonical operation language
+  -> HTTP representation
+  -> MCP representation
+```
+
+The central command binding is:
+
+```python
+AdapterCommandBinding(
+    operation_id="deployment.execute",
+    service_role=ControlPlaneServiceRole.EXECUTION,
+    request_schema="ExecuteDeploymentRequest",
+    response_schema="ExecutionRunResponse",
+    http_route_id="command.deployment.execute",
+    mcp_tool_name="execute_deployment",
+    idempotency=CommandIdempotencyPolicy.REQUIRED,
+    approval=ApprovalPolicy.REQUIRES_CURRENT_APPROVAL,
+)
+```
+
+The contract checks both the route contract and the UnitOfWork law:
+
+```python
+route = self.http_api.route(binding.http_route_id)
+if route.service_role is not binding.service_role:
+    raise InvalidAdapterParityContract(...)
+if route.request_schema.name != binding.request_schema:
+    raise InvalidAdapterParityContract(...)
+
+boundary = self.unit_of_work.service(binding.service_role)
+if boundary.store_participation is not StoreParticipation.READ_WRITE:
+    raise InvalidAdapterParityContract(...)
+if not boundary.owns_transaction:
+    raise InvalidAdapterParityContract(...)
+```
+
+Destructive commands receive the stricter law:
+
+```python
+if route.safety is HttpOperationSafety.DESTRUCTIVE:
+    if binding.idempotency is not CommandIdempotencyPolicy.REQUIRED:
+        raise InvalidAdapterParityContract(...)
+    if binding.approval is not ApprovalPolicy.REQUIRES_CURRENT_APPROVAL:
+        raise InvalidAdapterParityContract(...)
+    if boundary.external_effect_policy is not ExternalEffectPolicy.AFTER_COMMIT:
+        raise InvalidAdapterParityContract(...)
+```
+
+The first implementation marked `recovery.decide` as destructive. The test run
+rejected that because the recovery service boundary does not use runtime
+authority or after-commit effects. That was the right signal: deciding recovery
+is a durable command, but executing compensation/effects is the destructive
+operation. The final route is therefore:
+
+```python
+(
+    "command.recovery.decide",
+    "/workspaces/{workspace_id}/runs/{run_id}/recovery",
+    ControlPlaneServiceRole.RECOVERY,
+    HttpAuthScope.EXECUTION_RUN,
+    HttpOperationSafety.COMMAND,
+    "RecoveryDecisionRequest",
+    "RecoveryDecisionResponse",
+)
+```
+
+To support descriptor round-trip of the parity object, #637 also added
+`from_descriptor()` methods to the existing service and UnitOfWork boundary
+values. This is not a persistence implementation. It is descriptor closure for
+the pure contract language.
+
+### Test Evidence
+
+#637 adds `control-plane-kit-core/tests/test_command_parity_contract.py`.
+
+The focused red run failed with:
+
+```text
+ImportError: cannot import name 'ApprovalPolicy'
+```
+
+After implementation, the first green attempt failed structurally:
+
+```text
+InvalidAdapterParityContract:
+'recovery.decide' external effects must occur after commit
+```
+
+That failure led to the `recovery.decide` safety correction above. The final
+green run passed:
+
+```text
+Ran 126 tests in 0.813s
+OK
+control-plane-kit-core import ok
+```
+
+### Review Notes
+
+- Architecture: command parity remains pure data over HTTP/MCP/UoW contracts.
+- Security: destructive commands require current approval and required
+  idempotency regardless of transport.
+- Data engineering: command services must participate read-write and own the
+  operator-command transaction.
+- External effects: destructive effect policy must be after-commit; no hosted
+  adapter or effect interpreter was introduced.
+- Test integrity: failures caused source corrections; no assertion was weakened.
+- Design: `recovery.decide` is intentionally a command, not a destructive
+  runtime effect.
+
+### Handoff To #638
+
+#638 can now layer authorization, destructive-operation classification, and
+activity-history parity over:
+
+```text
+AdapterParityContract
+AdapterCommandParityContract
+HttpAuthScope
+HttpOperationSafety
+ApprovalPolicy
+CommandIdempotencyPolicy
+UnitOfWorkBoundary
+```
+
+#638 should keep the same rule: core proves the shared policy vocabulary; the
+future `cpk-server` process implements adapters against that vocabulary.

@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from enum import StrEnum
+from typing import Mapping
 
 
 class InvalidDeploymentProgramBoundary(ValueError):
@@ -67,6 +68,27 @@ class ApplicationServiceBinding:
             "parameters": list(self.parameters),
         }
 
+    @classmethod
+    def from_descriptor(
+        cls,
+        value: Mapping[str, object],
+    ) -> "ApplicationServiceBinding":
+        if set(value) != {"role", "service_name", "parameters"}:
+            raise InvalidDeploymentProgramBoundary(
+                "service binding descriptor has unexpected keys"
+            )
+        parameters = value["parameters"]
+        if not isinstance(parameters, list):
+            raise InvalidDeploymentProgramBoundary("parameters must be a list")
+        try:
+            return cls(
+                role=ControlPlaneServiceRole(_text(value["role"], "role")),
+                service_name=_text(value["service_name"], "service_name"),
+                parameters=tuple(_text(parameter, "parameter") for parameter in parameters),
+            )
+        except ValueError as error:
+            raise InvalidDeploymentProgramBoundary(str(error)) from error
+
 
 @dataclass(frozen=True)
 class DeploymentProgramBoundary:
@@ -117,6 +139,27 @@ class DeploymentProgramBoundary:
             "services": [service.descriptor() for service in self.services],
         }
 
+    @classmethod
+    def from_descriptor(
+        cls,
+        value: Mapping[str, object],
+    ) -> "DeploymentProgramBoundary":
+        if set(value) != {"services"}:
+            raise InvalidDeploymentProgramBoundary(
+                "deployment program descriptor has unexpected keys"
+            )
+        services = value["services"]
+        if not isinstance(services, list):
+            raise InvalidDeploymentProgramBoundary("services must be a list")
+        return cls(
+            tuple(
+                ApplicationServiceBinding.from_descriptor(
+                    _mapping(service, "service")
+                )
+                for service in services
+            )
+        )
+
 
 def _reject_process_terms(value: str) -> None:
     normalized = value.casefold().replace("_", "-")
@@ -125,3 +168,15 @@ def _reject_process_terms(value: str) -> None:
             raise InvalidDeploymentProgramBoundary(
                 f"{value!r} names process packaging rather than a generic service"
             )
+
+
+def _text(value: object, field: str) -> str:
+    if not isinstance(value, str):
+        raise InvalidDeploymentProgramBoundary(f"{field} must be text")
+    return value
+
+
+def _mapping(value: object, field: str) -> Mapping[str, object]:
+    if not isinstance(value, Mapping):
+        raise InvalidDeploymentProgramBoundary(f"{field} must be a descriptor")
+    return value
