@@ -108,3 +108,87 @@ deferred server/product law
 
 Do not import frozen implementation code, and do not preserve obsolete module
 paths to make parity look easier.
+
+## #643 Dry Run And Child Topology
+
+The #643 dry run showed that required-core reconciliation is too broad for one
+PR. The current parity artifacts start with:
+
+```text
+manifest entries:       1107
+required entries:        880
+deferred entries:        227
+core-owned required:     780
+core-owned completed:     24
+core-owned unmapped:     756
+```
+
+The child topology is:
+
+```text
+#728 -> #730 -> #729 -> #732 -> #731
+```
+
+| Issue | Role |
+| --- | --- |
+| #728 | Define required-core closeout report and fail-closed validator. |
+| #730 | Inventory unmapped required-core laws by frozen module/family. |
+| #729 | Map high-confidence extracted-core successor suites by family. |
+| #732 | Classify reviewed supersessions for obsolete core structure. |
+| #731 | Produce zero-unmapped required-core closeout. |
+
+The governing law is:
+
+```text
+RequiredCoreCloseout
+  = ParityManifest
+  x SuccessorEvidence
+  x CoreOwnerSlice
+  -> RequiredCoreReport
+```
+
+A green aggregate suite is not itself a parity mapping. It becomes evidence
+only when a manifest successor explicitly points at it. Deferred product/server
+entries stay visible in the report but do not count as migrated core behavior.
+
+## #728 Required-Core Closeout Report
+
+#728 adds the first interpreter for the EXTRACT.E core slice:
+
+```python
+def validate_required_core_closeout(
+    manifest: dict[str, object],
+    ownership: dict[str, object],
+    demos: dict[str, object],
+    evidence_index: dict[str, object],
+) -> dict[str, object]:
+    ...
+```
+
+The report is deliberately narrower than `MIGRATION_COMPLETE`. It requires
+core-owned required entries to be complete, while keeping Hello, system, and
+deferred product/server work visible for later milestones.
+
+Important result shape:
+
+```python
+{
+    "schema": "cpk.required-core-parity-closeout",
+    "valid": False,
+    "required_core_complete": False,
+    "counts": {
+        "required_core": 780,
+        "required_non_core": 100,
+        "deferred": 227,
+        "completed_required_core": 24,
+        "incomplete_required_core": 756,
+    },
+    "deferred_entries": [...],
+    "incomplete_required_core_entries": [...],
+    "findings": [...],
+}
+```
+
+This is intentionally a failing report on the current manifest. #728 gives
+#730 a precise object to inventory rather than letting #643 drift into a fake
+suite-count proof.
