@@ -24,6 +24,7 @@ EXPECTED_MODULES = {
     "operations.lifecycle",
     "operations.mcp",
     "operations.parity",
+    "operations.persistence",
     "operations.process",
     "operations.projections",
     "operations.services",

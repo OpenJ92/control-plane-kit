@@ -67,94 +67,139 @@
       "target_issue": "#764"
     },
     {
-      "decision": "move-to-operations",
-      "rationale": "This law exercises mutable holder state, mutation publication/idempotency, derived-resource build/dispose, cleanup, concurrency, stale-version behavior, or live patch workflow; it belongs to operations contracts, not extracted core.",
+      "core_successor": "extract-e-791.persistence-boundary-contract.unittest",
+      "decision": "split-boundary",
+      "operations_handoff": "Operations / cpk-server must prove executable holder mutation, version checks, one-winner publication, idempotency replay/conflict, derived-resource build/dispose, cleanup, retained/unowned preservation, rollback, and concurrency. Core successor evidence covers only the closed boundary vocabulary, descriptor shape, no-value/no-secret publication law, and operations-owned enforcement marker.",
+      "operations_target_issue": "#792",
+      "rationale": "This law has a pure boundary half and an executable operations half. Core owns the EnvironmentContract / RuntimeContract / DerivedResource subject identity, mutation phase vocabulary, descriptor no-value/no-secret law, and operations-owned handoff. Operations / cpk-server owns actual holder mutation, publication, cleanup, persistence, rollback, and concurrency.",
       "reference": "tests.test_contracts.DerivedResourceTests.test_candidate_builder_cannot_publish_nested_contract_mutation",
-      "target_issue": "#740"
+      "target_issue": "#791"
     },
     {
-      "decision": "move-to-operations",
-      "rationale": "This law exercises mutable holder state, mutation publication/idempotency, derived-resource build/dispose, cleanup, concurrency, stale-version behavior, or live patch workflow; it belongs to operations contracts, not extracted core.",
+      "core_successor": "extract-e-791.persistence-boundary-contract.unittest",
+      "decision": "split-boundary",
+      "operations_handoff": "Operations / cpk-server must prove executable holder mutation, version checks, one-winner publication, idempotency replay/conflict, derived-resource build/dispose, cleanup, retained/unowned preservation, rollback, and concurrency. Core successor evidence covers only the closed boundary vocabulary, descriptor shape, no-value/no-secret publication law, and operations-owned enforcement marker.",
+      "operations_target_issue": "#792",
+      "rationale": "This law has a pure boundary half and an executable operations half. Core owns the EnvironmentContract / RuntimeContract / DerivedResource subject identity, mutation phase vocabulary, descriptor no-value/no-secret law, and operations-owned handoff. Operations / cpk-server owns actual holder mutation, publication, cleanup, persistence, rollback, and concurrency.",
       "reference": "tests.test_contracts.DerivedResourceTests.test_competing_prepared_mutations_have_one_publication_winner",
-      "target_issue": "#740"
+      "target_issue": "#791"
     },
     {
-      "decision": "move-to-operations",
-      "rationale": "This law exercises mutable holder state, mutation publication/idempotency, derived-resource build/dispose, cleanup, concurrency, stale-version behavior, or live patch workflow; it belongs to operations contracts, not extracted core.",
+      "core_successor": "extract-e-791.persistence-boundary-contract.unittest",
+      "decision": "split-boundary",
+      "operations_handoff": "Operations / cpk-server must prove executable holder mutation, version checks, one-winner publication, idempotency replay/conflict, derived-resource build/dispose, cleanup, retained/unowned preservation, rollback, and concurrency. Core successor evidence covers only the closed boundary vocabulary, descriptor shape, no-value/no-secret publication law, and operations-owned enforcement marker.",
+      "operations_target_issue": "#792",
+      "rationale": "This law has a pure boundary half and an executable operations half. Core owns the EnvironmentContract / RuntimeContract / DerivedResource subject identity, mutation phase vocabulary, descriptor no-value/no-secret law, and operations-owned handoff. Operations / cpk-server owns actual holder mutation, publication, cleanup, persistence, rollback, and concurrency.",
       "reference": "tests.test_contracts.DerivedResourceTests.test_completed_identity_rejects_changed_intent_without_retaining_values",
-      "target_issue": "#740"
+      "target_issue": "#791"
     },
     {
-      "decision": "move-to-operations",
-      "rationale": "This law exercises mutable holder state, mutation publication/idempotency, derived-resource build/dispose, cleanup, concurrency, stale-version behavior, or live patch workflow; it belongs to operations contracts, not extracted core.",
+      "core_successor": "extract-e-791.persistence-boundary-contract.unittest",
+      "decision": "split-boundary",
+      "operations_handoff": "Operations / cpk-server must prove executable holder mutation, version checks, one-winner publication, idempotency replay/conflict, derived-resource build/dispose, cleanup, retained/unowned preservation, rollback, and concurrency. Core successor evidence covers only the closed boundary vocabulary, descriptor shape, no-value/no-secret publication law, and operations-owned enforcement marker.",
+      "operations_target_issue": "#792",
+      "rationale": "This law has a pure boundary half and an executable operations half. Core owns the EnvironmentContract / RuntimeContract / DerivedResource subject identity, mutation phase vocabulary, descriptor no-value/no-secret law, and operations-owned handoff. Operations / cpk-server owns actual holder mutation, publication, cleanup, persistence, rollback, and concurrency.",
       "reference": "tests.test_contracts.DerivedResourceTests.test_concurrent_identical_mutations_build_dispose_and_publish_once",
-      "target_issue": "#740"
+      "target_issue": "#791"
     },
     {
-      "decision": "move-to-operations",
-      "rationale": "This law exercises mutable holder state, mutation publication/idempotency, derived-resource build/dispose, cleanup, concurrency, stale-version behavior, or live patch workflow; it belongs to operations contracts, not extracted core.",
+      "core_successor": "extract-e-791.persistence-boundary-contract.unittest",
+      "decision": "split-boundary",
+      "operations_handoff": "Operations / cpk-server must prove executable holder mutation, version checks, one-winner publication, idempotency replay/conflict, derived-resource build/dispose, cleanup, retained/unowned preservation, rollback, and concurrency. Core successor evidence covers only the closed boundary vocabulary, descriptor shape, no-value/no-secret publication law, and operations-owned enforcement marker.",
+      "operations_target_issue": "#792",
+      "rationale": "This law has a pure boundary half and an executable operations half. Core owns the EnvironmentContract / RuntimeContract / DerivedResource subject identity, mutation phase vocabulary, descriptor no-value/no-secret law, and operations-owned handoff. Operations / cpk-server owns actual holder mutation, publication, cleanup, persistence, rollback, and concurrency.",
       "reference": "tests.test_contracts.DerivedResourceTests.test_descriptor_reports_derived_resource_status_without_resource_value",
-      "target_issue": "#740"
+      "target_issue": "#791"
     },
     {
-      "decision": "move-to-operations",
-      "rationale": "This law exercises mutable holder state, mutation publication/idempotency, derived-resource build/dispose, cleanup, concurrency, stale-version behavior, or live patch workflow; it belongs to operations contracts, not extracted core.",
+      "core_successor": "extract-e-791.persistence-boundary-contract.unittest",
+      "decision": "split-boundary",
+      "operations_handoff": "Operations / cpk-server must prove executable holder mutation, version checks, one-winner publication, idempotency replay/conflict, derived-resource build/dispose, cleanup, retained/unowned preservation, rollback, and concurrency. Core successor evidence covers only the closed boundary vocabulary, descriptor shape, no-value/no-secret publication law, and operations-owned enforcement marker.",
+      "operations_target_issue": "#792",
+      "rationale": "This law has a pure boundary half and an executable operations half. Core owns the EnvironmentContract / RuntimeContract / DerivedResource subject identity, mutation phase vocabulary, descriptor no-value/no-secret law, and operations-owned handoff. Operations / cpk-server owns actual holder mutation, publication, cleanup, persistence, rollback, and concurrency.",
       "reference": "tests.test_contracts.DerivedResourceTests.test_drain_required_patch_marks_derived_resource_stale",
-      "target_issue": "#740"
+      "target_issue": "#791"
     },
     {
-      "decision": "move-to-operations",
-      "rationale": "This law exercises mutable holder state, mutation publication/idempotency, derived-resource build/dispose, cleanup, concurrency, stale-version behavior, or live patch workflow; it belongs to operations contracts, not extracted core.",
+      "core_successor": "extract-e-791.persistence-boundary-contract.unittest",
+      "decision": "split-boundary",
+      "operations_handoff": "Operations / cpk-server must prove executable holder mutation, version checks, one-winner publication, idempotency replay/conflict, derived-resource build/dispose, cleanup, retained/unowned preservation, rollback, and concurrency. Core successor evidence covers only the closed boundary vocabulary, descriptor shape, no-value/no-secret publication law, and operations-owned enforcement marker.",
+      "operations_target_issue": "#792",
+      "rationale": "This law has a pure boundary half and an executable operations half. Core owns the EnvironmentContract / RuntimeContract / DerivedResource subject identity, mutation phase vocabulary, descriptor no-value/no-secret law, and operations-owned handoff. Operations / cpk-server owns actual holder mutation, publication, cleanup, persistence, rollback, and concurrency.",
       "reference": "tests.test_contracts.DerivedResourceTests.test_explicit_rebuild_refreshes_stale_resource",
-      "target_issue": "#740"
+      "target_issue": "#791"
     },
     {
-      "decision": "move-to-operations",
-      "rationale": "This law exercises mutable holder state, mutation publication/idempotency, derived-resource build/dispose, cleanup, concurrency, stale-version behavior, or live patch workflow; it belongs to operations contracts, not extracted core.",
+      "core_successor": "extract-e-791.persistence-boundary-contract.unittest",
+      "decision": "split-boundary",
+      "operations_handoff": "Operations / cpk-server must prove executable holder mutation, version checks, one-winner publication, idempotency replay/conflict, derived-resource build/dispose, cleanup, retained/unowned preservation, rollback, and concurrency. Core successor evidence covers only the closed boundary vocabulary, descriptor shape, no-value/no-secret publication law, and operations-owned enforcement marker.",
+      "operations_target_issue": "#792",
+      "rationale": "This law has a pure boundary half and an executable operations half. Core owns the EnvironmentContract / RuntimeContract / DerivedResource subject identity, mutation phase vocabulary, descriptor no-value/no-secret law, and operations-owned handoff. Operations / cpk-server owns actual holder mutation, publication, cleanup, persistence, rollback, and concurrency.",
       "reference": "tests.test_contracts.DerivedResourceTests.test_late_preparation_failure_preserves_old_projection_and_cleans_candidate",
-      "target_issue": "#740"
+      "target_issue": "#791"
     },
     {
-      "decision": "move-to-operations",
-      "rationale": "This law exercises mutable holder state, mutation publication/idempotency, derived-resource build/dispose, cleanup, concurrency, stale-version behavior, or live patch workflow; it belongs to operations contracts, not extracted core.",
+      "core_successor": "extract-e-791.persistence-boundary-contract.unittest",
+      "decision": "split-boundary",
+      "operations_handoff": "Operations / cpk-server must prove executable holder mutation, version checks, one-winner publication, idempotency replay/conflict, derived-resource build/dispose, cleanup, retained/unowned preservation, rollback, and concurrency. Core successor evidence covers only the closed boundary vocabulary, descriptor shape, no-value/no-secret publication law, and operations-owned enforcement marker.",
+      "operations_target_issue": "#792",
+      "rationale": "This law has a pure boundary half and an executable operations half. Core owns the EnvironmentContract / RuntimeContract / DerivedResource subject identity, mutation phase vocabulary, descriptor no-value/no-secret law, and operations-owned handoff. Operations / cpk-server owns actual holder mutation, publication, cleanup, persistence, rollback, and concurrency.",
       "reference": "tests.test_contracts.DerivedResourceTests.test_live_patch_rebuilds_and_disposes_derived_resource",
-      "target_issue": "#740"
+      "target_issue": "#791"
     },
     {
-      "decision": "move-to-operations",
-      "rationale": "This law exercises mutable holder state, mutation publication/idempotency, derived-resource build/dispose, cleanup, concurrency, stale-version behavior, or live patch workflow; it belongs to operations contracts, not extracted core.",
+      "core_successor": "extract-e-791.persistence-boundary-contract.unittest",
+      "decision": "split-boundary",
+      "operations_handoff": "Operations / cpk-server must prove executable holder mutation, version checks, one-winner publication, idempotency replay/conflict, derived-resource build/dispose, cleanup, retained/unowned preservation, rollback, and concurrency. Core successor evidence covers only the closed boundary vocabulary, descriptor shape, no-value/no-secret publication law, and operations-owned enforcement marker.",
+      "operations_target_issue": "#792",
+      "rationale": "This law has a pure boundary half and an executable operations half. Core owns the EnvironmentContract / RuntimeContract / DerivedResource subject identity, mutation phase vocabulary, descriptor no-value/no-secret law, and operations-owned handoff. Operations / cpk-server owns actual holder mutation, publication, cleanup, persistence, rollback, and concurrency.",
       "reference": "tests.test_contracts.DerivedResourceTests.test_multi_resource_mutation_prepares_against_candidate_then_publishes_once",
-      "target_issue": "#740"
+      "target_issue": "#791"
     },
     {
-      "decision": "move-to-operations",
-      "rationale": "This law exercises mutable holder state, mutation publication/idempotency, derived-resource build/dispose, cleanup, concurrency, stale-version behavior, or live patch workflow; it belongs to operations contracts, not extracted core.",
+      "core_successor": "extract-e-791.persistence-boundary-contract.unittest",
+      "decision": "split-boundary",
+      "operations_handoff": "Operations / cpk-server must prove executable holder mutation, version checks, one-winner publication, idempotency replay/conflict, derived-resource build/dispose, cleanup, retained/unowned preservation, rollback, and concurrency. Core successor evidence covers only the closed boundary vocabulary, descriptor shape, no-value/no-secret publication law, and operations-owned enforcement marker.",
+      "operations_target_issue": "#792",
+      "rationale": "This law has a pure boundary half and an executable operations half. Core owns the EnvironmentContract / RuntimeContract / DerivedResource subject identity, mutation phase vocabulary, descriptor no-value/no-secret law, and operations-owned handoff. Operations / cpk-server owns actual holder mutation, publication, cleanup, persistence, rollback, and concurrency.",
       "reference": "tests.test_contracts.DerivedResourceTests.test_preparation_cleanup_failure_is_bounded_and_does_not_publish",
-      "target_issue": "#740"
+      "target_issue": "#791"
     },
     {
-      "decision": "move-to-operations",
-      "rationale": "This law exercises mutable holder state, mutation publication/idempotency, derived-resource build/dispose, cleanup, concurrency, stale-version behavior, or live patch workflow; it belongs to operations contracts, not extracted core.",
+      "core_successor": "extract-e-791.persistence-boundary-contract.unittest",
+      "decision": "split-boundary",
+      "operations_handoff": "Operations / cpk-server must prove executable holder mutation, version checks, one-winner publication, idempotency replay/conflict, derived-resource build/dispose, cleanup, retained/unowned preservation, rollback, and concurrency. Core successor evidence covers only the closed boundary vocabulary, descriptor shape, no-value/no-secret publication law, and operations-owned enforcement marker.",
+      "operations_target_issue": "#792",
+      "rationale": "This law has a pure boundary half and an executable operations half. Core owns the EnvironmentContract / RuntimeContract / DerivedResource subject identity, mutation phase vocabulary, descriptor no-value/no-secret law, and operations-owned handoff. Operations / cpk-server owns actual holder mutation, publication, cleanup, persistence, rollback, and concurrency.",
       "reference": "tests.test_contracts.DerivedResourceTests.test_retained_or_unowned_superseded_resources_are_never_disposed",
-      "target_issue": "#740"
+      "target_issue": "#791"
     },
     {
-      "decision": "move-to-operations",
-      "rationale": "This law exercises mutable holder state, mutation publication/idempotency, derived-resource build/dispose, cleanup, concurrency, stale-version behavior, or live patch workflow; it belongs to operations contracts, not extracted core.",
+      "core_successor": "extract-e-791.persistence-boundary-contract.unittest",
+      "decision": "split-boundary",
+      "operations_handoff": "Operations / cpk-server must prove executable holder mutation, version checks, one-winner publication, idempotency replay/conflict, derived-resource build/dispose, cleanup, retained/unowned preservation, rollback, and concurrency. Core successor evidence covers only the closed boundary vocabulary, descriptor shape, no-value/no-secret publication law, and operations-owned enforcement marker.",
+      "operations_target_issue": "#792",
+      "rationale": "This law has a pure boundary half and an executable operations half. Core owns the EnvironmentContract / RuntimeContract / DerivedResource subject identity, mutation phase vocabulary, descriptor no-value/no-secret law, and operations-owned handoff. Operations / cpk-server owns actual holder mutation, publication, cleanup, persistence, rollback, and concurrency.",
       "reference": "tests.test_contracts.DerivedResourceTests.test_superseded_cleanup_failure_keeps_new_projection_and_replays_evidence",
-      "target_issue": "#740"
+      "target_issue": "#791"
     },
     {
-      "decision": "move-to-operations",
-      "rationale": "This law exercises mutable holder state, mutation publication/idempotency, derived-resource build/dispose, cleanup, concurrency, stale-version behavior, or live patch workflow; it belongs to operations contracts, not extracted core.",
+      "core_successor": "extract-e-791.persistence-boundary-contract.unittest",
+      "decision": "split-boundary",
+      "operations_handoff": "Operations / cpk-server must prove executable holder mutation, version checks, one-winner publication, idempotency replay/conflict, derived-resource build/dispose, cleanup, retained/unowned preservation, rollback, and concurrency. Core successor evidence covers only the closed boundary vocabulary, descriptor shape, no-value/no-secret publication law, and operations-owned enforcement marker.",
+      "operations_target_issue": "#792",
+      "rationale": "This law has a pure boundary half and an executable operations half. Core owns the EnvironmentContract / RuntimeContract / DerivedResource subject identity, mutation phase vocabulary, descriptor no-value/no-secret law, and operations-owned handoff. Operations / cpk-server owns actual holder mutation, publication, cleanup, persistence, rollback, and concurrency.",
       "reference": "tests.test_contracts.EnvironmentContractTests.test_access_is_always_lookup",
-      "target_issue": "#740"
+      "target_issue": "#791"
     },
     {
-      "decision": "move-to-operations",
-      "rationale": "This law exercises mutable holder state, mutation publication/idempotency, derived-resource build/dispose, cleanup, concurrency, stale-version behavior, or live patch workflow; it belongs to operations contracts, not extracted core.",
+      "core_successor": "extract-e-791.persistence-boundary-contract.unittest",
+      "decision": "split-boundary",
+      "operations_handoff": "Operations / cpk-server must prove executable holder mutation, version checks, one-winner publication, idempotency replay/conflict, derived-resource build/dispose, cleanup, retained/unowned preservation, rollback, and concurrency. Core successor evidence covers only the closed boundary vocabulary, descriptor shape, no-value/no-secret publication law, and operations-owned enforcement marker.",
+      "operations_target_issue": "#792",
+      "rationale": "This law has a pure boundary half and an executable operations half. Core owns the EnvironmentContract / RuntimeContract / DerivedResource subject identity, mutation phase vocabulary, descriptor no-value/no-secret law, and operations-owned handoff. Operations / cpk-server owns actual holder mutation, publication, cleanup, persistence, rollback, and concurrency.",
       "reference": "tests.test_contracts.EnvironmentContractTests.test_apply_patch_updates_holder_not_process_environment",
-      "target_issue": "#740"
+      "target_issue": "#791"
     },
     {
       "decision": "pure-successor",
@@ -181,46 +226,67 @@
       "target_issue": "#764"
     },
     {
-      "decision": "move-to-operations",
-      "rationale": "This law exercises mutable holder state, mutation publication/idempotency, derived-resource build/dispose, cleanup, concurrency, stale-version behavior, or live patch workflow; it belongs to operations contracts, not extracted core.",
+      "core_successor": "extract-e-791.persistence-boundary-contract.unittest",
+      "decision": "split-boundary",
+      "operations_handoff": "Operations / cpk-server must prove executable holder mutation, version checks, one-winner publication, idempotency replay/conflict, derived-resource build/dispose, cleanup, retained/unowned preservation, rollback, and concurrency. Core successor evidence covers only the closed boundary vocabulary, descriptor shape, no-value/no-secret publication law, and operations-owned enforcement marker.",
+      "operations_target_issue": "#792",
+      "rationale": "This law has a pure boundary half and an executable operations half. Core owns the EnvironmentContract / RuntimeContract / DerivedResource subject identity, mutation phase vocabulary, descriptor no-value/no-secret law, and operations-owned handoff. Operations / cpk-server owns actual holder mutation, publication, cleanup, persistence, rollback, and concurrency.",
       "reference": "tests.test_contracts.EnvironmentContractTests.test_mutation_and_candidate_descriptors_never_publish_values",
-      "target_issue": "#740"
+      "target_issue": "#791"
     },
     {
-      "decision": "move-to-operations",
-      "rationale": "This law exercises mutable holder state, mutation publication/idempotency, derived-resource build/dispose, cleanup, concurrency, stale-version behavior, or live patch workflow; it belongs to operations contracts, not extracted core.",
+      "core_successor": "extract-e-791.persistence-boundary-contract.unittest",
+      "decision": "split-boundary",
+      "operations_handoff": "Operations / cpk-server must prove executable holder mutation, version checks, one-winner publication, idempotency replay/conflict, derived-resource build/dispose, cleanup, retained/unowned preservation, rollback, and concurrency. Core successor evidence covers only the closed boundary vocabulary, descriptor shape, no-value/no-secret publication law, and operations-owned enforcement marker.",
+      "operations_target_issue": "#792",
+      "rationale": "This law has a pure boundary half and an executable operations half. Core owns the EnvironmentContract / RuntimeContract / DerivedResource subject identity, mutation phase vocabulary, descriptor no-value/no-secret law, and operations-owned handoff. Operations / cpk-server owns actual holder mutation, publication, cleanup, persistence, rollback, and concurrency.",
       "reference": "tests.test_contracts.EnvironmentContractTests.test_mutation_prepares_immutable_candidate_without_publication",
-      "target_issue": "#740"
+      "target_issue": "#791"
     },
     {
-      "decision": "move-to-operations",
-      "rationale": "This law exercises mutable holder state, mutation publication/idempotency, derived-resource build/dispose, cleanup, concurrency, stale-version behavior, or live patch workflow; it belongs to operations contracts, not extracted core.",
+      "core_successor": "extract-e-791.persistence-boundary-contract.unittest",
+      "decision": "split-boundary",
+      "operations_handoff": "Operations / cpk-server must prove executable holder mutation, version checks, one-winner publication, idempotency replay/conflict, derived-resource build/dispose, cleanup, retained/unowned preservation, rollback, and concurrency. Core successor evidence covers only the closed boundary vocabulary, descriptor shape, no-value/no-secret publication law, and operations-owned enforcement marker.",
+      "operations_target_issue": "#792",
+      "rationale": "This law has a pure boundary half and an executable operations half. Core owns the EnvironmentContract / RuntimeContract / DerivedResource subject identity, mutation phase vocabulary, descriptor no-value/no-secret law, and operations-owned handoff. Operations / cpk-server owns actual holder mutation, publication, cleanup, persistence, rollback, and concurrency.",
       "reference": "tests.test_contracts.EnvironmentContractTests.test_mutation_rejects_stale_version_before_preparation",
-      "target_issue": "#740"
+      "target_issue": "#791"
     },
     {
-      "decision": "move-to-operations",
-      "rationale": "This law exercises mutable holder state, mutation publication/idempotency, derived-resource build/dispose, cleanup, concurrency, stale-version behavior, or live patch workflow; it belongs to operations contracts, not extracted core.",
+      "core_successor": "extract-e-791.persistence-boundary-contract.unittest",
+      "decision": "split-boundary",
+      "operations_handoff": "Operations / cpk-server must prove executable holder mutation, version checks, one-winner publication, idempotency replay/conflict, derived-resource build/dispose, cleanup, retained/unowned preservation, rollback, and concurrency. Core successor evidence covers only the closed boundary vocabulary, descriptor shape, no-value/no-secret publication law, and operations-owned enforcement marker.",
+      "operations_target_issue": "#792",
+      "rationale": "This law has a pure boundary half and an executable operations half. Core owns the EnvironmentContract / RuntimeContract / DerivedResource subject identity, mutation phase vocabulary, descriptor no-value/no-secret law, and operations-owned handoff. Operations / cpk-server owns actual holder mutation, publication, cleanup, persistence, rollback, and concurrency.",
       "reference": "tests.test_contracts.EnvironmentContractTests.test_noop_candidate_does_not_advance_version",
-      "target_issue": "#740"
+      "target_issue": "#791"
     },
     {
-      "decision": "move-to-operations",
-      "rationale": "This law exercises mutable holder state, mutation publication/idempotency, derived-resource build/dispose, cleanup, concurrency, stale-version behavior, or live patch workflow; it belongs to operations contracts, not extracted core.",
+      "core_successor": "extract-e-791.persistence-boundary-contract.unittest",
+      "decision": "split-boundary",
+      "operations_handoff": "Operations / cpk-server must prove executable holder mutation, version checks, one-winner publication, idempotency replay/conflict, derived-resource build/dispose, cleanup, retained/unowned preservation, rollback, and concurrency. Core successor evidence covers only the closed boundary vocabulary, descriptor shape, no-value/no-secret publication law, and operations-owned enforcement marker.",
+      "operations_target_issue": "#792",
+      "rationale": "This law has a pure boundary half and an executable operations half. Core owns the EnvironmentContract / RuntimeContract / DerivedResource subject identity, mutation phase vocabulary, descriptor no-value/no-secret law, and operations-owned handoff. Operations / cpk-server owns actual holder mutation, publication, cleanup, persistence, rollback, and concurrency.",
       "reference": "tests.test_contracts.EnvironmentContractTests.test_preparation_validates_all_assignments_before_any_publication",
-      "target_issue": "#740"
+      "target_issue": "#791"
     },
     {
-      "decision": "move-to-operations",
-      "rationale": "This law exercises mutable holder state, mutation publication/idempotency, derived-resource build/dispose, cleanup, concurrency, stale-version behavior, or live patch workflow; it belongs to operations contracts, not extracted core.",
+      "core_successor": "extract-e-791.persistence-boundary-contract.unittest",
+      "decision": "split-boundary",
+      "operations_handoff": "Operations / cpk-server must prove executable holder mutation, version checks, one-winner publication, idempotency replay/conflict, derived-resource build/dispose, cleanup, retained/unowned preservation, rollback, and concurrency. Core successor evidence covers only the closed boundary vocabulary, descriptor shape, no-value/no-secret publication law, and operations-owned enforcement marker.",
+      "operations_target_issue": "#792",
+      "rationale": "This law has a pure boundary half and an executable operations half. Core owns the EnvironmentContract / RuntimeContract / DerivedResource subject identity, mutation phase vocabulary, descriptor no-value/no-secret law, and operations-owned handoff. Operations / cpk-server owns actual holder mutation, publication, cleanup, persistence, rollback, and concurrency.",
       "reference": "tests.test_contracts.EnvironmentContractTests.test_prepared_mutation_identity_replays_or_rejects_conflicting_intent",
-      "target_issue": "#740"
+      "target_issue": "#791"
     },
     {
-      "decision": "move-to-operations",
-      "rationale": "This law exercises mutable holder state, mutation publication/idempotency, derived-resource build/dispose, cleanup, concurrency, stale-version behavior, or live patch workflow; it belongs to operations contracts, not extracted core.",
+      "core_successor": "extract-e-791.persistence-boundary-contract.unittest",
+      "decision": "split-boundary",
+      "operations_handoff": "Operations / cpk-server must prove executable holder mutation, version checks, one-winner publication, idempotency replay/conflict, derived-resource build/dispose, cleanup, retained/unowned preservation, rollback, and concurrency. Core successor evidence covers only the closed boundary vocabulary, descriptor shape, no-value/no-secret publication law, and operations-owned enforcement marker.",
+      "operations_target_issue": "#792",
+      "rationale": "This law has a pure boundary half and an executable operations half. Core owns the EnvironmentContract / RuntimeContract / DerivedResource subject identity, mutation phase vocabulary, descriptor no-value/no-secret law, and operations-owned handoff. Operations / cpk-server owns actual holder mutation, publication, cleanup, persistence, rollback, and concurrency.",
       "reference": "tests.test_contracts.EnvironmentContractTests.test_published_mutation_identity_replays_without_reexecution",
-      "target_issue": "#740"
+      "target_issue": "#791"
     },
     {
       "decision": "pure-successor",
@@ -241,10 +307,13 @@
       "target_issue": "#764"
     },
     {
-      "decision": "move-to-operations",
-      "rationale": "This law exercises mutable holder state, mutation publication/idempotency, derived-resource build/dispose, cleanup, concurrency, stale-version behavior, or live patch workflow; it belongs to operations contracts, not extracted core.",
+      "core_successor": "extract-e-791.persistence-boundary-contract.unittest",
+      "decision": "split-boundary",
+      "operations_handoff": "Operations / cpk-server must prove executable holder mutation, version checks, one-winner publication, idempotency replay/conflict, derived-resource build/dispose, cleanup, retained/unowned preservation, rollback, and concurrency. Core successor evidence covers only the closed boundary vocabulary, descriptor shape, no-value/no-secret publication law, and operations-owned enforcement marker.",
+      "operations_target_issue": "#792",
+      "rationale": "This law has a pure boundary half and an executable operations half. Core owns the EnvironmentContract / RuntimeContract / DerivedResource subject identity, mutation phase vocabulary, descriptor no-value/no-secret law, and operations-owned handoff. Operations / cpk-server owns actual holder mutation, publication, cleanup, persistence, rollback, and concurrency.",
       "reference": "tests.test_contracts.RuntimeContractTests.test_runtime_contract_patch_updates_holder",
-      "target_issue": "#740"
+      "target_issue": "#791"
     }
   ],
   "issue": "#760",
@@ -254,9 +323,12 @@
   "source_inventory": "artifacts/extraction/required-core-family-inventory.json",
   "summary": {
     "entries": 41,
-    "moved_to_operations": 23,
-    "operations_target_issue": "#740",
+    "moved_to_operations": 0,
+    "operations_target_issue": "#792",
     "pure_successor": 18,
-    "pure_target_issue": "#764"
+    "pure_target_issue": "#764",
+    "split_boundary": 23,
+    "split_operations_handoff_issue": "#792",
+    "split_target_issue": "#791"
   }
 }
