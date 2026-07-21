@@ -72,6 +72,7 @@ CMD ["python", "-c", "import control_plane_kit; print('control-plane-kit ready')
 
 FROM package AS test
 
+COPY SERVER_PRODUCT_ROLLOUT.md ./
 COPY examples ./examples
 COPY docs ./docs
 COPY extraction_parity ./extraction_parity

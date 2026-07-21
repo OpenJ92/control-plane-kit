@@ -886,19 +886,22 @@ authority, configuration, secret, capability, and verification contracts. The
 stack product composes public entry, Auth, CPI, Postgres, runtime authority,
 and socket connections when that higher-level product language exists.
 
+The image and descriptor are server-package artifacts. They are not published
+by `control-plane-kit-core`.
+
 Catalogue composition occurs at CPI startup:
 
 ```text
 ProductCatalog.empty()
   + control-plane-kit-servers base catalogue
   + operator-admitted products
-  + admitted core CPI descriptor, when explicitly selected
+  + admitted cpk-server product descriptor, when explicitly selected
 ```
 
 The core package does not import or automatically register the server package.
-The CPI entrypoint is the composition root. The self descriptor is not in the
-catalogue merely because its image hosts the running process; an operator or
-parent CPI admits it through the ordinary authenticated workflow.
+The CPI entrypoint is the composition root. The cpk-server descriptor is not in
+the catalogue merely because its image hosts the running process; an operator
+or parent CPI admits it through the ordinary authenticated workflow.
 
 Recursion is graph recursion:
 
@@ -1117,7 +1120,8 @@ pipeline, real runtime interpreter, observations, and cleanup path.
 - HTTP, probe, configuration, and secret interpreter tests;
 - package DAG and AST architecture policies;
 - base-wheel and optional-dependency tests;
-- CPI image build, external self-descriptor, and import-isolation tests;
+- core wheel, public import, parity-manifest, and import-isolation tests;
+- cpk-server handoff-contract tests;
 - authenticated HTTP API-gateway and hosted MCP Streamable HTTP contract tests;
 - HTTP/MCP authorization, projection, command, and transaction parity tests;
 - invalid MCP origin, authentication, payload, method, and tool tests;
@@ -1559,10 +1563,34 @@ evidence, stop conditions, and attached sub-issues. The child ranges are:
 #596 -> #610-#619 plus #677 test-context rehearsal
 #597 -> #620-#629
 #598 -> #630-#642
-#599 -> #643-#648
-#600 -> #649-#658 plus #678 Hello test translation; cpk-server wrapper work is added here or in a prerequisite child after #598 refresh
+#599 -> #725 plus #643-#648
+#600 -> #726 plus #649-#658 and #678 Hello test translation
 #601 -> #659-#668
 ```
+
+EXTRACT.E has its own refreshed inner topology because #725 must run before
+the core release-candidate children inherit the EXTRACT.D boundary:
+
+```text
+#642 -> #725
+#725 -> #643
+#725 -> #644
+#643 + #644 -> #645 -> #646 -> #647 -> #648
+```
+
+EXTRACT.E produces the core wheel, parity manifests, review evidence, and
+`cpk-server` handoff readiness. It does not produce the `cpk-server` image or
+descriptor.
+
+EXTRACT.F also begins with a topology refresh:
+
+```text
+#648 -> #726
+```
+
+#726 decides the server-repository issue graph for both the `cpk-server`
+wrapper and the Hello proof before #649 creates or transfers implementation
+work.
 
 Issue ownership migrates only after the target repository exists:
 
