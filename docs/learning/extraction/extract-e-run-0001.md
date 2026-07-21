@@ -1019,3 +1019,117 @@ completed required-core laws: 148
 incomplete required-core laws: 632
 unmapped required-core families: 83
 ```
+
+## #763 Pure Policy Decision Laws
+
+#763 mapped the complete frozen `tests.test_policies` family into extracted
+core. The object is intentionally small:
+
+```text
+typed facts
+  = scopes x ActivityPlan x activity operation x WorkspaceLifecycle
+
+Policy
+  : typed facts -> PolicyDecision | ApprovalRequirement | LifecycleRetention
+```
+
+The new module is:
+
+```text
+control_plane_kit_core.policies
+```
+
+and its important values are:
+
+```text
+PolicyScope
+PolicyDecision
+HubAccessPolicy
+InstanceAccessPolicy
+ApprovalPolicy
+ApprovalRequirement
+DestructiveActivityPolicy
+LifecycleRetention
+retention_for
+```
+
+The root package does not re-export the new `policies.ApprovalPolicy` yet,
+because the operations parity layer already exports an `ApprovalPolicy` enum at
+the root. Keeping the new policy language under `control_plane_kit_core.policies`
+avoids a misleading name collision while preserving the pure language.
+
+The core law is:
+
+```python
+def _require_scope(
+    actor_scopes: Iterable[PolicyScope],
+    required: PolicyScope,
+) -> PolicyDecision:
+    scopes = set(actor_scopes)
+    if not all(isinstance(scope, PolicyScope) for scope in scopes):
+        raise TypeError("actor scopes must be PolicyScope values")
+    if required in scopes:
+        return PolicyDecision.allow(f"scope {required.value!r} is present")
+    return PolicyDecision.deny(
+        f"scope {required.value!r} is missing",
+        required_scope=required,
+    )
+```
+
+That snippet matters because the successor does not preserve open string
+authority at the core boundary. Actor scopes are closed `PolicyScope` values.
+
+Approval policy remains an interpreter over canonical plan data:
+
+```python
+def requirement_for(self, plan: ActivityPlan) -> ApprovalRequirement:
+    max_risk = max(
+        (activity.risk for activity in plan.activities),
+        key=_RISK_ORDER.__getitem__,
+        default=RiskLevel.INFORMATIONAL,
+    )
+    destructive = any(
+        activity.impact is ActivityImpact.DESTRUCTIVE
+        for activity in plan.activities
+    )
+    return ApprovalRequirement(
+        required_scope=(
+            PolicyScope.PLAN_APPROVE_DESTRUCTIVE
+            if destructive
+            else PolicyScope.PLAN_APPROVE
+        ),
+        max_risk=max_risk,
+        destructive=destructive,
+    )
+```
+
+Mapped laws:
+
+```text
+test_policies laws: 6 -> extract-e-763.policy-decisions.unittest
+```
+
+Artifact:
+
+```text
+artifacts/extraction/successor-proofs/extract-e-763-policy-decisions.json
+```
+
+Validation so far:
+
+```text
+focused #763 red evidence: missing control_plane_kit_core.policies
+focused #763 extracted-core unittest: 7 tests passed
+focused #763 module inventory slice: 10 tests passed
+current-tree extraction parity slice: 17 tests passed
+control-plane-kit-core/test.sh: 250 tests passed; compileall passed; import ok
+full Docker/Postgres ./test.sh suite: 1181 tests passed
+```
+
+Required-core inventory after artifact update:
+
+```text
+completed required-core laws: 154
+incomplete required-core laws: 626
+unmapped required-core families: 82
+```

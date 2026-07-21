@@ -105,6 +105,21 @@ class ExtractionSuccessorMappingTests(unittest.TestCase):
         self.assertFalse(pure_references & incomplete)
         self.assertTrue(operations_references <= incomplete)
 
+    def test_policy_family_is_fully_mapped_to_passing_successor_evidence(self) -> None:
+        inventory = inventory_unmapped_required_core_families(self.closeout())
+        families = {
+            family["family"]: family
+            for family in inventory["families"]
+        }
+
+        remaining = families.get("test_policies")
+        self.assertIsNone(
+            remaining,
+            f"test_policies still has {remaining['count']} unmapped laws"
+            if remaining is not None
+            else "",
+        )
+
 
 if __name__ == "__main__":
     unittest.main()
