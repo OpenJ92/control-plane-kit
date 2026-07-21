@@ -226,7 +226,7 @@ class EndpointScope(StrEnum):
 
 
 class RuntimeKind(StrEnum):
-    """Runtime contexts supplied by the recipe tree."""
+    """Runtime contexts supplied by the topology tree."""
 
     DOCKER = "docker"
     EXTERNAL = "external"

@@ -62,8 +62,8 @@
     "verification"
   ],
   "pure_pipeline": [
-    "DeploymentRecipe",
-    "compile_recipe",
+    "DeploymentTopology",
+    "compile_topology",
     "DeploymentGraph",
     "validate_graph",
     "ValidatedGraph",
@@ -87,7 +87,7 @@
     ]
   },
   "validation": {
-    "control_plane_kit_core_test_sh": "passed 24 unittest tests",
+    "control_plane_kit_core_test_sh": "passed 25 unittest tests",
     "validate_parity_foundation": "passed",
     "git_diff_check": "passed",
     "root_test_sh": "passed 1158 unittest tests after Docker storage cleanup",

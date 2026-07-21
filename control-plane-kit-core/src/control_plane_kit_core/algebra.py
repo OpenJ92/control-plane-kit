@@ -186,8 +186,12 @@ DeploymentExpr: TypeAlias = DeployBlock | RuntimeContext | SocketConnection
 
 
 @dataclass(frozen=True)
-class DeploymentRecipe:
-    """A named deployment source tree."""
+class DeploymentTopology:
+    """A named declarative deployment source tree."""
 
     name: str
     root: RuntimeContext
+
+
+# Backward-compatible rollout alias. New code should use DeploymentTopology.
+DeploymentRecipe = DeploymentTopology
