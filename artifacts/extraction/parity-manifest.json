@@ -207,7 +207,13 @@
       "owner": "control-plane-kit-core",
       "owner_kind": "core",
       "reference": "tests.test_activity_plan.ActivityPlanTests.test_fan_out_and_fan_in_order_is_invariant_across_all_permutations",
-      "successors": [],
+      "successors": [
+        {
+          "evidence": "extract-b-614.pure-kernel.unittest",
+          "id": "control-plane-kit-core.tests.test_activity_plan.ActivityPlanTests.test_fan_out_and_fan_in_order_is_invariant_across_permutations",
+          "status": "passing"
+        }
+      ],
       "supersession": null
     },
     {
@@ -227,7 +233,13 @@
       "owner": "control-plane-kit-core",
       "owner_kind": "core",
       "reference": "tests.test_activity_plan.ActivityPlanTests.test_invalid_operation_and_target_shapes_cannot_enter_plan",
-      "successors": [],
+      "successors": [
+        {
+          "evidence": "extract-b-614.pure-kernel.unittest",
+          "id": "control-plane-kit-core.tests.test_activity_plan.ActivityPlanTests.test_typed_operation_targets_are_enforced",
+          "status": "passing"
+        }
+      ],
       "supersession": null
     },
     {
@@ -247,7 +259,13 @@
       "owner": "control-plane-kit-core",
       "owner_kind": "core",
       "reference": "tests.test_activity_plan.ActivityPlanTests.test_multiple_violations_are_deterministically_ordered",
-      "successors": [],
+      "successors": [
+        {
+          "evidence": "extract-b-614.pure-kernel.unittest",
+          "id": "control-plane-kit-core.tests.test_activity_plan.ActivityPlanTests.test_multiple_structural_violations_are_deterministically_ordered",
+          "status": "passing"
+        }
+      ],
       "supersession": null
     },
     {
@@ -277,7 +295,13 @@
       "owner": "control-plane-kit-core",
       "owner_kind": "core",
       "reference": "tests.test_activity_plan.ActivityPlanTests.test_unsupported_or_ambiguous_change_is_a_high_risk_plan_blocker",
-      "successors": [],
+      "successors": [
+        {
+          "evidence": "extract-b-614.pure-kernel.unittest",
+          "id": "control-plane-kit-core.tests.test_activity_plan.ActivityPlanTests.test_review_change_is_a_high_risk_plan_blocker",
+          "status": "passing"
+        }
+      ],
       "supersession": null
     },
     {
@@ -287,7 +311,13 @@
       "owner": "control-plane-kit-core",
       "owner_kind": "core",
       "reference": "tests.test_activity_plan.ActivityPlanTests.test_valid_plan_is_canonically_topological_not_input_ordered",
-      "successors": [],
+      "successors": [
+        {
+          "evidence": "extract-b-614.pure-kernel.unittest",
+          "id": "control-plane-kit-core.tests.test_activity_plan.ActivityPlanTests.test_valid_plan_is_canonically_topological_not_input_ordered",
+          "status": "passing"
+        }
+      ],
       "supersession": null
     },
     {
@@ -427,7 +457,13 @@
       "owner": "control-plane-kit-core",
       "owner_kind": "core",
       "reference": "tests.test_activity_plan_compiler.ActivityPlanCompilerTests.test_environment_connections_are_startup_material_not_socket_effects",
-      "successors": [],
+      "successors": [
+        {
+          "evidence": "extract-b-614.pure-kernel.unittest",
+          "id": "control-plane-kit-core.tests.test_kernel_pipeline.PureKernelPipelineTests.test_diff_and_plan_for_initial_deployment_are_pure_and_typed",
+          "status": "passing"
+        }
+      ],
       "supersession": null
     },
     {
@@ -447,7 +483,13 @@
       "owner": "control-plane-kit-core",
       "owner_kind": "core",
       "reference": "tests.test_activity_plan_compiler.ActivityPlanCompilerTests.test_router_change_compiles_to_typed_switch_and_is_deterministic",
-      "successors": [],
+      "successors": [
+        {
+          "evidence": "extract-b-614.pure-kernel.unittest",
+          "id": "control-plane-kit-core.tests.test_kernel_pipeline.PureKernelPipelineTests.test_runtime_control_socket_switch_becomes_explicit_activity",
+          "status": "passing"
+        }
+      ],
       "supersession": null
     },
     {
@@ -467,7 +509,13 @@
       "owner": "control-plane-kit-core",
       "owner_kind": "core",
       "reference": "tests.test_activity_plan_compiler.ActivityPlanCompilerTests.test_startup_dependencies_follow_runtime_node_health_connection_order",
-      "successors": [],
+      "successors": [
+        {
+          "evidence": "extract-b-614.pure-kernel.unittest",
+          "id": "control-plane-kit-core.tests.test_kernel_pipeline.PureKernelPipelineTests.test_diff_and_plan_for_initial_deployment_are_pure_and_typed",
+          "status": "passing"
+        }
+      ],
       "supersession": null
     },
     {
@@ -1627,7 +1675,13 @@
       "owner": "control-plane-kit-core",
       "owner_kind": "core",
       "reference": "tests.test_compile.CompileTests.test_app_with_postgres_injects_database_url",
-      "successors": [],
+      "successors": [
+        {
+          "evidence": "extract-b-614.pure-kernel.unittest",
+          "id": "control-plane-kit-core.tests.test_kernel_pipeline.PureKernelPipelineTests.test_recipe_compilation_wires_provider_to_requirement_environment",
+          "status": "passing"
+        }
+      ],
       "supersession": null
     },
     {
@@ -1637,7 +1691,13 @@
       "owner": "control-plane-kit-core",
       "owner_kind": "core",
       "reference": "tests.test_compile.CompileTests.test_graph_descriptor_uses_provider_requirement_vocabulary",
-      "successors": [],
+      "successors": [
+        {
+          "evidence": "extract-b-614.pure-kernel.unittest",
+          "id": "control-plane-kit-core.tests.test_kernel_pipeline.PureKernelPipelineTests.test_recipe_compilation_wires_provider_to_requirement_environment",
+          "status": "passing"
+        }
+      ],
       "supersession": null
     },
     {
@@ -1647,7 +1707,13 @@
       "owner": "control-plane-kit-core",
       "owner_kind": "core",
       "reference": "tests.test_compile.CompileTests.test_protocol_mismatch_fails",
-      "successors": [],
+      "successors": [
+        {
+          "evidence": "extract-b-614.pure-kernel.unittest",
+          "id": "control-plane-kit-core.tests.test_kernel_pipeline.PureKernelPipelineTests.test_protocol_mismatch_fails_at_pure_compile_boundary",
+          "status": "passing"
+        }
+      ],
       "supersession": null
     },
     {
@@ -1787,7 +1853,13 @@
       "owner": "control-plane-kit-core",
       "owner_kind": "core",
       "reference": "tests.test_connection_protocol.ConnectionProtocolTests.test_compact_names_parse_only_to_closed_canonical_values",
-      "successors": [],
+      "successors": [
+        {
+          "evidence": "extract-b-614.pure-kernel.unittest",
+          "id": "control-plane-kit-core.tests.test_protocol.ConnectionProtocolTests.test_protocol_descriptor_is_closed_and_round_trips",
+          "status": "passing"
+        }
+      ],
       "supersession": null
     },
     {
@@ -1817,7 +1889,13 @@
       "owner": "control-plane-kit-core",
       "owner_kind": "core",
       "reference": "tests.test_connection_protocol.ConnectionProtocolTests.test_every_application_protocol_has_an_explicit_transport_set",
-      "successors": [],
+      "successors": [
+        {
+          "evidence": "extract-b-614.pure-kernel.unittest",
+          "id": "control-plane-kit-core.tests.test_protocol.ConnectionProtocolTests.test_every_application_protocol_has_an_explicit_transport_set",
+          "status": "passing"
+        }
+      ],
       "supersession": null
     },
     {
@@ -1837,7 +1915,13 @@
       "owner": "control-plane-kit-core",
       "owner_kind": "core",
       "reference": "tests.test_connection_protocol.ConnectionProtocolTests.test_every_protocol_round_trips_through_structured_string_projection",
-      "successors": [],
+      "successors": [
+        {
+          "evidence": "extract-b-614.pure-kernel.unittest",
+          "id": "control-plane-kit-core.tests.test_protocol.ConnectionProtocolTests.test_protocol_descriptor_is_closed_and_round_trips",
+          "status": "passing"
+        }
+      ],
       "supersession": null
     },
     {
@@ -1847,7 +1931,13 @@
       "owner": "control-plane-kit-core",
       "owner_kind": "core",
       "reference": "tests.test_connection_protocol.ConnectionProtocolTests.test_existing_protocols_preserve_exact_semantics",
-      "successors": [],
+      "successors": [
+        {
+          "evidence": "extract-b-614.pure-kernel.unittest",
+          "id": "control-plane-kit-core.tests.test_protocol.ConnectionProtocolTests.test_existing_protocols_preserve_exact_transport_and_application_semantics",
+          "status": "passing"
+        }
+      ],
       "supersession": null
     },
     {
@@ -1857,7 +1947,13 @@
       "owner": "control-plane-kit-core",
       "owner_kind": "core",
       "reference": "tests.test_connection_protocol.ConnectionProtocolTests.test_invalid_transport_application_combinations_fail_at_construction",
-      "successors": [],
+      "successors": [
+        {
+          "evidence": "extract-b-614.pure-kernel.unittest",
+          "id": "control-plane-kit-core.tests.test_protocol.ConnectionProtocolTests.test_invalid_transport_application_combinations_fail_at_construction",
+          "status": "passing"
+        }
+      ],
       "supersession": null
     },
     {
@@ -1867,7 +1963,13 @@
       "owner": "control-plane-kit-core",
       "owner_kind": "core",
       "reference": "tests.test_connection_protocol.ConnectionProtocolTests.test_protocol_descriptor_unknown_extra_and_invalid_values_fail_closed",
-      "successors": [],
+      "successors": [
+        {
+          "evidence": "extract-b-614.pure-kernel.unittest",
+          "id": "control-plane-kit-core.tests.test_protocol.ConnectionProtocolTests.test_protocol_descriptor_is_closed_and_round_trips",
+          "status": "passing"
+        }
+      ],
       "supersession": null
     },
     {
@@ -5087,7 +5189,13 @@
       "owner": "control-plane-kit-core",
       "owner_kind": "core",
       "reference": "tests.test_graph_codec.GraphDescriptorCodecTests.test_generic_graph_round_trip_preserves_typed_block_identity",
-      "successors": [],
+      "successors": [
+        {
+          "evidence": "extract-b-614.pure-kernel.unittest",
+          "id": "control-plane-kit-core.tests.test_kernel_pipeline.PureKernelPipelineTests.test_graph_descriptor_round_trip_preserves_typed_identity",
+          "status": "passing"
+        }
+      ],
       "supersession": null
     },
     {
@@ -5097,7 +5205,13 @@
       "owner": "control-plane-kit-core",
       "owner_kind": "core",
       "reference": "tests.test_graph_codec.GraphDescriptorCodecTests.test_literal_addresses_reject_embedded_credentials",
-      "successors": [],
+      "successors": [
+        {
+          "evidence": "extract-b-614.pure-kernel.unittest",
+          "id": "control-plane-kit-core.tests.test_kernel_pipeline.PureKernelPipelineTests.test_unknown_descriptor_fields_and_literal_credentials_fail_closed",
+          "status": "passing"
+        }
+      ],
       "supersession": null
     },
     {
@@ -5177,7 +5291,13 @@
       "owner": "control-plane-kit-core",
       "owner_kind": "core",
       "reference": "tests.test_graph_codec.GraphDescriptorCodecTests.test_unknown_closed_variants_fail_loudly",
-      "successors": [],
+      "successors": [
+        {
+          "evidence": "extract-b-614.pure-kernel.unittest",
+          "id": "control-plane-kit-core.tests.test_kernel_pipeline.PureKernelPipelineTests.test_graph_descriptor_round_trip_preserves_typed_identity",
+          "status": "passing"
+        }
+      ],
       "supersession": null
     },
     {
@@ -5187,7 +5307,13 @@
       "owner": "control-plane-kit-core",
       "owner_kind": "core",
       "reference": "tests.test_graph_codec.GraphDescriptorCodecTests.test_unknown_fields_are_rejected_as_lossy",
-      "successors": [],
+      "successors": [
+        {
+          "evidence": "extract-b-614.pure-kernel.unittest",
+          "id": "control-plane-kit-core.tests.test_kernel_pipeline.PureKernelPipelineTests.test_unknown_descriptor_fields_and_literal_credentials_fail_closed",
+          "status": "passing"
+        }
+      ],
       "supersession": null
     },
     {
@@ -5197,7 +5323,13 @@
       "owner": "control-plane-kit-core",
       "owner_kind": "core",
       "reference": "tests.test_graph_construction.GraphConstructionTests.test_add_operations_reject_duplicates_without_erasing_first_values",
-      "successors": [],
+      "successors": [
+        {
+          "evidence": "extract-b-677.graph-duplicate-identity.unittest",
+          "id": "control-plane-kit-core.tests.test_topology_graph.DeploymentGraphConstructionTests.test_add_operations_reject_duplicates_without_erasing_first_values",
+          "status": "passing"
+        }
+      ],
       "supersession": null
     },
     {
@@ -5467,7 +5599,13 @@
       "owner": "control-plane-kit-core",
       "owner_kind": "core",
       "reference": "tests.test_graph_validation.GraphValidationTests.test_require_valid_raises_with_complete_result",
-      "successors": [],
+      "successors": [
+        {
+          "evidence": "extract-b-614.pure-kernel.unittest",
+          "id": "control-plane-kit-core.tests.test_kernel_pipeline.PureKernelPipelineTests.test_validation_reports_missing_required_connection_as_structured_data",
+          "status": "passing"
+        }
+      ],
       "supersession": null
     },
     {
@@ -5477,7 +5615,13 @@
       "owner": "control-plane-kit-core",
       "owner_kind": "core",
       "reference": "tests.test_graph_validation.GraphValidationTests.test_required_and_optional_socket_findings_are_structured",
-      "successors": [],
+      "successors": [
+        {
+          "evidence": "extract-b-614.pure-kernel.unittest",
+          "id": "control-plane-kit-core.tests.test_kernel_pipeline.PureKernelPipelineTests.test_validation_reports_missing_required_connection_as_structured_data",
+          "status": "passing"
+        }
+      ],
       "supersession": null
     },
     {

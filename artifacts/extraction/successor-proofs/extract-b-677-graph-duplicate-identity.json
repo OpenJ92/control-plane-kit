@@ -1,0 +1,9 @@
+{
+  "command": "./control-plane-kit-core/test.sh",
+  "evidence": "The successor unittest fails red before control_plane_kit_core.topology exists, then passes green after implementing the minimal pure topology boundary.",
+  "frozen_law": "behavior.add-operations-reject-duplicates-without-erasing-first-values",
+  "frozen_reference": "tests.test_graph_construction.GraphConstructionTests.test_add_operations_reject_duplicates_without_erasing_first_values",
+  "schema": "cpk.successor-proof",
+  "status": "passing",
+  "successor_test": "control-plane-kit-core/tests/test_topology_graph.py::DeploymentGraphConstructionTests.test_add_operations_reject_duplicates_without_erasing_first_values"
+}

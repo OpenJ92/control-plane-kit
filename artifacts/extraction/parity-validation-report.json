@@ -10,8 +10,8 @@
     "entries": 1107,
     "failed_successors": 0,
     "findings": 0,
-    "incomplete_required": 880,
-    "passing_successors": 0,
+    "incomplete_required": 856,
+    "passing_successors": 24,
     "required": 880,
     "reviewed_supersessions": 0
   },
