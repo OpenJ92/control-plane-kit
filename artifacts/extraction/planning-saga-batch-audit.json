@@ -1,0 +1,91 @@
+{
+  "families": {
+    "test_activity_plan_codec": {
+      "count": 12,
+      "decision": "retain",
+      "rationale": "ActivityPlan descriptor codec is a pure durable boundary for the closed plan algebra.",
+      "target_issue": "#772"
+    },
+    "test_activity_plan_compiler": {
+      "count": 5,
+      "decision": "retain",
+      "rationale": "GraphDiff to ActivityPlan compilation is pure graph interpretation.",
+      "target_issue": "#772"
+    },
+    "test_compensation_planning": {
+      "count": 6,
+      "decision": "retain",
+      "rationale": "Compensation planning maps operations and durable completion order to pure inverse/recovery meaning.",
+      "target_issue": "#776"
+    },
+    "test_execution_scenario_expectations": {
+      "count": 12,
+      "decision": "retain",
+      "rationale": "Execution scenario expectations are retained only as closed catalogue/partial-order data; actual runner/coordinator behavior remains outside #739.",
+      "target_issue": "#773"
+    },
+    "test_planning_scenarios": {
+      "count": 5,
+      "decision": "retain",
+      "rationale": "Planning scenario catalogues are deterministic graph/plan expectation data.",
+      "target_issue": "#773"
+    },
+    "test_recovery_planning": {
+      "count": 4,
+      "decision": "retain",
+      "rationale": "Recovery planning constructs fresh canonical graph transition plans without durable recovery service behavior.",
+      "target_issue": "#776"
+    },
+    "test_saga_journal": {
+      "count": 8,
+      "decision": "retain",
+      "rationale": "Saga journal projection is a pure interpreter over canonical activity events.",
+      "target_issue": "#774"
+    },
+    "test_saga_program": {
+      "count": 3,
+      "decision": "retain",
+      "rationale": "Saga syntax is immutable callback-free data.",
+      "target_issue": "#774"
+    },
+    "test_saga_state": {
+      "count": 9,
+      "decision": "retain",
+      "rationale": "Saga state is reconstructed from closed events without stores or effects.",
+      "target_issue": "#774"
+    },
+    "test_scheduling": {
+      "count": 9,
+      "decision": "retain",
+      "rationale": "Scheduling is a pure interpreter from ActivityPlan and SagaState to ready/running/waiting/blocked views.",
+      "target_issue": "#775"
+    },
+    "test_scheduling_scenarios": {
+      "count": 1,
+      "decision": "retain",
+      "rationale": "Scheduling scenario evidence is deterministic pure schedule catalogue data.",
+      "target_issue": "#775"
+    }
+  },
+  "issue": "#771",
+  "laws": [
+    "ActivityPlan remains graph-interpretation output, not a user-authored arbitrary workflow language.",
+    "Saga syntax, state, journal projection, scheduling, compensation, and recovery planning remain pure data/interpreters.",
+    "Scenario expectation laws are retained only as closed expectation catalogue data, not live coordinator execution.",
+    "Stores, workers, Docker, FastAPI, MCP, and effect adapters do not enter #739."
+  ],
+  "parent": "#739",
+  "schema": "cpk.planning-saga-batch-audit",
+  "source": "artifacts/extraction/required-core-batch-plan.json",
+  "source_batch": "planning_saga",
+  "summary": {
+    "entries": 74,
+    "families": 11,
+    "moved_entries": 0,
+    "moved_families": 0,
+    "retained_entries": 74,
+    "retained_families": 11,
+    "split_entries": 0,
+    "split_families": 0
+  }
+}
