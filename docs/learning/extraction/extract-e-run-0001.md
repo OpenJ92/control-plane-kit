@@ -2966,3 +2966,108 @@ not to loosen the test. #792 now has its own supersession-review artifact for
 the three workflow-service laws, recording that core supersedes only the old
 ownership claim while operations / cpk-server remains responsible for the
 executable behavior.
+
+## #741 Architecture And Test-Harness Parity Ownership
+
+#741 resolved the architecture-analysis, dependency, ownership, package-topology,
+root-import, optional-dependency, scenario-boundary, read-route, deploy,
+protocol, and test-integrity families without moving the architecture harness
+into `control-plane-kit-core`.
+
+The important decision is that these laws are real extraction laws, but most of
+them are not core package APIs. They are neutral harness behavior that keeps the
+extraction honest:
+
+```text
+frozen architecture/test-integrity laws
+  -> neutral extraction harness successor evidence
+    -> parity manifest completion
+      -> required-core closeout inventory reduction
+```
+
+The two import-surface families remain core public behavior because they prove
+that extracted core stays lightweight:
+
+```text
+test_root_api
+test_optional_dependencies
+```
+
+Those still map through the same successor evidence because their executable
+proof is the package-boundary harness plus import checks, not a new runtime
+service.
+
+The closeout artifact records:
+
+```text
+source families: 10
+source entries: 58
+
+mapped successor families: 10
+mapped successor entries: 58
+
+neutral harness families: 8
+core import guard families: 2
+
+reviewed supersession families: 0
+reviewed supersession entries: 0
+
+unexpected remaining families: 0
+unexpected remaining entries: 0
+```
+
+No #741 law was completed by package-name churn or reviewed supersession. Every
+law maps to:
+
+```text
+extract-e-741.architecture-test-harness.unittest
+```
+
+The successor proof covers the current top-level architecture tests:
+
+```text
+tests.test_architecture_analysis
+tests.test_architecture_dependencies
+tests.test_architecture_ownership
+tests.test_architecture_test_integrity
+tests.test_root_api
+tests.test_architecture_scenarios
+tests.test_architecture_read_routes
+tests.test_architecture_deploy
+tests.test_architecture_protocol
+tests.test_optional_dependencies
+```
+
+This is intentionally not a claim that core owns Docker runtime behavior,
+FastAPI route execution, cpk-server packaging, stores, UnitOfWork, graph
+mutation, or package-owned server products. It is a claim that the extraction
+continues to enforce those boundaries with reusable AST facts and architecture
+policies.
+
+Regenerated evidence:
+
+```text
+artifacts/extraction/architecture-test-harness-batch-closeout.json
+artifacts/extraction/successor-proofs/extract-e-741-architecture-test-harness.json
+artifacts/extraction/successor-evidence.json
+artifacts/extraction/parity-manifest.json
+artifacts/extraction/required-core-closeout-report.json
+artifacts/extraction/required-core-family-inventory.json
+artifacts/extraction/parity-validation-report.json
+```
+
+Validation:
+
+```text
+focused #741 extraction/parity tests: 39 tests passed
+focused #741 architecture/test-harness proof: 58 tests passed
+validate-parity.sh foundation: valid=true, findings=0, incomplete_required=277
+control-plane-kit-core/test.sh: 374 tests passed, compileall passed, import ok
+top-level ./test.sh: 1203 tests passed
+required-core closeout inventory: 177 incomplete entries across 25 families
+```
+
+The count distinction matters. `validate-parity.sh foundation` still reports
+all incomplete required migration entries, including system and Hello-owned
+work. The `required-core-family-inventory.json` count is the core-closeout
+blocker count that #742 and #743 continue to reduce before #731 can begin.

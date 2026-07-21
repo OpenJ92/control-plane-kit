@@ -271,6 +271,75 @@ class ExtractionBatchPlanTests(unittest.TestCase):
             )
         )
 
+    def test_architecture_test_harness_closeout_maps_all_families_without_supersession(
+        self,
+    ) -> None:
+        closeout = read_bounded_json(
+            ARTIFACT_ROOT / "architecture-test-harness-batch-closeout.json"
+        )
+
+        self.assertEqual(
+            closeout["schema"],
+            "cpk.architecture-test-harness-batch-closeout",
+        )
+        self.assertEqual(closeout["issue"], "#741")
+        self.assertEqual(closeout["parent"], "#643")
+        self.assertEqual(closeout["source_batch"], "architecture_test_harness")
+        self.assertEqual(closeout["successor"], "extract-e-741.architecture-test-harness.unittest")
+        self.assertEqual(closeout["summary"]["source_families"], 10)
+        self.assertEqual(closeout["summary"]["source_entries"], 58)
+        self.assertEqual(closeout["summary"]["mapped_successor_families"], 10)
+        self.assertEqual(closeout["summary"]["mapped_successor_entries"], 58)
+        self.assertEqual(closeout["summary"]["neutral_harness_families"], 8)
+        self.assertEqual(closeout["summary"]["core_import_guard_families"], 2)
+        self.assertEqual(closeout["summary"]["reviewed_supersession_families"], 0)
+        self.assertEqual(closeout["summary"]["reviewed_supersession_entries"], 0)
+        self.assertEqual(closeout["summary"]["unexpected_remaining_families"], 0)
+        self.assertEqual(closeout["summary"]["unexpected_remaining_entries"], 0)
+
+        families = {
+            family["family"]: family
+            for family in closeout["families"]
+        }
+        self.assertEqual(
+            set(families),
+            {
+                "test_architecture_analysis",
+                "test_architecture_dependencies",
+                "test_architecture_ownership",
+                "test_architecture_test_integrity",
+                "test_root_api",
+                "test_architecture_scenarios",
+                "test_architecture_read_routes",
+                "test_architecture_deploy",
+                "test_architecture_protocol",
+                "test_optional_dependencies",
+            },
+        )
+        self.assertEqual(
+            families["test_root_api"]["classification"],
+            "extracted-core-public-import-guard",
+        )
+        self.assertEqual(
+            families["test_optional_dependencies"]["classification"],
+            "extracted-core-public-import-guard",
+        )
+        for family_name, family in families.items():
+            with self.subTest(family=family_name):
+                self.assertEqual(
+                    family["status"],
+                    "mapped_to_passing_successor_evidence",
+                )
+                self.assertEqual(
+                    family["successor"],
+                    "extract-e-741.architecture-test-harness.unittest",
+                )
+                self.assertEqual(family["remaining_live_inventory_count"], 0)
+                self.assertIn(
+                    "no package-name churn is treated as supersession",
+                    family["rationale"],
+                )
+
 
 if __name__ == "__main__":
     unittest.main()

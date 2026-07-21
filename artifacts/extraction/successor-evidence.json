@@ -16,6 +16,11 @@
       "status": "passing"
     },
     {
+      "digest": "sha256:ab765a4b017228d63836ce49cd95901bf25bf7a1498c9f6886926bb9841e1064",
+      "id": "extract-e-741.architecture-test-harness.unittest",
+      "status": "passing"
+    },
+    {
       "digest": "sha256:b1b16296e8228f796cb4ad893dfb15bf66f58027ce5c242e7f7221d95e4ea3d6",
       "id": "extract-e-746.topology-protocol-compile.unittest",
       "status": "passing"

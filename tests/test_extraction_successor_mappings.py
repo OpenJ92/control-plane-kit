@@ -421,6 +421,59 @@ class ExtractionSuccessorMappingTests(unittest.TestCase):
                     else "",
                 )
 
+    def test_architecture_and_test_harness_families_are_fully_mapped_without_supersession(self) -> None:
+        closeout = self.closeout()
+        inventory = inventory_unmapped_required_core_families(closeout)
+        families = {
+            family["family"]: family
+            for family in inventory["families"]
+        }
+        manifest = read_bounded_json(ARTIFACT_ROOT / "parity-manifest.json")
+        batch_closeout = read_bounded_json(
+            ARTIFACT_ROOT / "architecture-test-harness-batch-closeout.json"
+        )
+        expected_families = {
+            family["family"]
+            for family in batch_closeout["families"]
+        }
+        expected_references = {
+            reference
+            for family in batch_closeout["families"]
+            for reference in family["references"]
+        }
+        manifest_entries = {
+            entry["reference"]: entry
+            for entry in manifest["entries"]
+            if entry["reference"] in expected_references
+        }
+
+        self.assertEqual(len(expected_families), 10)
+        self.assertEqual(len(expected_references), 58)
+        self.assertEqual(set(manifest_entries), expected_references)
+        for family_name in sorted(expected_families):
+            with self.subTest(family=family_name):
+                remaining = families.get(family_name)
+                self.assertIsNone(
+                    remaining,
+                    f"{family_name} still has {remaining['count']} unmapped laws"
+                    if remaining is not None
+                    else "",
+                )
+
+        for reference, entry in manifest_entries.items():
+            with self.subTest(reference=reference):
+                self.assertIsNone(entry["supersession"])
+                self.assertEqual(
+                    entry["successors"],
+                    [
+                        {
+                            "id": "neutral-harness.architecture-test-harness",
+                            "status": "passing",
+                            "evidence": "extract-e-741.architecture-test-harness.unittest",
+                        }
+                    ],
+                )
+
 
 if __name__ == "__main__":
     unittest.main()

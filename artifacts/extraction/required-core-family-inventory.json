@@ -1,7 +1,7 @@
 {
   "counts": {
-    "entries": 235,
-    "families": 35
+    "entries": 177,
+    "families": 25
   },
   "families": [
     {
@@ -252,117 +252,6 @@
       "entries": [
         {
           "kind": "test",
-          "law": "behavior.bare-and-named-exception-handlers-have-total-ordering",
-          "owner": "control-plane-kit-core",
-          "owner_kind": "core",
-          "reference": "tests.test_architecture_analysis.ArchitectureAnalysisTests.test_bare_and_named_exception_handlers_have_total_ordering"
-        },
-        {
-          "kind": "test",
-          "law": "behavior.boolean-arguments-assertions-and-empty-test-bodies-are-explicit",
-          "owner": "control-plane-kit-core",
-          "owner_kind": "core",
-          "reference": "tests.test_architecture_analysis.ArchitectureAnalysisTests.test_boolean_arguments_assertions_and_empty_test_bodies_are_explicit"
-        },
-        {
-          "kind": "test",
-          "law": "behavior.call-keyword-shapes-are-recorded-without-values",
-          "owner": "control-plane-kit-core",
-          "owner_kind": "core",
-          "reference": "tests.test_architecture_analysis.ArchitectureAnalysisTests.test_call_keyword_shapes_are_recorded_without_values"
-        },
-        {
-          "kind": "test",
-          "law": "behavior.comments-strings-and-docstrings-do-not-become-code-facts",
-          "owner": "control-plane-kit-core",
-          "owner_kind": "core",
-          "reference": "tests.test_architecture_analysis.ArchitectureAnalysisTests.test_comments_strings_and_docstrings_do_not_become_code_facts"
-        },
-        {
-          "kind": "test",
-          "law": "behavior.computed-all-is-explicitly-unsupported",
-          "owner": "control-plane-kit-core",
-          "owner_kind": "core",
-          "reference": "tests.test_architecture_analysis.ArchitectureAnalysisTests.test_computed_all_is_explicitly_unsupported"
-        },
-        {
-          "kind": "test",
-          "law": "behavior.dotted-import-binding-matches-python-semantics",
-          "owner": "control-plane-kit-core",
-          "owner_kind": "core",
-          "reference": "tests.test_architecture_analysis.ArchitectureAnalysisTests.test_dotted_import_binding_matches_python_semantics"
-        },
-        {
-          "kind": "test",
-          "law": "behavior.file-analysis-derives-module-and-rejects-files-outside-root",
-          "owner": "control-plane-kit-core",
-          "owner_kind": "core",
-          "reference": "tests.test_architecture_analysis.ArchitectureAnalysisTests.test_file_analysis_derives_module_and_rejects_files_outside_root"
-        },
-        {
-          "kind": "test",
-          "law": "behavior.import-aliases-calls-decorators-and-locations-are-resolved",
-          "owner": "control-plane-kit-core",
-          "owner_kind": "core",
-          "reference": "tests.test_architecture_analysis.ArchitectureAnalysisTests.test_import_aliases_calls_decorators_and_locations_are_resolved"
-        },
-        {
-          "kind": "test",
-          "law": "behavior.literal-all-exports-resolve-imported-and-local-provenance",
-          "owner": "control-plane-kit-core",
-          "owner_kind": "core",
-          "reference": "tests.test_architecture_analysis.ArchitectureAnalysisTests.test_literal_all_exports_resolve_imported_and_local_provenance"
-        },
-        {
-          "kind": "test",
-          "law": "behavior.malformed-source-fails-without-echoing-source",
-          "owner": "control-plane-kit-core",
-          "owner_kind": "core",
-          "reference": "tests.test_architecture_analysis.ArchitectureAnalysisTests.test_malformed_source_fails_without_echoing_source"
-        },
-        {
-          "kind": "test",
-          "law": "behavior.nested-class-names-and-decorators-are-explicit",
-          "owner": "control-plane-kit-core",
-          "owner_kind": "core",
-          "reference": "tests.test_architecture_analysis.ArchitectureAnalysisTests.test_nested_class_names_and_decorators_are_explicit"
-        },
-        {
-          "kind": "test",
-          "law": "behavior.pass-only-functions-and-exception-handlers-are-explicit",
-          "owner": "control-plane-kit-core",
-          "owner_kind": "core",
-          "reference": "tests.test_architecture_analysis.ArchitectureAnalysisTests.test_pass_only_functions_and_exception_handlers_are_explicit"
-        },
-        {
-          "kind": "test",
-          "law": "behavior.policy-evaluation-is-deterministic-and-location-backed",
-          "owner": "control-plane-kit-core",
-          "owner_kind": "core",
-          "reference": "tests.test_architecture_analysis.ArchitectureAnalysisTests.test_policy_evaluation_is_deterministic_and_location_backed"
-        },
-        {
-          "kind": "test",
-          "law": "behavior.prose-does-not-become-export-provenance",
-          "owner": "control-plane-kit-core",
-          "owner_kind": "core",
-          "reference": "tests.test_architecture_analysis.ArchitectureAnalysisTests.test_prose_does_not_become_export_provenance"
-        },
-        {
-          "kind": "test",
-          "law": "behavior.relative-import-and-nested-method-names-are-preserved",
-          "owner": "control-plane-kit-core",
-          "owner_kind": "core",
-          "reference": "tests.test_architecture_analysis.ArchitectureAnalysisTests.test_relative_import_and_nested_method_names_are_preserved"
-        }
-      ],
-      "family": "test_architecture_analysis"
-    },
-    {
-      "count": 15,
-      "entries": [
-        {
-          "kind": "test",
           "law": "behavior.complete-acceptance-corpus-uses-canonical-pipeline",
           "owner": "control-plane-kit-core",
           "owner_kind": "core",
@@ -564,75 +453,6 @@
       "entries": [
         {
           "kind": "test",
-          "law": "behavior.effect-materialization-and-interpreters-cannot-import-stores",
-          "owner": "control-plane-kit-core",
-          "owner_kind": "core",
-          "reference": "tests.test_architecture_dependencies.ArchitectureDependencyTests.test_effect_materialization_and_interpreters_cannot_import_stores"
-        },
-        {
-          "kind": "test",
-          "law": "behavior.environment-metadata-escape-hatch-is-rejected",
-          "owner": "control-plane-kit-core",
-          "owner_kind": "core",
-          "reference": "tests.test_architecture_dependencies.ArchitectureDependencyTests.test_environment_metadata_escape_hatch_is_rejected"
-        },
-        {
-          "kind": "test",
-          "law": "behavior.jinja-environment-is-owned-by-declared-template-interpreters",
-          "owner": "control-plane-kit-core",
-          "owner_kind": "core",
-          "reference": "tests.test_architecture_dependencies.ArchitectureDependencyTests.test_jinja_environment_is_owned_by_declared_template_interpreters"
-        },
-        {
-          "kind": "test",
-          "law": "behavior.process-and-http-clients-are-adapter-owned",
-          "owner": "control-plane-kit-core",
-          "owner_kind": "core",
-          "reference": "tests.test_architecture_dependencies.ArchitectureDependencyTests.test_process_and_http_clients_are_adapter_owned"
-        },
-        {
-          "kind": "test",
-          "law": "behavior.product-interpreter-edge-is-exactly-coredns-to-configuration-rendering",
-          "owner": "control-plane-kit-core",
-          "owner_kind": "core",
-          "reference": "tests.test_architecture_dependencies.ArchitectureDependencyTests.test_product_interpreter_edge_is_exactly_coredns_to_configuration_rendering"
-        },
-        {
-          "kind": "test",
-          "law": "behavior.raw-static-environment-mapping-is-rejected-at-docker-authoring",
-          "owner": "control-plane-kit-core",
-          "owner_kind": "core",
-          "reference": "tests.test_architecture_dependencies.ArchitectureDependencyTests.test_raw_static_environment_mapping_is_rejected_at_docker_authoring"
-        },
-        {
-          "kind": "test",
-          "law": "behavior.relative-same-package-import-is-allowed",
-          "owner": "control-plane-kit-core",
-          "owner_kind": "core",
-          "reference": "tests.test_architecture_dependencies.ArchitectureDependencyTests.test_relative_same_package_import_is_allowed"
-        },
-        {
-          "kind": "test",
-          "law": "behavior.repository-obeys-declared-dependency-and-transport-ownership",
-          "owner": "control-plane-kit-core",
-          "owner_kind": "core",
-          "reference": "tests.test_architecture_dependencies.ArchitectureDependencyTests.test_repository_obeys_declared_dependency_and_transport_ownership"
-        },
-        {
-          "kind": "test",
-          "law": "behavior.reverse-dependency-is-rejected-for-import-and-from-import",
-          "owner": "control-plane-kit-core",
-          "owner_kind": "core",
-          "reference": "tests.test_architecture_dependencies.ArchitectureDependencyTests.test_reverse_dependency_is_rejected_for_import_and_from_import"
-        }
-      ],
-      "family": "test_architecture_dependencies"
-    },
-    {
-      "count": 9,
-      "entries": [
-        {
-          "kind": "test",
           "law": "behavior.changed-content-changes-container-and-volume-ownership",
           "owner": "control-plane-kit-core",
           "owner_kind": "core",
@@ -765,68 +585,6 @@
         }
       ],
       "family": "test_docker_secrets"
-    },
-    {
-      "count": 8,
-      "entries": [
-        {
-          "kind": "test",
-          "law": "behavior.contract-boundary-may-read-process-environment",
-          "owner": "control-plane-kit-core",
-          "owner_kind": "core",
-          "reference": "tests.test_architecture_ownership.ArchitectureOwnershipTests.test_contract_boundary_may_read_process_environment"
-        },
-        {
-          "kind": "test",
-          "law": "behavior.environment-aliases-are-rejected-outside-declared-boundaries",
-          "owner": "control-plane-kit-core",
-          "owner_kind": "core",
-          "reference": "tests.test_architecture_ownership.ArchitectureOwnershipTests.test_environment_aliases_are_rejected_outside_declared_boundaries"
-        },
-        {
-          "kind": "test",
-          "law": "behavior.observation-projection-cannot-mutate-graph-truth",
-          "owner": "control-plane-kit-core",
-          "owner_kind": "core",
-          "reference": "tests.test_architecture_ownership.ArchitectureOwnershipTests.test_observation_projection_cannot_mutate_graph_truth"
-        },
-        {
-          "kind": "test",
-          "law": "behavior.packaged-servers-do-not-bypass-contract-mutation-boundary",
-          "owner": "control-plane-kit-core",
-          "owner_kind": "core",
-          "reference": "tests.test_architecture_ownership.ArchitectureOwnershipTests.test_packaged_servers_do_not_bypass_contract_mutation_boundary"
-        },
-        {
-          "kind": "test",
-          "law": "behavior.raw-current-graph-mutation-is-reserved-to-guarded-workflow",
-          "owner": "control-plane-kit-core",
-          "owner_kind": "core",
-          "reference": "tests.test_architecture_ownership.ArchitectureOwnershipTests.test_raw_current_graph_mutation_is_reserved_to_guarded_workflow"
-        },
-        {
-          "kind": "test",
-          "law": "behavior.repository-obeys-commit-environment-and-graph-mutation-ownership",
-          "owner": "control-plane-kit-core",
-          "owner_kind": "core",
-          "reference": "tests.test_architecture_ownership.ArchitectureOwnershipTests.test_repository_obeys_commit_environment_and_graph_mutation_ownership"
-        },
-        {
-          "kind": "test",
-          "law": "behavior.store-commit-is-rejected-but-unit-of-work-commit-is-allowed",
-          "owner": "control-plane-kit-core",
-          "owner_kind": "core",
-          "reference": "tests.test_architecture_ownership.ArchitectureOwnershipTests.test_store_commit_is_rejected_but_unit_of_work_commit_is_allowed"
-        },
-        {
-          "kind": "test",
-          "law": "behavior.workflow-may-request-commit-but-pure-package-may-not",
-          "owner": "control-plane-kit-core",
-          "owner_kind": "core",
-          "reference": "tests.test_architecture_ownership.ArchitectureOwnershipTests.test_workflow_may_request_commit_but_pure_package_may_not"
-        }
-      ],
-      "family": "test_architecture_ownership"
     },
     {
       "count": 8,
@@ -1170,54 +928,6 @@
       "entries": [
         {
           "kind": "test",
-          "law": "behavior.allowed-skip-requires-a-reviewable-reason",
-          "owner": "control-plane-kit-core",
-          "owner_kind": "core",
-          "reference": "tests.test_architecture_test_integrity.ArchitectureTestIntegrityTests.test_allowed_skip_requires_a_reviewable_reason"
-        },
-        {
-          "kind": "test",
-          "law": "behavior.duplicate-and-literal-false-approved-skips-fail-closed",
-          "owner": "control-plane-kit-core",
-          "owner_kind": "core",
-          "reference": "tests.test_architecture_test_integrity.ArchitectureTestIntegrityTests.test_duplicate_and_literal_false_approved_skips_fail_closed"
-        },
-        {
-          "kind": "test",
-          "law": "behavior.mocks-are-reported-without-becoming-automatic-failures",
-          "owner": "control-plane-kit-core",
-          "owner_kind": "core",
-          "reference": "tests.test_architecture_test_integrity.ArchitectureTestIntegrityTests.test_mocks_are_reported_without_becoming_automatic_failures"
-        },
-        {
-          "kind": "test",
-          "law": "behavior.placeholders-empty-tests-and-swallowed-exceptions-fail",
-          "owner": "control-plane-kit-core",
-          "owner_kind": "core",
-          "reference": "tests.test_architecture_test_integrity.ArchitectureTestIntegrityTests.test_placeholders_empty_tests_and_swallowed_exceptions_fail"
-        },
-        {
-          "kind": "test",
-          "law": "behavior.repository-has-only-explicit-optional-dependency-skips",
-          "owner": "control-plane-kit-core",
-          "owner_kind": "core",
-          "reference": "tests.test_architecture_test_integrity.ArchitectureTestIntegrityTests.test_repository_has_only_explicit_optional_dependency_skips"
-        },
-        {
-          "kind": "test",
-          "law": "behavior.unconditional-and-unapproved-skips-fail-with-locations",
-          "owner": "control-plane-kit-core",
-          "owner_kind": "core",
-          "reference": "tests.test_architecture_test_integrity.ArchitectureTestIntegrityTests.test_unconditional_and_unapproved_skips_fail_with_locations"
-        }
-      ],
-      "family": "test_architecture_test_integrity"
-    },
-    {
-      "count": 6,
-      "entries": [
-        {
-          "kind": "test",
           "law": "behavior.capability-payload-uses-descriptors",
           "owner": "control-plane-kit-core",
           "owner_kind": "core",
@@ -1454,95 +1164,6 @@
       "family": "test_host_publication"
     },
     {
-      "count": 6,
-      "entries": [
-        {
-          "kind": "test",
-          "law": "behavior.interpreter-entrance-does-not-eagerly-import-optional-dependencies",
-          "owner": "control-plane-kit-core",
-          "owner_kind": "core",
-          "reference": "tests.test_root_api.RootApiTests.test_interpreter_entrance_does_not_eagerly_import_optional_dependencies"
-        },
-        {
-          "kind": "test",
-          "law": "behavior.optional-import-fixture-is-rejected",
-          "owner": "control-plane-kit-core",
-          "owner_kind": "core",
-          "reference": "tests.test_root_api.RootApiTests.test_optional_import_fixture_is_rejected"
-        },
-        {
-          "kind": "test",
-          "law": "behavior.pure-package-roots-do-not-import-optional-dependencies",
-          "owner": "control-plane-kit-core",
-          "owner_kind": "core",
-          "reference": "tests.test_root_api.RootApiTests.test_pure_package_roots_do_not_import_optional_dependencies"
-        },
-        {
-          "kind": "test",
-          "law": "behavior.root-all-names-are-bound",
-          "owner": "control-plane-kit-core",
-          "owner_kind": "core",
-          "reference": "tests.test_root_api.RootApiTests.test_root_all_names_are_bound"
-        },
-        {
-          "kind": "test",
-          "law": "behavior.root-api-does-not-import-optional-dependencies-directly",
-          "owner": "control-plane-kit-core",
-          "owner_kind": "core",
-          "reference": "tests.test_root_api.RootApiTests.test_root_api_does_not_import_optional_dependencies_directly"
-        },
-        {
-          "kind": "test",
-          "law": "behavior.root-api-imports-only-pure-package-surfaces",
-          "owner": "control-plane-kit-core",
-          "owner_kind": "core",
-          "reference": "tests.test_root_api.RootApiTests.test_root_api_imports_only_pure_package_surfaces"
-        }
-      ],
-      "family": "test_root_api"
-    },
-    {
-      "count": 5,
-      "entries": [
-        {
-          "kind": "test",
-          "law": "behavior.atomic-contract-suites-remain-independent-of-scenario-runner",
-          "owner": "control-plane-kit-core",
-          "owner_kind": "core",
-          "reference": "tests.test_architecture_scenarios.ScenarioArchitectureTests.test_atomic_contract_suites_remain_independent_of_scenario_runner"
-        },
-        {
-          "kind": "test",
-          "law": "behavior.fake-effect-is-a-typed-capability-provider-not-an-application-mock",
-          "owner": "control-plane-kit-core",
-          "owner_kind": "core",
-          "reference": "tests.test_architecture_scenarios.ScenarioArchitectureTests.test_fake_effect_is_a_typed_capability_provider_not_an_application_mock"
-        },
-        {
-          "kind": "test",
-          "law": "behavior.policy-rejects-store-scheduler-mock-and-private-coordinator-bypass",
-          "owner": "control-plane-kit-core",
-          "owner_kind": "core",
-          "reference": "tests.test_architecture_scenarios.ScenarioArchitectureTests.test_policy_rejects_store_scheduler_mock_and_private_coordinator_bypass"
-        },
-        {
-          "kind": "test",
-          "law": "behavior.runner-uses-deploy-program-not-manual-command-chain",
-          "owner": "control-plane-kit-core",
-          "owner_kind": "core",
-          "reference": "tests.test_architecture_scenarios.ScenarioArchitectureTests.test_runner_uses_deploy_program_not_manual_command_chain"
-        },
-        {
-          "kind": "test",
-          "law": "behavior.scenario-modules-obey-application-and-persistence-boundaries",
-          "owner": "control-plane-kit-core",
-          "owner_kind": "core",
-          "reference": "tests.test_architecture_scenarios.ScenarioArchitectureTests.test_scenario_modules_obey_application_and_persistence_boundaries"
-        }
-      ],
-      "family": "test_architecture_scenarios"
-    },
-    {
       "count": 5,
       "entries": [
         {
@@ -1663,33 +1284,6 @@
       "entries": [
         {
           "kind": "test",
-          "law": "behavior.mutation-and-generic-route-decorators-fail-closed",
-          "owner": "control-plane-kit-core",
-          "owner_kind": "core",
-          "reference": "tests.test_architecture_read_routes.ArchitectureReadRouteTests.test_mutation_and_generic_route_decorators_fail_closed"
-        },
-        {
-          "kind": "test",
-          "law": "behavior.read-modules-declare-only-read-methods",
-          "owner": "control-plane-kit-core",
-          "owner_kind": "core",
-          "reference": "tests.test_architecture_read_routes.ArchitectureReadRouteTests.test_read_modules_declare_only_read_methods"
-        },
-        {
-          "kind": "test",
-          "law": "behavior.static-declarations-match-realized-fastapi-workspace-routes",
-          "owner": "control-plane-kit-core",
-          "owner_kind": "core",
-          "reference": "tests.test_architecture_read_routes.ArchitectureReadRouteTests.test_static_declarations_match_realized_fastapi_workspace_routes"
-        }
-      ],
-      "family": "test_architecture_read_routes"
-    },
-    {
-      "count": 3,
-      "entries": [
-        {
-          "kind": "test",
           "law": "behavior.dry-run-plan-stop-is-idempotent-shape",
           "owner": "control-plane-kit-core",
           "owner_kind": "core",
@@ -1744,46 +1338,6 @@
       "entries": [
         {
           "kind": "test",
-          "law": "behavior.deployment-application-obeys-composition-boundary",
-          "owner": "control-plane-kit-core",
-          "owner_kind": "core",
-          "reference": "tests.test_architecture_deploy.DeploymentApplicationArchitectureTests.test_deployment_application_obeys_composition_boundary"
-        },
-        {
-          "kind": "test",
-          "law": "behavior.policy-resolves-aliases-and-rejects-boundary-bypasses",
-          "owner": "control-plane-kit-core",
-          "owner_kind": "core",
-          "reference": "tests.test_architecture_deploy.DeploymentApplicationArchitectureTests.test_policy_resolves_aliases_and_rejects_boundary_bypasses"
-        }
-      ],
-      "family": "test_architecture_deploy"
-    },
-    {
-      "count": 2,
-      "entries": [
-        {
-          "kind": "test",
-          "law": "behavior.repository-does-not-erase-protocol-products-in-projections",
-          "owner": "control-plane-kit-core",
-          "owner_kind": "core",
-          "reference": "tests.test_architecture_protocol.ProtocolArchitectureTests.test_repository_does_not_erase_protocol_products_in_projections"
-        },
-        {
-          "kind": "test",
-          "law": "behavior.scalar-protocol-projection-is-rejected-but-display-is-owned",
-          "owner": "control-plane-kit-core",
-          "owner_kind": "core",
-          "reference": "tests.test_architecture_protocol.ProtocolArchitectureTests.test_scalar_protocol_projection_is_rejected_but_display_is_owned"
-        }
-      ],
-      "family": "test_architecture_protocol"
-    },
-    {
-      "count": 2,
-      "entries": [
-        {
-          "kind": "test",
           "law": "behavior.dispatches-by-explicit-capability-assignment",
           "owner": "control-plane-kit-core",
           "owner_kind": "core",
@@ -1798,26 +1352,6 @@
         }
       ],
       "family": "test_capability_interpreter_registry"
-    },
-    {
-      "count": 2,
-      "entries": [
-        {
-          "kind": "test",
-          "law": "behavior.available-dependencies-are-accepted",
-          "owner": "control-plane-kit-core",
-          "owner_kind": "core",
-          "reference": "tests.test_optional_dependencies.OptionalDependencyTests.test_available_dependencies_are_accepted"
-        },
-        {
-          "kind": "test",
-          "law": "behavior.missing-dependency-names-surface-and-install-extra",
-          "owner": "control-plane-kit-core",
-          "owner_kind": "core",
-          "reference": "tests.test_optional_dependencies.OptionalDependencyTests.test_missing_dependency_names_surface_and_install_extra"
-        }
-      ],
-      "family": "test_optional_dependencies"
     },
     {
       "count": 2,
