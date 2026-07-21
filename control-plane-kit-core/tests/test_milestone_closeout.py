@@ -20,6 +20,7 @@ EXPECTED_MODULES = {
     "operations.commands",
     "operations.handoff",
     "operations.http",
+    "operations.lifecycle",
     "operations.mcp",
     "operations.parity",
     "operations.process",

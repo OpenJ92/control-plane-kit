@@ -99,6 +99,11 @@
       "digest": "sha256:d964936d20df974850dddb388e8efa83d2b193f7fbc7a914c348c664a7d3b67d",
       "id": "extract-e-788.read-projection-contract.unittest",
       "status": "passing"
+    },
+    {
+      "digest": "sha256:eef908b9c5190bb3f6085c68b59e4ffd00da0ca048ef5fdd4f7949d879384c11",
+      "id": "extract-e-789.execution-lifecycle-contract.unittest",
+      "status": "passing"
     }
   ],
   "schema": "cpk.successor-evidence-index"
