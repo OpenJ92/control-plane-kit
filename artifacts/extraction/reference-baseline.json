@@ -21,7 +21,7 @@
   },
   "owned_cleanup": {
     "volumes": [
-      "9d91c4e88ffb350edeb066b07e3f5e9926e1ef350053ae89d00de5934d566ad6"
+      "e10d18eec254f7272a123bfd84cedf4e67b7d24ec115b7db6ec801052fc84095"
     ]
   },
   "reference": {
@@ -38,7 +38,7 @@
       "reference": "python:3.14-slim"
     },
     "test_image": {
-      "id": "sha256:e57064fba659050ca8ea77462a9c3affda6aba6455115129a32532f1310179d6"
+      "id": "sha256:4ba7e10b4dcf2abfe3d524f07afb251cb599377d9295dbfb1cf70e05f5e12d29"
     }
   },
   "schema": "cpk.frozen-reference-evidence",
