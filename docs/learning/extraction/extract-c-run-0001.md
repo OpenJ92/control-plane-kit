@@ -986,3 +986,100 @@ Focus on secret exclusion, no optional dependency imports, no product package
 imports, no dynamic loading, no file/network/Docker effects in core, and no
 parallel product graph/planning model. If additional AST policies are added,
 keep them pointed at structural laws rather than incidental implementation text.
+
+## #628 Malicious Descriptor And Catalogue Hardening
+
+### Law Card
+
+- Reference identity: `EXTRACT.C.9.product-descriptor-hardening`
+- Evidence source: rollout issue #628 and the descriptor/catalogue/product
+  propagation stack from #624 through #627.
+- Observable law: malicious external product descriptors fail before admission,
+  effects, or catalogue mutation. Rejection is bounded and does not echo
+  secret-shaped canaries.
+- Objects reused:
+
+```text
+ProductDescriptorCodec
+ProductCatalog
+ContainerServerProduct
+OciImageReference
+ProductRuntimeContract
+```
+
+- Inputs exercised:
+
+```text
+credential-bearing registry
+reserved container path
+unknown protocol application
+shell-like description text
+descriptor-claimed registry policy
+same identity / different descriptor digest
+dynamic loading AST canaries
+```
+
+- Expected result: all malicious descriptor cases fail at pure decode or
+  construction boundaries; conflict rejection leaves the prior immutable
+  catalogue unchanged; product source contains no dynamic import, eval, exec,
+  file-open, Docker, FastAPI, httpx, MCP, psycopg, subprocess, or uvicorn import
+  dependency.
+- Negative cases not applicable inside extracted core: transaction rollback and
+  durable admission mutation. There is no UnitOfWork or admission store in
+  `control-plane-kit-core` yet, so those laws remain operations-layer work.
+- Future owner: core for pure rejection/AST policy; operations for durable
+  admission atomicity; interpreters for runtime registry/Docker policy.
+
+### Implementation
+
+#628 required no production code. It added a hardening test matrix around the
+current descriptor boundary:
+
+```python
+with self.assertRaises(ProductDescriptorError) as caught:
+    ProductDescriptorCodec().decode_document(descriptor)
+self.assertNotIn(SECRET_CANARY, str(caught.exception))
+```
+
+The catalogue mutation proof uses immutable composition directly:
+
+```python
+catalog = ProductCatalog.empty().add(first)
+with self.assertRaises(ProductCatalogConflict):
+    catalog.add(second)
+self.assertEqual(catalog.products, (first,))
+```
+
+The AST check is deliberately scoped to the product language module rather than
+the whole package, because this issue hardens external product admission:
+
+```python
+forbidden_calls = {"__import__", "eval", "exec", "open"}
+forbidden_import_roots = {"docker", "fastapi", "httpx", "importlib", ...}
+```
+
+### Decisions
+
+- Allowed registries are policy, not descriptor claims. A descriptor field such
+  as `allowed_registry` is rejected as an unknown product key.
+- Secret canaries are asserted against the raised top-level error text. Nested
+  exception causes may preserve debugging structure, but user-facing error text
+  remains bounded and generic.
+- Transaction rollback was not faked in core. Durable catalogue admission will
+  need a UnitOfWork law in the operations package.
+
+### Evidence
+
+- Green evidence: `./control-plane-kit-core/test.sh` passed 83 unittest tests,
+  compileall, and base import verification.
+- No production code changed.
+
+### Handoff To #629
+
+#629 should close the EXTRACT.C foundation. Run the complete core validation,
+review module boundaries, confirm the product language remains pure and
+dependency-light, summarize all product objects/morphisms/laws, and state the
+handoff to the next rollout step. In particular, #629 should call out the known
+future work: durable product admission transactions, operations-layer effect
+material/read projections, external server repository descriptors, and the
+future `cpk-server` product descriptor living outside core.
