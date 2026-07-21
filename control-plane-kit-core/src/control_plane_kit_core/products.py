@@ -53,6 +53,9 @@ _PRODUCT_CONTRACT_DESCRIPTOR_KEYS = frozenset(
         "lifecycle",
     }
 )
+_CONTAINER_PRODUCT_DESCRIPTOR_KEYS = frozenset(
+    {"kind", "identity", "image", "runtime_contract", "display_name", "description"}
+)
 _SOCKETS_DESCRIPTOR_KEYS = frozenset({"requirements", "providers"})
 _REQUIREMENT_DESCRIPTOR_KEYS = frozenset(
     {"protocol", "env_bindings", "required", "binding"}
@@ -61,6 +64,19 @@ _PROVIDER_DESCRIPTOR_KEYS = frozenset({"protocol"})
 _LIFECYCLE_DESCRIPTOR_KEYS = frozenset({"ownership", "compute", "data"})
 _DATA_RESOURCE_DESCRIPTOR_KEYS = frozenset({"resource_id", "persistence"})
 _SECRET_FIELD_HINTS = ("secret", "token", "password", "credential", "key")
+_MAX_DISPLAY_TEXT_LENGTH = 128
+_MAX_DESCRIPTION_TEXT_LENGTH = 1024
+_FORBIDDEN_PRODUCT_TEXT = (
+    "`",
+    "$(",
+    "&&",
+    "||",
+    ";",
+    "/var/run/",
+    "docker.sock",
+    "/proc/",
+    "/sys/",
+)
 
 
 class ProductIdentityError(ValueError):
@@ -81,6 +97,10 @@ class PlatformMismatch(OciImageReferenceError):
 
 class ProductRuntimeContractError(ValueError):
     """Raised when runtime contract material is not descriptor-safe."""
+
+
+class ContainerServerProductError(ValueError):
+    """Raised when an external container product is not descriptor-safe."""
 
 
 @dataclass(frozen=True, order=True)
@@ -197,7 +217,7 @@ class OciImageReference:
     digest: str
     tag: str | None = None
     platforms: tuple[OciPlatform, ...] = ()
-    provenance: Mapping[str, str] | None = None
+    provenance: Mapping[str, str] | tuple[tuple[str, str], ...] | None = None
 
     def __post_init__(self) -> None:
         _validate_registry(self.registry)
@@ -245,7 +265,7 @@ class OciImageReference:
             "digest": self.digest,
             "tag": self.tag,
             "platforms": [platform.descriptor() for platform in self.platforms],
-            "provenance": dict(sorted((self.provenance or {}).items())),
+            "provenance": dict(self.provenance or ()),
         }
 
 
@@ -403,6 +423,95 @@ class ProductRuntimeContractCodec:
             ) from error
 
 
+@dataclass(frozen=True)
+class ContainerServerProduct:
+    """Pure external OCI server product value."""
+
+    identity: ProductIdentity
+    image: OciImageReference
+    runtime_contract: ProductRuntimeContract
+    display_name: str | None = None
+    description: str | None = None
+
+    def __post_init__(self) -> None:
+        if not isinstance(self.identity, ProductIdentity):
+            raise ContainerServerProductError("product identity must be ProductIdentity")
+        if not isinstance(self.image, OciImageReference):
+            raise ContainerServerProductError("product image must be OciImageReference")
+        if not isinstance(self.runtime_contract, ProductRuntimeContract):
+            raise ContainerServerProductError(
+                "runtime contract must be ProductRuntimeContract"
+            )
+        if self.display_name is not None:
+            _validate_product_text(
+                self.display_name,
+                "display_name",
+                max_length=_MAX_DISPLAY_TEXT_LENGTH,
+            )
+        if self.description is not None:
+            _validate_product_text(
+                self.description,
+                "description",
+                max_length=_MAX_DESCRIPTION_TEXT_LENGTH,
+            )
+
+    def descriptor(self) -> dict[str, object]:
+        return {
+            "kind": "container-server",
+            "identity": ProductIdentityCodec().encode(self.identity),
+            "image": OciImageReferenceCodec().encode(self.image),
+            "runtime_contract": ProductRuntimeContractCodec().encode(
+                self.runtime_contract
+            ),
+            "display_name": self.display_name,
+            "description": self.description,
+        }
+
+
+class ContainerServerProductCodec:
+    """Strict codec for the first external product form."""
+
+    variant = "container-server"
+
+    def encode(self, product: ContainerServerProduct) -> dict[str, object]:
+        if not isinstance(product, ContainerServerProduct):
+            raise ContainerServerProductError("encode requires ContainerServerProduct")
+        return product.descriptor()
+
+    def decode(self, descriptor: Mapping[str, object]) -> ContainerServerProduct:
+        try:
+            mapping = _container_mapping(descriptor, "container server product")
+            _require_container_keys(
+                mapping,
+                _CONTAINER_PRODUCT_DESCRIPTOR_KEYS,
+                "container server product",
+            )
+            kind = _container_text(mapping, "kind")
+            if kind != self.variant:
+                raise ContainerServerProductError(
+                    f"unsupported product descriptor variant {kind!r}"
+                )
+            return ContainerServerProduct(
+                identity=ProductIdentityCodec().decode(
+                    _container_mapping(mapping["identity"], "identity")
+                ),
+                image=OciImageReferenceCodec().decode(
+                    _container_mapping(mapping["image"], "image")
+                ),
+                runtime_contract=ProductRuntimeContractCodec().decode(
+                    _container_mapping(mapping["runtime_contract"], "runtime contract")
+                ),
+                display_name=_container_optional_text(mapping, "display_name"),
+                description=_container_optional_text(mapping, "description"),
+            )
+        except ContainerServerProductError:
+            raise
+        except Exception as error:
+            raise ContainerServerProductError(
+                "container server product descriptor is malformed"
+            ) from error
+
+
 def _validate_identity_part(value: str, field: str) -> None:
     if not isinstance(value, str):
         raise ProductIdentityError(f"{field} must be a string")
@@ -533,9 +642,12 @@ def _string_mapping(value: object, field: str) -> Mapping[str, str]:
     return _provenance_mapping(value)
 
 
-def _provenance_mapping(value: Mapping[str, object]) -> dict[str, str]:
+def _provenance_mapping(
+    value: Mapping[str, object] | tuple[tuple[str, str], ...],
+) -> tuple[tuple[str, str], ...]:
     result: dict[str, str] = {}
-    for key, item in value.items():
+    items = value.items() if isinstance(value, Mapping) else value
+    for key, item in items:
         if not isinstance(key, str) or not _IDENTITY_PART.fullmatch(key):
             raise OciImageReferenceError("provenance keys must be bounded identity parts")
         if any(secret in key for secret in _SECRET_FIELD_HINTS):
@@ -545,7 +657,7 @@ def _provenance_mapping(value: Mapping[str, object]) -> dict[str, str]:
         if len(item) > _MAX_PROVENANCE_VALUE_LENGTH:
             raise OciImageReferenceError("provenance value is too long")
         result[key] = item
-    return dict(sorted(result.items()))
+    return tuple(sorted(result.items()))
 
 
 def _platform(value: object) -> OciPlatform:
@@ -748,5 +860,57 @@ def _require_product_keys(
     if missing:
         details.append(f"missing keys: {', '.join(missing)}")
     raise ProductRuntimeContractError(
+        f"invalid {label} descriptor; " + "; ".join(details)
+    )
+
+
+def _validate_product_text(value: str, field: str, *, max_length: int) -> None:
+    if not isinstance(value, str):
+        raise ContainerServerProductError(f"{field} must be a string")
+    if not value.strip() or len(value) > max_length or "\x00" in value:
+        raise ContainerServerProductError(f"{field} is empty or exceeds its bound")
+    lowered = value.lower()
+    if any(fragment in lowered for fragment in _FORBIDDEN_PRODUCT_TEXT):
+        raise ContainerServerProductError(f"{field} contains executable or host path text")
+
+
+def _container_mapping(value: object, field: str) -> Mapping[str, object]:
+    if not isinstance(value, Mapping):
+        raise ContainerServerProductError(f"{field} must be a mapping")
+    return value
+
+
+def _container_text(mapping: Mapping[str, object], key: str) -> str:
+    value = mapping[key]
+    if not isinstance(value, str):
+        raise ContainerServerProductError(f"{key} must be a string")
+    return value
+
+
+def _container_optional_text(mapping: Mapping[str, object], key: str) -> str | None:
+    value = mapping[key]
+    if value is None:
+        return None
+    if not isinstance(value, str):
+        raise ContainerServerProductError(f"{key} must be a string or null")
+    return value
+
+
+def _require_container_keys(
+    mapping: Mapping[str, object],
+    expected: frozenset[str],
+    label: str,
+) -> None:
+    keys = frozenset(mapping)
+    if keys == expected:
+        return
+    extra = sorted(keys - expected)
+    missing = sorted(expected - keys)
+    details: list[str] = []
+    if extra:
+        details.append(f"unknown keys: {', '.join(extra)}")
+    if missing:
+        details.append(f"missing keys: {', '.join(missing)}")
+    raise ContainerServerProductError(
         f"invalid {label} descriptor; " + "; ".join(details)
     )

@@ -429,3 +429,88 @@ The issue may add a display/server-spec layer if repository evidence shows it is
 needed, but it should not duplicate sockets, verification, lifecycle, secret,
 configuration, or capability models. Reuse `ProductRuntimeContract` and its
 strict codec.
+
+## #623 Container Server Product
+
+### Law Card
+
+- Reference identity: `EXTRACT.C.4.container-server-product`
+- Evidence source: rollout issue #623 and #622 handoff.
+- Observable law: the first external product form is a pure immutable value that
+  composes identity, OCI supply-chain identity, and runtime contract material.
+- Object:
+
+```text
+ContainerServerProduct
+  = ProductIdentity
+  x OciImageReference
+  x ProductRuntimeContract
+  x optional bounded display text
+```
+
+- Expected result: products construct, hash, encode, decode, round-trip, and
+  expose no callback/import/class-path/shell/host-path field.
+- Negative cases: unsupported descriptor variant, unknown descriptor fields,
+  host-path-like display metadata, shell-like display metadata, non-container
+  product forms, and mutable instance assignment.
+- Obsolete structural assumptions not migrated: product Python class paths,
+  command strings, Dockerfiles, entrypoints, host bind paths, callbacks, and
+  built-in package-owned product names.
+- Future owner: core.
+
+### Implementation
+
+The concrete product value is intentionally smaller than the conceptual issue
+text because #622 already gathered sockets, configuration, capabilities,
+verification, and lifecycle into `ProductRuntimeContract`:
+
+```python
+@dataclass(frozen=True)
+class ContainerServerProduct:
+    identity: ProductIdentity
+    image: OciImageReference
+    runtime_contract: ProductRuntimeContract
+    display_name: str | None = None
+    description: str | None = None
+```
+
+The descriptor carries an explicit closed variant:
+
+```python
+def descriptor(self) -> dict[str, object]:
+    return {
+        "kind": "container-server",
+        "identity": ProductIdentityCodec().encode(self.identity),
+        "image": OciImageReferenceCodec().encode(self.image),
+        "runtime_contract": ProductRuntimeContractCodec().encode(self.runtime_contract),
+        "display_name": self.display_name,
+        "description": self.description,
+    }
+```
+
+### Decisions
+
+- `ContainerServerProduct` does not name Hello, CoreDNS, cpk-server, Docker,
+  FastAPI, MCP, or any package-owned server.
+- The only admitted product variant is `container-server`. Future product forms
+  fail explicitly as unsupported variants.
+- Bounded display text is allowed, but it cannot contain shell-like syntax or
+  host-path escape hatches.
+- OCI provenance now stores internally as a sorted tuple of `(key, value)` pairs
+  so `OciImageReference` and therefore `ContainerServerProduct` are hashable
+  immutable values.
+
+### Evidence
+
+- Red evidence: focused core test collection failed only because
+  `ContainerServerProduct` did not yet exist.
+- Green evidence: `./control-plane-kit-core/test.sh` passed 57 unittest tests,
+  compileall, and base import verification.
+
+### Handoff To #624
+
+#624 should turn this strict value codec into the public `product.cpk.json`
+descriptor boundary. It should reuse `ContainerServerProductCodec` rather than
+adding another product model, and it should add descriptor-file concerns such as
+top-level schema shape, byte bounds, canonical JSON ordering, and closed variant
+admission.

@@ -3,6 +3,9 @@
 __version__ = "0.1.0"
 
 from control_plane_kit_core.products import (
+    ContainerServerProduct,
+    ContainerServerProductCodec,
+    ContainerServerProductError,
     DuplicateProductIdentity,
     OciImageReference,
     OciImageReferenceCodec,
@@ -19,6 +22,9 @@ from control_plane_kit_core.products import (
 )
 
 __all__ = [
+    "ContainerServerProduct",
+    "ContainerServerProductCodec",
+    "ContainerServerProductError",
     "DuplicateProductIdentity",
     "OciImageReference",
     "OciImageReferenceCodec",
