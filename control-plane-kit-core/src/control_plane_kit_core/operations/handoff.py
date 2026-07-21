@@ -19,7 +19,12 @@ from control_plane_kit_core.operations.parity import (
 from control_plane_kit_core.operations.process import ControlPlaneProcessContract
 from control_plane_kit_core.operations.services import DeploymentProgramBoundary
 from control_plane_kit_core.operations.transactions import UnitOfWorkBoundary
-from control_plane_kit_core.products import ProductIdentity, ProductIdentityCodec
+from control_plane_kit_core.products import (
+    OciImageReference,
+    OciImageReferenceCodec,
+    ProductIdentity,
+    ProductIdentityCodec,
+)
 from control_plane_kit_core.secrets import (
     SecretDelivery,
     secret_delivery_from_descriptor,
@@ -41,6 +46,14 @@ class ProcessStatePolicy(StrEnum):
 
     PROCESS_GLOBALS_ARE_NOT_TRUTH = "process-globals-are-not-truth"
     PROCESS_GLOBALS_OWN_TRUTH = "process-globals-own-truth"
+
+
+class PublicationPolicy(StrEnum):
+    """Closed publication policy for the future cpk-server image."""
+
+    PRIVATE_BY_DEFAULT_PUBLIC_ENDPOINT_EXPLICIT = (
+        "private-by-default-public-endpoint-explicit"
+    )
 
 
 @dataclass(frozen=True)
@@ -549,6 +562,166 @@ def canonical_cpk_server_material_handoff(
     )
 
 
+@dataclass(frozen=True)
+class CpkServerPublicationHandoffContract:
+    """OCI, publication, health, and live-evidence obligations."""
+
+    material: CpkServerMaterialHandoffContract
+    image: OciImageReference
+    runs_as_non_root: bool = True
+    mutable_runtime_install_policy: str = "forbidden"
+    filesystem_policy: str = "least-privilege-read-only-root"
+    publication_policy: PublicationPolicy = (
+        PublicationPolicy.PRIVATE_BY_DEFAULT_PUBLIC_ENDPOINT_EXPLICIT
+    )
+    live_smoke_obligations: tuple[str, ...] = (
+        "http-readiness",
+        "http-read-route",
+        "mcp-tool-call",
+        "shutdown-cleanup",
+    )
+    cleanup_evidence_policy: str = (
+        "owned-resources-cleaned-retained-data-preserved"
+    )
+    descriptor_digest_policy: str = "descriptor-references-published-digest"
+
+    def __post_init__(self) -> None:
+        if not isinstance(self.material, CpkServerMaterialHandoffContract):
+            raise InvalidCpkServerHandoffContract(
+                "material must be CpkServerMaterialHandoffContract"
+            )
+        if not isinstance(self.image, OciImageReference):
+            raise InvalidCpkServerHandoffContract("image must be OciImageReference")
+        if self.image.tag == "latest":
+            raise InvalidCpkServerHandoffContract(
+                "cpk-server image tag must not be latest"
+            )
+        if self.runs_as_non_root is not True:
+            raise InvalidCpkServerHandoffContract(
+                "cpk-server image must run as non-root"
+            )
+        if self.mutable_runtime_install_policy != "forbidden":
+            raise InvalidCpkServerHandoffContract(
+                "cpk-server must not install packages at runtime"
+            )
+        if self.filesystem_policy != "least-privilege-read-only-root":
+            raise InvalidCpkServerHandoffContract(
+                "cpk-server filesystem policy must be least privilege"
+            )
+        if self.publication_policy is not (
+            PublicationPolicy.PRIVATE_BY_DEFAULT_PUBLIC_ENDPOINT_EXPLICIT
+        ):
+            raise InvalidCpkServerHandoffContract(
+                "cpk-server publication must be private by default"
+            )
+        _validate_live_smoke(self.live_smoke_obligations)
+        if (
+            self.cleanup_evidence_policy
+            != "owned-resources-cleaned-retained-data-preserved"
+        ):
+            raise InvalidCpkServerHandoffContract(
+                "cleanup evidence must preserve retained data"
+            )
+        if self.descriptor_digest_policy != "descriptor-references-published-digest":
+            raise InvalidCpkServerHandoffContract(
+                "descriptor must reference the immutable published digest"
+            )
+        shutdown = self.material.entrypoint.process.shutdown
+        if shutdown.retained_data_policy != "preserve-retained-data":
+            raise InvalidCpkServerHandoffContract(
+                "publication handoff requires retained-data preservation"
+            )
+
+    def descriptor(self) -> dict[str, object]:
+        return {
+            "kind": "cpk-server-publication-handoff",
+            "material": self.material.descriptor(),
+            "image": OciImageReferenceCodec().encode(self.image),
+            "runs_as_non_root": self.runs_as_non_root,
+            "mutable_runtime_install_policy": self.mutable_runtime_install_policy,
+            "filesystem_policy": self.filesystem_policy,
+            "publication_policy": self.publication_policy.value,
+            "live_smoke_obligations": list(self.live_smoke_obligations),
+            "cleanup_evidence_policy": self.cleanup_evidence_policy,
+            "descriptor_digest_policy": self.descriptor_digest_policy,
+        }
+
+    @classmethod
+    def from_descriptor(
+        cls,
+        value: Mapping[str, object],
+    ) -> "CpkServerPublicationHandoffContract":
+        if set(value) != {
+            "kind",
+            "material",
+            "image",
+            "runs_as_non_root",
+            "mutable_runtime_install_policy",
+            "filesystem_policy",
+            "publication_policy",
+            "live_smoke_obligations",
+            "cleanup_evidence_policy",
+            "descriptor_digest_policy",
+        }:
+            raise InvalidCpkServerHandoffContract(
+                "cpk-server publication descriptor has unexpected keys"
+            )
+        if value["kind"] != "cpk-server-publication-handoff":
+            raise InvalidCpkServerHandoffContract(
+                "cpk-server publication descriptor has wrong kind"
+            )
+        try:
+            return cls(
+                material=CpkServerMaterialHandoffContract.from_descriptor(
+                    _mapping(value["material"], "material")
+                ),
+                image=OciImageReferenceCodec().decode(
+                    _mapping(value["image"], "image")
+                ),
+                runs_as_non_root=_bool(
+                    value["runs_as_non_root"],
+                    "runs_as_non_root",
+                ),
+                mutable_runtime_install_policy=_text(
+                    value["mutable_runtime_install_policy"],
+                    "mutable_runtime_install_policy",
+                ),
+                filesystem_policy=_text(
+                    value["filesystem_policy"],
+                    "filesystem_policy",
+                ),
+                publication_policy=PublicationPolicy(
+                    _text(value["publication_policy"], "publication_policy")
+                ),
+                live_smoke_obligations=tuple(
+                    _string_list(
+                        value["live_smoke_obligations"],
+                        "live_smoke_obligations",
+                    )
+                ),
+                cleanup_evidence_policy=_text(
+                    value["cleanup_evidence_policy"],
+                    "cleanup_evidence_policy",
+                ),
+                descriptor_digest_policy=_text(
+                    value["descriptor_digest_policy"],
+                    "descriptor_digest_policy",
+                ),
+            )
+        except ValueError as error:
+            raise InvalidCpkServerHandoffContract(str(error)) from error
+
+
+def canonical_cpk_server_publication_handoff(
+    *,
+    material: CpkServerMaterialHandoffContract,
+    image: OciImageReference,
+) -> CpkServerPublicationHandoffContract:
+    """Construct the canonical publication handoff for the future cpk-server."""
+
+    return CpkServerPublicationHandoffContract(material=material, image=image)
+
+
 def _text(value: object, field: str) -> str:
     if not isinstance(value, str):
         raise InvalidCpkServerHandoffContract(f"{field} must be text")
@@ -572,6 +745,12 @@ def _string_list(value: object, field: str) -> list[str]:
     if not all(isinstance(item, str) for item in values):
         raise InvalidCpkServerHandoffContract(f"{field} must be a string list")
     return values
+
+
+def _bool(value: object, field: str) -> bool:
+    if type(value) is not bool:
+        raise InvalidCpkServerHandoffContract(f"{field} must be bool")
+    return value
 
 
 def _validate_names(
@@ -628,4 +807,21 @@ def _reject_private_public_environment(
     ):
         raise InvalidCpkServerHandoffContract(
             "private endpoints must not be baked into public environment"
+        )
+
+
+def _validate_live_smoke(values: tuple[str, ...]) -> None:
+    if not isinstance(values, tuple) or not all(isinstance(value, str) for value in values):
+        raise InvalidCpkServerHandoffContract(
+            "live_smoke_obligations must be a tuple of strings"
+        )
+    required = {
+        "http-readiness",
+        "http-read-route",
+        "mcp-tool-call",
+        "shutdown-cleanup",
+    }
+    if set(values) != required:
+        raise InvalidCpkServerHandoffContract(
+            "live smoke must exercise HTTP, MCP, and cleanup obligations"
         )

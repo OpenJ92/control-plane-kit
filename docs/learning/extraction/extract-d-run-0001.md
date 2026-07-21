@@ -1783,3 +1783,158 @@ ShutdownContract
 
 #641 must still not create the actual Dockerfile, OCI image, or product
 descriptor in core.
+
+## #641 cpk-server Publication Handoff Contract
+
+### Law Card
+
+- Reference identity: `EXTRACT.D.4.cpk-server-publication-handoff`
+- Evidence source: OCI image reference language, product descriptor language,
+  process health contracts, shutdown/retained-data laws, #640 material handoff,
+  and #641.
+- Observable law: the future `cpk-server` product must publish an immutable
+  digest-pinned OCI image, run non-root, avoid runtime package installation,
+  expose only explicit publication, prove live HTTP/MCP behavior through the
+  public product contract, clean owned resources, and preserve retained data.
+- Expected result: a pure publication handoff names image, non-root policy,
+  mutable runtime install policy, filesystem policy, publication policy, live
+  smoke obligations, cleanup evidence, and descriptor digest policy.
+- Negative cases: root image, mutable runtime installs, `latest` tag, missing
+  HTTP/MCP/cleanup smoke obligation, retained-data deletion, and descriptor not
+  referencing the immutable published digest.
+- Obsolete assumptions not migrated: core-owned Dockerfile, core-owned image
+  build, core-owned publication, and fake live proof in core.
+- Future owner: core owns the handoff contract; `control-plane-kit-servers`
+  owns the actual image, product descriptor, live smoke, and cleanup evidence.
+
+### Objects
+
+```text
+PublicationPolicy
+  = private-by-default-public-endpoint-explicit
+
+CpkServerPublicationHandoffContract
+  = CpkServerMaterialHandoffContract
+  x OciImageReference
+  x runs_as_non_root
+  x mutable_runtime_install_policy
+  x filesystem_policy
+  x PublicationPolicy
+  x live_smoke_obligation*
+  x cleanup_evidence_policy
+  x descriptor_digest_policy
+```
+
+### Transformations
+
+```text
+material handoff
+  x digest-pinned OCI image reference
+    -> canonical_cpk_server_publication_handoff
+      -> CpkServerPublicationHandoffContract
+        -> closed descriptor
+          -> CpkServerPublicationHandoffContract
+```
+
+### Implementation Decision
+
+#641 extends `control_plane_kit_core.operations.handoff` with a publication
+contract rather than adding Docker or image-building code.
+
+The canonical shape is:
+
+```python
+CpkServerPublicationHandoffContract(
+    material=material,
+    image=OciImageReference(
+        registry="ghcr.io",
+        repository="openj92/control-plane-kit-servers/cpk-server",
+        digest="sha256:" + "a" * 64,
+        tag="0.1.0",
+        platforms=(OciPlatform("linux", "amd64"),),
+    ),
+    runs_as_non_root=True,
+    mutable_runtime_install_policy="forbidden",
+    filesystem_policy="least-privilege-read-only-root",
+)
+```
+
+The live smoke is a contract over the future product boundary:
+
+```python
+live_smoke_obligations = (
+    "http-readiness",
+    "http-read-route",
+    "mcp-tool-call",
+    "shutdown-cleanup",
+)
+```
+
+and the retained-data law is checked against the process shutdown contract:
+
+```python
+shutdown = self.material.entrypoint.process.shutdown
+if shutdown.retained_data_policy != "preserve-retained-data":
+    raise InvalidCpkServerHandoffContract(...)
+```
+
+This is again the same split:
+
+```text
+core
+  states the proof obligations
+
+control-plane-kit-servers/cpk-server
+  supplies the image, descriptor, live smoke, and cleanup evidence
+```
+
+### Test Evidence
+
+#641 extends `control-plane-kit-core/tests/test_cpk_server_entrypoint_handoff.py`.
+
+The focused red run failed with:
+
+```text
+ImportError: cannot import name 'CpkServerPublicationHandoffContract'
+```
+
+After implementation, the green run passed:
+
+```text
+Ran 144 tests in 0.955s
+OK
+control-plane-kit-core import ok
+```
+
+### Review Notes
+
+- Architecture: publication handoff depends on material handoff and
+  `OciImageReference`; it does not build or publish images.
+- Security: image must run non-root; publication is private by default with
+  explicit public endpoint.
+- Operations: live proof must include HTTP readiness, HTTP read route, MCP tool
+  call, and shutdown cleanup.
+- Retained data: cleanup evidence must preserve retained data.
+- Test integrity: no assertion was weakened.
+
+### Handoff To #642
+
+D.4 is now complete. #642 can perform the mandatory EXTRACT.D closeout over:
+
+```text
+DeploymentProgramBoundary
+UnitOfWorkBoundary
+McpStreamableHttpContract
+HttpApiContract
+ControlPlaneProcessContract
+AdapterParityContract
+AdapterCommandParityContract
+AdapterOperationSecurityParityContract
+CpkServerEntrypointHandoffContract
+CpkServerMaterialHandoffContract
+CpkServerPublicationHandoffContract
+```
+
+#642 should run the full validation required by the milestone, update learning,
+open the roadmap PR if required, and stop before any cpk-server process
+implementation begins.
