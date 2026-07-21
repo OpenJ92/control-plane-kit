@@ -114,6 +114,18 @@ class ProductDescriptorError(ValueError):
     """Raised when product.cpk.json content is not the current product language."""
 
 
+class ProductCatalogError(ValueError):
+    """Raised when an immutable product catalogue cannot be constructed."""
+
+
+class ProductCatalogConflict(ProductCatalogError):
+    """Raised when one identity is associated with conflicting product content."""
+
+
+class UnknownProductIdentity(ProductCatalogError):
+    """Raised when a catalogue lookup names an absent product identity."""
+
+
 @dataclass(frozen=True, order=True)
 class ProductIdentity:
     """Language-neutral identity for an externally supplied product contract."""
@@ -649,6 +661,93 @@ class ProductDescriptorCodec:
     def _validate_size(self, content: bytes) -> None:
         if not content or len(content) > self.max_bytes:
             raise ProductDescriptorError("product descriptor is empty or exceeds its bound")
+
+
+@dataclass(frozen=True)
+class ProductCatalog:
+    """Immutable catalogue assembled from admitted external product documents."""
+
+    products: tuple[ProductDescriptorDocument, ...] = ()
+
+    def __post_init__(self) -> None:
+        documents = tuple(self.products)
+        for document in documents:
+            if not isinstance(document, ProductDescriptorDocument):
+                raise ProductCatalogError(
+                    "catalogue products must contain ProductDescriptorDocument values"
+                )
+        by_identity: dict[ProductIdentity, ProductDescriptorDocument] = {}
+        for document in documents:
+            identity = document.product.identity
+            existing = by_identity.get(identity)
+            if existing is None:
+                by_identity[identity] = document
+            elif existing.content_digest != document.content_digest:
+                raise ProductCatalogConflict(
+                    f"conflicting product descriptor for {identity.key}"
+                )
+        ordered = tuple(by_identity[identity] for identity in sorted(by_identity))
+        object.__setattr__(self, "products", ordered)
+
+    @classmethod
+    def empty(cls) -> "ProductCatalog":
+        return cls(())
+
+    @classmethod
+    def from_documents(
+        cls,
+        documents: Iterable[ProductDescriptorDocument],
+    ) -> "ProductCatalog":
+        return cls(tuple(documents))
+
+    def lookup(self, identity: ProductIdentity) -> ProductDescriptorDocument:
+        if not isinstance(identity, ProductIdentity):
+            raise ProductCatalogError("lookup requires ProductIdentity")
+        for document in self.products:
+            if document.product.identity == identity:
+                return document
+        raise UnknownProductIdentity(f"unknown product identity {identity.key}")
+
+    def add(self, document: ProductDescriptorDocument) -> "ProductCatalog":
+        if not isinstance(document, ProductDescriptorDocument):
+            raise ProductCatalogError("add requires ProductDescriptorDocument")
+        try:
+            existing = self.lookup(document.product.identity)
+        except UnknownProductIdentity:
+            return ProductCatalog((*self.products, document))
+        if existing.content_digest != document.content_digest:
+            raise ProductCatalogConflict(
+                f"conflicting product descriptor for {document.product.identity.key}"
+            )
+        return self
+
+    def merge(self, other: "ProductCatalog") -> "ProductCatalog":
+        if not isinstance(other, ProductCatalog):
+            raise ProductCatalogError("merge requires ProductCatalog")
+        catalog = self
+        for document in other.products:
+            catalog = catalog.add(document)
+        return catalog
+
+    def descriptor(self) -> dict[str, object]:
+        return {
+            "products": [
+                json.loads(document.content.decode("utf-8"))
+                for document in self.products
+            ]
+        }
+
+    @property
+    def content(self) -> bytes:
+        return json.dumps(
+            self.descriptor(),
+            ensure_ascii=True,
+            separators=(",", ":"),
+        ).encode("utf-8")
+
+    @property
+    def content_digest(self) -> str:
+        return hashlib.sha256(self.content).hexdigest()
 
 
 def _validate_identity_part(value: str, field: str) -> None:

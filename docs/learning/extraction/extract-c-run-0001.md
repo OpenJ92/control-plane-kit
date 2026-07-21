@@ -637,3 +637,106 @@ values, enforce duplicate identity failure with the existing
 `require_unique_product_identities()` primitive, and keep catalogue admission
 pure. Do not add registry access, Docker pulls, filesystem scans, mutable global
 catalogues, package-owned server imports, or built-in cpk-server special cases.
+
+## #625 Immutable ProductCatalog Composition
+
+### Law Card
+
+- Reference identity: `EXTRACT.C.6.product-catalog-composition`
+- Evidence source: rollout issue #625, #624 handoff, and the immutable product
+  descriptor document boundary.
+- Observable law: a product catalogue is an immutable pure composition of
+  already-admitted descriptor documents. It is not a filesystem scanner,
+  registry client, plugin loader, mutable global table, or built-in product
+  enum.
+- Object:
+
+```text
+ProductCatalog
+  = sorted unique ProductDescriptorDocument*
+```
+
+- Partial composition:
+
+```text
+empty.add(document) -> ProductCatalog
+catalog.merge(other) -> ProductCatalog
+catalog.lookup(identity) -> ProductDescriptorDocument | UnknownProductIdentity
+```
+
+- Expected result: empty catalogue is identity, add is idempotent for identical
+  descriptor replay, merge is associative when product identities do not
+  conflict, lookup is explicit, descriptor ordering is deterministic, and digest
+  is derived from canonical catalogue bytes.
+- Negative cases: non-document catalogue entries, unknown lookups, same product
+  identity with different descriptor digests, merge conflicts, dynamic imports,
+  filesystem loading, hidden Docker/registry effects, and built-in package-owned
+  product assumptions.
+- Obsolete structural assumptions not migrated: server product enums, catalogue
+  globals, package import discovery, registry pulls during admission, and
+  descriptor identity derived from mutable OCI tags.
+- Future owner: core.
+
+### Implementation
+
+The catalogue is a value over `ProductDescriptorDocument`, not over product
+implementation classes:
+
+```python
+@dataclass(frozen=True)
+class ProductCatalog:
+    products: tuple[ProductDescriptorDocument, ...] = ()
+```
+
+Construction sorts by structural identity and collapses exact replay. A repeated
+identity with different canonical bytes is a conflict:
+
+```python
+for document in documents:
+    identity = document.product.identity
+    existing = by_identity.get(identity)
+    if existing is None:
+        by_identity[identity] = document
+    elif existing.content_digest != document.content_digest:
+        raise ProductCatalogConflict(...)
+```
+
+Merge is implemented through repeated `add`, so the same conflict and replay
+rules apply to all catalogue composition paths:
+
+```python
+def merge(self, other: ProductCatalog) -> ProductCatalog:
+    catalog = self
+    for document in other.products:
+        catalog = catalog.add(document)
+    return catalog
+```
+
+### Decisions
+
+- Exact repeated descriptor admission is not an error; it is replay and returns
+  the same catalogue object from `add()` when possible.
+- Same identity with different descriptor digest is the meaningful duplicate
+  conflict and fails closed.
+- Unknown lookup raises `UnknownProductIdentity` instead of returning an
+  ambiguous null-shaped value.
+- Catalogue content and digest are derived from deterministic descriptor JSON;
+  they are not supplied as trusted fields.
+- The catalogue still performs no file I/O. Loading directories or fetching
+  descriptors belongs outside core.
+
+### Evidence
+
+- Red evidence: focused core test collection failed only because
+  `ProductCatalog` did not yet exist.
+- Green evidence: `./control-plane-kit-core/test.sh` passed 70 unittest tests,
+  compileall, and base import verification.
+
+### Handoff To #626
+
+#626 can now bind a catalogued product into a deployment topology. It should
+accept a `ProductCatalog` plus structural product identity, resolve the product
+through `lookup()`, and produce ordinary core topology values. Do not let the
+topology compiler import product packages, read `product.cpk.json` files, pull
+OCI images, or infer package-owned servers. Unknown product identity must remain
+an explicit failure.

@@ -12,6 +12,9 @@ from control_plane_kit_core.products import (
     OciImageReferenceError,
     OciPlatform,
     PlatformMismatch,
+    ProductCatalog,
+    ProductCatalogConflict,
+    ProductCatalogError,
     ProductDescriptorCodec,
     ProductDescriptorDocument,
     ProductDescriptorError,
@@ -21,6 +24,7 @@ from control_plane_kit_core.products import (
     ProductRuntimeContract,
     ProductRuntimeContractCodec,
     ProductRuntimeContractError,
+    UnknownProductIdentity,
     require_unique_product_identities,
 )
 
@@ -34,6 +38,9 @@ __all__ = [
     "OciImageReferenceError",
     "OciPlatform",
     "PlatformMismatch",
+    "ProductCatalog",
+    "ProductCatalogConflict",
+    "ProductCatalogError",
     "ProductDescriptorCodec",
     "ProductDescriptorDocument",
     "ProductDescriptorError",
@@ -43,5 +50,6 @@ __all__ = [
     "ProductRuntimeContract",
     "ProductRuntimeContractCodec",
     "ProductRuntimeContractError",
+    "UnknownProductIdentity",
     "require_unique_product_identities",
 ]
