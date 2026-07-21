@@ -1,4 +1,10 @@
 {
-  "evidence": [],
+  "evidence": [
+    {
+      "digest": "sha256:4bff6481ba3871f90aeae2735b6b6085f24413506a4bae9a0aaae61384af99ae",
+      "id": "extract-b-677.graph-duplicate-identity.unittest",
+      "status": "passing"
+    }
+  ],
   "schema": "cpk.successor-evidence-index"
 }
