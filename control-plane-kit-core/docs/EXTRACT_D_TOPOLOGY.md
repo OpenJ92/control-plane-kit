@@ -101,6 +101,9 @@ D.5 Mandatory Stop
   transport.
 - Core-to-`cpk-server` entrypoint handoff as a pure contract over the already
   defined process, service, transaction, and parity contracts.
+- Core-to-`cpk-server` material handoff as pure requirements over environment
+  names, opaque secret deliveries, bounded configuration artifacts, and ordinary
+  external product descriptor admission.
 
 ## Deferred cpk-server Work
 

@@ -162,6 +162,23 @@ This states that `control-plane-kit-servers/cpk-server` imports core and
 composes one `DeploymentProgram`. Core still does not own the FastAPI process,
 hosted MCP server, Dockerfile, OCI image, or product descriptor.
 
+The cpk-server product material handoff is also pure contract data:
+
+```text
+CpkServerMaterialHandoffContract
+  = CpkServerEntrypointHandoffContract
+  x ProductIdentity
+  x public environment requirements
+  x opaque secret deliveries
+  x bounded configuration artifacts
+  x product descriptor admission policy
+```
+
+This records that database URIs, runtime auth tokens, and private endpoints are
+runtime lookups or secret references. They are not baked into an image or
+descriptor, and the future product descriptor is ordinary external product data,
+not auto-trusted self-registration.
+
 ## Extraction Law
 
 Every migrated behavior must be justified by a frozen law card from the

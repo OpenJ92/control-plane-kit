@@ -1604,3 +1604,182 @@ SecretEnvironmentDelivery / secret exclusion laws
 
 #640 must still not create the cpk-server Dockerfile, OCI image, or product
 descriptor inside core.
+
+## #640 cpk-server Material Handoff Contract
+
+### Law Card
+
+- Reference identity: `EXTRACT.D.4.cpk-server-material-handoff`
+- Evidence source: environment binding language, secret delivery language,
+  configuration artifact language, product descriptor language, #639 handoff,
+  and #640.
+- Observable law: the future `cpk-server` product has explicit runtime
+  material requirements, but no database URI, runtime token, private endpoint,
+  secret value, Dockerfile, OCI image, or concrete product descriptor is baked
+  into core.
+- Expected result: a pure material handoff names required environment variables,
+  required secret-delivered environment variables, required configuration
+  targets, product identity, descriptor filename, descriptor fields, admission
+  policy, runtime lookup policy, and no self-registration policy.
+- Negative cases: missing required secret delivery, missing required
+  configuration artifact, private endpoint in public environment, wrong product
+  identity, wrong descriptor filename, auto-trusted self-registration, and
+  non-runtime lookup policy.
+- Obsolete assumptions not migrated: core-owned
+  `control-plane-instance.product.cpk.json`, core-owned image build inputs, and
+  descriptor self-admission.
+- Future owner: core owns the handoff contract; `control-plane-kit-servers`
+  later supplies actual product material.
+
+### Objects
+
+```text
+CpkServerMaterialHandoffContract
+  = CpkServerEntrypointHandoffContract
+  x ProductIdentity
+  x PublicStaticEnvironmentBinding*
+  x required_environment_name*
+  x SecretDelivery*
+  x required_secret_environment_name*
+  x ConfigurationArtifact*
+  x required_configuration_target*
+  x descriptor_filename
+  x descriptor_admission_policy
+  x self_registration_policy
+  x runtime_lookup_policy
+  x required_product_descriptor_field*
+```
+
+### Transformations
+
+```text
+entrypoint handoff
+  x product identity
+  x env/secret/config requirements
+    -> canonical_cpk_server_material_handoff
+      -> CpkServerMaterialHandoffContract
+        -> closed descriptor
+          -> CpkServerMaterialHandoffContract
+```
+
+### Implementation Decision
+
+#640 extends `control_plane_kit_core.operations.handoff`. It composes existing
+languages rather than creating a second environment or secret vocabulary.
+
+The canonical shape is:
+
+```python
+CpkServerMaterialHandoffContract(
+    entrypoint=entrypoint,
+    product_identity=ProductIdentity("control-plane-kit", "cpk-server", 1),
+    public_environment=(
+        PublicStaticEnvironmentBinding("CPK_MODE", "server"),
+    ),
+    required_environment_names=("CPK_PUBLIC_BASE_URL",),
+    secret_deliveries=(
+        SecretEnvironmentDelivery(
+            "CPK_DATABASE_URL",
+            SecretReference("secret://runtime/cpk/database-url"),
+        ),
+        SecretEnvironmentDelivery(
+            "CPK_RUNTIME_AUTH_TOKEN",
+            SecretReference("secret://runtime/cpk/runtime-auth"),
+        ),
+    ),
+    required_secret_environment_names=(
+        "CPK_DATABASE_URL",
+        "CPK_RUNTIME_AUTH_TOKEN",
+    ),
+    configuration_artifacts=(
+        ConfigurationArtifact(
+            artifact_id="cpk-server-config",
+            target_path="/etc/cpk/server.json",
+            media_type=ConfigurationMediaType.JSON,
+            content='{"mode":"server"}',
+        ),
+    ),
+)
+```
+
+The material handoff checks that required secret names are actually delivered:
+
+```python
+delivered_secret_names = {
+    getattr(delivery, "environment_name", None)
+    for delivery in self.secret_deliveries
+}
+if not set(self.required_secret_environment_names) <= delivered_secret_names:
+    raise InvalidCpkServerHandoffContract(...)
+```
+
+and rejects obvious private endpoint values in public static environment:
+
+```python
+if any(marker in normalized for marker in (
+    "postgres://",
+    "postgresql://",
+    "private.",
+    "internal.",
+    "127.0.0.1",
+    "0.0.0.0",
+)):
+    raise InvalidCpkServerHandoffContract(...)
+```
+
+This preserves the distinction:
+
+```text
+secret reference
+  is durable descriptor data
+
+secret value / private endpoint
+  is runtime material
+```
+
+### Test Evidence
+
+#640 extends `control-plane-kit-core/tests/test_cpk_server_entrypoint_handoff.py`.
+
+The focused red run failed with:
+
+```text
+ImportError: cannot import name 'CpkServerMaterialHandoffContract'
+```
+
+After implementation, the green run passed:
+
+```text
+Ran 140 tests in 0.963s
+OK
+control-plane-kit-core import ok
+```
+
+### Review Notes
+
+- Architecture: material handoff composes existing environment/secret/config
+  and product identity languages.
+- Security: secret references are allowed; secret values/private endpoints are
+  rejected from public environment.
+- Data engineering: missing runtime material is modeled as failed readiness
+  obligations for the future product.
+- Product model: descriptor admission is ordinary external product data and is
+  not auto-trusted.
+- Test integrity: no assertion was weakened.
+
+### Handoff To #641
+
+#641 can now define OCI, publication, health, live smoke, cleanup, and retained
+data obligations for `control-plane-kit-servers/cpk-server`. It should build on:
+
+```text
+CpkServerEntrypointHandoffContract
+CpkServerMaterialHandoffContract
+OciImageReference / OciPlatform
+ProductRuntimeContract
+ControlPlaneProcessContract
+ShutdownContract
+```
+
+#641 must still not create the actual Dockerfile, OCI image, or product
+descriptor in core.

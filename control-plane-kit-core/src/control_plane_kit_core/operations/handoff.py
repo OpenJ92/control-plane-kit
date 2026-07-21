@@ -6,6 +6,11 @@ from dataclasses import dataclass
 from enum import StrEnum
 from typing import Mapping
 
+from control_plane_kit_core.configuration import ConfigurationArtifact
+from control_plane_kit_core.environment import (
+    PublicStaticEnvironmentBinding,
+    environment_binding_from_descriptor,
+)
 from control_plane_kit_core.operations.parity import (
     AdapterCommandParityContract,
     AdapterOperationSecurityParityContract,
@@ -14,6 +19,11 @@ from control_plane_kit_core.operations.parity import (
 from control_plane_kit_core.operations.process import ControlPlaneProcessContract
 from control_plane_kit_core.operations.services import DeploymentProgramBoundary
 from control_plane_kit_core.operations.transactions import UnitOfWorkBoundary
+from control_plane_kit_core.products import ProductIdentity, ProductIdentityCodec
+from control_plane_kit_core.secrets import (
+    SecretDelivery,
+    secret_delivery_from_descriptor,
+)
 
 
 class InvalidCpkServerHandoffContract(ValueError):
@@ -246,6 +256,299 @@ def canonical_cpk_server_entrypoint_handoff(
     )
 
 
+@dataclass(frozen=True)
+class CpkServerMaterialHandoffContract:
+    """Environment, secret, configuration, and descriptor obligations."""
+
+    entrypoint: CpkServerEntrypointHandoffContract
+    product_identity: ProductIdentity
+    public_environment: tuple[PublicStaticEnvironmentBinding, ...] = ()
+    required_environment_names: tuple[str, ...] = ()
+    secret_deliveries: tuple[SecretDelivery, ...] = ()
+    required_secret_environment_names: tuple[str, ...] = ()
+    configuration_artifacts: tuple[ConfigurationArtifact, ...] = ()
+    required_configuration_targets: tuple[str, ...] = ()
+    descriptor_filename: str = "control-plane-instance.product.cpk.json"
+    descriptor_admission_policy: str = "ordinary-external-product-data"
+    self_registration_policy: str = "not-auto-registered"
+    runtime_lookup_policy: str = "lookup-at-runtime"
+    required_product_descriptor_fields: tuple[str, ...] = (
+        "schema",
+        "product.identity",
+        "product.image",
+        "product.runtime_contract",
+        "product.runtime_contract.sockets",
+        "product.runtime_contract.verification",
+    )
+
+    def __post_init__(self) -> None:
+        if not isinstance(self.entrypoint, CpkServerEntrypointHandoffContract):
+            raise InvalidCpkServerHandoffContract(
+                "entrypoint must be CpkServerEntrypointHandoffContract"
+            )
+        if not isinstance(self.product_identity, ProductIdentity):
+            raise InvalidCpkServerHandoffContract(
+                "product_identity must be ProductIdentity"
+            )
+        if self.product_identity.namespace != "control-plane-kit" or (
+            self.product_identity.name != "cpk-server"
+        ):
+            raise InvalidCpkServerHandoffContract(
+                "material handoff must describe the cpk-server product identity"
+            )
+        if not isinstance(self.public_environment, tuple) or not all(
+            isinstance(binding, PublicStaticEnvironmentBinding)
+            for binding in self.public_environment
+        ):
+            raise InvalidCpkServerHandoffContract(
+                "public_environment must contain PublicStaticEnvironmentBinding values"
+            )
+        if not isinstance(self.secret_deliveries, tuple) or not all(
+            isinstance(delivery, SecretDelivery)
+            for delivery in self.secret_deliveries
+        ):
+            raise InvalidCpkServerHandoffContract(
+                "secret_deliveries must contain SecretDelivery values"
+            )
+        if not isinstance(self.configuration_artifacts, tuple) or not all(
+            isinstance(artifact, ConfigurationArtifact)
+            for artifact in self.configuration_artifacts
+        ):
+            raise InvalidCpkServerHandoffContract(
+                "configuration_artifacts must contain ConfigurationArtifact values"
+            )
+        _validate_names(self.required_environment_names, "required_environment_names")
+        _validate_names(
+            self.required_secret_environment_names,
+            "required_secret_environment_names",
+        )
+        _validate_names(
+            self.required_product_descriptor_fields,
+            "required_product_descriptor_fields",
+            allow_dots=True,
+        )
+        _validate_targets(self.required_configuration_targets)
+        for binding in self.public_environment:
+            _reject_private_public_environment(binding)
+        delivered_secret_names = {
+            getattr(delivery, "environment_name", None)
+            for delivery in self.secret_deliveries
+        }
+        if not set(self.required_secret_environment_names) <= delivered_secret_names:
+            raise InvalidCpkServerHandoffContract(
+                "required secret environment names must have secret deliveries"
+            )
+        artifact_targets = {
+            artifact.target_path for artifact in self.configuration_artifacts
+        }
+        if not set(self.required_configuration_targets) <= artifact_targets:
+            raise InvalidCpkServerHandoffContract(
+                "required configuration targets must have artifacts"
+            )
+        if self.descriptor_filename != "control-plane-instance.product.cpk.json":
+            raise InvalidCpkServerHandoffContract(
+                "cpk-server descriptor filename is fixed by handoff"
+            )
+        if self.descriptor_admission_policy != "ordinary-external-product-data":
+            raise InvalidCpkServerHandoffContract(
+                "cpk-server descriptor must be ordinary external product data"
+            )
+        if self.self_registration_policy != "not-auto-registered":
+            raise InvalidCpkServerHandoffContract(
+                "cpk-server descriptor must not be auto-registered or auto-trusted"
+            )
+        if self.runtime_lookup_policy != "lookup-at-runtime":
+            raise InvalidCpkServerHandoffContract(
+                "cpk-server material must be looked up at runtime"
+            )
+
+        ordered_public = tuple(sorted(self.public_environment))
+        ordered_secrets = tuple(
+            sorted(self.secret_deliveries, key=lambda delivery: repr(delivery.descriptor()))
+        )
+        ordered_artifacts = tuple(sorted(self.configuration_artifacts))
+        object.__setattr__(self, "public_environment", ordered_public)
+        object.__setattr__(self, "secret_deliveries", ordered_secrets)
+        object.__setattr__(self, "configuration_artifacts", ordered_artifacts)
+        object.__setattr__(
+            self,
+            "required_environment_names",
+            tuple(sorted(self.required_environment_names)),
+        )
+        object.__setattr__(
+            self,
+            "required_secret_environment_names",
+            tuple(sorted(self.required_secret_environment_names)),
+        )
+        object.__setattr__(
+            self,
+            "required_configuration_targets",
+            tuple(sorted(self.required_configuration_targets)),
+        )
+        object.__setattr__(
+            self,
+            "required_product_descriptor_fields",
+            tuple(sorted(self.required_product_descriptor_fields)),
+        )
+
+    def descriptor(self) -> dict[str, object]:
+        return {
+            "kind": "cpk-server-material-handoff",
+            "entrypoint": self.entrypoint.descriptor(),
+            "product_identity": ProductIdentityCodec().encode(self.product_identity),
+            "public_environment": [
+                binding.descriptor() for binding in self.public_environment
+            ],
+            "required_environment_names": list(self.required_environment_names),
+            "secret_deliveries": [
+                delivery.descriptor() for delivery in self.secret_deliveries
+            ],
+            "required_secret_environment_names": list(
+                self.required_secret_environment_names
+            ),
+            "configuration_artifacts": [
+                artifact.descriptor() for artifact in self.configuration_artifacts
+            ],
+            "required_configuration_targets": list(
+                self.required_configuration_targets
+            ),
+            "descriptor_filename": self.descriptor_filename,
+            "descriptor_admission_policy": self.descriptor_admission_policy,
+            "self_registration_policy": self.self_registration_policy,
+            "runtime_lookup_policy": self.runtime_lookup_policy,
+            "required_product_descriptor_fields": list(
+                self.required_product_descriptor_fields
+            ),
+        }
+
+    @classmethod
+    def from_descriptor(
+        cls,
+        value: Mapping[str, object],
+    ) -> "CpkServerMaterialHandoffContract":
+        if set(value) != {
+            "kind",
+            "entrypoint",
+            "product_identity",
+            "public_environment",
+            "required_environment_names",
+            "secret_deliveries",
+            "required_secret_environment_names",
+            "configuration_artifacts",
+            "required_configuration_targets",
+            "descriptor_filename",
+            "descriptor_admission_policy",
+            "self_registration_policy",
+            "runtime_lookup_policy",
+            "required_product_descriptor_fields",
+        }:
+            raise InvalidCpkServerHandoffContract(
+                "cpk-server material descriptor has unexpected keys"
+            )
+        if value["kind"] != "cpk-server-material-handoff":
+            raise InvalidCpkServerHandoffContract(
+                "cpk-server material descriptor has wrong kind"
+            )
+        try:
+            public_environment = _list(value["public_environment"], "public_environment")
+            secret_deliveries = _list(value["secret_deliveries"], "secret_deliveries")
+            configuration_artifacts = _list(
+                value["configuration_artifacts"],
+                "configuration_artifacts",
+            )
+            return cls(
+                entrypoint=CpkServerEntrypointHandoffContract.from_descriptor(
+                    _mapping(value["entrypoint"], "entrypoint")
+                ),
+                product_identity=ProductIdentityCodec().decode(
+                    _mapping(value["product_identity"], "product_identity")
+                ),
+                public_environment=tuple(
+                    _public_environment(binding)
+                    for binding in public_environment
+                ),
+                required_environment_names=tuple(
+                    _string_list(
+                        value["required_environment_names"],
+                        "required_environment_names",
+                    )
+                ),
+                secret_deliveries=tuple(
+                    secret_delivery_from_descriptor(
+                        _mapping(delivery, "secret_delivery")
+                    )
+                    for delivery in secret_deliveries
+                ),
+                required_secret_environment_names=tuple(
+                    _string_list(
+                        value["required_secret_environment_names"],
+                        "required_secret_environment_names",
+                    )
+                ),
+                configuration_artifacts=tuple(
+                    ConfigurationArtifact.from_descriptor(
+                        _mapping(artifact, "configuration_artifact")
+                    )
+                    for artifact in configuration_artifacts
+                ),
+                required_configuration_targets=tuple(
+                    _string_list(
+                        value["required_configuration_targets"],
+                        "required_configuration_targets",
+                    )
+                ),
+                descriptor_filename=_text(
+                    value["descriptor_filename"],
+                    "descriptor_filename",
+                ),
+                descriptor_admission_policy=_text(
+                    value["descriptor_admission_policy"],
+                    "descriptor_admission_policy",
+                ),
+                self_registration_policy=_text(
+                    value["self_registration_policy"],
+                    "self_registration_policy",
+                ),
+                runtime_lookup_policy=_text(
+                    value["runtime_lookup_policy"],
+                    "runtime_lookup_policy",
+                ),
+                required_product_descriptor_fields=tuple(
+                    _string_list(
+                        value["required_product_descriptor_fields"],
+                        "required_product_descriptor_fields",
+                    )
+                ),
+            )
+        except ValueError as error:
+            raise InvalidCpkServerHandoffContract(str(error)) from error
+
+
+def canonical_cpk_server_material_handoff(
+    *,
+    entrypoint: CpkServerEntrypointHandoffContract,
+    product_identity: ProductIdentity,
+    public_environment: tuple[PublicStaticEnvironmentBinding, ...] = (),
+    required_environment_names: tuple[str, ...] = (),
+    secret_deliveries: tuple[SecretDelivery, ...] = (),
+    required_secret_environment_names: tuple[str, ...] = (),
+    configuration_artifacts: tuple[ConfigurationArtifact, ...] = (),
+    required_configuration_targets: tuple[str, ...] = (),
+) -> CpkServerMaterialHandoffContract:
+    """Construct the canonical material handoff for the future cpk-server."""
+
+    return CpkServerMaterialHandoffContract(
+        entrypoint=entrypoint,
+        product_identity=product_identity,
+        public_environment=public_environment,
+        required_environment_names=required_environment_names,
+        secret_deliveries=secret_deliveries,
+        required_secret_environment_names=required_secret_environment_names,
+        configuration_artifacts=configuration_artifacts,
+        required_configuration_targets=required_configuration_targets,
+    )
+
+
 def _text(value: object, field: str) -> str:
     if not isinstance(value, str):
         raise InvalidCpkServerHandoffContract(f"{field} must be text")
@@ -256,3 +559,73 @@ def _mapping(value: object, field: str) -> Mapping[str, object]:
     if not isinstance(value, Mapping):
         raise InvalidCpkServerHandoffContract(f"{field} must be a descriptor")
     return value
+
+
+def _list(value: object, field: str) -> list[object]:
+    if not isinstance(value, list):
+        raise InvalidCpkServerHandoffContract(f"{field} must be a list")
+    return value
+
+
+def _string_list(value: object, field: str) -> list[str]:
+    values = _list(value, field)
+    if not all(isinstance(item, str) for item in values):
+        raise InvalidCpkServerHandoffContract(f"{field} must be a string list")
+    return values
+
+
+def _validate_names(
+    values: tuple[str, ...],
+    field: str,
+    *,
+    allow_dots: bool = False,
+) -> None:
+    if not isinstance(values, tuple) or not all(isinstance(value, str) for value in values):
+        raise InvalidCpkServerHandoffContract(f"{field} must be a tuple of strings")
+    for value in values:
+        allowed = set("ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789_")
+        if allow_dots:
+            allowed |= set("abcdefghijklmnopqrstuvwxyz.")
+        if not value or any(character not in allowed for character in value):
+            raise InvalidCpkServerHandoffContract(f"{field} contains invalid value")
+
+
+def _validate_targets(values: tuple[str, ...]) -> None:
+    if not isinstance(values, tuple) or not all(isinstance(value, str) for value in values):
+        raise InvalidCpkServerHandoffContract(
+            "required_configuration_targets must be a tuple of strings"
+        )
+    for value in values:
+        if not value.startswith("/"):
+            raise InvalidCpkServerHandoffContract(
+                "required configuration targets must be absolute paths"
+            )
+
+
+def _public_environment(value: object) -> PublicStaticEnvironmentBinding:
+    binding = environment_binding_from_descriptor(_mapping(value, "public_environment"))
+    if not isinstance(binding, PublicStaticEnvironmentBinding):
+        raise InvalidCpkServerHandoffContract(
+            "public environment must use public-static bindings"
+        )
+    return binding
+
+
+def _reject_private_public_environment(
+    binding: PublicStaticEnvironmentBinding,
+) -> None:
+    normalized = binding.value.casefold()
+    if any(
+        marker in normalized
+        for marker in (
+            "postgres://",
+            "postgresql://",
+            "private.",
+            "internal.",
+            "127.0.0.1",
+            "0.0.0.0",
+        )
+    ):
+        raise InvalidCpkServerHandoffContract(
+            "private endpoints must not be baked into public environment"
+        )
