@@ -89,6 +89,11 @@
       "digest": "sha256:858f3ae9cb3b24e29415a0a9d69dfb4a3940c4e13300f9334dbe6e0682f387ab",
       "id": "extract-e-786.deployment-program-boundary.unittest",
       "status": "passing"
+    },
+    {
+      "digest": "sha256:0cf7e6877af2c0f4633f0bef1b992f01f6a1198770732cc81e65c103b3b73f58",
+      "id": "extract-e-787.command-workflow-contract.unittest",
+      "status": "passing"
     }
   ],
   "schema": "cpk.successor-evidence-index"
