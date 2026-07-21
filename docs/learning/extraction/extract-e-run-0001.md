@@ -1955,3 +1955,98 @@ control-plane-kit-core/test.sh:           346 tests passed
 git diff --check:                         clean
 required incomplete core laws:            643 -> 633
 ```
+
+## #777 Planning/Saga Batch Closeout
+
+#777 closes the #739 planning/saga mapping batch.
+
+Closed batch:
+
+```text
+#739 planning/saga batch
+  = 11 retained families
+  = 74 frozen laws
+```
+
+Closeout artifact:
+
+```text
+artifacts/extraction/planning-saga-batch-closeout.json
+```
+
+Updated live inventory:
+
+```text
+artifacts/extraction/required-core-family-inventory.json
+```
+
+Closeout summary:
+
+```text
+source families:                         11
+source entries:                          74
+mapped retained families:                11
+retained source entries:                 74
+unexpected remaining retained families:   0
+live required-core inventory after #777: 533 entries / 69 families
+```
+
+The mapped families are:
+
+```text
+test_activity_plan_codec
+test_activity_plan_compiler
+test_planning_scenarios
+test_execution_scenario_expectations
+test_saga_program
+test_saga_state
+test_saga_journal
+test_scheduling
+test_scheduling_scenarios
+test_compensation_planning
+test_recovery_planning
+```
+
+Important closeout law:
+
+```text
+planning/saga retained family
+  -> passing successor evidence
+    -> absent from live required-core inventory
+```
+
+This proves the batch without using aggregate suite success as a substitute for
+per-family evidence. The closeout artifact is derived from:
+
+```text
+planning-saga-batch-audit.json
+  x required-core-family-inventory.json
+    -> planning-saga-batch-closeout.json
+```
+
+Boundary decision:
+
+The batch remains pure:
+
+```text
+GraphDiff
+  -> ActivityPlan
+    -> SagaProgram / SagaState / SagaJournalProjection
+      -> ExecutionSchedule
+        -> compensation and recovery planning views
+```
+
+No stores, UnitOfWork, Postgres, coordinator loops, worker claims, Docker,
+FastAPI, MCP, or adapter effects were moved into extracted core to satisfy
+#739.
+
+Validation evidence:
+
+```text
+focused #777 batch closeout slice: 16 tests passed
+focused parity/batch slice:       28 tests passed
+validate-parity.sh foundation:    valid=true, findings=0
+control-plane-kit-core/test.sh:   346 tests passed
+./test.sh:                        1193 tests passed
+git diff --check:                 clean
+```
