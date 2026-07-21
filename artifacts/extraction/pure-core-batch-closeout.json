@@ -1,0 +1,207 @@
+{
+  "families": [
+    {
+      "audit_decision": "retain",
+      "family": "test_algebra",
+      "rationale": "Socket authoring laws are pure topology language.",
+      "remaining_live_inventory_count": 0,
+      "source_count": 3,
+      "status": "mapped",
+      "target_issue": "#746"
+    },
+    {
+      "audit_decision": "move",
+      "family": "test_block_control_fastapi",
+      "rationale": "The laws exercise FastAPI control-route process behavior and authenticated runtime mutation, not the pure core graph language.",
+      "remaining_live_inventory_count": 8,
+      "source_count": 8,
+      "status": "moved_to_active_issue",
+      "target_issue": "#743"
+    },
+    {
+      "audit_decision": "retain",
+      "family": "test_capabilities",
+      "rationale": "Capabilities are closed graph-visible contract values.",
+      "remaining_live_inventory_count": 0,
+      "source_count": 5,
+      "status": "mapped",
+      "target_issue": "#748"
+    },
+    {
+      "audit_decision": "retain",
+      "family": "test_capability_compile",
+      "rationale": "Capability compilation is descriptor evidence on a pure block declaration.",
+      "remaining_live_inventory_count": 0,
+      "source_count": 1,
+      "status": "mapped",
+      "target_issue": "#748"
+    },
+    {
+      "audit_decision": "retain",
+      "family": "test_compile",
+      "rationale": "Topology compilation from declarative structure to graph structure is pure.",
+      "remaining_live_inventory_count": 0,
+      "source_count": 1,
+      "status": "mapped",
+      "target_issue": "#746"
+    },
+    {
+      "audit_decision": "retain",
+      "family": "test_configuration_artifacts",
+      "rationale": "Configuration artifacts are bounded immutable graph values.",
+      "remaining_live_inventory_count": 0,
+      "source_count": 7,
+      "status": "mapped",
+      "target_issue": "#748"
+    },
+    {
+      "audit_decision": "retain",
+      "family": "test_configuration_rendering",
+      "rationale": "Strict rendering produces deterministic secret-free configuration artifacts.",
+      "remaining_live_inventory_count": 0,
+      "source_count": 5,
+      "status": "mapped",
+      "target_issue": "#748"
+    },
+    {
+      "audit_decision": "retain",
+      "family": "test_connection_protocol",
+      "rationale": "Connection protocol is a closed compatibility language.",
+      "remaining_live_inventory_count": 0,
+      "source_count": 3,
+      "status": "mapped",
+      "target_issue": "#746"
+    },
+    {
+      "audit_decision": "split",
+      "family": "test_contracts",
+      "rationale": "Value-descriptor, redaction, environment, runtime, and secret contract laws belong with pure contracts; derived-resource publication and cleanup workflow laws belong with operations contracts.",
+      "remaining_live_inventory_count": 23,
+      "source_count": 41,
+      "status": "split_mapped_and_moved",
+      "target_issue": "#748,#740"
+    },
+    {
+      "audit_decision": "retain",
+      "family": "test_environment_bindings",
+      "rationale": "Environment bindings are closed graph values and descriptor-boundary redaction laws.",
+      "remaining_live_inventory_count": 0,
+      "source_count": 5,
+      "status": "mapped",
+      "target_issue": "#748"
+    },
+    {
+      "audit_decision": "retain",
+      "family": "test_graph_codec",
+      "rationale": "Graph descriptor encoding and decoding are pure boundary interpreters.",
+      "remaining_live_inventory_count": 0,
+      "source_count": 11,
+      "status": "mapped",
+      "target_issue": "#747"
+    },
+    {
+      "audit_decision": "retain",
+      "family": "test_graph_construction",
+      "rationale": "Graph identity construction laws are pure topology laws.",
+      "remaining_live_inventory_count": 0,
+      "source_count": 4,
+      "status": "mapped",
+      "target_issue": "#746"
+    },
+    {
+      "audit_decision": "retain",
+      "family": "test_graph_diff",
+      "rationale": "Graph diff is pure comparison algebra over validated graph values.",
+      "remaining_live_inventory_count": 0,
+      "source_count": 15,
+      "status": "mapped",
+      "target_issue": "#747"
+    },
+    {
+      "audit_decision": "retain",
+      "family": "test_graph_validation",
+      "rationale": "Validation produces structured findings from graph values without effects.",
+      "remaining_live_inventory_count": 0,
+      "source_count": 12,
+      "status": "mapped",
+      "target_issue": "#747"
+    },
+    {
+      "audit_decision": "retain",
+      "family": "test_policies",
+      "rationale": "Policies are pure decisions and risk classifications, not effects.",
+      "remaining_live_inventory_count": 0,
+      "source_count": 6,
+      "status": "mapped",
+      "target_issue": "#749"
+    },
+    {
+      "audit_decision": "move",
+      "family": "test_postgres_scenario_runner",
+      "rationale": "The laws exercise DeploymentProgram, durable plans, approval/admission/run behavior, and Postgres-backed scenario execution.",
+      "remaining_live_inventory_count": 15,
+      "source_count": 15,
+      "status": "moved_to_active_issue",
+      "target_issue": "#740"
+    },
+    {
+      "audit_decision": "retain",
+      "family": "test_probe_intents",
+      "rationale": "Probe intents and observations are closed effect-free request/result values; actual probe execution remains outside #738.",
+      "remaining_live_inventory_count": 0,
+      "source_count": 13,
+      "status": "mapped",
+      "target_issue": "#749"
+    },
+    {
+      "audit_decision": "retain",
+      "family": "test_secret_delivery_topology",
+      "rationale": "Secret deliveries are graph-topology declarations that preserve references without values.",
+      "remaining_live_inventory_count": 0,
+      "source_count": 4,
+      "status": "mapped",
+      "target_issue": "#748"
+    },
+    {
+      "audit_decision": "retain",
+      "family": "test_secrets",
+      "rationale": "Secret references, delivery descriptors, and redacted errors are pure contract values.",
+      "remaining_live_inventory_count": 0,
+      "source_count": 9,
+      "status": "mapped",
+      "target_issue": "#748"
+    },
+    {
+      "audit_decision": "retain",
+      "family": "test_verification_contract",
+      "rationale": "Verification contracts describe checks; executing those checks belongs to interpreters.",
+      "remaining_live_inventory_count": 0,
+      "source_count": 11,
+      "status": "mapped",
+      "target_issue": "#748"
+    }
+  ],
+  "issue": "#750",
+  "laws": [
+    "Retained pure-core families must have no remaining live required-core inventory entries after #738 closeout.",
+    "Moved families remain visible on their target issue and are not counted as migrated by #738.",
+    "Split families must make the pure slice explicit while leaving the non-core slice visible downstream.",
+    "Aggregate suite passes do not replace per-family successor evidence."
+  ],
+  "live_inventory": "artifacts/extraction/required-core-family-inventory.json",
+  "parent": "#738",
+  "schema": "cpk.pure-core-batch-closeout",
+  "source_audit": "artifacts/extraction/pure-core-batch-audit.json",
+  "summary": {
+    "mapped_retained_families": 17,
+    "moved_families": 2,
+    "moved_source_entries": 23,
+    "remaining_moved_or_split_entries": 46,
+    "retained_source_entries": 115,
+    "source_entries": 179,
+    "source_families": 20,
+    "split_families": 1,
+    "split_source_entries": 41,
+    "unexpected_remaining_retained_families": 0
+  }
+}

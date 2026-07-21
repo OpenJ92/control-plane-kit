@@ -62,6 +62,40 @@ class ExtractionBatchPlanTests(unittest.TestCase):
         }
         self.assertLessEqual(inventory_references, planned_references)
 
+    def test_pure_core_batch_closeout_maps_retained_families_and_keeps_moves_visible(
+        self,
+    ) -> None:
+        closeout = read_bounded_json(ARTIFACT_ROOT / "pure-core-batch-closeout.json")
+
+        self.assertEqual(closeout["schema"], "cpk.pure-core-batch-closeout")
+        self.assertEqual(closeout["issue"], "#750")
+        self.assertEqual(closeout["parent"], "#738")
+        self.assertEqual(closeout["summary"]["unexpected_remaining_retained_families"], 0)
+        self.assertEqual(closeout["summary"]["mapped_retained_families"], 17)
+        self.assertEqual(closeout["summary"]["moved_families"], 2)
+        self.assertEqual(closeout["summary"]["split_families"], 1)
+
+        families = {
+            family["family"]: family
+            for family in closeout["families"]
+        }
+        self.assertEqual(families["test_postgres_scenario_runner"]["status"], "moved_to_active_issue")
+        self.assertEqual(families["test_postgres_scenario_runner"]["target_issue"], "#740")
+        self.assertEqual(families["test_block_control_fastapi"]["status"], "moved_to_active_issue")
+        self.assertEqual(families["test_block_control_fastapi"]["target_issue"], "#743")
+        self.assertEqual(families["test_contracts"]["status"], "split_mapped_and_moved")
+        self.assertEqual(families["test_contracts"]["target_issue"], "#748,#740")
+
+        retained = [
+            family
+            for family in families.values()
+            if family["audit_decision"] == "retain"
+        ]
+        self.assertTrue(retained)
+        self.assertTrue(
+            all(family["remaining_live_inventory_count"] == 0 for family in retained)
+        )
+
 
 if __name__ == "__main__":
     unittest.main()
