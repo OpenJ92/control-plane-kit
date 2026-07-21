@@ -122,3 +122,29 @@ All validation ran in Docker. The package still claims no migrated parity laws.
 #613 should turn these focused checks into a reusable Docker-first package test
 harness. It should not add Postgres, runtime-effect Docker tests, product
 images, or pytest.
+
+## #613 Test Harness
+
+### Capability
+
+`control-plane-kit-core/test.sh` now runs the package-local checks in Docker:
+
+```text
+python -m unittest discover -s tests
+python -m compileall src tests
+python -m pip install . && import control_plane_kit_core
+```
+
+The unittest lane uses a read-only package mount. The compile and install lanes
+copy the package into `/tmp/pkg` inside the container because those operations
+legitimately create build or bytecode artifacts.
+
+The repository root `./test.sh` invokes the core package harness before the
+existing Docker/Postgres suite, so a single validation command now covers the
+frozen/reference package and the extracted core scaffold.
+
+### Handoff
+
+#677 can rely on a reusable core package harness while rehearsing the
+law-context-before-dry-run loop. It should still avoid claiming parity from
+scaffold or harness tests alone.
