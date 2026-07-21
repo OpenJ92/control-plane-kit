@@ -272,3 +272,100 @@ The closeout entry identity now carries `law` everywhere, including deferred
 entries. That keeps the report language closed around the actual behavioral
 law, not just the frozen test path. Duplicate law identities fail closed before
 the family report is produced.
+
+## #729 ActivityPlan Successor Mapping Slice
+
+#729 begins with one deliberately small high-confidence family:
+
+```text
+test_activity_plan
+```
+
+This family was chosen because the extracted core already owns
+`control-plane-kit-core/tests/test_activity_plan.py`, and the remaining frozen
+laws map directly to the same closed `ActivityPlan` algebra rather than to a
+broader system scenario.
+
+Seven frozen laws were mapped:
+
+```text
+behavior.destructive-activity-requires-high-or-critical-risk
+behavior.empty-plan-and-missing-lookup-are-explicit
+behavior.every-closed-operation-accepts-only-its-typed-target
+behavior.independent-activities-use-id-as-deterministic-tie-breaker
+behavior.missing-duplicate-self-and-cycle-dependencies-fail-structurally
+behavior.review-change-cannot-be-downgraded-to-low-risk
+behavior.runtime-lifecycle-operations-use-runtime-targets
+```
+
+The proof artifact is:
+
+```text
+artifacts/extraction/successor-proofs/extract-e-729-activity-plan-family.json
+```
+
+It is indexed as:
+
+```text
+extract-e-729.activity-plan-family.unittest
+sha256:2c7b9252548e9b8232c1121d4d9a0fa65f0e8e752357150d15c5a5ffd34bb18f
+```
+
+The target test command is:
+
+```text
+docker run --rm \
+  -v /Users/jacobvartuli/Software/self/control-plane-kit/control-plane-kit-core:/pkg:ro \
+  -w /pkg \
+  -e PYTHONPATH=/pkg/src \
+  -e PYTHONDONTWRITEBYTECODE=1 \
+  python:3.14-slim \
+  python -m unittest tests.test_activity_plan
+```
+
+Important successor snippet:
+
+```python
+def test_every_closed_operation_accepts_only_its_typed_target(self) -> None:
+    valid_operations = (
+        (StartNode(NodeTarget("node")), RiskLevel.LOW, ActivityImpact.NON_DESTRUCTIVE),
+        ...
+        (
+            DestroyDataResource(DataResourceTarget("postgres", "volume")),
+            RiskLevel.CRITICAL,
+            ActivityImpact.DESTRUCTIVE,
+        ),
+    )
+```
+
+That snippet matters because the successor test did not weaken the safety law
+to make operation coverage pass. Data destruction remains critical and
+destructive; review changes remain high risk.
+
+The #729 artifact guard is:
+
+```python
+def test_activity_plan_family_is_fully_mapped_to_passing_successor_evidence(
+    self,
+) -> None:
+    inventory = inventory_unmapped_required_core_families(self.closeout())
+    families = {family["family"]: family for family in inventory["families"]}
+    self.assertIsNone(families.get("test_activity_plan"), ...)
+```
+
+This was red before the manifest update with:
+
+```text
+test_activity_plan still has 7 unmapped laws
+```
+
+Current counts after the slice:
+
+```text
+completed required-core:   31
+incomplete required-core: 749
+unmapped families:         99
+```
+
+No deferred server/product laws moved. No aggregate suite pass was treated as
+evidence without explicit manifest successors.

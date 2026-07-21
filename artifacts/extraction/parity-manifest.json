@@ -177,7 +177,13 @@
       "owner": "control-plane-kit-core",
       "owner_kind": "core",
       "reference": "tests.test_activity_plan.ActivityPlanTests.test_destructive_activity_requires_high_or_critical_risk",
-      "successors": [],
+      "successors": [
+        {
+          "evidence": "extract-e-729.activity-plan-family.unittest",
+          "id": "control-plane-kit-core.tests.test_activity_plan.ActivityPlanTests.test_destructive_activity_requires_high_or_critical_risk",
+          "status": "passing"
+        }
+      ],
       "supersession": null
     },
     {
@@ -187,7 +193,13 @@
       "owner": "control-plane-kit-core",
       "owner_kind": "core",
       "reference": "tests.test_activity_plan.ActivityPlanTests.test_empty_plan_and_missing_lookup_are_explicit",
-      "successors": [],
+      "successors": [
+        {
+          "evidence": "extract-e-729.activity-plan-family.unittest",
+          "id": "control-plane-kit-core.tests.test_activity_plan.ActivityPlanTests.test_empty_plan_and_missing_lookup_are_explicit",
+          "status": "passing"
+        }
+      ],
       "supersession": null
     },
     {
@@ -197,7 +209,13 @@
       "owner": "control-plane-kit-core",
       "owner_kind": "core",
       "reference": "tests.test_activity_plan.ActivityPlanTests.test_every_closed_operation_accepts_only_its_typed_target",
-      "successors": [],
+      "successors": [
+        {
+          "evidence": "extract-e-729.activity-plan-family.unittest",
+          "id": "control-plane-kit-core.tests.test_activity_plan.ActivityPlanTests.test_every_closed_operation_accepts_only_its_typed_target",
+          "status": "passing"
+        }
+      ],
       "supersession": null
     },
     {
@@ -223,7 +241,13 @@
       "owner": "control-plane-kit-core",
       "owner_kind": "core",
       "reference": "tests.test_activity_plan.ActivityPlanTests.test_independent_activities_use_id_as_deterministic_tie_breaker",
-      "successors": [],
+      "successors": [
+        {
+          "evidence": "extract-e-729.activity-plan-family.unittest",
+          "id": "control-plane-kit-core.tests.test_activity_plan.ActivityPlanTests.test_independent_activities_use_id_as_deterministic_tie_breaker",
+          "status": "passing"
+        }
+      ],
       "supersession": null
     },
     {
@@ -249,7 +273,13 @@
       "owner": "control-plane-kit-core",
       "owner_kind": "core",
       "reference": "tests.test_activity_plan.ActivityPlanTests.test_missing_duplicate_self_and_cycle_dependencies_fail_structurally",
-      "successors": [],
+      "successors": [
+        {
+          "evidence": "extract-e-729.activity-plan-family.unittest",
+          "id": "control-plane-kit-core.tests.test_activity_plan.ActivityPlanTests.test_missing_duplicate_self_and_cycle_dependencies_fail_structurally",
+          "status": "passing"
+        }
+      ],
       "supersession": null
     },
     {
@@ -275,7 +305,13 @@
       "owner": "control-plane-kit-core",
       "owner_kind": "core",
       "reference": "tests.test_activity_plan.ActivityPlanTests.test_review_change_cannot_be_downgraded_to_low_risk",
-      "successors": [],
+      "successors": [
+        {
+          "evidence": "extract-e-729.activity-plan-family.unittest",
+          "id": "control-plane-kit-core.tests.test_activity_plan.ActivityPlanTests.test_review_change_cannot_be_downgraded_to_low_risk",
+          "status": "passing"
+        }
+      ],
       "supersession": null
     },
     {
@@ -285,7 +321,13 @@
       "owner": "control-plane-kit-core",
       "owner_kind": "core",
       "reference": "tests.test_activity_plan.ActivityPlanTests.test_runtime_lifecycle_operations_use_runtime_targets",
-      "successors": [],
+      "successors": [
+        {
+          "evidence": "extract-e-729.activity-plan-family.unittest",
+          "id": "control-plane-kit-core.tests.test_activity_plan.ActivityPlanTests.test_runtime_lifecycle_operations_use_runtime_targets",
+          "status": "passing"
+        }
+      ],
       "supersession": null
     },
     {

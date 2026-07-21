@@ -74,6 +74,7 @@ FROM package AS test
 
 COPY SERVER_PRODUCT_ROLLOUT.md ./
 COPY examples ./examples
+COPY artifacts ./artifacts
 COPY docs ./docs
 COPY extraction_parity ./extraction_parity
 COPY reference-inventory.sh reference-test.sh ./
