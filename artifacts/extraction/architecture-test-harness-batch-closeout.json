@@ -1,0 +1,207 @@
+{
+  "decisions": [
+    "AST-policy and test-integrity negative cases remain live harness behavior, not obsolete structure.",
+    "Root import and optional dependency laws remain core public import guards proved without importing optional server dependencies.",
+    "No #741 law is completed by reviewed supersession; every law maps to passing successor evidence.",
+    "Package-name churn alone is not a supersession rationale.",
+    "Neutral harness mappings are evidence-backed and remain visible in the parity manifest."
+  ],
+  "families": [
+    {
+      "classification": "neutral-extraction-test-harness",
+      "family": "test_architecture_analysis",
+      "rationale": "Preserves reusable architecture/test-integrity law with current package topology evidence; no package-name churn is treated as supersession.",
+      "references": [
+        "tests.test_architecture_analysis.ArchitectureAnalysisTests.test_bare_and_named_exception_handlers_have_total_ordering",
+        "tests.test_architecture_analysis.ArchitectureAnalysisTests.test_boolean_arguments_assertions_and_empty_test_bodies_are_explicit",
+        "tests.test_architecture_analysis.ArchitectureAnalysisTests.test_call_keyword_shapes_are_recorded_without_values",
+        "tests.test_architecture_analysis.ArchitectureAnalysisTests.test_comments_strings_and_docstrings_do_not_become_code_facts",
+        "tests.test_architecture_analysis.ArchitectureAnalysisTests.test_computed_all_is_explicitly_unsupported",
+        "tests.test_architecture_analysis.ArchitectureAnalysisTests.test_dotted_import_binding_matches_python_semantics",
+        "tests.test_architecture_analysis.ArchitectureAnalysisTests.test_file_analysis_derives_module_and_rejects_files_outside_root",
+        "tests.test_architecture_analysis.ArchitectureAnalysisTests.test_import_aliases_calls_decorators_and_locations_are_resolved",
+        "tests.test_architecture_analysis.ArchitectureAnalysisTests.test_literal_all_exports_resolve_imported_and_local_provenance",
+        "tests.test_architecture_analysis.ArchitectureAnalysisTests.test_malformed_source_fails_without_echoing_source",
+        "tests.test_architecture_analysis.ArchitectureAnalysisTests.test_nested_class_names_and_decorators_are_explicit",
+        "tests.test_architecture_analysis.ArchitectureAnalysisTests.test_pass_only_functions_and_exception_handlers_are_explicit",
+        "tests.test_architecture_analysis.ArchitectureAnalysisTests.test_policy_evaluation_is_deterministic_and_location_backed",
+        "tests.test_architecture_analysis.ArchitectureAnalysisTests.test_prose_does_not_become_export_provenance",
+        "tests.test_architecture_analysis.ArchitectureAnalysisTests.test_relative_import_and_nested_method_names_are_preserved"
+      ],
+      "remaining_live_inventory_count": 0,
+      "source_count": 15,
+      "status": "mapped_to_passing_successor_evidence",
+      "successor": "extract-e-741.architecture-test-harness.unittest",
+      "target_surface": "neutral extraction harness"
+    },
+    {
+      "classification": "neutral-extraction-test-harness",
+      "family": "test_architecture_dependencies",
+      "rationale": "Preserves reusable architecture/test-integrity law with current package topology evidence; no package-name churn is treated as supersession.",
+      "references": [
+        "tests.test_architecture_dependencies.ArchitectureDependencyTests.test_effect_materialization_and_interpreters_cannot_import_stores",
+        "tests.test_architecture_dependencies.ArchitectureDependencyTests.test_environment_metadata_escape_hatch_is_rejected",
+        "tests.test_architecture_dependencies.ArchitectureDependencyTests.test_jinja_environment_is_owned_by_declared_template_interpreters",
+        "tests.test_architecture_dependencies.ArchitectureDependencyTests.test_process_and_http_clients_are_adapter_owned",
+        "tests.test_architecture_dependencies.ArchitectureDependencyTests.test_product_interpreter_edge_is_exactly_coredns_to_configuration_rendering",
+        "tests.test_architecture_dependencies.ArchitectureDependencyTests.test_raw_static_environment_mapping_is_rejected_at_docker_authoring",
+        "tests.test_architecture_dependencies.ArchitectureDependencyTests.test_relative_same_package_import_is_allowed",
+        "tests.test_architecture_dependencies.ArchitectureDependencyTests.test_repository_obeys_declared_dependency_and_transport_ownership",
+        "tests.test_architecture_dependencies.ArchitectureDependencyTests.test_reverse_dependency_is_rejected_for_import_and_from_import"
+      ],
+      "remaining_live_inventory_count": 0,
+      "source_count": 9,
+      "status": "mapped_to_passing_successor_evidence",
+      "successor": "extract-e-741.architecture-test-harness.unittest",
+      "target_surface": "neutral extraction harness"
+    },
+    {
+      "classification": "neutral-extraction-test-harness",
+      "family": "test_architecture_ownership",
+      "rationale": "Preserves reusable architecture/test-integrity law with current package topology evidence; no package-name churn is treated as supersession.",
+      "references": [
+        "tests.test_architecture_ownership.ArchitectureOwnershipTests.test_contract_boundary_may_read_process_environment",
+        "tests.test_architecture_ownership.ArchitectureOwnershipTests.test_environment_aliases_are_rejected_outside_declared_boundaries",
+        "tests.test_architecture_ownership.ArchitectureOwnershipTests.test_observation_projection_cannot_mutate_graph_truth",
+        "tests.test_architecture_ownership.ArchitectureOwnershipTests.test_packaged_servers_do_not_bypass_contract_mutation_boundary",
+        "tests.test_architecture_ownership.ArchitectureOwnershipTests.test_raw_current_graph_mutation_is_reserved_to_guarded_workflow",
+        "tests.test_architecture_ownership.ArchitectureOwnershipTests.test_repository_obeys_commit_environment_and_graph_mutation_ownership",
+        "tests.test_architecture_ownership.ArchitectureOwnershipTests.test_store_commit_is_rejected_but_unit_of_work_commit_is_allowed",
+        "tests.test_architecture_ownership.ArchitectureOwnershipTests.test_workflow_may_request_commit_but_pure_package_may_not"
+      ],
+      "remaining_live_inventory_count": 0,
+      "source_count": 8,
+      "status": "mapped_to_passing_successor_evidence",
+      "successor": "extract-e-741.architecture-test-harness.unittest",
+      "target_surface": "neutral extraction harness"
+    },
+    {
+      "classification": "neutral-extraction-test-harness",
+      "family": "test_architecture_test_integrity",
+      "rationale": "Preserves reusable architecture/test-integrity law with current package topology evidence; no package-name churn is treated as supersession.",
+      "references": [
+        "tests.test_architecture_test_integrity.ArchitectureTestIntegrityTests.test_allowed_skip_requires_a_reviewable_reason",
+        "tests.test_architecture_test_integrity.ArchitectureTestIntegrityTests.test_duplicate_and_literal_false_approved_skips_fail_closed",
+        "tests.test_architecture_test_integrity.ArchitectureTestIntegrityTests.test_mocks_are_reported_without_becoming_automatic_failures",
+        "tests.test_architecture_test_integrity.ArchitectureTestIntegrityTests.test_placeholders_empty_tests_and_swallowed_exceptions_fail",
+        "tests.test_architecture_test_integrity.ArchitectureTestIntegrityTests.test_repository_has_only_explicit_optional_dependency_skips",
+        "tests.test_architecture_test_integrity.ArchitectureTestIntegrityTests.test_unconditional_and_unapproved_skips_fail_with_locations"
+      ],
+      "remaining_live_inventory_count": 0,
+      "source_count": 6,
+      "status": "mapped_to_passing_successor_evidence",
+      "successor": "extract-e-741.architecture-test-harness.unittest",
+      "target_surface": "neutral extraction harness"
+    },
+    {
+      "classification": "extracted-core-public-import-guard",
+      "family": "test_root_api",
+      "rationale": "Preserves reusable architecture/test-integrity law with current package topology evidence; no package-name churn is treated as supersession.",
+      "references": [
+        "tests.test_root_api.RootApiTests.test_interpreter_entrance_does_not_eagerly_import_optional_dependencies",
+        "tests.test_root_api.RootApiTests.test_optional_import_fixture_is_rejected",
+        "tests.test_root_api.RootApiTests.test_pure_package_roots_do_not_import_optional_dependencies",
+        "tests.test_root_api.RootApiTests.test_root_all_names_are_bound",
+        "tests.test_root_api.RootApiTests.test_root_api_does_not_import_optional_dependencies_directly",
+        "tests.test_root_api.RootApiTests.test_root_api_imports_only_pure_package_surfaces"
+      ],
+      "remaining_live_inventory_count": 0,
+      "source_count": 6,
+      "status": "mapped_to_passing_successor_evidence",
+      "successor": "extract-e-741.architecture-test-harness.unittest",
+      "target_surface": "core public import contract plus neutral harness"
+    },
+    {
+      "classification": "neutral-extraction-test-harness",
+      "family": "test_architecture_scenarios",
+      "rationale": "Preserves reusable architecture/test-integrity law with current package topology evidence; no package-name churn is treated as supersession.",
+      "references": [
+        "tests.test_architecture_scenarios.ScenarioArchitectureTests.test_atomic_contract_suites_remain_independent_of_scenario_runner",
+        "tests.test_architecture_scenarios.ScenarioArchitectureTests.test_fake_effect_is_a_typed_capability_provider_not_an_application_mock",
+        "tests.test_architecture_scenarios.ScenarioArchitectureTests.test_policy_rejects_store_scheduler_mock_and_private_coordinator_bypass",
+        "tests.test_architecture_scenarios.ScenarioArchitectureTests.test_runner_uses_deploy_program_not_manual_command_chain",
+        "tests.test_architecture_scenarios.ScenarioArchitectureTests.test_scenario_modules_obey_application_and_persistence_boundaries"
+      ],
+      "remaining_live_inventory_count": 0,
+      "source_count": 5,
+      "status": "mapped_to_passing_successor_evidence",
+      "successor": "extract-e-741.architecture-test-harness.unittest",
+      "target_surface": "neutral extraction harness"
+    },
+    {
+      "classification": "neutral-extraction-test-harness",
+      "family": "test_architecture_read_routes",
+      "rationale": "Preserves reusable architecture/test-integrity law with current package topology evidence; no package-name churn is treated as supersession.",
+      "references": [
+        "tests.test_architecture_read_routes.ArchitectureReadRouteTests.test_mutation_and_generic_route_decorators_fail_closed",
+        "tests.test_architecture_read_routes.ArchitectureReadRouteTests.test_read_modules_declare_only_read_methods",
+        "tests.test_architecture_read_routes.ArchitectureReadRouteTests.test_static_declarations_match_realized_fastapi_workspace_routes"
+      ],
+      "remaining_live_inventory_count": 0,
+      "source_count": 3,
+      "status": "mapped_to_passing_successor_evidence",
+      "successor": "extract-e-741.architecture-test-harness.unittest",
+      "target_surface": "neutral extraction harness"
+    },
+    {
+      "classification": "neutral-extraction-test-harness",
+      "family": "test_architecture_deploy",
+      "rationale": "Preserves reusable architecture/test-integrity law with current package topology evidence; no package-name churn is treated as supersession.",
+      "references": [
+        "tests.test_architecture_deploy.DeploymentApplicationArchitectureTests.test_deployment_application_obeys_composition_boundary",
+        "tests.test_architecture_deploy.DeploymentApplicationArchitectureTests.test_policy_resolves_aliases_and_rejects_boundary_bypasses"
+      ],
+      "remaining_live_inventory_count": 0,
+      "source_count": 2,
+      "status": "mapped_to_passing_successor_evidence",
+      "successor": "extract-e-741.architecture-test-harness.unittest",
+      "target_surface": "neutral extraction harness"
+    },
+    {
+      "classification": "neutral-extraction-test-harness",
+      "family": "test_architecture_protocol",
+      "rationale": "Preserves reusable architecture/test-integrity law with current package topology evidence; no package-name churn is treated as supersession.",
+      "references": [
+        "tests.test_architecture_protocol.ProtocolArchitectureTests.test_repository_does_not_erase_protocol_products_in_projections",
+        "tests.test_architecture_protocol.ProtocolArchitectureTests.test_scalar_protocol_projection_is_rejected_but_display_is_owned"
+      ],
+      "remaining_live_inventory_count": 0,
+      "source_count": 2,
+      "status": "mapped_to_passing_successor_evidence",
+      "successor": "extract-e-741.architecture-test-harness.unittest",
+      "target_surface": "neutral extraction harness"
+    },
+    {
+      "classification": "extracted-core-public-import-guard",
+      "family": "test_optional_dependencies",
+      "rationale": "Preserves reusable architecture/test-integrity law with current package topology evidence; no package-name churn is treated as supersession.",
+      "references": [
+        "tests.test_optional_dependencies.OptionalDependencyTests.test_available_dependencies_are_accepted",
+        "tests.test_optional_dependencies.OptionalDependencyTests.test_missing_dependency_names_surface_and_install_extra"
+      ],
+      "remaining_live_inventory_count": 0,
+      "source_count": 2,
+      "status": "mapped_to_passing_successor_evidence",
+      "successor": "extract-e-741.architecture-test-harness.unittest",
+      "target_surface": "core public import contract plus neutral harness"
+    }
+  ],
+  "issue": "#741",
+  "live_inventory": "artifacts/extraction/required-core-family-inventory.json",
+  "parent": "#643",
+  "schema": "cpk.architecture-test-harness-batch-closeout",
+  "source_batch": "architecture_test_harness",
+  "successor": "extract-e-741.architecture-test-harness.unittest",
+  "summary": {
+    "core_import_guard_families": 2,
+    "mapped_successor_entries": 58,
+    "mapped_successor_families": 10,
+    "neutral_harness_families": 8,
+    "reviewed_supersession_entries": 0,
+    "reviewed_supersession_families": 0,
+    "source_entries": 58,
+    "source_families": 10,
+    "unexpected_remaining_entries": 0,
+    "unexpected_remaining_families": 0
+  }
+}
