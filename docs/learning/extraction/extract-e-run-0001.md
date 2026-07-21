@@ -1529,3 +1529,111 @@ focused root parity guard slice:            20 tests passed
 control-plane-kit-core slice:               287 tests passed
 full Docker/Postgres ./test.sh suite:       1188 tests passed
 ```
+
+## #773 Pure Planning Scenario Expectation Mapping
+
+#773 maps the pure scenario catalogue side of the planning/saga batch.
+
+The exact mapped families are:
+
+```text
+test_planning_scenarios:                4 successor laws + 1 reviewed supersession
+test_execution_scenario_expectations:  12 successor laws
+```
+
+The superseded law is:
+
+```text
+behavior.every-scenario-runs-through-the-postgres-planning-workflow
+```
+
+That law is not lost. It is explicitly outside extracted core because it speaks
+about Postgres stores, UnitOfWork, workflow services, and the durable
+application boundary. It belongs to the later operations/contracts batch, not
+to the pure scenario catalogue.
+
+New successor module:
+
+```text
+control_plane_kit_core.planning.scenarios
+```
+
+New successor tests:
+
+```text
+control-plane-kit-core/tests/test_planning_scenarios.py
+```
+
+New proof artifact:
+
+```text
+artifacts/extraction/successor-proofs/extract-e-773-planning-scenario-expectations.json
+artifacts/extraction/supersession-reviews/extract-e-773-planning-workflow-supersession.json
+```
+
+Important shape:
+
+```text
+PlanningScenario
+  = current DeploymentGraph
+  x desired DeploymentGraph
+  x ScenarioExpectation[OperationExpectation, DependencyExpectation]
+
+ExecutionScenario
+  = PlanningScenario
+  x ExecutionScenarioExpectation
+```
+
+Boundary decision:
+
+```text
+The scenario catalogue is pure acceptance data over the graph and planning
+languages.
+
+It is not the Postgres scenario runner.
+It is not DeploymentProgram.
+It is not a coordinator, Docker, FastAPI, MCP, or runtime-effect proof.
+```
+
+Implementation note:
+
+The extracted-core catalogue uses generic topology blocks rather than
+package-owned Hello, router, rate-limiter, multiplexer, or load-balancer
+products. This keeps the scenarios focused on topology/planning laws and avoids
+pulling server-product declarations back into core.
+
+The contracts also follow the current ActivityPlan compiler rather than frozen
+obsolete assumptions. In particular:
+
+```text
+router backend switch -> SwitchSocketConnection("api-router.active")
+load-balancer scale-out -> AddSocketConnection effects wait for health
+runtime move -> ReconcileNode + ReconcileRuntime operations
+unsupported implementation transition -> ReviewChange only
+```
+
+Validation evidence:
+
+```text
+focused #773 extracted-core successor tests: 18 tests passed
+focused root parity/supersession slice:     22 tests passed
+./validate-parity.sh foundation:            valid=true, findings=0
+control-plane-kit-core slice:               305 tests passed
+full Docker/Postgres ./test.sh suite:       1189 tests passed
+git diff --check:                           clean
+```
+
+Test-integrity note:
+
+The first full-suite run after adding the reviewed supersession failed because
+`tests/test_extraction_supersession_review.py` still encoded the old invariant
+"there are no manifest supersessions." The corrected invariant is stronger and
+matches the parity language:
+
+```text
+manifest supersessions
+  = reviewed supersessions aggregated from supersession-review artifacts
+```
+
+This keeps supersession exceptional and reviewable without making the old
+issue-732 review artifact carry future decisions.

@@ -4987,7 +4987,13 @@
       "owner": "control-plane-kit-core",
       "owner_kind": "core",
       "reference": "tests.test_execution_scenario_expectations.ExecutionScenarioExpectationTests.test_acceptance_case_catalog_is_closed_unique_and_deterministic",
-      "successors": [],
+      "successors": [
+        {
+          "evidence": "extract-e-773.planning-scenario-expectations.unittest",
+          "id": "control-plane-kit-core.tests.test_planning_scenarios",
+          "status": "passing"
+        }
+      ],
       "supersession": null
     },
     {
@@ -4997,7 +5003,13 @@
       "owner": "control-plane-kit-core",
       "owner_kind": "core",
       "reference": "tests.test_execution_scenario_expectations.ExecutionScenarioExpectationTests.test_catalog_is_pure_and_deterministic",
-      "successors": [],
+      "successors": [
+        {
+          "evidence": "extract-e-773.planning-scenario-expectations.unittest",
+          "id": "control-plane-kit-core.tests.test_planning_scenarios",
+          "status": "passing"
+        }
+      ],
       "supersession": null
     },
     {
@@ -5007,7 +5019,13 @@
       "owner": "control-plane-kit-core",
       "owner_kind": "core",
       "reference": "tests.test_execution_scenario_expectations.ExecutionScenarioExpectationTests.test_database_cutover_requires_external_readiness_and_creates_no_run",
-      "successors": [],
+      "successors": [
+        {
+          "evidence": "extract-e-773.planning-scenario-expectations.unittest",
+          "id": "control-plane-kit-core.tests.test_planning_scenarios",
+          "status": "passing"
+        }
+      ],
       "supersession": null
     },
     {
@@ -5017,7 +5035,13 @@
       "owner": "control-plane-kit-core",
       "owner_kind": "core",
       "reference": "tests.test_execution_scenario_expectations.ExecutionScenarioExpectationTests.test_event_partial_order_must_reference_declared_events",
-      "successors": [],
+      "successors": [
+        {
+          "evidence": "extract-e-773.planning-scenario-expectations.unittest",
+          "id": "control-plane-kit-core.tests.test_planning_scenarios",
+          "status": "passing"
+        }
+      ],
       "supersession": null
     },
     {
@@ -5027,7 +5051,13 @@
       "owner": "control-plane-kit-core",
       "owner_kind": "core",
       "reference": "tests.test_execution_scenario_expectations.ExecutionScenarioExpectationTests.test_event_scope_reuses_canonical_activity_event_law",
-      "successors": [],
+      "successors": [
+        {
+          "evidence": "extract-e-773.planning-scenario-expectations.unittest",
+          "id": "control-plane-kit-core.tests.test_planning_scenarios",
+          "status": "passing"
+        }
+      ],
       "supersession": null
     },
     {
@@ -5037,7 +5067,13 @@
       "owner": "control-plane-kit-core",
       "owner_kind": "core",
       "reference": "tests.test_execution_scenario_expectations.ExecutionScenarioExpectationTests.test_every_planning_scenario_has_one_execution_expectation",
-      "successors": [],
+      "successors": [
+        {
+          "evidence": "extract-e-773.planning-scenario-expectations.unittest",
+          "id": "control-plane-kit-core.tests.test_planning_scenarios",
+          "status": "passing"
+        }
+      ],
       "supersession": null
     },
     {
@@ -5047,7 +5083,13 @@
       "owner": "control-plane-kit-core",
       "owner_kind": "core",
       "reference": "tests.test_execution_scenario_expectations.ExecutionScenarioExpectationTests.test_execution_expectations_only_reference_planning_operations",
-      "successors": [],
+      "successors": [
+        {
+          "evidence": "extract-e-773.planning-scenario-expectations.unittest",
+          "id": "control-plane-kit-core.tests.test_planning_scenarios",
+          "status": "passing"
+        }
+      ],
       "supersession": null
     },
     {
@@ -5057,7 +5099,13 @@
       "owner": "control-plane-kit-core",
       "owner_kind": "core",
       "reference": "tests.test_execution_scenario_expectations.ExecutionScenarioExpectationTests.test_health_operations_have_provider_neutral_observation_expectations",
-      "successors": [],
+      "successors": [
+        {
+          "evidence": "extract-e-773.planning-scenario-expectations.unittest",
+          "id": "control-plane-kit-core.tests.test_planning_scenarios",
+          "status": "passing"
+        }
+      ],
       "supersession": null
     },
     {
@@ -5067,7 +5115,13 @@
       "owner": "control-plane-kit-core",
       "owner_kind": "core",
       "reference": "tests.test_execution_scenario_expectations.ExecutionScenarioExpectationTests.test_no_change_is_planning_evidence_without_approval_or_execution",
-      "successors": [],
+      "successors": [
+        {
+          "evidence": "extract-e-773.planning-scenario-expectations.unittest",
+          "id": "control-plane-kit-core.tests.test_planning_scenarios",
+          "status": "passing"
+        }
+      ],
       "supersession": null
     },
     {
@@ -5077,7 +5131,13 @@
       "owner": "control-plane-kit-core",
       "owner_kind": "core",
       "reference": "tests.test_execution_scenario_expectations.ExecutionScenarioExpectationTests.test_no_run_cannot_claim_runtime_evidence_or_graph_advancement",
-      "successors": [],
+      "successors": [
+        {
+          "evidence": "extract-e-773.planning-scenario-expectations.unittest",
+          "id": "control-plane-kit-core.tests.test_planning_scenarios",
+          "status": "passing"
+        }
+      ],
       "supersession": null
     },
     {
@@ -5087,7 +5147,13 @@
       "owner": "control-plane-kit-core",
       "owner_kind": "core",
       "reference": "tests.test_execution_scenario_expectations.ExecutionScenarioExpectationTests.test_safe_scenarios_expect_canonical_success_evidence",
-      "successors": [],
+      "successors": [
+        {
+          "evidence": "extract-e-773.planning-scenario-expectations.unittest",
+          "id": "control-plane-kit-core.tests.test_planning_scenarios",
+          "status": "passing"
+        }
+      ],
       "supersession": null
     },
     {
@@ -5097,7 +5163,13 @@
       "owner": "control-plane-kit-core",
       "owner_kind": "core",
       "reference": "tests.test_execution_scenario_expectations.ExecutionScenarioExpectationTests.test_unsupported_transition_remains_review_blocked",
-      "successors": [],
+      "successors": [
+        {
+          "evidence": "extract-e-773.planning-scenario-expectations.unittest",
+          "id": "control-plane-kit-core.tests.test_planning_scenarios",
+          "status": "passing"
+        }
+      ],
       "supersession": null
     },
     {
@@ -8891,7 +8963,13 @@
       "owner": "control-plane-kit-core",
       "owner_kind": "core",
       "reference": "tests.test_planning_scenarios.PlanningScenarioAlgebraTests.test_catalog_ids_are_unique_and_every_graph_is_valid",
-      "successors": [],
+      "successors": [
+        {
+          "evidence": "extract-e-773.planning-scenario-expectations.unittest",
+          "id": "control-plane-kit-core.tests.test_planning_scenarios",
+          "status": "passing"
+        }
+      ],
       "supersession": null
     },
     {
@@ -8901,7 +8979,13 @@
       "owner": "control-plane-kit-core",
       "owner_kind": "core",
       "reference": "tests.test_planning_scenarios.PlanningScenarioAlgebraTests.test_every_scenario_compiles_to_its_typed_semantic_contract",
-      "successors": [],
+      "successors": [
+        {
+          "evidence": "extract-e-773.planning-scenario-expectations.unittest",
+          "id": "control-plane-kit-core.tests.test_planning_scenarios",
+          "status": "passing"
+        }
+      ],
       "supersession": null
     },
     {
@@ -8911,7 +8995,13 @@
       "owner": "control-plane-kit-core",
       "owner_kind": "core",
       "reference": "tests.test_planning_scenarios.PlanningScenarioAlgebraTests.test_required_scenario_dependencies_survive_compilation",
-      "successors": [],
+      "successors": [
+        {
+          "evidence": "extract-e-773.planning-scenario-expectations.unittest",
+          "id": "control-plane-kit-core.tests.test_planning_scenarios",
+          "status": "passing"
+        }
+      ],
       "supersession": null
     },
     {
@@ -8921,7 +9011,13 @@
       "owner": "control-plane-kit-core",
       "owner_kind": "core",
       "reference": "tests.test_planning_scenarios.PlanningScenarioAlgebraTests.test_scenario_compilation_is_pure_and_deterministic",
-      "successors": [],
+      "successors": [
+        {
+          "evidence": "extract-e-773.planning-scenario-expectations.unittest",
+          "id": "control-plane-kit-core.tests.test_planning_scenarios",
+          "status": "passing"
+        }
+      ],
       "supersession": null
     },
     {
@@ -8932,7 +9028,13 @@
       "owner_kind": "core",
       "reference": "tests.test_planning_scenarios.PlanningScenarioWorkflowTests.test_every_scenario_runs_through_the_postgres_planning_workflow",
       "successors": [],
-      "supersession": null
+      "supersession": {
+        "negative_case_disposition": "core scenario tests assert no workspace, Postgres, or plan_graph_transition workflow state is claimed by PlanningScenario values",
+        "obsolete_assumption": "frozen test asserted scenario planning through Postgres workflow services inside the core-owned scenario family",
+        "rationale": "Postgres workflow execution is outside the extracted core scenario catalogue",
+        "replacement": "core successor tests assert pure scenario catalogue laws; the Postgres workflow law moves to the later operations/contracts batch",
+        "review": "issue-773"
+      }
     },
     {
       "kind": "test",

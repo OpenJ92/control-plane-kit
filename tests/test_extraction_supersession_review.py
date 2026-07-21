@@ -11,28 +11,55 @@ ARTIFACT_ROOT = Path(__file__).parents[1] / "artifacts" / "extraction"
 
 class ExtractionSupersessionReviewTests(unittest.TestCase):
     def test_reviewed_supersession_artifact_matches_manifest_state(self) -> None:
-        review = read_bounded_json(
+        review_paths = sorted((ARTIFACT_ROOT / "supersession-reviews").glob("*.json"))
+        reviews = [read_bounded_json(path) for path in review_paths]
+        manifest = read_bounded_json(ARTIFACT_ROOT / "parity-manifest.json")
+
+        self.assertGreaterEqual(len(reviews), 1)
+        for review in reviews:
+            self.assertEqual(review["schema"], "cpk.supersession-review")
+            self.assertIsInstance(review["review"], str)
+            self.assertTrue(review["review"])
+            self.assertTrue(review["candidate_reviews"])
+            self.assertIsInstance(review["reviewed_supersessions"], list)
+
+        issue_732_review = read_bounded_json(
             ARTIFACT_ROOT
             / "supersession-reviews"
             / "extract-e-732-reviewed-supersession-classification.json"
         )
-        manifest = read_bounded_json(ARTIFACT_ROOT / "parity-manifest.json")
-
-        self.assertEqual(review["schema"], "cpk.supersession-review")
-        self.assertEqual(review["review"], "issue-732")
-        self.assertEqual(review["reviewed_supersessions"], [])
-        self.assertTrue(review["candidate_reviews"])
+        self.assertEqual(issue_732_review["review"], "issue-732")
+        self.assertEqual(issue_732_review["reviewed_supersessions"], [])
         self.assertEqual(
-            {candidate["decision"] for candidate in review["candidate_reviews"]},
+            {
+                candidate["decision"]
+                for candidate in issue_732_review["candidate_reviews"]
+            },
             {"not_superseded"},
         )
-        self.assertEqual(
-            [
-                entry
+
+        manifest_supersessions = sorted(
+            (
+                {
+                    "law": entry["law"],
+                    "reference": entry["reference"],
+                }
                 for entry in manifest["entries"]
                 if entry["supersession"] is not None
-            ],
-            [],
+            ),
+            key=lambda item: (item["law"], item["reference"]),
+        )
+        reviewed_supersessions = sorted(
+            (
+                supersession
+                for review in reviews
+                for supersession in review["reviewed_supersessions"]
+            ),
+            key=lambda item: (item["law"], item["reference"]),
+        )
+        self.assertEqual(
+            reviewed_supersessions,
+            manifest_supersessions,
         )
 
 
