@@ -88,6 +88,23 @@ HttpApiRouteContract
 This lets future HTTP adapters bind routes to services without inventing route
 local workflow semantics.
 
+Process operation is described as a handoff contract, still without process
+implementation:
+
+```text
+ControlPlaneProcessContract
+  = liveness probe
+  x readiness probe
+  x readiness dependencies
+  x verification contract
+  x observation handoff
+  x shutdown contract
+  x optional HTTP API contract
+  x optional MCP contract
+```
+
+The contract states what `cpk-server` must prove. It does not host the server.
+
 ## Extraction Law
 
 Every migrated behavior must be justified by a frozen law card from the
