@@ -4,6 +4,8 @@ from __future__ import annotations
 
 from collections.abc import Iterable, Mapping
 from dataclasses import dataclass, field
+import hashlib
+import json
 import re
 
 from control_plane_kit_core.algebra import BlockSockets, ProviderSocket, RequirementSocket
@@ -56,6 +58,11 @@ _PRODUCT_CONTRACT_DESCRIPTOR_KEYS = frozenset(
 _CONTAINER_PRODUCT_DESCRIPTOR_KEYS = frozenset(
     {"kind", "identity", "image", "runtime_contract", "display_name", "description"}
 )
+_PRODUCT_DOCUMENT_KEYS = frozenset({"schema", "product"})
+_PRODUCT_DOCUMENT_SCHEMA = "control-plane-kit.product"
+_PRODUCT_DOCUMENT_MEDIA_TYPE = "application/vnd.cpk.product+json"
+_PRODUCT_DOCUMENT_FILENAME = "product.cpk.json"
+_MAX_PRODUCT_DOCUMENT_BYTES = 262_144
 _SOCKETS_DESCRIPTOR_KEYS = frozenset({"requirements", "providers"})
 _REQUIREMENT_DESCRIPTOR_KEYS = frozenset(
     {"protocol", "env_bindings", "required", "binding"}
@@ -101,6 +108,10 @@ class ProductRuntimeContractError(ValueError):
 
 class ContainerServerProductError(ValueError):
     """Raised when an external container product is not descriptor-safe."""
+
+
+class ProductDescriptorError(ValueError):
+    """Raised when product.cpk.json content is not the current product language."""
 
 
 @dataclass(frozen=True, order=True)
@@ -512,6 +523,134 @@ class ContainerServerProductCodec:
             ) from error
 
 
+@dataclass(frozen=True)
+class ProductDescriptorDocument:
+    """Canonical product.cpk.json bytes and the product value they encode."""
+
+    product: ContainerServerProduct
+    content: bytes
+
+    def __post_init__(self) -> None:
+        if not isinstance(self.product, ContainerServerProduct):
+            raise ProductDescriptorError("product document requires ContainerServerProduct")
+        if not isinstance(self.content, bytes):
+            raise ProductDescriptorError("product document content must be bytes")
+
+    @property
+    def filename(self) -> str:
+        return _PRODUCT_DOCUMENT_FILENAME
+
+    @property
+    def media_type(self) -> str:
+        return _PRODUCT_DOCUMENT_MEDIA_TYPE
+
+    @property
+    def size_bytes(self) -> int:
+        return len(self.content)
+
+    @property
+    def content_digest(self) -> str:
+        return hashlib.sha256(self.content).hexdigest()
+
+
+class ProductDescriptorCodec:
+    """Strict codec for the language-neutral product.cpk.json boundary."""
+
+    def __init__(self, *, max_bytes: int = _MAX_PRODUCT_DOCUMENT_BYTES) -> None:
+        if type(max_bytes) is not int or max_bytes < 1:
+            raise ProductDescriptorError("max_bytes must be a positive integer")
+        self.max_bytes = max_bytes
+
+    def encode_document(self, product: ContainerServerProduct) -> ProductDescriptorDocument:
+        if not isinstance(product, ContainerServerProduct):
+            raise ProductDescriptorError("encode requires ContainerServerProduct")
+        content = self._canonical_bytes(self._document_mapping(product))
+        self._validate_size(content)
+        return ProductDescriptorDocument(product=product, content=content)
+
+    def decode_document(
+        self,
+        document: bytes | str | Mapping[str, object],
+    ) -> ProductDescriptorDocument:
+        if isinstance(document, bytes):
+            self._validate_size(document)
+            mapping = self._json_mapping(document)
+            canonical = self._canonical_bytes(mapping)
+            if document != canonical:
+                raise ProductDescriptorError("product descriptor JSON is not canonical")
+        elif isinstance(document, str):
+            try:
+                content = document.encode("utf-8")
+            except UnicodeEncodeError as error:
+                raise ProductDescriptorError("product descriptor text is not UTF-8") from error
+            self._validate_size(content)
+            mapping = self._json_mapping(content)
+            canonical = self._canonical_bytes(mapping)
+            if content != canonical:
+                raise ProductDescriptorError("product descriptor JSON is not canonical")
+        elif isinstance(document, Mapping):
+            mapping = document
+            canonical = self._canonical_bytes(mapping)
+            self._validate_size(canonical)
+        else:
+            raise ProductDescriptorError(
+                "product descriptor must be bytes, text, or mapping"
+            )
+
+        product = self._product_from_mapping(mapping)
+        expected = self._canonical_bytes(self._document_mapping(product))
+        if canonical != expected:
+            raise ProductDescriptorError("product descriptor JSON is not canonical")
+        return ProductDescriptorDocument(product=product, content=canonical)
+
+    def _document_mapping(
+        self,
+        product: ContainerServerProduct,
+    ) -> dict[str, object]:
+        return {
+            "schema": _PRODUCT_DOCUMENT_SCHEMA,
+            "product": ContainerServerProductCodec().encode(product),
+        }
+
+    def _product_from_mapping(
+        self,
+        document: Mapping[str, object],
+    ) -> ContainerServerProduct:
+        mapping = _descriptor_mapping(document, "product descriptor")
+        _require_descriptor_keys(mapping, _PRODUCT_DOCUMENT_KEYS, "product descriptor")
+        schema = mapping["schema"]
+        if schema != _PRODUCT_DOCUMENT_SCHEMA:
+            raise ProductDescriptorError("product descriptor schema is unsupported")
+        try:
+            return ContainerServerProductCodec().decode(
+                _container_mapping(mapping["product"], "product")
+            )
+        except Exception as error:
+            raise ProductDescriptorError("product descriptor product is malformed") from error
+
+    def _json_mapping(self, content: bytes) -> Mapping[str, object]:
+        try:
+            value = json.loads(content.decode("utf-8"))
+        except (UnicodeDecodeError, json.JSONDecodeError) as error:
+            raise ProductDescriptorError("product descriptor is malformed JSON") from error
+        return _descriptor_mapping(value, "product descriptor")
+
+    def _canonical_bytes(self, mapping: Mapping[str, object]) -> bytes:
+        try:
+            text = json.dumps(
+                mapping,
+                ensure_ascii=True,
+                separators=(",", ":"),
+            )
+        except (TypeError, ValueError) as error:
+            raise ProductDescriptorError("product descriptor is not JSON shaped") from error
+        return text.encode("utf-8")
+
+    def _validate_size(self, content: bytes) -> None:
+        if not content or len(content) > self.max_bytes:
+            raise ProductDescriptorError("product descriptor is empty or exceeds its bound")
+
+
 def _validate_identity_part(value: str, field: str) -> None:
     if not isinstance(value, str):
         raise ProductIdentityError(f"{field} must be a string")
@@ -914,3 +1053,27 @@ def _require_container_keys(
     raise ContainerServerProductError(
         f"invalid {label} descriptor; " + "; ".join(details)
     )
+
+
+def _descriptor_mapping(value: object, field: str) -> Mapping[str, object]:
+    if not isinstance(value, Mapping):
+        raise ProductDescriptorError(f"{field} must be a mapping")
+    return value
+
+
+def _require_descriptor_keys(
+    mapping: Mapping[str, object],
+    expected: frozenset[str],
+    label: str,
+) -> None:
+    keys = frozenset(mapping)
+    if keys == expected:
+        return
+    extra = sorted(keys - expected)
+    missing = sorted(expected - keys)
+    details: list[str] = []
+    if extra:
+        details.append(f"unknown keys: {', '.join(extra)}")
+    if missing:
+        details.append(f"missing keys: {', '.join(missing)}")
+    raise ProductDescriptorError(f"invalid {label}; " + "; ".join(details))

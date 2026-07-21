@@ -514,3 +514,126 @@ descriptor boundary. It should reuse `ContainerServerProductCodec` rather than
 adding another product model, and it should add descriptor-file concerns such as
 top-level schema shape, byte bounds, canonical JSON ordering, and closed variant
 admission.
+
+## #624 product.cpk.json Descriptor Boundary
+
+### Law Card
+
+- Reference identity: `EXTRACT.C.5.product-cpk-json-descriptor`
+- Evidence source: rollout issue #624, #623 handoff, and the extracted product
+  value language.
+- Observable law: `product.cpk.json` is a deterministic language-neutral file
+  boundary around `ContainerServerProduct`, not another product model and not an
+  execution hook.
+- Object:
+
+```text
+ProductDescriptorDocument
+  = product: ContainerServerProduct
+  x content: canonical UTF-8 JSON bytes
+```
+
+- Transformation:
+
+```text
+ContainerServerProduct
+  -> ProductDescriptorCodec.encode_document
+    -> ProductDescriptorDocument
+
+bytes | text | mapping
+  -> ProductDescriptorCodec.decode_document
+    -> ProductDescriptorDocument
+```
+
+- Expected result: valid products encode to stable compact JSON with an exact
+  top-level schema, decode from file bytes/text/mappings, preserve product
+  equality, and expose filename, media type, byte size, and SHA-256 digest as
+  derived properties.
+- Negative cases: malformed JSON, non-canonical file bytes, unknown top-level
+  keys, unsupported schema names, unsupported product variants, nested product
+  escape hatches such as `class_path`, oversized documents, and non-JSON-shaped
+  mapping values.
+- Obsolete structural assumptions not migrated: Python product class imports,
+  compatibility v1/v2 wrappers, catalogue admission, registry calls, Docker
+  inspection, server names as built-ins, and file metadata supplied as trusted
+  descriptor fields.
+- Future owner: core.
+
+### Implementation
+
+`ProductDescriptorDocument` is deliberately small. It stores the product value
+and the canonical bytes that represent it; file metadata is derived rather than
+accepted from untrusted input:
+
+```python
+@dataclass(frozen=True)
+class ProductDescriptorDocument:
+    product: ContainerServerProduct
+    content: bytes
+
+    @property
+    def filename(self) -> str:
+        return "product.cpk.json"
+
+    @property
+    def media_type(self) -> str:
+        return "application/vnd.cpk.product+json"
+
+    @property
+    def content_digest(self) -> str:
+        return hashlib.sha256(self.content).hexdigest()
+```
+
+The descriptor codec wraps the existing product codec instead of creating a
+parallel model:
+
+```python
+def _document_mapping(self, product: ContainerServerProduct) -> dict[str, object]:
+    return {
+        "schema": "control-plane-kit.product",
+        "product": ContainerServerProductCodec().encode(product),
+    }
+```
+
+File bytes and text must already be canonical. Mappings can be normalized into
+canonical bytes because they represent in-process structured data rather than a
+claimed persisted file:
+
+```python
+if isinstance(document, bytes):
+    mapping = self._json_mapping(document)
+    canonical = self._canonical_bytes(mapping)
+    if document != canonical:
+        raise ProductDescriptorError("product descriptor JSON is not canonical")
+```
+
+### Decisions
+
+- The top-level schema is exactly `control-plane-kit.product` in the unreleased
+  current language. There is no v1/v2 compatibility layer.
+- Canonical JSON is compact UTF-8 with deterministic key insertion from the
+  current descriptor constructors. No trailing newline is emitted.
+- Descriptor digest is SHA-256 of canonical bytes. It is derived by the document
+  and is not a trusted descriptor field.
+- `ProductDescriptorCodec` has a configurable byte bound for tests and defaults
+  to the same 256 KiB order of magnitude as configuration artifacts.
+- `product.cpk.json` admission remains pure. No catalogue mutation, filesystem
+  access, Docker action, registry pull, importlib lookup, or product package
+  import occurs here.
+
+### Evidence
+
+- Red evidence: focused core test collection failed only because
+  `ProductDescriptorCodec` did not yet exist.
+- Green evidence: `./control-plane-kit-core/test.sh` passed 63 unittest tests,
+  compileall, and base import verification.
+- `git diff --check` passed.
+
+### Handoff To #625
+
+#625 can build `ProductCatalog` on top of the descriptor boundary. It should
+admit `ProductDescriptorDocument` and/or decoded `ContainerServerProduct`
+values, enforce duplicate identity failure with the existing
+`require_unique_product_identities()` primitive, and keep catalogue admission
+pure. Do not add registry access, Docker pulls, filesystem scans, mutable global
+catalogues, package-owned server imports, or built-in cpk-server special cases.
