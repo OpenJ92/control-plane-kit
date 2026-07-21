@@ -2050,3 +2050,97 @@ control-plane-kit-core/test.sh:   346 tests passed
 ./test.sh:                        1193 tests passed
 git diff --check:                 clean
 ```
+
+## #785 Operations-Contract Batch Audit
+
+#785 starts #740 by auditing the live operations-contract scope before mapping.
+
+Source batch:
+
+```text
+artifacts/extraction/required-core-batch-plan.json
+batch: operations_contract
+```
+
+Additional split source:
+
+```text
+artifacts/extraction/contract-boundary-classification.json
+```
+
+The original #737 batch assigns 33 families / 275 laws to #740. The
+`test_contracts` split from #760 adds 23 mutable contract laws, so #740's
+current audit scope is:
+
+```text
+families: 34
+entries:  298
+```
+
+Audit artifact:
+
+```text
+artifacts/extraction/operations-contract-batch-audit.json
+```
+
+The child topology is:
+
+```text
+#785 audit operations contract batch ownership
+  -> #786 DeploymentProgram stage and public boundary laws
+    -> #787 command vocabulary and workflow contract laws
+      -> #788 read projection and API/MCP parity contract laws
+        -> #789 admission lifecycle recovery and advancement contract laws
+          -> #790 execution coordinator and verification command laws
+            -> #791 store UnitOfWork Postgres and mutation-holder laws
+              -> #792 close operations contract mapping batch
+```
+
+Partition:
+
+```text
+#786:  4 families /  12 laws
+#787:  7 families /  51 laws
+#788:  8 families /  72 laws
+#789:  7 families /  75 laws
+#790:  2 families /  35 laws
+#791:  6 families /  53 laws
+```
+
+Boundary decision:
+
+```text
+core
+  owns pure operation contracts, descriptors, public command/read vocabulary,
+  and service composition boundaries
+
+operations / cpk-server
+  owns durable stores, UnitOfWork, Postgres, process routes, workers, effects,
+  mutable holders, and runtime execution
+```
+
+Important #785 law:
+
+```text
+operation-contract law
+  -> pure contract successor
+  | reviewed operations handoff
+  | reviewed server/process handoff
+  | reviewed interpreter/runtime handoff
+  | reviewed supersession
+```
+
+The audit intentionally does not solve #740. It assigns every currently visible
+family to a focused child so later mapping PRs can decide law-by-law whether a
+pure core contract exists or whether the behavior must be handed to the future
+operations/cpk-server package.
+
+Validation evidence:
+
+```text
+focused #785 audit guard: 1 test passed
+focused extraction batch plan: 5 tests passed
+validate-parity.sh foundation: valid=true, findings=0
+./test.sh: 1194 tests passed
+git diff --check: clean
+```
