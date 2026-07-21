@@ -1222,3 +1222,89 @@ completed required-core laws: 167
 incomplete required-core laws: 613
 unmapped required-core families: 81
 ```
+
+## #762 Control-Route Boundary Closeout
+
+#762 finished the policy/probe/control-contract boundary parent by separating
+the last control-route-adjacent families.
+
+Pure successor:
+
+```text
+tests.test_control_routes
+  -> control_plane_kit_core.control_routes
+```
+
+This maps the closed route descriptor language:
+
+```text
+ControlRouteSetName x ControlRouteMethod x ControlRouteScope x path
+  -> ControlRoute
+  -> ControlRouteSet
+  -> JSON-friendly descriptor
+```
+
+Important snippet:
+
+```python
+def route_set_named(name: ControlRouteSetName | str) -> ControlRouteSet:
+    allowed = ", ".join(route_set.name.value for route_set in CONTROL_ROUTE_SETS)
+    try:
+        route_set_name = ControlRouteSetName(name)
+    except ValueError as exc:
+        raise KeyError(
+            f"unknown control route set {name!r}; known route sets: {allowed}"
+        ) from exc
+    for route_set in CONTROL_ROUTE_SETS:
+        if route_set.name == route_set_name:
+            return route_set
+    raise KeyError(f"unknown control route set {name!r}; known route sets: {allowed}")
+```
+
+That is pure descriptor logic. It names the route protocol; it does not build a
+FastAPI app, parse requests, authenticate tokens, mutate runtime state, or
+dispatch effects.
+
+Downstream classifications:
+
+```text
+test_block_control_fastapi -> #740 / cpk-server or package-owned process boundary
+test_block_control_state -> #740 / operations and process composition boundary
+test_capability_interpreter_registry -> #743 / interpreter and effect dispatch boundary
+```
+
+These classifications are recorded in:
+
+```text
+artifacts/extraction/control-route-boundary-classification.json
+```
+
+Mapped laws:
+
+```text
+test_control_routes laws: 6 -> extract-e-762-control-routes.unittest
+```
+
+Artifact:
+
+```text
+artifacts/extraction/successor-proofs/extract-e-762-control-routes.json
+```
+
+Validation so far:
+
+```text
+focused #762 extracted-core route descriptor slice: 9 tests passed
+focused #762 artifact and parity guard slice: 21 tests passed
+validate-parity.sh foundation: valid=true, findings=0
+control-plane-kit-core/test.sh: 269 tests passed; compileall passed; import ok
+full Docker/Postgres ./test.sh suite: 1185 tests passed
+```
+
+Required-core inventory after artifact update:
+
+```text
+completed required-core laws: 173
+incomplete required-core laws: 607
+unmapped required-core families: 80
+```
