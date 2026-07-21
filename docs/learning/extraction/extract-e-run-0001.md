@@ -2144,3 +2144,96 @@ validate-parity.sh foundation: valid=true, findings=0
 ./test.sh: 1194 tests passed
 git diff --check: clean
 ```
+
+## #786 DeploymentProgram Boundary Mapping
+
+#786 maps the public DeploymentProgram / Deploy-stage boundary slice from #740.
+
+Mapped frozen families:
+
+```text
+test_backend_boundaries:             4 laws
+test_deployment_application_values:  4 laws
+test_deployment_plan_approve_stages: 3 laws
+test_deployment_admit_claim_stages:  1 law
+
+total: 4 families / 12 laws
+```
+
+Successor evidence:
+
+```text
+artifacts/extraction/successor-proofs/extract-e-786-deployment-program-boundary.json
+extract-e-786.deployment-program-boundary.unittest
+sha256:858f3ae9cb3b24e29415a0a9d69dfb4a3940c4e13300f9334dbe6e0682f387ab
+```
+
+The key implementation addition is a pure stage contract, not a live workflow
+executor:
+
+```python
+class DeploymentProgramStage(StrEnum):
+    PLAN = "plan"
+    APPROVE = "approve"
+    ADMIT = "admit"
+    CLAIM = "claim"
+    EXECUTE = "execute"
+    ADVANCE = "advance"
+```
+
+The canonical public order is explicit data:
+
+```python
+def canonical_deployment_stage_pipeline() -> DeploymentStagePipeline:
+    stages = tuple(DeploymentProgramStage)
+    return DeploymentStagePipeline(
+        tuple(
+            DeploymentStageContract(
+                stage=stage,
+                service_role=_STAGE_ROLES[stage],
+                requires_prior_stage=None if index == 0 else stages[index - 1],
+                creates_durable_handoff=True,
+            )
+            for index, stage in enumerate(stages)
+        )
+    )
+```
+
+The `creates_durable_handoff` flag is deliberately contract language, not
+store behavior. It says every public stage must produce an inspectable handoff
+for the next request boundary. Operations / cpk-server decide how that handoff
+is persisted and authorized.
+
+This preserves Jacob's intended public shape:
+
+```text
+Deploy(current, desired)
+  -> plan
+    -> approve
+      -> admit
+        -> claim
+          -> execute
+            -> advance
+```
+
+But extracted core still stops at contracts:
+
+```text
+core
+  owns stage names, stage order, service-role mapping, descriptors, and
+  cpk-server handoff contracts
+
+operations / cpk-server
+  owns persistence, durable lookup, approval queues, workers, coordinator
+  dispatch, graph-store mutation, HTTP/MCP process routes, and runtime effects
+```
+
+Validation evidence:
+
+```text
+meaningful red: 4 #786 families still unmapped
+focused #786 successor tests: 27 tests passed
+focused #786 mapping guard: 1 test passed
+extraction/parity mapping suite: 30 tests passed
+validate-parity.sh foundation: valid=true, findings=0, incomplete_required=621
+```

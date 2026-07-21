@@ -84,6 +84,11 @@
       "digest": "sha256:7c3c65ac428e880a2376b404b4209d3daa597b69530a9af6916823baa9c52cf3",
       "id": "extract-e-776.compensation-recovery-planning.unittest",
       "status": "passing"
+    },
+    {
+      "digest": "sha256:858f3ae9cb3b24e29415a0a9d69dfb4a3940c4e13300f9334dbe6e0682f387ab",
+      "id": "extract-e-786.deployment-program-boundary.unittest",
+      "status": "passing"
     }
   ],
   "schema": "cpk.successor-evidence-index"

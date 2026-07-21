@@ -248,6 +248,28 @@ class ExtractionSuccessorMappingTests(unittest.TestCase):
             else "",
         )
 
+    def test_deployment_program_boundary_families_are_fully_mapped(self) -> None:
+        inventory = inventory_unmapped_required_core_families(self.closeout())
+        families = {
+            family["family"]: family
+            for family in inventory["families"]
+        }
+
+        for family_name in (
+            "test_backend_boundaries",
+            "test_deployment_application_values",
+            "test_deployment_plan_approve_stages",
+            "test_deployment_admit_claim_stages",
+        ):
+            with self.subTest(family=family_name):
+                remaining = families.get(family_name)
+                self.assertIsNone(
+                    remaining,
+                    f"{family_name} still has {remaining['count']} unmapped laws"
+                    if remaining is not None
+                    else "",
+                )
+
 
 if __name__ == "__main__":
     unittest.main()
