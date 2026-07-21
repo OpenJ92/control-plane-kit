@@ -96,6 +96,52 @@ class ExtractionBatchPlanTests(unittest.TestCase):
             all(family["remaining_live_inventory_count"] == 0 for family in retained)
         )
 
+    def test_planning_saga_batch_audit_retains_only_pure_data_interpreters(
+        self,
+    ) -> None:
+        audit = read_bounded_json(ARTIFACT_ROOT / "planning-saga-batch-audit.json")
+
+        self.assertEqual(audit["schema"], "cpk.planning-saga-batch-audit")
+        self.assertEqual(audit["issue"], "#771")
+        self.assertEqual(audit["parent"], "#739")
+        self.assertEqual(audit["source_batch"], "planning_saga")
+        self.assertEqual(
+            audit["summary"],
+            {
+                "families": 11,
+                "entries": 74,
+                "retained_families": 11,
+                "moved_families": 0,
+                "split_families": 0,
+                "retained_entries": 74,
+                "moved_entries": 0,
+                "split_entries": 0,
+            },
+        )
+
+        families = audit["families"]
+        self.assertEqual(families["test_activity_plan_codec"]["target_issue"], "#772")
+        self.assertEqual(families["test_activity_plan_compiler"]["target_issue"], "#772")
+        self.assertEqual(families["test_planning_scenarios"]["target_issue"], "#773")
+        self.assertEqual(
+            families["test_execution_scenario_expectations"]["target_issue"],
+            "#773",
+        )
+        self.assertEqual(families["test_saga_program"]["target_issue"], "#774")
+        self.assertEqual(families["test_saga_state"]["target_issue"], "#774")
+        self.assertEqual(families["test_saga_journal"]["target_issue"], "#774")
+        self.assertEqual(families["test_scheduling"]["target_issue"], "#775")
+        self.assertEqual(families["test_scheduling_scenarios"]["target_issue"], "#775")
+        self.assertEqual(families["test_compensation_planning"]["target_issue"], "#776")
+        self.assertEqual(families["test_recovery_planning"]["target_issue"], "#776")
+        self.assertTrue(
+            all(family["decision"] == "retain" for family in families.values())
+        )
+        self.assertIn(
+            "closed catalogue/partial-order data",
+            families["test_execution_scenario_expectations"]["rationale"],
+        )
+
 
 if __name__ == "__main__":
     unittest.main()

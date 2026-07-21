@@ -1373,3 +1373,69 @@ Validation:
 focused #750 batch/parity guard slice: 21 tests passed
 validate-parity.sh foundation: valid=true, findings=0
 ```
+
+## #771 Planning/Saga Batch Ownership Audit
+
+#771 starts the #739 batch with the same shape as #745: classify before
+mapping. The source batch is:
+
+```text
+artifacts/extraction/required-core-batch-plan.json
+batch: planning_saga
+```
+
+The audit artifact is:
+
+```text
+artifacts/extraction/planning-saga-batch-audit.json
+```
+
+The full #739 topology is:
+
+```text
+#771 audit planning/saga batch ownership
+  -> #772 ActivityPlan codec/compiler
+    -> #773 pure planning scenario expectations
+      -> #774 saga program/state/journal
+        -> #775 pure scheduling
+          -> #776 compensation/recovery planning
+            -> #777 planning/saga batch closeout
+```
+
+Audit result:
+
+```text
+families:          11
+laws:              74
+retained families: 11
+moved families:     0
+split families:     0
+```
+
+The scenario-expectation family was the only subtle one. It is retained for
+#773 only as a closed expectation catalogue and event partial-order language.
+The actual Postgres scenario runner, DeploymentProgram workflow, coordinator,
+workers, stores, Docker, FastAPI, MCP, and effect adapters remain outside #739.
+
+The core shape to preserve is:
+
+```text
+GraphDiff
+  -> ActivityPlan
+    -> SagaProgram / SagaState / SagaJournalProjection
+      -> ExecutionSchedule
+        -> compensation/recovery planning views
+```
+
+Validation evidence:
+
+```text
+focused #771 batch/parity guard slice: 15 tests passed
+./validate-parity.sh foundation:       valid=true, findings=0
+control-plane-kit-core slice:          269 tests passed
+./test.sh:                             1187 tests passed
+git diff --check:                      clean
+```
+
+This means `ActivityPlan` remains the result of graph interpretation. It is not
+a user-authored arbitrary workflow language.
