@@ -677,7 +677,13 @@
       "owner": "control-plane-kit-core",
       "owner_kind": "core",
       "reference": "tests.test_algebra.AlgebraTests.test_requirement_socket_requires_env_binding",
-      "successors": [],
+      "successors": [
+        {
+          "evidence": "extract-e-746.topology-protocol-compile.unittest",
+          "id": "control-plane-kit-core.tests.test_kernel_pipeline.PureKernelPipelineTests.test_socket_names_are_accessible_and_binding_laws_are_structural",
+          "status": "passing"
+        }
+      ],
       "supersession": null
     },
     {
@@ -687,7 +693,13 @@
       "owner": "control-plane-kit-core",
       "owner_kind": "core",
       "reference": "tests.test_algebra.AlgebraTests.test_runtime_control_socket_forbids_startup_environment_binding",
-      "successors": [],
+      "successors": [
+        {
+          "evidence": "extract-e-746.topology-protocol-compile.unittest",
+          "id": "control-plane-kit-core.tests.test_kernel_pipeline.PureKernelPipelineTests.test_socket_names_are_accessible_and_binding_laws_are_structural",
+          "status": "passing"
+        }
+      ],
       "supersession": null
     },
     {
@@ -697,7 +709,13 @@
       "owner": "control-plane-kit-core",
       "owner_kind": "core",
       "reference": "tests.test_algebra.AlgebraTests.test_socket_names_are_accessible",
-      "successors": [],
+      "successors": [
+        {
+          "evidence": "extract-e-746.topology-protocol-compile.unittest",
+          "id": "control-plane-kit-core.tests.test_kernel_pipeline.PureKernelPipelineTests.test_socket_names_are_accessible_and_binding_laws_are_structural",
+          "status": "passing"
+        }
+      ],
       "supersession": null
     },
     {
@@ -1765,7 +1783,13 @@
       "owner": "control-plane-kit-core",
       "owner_kind": "core",
       "reference": "tests.test_compile.CompileTests.test_split_service_wires_http_and_postgres",
-      "successors": [],
+      "successors": [
+        {
+          "evidence": "extract-e-746.topology-protocol-compile.unittest",
+          "id": "control-plane-kit-core.tests.test_kernel_pipeline.PureKernelPipelineTests.test_split_service_wires_http_and_postgres_requirements",
+          "status": "passing"
+        }
+      ],
       "supersession": null
     },
     {
@@ -1911,7 +1935,13 @@
       "owner": "control-plane-kit-core",
       "owner_kind": "core",
       "reference": "tests.test_connection_protocol.ConnectionProtocolTests.test_compatibility_requires_both_transport_and_application_semantics",
-      "successors": [],
+      "successors": [
+        {
+          "evidence": "extract-e-746.topology-protocol-compile.unittest",
+          "id": "control-plane-kit-core.tests.test_protocol.ConnectionProtocolTests.test_compatibility_requires_transport_and_application_semantics",
+          "status": "passing"
+        }
+      ],
       "supersession": null
     },
     {
@@ -1921,7 +1951,13 @@
       "owner": "control-plane-kit-core",
       "owner_kind": "core",
       "reference": "tests.test_connection_protocol.ConnectionProtocolTests.test_dns_and_raw_protocols_represent_both_transports",
-      "successors": [],
+      "successors": [
+        {
+          "evidence": "extract-e-746.topology-protocol-compile.unittest",
+          "id": "control-plane-kit-core.tests.test_protocol.ConnectionProtocolTests.test_dns_and_raw_protocols_represent_both_transports",
+          "status": "passing"
+        }
+      ],
       "supersession": null
     },
     {
@@ -1947,7 +1983,13 @@
       "owner": "control-plane-kit-core",
       "owner_kind": "core",
       "reference": "tests.test_connection_protocol.ConnectionProtocolTests.test_every_protocol_has_one_closed_endpoint_scheme_set",
-      "successors": [],
+      "successors": [
+        {
+          "evidence": "extract-e-746.topology-protocol-compile.unittest",
+          "id": "control-plane-kit-core.tests.test_protocol.ConnectionProtocolTests.test_every_protocol_has_one_closed_endpoint_scheme_set",
+          "status": "passing"
+        }
+      ],
       "supersession": null
     },
     {
@@ -5381,7 +5423,13 @@
       "owner": "control-plane-kit-core",
       "owner_kind": "core",
       "reference": "tests.test_graph_construction.GraphConstructionTests.test_nested_runtimes_cannot_reuse_node_or_runtime_identity",
-      "successors": [],
+      "successors": [
+        {
+          "evidence": "extract-e-746.topology-protocol-compile.unittest",
+          "id": "control-plane-kit-core.tests.test_topology_graph.DeploymentGraphConstructionTests.test_nested_runtimes_cannot_reuse_node_or_runtime_identity",
+          "status": "passing"
+        }
+      ],
       "supersession": null
     },
     {
@@ -5391,7 +5439,13 @@
       "owner": "control-plane-kit-core",
       "owner_kind": "core",
       "reference": "tests.test_graph_construction.GraphConstructionTests.test_recipe_compilation_rejects_duplicate_block_identity",
-      "successors": [],
+      "successors": [
+        {
+          "evidence": "extract-e-746.topology-protocol-compile.unittest",
+          "id": "control-plane-kit-core.tests.test_topology_graph.DeploymentGraphConstructionTests.test_topology_compilation_rejects_duplicate_block_identity",
+          "status": "passing"
+        }
+      ],
       "supersession": null
     },
     {
@@ -5401,7 +5455,13 @@
       "owner": "control-plane-kit-core",
       "owner_kind": "core",
       "reference": "tests.test_graph_construction.GraphConstructionTests.test_recipe_compilation_rejects_duplicate_edge_identity",
-      "successors": [],
+      "successors": [
+        {
+          "evidence": "extract-e-746.topology-protocol-compile.unittest",
+          "id": "control-plane-kit-core.tests.test_topology_graph.DeploymentGraphConstructionTests.test_topology_compilation_rejects_duplicate_edge_identity",
+          "status": "passing"
+        }
+      ],
       "supersession": null
     },
     {
@@ -5411,7 +5471,13 @@
       "owner": "control-plane-kit-core",
       "owner_kind": "core",
       "reference": "tests.test_graph_construction.GraphConstructionTests.test_update_node_remains_explicit_and_requires_existing_identity",
-      "successors": [],
+      "successors": [
+        {
+          "evidence": "extract-e-746.topology-protocol-compile.unittest",
+          "id": "control-plane-kit-core.tests.test_topology_graph.DeploymentGraphConstructionTests.test_update_node_remains_explicit_and_requires_existing_identity",
+          "status": "passing"
+        }
+      ],
       "supersession": null
     },
     {

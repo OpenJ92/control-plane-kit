@@ -1,7 +1,7 @@
 {
   "counts": {
-    "entries": 749,
-    "families": 99
+    "entries": 738,
+    "families": 95
   },
   "families": [
     {
@@ -5221,40 +5221,6 @@
       "entries": [
         {
           "kind": "test",
-          "law": "behavior.nested-runtimes-cannot-reuse-node-or-runtime-identity",
-          "owner": "control-plane-kit-core",
-          "owner_kind": "core",
-          "reference": "tests.test_graph_construction.GraphConstructionTests.test_nested_runtimes_cannot_reuse_node_or_runtime_identity"
-        },
-        {
-          "kind": "test",
-          "law": "behavior.recipe-compilation-rejects-duplicate-block-identity",
-          "owner": "control-plane-kit-core",
-          "owner_kind": "core",
-          "reference": "tests.test_graph_construction.GraphConstructionTests.test_recipe_compilation_rejects_duplicate_block_identity"
-        },
-        {
-          "kind": "test",
-          "law": "behavior.recipe-compilation-rejects-duplicate-edge-identity",
-          "owner": "control-plane-kit-core",
-          "owner_kind": "core",
-          "reference": "tests.test_graph_construction.GraphConstructionTests.test_recipe_compilation_rejects_duplicate_edge_identity"
-        },
-        {
-          "kind": "test",
-          "law": "behavior.update-node-remains-explicit-and-requires-existing-identity",
-          "owner": "control-plane-kit-core",
-          "owner_kind": "core",
-          "reference": "tests.test_graph_construction.GraphConstructionTests.test_update_node_remains_explicit_and_requires_existing_identity"
-        }
-      ],
-      "family": "test_graph_construction"
-    },
-    {
-      "count": 4,
-      "entries": [
-        {
-          "kind": "test",
           "law": "behavior.invalid-inputs-fail-before-planning",
           "owner": "control-plane-kit-core",
           "owner_kind": "core",
@@ -5323,33 +5289,6 @@
       "entries": [
         {
           "kind": "test",
-          "law": "behavior.requirement-socket-requires-env-binding",
-          "owner": "control-plane-kit-core",
-          "owner_kind": "core",
-          "reference": "tests.test_algebra.AlgebraTests.test_requirement_socket_requires_env_binding"
-        },
-        {
-          "kind": "test",
-          "law": "behavior.runtime-control-socket-forbids-startup-environment-binding",
-          "owner": "control-plane-kit-core",
-          "owner_kind": "core",
-          "reference": "tests.test_algebra.AlgebraTests.test_runtime_control_socket_forbids_startup_environment_binding"
-        },
-        {
-          "kind": "test",
-          "law": "behavior.socket-names-are-accessible",
-          "owner": "control-plane-kit-core",
-          "owner_kind": "core",
-          "reference": "tests.test_algebra.AlgebraTests.test_socket_names_are_accessible"
-        }
-      ],
-      "family": "test_algebra"
-    },
-    {
-      "count": 3,
-      "entries": [
-        {
-          "kind": "test",
           "law": "behavior.mutation-and-generic-route-decorators-fail-closed",
           "owner": "control-plane-kit-core",
           "owner_kind": "core",
@@ -5371,33 +5310,6 @@
         }
       ],
       "family": "test_architecture_read_routes"
-    },
-    {
-      "count": 3,
-      "entries": [
-        {
-          "kind": "test",
-          "law": "behavior.compatibility-requires-both-transport-and-application-semantics",
-          "owner": "control-plane-kit-core",
-          "owner_kind": "core",
-          "reference": "tests.test_connection_protocol.ConnectionProtocolTests.test_compatibility_requires_both_transport_and_application_semantics"
-        },
-        {
-          "kind": "test",
-          "law": "behavior.dns-and-raw-protocols-represent-both-transports",
-          "owner": "control-plane-kit-core",
-          "owner_kind": "core",
-          "reference": "tests.test_connection_protocol.ConnectionProtocolTests.test_dns_and_raw_protocols_represent_both_transports"
-        },
-        {
-          "kind": "test",
-          "law": "behavior.every-protocol-has-one-closed-endpoint-scheme-set",
-          "owner": "control-plane-kit-core",
-          "owner_kind": "core",
-          "reference": "tests.test_connection_protocol.ConnectionProtocolTests.test_every_protocol_has_one_closed_endpoint_scheme_set"
-        }
-      ],
-      "family": "test_connection_protocol"
     },
     {
       "count": 3,
@@ -5801,19 +5713,6 @@
         }
       ],
       "family": "test_capability_compile"
-    },
-    {
-      "count": 1,
-      "entries": [
-        {
-          "kind": "test",
-          "law": "behavior.split-service-wires-http-and-postgres",
-          "owner": "control-plane-kit-core",
-          "owner_kind": "core",
-          "reference": "tests.test_compile.CompileTests.test_split_service_wires_http_and_postgres"
-        }
-      ],
-      "family": "test_compile"
     },
     {
       "count": 1,
