@@ -2876,3 +2876,93 @@ control-plane-kit-core/test.sh: 374 tests passed, compileall passed, import ok
 top-level ./test.sh: 1200 tests passed
 validate-parity.sh foundation: valid=true, findings=0, incomplete_required=338
 ```
+
+## #792 Operations Contract Batch Closeout
+
+#792 closed the remaining #740 operations-contract mapping batch without
+moving Postgres, UnitOfWork, command services, operation sessions, or graph
+mutation behavior into extracted core.
+
+The closeout found one live family still appearing in the #740 audit after
+#785 through #791:
+
+```text
+test_workflows
+  tests.test_workflows.WorkflowServiceTests.test_session_service_starts_and_closes_sessions
+  tests.test_workflows.WorkflowServiceTests.test_action_service_preserves_session_action_order
+  tests.test_workflows.WorkflowServiceTests.test_workflow_services_do_not_mutate_graph_truth
+```
+
+Those tests execute the frozen Postgres-backed workflow services. Their laws
+are real, but they are not extracted-core laws. The corrected classification is:
+
+```text
+#787
+  owns pure command vocabulary and command contract names
+
+#791
+  owns persistence boundary names and operations-owned enforcement markers
+
+#792
+  records the executable workflow-service behavior as operations / cpk-server
+  handoff evidence
+```
+
+The closeout artifact now records the full #740 source scope:
+
+```text
+source families: 34
+source entries: 298
+
+mapped successor families: 32
+mapped successor entries: 272
+
+split-boundary families: 1
+split-boundary entries: 23
+
+reviewed operations handoff families: 1
+reviewed operations handoff entries: 3
+
+unexpected remaining families: 0
+unexpected remaining entries: 0
+```
+
+`test_contracts` remains the explicit split-boundary family from #791. Core
+keeps the EnvironmentContract, RuntimeContract, DerivedResource, phase, and
+descriptor laws; operations / cpk-server keeps holder mutation, one-winner
+publication, cleanup, rollback, retained-resource, and concurrency behavior.
+
+`test_workflows` is now superseded in the parity manifest with a reviewed
+operations handoff rather than a core successor. This is intentionally not a
+passing extracted-core successor. It prevents the extraction from smuggling
+operation-session execution into core while still making the old workflow
+service laws visible to the future operations/server package.
+
+Regenerated evidence:
+
+```text
+artifacts/extraction/operations-contract-batch-closeout.json
+artifacts/extraction/operations-contract-batch-audit.json
+artifacts/extraction/supersession-reviews/extract-e-792-workflow-service-operations-handoff.json
+artifacts/extraction/required-core-closeout-report.json
+artifacts/extraction/required-core-family-inventory.json
+artifacts/extraction/parity-validation-report.json
+```
+
+Validation:
+
+```text
+focused extraction boundary / successor / batch / supersession / parity tests: 41 tests passed
+validate-parity.sh foundation: valid=true, findings=0, incomplete_required=335
+control-plane-kit-core/test.sh: 374 tests passed, compileall passed, import ok
+top-level ./test.sh: 1201 tests passed
+```
+
+The first full-suite run caught one useful closeout omission:
+`test_extraction_supersession_review` failed because the parity manifest had
+three new `test_workflows` supersessions but the reviewed-supersession artifact
+set still only contained the earlier #773 planning workflow review. The fix was
+not to loosen the test. #792 now has its own supersession-review artifact for
+the three workflow-service laws, recording that core supersedes only the old
+ownership claim while operations / cpk-server remains responsible for the
+executable behavior.

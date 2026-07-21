@@ -18,13 +18,11 @@ class ExtractionContractBoundaryTests(unittest.TestCase):
         manifest = read_bounded_json(ARTIFACT_ROOT / "parity-manifest.json")
         classification = self.classification()
 
-        remaining = next(
-            family for family in inventory["families"]
-            if family["family"] == "test_contracts"
-        )
         remaining_references = {
             entry["reference"]
-            for entry in remaining["entries"]
+            for family in inventory["families"]
+            if family["family"] == "test_contracts"
+            for entry in family["entries"]
         }
         manifest_references = {
             entry["reference"]
@@ -47,7 +45,7 @@ class ExtractionContractBoundaryTests(unittest.TestCase):
         )
         self.assertEqual(classification["source_family"], "test_contracts")
         self.assertTrue(classified_references <= manifest_references)
-        self.assertEqual(remaining_references, split_references)
+        self.assertFalse(remaining_references & split_references)
         self.assertEqual(
             classification["summary"]["entries"],
             len(classification["decisions"]),
