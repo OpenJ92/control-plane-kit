@@ -1083,3 +1083,126 @@ handoff to the next rollout step. In particular, #629 should call out the known
 future work: durable product admission transactions, operations-layer effect
 material/read projections, external server repository descriptors, and the
 future `cpk-server` product descriptor living outside core.
+
+## #629 External Fixture And EXTRACT.C Closeout
+
+### Law Card
+
+- Reference identity: `EXTRACT.C.10.external-fixture-closeout`
+- Evidence source: rollout issue #629 and the completed EXTRACT.C child issues
+  #620 through #628.
+- Observable law: core can consume an external `product.cpk.json` descriptor
+  fixture without importing the product package, instantiate it as an ordinary
+  deployment block, and traverse the pure graph/diff/plan pipeline.
+- Fixture:
+
+```text
+control-plane-kit-core/tests/fixtures/external-products/proxy/product.cpk.json
+```
+
+- Pipeline proved:
+
+```text
+canonical product.cpk.json bytes
+  -> ProductDescriptorCodec.decode_document
+    -> ProductCatalog.add
+      -> instantiate_catalog_product
+        -> ApplicationBlock
+          -> compile_topology
+            -> GraphDescriptorCodec.encode/decode
+              -> diff_graphs
+                -> compile_activity_plan
+```
+
+- Expected result: descriptor consumption imports no fixture package, product
+  identity/digest/OCI image remain graph metadata, and the plan uses ordinary
+  start activities.
+- Negative cases carried from prior issues: malformed descriptors, non-canonical
+  bytes, malicious registries, path abuse, secret canaries, duplicate conflicts,
+  unknown protocols, invalid configuration, and dynamic loading canaries.
+- Future owner: core for pure descriptor/pipeline law; server-product package
+  for actual OCI images; operations/interpreters for durable admission,
+  materialized effects, observations, and read projections.
+
+### Product Language Objects
+
+EXTRACT.C established these core objects:
+
+```text
+ProductIdentity
+OciPlatform
+OciImageReference
+ProductRuntimeContract
+ContainerServerProduct
+ProductDescriptorDocument
+ProductCatalog
+ProductInstanceConfiguration
+OciContainerProductImplementation
+```
+
+The main morphisms now available are:
+
+```text
+ProductIdentityCodec.decode
+OciImageReferenceCodec.decode
+ProductRuntimeContractCodec.decode
+ContainerServerProductCodec.decode
+ProductDescriptorCodec.decode_document
+ProductCatalog.add / merge / lookup
+instantiate_product
+instantiate_catalog_product
+compile_topology
+diff_graphs
+compile_activity_plan
+```
+
+### Implementation
+
+The fixture test deliberately starts from bytes on disk:
+
+```python
+document = ProductDescriptorCodec().decode_document(FIXTURE.read_bytes())
+catalog = ProductCatalog.empty().add(document)
+block = instantiate_catalog_product(...)
+```
+
+The public example mirrors that descriptor-first path in:
+
+```text
+control-plane-kit-core/examples/external-product-descriptor.md
+```
+
+### Decisions
+
+- The external fixture is a descriptor fixture outside the core import package,
+  not a wheel or OCI image. A real external server repository/container belongs
+  to the next rollout stage.
+- The fixture file must be byte-canonical. The first validation failed because
+  the patch-created JSON file had a trailing newline. The fix removed the final
+  newline and kept `ProductDescriptorCodec` strict.
+- No root import or package boundary changed during closeout.
+- `cpk-server` remains future server-product work outside core. Core now has
+  the generic language needed to represent it as an ordinary
+  `ContainerServerProduct` descriptor later.
+
+### Validation Evidence
+
+- `git diff --check` passed.
+- `./control-plane-kit-core/test.sh` passed 84 unittest tests, compileall, and
+  base install/import verification.
+- Core module inventory remains exact at 22 source modules.
+- Successor test inventory now has 16 unittest modules.
+- Docker residue audit found no running CPK containers; only Pottery Factory
+  containers were running and were left untouched.
+
+### Residual Risks And Handoff
+
+- Durable product admission needs an operations-layer UnitOfWork and rollback
+  law. Core does not have durable stores.
+- Product descriptor retrieval from URLs, signature verification, registry
+  allow/deny policy, OCI image pulls, and runtime material belong outside core.
+- Effect material, observations, read projections, HTTP API, MCP API, and
+  cpk-server packaging remain future extraction/server-product work.
+- The future `control-plane-kit-servers` package should use the public
+  `product.cpk.json` language rather than reintroducing package-owned server
+  enums or core imports of server implementations.
