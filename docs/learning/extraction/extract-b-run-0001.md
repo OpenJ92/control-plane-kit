@@ -6,7 +6,7 @@ EXTRACT.B creates the first in-repository `control-plane-kit-core` package and
 migrates only the pure deployment planning kernel:
 
 ```text
-DeploymentRecipe
+DeploymentTopology
   -> DeploymentGraph
   -> ValidatedGraph
   -> GraphDiff
@@ -276,8 +276,8 @@ control-plane-kit-core/src/control_plane_kit_core/
 The executable kernel is still the intended pure pipeline:
 
 ```text
-DeploymentRecipe
-  -> compile_recipe
+DeploymentTopology
+  -> compile_topology
     -> DeploymentGraph
       -> validate_graph
         -> ValidatedGraph
@@ -379,8 +379,8 @@ control_plane_kit_core.__version__
 Kernel use imports from explicit language homes:
 
 ```python
-from control_plane_kit_core.algebra import DeploymentRecipe
-from control_plane_kit_core.topology import compile_recipe, validate_graph, diff_graphs
+from control_plane_kit_core.algebra import DeploymentTopology
+from control_plane_kit_core.topology import compile_topology, validate_graph, diff_graphs
 from control_plane_kit_core.planning import ActivityPlan, compile_activity_plan
 ```
 
@@ -455,7 +455,7 @@ Postgres, FastAPI, MCP, HTTP clients, package-owned servers, or external
 systems:
 
 ```text
-DeploymentRecipe
+DeploymentTopology
 DeploymentGraph
 ValidatedGraph
 GraphDiff
@@ -474,8 +474,8 @@ VerificationContract
 The intended morphisms remain the pure deployment pipeline:
 
 ```text
-DeploymentRecipe
-  -> compile_recipe
+DeploymentTopology
+  -> compile_topology
     -> DeploymentGraph
       -> validate_graph
         -> ValidatedGraph
@@ -488,6 +488,26 @@ DeploymentRecipe
 Those arrows are the kernel. Anything that performs an effect, owns durable
 workflow truth, starts a process, serves HTTP, or declares a package-owned
 server product stays outside this package.
+
+### Naming Correction
+
+Operator review identified that `DeploymentRecipe` made the source value sound
+like a procedural instruction list rather than the declarative structure it is.
+The extracted core now treats these names as canonical:
+
+```text
+DeploymentTopology -> compile_topology -> DeploymentGraph
+```
+
+The old names remain only as rollout aliases:
+
+```python
+DeploymentRecipe = DeploymentTopology
+compile_recipe = compile_topology
+```
+
+This avoids disrupting frozen-law migration while giving new core code the
+mathematical vocabulary we actually want.
 
 ### Module Inventory
 
@@ -596,7 +616,7 @@ Validation for the closeout run:
 
 ```text
 ./control-plane-kit-core/test.sh
-  Ran 24 tests
+  Ran 25 tests
   OK
   control-plane-kit-core import ok
 

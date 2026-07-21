@@ -8,7 +8,7 @@ does not import the frozen `control_plane_kit` package. The initial milestone
 owns only the pure planning pipeline:
 
 ```text
-DeploymentRecipe
+DeploymentTopology
   -> DeploymentGraph
   -> ValidatedGraph
   -> GraphDiff
@@ -39,4 +39,3 @@ inspect frozen law
 
 Scaffold files do not claim parity. A frozen law is migrated only when this
 package has passing successor evidence.
-

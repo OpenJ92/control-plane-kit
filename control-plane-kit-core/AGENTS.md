@@ -9,7 +9,7 @@ extracted pure kernel.
 `control-plane-kit-core` owns the pure deployment planning language:
 
 ```text
-DeploymentRecipe
+DeploymentTopology
   -> DeploymentGraph
   -> ValidatedGraph
   -> GraphDiff
@@ -56,4 +56,3 @@ Each child PR should include:
 - security and secret-handling note;
 - package-boundary note;
 - handoff to the next issue.
-

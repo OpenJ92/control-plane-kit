@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from dataclasses import dataclass, replace
+from dataclasses import dataclass
 import unittest
 
 from control_plane_kit_core.algebra import (
@@ -9,6 +9,7 @@ from control_plane_kit_core.algebra import (
     BlockSpec,
     DataBlock,
     DeploymentRecipe,
+    DeploymentTopology,
     DockerRuntime,
     RequirementSocket,
     ProviderSocket,
@@ -27,18 +28,16 @@ from control_plane_kit_core.planning import (
 from control_plane_kit_core.topology import (
     DeploymentGraph,
     EdgeSubject,
-    FieldSubject,
     GraphDescriptorCodec,
     GraphDiff,
     GraphValidationError,
     LiteralAddress,
     LossyGraphDescriptor,
     ModifiedChange,
-    NodeSubject,
-    StructuralField,
     UnknownGraphVariant,
     ValidationCode,
     compile_recipe,
+    compile_topology,
     diff_graphs,
     validate_graph,
 )
@@ -77,7 +76,7 @@ class PureImplementation:
         )
 
 
-def app_with_database_recipe() -> DeploymentRecipe:
+def app_with_database_topology() -> DeploymentTopology:
     api = ApplicationBlock(
         BlockSpec("api"),
         PureImplementation("application", {"internal": "http://api"}),
@@ -91,7 +90,7 @@ def app_with_database_recipe() -> DeploymentRecipe:
         PureImplementation("data", {"internal": "postgresql://postgres:5432/app"}),
         BlockSockets(providers=(ProviderSocket("internal", Protocol.POSTGRES),)),
     )
-    return DeploymentRecipe(
+    return DeploymentTopology(
         "orders",
         DockerRuntime(
             children=(
@@ -104,8 +103,8 @@ def app_with_database_recipe() -> DeploymentRecipe:
 
 
 class PureKernelPipelineTests(unittest.TestCase):
-    def test_recipe_compilation_wires_provider_to_requirement_environment(self) -> None:
-        graph = compile_recipe(app_with_database_recipe())
+    def test_topology_compilation_wires_provider_to_requirement_environment(self) -> None:
+        graph = compile_topology(app_with_database_topology())
 
         api = graph.node("api")
         postgres = graph.node("postgres")
@@ -123,7 +122,7 @@ class PureKernelPipelineTests(unittest.TestCase):
         )
 
     def test_protocol_mismatch_fails_at_pure_compile_boundary(self) -> None:
-        source = app_with_database_recipe()
+        source = app_with_database_topology()
         bad = SocketConnection(
             "postgres",
             "internal",
@@ -131,16 +130,16 @@ class PureKernelPipelineTests(unittest.TestCase):
             "database",
             protocol=Protocol.HTTP,
         )
-        broken = DeploymentRecipe(
+        broken = DeploymentTopology(
             source.name,
             DockerRuntime(children=(*source.root.children[:-1], bad)),
         )
 
         with self.assertRaises(ValueError):
-            compile_recipe(broken)
+            compile_topology(broken)
 
     def test_graph_descriptor_round_trip_preserves_typed_identity(self) -> None:
-        graph = compile_recipe(app_with_database_recipe())
+        graph = compile_topology(app_with_database_topology())
         codec = GraphDescriptorCodec()
 
         descriptor = codec.encode(graph)
@@ -153,7 +152,7 @@ class PureKernelPipelineTests(unittest.TestCase):
             codec.decode(descriptor)
 
     def test_unknown_descriptor_fields_and_literal_credentials_fail_closed(self) -> None:
-        descriptor = GraphDescriptorCodec().encode(compile_recipe(app_with_database_recipe()))
+        descriptor = GraphDescriptorCodec().encode(compile_topology(app_with_database_topology()))
         descriptor["future"] = {"meaning": "unknown"}
 
         with self.assertRaises(LossyGraphDescriptor):
@@ -162,13 +161,13 @@ class PureKernelPipelineTests(unittest.TestCase):
             LiteralAddress("postgresql://operator:secret@database/app")
 
     def test_validation_reports_missing_required_connection_as_structured_data(self) -> None:
-        source = app_with_database_recipe()
-        disconnected = DeploymentRecipe(
+        source = app_with_database_topology()
+        disconnected = DeploymentTopology(
             source.name,
             DockerRuntime(children=source.root.children[:-1]),
         )
 
-        result = validate_graph(compile_recipe(disconnected))
+        result = validate_graph(compile_topology(disconnected))
 
         self.assertFalse(result.valid)
         self.assertEqual(result.errors[0].code, ValidationCode.MISSING_REQUIRED_CONNECTION)
@@ -177,7 +176,7 @@ class PureKernelPipelineTests(unittest.TestCase):
             result.require_valid()
 
     def test_diff_and_plan_for_initial_deployment_are_pure_and_typed(self) -> None:
-        desired = validate_graph(compile_recipe(app_with_database_recipe()))
+        desired = validate_graph(compile_topology(app_with_database_topology()))
         current = validate_graph(DeploymentGraph(desired.graph.name))
 
         diff = diff_graphs(current, desired)
@@ -211,8 +210,8 @@ class PureKernelPipelineTests(unittest.TestCase):
                 PureImplementation("application", {"internal": f"http://{target}"}),
                 BlockSockets(providers=(ProviderSocket("internal", Protocol.HTTP),)),
             )
-            return compile_recipe(
-                DeploymentRecipe(
+            return compile_topology(
+                DeploymentTopology(
                     "router-switch",
                     DockerRuntime(
                         children=(
@@ -237,6 +236,14 @@ class PureKernelPipelineTests(unittest.TestCase):
             any(activity.operation.__class__.__name__ == "SwitchSocketConnection" for activity in plan.activities)
         )
         self.assertFalse(any(isinstance(activity.operation, ReconcileNode) for activity in plan.activities))
+
+    def test_recipe_names_remain_compatibility_aliases_during_rollout(self) -> None:
+        self.assertIs(DeploymentRecipe, DeploymentTopology)
+        self.assertIs(compile_recipe, compile_topology)
+        self.assertEqual(
+            compile_recipe(app_with_database_topology()),
+            compile_topology(app_with_database_topology()),
+        )
 
 
 if __name__ == "__main__":

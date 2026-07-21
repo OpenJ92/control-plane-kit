@@ -1,4 +1,4 @@
-"""Compile recipe algebra into graph data."""
+"""Compile topology algebra into graph data."""
 
 from __future__ import annotations
 
@@ -7,7 +7,7 @@ from control_plane_kit_core.algebra import (
     DataBlock,
     DeployBlock,
     DeploymentExpr,
-    DeploymentRecipe,
+    DeploymentTopology,
     ProxyBlock,
     DockerRuntime,
     RuntimeContext,
@@ -19,14 +19,18 @@ from control_plane_kit_core.topology.graph import DeploymentGraph, Edge, Node, R
 from control_plane_kit_core.types import BlockFamily
 
 
-def compile_recipe(recipe: DeploymentRecipe) -> DeploymentGraph:
-    """Compile a deployment recipe into a pure graph."""
+def compile_topology(topology: DeploymentTopology) -> DeploymentGraph:
+    """Compile a deployment topology into a pure graph."""
 
-    graph = DeploymentGraph(recipe.name)
-    graph, connections = _compile_runtime(recipe.root, graph)
+    graph = DeploymentGraph(topology.name)
+    graph, connections = _compile_runtime(topology.root, graph)
     for connection in connections:
         graph = _apply_connection(graph, connection)
     return graph
+
+
+# Backward-compatible rollout alias. New code should use compile_topology.
+compile_recipe = compile_topology
 
 
 def _compile_runtime(

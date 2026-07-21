@@ -67,7 +67,7 @@ from control_plane_kit_core.topology.changes import (
     UnsupportedReason,
 )
 from control_plane_kit_core.topology.diff import diff_graphs
-from control_plane_kit_core.topology.compiler import compile_recipe
+from control_plane_kit_core.topology.compiler import compile_recipe, compile_topology
 from control_plane_kit_core.types import SocketBinding
 
 __all__ = [
@@ -130,6 +130,7 @@ __all__ = [
     "ValidationFinding",
     "ValidationSeverity",
     "compile_recipe",
+    "compile_topology",
     "diff_graphs",
     "validate_graph",
 ]

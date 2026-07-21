@@ -34,7 +34,7 @@ evidence status:
 The first migrated language is:
 
 ```text
-DeploymentRecipe
+DeploymentTopology
   -> DeploymentGraph
   -> ValidatedGraph
   -> GraphDiff
@@ -43,4 +43,3 @@ DeploymentRecipe
 
 Runtime mutation, durable execution, recovery, observations, product servers,
 entrypoints, and external-effect adapters remain later extraction milestones.
-
