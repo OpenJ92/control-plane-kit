@@ -17,6 +17,7 @@ trap cleanup EXIT
 cleanup
 
 ./packaging-test.sh
+./control-plane-kit-core/test.sh
 
 docker build --target test -t "$IMAGE_NAME" .
 
