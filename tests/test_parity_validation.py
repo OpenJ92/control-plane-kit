@@ -41,6 +41,16 @@ def empty_evidence() -> dict[str, object]:
     return {"schema": "cpk.successor-evidence-index", "evidence": []}
 
 
+def reviewed_supersession() -> dict[str, str]:
+    return {
+        "rationale": "obsolete structural assertion replaced by stronger invariant",
+        "review": "issue-732",
+        "obsolete_assumption": "frozen test asserted an old package boundary",
+        "replacement": "successor law asserts the extracted public boundary",
+        "negative_case_disposition": "invalid boundary cases remain covered",
+    }
+
+
 class ParityValidationTests(unittest.TestCase):
     def test_foundation_accepts_exhaustive_mapping_without_claiming_migration(self) -> None:
         ownership, demos = inventories()
@@ -160,7 +170,7 @@ class ParityValidationTests(unittest.TestCase):
         manifest = build_manifest(ownership, demos)
         for entry in manifest["entries"]:
             if entry["migration_state"] == "required":
-                entry["supersession"] = {"rationale": "law replaced by stronger invariant", "review": "issue-42"}
+                entry["supersession"] = reviewed_supersession()
         report = validate_parity(manifest, ownership, demos, empty_evidence(), policy=ValidationPolicy.MIGRATION_COMPLETE)
         self.assertTrue(report["valid"])
         self.assertTrue(report["migration_complete"])
@@ -247,10 +257,7 @@ class ParityValidationTests(unittest.TestCase):
         superseded = build_manifest(ownership, demos)
         for entry in superseded["entries"]:
             if entry["owner_kind"] == "core":
-                entry["supersession"] = {
-                    "rationale": "obsolete structural assertion replaced by stronger core boundary",
-                    "review": "issue-728",
-                }
+                entry["supersession"] = reviewed_supersession()
         supersession_report = validate_required_core_closeout(
             superseded,
             ownership,
@@ -259,6 +266,26 @@ class ParityValidationTests(unittest.TestCase):
         )
         self.assertTrue(supersession_report["valid"])
         self.assertEqual(supersession_report["counts"]["reviewed_core_supersessions"], 1)
+
+    def test_required_core_closeout_rejects_non_core_supersession(self) -> None:
+        ownership, demos = inventories()
+        manifest = build_manifest(ownership, demos)
+        for entry in manifest["entries"]:
+            if entry["owner_kind"] == "deferred-product":
+                entry["supersession"] = reviewed_supersession()
+
+        report = validate_required_core_closeout(
+            manifest,
+            ownership,
+            demos,
+            empty_evidence(),
+        )
+
+        self.assertFalse(report["valid"])
+        self.assertIn(
+            "non_core_supersession_in_core_closeout",
+            {finding["code"] for finding in report["findings"]},
+        )
 
     def test_required_core_closeout_rejects_missing_or_failed_successor_evidence(self) -> None:
         ownership, demos = inventories()

@@ -369,3 +369,77 @@ unmapped families:         99
 
 No deferred server/product laws moved. No aggregate suite pass was treated as
 evidence without explicit manifest successors.
+
+## #732 Reviewed Supersession Classification
+
+#732 tightened the supersession language before attempting to remove any frozen
+law from the required-core inventory.
+
+The manifest supersession shape is now a complete reviewed structural record:
+
+```python
+SUPERSESSION_FIELDS = {
+    "rationale",
+    "review",
+    "obsolete_assumption",
+    "replacement",
+    "negative_case_disposition",
+}
+```
+
+That shape matters because supersession is not weaker evidence. It is a
+different proof that says:
+
+```text
+this frozen assertion was about obsolete structure
+  -> this stronger successor or handoff replaces it
+    -> this is where the negative case remains protected
+```
+
+The core closeout validator now rejects non-core supersession during this
+phase:
+
+```python
+if entry["supersession"] is not None and entry["owner_kind"] != "core":
+    findings.append(
+        _finding(
+            "non_core_supersession_in_core_closeout",
+            entry["kind"],
+            entry["reference"],
+            "core closeout cannot supersede non-core behavior",
+        )
+    )
+```
+
+The dry run reviewed the tempting candidates:
+
+```text
+test_architecture_analysis
+test_architecture_dependencies
+validation
+```
+
+None were superseded. The reason is important: those families contain behavior
+we still want, even where old package names or local structure are stale.
+Architecture-analysis tests encode AST-policy language. Dependency tests encode
+ownership laws. Validation tests remain release-candidate obligations. They
+need successor evidence or a later explicit harness extraction, not deletion by
+supersession.
+
+The review artifact is:
+
+```text
+artifacts/extraction/supersession-reviews/extract-e-732-reviewed-supersession-classification.json
+```
+
+Current supersession counts after #732:
+
+```text
+reviewed supersessions: 0
+required-core completed: 31
+required-core incomplete: 749
+```
+
+#731 must therefore treat every remaining required-core law as unmapped unless
+it receives explicit successor evidence in a later mapping pass. It should not
+expect #732 to reduce the count.

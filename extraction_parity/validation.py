@@ -283,6 +283,15 @@ def validate_required_core_closeout(
     incomplete_core_entries: list[dict[str, str]] = []
 
     for entry in decode_manifest(manifest)["entries"]:
+        if entry["supersession"] is not None and entry["owner_kind"] != "core":
+            findings.append(
+                _finding(
+                    "non_core_supersession_in_core_closeout",
+                    entry["kind"],
+                    entry["reference"],
+                    "core closeout cannot supersede non-core behavior",
+                )
+            )
         if entry["migration_state"] == "deferred":
             deferred_entries.append(_entry_reference(entry))
         if entry["migration_state"] != "required":

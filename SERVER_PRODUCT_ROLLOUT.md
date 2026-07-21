@@ -988,9 +988,27 @@ as:
     "tests/test_graph_diff.py::test_socket_change_is_structural"
   ],
   "status": "passing",
-  "evidence": "core-ci-run-or-commit"
+  "evidence": "core-ci-run-or-commit",
+  "supersession": null
 }
 ```
+
+When a frozen law is not migrated because it asserted obsolete structure rather
+than behavior, the manifest uses an explicit reviewed supersession record
+instead of successor evidence:
+
+```json
+{
+  "rationale": "obsolete structural assertion replaced by stronger invariant",
+  "review": "issue-732",
+  "obsolete_assumption": "frozen test asserted an old package boundary",
+  "replacement": "successor law asserts the extracted public boundary",
+  "negative_case_disposition": "invalid boundary cases remain covered"
+}
+```
+
+Supersession is not a shortcut for missing behavior. It is mutually exclusive
+with successor evidence and must preserve the negative case somewhere explicit.
 
 Allowed owners are:
 
