@@ -878,3 +878,111 @@ topology/diff/planning path. Use `ProductCatalog`, `instantiate_catalog_product`
 as composition points. Do not add a parallel product graph, product diff, or
 product plan. Unknown products and invalid configuration should remain pure
 failures before planning.
+
+## #627 Product Truth Through Graph, Diff, And Plan
+
+### Law Card
+
+- Reference identity: `EXTRACT.C.8.product-truth-propagation`
+- Evidence source: rollout issue #627 and the #626 instantiated product graph
+  proof.
+- Observable law: product revision, descriptor digest, and OCI image digest are
+  graph truth once an external product is instantiated. They survive graph
+  descriptors, produce explicit graph diffs when changed, and compile into the
+  existing activity-plan language without a product-specific planning lane.
+- Objects reused:
+
+```text
+ProductCatalog
+ProductDescriptorDocument
+ProductInstanceConfiguration
+ApplicationBlock
+DeploymentGraph
+GraphDiff
+ActivityPlan
+```
+
+- Transformations proved:
+
+```text
+ProductCatalog x ProductIdentity x RoleId x ProductInstanceConfiguration
+  -> instantiate_catalog_product
+    -> ApplicationBlock
+      -> compile_topology
+        -> GraphDescriptorCodec.encode/decode
+          -> diff_graphs
+            -> compile_activity_plan
+```
+
+- Expected result: `product_identity`, `product_descriptor_digest`, and
+  `oci_image` metadata survive graph descriptor round-trip; product image digest
+  changes produce a node metadata diff; product revision changes are not erased
+  by reusing the same role id; initial deployment uses ordinary start/wait plan
+  operations; product updates use ordinary reconciliation.
+- Negative cases covered by upstream tests: unknown catalogue lookup, invalid
+  configuration, malformed role id, secret-bearing descriptors, runtime effects
+  during instantiation, and product-owned connections.
+- Obsolete structural assumptions not migrated: product-specific graph codec,
+  product-specific diff, product-specific activity plan, and graph drift
+  retargeting admitted work by changing hidden implementation state.
+- Future owner: core for graph/diff/plan propagation; operations/interpreters
+  for effect material, observations, and read projections.
+
+### Implementation
+
+#627 required no production code. The existing data path already preserved the
+new product metadata introduced by #626:
+
+```python
+metadata={
+    "product_identity": self.document.product.identity.key,
+    "product_descriptor_digest": self.document.content_digest,
+    "oci_image": self.document.product.image.execution_reference,
+}
+```
+
+The new test intentionally exercises the ordinary compiler path:
+
+```python
+block = instantiate_catalog_product(...)
+graph = compile_topology(DeploymentTopology("hello", DockerRuntime(children=(block,))))
+restored = GraphDescriptorCodec().decode(GraphDescriptorCodec().encode(graph))
+```
+
+Product changes then appear as regular structural changes:
+
+```python
+diff = diff_graphs(validate_graph(before), validate_graph(after))
+plan = compile_activity_plan(diff)
+```
+
+### Decisions
+
+- This issue stays inside extracted core. Effect material, observations, and read
+  projections are named in the issue text but are not present in
+  `control-plane-kit-core` yet. They become downstream obligations for the
+  operations/interpreter extraction rather than fake core APIs.
+- Product identity/digest are currently represented as node metadata because
+  graph nodes already preserve metadata through codec/diff/plan. A future typed
+  product block-spec variant may be useful, but was not necessary for the core
+  propagation law.
+- Changing OCI image digest or product revision is a structural graph change;
+  it is not hidden inside runtime implementation state.
+
+### Evidence
+
+- Red evidence: the first test pass failed because the test guessed wrong field
+  names in the existing diff algebra (`FieldSubject.owner` and
+  `MetadataValue.values`). The test was corrected to use the established
+  algebra; no production aliases were added.
+- Green evidence: `./control-plane-kit-core/test.sh` passed 80 unittest tests,
+  compileall, and base import verification.
+
+### Handoff To #628
+
+#628 should harden security/architecture around the product path now that
+descriptor, catalogue, instantiation, and graph/diff/plan propagation exist.
+Focus on secret exclusion, no optional dependency imports, no product package
+imports, no dynamic loading, no file/network/Docker effects in core, and no
+parallel product graph/planning model. If additional AST policies are added,
+keep them pointed at structural laws rather than incidental implementation text.
