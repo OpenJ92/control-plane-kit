@@ -1,0 +1,19 @@
+{
+  "candidate_reviews": [
+    {
+      "decision": "superseded",
+      "family": "test_planning_scenarios",
+      "law": "behavior.every-scenario-runs-through-the-postgres-planning-workflow",
+      "reason": "The frozen law asserts Postgres workflow execution through stores, UnitOfWork, and workflow services. Extracted core owns the pure scenario catalogue, not durable planning workflow execution. The workflow law remains active for the later operations/contracts batch."
+    }
+  ],
+  "review": "issue-773",
+  "reviewed_supersessions": [
+    {
+      "law": "behavior.every-scenario-runs-through-the-postgres-planning-workflow",
+      "reference": "tests.test_planning_scenarios.PlanningScenarioWorkflowTests.test_every_scenario_runs_through_the_postgres_planning_workflow"
+    }
+  ],
+  "schema": "cpk.supersession-review",
+  "summary": "The pure extracted-core scenario catalogue supersedes only the core ownership claim for the frozen Postgres planning workflow law. The behavior is not erased; it moves to the operations/contracts batch where Postgres, UnitOfWork, and workflow services belong."
+}

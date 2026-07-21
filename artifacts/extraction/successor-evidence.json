@@ -64,6 +64,11 @@
       "digest": "sha256:351c12c19e29f02ca4cfe4ce418ff1f23b7dd0ef0a3a4cc67c5a4971cbe71e93",
       "id": "extract-e-772.activity-plan-codec-compiler.unittest",
       "status": "passing"
+    },
+    {
+      "digest": "sha256:b5e074c1460f3fa607dc0568ca46fd33e993dd771b406eeed5e08f25a264aebf",
+      "id": "extract-e-773.planning-scenario-expectations.unittest",
+      "status": "passing"
     }
   ],
   "schema": "cpk.successor-evidence-index"
