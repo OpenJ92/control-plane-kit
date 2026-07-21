@@ -201,3 +201,115 @@ the same pattern: pure stdlib value, strict adjacent codec, deterministic
 descriptor, no registry calls, no Docker imports, and no compatibility-version
 machinery. Product identity is now available as
 `control_plane_kit_core.products.ProductIdentity`.
+
+## #621 OCI Image Reference
+
+### Law Card
+
+- Reference identity: `EXTRACT.C.2.oci-image-reference`
+- Evidence source: rollout issue #621, #620 handoff, and rollout OCI image
+  sections.
+- Observable law: an external container product may carry a human tag, but
+  execution identity is always the immutable digest-pinned reference.
+- Object:
+
+```text
+OciImageReference
+  = registry
+  x repository
+  x digest
+  x optional tag
+  x platform constraints
+  x provenance fields
+```
+
+- Expected result: valid digest-pinned image references construct, encode,
+  decode, sort platform constraints, expose a tag-free `execution_reference`,
+  and fail platform mismatch before any runtime effect.
+- Negative cases: missing digest, mutable tag without digest, malformed digest,
+  unsupported digest algorithm, credential-bearing registry, URL registry,
+  uppercase/path-abuse repository, malformed tag, secret-like provenance keys,
+  unknown/missing descriptor fields, malformed platform descriptors, and invalid
+  platform values.
+- Obsolete structural assumptions not migrated: command-string images,
+  package-owned Docker helpers, live Docker inspection, registry pulls, and
+  mutable tags as execution truth.
+- Future owner: core.
+
+### Implementation
+
+`OciImageReference` now lives beside `ProductIdentity` as another pure product
+boundary value:
+
+```python
+@dataclass(frozen=True)
+class OciImageReference:
+    registry: str
+    repository: str
+    digest: str
+    tag: str | None = None
+    platforms: tuple[OciPlatform, ...] = ()
+    provenance: Mapping[str, str] | None = None
+
+    @property
+    def execution_reference(self) -> str:
+        return f"{self.registry}/{self.repository}@{self.digest}"
+```
+
+The display reference may carry the mutable tag, but it remains display-only:
+
+```python
+@property
+def human_reference(self) -> str:
+    if self.tag is None:
+        return self.execution_reference
+    return f"{self.registry}/{self.repository}:{self.tag}@{self.digest}"
+```
+
+Platform constraints are pure data and checked before an interpreter can begin:
+
+```python
+def require_platform(self, requested: OciPlatform) -> None:
+    if self.platforms and requested not in self.platforms:
+        raise PlatformMismatch(...)
+```
+
+### Decisions
+
+- Only `sha256:<64 lowercase hex>` is admitted right now. That is conservative
+  and keeps digest identity unambiguous.
+- Tags are optional human hints. They are never used to compute execution truth.
+- Registry and repository syntax is bounded and lowercase; registry credentials
+  are rejected without echoing the secret-like value in the error message.
+- Provenance is bounded string metadata and rejects secret-like keys such as
+  `token`, `password`, `secret`, `credential`, and `key`.
+- No registry call, Docker import, filesystem access, or network effect appears
+  in construction or decoding.
+
+### Evidence
+
+- Red evidence: focused core test collection failed only because the OCI image
+  reference names did not yet exist.
+- Green evidence: `./control-plane-kit-core/test.sh` passed 43 unittest tests,
+  compileall, and base import verification.
+
+### Handoff To #622
+
+#622 can now compose the product descriptor out of the already extracted pure
+languages:
+
+```text
+ProductIdentity
+  x OciImageReference
+  x Protocol / BlockSockets
+  x EnvironmentContract
+  x RuntimeVariableContract
+  x ConfigurationArtifact
+  x SecretReference
+  x Capability / Verification / Lifecycle values
+```
+
+Do not collapse these pieces into one string blob. The product descriptor should
+reuse the strict current codecs for each sublanguage, fail closed on unknown
+descriptor keys, and continue to avoid Docker, registry, HTTP, MCP, Postgres, or
+server-entrypoint imports.
