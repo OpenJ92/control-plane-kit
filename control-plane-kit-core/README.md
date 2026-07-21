@@ -105,6 +105,18 @@ ControlPlaneProcessContract
 
 The contract states what `cpk-server` must prove. It does not host the server.
 
+HTTP/MCP parity is a separate contract:
+
+```text
+AdapterParityContract
+  = HttpApiContract
+  x McpStreamableHttpContract
+  x AdapterProjectionBinding*
+```
+
+Each projection binding names one canonical operation and the corresponding HTTP
+route id and MCP tool name.
+
 ## Extraction Law
 
 Every migrated behavior must be justified by a frozen law card from the

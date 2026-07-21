@@ -931,3 +931,135 @@ ControlPlaneProcessContract
 
 #636 should prove that HTTP and MCP delegate to the same application services
 and projections without implementing either hosted adapter.
+
+## #636 HTTP And MCP Service/Projection Parity
+
+### Law Card
+
+- Reference identity: `EXTRACT.D.3.adapter-projection-parity`
+- Evidence source: frozen `ReadOnlyMcpAdapter`, frozen instance read FastAPI
+  routes, #633 MCP endpoint contract, #634 HTTP route contracts, and #636.
+- Observable law: HTTP and MCP adapters differ by transport representation only.
+  They expose one canonical service/projection vocabulary and do not own private
+  projections or private command names.
+- Expected result: every canonical read projection binds to exactly one HTTP
+  route id and one MCP tool name; the binding checks the HTTP route's service
+  role and response schema.
+- Negative cases: duplicate canonical operation ids, duplicate HTTP route ids,
+  duplicate MCP tool names, projection schema mismatch, service-role mismatch,
+  and route safety mismatch for reads.
+- Obsolete assumptions not migrated: FastAPI route table as truth, MCP adapter
+  dispatch dictionary as truth, and process-hosted comparison.
+- Future owner: core parity contract; hosted adapters prove they implement it
+  later.
+
+### Objects
+
+```text
+AdapterProjectionBinding
+  = operation_id
+  x ControlPlaneServiceRole
+  x projection_schema
+  x http_route_id
+  x mcp_tool_name
+
+AdapterParityContract
+  = HttpApiContract
+  x McpStreamableHttpContract
+  x unique AdapterProjectionBinding*
+```
+
+### Transformations
+
+```text
+HttpApiContract
+  x McpStreamableHttpContract
+    -> operator_read_projection_parity
+      -> AdapterParityContract
+        -> closed descriptor
+          -> AdapterParityContract
+```
+
+### Implementation Decision
+
+#636 adds `control_plane_kit_core.operations.parity`.
+
+The central binding looks like this:
+
+```python
+AdapterProjectionBinding(
+    operation_id="read.workspace",
+    service_role=ControlPlaneServiceRole.READS,
+    projection_schema="WorkspaceReadResponse",
+    http_route_id="read.workspace",
+    mcp_tool_name="get_workspace",
+)
+```
+
+This is exactly the style we want for adapters:
+
+```text
+canonical projection
+  -> HTTP route representation
+  -> MCP tool representation
+```
+
+The parity contract checks the HTTP side against the canonical service/schema:
+
+```python
+route = self.http_api.route(binding.http_route_id)
+if route.service_role is not binding.service_role:
+    raise InvalidAdapterParityContract(...)
+if route.response_schema.name != binding.projection_schema:
+    raise InvalidAdapterParityContract(...)
+```
+
+The first implementation attempt had a Python syntax error because generator
+expressions were passed alongside another argument without parentheses. The fix
+was purely syntactic:
+
+```python
+_reject_duplicates(
+    "operation_id",
+    (binding.operation_id for binding in self.projections),
+)
+```
+
+No test assertion changed.
+
+### Test Evidence
+
+#636 adds `control-plane-kit-core/tests/test_adapter_parity_contract.py`.
+
+The focused red run failed with:
+
+```text
+ImportError: cannot import name 'AdapterParityContract'
+```
+
+The first implementation run failed on a syntax error in the new module. After
+the syntax fix, the green run passed:
+
+```text
+Ran 121 tests in 0.946s
+OK
+control-plane-kit-core import ok
+```
+
+### Review Notes
+
+- Architecture: parity depends only on pure HTTP/MCP/service contracts.
+- Security: no new auth implementation; parity preserves service-role and
+  projection equivalence so future auth checks have one vocabulary to protect.
+- Data engineering: no stores or UnitOfWork implementation changed.
+- Test integrity: no assertion was weakened; the syntax failure was fixed in
+  source.
+- Design: this is the first explicit “transport adapters are interpreters over
+  one operation language” object in extracted core.
+
+### Handoff To #637
+
+#637 should extend this idea from read projection parity into transaction,
+idempotency, and approval parity. It can depend on `AdapterParityContract`,
+`UnitOfWorkBoundary`, and the HTTP route safety/auth-scope language. It should
+not implement command execution or hosted adapters.

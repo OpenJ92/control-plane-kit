@@ -4,6 +4,8 @@ __version__ = "0.1.0"
 
 from control_plane_kit_core.operations import (
     ApplicationServiceBinding,
+    AdapterParityContract,
+    AdapterProjectionBinding,
     ControlPlaneServiceRole,
     ControlPlaneProcessContract,
     DependencyReadinessKind,
@@ -17,6 +19,7 @@ from control_plane_kit_core.operations import (
     HttpOperationSafety,
     HttpSchemaRef,
     HttpStatusProbeContract,
+    InvalidAdapterParityContract,
     InvalidHttpApiContract,
     InvalidMcpStreamableHttpContract,
     InvalidDeploymentProgramBoundary,
@@ -34,6 +37,7 @@ from control_plane_kit_core.operations import (
     StoreParticipation,
     UnitOfWorkBoundary,
     operator_read_http_routes,
+    operator_read_projection_parity,
 )
 from control_plane_kit_core.products import (
     ContainerServerProduct,
@@ -68,6 +72,8 @@ from control_plane_kit_core.products import (
 
 __all__ = [
     "ApplicationServiceBinding",
+    "AdapterParityContract",
+    "AdapterProjectionBinding",
     "ContainerServerProduct",
     "ContainerServerProductCodec",
     "ContainerServerProductError",
@@ -85,6 +91,7 @@ __all__ = [
     "HttpOperationSafety",
     "HttpSchemaRef",
     "HttpStatusProbeContract",
+    "InvalidAdapterParityContract",
     "InvalidHttpApiContract",
     "InvalidMcpStreamableHttpContract",
     "InvalidDeploymentProgramBoundary",
@@ -125,5 +132,6 @@ __all__ = [
     "instantiate_catalog_product",
     "instantiate_product",
     "operator_read_http_routes",
+    "operator_read_projection_parity",
     "require_unique_product_identities",
 ]
