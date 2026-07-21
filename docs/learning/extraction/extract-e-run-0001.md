@@ -192,3 +192,83 @@ Important result shape:
 This is intentionally a failing report on the current manifest. #728 gives
 #730 a precise object to inventory rather than letting #643 drift into a fake
 suite-count proof.
+
+## #730 Required-Core Family Inventory
+
+#730 adds the second interpreter for the EXTRACT.E core slice:
+
+```python
+def inventory_unmapped_required_core_families(
+    closeout_report: dict[str, object],
+) -> dict[str, object]:
+    ...
+```
+
+The transformation is:
+
+```text
+RequiredCoreCloseoutReport
+  -> RequiredCoreFamilyInventory
+```
+
+This is only a review view. It does not claim that a frozen law has migrated,
+and it does not add successor evidence. It groups the still-incomplete
+required-core law identities so #729 can map high-confidence successor suites
+family by family.
+
+The generated artifact is:
+
+```text
+artifacts/extraction/required-core-family-inventory.json
+```
+
+Current real-artifact counts:
+
+```text
+unmapped required-core entries: 756
+families:                       100
+```
+
+Largest families:
+
+```text
+test_contracts:                41
+test_execution_coordinator:    28
+test_instance_read_service:    21
+test_run_lifecycle:            21
+test_docker_effects:           17
+test_execution_values:         16
+test_probe_execution:          16
+test_architecture_analysis:    15
+test_graph_diff:               15
+test_postgres_scenario_runner: 15
+```
+
+Important shape:
+
+```python
+{
+    "schema": "cpk.required-core-family-inventory",
+    "counts": {"entries": 756, "families": 100},
+    "families": [
+        {
+            "family": "test_contracts",
+            "count": 41,
+            "entries": [
+                {
+                    "kind": "test",
+                    "reference": "...",
+                    "law": "behavior.secret-descriptor-never-exposes-raw-value",
+                    "owner_kind": "core",
+                    "owner": "control-plane-kit-core",
+                },
+            ],
+        },
+    ],
+}
+```
+
+The closeout entry identity now carries `law` everywhere, including deferred
+entries. That keeps the report language closed around the actual behavioral
+law, not just the frozen test path. Duplicate law identities fail closed before
+the family report is produced.
