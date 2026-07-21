@@ -1,7 +1,7 @@
 {
   "counts": {
-    "entries": 607,
-    "families": 80
+    "entries": 533,
+    "families": 69
   },
   "families": [
     {
@@ -1267,96 +1267,6 @@
       "entries": [
         {
           "kind": "test",
-          "law": "behavior.dependency-and-activity-permutations-have-one-descriptor",
-          "owner": "control-plane-kit-core",
-          "owner_kind": "core",
-          "reference": "tests.test_activity_plan_codec.ActivityPlanDescriptorCodecTests.test_dependency_and_activity_permutations_have_one_descriptor"
-        },
-        {
-          "kind": "test",
-          "law": "behavior.durable-record-rejects-arbitrary-payload-mapping",
-          "owner": "control-plane-kit-core",
-          "owner_kind": "core",
-          "reference": "tests.test_activity_plan_codec.ActivityPlanDescriptorCodecTests.test_durable_record_rejects_arbitrary_payload_mapping"
-        },
-        {
-          "kind": "test",
-          "law": "behavior.every-closed-operation-and-target-variant-round-trips",
-          "owner": "control-plane-kit-core",
-          "owner_kind": "core",
-          "reference": "tests.test_activity_plan_codec.ActivityPlanDescriptorCodecTests.test_every_closed_operation_and_target_variant_round_trips"
-        },
-        {
-          "kind": "test",
-          "law": "behavior.every-review-subject-variant-round-trips",
-          "owner": "control-plane-kit-core",
-          "owner_kind": "core",
-          "reference": "tests.test_activity_plan_codec.ActivityPlanDescriptorCodecTests.test_every_review_subject_variant_round_trips"
-        },
-        {
-          "kind": "test",
-          "law": "behavior.invalid-dag-and-target-shapes-are-descriptor-errors",
-          "owner": "control-plane-kit-core",
-          "owner_kind": "core",
-          "reference": "tests.test_activity_plan_codec.ActivityPlanDescriptorCodecTests.test_invalid_dag_and_target_shapes_are_descriptor_errors"
-        },
-        {
-          "kind": "test",
-          "law": "behavior.json-rendering-is-deterministic",
-          "owner": "control-plane-kit-core",
-          "owner_kind": "core",
-          "reference": "tests.test_activity_plan_codec.ActivityPlanDescriptorCodecTests.test_json_rendering_is_deterministic"
-        },
-        {
-          "kind": "test",
-          "law": "behavior.review-diagnostic-carries-subject-not-changed-secret-value",
-          "owner": "control-plane-kit-core",
-          "owner_kind": "core",
-          "reference": "tests.test_activity_plan_codec.ActivityPlanDescriptorCodecTests.test_review_diagnostic_carries_subject_not_changed_secret_value"
-        },
-        {
-          "kind": "test",
-          "law": "behavior.risk-and-destructive-markers-survive-the-descriptor-boundary",
-          "owner": "control-plane-kit-core",
-          "owner_kind": "core",
-          "reference": "tests.test_activity_plan_codec.ActivityPlanDescriptorCodecTests.test_risk_and_destructive_markers_survive_the_descriptor_boundary"
-        },
-        {
-          "kind": "test",
-          "law": "behavior.round-trip-preserves-closed-plan-semantics",
-          "owner": "control-plane-kit-core",
-          "owner_kind": "core",
-          "reference": "tests.test_activity_plan_codec.ActivityPlanDescriptorCodecTests.test_round_trip_preserves_closed_plan_semantics"
-        },
-        {
-          "kind": "test",
-          "law": "behavior.unknown-review-reason-and-non-json-values-fail-closed",
-          "owner": "control-plane-kit-core",
-          "owner_kind": "core",
-          "reference": "tests.test_activity_plan_codec.ActivityPlanDescriptorCodecTests.test_unknown_review_reason_and_non_json_values_fail_closed"
-        },
-        {
-          "kind": "test",
-          "law": "behavior.unknown-schema-and-operation-fail-closed",
-          "owner": "control-plane-kit-core",
-          "owner_kind": "core",
-          "reference": "tests.test_activity_plan_codec.ActivityPlanDescriptorCodecTests.test_unknown_schema_and_operation_fail_closed"
-        },
-        {
-          "kind": "test",
-          "law": "behavior.wrong-shapes-and-unrepresentable-extra-fields-fail",
-          "owner": "control-plane-kit-core",
-          "owner_kind": "core",
-          "reference": "tests.test_activity_plan_codec.ActivityPlanDescriptorCodecTests.test_wrong_shapes_and_unrepresentable_extra_fields_fail"
-        }
-      ],
-      "family": "test_activity_plan_codec"
-    },
-    {
-      "count": 12,
-      "entries": [
-        {
-          "kind": "test",
           "law": "behavior.descriptor-redacts-even-nonsecret-environment-values",
           "owner": "control-plane-kit-core",
           "owner_kind": "core",
@@ -1441,96 +1351,6 @@
         }
       ],
       "family": "test_effect_material"
-    },
-    {
-      "count": 12,
-      "entries": [
-        {
-          "kind": "test",
-          "law": "behavior.acceptance-case-catalog-is-closed-unique-and-deterministic",
-          "owner": "control-plane-kit-core",
-          "owner_kind": "core",
-          "reference": "tests.test_execution_scenario_expectations.ExecutionScenarioExpectationTests.test_acceptance_case_catalog_is_closed_unique_and_deterministic"
-        },
-        {
-          "kind": "test",
-          "law": "behavior.catalog-is-pure-and-deterministic",
-          "owner": "control-plane-kit-core",
-          "owner_kind": "core",
-          "reference": "tests.test_execution_scenario_expectations.ExecutionScenarioExpectationTests.test_catalog_is_pure_and_deterministic"
-        },
-        {
-          "kind": "test",
-          "law": "behavior.database-cutover-requires-external-readiness-and-creates-no-run",
-          "owner": "control-plane-kit-core",
-          "owner_kind": "core",
-          "reference": "tests.test_execution_scenario_expectations.ExecutionScenarioExpectationTests.test_database_cutover_requires_external_readiness_and_creates_no_run"
-        },
-        {
-          "kind": "test",
-          "law": "behavior.event-partial-order-must-reference-declared-events",
-          "owner": "control-plane-kit-core",
-          "owner_kind": "core",
-          "reference": "tests.test_execution_scenario_expectations.ExecutionScenarioExpectationTests.test_event_partial_order_must_reference_declared_events"
-        },
-        {
-          "kind": "test",
-          "law": "behavior.event-scope-reuses-canonical-activity-event-law",
-          "owner": "control-plane-kit-core",
-          "owner_kind": "core",
-          "reference": "tests.test_execution_scenario_expectations.ExecutionScenarioExpectationTests.test_event_scope_reuses_canonical_activity_event_law"
-        },
-        {
-          "kind": "test",
-          "law": "behavior.every-planning-scenario-has-one-execution-expectation",
-          "owner": "control-plane-kit-core",
-          "owner_kind": "core",
-          "reference": "tests.test_execution_scenario_expectations.ExecutionScenarioExpectationTests.test_every_planning_scenario_has_one_execution_expectation"
-        },
-        {
-          "kind": "test",
-          "law": "behavior.execution-expectations-only-reference-planning-operations",
-          "owner": "control-plane-kit-core",
-          "owner_kind": "core",
-          "reference": "tests.test_execution_scenario_expectations.ExecutionScenarioExpectationTests.test_execution_expectations_only_reference_planning_operations"
-        },
-        {
-          "kind": "test",
-          "law": "behavior.health-operations-have-provider-neutral-observation-expectations",
-          "owner": "control-plane-kit-core",
-          "owner_kind": "core",
-          "reference": "tests.test_execution_scenario_expectations.ExecutionScenarioExpectationTests.test_health_operations_have_provider_neutral_observation_expectations"
-        },
-        {
-          "kind": "test",
-          "law": "behavior.no-change-is-planning-evidence-without-approval-or-execution",
-          "owner": "control-plane-kit-core",
-          "owner_kind": "core",
-          "reference": "tests.test_execution_scenario_expectations.ExecutionScenarioExpectationTests.test_no_change_is_planning_evidence_without_approval_or_execution"
-        },
-        {
-          "kind": "test",
-          "law": "behavior.no-run-cannot-claim-runtime-evidence-or-graph-advancement",
-          "owner": "control-plane-kit-core",
-          "owner_kind": "core",
-          "reference": "tests.test_execution_scenario_expectations.ExecutionScenarioExpectationTests.test_no_run_cannot_claim_runtime_evidence_or_graph_advancement"
-        },
-        {
-          "kind": "test",
-          "law": "behavior.safe-scenarios-expect-canonical-success-evidence",
-          "owner": "control-plane-kit-core",
-          "owner_kind": "core",
-          "reference": "tests.test_execution_scenario_expectations.ExecutionScenarioExpectationTests.test_safe_scenarios_expect_canonical_success_evidence"
-        },
-        {
-          "kind": "test",
-          "law": "behavior.unsupported-transition-remains-review-blocked",
-          "owner": "control-plane-kit-core",
-          "owner_kind": "core",
-          "reference": "tests.test_execution_scenario_expectations.ExecutionScenarioExpectationTests.test_unsupported_transition_remains_review_blocked"
-        }
-      ],
-      "family": "test_execution_scenario_expectations"
     },
     {
       "count": 11,
@@ -2352,144 +2172,6 @@
       "entries": [
         {
           "kind": "test",
-          "law": "behavior.compensation-admission-preserves-in-flight-forward-evidence",
-          "owner": "control-plane-kit-core",
-          "owner_kind": "core",
-          "reference": "tests.test_saga_state.SagaStateTests.test_compensation_admission_preserves_in_flight_forward_evidence"
-        },
-        {
-          "kind": "test",
-          "law": "behavior.compensation-admission-without-completed-inverse-fails-closed",
-          "owner": "control-plane-kit-core",
-          "owner_kind": "core",
-          "reference": "tests.test_saga_state.SagaStateTests.test_compensation_admission_without_completed_inverse_fails_closed"
-        },
-        {
-          "kind": "test",
-          "law": "behavior.event-variants-are-data-and-replay-rejects-impossible-history",
-          "owner": "control-plane-kit-core",
-          "owner_kind": "core",
-          "reference": "tests.test_saga_state.SagaStateTests.test_event_variants_are_data_and_replay_rejects_impossible_history"
-        },
-        {
-          "kind": "test",
-          "law": "behavior.explicit-compensation-admission-is-pure-replayable-state",
-          "owner": "control-plane-kit-core",
-          "owner_kind": "core",
-          "reference": "tests.test_saga_state.SagaStateTests.test_explicit_compensation_admission_is_pure_replayable_state"
-        },
-        {
-          "kind": "test",
-          "law": "behavior.failure-and-compensation-failure-remain-explicit",
-          "owner": "control-plane-kit-core",
-          "owner_kind": "core",
-          "reference": "tests.test_saga_state.SagaStateTests.test_failure_and_compensation_failure_remain_explicit"
-        },
-        {
-          "kind": "test",
-          "law": "behavior.invalid-transitions-and-compensation-order-fail-closed",
-          "owner": "control-plane-kit-core",
-          "owner_kind": "core",
-          "reference": "tests.test_saga_state.SagaStateTests.test_invalid_transitions_and_compensation_order_fail_closed"
-        },
-        {
-          "kind": "test",
-          "law": "behavior.parallel-completion-evidence-determines-reverse-compensation",
-          "owner": "control-plane-kit-core",
-          "owner_kind": "core",
-          "reference": "tests.test_saga_state.SagaStateTests.test_parallel_completion_evidence_determines_reverse_compensation"
-        },
-        {
-          "kind": "test",
-          "law": "behavior.partial-parallel-failure-compensates-only-completed-siblings",
-          "owner": "control-plane-kit-core",
-          "owner_kind": "core",
-          "reference": "tests.test_saga_state.SagaStateTests.test_partial_parallel_failure_compensates_only_completed_siblings"
-        },
-        {
-          "kind": "test",
-          "law": "behavior.successful-sequence-reconstructs-from-the-same-events",
-          "owner": "control-plane-kit-core",
-          "owner_kind": "core",
-          "reference": "tests.test_saga_state.SagaStateTests.test_successful_sequence_reconstructs_from_the_same_events"
-        }
-      ],
-      "family": "test_saga_state"
-    },
-    {
-      "count": 9,
-      "entries": [
-        {
-          "kind": "test",
-          "law": "behavior.blocking-propagates-transitively",
-          "owner": "control-plane-kit-core",
-          "owner_kind": "core",
-          "reference": "tests.test_scheduling.SchedulingTests.test_blocking_propagates_transitively"
-        },
-        {
-          "kind": "test",
-          "law": "behavior.cancellation-blocks-pending-but-preserves-running-evidence",
-          "owner": "control-plane-kit-core",
-          "owner_kind": "core",
-          "reference": "tests.test_scheduling.SchedulingTests.test_cancellation_blocks_pending_but_preserves_running_evidence"
-        },
-        {
-          "kind": "test",
-          "law": "behavior.compensation-waits-for-in-flight-forward-and-compensation",
-          "owner": "control-plane-kit-core",
-          "owner_kind": "core",
-          "reference": "tests.test_scheduling.SchedulingTests.test_compensation_waits_for_in_flight_forward_and_compensation"
-        },
-        {
-          "kind": "test",
-          "law": "behavior.diamond-exposes-ready-fan-out-without-layer-barriers",
-          "owner": "control-plane-kit-core",
-          "owner_kind": "core",
-          "reference": "tests.test_scheduling.SchedulingTests.test_diamond_exposes_ready_fan_out_without_layer_barriers"
-        },
-        {
-          "kind": "test",
-          "law": "behavior.explicit-compensation-admission-drives-reverse-schedule",
-          "owner": "control-plane-kit-core",
-          "owner_kind": "core",
-          "reference": "tests.test_scheduling.SchedulingTests.test_explicit_compensation_admission_drives_reverse_schedule"
-        },
-        {
-          "kind": "test",
-          "law": "behavior.failed-branch-blocks-join-and-unstarted-forward-work",
-          "owner": "control-plane-kit-core",
-          "owner_kind": "core",
-          "reference": "tests.test_scheduling.SchedulingTests.test_failed_branch_blocks_join_and_unstarted_forward_work"
-        },
-        {
-          "kind": "test",
-          "law": "behavior.incoherent-completion-and-failure-evidence-fail-closed",
-          "owner": "control-plane-kit-core",
-          "owner_kind": "core",
-          "reference": "tests.test_scheduling.SchedulingTests.test_incoherent_completion_and_failure_evidence_fail_closed"
-        },
-        {
-          "kind": "test",
-          "law": "behavior.missing-foreign-and-duplicate-evidence-fail-closed",
-          "owner": "control-plane-kit-core",
-          "owner_kind": "core",
-          "reference": "tests.test_scheduling.SchedulingTests.test_missing_foreign_and_duplicate_evidence_fail_closed"
-        },
-        {
-          "kind": "test",
-          "law": "behavior.same-plan-and-evidence-reconstruct-the-same-schedule",
-          "owner": "control-plane-kit-core",
-          "owner_kind": "core",
-          "reference": "tests.test_scheduling.SchedulingTests.test_same_plan_and_evidence_reconstruct_the_same_schedule"
-        }
-      ],
-      "family": "test_scheduling"
-    },
-    {
-      "count": 9,
-      "entries": [
-        {
-          "kind": "test",
           "law": "behavior.commit-publishes-all-participating-store-writes-together",
           "owner": "control-plane-kit-core",
           "owner_kind": "core",
@@ -2989,68 +2671,6 @@
       "family": "test_recovery_decisions"
     },
     {
-      "count": 8,
-      "entries": [
-        {
-          "kind": "test",
-          "law": "behavior.foreign-and-impossible-histories-fail-closed",
-          "owner": "control-plane-kit-core",
-          "owner_kind": "core",
-          "reference": "tests.test_saga_journal.SagaJournalTests.test_foreign_and_impossible_histories_fail_closed"
-        },
-        {
-          "kind": "test",
-          "law": "behavior.mixed-runs-and-nonmonotonic-ordinals-fail-closed",
-          "owner": "control-plane-kit-core",
-          "owner_kind": "core",
-          "reference": "tests.test_saga_journal.SagaJournalTests.test_mixed_runs_and_nonmonotonic_ordinals_fail_closed"
-        },
-        {
-          "kind": "test",
-          "law": "behavior.run-compensation-admission-reconstructs-pure-saga-intent",
-          "owner": "control-plane-kit-core",
-          "owner_kind": "core",
-          "reference": "tests.test_saga_journal.SagaJournalTests.test_run_compensation_admission_reconstructs_pure_saga_intent"
-        },
-        {
-          "kind": "test",
-          "law": "behavior.success-reconstructs-from-canonical-activity-events",
-          "owner": "control-plane-kit-core",
-          "owner_kind": "core",
-          "reference": "tests.test_saga_journal.SagaJournalTests.test_success_reconstructs_from_canonical_activity_events"
-        },
-        {
-          "kind": "test",
-          "law": "behavior.uncertain-attempt-remains-running-but-is-not-in-flight",
-          "owner": "control-plane-kit-core",
-          "owner_kind": "core",
-          "reference": "tests.test_saga_journal.SagaJournalTests.test_uncertain_attempt_remains_running_but_is_not_in_flight"
-        },
-        {
-          "kind": "test",
-          "law": "behavior.uncertainty-resolution-replays-into-terminal-step-evidence",
-          "owner": "control-plane-kit-core",
-          "owner_kind": "core",
-          "reference": "tests.test_saga_journal.SagaJournalTests.test_uncertainty_resolution_replays_into_terminal_step_evidence"
-        },
-        {
-          "kind": "test",
-          "law": "behavior.uncertainty-resolution-requires-prior-uncertain-evidence",
-          "owner": "control-plane-kit-core",
-          "owner_kind": "core",
-          "reference": "tests.test_saga_journal.SagaJournalTests.test_uncertainty_resolution_requires_prior_uncertain_evidence"
-        },
-        {
-          "kind": "test",
-          "law": "behavior.unsupported-is-distinct-durable-failure-evidence",
-          "owner": "control-plane-kit-core",
-          "owner_kind": "core",
-          "reference": "tests.test_saga_journal.SagaJournalTests.test_unsupported_is_distinct_durable_failure_evidence"
-        }
-      ],
-      "family": "test_saga_journal"
-    },
-    {
       "count": 7,
       "entries": [
         {
@@ -3529,54 +3149,6 @@
       "entries": [
         {
           "kind": "test",
-          "law": "behavior.candidates-follow-reverse-durable-completion-order",
-          "owner": "control-plane-kit-core",
-          "owner_kind": "core",
-          "reference": "tests.test_compensation_planning.CompensationPlanningTests.test_candidates_follow_reverse_durable_completion_order"
-        },
-        {
-          "kind": "test",
-          "law": "behavior.observation-and-destruction-are-not-given-fake-inverses",
-          "owner": "control-plane-kit-core",
-          "owner_kind": "core",
-          "reference": "tests.test_compensation_planning.CompensationPlanningTests.test_observation_and_destruction_are_not_given_fake_inverses"
-        },
-        {
-          "kind": "test",
-          "law": "behavior.operation-matrix-has-one-explicit-compensation-meaning",
-          "owner": "control-plane-kit-core",
-          "owner_kind": "core",
-          "reference": "tests.test_compensation_planning.CompensationPlanningTests.test_operation_matrix_has_one_explicit_compensation_meaning"
-        },
-        {
-          "kind": "test",
-          "law": "behavior.plan-codec-persists-exact-compensation-and-source",
-          "owner": "control-plane-kit-core",
-          "owner_kind": "core",
-          "reference": "tests.test_compensation_planning.CompensationPlanningTests.test_plan_codec_persists_exact_compensation_and_source"
-        },
-        {
-          "kind": "test",
-          "law": "behavior.saga-availability-comes-from-persisted-plan-meaning",
-          "owner": "control-plane-kit-core",
-          "owner_kind": "core",
-          "reference": "tests.test_compensation_planning.CompensationPlanningTests.test_saga_availability_comes_from_persisted_plan_meaning"
-        },
-        {
-          "kind": "test",
-          "law": "behavior.version-one-requires-compensation-without-legacy-upgrade",
-          "owner": "control-plane-kit-core",
-          "owner_kind": "core",
-          "reference": "tests.test_compensation_planning.CompensationPlanningTests.test_version_one_requires_compensation_without_legacy_upgrade"
-        }
-      ],
-      "family": "test_compensation_planning"
-    },
-    {
-      "count": 6,
-      "entries": [
-        {
-          "kind": "test",
           "law": "behavior.absent-resource-is-created-with-stable-ownership-labels",
           "owner": "control-plane-kit-core",
           "owner_kind": "core",
@@ -3811,47 +3383,6 @@
         }
       ],
       "family": "test_root_api"
-    },
-    {
-      "count": 5,
-      "entries": [
-        {
-          "kind": "test",
-          "law": "behavior.empty-and-graph-metadata-only-diffs-need-no-runtime-activity",
-          "owner": "control-plane-kit-core",
-          "owner_kind": "core",
-          "reference": "tests.test_activity_plan_compiler.ActivityPlanCompilerTests.test_empty_and_graph_metadata_only_diffs_need_no_runtime_activity"
-        },
-        {
-          "kind": "test",
-          "law": "behavior.environment-reconcile-precedes-removed-endpoint-stop",
-          "owner": "control-plane-kit-core",
-          "owner_kind": "core",
-          "reference": "tests.test_activity_plan_compiler.ActivityPlanCompilerTests.test_environment_reconcile_precedes_removed_endpoint_stop"
-        },
-        {
-          "kind": "test",
-          "law": "behavior.runtime-move-orders-start-reconcile-and-stop",
-          "owner": "control-plane-kit-core",
-          "owner_kind": "core",
-          "reference": "tests.test_activity_plan_compiler.ActivityPlanCompilerTests.test_runtime_move_orders_start_reconcile_and_stop"
-        },
-        {
-          "kind": "test",
-          "law": "behavior.teardown-dependencies-remove-connections-before-nodes-and-runtime",
-          "owner": "control-plane-kit-core",
-          "owner_kind": "core",
-          "reference": "tests.test_activity_plan_compiler.ActivityPlanCompilerTests.test_teardown_dependencies_remove_connections_before_nodes_and_runtime"
-        },
-        {
-          "kind": "test",
-          "law": "behavior.unsupported-and-unrecognized-forms-become-review-blockers",
-          "owner": "control-plane-kit-core",
-          "owner_kind": "core",
-          "reference": "tests.test_activity_plan_compiler.ActivityPlanCompilerTests.test_unsupported_and_unrecognized_forms_become_review_blockers"
-        }
-      ],
-      "family": "test_activity_plan_compiler"
     },
     {
       "count": 5,
@@ -4141,47 +3672,6 @@
       "family": "test_operator_graph_projection"
     },
     {
-      "count": 5,
-      "entries": [
-        {
-          "kind": "test",
-          "law": "behavior.catalog-ids-are-unique-and-every-graph-is-valid",
-          "owner": "control-plane-kit-core",
-          "owner_kind": "core",
-          "reference": "tests.test_planning_scenarios.PlanningScenarioAlgebraTests.test_catalog_ids_are_unique_and_every_graph_is_valid"
-        },
-        {
-          "kind": "test",
-          "law": "behavior.every-scenario-compiles-to-its-typed-semantic-contract",
-          "owner": "control-plane-kit-core",
-          "owner_kind": "core",
-          "reference": "tests.test_planning_scenarios.PlanningScenarioAlgebraTests.test_every_scenario_compiles_to_its_typed_semantic_contract"
-        },
-        {
-          "kind": "test",
-          "law": "behavior.required-scenario-dependencies-survive-compilation",
-          "owner": "control-plane-kit-core",
-          "owner_kind": "core",
-          "reference": "tests.test_planning_scenarios.PlanningScenarioAlgebraTests.test_required_scenario_dependencies_survive_compilation"
-        },
-        {
-          "kind": "test",
-          "law": "behavior.scenario-compilation-is-pure-and-deterministic",
-          "owner": "control-plane-kit-core",
-          "owner_kind": "core",
-          "reference": "tests.test_planning_scenarios.PlanningScenarioAlgebraTests.test_scenario_compilation_is_pure_and_deterministic"
-        },
-        {
-          "kind": "test",
-          "law": "behavior.every-scenario-runs-through-the-postgres-planning-workflow",
-          "owner": "control-plane-kit-core",
-          "owner_kind": "core",
-          "reference": "tests.test_planning_scenarios.PlanningScenarioWorkflowTests.test_every_scenario_runs_through_the_postgres_planning_workflow"
-        }
-      ],
-      "family": "test_planning_scenarios"
-    },
-    {
       "count": 4,
       "entries": [
         {
@@ -4282,40 +3772,6 @@
         }
       ],
       "family": "test_deployment_application_values"
-    },
-    {
-      "count": 4,
-      "entries": [
-        {
-          "kind": "test",
-          "law": "behavior.invalid-inputs-fail-before-planning",
-          "owner": "control-plane-kit-core",
-          "owner_kind": "core",
-          "reference": "tests.test_recovery_planning.RecoveryPlanningTests.test_invalid_inputs_fail_before_planning"
-        },
-        {
-          "kind": "test",
-          "law": "behavior.reconstruction-uses-empty-baseline-without-claiming-absence",
-          "owner": "control-plane-kit-core",
-          "owner_kind": "core",
-          "reference": "tests.test_recovery_planning.RecoveryPlanningTests.test_reconstruction_uses_empty_baseline_without_claiming_absence"
-        },
-        {
-          "kind": "test",
-          "law": "behavior.reverse-transition-is-a-fresh-canonical-plan-with-limitations",
-          "owner": "control-plane-kit-core",
-          "owner_kind": "core",
-          "reference": "tests.test_recovery_planning.RecoveryPlanningTests.test_reverse_transition_is_a_fresh_canonical_plan_with_limitations"
-        },
-        {
-          "kind": "test",
-          "law": "behavior.router-recovery-uses-same-compiler-and-is-deterministic",
-          "owner": "control-plane-kit-core",
-          "owner_kind": "core",
-          "reference": "tests.test_recovery_planning.RecoveryPlanningTests.test_router_recovery_uses_same_compiler_and_is_deterministic"
-        }
-      ],
-      "family": "test_recovery_planning"
     },
     {
       "count": 3,
@@ -4511,33 +3967,6 @@
       "entries": [
         {
           "kind": "test",
-          "law": "behavior.chain-and-then-build-immutable-callback-free-syntax",
-          "owner": "control-plane-kit-core",
-          "owner_kind": "core",
-          "reference": "tests.test_saga_program.SagaProgramTests.test_chain_and_then_build_immutable_callback_free_syntax"
-        },
-        {
-          "kind": "test",
-          "law": "behavior.invalid-parallel-and-duplicate-identity-fail-structurally",
-          "owner": "control-plane-kit-core",
-          "owner_kind": "core",
-          "reference": "tests.test_saga_program.SagaProgramTests.test_invalid_parallel_and_duplicate_identity_fail_structurally"
-        },
-        {
-          "kind": "test",
-          "law": "behavior.parallel-preserves-declared-fan-out-and-shared-continuation",
-          "owner": "control-plane-kit-core",
-          "owner_kind": "core",
-          "reference": "tests.test_saga_program.SagaProgramTests.test_parallel_preserves_declared_fan_out_and_shared_continuation"
-        }
-      ],
-      "family": "test_saga_program"
-    },
-    {
-      "count": 3,
-      "entries": [
-        {
-          "kind": "test",
           "law": "behavior.http-address-outside-policy-is-rejected-without-attempt",
           "owner": "control-plane-kit-core",
           "owner_kind": "core",
@@ -4719,19 +4148,6 @@
         }
       ],
       "family": "test_deployment_admit_claim_stages"
-    },
-    {
-      "count": 1,
-      "entries": [
-        {
-          "kind": "test",
-          "law": "behavior.every-planning-scenario-has-a-deterministic-initial-schedule",
-          "owner": "control-plane-kit-core",
-          "owner_kind": "core",
-          "reference": "tests.test_scheduling_scenarios.SchedulingScenarioTests.test_every_planning_scenario_has_a_deterministic_initial_schedule"
-        }
-      ],
-      "family": "test_scheduling_scenarios"
     }
   ],
   "schema": "cpk.required-core-family-inventory",

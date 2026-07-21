@@ -1,0 +1,123 @@
+{
+  "families": [
+    {
+      "audit_decision": "retain",
+      "family": "test_activity_plan_codec",
+      "rationale": "ActivityPlan descriptor codec is a pure durable boundary for the closed plan algebra.",
+      "remaining_live_inventory_count": 0,
+      "source_count": 12,
+      "status": "mapped",
+      "target_issue": "#772"
+    },
+    {
+      "audit_decision": "retain",
+      "family": "test_activity_plan_compiler",
+      "rationale": "GraphDiff to ActivityPlan compilation is pure graph interpretation.",
+      "remaining_live_inventory_count": 0,
+      "source_count": 5,
+      "status": "mapped",
+      "target_issue": "#772"
+    },
+    {
+      "audit_decision": "retain",
+      "family": "test_compensation_planning",
+      "rationale": "Compensation planning maps operations and durable completion order to pure inverse/recovery meaning.",
+      "remaining_live_inventory_count": 0,
+      "source_count": 6,
+      "status": "mapped",
+      "target_issue": "#776"
+    },
+    {
+      "audit_decision": "retain",
+      "family": "test_execution_scenario_expectations",
+      "rationale": "Execution scenario expectations are retained only as closed catalogue/partial-order data; actual runner/coordinator behavior remains outside #739.",
+      "remaining_live_inventory_count": 0,
+      "source_count": 12,
+      "status": "mapped",
+      "target_issue": "#773"
+    },
+    {
+      "audit_decision": "retain",
+      "family": "test_planning_scenarios",
+      "rationale": "Planning scenario catalogues are deterministic graph/plan expectation data.",
+      "remaining_live_inventory_count": 0,
+      "source_count": 5,
+      "status": "mapped",
+      "target_issue": "#773"
+    },
+    {
+      "audit_decision": "retain",
+      "family": "test_recovery_planning",
+      "rationale": "Recovery planning constructs fresh canonical graph transition plans without durable recovery service behavior.",
+      "remaining_live_inventory_count": 0,
+      "source_count": 4,
+      "status": "mapped",
+      "target_issue": "#776"
+    },
+    {
+      "audit_decision": "retain",
+      "family": "test_saga_journal",
+      "rationale": "Saga journal projection is a pure interpreter over canonical activity events.",
+      "remaining_live_inventory_count": 0,
+      "source_count": 8,
+      "status": "mapped",
+      "target_issue": "#774"
+    },
+    {
+      "audit_decision": "retain",
+      "family": "test_saga_program",
+      "rationale": "Saga syntax is immutable callback-free data.",
+      "remaining_live_inventory_count": 0,
+      "source_count": 3,
+      "status": "mapped",
+      "target_issue": "#774"
+    },
+    {
+      "audit_decision": "retain",
+      "family": "test_saga_state",
+      "rationale": "Saga state is reconstructed from closed events without stores or effects.",
+      "remaining_live_inventory_count": 0,
+      "source_count": 9,
+      "status": "mapped",
+      "target_issue": "#774"
+    },
+    {
+      "audit_decision": "retain",
+      "family": "test_scheduling",
+      "rationale": "Scheduling is a pure interpreter from ActivityPlan and SagaState to ready/running/waiting/blocked views.",
+      "remaining_live_inventory_count": 0,
+      "source_count": 9,
+      "status": "mapped",
+      "target_issue": "#775"
+    },
+    {
+      "audit_decision": "retain",
+      "family": "test_scheduling_scenarios",
+      "rationale": "Scheduling scenario evidence is deterministic pure schedule catalogue data.",
+      "remaining_live_inventory_count": 0,
+      "source_count": 1,
+      "status": "mapped",
+      "target_issue": "#775"
+    }
+  ],
+  "issue": "#777",
+  "laws": [
+    "Every #739 retained family must have no remaining live required-core inventory entries after closeout.",
+    "ActivityPlan remains graph-interpretation output, not a user-authored arbitrary workflow language.",
+    "Saga, scheduler, compensation, and recovery remain pure data/interpreters.",
+    "Aggregate suite passes do not replace per-family successor evidence.",
+    "No operation/runtime store behavior is copied into pure core to make tests pass."
+  ],
+  "live_inventory": "artifacts/extraction/required-core-family-inventory.json",
+  "parent": "#739",
+  "schema": "cpk.planning-saga-batch-closeout",
+  "source_audit": "artifacts/extraction/planning-saga-batch-audit.json",
+  "summary": {
+    "mapped_retained_families": 11,
+    "remaining_moved_or_split_entries": 0,
+    "retained_source_entries": 74,
+    "source_entries": 74,
+    "source_families": 11,
+    "unexpected_remaining_retained_families": 0
+  }
+}

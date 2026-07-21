@@ -142,6 +142,50 @@ class ExtractionBatchPlanTests(unittest.TestCase):
             families["test_execution_scenario_expectations"]["rationale"],
         )
 
+    def test_planning_saga_batch_closeout_maps_all_retained_families(
+        self,
+    ) -> None:
+        closeout = read_bounded_json(
+            ARTIFACT_ROOT / "planning-saga-batch-closeout.json"
+        )
+
+        self.assertEqual(closeout["schema"], "cpk.planning-saga-batch-closeout")
+        self.assertEqual(closeout["issue"], "#777")
+        self.assertEqual(closeout["parent"], "#739")
+        self.assertEqual(closeout["summary"]["source_families"], 11)
+        self.assertEqual(closeout["summary"]["source_entries"], 74)
+        self.assertEqual(closeout["summary"]["mapped_retained_families"], 11)
+        self.assertEqual(closeout["summary"]["retained_source_entries"], 74)
+        self.assertEqual(closeout["summary"]["unexpected_remaining_retained_families"], 0)
+
+        families = {
+            family["family"]: family
+            for family in closeout["families"]
+        }
+        expected = {
+            "test_activity_plan_codec",
+            "test_activity_plan_compiler",
+            "test_planning_scenarios",
+            "test_execution_scenario_expectations",
+            "test_saga_program",
+            "test_saga_state",
+            "test_saga_journal",
+            "test_scheduling",
+            "test_scheduling_scenarios",
+            "test_compensation_planning",
+            "test_recovery_planning",
+        }
+        self.assertEqual(set(families), expected)
+        self.assertTrue(
+            all(family["status"] == "mapped" for family in families.values())
+        )
+        self.assertTrue(
+            all(
+                family["remaining_live_inventory_count"] == 0
+                for family in families.values()
+            )
+        )
+
 
 if __name__ == "__main__":
     unittest.main()
