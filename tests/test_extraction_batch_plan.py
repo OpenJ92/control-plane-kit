@@ -209,10 +209,66 @@ class ExtractionBatchPlanTests(unittest.TestCase):
         self.assertEqual(families["test_run_lifecycle"]["target_issue"], "#789")
         self.assertEqual(families["test_execution_coordinator"]["target_issue"], "#790")
         self.assertEqual(families["test_contracts"]["target_issue"], "#791")
+        self.assertEqual(families["test_workflows"]["target_issue"], "#792")
         self.assertEqual(families["test_contracts"]["count"], 23)
         self.assertEqual(
             families["test_contracts"]["source"],
             "artifacts/extraction/contract-boundary-classification.json",
+        )
+
+    def test_operations_contract_batch_closeout_has_no_unexpected_live_families(
+        self,
+    ) -> None:
+        closeout = read_bounded_json(
+            ARTIFACT_ROOT / "operations-contract-batch-closeout.json"
+        )
+
+        self.assertEqual(closeout["schema"], "cpk.operations-contract-batch-closeout")
+        self.assertEqual(closeout["issue"], "#792")
+        self.assertEqual(closeout["parent"], "#740")
+        self.assertEqual(closeout["summary"]["source_families"], 34)
+        self.assertEqual(closeout["summary"]["source_entries"], 298)
+        self.assertEqual(closeout["summary"]["mapped_successor_families"], 32)
+        self.assertEqual(closeout["summary"]["mapped_successor_entries"], 272)
+        self.assertEqual(closeout["summary"]["split_boundary_families"], 1)
+        self.assertEqual(closeout["summary"]["split_boundary_entries"], 23)
+        self.assertEqual(
+            closeout["summary"]["reviewed_operations_handoff_families"],
+            1,
+        )
+        self.assertEqual(
+            closeout["summary"]["reviewed_operations_handoff_entries"],
+            3,
+        )
+        self.assertEqual(closeout["summary"]["unexpected_remaining_families"], 0)
+        self.assertEqual(closeout["summary"]["unexpected_remaining_entries"], 0)
+
+        families = {
+            family["family"]: family
+            for family in closeout["families"]
+        }
+        self.assertEqual(
+            families["test_contracts"]["status"],
+            "split_core_mapped_operations_handoff",
+        )
+        self.assertEqual(
+            families["test_contracts"]["core_successor"],
+            "extract-e-791.persistence-boundary-contract.unittest",
+        )
+        self.assertEqual(
+            families["test_workflows"]["status"],
+            "reviewed_operations_handoff",
+        )
+        self.assertEqual(
+            families["test_workflows"]["operations_handoff_issue"],
+            "#792",
+        )
+
+        self.assertTrue(
+            all(
+                family["remaining_live_inventory_count"] == 0
+                for family in families.values()
+            )
         )
 
 

@@ -16500,7 +16500,13 @@
       "owner_kind": "core",
       "reference": "tests.test_workflows.WorkflowServiceTests.test_action_service_preserves_session_action_order",
       "successors": [],
-      "supersession": null
+      "supersession": {
+        "negative_case_disposition": "Ordering, graph-truth separation, idempotency, and rollback remain required operations/cpk-server proof, not core behavior.",
+        "obsolete_assumption": "Operation session service execution belongs in the extracted core package.",
+        "rationale": "Frozen workflow-service tests execute Postgres-backed operation services; extracted core keeps only command and persistence boundary contracts.",
+        "replacement": "#787 command workflow contracts plus #791 persistence boundary contracts and operations/cpk-server handoff evidence.",
+        "review": "#792 operations contract closeout"
+      }
     },
     {
       "kind": "test",
@@ -16510,7 +16516,13 @@
       "owner_kind": "core",
       "reference": "tests.test_workflows.WorkflowServiceTests.test_session_service_starts_and_closes_sessions",
       "successors": [],
-      "supersession": null
+      "supersession": {
+        "negative_case_disposition": "Ordering, graph-truth separation, idempotency, and rollback remain required operations/cpk-server proof, not core behavior.",
+        "obsolete_assumption": "Operation session service execution belongs in the extracted core package.",
+        "rationale": "Frozen workflow-service tests execute Postgres-backed operation services; extracted core keeps only command and persistence boundary contracts.",
+        "replacement": "#787 command workflow contracts plus #791 persistence boundary contracts and operations/cpk-server handoff evidence.",
+        "review": "#792 operations contract closeout"
+      }
     },
     {
       "kind": "test",
@@ -16520,7 +16532,13 @@
       "owner_kind": "core",
       "reference": "tests.test_workflows.WorkflowServiceTests.test_workflow_services_do_not_mutate_graph_truth",
       "successors": [],
-      "supersession": null
+      "supersession": {
+        "negative_case_disposition": "Ordering, graph-truth separation, idempotency, and rollback remain required operations/cpk-server proof, not core behavior.",
+        "obsolete_assumption": "Operation session service execution belongs in the extracted core package.",
+        "rationale": "Frozen workflow-service tests execute Postgres-backed operation services; extracted core keeps only command and persistence boundary contracts.",
+        "replacement": "#787 command workflow contracts plus #791 persistence boundary contracts and operations/cpk-server handoff evidence.",
+        "review": "#792 operations contract closeout"
+      }
     }
   ],
   "reference": {

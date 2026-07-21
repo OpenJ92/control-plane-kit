@@ -263,10 +263,10 @@
     },
     "test_workflows": {
       "count": 3,
-      "decision": "map-command-workflow-contract",
-      "rationale": "Command vocabularies and workflow grouping may become closed contract language; durable command services and session stores remain operations-owned.",
+      "decision": "reviewed-operations-handoff",
+      "rationale": "These laws execute Postgres-backed operation workflow services. #787 maps the command vocabulary; #791 maps persistence boundary contracts; #792 records the executable session service, action ordering, and graph-truth non-mutation behavior as operations/cpk-server handoff rather than core implementation.",
       "source": "artifacts/extraction/required-core-batch-plan.json",
-      "target_issue": "#787"
+      "target_issue": "#792"
     }
   },
   "issue": "#785",
@@ -288,8 +288,8 @@
         "families": 4
       },
       "#787": {
-        "entries": 51,
-        "families": 7
+        "entries": 48,
+        "families": 6
       },
       "#788": {
         "entries": 72,
@@ -306,6 +306,10 @@
       "#791": {
         "entries": 53,
         "families": 6
+      },
+      "#792": {
+        "entries": 3,
+        "families": 1
       }
     },
     "entries": 298,
