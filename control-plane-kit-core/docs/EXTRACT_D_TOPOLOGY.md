@@ -85,7 +85,8 @@ D.5 Mandatory Stop
   pure contracts.
 - MCP Streamable HTTP protocol and endpoint contracts as typed values, including
   path, method, media, header, authentication, and origin-validation policy.
-- HTTP route, schema, request, response, and error contracts as typed values.
+- HTTP route, schema, auth-scope, request, response, safety, and error
+  contracts as typed values.
 - Parity laws proving transport adapters will call the same services.
 
 ## Deferred cpk-server Work

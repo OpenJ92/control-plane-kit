@@ -13,6 +13,17 @@ from control_plane_kit_core.operations.mcp import (
     McpStandardHeader,
     McpStreamableHttpContract,
 )
+from control_plane_kit_core.operations.http import (
+    HttpApiContract,
+    HttpApiRouteContract,
+    HttpAuthScope,
+    HttpErrorContract,
+    HttpMethod,
+    HttpOperationSafety,
+    HttpSchemaRef,
+    InvalidHttpApiContract,
+    operator_read_http_routes,
+)
 from control_plane_kit_core.operations.transactions import (
     ExternalEffectPolicy,
     InvalidUnitOfWorkBoundary,
@@ -26,6 +37,14 @@ __all__ = [
     "ControlPlaneServiceRole",
     "DeploymentProgramBoundary",
     "ExternalEffectPolicy",
+    "HttpApiContract",
+    "HttpApiRouteContract",
+    "HttpAuthScope",
+    "HttpErrorContract",
+    "HttpMethod",
+    "HttpOperationSafety",
+    "HttpSchemaRef",
+    "InvalidHttpApiContract",
     "InvalidMcpStreamableHttpContract",
     "InvalidDeploymentProgramBoundary",
     "InvalidUnitOfWorkBoundary",
@@ -36,4 +55,5 @@ __all__ = [
     "ServiceTransactionBoundary",
     "StoreParticipation",
     "UnitOfWorkBoundary",
+    "operator_read_http_routes",
 ]

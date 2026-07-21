@@ -589,3 +589,164 @@ contract language. It should reuse the same service-role and UnitOfWork laws
 from #631/#632 and must remain distinct from `McpStreamableHttpContract`.
 HTTP API routes and MCP tools may share services, but they should not share a
 transport descriptor merely because both use HTTP schemes.
+
+## #634 HTTP API Route Contract Language
+
+### Law Card
+
+- Reference identity: `EXTRACT.D.2.http-api-contract`
+- Evidence source: frozen `control_plane_kit/servers/instance_read.py`,
+  `tests/test_instance_read_fastapi.py`, #634, #631 service roles, and #632
+  UnitOfWork boundaries.
+- Observable law: HTTP routes are transport contracts over application services.
+  They do not own domain semantics, stores, projection logic, or process
+  hosting.
+- Expected result: core can name route identity, method, path template, target
+  service role, auth scope, safety classification, bounded request schema,
+  bounded response schema, and bounded error shape as deterministic data.
+- Negative cases: invalid route identifiers, query/fragment paths, duplicate
+  route identities, duplicate method/path pairs, read-only routes using non-GET
+  methods, destructive routes without destructive authorization scope, success
+  statuses in error contracts, and descriptors with unknown keys.
+- Obsolete assumptions not migrated: FastAPI route decorators, TestClient
+  behavior, token-header implementation, read service construction, and HTTP
+  process packaging.
+- Future owner: core for route contracts; `cpk-server` for hosted HTTP process
+  implementation.
+
+### Objects
+
+```text
+HttpMethod
+  = GET | POST | PUT | PATCH | DELETE
+
+HttpAuthScope
+  = read
+  | plan:write
+  | approval:decide
+  | execution:run
+  | admin
+
+HttpOperationSafety
+  = read-only
+  | command
+  | destructive
+
+HttpSchemaRef
+  = name x max_bytes
+
+HttpErrorContract
+  = sorted 4xx/5xx statuses x HttpSchemaRef
+
+HttpApiRouteContract
+  = route_id
+  x HttpMethod
+  x path_template
+  x ControlPlaneServiceRole
+  x HttpAuthScope
+  x HttpOperationSafety
+  x request_schema
+  x response_schema
+  x errors
+
+HttpApiContract
+  = unique route_id
+  x unique (method, path_template)
+  x deterministic route ordering
+```
+
+### Transformations
+
+```text
+tuple[HttpApiRouteContract]
+  -> HttpApiContract
+    -> closed descriptor
+      -> HttpApiContract
+```
+
+The frozen read adapter contributes the first route catalogue:
+
+```python
+HttpApiContract(operator_read_http_routes())
+```
+
+Those routes all map to:
+
+```text
+service_role = reads
+auth_scope   = read
+safety       = read-only
+method       = GET
+```
+
+### Implementation Decision
+
+#634 adds `control_plane_kit_core.operations.http`. The module is intentionally
+framework-free. The old FastAPI routes become route contracts:
+
+```python
+HttpApiRouteContract(
+    route_id="planning.create-plan",
+    method=HttpMethod.POST,
+    path_template="/workspaces/{workspace_id}/plans",
+    service_role=ControlPlaneServiceRole.PLANNING,
+    auth_scope=HttpAuthScope.PLAN_WRITE,
+    safety=HttpOperationSafety.COMMAND,
+    request_schema=HttpSchemaRef("PlanTransitionRequest", max_bytes=65536),
+    response_schema=HttpSchemaRef("PlanPreparedResponse", max_bytes=65536),
+)
+```
+
+That object does not execute the plan. It says which service the future process
+adapter must call and what safety/auth/shape contract it must enforce.
+
+The frozen read inventory is now available without importing a web framework:
+
+```python
+operator_read_http_routes()
+```
+
+The `HttpApiContract` sorts routes deterministically and rejects duplicate route
+identity or duplicate method/path pairs. This gives #636/#637/#638 a stable
+surface for parity checks against MCP.
+
+### Test Evidence
+
+#634 adds `control-plane-kit-core/tests/test_http_api_contract.py`.
+
+The focused red run failed with:
+
+```text
+ImportError: cannot import name 'HttpApiContract'
+```
+
+That proved the successor test was collected and failed because the HTTP
+contract language did not exist yet.
+
+The green run passed:
+
+```text
+Ran 109 tests in 0.795s
+OK
+control-plane-kit-core import ok
+```
+
+### Review Notes
+
+- Architecture: no FastAPI, httpx, process, Docker, or product package is
+  imported.
+- Security: every route carries auth scope and safety classification; destructive
+  routes require execution or admin scope.
+- Data engineering: route contracts point to service roles rather than stores or
+  transactions directly, preserving the UnitOfWork boundary from #632.
+- Test integrity: the frozen read route inventory is preserved as a contract,
+  but obsolete FastAPI implementation details were not copied.
+- MCP parity: HTTP routes and MCP contracts remain distinct typed values.
+
+### Handoff To #635
+
+#635 should add readiness, liveness, shutdown, observation, verification, and
+retained-data contracts. It should reuse `HttpApiContract`,
+`McpStreamableHttpContract`, `DeploymentProgramBoundary`, and
+`UnitOfWorkBoundary` as inputs where useful, but it must not build the hosted
+process or product descriptor.
