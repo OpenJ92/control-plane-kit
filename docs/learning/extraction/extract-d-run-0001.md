@@ -284,3 +284,155 @@ transaction boundaries against this closed service-role surface. It should not
 add Postgres implementations yet unless the issue evidence requires it; the
 first step is to state which roles participate in one operator command and
 where commit/rollback ownership lives.
+
+## #632 UnitOfWork And Transaction Boundary Contract
+
+### Law Card
+
+- Reference identity: `EXTRACT.D.1.unit-of-work-boundary`
+- Evidence source: frozen `control_plane_kit/stores/unit_of_work.py`,
+  frozen UnitOfWork tests, Roadmap 0008 data-engineering laws, #632, and the
+  #631 service-role boundary.
+- Observable law: every operator command owns exactly one explicit transaction
+  boundary; participating services share that boundary; stores never commit
+  independently; external effects are forbidden inside the transaction.
+- Expected result: the core package can describe service store participation,
+  transaction ownership, worker use, runtime-authority use, and effect timing as
+  pure values without importing or implementing a database adapter.
+- Negative cases: missing service transaction rules, duplicate rules, read-write
+  services without transaction ownership, external effects inside transactions,
+  and worker/runtime authority on read or authorization services.
+- Obsolete assumptions not migrated: concrete connection pools, SQL adapters,
+  host process configuration, server request handlers, and database-specific
+  import requirements.
+- Future owner: core for the contract; `control-plane-kit-operations` or
+  `cpk-server` composition for concrete UnitOfWork construction.
+
+### Objects
+
+```text
+StoreParticipation
+  = none
+  | read-only
+  | read-write
+
+ExternalEffectPolicy
+  = forbidden
+  | after-commit
+  | inside-transaction
+
+ServiceTransactionBoundary
+  = ControlPlaneServiceRole
+  x StoreParticipation
+  x owns_transaction
+  x ExternalEffectPolicy
+  x uses_worker
+  x uses_runtime_authority
+
+UnitOfWorkBoundary
+  = DeploymentProgramBoundary
+  x exactly-one ServiceTransactionBoundary per ControlPlaneServiceRole
+```
+
+`inside-transaction` exists as a closed value so descriptors and tests can fail
+closed at the construction boundary. It is never accepted as a valid runtime
+law.
+
+### Transformations
+
+```text
+DeploymentProgramBoundary
+  x tuple[ServiceTransactionBoundary]
+    -> UnitOfWorkBoundary
+      -> deterministic descriptor
+```
+
+### Implementation Decision
+
+#632 adds `control_plane_kit_core.operations.transactions`. This is a pure
+contract module, not a database implementation. The important rule is now
+visible in code:
+
+```python
+if (
+    self.store_participation is StoreParticipation.READ_WRITE
+    and not self.owns_transaction
+):
+    raise InvalidUnitOfWorkBoundary(
+        "read-write services must own the operator-command transaction"
+    )
+```
+
+The external-effect law is also made executable:
+
+```python
+if self.external_effect_policy is ExternalEffectPolicy.INSIDE_TRANSACTION:
+    raise InvalidUnitOfWorkBoundary(
+        "external effects must not run inside a transaction"
+    )
+```
+
+The execution role can say it needs a worker and runtime authority, but only
+with an after-commit effect policy:
+
+```python
+ServiceTransactionBoundary(
+    ControlPlaneServiceRole.EXECUTION,
+    StoreParticipation.READ_WRITE,
+    owns_transaction=True,
+    external_effect_policy=ExternalEffectPolicy.AFTER_COMMIT,
+    uses_worker=True,
+    uses_runtime_authority=True,
+)
+```
+
+That keeps the shape aligned with Roadmap 0008:
+
+```text
+short transaction
+  -> commit
+    -> bounded external effect
+      -> short transaction
+```
+
+### Test Evidence
+
+#632 adds `control-plane-kit-core/tests/test_unit_of_work_boundary.py`.
+
+The focused red run failed with:
+
+```text
+ImportError: cannot import name 'ExternalEffectPolicy'
+```
+
+That proved the successor test was collected and failed because the UnitOfWork
+boundary language did not exist yet.
+
+The green run passed:
+
+```text
+Ran 97 tests in 0.910s
+OK
+control-plane-kit-core import ok
+```
+
+### Review Notes
+
+- Architecture: the module depends only on the existing pure service-role
+  boundary.
+- Data engineering: the Postgres UnitOfWork law is preserved as a contract but
+  no concrete adapter is introduced.
+- Transactionality: every read-write service must own an operator-command
+  transaction; stores remain descriptor participants, not independent committers.
+- Security: runtime authority is not allowed on read or authorization services
+  and may only appear with after-commit effects.
+- Test integrity: the new tests strengthen the boundary and do not weaken
+  existing assertions.
+
+### Handoff To #633
+
+#633 may now define MCP Streamable HTTP endpoint contracts against a service
+surface that already names both service roles and transaction/effect laws. It
+must not implement a hosted MCP process in core. MCP should be a typed contract
+language that a future `control-plane-kit-servers/cpk-server` entrypoint
+implements.

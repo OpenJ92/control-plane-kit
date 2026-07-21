@@ -81,6 +81,8 @@ D.5 Mandatory Stop
 - `DeploymentProgram` composition boundaries.
 - Authorization vocabulary and destructive-command classification.
 - UnitOfWork and transaction laws.
+- Store participation, worker, runtime-authority, and external-effect timing as
+  pure contracts.
 - MCP Streamable HTTP protocol and endpoint contracts as typed values.
 - HTTP route, schema, request, response, and error contracts as typed values.
 - Parity laws proving transport adapters will call the same services.
