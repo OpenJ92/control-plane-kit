@@ -750,3 +750,184 @@ retained-data contracts. It should reuse `HttpApiContract`,
 `McpStreamableHttpContract`, `DeploymentProgramBoundary`, and
 `UnitOfWorkBoundary` as inputs where useful, but it must not build the hosted
 process or product descriptor.
+
+## #635 Readiness, Liveness, Verification, Observation, And Shutdown Contracts
+
+### Law Card
+
+- Reference identity: `EXTRACT.D.2.process-operational-contract`
+- Evidence source: Roadmap 0008 health/readiness/observation laws,
+  `SERVER_PRODUCT_ROLLOUT.md`, existing core `VerificationContract`,
+  `ResourceLifecycle`, #635, and the #633/#634 endpoint contracts.
+- Observable law: process start is not readiness; readiness depends on explicit
+  dependencies; liveness reveals no sensitive state; observations append truth
+  without rewriting desired graph topology; shutdown preserves retained data.
+- Expected result: core can describe liveness, readiness, dependency readiness,
+  semantic verification, observation projection, and shutdown/retained-data
+  policy as deterministic handoff data for the future `cpk-server` process.
+- Negative cases: readiness using the liveness endpoint, public readiness,
+  duplicate dependency kinds, sensitive evidence keys, missing HTTP/MCP contracts
+  when those dependencies are required, shutdown that deletes retained data, and
+  shutdown that fails to record an observation.
+- Obsolete assumptions not migrated: Docker process startup, live health loops,
+  runtime cleanup, retained-volume deletion, hosted route handlers, and concrete
+  observation stores.
+- Future owner: core for the contract; `control-plane-kit-servers/cpk-server`
+  and operations/interpreters for runtime proof.
+
+### Objects
+
+```text
+ProcessEndpointKind
+  = liveness
+  | readiness
+
+DependencyReadinessKind
+  = store
+  | runtime-authority
+  | worker
+  | http-api
+  | mcp-streamable-http
+  | observation
+
+HttpStatusProbeContract
+  = kind
+  x path
+  x public
+  x reveals_sensitive_state
+  x expected_statuses
+  x maximum_response_bytes
+
+ReadinessDependency
+  = kind
+  x evidence_key
+  x required
+
+ObservationHandoffContract
+  = append-only projection
+  x never-rewrite-desired-graph
+  x maximum_evidence_bytes
+
+ShutdownContract
+  = graceful_timeout_seconds
+  x preserve-retained-data
+  x records_observation
+
+ControlPlaneProcessContract
+  = liveness
+  x readiness
+  x dependencies
+  x verification
+  x observation
+  x shutdown
+  x optional HttpApiContract
+  x optional McpStreamableHttpContract
+```
+
+### Transformations
+
+```text
+ControlPlaneProcessContract
+  -> closed descriptor
+    -> ControlPlaneProcessContract
+```
+
+and:
+
+```text
+process exists
+  != liveness
+  != readiness
+  != semantic verification
+```
+
+### Implementation Decision
+
+#635 adds `control_plane_kit_core.operations.process`. The central shape is:
+
+```python
+ControlPlaneProcessContract(
+    dependencies=(
+        ReadinessDependency(DependencyReadinessKind.STORE),
+        ReadinessDependency(DependencyReadinessKind.RUNTIME_AUTHORITY),
+        ReadinessDependency(DependencyReadinessKind.WORKER),
+        ReadinessDependency(DependencyReadinessKind.HTTP_API),
+        ReadinessDependency(DependencyReadinessKind.MCP_STREAMABLE_HTTP),
+        ReadinessDependency(DependencyReadinessKind.OBSERVATION),
+    ),
+    http_api=HttpApiContract(operator_read_http_routes()),
+    mcp=McpStreamableHttpContract(),
+)
+```
+
+The liveness/readiness distinction is executable:
+
+```python
+HttpStatusProbeContract.liveness()
+HttpStatusProbeContract.readiness()
+```
+
+and readiness refuses to claim HTTP or MCP availability without the corresponding
+contract object.
+
+Shutdown is a law, not a cleanup implementation:
+
+```python
+ShutdownContract(
+    graceful_timeout_seconds=30.0,
+    retained_data_policy="preserve-retained-data",
+    records_observation=True,
+)
+```
+
+This keeps retained-data preservation visible to `cpk-server` without putting
+Docker cleanup behavior in core.
+
+### Test Evidence
+
+#635 adds `control-plane-kit-core/tests/test_process_operational_contract.py`.
+
+The focused red run failed with:
+
+```text
+ImportError: cannot import name 'ControlPlaneProcessContract'
+```
+
+That proved the successor test was collected and failed because the operational
+handoff contract did not exist yet.
+
+The green run passed:
+
+```text
+Ran 116 tests in 0.789s
+OK
+control-plane-kit-core import ok
+```
+
+### Review Notes
+
+- Architecture: the module composes existing verification, HTTP, and MCP
+  contracts; it does not import process or runtime packages.
+- Security: public liveness cannot reveal sensitive state; dependency evidence
+  keys reject secret/token/password vocabulary.
+- Data engineering: observations are append-only and explicitly forbidden from
+  rewriting desired graph truth.
+- Retained data: shutdown preserves retained data and records an observation.
+- Test integrity: tests strengthen health/readiness distinctions and do not
+  accept process startup as readiness.
+
+### Handoff To #636
+
+D.2 is now complete. #636 can define shared HTTP/MCP service vocabulary and
+projection parity over:
+
+```text
+DeploymentProgramBoundary
+UnitOfWorkBoundary
+HttpApiContract
+McpStreamableHttpContract
+ControlPlaneProcessContract
+```
+
+#636 should prove that HTTP and MCP delegate to the same application services
+and projections without implementing either hosted adapter.

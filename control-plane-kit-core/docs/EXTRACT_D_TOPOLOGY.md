@@ -87,6 +87,8 @@ D.5 Mandatory Stop
   path, method, media, header, authentication, and origin-validation policy.
 - HTTP route, schema, auth-scope, request, response, safety, and error
   contracts as typed values.
+- Liveness, readiness, dependency readiness, verification, observation, shutdown,
+  and retained-data preservation as pure handoff contracts.
 - Parity laws proving transport adapters will call the same services.
 
 ## Deferred cpk-server Work
