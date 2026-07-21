@@ -19,7 +19,7 @@ classifiers = [
   "Topic :: Software Development :: Build Tools",
   "Topic :: System :: Systems Administration",
 ]
-dependencies = []
+dependencies = ["PyYAML>=6.0"]
 
 [project.urls]
 Homepage = "https://github.com/OpenJ92/control-plane-kit"
@@ -27,4 +27,3 @@ Homepage = "https://github.com/OpenJ92/control-plane-kit"
 [tool.setuptools.packages.find]
 where = ["src"]
 include = ["control_plane_kit_core*"]
-
