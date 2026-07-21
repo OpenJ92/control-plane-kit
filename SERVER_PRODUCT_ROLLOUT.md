@@ -1492,6 +1492,50 @@ control-plane-kit-servers/cpk-server
   owns FastAPI/MCP process composition, OCI image, and product descriptor
 ```
 
+EXTRACT.D is therefore executed as a phase rewrite rather than as the original
+"build the CPI image in core" plan:
+
+```text
+D.0 Topology Refresh
+  clarify which existing children are core-service work
+  clarify which children are cpk-server handoff contracts
+  add or retitle children where stale ownership wording would mislead execution
+
+D.1 Core Application Service Composition
+  DeploymentProgram composition root
+  planning, approval, admission, lifecycle, execution, recovery, observation,
+  and read-service boundaries
+  store, UnitOfWork, worker, runtime-authority, and transaction laws
+  no FastAPI process, Dockerfile, OCI image, or product descriptor in core
+
+D.2 Core HTTP/MCP Contract Language
+  route schemas, request/response/error descriptors, auth scopes, endpoint
+  contracts, MCP Streamable HTTP protocol identity, readiness and verification
+  contracts
+  no hosted FastAPI/MCP process in core
+
+D.3 Core Parity Laws
+  HTTP and MCP must delegate to the same application services
+  no duplicate command vocabulary, projection table, UnitOfWork convention, or
+  idempotency/approval bypass
+  prove parity as contract/application-service behavior rather than through a
+  packaged process
+
+D.4 cpk-server Product Handoff Contract
+  required process entrypoints, environment, secret references, configuration,
+  health/readiness, descriptor fields, OCI behavior, publication evidence, and
+  live-test obligations for control-plane-kit-servers/cpk-server
+
+D.5 Mandatory Stop
+  do not build the canonical cpk-server process, Dockerfile, OCI image, or
+  product descriptor inside core
+```
+
+The EXTRACT.D closeout is successful when core can prove the generic services
+and contracts are ready for a `cpk-server` wrapper, and the server-product side
+has an exact handoff contract. It is not successful if core grows a hidden
+deployable CPI product.
+
 Root issue
 [#594](https://github.com/OpenJ92/control-plane-kit/issues/594) owns seven
 mandatory milestone parents and 69 implementation, review, and closeout
