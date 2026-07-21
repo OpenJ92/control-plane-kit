@@ -29,6 +29,11 @@
       "digest": "sha256:bf67dd993f51ead5a96a87562ed89a8e3564bf7a8044238d1454017a0ebf5146",
       "id": "extract-e-754.configuration-rendering.unittest",
       "status": "passing"
+    },
+    {
+      "digest": "sha256:a277db1f9bea09d6250039802d3657b9ee546fb021552c5c451bee5c5be97f8b",
+      "id": "extract-e-755.environment-secrets.unittest",
+      "status": "passing"
     }
   ],
   "schema": "cpk.successor-evidence-index"

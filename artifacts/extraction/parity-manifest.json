@@ -4185,7 +4185,13 @@
       "owner": "control-plane-kit-core",
       "owner_kind": "core",
       "reference": "tests.test_environment_bindings.PublicStaticEnvironmentBindingTests.test_binding_is_closed_bounded_and_deterministic",
-      "successors": [],
+      "successors": [
+        {
+          "evidence": "extract-e-755.environment-secrets.unittest",
+          "id": "control-plane-kit-core.tests.test_environment_secrets.EnvironmentBindingTests.test_public_binding_is_closed_bounded_and_deterministic",
+          "status": "passing"
+        }
+      ],
       "supersession": null
     },
     {
@@ -4195,7 +4201,13 @@
       "owner": "control-plane-kit-core",
       "owner_kind": "core",
       "reference": "tests.test_environment_bindings.PublicStaticEnvironmentBindingTests.test_docker_implementation_rejects_open_mappings_and_duplicate_names",
-      "successors": [],
+      "successors": [
+        {
+          "evidence": "extract-e-755.environment-secrets.unittest",
+          "id": "control-plane-kit-core.tests.test_environment_secrets.EnvironmentBindingTests.test_node_rejects_open_environment_metadata_and_untyped_bindings",
+          "status": "passing"
+        }
+      ],
       "supersession": null
     },
     {
@@ -4205,7 +4217,13 @@
       "owner": "control-plane-kit-core",
       "owner_kind": "core",
       "reference": "tests.test_environment_bindings.PublicStaticEnvironmentBindingTests.test_inline_passwords_and_public_secret_references_fail_without_disclosure",
-      "successors": [],
+      "successors": [
+        {
+          "evidence": "extract-e-755.environment-secrets.unittest",
+          "id": "control-plane-kit-core.tests.test_environment_secrets.EnvironmentBindingTests.test_inline_passwords_and_public_secret_references_fail_without_disclosure",
+          "status": "passing"
+        }
+      ],
       "supersession": null
     },
     {
@@ -4215,7 +4233,13 @@
       "owner": "control-plane-kit-core",
       "owner_kind": "core",
       "reference": "tests.test_environment_bindings.PublicStaticEnvironmentBindingTests.test_materialized_node_rejects_environment_metadata_before_graph_compilation",
-      "successors": [],
+      "successors": [
+        {
+          "evidence": "extract-e-755.environment-secrets.unittest",
+          "id": "control-plane-kit-core.tests.test_environment_secrets.EnvironmentBindingTests.test_node_rejects_open_environment_metadata_and_untyped_bindings",
+          "status": "passing"
+        }
+      ],
       "supersession": null
     },
     {
@@ -4225,7 +4249,13 @@
       "owner": "control-plane-kit-core",
       "owner_kind": "core",
       "reference": "tests.test_environment_bindings.PublicStaticEnvironmentBindingTests.test_public_and_secret_environment_names_remain_disjoint",
-      "successors": [],
+      "successors": [
+        {
+          "evidence": "extract-e-755.environment-secrets.unittest",
+          "id": "control-plane-kit-core.tests.test_environment_secrets.EnvironmentBindingTests.test_public_socket_and_secret_environment_names_remain_disjoint",
+          "status": "passing"
+        }
+      ],
       "supersession": null
     },
     {
@@ -10069,7 +10099,13 @@
       "owner": "control-plane-kit-core",
       "owner_kind": "core",
       "reference": "tests.test_secret_delivery_topology.SecretDeliveryTopologyTests.test_delivery_change_is_explicit_diff_and_reconcile",
-      "successors": [],
+      "successors": [
+        {
+          "evidence": "extract-e-755.environment-secrets.unittest",
+          "id": "control-plane-kit-core.tests.test_environment_secrets.SecretDeliveryTopologyTests.test_delivery_change_is_explicit_diff_without_exposing_values",
+          "status": "passing"
+        }
+      ],
       "supersession": null
     },
     {
@@ -10079,7 +10115,13 @@
       "owner": "control-plane-kit-core",
       "owner_kind": "core",
       "reference": "tests.test_secret_delivery_topology.SecretDeliveryTopologyTests.test_exact_deliveries_reach_pinned_start_material",
-      "successors": [],
+      "successors": [
+        {
+          "evidence": "extract-e-755.environment-secrets.unittest",
+          "id": "control-plane-kit-core.tests.test_environment_secrets.SecretDeliveryTopologyTests.test_exact_deliveries_remain_pinned_in_desired_graph_language",
+          "status": "passing"
+        }
+      ],
       "supersession": null
     },
     {
@@ -10089,7 +10131,13 @@
       "owner": "control-plane-kit-core",
       "owner_kind": "core",
       "reference": "tests.test_secret_delivery_topology.SecretDeliveryTopologyTests.test_graph_codec_preserves_closed_deliveries_without_values",
-      "successors": [],
+      "successors": [
+        {
+          "evidence": "extract-e-755.environment-secrets.unittest",
+          "id": "control-plane-kit-core.tests.test_environment_secrets.SecretDeliveryTopologyTests.test_graph_codec_preserves_closed_deliveries_without_values",
+          "status": "passing"
+        }
+      ],
       "supersession": null
     },
     {
@@ -10099,7 +10147,13 @@
       "owner": "control-plane-kit-core",
       "owner_kind": "core",
       "reference": "tests.test_secret_delivery_topology.SecretDeliveryTopologyTests.test_literal_and_secret_environment_names_cannot_overlap",
-      "successors": [],
+      "successors": [
+        {
+          "evidence": "extract-e-755.environment-secrets.unittest",
+          "id": "control-plane-kit-core.tests.test_environment_secrets.EnvironmentBindingTests.test_public_socket_and_secret_environment_names_remain_disjoint",
+          "status": "passing"
+        }
+      ],
       "supersession": null
     },
     {
@@ -10109,7 +10163,13 @@
       "owner": "control-plane-kit-core",
       "owner_kind": "core",
       "reference": "tests.test_secrets.SecretContractTests.test_bootstrap_configuration_cannot_exceed_authority",
-      "successors": [],
+      "successors": [
+        {
+          "evidence": "extract-e-755.environment-secrets.unittest",
+          "id": "control-plane-kit-core.tests.test_environment_secrets.SecretContractTests.test_bootstrap_configuration_cannot_exceed_authority",
+          "status": "passing"
+        }
+      ],
       "supersession": null
     },
     {
@@ -10119,7 +10179,13 @@
       "owner": "control-plane-kit-core",
       "owner_kind": "core",
       "reference": "tests.test_secrets.SecretContractTests.test_closed_delivery_variants_round_trip",
-      "successors": [],
+      "successors": [
+        {
+          "evidence": "extract-e-755.environment-secrets.unittest",
+          "id": "control-plane-kit-core.tests.test_environment_secrets.SecretContractTests.test_closed_delivery_variants_round_trip",
+          "status": "passing"
+        }
+      ],
       "supersession": null
     },
     {
@@ -10129,7 +10195,13 @@
       "owner": "control-plane-kit-core",
       "owner_kind": "core",
       "reference": "tests.test_secrets.SecretContractTests.test_denied_and_missing_errors_are_closed_and_redacted",
-      "successors": [],
+      "successors": [
+        {
+          "evidence": "extract-e-755.environment-secrets.unittest",
+          "id": "control-plane-kit-core.tests.test_environment_secrets.SecretContractTests.test_denied_and_missing_errors_are_closed_and_redacted",
+          "status": "passing"
+        }
+      ],
       "supersession": null
     },
     {
@@ -10139,7 +10211,13 @@
       "owner": "control-plane-kit-core",
       "owner_kind": "core",
       "reference": "tests.test_secrets.SecretContractTests.test_local_resolver_distinguishes_resolved_missing_and_denied",
-      "successors": [],
+      "successors": [
+        {
+          "evidence": "extract-e-755.environment-secrets.unittest",
+          "id": "control-plane-kit-core.tests.test_environment_secrets.SecretContractTests.test_local_resolver_distinguishes_resolved_missing_and_denied",
+          "status": "passing"
+        }
+      ],
       "supersession": null
     },
     {
@@ -10149,7 +10227,13 @@
       "owner": "control-plane-kit-core",
       "owner_kind": "core",
       "reference": "tests.test_secrets.SecretContractTests.test_malformed_references_fail_at_construction",
-      "successors": [],
+      "successors": [
+        {
+          "evidence": "extract-e-755.environment-secrets.unittest",
+          "id": "control-plane-kit-core.tests.test_environment_secrets.SecretContractTests.test_malformed_references_fail_at_construction",
+          "status": "passing"
+        }
+      ],
       "supersession": null
     },
     {
@@ -10159,7 +10243,13 @@
       "owner": "control-plane-kit-core",
       "owner_kind": "core",
       "reference": "tests.test_secrets.SecretContractTests.test_reference_has_provider_and_path_identity",
-      "successors": [],
+      "successors": [
+        {
+          "evidence": "extract-e-755.environment-secrets.unittest",
+          "id": "control-plane-kit-core.tests.test_environment_secrets.SecretContractTests.test_reference_has_provider_and_path_identity",
+          "status": "passing"
+        }
+      ],
       "supersession": null
     },
     {
@@ -10169,7 +10259,13 @@
       "owner": "control-plane-kit-core",
       "owner_kind": "core",
       "reference": "tests.test_secrets.SecretContractTests.test_secret_file_targets_are_closed_to_protected_namespace",
-      "successors": [],
+      "successors": [
+        {
+          "evidence": "extract-e-755.environment-secrets.unittest",
+          "id": "control-plane-kit-core.tests.test_environment_secrets.SecretContractTests.test_secret_file_targets_are_closed_to_protected_namespace",
+          "status": "passing"
+        }
+      ],
       "supersession": null
     },
     {
@@ -10179,7 +10275,13 @@
       "owner": "control-plane-kit-core",
       "owner_kind": "core",
       "reference": "tests.test_secrets.SecretContractTests.test_unknown_or_extra_delivery_fields_fail_closed",
-      "successors": [],
+      "successors": [
+        {
+          "evidence": "extract-e-755.environment-secrets.unittest",
+          "id": "control-plane-kit-core.tests.test_environment_secrets.SecretContractTests.test_unknown_or_extra_delivery_fields_fail_closed",
+          "status": "passing"
+        }
+      ],
       "supersession": null
     },
     {
@@ -10189,7 +10291,13 @@
       "owner": "control-plane-kit-core",
       "owner_kind": "core",
       "reference": "tests.test_secrets.SecretContractTests.test_values_are_released_only_by_explicit_runtime_interpretation",
-      "successors": [],
+      "successors": [
+        {
+          "evidence": "extract-e-755.environment-secrets.unittest",
+          "id": "control-plane-kit-core.tests.test_environment_secrets.SecretContractTests.test_values_are_released_only_by_explicit_runtime_interpretation",
+          "status": "passing"
+        }
+      ],
       "supersession": null
     },
     {
