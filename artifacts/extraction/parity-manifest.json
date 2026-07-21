@@ -689,7 +689,13 @@
       "owner": "control-plane-kit-core",
       "owner_kind": "core",
       "reference": "tests.test_activity_planning_command_service.ActivityPlanningCommandServiceTests.test_concurrent_close_and_plan_publish_in_a_serial_session_order",
-      "successors": [],
+      "successors": [
+        {
+          "evidence": "extract-e-787.command-workflow-contract.unittest",
+          "id": "control-plane-kit-core.tests.test_activity_planning_command_service.ActivityPlanningCommandServiceTests.test_concurrent_close_and_plan_publish_in_a_serial_session_order",
+          "status": "passing"
+        }
+      ],
       "supersession": null
     },
     {
@@ -699,7 +705,13 @@
       "owner": "control-plane-kit-core",
       "owner_kind": "core",
       "reference": "tests.test_activity_planning_command_service.ActivityPlanningCommandServiceTests.test_concurrent_identical_requests_converge_on_one_plan",
-      "successors": [],
+      "successors": [
+        {
+          "evidence": "extract-e-787.command-workflow-contract.unittest",
+          "id": "control-plane-kit-core.tests.test_activity_planning_command_service.ActivityPlanningCommandServiceTests.test_concurrent_identical_requests_converge_on_one_plan",
+          "status": "passing"
+        }
+      ],
       "supersession": null
     },
     {
@@ -709,7 +721,13 @@
       "owner": "control-plane-kit-core",
       "owner_kind": "core",
       "reference": "tests.test_activity_planning_command_service.ActivityPlanningCommandServiceTests.test_identical_request_replays_original_plan_and_evidence",
-      "successors": [],
+      "successors": [
+        {
+          "evidence": "extract-e-787.command-workflow-contract.unittest",
+          "id": "control-plane-kit-core.tests.test_activity_planning_command_service.ActivityPlanningCommandServiceTests.test_identical_request_replays_original_plan_and_evidence",
+          "status": "passing"
+        }
+      ],
       "supersession": null
     },
     {
@@ -719,7 +737,13 @@
       "owner": "control-plane-kit-core",
       "owner_kind": "core",
       "reference": "tests.test_activity_planning_command_service.ActivityPlanningCommandServiceTests.test_late_action_failure_rolls_back_plan_insert",
-      "successors": [],
+      "successors": [
+        {
+          "evidence": "extract-e-787.command-workflow-contract.unittest",
+          "id": "control-plane-kit-core.tests.test_activity_planning_command_service.ActivityPlanningCommandServiceTests.test_late_action_failure_rolls_back_plan_insert",
+          "status": "passing"
+        }
+      ],
       "supersession": null
     },
     {
@@ -729,7 +753,13 @@
       "owner": "control-plane-kit-core",
       "owner_kind": "core",
       "reference": "tests.test_activity_planning_command_service.ActivityPlanningCommandServiceTests.test_malformed_durable_graph_rejects_without_writes",
-      "successors": [],
+      "successors": [
+        {
+          "evidence": "extract-e-787.command-workflow-contract.unittest",
+          "id": "control-plane-kit-core.tests.test_activity_planning_command_service.ActivityPlanningCommandServiceTests.test_malformed_durable_graph_rejects_without_writes",
+          "status": "passing"
+        }
+      ],
       "supersession": null
     },
     {
@@ -739,7 +769,13 @@
       "owner": "control-plane-kit-core",
       "owner_kind": "core",
       "reference": "tests.test_activity_planning_command_service.ActivityPlanningCommandServiceTests.test_plan_and_action_commit_as_one_operator_command",
-      "successors": [],
+      "successors": [
+        {
+          "evidence": "extract-e-787.command-workflow-contract.unittest",
+          "id": "control-plane-kit-core.tests.test_activity_planning_command_service.ActivityPlanningCommandServiceTests.test_plan_and_action_commit_as_one_operator_command",
+          "status": "passing"
+        }
+      ],
       "supersession": null
     },
     {
@@ -749,7 +785,13 @@
       "owner": "control-plane-kit-core",
       "owner_kind": "core",
       "reference": "tests.test_activity_planning_command_service.ActivityPlanningCommandServiceTests.test_replay_survives_later_pointer_and_session_state_changes",
-      "successors": [],
+      "successors": [
+        {
+          "evidence": "extract-e-787.command-workflow-contract.unittest",
+          "id": "control-plane-kit-core.tests.test_activity_planning_command_service.ActivityPlanningCommandServiceTests.test_replay_survives_later_pointer_and_session_state_changes",
+          "status": "passing"
+        }
+      ],
       "supersession": null
     },
     {
@@ -759,7 +801,13 @@
       "owner": "control-plane-kit-core",
       "owner_kind": "core",
       "reference": "tests.test_activity_planning_command_service.ActivityPlanningCommandServiceTests.test_same_key_with_different_intent_fails_explicitly",
-      "successors": [],
+      "successors": [
+        {
+          "evidence": "extract-e-787.command-workflow-contract.unittest",
+          "id": "control-plane-kit-core.tests.test_activity_planning_command_service.ActivityPlanningCommandServiceTests.test_same_key_with_different_intent_fails_explicitly",
+          "status": "passing"
+        }
+      ],
       "supersession": null
     },
     {
@@ -769,7 +817,13 @@
       "owner": "control-plane-kit-core",
       "owner_kind": "core",
       "reference": "tests.test_activity_planning_command_service.ActivityPlanningCommandServiceTests.test_stale_workspace_pointers_reject_without_writes",
-      "successors": [],
+      "successors": [
+        {
+          "evidence": "extract-e-787.command-workflow-contract.unittest",
+          "id": "control-plane-kit-core.tests.test_activity_planning_command_service.ActivityPlanningCommandServiceTests.test_stale_workspace_pointers_reject_without_writes",
+          "status": "passing"
+        }
+      ],
       "supersession": null
     },
     {
@@ -827,7 +881,13 @@
       "owner": "control-plane-kit-core",
       "owner_kind": "core",
       "reference": "tests.test_approval_command_service.ApprovalCommandServiceTests.test_authority_fails_closed_and_destructive_plan_requires_stronger_scope",
-      "successors": [],
+      "successors": [
+        {
+          "evidence": "extract-e-787.command-workflow-contract.unittest",
+          "id": "control-plane-kit-core.tests.test_approval_command_service.ApprovalCommandServiceTests.test_authority_fails_closed_and_destructive_plan_requires_stronger_scope",
+          "status": "passing"
+        }
+      ],
       "supersession": null
     },
     {
@@ -837,7 +897,13 @@
       "owner": "control-plane-kit-core",
       "owner_kind": "core",
       "reference": "tests.test_approval_command_service.ApprovalCommandServiceTests.test_concurrent_competing_decisions_publish_exactly_one_fact",
-      "successors": [],
+      "successors": [
+        {
+          "evidence": "extract-e-787.command-workflow-contract.unittest",
+          "id": "control-plane-kit-core.tests.test_approval_command_service.ApprovalCommandServiceTests.test_concurrent_competing_decisions_publish_exactly_one_fact",
+          "status": "passing"
+        }
+      ],
       "supersession": null
     },
     {
@@ -847,7 +913,13 @@
       "owner": "control-plane-kit-core",
       "owner_kind": "core",
       "reference": "tests.test_approval_command_service.ApprovalCommandServiceTests.test_concurrent_identical_decisions_converge_on_one_decision",
-      "successors": [],
+      "successors": [
+        {
+          "evidence": "extract-e-787.command-workflow-contract.unittest",
+          "id": "control-plane-kit-core.tests.test_approval_command_service.ApprovalCommandServiceTests.test_concurrent_identical_decisions_converge_on_one_decision",
+          "status": "passing"
+        }
+      ],
       "supersession": null
     },
     {
@@ -857,7 +929,13 @@
       "owner": "control-plane-kit-core",
       "owner_kind": "core",
       "reference": "tests.test_approval_command_service.ApprovalCommandServiceTests.test_concurrent_identical_requests_converge_on_one_request",
-      "successors": [],
+      "successors": [
+        {
+          "evidence": "extract-e-787.command-workflow-contract.unittest",
+          "id": "control-plane-kit-core.tests.test_approval_command_service.ApprovalCommandServiceTests.test_concurrent_identical_requests_converge_on_one_request",
+          "status": "passing"
+        }
+      ],
       "supersession": null
     },
     {
@@ -867,7 +945,13 @@
       "owner": "control-plane-kit-core",
       "owner_kind": "core",
       "reference": "tests.test_approval_command_service.ApprovalCommandServiceTests.test_concurrent_request_and_close_serialize_without_partial_approval",
-      "successors": [],
+      "successors": [
+        {
+          "evidence": "extract-e-787.command-workflow-contract.unittest",
+          "id": "control-plane-kit-core.tests.test_approval_command_service.ApprovalCommandServiceTests.test_concurrent_request_and_close_serialize_without_partial_approval",
+          "status": "passing"
+        }
+      ],
       "supersession": null
     },
     {
@@ -877,7 +961,13 @@
       "owner": "control-plane-kit-core",
       "owner_kind": "core",
       "reference": "tests.test_approval_command_service.ApprovalCommandServiceTests.test_conflicting_reuse_and_second_decision_are_rejected",
-      "successors": [],
+      "successors": [
+        {
+          "evidence": "extract-e-787.command-workflow-contract.unittest",
+          "id": "control-plane-kit-core.tests.test_approval_command_service.ApprovalCommandServiceTests.test_conflicting_reuse_and_second_decision_are_rejected",
+          "status": "passing"
+        }
+      ],
       "supersession": null
     },
     {
@@ -887,7 +977,13 @@
       "owner": "control-plane-kit-core",
       "owner_kind": "core",
       "reference": "tests.test_approval_command_service.ApprovalCommandServiceTests.test_late_action_failures_roll_back_request_and_decision",
-      "successors": [],
+      "successors": [
+        {
+          "evidence": "extract-e-787.command-workflow-contract.unittest",
+          "id": "control-plane-kit-core.tests.test_approval_command_service.ApprovalCommandServiceTests.test_late_action_failures_roll_back_request_and_decision",
+          "status": "passing"
+        }
+      ],
       "supersession": null
     },
     {
@@ -897,7 +993,13 @@
       "owner": "control-plane-kit-core",
       "owner_kind": "core",
       "reference": "tests.test_approval_command_service.ApprovalCommandServiceTests.test_request_and_decision_are_distinct_durable_facts",
-      "successors": [],
+      "successors": [
+        {
+          "evidence": "extract-e-787.command-workflow-contract.unittest",
+          "id": "control-plane-kit-core.tests.test_approval_command_service.ApprovalCommandServiceTests.test_request_and_decision_are_distinct_durable_facts",
+          "status": "passing"
+        }
+      ],
       "supersession": null
     },
     {
@@ -907,7 +1009,13 @@
       "owner": "control-plane-kit-core",
       "owner_kind": "core",
       "reference": "tests.test_approval_command_service.ApprovalCommandServiceTests.test_request_and_decision_replay_without_duplicate_history",
-      "successors": [],
+      "successors": [
+        {
+          "evidence": "extract-e-787.command-workflow-contract.unittest",
+          "id": "control-plane-kit-core.tests.test_approval_command_service.ApprovalCommandServiceTests.test_request_and_decision_replay_without_duplicate_history",
+          "status": "passing"
+        }
+      ],
       "supersession": null
     },
     {
@@ -917,7 +1025,13 @@
       "owner": "control-plane-kit-core",
       "owner_kind": "core",
       "reference": "tests.test_approval_command_service.ApprovalCommandServiceTests.test_request_is_pending_fact_with_plan_risk_evidence",
-      "successors": [],
+      "successors": [
+        {
+          "evidence": "extract-e-787.command-workflow-contract.unittest",
+          "id": "control-plane-kit-core.tests.test_approval_command_service.ApprovalCommandServiceTests.test_request_is_pending_fact_with_plan_risk_evidence",
+          "status": "passing"
+        }
+      ],
       "supersession": null
     },
     {
@@ -3435,7 +3549,13 @@
       "owner": "control-plane-kit-core",
       "owner_kind": "core",
       "reference": "tests.test_desired_graph_command_service.DesiredGraphCommandServiceTests.test_concurrent_distinct_requests_publish_one_and_reject_one_stale",
-      "successors": [],
+      "successors": [
+        {
+          "evidence": "extract-e-787.command-workflow-contract.unittest",
+          "id": "control-plane-kit-core.tests.test_desired_graph_command_service.DesiredGraphCommandServiceTests.test_concurrent_distinct_requests_publish_one_and_reject_one_stale",
+          "status": "passing"
+        }
+      ],
       "supersession": null
     },
     {
@@ -3445,7 +3565,13 @@
       "owner": "control-plane-kit-core",
       "owner_kind": "core",
       "reference": "tests.test_desired_graph_command_service.DesiredGraphCommandServiceTests.test_concurrent_identical_requests_converge_on_one_graph",
-      "successors": [],
+      "successors": [
+        {
+          "evidence": "extract-e-787.command-workflow-contract.unittest",
+          "id": "control-plane-kit-core.tests.test_desired_graph_command_service.DesiredGraphCommandServiceTests.test_concurrent_identical_requests_converge_on_one_graph",
+          "status": "passing"
+        }
+      ],
       "supersession": null
     },
     {
@@ -3455,7 +3581,13 @@
       "owner": "control-plane-kit-core",
       "owner_kind": "core",
       "reference": "tests.test_desired_graph_command_service.DesiredGraphCommandServiceTests.test_graph_pointer_and_action_commit_as_one_command",
-      "successors": [],
+      "successors": [
+        {
+          "evidence": "extract-e-787.command-workflow-contract.unittest",
+          "id": "control-plane-kit-core.tests.test_desired_graph_command_service.DesiredGraphCommandServiceTests.test_graph_pointer_and_action_commit_as_one_command",
+          "status": "passing"
+        }
+      ],
       "supersession": null
     },
     {
@@ -3465,7 +3597,13 @@
       "owner": "control-plane-kit-core",
       "owner_kind": "core",
       "reference": "tests.test_desired_graph_command_service.DesiredGraphCommandServiceTests.test_identical_request_replays_original_evidence",
-      "successors": [],
+      "successors": [
+        {
+          "evidence": "extract-e-787.command-workflow-contract.unittest",
+          "id": "control-plane-kit-core.tests.test_desired_graph_command_service.DesiredGraphCommandServiceTests.test_identical_request_replays_original_evidence",
+          "status": "passing"
+        }
+      ],
       "supersession": null
     },
     {
@@ -3475,7 +3613,13 @@
       "owner": "control-plane-kit-core",
       "owner_kind": "core",
       "reference": "tests.test_desired_graph_command_service.DesiredGraphCommandServiceTests.test_late_action_failure_rolls_back_graph_and_pointer",
-      "successors": [],
+      "successors": [
+        {
+          "evidence": "extract-e-787.command-workflow-contract.unittest",
+          "id": "control-plane-kit-core.tests.test_desired_graph_command_service.DesiredGraphCommandServiceTests.test_late_action_failure_rolls_back_graph_and_pointer",
+          "status": "passing"
+        }
+      ],
       "supersession": null
     },
     {
@@ -3485,7 +3629,13 @@
       "owner": "control-plane-kit-core",
       "owner_kind": "core",
       "reference": "tests.test_desired_graph_command_service.DesiredGraphCommandServiceTests.test_replay_remains_available_after_session_closes",
-      "successors": [],
+      "successors": [
+        {
+          "evidence": "extract-e-787.command-workflow-contract.unittest",
+          "id": "control-plane-kit-core.tests.test_desired_graph_command_service.DesiredGraphCommandServiceTests.test_replay_remains_available_after_session_closes",
+          "status": "passing"
+        }
+      ],
       "supersession": null
     },
     {
@@ -3495,7 +3645,13 @@
       "owner": "control-plane-kit-core",
       "owner_kind": "core",
       "reference": "tests.test_desired_graph_command_service.DesiredGraphCommandServiceTests.test_session_must_be_open_and_owned_by_workspace",
-      "successors": [],
+      "successors": [
+        {
+          "evidence": "extract-e-787.command-workflow-contract.unittest",
+          "id": "control-plane-kit-core.tests.test_desired_graph_command_service.DesiredGraphCommandServiceTests.test_session_must_be_open_and_owned_by_workspace",
+          "status": "passing"
+        }
+      ],
       "supersession": null
     },
     {
@@ -3505,7 +3661,13 @@
       "owner": "control-plane-kit-core",
       "owner_kind": "core",
       "reference": "tests.test_desired_graph_command_service.DesiredGraphCommandServiceTests.test_stale_expected_pointer_rejects_without_partial_writes",
-      "successors": [],
+      "successors": [
+        {
+          "evidence": "extract-e-787.command-workflow-contract.unittest",
+          "id": "control-plane-kit-core.tests.test_desired_graph_command_service.DesiredGraphCommandServiceTests.test_stale_expected_pointer_rejects_without_partial_writes",
+          "status": "passing"
+        }
+      ],
       "supersession": null
     },
     {
@@ -3515,7 +3677,13 @@
       "owner": "control-plane-kit-core",
       "owner_kind": "core",
       "reference": "tests.test_desired_graph_commands.DesiredGraphCommandTests.test_invalid_or_untyped_edit_data_fails_closed",
-      "successors": [],
+      "successors": [
+        {
+          "evidence": "extract-e-787.command-workflow-contract.unittest",
+          "id": "control-plane-kit-core.tests.test_desired_graph_commands.DesiredGraphCommandTests.test_invalid_or_untyped_edit_data_fails_closed",
+          "status": "passing"
+        }
+      ],
       "supersession": null
     },
     {
@@ -3525,7 +3693,13 @@
       "owner": "control-plane-kit-core",
       "owner_kind": "core",
       "reference": "tests.test_desired_graph_commands.DesiredGraphCommandTests.test_result_ties_graph_and_action_evidence_to_one_workspace",
-      "successors": [],
+      "successors": [
+        {
+          "evidence": "extract-e-787.command-workflow-contract.unittest",
+          "id": "control-plane-kit-core.tests.test_desired_graph_commands.DesiredGraphCommandTests.test_result_ties_graph_and_action_evidence_to_one_workspace",
+          "status": "passing"
+        }
+      ],
       "supersession": null
     },
     {
@@ -3535,7 +3709,13 @@
       "owner": "control-plane-kit-core",
       "owner_kind": "core",
       "reference": "tests.test_desired_graph_commands.DesiredGraphCommandTests.test_set_desired_graph_is_typed_and_operator_descriptor_is_bounded",
-      "successors": [],
+      "successors": [
+        {
+          "evidence": "extract-e-787.command-workflow-contract.unittest",
+          "id": "control-plane-kit-core.tests.test_desired_graph_commands.DesiredGraphCommandTests.test_set_desired_graph_is_typed_and_operator_descriptor_is_bounded",
+          "status": "passing"
+        }
+      ],
       "supersession": null
     },
     {
@@ -8321,7 +8501,13 @@
       "owner": "control-plane-kit-core",
       "owner_kind": "core",
       "reference": "tests.test_operation_command_service.OperationCommandServiceTests.test_action_replay_is_deterministic_and_conflict_is_explicit",
-      "successors": [],
+      "successors": [
+        {
+          "evidence": "extract-e-787.command-workflow-contract.unittest",
+          "id": "control-plane-kit-core.tests.test_operation_command_service.OperationCommandServiceTests.test_action_replay_is_deterministic_and_conflict_is_explicit",
+          "status": "passing"
+        }
+      ],
       "supersession": null
     },
     {
@@ -8331,7 +8517,13 @@
       "owner": "control-plane-kit-core",
       "owner_kind": "core",
       "reference": "tests.test_operation_command_service.OperationCommandServiceTests.test_closed_and_cancelled_sessions_reject_new_actions",
-      "successors": [],
+      "successors": [
+        {
+          "evidence": "extract-e-787.command-workflow-contract.unittest",
+          "id": "control-plane-kit-core.tests.test_operation_command_service.OperationCommandServiceTests.test_closed_and_cancelled_sessions_reject_new_actions",
+          "status": "passing"
+        }
+      ],
       "supersession": null
     },
     {
@@ -8341,7 +8533,13 @@
       "owner": "control-plane-kit-core",
       "owner_kind": "core",
       "reference": "tests.test_operation_command_service.OperationCommandServiceTests.test_concurrent_identical_starts_converge_on_one_session",
-      "successors": [],
+      "successors": [
+        {
+          "evidence": "extract-e-787.command-workflow-contract.unittest",
+          "id": "control-plane-kit-core.tests.test_operation_command_service.OperationCommandServiceTests.test_concurrent_identical_starts_converge_on_one_session",
+          "status": "passing"
+        }
+      ],
       "supersession": null
     },
     {
@@ -8351,7 +8549,13 @@
       "owner": "control-plane-kit-core",
       "owner_kind": "core",
       "reference": "tests.test_operation_command_service.OperationCommandServiceTests.test_concurrent_terminal_transitions_cannot_both_publish",
-      "successors": [],
+      "successors": [
+        {
+          "evidence": "extract-e-787.command-workflow-contract.unittest",
+          "id": "control-plane-kit-core.tests.test_operation_command_service.OperationCommandServiceTests.test_concurrent_terminal_transitions_cannot_both_publish",
+          "status": "passing"
+        }
+      ],
       "supersession": null
     },
     {
@@ -8361,7 +8565,13 @@
       "owner": "control-plane-kit-core",
       "owner_kind": "core",
       "reference": "tests.test_operation_command_service.OperationCommandServiceTests.test_late_action_failure_rolls_back_new_session",
-      "successors": [],
+      "successors": [
+        {
+          "evidence": "extract-e-787.command-workflow-contract.unittest",
+          "id": "control-plane-kit-core.tests.test_operation_command_service.OperationCommandServiceTests.test_late_action_failure_rolls_back_new_session",
+          "status": "passing"
+        }
+      ],
       "supersession": null
     },
     {
@@ -8371,7 +8581,13 @@
       "owner": "control-plane-kit-core",
       "owner_kind": "core",
       "reference": "tests.test_operation_command_service.OperationCommandServiceTests.test_late_action_failure_rolls_back_terminal_projection",
-      "successors": [],
+      "successors": [
+        {
+          "evidence": "extract-e-787.command-workflow-contract.unittest",
+          "id": "control-plane-kit-core.tests.test_operation_command_service.OperationCommandServiceTests.test_late_action_failure_rolls_back_terminal_projection",
+          "status": "passing"
+        }
+      ],
       "supersession": null
     },
     {
@@ -8381,7 +8597,13 @@
       "owner": "control-plane-kit-core",
       "owner_kind": "core",
       "reference": "tests.test_operation_command_service.OperationCommandServiceTests.test_missing_session_and_reserved_lifecycle_actions_fail_closed",
-      "successors": [],
+      "successors": [
+        {
+          "evidence": "extract-e-787.command-workflow-contract.unittest",
+          "id": "control-plane-kit-core.tests.test_operation_command_service.OperationCommandServiceTests.test_missing_session_and_reserved_lifecycle_actions_fail_closed",
+          "status": "passing"
+        }
+      ],
       "supersession": null
     },
     {
@@ -8391,7 +8613,13 @@
       "owner": "control-plane-kit-core",
       "owner_kind": "core",
       "reference": "tests.test_operation_command_service.OperationCommandServiceTests.test_same_intent_replays_and_conflicting_intent_fails",
-      "successors": [],
+      "successors": [
+        {
+          "evidence": "extract-e-787.command-workflow-contract.unittest",
+          "id": "control-plane-kit-core.tests.test_operation_command_service.OperationCommandServiceTests.test_same_intent_replays_and_conflicting_intent_fails",
+          "status": "passing"
+        }
+      ],
       "supersession": null
     },
     {
@@ -8401,7 +8629,13 @@
       "owner": "control-plane-kit-core",
       "owner_kind": "core",
       "reference": "tests.test_operation_command_service.OperationCommandServiceTests.test_start_commits_session_and_initial_action_atomically",
-      "successors": [],
+      "successors": [
+        {
+          "evidence": "extract-e-787.command-workflow-contract.unittest",
+          "id": "control-plane-kit-core.tests.test_operation_command_service.OperationCommandServiceTests.test_start_commits_session_and_initial_action_atomically",
+          "status": "passing"
+        }
+      ],
       "supersession": null
     },
     {
@@ -8411,7 +8645,13 @@
       "owner": "control-plane-kit-core",
       "owner_kind": "core",
       "reference": "tests.test_operation_command_service.OperationCommandServiceTests.test_start_requires_workspace_truth_and_replay_returns_original_state",
-      "successors": [],
+      "successors": [
+        {
+          "evidence": "extract-e-787.command-workflow-contract.unittest",
+          "id": "control-plane-kit-core.tests.test_operation_command_service.OperationCommandServiceTests.test_start_requires_workspace_truth_and_replay_returns_original_state",
+          "status": "passing"
+        }
+      ],
       "supersession": null
     },
     {
@@ -8421,7 +8661,13 @@
       "owner": "control-plane-kit-core",
       "owner_kind": "core",
       "reference": "tests.test_operation_commands.OperationCommandVocabularyTests.test_command_descriptors_do_not_publish_operator_values",
-      "successors": [],
+      "successors": [
+        {
+          "evidence": "extract-e-787.command-workflow-contract.unittest",
+          "id": "control-plane-kit-core.tests.test_operation_commands.OperationCommandVocabularyTests.test_command_descriptors_do_not_publish_operator_values",
+          "status": "passing"
+        }
+      ],
       "supersession": null
     },
     {
@@ -8431,7 +8677,13 @@
       "owner": "control-plane-kit-core",
       "owner_kind": "core",
       "reference": "tests.test_operation_commands.OperationCommandVocabularyTests.test_command_evidence_accepts_secret_references_but_rejects_secret_values",
-      "successors": [],
+      "successors": [
+        {
+          "evidence": "extract-e-787.command-workflow-contract.unittest",
+          "id": "control-plane-kit-core.tests.test_operation_commands.OperationCommandVocabularyTests.test_command_evidence_accepts_secret_references_but_rejects_secret_values",
+          "status": "passing"
+        }
+      ],
       "supersession": null
     },
     {
@@ -8441,7 +8693,13 @@
       "owner": "control-plane-kit-core",
       "owner_kind": "core",
       "reference": "tests.test_operation_commands.OperationCommandVocabularyTests.test_durable_records_reject_untyped_lifecycle_and_action_values",
-      "successors": [],
+      "successors": [
+        {
+          "evidence": "extract-e-787.command-workflow-contract.unittest",
+          "id": "control-plane-kit-core.tests.test_operation_commands.OperationCommandVocabularyTests.test_durable_records_reject_untyped_lifecycle_and_action_values",
+          "status": "passing"
+        }
+      ],
       "supersession": null
     },
     {
@@ -8451,7 +8709,13 @@
       "owner": "control-plane-kit-core",
       "owner_kind": "core",
       "reference": "tests.test_operation_commands.OperationCommandVocabularyTests.test_record_action_requires_closed_action_kind",
-      "successors": [],
+      "successors": [
+        {
+          "evidence": "extract-e-787.command-workflow-contract.unittest",
+          "id": "control-plane-kit-core.tests.test_operation_commands.OperationCommandVocabularyTests.test_record_action_requires_closed_action_kind",
+          "status": "passing"
+        }
+      ],
       "supersession": null
     },
     {
@@ -8461,7 +8725,13 @@
       "owner": "control-plane-kit-core",
       "owner_kind": "core",
       "reference": "tests.test_operation_commands.OperationCommandVocabularyTests.test_required_identifiers_and_idempotency_keys_fail_closed",
-      "successors": [],
+      "successors": [
+        {
+          "evidence": "extract-e-787.command-workflow-contract.unittest",
+          "id": "control-plane-kit-core.tests.test_operation_commands.OperationCommandVocabularyTests.test_required_identifiers_and_idempotency_keys_fail_closed",
+          "status": "passing"
+        }
+      ],
       "supersession": null
     },
     {
@@ -8471,7 +8741,13 @@
       "owner": "control-plane-kit-core",
       "owner_kind": "core",
       "reference": "tests.test_operation_commands.OperationCommandVocabularyTests.test_result_descriptor_preserves_typed_evidence",
-      "successors": [],
+      "successors": [
+        {
+          "evidence": "extract-e-787.command-workflow-contract.unittest",
+          "id": "control-plane-kit-core.tests.test_operation_commands.OperationCommandVocabularyTests.test_result_descriptor_preserves_typed_evidence",
+          "status": "passing"
+        }
+      ],
       "supersession": null
     },
     {
@@ -8481,7 +8757,13 @@
       "owner": "control-plane-kit-core",
       "owner_kind": "core",
       "reference": "tests.test_operation_commands.OperationCommandVocabularyTests.test_start_command_is_a_validated_deterministic_product",
-      "successors": [],
+      "successors": [
+        {
+          "evidence": "extract-e-787.command-workflow-contract.unittest",
+          "id": "control-plane-kit-core.tests.test_operation_commands.OperationCommandVocabularyTests.test_start_command_is_a_validated_deterministic_product",
+          "status": "passing"
+        }
+      ],
       "supersession": null
     },
     {
@@ -8491,7 +8773,13 @@
       "owner": "control-plane-kit-core",
       "owner_kind": "core",
       "reference": "tests.test_operation_commands.OperationCommandVocabularyTests.test_transition_commands_have_distinct_tags",
-      "successors": [],
+      "successors": [
+        {
+          "evidence": "extract-e-787.command-workflow-contract.unittest",
+          "id": "control-plane-kit-core.tests.test_operation_commands.OperationCommandVocabularyTests.test_transition_commands_have_distinct_tags",
+          "status": "passing"
+        }
+      ],
       "supersession": null
     },
     {

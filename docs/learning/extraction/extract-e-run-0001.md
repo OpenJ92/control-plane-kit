@@ -2237,3 +2237,120 @@ focused #786 mapping guard: 1 test passed
 extraction/parity mapping suite: 30 tests passed
 validate-parity.sh foundation: valid=true, findings=0, incomplete_required=621
 ```
+
+## #787 Command Workflow Contract Mapping
+
+#787 maps the command vocabulary and workflow contract slice from #740. The
+operations audit artifact governed the scope; although the issue body mentioned
+`test_workflows`, the current artifact assigns this issue exactly six families:
+
+```text
+test_activity_planning_command_service:  9 laws
+test_approval_command_service:          10 laws
+test_desired_graph_command_service:      8 laws
+test_desired_graph_commands:             3 laws
+test_operation_command_service:         10 laws
+test_operation_commands:                 8 laws
+
+total: 6 families / 48 laws
+```
+
+`test_workflows` was not mapped here because it is not present in
+`artifacts/extraction/operations-contract-batch-audit.json` for #787. It should
+remain available for later operations / cpk-server handoff classification if a
+future audit assigns it.
+
+Successor evidence:
+
+```text
+artifacts/extraction/successor-proofs/extract-e-787-command-workflow-contract.json
+extract-e-787.command-workflow-contract.unittest
+sha256:0cf7e6877af2c0f4633f0bef1b992f01f6a1198770732cc81e65c103b3b73f58
+```
+
+The key implementation addition is a pure command workflow contract. It names
+what commands exist and what handoff laws they obey, without introducing a
+command service, store, UnitOfWork, ledger, authorization implementation, or
+route executor:
+
+```python
+class OperatorCommandKind(StrEnum):
+    START_OPERATION_SESSION = "start-operation-session"
+    CLOSE_OPERATION_SESSION = "close-operation-session"
+    CANCEL_OPERATION_SESSION = "cancel-operation-session"
+    RECORD_OPERATION_ACTION = "record-operation-action"
+    SET_DESIRED_GRAPH = "set-desired-graph"
+    REQUEST_ACTIVITY_PLAN = "request-activity-plan"
+    REQUEST_APPROVAL = "request-approval"
+    DECIDE_APPROVAL = "decide-approval"
+```
+
+Each command contract is a product of closed values:
+
+```python
+@dataclass(frozen=True)
+class OperatorCommandContract:
+    operation_id: str
+    kind: OperatorCommandKind
+    family: OperatorCommandFamily
+    stage: DeploymentProgramStage
+    service_role: ControlPlaneServiceRole
+    request_schema: str
+    response_schema: str
+    idempotency: CommandIdempotencyPolicy
+    approval: ApprovalPolicy
+    activity_history: ActivityHistoryPolicy
+    payload_policy: CommandPayloadPolicy
+    requires_open_session: bool
+    creates_session: bool
+    terminal_session_transition: bool
+```
+
+The canonical command workflow is therefore:
+
+```text
+OperatorCommandWorkflowContract
+  = [OperatorCommandContract]
+
+OperatorCommandContract
+  = command identity
+  x family
+  x DeploymentProgramStage
+  x service role
+  x request/response schema names
+  x idempotency policy
+  x approval relation
+  x activity-history handoff
+  x payload descriptor policy
+  x session-shape flags
+```
+
+This preserves the boundary:
+
+```text
+core
+  owns closed command identities, families, stage/service-role mapping,
+  descriptor policy, idempotency/approval/history contract data, and successor
+  evidence.
+
+operations / cpk-server
+  owns command services, Postgres stores, UnitOfWork, mutable operation sessions,
+  command ledgers, authorization enforcement, durable replay/conflict behavior,
+  approval queues, graph-store mutation, HTTP/MCP route execution, and runtime
+  effects.
+```
+
+The test-integrity red evidence was meaningful:
+
+```text
+before mapping: 6 #787 subtests failed, one for each unmapped family
+```
+
+After mapping:
+
+```text
+focused #787 successor tests: 4 tests passed
+adjacent command/stage focused tests: 16 tests passed
+focused #787 mapping guard: 1 test passed
+validate-parity.sh foundation: valid=true, findings=0, incomplete_required=573
+```

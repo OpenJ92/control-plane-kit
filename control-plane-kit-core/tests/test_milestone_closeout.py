@@ -17,6 +17,7 @@ EXPECTED_MODULES = {
     "environment",
     "lifecycle",
     "operations.__init__",
+    "operations.commands",
     "operations.handoff",
     "operations.http",
     "operations.mcp",

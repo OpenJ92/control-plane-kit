@@ -270,6 +270,30 @@ class ExtractionSuccessorMappingTests(unittest.TestCase):
                     else "",
                 )
 
+    def test_command_workflow_contract_families_are_fully_mapped(self) -> None:
+        inventory = inventory_unmapped_required_core_families(self.closeout())
+        families = {
+            family["family"]: family
+            for family in inventory["families"]
+        }
+
+        for family_name in (
+            "test_activity_planning_command_service",
+            "test_approval_command_service",
+            "test_desired_graph_command_service",
+            "test_desired_graph_commands",
+            "test_operation_command_service",
+            "test_operation_commands",
+        ):
+            with self.subTest(family=family_name):
+                remaining = families.get(family_name)
+                self.assertIsNone(
+                    remaining,
+                    f"{family_name} still has {remaining['count']} unmapped laws"
+                    if remaining is not None
+                    else "",
+                )
+
 
 if __name__ == "__main__":
     unittest.main()
