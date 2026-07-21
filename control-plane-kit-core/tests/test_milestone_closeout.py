@@ -18,6 +18,7 @@ EXPECTED_MODULES = {
     "planning.activity_plan",
     "planning.codec",
     "planning.compiler",
+    "products",
     "secrets",
     "topology.__init__",
     "topology.changes",
