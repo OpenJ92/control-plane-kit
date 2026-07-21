@@ -79,6 +79,11 @@
       "digest": "sha256:65c1cc124be739d939068e778711ea8ba5d10ed92de3e32915be371e55020415",
       "id": "extract-e-775.pure-scheduling-laws.unittest",
       "status": "passing"
+    },
+    {
+      "digest": "sha256:7c3c65ac428e880a2376b404b4209d3daa597b69530a9af6916823baa9c52cf3",
+      "id": "extract-e-776.compensation-recovery-planning.unittest",
+      "status": "passing"
     }
   ],
   "schema": "cpk.successor-evidence-index"

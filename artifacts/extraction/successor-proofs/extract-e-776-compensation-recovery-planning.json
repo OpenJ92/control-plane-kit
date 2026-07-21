@@ -1,0 +1,30 @@
+{
+  "command": "docker run --rm -v /Users/jacobvartuli/Software/self/control-plane-kit/control-plane-kit-core:/pkg:ro -w /pkg -e PYTHONPATH=/pkg/src -e PYTHONDONTWRITEBYTECODE=1 python:3.14-slim python -m unittest tests.test_compensation_planning tests.test_recovery_planning",
+  "evidence": "The extracted core compensation and recovery planning successor maps frozen compensation matrix, compensation candidate, plan-codec, saga-availability, and recovery candidate laws into pure planning values. Recovery planning constructs ActivityPlan values from graph transitions and records limitations as closed data, without importing stores, UnitOfWork, Postgres, coordinator loops, worker claims, Docker adapters, HTTP APIs, MCP, or runtime effects.",
+  "frozen_laws": [
+    "behavior.candidates-follow-reverse-durable-completion-order",
+    "behavior.invalid-inputs-fail-before-planning",
+    "behavior.observation-and-destruction-are-not-given-fake-inverses",
+    "behavior.operation-matrix-has-one-explicit-compensation-meaning",
+    "behavior.plan-codec-persists-exact-compensation-and-source",
+    "behavior.reconstruction-uses-empty-baseline-without-claiming-absence",
+    "behavior.reverse-transition-is-a-fresh-canonical-plan-with-limitations",
+    "behavior.router-recovery-uses-same-compiler-and-is-deterministic",
+    "behavior.saga-availability-comes-from-persisted-plan-meaning",
+    "behavior.version-one-requires-compensation-without-legacy-upgrade"
+  ],
+  "schema": "cpk.successor-proof",
+  "status": "passing",
+  "successor_tests": [
+    "control-plane-kit-core.tests.test_compensation_planning.CompensationPlanningSuccessorTests.test_candidates_follow_reverse_durable_completion_order",
+    "control-plane-kit-core.tests.test_compensation_planning.CompensationPlanningSuccessorTests.test_observation_and_destruction_are_not_given_fake_inverses",
+    "control-plane-kit-core.tests.test_compensation_planning.CompensationPlanningSuccessorTests.test_operation_matrix_has_one_explicit_compensation_meaning",
+    "control-plane-kit-core.tests.test_compensation_planning.CompensationPlanningSuccessorTests.test_plan_codec_persists_exact_compensation_and_source",
+    "control-plane-kit-core.tests.test_compensation_planning.CompensationPlanningSuccessorTests.test_saga_availability_comes_from_persisted_plan_meaning",
+    "control-plane-kit-core.tests.test_compensation_planning.CompensationPlanningSuccessorTests.test_version_one_requires_compensation_without_legacy_upgrade",
+    "control-plane-kit-core.tests.test_recovery_planning.RecoveryPlanningSuccessorTests.test_invalid_inputs_fail_before_planning",
+    "control-plane-kit-core.tests.test_recovery_planning.RecoveryPlanningSuccessorTests.test_reconstruction_uses_empty_baseline_without_claiming_absence",
+    "control-plane-kit-core.tests.test_recovery_planning.RecoveryPlanningSuccessorTests.test_reverse_transition_is_a_fresh_canonical_plan_with_limitations",
+    "control-plane-kit-core.tests.test_recovery_planning.RecoveryPlanningSuccessorTests.test_router_recovery_uses_same_compiler_and_is_deterministic"
+  ]
+}

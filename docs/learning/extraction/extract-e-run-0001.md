@@ -1819,3 +1819,139 @@ control-plane-kit-core/test.sh:       336 tests passed
 git diff --check:                     clean
 required incomplete core laws:        653 -> 643
 ```
+
+## #776 Compensation And Recovery Planning Law Mapping
+
+#776 maps the frozen compensation-planning and recovery-planning families into
+the extracted core.
+
+Mapped families:
+
+```text
+test_compensation_planning: 6 successor laws
+test_recovery_planning:     4 successor laws
+```
+
+New successor tests:
+
+```text
+control-plane-kit-core/tests/test_compensation_planning.py
+control-plane-kit-core/tests/test_recovery_planning.py
+```
+
+New proof artifact:
+
+```text
+artifacts/extraction/successor-proofs/extract-e-776-compensation-recovery-planning.json
+```
+
+Important shape:
+
+```text
+current graph x target graph
+  -> GraphDiff
+    -> ActivityPlan
+      -> RecoveryCandidate
+
+RecoveryCandidate
+  = RecoveryMode
+  x source graph identity?
+  x target graph identity
+  x ActivityPlan
+  x ApprovalRequirement
+  x tuple[RecoveryActivityAssessment]
+  x tuple[RecoveryLimitation]
+```
+
+Boundary decision:
+
+Recovery planning belongs in extracted core only as pure planning data. It
+constructs fresh canonical `ActivityPlan` values from graph transitions and
+attaches closed reviewable limitations. It does not import stores, UnitOfWork,
+Postgres, coordinator loops, worker claims, Docker adapters, HTTP APIs, MCP, or
+runtime effects.
+
+The distinction is important:
+
+```text
+plan_recovery_transition(current, target)
+  = plan current -> target
+  + say what graph structure alone cannot prove
+
+plan_reconstruction(target)
+  = plan empty -> target
+  + say that missing source truth is unknown
+```
+
+This is not rollback. It is a recovery candidate that can later be reviewed,
+approved, admitted, and interpreted by operations/server layers.
+
+Curated snippets:
+
+```python
+def plan_recovery_transition(
+    current: ValidatedGraph,
+    target: ValidatedGraph,
+    *,
+    approval_policy: ApprovalPolicy | None = None,
+) -> RecoveryCandidate:
+    _require_validated(current, "current")
+    _require_validated(target, "target")
+    plan = compile_activity_plan(diff_graphs(current, target))
+    return _candidate(
+        mode=RecoveryMode.REVERSE_TRANSITION,
+        source_graph_name=current.graph.name,
+        target_graph_name=target.graph.name,
+        plan=plan,
+        approval_policy=approval_policy,
+    )
+```
+
+```python
+def plan_reconstruction(
+    target: ValidatedGraph,
+    *,
+    approval_policy: ApprovalPolicy | None = None,
+) -> RecoveryCandidate:
+    _require_validated(target, "target")
+    empty = validate_graph(
+        DeploymentGraph(f"empty:{target.graph.name}"),
+        codec=target.codec,
+    )
+    plan = compile_activity_plan(diff_graphs(empty, target))
+    return _candidate(
+        mode=RecoveryMode.RECONSTRUCTION,
+        source_graph_name=None,
+        target_graph_name=target.graph.name,
+        plan=plan,
+        approval_policy=approval_policy,
+    )
+```
+
+Test-integrity note:
+
+The first recovery fixture used a frozen-package shortcut constructor for
+`ApplicationBlock`. That was an obsolete structural assumption, not a behavior
+law. The corrected successor fixture uses the extracted core language directly:
+
+```text
+ApplicationBlock
+  = BlockSpec
+  x RuntimeImplementation
+  x BlockSockets
+```
+
+The behavior law stayed intact: recovery still plans between validated graphs,
+records limitations, and refuses raw graph inputs.
+
+Validation evidence:
+
+```text
+focused #776 compensation/recovery slice: 10 tests passed
+focused root parity guard slice:          12 tests passed
+./validate-parity.sh foundation:          valid=true, findings=0
+control-plane-kit-core/test.sh:           346 tests passed
+./test.sh:                                1192 tests passed
+git diff --check:                         clean
+required incomplete core laws:            643 -> 633
+```
