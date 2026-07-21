@@ -94,6 +94,11 @@
       "digest": "sha256:0cf7e6877af2c0f4633f0bef1b992f01f6a1198770732cc81e65c103b3b73f58",
       "id": "extract-e-787.command-workflow-contract.unittest",
       "status": "passing"
+    },
+    {
+      "digest": "sha256:d964936d20df974850dddb388e8efa83d2b193f7fbc7a914c348c664a7d3b67d",
+      "id": "extract-e-788.read-projection-contract.unittest",
+      "status": "passing"
     }
   ],
   "schema": "cpk.successor-evidence-index"
