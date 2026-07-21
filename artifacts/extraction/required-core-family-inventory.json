@@ -1,302 +1,9 @@
 {
   "counts": {
-    "entries": 650,
+    "entries": 632,
     "families": 83
   },
   "families": [
-    {
-      "count": 41,
-      "entries": [
-        {
-          "kind": "test",
-          "law": "behavior.protocol-variables-reject-invalid-shape",
-          "owner": "control-plane-kit-core",
-          "owner_kind": "core",
-          "reference": "tests.test_contracts.ConcreteControlVariableTests.test_protocol_variables_reject_invalid_shape"
-        },
-        {
-          "kind": "test",
-          "law": "behavior.protocol-variables-validate-shape",
-          "owner": "control-plane-kit-core",
-          "owner_kind": "core",
-          "reference": "tests.test_contracts.ConcreteControlVariableTests.test_protocol_variables_validate_shape"
-        },
-        {
-          "kind": "test",
-          "law": "behavior.runtime-map-variable-requires-mapping",
-          "owner": "control-plane-kit-core",
-          "owner_kind": "core",
-          "reference": "tests.test_contracts.ConcreteControlVariableTests.test_runtime_map_variable_requires_mapping"
-        },
-        {
-          "kind": "test",
-          "law": "behavior.secret-descriptor-never-exposes-raw-value",
-          "owner": "control-plane-kit-core",
-          "owner_kind": "core",
-          "reference": "tests.test_contracts.ConcreteControlVariableTests.test_secret_descriptor_never_exposes_raw_value"
-        },
-        {
-          "kind": "test",
-          "law": "behavior.secret-descriptor-reports-missing-without-value",
-          "owner": "control-plane-kit-core",
-          "owner_kind": "core",
-          "reference": "tests.test_contracts.ConcreteControlVariableTests.test_secret_descriptor_reports_missing_without_value"
-        },
-        {
-          "kind": "test",
-          "law": "behavior.contract-descriptor-redacts-secret-and-non-secret-values",
-          "owner": "control-plane-kit-core",
-          "owner_kind": "core",
-          "reference": "tests.test_contracts.ContractDescriptorRedactionTests.test_contract_descriptor_redacts_secret_and_non_secret_values"
-        },
-        {
-          "kind": "test",
-          "law": "behavior.unsafe-descriptor-is-explicit-and-still-redacts-secrets",
-          "owner": "control-plane-kit-core",
-          "owner_kind": "core",
-          "reference": "tests.test_contracts.ContractDescriptorRedactionTests.test_unsafe_descriptor_is_explicit_and_still_redacts_secrets"
-        },
-        {
-          "kind": "test",
-          "law": "behavior.descriptor-value-is-opt-in",
-          "owner": "control-plane-kit-core",
-          "owner_kind": "core",
-          "reference": "tests.test_contracts.ControlVariableProtocolTests.test_descriptor_value_is_opt_in"
-        },
-        {
-          "kind": "test",
-          "law": "behavior.optional-value-allows-none",
-          "owner": "control-plane-kit-core",
-          "owner_kind": "core",
-          "reference": "tests.test_contracts.ControlVariableProtocolTests.test_optional_value_allows_none"
-        },
-        {
-          "kind": "test",
-          "law": "behavior.required-value-validation-fails-structurally",
-          "owner": "control-plane-kit-core",
-          "owner_kind": "core",
-          "reference": "tests.test_contracts.ControlVariableProtocolTests.test_required_value_validation_fails_structurally"
-        },
-        {
-          "kind": "test",
-          "law": "behavior.variable-descriptor-is-json-friendly",
-          "owner": "control-plane-kit-core",
-          "owner_kind": "core",
-          "reference": "tests.test_contracts.ControlVariableProtocolTests.test_variable_descriptor_is_json_friendly"
-        },
-        {
-          "kind": "test",
-          "law": "behavior.candidate-builder-cannot-publish-nested-contract-mutation",
-          "owner": "control-plane-kit-core",
-          "owner_kind": "core",
-          "reference": "tests.test_contracts.DerivedResourceTests.test_candidate_builder_cannot_publish_nested_contract_mutation"
-        },
-        {
-          "kind": "test",
-          "law": "behavior.competing-prepared-mutations-have-one-publication-winner",
-          "owner": "control-plane-kit-core",
-          "owner_kind": "core",
-          "reference": "tests.test_contracts.DerivedResourceTests.test_competing_prepared_mutations_have_one_publication_winner"
-        },
-        {
-          "kind": "test",
-          "law": "behavior.completed-identity-rejects-changed-intent-without-retaining-values",
-          "owner": "control-plane-kit-core",
-          "owner_kind": "core",
-          "reference": "tests.test_contracts.DerivedResourceTests.test_completed_identity_rejects_changed_intent_without_retaining_values"
-        },
-        {
-          "kind": "test",
-          "law": "behavior.concurrent-identical-mutations-build-dispose-and-publish-once",
-          "owner": "control-plane-kit-core",
-          "owner_kind": "core",
-          "reference": "tests.test_contracts.DerivedResourceTests.test_concurrent_identical_mutations_build_dispose_and_publish_once"
-        },
-        {
-          "kind": "test",
-          "law": "behavior.descriptor-reports-derived-resource-status-without-resource-value",
-          "owner": "control-plane-kit-core",
-          "owner_kind": "core",
-          "reference": "tests.test_contracts.DerivedResourceTests.test_descriptor_reports_derived_resource_status_without_resource_value"
-        },
-        {
-          "kind": "test",
-          "law": "behavior.drain-required-patch-marks-derived-resource-stale",
-          "owner": "control-plane-kit-core",
-          "owner_kind": "core",
-          "reference": "tests.test_contracts.DerivedResourceTests.test_drain_required_patch_marks_derived_resource_stale"
-        },
-        {
-          "kind": "test",
-          "law": "behavior.explicit-rebuild-refreshes-stale-resource",
-          "owner": "control-plane-kit-core",
-          "owner_kind": "core",
-          "reference": "tests.test_contracts.DerivedResourceTests.test_explicit_rebuild_refreshes_stale_resource"
-        },
-        {
-          "kind": "test",
-          "law": "behavior.late-preparation-failure-preserves-old-projection-and-cleans-candidate",
-          "owner": "control-plane-kit-core",
-          "owner_kind": "core",
-          "reference": "tests.test_contracts.DerivedResourceTests.test_late_preparation_failure_preserves_old_projection_and_cleans_candidate"
-        },
-        {
-          "kind": "test",
-          "law": "behavior.live-patch-rebuilds-and-disposes-derived-resource",
-          "owner": "control-plane-kit-core",
-          "owner_kind": "core",
-          "reference": "tests.test_contracts.DerivedResourceTests.test_live_patch_rebuilds_and_disposes_derived_resource"
-        },
-        {
-          "kind": "test",
-          "law": "behavior.multi-resource-mutation-prepares-against-candidate-then-publishes-once",
-          "owner": "control-plane-kit-core",
-          "owner_kind": "core",
-          "reference": "tests.test_contracts.DerivedResourceTests.test_multi_resource_mutation_prepares_against_candidate_then_publishes_once"
-        },
-        {
-          "kind": "test",
-          "law": "behavior.preparation-cleanup-failure-is-bounded-and-does-not-publish",
-          "owner": "control-plane-kit-core",
-          "owner_kind": "core",
-          "reference": "tests.test_contracts.DerivedResourceTests.test_preparation_cleanup_failure_is_bounded_and_does_not_publish"
-        },
-        {
-          "kind": "test",
-          "law": "behavior.retained-or-unowned-superseded-resources-are-never-disposed",
-          "owner": "control-plane-kit-core",
-          "owner_kind": "core",
-          "reference": "tests.test_contracts.DerivedResourceTests.test_retained_or_unowned_superseded_resources_are_never_disposed"
-        },
-        {
-          "kind": "test",
-          "law": "behavior.superseded-cleanup-failure-keeps-new-projection-and-replays-evidence",
-          "owner": "control-plane-kit-core",
-          "owner_kind": "core",
-          "reference": "tests.test_contracts.DerivedResourceTests.test_superseded_cleanup_failure_keeps_new_projection_and_replays_evidence"
-        },
-        {
-          "kind": "test",
-          "law": "behavior.access-is-always-lookup",
-          "owner": "control-plane-kit-core",
-          "owner_kind": "core",
-          "reference": "tests.test_contracts.EnvironmentContractTests.test_access_is_always_lookup"
-        },
-        {
-          "kind": "test",
-          "law": "behavior.apply-patch-updates-holder-not-process-environment",
-          "owner": "control-plane-kit-core",
-          "owner_kind": "core",
-          "reference": "tests.test_contracts.EnvironmentContractTests.test_apply_patch_updates_holder_not_process_environment"
-        },
-        {
-          "kind": "test",
-          "law": "behavior.from-mapping-loads-declared-values-by-env-metadata",
-          "owner": "control-plane-kit-core",
-          "owner_kind": "core",
-          "reference": "tests.test_contracts.EnvironmentContractTests.test_from_mapping_loads_declared_values_by_env_metadata"
-        },
-        {
-          "kind": "test",
-          "law": "behavior.from-mapping-loads-declared-values-by-variable-name",
-          "owner": "control-plane-kit-core",
-          "owner_kind": "core",
-          "reference": "tests.test_contracts.EnvironmentContractTests.test_from_mapping_loads_declared_values_by_variable_name"
-        },
-        {
-          "kind": "test",
-          "law": "behavior.immutable-value-rejects-patch",
-          "owner": "control-plane-kit-core",
-          "owner_kind": "core",
-          "reference": "tests.test_contracts.EnvironmentContractTests.test_immutable_value_rejects_patch"
-        },
-        {
-          "kind": "test",
-          "law": "behavior.missing-required-value-fails-structurally",
-          "owner": "control-plane-kit-core",
-          "owner_kind": "core",
-          "reference": "tests.test_contracts.EnvironmentContractTests.test_missing_required_value_fails_structurally"
-        },
-        {
-          "kind": "test",
-          "law": "behavior.mutation-and-candidate-descriptors-never-publish-values",
-          "owner": "control-plane-kit-core",
-          "owner_kind": "core",
-          "reference": "tests.test_contracts.EnvironmentContractTests.test_mutation_and_candidate_descriptors_never_publish_values"
-        },
-        {
-          "kind": "test",
-          "law": "behavior.mutation-prepares-immutable-candidate-without-publication",
-          "owner": "control-plane-kit-core",
-          "owner_kind": "core",
-          "reference": "tests.test_contracts.EnvironmentContractTests.test_mutation_prepares_immutable_candidate_without_publication"
-        },
-        {
-          "kind": "test",
-          "law": "behavior.mutation-rejects-stale-version-before-preparation",
-          "owner": "control-plane-kit-core",
-          "owner_kind": "core",
-          "reference": "tests.test_contracts.EnvironmentContractTests.test_mutation_rejects_stale_version_before_preparation"
-        },
-        {
-          "kind": "test",
-          "law": "behavior.noop-candidate-does-not-advance-version",
-          "owner": "control-plane-kit-core",
-          "owner_kind": "core",
-          "reference": "tests.test_contracts.EnvironmentContractTests.test_noop_candidate_does_not_advance_version"
-        },
-        {
-          "kind": "test",
-          "law": "behavior.preparation-validates-all-assignments-before-any-publication",
-          "owner": "control-plane-kit-core",
-          "owner_kind": "core",
-          "reference": "tests.test_contracts.EnvironmentContractTests.test_preparation_validates_all_assignments_before_any_publication"
-        },
-        {
-          "kind": "test",
-          "law": "behavior.prepared-mutation-identity-replays-or-rejects-conflicting-intent",
-          "owner": "control-plane-kit-core",
-          "owner_kind": "core",
-          "reference": "tests.test_contracts.EnvironmentContractTests.test_prepared_mutation_identity_replays_or_rejects_conflicting_intent"
-        },
-        {
-          "kind": "test",
-          "law": "behavior.published-mutation-identity-replays-without-reexecution",
-          "owner": "control-plane-kit-core",
-          "owner_kind": "core",
-          "reference": "tests.test_contracts.EnvironmentContractTests.test_published_mutation_identity_replays_without_reexecution"
-        },
-        {
-          "kind": "test",
-          "law": "behavior.runtime-contract-descriptor-redacts-values",
-          "owner": "control-plane-kit-core",
-          "owner_kind": "core",
-          "reference": "tests.test_contracts.RuntimeContractTests.test_runtime_contract_descriptor_redacts_values"
-        },
-        {
-          "kind": "test",
-          "law": "behavior.runtime-contract-does-not-read-process-environment",
-          "owner": "control-plane-kit-core",
-          "owner_kind": "core",
-          "reference": "tests.test_contracts.RuntimeContractTests.test_runtime_contract_does_not_read_process_environment"
-        },
-        {
-          "kind": "test",
-          "law": "behavior.runtime-contract-loads-explicit-runtime-state",
-          "owner": "control-plane-kit-core",
-          "owner_kind": "core",
-          "reference": "tests.test_contracts.RuntimeContractTests.test_runtime_contract_loads_explicit_runtime_state"
-        },
-        {
-          "kind": "test",
-          "law": "behavior.runtime-contract-patch-updates-holder",
-          "owner": "control-plane-kit-core",
-          "owner_kind": "core",
-          "reference": "tests.test_contracts.RuntimeContractTests.test_runtime_contract_patch_updates_holder"
-        }
-      ],
-      "family": "test_contracts"
-    },
     {
       "count": 28,
       "entries": [
@@ -498,6 +205,173 @@
         }
       ],
       "family": "test_execution_coordinator"
+    },
+    {
+      "count": 23,
+      "entries": [
+        {
+          "kind": "test",
+          "law": "behavior.candidate-builder-cannot-publish-nested-contract-mutation",
+          "owner": "control-plane-kit-core",
+          "owner_kind": "core",
+          "reference": "tests.test_contracts.DerivedResourceTests.test_candidate_builder_cannot_publish_nested_contract_mutation"
+        },
+        {
+          "kind": "test",
+          "law": "behavior.competing-prepared-mutations-have-one-publication-winner",
+          "owner": "control-plane-kit-core",
+          "owner_kind": "core",
+          "reference": "tests.test_contracts.DerivedResourceTests.test_competing_prepared_mutations_have_one_publication_winner"
+        },
+        {
+          "kind": "test",
+          "law": "behavior.completed-identity-rejects-changed-intent-without-retaining-values",
+          "owner": "control-plane-kit-core",
+          "owner_kind": "core",
+          "reference": "tests.test_contracts.DerivedResourceTests.test_completed_identity_rejects_changed_intent_without_retaining_values"
+        },
+        {
+          "kind": "test",
+          "law": "behavior.concurrent-identical-mutations-build-dispose-and-publish-once",
+          "owner": "control-plane-kit-core",
+          "owner_kind": "core",
+          "reference": "tests.test_contracts.DerivedResourceTests.test_concurrent_identical_mutations_build_dispose_and_publish_once"
+        },
+        {
+          "kind": "test",
+          "law": "behavior.descriptor-reports-derived-resource-status-without-resource-value",
+          "owner": "control-plane-kit-core",
+          "owner_kind": "core",
+          "reference": "tests.test_contracts.DerivedResourceTests.test_descriptor_reports_derived_resource_status_without_resource_value"
+        },
+        {
+          "kind": "test",
+          "law": "behavior.drain-required-patch-marks-derived-resource-stale",
+          "owner": "control-plane-kit-core",
+          "owner_kind": "core",
+          "reference": "tests.test_contracts.DerivedResourceTests.test_drain_required_patch_marks_derived_resource_stale"
+        },
+        {
+          "kind": "test",
+          "law": "behavior.explicit-rebuild-refreshes-stale-resource",
+          "owner": "control-plane-kit-core",
+          "owner_kind": "core",
+          "reference": "tests.test_contracts.DerivedResourceTests.test_explicit_rebuild_refreshes_stale_resource"
+        },
+        {
+          "kind": "test",
+          "law": "behavior.late-preparation-failure-preserves-old-projection-and-cleans-candidate",
+          "owner": "control-plane-kit-core",
+          "owner_kind": "core",
+          "reference": "tests.test_contracts.DerivedResourceTests.test_late_preparation_failure_preserves_old_projection_and_cleans_candidate"
+        },
+        {
+          "kind": "test",
+          "law": "behavior.live-patch-rebuilds-and-disposes-derived-resource",
+          "owner": "control-plane-kit-core",
+          "owner_kind": "core",
+          "reference": "tests.test_contracts.DerivedResourceTests.test_live_patch_rebuilds_and_disposes_derived_resource"
+        },
+        {
+          "kind": "test",
+          "law": "behavior.multi-resource-mutation-prepares-against-candidate-then-publishes-once",
+          "owner": "control-plane-kit-core",
+          "owner_kind": "core",
+          "reference": "tests.test_contracts.DerivedResourceTests.test_multi_resource_mutation_prepares_against_candidate_then_publishes_once"
+        },
+        {
+          "kind": "test",
+          "law": "behavior.preparation-cleanup-failure-is-bounded-and-does-not-publish",
+          "owner": "control-plane-kit-core",
+          "owner_kind": "core",
+          "reference": "tests.test_contracts.DerivedResourceTests.test_preparation_cleanup_failure_is_bounded_and_does_not_publish"
+        },
+        {
+          "kind": "test",
+          "law": "behavior.retained-or-unowned-superseded-resources-are-never-disposed",
+          "owner": "control-plane-kit-core",
+          "owner_kind": "core",
+          "reference": "tests.test_contracts.DerivedResourceTests.test_retained_or_unowned_superseded_resources_are_never_disposed"
+        },
+        {
+          "kind": "test",
+          "law": "behavior.superseded-cleanup-failure-keeps-new-projection-and-replays-evidence",
+          "owner": "control-plane-kit-core",
+          "owner_kind": "core",
+          "reference": "tests.test_contracts.DerivedResourceTests.test_superseded_cleanup_failure_keeps_new_projection_and_replays_evidence"
+        },
+        {
+          "kind": "test",
+          "law": "behavior.access-is-always-lookup",
+          "owner": "control-plane-kit-core",
+          "owner_kind": "core",
+          "reference": "tests.test_contracts.EnvironmentContractTests.test_access_is_always_lookup"
+        },
+        {
+          "kind": "test",
+          "law": "behavior.apply-patch-updates-holder-not-process-environment",
+          "owner": "control-plane-kit-core",
+          "owner_kind": "core",
+          "reference": "tests.test_contracts.EnvironmentContractTests.test_apply_patch_updates_holder_not_process_environment"
+        },
+        {
+          "kind": "test",
+          "law": "behavior.mutation-and-candidate-descriptors-never-publish-values",
+          "owner": "control-plane-kit-core",
+          "owner_kind": "core",
+          "reference": "tests.test_contracts.EnvironmentContractTests.test_mutation_and_candidate_descriptors_never_publish_values"
+        },
+        {
+          "kind": "test",
+          "law": "behavior.mutation-prepares-immutable-candidate-without-publication",
+          "owner": "control-plane-kit-core",
+          "owner_kind": "core",
+          "reference": "tests.test_contracts.EnvironmentContractTests.test_mutation_prepares_immutable_candidate_without_publication"
+        },
+        {
+          "kind": "test",
+          "law": "behavior.mutation-rejects-stale-version-before-preparation",
+          "owner": "control-plane-kit-core",
+          "owner_kind": "core",
+          "reference": "tests.test_contracts.EnvironmentContractTests.test_mutation_rejects_stale_version_before_preparation"
+        },
+        {
+          "kind": "test",
+          "law": "behavior.noop-candidate-does-not-advance-version",
+          "owner": "control-plane-kit-core",
+          "owner_kind": "core",
+          "reference": "tests.test_contracts.EnvironmentContractTests.test_noop_candidate_does_not_advance_version"
+        },
+        {
+          "kind": "test",
+          "law": "behavior.preparation-validates-all-assignments-before-any-publication",
+          "owner": "control-plane-kit-core",
+          "owner_kind": "core",
+          "reference": "tests.test_contracts.EnvironmentContractTests.test_preparation_validates_all_assignments_before_any_publication"
+        },
+        {
+          "kind": "test",
+          "law": "behavior.prepared-mutation-identity-replays-or-rejects-conflicting-intent",
+          "owner": "control-plane-kit-core",
+          "owner_kind": "core",
+          "reference": "tests.test_contracts.EnvironmentContractTests.test_prepared_mutation_identity_replays_or_rejects_conflicting_intent"
+        },
+        {
+          "kind": "test",
+          "law": "behavior.published-mutation-identity-replays-without-reexecution",
+          "owner": "control-plane-kit-core",
+          "owner_kind": "core",
+          "reference": "tests.test_contracts.EnvironmentContractTests.test_published_mutation_identity_replays_without_reexecution"
+        },
+        {
+          "kind": "test",
+          "law": "behavior.runtime-contract-patch-updates-holder",
+          "owner": "control-plane-kit-core",
+          "owner_kind": "core",
+          "reference": "tests.test_contracts.RuntimeContractTests.test_runtime_contract_patch_updates_holder"
+        }
+      ],
+      "family": "test_contracts"
     },
     {
       "count": 21,

@@ -80,6 +80,31 @@ class ExtractionSuccessorMappingTests(unittest.TestCase):
                     else "",
                 )
 
+    def test_pure_contract_laws_are_mapped_without_claiming_operations_laws(self) -> None:
+        closeout = self.closeout()
+        classification = read_bounded_json(
+            ARTIFACT_ROOT / "contract-boundary-classification.json"
+        )
+
+        incomplete = {
+            entry["reference"]
+            for entry in closeout["incomplete_required_core_entries"]
+        }
+        pure_references = {
+            decision["reference"]
+            for decision in classification["decisions"]
+            if decision["decision"] == "pure-successor"
+        }
+        operations_references = {
+            decision["reference"]
+            for decision in classification["decisions"]
+            if decision["decision"] == "move-to-operations"
+        }
+
+        self.assertEqual(len(pure_references), 18)
+        self.assertFalse(pure_references & incomplete)
+        self.assertTrue(operations_references <= incomplete)
+
 
 if __name__ == "__main__":
     unittest.main()

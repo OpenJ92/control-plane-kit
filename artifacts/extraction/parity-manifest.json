@@ -2171,7 +2171,13 @@
       "owner": "control-plane-kit-core",
       "owner_kind": "core",
       "reference": "tests.test_contracts.ConcreteControlVariableTests.test_protocol_variables_reject_invalid_shape",
-      "successors": [],
+      "successors": [
+        {
+          "evidence": "extract-e-764.control-contracts.unittest",
+          "id": "control-plane-kit-core.tests.test_control_contracts.ControlVariableSpecTests.test_protocol_variables_validate_through_closed_protocol_language",
+          "status": "passing"
+        }
+      ],
       "supersession": null
     },
     {
@@ -2181,7 +2187,13 @@
       "owner": "control-plane-kit-core",
       "owner_kind": "core",
       "reference": "tests.test_contracts.ConcreteControlVariableTests.test_protocol_variables_validate_shape",
-      "successors": [],
+      "successors": [
+        {
+          "evidence": "extract-e-764.control-contracts.unittest",
+          "id": "control-plane-kit-core.tests.test_control_contracts.ControlVariableSpecTests.test_protocol_variables_validate_through_closed_protocol_language",
+          "status": "passing"
+        }
+      ],
       "supersession": null
     },
     {
@@ -2191,7 +2203,13 @@
       "owner": "control-plane-kit-core",
       "owner_kind": "core",
       "reference": "tests.test_contracts.ConcreteControlVariableTests.test_runtime_map_variable_requires_mapping",
-      "successors": [],
+      "successors": [
+        {
+          "evidence": "extract-e-764.control-contracts.unittest",
+          "id": "control-plane-kit-core.tests.test_control_contracts.ControlVariableSpecTests.test_runtime_map_variable_requires_mapping",
+          "status": "passing"
+        }
+      ],
       "supersession": null
     },
     {
@@ -2201,7 +2219,13 @@
       "owner": "control-plane-kit-core",
       "owner_kind": "core",
       "reference": "tests.test_contracts.ConcreteControlVariableTests.test_secret_descriptor_never_exposes_raw_value",
-      "successors": [],
+      "successors": [
+        {
+          "evidence": "extract-e-764.control-contracts.unittest",
+          "id": "control-plane-kit-core.tests.test_control_contracts.ControlVariableSpecTests.test_secret_descriptors_never_expose_raw_values",
+          "status": "passing"
+        }
+      ],
       "supersession": null
     },
     {
@@ -2211,7 +2235,13 @@
       "owner": "control-plane-kit-core",
       "owner_kind": "core",
       "reference": "tests.test_contracts.ConcreteControlVariableTests.test_secret_descriptor_reports_missing_without_value",
-      "successors": [],
+      "successors": [
+        {
+          "evidence": "extract-e-764.control-contracts.unittest",
+          "id": "control-plane-kit-core.tests.test_control_contracts.ControlVariableSpecTests.test_secret_descriptors_never_expose_raw_values",
+          "status": "passing"
+        }
+      ],
       "supersession": null
     },
     {
@@ -2221,7 +2251,13 @@
       "owner": "control-plane-kit-core",
       "owner_kind": "core",
       "reference": "tests.test_contracts.ContractDescriptorRedactionTests.test_contract_descriptor_redacts_secret_and_non_secret_values",
-      "successors": [],
+      "successors": [
+        {
+          "evidence": "extract-e-764.control-contracts.unittest",
+          "id": "control-plane-kit-core.tests.test_control_contracts.ControlContractTests.test_contract_descriptors_redact_by_default_and_unsafe_mode_is_explicit",
+          "status": "passing"
+        }
+      ],
       "supersession": null
     },
     {
@@ -2231,7 +2267,13 @@
       "owner": "control-plane-kit-core",
       "owner_kind": "core",
       "reference": "tests.test_contracts.ContractDescriptorRedactionTests.test_unsafe_descriptor_is_explicit_and_still_redacts_secrets",
-      "successors": [],
+      "successors": [
+        {
+          "evidence": "extract-e-764.control-contracts.unittest",
+          "id": "control-plane-kit-core.tests.test_control_contracts.ControlContractTests.test_contract_descriptors_redact_by_default_and_unsafe_mode_is_explicit",
+          "status": "passing"
+        }
+      ],
       "supersession": null
     },
     {
@@ -2241,7 +2283,13 @@
       "owner": "control-plane-kit-core",
       "owner_kind": "core",
       "reference": "tests.test_contracts.ControlVariableProtocolTests.test_descriptor_value_is_opt_in",
-      "successors": [],
+      "successors": [
+        {
+          "evidence": "extract-e-764.control-contracts.unittest",
+          "id": "control-plane-kit-core.tests.test_control_contracts.ControlVariableSpecTests.test_required_optional_and_value_inclusion_laws_are_explicit",
+          "status": "passing"
+        }
+      ],
       "supersession": null
     },
     {
@@ -2251,7 +2299,13 @@
       "owner": "control-plane-kit-core",
       "owner_kind": "core",
       "reference": "tests.test_contracts.ControlVariableProtocolTests.test_optional_value_allows_none",
-      "successors": [],
+      "successors": [
+        {
+          "evidence": "extract-e-764.control-contracts.unittest",
+          "id": "control-plane-kit-core.tests.test_control_contracts.ControlVariableSpecTests.test_required_optional_and_value_inclusion_laws_are_explicit",
+          "status": "passing"
+        }
+      ],
       "supersession": null
     },
     {
@@ -2261,7 +2315,13 @@
       "owner": "control-plane-kit-core",
       "owner_kind": "core",
       "reference": "tests.test_contracts.ControlVariableProtocolTests.test_required_value_validation_fails_structurally",
-      "successors": [],
+      "successors": [
+        {
+          "evidence": "extract-e-764.control-contracts.unittest",
+          "id": "control-plane-kit-core.tests.test_control_contracts.ControlVariableSpecTests.test_required_optional_and_value_inclusion_laws_are_explicit",
+          "status": "passing"
+        }
+      ],
       "supersession": null
     },
     {
@@ -2271,7 +2331,13 @@
       "owner": "control-plane-kit-core",
       "owner_kind": "core",
       "reference": "tests.test_contracts.ControlVariableProtocolTests.test_variable_descriptor_is_json_friendly",
-      "successors": [],
+      "successors": [
+        {
+          "evidence": "extract-e-764.control-contracts.unittest",
+          "id": "control-plane-kit-core.tests.test_control_contracts.ControlVariableSpecTests.test_variable_descriptor_is_json_friendly",
+          "status": "passing"
+        }
+      ],
       "supersession": null
     },
     {
@@ -2431,7 +2497,13 @@
       "owner": "control-plane-kit-core",
       "owner_kind": "core",
       "reference": "tests.test_contracts.EnvironmentContractTests.test_from_mapping_loads_declared_values_by_env_metadata",
-      "successors": [],
+      "successors": [
+        {
+          "evidence": "extract-e-764.control-contracts.unittest",
+          "id": "control-plane-kit-core.tests.test_control_contracts.ControlContractTests.test_contract_loads_explicit_values_by_name_or_metadata_without_process_reads",
+          "status": "passing"
+        }
+      ],
       "supersession": null
     },
     {
@@ -2441,7 +2513,13 @@
       "owner": "control-plane-kit-core",
       "owner_kind": "core",
       "reference": "tests.test_contracts.EnvironmentContractTests.test_from_mapping_loads_declared_values_by_variable_name",
-      "successors": [],
+      "successors": [
+        {
+          "evidence": "extract-e-764.control-contracts.unittest",
+          "id": "control-plane-kit-core.tests.test_control_contracts.ControlContractTests.test_contract_loads_explicit_values_by_name_or_metadata_without_process_reads",
+          "status": "passing"
+        }
+      ],
       "supersession": null
     },
     {
@@ -2451,7 +2529,13 @@
       "owner": "control-plane-kit-core",
       "owner_kind": "core",
       "reference": "tests.test_contracts.EnvironmentContractTests.test_immutable_value_rejects_patch",
-      "successors": [],
+      "successors": [
+        {
+          "evidence": "extract-e-764.control-contracts.unittest",
+          "id": "control-plane-kit-core.tests.test_control_contracts.ControlContractTests.test_missing_required_and_immutable_patch_are_structural_pure_failures",
+          "status": "passing"
+        }
+      ],
       "supersession": null
     },
     {
@@ -2461,7 +2545,13 @@
       "owner": "control-plane-kit-core",
       "owner_kind": "core",
       "reference": "tests.test_contracts.EnvironmentContractTests.test_missing_required_value_fails_structurally",
-      "successors": [],
+      "successors": [
+        {
+          "evidence": "extract-e-764.control-contracts.unittest",
+          "id": "control-plane-kit-core.tests.test_control_contracts.ControlContractTests.test_missing_required_and_immutable_patch_are_structural_pure_failures",
+          "status": "passing"
+        }
+      ],
       "supersession": null
     },
     {
@@ -2541,7 +2631,13 @@
       "owner": "control-plane-kit-core",
       "owner_kind": "core",
       "reference": "tests.test_contracts.RuntimeContractTests.test_runtime_contract_descriptor_redacts_values",
-      "successors": [],
+      "successors": [
+        {
+          "evidence": "extract-e-764.control-contracts.unittest",
+          "id": "control-plane-kit-core.tests.test_control_contracts.ControlContractTests.test_runtime_contract_loads_explicit_state_and_redacts_descriptors",
+          "status": "passing"
+        }
+      ],
       "supersession": null
     },
     {
@@ -2551,7 +2647,13 @@
       "owner": "control-plane-kit-core",
       "owner_kind": "core",
       "reference": "tests.test_contracts.RuntimeContractTests.test_runtime_contract_does_not_read_process_environment",
-      "successors": [],
+      "successors": [
+        {
+          "evidence": "extract-e-764.control-contracts.unittest",
+          "id": "control-plane-kit-core.tests.test_control_contracts.ControlContractTests.test_contract_loads_explicit_values_by_name_or_metadata_without_process_reads",
+          "status": "passing"
+        }
+      ],
       "supersession": null
     },
     {
@@ -2561,7 +2663,13 @@
       "owner": "control-plane-kit-core",
       "owner_kind": "core",
       "reference": "tests.test_contracts.RuntimeContractTests.test_runtime_contract_loads_explicit_runtime_state",
-      "successors": [],
+      "successors": [
+        {
+          "evidence": "extract-e-764.control-contracts.unittest",
+          "id": "control-plane-kit-core.tests.test_control_contracts.ControlContractTests.test_runtime_contract_loads_explicit_state_and_redacts_descriptors",
+          "status": "passing"
+        }
+      ],
       "supersession": null
     },
     {

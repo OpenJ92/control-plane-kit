@@ -947,3 +947,75 @@ Validation:
 focused #760 classification unittest: 4 tests passed
 full Docker/Postgres ./test.sh suite: 1179 tests passed
 ```
+
+## #764 Pure Control-Contract Value Laws
+
+#764 mapped the pure value slice of the `tests.test_contracts` family into the
+extracted core package. The new core object is:
+
+```text
+ControlVariableSpec
+  -> validate(value)
+  -> descriptor(value?, include_value?, unsafe?, redact_value?)
+
+ControlContract
+  -> load(explicit mapping)
+  -> ControlContractSnapshot
+    -> descriptor()          # redacted
+    -> unsafe_descriptor()   # explicit unsafe mode; secrets still redacted
+    -> prepare_patch(...)    # validates candidate only; does not publish
+```
+
+This is intentionally not the frozen mutable `EnvironmentContract`/
+`RuntimeContract` holder. It is the pure declaration and validated snapshot
+language that later operations code can interpret.
+
+Mapped laws:
+
+```text
+test_contracts pure successor laws: 18 -> extract-e-764.control-contracts.unittest
+test_contracts operations laws: 23 remain visible -> #740
+```
+
+Important implementation decision:
+
+```python
+def load(self, values: Mapping[str, object]) -> "ControlContractSnapshot":
+    """Validate explicit supplied values without reading process state."""
+
+def load_from_process(self) -> "ControlContractSnapshot":
+    raise TypeError("control-plane-kit-core does not read process environment")
+```
+
+Variable descriptors preserve the old opt-in law for ordinary values, while
+contract snapshot descriptors redact by default:
+
+```python
+message.descriptor("hello", include_value=True)["value"] == "hello"
+
+snapshot.descriptor()["variables"]["storage_base_url"]["value"]
+  == {"present": True, "redacted": True}
+```
+
+Artifact:
+
+```text
+artifacts/extraction/successor-proofs/extract-e-764-control-contracts.json
+```
+
+Validation:
+
+```text
+focused #764 red evidence: missing control_plane_kit_core.control_contracts
+focused #764 extracted-core unittest: 9 tests passed
+current-tree extraction parity slice: 20 tests passed
+control-plane-kit-core/test.sh: 243 tests passed; compileall passed; import ok
+```
+
+Required-core inventory after #764:
+
+```text
+completed required-core laws: 148
+incomplete required-core laws: 632
+unmapped required-core families: 83
+```

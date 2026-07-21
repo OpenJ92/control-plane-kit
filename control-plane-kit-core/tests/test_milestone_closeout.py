@@ -12,6 +12,7 @@ EXPECTED_MODULES = {
     "capabilities",
     "configuration",
     "configuration_rendering",
+    "control_contracts",
     "control_routes",
     "environment",
     "lifecycle",
