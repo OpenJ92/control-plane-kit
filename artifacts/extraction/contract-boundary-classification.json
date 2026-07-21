@@ -1,0 +1,262 @@
+{
+  "decisions": [
+    {
+      "decision": "pure-successor",
+      "rationale": "Protocol-shaped control values are pure validation facts; map through extracted protocol/control-contract value language.",
+      "reference": "tests.test_contracts.ConcreteControlVariableTests.test_protocol_variables_reject_invalid_shape",
+      "target_issue": "#764"
+    },
+    {
+      "decision": "pure-successor",
+      "rationale": "Protocol-shaped control values are pure validation facts; map through extracted protocol/control-contract value language.",
+      "reference": "tests.test_contracts.ConcreteControlVariableTests.test_protocol_variables_validate_shape",
+      "target_issue": "#764"
+    },
+    {
+      "decision": "pure-successor",
+      "rationale": "Runtime-map control values are bounded mapping shape facts, not mutation workflow.",
+      "reference": "tests.test_contracts.ConcreteControlVariableTests.test_runtime_map_variable_requires_mapping",
+      "target_issue": "#764"
+    },
+    {
+      "decision": "pure-successor",
+      "rationale": "Secret descriptor redaction is a pure operator descriptor law.",
+      "reference": "tests.test_contracts.ConcreteControlVariableTests.test_secret_descriptor_never_exposes_raw_value",
+      "target_issue": "#764"
+    },
+    {
+      "decision": "pure-successor",
+      "rationale": "Secret absence descriptor is a pure redacted value law.",
+      "reference": "tests.test_contracts.ConcreteControlVariableTests.test_secret_descriptor_reports_missing_without_value",
+      "target_issue": "#764"
+    },
+    {
+      "decision": "pure-successor",
+      "rationale": "Contract descriptor redaction is pure projection language; no holder mutation is required.",
+      "reference": "tests.test_contracts.ContractDescriptorRedactionTests.test_contract_descriptor_redacts_secret_and_non_secret_values",
+      "target_issue": "#764"
+    },
+    {
+      "decision": "pure-successor",
+      "rationale": "Unsafe descriptor mode is a pure projection boundary and still redacts secrets.",
+      "reference": "tests.test_contracts.ContractDescriptorRedactionTests.test_unsafe_descriptor_is_explicit_and_still_redacts_secrets",
+      "target_issue": "#764"
+    },
+    {
+      "decision": "pure-successor",
+      "rationale": "Descriptor value inclusion is explicit value-language behavior.",
+      "reference": "tests.test_contracts.ControlVariableProtocolTests.test_descriptor_value_is_opt_in",
+      "target_issue": "#764"
+    },
+    {
+      "decision": "pure-successor",
+      "rationale": "Optionality is pure validation behavior.",
+      "reference": "tests.test_contracts.ControlVariableProtocolTests.test_optional_value_allows_none",
+      "target_issue": "#764"
+    },
+    {
+      "decision": "pure-successor",
+      "rationale": "Required value validation emits bounded structural errors without effects.",
+      "reference": "tests.test_contracts.ControlVariableProtocolTests.test_required_value_validation_fails_structurally",
+      "target_issue": "#764"
+    },
+    {
+      "decision": "pure-successor",
+      "rationale": "Control-variable descriptors are pure JSON-shaped declarations.",
+      "reference": "tests.test_contracts.ControlVariableProtocolTests.test_variable_descriptor_is_json_friendly",
+      "target_issue": "#764"
+    },
+    {
+      "decision": "move-to-operations",
+      "rationale": "This law exercises mutable holder state, mutation publication/idempotency, derived-resource build/dispose, cleanup, concurrency, stale-version behavior, or live patch workflow; it belongs to operations contracts, not extracted core.",
+      "reference": "tests.test_contracts.DerivedResourceTests.test_candidate_builder_cannot_publish_nested_contract_mutation",
+      "target_issue": "#740"
+    },
+    {
+      "decision": "move-to-operations",
+      "rationale": "This law exercises mutable holder state, mutation publication/idempotency, derived-resource build/dispose, cleanup, concurrency, stale-version behavior, or live patch workflow; it belongs to operations contracts, not extracted core.",
+      "reference": "tests.test_contracts.DerivedResourceTests.test_competing_prepared_mutations_have_one_publication_winner",
+      "target_issue": "#740"
+    },
+    {
+      "decision": "move-to-operations",
+      "rationale": "This law exercises mutable holder state, mutation publication/idempotency, derived-resource build/dispose, cleanup, concurrency, stale-version behavior, or live patch workflow; it belongs to operations contracts, not extracted core.",
+      "reference": "tests.test_contracts.DerivedResourceTests.test_completed_identity_rejects_changed_intent_without_retaining_values",
+      "target_issue": "#740"
+    },
+    {
+      "decision": "move-to-operations",
+      "rationale": "This law exercises mutable holder state, mutation publication/idempotency, derived-resource build/dispose, cleanup, concurrency, stale-version behavior, or live patch workflow; it belongs to operations contracts, not extracted core.",
+      "reference": "tests.test_contracts.DerivedResourceTests.test_concurrent_identical_mutations_build_dispose_and_publish_once",
+      "target_issue": "#740"
+    },
+    {
+      "decision": "move-to-operations",
+      "rationale": "This law exercises mutable holder state, mutation publication/idempotency, derived-resource build/dispose, cleanup, concurrency, stale-version behavior, or live patch workflow; it belongs to operations contracts, not extracted core.",
+      "reference": "tests.test_contracts.DerivedResourceTests.test_descriptor_reports_derived_resource_status_without_resource_value",
+      "target_issue": "#740"
+    },
+    {
+      "decision": "move-to-operations",
+      "rationale": "This law exercises mutable holder state, mutation publication/idempotency, derived-resource build/dispose, cleanup, concurrency, stale-version behavior, or live patch workflow; it belongs to operations contracts, not extracted core.",
+      "reference": "tests.test_contracts.DerivedResourceTests.test_drain_required_patch_marks_derived_resource_stale",
+      "target_issue": "#740"
+    },
+    {
+      "decision": "move-to-operations",
+      "rationale": "This law exercises mutable holder state, mutation publication/idempotency, derived-resource build/dispose, cleanup, concurrency, stale-version behavior, or live patch workflow; it belongs to operations contracts, not extracted core.",
+      "reference": "tests.test_contracts.DerivedResourceTests.test_explicit_rebuild_refreshes_stale_resource",
+      "target_issue": "#740"
+    },
+    {
+      "decision": "move-to-operations",
+      "rationale": "This law exercises mutable holder state, mutation publication/idempotency, derived-resource build/dispose, cleanup, concurrency, stale-version behavior, or live patch workflow; it belongs to operations contracts, not extracted core.",
+      "reference": "tests.test_contracts.DerivedResourceTests.test_late_preparation_failure_preserves_old_projection_and_cleans_candidate",
+      "target_issue": "#740"
+    },
+    {
+      "decision": "move-to-operations",
+      "rationale": "This law exercises mutable holder state, mutation publication/idempotency, derived-resource build/dispose, cleanup, concurrency, stale-version behavior, or live patch workflow; it belongs to operations contracts, not extracted core.",
+      "reference": "tests.test_contracts.DerivedResourceTests.test_live_patch_rebuilds_and_disposes_derived_resource",
+      "target_issue": "#740"
+    },
+    {
+      "decision": "move-to-operations",
+      "rationale": "This law exercises mutable holder state, mutation publication/idempotency, derived-resource build/dispose, cleanup, concurrency, stale-version behavior, or live patch workflow; it belongs to operations contracts, not extracted core.",
+      "reference": "tests.test_contracts.DerivedResourceTests.test_multi_resource_mutation_prepares_against_candidate_then_publishes_once",
+      "target_issue": "#740"
+    },
+    {
+      "decision": "move-to-operations",
+      "rationale": "This law exercises mutable holder state, mutation publication/idempotency, derived-resource build/dispose, cleanup, concurrency, stale-version behavior, or live patch workflow; it belongs to operations contracts, not extracted core.",
+      "reference": "tests.test_contracts.DerivedResourceTests.test_preparation_cleanup_failure_is_bounded_and_does_not_publish",
+      "target_issue": "#740"
+    },
+    {
+      "decision": "move-to-operations",
+      "rationale": "This law exercises mutable holder state, mutation publication/idempotency, derived-resource build/dispose, cleanup, concurrency, stale-version behavior, or live patch workflow; it belongs to operations contracts, not extracted core.",
+      "reference": "tests.test_contracts.DerivedResourceTests.test_retained_or_unowned_superseded_resources_are_never_disposed",
+      "target_issue": "#740"
+    },
+    {
+      "decision": "move-to-operations",
+      "rationale": "This law exercises mutable holder state, mutation publication/idempotency, derived-resource build/dispose, cleanup, concurrency, stale-version behavior, or live patch workflow; it belongs to operations contracts, not extracted core.",
+      "reference": "tests.test_contracts.DerivedResourceTests.test_superseded_cleanup_failure_keeps_new_projection_and_replays_evidence",
+      "target_issue": "#740"
+    },
+    {
+      "decision": "move-to-operations",
+      "rationale": "This law exercises mutable holder state, mutation publication/idempotency, derived-resource build/dispose, cleanup, concurrency, stale-version behavior, or live patch workflow; it belongs to operations contracts, not extracted core.",
+      "reference": "tests.test_contracts.EnvironmentContractTests.test_access_is_always_lookup",
+      "target_issue": "#740"
+    },
+    {
+      "decision": "move-to-operations",
+      "rationale": "This law exercises mutable holder state, mutation publication/idempotency, derived-resource build/dispose, cleanup, concurrency, stale-version behavior, or live patch workflow; it belongs to operations contracts, not extracted core.",
+      "reference": "tests.test_contracts.EnvironmentContractTests.test_apply_patch_updates_holder_not_process_environment",
+      "target_issue": "#740"
+    },
+    {
+      "decision": "pure-successor",
+      "rationale": "Declared environment metadata is pure construction/lookup shape; no process environment read is required.",
+      "reference": "tests.test_contracts.EnvironmentContractTests.test_from_mapping_loads_declared_values_by_env_metadata",
+      "target_issue": "#764"
+    },
+    {
+      "decision": "pure-successor",
+      "rationale": "Declared variable-name mapping is pure construction/lookup shape; no process environment read is required.",
+      "reference": "tests.test_contracts.EnvironmentContractTests.test_from_mapping_loads_declared_values_by_variable_name",
+      "target_issue": "#764"
+    },
+    {
+      "decision": "pure-successor",
+      "rationale": "Mutability is a pure variable declaration law; later patch execution remains operations-owned.",
+      "reference": "tests.test_contracts.EnvironmentContractTests.test_immutable_value_rejects_patch",
+      "target_issue": "#764"
+    },
+    {
+      "decision": "pure-successor",
+      "rationale": "Missing required value is pure validation failure.",
+      "reference": "tests.test_contracts.EnvironmentContractTests.test_missing_required_value_fails_structurally",
+      "target_issue": "#764"
+    },
+    {
+      "decision": "move-to-operations",
+      "rationale": "This law exercises mutable holder state, mutation publication/idempotency, derived-resource build/dispose, cleanup, concurrency, stale-version behavior, or live patch workflow; it belongs to operations contracts, not extracted core.",
+      "reference": "tests.test_contracts.EnvironmentContractTests.test_mutation_and_candidate_descriptors_never_publish_values",
+      "target_issue": "#740"
+    },
+    {
+      "decision": "move-to-operations",
+      "rationale": "This law exercises mutable holder state, mutation publication/idempotency, derived-resource build/dispose, cleanup, concurrency, stale-version behavior, or live patch workflow; it belongs to operations contracts, not extracted core.",
+      "reference": "tests.test_contracts.EnvironmentContractTests.test_mutation_prepares_immutable_candidate_without_publication",
+      "target_issue": "#740"
+    },
+    {
+      "decision": "move-to-operations",
+      "rationale": "This law exercises mutable holder state, mutation publication/idempotency, derived-resource build/dispose, cleanup, concurrency, stale-version behavior, or live patch workflow; it belongs to operations contracts, not extracted core.",
+      "reference": "tests.test_contracts.EnvironmentContractTests.test_mutation_rejects_stale_version_before_preparation",
+      "target_issue": "#740"
+    },
+    {
+      "decision": "move-to-operations",
+      "rationale": "This law exercises mutable holder state, mutation publication/idempotency, derived-resource build/dispose, cleanup, concurrency, stale-version behavior, or live patch workflow; it belongs to operations contracts, not extracted core.",
+      "reference": "tests.test_contracts.EnvironmentContractTests.test_noop_candidate_does_not_advance_version",
+      "target_issue": "#740"
+    },
+    {
+      "decision": "move-to-operations",
+      "rationale": "This law exercises mutable holder state, mutation publication/idempotency, derived-resource build/dispose, cleanup, concurrency, stale-version behavior, or live patch workflow; it belongs to operations contracts, not extracted core.",
+      "reference": "tests.test_contracts.EnvironmentContractTests.test_preparation_validates_all_assignments_before_any_publication",
+      "target_issue": "#740"
+    },
+    {
+      "decision": "move-to-operations",
+      "rationale": "This law exercises mutable holder state, mutation publication/idempotency, derived-resource build/dispose, cleanup, concurrency, stale-version behavior, or live patch workflow; it belongs to operations contracts, not extracted core.",
+      "reference": "tests.test_contracts.EnvironmentContractTests.test_prepared_mutation_identity_replays_or_rejects_conflicting_intent",
+      "target_issue": "#740"
+    },
+    {
+      "decision": "move-to-operations",
+      "rationale": "This law exercises mutable holder state, mutation publication/idempotency, derived-resource build/dispose, cleanup, concurrency, stale-version behavior, or live patch workflow; it belongs to operations contracts, not extracted core.",
+      "reference": "tests.test_contracts.EnvironmentContractTests.test_published_mutation_identity_replays_without_reexecution",
+      "target_issue": "#740"
+    },
+    {
+      "decision": "pure-successor",
+      "rationale": "Runtime contract descriptor redaction is pure operator projection language.",
+      "reference": "tests.test_contracts.RuntimeContractTests.test_runtime_contract_descriptor_redacts_values",
+      "target_issue": "#764"
+    },
+    {
+      "decision": "pure-successor",
+      "rationale": "Runtime contract construction must be explicit and effect-free.",
+      "reference": "tests.test_contracts.RuntimeContractTests.test_runtime_contract_does_not_read_process_environment",
+      "target_issue": "#764"
+    },
+    {
+      "decision": "pure-successor",
+      "rationale": "Runtime contract values may load explicit supplied state without process effects.",
+      "reference": "tests.test_contracts.RuntimeContractTests.test_runtime_contract_loads_explicit_runtime_state",
+      "target_issue": "#764"
+    },
+    {
+      "decision": "move-to-operations",
+      "rationale": "This law exercises mutable holder state, mutation publication/idempotency, derived-resource build/dispose, cleanup, concurrency, stale-version behavior, or live patch workflow; it belongs to operations contracts, not extracted core.",
+      "reference": "tests.test_contracts.RuntimeContractTests.test_runtime_contract_patch_updates_holder",
+      "target_issue": "#740"
+    }
+  ],
+  "issue": "#760",
+  "parent": "#749",
+  "schema": "cpk.contract-boundary-classification",
+  "source_family": "test_contracts",
+  "source_inventory": "artifacts/extraction/required-core-family-inventory.json",
+  "summary": {
+    "entries": 41,
+    "moved_to_operations": 23,
+    "operations_target_issue": "#740",
+    "pure_successor": 18,
+    "pure_target_issue": "#764"
+  }
+}
