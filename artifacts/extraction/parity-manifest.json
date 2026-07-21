@@ -9209,7 +9209,13 @@
       "owner": "control-plane-kit-core",
       "owner_kind": "core",
       "reference": "tests.test_probe_intents.ProbeIntentTests.test_application_health_is_derived_only_from_matching_http_material",
-      "successors": [],
+      "successors": [
+        {
+          "evidence": "extract-e-761.probe-intents.unittest",
+          "id": "control-plane-kit-core.tests.test_probe_intents.ProbeIntentTests.test_application_health_is_derived_only_from_matching_http_material",
+          "status": "passing"
+        }
+      ],
       "supersession": null
     },
     {
@@ -9219,7 +9225,13 @@
       "owner": "control-plane-kit-core",
       "owner_kind": "core",
       "reference": "tests.test_probe_intents.ProbeIntentTests.test_endpoint_contexts_preserve_private_host_and_public_meaning",
-      "successors": [],
+      "successors": [
+        {
+          "evidence": "extract-e-761.probe-intents.unittest",
+          "id": "control-plane-kit-core.tests.test_probe_intents.ProbeIntentTests.test_endpoint_contexts_preserve_private_host_and_public_meaning",
+          "status": "passing"
+        }
+      ],
       "supersession": null
     },
     {
@@ -9229,7 +9241,13 @@
       "owner": "control-plane-kit-core",
       "owner_kind": "core",
       "reference": "tests.test_probe_intents.ProbeIntentTests.test_endpoint_scheme_cannot_lie_about_semantic_protocol",
-      "successors": [],
+      "successors": [
+        {
+          "evidence": "extract-e-761.probe-intents.unittest",
+          "id": "control-plane-kit-core.tests.test_probe_intents.ProbeIntentTests.test_endpoint_scheme_cannot_lie_about_semantic_protocol",
+          "status": "passing"
+        }
+      ],
       "supersession": null
     },
     {
@@ -9239,7 +9257,13 @@
       "owner": "control-plane-kit-core",
       "owner_kind": "core",
       "reference": "tests.test_probe_intents.ProbeIntentTests.test_every_failure_outcome_remains_distinct_from_readiness",
-      "successors": [],
+      "successors": [
+        {
+          "evidence": "extract-e-761.probe-intents.unittest",
+          "id": "control-plane-kit-core.tests.test_probe_intents.ProbeIntentTests.test_every_failure_outcome_remains_distinct_from_readiness",
+          "status": "passing"
+        }
+      ],
       "supersession": null
     },
     {
@@ -9249,7 +9273,13 @@
       "owner": "control-plane-kit-core",
       "owner_kind": "core",
       "reference": "tests.test_probe_intents.ProbeIntentTests.test_every_protocol_has_explicit_safe_endpoint_schemes",
-      "successors": [],
+      "successors": [
+        {
+          "evidence": "extract-e-761.probe-intents.unittest",
+          "id": "control-plane-kit-core.tests.test_probe_intents.ProbeIntentTests.test_every_protocol_has_explicit_safe_endpoint_schemes",
+          "status": "passing"
+        }
+      ],
       "supersession": null
     },
     {
@@ -9259,7 +9289,13 @@
       "owner": "control-plane-kit-core",
       "owner_kind": "core",
       "reference": "tests.test_probe_intents.ProbeIntentTests.test_literal_targets_reject_credentials_query_fragments_and_protocol_lies",
-      "successors": [],
+      "successors": [
+        {
+          "evidence": "extract-e-761.probe-intents.unittest",
+          "id": "control-plane-kit-core.tests.test_probe_intents.ProbeIntentTests.test_literal_targets_reject_credentials_query_fragments_and_protocol_lies",
+          "status": "passing"
+        }
+      ],
       "supersession": null
     },
     {
@@ -9269,7 +9305,13 @@
       "owner": "control-plane-kit-core",
       "owner_kind": "core",
       "reference": "tests.test_probe_intents.ProbeIntentTests.test_missing_health_and_mismatched_protocol_are_typed_construction_failures",
-      "successors": [],
+      "successors": [
+        {
+          "evidence": "extract-e-761.probe-intents.unittest",
+          "id": "control-plane-kit-core.tests.test_probe_intents.ProbeIntentTests.test_missing_health_and_mismatched_protocol_are_typed_construction_failures",
+          "status": "passing"
+        }
+      ],
       "supersession": null
     },
     {
@@ -9279,7 +9321,13 @@
       "owner": "control-plane-kit-core",
       "owner_kind": "core",
       "reference": "tests.test_probe_intents.ProbeIntentTests.test_probe_intent_descriptors_are_deterministic_and_redacted",
-      "successors": [],
+      "successors": [
+        {
+          "evidence": "extract-e-761.probe-intents.unittest",
+          "id": "control-plane-kit-core.tests.test_probe_intents.ProbeIntentTests.test_probe_intent_descriptors_are_deterministic_and_redacted",
+          "status": "passing"
+        }
+      ],
       "supersession": null
     },
     {
@@ -9289,7 +9337,13 @@
       "owner": "control-plane-kit-core",
       "owner_kind": "core",
       "reference": "tests.test_probe_intents.ProbeIntentTests.test_probe_observations_accept_only_layer_coherent_outcomes",
-      "successors": [],
+      "successors": [
+        {
+          "evidence": "extract-e-761.probe-intents.unittest",
+          "id": "control-plane-kit-core.tests.test_probe_intents.ProbeIntentTests.test_probe_observations_accept_only_layer_coherent_outcomes",
+          "status": "passing"
+        }
+      ],
       "supersession": null
     },
     {
@@ -9299,7 +9353,13 @@
       "owner": "control-plane-kit-core",
       "owner_kind": "core",
       "reference": "tests.test_probe_intents.ProbeIntentTests.test_probe_observations_reject_cross_layer_claims",
-      "successors": [],
+      "successors": [
+        {
+          "evidence": "extract-e-761.probe-intents.unittest",
+          "id": "control-plane-kit-core.tests.test_probe_intents.ProbeIntentTests.test_probe_observations_reject_cross_layer_claims",
+          "status": "passing"
+        }
+      ],
       "supersession": null
     },
     {
@@ -9309,7 +9369,13 @@
       "owner": "control-plane-kit-core",
       "owner_kind": "core",
       "reference": "tests.test_probe_intents.ProbeIntentTests.test_probe_policy_is_finite_and_deterministic",
-      "successors": [],
+      "successors": [
+        {
+          "evidence": "extract-e-761.probe-intents.unittest",
+          "id": "control-plane-kit-core.tests.test_probe_intents.ProbeIntentTests.test_probe_policy_is_finite_and_deterministic",
+          "status": "passing"
+        }
+      ],
       "supersession": null
     },
     {
@@ -9319,7 +9385,13 @@
       "owner": "control-plane-kit-core",
       "owner_kind": "core",
       "reference": "tests.test_probe_intents.ProbeIntentTests.test_process_transport_health_and_readiness_are_distinct_objects",
-      "successors": [],
+      "successors": [
+        {
+          "evidence": "extract-e-761.probe-intents.unittest",
+          "id": "control-plane-kit-core.tests.test_probe_intents.ProbeIntentTests.test_process_transport_health_and_readiness_are_distinct_objects",
+          "status": "passing"
+        }
+      ],
       "supersession": null
     },
     {
@@ -9329,7 +9401,13 @@
       "owner": "control-plane-kit-core",
       "owner_kind": "core",
       "reference": "tests.test_probe_intents.ProbeIntentTests.test_secret_endpoint_descriptors_retain_only_the_reference",
-      "successors": [],
+      "successors": [
+        {
+          "evidence": "extract-e-761.probe-intents.unittest",
+          "id": "control-plane-kit-core.tests.test_probe_intents.ProbeIntentTests.test_secret_endpoint_descriptors_retain_only_the_reference",
+          "status": "passing"
+        }
+      ],
       "supersession": null
     },
     {

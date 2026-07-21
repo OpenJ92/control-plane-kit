@@ -1133,3 +1133,92 @@ completed required-core laws: 154
 incomplete required-core laws: 626
 unmapped required-core families: 82
 ```
+
+## #761 Pure Probe-Intent And Observation Value Laws
+
+#761 mapped the frozen `tests.test_probe_intents` family into extracted core as
+a pure observation-intent language. The object is:
+
+```text
+ProbeSubject x RuntimeEndpointObservation x ProbePolicy
+  -> ProcessProbeIntent
+   | TransportProbeIntent
+   | ApplicationHealthProbeIntent
+   | ReadinessProbeIntent
+
+ProbeKind x ProbeOutcome x EndpointContext?
+  -> ProbeObservation
+```
+
+The module is:
+
+```text
+control_plane_kit_core.probe_intents
+```
+
+It is deliberately separate from `control_plane_kit_core.verification`.
+Verification contracts describe package-owned semantic checks. Probe intents
+describe runtime observation layers: process, transport, application health,
+and readiness. They are adjacent languages, not the same object.
+
+Important law:
+
+```python
+def probe_outcome_is_valid(kind: ProbeKind, outcome: ProbeOutcome) -> bool:
+    if not isinstance(kind, ProbeKind) or not isinstance(outcome, ProbeOutcome):
+        return False
+    return outcome in _OUTCOMES_BY_KIND[kind]
+```
+
+That table keeps observation layers honest. A healthy application does not imply
+readiness; reachable transport does not imply application health; process start
+does not imply either.
+
+Endpoint material remains pure graph/runtime evidence:
+
+```python
+RuntimeEndpointObservation(
+    "api",
+    "internal",
+    "graph-a",
+    Protocol.HTTP,
+    EndpointContext.PUBLIC,
+    SecretEndpointMaterial("secret://workspace/public-api"),
+).descriptor()["address"]
+```
+
+returns only:
+
+```python
+{"kind": "secret-reference", "reference_id": "secret://workspace/public-api"}
+```
+
+Mapped laws:
+
+```text
+test_probe_intents laws: 13 -> extract-e-761.probe-intents.unittest
+```
+
+Artifact:
+
+```text
+artifacts/extraction/successor-proofs/extract-e-761-probe-intents.json
+```
+
+Validation so far:
+
+```text
+focused #761 red evidence: missing control_plane_kit_core.probe_intents
+focused #761 extracted-core unittest and module inventory slice: 16 tests passed
+current-tree extraction parity slice: 18 tests passed
+control-plane-kit-core/test.sh: 263 tests passed; compileall passed; import ok
+full Docker/Postgres ./test.sh suite: 1182 tests passed
+```
+
+Required-core inventory after artifact update:
+
+```text
+completed required-core laws: 167
+incomplete required-core laws: 613
+unmapped required-core families: 81
+```

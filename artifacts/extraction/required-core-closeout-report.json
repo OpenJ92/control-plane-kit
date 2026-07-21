@@ -1,12 +1,12 @@
 {
   "counts": {
-    "completed_required_core": 154,
+    "completed_required_core": 167,
     "deferred": 227,
     "entries": 1107,
     "failed_core_successors": 0,
-    "findings": 626,
-    "incomplete_required_core": 626,
-    "passing_core_successors": 154,
+    "findings": 613,
+    "incomplete_required_core": 613,
+    "passing_core_successors": 167,
     "required_core": 780,
     "required_non_core": 100,
     "reviewed_core_supersessions": 0
@@ -4589,84 +4589,6 @@
       "code": "required_core_without_completion",
       "detail": "passing successor or reviewed supersession is required",
       "kind": "test",
-      "reference": "tests.test_probe_intents.ProbeIntentTests.test_application_health_is_derived_only_from_matching_http_material"
-    },
-    {
-      "code": "required_core_without_completion",
-      "detail": "passing successor or reviewed supersession is required",
-      "kind": "test",
-      "reference": "tests.test_probe_intents.ProbeIntentTests.test_endpoint_contexts_preserve_private_host_and_public_meaning"
-    },
-    {
-      "code": "required_core_without_completion",
-      "detail": "passing successor or reviewed supersession is required",
-      "kind": "test",
-      "reference": "tests.test_probe_intents.ProbeIntentTests.test_endpoint_scheme_cannot_lie_about_semantic_protocol"
-    },
-    {
-      "code": "required_core_without_completion",
-      "detail": "passing successor or reviewed supersession is required",
-      "kind": "test",
-      "reference": "tests.test_probe_intents.ProbeIntentTests.test_every_failure_outcome_remains_distinct_from_readiness"
-    },
-    {
-      "code": "required_core_without_completion",
-      "detail": "passing successor or reviewed supersession is required",
-      "kind": "test",
-      "reference": "tests.test_probe_intents.ProbeIntentTests.test_every_protocol_has_explicit_safe_endpoint_schemes"
-    },
-    {
-      "code": "required_core_without_completion",
-      "detail": "passing successor or reviewed supersession is required",
-      "kind": "test",
-      "reference": "tests.test_probe_intents.ProbeIntentTests.test_literal_targets_reject_credentials_query_fragments_and_protocol_lies"
-    },
-    {
-      "code": "required_core_without_completion",
-      "detail": "passing successor or reviewed supersession is required",
-      "kind": "test",
-      "reference": "tests.test_probe_intents.ProbeIntentTests.test_missing_health_and_mismatched_protocol_are_typed_construction_failures"
-    },
-    {
-      "code": "required_core_without_completion",
-      "detail": "passing successor or reviewed supersession is required",
-      "kind": "test",
-      "reference": "tests.test_probe_intents.ProbeIntentTests.test_probe_intent_descriptors_are_deterministic_and_redacted"
-    },
-    {
-      "code": "required_core_without_completion",
-      "detail": "passing successor or reviewed supersession is required",
-      "kind": "test",
-      "reference": "tests.test_probe_intents.ProbeIntentTests.test_probe_observations_accept_only_layer_coherent_outcomes"
-    },
-    {
-      "code": "required_core_without_completion",
-      "detail": "passing successor or reviewed supersession is required",
-      "kind": "test",
-      "reference": "tests.test_probe_intents.ProbeIntentTests.test_probe_observations_reject_cross_layer_claims"
-    },
-    {
-      "code": "required_core_without_completion",
-      "detail": "passing successor or reviewed supersession is required",
-      "kind": "test",
-      "reference": "tests.test_probe_intents.ProbeIntentTests.test_probe_policy_is_finite_and_deterministic"
-    },
-    {
-      "code": "required_core_without_completion",
-      "detail": "passing successor or reviewed supersession is required",
-      "kind": "test",
-      "reference": "tests.test_probe_intents.ProbeIntentTests.test_process_transport_health_and_readiness_are_distinct_objects"
-    },
-    {
-      "code": "required_core_without_completion",
-      "detail": "passing successor or reviewed supersession is required",
-      "kind": "test",
-      "reference": "tests.test_probe_intents.ProbeIntentTests.test_secret_endpoint_descriptors_retain_only_the_reference"
-    },
-    {
-      "code": "required_core_without_completion",
-      "detail": "passing successor or reviewed supersession is required",
-      "kind": "test",
       "reference": "tests.test_read_interface_demo_server.ReadInterfaceDemoServerTests.test_demo_server_requires_configured_token"
     },
     {
@@ -8839,97 +8761,6 @@
       "owner": "control-plane-kit-core",
       "owner_kind": "core",
       "reference": "tests.test_probe_execution.ProbeEffectInterpreterTests.test_unreachable_postgres_is_not_ready_and_does_not_run_http"
-    },
-    {
-      "kind": "test",
-      "law": "behavior.application-health-is-derived-only-from-matching-http-material",
-      "owner": "control-plane-kit-core",
-      "owner_kind": "core",
-      "reference": "tests.test_probe_intents.ProbeIntentTests.test_application_health_is_derived_only_from_matching_http_material"
-    },
-    {
-      "kind": "test",
-      "law": "behavior.endpoint-contexts-preserve-private-host-and-public-meaning",
-      "owner": "control-plane-kit-core",
-      "owner_kind": "core",
-      "reference": "tests.test_probe_intents.ProbeIntentTests.test_endpoint_contexts_preserve_private_host_and_public_meaning"
-    },
-    {
-      "kind": "test",
-      "law": "behavior.endpoint-scheme-cannot-lie-about-semantic-protocol",
-      "owner": "control-plane-kit-core",
-      "owner_kind": "core",
-      "reference": "tests.test_probe_intents.ProbeIntentTests.test_endpoint_scheme_cannot_lie_about_semantic_protocol"
-    },
-    {
-      "kind": "test",
-      "law": "behavior.every-failure-outcome-remains-distinct-from-readiness",
-      "owner": "control-plane-kit-core",
-      "owner_kind": "core",
-      "reference": "tests.test_probe_intents.ProbeIntentTests.test_every_failure_outcome_remains_distinct_from_readiness"
-    },
-    {
-      "kind": "test",
-      "law": "behavior.every-protocol-has-explicit-safe-endpoint-schemes",
-      "owner": "control-plane-kit-core",
-      "owner_kind": "core",
-      "reference": "tests.test_probe_intents.ProbeIntentTests.test_every_protocol_has_explicit_safe_endpoint_schemes"
-    },
-    {
-      "kind": "test",
-      "law": "behavior.literal-targets-reject-credentials-query-fragments-and-protocol-lies",
-      "owner": "control-plane-kit-core",
-      "owner_kind": "core",
-      "reference": "tests.test_probe_intents.ProbeIntentTests.test_literal_targets_reject_credentials_query_fragments_and_protocol_lies"
-    },
-    {
-      "kind": "test",
-      "law": "behavior.missing-health-and-mismatched-protocol-are-typed-construction-failures",
-      "owner": "control-plane-kit-core",
-      "owner_kind": "core",
-      "reference": "tests.test_probe_intents.ProbeIntentTests.test_missing_health_and_mismatched_protocol_are_typed_construction_failures"
-    },
-    {
-      "kind": "test",
-      "law": "behavior.probe-intent-descriptors-are-deterministic-and-redacted",
-      "owner": "control-plane-kit-core",
-      "owner_kind": "core",
-      "reference": "tests.test_probe_intents.ProbeIntentTests.test_probe_intent_descriptors_are_deterministic_and_redacted"
-    },
-    {
-      "kind": "test",
-      "law": "behavior.probe-observations-accept-only-layer-coherent-outcomes",
-      "owner": "control-plane-kit-core",
-      "owner_kind": "core",
-      "reference": "tests.test_probe_intents.ProbeIntentTests.test_probe_observations_accept_only_layer_coherent_outcomes"
-    },
-    {
-      "kind": "test",
-      "law": "behavior.probe-observations-reject-cross-layer-claims",
-      "owner": "control-plane-kit-core",
-      "owner_kind": "core",
-      "reference": "tests.test_probe_intents.ProbeIntentTests.test_probe_observations_reject_cross_layer_claims"
-    },
-    {
-      "kind": "test",
-      "law": "behavior.probe-policy-is-finite-and-deterministic",
-      "owner": "control-plane-kit-core",
-      "owner_kind": "core",
-      "reference": "tests.test_probe_intents.ProbeIntentTests.test_probe_policy_is_finite_and_deterministic"
-    },
-    {
-      "kind": "test",
-      "law": "behavior.process-transport-health-and-readiness-are-distinct-objects",
-      "owner": "control-plane-kit-core",
-      "owner_kind": "core",
-      "reference": "tests.test_probe_intents.ProbeIntentTests.test_process_transport_health_and_readiness_are_distinct_objects"
-    },
-    {
-      "kind": "test",
-      "law": "behavior.secret-endpoint-descriptors-retain-only-the-reference",
-      "owner": "control-plane-kit-core",
-      "owner_kind": "core",
-      "reference": "tests.test_probe_intents.ProbeIntentTests.test_secret_endpoint_descriptors_retain_only_the_reference"
     },
     {
       "kind": "test",

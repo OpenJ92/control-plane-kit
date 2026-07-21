@@ -29,6 +29,7 @@ EXPECTED_MODULES = {
     "planning.codec",
     "planning.compiler",
     "policies",
+    "probe_intents",
     "products",
     "secrets",
     "topology.__init__",
