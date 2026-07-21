@@ -2463,3 +2463,124 @@ adjacent read/command/package focused tests: 17 tests passed
 focused #788 mapping guard: 1 test passed
 validate-parity.sh foundation: valid=true, findings=0, incomplete_required=501
 ```
+
+## #789 Admission Lifecycle Recovery And Advancement Mapping
+
+#789 maps the admission, run lifecycle, recovery-decision, concurrency, and
+current-graph advancement slice from #740. The operations audit artifact and
+issue body agreed on the scope:
+
+```text
+test_execution_values:             16 laws
+test_execution_admission:          11 laws
+test_run_lifecycle:                21 laws
+test_recovery_decisions:            8 laws
+test_execution_concurrency:         5 laws
+test_recovery_concurrency:          3 laws
+test_current_graph_advancement:    11 laws
+
+total: 7 families / 75 laws
+```
+
+Successor evidence:
+
+```text
+artifacts/extraction/successor-proofs/extract-e-789-execution-lifecycle-contract.json
+extract-e-789.execution-lifecycle-contract.unittest
+sha256:eef908b9c5190bb3f6085c68b59e4ffd00da0ca048ef5fdd4f7949d879384c11
+```
+
+The key implementation addition is a pure execution lifecycle contract. It
+names request statuses, run statuses, event kinds, event scopes, failure
+categories, recovery scopes, recovery decisions, lifecycle operation
+identities, transition domains, and advancement preconditions without
+implementing durable claims, leases, locks, Postgres writes, graph-store
+mutation, or recovery command execution:
+
+```python
+class ActivityRunStatus(StrEnum):
+    CLAIMED = "claimed"
+    RUNNING = "running"
+    PAUSED = "paused"
+    SUCCEEDED = "succeeded"
+    FAILED = "failed"
+    COMPENSATING = "compensating"
+    COMPENSATED = "compensated"
+    PARTIALLY_FAILED = "partially_failed"
+    UNCOMPENSATED_FAILURE = "uncompensated_failure"
+    CANCELLED = "cancelled"
+```
+
+The main contract object is:
+
+```python
+@dataclass(frozen=True)
+class ExecutionLifecycleContractSet:
+    timing: tuple[RunStatusTimingContract, ...]
+    events: tuple[ActivityEventContract, ...]
+    recovery_decisions: tuple[RecoveryDecisionContract, ...]
+    operations: tuple[LifecycleOperationContract, ...]
+```
+
+The algebraic shape is:
+
+```text
+ExecutionLifecycleContractSet
+  = RunStatusTimingContract*
+  x ActivityEventContract*
+  x RecoveryDecisionContract*
+  x LifecycleOperationContract*
+
+LifecycleOperationContract
+  = operation identity
+  x DeploymentProgramStage
+  x service role
+  x request/response schema names
+  x accepted run-status domain
+  x result run status
+  x emitted event kinds
+  x approval / worker / current-graph preconditions
+  x explicit enforcement owner
+```
+
+The important design decision is that concurrency laws are represented as
+contract obligations, not simulated in extracted core. Every lifecycle
+operation has:
+
+```python
+enforcement_owner = ContractEnforcementOwner.OPERATIONS
+```
+
+This records architectural truth instead of smuggling the Postgres
+interpreter into the kernel. Core names the law; operations / cpk-server prove
+it with durable serialization, UnitOfWork, worker claims, leases, and
+graph-store transactions.
+
+This preserves the boundary:
+
+```text
+core
+  owns closed lifecycle/status/event/recovery identities, descriptor shapes,
+  transition-domain contracts, recovery scope/precondition contracts,
+  graph-advancement precondition names, and successor evidence.
+
+operations / cpk-server
+  owns Postgres stores, UnitOfWork, durable journals, locks, leases, worker
+  claims, one-winner enforcement, current approval checks, recovery execution,
+  authorization enforcement, current graph mutation, route handlers, and
+  runtime effects.
+```
+
+The test-integrity red evidence was meaningful:
+
+```text
+before mapping: 7 #789 subtests failed, one for each unmapped family
+```
+
+After mapping:
+
+```text
+focused #789 successor tests: 6 tests passed
+focused #789 mapping guard: 1 test passed
+validate-parity.sh foundation: valid=true, findings=0, incomplete_required=426
+```

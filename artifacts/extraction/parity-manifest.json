@@ -3311,7 +3311,13 @@
       "owner": "control-plane-kit-core",
       "owner_kind": "core",
       "reference": "tests.test_current_graph_advancement.CurrentGraphAdvancementTests.test_authority_worker_and_stale_pointer_fail_closed",
-      "successors": [],
+      "successors": [
+        {
+          "evidence": "extract-e-789.execution-lifecycle-contract.unittest",
+          "id": "control-plane-kit-core.tests.test_current_graph_advancement.CurrentGraphAdvancementTests.test_authority_worker_and_stale_pointer_fail_closed",
+          "status": "passing"
+        }
+      ],
       "supersession": null
     },
     {
@@ -3321,7 +3327,13 @@
       "owner": "control-plane-kit-core",
       "owner_kind": "core",
       "reference": "tests.test_current_graph_advancement.CurrentGraphAdvancementTests.test_complete_durable_success_advances_pointer_and_replays_evidence",
-      "successors": [],
+      "successors": [
+        {
+          "evidence": "extract-e-789.execution-lifecycle-contract.unittest",
+          "id": "control-plane-kit-core.tests.test_current_graph_advancement.CurrentGraphAdvancementTests.test_complete_durable_success_advances_pointer_and_replays_evidence",
+          "status": "passing"
+        }
+      ],
       "supersession": null
     },
     {
@@ -3331,7 +3343,13 @@
       "owner": "control-plane-kit-core",
       "owner_kind": "core",
       "reference": "tests.test_current_graph_advancement.CurrentGraphAdvancementTests.test_concurrent_advancement_has_one_winner",
-      "successors": [],
+      "successors": [
+        {
+          "evidence": "extract-e-789.execution-lifecycle-contract.unittest",
+          "id": "control-plane-kit-core.tests.test_current_graph_advancement.CurrentGraphAdvancementTests.test_concurrent_advancement_has_one_winner",
+          "status": "passing"
+        }
+      ],
       "supersession": null
     },
     {
@@ -3341,7 +3359,13 @@
       "owner": "control-plane-kit-core",
       "owner_kind": "core",
       "reference": "tests.test_current_graph_advancement.CurrentGraphAdvancementTests.test_duplicate_terminal_success_evidence_fails_closed",
-      "successors": [],
+      "successors": [
+        {
+          "evidence": "extract-e-789.execution-lifecycle-contract.unittest",
+          "id": "control-plane-kit-core.tests.test_current_graph_advancement.CurrentGraphAdvancementTests.test_duplicate_terminal_success_evidence_fails_closed",
+          "status": "passing"
+        }
+      ],
       "supersession": null
     },
     {
@@ -3351,7 +3375,13 @@
       "owner": "control-plane-kit-core",
       "owner_kind": "core",
       "reference": "tests.test_current_graph_advancement.CurrentGraphAdvancementTests.test_foreign_step_success_evidence_fails_closed",
-      "successors": [],
+      "successors": [
+        {
+          "evidence": "extract-e-789.execution-lifecycle-contract.unittest",
+          "id": "control-plane-kit-core.tests.test_current_graph_advancement.CurrentGraphAdvancementTests.test_foreign_step_success_evidence_fails_closed",
+          "status": "passing"
+        }
+      ],
       "supersession": null
     },
     {
@@ -3361,7 +3391,13 @@
       "owner": "control-plane-kit-core",
       "owner_kind": "core",
       "reference": "tests.test_current_graph_advancement.CurrentGraphAdvancementTests.test_late_evidence_failure_rolls_back_pointer_and_event",
-      "successors": [],
+      "successors": [
+        {
+          "evidence": "extract-e-789.execution-lifecycle-contract.unittest",
+          "id": "control-plane-kit-core.tests.test_current_graph_advancement.CurrentGraphAdvancementTests.test_late_evidence_failure_rolls_back_pointer_and_event",
+          "status": "passing"
+        }
+      ],
       "supersession": null
     },
     {
@@ -3371,7 +3407,13 @@
       "owner": "control-plane-kit-core",
       "owner_kind": "core",
       "reference": "tests.test_current_graph_advancement.CurrentGraphAdvancementTests.test_missing_step_success_evidence_fails_closed",
-      "successors": [],
+      "successors": [
+        {
+          "evidence": "extract-e-789.execution-lifecycle-contract.unittest",
+          "id": "control-plane-kit-core.tests.test_current_graph_advancement.CurrentGraphAdvancementTests.test_missing_step_success_evidence_fails_closed",
+          "status": "passing"
+        }
+      ],
       "supersession": null
     },
     {
@@ -3381,7 +3423,13 @@
       "owner": "control-plane-kit-core",
       "owner_kind": "core",
       "reference": "tests.test_current_graph_advancement.CurrentGraphAdvancementTests.test_operator_confirmed_uncertain_failure_cannot_advance",
-      "successors": [],
+      "successors": [
+        {
+          "evidence": "extract-e-789.execution-lifecycle-contract.unittest",
+          "id": "control-plane-kit-core.tests.test_current_graph_advancement.CurrentGraphAdvancementTests.test_operator_confirmed_uncertain_failure_cannot_advance",
+          "status": "passing"
+        }
+      ],
       "supersession": null
     },
     {
@@ -3391,7 +3439,13 @@
       "owner": "control-plane-kit-core",
       "owner_kind": "core",
       "reference": "tests.test_current_graph_advancement.CurrentGraphAdvancementTests.test_operator_confirmed_uncertain_success_can_advance",
-      "successors": [],
+      "successors": [
+        {
+          "evidence": "extract-e-789.execution-lifecycle-contract.unittest",
+          "id": "control-plane-kit-core.tests.test_current_graph_advancement.CurrentGraphAdvancementTests.test_operator_confirmed_uncertain_success_can_advance",
+          "status": "passing"
+        }
+      ],
       "supersession": null
     },
     {
@@ -3401,7 +3455,13 @@
       "owner": "control-plane-kit-core",
       "owner_kind": "core",
       "reference": "tests.test_current_graph_advancement.CurrentGraphAdvancementTests.test_projection_and_observation_without_complete_steps_cannot_advance",
-      "successors": [],
+      "successors": [
+        {
+          "evidence": "extract-e-789.execution-lifecycle-contract.unittest",
+          "id": "control-plane-kit-core.tests.test_current_graph_advancement.CurrentGraphAdvancementTests.test_projection_and_observation_without_complete_steps_cannot_advance",
+          "status": "passing"
+        }
+      ],
       "supersession": null
     },
     {
@@ -3411,7 +3471,13 @@
       "owner": "control-plane-kit-core",
       "owner_kind": "core",
       "reference": "tests.test_current_graph_advancement.CurrentGraphAdvancementTests.test_unsupported_step_cannot_advance_current_graph",
-      "successors": [],
+      "successors": [
+        {
+          "evidence": "extract-e-789.execution-lifecycle-contract.unittest",
+          "id": "control-plane-kit-core.tests.test_current_graph_advancement.CurrentGraphAdvancementTests.test_unsupported_step_cannot_advance_current_graph",
+          "status": "passing"
+        }
+      ],
       "supersession": null
     },
     {
@@ -4835,7 +4901,13 @@
       "owner": "control-plane-kit-core",
       "owner_kind": "core",
       "reference": "tests.test_execution_admission.ExecutionAdmissionTests.test_approved_current_plan_is_atomically_admitted_without_effect_dependency",
-      "successors": [],
+      "successors": [
+        {
+          "evidence": "extract-e-789.execution-lifecycle-contract.unittest",
+          "id": "control-plane-kit-core.tests.test_execution_admission.ExecutionAdmissionTests.test_approved_current_plan_is_atomically_admitted_without_effect_dependency",
+          "status": "passing"
+        }
+      ],
       "supersession": null
     },
     {
@@ -4845,7 +4917,13 @@
       "owner": "control-plane-kit-core",
       "owner_kind": "core",
       "reference": "tests.test_execution_admission.ExecutionAdmissionTests.test_concurrent_identical_admission_converges",
-      "successors": [],
+      "successors": [
+        {
+          "evidence": "extract-e-789.execution-lifecycle-contract.unittest",
+          "id": "control-plane-kit-core.tests.test_execution_admission.ExecutionAdmissionTests.test_concurrent_identical_admission_converges",
+          "status": "passing"
+        }
+      ],
       "supersession": null
     },
     {
@@ -4855,7 +4933,13 @@
       "owner": "control-plane-kit-core",
       "owner_kind": "core",
       "reference": "tests.test_execution_admission.ExecutionAdmissionTests.test_database_endpoint_switch_requires_reference_only_readiness",
-      "successors": [],
+      "successors": [
+        {
+          "evidence": "extract-e-789.execution-lifecycle-contract.unittest",
+          "id": "control-plane-kit-core.tests.test_execution_admission.ExecutionAdmissionTests.test_database_endpoint_switch_requires_reference_only_readiness",
+          "status": "passing"
+        }
+      ],
       "supersession": null
     },
     {
@@ -4865,7 +4949,13 @@
       "owner": "control-plane-kit-core",
       "owner_kind": "core",
       "reference": "tests.test_execution_admission.ExecutionAdmissionTests.test_destructive_plan_cannot_use_forged_non_destructive_approval",
-      "successors": [],
+      "successors": [
+        {
+          "evidence": "extract-e-789.execution-lifecycle-contract.unittest",
+          "id": "control-plane-kit-core.tests.test_execution_admission.ExecutionAdmissionTests.test_destructive_plan_cannot_use_forged_non_destructive_approval",
+          "status": "passing"
+        }
+      ],
       "supersession": null
     },
     {
@@ -4875,7 +4965,13 @@
       "owner": "control-plane-kit-core",
       "owner_kind": "core",
       "reference": "tests.test_execution_admission.ExecutionAdmissionTests.test_empty_plan_is_valid_planning_truth_but_not_executable_work",
-      "successors": [],
+      "successors": [
+        {
+          "evidence": "extract-e-789.execution-lifecycle-contract.unittest",
+          "id": "control-plane-kit-core.tests.test_execution_admission.ExecutionAdmissionTests.test_empty_plan_is_valid_planning_truth_but_not_executable_work",
+          "status": "passing"
+        }
+      ],
       "supersession": null
     },
     {
@@ -4885,7 +4981,13 @@
       "owner": "control-plane-kit-core",
       "owner_kind": "core",
       "reference": "tests.test_execution_admission.ExecutionAdmissionTests.test_foreign_workspace_stale_graph_and_review_blocker_fail_closed",
-      "successors": [],
+      "successors": [
+        {
+          "evidence": "extract-e-789.execution-lifecycle-contract.unittest",
+          "id": "control-plane-kit-core.tests.test_execution_admission.ExecutionAdmissionTests.test_foreign_workspace_stale_graph_and_review_blocker_fail_closed",
+          "status": "passing"
+        }
+      ],
       "supersession": null
     },
     {
@@ -4895,7 +4997,13 @@
       "owner": "control-plane-kit-core",
       "owner_kind": "core",
       "reference": "tests.test_execution_admission.ExecutionAdmissionTests.test_identical_replay_returns_original_and_changed_intent_conflicts",
-      "successors": [],
+      "successors": [
+        {
+          "evidence": "extract-e-789.execution-lifecycle-contract.unittest",
+          "id": "control-plane-kit-core.tests.test_execution_admission.ExecutionAdmissionTests.test_identical_replay_returns_original_and_changed_intent_conflicts",
+          "status": "passing"
+        }
+      ],
       "supersession": null
     },
     {
@@ -4905,7 +5013,13 @@
       "owner": "control-plane-kit-core",
       "owner_kind": "core",
       "reference": "tests.test_execution_admission.ExecutionAdmissionTests.test_late_action_failure_rolls_back_execution_request",
-      "successors": [],
+      "successors": [
+        {
+          "evidence": "extract-e-789.execution-lifecycle-contract.unittest",
+          "id": "control-plane-kit-core.tests.test_execution_admission.ExecutionAdmissionTests.test_late_action_failure_rolls_back_execution_request",
+          "status": "passing"
+        }
+      ],
       "supersession": null
     },
     {
@@ -4915,7 +5029,13 @@
       "owner": "control-plane-kit-core",
       "owner_kind": "core",
       "reference": "tests.test_execution_admission.ExecutionAdmissionTests.test_missing_scope_rejected_and_rejected_approval_rejected",
-      "successors": [],
+      "successors": [
+        {
+          "evidence": "extract-e-789.execution-lifecycle-contract.unittest",
+          "id": "control-plane-kit-core.tests.test_execution_admission.ExecutionAdmissionTests.test_missing_scope_rejected_and_rejected_approval_rejected",
+          "status": "passing"
+        }
+      ],
       "supersession": null
     },
     {
@@ -4925,7 +5045,13 @@
       "owner": "control-plane-kit-core",
       "owner_kind": "core",
       "reference": "tests.test_execution_admission.ExecutionAdmissionTests.test_readiness_evidence_cannot_claim_an_unrelated_activity",
-      "successors": [],
+      "successors": [
+        {
+          "evidence": "extract-e-789.execution-lifecycle-contract.unittest",
+          "id": "control-plane-kit-core.tests.test_execution_admission.ExecutionAdmissionTests.test_readiness_evidence_cannot_claim_an_unrelated_activity",
+          "status": "passing"
+        }
+      ],
       "supersession": null
     },
     {
@@ -4935,7 +5061,13 @@
       "owner": "control-plane-kit-core",
       "owner_kind": "core",
       "reference": "tests.test_execution_admission.ExecutionAdmissionTests.test_readiness_evidence_rejects_values_urls_and_unbounded_text",
-      "successors": [],
+      "successors": [
+        {
+          "evidence": "extract-e-789.execution-lifecycle-contract.unittest",
+          "id": "control-plane-kit-core.tests.test_execution_admission.ExecutionAdmissionTests.test_readiness_evidence_rejects_values_urls_and_unbounded_text",
+          "status": "passing"
+        }
+      ],
       "supersession": null
     },
     {
@@ -4945,7 +5077,13 @@
       "owner": "control-plane-kit-core",
       "owner_kind": "core",
       "reference": "tests.test_execution_concurrency.ExecutionConcurrencyTests.test_competing_workers_have_one_claim_winner",
-      "successors": [],
+      "successors": [
+        {
+          "evidence": "extract-e-789.execution-lifecycle-contract.unittest",
+          "id": "control-plane-kit-core.tests.test_execution_concurrency.ExecutionConcurrencyTests.test_competing_workers_have_one_claim_winner",
+          "status": "passing"
+        }
+      ],
       "supersession": null
     },
     {
@@ -4955,7 +5093,13 @@
       "owner": "control-plane-kit-core",
       "owner_kind": "core",
       "reference": "tests.test_execution_concurrency.ExecutionConcurrencyTests.test_event_ordinals_serialize_across_connections",
-      "successors": [],
+      "successors": [
+        {
+          "evidence": "extract-e-789.execution-lifecycle-contract.unittest",
+          "id": "control-plane-kit-core.tests.test_execution_concurrency.ExecutionConcurrencyTests.test_event_ordinals_serialize_across_connections",
+          "status": "passing"
+        }
+      ],
       "supersession": null
     },
     {
@@ -4965,7 +5109,13 @@
       "owner": "control-plane-kit-core",
       "owner_kind": "core",
       "reference": "tests.test_execution_concurrency.ExecutionConcurrencyTests.test_expired_claim_remains_durable_and_cannot_be_reclaimed",
-      "successors": [],
+      "successors": [
+        {
+          "evidence": "extract-e-789.execution-lifecycle-contract.unittest",
+          "id": "control-plane-kit-core.tests.test_execution_concurrency.ExecutionConcurrencyTests.test_expired_claim_remains_durable_and_cannot_be_reclaimed",
+          "status": "passing"
+        }
+      ],
       "supersession": null
     },
     {
@@ -4975,7 +5125,13 @@
       "owner": "control-plane-kit-core",
       "owner_kind": "core",
       "reference": "tests.test_execution_concurrency.ExecutionConcurrencyTests.test_identical_worker_claims_converge_and_rollback_releases_lock",
-      "successors": [],
+      "successors": [
+        {
+          "evidence": "extract-e-789.execution-lifecycle-contract.unittest",
+          "id": "control-plane-kit-core.tests.test_execution_concurrency.ExecutionConcurrencyTests.test_identical_worker_claims_converge_and_rollback_releases_lock",
+          "status": "passing"
+        }
+      ],
       "supersession": null
     },
     {
@@ -4985,7 +5141,13 @@
       "owner": "control-plane-kit-core",
       "owner_kind": "core",
       "reference": "tests.test_execution_concurrency.ExecutionConcurrencyTests.test_run_settlement_is_write_once",
-      "successors": [],
+      "successors": [
+        {
+          "evidence": "extract-e-789.execution-lifecycle-contract.unittest",
+          "id": "control-plane-kit-core.tests.test_execution_concurrency.ExecutionConcurrencyTests.test_run_settlement_is_write_once",
+          "status": "passing"
+        }
+      ],
       "supersession": null
     },
     {
@@ -5527,7 +5689,13 @@
       "owner": "control-plane-kit-core",
       "owner_kind": "core",
       "reference": "tests.test_execution_values.ExecutionValueTests.test_admitted_run_projection_rejects_impossible_timing",
-      "successors": [],
+      "successors": [
+        {
+          "evidence": "extract-e-789.execution-lifecycle-contract.unittest",
+          "id": "control-plane-kit-core.tests.test_execution_values.ExecutionValueTests.test_admitted_run_projection_rejects_impossible_timing",
+          "status": "passing"
+        }
+      ],
       "supersession": null
     },
     {
@@ -5537,7 +5705,13 @@
       "owner": "control-plane-kit-core",
       "owner_kind": "core",
       "reference": "tests.test_execution_values.ExecutionValueTests.test_codec_round_trips_claim_retry_and_every_failure_category",
-      "successors": [],
+      "successors": [
+        {
+          "evidence": "extract-e-789.execution-lifecycle-contract.unittest",
+          "id": "control-plane-kit-core.tests.test_execution_values.ExecutionValueTests.test_codec_round_trips_claim_retry_and_every_failure_category",
+          "status": "passing"
+        }
+      ],
       "supersession": null
     },
     {
@@ -5547,7 +5721,13 @@
       "owner": "control-plane-kit-core",
       "owner_kind": "core",
       "reference": "tests.test_execution_values.ExecutionValueTests.test_codec_round_trips_every_closed_request_status",
-      "successors": [],
+      "successors": [
+        {
+          "evidence": "extract-e-789.execution-lifecycle-contract.unittest",
+          "id": "control-plane-kit-core.tests.test_execution_values.ExecutionValueTests.test_codec_round_trips_every_closed_request_status",
+          "status": "passing"
+        }
+      ],
       "supersession": null
     },
     {
@@ -5557,7 +5737,13 @@
       "owner": "control-plane-kit-core",
       "owner_kind": "core",
       "reference": "tests.test_execution_values.ExecutionValueTests.test_codec_round_trips_every_event_kind",
-      "successors": [],
+      "successors": [
+        {
+          "evidence": "extract-e-789.execution-lifecycle-contract.unittest",
+          "id": "control-plane-kit-core.tests.test_execution_values.ExecutionValueTests.test_codec_round_trips_every_event_kind",
+          "status": "passing"
+        }
+      ],
       "supersession": null
     },
     {
@@ -5567,7 +5753,13 @@
       "owner": "control-plane-kit-core",
       "owner_kind": "core",
       "reference": "tests.test_execution_values.ExecutionValueTests.test_codec_round_trips_every_observation_status_and_freshness",
-      "successors": [],
+      "successors": [
+        {
+          "evidence": "extract-e-789.execution-lifecycle-contract.unittest",
+          "id": "control-plane-kit-core.tests.test_execution_values.ExecutionValueTests.test_codec_round_trips_every_observation_status_and_freshness",
+          "status": "passing"
+        }
+      ],
       "supersession": null
     },
     {
@@ -5577,7 +5769,13 @@
       "owner": "control-plane-kit-core",
       "owner_kind": "core",
       "reference": "tests.test_execution_values.ExecutionValueTests.test_codec_round_trips_every_run_status",
-      "successors": [],
+      "successors": [
+        {
+          "evidence": "extract-e-789.execution-lifecycle-contract.unittest",
+          "id": "control-plane-kit-core.tests.test_execution_values.ExecutionValueTests.test_codec_round_trips_every_run_status",
+          "status": "passing"
+        }
+      ],
       "supersession": null
     },
     {
@@ -5587,7 +5785,13 @@
       "owner": "control-plane-kit-core",
       "owner_kind": "core",
       "reference": "tests.test_execution_values.ExecutionValueTests.test_descriptor_rejects_unknown_version_variant_and_extra_fields",
-      "successors": [],
+      "successors": [
+        {
+          "evidence": "extract-e-789.execution-lifecycle-contract.unittest",
+          "id": "control-plane-kit-core.tests.test_execution_values.ExecutionValueTests.test_descriptor_rejects_unknown_version_variant_and_extra_fields",
+          "status": "passing"
+        }
+      ],
       "supersession": null
     },
     {
@@ -5597,7 +5801,13 @@
       "owner": "control-plane-kit-core",
       "owner_kind": "core",
       "reference": "tests.test_execution_values.ExecutionValueTests.test_event_scope_is_valid_by_construction",
-      "successors": [],
+      "successors": [
+        {
+          "evidence": "extract-e-789.execution-lifecycle-contract.unittest",
+          "id": "control-plane-kit-core.tests.test_execution_values.ExecutionValueTests.test_event_scope_is_valid_by_construction",
+          "status": "passing"
+        }
+      ],
       "supersession": null
     },
     {
@@ -5607,7 +5817,13 @@
       "owner": "control-plane-kit-core",
       "owner_kind": "core",
       "reference": "tests.test_execution_values.ExecutionValueTests.test_every_event_kind_has_one_canonical_scope",
-      "successors": [],
+      "successors": [
+        {
+          "evidence": "extract-e-789.execution-lifecycle-contract.unittest",
+          "id": "control-plane-kit-core.tests.test_execution_values.ExecutionValueTests.test_every_event_kind_has_one_canonical_scope",
+          "status": "passing"
+        }
+      ],
       "supersession": null
     },
     {
@@ -5617,7 +5833,13 @@
       "owner": "control-plane-kit-core",
       "owner_kind": "core",
       "reference": "tests.test_execution_values.ExecutionValueTests.test_evidence_is_copied_bounded_and_rejects_secret_shaped_fields",
-      "successors": [],
+      "successors": [
+        {
+          "evidence": "extract-e-789.execution-lifecycle-contract.unittest",
+          "id": "control-plane-kit-core.tests.test_execution_values.ExecutionValueTests.test_evidence_is_copied_bounded_and_rejects_secret_shaped_fields",
+          "status": "passing"
+        }
+      ],
       "supersession": null
     },
     {
@@ -5627,7 +5849,13 @@
       "owner": "control-plane-kit-core",
       "owner_kind": "core",
       "reference": "tests.test_execution_values.ExecutionValueTests.test_open_string_lifecycle_values_are_rejected",
-      "successors": [],
+      "successors": [
+        {
+          "evidence": "extract-e-789.execution-lifecycle-contract.unittest",
+          "id": "control-plane-kit-core.tests.test_execution_values.ExecutionValueTests.test_open_string_lifecycle_values_are_rejected",
+          "status": "passing"
+        }
+      ],
       "supersession": null
     },
     {
@@ -5637,7 +5865,13 @@
       "owner": "control-plane-kit-core",
       "owner_kind": "core",
       "reference": "tests.test_execution_values.ExecutionValueTests.test_recovery_event_descriptor_is_strict_and_attributable",
-      "successors": [],
+      "successors": [
+        {
+          "evidence": "extract-e-789.execution-lifecycle-contract.unittest",
+          "id": "control-plane-kit-core.tests.test_execution_values.ExecutionValueTests.test_recovery_event_descriptor_is_strict_and_attributable",
+          "status": "passing"
+        }
+      ],
       "supersession": null
     },
     {
@@ -5647,7 +5881,13 @@
       "owner": "control-plane-kit-core",
       "owner_kind": "core",
       "reference": "tests.test_execution_values.ExecutionValueTests.test_recovery_evidence_cannot_ride_on_an_unrelated_event",
-      "successors": [],
+      "successors": [
+        {
+          "evidence": "extract-e-789.execution-lifecycle-contract.unittest",
+          "id": "control-plane-kit-core.tests.test_execution_values.ExecutionValueTests.test_recovery_evidence_cannot_ride_on_an_unrelated_event",
+          "status": "passing"
+        }
+      ],
       "supersession": null
     },
     {
@@ -5657,7 +5897,13 @@
       "owner": "control-plane-kit-core",
       "owner_kind": "core",
       "reference": "tests.test_execution_values.ExecutionValueTests.test_retry_identity_rejects_impossible_lineage",
-      "successors": [],
+      "successors": [
+        {
+          "evidence": "extract-e-789.execution-lifecycle-contract.unittest",
+          "id": "control-plane-kit-core.tests.test_execution_values.ExecutionValueTests.test_retry_identity_rejects_impossible_lineage",
+          "status": "passing"
+        }
+      ],
       "supersession": null
     },
     {
@@ -5667,7 +5913,13 @@
       "owner": "control-plane-kit-core",
       "owner_kind": "core",
       "reference": "tests.test_execution_values.ExecutionValueTests.test_stale_finished_at_descriptor_fails_closed",
-      "successors": [],
+      "successors": [
+        {
+          "evidence": "extract-e-789.execution-lifecycle-contract.unittest",
+          "id": "control-plane-kit-core.tests.test_execution_values.ExecutionValueTests.test_stale_finished_at_descriptor_fails_closed",
+          "status": "passing"
+        }
+      ],
       "supersession": null
     },
     {
@@ -5677,7 +5929,13 @@
       "owner": "control-plane-kit-core",
       "owner_kind": "core",
       "reference": "tests.test_execution_values.ExecutionValueTests.test_unknown_recovery_members_are_not_malformed_shapes",
-      "successors": [],
+      "successors": [
+        {
+          "evidence": "extract-e-789.execution-lifecycle-contract.unittest",
+          "id": "control-plane-kit-core.tests.test_execution_values.ExecutionValueTests.test_unknown_recovery_members_are_not_malformed_shapes",
+          "status": "passing"
+        }
+      ],
       "supersession": null
     },
     {
@@ -10505,7 +10763,13 @@
       "owner": "control-plane-kit-core",
       "owner_kind": "core",
       "reference": "tests.test_recovery_concurrency.RecoveryConcurrencyTests.test_expired_renew_takeover_and_abandon_have_one_postgres_winner",
-      "successors": [],
+      "successors": [
+        {
+          "evidence": "extract-e-789.execution-lifecycle-contract.unittest",
+          "id": "control-plane-kit-core.tests.test_recovery_concurrency.RecoveryConcurrencyTests.test_expired_renew_takeover_and_abandon_have_one_postgres_winner",
+          "status": "passing"
+        }
+      ],
       "supersession": null
     },
     {
@@ -10515,7 +10779,13 @@
       "owner": "control-plane-kit-core",
       "owner_kind": "core",
       "reference": "tests.test_recovery_concurrency.RecoveryConcurrencyTests.test_incompatible_recovery_decisions_have_one_postgres_winner",
-      "successors": [],
+      "successors": [
+        {
+          "evidence": "extract-e-789.execution-lifecycle-contract.unittest",
+          "id": "control-plane-kit-core.tests.test_recovery_concurrency.RecoveryConcurrencyTests.test_incompatible_recovery_decisions_have_one_postgres_winner",
+          "status": "passing"
+        }
+      ],
       "supersession": null
     },
     {
@@ -10525,7 +10795,13 @@
       "owner": "control-plane-kit-core",
       "owner_kind": "core",
       "reference": "tests.test_recovery_concurrency.RecoveryConcurrencyTests.test_late_action_failure_rolls_back_expired_claim_recovery",
-      "successors": [],
+      "successors": [
+        {
+          "evidence": "extract-e-789.execution-lifecycle-contract.unittest",
+          "id": "control-plane-kit-core.tests.test_recovery_concurrency.RecoveryConcurrencyTests.test_late_action_failure_rolls_back_expired_claim_recovery",
+          "status": "passing"
+        }
+      ],
       "supersession": null
     },
     {
@@ -10535,7 +10811,13 @@
       "owner": "control-plane-kit-core",
       "owner_kind": "core",
       "reference": "tests.test_recovery_decisions.RecoveryDecisionTests.test_changed_intent_requires_a_fresh_plan",
-      "successors": [],
+      "successors": [
+        {
+          "evidence": "extract-e-789.execution-lifecycle-contract.unittest",
+          "id": "control-plane-kit-core.tests.test_recovery_decisions.RecoveryDecisionTests.test_changed_intent_requires_a_fresh_plan",
+          "status": "passing"
+        }
+      ],
       "supersession": null
     },
     {
@@ -10545,7 +10827,13 @@
       "owner": "control-plane-kit-core",
       "owner_kind": "core",
       "reference": "tests.test_recovery_decisions.RecoveryDecisionTests.test_claim_recovery_variants_round_trip_as_closed_descriptors",
-      "successors": [],
+      "successors": [
+        {
+          "evidence": "extract-e-789.execution-lifecycle-contract.unittest",
+          "id": "control-plane-kit-core.tests.test_recovery_decisions.RecoveryDecisionTests.test_claim_recovery_variants_round_trip_as_closed_descriptors",
+          "status": "passing"
+        }
+      ],
       "supersession": null
     },
     {
@@ -10555,7 +10843,13 @@
       "owner": "control-plane-kit-core",
       "owner_kind": "core",
       "reference": "tests.test_recovery_decisions.RecoveryDecisionTests.test_decision_record_requires_attribution_and_reason",
-      "successors": [],
+      "successors": [
+        {
+          "evidence": "extract-e-789.execution-lifecycle-contract.unittest",
+          "id": "control-plane-kit-core.tests.test_recovery_decisions.RecoveryDecisionTests.test_decision_record_requires_attribution_and_reason",
+          "status": "passing"
+        }
+      ],
       "supersession": null
     },
     {
@@ -10565,7 +10859,13 @@
       "owner": "control-plane-kit-core",
       "owner_kind": "core",
       "reference": "tests.test_recovery_decisions.RecoveryDecisionTests.test_each_closed_decision_has_an_explicit_authority",
-      "successors": [],
+      "successors": [
+        {
+          "evidence": "extract-e-789.execution-lifecycle-contract.unittest",
+          "id": "control-plane-kit-core.tests.test_recovery_decisions.RecoveryDecisionTests.test_each_closed_decision_has_an_explicit_authority",
+          "status": "passing"
+        }
+      ],
       "supersession": null
     },
     {
@@ -10575,7 +10875,13 @@
       "owner": "control-plane-kit-core",
       "owner_kind": "core",
       "reference": "tests.test_recovery_decisions.RecoveryDecisionTests.test_expired_ownership_requires_one_closed_claim_recovery",
-      "successors": [],
+      "successors": [
+        {
+          "evidence": "extract-e-789.execution-lifecycle-contract.unittest",
+          "id": "control-plane-kit-core.tests.test_recovery_decisions.RecoveryDecisionTests.test_expired_ownership_requires_one_closed_claim_recovery",
+          "status": "passing"
+        }
+      ],
       "supersession": null
     },
     {
@@ -10585,7 +10891,13 @@
       "owner": "control-plane-kit-core",
       "owner_kind": "core",
       "reference": "tests.test_recovery_decisions.RecoveryDecisionTests.test_failed_attempt_choices_are_closed_and_evidence_guarded",
-      "successors": [],
+      "successors": [
+        {
+          "evidence": "extract-e-789.execution-lifecycle-contract.unittest",
+          "id": "control-plane-kit-core.tests.test_recovery_decisions.RecoveryDecisionTests.test_failed_attempt_choices_are_closed_and_evidence_guarded",
+          "status": "passing"
+        }
+      ],
       "supersession": null
     },
     {
@@ -10595,7 +10907,13 @@
       "owner": "control-plane-kit-core",
       "owner_kind": "core",
       "reference": "tests.test_recovery_decisions.RecoveryDecisionTests.test_open_strings_do_not_enter_recovery_scopes_or_context",
-      "successors": [],
+      "successors": [
+        {
+          "evidence": "extract-e-789.execution-lifecycle-contract.unittest",
+          "id": "control-plane-kit-core.tests.test_recovery_decisions.RecoveryDecisionTests.test_open_strings_do_not_enter_recovery_scopes_or_context",
+          "status": "passing"
+        }
+      ],
       "supersession": null
     },
     {
@@ -10605,7 +10923,13 @@
       "owner": "control-plane-kit-core",
       "owner_kind": "core",
       "reference": "tests.test_recovery_decisions.RecoveryDecisionTests.test_uncertainty_must_be_resolved_before_other_recovery",
-      "successors": [],
+      "successors": [
+        {
+          "evidence": "extract-e-789.execution-lifecycle-contract.unittest",
+          "id": "control-plane-kit-core.tests.test_recovery_decisions.RecoveryDecisionTests.test_uncertainty_must_be_resolved_before_other_recovery",
+          "status": "passing"
+        }
+      ],
       "supersession": null
     },
     {
@@ -10859,7 +11183,13 @@
       "owner": "control-plane-kit-core",
       "owner_kind": "core",
       "reference": "tests.test_run_lifecycle.RunLifecycleTests.test_acceptance_and_remain_paused_preserve_distinct_projection_meaning",
-      "successors": [],
+      "successors": [
+        {
+          "evidence": "extract-e-789.execution-lifecycle-contract.unittest",
+          "id": "control-plane-kit-core.tests.test_run_lifecycle.RunLifecycleTests.test_acceptance_and_remain_paused_preserve_distinct_projection_meaning",
+          "status": "passing"
+        }
+      ],
       "supersession": null
     },
     {
@@ -10869,7 +11199,13 @@
       "owner": "control-plane-kit-core",
       "owner_kind": "core",
       "reference": "tests.test_run_lifecycle.RunLifecycleTests.test_cancel_clears_request_claim_and_still_replays_exact_command",
-      "successors": [],
+      "successors": [
+        {
+          "evidence": "extract-e-789.execution-lifecycle-contract.unittest",
+          "id": "control-plane-kit-core.tests.test_run_lifecycle.RunLifecycleTests.test_cancel_clears_request_claim_and_still_replays_exact_command",
+          "status": "passing"
+        }
+      ],
       "supersession": null
     },
     {
@@ -10879,7 +11215,13 @@
       "owner": "control-plane-kit-core",
       "owner_kind": "core",
       "reference": "tests.test_run_lifecycle.RunLifecycleTests.test_claim_opens_one_run_and_event_atomically_without_effect_dependency",
-      "successors": [],
+      "successors": [
+        {
+          "evidence": "extract-e-789.execution-lifecycle-contract.unittest",
+          "id": "control-plane-kit-core.tests.test_run_lifecycle.RunLifecycleTests.test_claim_opens_one_run_and_event_atomically_without_effect_dependency",
+          "status": "passing"
+        }
+      ],
       "supersession": null
     },
     {
@@ -10889,7 +11231,13 @@
       "owner": "control-plane-kit-core",
       "owner_kind": "core",
       "reference": "tests.test_run_lifecycle.RunLifecycleTests.test_claim_scope_idempotency_conflict_and_competing_workers_fail_closed",
-      "successors": [],
+      "successors": [
+        {
+          "evidence": "extract-e-789.execution-lifecycle-contract.unittest",
+          "id": "control-plane-kit-core.tests.test_run_lifecycle.RunLifecycleTests.test_claim_scope_idempotency_conflict_and_competing_workers_fail_closed",
+          "status": "passing"
+        }
+      ],
       "supersession": null
     },
     {
@@ -10899,7 +11247,13 @@
       "owner": "control-plane-kit-core",
       "owner_kind": "core",
       "reference": "tests.test_run_lifecycle.RunLifecycleTests.test_committed_recovery_command_drives_canonical_operator_projection",
-      "successors": [],
+      "successors": [
+        {
+          "evidence": "extract-e-789.execution-lifecycle-contract.unittest",
+          "id": "control-plane-kit-core.tests.test_run_lifecycle.RunLifecycleTests.test_committed_recovery_command_drives_canonical_operator_projection",
+          "status": "passing"
+        }
+      ],
       "supersession": null
     },
     {
@@ -10909,7 +11263,13 @@
       "owner": "control-plane-kit-core",
       "owner_kind": "core",
       "reference": "tests.test_run_lifecycle.RunLifecycleTests.test_compensation_failure_records_partial_failure",
-      "successors": [],
+      "successors": [
+        {
+          "evidence": "extract-e-789.execution-lifecycle-contract.unittest",
+          "id": "control-plane-kit-core.tests.test_run_lifecycle.RunLifecycleTests.test_compensation_failure_records_partial_failure",
+          "status": "passing"
+        }
+      ],
       "supersession": null
     },
     {
@@ -10919,7 +11279,13 @@
       "owner": "control-plane-kit-core",
       "owner_kind": "core",
       "reference": "tests.test_run_lifecycle.RunLifecycleTests.test_compensation_uses_events_and_settles_without_erasing_failure",
-      "successors": [],
+      "successors": [
+        {
+          "evidence": "extract-e-789.execution-lifecycle-contract.unittest",
+          "id": "control-plane-kit-core.tests.test_run_lifecycle.RunLifecycleTests.test_compensation_uses_events_and_settles_without_erasing_failure",
+          "status": "passing"
+        }
+      ],
       "supersession": null
     },
     {
@@ -10929,7 +11295,13 @@
       "owner": "control-plane-kit-core",
       "owner_kind": "core",
       "reference": "tests.test_run_lifecycle.RunLifecycleTests.test_concurrent_claims_have_exactly_one_worker_winner",
-      "successors": [],
+      "successors": [
+        {
+          "evidence": "extract-e-789.execution-lifecycle-contract.unittest",
+          "id": "control-plane-kit-core.tests.test_run_lifecycle.RunLifecycleTests.test_concurrent_claims_have_exactly_one_worker_winner",
+          "status": "passing"
+        }
+      ],
       "supersession": null
     },
     {
@@ -10939,7 +11311,13 @@
       "owner": "control-plane-kit-core",
       "owner_kind": "core",
       "reference": "tests.test_run_lifecycle.RunLifecycleTests.test_expired_claim_abandonment_is_terminal_and_event_producing",
-      "successors": [],
+      "successors": [
+        {
+          "evidence": "extract-e-789.execution-lifecycle-contract.unittest",
+          "id": "control-plane-kit-core.tests.test_run_lifecycle.RunLifecycleTests.test_expired_claim_abandonment_is_terminal_and_event_producing",
+          "status": "passing"
+        }
+      ],
       "supersession": null
     },
     {
@@ -10949,7 +11327,13 @@
       "owner": "control-plane-kit-core",
       "owner_kind": "core",
       "reference": "tests.test_run_lifecycle.RunLifecycleTests.test_expired_claim_renewal_preserves_prior_ownership_evidence",
-      "successors": [],
+      "successors": [
+        {
+          "evidence": "extract-e-789.execution-lifecycle-contract.unittest",
+          "id": "control-plane-kit-core.tests.test_run_lifecycle.RunLifecycleTests.test_expired_claim_renewal_preserves_prior_ownership_evidence",
+          "status": "passing"
+        }
+      ],
       "supersession": null
     },
     {
@@ -10959,7 +11343,13 @@
       "owner": "control-plane-kit-core",
       "owner_kind": "core",
       "reference": "tests.test_run_lifecycle.RunLifecycleTests.test_expired_claim_takeover_changes_owner_with_immutable_evidence",
-      "successors": [],
+      "successors": [
+        {
+          "evidence": "extract-e-789.execution-lifecycle-contract.unittest",
+          "id": "control-plane-kit-core.tests.test_run_lifecycle.RunLifecycleTests.test_expired_claim_takeover_changes_owner_with_immutable_evidence",
+          "status": "passing"
+        }
+      ],
       "supersession": null
     },
     {
@@ -10969,7 +11359,13 @@
       "owner": "control-plane-kit-core",
       "owner_kind": "core",
       "reference": "tests.test_run_lifecycle.RunLifecycleTests.test_failure_compensation_and_retry_preserve_truthful_lineage",
-      "successors": [],
+      "successors": [
+        {
+          "evidence": "extract-e-789.execution-lifecycle-contract.unittest",
+          "id": "control-plane-kit-core.tests.test_run_lifecycle.RunLifecycleTests.test_failure_compensation_and_retry_preserve_truthful_lineage",
+          "status": "passing"
+        }
+      ],
       "supersession": null
     },
     {
@@ -10979,7 +11375,13 @@
       "owner": "control-plane-kit-core",
       "owner_kind": "core",
       "reference": "tests.test_run_lifecycle.RunLifecycleTests.test_late_operation_evidence_failure_rolls_back_claim_run_and_event",
-      "successors": [],
+      "successors": [
+        {
+          "evidence": "extract-e-789.execution-lifecycle-contract.unittest",
+          "id": "control-plane-kit-core.tests.test_run_lifecycle.RunLifecycleTests.test_late_operation_evidence_failure_rolls_back_claim_run_and_event",
+          "status": "passing"
+        }
+      ],
       "supersession": null
     },
     {
@@ -10989,7 +11391,13 @@
       "owner": "control-plane-kit-core",
       "owner_kind": "core",
       "reference": "tests.test_run_lifecycle.RunLifecycleTests.test_recovery_authority_and_late_action_failure_fail_closed",
-      "successors": [],
+      "successors": [
+        {
+          "evidence": "extract-e-789.execution-lifecycle-contract.unittest",
+          "id": "control-plane-kit-core.tests.test_run_lifecycle.RunLifecycleTests.test_recovery_authority_and_late_action_failure_fail_closed",
+          "status": "passing"
+        }
+      ],
       "supersession": null
     },
     {
@@ -10999,7 +11407,13 @@
       "owner": "control-plane-kit-core",
       "owner_kind": "core",
       "reference": "tests.test_run_lifecycle.RunLifecycleTests.test_recovery_journal_version_rejects_a_stale_competing_choice",
-      "successors": [],
+      "successors": [
+        {
+          "evidence": "extract-e-789.execution-lifecycle-contract.unittest",
+          "id": "control-plane-kit-core.tests.test_run_lifecycle.RunLifecycleTests.test_recovery_journal_version_rejects_a_stale_competing_choice",
+          "status": "passing"
+        }
+      ],
       "supersession": null
     },
     {
@@ -11009,7 +11423,13 @@
       "owner": "control-plane-kit-core",
       "owner_kind": "core",
       "reference": "tests.test_run_lifecycle.RunLifecycleTests.test_recovery_rechecks_current_approval_without_journal_writes",
-      "successors": [],
+      "successors": [
+        {
+          "evidence": "extract-e-789.execution-lifecycle-contract.unittest",
+          "id": "control-plane-kit-core.tests.test_run_lifecycle.RunLifecycleTests.test_recovery_rechecks_current_approval_without_journal_writes",
+          "status": "passing"
+        }
+      ],
       "supersession": null
     },
     {
@@ -11019,7 +11439,13 @@
       "owner": "control-plane-kit-core",
       "owner_kind": "core",
       "reference": "tests.test_run_lifecycle.RunLifecycleTests.test_recovery_rejects_foreign_worker_without_journal_writes",
-      "successors": [],
+      "successors": [
+        {
+          "evidence": "extract-e-789.execution-lifecycle-contract.unittest",
+          "id": "control-plane-kit-core.tests.test_run_lifecycle.RunLifecycleTests.test_recovery_rejects_foreign_worker_without_journal_writes",
+          "status": "passing"
+        }
+      ],
       "supersession": null
     },
     {
@@ -11029,7 +11455,13 @@
       "owner": "control-plane-kit-core",
       "owner_kind": "core",
       "reference": "tests.test_run_lifecycle.RunLifecycleTests.test_start_pause_resume_complete_are_atomic_and_visible_to_reads",
-      "successors": [],
+      "successors": [
+        {
+          "evidence": "extract-e-789.execution-lifecycle-contract.unittest",
+          "id": "control-plane-kit-core.tests.test_run_lifecycle.RunLifecycleTests.test_start_pause_resume_complete_are_atomic_and_visible_to_reads",
+          "status": "passing"
+        }
+      ],
       "supersession": null
     },
     {
@@ -11039,7 +11471,13 @@
       "owner": "control-plane-kit-core",
       "owner_kind": "core",
       "reference": "tests.test_run_lifecycle.RunLifecycleTests.test_transition_algebra_exhaustively_accepts_only_declared_domains",
-      "successors": [],
+      "successors": [
+        {
+          "evidence": "extract-e-789.execution-lifecycle-contract.unittest",
+          "id": "control-plane-kit-core.tests.test_run_lifecycle.RunLifecycleTests.test_transition_algebra_exhaustively_accepts_only_declared_domains",
+          "status": "passing"
+        }
+      ],
       "supersession": null
     },
     {
@@ -11049,7 +11487,13 @@
       "owner": "control-plane-kit-core",
       "owner_kind": "core",
       "reference": "tests.test_run_lifecycle.RunLifecycleTests.test_uncertainty_resolution_records_choice_and_consequence_atomically",
-      "successors": [],
+      "successors": [
+        {
+          "evidence": "extract-e-789.execution-lifecycle-contract.unittest",
+          "id": "control-plane-kit-core.tests.test_run_lifecycle.RunLifecycleTests.test_uncertainty_resolution_records_choice_and_consequence_atomically",
+          "status": "passing"
+        }
+      ],
       "supersession": null
     },
     {
@@ -11059,7 +11503,13 @@
       "owner": "control-plane-kit-core",
       "owner_kind": "core",
       "reference": "tests.test_run_lifecycle.RunLifecycleTests.test_worker_ownership_and_transition_rollback_fail_closed",
-      "successors": [],
+      "successors": [
+        {
+          "evidence": "extract-e-789.execution-lifecycle-contract.unittest",
+          "id": "control-plane-kit-core.tests.test_run_lifecycle.RunLifecycleTests.test_worker_ownership_and_transition_rollback_fail_closed",
+          "status": "passing"
+        }
+      ],
       "supersession": null
     },
     {
