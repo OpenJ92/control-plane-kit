@@ -2584,3 +2584,131 @@ focused #789 successor tests: 6 tests passed
 focused #789 mapping guard: 1 test passed
 validate-parity.sh foundation: valid=true, findings=0, incomplete_required=426
 ```
+
+## #790 Execution Coordinator And Verification Command Mapping
+
+#790 maps the execution coordinator and verification command slice from #740.
+The issue body and live inventory agreed on the scope:
+
+```text
+test_execution_coordinator:          28 laws
+test_verification_command_service:    7 laws
+
+total: 2 families / 35 laws
+```
+
+Successor evidence:
+
+```text
+artifacts/extraction/successor-proofs/extract-e-790-execution-coordinator-contract.json
+extract-e-790.execution-coordinator-contract.unittest
+sha256:6d468eefb5e530fb56224c770961255c2271886f7efeaeba358a67a42e54a4a5
+```
+
+The key implementation addition is a pure coordinator and verification contract
+set. It names coordinator commands, verification commands, effect boundary
+phases, result kinds, material policies, and uncertainty policies without
+implementing the coordinator loop, adapter registry, store journal, worker
+claim, Docker/HTTP/probe dispatch, or crash-window recovery behavior:
+
+```python
+@dataclass(frozen=True)
+class ExecutionCoordinatorContractSet:
+    coordinator_commands: tuple[ExecutionCoordinatorCommandContract, ...]
+    verification_commands: tuple[VerificationCommandContract, ...]
+    effect_boundaries: tuple[EffectBoundaryContract, ...]
+    effect_result_kinds: tuple[EffectResultKind, ...]
+```
+
+The algebraic shape is:
+
+```text
+ExecutionCoordinatorContractSet
+  = ExecutionCoordinatorCommandContract*
+  x VerificationCommandContract*
+  x EffectBoundaryContract*
+  x EffectResultKind*
+
+ExecutionCoordinatorCommandContract
+  = command identity
+  x execute stage
+  x execution service role
+  x request/response schema names
+  x current approval + idempotency policy
+  x pinned material policy
+  x uncertainty policy
+  x after-commit effect policy
+  x worker and pinned-plan preconditions
+  x intent/result durability obligations
+  x operations-owned enforcement marker
+```
+
+The most important law is still the external-effect law:
+
+```text
+short transaction records durable intent
+  -> commit
+    -> external effect
+      -> short transaction records result, observation, and settlement evidence
+```
+
+Core expresses that law as contract data:
+
+```python
+EffectBoundaryContract(
+    boundary=EffectBoundaryKind.DISPATCH,
+    external_effect_policy=ExternalEffectPolicy.AFTER_COMMIT,
+    durable_before_effect=True,
+    durable_after_effect=False,
+    may_leave_uncertainty=True,
+    enforcement_owner=ContractEnforcementOwner.OPERATIONS,
+)
+```
+
+Verification commands are similarly pure. They consume canonical graph/probe
+descriptor material and name the durable result vocabulary, but probe execution,
+observation persistence, stale-row marking, route exposure, and projection
+rendering stay outside core:
+
+```python
+VerificationCommandContract(
+    material_policy=EffectMaterialPolicy.CANONICAL_GRAPH_PROBE,
+    result_kinds=tuple(VerificationResultKind),
+    requires_graph_ownership=True,
+    stale_on_graph_change=True,
+    redacted_projection=True,
+    unsupported_is_durable=True,
+    enforcement_owner=ContractEnforcementOwner.OPERATIONS,
+)
+```
+
+This preserves the boundary:
+
+```text
+core
+  owns pure coordinator / verification command names, descriptor shapes,
+  result vocabularies, effect boundary names, material policy names,
+  uncertainty policy names, and handoff obligations.
+
+operations / cpk-server
+  owns coordinator execution, verification adapter execution, Docker, HTTP,
+  filesystem, health, runtime effects, Postgres stores, UnitOfWork, durable
+  journals, worker claims, observations, authorization, and crash-window
+  recovery.
+```
+
+The test-integrity red evidence was meaningful:
+
+```text
+before mapping: 2 #790 subtests failed
+test_execution_coordinator still had 28 unmapped laws
+test_verification_command_service still had 7 unmapped laws
+```
+
+After mapping:
+
+```text
+focused #790 successor tests: 6 tests passed
+focused #790 mapping guard: 1 test passed
+validate-parity.sh foundation: valid=true, findings=0, incomplete_required=391
+```
