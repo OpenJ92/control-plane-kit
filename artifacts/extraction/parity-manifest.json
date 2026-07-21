@@ -10617,7 +10617,13 @@
       "owner": "control-plane-kit-core",
       "owner_kind": "core",
       "reference": "tests.test_scheduling.SchedulingTests.test_blocking_propagates_transitively",
-      "successors": [],
+      "successors": [
+        {
+          "evidence": "extract-e-775.pure-scheduling-laws.unittest",
+          "id": "control-plane-kit-core.tests.test_scheduling.SchedulingSuccessorTests.test_blocking_propagates_transitively",
+          "status": "passing"
+        }
+      ],
       "supersession": null
     },
     {
@@ -10627,7 +10633,13 @@
       "owner": "control-plane-kit-core",
       "owner_kind": "core",
       "reference": "tests.test_scheduling.SchedulingTests.test_cancellation_blocks_pending_but_preserves_running_evidence",
-      "successors": [],
+      "successors": [
+        {
+          "evidence": "extract-e-775.pure-scheduling-laws.unittest",
+          "id": "control-plane-kit-core.tests.test_scheduling.SchedulingSuccessorTests.test_cancellation_blocks_pending_but_preserves_running_evidence",
+          "status": "passing"
+        }
+      ],
       "supersession": null
     },
     {
@@ -10637,7 +10649,13 @@
       "owner": "control-plane-kit-core",
       "owner_kind": "core",
       "reference": "tests.test_scheduling.SchedulingTests.test_compensation_waits_for_in_flight_forward_and_compensation",
-      "successors": [],
+      "successors": [
+        {
+          "evidence": "extract-e-775.pure-scheduling-laws.unittest",
+          "id": "control-plane-kit-core.tests.test_scheduling.SchedulingSuccessorTests.test_compensation_waits_for_in_flight_forward_and_compensation",
+          "status": "passing"
+        }
+      ],
       "supersession": null
     },
     {
@@ -10647,7 +10665,13 @@
       "owner": "control-plane-kit-core",
       "owner_kind": "core",
       "reference": "tests.test_scheduling.SchedulingTests.test_diamond_exposes_ready_fan_out_without_layer_barriers",
-      "successors": [],
+      "successors": [
+        {
+          "evidence": "extract-e-775.pure-scheduling-laws.unittest",
+          "id": "control-plane-kit-core.tests.test_scheduling.SchedulingSuccessorTests.test_diamond_exposes_ready_fan_out_without_layer_barriers",
+          "status": "passing"
+        }
+      ],
       "supersession": null
     },
     {
@@ -10657,7 +10681,13 @@
       "owner": "control-plane-kit-core",
       "owner_kind": "core",
       "reference": "tests.test_scheduling.SchedulingTests.test_explicit_compensation_admission_drives_reverse_schedule",
-      "successors": [],
+      "successors": [
+        {
+          "evidence": "extract-e-775.pure-scheduling-laws.unittest",
+          "id": "control-plane-kit-core.tests.test_scheduling.SchedulingSuccessorTests.test_explicit_compensation_admission_drives_reverse_schedule",
+          "status": "passing"
+        }
+      ],
       "supersession": null
     },
     {
@@ -10667,7 +10697,13 @@
       "owner": "control-plane-kit-core",
       "owner_kind": "core",
       "reference": "tests.test_scheduling.SchedulingTests.test_failed_branch_blocks_join_and_unstarted_forward_work",
-      "successors": [],
+      "successors": [
+        {
+          "evidence": "extract-e-775.pure-scheduling-laws.unittest",
+          "id": "control-plane-kit-core.tests.test_scheduling.SchedulingSuccessorTests.test_failed_branch_blocks_join_and_unstarted_forward_work",
+          "status": "passing"
+        }
+      ],
       "supersession": null
     },
     {
@@ -10677,7 +10713,13 @@
       "owner": "control-plane-kit-core",
       "owner_kind": "core",
       "reference": "tests.test_scheduling.SchedulingTests.test_incoherent_completion_and_failure_evidence_fail_closed",
-      "successors": [],
+      "successors": [
+        {
+          "evidence": "extract-e-775.pure-scheduling-laws.unittest",
+          "id": "control-plane-kit-core.tests.test_scheduling.SchedulingSuccessorTests.test_incoherent_completion_and_failure_evidence_fail_closed",
+          "status": "passing"
+        }
+      ],
       "supersession": null
     },
     {
@@ -10687,7 +10729,13 @@
       "owner": "control-plane-kit-core",
       "owner_kind": "core",
       "reference": "tests.test_scheduling.SchedulingTests.test_missing_foreign_and_duplicate_evidence_fail_closed",
-      "successors": [],
+      "successors": [
+        {
+          "evidence": "extract-e-775.pure-scheduling-laws.unittest",
+          "id": "control-plane-kit-core.tests.test_scheduling.SchedulingSuccessorTests.test_missing_foreign_and_duplicate_evidence_fail_closed",
+          "status": "passing"
+        }
+      ],
       "supersession": null
     },
     {
@@ -10697,7 +10745,13 @@
       "owner": "control-plane-kit-core",
       "owner_kind": "core",
       "reference": "tests.test_scheduling.SchedulingTests.test_same_plan_and_evidence_reconstruct_the_same_schedule",
-      "successors": [],
+      "successors": [
+        {
+          "evidence": "extract-e-775.pure-scheduling-laws.unittest",
+          "id": "control-plane-kit-core.tests.test_scheduling.SchedulingSuccessorTests.test_same_plan_and_evidence_reconstruct_the_same_schedule",
+          "status": "passing"
+        }
+      ],
       "supersession": null
     },
     {
@@ -10707,7 +10761,13 @@
       "owner": "control-plane-kit-core",
       "owner_kind": "core",
       "reference": "tests.test_scheduling_scenarios.SchedulingScenarioTests.test_every_planning_scenario_has_a_deterministic_initial_schedule",
-      "successors": [],
+      "successors": [
+        {
+          "evidence": "extract-e-775.pure-scheduling-laws.unittest",
+          "id": "control-plane-kit-core.tests.test_scheduling.SchedulingScenarioSuccessorTests.test_every_planning_scenario_has_a_deterministic_initial_schedule",
+          "status": "passing"
+        }
+      ],
       "supersession": null
     },
     {
