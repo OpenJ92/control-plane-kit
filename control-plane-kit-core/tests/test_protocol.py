@@ -43,6 +43,7 @@ class ConnectionProtocolTests(unittest.TestCase):
                 ApplicationProtocol.AMQP: frozenset((Transport.TCP,)),
                 ApplicationProtocol.KAFKA: frozenset((Transport.TCP,)),
                 ApplicationProtocol.S3: frozenset((Transport.TCP,)),
+                ApplicationProtocol.MCP_STREAMABLE_HTTP: frozenset((Transport.TCP,)),
             },
         )
 
@@ -68,6 +69,7 @@ class ConnectionProtocolTests(unittest.TestCase):
             Protocol.AMQP,
             Protocol.KAFKA,
             Protocol.S3,
+            Protocol.MCP_STREAMABLE_HTTP,
         )
 
         for protocol in values:

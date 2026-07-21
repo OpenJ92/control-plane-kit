@@ -54,6 +54,22 @@ stores never commit
 external effects happen only after commit
 ```
 
+MCP Streamable HTTP is represented as a typed contract, not as a hosted server:
+
+```text
+Protocol.MCP_STREAMABLE_HTTP
+  = tcp x mcp-streamable-http
+
+McpStreamableHttpContract
+  = endpoint path
+  x POST/GET method contract
+  x required media/header policy
+  x authentication/origin-validation requirements
+```
+
+The future `cpk-server` process implements this contract. Core only describes
+and validates it.
+
 ## Extraction Law
 
 Every migrated behavior must be justified by a frozen law card from the

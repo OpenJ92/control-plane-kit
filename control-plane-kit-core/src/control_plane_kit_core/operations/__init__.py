@@ -6,6 +6,13 @@ from control_plane_kit_core.operations.services import (
     DeploymentProgramBoundary,
     InvalidDeploymentProgramBoundary,
 )
+from control_plane_kit_core.operations.mcp import (
+    InvalidMcpStreamableHttpContract,
+    McpContentType,
+    McpHttpMethod,
+    McpStandardHeader,
+    McpStreamableHttpContract,
+)
 from control_plane_kit_core.operations.transactions import (
     ExternalEffectPolicy,
     InvalidUnitOfWorkBoundary,
@@ -19,8 +26,13 @@ __all__ = [
     "ControlPlaneServiceRole",
     "DeploymentProgramBoundary",
     "ExternalEffectPolicy",
+    "InvalidMcpStreamableHttpContract",
     "InvalidDeploymentProgramBoundary",
     "InvalidUnitOfWorkBoundary",
+    "McpContentType",
+    "McpHttpMethod",
+    "McpStandardHeader",
+    "McpStreamableHttpContract",
     "ServiceTransactionBoundary",
     "StoreParticipation",
     "UnitOfWorkBoundary",
