@@ -1,7 +1,7 @@
 {
   "counts": {
-    "entries": 632,
-    "families": 83
+    "entries": 626,
+    "families": 82
   },
   "families": [
     {
@@ -3908,54 +3908,6 @@
         }
       ],
       "family": "test_host_publication"
-    },
-    {
-      "count": 6,
-      "entries": [
-        {
-          "kind": "test",
-          "law": "behavior.approval-policy-derives-scope-and-risk-from-plan-data",
-          "owner": "control-plane-kit-core",
-          "owner_kind": "core",
-          "reference": "tests.test_policies.PolicyTests.test_approval_policy_derives_scope_and_risk_from_plan_data"
-        },
-        {
-          "kind": "test",
-          "law": "behavior.approval-policy-requires-stronger-scope-for-destructive-plans",
-          "owner": "control-plane-kit-core",
-          "owner_kind": "core",
-          "reference": "tests.test_policies.PolicyTests.test_approval_policy_requires_stronger_scope_for_destructive_plans"
-        },
-        {
-          "kind": "test",
-          "law": "behavior.destructive-activity-policy-classifies-consequential-actions",
-          "owner": "control-plane-kit-core",
-          "owner_kind": "core",
-          "reference": "tests.test_policies.PolicyTests.test_destructive_activity_policy_classifies_consequential_actions"
-        },
-        {
-          "kind": "test",
-          "law": "behavior.hub-access-policy-returns-decisions-not-effects",
-          "owner": "control-plane-kit-core",
-          "owner_kind": "core",
-          "reference": "tests.test_policies.PolicyTests.test_hub_access_policy_returns_decisions_not_effects"
-        },
-        {
-          "kind": "test",
-          "law": "behavior.instance-access-policy-separates-read-and-edit-scopes",
-          "owner": "control-plane-kit-core",
-          "owner_kind": "core",
-          "reference": "tests.test_policies.PolicyTests.test_instance_access_policy_separates_read_and_edit_scopes"
-        },
-        {
-          "kind": "test",
-          "law": "behavior.lifecycle-retention-represents-destructive-delete",
-          "owner": "control-plane-kit-core",
-          "owner_kind": "core",
-          "reference": "tests.test_policies.PolicyTests.test_lifecycle_retention_represents_destructive_delete"
-        }
-      ],
-      "family": "test_policies"
     },
     {
       "count": 6,

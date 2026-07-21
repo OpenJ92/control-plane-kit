@@ -1,12 +1,12 @@
 {
   "counts": {
-    "completed_required_core": 148,
+    "completed_required_core": 154,
     "deferred": 227,
     "entries": 1107,
     "failed_core_successors": 0,
-    "findings": 632,
-    "incomplete_required_core": 632,
-    "passing_core_successors": 148,
+    "findings": 626,
+    "incomplete_required_core": 626,
+    "passing_core_successors": 154,
     "required_core": 780,
     "required_non_core": 100,
     "reviewed_core_supersessions": 0
@@ -4403,42 +4403,6 @@
       "code": "required_core_without_completion",
       "detail": "passing successor or reviewed supersession is required",
       "kind": "test",
-      "reference": "tests.test_policies.PolicyTests.test_approval_policy_derives_scope_and_risk_from_plan_data"
-    },
-    {
-      "code": "required_core_without_completion",
-      "detail": "passing successor or reviewed supersession is required",
-      "kind": "test",
-      "reference": "tests.test_policies.PolicyTests.test_approval_policy_requires_stronger_scope_for_destructive_plans"
-    },
-    {
-      "code": "required_core_without_completion",
-      "detail": "passing successor or reviewed supersession is required",
-      "kind": "test",
-      "reference": "tests.test_policies.PolicyTests.test_destructive_activity_policy_classifies_consequential_actions"
-    },
-    {
-      "code": "required_core_without_completion",
-      "detail": "passing successor or reviewed supersession is required",
-      "kind": "test",
-      "reference": "tests.test_policies.PolicyTests.test_hub_access_policy_returns_decisions_not_effects"
-    },
-    {
-      "code": "required_core_without_completion",
-      "detail": "passing successor or reviewed supersession is required",
-      "kind": "test",
-      "reference": "tests.test_policies.PolicyTests.test_instance_access_policy_separates_read_and_edit_scopes"
-    },
-    {
-      "code": "required_core_without_completion",
-      "detail": "passing successor or reviewed supersession is required",
-      "kind": "test",
-      "reference": "tests.test_policies.PolicyTests.test_lifecycle_retention_represents_destructive_delete"
-    },
-    {
-      "code": "required_core_without_completion",
-      "detail": "passing successor or reviewed supersession is required",
-      "kind": "test",
       "reference": "tests.test_postgres_scenario_runner.PostgresScenarioRunnerTests.test_complete_acceptance_corpus_uses_canonical_pipeline"
     },
     {
@@ -8658,48 +8622,6 @@
       "owner": "control-plane-kit-core",
       "owner_kind": "core",
       "reference": "tests.test_planning_scenarios.PlanningScenarioWorkflowTests.test_every_scenario_runs_through_the_postgres_planning_workflow"
-    },
-    {
-      "kind": "test",
-      "law": "behavior.approval-policy-derives-scope-and-risk-from-plan-data",
-      "owner": "control-plane-kit-core",
-      "owner_kind": "core",
-      "reference": "tests.test_policies.PolicyTests.test_approval_policy_derives_scope_and_risk_from_plan_data"
-    },
-    {
-      "kind": "test",
-      "law": "behavior.approval-policy-requires-stronger-scope-for-destructive-plans",
-      "owner": "control-plane-kit-core",
-      "owner_kind": "core",
-      "reference": "tests.test_policies.PolicyTests.test_approval_policy_requires_stronger_scope_for_destructive_plans"
-    },
-    {
-      "kind": "test",
-      "law": "behavior.destructive-activity-policy-classifies-consequential-actions",
-      "owner": "control-plane-kit-core",
-      "owner_kind": "core",
-      "reference": "tests.test_policies.PolicyTests.test_destructive_activity_policy_classifies_consequential_actions"
-    },
-    {
-      "kind": "test",
-      "law": "behavior.hub-access-policy-returns-decisions-not-effects",
-      "owner": "control-plane-kit-core",
-      "owner_kind": "core",
-      "reference": "tests.test_policies.PolicyTests.test_hub_access_policy_returns_decisions_not_effects"
-    },
-    {
-      "kind": "test",
-      "law": "behavior.instance-access-policy-separates-read-and-edit-scopes",
-      "owner": "control-plane-kit-core",
-      "owner_kind": "core",
-      "reference": "tests.test_policies.PolicyTests.test_instance_access_policy_separates_read_and_edit_scopes"
-    },
-    {
-      "kind": "test",
-      "law": "behavior.lifecycle-retention-represents-destructive-delete",
-      "owner": "control-plane-kit-core",
-      "owner_kind": "core",
-      "reference": "tests.test_policies.PolicyTests.test_lifecycle_retention_represents_destructive_delete"
     },
     {
       "kind": "test",

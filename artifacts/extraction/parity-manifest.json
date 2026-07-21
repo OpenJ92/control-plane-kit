@@ -8803,7 +8803,13 @@
       "owner": "control-plane-kit-core",
       "owner_kind": "core",
       "reference": "tests.test_policies.PolicyTests.test_approval_policy_derives_scope_and_risk_from_plan_data",
-      "successors": [],
+      "successors": [
+        {
+          "evidence": "extract-e-763.policy-decisions.unittest",
+          "id": "control-plane-kit-core.tests.test_policies.PolicyDecisionTests.test_approval_policy_derives_scope_and_risk_from_plan_data",
+          "status": "passing"
+        }
+      ],
       "supersession": null
     },
     {
@@ -8813,7 +8819,13 @@
       "owner": "control-plane-kit-core",
       "owner_kind": "core",
       "reference": "tests.test_policies.PolicyTests.test_approval_policy_requires_stronger_scope_for_destructive_plans",
-      "successors": [],
+      "successors": [
+        {
+          "evidence": "extract-e-763.policy-decisions.unittest",
+          "id": "control-plane-kit-core.tests.test_policies.PolicyDecisionTests.test_approval_policy_requires_stronger_scope_for_destructive_plans",
+          "status": "passing"
+        }
+      ],
       "supersession": null
     },
     {
@@ -8823,7 +8835,13 @@
       "owner": "control-plane-kit-core",
       "owner_kind": "core",
       "reference": "tests.test_policies.PolicyTests.test_destructive_activity_policy_classifies_consequential_actions",
-      "successors": [],
+      "successors": [
+        {
+          "evidence": "extract-e-763.policy-decisions.unittest",
+          "id": "control-plane-kit-core.tests.test_policies.PolicyDecisionTests.test_destructive_activity_policy_classifies_consequential_actions",
+          "status": "passing"
+        }
+      ],
       "supersession": null
     },
     {
@@ -8833,7 +8851,13 @@
       "owner": "control-plane-kit-core",
       "owner_kind": "core",
       "reference": "tests.test_policies.PolicyTests.test_hub_access_policy_returns_decisions_not_effects",
-      "successors": [],
+      "successors": [
+        {
+          "evidence": "extract-e-763.policy-decisions.unittest",
+          "id": "control-plane-kit-core.tests.test_policies.PolicyDecisionTests.test_hub_access_policy_returns_decisions_not_effects",
+          "status": "passing"
+        }
+      ],
       "supersession": null
     },
     {
@@ -8843,7 +8867,13 @@
       "owner": "control-plane-kit-core",
       "owner_kind": "core",
       "reference": "tests.test_policies.PolicyTests.test_instance_access_policy_separates_read_and_edit_scopes",
-      "successors": [],
+      "successors": [
+        {
+          "evidence": "extract-e-763.policy-decisions.unittest",
+          "id": "control-plane-kit-core.tests.test_policies.PolicyDecisionTests.test_instance_access_policy_separates_read_and_edit_scopes",
+          "status": "passing"
+        }
+      ],
       "supersession": null
     },
     {
@@ -8853,7 +8883,13 @@
       "owner": "control-plane-kit-core",
       "owner_kind": "core",
       "reference": "tests.test_policies.PolicyTests.test_lifecycle_retention_represents_destructive_delete",
-      "successors": [],
+      "successors": [
+        {
+          "evidence": "extract-e-763.policy-decisions.unittest",
+          "id": "control-plane-kit-core.tests.test_policies.PolicyDecisionTests.test_lifecycle_retention_represents_destructive_delete",
+          "status": "passing"
+        }
+      ],
       "supersession": null
     },
     {
