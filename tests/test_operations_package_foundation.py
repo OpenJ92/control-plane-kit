@@ -23,6 +23,8 @@ class OperationsPackageFoundationTests(unittest.TestCase):
 
         self.assertEqual(metadata["project"]["name"], "control-plane-kit-operations")
         self.assertIn("control-plane-kit-core>=0.1.0", metadata["project"]["dependencies"])
+        self.assertIn("Jinja2>=3.1", metadata["project"]["dependencies"])
+        self.assertIn("psycopg[binary]>=3.2", metadata["project"]["dependencies"])
         self.assertNotIn("scripts", metadata["project"])
 
     def test_operations_import_boundary_points_inward_to_core_only(self) -> None:
