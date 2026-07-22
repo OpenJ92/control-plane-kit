@@ -605,6 +605,62 @@ class ExtractionSuccessorMappingTests(unittest.TestCase):
                     entry["supersession"]["obsolete_assumption"],
                 )
 
+    def test_required_core_closeout_is_zero_without_claiming_non_core_completion(self) -> None:
+        closeout = self.closeout()
+        persisted_closeout = read_bounded_json(
+            ARTIFACT_ROOT / "required-core-closeout-report.json"
+        )
+        inventory = read_bounded_json(
+            ARTIFACT_ROOT / "required-core-family-inventory.json"
+        )
+        parity_report = read_bounded_json(
+            ARTIFACT_ROOT / "parity-validation-report.json"
+        )
+
+        self.assertEqual(closeout, persisted_closeout)
+        self.assertTrue(closeout["valid"])
+        self.assertTrue(closeout["required_core_complete"])
+        self.assertEqual(closeout["findings"], [])
+        self.assertEqual(closeout["incomplete_required_core_entries"], [])
+        self.assertEqual(
+            closeout["counts"],
+            {
+                "entries": 1107,
+                "required_core": 780,
+                "completed_required_core": 780,
+                "incomplete_required_core": 0,
+                "required_non_core": 100,
+                "deferred": 227,
+                "passing_core_successors": 1046,
+                "failed_core_successors": 0,
+                "reviewed_core_supersessions": 174,
+                "findings": 0,
+            },
+        )
+        self.assertEqual(
+            inventory,
+            {
+                "schema": "cpk.required-core-family-inventory",
+                "valid": True,
+                "counts": {"entries": 0, "families": 0},
+                "families": [],
+            },
+        )
+
+        self.assertTrue(parity_report["valid"])
+        self.assertFalse(parity_report["migration_complete"])
+        self.assertEqual(parity_report["findings"], [])
+        self.assertEqual(parity_report["counts"]["incomplete_required"], 100)
+        self.assertEqual(
+            parity_report["counts"]["by_owner"],
+            {
+                "core": 780,
+                "hello": 23,
+                "system": 77,
+                "deferred-product": 227,
+            },
+        )
+
 
 if __name__ == "__main__":
     unittest.main()
