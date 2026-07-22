@@ -1,0 +1,31 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "control-plane-kit-operations"
+version = "0.1.0"
+description = "Durable control-plane application services for control-plane-kit."
+readme = "README.md"
+requires-python = ">=3.11"
+license = {text = "MIT"}
+authors = [{name = "Control Plane Kit Contributors"}]
+keywords = ["deployment", "control-plane", "postgres", "operations"]
+classifiers = [
+  "Development Status :: 2 - Pre-Alpha",
+  "Intended Audience :: Developers",
+  "Programming Language :: Python :: 3",
+  "Programming Language :: Python :: 3.11",
+  "Topic :: Software Development :: Build Tools",
+  "Topic :: System :: Systems Administration",
+]
+dependencies = [
+  "control-plane-kit-core>=0.1.0",
+]
+
+[project.urls]
+Homepage = "https://github.com/OpenJ92/control-plane-kit"
+
+[tool.setuptools.packages.find]
+where = ["src"]
+include = ["control_plane_kit_operations*"]
