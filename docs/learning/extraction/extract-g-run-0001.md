@@ -2415,3 +2415,115 @@ admitted request
 or lifecycle truth. Runtime/effect execution remains outside #862; the
 coordinator should consume the claimed/started lifecycle boundary and later
 append step events through the same store/journal shape.
+
+## 2026-07-22: #845 Execution Coordinator Integration
+
+### Law Cards
+
+```text
+execution-coordinator.reconstructs-from-durable-plan-and-event-journal
+execution-coordinator.uses-core-saga-projection-and-schedule
+execution-coordinator.records-step-intent-before-adapter
+execution-coordinator.commits-before-adapter-dispatch
+execution-coordinator.records-result-after-adapter
+execution-coordinator.uncertainty-never-blind-replays
+execution-coordinator.in-flight-intent-never-blind-replays
+execution-coordinator.unsupported-is-distinct-from-attempted-failure
+execution-coordinator.worker-ownership-fails-before-adapter
+execution-coordinator.scope-fails-before-adapter
+execution-coordinator.lifecycle-settlement-uses-run-lifecycle-service
+execution-coordinator.max-effects-bounds-progress
+```
+
+### Implementation Shape
+
+#845 added the operations-owned coordinator service without adding another
+effect language or scheduler model:
+
+```python
+result = ExecutionCoordinator(
+    unit_of_work_factory,
+    lifecycle=RunLifecycleCommandService(...),
+    adapter=proof_adapter,
+    clock=clock,
+    id_factory=id_factory,
+).execute(
+    ExecuteActivityRun(
+        "run-a",
+        ExecutionWorkerAuthority(
+            "worker-a",
+            (PolicyScope.EXECUTION_OPERATE,),
+        ),
+        IdempotencyKey("execute-a"),
+    )
+)
+```
+
+The coordinator reconstructs the pure scheduling view from existing durable
+truth:
+
+```python
+journal = _journal_events(events)
+projection = project_activity_journal(plan_record.plan, journal)
+schedule = derive_schedule(plan_record.plan, projection.state)
+```
+
+Only activity and compensation events are projected into the core saga journal.
+Run lifecycle events remain lifecycle truth and do not become scheduling data.
+
+The proof adapter boundary consumes `PlannedActivity` and returns the core
+`EffectResultKind` vocabulary through `ActivityExecutionOutcome`. This is a
+temporary operations proof adapter, not a runtime interpreter and not real
+Docker/HTTP/filesystem execution. Runtime interpreter extraction remains the
+#806 handoff.
+
+### Data-Engineering Notes
+
+The service follows the external-effect law:
+
+```text
+short transaction: record STEP_STARTED intent
+  -> commit
+    -> adapter.execute(planned_activity)
+      -> short transaction: record STEP_SUCCEEDED / STEP_FAILED /
+         STEP_UNSUPPORTED / STEP_UNCERTAIN
+```
+
+Tests prove the adapter sees no active UnitOfWork during execution. The
+coordinator settles terminal success/failure through `RunLifecycleCommandService`
+instead of directly mutating run status, so run projection remains behind the
+same transaction and ownership law established in #862.
+
+`STEP_UNCERTAIN` remains an open operator condition. A later coordinator call
+returns `CoordinatorStatus.UNCERTAIN` without attempting the adapter again.
+Likewise, a committed `STEP_STARTED` without a result returns
+`CoordinatorStatus.IN_FLIGHT` and does not replay the effect.
+
+### Focused Validation
+
+```text
+git diff --check
+./control-plane-kit-operations/test.sh
+  85 tests passed
+  compileall passed
+  installed import smoke passed
+./test.sh
+  1219 tests passed
+```
+
+### Handoff
+
+#846 can assume an operations coordinator now exists for fake/proof execution:
+
+```text
+claimed + started run
+  -> persisted plan + canonical activity events
+    -> core saga projection
+      -> deterministic schedule
+        -> step intent/result events
+          -> lifecycle settlement when terminal
+```
+
+Real runtime effect materialization and dispatch remain outside this issue.
+Do not teach operations coordinator about Docker, HTTP, filesystem, cloud, or
+product-specific effects before the interpreter/runtime extraction handoff.
