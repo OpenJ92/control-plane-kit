@@ -121,6 +121,35 @@ class PostgresSchemaFoundationTests(unittest.TestCase):
                 WHERE run_id = 'run-a'
                 """
             )
+        with self.assertRaises(CheckViolation):
+            self.connection.execute(
+                """
+                INSERT INTO cpk_approval_requests
+                  (request_id, session_id, plan_id, requested_by, requested_at,
+                   required_scope, max_risk, destructive)
+                VALUES ('bad-approval-scope', 'session-a', 'plan-a', 'operator',
+                        'approval-request-at', 'plan:invented', 'low', false)
+                """
+            )
+        with self.assertRaises(CheckViolation):
+            self.connection.execute(
+                """
+                INSERT INTO cpk_approval_requests
+                  (request_id, session_id, plan_id, requested_by, requested_at,
+                   required_scope, max_risk, destructive)
+                VALUES ('bad-approval-risk', 'session-a', 'plan-a', 'operator',
+                        'approval-request-at', 'plan:approve', 'invented', false)
+                """
+            )
+        with self.assertRaises(CheckViolation):
+            self.connection.execute(
+                """
+                INSERT INTO cpk_approval_decisions
+                  (decision_id, request_id, actor_id, decision, scope, decided_at)
+                VALUES ('bad-decision-scope', 'approval-request-a', 'manager',
+                        'approved', 'plan:invented', 'approval-at')
+                """
+            )
 
     def test_schema_text_contains_no_unconditional_destructive_constraint_ddl(self) -> None:
         normalized = " ".join(POSTGRES_SCHEMA.lower().split())
