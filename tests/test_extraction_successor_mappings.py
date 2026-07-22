@@ -561,6 +561,50 @@ class ExtractionSuccessorMappingTests(unittest.TestCase):
                     "#742 validation packaging demo closeout",
                 )
 
+    def test_interpreter_runtime_families_are_reviewed_handoffs_not_core_successors(self) -> None:
+        closeout = self.closeout()
+        inventory = inventory_unmapped_required_core_families(closeout)
+        families = {
+            family["family"]: family
+            for family in inventory["families"]
+        }
+        manifest = read_bounded_json(ARTIFACT_ROOT / "parity-manifest.json")
+        batch_closeout = read_bounded_json(
+            ARTIFACT_ROOT / "interpreter-runtime-batch-closeout.json"
+        )
+        expected_references = {
+            reference
+            for family in batch_closeout["families"]
+            for reference in family["references"]
+        }
+        manifest_entries = {
+            entry["reference"]: entry
+            for entry in manifest["entries"]
+            if entry["reference"] in expected_references
+        }
+
+        self.assertEqual(batch_closeout["summary"]["source_entries"], 160)
+        self.assertEqual(batch_closeout["summary"]["mapped_successor_entries"], 0)
+        self.assertEqual(
+            batch_closeout["summary"]["reviewed_supersession_entries"],
+            160,
+        )
+        self.assertEqual(set(manifest_entries), expected_references)
+        self.assertEqual(families, {})
+
+        for reference, entry in manifest_entries.items():
+            with self.subTest(reference=reference):
+                self.assertEqual(entry["successors"], [])
+                self.assertIsNotNone(entry["supersession"])
+                self.assertEqual(
+                    entry["supersession"]["review"],
+                    "#743 interpreter runtime closeout",
+                )
+                self.assertIn(
+                    "outside the pure core package",
+                    entry["supersession"]["obsolete_assumption"],
+                )
+
 
 if __name__ == "__main__":
     unittest.main()

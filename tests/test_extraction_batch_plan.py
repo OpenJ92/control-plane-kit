@@ -411,6 +411,73 @@ class ExtractionBatchPlanTests(unittest.TestCase):
             with self.subTest(family=family["family"]):
                 self.assertEqual(family["remaining_live_inventory_count"], 0)
 
+    def test_interpreter_runtime_closeout_reviews_effectful_families_without_core_successor_claims(
+        self,
+    ) -> None:
+        closeout = read_bounded_json(
+            ARTIFACT_ROOT / "interpreter-runtime-batch-closeout.json"
+        )
+
+        self.assertEqual(
+            closeout["schema"],
+            "cpk.interpreter-runtime-batch-closeout",
+        )
+        self.assertEqual(closeout["issue"], "#743")
+        self.assertEqual(closeout["parent"], "#643")
+        self.assertEqual(closeout["source_batch"], "interpreter_runtime")
+        self.assertEqual(
+            closeout["summary"],
+            {
+                "source_families": 21,
+                "source_entries": 160,
+                "reviewed_supersession_entries": 160,
+                "reviewed_interpreter_runtime_families": 18,
+                "reviewed_interpreter_runtime_entries": 131,
+                "reviewed_cpk_server_control_process_families": 2,
+                "reviewed_cpk_server_control_process_entries": 14,
+                "reviewed_operations_acceptance_families": 1,
+                "reviewed_operations_acceptance_entries": 15,
+                "mapped_successor_entries": 0,
+                "unexpected_remaining_entries": 0,
+                "unexpected_remaining_families": 0,
+            },
+        )
+
+        families = {
+            family["family"]: family
+            for family in closeout["families"]
+        }
+        self.assertEqual(len(families), 21)
+        self.assertEqual(
+            families["test_block_control_fastapi"]["status"],
+            "reviewed_cpk_server_control_process_handoff",
+        )
+        self.assertEqual(
+            families["test_block_control_state"]["status"],
+            "reviewed_cpk_server_control_process_handoff",
+        )
+        self.assertEqual(
+            families["test_postgres_scenario_runner"]["status"],
+            "reviewed_operations_acceptance_handoff",
+        )
+        self.assertEqual(
+            families["test_docker_effects"]["status"],
+            "reviewed_interpreter_runtime_handoff",
+        )
+        self.assertEqual(
+            families["test_probe_execution"]["status"],
+            "reviewed_interpreter_runtime_handoff",
+        )
+        for family in families.values():
+            with self.subTest(family=family["family"]):
+                self.assertEqual(family["successor_references"], [])
+                self.assertEqual(
+                    family["superseded_references"],
+                    family["references"],
+                )
+                self.assertEqual(family["remaining_live_inventory_count"], 0)
+                self.assertIn("handoff", family["status"])
+
 
 if __name__ == "__main__":
     unittest.main()

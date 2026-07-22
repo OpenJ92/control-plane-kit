@@ -1974,7 +1974,13 @@
       "owner_kind": "core",
       "reference": "tests.test_block_control_fastapi.BlockControlFastAPITests.test_configured_token_protects_control_routes",
       "successors": [],
-      "supersession": null
+      "supersession": {
+        "negative_case_disposition": "Negative cases remain required for the future owner and are not erased; they are listed in the #743 closeout family record and successor issue handoff.",
+        "obsolete_assumption": "This frozen law was previously counted as extracted-core required behavior even though its executable owner is outside the pure core package.",
+        "rationale": "Frozen control routes execute FastAPI/process mutation and authentication behavior. Extracted core owns closed control-route descriptor values; the executable process belongs to cpk-server or an interpreter-owned process package.",
+        "replacement": "#743 cpk-server control-process handoff; core descriptor values remain covered by extract-e-762-control-routes.unittest and process handoff contracts.",
+        "review": "#743 interpreter runtime closeout"
+      }
     },
     {
       "kind": "test",
@@ -1984,7 +1990,13 @@
       "owner_kind": "core",
       "reference": "tests.test_block_control_fastapi.BlockControlFastAPITests.test_control_routes_can_be_called_without_token_when_unconfigured",
       "successors": [],
-      "supersession": null
+      "supersession": {
+        "negative_case_disposition": "Negative cases remain required for the future owner and are not erased; they are listed in the #743 closeout family record and successor issue handoff.",
+        "obsolete_assumption": "This frozen law was previously counted as extracted-core required behavior even though its executable owner is outside the pure core package.",
+        "rationale": "Frozen control routes execute FastAPI/process mutation and authentication behavior. Extracted core owns closed control-route descriptor values; the executable process belongs to cpk-server or an interpreter-owned process package.",
+        "replacement": "#743 cpk-server control-process handoff; core descriptor values remain covered by extract-e-762-control-routes.unittest and process handoff contracts.",
+        "review": "#743 interpreter runtime closeout"
+      }
     },
     {
       "kind": "test",
@@ -1994,7 +2006,13 @@
       "owner_kind": "core",
       "reference": "tests.test_block_control_fastapi.BlockControlFastAPITests.test_execution_auth_does_not_protect_ordinary_data_routes",
       "successors": [],
-      "supersession": null
+      "supersession": {
+        "negative_case_disposition": "Negative cases remain required for the future owner and are not erased; they are listed in the #743 closeout family record and successor issue handoff.",
+        "obsolete_assumption": "This frozen law was previously counted as extracted-core required behavior even though its executable owner is outside the pure core package.",
+        "rationale": "Frozen control routes execute FastAPI/process mutation and authentication behavior. Extracted core owns closed control-route descriptor values; the executable process belongs to cpk-server or an interpreter-owned process package.",
+        "replacement": "#743 cpk-server control-process handoff; core descriptor values remain covered by extract-e-762-control-routes.unittest and process handoff contracts.",
+        "review": "#743 interpreter runtime closeout"
+      }
     },
     {
       "kind": "test",
@@ -2004,7 +2022,13 @@
       "owner_kind": "core",
       "reference": "tests.test_block_control_fastapi.BlockControlFastAPITests.test_execution_mode_requires_auth_configuration",
       "successors": [],
-      "supersession": null
+      "supersession": {
+        "negative_case_disposition": "Negative cases remain required for the future owner and are not erased; they are listed in the #743 closeout family record and successor issue handoff.",
+        "obsolete_assumption": "This frozen law was previously counted as extracted-core required behavior even though its executable owner is outside the pure core package.",
+        "rationale": "Frozen control routes execute FastAPI/process mutation and authentication behavior. Extracted core owns closed control-route descriptor values; the executable process belongs to cpk-server or an interpreter-owned process package.",
+        "replacement": "#743 cpk-server control-process handoff; core descriptor values remain covered by extract-e-762-control-routes.unittest and process handoff contracts.",
+        "review": "#743 interpreter runtime closeout"
+      }
     },
     {
       "kind": "test",
@@ -2014,7 +2038,13 @@
       "owner_kind": "core",
       "reference": "tests.test_block_control_fastapi.BlockControlFastAPITests.test_execution_mutation_body_is_bounded_before_application",
       "successors": [],
-      "supersession": null
+      "supersession": {
+        "negative_case_disposition": "Negative cases remain required for the future owner and are not erased; they are listed in the #743 closeout family record and successor issue handoff.",
+        "obsolete_assumption": "This frozen law was previously counted as extracted-core required behavior even though its executable owner is outside the pure core package.",
+        "rationale": "Frozen control routes execute FastAPI/process mutation and authentication behavior. Extracted core owns closed control-route descriptor values; the executable process belongs to cpk-server or an interpreter-owned process package.",
+        "replacement": "#743 cpk-server control-process handoff; core descriptor values remain covered by extract-e-762-control-routes.unittest and process handoff contracts.",
+        "review": "#743 interpreter runtime closeout"
+      }
     },
     {
       "kind": "test",
@@ -2024,7 +2054,13 @@
       "owner_kind": "core",
       "reference": "tests.test_block_control_fastapi.BlockControlFastAPITests.test_execution_mutations_require_identity_replay_and_conflict",
       "successors": [],
-      "supersession": null
+      "supersession": {
+        "negative_case_disposition": "Negative cases remain required for the future owner and are not erased; they are listed in the #743 closeout family record and successor issue handoff.",
+        "obsolete_assumption": "This frozen law was previously counted as extracted-core required behavior even though its executable owner is outside the pure core package.",
+        "rationale": "Frozen control routes execute FastAPI/process mutation and authentication behavior. Extracted core owns closed control-route descriptor values; the executable process belongs to cpk-server or an interpreter-owned process package.",
+        "replacement": "#743 cpk-server control-process handoff; core descriptor values remain covered by extract-e-762-control-routes.unittest and process handoff contracts.",
+        "review": "#743 interpreter runtime closeout"
+      }
     },
     {
       "kind": "test",
@@ -2034,7 +2070,13 @@
       "owner_kind": "core",
       "reference": "tests.test_block_control_fastapi.BlockControlFastAPITests.test_observers_route_mutates_state",
       "successors": [],
-      "supersession": null
+      "supersession": {
+        "negative_case_disposition": "Negative cases remain required for the future owner and are not erased; they are listed in the #743 closeout family record and successor issue handoff.",
+        "obsolete_assumption": "This frozen law was previously counted as extracted-core required behavior even though its executable owner is outside the pure core package.",
+        "rationale": "Frozen control routes execute FastAPI/process mutation and authentication behavior. Extracted core owns closed control-route descriptor values; the executable process belongs to cpk-server or an interpreter-owned process package.",
+        "replacement": "#743 cpk-server control-process handoff; core descriptor values remain covered by extract-e-762-control-routes.unittest and process handoff contracts.",
+        "review": "#743 interpreter runtime closeout"
+      }
     },
     {
       "kind": "test",
@@ -2044,7 +2086,13 @@
       "owner_kind": "core",
       "reference": "tests.test_block_control_fastapi.BlockControlFastAPITests.test_unknown_active_target_returns_bad_request",
       "successors": [],
-      "supersession": null
+      "supersession": {
+        "negative_case_disposition": "Negative cases remain required for the future owner and are not erased; they are listed in the #743 closeout family record and successor issue handoff.",
+        "obsolete_assumption": "This frozen law was previously counted as extracted-core required behavior even though its executable owner is outside the pure core package.",
+        "rationale": "Frozen control routes execute FastAPI/process mutation and authentication behavior. Extracted core owns closed control-route descriptor values; the executable process belongs to cpk-server or an interpreter-owned process package.",
+        "replacement": "#743 cpk-server control-process handoff; core descriptor values remain covered by extract-e-762-control-routes.unittest and process handoff contracts.",
+        "review": "#743 interpreter runtime closeout"
+      }
     },
     {
       "kind": "test",
@@ -2054,7 +2102,13 @@
       "owner_kind": "core",
       "reference": "tests.test_block_control_state.BlockControlStateTests.test_capability_payload_uses_descriptors",
       "successors": [],
-      "supersession": null
+      "supersession": {
+        "negative_case_disposition": "Negative cases remain required for the future owner and are not erased; they are listed in the #743 closeout family record and successor issue handoff.",
+        "obsolete_assumption": "This frozen law was previously counted as extracted-core required behavior even though its executable owner is outside the pure core package.",
+        "rationale": "Frozen control routes execute FastAPI/process mutation and authentication behavior. Extracted core owns closed control-route descriptor values; the executable process belongs to cpk-server or an interpreter-owned process package.",
+        "replacement": "#743 cpk-server control-process handoff; core descriptor values remain covered by extract-e-762-control-routes.unittest and process handoff contracts.",
+        "review": "#743 interpreter runtime closeout"
+      }
     },
     {
       "kind": "test",
@@ -2064,7 +2118,13 @@
       "owner_kind": "core",
       "reference": "tests.test_block_control_state.BlockControlStateTests.test_control_state_is_backed_by_runtime_contract",
       "successors": [],
-      "supersession": null
+      "supersession": {
+        "negative_case_disposition": "Negative cases remain required for the future owner and are not erased; they are listed in the #743 closeout family record and successor issue handoff.",
+        "obsolete_assumption": "This frozen law was previously counted as extracted-core required behavior even though its executable owner is outside the pure core package.",
+        "rationale": "Frozen control routes execute FastAPI/process mutation and authentication behavior. Extracted core owns closed control-route descriptor values; the executable process belongs to cpk-server or an interpreter-owned process package.",
+        "replacement": "#743 cpk-server control-process handoff; core descriptor values remain covered by extract-e-762-control-routes.unittest and process handoff contracts.",
+        "review": "#743 interpreter runtime closeout"
+      }
     },
     {
       "kind": "test",
@@ -2074,7 +2134,13 @@
       "owner_kind": "core",
       "reference": "tests.test_block_control_state.BlockControlStateTests.test_observer_mutation_updates_observer_state",
       "successors": [],
-      "supersession": null
+      "supersession": {
+        "negative_case_disposition": "Negative cases remain required for the future owner and are not erased; they are listed in the #743 closeout family record and successor issue handoff.",
+        "obsolete_assumption": "This frozen law was previously counted as extracted-core required behavior even though its executable owner is outside the pure core package.",
+        "rationale": "Frozen control routes execute FastAPI/process mutation and authentication behavior. Extracted core owns closed control-route descriptor values; the executable process belongs to cpk-server or an interpreter-owned process package.",
+        "replacement": "#743 cpk-server control-process handoff; core descriptor values remain covered by extract-e-762-control-routes.unittest and process handoff contracts.",
+        "review": "#743 interpreter runtime closeout"
+      }
     },
     {
       "kind": "test",
@@ -2084,7 +2150,13 @@
       "owner_kind": "core",
       "reference": "tests.test_block_control_state.BlockControlStateTests.test_replacing_targets_clears_stale_active_target",
       "successors": [],
-      "supersession": null
+      "supersession": {
+        "negative_case_disposition": "Negative cases remain required for the future owner and are not erased; they are listed in the #743 closeout family record and successor issue handoff.",
+        "obsolete_assumption": "This frozen law was previously counted as extracted-core required behavior even though its executable owner is outside the pure core package.",
+        "rationale": "Frozen control routes execute FastAPI/process mutation and authentication behavior. Extracted core owns closed control-route descriptor values; the executable process belongs to cpk-server or an interpreter-owned process package.",
+        "replacement": "#743 cpk-server control-process handoff; core descriptor values remain covered by extract-e-762-control-routes.unittest and process handoff contracts.",
+        "review": "#743 interpreter runtime closeout"
+      }
     },
     {
       "kind": "test",
@@ -2094,7 +2166,13 @@
       "owner_kind": "core",
       "reference": "tests.test_block_control_state.BlockControlStateTests.test_status_and_log_providers_are_used_when_present",
       "successors": [],
-      "supersession": null
+      "supersession": {
+        "negative_case_disposition": "Negative cases remain required for the future owner and are not erased; they are listed in the #743 closeout family record and successor issue handoff.",
+        "obsolete_assumption": "This frozen law was previously counted as extracted-core required behavior even though its executable owner is outside the pure core package.",
+        "rationale": "Frozen control routes execute FastAPI/process mutation and authentication behavior. Extracted core owns closed control-route descriptor values; the executable process belongs to cpk-server or an interpreter-owned process package.",
+        "replacement": "#743 cpk-server control-process handoff; core descriptor values remain covered by extract-e-762-control-routes.unittest and process handoff contracts.",
+        "review": "#743 interpreter runtime closeout"
+      }
     },
     {
       "kind": "test",
@@ -2104,7 +2182,13 @@
       "owner_kind": "core",
       "reference": "tests.test_block_control_state.BlockControlStateTests.test_target_switch_rejects_unknown_targets",
       "successors": [],
-      "supersession": null
+      "supersession": {
+        "negative_case_disposition": "Negative cases remain required for the future owner and are not erased; they are listed in the #743 closeout family record and successor issue handoff.",
+        "obsolete_assumption": "This frozen law was previously counted as extracted-core required behavior even though its executable owner is outside the pure core package.",
+        "rationale": "Frozen control routes execute FastAPI/process mutation and authentication behavior. Extracted core owns closed control-route descriptor values; the executable process belongs to cpk-server or an interpreter-owned process package.",
+        "replacement": "#743 cpk-server control-process handoff; core descriptor values remain covered by extract-e-762-control-routes.unittest and process handoff contracts.",
+        "review": "#743 interpreter runtime closeout"
+      }
     },
     {
       "kind": "test",
@@ -2210,7 +2294,13 @@
       "owner_kind": "core",
       "reference": "tests.test_capability_interpreter_registry.CapabilityInterpreterRegistryTests.test_dispatches_by_explicit_capability_assignment",
       "successors": [],
-      "supersession": null
+      "supersession": {
+        "negative_case_disposition": "Negative cases remain required for the future owner and are not erased; they are listed in the #743 closeout family record and successor issue handoff.",
+        "obsolete_assumption": "This frozen law was previously counted as extracted-core required behavior even though its executable owner is outside the pure core package.",
+        "rationale": "Frozen law exercises Docker, HTTP, probe, runtime materialization, runtime state, ownership, retention, dispatch, or substrate behavior. Extracted core must keep only the closed language/contract boundary and cannot execute the interpreter.",
+        "replacement": "#743 interpreter/runtime handoff; core retains closed protocol, lifecycle, verification, control-route, effect-boundary, and product-runtime contract values without owning effects.",
+        "review": "#743 interpreter runtime closeout"
+      }
     },
     {
       "kind": "test",
@@ -2220,7 +2310,13 @@
       "owner_kind": "core",
       "reference": "tests.test_capability_interpreter_registry.CapabilityInterpreterRegistryTests.test_rejects_assignment_to_interpreter_without_capability",
       "successors": [],
-      "supersession": null
+      "supersession": {
+        "negative_case_disposition": "Negative cases remain required for the future owner and are not erased; they are listed in the #743 closeout family record and successor issue handoff.",
+        "obsolete_assumption": "This frozen law was previously counted as extracted-core required behavior even though its executable owner is outside the pure core package.",
+        "rationale": "Frozen law exercises Docker, HTTP, probe, runtime materialization, runtime state, ownership, retention, dispatch, or substrate behavior. Extracted core must keep only the closed language/contract boundary and cannot execute the interpreter.",
+        "replacement": "#743 interpreter/runtime handoff; core retains closed protocol, lifecycle, verification, control-route, effect-boundary, and product-runtime contract values without owning effects.",
+        "review": "#743 interpreter runtime closeout"
+      }
     },
     {
       "kind": "test",
@@ -4069,7 +4165,13 @@
       "owner_kind": "core",
       "reference": "tests.test_control_http_client.ControlHttpClientTests.test_missing_remote_capability_is_unsupported_without_mutation",
       "successors": [],
-      "supersession": null
+      "supersession": {
+        "negative_case_disposition": "Negative cases remain required for the future owner and are not erased; they are listed in the #743 closeout family record and successor issue handoff.",
+        "obsolete_assumption": "This frozen law was previously counted as extracted-core required behavior even though its executable owner is outside the pure core package.",
+        "rationale": "Frozen law exercises Docker, HTTP, probe, runtime materialization, runtime state, ownership, retention, dispatch, or substrate behavior. Extracted core must keep only the closed language/contract boundary and cannot execute the interpreter.",
+        "replacement": "#743 interpreter/runtime handoff; core retains closed protocol, lifecycle, verification, control-route, effect-boundary, and product-runtime contract values without owning effects.",
+        "review": "#743 interpreter runtime closeout"
+      }
     },
     {
       "kind": "test",
@@ -4079,7 +4181,13 @@
       "owner_kind": "core",
       "reference": "tests.test_control_http_client.ControlHttpClientTests.test_mutation_without_a_trustworthy_result_is_explicitly_uncertain",
       "successors": [],
-      "supersession": null
+      "supersession": {
+        "negative_case_disposition": "Negative cases remain required for the future owner and are not erased; they are listed in the #743 closeout family record and successor issue handoff.",
+        "obsolete_assumption": "This frozen law was previously counted as extracted-core required behavior even though its executable owner is outside the pure core package.",
+        "rationale": "Frozen law exercises Docker, HTTP, probe, runtime materialization, runtime state, ownership, retention, dispatch, or substrate behavior. Extracted core must keep only the closed language/contract boundary and cannot execute the interpreter.",
+        "replacement": "#743 interpreter/runtime handoff; core retains closed protocol, lifecycle, verification, control-route, effect-boundary, and product-runtime contract values without owning effects.",
+        "review": "#743 interpreter runtime closeout"
+      }
     },
     {
       "kind": "test",
@@ -4089,7 +4197,13 @@
       "owner_kind": "core",
       "reference": "tests.test_control_http_client.ControlHttpClientTests.test_redirect_malformed_and_oversized_responses_fail_without_body_echo",
       "successors": [],
-      "supersession": null
+      "supersession": {
+        "negative_case_disposition": "Negative cases remain required for the future owner and are not erased; they are listed in the #743 closeout family record and successor issue handoff.",
+        "obsolete_assumption": "This frozen law was previously counted as extracted-core required behavior even though its executable owner is outside the pure core package.",
+        "rationale": "Frozen law exercises Docker, HTTP, probe, runtime materialization, runtime state, ownership, retention, dispatch, or substrate behavior. Extracted core must keep only the closed language/contract boundary and cannot execute the interpreter.",
+        "replacement": "#743 interpreter/runtime handoff; core retains closed protocol, lifecycle, verification, control-route, effect-boundary, and product-runtime contract values without owning effects.",
+        "review": "#743 interpreter runtime closeout"
+      }
     },
     {
       "kind": "test",
@@ -4099,7 +4213,13 @@
       "owner_kind": "core",
       "reference": "tests.test_control_http_client.ControlHttpClientTests.test_socket_operation_matrix_discovers_capability_before_mutation",
       "successors": [],
-      "supersession": null
+      "supersession": {
+        "negative_case_disposition": "Negative cases remain required for the future owner and are not erased; they are listed in the #743 closeout family record and successor issue handoff.",
+        "obsolete_assumption": "This frozen law was previously counted as extracted-core required behavior even though its executable owner is outside the pure core package.",
+        "rationale": "Frozen law exercises Docker, HTTP, probe, runtime materialization, runtime state, ownership, retention, dispatch, or substrate behavior. Extracted core must keep only the closed language/contract boundary and cannot execute the interpreter.",
+        "replacement": "#743 interpreter/runtime handoff; core retains closed protocol, lifecycle, verification, control-route, effect-boundary, and product-runtime contract values without owning effects.",
+        "review": "#743 interpreter runtime closeout"
+      }
     },
     {
       "kind": "test",
@@ -4109,7 +4229,13 @@
       "owner_kind": "core",
       "reference": "tests.test_control_http_client.ControlHttpClientTests.test_status_and_logs_are_bounded_typed_operator_reads",
       "successors": [],
-      "supersession": null
+      "supersession": {
+        "negative_case_disposition": "Negative cases remain required for the future owner and are not erased; they are listed in the #743 closeout family record and successor issue handoff.",
+        "obsolete_assumption": "This frozen law was previously counted as extracted-core required behavior even though its executable owner is outside the pure core package.",
+        "rationale": "Frozen law exercises Docker, HTTP, probe, runtime materialization, runtime state, ownership, retention, dispatch, or substrate behavior. Extracted core must keep only the closed language/contract boundary and cannot execute the interpreter.",
+        "replacement": "#743 interpreter/runtime handoff; core retains closed protocol, lifecycle, verification, control-route, effect-boundary, and product-runtime contract values without owning effects.",
+        "review": "#743 interpreter runtime closeout"
+      }
     },
     {
       "kind": "test",
@@ -4119,7 +4245,13 @@
       "owner_kind": "core",
       "reference": "tests.test_control_http_live.ControlHttpLiveTests.test_live_adversarial_peers_remain_bounded_and_redirect_free",
       "successors": [],
-      "supersession": null
+      "supersession": {
+        "negative_case_disposition": "Negative cases remain required for the future owner and are not erased; they are listed in the #743 closeout family record and successor issue handoff.",
+        "obsolete_assumption": "This frozen law was previously counted as extracted-core required behavior even though its executable owner is outside the pure core package.",
+        "rationale": "Frozen law exercises Docker, HTTP, probe, runtime materialization, runtime state, ownership, retention, dispatch, or substrate behavior. Extracted core must keep only the closed language/contract boundary and cannot execute the interpreter.",
+        "replacement": "#743 interpreter/runtime handoff; core retains closed protocol, lifecycle, verification, control-route, effect-boundary, and product-runtime contract values without owning effects.",
+        "review": "#743 interpreter runtime closeout"
+      }
     },
     {
       "kind": "test",
@@ -4129,7 +4261,13 @@
       "owner_kind": "core",
       "reference": "tests.test_control_http_live.ControlHttpLiveTests.test_live_authentication_fails_closed_without_leaking_token",
       "successors": [],
-      "supersession": null
+      "supersession": {
+        "negative_case_disposition": "Negative cases remain required for the future owner and are not erased; they are listed in the #743 closeout family record and successor issue handoff.",
+        "obsolete_assumption": "This frozen law was previously counted as extracted-core required behavior even though its executable owner is outside the pure core package.",
+        "rationale": "Frozen law exercises Docker, HTTP, probe, runtime materialization, runtime state, ownership, retention, dispatch, or substrate behavior. Extracted core must keep only the closed language/contract boundary and cannot execute the interpreter.",
+        "replacement": "#743 interpreter/runtime handoff; core retains closed protocol, lifecycle, verification, control-route, effect-boundary, and product-runtime contract values without owning effects.",
+        "review": "#743 interpreter runtime closeout"
+      }
     },
     {
       "kind": "test",
@@ -4139,7 +4277,13 @@
       "owner_kind": "core",
       "reference": "tests.test_control_http_live.ControlHttpLiveTests.test_live_mutation_replay_converges_and_changed_intent_conflicts",
       "successors": [],
-      "supersession": null
+      "supersession": {
+        "negative_case_disposition": "Negative cases remain required for the future owner and are not erased; they are listed in the #743 closeout family record and successor issue handoff.",
+        "obsolete_assumption": "This frozen law was previously counted as extracted-core required behavior even though its executable owner is outside the pure core package.",
+        "rationale": "Frozen law exercises Docker, HTTP, probe, runtime materialization, runtime state, ownership, retention, dispatch, or substrate behavior. Extracted core must keep only the closed language/contract boundary and cannot execute the interpreter.",
+        "replacement": "#743 interpreter/runtime handoff; core retains closed protocol, lifecycle, verification, control-route, effect-boundary, and product-runtime contract values without owning effects.",
+        "review": "#743 interpreter runtime closeout"
+      }
     },
     {
       "kind": "test",
@@ -4149,7 +4293,13 @@
       "owner_kind": "core",
       "reference": "tests.test_control_http_live.ControlHttpLiveTests.test_package_blocks_use_authenticated_live_protocol",
       "successors": [],
-      "supersession": null
+      "supersession": {
+        "negative_case_disposition": "Negative cases remain required for the future owner and are not erased; they are listed in the #743 closeout family record and successor issue handoff.",
+        "obsolete_assumption": "This frozen law was previously counted as extracted-core required behavior even though its executable owner is outside the pure core package.",
+        "rationale": "Frozen law exercises Docker, HTTP, probe, runtime materialization, runtime state, ownership, retention, dispatch, or substrate behavior. Extracted core must keep only the closed language/contract boundary and cannot execute the interpreter.",
+        "replacement": "#743 interpreter/runtime handoff; core retains closed protocol, lifecycle, verification, control-route, effect-boundary, and product-runtime contract values without owning effects.",
+        "review": "#743 interpreter runtime closeout"
+      }
     },
     {
       "kind": "test",
@@ -4159,7 +4309,13 @@
       "owner_kind": "core",
       "reference": "tests.test_control_http_security.ControlHttpSecurityTests.test_arbitrary_secret_endpoint_and_missing_token_fail_closed",
       "successors": [],
-      "supersession": null
+      "supersession": {
+        "negative_case_disposition": "Negative cases remain required for the future owner and are not erased; they are listed in the #743 closeout family record and successor issue handoff.",
+        "obsolete_assumption": "This frozen law was previously counted as extracted-core required behavior even though its executable owner is outside the pure core package.",
+        "rationale": "Frozen law exercises Docker, HTTP, probe, runtime materialization, runtime state, ownership, retention, dispatch, or substrate behavior. Extracted core must keep only the closed language/contract boundary and cannot execute the interpreter.",
+        "replacement": "#743 interpreter/runtime handoff; core retains closed protocol, lifecycle, verification, control-route, effect-boundary, and product-runtime contract values without owning effects.",
+        "review": "#743 interpreter runtime closeout"
+      }
     },
     {
       "kind": "test",
@@ -4169,7 +4325,13 @@
       "owner_kind": "core",
       "reference": "tests.test_control_http_security.ControlHttpSecurityTests.test_docker_private_endpoint_requires_observed_network_and_credential",
       "successors": [],
-      "supersession": null
+      "supersession": {
+        "negative_case_disposition": "Negative cases remain required for the future owner and are not erased; they are listed in the #743 closeout family record and successor issue handoff.",
+        "obsolete_assumption": "This frozen law was previously counted as extracted-core required behavior even though its executable owner is outside the pure core package.",
+        "rationale": "Frozen law exercises Docker, HTTP, probe, runtime materialization, runtime state, ownership, retention, dispatch, or substrate behavior. Extracted core must keep only the closed language/contract boundary and cannot execute the interpreter.",
+        "replacement": "#743 interpreter/runtime handoff; core retains closed protocol, lifecycle, verification, control-route, effect-boundary, and product-runtime contract values without owning effects.",
+        "review": "#743 interpreter runtime closeout"
+      }
     },
     {
       "kind": "test",
@@ -4179,7 +4341,13 @@
       "owner_kind": "core",
       "reference": "tests.test_control_http_security.ControlHttpSecurityTests.test_host_local_and_public_authority_are_separate_explicit_policies",
       "successors": [],
-      "supersession": null
+      "supersession": {
+        "negative_case_disposition": "Negative cases remain required for the future owner and are not erased; they are listed in the #743 closeout family record and successor issue handoff.",
+        "obsolete_assumption": "This frozen law was previously counted as extracted-core required behavior even though its executable owner is outside the pure core package.",
+        "rationale": "Frozen law exercises Docker, HTTP, probe, runtime materialization, runtime state, ownership, retention, dispatch, or substrate behavior. Extracted core must keep only the closed language/contract boundary and cannot execute the interpreter.",
+        "replacement": "#743 interpreter/runtime handoff; core retains closed protocol, lifecycle, verification, control-route, effect-boundary, and product-runtime contract values without owning effects.",
+        "review": "#743 interpreter runtime closeout"
+      }
     },
     {
       "kind": "test",
@@ -4189,7 +4357,13 @@
       "owner_kind": "core",
       "reference": "tests.test_control_http_security.ControlHttpSecurityTests.test_redirect_like_route_and_invalid_resolver_result_fail_closed",
       "successors": [],
-      "supersession": null
+      "supersession": {
+        "negative_case_disposition": "Negative cases remain required for the future owner and are not erased; they are listed in the #743 closeout family record and successor issue handoff.",
+        "obsolete_assumption": "This frozen law was previously counted as extracted-core required behavior even though its executable owner is outside the pure core package.",
+        "rationale": "Frozen law exercises Docker, HTTP, probe, runtime materialization, runtime state, ownership, retention, dispatch, or substrate behavior. Extracted core must keep only the closed language/contract boundary and cannot execute the interpreter.",
+        "replacement": "#743 interpreter/runtime handoff; core retains closed protocol, lifecycle, verification, control-route, effect-boundary, and product-runtime contract values without owning effects.",
+        "review": "#743 interpreter runtime closeout"
+      }
     },
     {
       "kind": "test",
@@ -4199,7 +4373,13 @@
       "owner_kind": "core",
       "reference": "tests.test_control_http_security.ControlHttpSecurityTests.test_unsafe_authorities_fail_without_echoing_address_or_secret",
       "successors": [],
-      "supersession": null
+      "supersession": {
+        "negative_case_disposition": "Negative cases remain required for the future owner and are not erased; they are listed in the #743 closeout family record and successor issue handoff.",
+        "obsolete_assumption": "This frozen law was previously counted as extracted-core required behavior even though its executable owner is outside the pure core package.",
+        "rationale": "Frozen law exercises Docker, HTTP, probe, runtime materialization, runtime state, ownership, retention, dispatch, or substrate behavior. Extracted core must keep only the closed language/contract boundary and cannot execute the interpreter.",
+        "replacement": "#743 interpreter/runtime handoff; core retains closed protocol, lifecycle, verification, control-route, effect-boundary, and product-runtime contract values without owning effects.",
+        "review": "#743 interpreter runtime closeout"
+      }
     },
     {
       "kind": "test",
@@ -5125,7 +5305,13 @@
       "owner_kind": "core",
       "reference": "tests.test_docker_configuration.DockerConfigurationTests.test_changed_content_changes_container_and_volume_ownership",
       "successors": [],
-      "supersession": null
+      "supersession": {
+        "negative_case_disposition": "Negative cases remain required for the future owner and are not erased; they are listed in the #743 closeout family record and successor issue handoff.",
+        "obsolete_assumption": "This frozen law was previously counted as extracted-core required behavior even though its executable owner is outside the pure core package.",
+        "rationale": "Frozen law exercises Docker, HTTP, probe, runtime materialization, runtime state, ownership, retention, dispatch, or substrate behavior. Extracted core must keep only the closed language/contract boundary and cannot execute the interpreter.",
+        "replacement": "#743 interpreter/runtime handoff; core retains closed protocol, lifecycle, verification, control-route, effect-boundary, and product-runtime contract values without owning effects.",
+        "review": "#743 interpreter runtime closeout"
+      }
     },
     {
       "kind": "test",
@@ -5135,7 +5321,13 @@
       "owner_kind": "core",
       "reference": "tests.test_docker_configuration.DockerConfigurationTests.test_cleanup_preflights_every_artifact_before_container_removal",
       "successors": [],
-      "supersession": null
+      "supersession": {
+        "negative_case_disposition": "Negative cases remain required for the future owner and are not erased; they are listed in the #743 closeout family record and successor issue handoff.",
+        "obsolete_assumption": "This frozen law was previously counted as extracted-core required behavior even though its executable owner is outside the pure core package.",
+        "rationale": "Frozen law exercises Docker, HTTP, probe, runtime materialization, runtime state, ownership, retention, dispatch, or substrate behavior. Extracted core must keep only the closed language/contract boundary and cannot execute the interpreter.",
+        "replacement": "#743 interpreter/runtime handoff; core retains closed protocol, lifecycle, verification, control-route, effect-boundary, and product-runtime contract values without owning effects.",
+        "review": "#743 interpreter runtime closeout"
+      }
     },
     {
       "kind": "test",
@@ -5145,7 +5337,13 @@
       "owner_kind": "core",
       "reference": "tests.test_docker_configuration.DockerConfigurationTests.test_cli_never_places_content_in_argv_and_uses_read_only_helper",
       "successors": [],
-      "supersession": null
+      "supersession": {
+        "negative_case_disposition": "Negative cases remain required for the future owner and are not erased; they are listed in the #743 closeout family record and successor issue handoff.",
+        "obsolete_assumption": "This frozen law was previously counted as extracted-core required behavior even though its executable owner is outside the pure core package.",
+        "rationale": "Frozen law exercises Docker, HTTP, probe, runtime materialization, runtime state, ownership, retention, dispatch, or substrate behavior. Extracted core must keep only the closed language/contract boundary and cannot execute the interpreter.",
+        "replacement": "#743 interpreter/runtime handoff; core retains closed protocol, lifecycle, verification, control-route, effect-boundary, and product-runtime contract values without owning effects.",
+        "review": "#743 interpreter runtime closeout"
+      }
     },
     {
       "kind": "test",
@@ -5155,7 +5353,13 @@
       "owner_kind": "core",
       "reference": "tests.test_docker_configuration.DockerConfigurationTests.test_concurrent_identical_starts_converge_on_exact_artifact",
       "successors": [],
-      "supersession": null
+      "supersession": {
+        "negative_case_disposition": "Negative cases remain required for the future owner and are not erased; they are listed in the #743 closeout family record and successor issue handoff.",
+        "obsolete_assumption": "This frozen law was previously counted as extracted-core required behavior even though its executable owner is outside the pure core package.",
+        "rationale": "Frozen law exercises Docker, HTTP, probe, runtime materialization, runtime state, ownership, retention, dispatch, or substrate behavior. Extracted core must keep only the closed language/contract boundary and cannot execute the interpreter.",
+        "replacement": "#743 interpreter/runtime handoff; core retains closed protocol, lifecycle, verification, control-route, effect-boundary, and product-runtime contract values without owning effects.",
+        "review": "#743 interpreter runtime closeout"
+      }
     },
     {
       "kind": "test",
@@ -5165,7 +5369,13 @@
       "owner_kind": "core",
       "reference": "tests.test_docker_configuration.DockerConfigurationTests.test_container_conflict_preflights_before_artifact_mutation",
       "successors": [],
-      "supersession": null
+      "supersession": {
+        "negative_case_disposition": "Negative cases remain required for the future owner and are not erased; they are listed in the #743 closeout family record and successor issue handoff.",
+        "obsolete_assumption": "This frozen law was previously counted as extracted-core required behavior even though its executable owner is outside the pure core package.",
+        "rationale": "Frozen law exercises Docker, HTTP, probe, runtime materialization, runtime state, ownership, retention, dispatch, or substrate behavior. Extracted core must keep only the closed language/contract boundary and cannot execute the interpreter.",
+        "replacement": "#743 interpreter/runtime handoff; core retains closed protocol, lifecycle, verification, control-route, effect-boundary, and product-runtime contract values without owning effects.",
+        "review": "#743 interpreter runtime closeout"
+      }
     },
     {
       "kind": "test",
@@ -5175,7 +5385,13 @@
       "owner_kind": "core",
       "reference": "tests.test_docker_configuration.DockerConfigurationTests.test_owned_incomplete_volume_is_completed_by_exact_replay",
       "successors": [],
-      "supersession": null
+      "supersession": {
+        "negative_case_disposition": "Negative cases remain required for the future owner and are not erased; they are listed in the #743 closeout family record and successor issue handoff.",
+        "obsolete_assumption": "This frozen law was previously counted as extracted-core required behavior even though its executable owner is outside the pure core package.",
+        "rationale": "Frozen law exercises Docker, HTTP, probe, runtime materialization, runtime state, ownership, retention, dispatch, or substrate behavior. Extracted core must keep only the closed language/contract boundary and cannot execute the interpreter.",
+        "replacement": "#743 interpreter/runtime handoff; core retains closed protocol, lifecycle, verification, control-route, effect-boundary, and product-runtime contract values without owning effects.",
+        "review": "#743 interpreter runtime closeout"
+      }
     },
     {
       "kind": "test",
@@ -5185,7 +5401,13 @@
       "owner_kind": "core",
       "reference": "tests.test_docker_configuration.DockerConfigurationTests.test_owned_volume_with_wrong_digest_fails_without_starting",
       "successors": [],
-      "supersession": null
+      "supersession": {
+        "negative_case_disposition": "Negative cases remain required for the future owner and are not erased; they are listed in the #743 closeout family record and successor issue handoff.",
+        "obsolete_assumption": "This frozen law was previously counted as extracted-core required behavior even though its executable owner is outside the pure core package.",
+        "rationale": "Frozen law exercises Docker, HTTP, probe, runtime materialization, runtime state, ownership, retention, dispatch, or substrate behavior. Extracted core must keep only the closed language/contract boundary and cannot execute the interpreter.",
+        "replacement": "#743 interpreter/runtime handoff; core retains closed protocol, lifecycle, verification, control-route, effect-boundary, and product-runtime contract values without owning effects.",
+        "review": "#743 interpreter runtime closeout"
+      }
     },
     {
       "kind": "test",
@@ -5195,7 +5417,13 @@
       "owner_kind": "core",
       "reference": "tests.test_docker_configuration.DockerConfigurationTests.test_partial_materialization_is_uncertain_and_cleanup_is_artifact_only",
       "successors": [],
-      "supersession": null
+      "supersession": {
+        "negative_case_disposition": "Negative cases remain required for the future owner and are not erased; they are listed in the #743 closeout family record and successor issue handoff.",
+        "obsolete_assumption": "This frozen law was previously counted as extracted-core required behavior even though its executable owner is outside the pure core package.",
+        "rationale": "Frozen law exercises Docker, HTTP, probe, runtime materialization, runtime state, ownership, retention, dispatch, or substrate behavior. Extracted core must keep only the closed language/contract boundary and cannot execute the interpreter.",
+        "replacement": "#743 interpreter/runtime handoff; core retains closed protocol, lifecycle, verification, control-route, effect-boundary, and product-runtime contract values without owning effects.",
+        "review": "#743 interpreter runtime closeout"
+      }
     },
     {
       "kind": "test",
@@ -5205,7 +5433,13 @@
       "owner_kind": "core",
       "reference": "tests.test_docker_configuration.DockerConfigurationTests.test_start_materializes_before_container_and_replay_converges",
       "successors": [],
-      "supersession": null
+      "supersession": {
+        "negative_case_disposition": "Negative cases remain required for the future owner and are not erased; they are listed in the #743 closeout family record and successor issue handoff.",
+        "obsolete_assumption": "This frozen law was previously counted as extracted-core required behavior even though its executable owner is outside the pure core package.",
+        "rationale": "Frozen law exercises Docker, HTTP, probe, runtime materialization, runtime state, ownership, retention, dispatch, or substrate behavior. Extracted core must keep only the closed language/contract boundary and cannot execute the interpreter.",
+        "replacement": "#743 interpreter/runtime handoff; core retains closed protocol, lifecycle, verification, control-route, effect-boundary, and product-runtime contract values without owning effects.",
+        "review": "#743 interpreter runtime closeout"
+      }
     },
     {
       "kind": "test",
@@ -5215,7 +5449,13 @@
       "owner_kind": "core",
       "reference": "tests.test_docker_effects.DockerEffectTests.test_cli_distinguishes_absence_from_failed_inspection",
       "successors": [],
-      "supersession": null
+      "supersession": {
+        "negative_case_disposition": "Negative cases remain required for the future owner and are not erased; they are listed in the #743 closeout family record and successor issue handoff.",
+        "obsolete_assumption": "This frozen law was previously counted as extracted-core required behavior even though its executable owner is outside the pure core package.",
+        "rationale": "Frozen law exercises Docker, HTTP, probe, runtime materialization, runtime state, ownership, retention, dispatch, or substrate behavior. Extracted core must keep only the closed language/contract boundary and cannot execute the interpreter.",
+        "replacement": "#743 interpreter/runtime handoff; core retains closed protocol, lifecycle, verification, control-route, effect-boundary, and product-runtime contract values without owning effects.",
+        "review": "#743 interpreter runtime closeout"
+      }
     },
     {
       "kind": "test",
@@ -5225,7 +5465,13 @@
       "owner_kind": "core",
       "reference": "tests.test_docker_effects.DockerEffectTests.test_cli_inspection_preserves_private_and_host_port_distinction",
       "successors": [],
-      "supersession": null
+      "supersession": {
+        "negative_case_disposition": "Negative cases remain required for the future owner and are not erased; they are listed in the #743 closeout family record and successor issue handoff.",
+        "obsolete_assumption": "This frozen law was previously counted as extracted-core required behavior even though its executable owner is outside the pure core package.",
+        "rationale": "Frozen law exercises Docker, HTTP, probe, runtime materialization, runtime state, ownership, retention, dispatch, or substrate behavior. Extracted core must keep only the closed language/contract boundary and cannot execute the interpreter.",
+        "replacement": "#743 interpreter/runtime handoff; core retains closed protocol, lifecycle, verification, control-route, effect-boundary, and product-runtime contract values without owning effects.",
+        "review": "#743 interpreter runtime closeout"
+      }
     },
     {
       "kind": "test",
@@ -5235,7 +5481,13 @@
       "owner_kind": "core",
       "reference": "tests.test_docker_effects.DockerEffectTests.test_cli_inspection_rejects_unknown_transport_suffix",
       "successors": [],
-      "supersession": null
+      "supersession": {
+        "negative_case_disposition": "Negative cases remain required for the future owner and are not erased; they are listed in the #743 closeout family record and successor issue handoff.",
+        "obsolete_assumption": "This frozen law was previously counted as extracted-core required behavior even though its executable owner is outside the pure core package.",
+        "rationale": "Frozen law exercises Docker, HTTP, probe, runtime materialization, runtime state, ownership, retention, dispatch, or substrate behavior. Extracted core must keep only the closed language/contract boundary and cannot execute the interpreter.",
+        "replacement": "#743 interpreter/runtime handoff; core retains closed protocol, lifecycle, verification, control-route, effect-boundary, and product-runtime contract values without owning effects.",
+        "review": "#743 interpreter runtime closeout"
+      }
     },
     {
       "kind": "test",
@@ -5245,7 +5497,13 @@
       "owner_kind": "core",
       "reference": "tests.test_docker_effects.DockerEffectTests.test_cli_keeps_environment_values_out_of_process_arguments",
       "successors": [],
-      "supersession": null
+      "supersession": {
+        "negative_case_disposition": "Negative cases remain required for the future owner and are not erased; they are listed in the #743 closeout family record and successor issue handoff.",
+        "obsolete_assumption": "This frozen law was previously counted as extracted-core required behavior even though its executable owner is outside the pure core package.",
+        "rationale": "Frozen law exercises Docker, HTTP, probe, runtime materialization, runtime state, ownership, retention, dispatch, or substrate behavior. Extracted core must keep only the closed language/contract boundary and cannot execute the interpreter.",
+        "replacement": "#743 interpreter/runtime handoff; core retains closed protocol, lifecycle, verification, control-route, effect-boundary, and product-runtime contract values without owning effects.",
+        "review": "#743 interpreter runtime closeout"
+      }
     },
     {
       "kind": "test",
@@ -5255,7 +5513,13 @@
       "owner_kind": "core",
       "reference": "tests.test_docker_effects.DockerEffectTests.test_cli_publishes_only_explicit_typed_port_bindings",
       "successors": [],
-      "supersession": null
+      "supersession": {
+        "negative_case_disposition": "Negative cases remain required for the future owner and are not erased; they are listed in the #743 closeout family record and successor issue handoff.",
+        "obsolete_assumption": "This frozen law was previously counted as extracted-core required behavior even though its executable owner is outside the pure core package.",
+        "rationale": "Frozen law exercises Docker, HTTP, probe, runtime materialization, runtime state, ownership, retention, dispatch, or substrate behavior. Extracted core must keep only the closed language/contract boundary and cannot execute the interpreter.",
+        "replacement": "#743 interpreter/runtime handoff; core retains closed protocol, lifecycle, verification, control-route, effect-boundary, and product-runtime contract values without owning effects.",
+        "review": "#743 interpreter runtime closeout"
+      }
     },
     {
       "kind": "test",
@@ -5265,7 +5529,13 @@
       "owner_kind": "core",
       "reference": "tests.test_docker_effects.DockerEffectTests.test_cli_renders_udp_from_the_protocol_transport",
       "successors": [],
-      "supersession": null
+      "supersession": {
+        "negative_case_disposition": "Negative cases remain required for the future owner and are not erased; they are listed in the #743 closeout family record and successor issue handoff.",
+        "obsolete_assumption": "This frozen law was previously counted as extracted-core required behavior even though its executable owner is outside the pure core package.",
+        "rationale": "Frozen law exercises Docker, HTTP, probe, runtime materialization, runtime state, ownership, retention, dispatch, or substrate behavior. Extracted core must keep only the closed language/contract boundary and cannot execute the interpreter.",
+        "replacement": "#743 interpreter/runtime handoff; core retains closed protocol, lifecycle, verification, control-route, effect-boundary, and product-runtime contract values without owning effects.",
+        "review": "#743 interpreter runtime closeout"
+      }
     },
     {
       "kind": "test",
@@ -5275,7 +5545,13 @@
       "owner_kind": "core",
       "reference": "tests.test_docker_effects.DockerEffectTests.test_compute_removal_is_explicit_and_separate_from_stop",
       "successors": [],
-      "supersession": null
+      "supersession": {
+        "negative_case_disposition": "Negative cases remain required for the future owner and are not erased; they are listed in the #743 closeout family record and successor issue handoff.",
+        "obsolete_assumption": "This frozen law was previously counted as extracted-core required behavior even though its executable owner is outside the pure core package.",
+        "rationale": "Frozen law exercises Docker, HTTP, probe, runtime materialization, runtime state, ownership, retention, dispatch, or substrate behavior. Extracted core must keep only the closed language/contract boundary and cannot execute the interpreter.",
+        "replacement": "#743 interpreter/runtime handoff; core retains closed protocol, lifecycle, verification, control-route, effect-boundary, and product-runtime contract values without owning effects.",
+        "review": "#743 interpreter runtime closeout"
+      }
     },
     {
       "kind": "test",
@@ -5285,7 +5561,13 @@
       "owner_kind": "core",
       "reference": "tests.test_docker_effects.DockerEffectTests.test_host_publication_is_distinct_from_private_node_material",
       "successors": [],
-      "supersession": null
+      "supersession": {
+        "negative_case_disposition": "Negative cases remain required for the future owner and are not erased; they are listed in the #743 closeout family record and successor issue handoff.",
+        "obsolete_assumption": "This frozen law was previously counted as extracted-core required behavior even though its executable owner is outside the pure core package.",
+        "rationale": "Frozen law exercises Docker, HTTP, probe, runtime materialization, runtime state, ownership, retention, dispatch, or substrate behavior. Extracted core must keep only the closed language/contract boundary and cannot execute the interpreter.",
+        "replacement": "#743 interpreter/runtime handoff; core retains closed protocol, lifecycle, verification, control-route, effect-boundary, and product-runtime contract values without owning effects.",
+        "review": "#743 interpreter runtime closeout"
+      }
     },
     {
       "kind": "test",
@@ -5295,7 +5577,13 @@
       "owner_kind": "core",
       "reference": "tests.test_docker_effects.DockerEffectTests.test_node_start_attempts_one_container_and_reports_process_not_health",
       "successors": [],
-      "supersession": null
+      "supersession": {
+        "negative_case_disposition": "Negative cases remain required for the future owner and are not erased; they are listed in the #743 closeout family record and successor issue handoff.",
+        "obsolete_assumption": "This frozen law was previously counted as extracted-core required behavior even though its executable owner is outside the pure core package.",
+        "rationale": "Frozen law exercises Docker, HTTP, probe, runtime materialization, runtime state, ownership, retention, dispatch, or substrate behavior. Extracted core must keep only the closed language/contract boundary and cannot execute the interpreter.",
+        "replacement": "#743 interpreter/runtime handoff; core retains closed protocol, lifecycle, verification, control-route, effect-boundary, and product-runtime contract values without owning effects.",
+        "review": "#743 interpreter runtime closeout"
+      }
     },
     {
       "kind": "test",
@@ -5305,7 +5593,13 @@
       "owner_kind": "core",
       "reference": "tests.test_docker_effects.DockerEffectTests.test_node_stop_does_not_remove_container_or_runtime",
       "successors": [],
-      "supersession": null
+      "supersession": {
+        "negative_case_disposition": "Negative cases remain required for the future owner and are not erased; they are listed in the #743 closeout family record and successor issue handoff.",
+        "obsolete_assumption": "This frozen law was previously counted as extracted-core required behavior even though its executable owner is outside the pure core package.",
+        "rationale": "Frozen law exercises Docker, HTTP, probe, runtime materialization, runtime state, ownership, retention, dispatch, or substrate behavior. Extracted core must keep only the closed language/contract boundary and cannot execute the interpreter.",
+        "replacement": "#743 interpreter/runtime handoff; core retains closed protocol, lifecycle, verification, control-route, effect-boundary, and product-runtime contract values without owning effects.",
+        "review": "#743 interpreter runtime closeout"
+      }
     },
     {
       "kind": "test",
@@ -5315,7 +5609,13 @@
       "owner_kind": "core",
       "reference": "tests.test_docker_effects.DockerEffectTests.test_reconcile_failure_after_removal_is_uncertain",
       "successors": [],
-      "supersession": null
+      "supersession": {
+        "negative_case_disposition": "Negative cases remain required for the future owner and are not erased; they are listed in the #743 closeout family record and successor issue handoff.",
+        "obsolete_assumption": "This frozen law was previously counted as extracted-core required behavior even though its executable owner is outside the pure core package.",
+        "rationale": "Frozen law exercises Docker, HTTP, probe, runtime materialization, runtime state, ownership, retention, dispatch, or substrate behavior. Extracted core must keep only the closed language/contract boundary and cannot execute the interpreter.",
+        "replacement": "#743 interpreter/runtime handoff; core retains closed protocol, lifecycle, verification, control-route, effect-boundary, and product-runtime contract values without owning effects.",
+        "review": "#743 interpreter runtime closeout"
+      }
     },
     {
       "kind": "test",
@@ -5325,7 +5625,13 @@
       "owner_kind": "core",
       "reference": "tests.test_docker_effects.DockerEffectTests.test_reconcile_ownership_conflict_fails_before_mutation",
       "successors": [],
-      "supersession": null
+      "supersession": {
+        "negative_case_disposition": "Negative cases remain required for the future owner and are not erased; they are listed in the #743 closeout family record and successor issue handoff.",
+        "obsolete_assumption": "This frozen law was previously counted as extracted-core required behavior even though its executable owner is outside the pure core package.",
+        "rationale": "Frozen law exercises Docker, HTTP, probe, runtime materialization, runtime state, ownership, retention, dispatch, or substrate behavior. Extracted core must keep only the closed language/contract boundary and cannot execute the interpreter.",
+        "replacement": "#743 interpreter/runtime handoff; core retains closed protocol, lifecycle, verification, control-route, effect-boundary, and product-runtime contract values without owning effects.",
+        "review": "#743 interpreter runtime closeout"
+      }
     },
     {
       "kind": "test",
@@ -5335,7 +5641,13 @@
       "owner_kind": "core",
       "reference": "tests.test_docker_effects.DockerEffectTests.test_reconcile_replaces_base_owned_node_and_exact_replay_converges",
       "successors": [],
-      "supersession": null
+      "supersession": {
+        "negative_case_disposition": "Negative cases remain required for the future owner and are not erased; they are listed in the #743 closeout family record and successor issue handoff.",
+        "obsolete_assumption": "This frozen law was previously counted as extracted-core required behavior even though its executable owner is outside the pure core package.",
+        "rationale": "Frozen law exercises Docker, HTTP, probe, runtime materialization, runtime state, ownership, retention, dispatch, or substrate behavior. Extracted core must keep only the closed language/contract boundary and cannot execute the interpreter.",
+        "replacement": "#743 interpreter/runtime handoff; core retains closed protocol, lifecycle, verification, control-route, effect-boundary, and product-runtime contract values without owning effects.",
+        "review": "#743 interpreter runtime closeout"
+      }
     },
     {
       "kind": "test",
@@ -5345,7 +5657,13 @@
       "owner_kind": "core",
       "reference": "tests.test_docker_effects.DockerEffectTests.test_reconcile_resolves_desired_secrets_before_removal",
       "successors": [],
-      "supersession": null
+      "supersession": {
+        "negative_case_disposition": "Negative cases remain required for the future owner and are not erased; they are listed in the #743 closeout family record and successor issue handoff.",
+        "obsolete_assumption": "This frozen law was previously counted as extracted-core required behavior even though its executable owner is outside the pure core package.",
+        "rationale": "Frozen law exercises Docker, HTTP, probe, runtime materialization, runtime state, ownership, retention, dispatch, or substrate behavior. Extracted core must keep only the closed language/contract boundary and cannot execute the interpreter.",
+        "replacement": "#743 interpreter/runtime handoff; core retains closed protocol, lifecycle, verification, control-route, effect-boundary, and product-runtime contract values without owning effects.",
+        "review": "#743 interpreter runtime closeout"
+      }
     },
     {
       "kind": "test",
@@ -5355,7 +5673,13 @@
       "owner_kind": "core",
       "reference": "tests.test_docker_effects.DockerEffectTests.test_runtime_start_ensures_only_the_pinned_network",
       "successors": [],
-      "supersession": null
+      "supersession": {
+        "negative_case_disposition": "Negative cases remain required for the future owner and are not erased; they are listed in the #743 closeout family record and successor issue handoff.",
+        "obsolete_assumption": "This frozen law was previously counted as extracted-core required behavior even though its executable owner is outside the pure core package.",
+        "rationale": "Frozen law exercises Docker, HTTP, probe, runtime materialization, runtime state, ownership, retention, dispatch, or substrate behavior. Extracted core must keep only the closed language/contract boundary and cannot execute the interpreter.",
+        "replacement": "#743 interpreter/runtime handoff; core retains closed protocol, lifecycle, verification, control-route, effect-boundary, and product-runtime contract values without owning effects.",
+        "review": "#743 interpreter runtime closeout"
+      }
     },
     {
       "kind": "test",
@@ -5365,7 +5689,13 @@
       "owner_kind": "core",
       "reference": "tests.test_docker_effects.DockerEffectTests.test_runtime_stop_is_a_non_deleting_logical_barrier",
       "successors": [],
-      "supersession": null
+      "supersession": {
+        "negative_case_disposition": "Negative cases remain required for the future owner and are not erased; they are listed in the #743 closeout family record and successor issue handoff.",
+        "obsolete_assumption": "This frozen law was previously counted as extracted-core required behavior even though its executable owner is outside the pure core package.",
+        "rationale": "Frozen law exercises Docker, HTTP, probe, runtime materialization, runtime state, ownership, retention, dispatch, or substrate behavior. Extracted core must keep only the closed language/contract boundary and cannot execute the interpreter.",
+        "replacement": "#743 interpreter/runtime handoff; core retains closed protocol, lifecycle, verification, control-route, effect-boundary, and product-runtime contract values without owning effects.",
+        "review": "#743 interpreter runtime closeout"
+      }
     },
     {
       "kind": "test",
@@ -5375,7 +5705,13 @@
       "owner_kind": "core",
       "reference": "tests.test_docker_effects.DockerEffectTests.test_timeout_is_uncertain_and_does_not_publish_command_output",
       "successors": [],
-      "supersession": null
+      "supersession": {
+        "negative_case_disposition": "Negative cases remain required for the future owner and are not erased; they are listed in the #743 closeout family record and successor issue handoff.",
+        "obsolete_assumption": "This frozen law was previously counted as extracted-core required behavior even though its executable owner is outside the pure core package.",
+        "rationale": "Frozen law exercises Docker, HTTP, probe, runtime materialization, runtime state, ownership, retention, dispatch, or substrate behavior. Extracted core must keep only the closed language/contract boundary and cannot execute the interpreter.",
+        "replacement": "#743 interpreter/runtime handoff; core retains closed protocol, lifecycle, verification, control-route, effect-boundary, and product-runtime contract values without owning effects.",
+        "review": "#743 interpreter runtime closeout"
+      }
     },
     {
       "kind": "test",
@@ -5385,7 +5721,13 @@
       "owner_kind": "core",
       "reference": "tests.test_docker_ownership.DockerOwnershipTests.test_absent_resource_is_created_with_stable_ownership_labels",
       "successors": [],
-      "supersession": null
+      "supersession": {
+        "negative_case_disposition": "Negative cases remain required for the future owner and are not erased; they are listed in the #743 closeout family record and successor issue handoff.",
+        "obsolete_assumption": "This frozen law was previously counted as extracted-core required behavior even though its executable owner is outside the pure core package.",
+        "rationale": "Frozen law exercises Docker, HTTP, probe, runtime materialization, runtime state, ownership, retention, dispatch, or substrate behavior. Extracted core must keep only the closed language/contract boundary and cannot execute the interpreter.",
+        "replacement": "#743 interpreter/runtime handoff; core retains closed protocol, lifecycle, verification, control-route, effect-boundary, and product-runtime contract values without owning effects.",
+        "review": "#743 interpreter runtime closeout"
+      }
     },
     {
       "kind": "test",
@@ -5395,7 +5737,13 @@
       "owner_kind": "core",
       "reference": "tests.test_docker_ownership.DockerOwnershipTests.test_changed_material_conflicts_instead_of_retargeting_same_name",
       "successors": [],
-      "supersession": null
+      "supersession": {
+        "negative_case_disposition": "Negative cases remain required for the future owner and are not erased; they are listed in the #743 closeout family record and successor issue handoff.",
+        "obsolete_assumption": "This frozen law was previously counted as extracted-core required behavior even though its executable owner is outside the pure core package.",
+        "rationale": "Frozen law exercises Docker, HTTP, probe, runtime materialization, runtime state, ownership, retention, dispatch, or substrate behavior. Extracted core must keep only the closed language/contract boundary and cannot execute the interpreter.",
+        "replacement": "#743 interpreter/runtime handoff; core retains closed protocol, lifecycle, verification, control-route, effect-boundary, and product-runtime contract values without owning effects.",
+        "review": "#743 interpreter runtime closeout"
+      }
     },
     {
       "kind": "test",
@@ -5405,7 +5753,13 @@
       "owner_kind": "core",
       "reference": "tests.test_docker_ownership.DockerOwnershipTests.test_compatible_stopped_container_is_started_without_recreation",
       "successors": [],
-      "supersession": null
+      "supersession": {
+        "negative_case_disposition": "Negative cases remain required for the future owner and are not erased; they are listed in the #743 closeout family record and successor issue handoff.",
+        "obsolete_assumption": "This frozen law was previously counted as extracted-core required behavior even though its executable owner is outside the pure core package.",
+        "rationale": "Frozen law exercises Docker, HTTP, probe, runtime materialization, runtime state, ownership, retention, dispatch, or substrate behavior. Extracted core must keep only the closed language/contract boundary and cannot execute the interpreter.",
+        "replacement": "#743 interpreter/runtime handoff; core retains closed protocol, lifecycle, verification, control-route, effect-boundary, and product-runtime contract values without owning effects.",
+        "review": "#743 interpreter runtime closeout"
+      }
     },
     {
       "kind": "test",
@@ -5415,7 +5769,13 @@
       "owner_kind": "core",
       "reference": "tests.test_docker_ownership.DockerOwnershipTests.test_concurrent_equivalent_creation_converges_on_owned_resource",
       "successors": [],
-      "supersession": null
+      "supersession": {
+        "negative_case_disposition": "Negative cases remain required for the future owner and are not erased; they are listed in the #743 closeout family record and successor issue handoff.",
+        "obsolete_assumption": "This frozen law was previously counted as extracted-core required behavior even though its executable owner is outside the pure core package.",
+        "rationale": "Frozen law exercises Docker, HTTP, probe, runtime materialization, runtime state, ownership, retention, dispatch, or substrate behavior. Extracted core must keep only the closed language/contract boundary and cannot execute the interpreter.",
+        "replacement": "#743 interpreter/runtime handoff; core retains closed protocol, lifecycle, verification, control-route, effect-boundary, and product-runtime contract values without owning effects.",
+        "review": "#743 interpreter runtime closeout"
+      }
     },
     {
       "kind": "test",
@@ -5425,7 +5785,13 @@
       "owner_kind": "core",
       "reference": "tests.test_docker_ownership.DockerOwnershipTests.test_identical_replay_reuses_running_container",
       "successors": [],
-      "supersession": null
+      "supersession": {
+        "negative_case_disposition": "Negative cases remain required for the future owner and are not erased; they are listed in the #743 closeout family record and successor issue handoff.",
+        "obsolete_assumption": "This frozen law was previously counted as extracted-core required behavior even though its executable owner is outside the pure core package.",
+        "rationale": "Frozen law exercises Docker, HTTP, probe, runtime materialization, runtime state, ownership, retention, dispatch, or substrate behavior. Extracted core must keep only the closed language/contract boundary and cannot execute the interpreter.",
+        "replacement": "#743 interpreter/runtime handoff; core retains closed protocol, lifecycle, verification, control-route, effect-boundary, and product-runtime contract values without owning effects.",
+        "review": "#743 interpreter runtime closeout"
+      }
     },
     {
       "kind": "test",
@@ -5435,7 +5801,13 @@
       "owner_kind": "core",
       "reference": "tests.test_docker_ownership.DockerOwnershipTests.test_unowned_name_collision_is_never_mutated",
       "successors": [],
-      "supersession": null
+      "supersession": {
+        "negative_case_disposition": "Negative cases remain required for the future owner and are not erased; they are listed in the #743 closeout family record and successor issue handoff.",
+        "obsolete_assumption": "This frozen law was previously counted as extracted-core required behavior even though its executable owner is outside the pure core package.",
+        "rationale": "Frozen law exercises Docker, HTTP, probe, runtime materialization, runtime state, ownership, retention, dispatch, or substrate behavior. Extracted core must keep only the closed language/contract boundary and cannot execute the interpreter.",
+        "replacement": "#743 interpreter/runtime handoff; core retains closed protocol, lifecycle, verification, control-route, effect-boundary, and product-runtime contract values without owning effects.",
+        "review": "#743 interpreter runtime closeout"
+      }
     },
     {
       "kind": "test",
@@ -5445,7 +5817,13 @@
       "owner_kind": "core",
       "reference": "tests.test_docker_retention.DockerRetentionTests.test_explicit_data_destruction_removes_only_the_named_owned_volume",
       "successors": [],
-      "supersession": null
+      "supersession": {
+        "negative_case_disposition": "Negative cases remain required for the future owner and are not erased; they are listed in the #743 closeout family record and successor issue handoff.",
+        "obsolete_assumption": "This frozen law was previously counted as extracted-core required behavior even though its executable owner is outside the pure core package.",
+        "rationale": "Frozen law exercises Docker, HTTP, probe, runtime materialization, runtime state, ownership, retention, dispatch, or substrate behavior. Extracted core must keep only the closed language/contract boundary and cannot execute the interpreter.",
+        "replacement": "#743 interpreter/runtime handoff; core retains closed protocol, lifecycle, verification, control-route, effect-boundary, and product-runtime contract values without owning effects.",
+        "review": "#743 interpreter runtime closeout"
+      }
     },
     {
       "kind": "test",
@@ -5455,7 +5833,13 @@
       "owner_kind": "core",
       "reference": "tests.test_docker_retention.DockerRetentionTests.test_postgres_start_creates_owned_volume_and_mounts_it",
       "successors": [],
-      "supersession": null
+      "supersession": {
+        "negative_case_disposition": "Negative cases remain required for the future owner and are not erased; they are listed in the #743 closeout family record and successor issue handoff.",
+        "obsolete_assumption": "This frozen law was previously counted as extracted-core required behavior even though its executable owner is outside the pure core package.",
+        "rationale": "Frozen law exercises Docker, HTTP, probe, runtime materialization, runtime state, ownership, retention, dispatch, or substrate behavior. Extracted core must keep only the closed language/contract boundary and cannot execute the interpreter.",
+        "replacement": "#743 interpreter/runtime handoff; core retains closed protocol, lifecycle, verification, control-route, effect-boundary, and product-runtime contract values without owning effects.",
+        "review": "#743 interpreter runtime closeout"
+      }
     },
     {
       "kind": "test",
@@ -5465,7 +5849,13 @@
       "owner_kind": "core",
       "reference": "tests.test_docker_retention.DockerRetentionTests.test_retained_and_external_compute_cannot_cross_removal_boundary",
       "successors": [],
-      "supersession": null
+      "supersession": {
+        "negative_case_disposition": "Negative cases remain required for the future owner and are not erased; they are listed in the #743 closeout family record and successor issue handoff.",
+        "obsolete_assumption": "This frozen law was previously counted as extracted-core required behavior even though its executable owner is outside the pure core package.",
+        "rationale": "Frozen law exercises Docker, HTTP, probe, runtime materialization, runtime state, ownership, retention, dispatch, or substrate behavior. Extracted core must keep only the closed language/contract boundary and cannot execute the interpreter.",
+        "replacement": "#743 interpreter/runtime handoff; core retains closed protocol, lifecycle, verification, control-route, effect-boundary, and product-runtime contract values without owning effects.",
+        "review": "#743 interpreter runtime closeout"
+      }
     },
     {
       "kind": "test",
@@ -5475,7 +5865,13 @@
       "owner_kind": "core",
       "reference": "tests.test_docker_retention.DockerRetentionTests.test_start_and_explicit_destruction_replay_converge",
       "successors": [],
-      "supersession": null
+      "supersession": {
+        "negative_case_disposition": "Negative cases remain required for the future owner and are not erased; they are listed in the #743 closeout family record and successor issue handoff.",
+        "obsolete_assumption": "This frozen law was previously counted as extracted-core required behavior even though its executable owner is outside the pure core package.",
+        "rationale": "Frozen law exercises Docker, HTTP, probe, runtime materialization, runtime state, ownership, retention, dispatch, or substrate behavior. Extracted core must keep only the closed language/contract boundary and cannot execute the interpreter.",
+        "replacement": "#743 interpreter/runtime handoff; core retains closed protocol, lifecycle, verification, control-route, effect-boundary, and product-runtime contract values without owning effects.",
+        "review": "#743 interpreter runtime closeout"
+      }
     },
     {
       "kind": "test",
@@ -5485,7 +5881,13 @@
       "owner_kind": "core",
       "reference": "tests.test_docker_retention.DockerRetentionTests.test_stop_and_compute_removal_preserve_named_data",
       "successors": [],
-      "supersession": null
+      "supersession": {
+        "negative_case_disposition": "Negative cases remain required for the future owner and are not erased; they are listed in the #743 closeout family record and successor issue handoff.",
+        "obsolete_assumption": "This frozen law was previously counted as extracted-core required behavior even though its executable owner is outside the pure core package.",
+        "rationale": "Frozen law exercises Docker, HTTP, probe, runtime materialization, runtime state, ownership, retention, dispatch, or substrate behavior. Extracted core must keep only the closed language/contract boundary and cannot execute the interpreter.",
+        "replacement": "#743 interpreter/runtime handoff; core retains closed protocol, lifecycle, verification, control-route, effect-boundary, and product-runtime contract values without owning effects.",
+        "review": "#743 interpreter runtime closeout"
+      }
     },
     {
       "kind": "test",
@@ -5495,7 +5897,13 @@
       "owner_kind": "core",
       "reference": "tests.test_docker_retention.DockerRetentionTests.test_unowned_volume_collision_fails_before_container_start",
       "successors": [],
-      "supersession": null
+      "supersession": {
+        "negative_case_disposition": "Negative cases remain required for the future owner and are not erased; they are listed in the #743 closeout family record and successor issue handoff.",
+        "obsolete_assumption": "This frozen law was previously counted as extracted-core required behavior even though its executable owner is outside the pure core package.",
+        "rationale": "Frozen law exercises Docker, HTTP, probe, runtime materialization, runtime state, ownership, retention, dispatch, or substrate behavior. Extracted core must keep only the closed language/contract boundary and cannot execute the interpreter.",
+        "replacement": "#743 interpreter/runtime handoff; core retains closed protocol, lifecycle, verification, control-route, effect-boundary, and product-runtime contract values without owning effects.",
+        "review": "#743 interpreter runtime closeout"
+      }
     },
     {
       "kind": "test",
@@ -5505,7 +5913,13 @@
       "owner_kind": "core",
       "reference": "tests.test_docker_runtime.DockerRuntimeExecutorTests.test_down_preserves_containers_when_cleanup_policy_preserves",
       "successors": [],
-      "supersession": null
+      "supersession": {
+        "negative_case_disposition": "Negative cases remain required for the future owner and are not erased; they are listed in the #743 closeout family record and successor issue handoff.",
+        "obsolete_assumption": "This frozen law was previously counted as extracted-core required behavior even though its executable owner is outside the pure core package.",
+        "rationale": "Frozen law exercises Docker, HTTP, probe, runtime materialization, runtime state, ownership, retention, dispatch, or substrate behavior. Extracted core must keep only the closed language/contract boundary and cannot execute the interpreter.",
+        "replacement": "#743 interpreter/runtime handoff; core retains closed protocol, lifecycle, verification, control-route, effect-boundary, and product-runtime contract values without owning effects.",
+        "review": "#743 interpreter runtime closeout"
+      }
     },
     {
       "kind": "test",
@@ -5515,7 +5929,13 @@
       "owner_kind": "core",
       "reference": "tests.test_docker_runtime.DockerRuntimeExecutorTests.test_down_stops_without_removing_owned_resources",
       "successors": [],
-      "supersession": null
+      "supersession": {
+        "negative_case_disposition": "Negative cases remain required for the future owner and are not erased; they are listed in the #743 closeout family record and successor issue handoff.",
+        "obsolete_assumption": "This frozen law was previously counted as extracted-core required behavior even though its executable owner is outside the pure core package.",
+        "rationale": "Frozen law exercises Docker, HTTP, probe, runtime materialization, runtime state, ownership, retention, dispatch, or substrate behavior. Extracted core must keep only the closed language/contract boundary and cannot execute the interpreter.",
+        "replacement": "#743 interpreter/runtime handoff; core retains closed protocol, lifecycle, verification, control-route, effect-boundary, and product-runtime contract values without owning effects.",
+        "review": "#743 interpreter runtime closeout"
+      }
     },
     {
       "kind": "test",
@@ -5525,7 +5945,13 @@
       "owner_kind": "core",
       "reference": "tests.test_docker_runtime.DockerRuntimeExecutorTests.test_up_executes_planned_activities_and_returns_runtime_state",
       "successors": [],
-      "supersession": null
+      "supersession": {
+        "negative_case_disposition": "Negative cases remain required for the future owner and are not erased; they are listed in the #743 closeout family record and successor issue handoff.",
+        "obsolete_assumption": "This frozen law was previously counted as extracted-core required behavior even though its executable owner is outside the pure core package.",
+        "rationale": "Frozen law exercises Docker, HTTP, probe, runtime materialization, runtime state, ownership, retention, dispatch, or substrate behavior. Extracted core must keep only the closed language/contract boundary and cannot execute the interpreter.",
+        "replacement": "#743 interpreter/runtime handoff; core retains closed protocol, lifecycle, verification, control-route, effect-boundary, and product-runtime contract values without owning effects.",
+        "review": "#743 interpreter runtime closeout"
+      }
     },
     {
       "kind": "test",
@@ -5535,7 +5961,13 @@
       "owner_kind": "core",
       "reference": "tests.test_docker_runtime.DockerRuntimePlanningTests.test_cross_runtime_edges_are_preserved_but_not_realized",
       "successors": [],
-      "supersession": null
+      "supersession": {
+        "negative_case_disposition": "Negative cases remain required for the future owner and are not erased; they are listed in the #743 closeout family record and successor issue handoff.",
+        "obsolete_assumption": "This frozen law was previously counted as extracted-core required behavior even though its executable owner is outside the pure core package.",
+        "rationale": "Frozen law exercises Docker, HTTP, probe, runtime materialization, runtime state, ownership, retention, dispatch, or substrate behavior. Extracted core must keep only the closed language/contract boundary and cannot execute the interpreter.",
+        "replacement": "#743 interpreter/runtime handoff; core retains closed protocol, lifecycle, verification, control-route, effect-boundary, and product-runtime contract values without owning effects.",
+        "review": "#743 interpreter runtime closeout"
+      }
     },
     {
       "kind": "test",
@@ -5545,7 +5977,13 @@
       "owner_kind": "core",
       "reference": "tests.test_docker_runtime.DockerRuntimePlanningTests.test_non_docker_runtime_is_rejected_before_planning",
       "successors": [],
-      "supersession": null
+      "supersession": {
+        "negative_case_disposition": "Negative cases remain required for the future owner and are not erased; they are listed in the #743 closeout family record and successor issue handoff.",
+        "obsolete_assumption": "This frozen law was previously counted as extracted-core required behavior even though its executable owner is outside the pure core package.",
+        "rationale": "Frozen law exercises Docker, HTTP, probe, runtime materialization, runtime state, ownership, retention, dispatch, or substrate behavior. Extracted core must keep only the closed language/contract boundary and cannot execute the interpreter.",
+        "replacement": "#743 interpreter/runtime handoff; core retains closed protocol, lifecycle, verification, control-route, effect-boundary, and product-runtime contract values without owning effects.",
+        "review": "#743 interpreter runtime closeout"
+      }
     },
     {
       "kind": "test",
@@ -5555,7 +5993,13 @@
       "owner_kind": "core",
       "reference": "tests.test_docker_runtime.DockerRuntimePlanningTests.test_plan_start_creates_network_and_container_activities",
       "successors": [],
-      "supersession": null
+      "supersession": {
+        "negative_case_disposition": "Negative cases remain required for the future owner and are not erased; they are listed in the #743 closeout family record and successor issue handoff.",
+        "obsolete_assumption": "This frozen law was previously counted as extracted-core required behavior even though its executable owner is outside the pure core package.",
+        "rationale": "Frozen law exercises Docker, HTTP, probe, runtime materialization, runtime state, ownership, retention, dispatch, or substrate behavior. Extracted core must keep only the closed language/contract boundary and cannot execute the interpreter.",
+        "replacement": "#743 interpreter/runtime handoff; core retains closed protocol, lifecycle, verification, control-route, effect-boundary, and product-runtime contract values without owning effects.",
+        "review": "#743 interpreter runtime closeout"
+      }
     },
     {
       "kind": "test",
@@ -5565,7 +6009,13 @@
       "owner_kind": "core",
       "reference": "tests.test_docker_secrets.DockerSecretTests.test_cli_materialization_passes_value_only_through_stdin",
       "successors": [],
-      "supersession": null
+      "supersession": {
+        "negative_case_disposition": "Negative cases remain required for the future owner and are not erased; they are listed in the #743 closeout family record and successor issue handoff.",
+        "obsolete_assumption": "This frozen law was previously counted as extracted-core required behavior even though its executable owner is outside the pure core package.",
+        "rationale": "Frozen law exercises Docker, HTTP, probe, runtime materialization, runtime state, ownership, retention, dispatch, or substrate behavior. Extracted core must keep only the closed language/contract boundary and cannot execute the interpreter.",
+        "replacement": "#743 interpreter/runtime handoff; core retains closed protocol, lifecycle, verification, control-route, effect-boundary, and product-runtime contract values without owning effects.",
+        "review": "#743 interpreter runtime closeout"
+      }
     },
     {
       "kind": "test",
@@ -5575,7 +6025,13 @@
       "owner_kind": "core",
       "reference": "tests.test_docker_secrets.DockerSecretTests.test_known_container_start_failure_removes_owned_secret_volume",
       "successors": [],
-      "supersession": null
+      "supersession": {
+        "negative_case_disposition": "Negative cases remain required for the future owner and are not erased; they are listed in the #743 closeout family record and successor issue handoff.",
+        "obsolete_assumption": "This frozen law was previously counted as extracted-core required behavior even though its executable owner is outside the pure core package.",
+        "rationale": "Frozen law exercises Docker, HTTP, probe, runtime materialization, runtime state, ownership, retention, dispatch, or substrate behavior. Extracted core must keep only the closed language/contract boundary and cannot execute the interpreter.",
+        "replacement": "#743 interpreter/runtime handoff; core retains closed protocol, lifecycle, verification, control-route, effect-boundary, and product-runtime contract values without owning effects.",
+        "review": "#743 interpreter runtime closeout"
+      }
     },
     {
       "kind": "test",
@@ -5585,7 +6041,13 @@
       "owner_kind": "core",
       "reference": "tests.test_docker_secrets.DockerSecretTests.test_missing_or_denied_reference_fails_before_volume_mutation",
       "successors": [],
-      "supersession": null
+      "supersession": {
+        "negative_case_disposition": "Negative cases remain required for the future owner and are not erased; they are listed in the #743 closeout family record and successor issue handoff.",
+        "obsolete_assumption": "This frozen law was previously counted as extracted-core required behavior even though its executable owner is outside the pure core package.",
+        "rationale": "Frozen law exercises Docker, HTTP, probe, runtime materialization, runtime state, ownership, retention, dispatch, or substrate behavior. Extracted core must keep only the closed language/contract boundary and cannot execute the interpreter.",
+        "replacement": "#743 interpreter/runtime handoff; core retains closed protocol, lifecycle, verification, control-route, effect-boundary, and product-runtime contract values without owning effects.",
+        "review": "#743 interpreter runtime closeout"
+      }
     },
     {
       "kind": "test",
@@ -5595,7 +6057,13 @@
       "owner_kind": "core",
       "reference": "tests.test_docker_secrets.DockerSecretTests.test_reference_rotation_changes_container_and_volume_ownership",
       "successors": [],
-      "supersession": null
+      "supersession": {
+        "negative_case_disposition": "Negative cases remain required for the future owner and are not erased; they are listed in the #743 closeout family record and successor issue handoff.",
+        "obsolete_assumption": "This frozen law was previously counted as extracted-core required behavior even though its executable owner is outside the pure core package.",
+        "rationale": "Frozen law exercises Docker, HTTP, probe, runtime materialization, runtime state, ownership, retention, dispatch, or substrate behavior. Extracted core must keep only the closed language/contract boundary and cannot execute the interpreter.",
+        "replacement": "#743 interpreter/runtime handoff; core retains closed protocol, lifecycle, verification, control-route, effect-boundary, and product-runtime contract values without owning effects.",
+        "review": "#743 interpreter runtime closeout"
+      }
     },
     {
       "kind": "test",
@@ -5605,7 +6073,13 @@
       "owner_kind": "core",
       "reference": "tests.test_docker_secrets.DockerSecretTests.test_same_immutable_reference_does_not_rewrite_provider_side_change",
       "successors": [],
-      "supersession": null
+      "supersession": {
+        "negative_case_disposition": "Negative cases remain required for the future owner and are not erased; they are listed in the #743 closeout family record and successor issue handoff.",
+        "obsolete_assumption": "This frozen law was previously counted as extracted-core required behavior even though its executable owner is outside the pure core package.",
+        "rationale": "Frozen law exercises Docker, HTTP, probe, runtime materialization, runtime state, ownership, retention, dispatch, or substrate behavior. Extracted core must keep only the closed language/contract boundary and cannot execute the interpreter.",
+        "replacement": "#743 interpreter/runtime handoff; core retains closed protocol, lifecycle, verification, control-route, effect-boundary, and product-runtime contract values without owning effects.",
+        "review": "#743 interpreter runtime closeout"
+      }
     },
     {
       "kind": "test",
@@ -5615,7 +6089,13 @@
       "owner_kind": "core",
       "reference": "tests.test_docker_secrets.DockerSecretTests.test_start_materializes_before_container_and_replay_does_not_rewrite",
       "successors": [],
-      "supersession": null
+      "supersession": {
+        "negative_case_disposition": "Negative cases remain required for the future owner and are not erased; they are listed in the #743 closeout family record and successor issue handoff.",
+        "obsolete_assumption": "This frozen law was previously counted as extracted-core required behavior even though its executable owner is outside the pure core package.",
+        "rationale": "Frozen law exercises Docker, HTTP, probe, runtime materialization, runtime state, ownership, retention, dispatch, or substrate behavior. Extracted core must keep only the closed language/contract boundary and cannot execute the interpreter.",
+        "replacement": "#743 interpreter/runtime handoff; core retains closed protocol, lifecycle, verification, control-route, effect-boundary, and product-runtime contract values without owning effects.",
+        "review": "#743 interpreter runtime closeout"
+      }
     },
     {
       "kind": "test",
@@ -5625,7 +6105,13 @@
       "owner_kind": "core",
       "reference": "tests.test_docker_secrets.DockerSecretTests.test_teardown_ownership_conflict_preserves_container_and_volume",
       "successors": [],
-      "supersession": null
+      "supersession": {
+        "negative_case_disposition": "Negative cases remain required for the future owner and are not erased; they are listed in the #743 closeout family record and successor issue handoff.",
+        "obsolete_assumption": "This frozen law was previously counted as extracted-core required behavior even though its executable owner is outside the pure core package.",
+        "rationale": "Frozen law exercises Docker, HTTP, probe, runtime materialization, runtime state, ownership, retention, dispatch, or substrate behavior. Extracted core must keep only the closed language/contract boundary and cannot execute the interpreter.",
+        "replacement": "#743 interpreter/runtime handoff; core retains closed protocol, lifecycle, verification, control-route, effect-boundary, and product-runtime contract values without owning effects.",
+        "review": "#743 interpreter runtime closeout"
+      }
     },
     {
       "kind": "test",
@@ -5635,7 +6121,13 @@
       "owner_kind": "core",
       "reference": "tests.test_docker_secrets.DockerSecretTests.test_teardown_preflights_secret_volume_before_container_removal",
       "successors": [],
-      "supersession": null
+      "supersession": {
+        "negative_case_disposition": "Negative cases remain required for the future owner and are not erased; they are listed in the #743 closeout family record and successor issue handoff.",
+        "obsolete_assumption": "This frozen law was previously counted as extracted-core required behavior even though its executable owner is outside the pure core package.",
+        "rationale": "Frozen law exercises Docker, HTTP, probe, runtime materialization, runtime state, ownership, retention, dispatch, or substrate behavior. Extracted core must keep only the closed language/contract boundary and cannot execute the interpreter.",
+        "replacement": "#743 interpreter/runtime handoff; core retains closed protocol, lifecycle, verification, control-route, effect-boundary, and product-runtime contract values without owning effects.",
+        "review": "#743 interpreter runtime closeout"
+      }
     },
     {
       "kind": "test",
@@ -5645,7 +6137,13 @@
       "owner_kind": "core",
       "reference": "tests.test_docker_secrets.DockerSecretTests.test_uncertain_materialization_preserves_owned_volume_for_recovery",
       "successors": [],
-      "supersession": null
+      "supersession": {
+        "negative_case_disposition": "Negative cases remain required for the future owner and are not erased; they are listed in the #743 closeout family record and successor issue handoff.",
+        "obsolete_assumption": "This frozen law was previously counted as extracted-core required behavior even though its executable owner is outside the pure core package.",
+        "rationale": "Frozen law exercises Docker, HTTP, probe, runtime materialization, runtime state, ownership, retention, dispatch, or substrate behavior. Extracted core must keep only the closed language/contract boundary and cannot execute the interpreter.",
+        "replacement": "#743 interpreter/runtime handoff; core retains closed protocol, lifecycle, verification, control-route, effect-boundary, and product-runtime contract values without owning effects.",
+        "review": "#743 interpreter runtime closeout"
+      }
     },
     {
       "kind": "test",
@@ -5655,7 +6153,13 @@
       "owner_kind": "core",
       "reference": "tests.test_effect_dispatch.EffectDispatchTests.test_attempted_failure_is_distinct_from_unsupported",
       "successors": [],
-      "supersession": null
+      "supersession": {
+        "negative_case_disposition": "Negative cases remain required for the future owner and are not erased; they are listed in the #743 closeout family record and successor issue handoff.",
+        "obsolete_assumption": "This frozen law was previously counted as extracted-core required behavior even though its executable owner is outside the pure core package.",
+        "rationale": "Frozen law exercises Docker, HTTP, probe, runtime materialization, runtime state, ownership, retention, dispatch, or substrate behavior. Extracted core must keep only the closed language/contract boundary and cannot execute the interpreter.",
+        "replacement": "#743 interpreter/runtime handoff; core retains closed protocol, lifecycle, verification, control-route, effect-boundary, and product-runtime contract values without owning effects.",
+        "review": "#743 interpreter runtime closeout"
+      }
     },
     {
       "kind": "test",
@@ -5665,7 +6169,13 @@
       "owner_kind": "core",
       "reference": "tests.test_effect_dispatch.EffectDispatchTests.test_fake_interpreter_attempts_every_safe_activity_operation",
       "successors": [],
-      "supersession": null
+      "supersession": {
+        "negative_case_disposition": "Negative cases remain required for the future owner and are not erased; they are listed in the #743 closeout family record and successor issue handoff.",
+        "obsolete_assumption": "This frozen law was previously counted as extracted-core required behavior even though its executable owner is outside the pure core package.",
+        "rationale": "Frozen law exercises Docker, HTTP, probe, runtime materialization, runtime state, ownership, retention, dispatch, or substrate behavior. Extracted core must keep only the closed language/contract boundary and cannot execute the interpreter.",
+        "replacement": "#743 interpreter/runtime handoff; core retains closed protocol, lifecycle, verification, control-route, effect-boundary, and product-runtime contract values without owning effects.",
+        "review": "#743 interpreter runtime closeout"
+      }
     },
     {
       "kind": "test",
@@ -5675,7 +6185,13 @@
       "owner_kind": "core",
       "reference": "tests.test_effect_dispatch.EffectDispatchTests.test_fake_interpreter_executes_every_initially_ready_scenario_effect",
       "successors": [],
-      "supersession": null
+      "supersession": {
+        "negative_case_disposition": "Negative cases remain required for the future owner and are not erased; they are listed in the #743 closeout family record and successor issue handoff.",
+        "obsolete_assumption": "This frozen law was previously counted as extracted-core required behavior even though its executable owner is outside the pure core package.",
+        "rationale": "Frozen law exercises Docker, HTTP, probe, runtime materialization, runtime state, ownership, retention, dispatch, or substrate behavior. Extracted core must keep only the closed language/contract boundary and cannot execute the interpreter.",
+        "replacement": "#743 interpreter/runtime handoff; core retains closed protocol, lifecycle, verification, control-route, effect-boundary, and product-runtime contract values without owning effects.",
+        "review": "#743 interpreter runtime closeout"
+      }
     },
     {
       "kind": "test",
@@ -5685,7 +6201,13 @@
       "owner_kind": "core",
       "reference": "tests.test_effect_dispatch.EffectDispatchTests.test_interpreter_capabilities_must_be_a_typed_frozenset",
       "successors": [],
-      "supersession": null
+      "supersession": {
+        "negative_case_disposition": "Negative cases remain required for the future owner and are not erased; they are listed in the #743 closeout family record and successor issue handoff.",
+        "obsolete_assumption": "This frozen law was previously counted as extracted-core required behavior even though its executable owner is outside the pure core package.",
+        "rationale": "Frozen law exercises Docker, HTTP, probe, runtime materialization, runtime state, ownership, retention, dispatch, or substrate behavior. Extracted core must keep only the closed language/contract boundary and cannot execute the interpreter.",
+        "replacement": "#743 interpreter/runtime handoff; core retains closed protocol, lifecycle, verification, control-route, effect-boundary, and product-runtime contract values without owning effects.",
+        "review": "#743 interpreter runtime closeout"
+      }
     },
     {
       "kind": "test",
@@ -5695,7 +6217,13 @@
       "owner_kind": "core",
       "reference": "tests.test_effect_dispatch.EffectDispatchTests.test_interpreter_must_return_the_request_identity",
       "successors": [],
-      "supersession": null
+      "supersession": {
+        "negative_case_disposition": "Negative cases remain required for the future owner and are not erased; they are listed in the #743 closeout family record and successor issue handoff.",
+        "obsolete_assumption": "This frozen law was previously counted as extracted-core required behavior even though its executable owner is outside the pure core package.",
+        "rationale": "Frozen law exercises Docker, HTTP, probe, runtime materialization, runtime state, ownership, retention, dispatch, or substrate behavior. Extracted core must keep only the closed language/contract boundary and cannot execute the interpreter.",
+        "replacement": "#743 interpreter/runtime handoff; core retains closed protocol, lifecycle, verification, control-route, effect-boundary, and product-runtime contract values without owning effects.",
+        "review": "#743 interpreter runtime closeout"
+      }
     },
     {
       "kind": "test",
@@ -5705,7 +6233,13 @@
       "owner_kind": "core",
       "reference": "tests.test_effect_dispatch.EffectDispatchTests.test_prepared_effect_freezes_support_decision_before_attempt",
       "successors": [],
-      "supersession": null
+      "supersession": {
+        "negative_case_disposition": "Negative cases remain required for the future owner and are not erased; they are listed in the #743 closeout family record and successor issue handoff.",
+        "obsolete_assumption": "This frozen law was previously counted as extracted-core required behavior even though its executable owner is outside the pure core package.",
+        "rationale": "Frozen law exercises Docker, HTTP, probe, runtime materialization, runtime state, ownership, retention, dispatch, or substrate behavior. Extracted core must keep only the closed language/contract boundary and cannot execute the interpreter.",
+        "replacement": "#743 interpreter/runtime handoff; core retains closed protocol, lifecycle, verification, control-route, effect-boundary, and product-runtime contract values without owning effects.",
+        "review": "#743 interpreter runtime closeout"
+      }
     },
     {
       "kind": "test",
@@ -5715,7 +6249,13 @@
       "owner_kind": "core",
       "reference": "tests.test_effect_dispatch.EffectDispatchTests.test_unsupported_capability_is_rejected_before_attempt",
       "successors": [],
-      "supersession": null
+      "supersession": {
+        "negative_case_disposition": "Negative cases remain required for the future owner and are not erased; they are listed in the #743 closeout family record and successor issue handoff.",
+        "obsolete_assumption": "This frozen law was previously counted as extracted-core required behavior even though its executable owner is outside the pure core package.",
+        "rationale": "Frozen law exercises Docker, HTTP, probe, runtime materialization, runtime state, ownership, retention, dispatch, or substrate behavior. Extracted core must keep only the closed language/contract boundary and cannot execute the interpreter.",
+        "replacement": "#743 interpreter/runtime handoff; core retains closed protocol, lifecycle, verification, control-route, effect-boundary, and product-runtime contract values without owning effects.",
+        "review": "#743 interpreter runtime closeout"
+      }
     },
     {
       "kind": "test",
@@ -5725,7 +6265,13 @@
       "owner_kind": "core",
       "reference": "tests.test_effect_material.EffectMaterialTests.test_descriptor_redacts_even_nonsecret_environment_values",
       "successors": [],
-      "supersession": null
+      "supersession": {
+        "negative_case_disposition": "Negative cases remain required for the future owner and are not erased; they are listed in the #743 closeout family record and successor issue handoff.",
+        "obsolete_assumption": "This frozen law was previously counted as extracted-core required behavior even though its executable owner is outside the pure core package.",
+        "rationale": "Frozen law exercises Docker, HTTP, probe, runtime materialization, runtime state, ownership, retention, dispatch, or substrate behavior. Extracted core must keep only the closed language/contract boundary and cannot execute the interpreter.",
+        "replacement": "#743 interpreter/runtime handoff; core retains closed protocol, lifecycle, verification, control-route, effect-boundary, and product-runtime contract values without owning effects.",
+        "review": "#743 interpreter runtime closeout"
+      }
     },
     {
       "kind": "test",
@@ -5735,7 +6281,13 @@
       "owner_kind": "core",
       "reference": "tests.test_effect_material.EffectMaterialTests.test_every_executable_scenario_operation_materializes_from_pinned_transition",
       "successors": [],
-      "supersession": null
+      "supersession": {
+        "negative_case_disposition": "Negative cases remain required for the future owner and are not erased; they are listed in the #743 closeout family record and successor issue handoff.",
+        "obsolete_assumption": "This frozen law was previously counted as extracted-core required behavior even though its executable owner is outside the pure core package.",
+        "rationale": "Frozen law exercises Docker, HTTP, probe, runtime materialization, runtime state, ownership, retention, dispatch, or substrate behavior. Extracted core must keep only the closed language/contract boundary and cannot execute the interpreter.",
+        "replacement": "#743 interpreter/runtime handoff; core retains closed protocol, lifecycle, verification, control-route, effect-boundary, and product-runtime contract values without owning effects.",
+        "review": "#743 interpreter runtime closeout"
+      }
     },
     {
       "kind": "test",
@@ -5745,7 +6297,13 @@
       "owner_kind": "core",
       "reference": "tests.test_effect_material.EffectMaterialTests.test_graph_identity_mismatch_fails_before_materialization",
       "successors": [],
-      "supersession": null
+      "supersession": {
+        "negative_case_disposition": "Negative cases remain required for the future owner and are not erased; they are listed in the #743 closeout family record and successor issue handoff.",
+        "obsolete_assumption": "This frozen law was previously counted as extracted-core required behavior even though its executable owner is outside the pure core package.",
+        "rationale": "Frozen law exercises Docker, HTTP, probe, runtime materialization, runtime state, ownership, retention, dispatch, or substrate behavior. Extracted core must keep only the closed language/contract boundary and cannot execute the interpreter.",
+        "replacement": "#743 interpreter/runtime handoff; core retains closed protocol, lifecycle, verification, control-route, effect-boundary, and product-runtime contract values without owning effects.",
+        "review": "#743 interpreter runtime closeout"
+      }
     },
     {
       "kind": "test",
@@ -5755,7 +6313,13 @@
       "owner_kind": "core",
       "reference": "tests.test_effect_material.EffectMaterialTests.test_implementation_secret_reference_survives_only_as_opaque_material",
       "successors": [],
-      "supersession": null
+      "supersession": {
+        "negative_case_disposition": "Negative cases remain required for the future owner and are not erased; they are listed in the #743 closeout family record and successor issue handoff.",
+        "obsolete_assumption": "This frozen law was previously counted as extracted-core required behavior even though its executable owner is outside the pure core package.",
+        "rationale": "Frozen law exercises Docker, HTTP, probe, runtime materialization, runtime state, ownership, retention, dispatch, or substrate behavior. Extracted core must keep only the closed language/contract boundary and cannot execute the interpreter.",
+        "replacement": "#743 interpreter/runtime handoff; core retains closed protocol, lifecycle, verification, control-route, effect-boundary, and product-runtime contract values without owning effects.",
+        "review": "#743 interpreter runtime closeout"
+      }
     },
     {
       "kind": "test",
@@ -5765,7 +6329,13 @@
       "owner_kind": "core",
       "reference": "tests.test_effect_material.EffectMaterialTests.test_materialization_is_deterministic",
       "successors": [],
-      "supersession": null
+      "supersession": {
+        "negative_case_disposition": "Negative cases remain required for the future owner and are not erased; they are listed in the #743 closeout family record and successor issue handoff.",
+        "obsolete_assumption": "This frozen law was previously counted as extracted-core required behavior even though its executable owner is outside the pure core package.",
+        "rationale": "Frozen law exercises Docker, HTTP, probe, runtime materialization, runtime state, ownership, retention, dispatch, or substrate behavior. Extracted core must keep only the closed language/contract boundary and cannot execute the interpreter.",
+        "replacement": "#743 interpreter/runtime handoff; core retains closed protocol, lifecycle, verification, control-route, effect-boundary, and product-runtime contract values without owning effects.",
+        "review": "#743 interpreter runtime closeout"
+      }
     },
     {
       "kind": "test",
@@ -5775,7 +6345,13 @@
       "owner_kind": "core",
       "reference": "tests.test_effect_material.EffectMaterialTests.test_materialization_preserves_and_enforces_effect_purpose",
       "successors": [],
-      "supersession": null
+      "supersession": {
+        "negative_case_disposition": "Negative cases remain required for the future owner and are not erased; they are listed in the #743 closeout family record and successor issue handoff.",
+        "obsolete_assumption": "This frozen law was previously counted as extracted-core required behavior even though its executable owner is outside the pure core package.",
+        "rationale": "Frozen law exercises Docker, HTTP, probe, runtime materialization, runtime state, ownership, retention, dispatch, or substrate behavior. Extracted core must keep only the closed language/contract boundary and cannot execute the interpreter.",
+        "replacement": "#743 interpreter/runtime handoff; core retains closed protocol, lifecycle, verification, control-route, effect-boundary, and product-runtime contract values without owning effects.",
+        "review": "#743 interpreter runtime closeout"
+      }
     },
     {
       "kind": "test",
@@ -5785,7 +6361,13 @@
       "owner_kind": "core",
       "reference": "tests.test_effect_material.EffectMaterialTests.test_plaintext_secret_shaped_environment_is_rejected_without_value_disclosure",
       "successors": [],
-      "supersession": null
+      "supersession": {
+        "negative_case_disposition": "Negative cases remain required for the future owner and are not erased; they are listed in the #743 closeout family record and successor issue handoff.",
+        "obsolete_assumption": "This frozen law was previously counted as extracted-core required behavior even though its executable owner is outside the pure core package.",
+        "rationale": "Frozen law exercises Docker, HTTP, probe, runtime materialization, runtime state, ownership, retention, dispatch, or substrate behavior. Extracted core must keep only the closed language/contract boundary and cannot execute the interpreter.",
+        "replacement": "#743 interpreter/runtime handoff; core retains closed protocol, lifecycle, verification, control-route, effect-boundary, and product-runtime contract values without owning effects.",
+        "review": "#743 interpreter runtime closeout"
+      }
     },
     {
       "kind": "test",
@@ -5795,7 +6377,13 @@
       "owner_kind": "core",
       "reference": "tests.test_effect_material.EffectMaterialTests.test_reconcile_material_pins_forward_and_compensation_graph_pairs",
       "successors": [],
-      "supersession": null
+      "supersession": {
+        "negative_case_disposition": "Negative cases remain required for the future owner and are not erased; they are listed in the #743 closeout family record and successor issue handoff.",
+        "obsolete_assumption": "This frozen law was previously counted as extracted-core required behavior even though its executable owner is outside the pure core package.",
+        "rationale": "Frozen law exercises Docker, HTTP, probe, runtime materialization, runtime state, ownership, retention, dispatch, or substrate behavior. Extracted core must keep only the closed language/contract boundary and cannot execute the interpreter.",
+        "replacement": "#743 interpreter/runtime handoff; core retains closed protocol, lifecycle, verification, control-route, effect-boundary, and product-runtime contract values without owning effects.",
+        "review": "#743 interpreter runtime closeout"
+      }
     },
     {
       "kind": "test",
@@ -5805,7 +6393,13 @@
       "owner_kind": "core",
       "reference": "tests.test_effect_material.EffectMaterialTests.test_removal_material_comes_from_pinned_base_not_mutable_desired_graph",
       "successors": [],
-      "supersession": null
+      "supersession": {
+        "negative_case_disposition": "Negative cases remain required for the future owner and are not erased; they are listed in the #743 closeout family record and successor issue handoff.",
+        "obsolete_assumption": "This frozen law was previously counted as extracted-core required behavior even though its executable owner is outside the pure core package.",
+        "rationale": "Frozen law exercises Docker, HTTP, probe, runtime materialization, runtime state, ownership, retention, dispatch, or substrate behavior. Extracted core must keep only the closed language/contract boundary and cannot execute the interpreter.",
+        "replacement": "#743 interpreter/runtime handoff; core retains closed protocol, lifecycle, verification, control-route, effect-boundary, and product-runtime contract values without owning effects.",
+        "review": "#743 interpreter runtime closeout"
+      }
     },
     {
       "kind": "test",
@@ -5815,7 +6409,13 @@
       "owner_kind": "core",
       "reference": "tests.test_effect_material.EffectMaterialTests.test_secret_reference_material_is_opaque",
       "successors": [],
-      "supersession": null
+      "supersession": {
+        "negative_case_disposition": "Negative cases remain required for the future owner and are not erased; they are listed in the #743 closeout family record and successor issue handoff.",
+        "obsolete_assumption": "This frozen law was previously counted as extracted-core required behavior even though its executable owner is outside the pure core package.",
+        "rationale": "Frozen law exercises Docker, HTTP, probe, runtime materialization, runtime state, ownership, retention, dispatch, or substrate behavior. Extracted core must keep only the closed language/contract boundary and cannot execute the interpreter.",
+        "replacement": "#743 interpreter/runtime handoff; core retains closed protocol, lifecycle, verification, control-route, effect-boundary, and product-runtime contract values without owning effects.",
+        "review": "#743 interpreter runtime closeout"
+      }
     },
     {
       "kind": "test",
@@ -5825,7 +6425,13 @@
       "owner_kind": "core",
       "reference": "tests.test_effect_material.EffectMaterialTests.test_verification_contract_resolves_only_from_pinned_node_material",
       "successors": [],
-      "supersession": null
+      "supersession": {
+        "negative_case_disposition": "Negative cases remain required for the future owner and are not erased; they are listed in the #743 closeout family record and successor issue handoff.",
+        "obsolete_assumption": "This frozen law was previously counted as extracted-core required behavior even though its executable owner is outside the pure core package.",
+        "rationale": "Frozen law exercises Docker, HTTP, probe, runtime materialization, runtime state, ownership, retention, dispatch, or substrate behavior. Extracted core must keep only the closed language/contract boundary and cannot execute the interpreter.",
+        "replacement": "#743 interpreter/runtime handoff; core retains closed protocol, lifecycle, verification, control-route, effect-boundary, and product-runtime contract values without owning effects.",
+        "review": "#743 interpreter runtime closeout"
+      }
     },
     {
       "kind": "test",
@@ -5835,7 +6441,13 @@
       "owner_kind": "core",
       "reference": "tests.test_effect_material.EffectMaterialTests.test_verification_material_rejects_missing_pinned_endpoint",
       "successors": [],
-      "supersession": null
+      "supersession": {
+        "negative_case_disposition": "Negative cases remain required for the future owner and are not erased; they are listed in the #743 closeout family record and successor issue handoff.",
+        "obsolete_assumption": "This frozen law was previously counted as extracted-core required behavior even though its executable owner is outside the pure core package.",
+        "rationale": "Frozen law exercises Docker, HTTP, probe, runtime materialization, runtime state, ownership, retention, dispatch, or substrate behavior. Extracted core must keep only the closed language/contract boundary and cannot execute the interpreter.",
+        "replacement": "#743 interpreter/runtime handoff; core retains closed protocol, lifecycle, verification, control-route, effect-boundary, and product-runtime contract values without owning effects.",
+        "review": "#743 interpreter runtime closeout"
+      }
     },
     {
       "kind": "test",
@@ -5845,7 +6457,13 @@
       "owner_kind": "core",
       "reference": "tests.test_effect_values.EffectValueTests.test_activity_factory_preserves_identity_policy_and_secret_references",
       "successors": [],
-      "supersession": null
+      "supersession": {
+        "negative_case_disposition": "Negative cases remain required for the future owner and are not erased; they are listed in the #743 closeout family record and successor issue handoff.",
+        "obsolete_assumption": "This frozen law was previously counted as extracted-core required behavior even though its executable owner is outside the pure core package.",
+        "rationale": "Frozen law exercises Docker, HTTP, probe, runtime materialization, runtime state, ownership, retention, dispatch, or substrate behavior. Extracted core must keep only the closed language/contract boundary and cannot execute the interpreter.",
+        "replacement": "#743 interpreter/runtime handoff; core retains closed protocol, lifecycle, verification, control-route, effect-boundary, and product-runtime contract values without owning effects.",
+        "review": "#743 interpreter runtime closeout"
+      }
     },
     {
       "kind": "test",
@@ -5855,7 +6473,13 @@
       "owner_kind": "core",
       "reference": "tests.test_effect_values.EffectValueTests.test_control_actions_are_provider_neutral_and_typed",
       "successors": [],
-      "supersession": null
+      "supersession": {
+        "negative_case_disposition": "Negative cases remain required for the future owner and are not erased; they are listed in the #743 closeout family record and successor issue handoff.",
+        "obsolete_assumption": "This frozen law was previously counted as extracted-core required behavior even though its executable owner is outside the pure core package.",
+        "rationale": "Frozen law exercises Docker, HTTP, probe, runtime materialization, runtime state, ownership, retention, dispatch, or substrate behavior. Extracted core must keep only the closed language/contract boundary and cannot execute the interpreter.",
+        "replacement": "#743 interpreter/runtime handoff; core retains closed protocol, lifecycle, verification, control-route, effect-boundary, and product-runtime contract values without owning effects.",
+        "review": "#743 interpreter runtime closeout"
+      }
     },
     {
       "kind": "test",
@@ -5865,7 +6489,13 @@
       "owner_kind": "core",
       "reference": "tests.test_effect_values.EffectValueTests.test_every_safe_activity_operation_has_one_closed_capability",
       "successors": [],
-      "supersession": null
+      "supersession": {
+        "negative_case_disposition": "Negative cases remain required for the future owner and are not erased; they are listed in the #743 closeout family record and successor issue handoff.",
+        "obsolete_assumption": "This frozen law was previously counted as extracted-core required behavior even though its executable owner is outside the pure core package.",
+        "rationale": "Frozen law exercises Docker, HTTP, probe, runtime materialization, runtime state, ownership, retention, dispatch, or substrate behavior. Extracted core must keep only the closed language/contract boundary and cannot execute the interpreter.",
+        "replacement": "#743 interpreter/runtime handoff; core retains closed protocol, lifecycle, verification, control-route, effect-boundary, and product-runtime contract values without owning effects.",
+        "review": "#743 interpreter runtime closeout"
+      }
     },
     {
       "kind": "test",
@@ -5875,7 +6505,13 @@
       "owner_kind": "core",
       "reference": "tests.test_effect_values.EffectValueTests.test_request_rejects_duplicate_secret_references",
       "successors": [],
-      "supersession": null
+      "supersession": {
+        "negative_case_disposition": "Negative cases remain required for the future owner and are not erased; they are listed in the #743 closeout family record and successor issue handoff.",
+        "obsolete_assumption": "This frozen law was previously counted as extracted-core required behavior even though its executable owner is outside the pure core package.",
+        "rationale": "Frozen law exercises Docker, HTTP, probe, runtime materialization, runtime state, ownership, retention, dispatch, or substrate behavior. Extracted core must keep only the closed language/contract boundary and cannot execute the interpreter.",
+        "replacement": "#743 interpreter/runtime handoff; core retains closed protocol, lifecycle, verification, control-route, effect-boundary, and product-runtime contract values without owning effects.",
+        "review": "#743 interpreter runtime closeout"
+      }
     },
     {
       "kind": "test",
@@ -5885,7 +6521,13 @@
       "owner_kind": "core",
       "reference": "tests.test_effect_values.EffectValueTests.test_request_rejects_open_effect_purpose",
       "successors": [],
-      "supersession": null
+      "supersession": {
+        "negative_case_disposition": "Negative cases remain required for the future owner and are not erased; they are listed in the #743 closeout family record and successor issue handoff.",
+        "obsolete_assumption": "This frozen law was previously counted as extracted-core required behavior even though its executable owner is outside the pure core package.",
+        "rationale": "Frozen law exercises Docker, HTTP, probe, runtime materialization, runtime state, ownership, retention, dispatch, or substrate behavior. Extracted core must keep only the closed language/contract boundary and cannot execute the interpreter.",
+        "replacement": "#743 interpreter/runtime handoff; core retains closed protocol, lifecycle, verification, control-route, effect-boundary, and product-runtime contract values without owning effects.",
+        "review": "#743 interpreter runtime closeout"
+      }
     },
     {
       "kind": "test",
@@ -5895,7 +6537,13 @@
       "owner_kind": "core",
       "reference": "tests.test_effect_values.EffectValueTests.test_review_work_cannot_cross_the_effect_boundary",
       "successors": [],
-      "supersession": null
+      "supersession": {
+        "negative_case_disposition": "Negative cases remain required for the future owner and are not erased; they are listed in the #743 closeout family record and successor issue handoff.",
+        "obsolete_assumption": "This frozen law was previously counted as extracted-core required behavior even though its executable owner is outside the pure core package.",
+        "rationale": "Frozen law exercises Docker, HTTP, probe, runtime materialization, runtime state, ownership, retention, dispatch, or substrate behavior. Extracted core must keep only the closed language/contract boundary and cannot execute the interpreter.",
+        "replacement": "#743 interpreter/runtime handoff; core retains closed protocol, lifecycle, verification, control-route, effect-boundary, and product-runtime contract values without owning effects.",
+        "review": "#743 interpreter runtime closeout"
+      }
     },
     {
       "kind": "test",
@@ -5905,7 +6553,13 @@
       "owner_kind": "core",
       "reference": "tests.test_effect_values.EffectValueTests.test_secret_and_endpoint_values_are_opaque_references",
       "successors": [],
-      "supersession": null
+      "supersession": {
+        "negative_case_disposition": "Negative cases remain required for the future owner and are not erased; they are listed in the #743 closeout family record and successor issue handoff.",
+        "obsolete_assumption": "This frozen law was previously counted as extracted-core required behavior even though its executable owner is outside the pure core package.",
+        "rationale": "Frozen law exercises Docker, HTTP, probe, runtime materialization, runtime state, ownership, retention, dispatch, or substrate behavior. Extracted core must keep only the closed language/contract boundary and cannot execute the interpreter.",
+        "replacement": "#743 interpreter/runtime handoff; core retains closed protocol, lifecycle, verification, control-route, effect-boundary, and product-runtime contract values without owning effects.",
+        "review": "#743 interpreter runtime closeout"
+      }
     },
     {
       "kind": "test",
@@ -5915,7 +6569,13 @@
       "owner_kind": "core",
       "reference": "tests.test_effect_values.EffectValueTests.test_timeout_policy_is_bounded",
       "successors": [],
-      "supersession": null
+      "supersession": {
+        "negative_case_disposition": "Negative cases remain required for the future owner and are not erased; they are listed in the #743 closeout family record and successor issue handoff.",
+        "obsolete_assumption": "This frozen law was previously counted as extracted-core required behavior even though its executable owner is outside the pure core package.",
+        "rationale": "Frozen law exercises Docker, HTTP, probe, runtime materialization, runtime state, ownership, retention, dispatch, or substrate behavior. Extracted core must keep only the closed language/contract boundary and cannot execute the interpreter.",
+        "replacement": "#743 interpreter/runtime handoff; core retains closed protocol, lifecycle, verification, control-route, effect-boundary, and product-runtime contract values without owning effects.",
+        "review": "#743 interpreter runtime closeout"
+      }
     },
     {
       "kind": "test",
@@ -9361,7 +10021,13 @@
       "owner_kind": "core",
       "reference": "tests.test_host_publication.HostPublicationTests.test_adding_publication_is_explicit_disruptive_plan_work",
       "successors": [],
-      "supersession": null
+      "supersession": {
+        "negative_case_disposition": "Negative cases remain required for the future owner and are not erased; they are listed in the #743 closeout family record and successor issue handoff.",
+        "obsolete_assumption": "This frozen law was previously counted as extracted-core required behavior even though its executable owner is outside the pure core package.",
+        "rationale": "Frozen law exercises Docker, HTTP, probe, runtime materialization, runtime state, ownership, retention, dispatch, or substrate behavior. Extracted core must keep only the closed language/contract boundary and cannot execute the interpreter.",
+        "replacement": "#743 interpreter/runtime handoff; core retains closed protocol, lifecycle, verification, control-route, effect-boundary, and product-runtime contract values without owning effects.",
+        "review": "#743 interpreter runtime closeout"
+      }
     },
     {
       "kind": "test",
@@ -9371,7 +10037,13 @@
       "owner_kind": "core",
       "reference": "tests.test_host_publication.HostPublicationTests.test_explicit_publication_survives_graph_and_pinned_materialization",
       "successors": [],
-      "supersession": null
+      "supersession": {
+        "negative_case_disposition": "Negative cases remain required for the future owner and are not erased; they are listed in the #743 closeout family record and successor issue handoff.",
+        "obsolete_assumption": "This frozen law was previously counted as extracted-core required behavior even though its executable owner is outside the pure core package.",
+        "rationale": "Frozen law exercises Docker, HTTP, probe, runtime materialization, runtime state, ownership, retention, dispatch, or substrate behavior. Extracted core must keep only the closed language/contract boundary and cannot execute the interpreter.",
+        "replacement": "#743 interpreter/runtime handoff; core retains closed protocol, lifecycle, verification, control-route, effect-boundary, and product-runtime contract values without owning effects.",
+        "review": "#743 interpreter runtime closeout"
+      }
     },
     {
       "kind": "test",
@@ -9381,7 +10053,13 @@
       "owner_kind": "core",
       "reference": "tests.test_host_publication.HostPublicationTests.test_loopback_factories_are_closed_ip_values",
       "successors": [],
-      "supersession": null
+      "supersession": {
+        "negative_case_disposition": "Negative cases remain required for the future owner and are not erased; they are listed in the #743 closeout family record and successor issue handoff.",
+        "obsolete_assumption": "This frozen law was previously counted as extracted-core required behavior even though its executable owner is outside the pure core package.",
+        "rationale": "Frozen law exercises Docker, HTTP, probe, runtime materialization, runtime state, ownership, retention, dispatch, or substrate behavior. Extracted core must keep only the closed language/contract boundary and cannot execute the interpreter.",
+        "replacement": "#743 interpreter/runtime handoff; core retains closed protocol, lifecycle, verification, control-route, effect-boundary, and product-runtime contract values without owning effects.",
+        "review": "#743 interpreter runtime closeout"
+      }
     },
     {
       "kind": "test",
@@ -9391,7 +10069,13 @@
       "owner_kind": "core",
       "reference": "tests.test_host_publication.HostPublicationTests.test_private_only_is_the_authoring_default",
       "successors": [],
-      "supersession": null
+      "supersession": {
+        "negative_case_disposition": "Negative cases remain required for the future owner and are not erased; they are listed in the #743 closeout family record and successor issue handoff.",
+        "obsolete_assumption": "This frozen law was previously counted as extracted-core required behavior even though its executable owner is outside the pure core package.",
+        "rationale": "Frozen law exercises Docker, HTTP, probe, runtime materialization, runtime state, ownership, retention, dispatch, or substrate behavior. Extracted core must keep only the closed language/contract boundary and cannot execute the interpreter.",
+        "replacement": "#743 interpreter/runtime handoff; core retains closed protocol, lifecycle, verification, control-route, effect-boundary, and product-runtime contract values without owning effects.",
+        "review": "#743 interpreter runtime closeout"
+      }
     },
     {
       "kind": "test",
@@ -9401,7 +10085,13 @@
       "owner_kind": "core",
       "reference": "tests.test_host_publication.HostPublicationTests.test_same_fixed_host_port_is_valid_once_per_transport",
       "successors": [],
-      "supersession": null
+      "supersession": {
+        "negative_case_disposition": "Negative cases remain required for the future owner and are not erased; they are listed in the #743 closeout family record and successor issue handoff.",
+        "obsolete_assumption": "This frozen law was previously counted as extracted-core required behavior even though its executable owner is outside the pure core package.",
+        "rationale": "Frozen law exercises Docker, HTTP, probe, runtime materialization, runtime state, ownership, retention, dispatch, or substrate behavior. Extracted core must keep only the closed language/contract boundary and cannot execute the interpreter.",
+        "replacement": "#743 interpreter/runtime handoff; core retains closed protocol, lifecycle, verification, control-route, effect-boundary, and product-runtime contract values without owning effects.",
+        "review": "#743 interpreter runtime closeout"
+      }
     },
     {
       "kind": "test",
@@ -9411,7 +10101,13 @@
       "owner_kind": "core",
       "reference": "tests.test_host_publication.HostPublicationTests.test_unknown_socket_and_fixed_port_collision_fail_at_authoring",
       "successors": [],
-      "supersession": null
+      "supersession": {
+        "negative_case_disposition": "Negative cases remain required for the future owner and are not erased; they are listed in the #743 closeout family record and successor issue handoff.",
+        "obsolete_assumption": "This frozen law was previously counted as extracted-core required behavior even though its executable owner is outside the pure core package.",
+        "rationale": "Frozen law exercises Docker, HTTP, probe, runtime materialization, runtime state, ownership, retention, dispatch, or substrate behavior. Extracted core must keep only the closed language/contract boundary and cannot execute the interpreter.",
+        "replacement": "#743 interpreter/runtime handoff; core retains closed protocol, lifecycle, verification, control-route, effect-boundary, and product-runtime contract values without owning effects.",
+        "review": "#743 interpreter runtime closeout"
+      }
     },
     {
       "kind": "test",
@@ -12550,7 +13246,13 @@
       "owner_kind": "core",
       "reference": "tests.test_postgres_scenario_runner.PostgresScenarioRunnerTests.test_complete_acceptance_corpus_uses_canonical_pipeline",
       "successors": [],
-      "supersession": null
+      "supersession": {
+        "negative_case_disposition": "Negative cases remain required for the future owner and are not erased; they are listed in the #743 closeout family record and successor issue handoff.",
+        "obsolete_assumption": "This frozen law was previously counted as extracted-core required behavior even though its executable owner is outside the pure core package.",
+        "rationale": "Frozen Postgres scenario runner executes durable workflow services, stores, coordinator effects, projections, and advancement. Extracted core owns the pure contracts and scenario language, not the mutable acceptance runner.",
+        "replacement": "#743 operations/cpk-server acceptance handoff; core contracts remain covered by EXTRACT.E successor proofs for planning, execution, reads, and process handoff.",
+        "review": "#743 interpreter runtime closeout"
+      }
     },
     {
       "kind": "test",
@@ -12560,7 +13262,13 @@
       "owner_kind": "core",
       "reference": "tests.test_postgres_scenario_runner.PostgresScenarioRunnerTests.test_deployment_context_rejects_cross_workspace_graph_truth",
       "successors": [],
-      "supersession": null
+      "supersession": {
+        "negative_case_disposition": "Negative cases remain required for the future owner and are not erased; they are listed in the #743 closeout family record and successor issue handoff.",
+        "obsolete_assumption": "This frozen law was previously counted as extracted-core required behavior even though its executable owner is outside the pure core package.",
+        "rationale": "Frozen Postgres scenario runner executes durable workflow services, stores, coordinator effects, projections, and advancement. Extracted core owns the pure contracts and scenario language, not the mutable acceptance runner.",
+        "replacement": "#743 operations/cpk-server acceptance handoff; core contracts remain covered by EXTRACT.E successor proofs for planning, execution, reads, and process handoff.",
+        "review": "#743 interpreter runtime closeout"
+      }
     },
     {
       "kind": "test",
@@ -12570,7 +13278,13 @@
       "owner_kind": "core",
       "reference": "tests.test_postgres_scenario_runner.PostgresScenarioRunnerTests.test_deployment_context_rejects_missing_plan_truth",
       "successors": [],
-      "supersession": null
+      "supersession": {
+        "negative_case_disposition": "Negative cases remain required for the future owner and are not erased; they are listed in the #743 closeout family record and successor issue handoff.",
+        "obsolete_assumption": "This frozen law was previously counted as extracted-core required behavior even though its executable owner is outside the pure core package.",
+        "rationale": "Frozen Postgres scenario runner executes durable workflow services, stores, coordinator effects, projections, and advancement. Extracted core owns the pure contracts and scenario language, not the mutable acceptance runner.",
+        "replacement": "#743 operations/cpk-server acceptance handoff; core contracts remain covered by EXTRACT.E successor proofs for planning, execution, reads, and process handoff.",
+        "review": "#743 interpreter runtime closeout"
+      }
     },
     {
       "kind": "test",
@@ -12580,7 +13294,13 @@
       "owner_kind": "core",
       "reference": "tests.test_postgres_scenario_runner.PostgresScenarioRunnerTests.test_deployment_program_reconstructs_plan_across_operator_requests",
       "successors": [],
-      "supersession": null
+      "supersession": {
+        "negative_case_disposition": "Negative cases remain required for the future owner and are not erased; they are listed in the #743 closeout family record and successor issue handoff.",
+        "obsolete_assumption": "This frozen law was previously counted as extracted-core required behavior even though its executable owner is outside the pure core package.",
+        "rationale": "Frozen Postgres scenario runner executes durable workflow services, stores, coordinator effects, projections, and advancement. Extracted core owns the pure contracts and scenario language, not the mutable acceptance runner.",
+        "replacement": "#743 operations/cpk-server acceptance handoff; core contracts remain covered by EXTRACT.E successor proofs for planning, execution, reads, and process handoff.",
+        "review": "#743 interpreter runtime closeout"
+      }
     },
     {
       "kind": "test",
@@ -12590,7 +13310,13 @@
       "owner_kind": "core",
       "reference": "tests.test_postgres_scenario_runner.PostgresScenarioRunnerTests.test_executable_scenario_uses_canonical_pipeline_and_projection",
       "successors": [],
-      "supersession": null
+      "supersession": {
+        "negative_case_disposition": "Negative cases remain required for the future owner and are not erased; they are listed in the #743 closeout family record and successor issue handoff.",
+        "obsolete_assumption": "This frozen law was previously counted as extracted-core required behavior even though its executable owner is outside the pure core package.",
+        "rationale": "Frozen Postgres scenario runner executes durable workflow services, stores, coordinator effects, projections, and advancement. Extracted core owns the pure contracts and scenario language, not the mutable acceptance runner.",
+        "replacement": "#743 operations/cpk-server acceptance handoff; core contracts remain covered by EXTRACT.E successor proofs for planning, execution, reads, and process handoff.",
+        "review": "#743 interpreter runtime closeout"
+      }
     },
     {
       "kind": "test",
@@ -12600,7 +13326,13 @@
       "owner_kind": "core",
       "reference": "tests.test_postgres_scenario_runner.PostgresScenarioRunnerTests.test_no_change_records_plan_but_no_approval_run_or_effect",
       "successors": [],
-      "supersession": null
+      "supersession": {
+        "negative_case_disposition": "Negative cases remain required for the future owner and are not erased; they are listed in the #743 closeout family record and successor issue handoff.",
+        "obsolete_assumption": "This frozen law was previously counted as extracted-core required behavior even though its executable owner is outside the pure core package.",
+        "rationale": "Frozen Postgres scenario runner executes durable workflow services, stores, coordinator effects, projections, and advancement. Extracted core owns the pure contracts and scenario language, not the mutable acceptance runner.",
+        "replacement": "#743 operations/cpk-server acceptance handoff; core contracts remain covered by EXTRACT.E successor proofs for planning, execution, reads, and process handoff.",
+        "review": "#743 interpreter runtime closeout"
+      }
     },
     {
       "kind": "test",
@@ -12610,7 +13342,13 @@
       "owner_kind": "core",
       "reference": "tests.test_postgres_scenario_runner.PostgresScenarioRunnerTests.test_programmed_failure_uses_real_coordinator_and_does_not_advance",
       "successors": [],
-      "supersession": null
+      "supersession": {
+        "negative_case_disposition": "Negative cases remain required for the future owner and are not erased; they are listed in the #743 closeout family record and successor issue handoff.",
+        "obsolete_assumption": "This frozen law was previously counted as extracted-core required behavior even though its executable owner is outside the pure core package.",
+        "rationale": "Frozen Postgres scenario runner executes durable workflow services, stores, coordinator effects, projections, and advancement. Extracted core owns the pure contracts and scenario language, not the mutable acceptance runner.",
+        "replacement": "#743 operations/cpk-server acceptance handoff; core contracts remain covered by EXTRACT.E successor proofs for planning, execution, reads, and process handoff.",
+        "review": "#743 interpreter runtime closeout"
+      }
     },
     {
       "kind": "test",
@@ -12620,7 +13358,13 @@
       "owner_kind": "core",
       "reference": "tests.test_postgres_scenario_runner.PostgresScenarioRunnerTests.test_programmed_uncertainty_remains_visible_without_advancement",
       "successors": [],
-      "supersession": null
+      "supersession": {
+        "negative_case_disposition": "Negative cases remain required for the future owner and are not erased; they are listed in the #743 closeout family record and successor issue handoff.",
+        "obsolete_assumption": "This frozen law was previously counted as extracted-core required behavior even though its executable owner is outside the pure core package.",
+        "rationale": "Frozen Postgres scenario runner executes durable workflow services, stores, coordinator effects, projections, and advancement. Extracted core owns the pure contracts and scenario language, not the mutable acceptance runner.",
+        "replacement": "#743 operations/cpk-server acceptance handoff; core contracts remain covered by EXTRACT.E successor proofs for planning, execution, reads, and process handoff.",
+        "review": "#743 interpreter runtime closeout"
+      }
     },
     {
       "kind": "test",
@@ -12630,7 +13374,13 @@
       "owner_kind": "core",
       "reference": "tests.test_postgres_scenario_runner.PostgresScenarioRunnerTests.test_readiness_gated_scenario_records_approval_but_no_effect",
       "successors": [],
-      "supersession": null
+      "supersession": {
+        "negative_case_disposition": "Negative cases remain required for the future owner and are not erased; they are listed in the #743 closeout family record and successor issue handoff.",
+        "obsolete_assumption": "This frozen law was previously counted as extracted-core required behavior even though its executable owner is outside the pure core package.",
+        "rationale": "Frozen Postgres scenario runner executes durable workflow services, stores, coordinator effects, projections, and advancement. Extracted core owns the pure contracts and scenario language, not the mutable acceptance runner.",
+        "replacement": "#743 operations/cpk-server acceptance handoff; core contracts remain covered by EXTRACT.E successor proofs for planning, execution, reads, and process handoff.",
+        "review": "#743 interpreter runtime closeout"
+      }
     },
     {
       "kind": "test",
@@ -12640,7 +13390,13 @@
       "owner_kind": "core",
       "reference": "tests.test_postgres_scenario_runner.PostgresScenarioRunnerTests.test_repeated_runs_have_distinct_workspaces_and_fake_state",
       "successors": [],
-      "supersession": null
+      "supersession": {
+        "negative_case_disposition": "Negative cases remain required for the future owner and are not erased; they are listed in the #743 closeout family record and successor issue handoff.",
+        "obsolete_assumption": "This frozen law was previously counted as extracted-core required behavior even though its executable owner is outside the pure core package.",
+        "rationale": "Frozen Postgres scenario runner executes durable workflow services, stores, coordinator effects, projections, and advancement. Extracted core owns the pure contracts and scenario language, not the mutable acceptance runner.",
+        "replacement": "#743 operations/cpk-server acceptance handoff; core contracts remain covered by EXTRACT.E successor proofs for planning, execution, reads, and process handoff.",
+        "review": "#743 interpreter runtime closeout"
+      }
     },
     {
       "kind": "test",
@@ -12650,7 +13406,13 @@
       "owner_kind": "core",
       "reference": "tests.test_postgres_scenario_runner.PostgresScenarioRunnerTests.test_review_blocked_scenario_never_requests_approval_or_effect",
       "successors": [],
-      "supersession": null
+      "supersession": {
+        "negative_case_disposition": "Negative cases remain required for the future owner and are not erased; they are listed in the #743 closeout family record and successor issue handoff.",
+        "obsolete_assumption": "This frozen law was previously counted as extracted-core required behavior even though its executable owner is outside the pure core package.",
+        "rationale": "Frozen Postgres scenario runner executes durable workflow services, stores, coordinator effects, projections, and advancement. Extracted core owns the pure contracts and scenario language, not the mutable acceptance runner.",
+        "replacement": "#743 operations/cpk-server acceptance handoff; core contracts remain covered by EXTRACT.E successor proofs for planning, execution, reads, and process handoff.",
+        "review": "#743 interpreter runtime closeout"
+      }
     },
     {
       "kind": "test",
@@ -12660,7 +13422,13 @@
       "owner_kind": "core",
       "reference": "tests.test_postgres_scenario_runner.PostgresScenarioRunnerTests.test_scenario_order_does_not_change_semantic_results",
       "successors": [],
-      "supersession": null
+      "supersession": {
+        "negative_case_disposition": "Negative cases remain required for the future owner and are not erased; they are listed in the #743 closeout family record and successor issue handoff.",
+        "obsolete_assumption": "This frozen law was previously counted as extracted-core required behavior even though its executable owner is outside the pure core package.",
+        "rationale": "Frozen Postgres scenario runner executes durable workflow services, stores, coordinator effects, projections, and advancement. Extracted core owns the pure contracts and scenario language, not the mutable acceptance runner.",
+        "replacement": "#743 operations/cpk-server acceptance handoff; core contracts remain covered by EXTRACT.E successor proofs for planning, execution, reads, and process handoff.",
+        "review": "#743 interpreter runtime closeout"
+      }
     },
     {
       "kind": "test",
@@ -12670,7 +13438,13 @@
       "owner_kind": "core",
       "reference": "tests.test_postgres_scenario_runner.PostgresScenarioRunnerTests.test_semantic_diagnostic_reports_event_order_not_generated_values",
       "successors": [],
-      "supersession": null
+      "supersession": {
+        "negative_case_disposition": "Negative cases remain required for the future owner and are not erased; they are listed in the #743 closeout family record and successor issue handoff.",
+        "obsolete_assumption": "This frozen law was previously counted as extracted-core required behavior even though its executable owner is outside the pure core package.",
+        "rationale": "Frozen Postgres scenario runner executes durable workflow services, stores, coordinator effects, projections, and advancement. Extracted core owns the pure contracts and scenario language, not the mutable acceptance runner.",
+        "replacement": "#743 operations/cpk-server acceptance handoff; core contracts remain covered by EXTRACT.E successor proofs for planning, execution, reads, and process handoff.",
+        "review": "#743 interpreter runtime closeout"
+      }
     },
     {
       "kind": "test",
@@ -12680,7 +13454,13 @@
       "owner_kind": "core",
       "reference": "tests.test_postgres_scenario_runner.PostgresScenarioRunnerTests.test_stored_deployment_preserves_stale_graph_admission_guard",
       "successors": [],
-      "supersession": null
+      "supersession": {
+        "negative_case_disposition": "Negative cases remain required for the future owner and are not erased; they are listed in the #743 closeout family record and successor issue handoff.",
+        "obsolete_assumption": "This frozen law was previously counted as extracted-core required behavior even though its executable owner is outside the pure core package.",
+        "rationale": "Frozen Postgres scenario runner executes durable workflow services, stores, coordinator effects, projections, and advancement. Extracted core owns the pure contracts and scenario language, not the mutable acceptance runner.",
+        "replacement": "#743 operations/cpk-server acceptance handoff; core contracts remain covered by EXTRACT.E successor proofs for planning, execution, reads, and process handoff.",
+        "review": "#743 interpreter runtime closeout"
+      }
     },
     {
       "kind": "test",
@@ -12690,7 +13470,13 @@
       "owner_kind": "core",
       "reference": "tests.test_postgres_scenario_runner.PostgresScenarioRunnerTests.test_stored_deployment_refuses_run_before_durable_approval",
       "successors": [],
-      "supersession": null
+      "supersession": {
+        "negative_case_disposition": "Negative cases remain required for the future owner and are not erased; they are listed in the #743 closeout family record and successor issue handoff.",
+        "obsolete_assumption": "This frozen law was previously counted as extracted-core required behavior even though its executable owner is outside the pure core package.",
+        "rationale": "Frozen Postgres scenario runner executes durable workflow services, stores, coordinator effects, projections, and advancement. Extracted core owns the pure contracts and scenario language, not the mutable acceptance runner.",
+        "replacement": "#743 operations/cpk-server acceptance handoff; core contracts remain covered by EXTRACT.E successor proofs for planning, execution, reads, and process handoff.",
+        "review": "#743 interpreter runtime closeout"
+      }
     },
     {
       "kind": "test",
@@ -12700,7 +13486,13 @@
       "owner_kind": "core",
       "reference": "tests.test_probe_execution.ProbeAdapterTests.test_docker_process_probe_inspects_graph_owned_container",
       "successors": [],
-      "supersession": null
+      "supersession": {
+        "negative_case_disposition": "Negative cases remain required for the future owner and are not erased; they are listed in the #743 closeout family record and successor issue handoff.",
+        "obsolete_assumption": "This frozen law was previously counted as extracted-core required behavior even though its executable owner is outside the pure core package.",
+        "rationale": "Frozen law exercises Docker, HTTP, probe, runtime materialization, runtime state, ownership, retention, dispatch, or substrate behavior. Extracted core must keep only the closed language/contract boundary and cannot execute the interpreter.",
+        "replacement": "#743 interpreter/runtime handoff; core retains closed protocol, lifecycle, verification, control-route, effect-boundary, and product-runtime contract values without owning effects.",
+        "review": "#743 interpreter runtime closeout"
+      }
     },
     {
       "kind": "test",
@@ -12710,7 +13502,13 @@
       "owner_kind": "core",
       "reference": "tests.test_probe_execution.ProbeAdapterTests.test_http_probe_is_bounded_redirect_free_and_status_driven",
       "successors": [],
-      "supersession": null
+      "supersession": {
+        "negative_case_disposition": "Negative cases remain required for the future owner and are not erased; they are listed in the #743 closeout family record and successor issue handoff.",
+        "obsolete_assumption": "This frozen law was previously counted as extracted-core required behavior even though its executable owner is outside the pure core package.",
+        "rationale": "Frozen law exercises Docker, HTTP, probe, runtime materialization, runtime state, ownership, retention, dispatch, or substrate behavior. Extracted core must keep only the closed language/contract boundary and cannot execute the interpreter.",
+        "replacement": "#743 interpreter/runtime handoff; core retains closed protocol, lifecycle, verification, control-route, effect-boundary, and product-runtime contract values without owning effects.",
+        "review": "#743 interpreter runtime closeout"
+      }
     },
     {
       "kind": "test",
@@ -12720,7 +13518,13 @@
       "owner_kind": "core",
       "reference": "tests.test_probe_execution.ProbeAdapterTests.test_probe_address_policy_fails_closed_and_pins_public_dns",
       "successors": [],
-      "supersession": null
+      "supersession": {
+        "negative_case_disposition": "Negative cases remain required for the future owner and are not erased; they are listed in the #743 closeout family record and successor issue handoff.",
+        "obsolete_assumption": "This frozen law was previously counted as extracted-core required behavior even though its executable owner is outside the pure core package.",
+        "rationale": "Frozen law exercises Docker, HTTP, probe, runtime materialization, runtime state, ownership, retention, dispatch, or substrate behavior. Extracted core must keep only the closed language/contract boundary and cannot execute the interpreter.",
+        "replacement": "#743 interpreter/runtime handoff; core retains closed protocol, lifecycle, verification, control-route, effect-boundary, and product-runtime contract values without owning effects.",
+        "review": "#743 interpreter runtime closeout"
+      }
     },
     {
       "kind": "test",
@@ -12730,7 +13534,13 @@
       "owner_kind": "core",
       "reference": "tests.test_probe_execution.ProbeAdapterTests.test_secret_endpoint_value_is_resolved_only_at_authorization",
       "successors": [],
-      "supersession": null
+      "supersession": {
+        "negative_case_disposition": "Negative cases remain required for the future owner and are not erased; they are listed in the #743 closeout family record and successor issue handoff.",
+        "obsolete_assumption": "This frozen law was previously counted as extracted-core required behavior even though its executable owner is outside the pure core package.",
+        "rationale": "Frozen law exercises Docker, HTTP, probe, runtime materialization, runtime state, ownership, retention, dispatch, or substrate behavior. Extracted core must keep only the closed language/contract boundary and cannot execute the interpreter.",
+        "replacement": "#743 interpreter/runtime handoff; core retains closed protocol, lifecycle, verification, control-route, effect-boundary, and product-runtime contract values without owning effects.",
+        "review": "#743 interpreter runtime closeout"
+      }
     },
     {
       "kind": "test",
@@ -12740,7 +13550,13 @@
       "owner_kind": "core",
       "reference": "tests.test_probe_execution.ProbeAdapterTests.test_tcp_probe_distinguishes_reachable_refused_and_timeout",
       "successors": [],
-      "supersession": null
+      "supersession": {
+        "negative_case_disposition": "Negative cases remain required for the future owner and are not erased; they are listed in the #743 closeout family record and successor issue handoff.",
+        "obsolete_assumption": "This frozen law was previously counted as extracted-core required behavior even though its executable owner is outside the pure core package.",
+        "rationale": "Frozen law exercises Docker, HTTP, probe, runtime materialization, runtime state, ownership, retention, dispatch, or substrate behavior. Extracted core must keep only the closed language/contract boundary and cannot execute the interpreter.",
+        "replacement": "#743 interpreter/runtime handoff; core retains closed protocol, lifecycle, verification, control-route, effect-boundary, and product-runtime contract values without owning effects.",
+        "review": "#743 interpreter runtime closeout"
+      }
     },
     {
       "kind": "test",
@@ -12750,7 +13566,13 @@
       "owner_kind": "core",
       "reference": "tests.test_probe_execution.ProbeAdapterTests.test_transport_adapters_reject_the_other_transport_explicitly",
       "successors": [],
-      "supersession": null
+      "supersession": {
+        "negative_case_disposition": "Negative cases remain required for the future owner and are not erased; they are listed in the #743 closeout family record and successor issue handoff.",
+        "obsolete_assumption": "This frozen law was previously counted as extracted-core required behavior even though its executable owner is outside the pure core package.",
+        "rationale": "Frozen law exercises Docker, HTTP, probe, runtime materialization, runtime state, ownership, retention, dispatch, or substrate behavior. Extracted core must keep only the closed language/contract boundary and cannot execute the interpreter.",
+        "replacement": "#743 interpreter/runtime handoff; core retains closed protocol, lifecycle, verification, control-route, effect-boundary, and product-runtime contract values without owning effects.",
+        "review": "#743 interpreter runtime closeout"
+      }
     },
     {
       "kind": "test",
@@ -12760,7 +13582,13 @@
       "owner_kind": "core",
       "reference": "tests.test_probe_execution.ProbeAdapterTests.test_transport_router_dispatches_from_the_typed_transport_only",
       "successors": [],
-      "supersession": null
+      "supersession": {
+        "negative_case_disposition": "Negative cases remain required for the future owner and are not erased; they are listed in the #743 closeout family record and successor issue handoff.",
+        "obsolete_assumption": "This frozen law was previously counted as extracted-core required behavior even though its executable owner is outside the pure core package.",
+        "rationale": "Frozen law exercises Docker, HTTP, probe, runtime materialization, runtime state, ownership, retention, dispatch, or substrate behavior. Extracted core must keep only the closed language/contract boundary and cannot execute the interpreter.",
+        "replacement": "#743 interpreter/runtime handoff; core retains closed protocol, lifecycle, verification, control-route, effect-boundary, and product-runtime contract values without owning effects.",
+        "review": "#743 interpreter runtime closeout"
+      }
     },
     {
       "kind": "test",
@@ -12770,7 +13598,13 @@
       "owner_kind": "core",
       "reference": "tests.test_probe_execution.ProbeAdapterTests.test_udp_probe_requires_a_bounded_response_exchange",
       "successors": [],
-      "supersession": null
+      "supersession": {
+        "negative_case_disposition": "Negative cases remain required for the future owner and are not erased; they are listed in the #743 closeout family record and successor issue handoff.",
+        "obsolete_assumption": "This frozen law was previously counted as extracted-core required behavior even though its executable owner is outside the pure core package.",
+        "rationale": "Frozen law exercises Docker, HTTP, probe, runtime materialization, runtime state, ownership, retention, dispatch, or substrate behavior. Extracted core must keep only the closed language/contract boundary and cannot execute the interpreter.",
+        "replacement": "#743 interpreter/runtime handoff; core retains closed protocol, lifecycle, verification, control-route, effect-boundary, and product-runtime contract values without owning effects.",
+        "review": "#743 interpreter runtime closeout"
+      }
     },
     {
       "kind": "test",
@@ -12780,7 +13614,13 @@
       "owner_kind": "core",
       "reference": "tests.test_probe_execution.ProbeAdapterTests.test_unsupported_transport_adapter_becomes_effect_unsupported",
       "successors": [],
-      "supersession": null
+      "supersession": {
+        "negative_case_disposition": "Negative cases remain required for the future owner and are not erased; they are listed in the #743 closeout family record and successor issue handoff.",
+        "obsolete_assumption": "This frozen law was previously counted as extracted-core required behavior even though its executable owner is outside the pure core package.",
+        "rationale": "Frozen law exercises Docker, HTTP, probe, runtime materialization, runtime state, ownership, retention, dispatch, or substrate behavior. Extracted core must keep only the closed language/contract boundary and cannot execute the interpreter.",
+        "replacement": "#743 interpreter/runtime handoff; core retains closed protocol, lifecycle, verification, control-route, effect-boundary, and product-runtime contract values without owning effects.",
+        "review": "#743 interpreter runtime closeout"
+      }
     },
     {
       "kind": "test",
@@ -12790,7 +13630,13 @@
       "owner_kind": "core",
       "reference": "tests.test_probe_execution.ProbeEffectInterpreterTests.test_missing_endpoint_fails_before_any_probe_attempt",
       "successors": [],
-      "supersession": null
+      "supersession": {
+        "negative_case_disposition": "Negative cases remain required for the future owner and are not erased; they are listed in the #743 closeout family record and successor issue handoff.",
+        "obsolete_assumption": "This frozen law was previously counted as extracted-core required behavior even though its executable owner is outside the pure core package.",
+        "rationale": "Frozen law exercises Docker, HTTP, probe, runtime materialization, runtime state, ownership, retention, dispatch, or substrate behavior. Extracted core must keep only the closed language/contract boundary and cannot execute the interpreter.",
+        "replacement": "#743 interpreter/runtime handoff; core retains closed protocol, lifecycle, verification, control-route, effect-boundary, and product-runtime contract values without owning effects.",
+        "review": "#743 interpreter runtime closeout"
+      }
     },
     {
       "kind": "test",
@@ -12800,7 +13646,13 @@
       "owner_kind": "core",
       "reference": "tests.test_probe_execution.ProbeEffectInterpreterTests.test_postgres_deadline_exhaustion_is_transport_not_http_evidence",
       "successors": [],
-      "supersession": null
+      "supersession": {
+        "negative_case_disposition": "Negative cases remain required for the future owner and are not erased; they are listed in the #743 closeout family record and successor issue handoff.",
+        "obsolete_assumption": "This frozen law was previously counted as extracted-core required behavior even though its executable owner is outside the pure core package.",
+        "rationale": "Frozen law exercises Docker, HTTP, probe, runtime materialization, runtime state, ownership, retention, dispatch, or substrate behavior. Extracted core must keep only the closed language/contract boundary and cannot execute the interpreter.",
+        "replacement": "#743 interpreter/runtime handoff; core retains closed protocol, lifecycle, verification, control-route, effect-boundary, and product-runtime contract values without owning effects.",
+        "review": "#743 interpreter runtime closeout"
+      }
     },
     {
       "kind": "test",
@@ -12810,7 +13662,13 @@
       "owner_kind": "core",
       "reference": "tests.test_probe_execution.ProbeEffectInterpreterTests.test_reachable_postgres_is_ready_without_an_http_health_contract",
       "successors": [],
-      "supersession": null
+      "supersession": {
+        "negative_case_disposition": "Negative cases remain required for the future owner and are not erased; they are listed in the #743 closeout family record and successor issue handoff.",
+        "obsolete_assumption": "This frozen law was previously counted as extracted-core required behavior even though its executable owner is outside the pure core package.",
+        "rationale": "Frozen law exercises Docker, HTTP, probe, runtime materialization, runtime state, ownership, retention, dispatch, or substrate behavior. Extracted core must keep only the closed language/contract boundary and cannot execute the interpreter.",
+        "replacement": "#743 interpreter/runtime handoff; core retains closed protocol, lifecycle, verification, control-route, effect-boundary, and product-runtime contract values without owning effects.",
+        "review": "#743 interpreter runtime closeout"
+      }
     },
     {
       "kind": "test",
@@ -12820,7 +13678,13 @@
       "owner_kind": "core",
       "reference": "tests.test_probe_execution.ProbeEffectInterpreterTests.test_refused_transport_retries_then_records_truthful_readiness",
       "successors": [],
-      "supersession": null
+      "supersession": {
+        "negative_case_disposition": "Negative cases remain required for the future owner and are not erased; they are listed in the #743 closeout family record and successor issue handoff.",
+        "obsolete_assumption": "This frozen law was previously counted as extracted-core required behavior even though its executable owner is outside the pure core package.",
+        "rationale": "Frozen law exercises Docker, HTTP, probe, runtime materialization, runtime state, ownership, retention, dispatch, or substrate behavior. Extracted core must keep only the closed language/contract boundary and cannot execute the interpreter.",
+        "replacement": "#743 interpreter/runtime handoff; core retains closed protocol, lifecycle, verification, control-route, effect-boundary, and product-runtime contract values without owning effects.",
+        "review": "#743 interpreter runtime closeout"
+      }
     },
     {
       "kind": "test",
@@ -12830,7 +13694,13 @@
       "owner_kind": "core",
       "reference": "tests.test_probe_execution.ProbeEffectInterpreterTests.test_started_but_unhealthy_is_terminal_and_not_ready",
       "successors": [],
-      "supersession": null
+      "supersession": {
+        "negative_case_disposition": "Negative cases remain required for the future owner and are not erased; they are listed in the #743 closeout family record and successor issue handoff.",
+        "obsolete_assumption": "This frozen law was previously counted as extracted-core required behavior even though its executable owner is outside the pure core package.",
+        "rationale": "Frozen law exercises Docker, HTTP, probe, runtime materialization, runtime state, ownership, retention, dispatch, or substrate behavior. Extracted core must keep only the closed language/contract boundary and cannot execute the interpreter.",
+        "replacement": "#743 interpreter/runtime handoff; core retains closed protocol, lifecycle, verification, control-route, effect-boundary, and product-runtime contract values without owning effects.",
+        "review": "#743 interpreter runtime closeout"
+      }
     },
     {
       "kind": "test",
@@ -12840,7 +13710,13 @@
       "owner_kind": "core",
       "reference": "tests.test_probe_execution.ProbeEffectInterpreterTests.test_total_deadline_is_recomputed_between_probe_layers",
       "successors": [],
-      "supersession": null
+      "supersession": {
+        "negative_case_disposition": "Negative cases remain required for the future owner and are not erased; they are listed in the #743 closeout family record and successor issue handoff.",
+        "obsolete_assumption": "This frozen law was previously counted as extracted-core required behavior even though its executable owner is outside the pure core package.",
+        "rationale": "Frozen law exercises Docker, HTTP, probe, runtime materialization, runtime state, ownership, retention, dispatch, or substrate behavior. Extracted core must keep only the closed language/contract boundary and cannot execute the interpreter.",
+        "replacement": "#743 interpreter/runtime handoff; core retains closed protocol, lifecycle, verification, control-route, effect-boundary, and product-runtime contract values without owning effects.",
+        "review": "#743 interpreter runtime closeout"
+      }
     },
     {
       "kind": "test",
@@ -12850,7 +13726,13 @@
       "owner_kind": "core",
       "reference": "tests.test_probe_execution.ProbeEffectInterpreterTests.test_unreachable_postgres_is_not_ready_and_does_not_run_http",
       "successors": [],
-      "supersession": null
+      "supersession": {
+        "negative_case_disposition": "Negative cases remain required for the future owner and are not erased; they are listed in the #743 closeout family record and successor issue handoff.",
+        "obsolete_assumption": "This frozen law was previously counted as extracted-core required behavior even though its executable owner is outside the pure core package.",
+        "rationale": "Frozen law exercises Docker, HTTP, probe, runtime materialization, runtime state, ownership, retention, dispatch, or substrate behavior. Extracted core must keep only the closed language/contract boundary and cannot execute the interpreter.",
+        "replacement": "#743 interpreter/runtime handoff; core retains closed protocol, lifecycle, verification, control-route, effect-boundary, and product-runtime contract values without owning effects.",
+        "review": "#743 interpreter runtime closeout"
+      }
     },
     {
       "kind": "test",
@@ -13390,7 +14272,13 @@
       "owner_kind": "core",
       "reference": "tests.test_resource_lifecycle.ResourceLifecycleTests.test_data_destruction_requires_explicit_critical_destructive_activity",
       "successors": [],
-      "supersession": null
+      "supersession": {
+        "negative_case_disposition": "Negative cases remain required for the future owner and are not erased; they are listed in the #743 closeout family record and successor issue handoff.",
+        "obsolete_assumption": "This frozen law was previously counted as extracted-core required behavior even though its executable owner is outside the pure core package.",
+        "rationale": "Frozen law exercises Docker, HTTP, probe, runtime materialization, runtime state, ownership, retention, dispatch, or substrate behavior. Extracted core must keep only the closed language/contract boundary and cannot execute the interpreter.",
+        "replacement": "#743 interpreter/runtime handoff; core retains closed protocol, lifecycle, verification, control-route, effect-boundary, and product-runtime contract values without owning effects.",
+        "review": "#743 interpreter runtime closeout"
+      }
     },
     {
       "kind": "test",
@@ -13400,7 +14288,13 @@
       "owner_kind": "core",
       "reference": "tests.test_resource_lifecycle.ResourceLifecycleTests.test_external_resources_are_topology_only_and_never_gain_lifecycle_work",
       "successors": [],
-      "supersession": null
+      "supersession": {
+        "negative_case_disposition": "Negative cases remain required for the future owner and are not erased; they are listed in the #743 closeout family record and successor issue handoff.",
+        "obsolete_assumption": "This frozen law was previously counted as extracted-core required behavior even though its executable owner is outside the pure core package.",
+        "rationale": "Frozen law exercises Docker, HTTP, probe, runtime materialization, runtime state, ownership, retention, dispatch, or substrate behavior. Extracted core must keep only the closed language/contract boundary and cannot execute the interpreter.",
+        "replacement": "#743 interpreter/runtime handoff; core retains closed protocol, lifecycle, verification, control-route, effect-boundary, and product-runtime contract values without owning effects.",
+        "review": "#743 interpreter runtime closeout"
+      }
     },
     {
       "kind": "test",
@@ -13410,7 +14304,13 @@
       "owner_kind": "core",
       "reference": "tests.test_resource_lifecycle.ResourceLifecycleTests.test_graph_codec_preserves_lifecycle_without_string_inference",
       "successors": [],
-      "supersession": null
+      "supersession": {
+        "negative_case_disposition": "Negative cases remain required for the future owner and are not erased; they are listed in the #743 closeout family record and successor issue handoff.",
+        "obsolete_assumption": "This frozen law was previously counted as extracted-core required behavior even though its executable owner is outside the pure core package.",
+        "rationale": "Frozen law exercises Docker, HTTP, probe, runtime materialization, runtime state, ownership, retention, dispatch, or substrate behavior. Extracted core must keep only the closed language/contract boundary and cannot execute the interpreter.",
+        "replacement": "#743 interpreter/runtime handoff; core retains closed protocol, lifecycle, verification, control-route, effect-boundary, and product-runtime contract values without owning effects.",
+        "review": "#743 interpreter runtime closeout"
+      }
     },
     {
       "kind": "test",
@@ -13420,7 +14320,13 @@
       "owner_kind": "core",
       "reference": "tests.test_resource_lifecycle.ResourceLifecycleTests.test_lifecycle_is_a_closed_product_with_independent_data_resources",
       "successors": [],
-      "supersession": null
+      "supersession": {
+        "negative_case_disposition": "Negative cases remain required for the future owner and are not erased; they are listed in the #743 closeout family record and successor issue handoff.",
+        "obsolete_assumption": "This frozen law was previously counted as extracted-core required behavior even though its executable owner is outside the pure core package.",
+        "rationale": "Frozen law exercises Docker, HTTP, probe, runtime materialization, runtime state, ownership, retention, dispatch, or substrate behavior. Extracted core must keep only the closed language/contract boundary and cannot execute the interpreter.",
+        "replacement": "#743 interpreter/runtime handoff; core retains closed protocol, lifecycle, verification, control-route, effect-boundary, and product-runtime contract values without owning effects.",
+        "review": "#743 interpreter runtime closeout"
+      }
     },
     {
       "kind": "test",
@@ -13430,7 +14336,13 @@
       "owner_kind": "core",
       "reference": "tests.test_resource_lifecycle.ResourceLifecycleTests.test_lifecycle_policy_changes_are_review_blockers_not_reconciliation",
       "successors": [],
-      "supersession": null
+      "supersession": {
+        "negative_case_disposition": "Negative cases remain required for the future owner and are not erased; they are listed in the #743 closeout family record and successor issue handoff.",
+        "obsolete_assumption": "This frozen law was previously counted as extracted-core required behavior even though its executable owner is outside the pure core package.",
+        "rationale": "Frozen law exercises Docker, HTTP, probe, runtime materialization, runtime state, ownership, retention, dispatch, or substrate behavior. Extracted core must keep only the closed language/contract boundary and cannot execute the interpreter.",
+        "replacement": "#743 interpreter/runtime handoff; core retains closed protocol, lifecycle, verification, control-route, effect-boundary, and product-runtime contract values without owning effects.",
+        "review": "#743 interpreter runtime closeout"
+      }
     },
     {
       "kind": "test",
@@ -13440,7 +14352,13 @@
       "owner_kind": "core",
       "reference": "tests.test_resource_lifecycle.ResourceLifecycleTests.test_retained_compute_stops_without_resource_removal",
       "successors": [],
-      "supersession": null
+      "supersession": {
+        "negative_case_disposition": "Negative cases remain required for the future owner and are not erased; they are listed in the #743 closeout family record and successor issue handoff.",
+        "obsolete_assumption": "This frozen law was previously counted as extracted-core required behavior even though its executable owner is outside the pure core package.",
+        "rationale": "Frozen law exercises Docker, HTTP, probe, runtime materialization, runtime state, ownership, retention, dispatch, or substrate behavior. Extracted core must keep only the closed language/contract boundary and cannot execute the interpreter.",
+        "replacement": "#743 interpreter/runtime handoff; core retains closed protocol, lifecycle, verification, control-route, effect-boundary, and product-runtime contract values without owning effects.",
+        "review": "#743 interpreter runtime closeout"
+      }
     },
     {
       "kind": "test",
@@ -13450,7 +14368,13 @@
       "owner_kind": "core",
       "reference": "tests.test_resource_lifecycle.ResourceLifecycleTests.test_topology_removal_deletes_ephemeral_compute_but_never_data",
       "successors": [],
-      "supersession": null
+      "supersession": {
+        "negative_case_disposition": "Negative cases remain required for the future owner and are not erased; they are listed in the #743 closeout family record and successor issue handoff.",
+        "obsolete_assumption": "This frozen law was previously counted as extracted-core required behavior even though its executable owner is outside the pure core package.",
+        "rationale": "Frozen law exercises Docker, HTTP, probe, runtime materialization, runtime state, ownership, retention, dispatch, or substrate behavior. Extracted core must keep only the closed language/contract boundary and cannot execute the interpreter.",
+        "replacement": "#743 interpreter/runtime handoff; core retains closed protocol, lifecycle, verification, control-route, effect-boundary, and product-runtime contract values without owning effects.",
+        "review": "#743 interpreter runtime closeout"
+      }
     },
     {
       "kind": "test",
@@ -13942,7 +14866,13 @@
       "owner_kind": "core",
       "reference": "tests.test_runtimes.RuntimeStateTests.test_dry_run_plan_stop_is_idempotent_shape",
       "successors": [],
-      "supersession": null
+      "supersession": {
+        "negative_case_disposition": "Negative cases remain required for the future owner and are not erased; they are listed in the #743 closeout family record and successor issue handoff.",
+        "obsolete_assumption": "This frozen law was previously counted as extracted-core required behavior even though its executable owner is outside the pure core package.",
+        "rationale": "Frozen law exercises Docker, HTTP, probe, runtime materialization, runtime state, ownership, retention, dispatch, or substrate behavior. Extracted core must keep only the closed language/contract boundary and cannot execute the interpreter.",
+        "replacement": "#743 interpreter/runtime handoff; core retains closed protocol, lifecycle, verification, control-route, effect-boundary, and product-runtime contract values without owning effects.",
+        "review": "#743 interpreter runtime closeout"
+      }
     },
     {
       "kind": "test",
@@ -13952,7 +14882,13 @@
       "owner_kind": "core",
       "reference": "tests.test_runtimes.RuntimeStateTests.test_dry_run_runtime_returns_interpreted_node_state",
       "successors": [],
-      "supersession": null
+      "supersession": {
+        "negative_case_disposition": "Negative cases remain required for the future owner and are not erased; they are listed in the #743 closeout family record and successor issue handoff.",
+        "obsolete_assumption": "This frozen law was previously counted as extracted-core required behavior even though its executable owner is outside the pure core package.",
+        "rationale": "Frozen law exercises Docker, HTTP, probe, runtime materialization, runtime state, ownership, retention, dispatch, or substrate behavior. Extracted core must keep only the closed language/contract boundary and cannot execute the interpreter.",
+        "replacement": "#743 interpreter/runtime handoff; core retains closed protocol, lifecycle, verification, control-route, effect-boundary, and product-runtime contract values without owning effects.",
+        "review": "#743 interpreter runtime closeout"
+      }
     },
     {
       "kind": "test",
@@ -13962,7 +14898,13 @@
       "owner_kind": "core",
       "reference": "tests.test_runtimes.RuntimeStateTests.test_runtime_state_descriptor_is_json_friendly",
       "successors": [],
-      "supersession": null
+      "supersession": {
+        "negative_case_disposition": "Negative cases remain required for the future owner and are not erased; they are listed in the #743 closeout family record and successor issue handoff.",
+        "obsolete_assumption": "This frozen law was previously counted as extracted-core required behavior even though its executable owner is outside the pure core package.",
+        "rationale": "Frozen law exercises Docker, HTTP, probe, runtime materialization, runtime state, ownership, retention, dispatch, or substrate behavior. Extracted core must keep only the closed language/contract boundary and cannot execute the interpreter.",
+        "replacement": "#743 interpreter/runtime handoff; core retains closed protocol, lifecycle, verification, control-route, effect-boundary, and product-runtime contract values without owning effects.",
+        "review": "#743 interpreter runtime closeout"
+      }
     },
     {
       "kind": "test",
@@ -15769,7 +16711,13 @@
       "owner_kind": "core",
       "reference": "tests.test_verification_adapters.VerificationAdapterTests.test_http_address_outside_policy_is_rejected_without_attempt",
       "successors": [],
-      "supersession": null
+      "supersession": {
+        "negative_case_disposition": "Negative cases remain required for the future owner and are not erased; they are listed in the #743 closeout family record and successor issue handoff.",
+        "obsolete_assumption": "This frozen law was previously counted as extracted-core required behavior even though its executable owner is outside the pure core package.",
+        "rationale": "Frozen law exercises Docker, HTTP, probe, runtime materialization, runtime state, ownership, retention, dispatch, or substrate behavior. Extracted core must keep only the closed language/contract boundary and cannot execute the interpreter.",
+        "replacement": "#743 interpreter/runtime handoff; core retains closed protocol, lifecycle, verification, control-route, effect-boundary, and product-runtime contract values without owning effects.",
+        "review": "#743 interpreter runtime closeout"
+      }
     },
     {
       "kind": "test",
@@ -15779,7 +16727,13 @@
       "owner_kind": "core",
       "reference": "tests.test_verification_adapters.VerificationAdapterTests.test_http_check_is_redirect_free_bounded_and_status_driven",
       "successors": [],
-      "supersession": null
+      "supersession": {
+        "negative_case_disposition": "Negative cases remain required for the future owner and are not erased; they are listed in the #743 closeout family record and successor issue handoff.",
+        "obsolete_assumption": "This frozen law was previously counted as extracted-core required behavior even though its executable owner is outside the pure core package.",
+        "rationale": "Frozen law exercises Docker, HTTP, probe, runtime materialization, runtime state, ownership, retention, dispatch, or substrate behavior. Extracted core must keep only the closed language/contract boundary and cannot execute the interpreter.",
+        "replacement": "#743 interpreter/runtime handoff; core retains closed protocol, lifecycle, verification, control-route, effect-boundary, and product-runtime contract values without owning effects.",
+        "review": "#743 interpreter runtime closeout"
+      }
     },
     {
       "kind": "test",
@@ -15789,7 +16743,13 @@
       "owner_kind": "core",
       "reference": "tests.test_verification_adapters.VerificationAdapterTests.test_redis_ping_retries_bounded_exchange_and_retains_no_payload",
       "successors": [],
-      "supersession": null
+      "supersession": {
+        "negative_case_disposition": "Negative cases remain required for the future owner and are not erased; they are listed in the #743 closeout family record and successor issue handoff.",
+        "obsolete_assumption": "This frozen law was previously counted as extracted-core required behavior even though its executable owner is outside the pure core package.",
+        "rationale": "Frozen law exercises Docker, HTTP, probe, runtime materialization, runtime state, ownership, retention, dispatch, or substrate behavior. Extracted core must keep only the closed language/contract boundary and cannot execute the interpreter.",
+        "replacement": "#743 interpreter/runtime handoff; core retains closed protocol, lifecycle, verification, control-route, effect-boundary, and product-runtime contract values without owning effects.",
+        "review": "#743 interpreter runtime closeout"
+      }
     },
     {
       "kind": "test",

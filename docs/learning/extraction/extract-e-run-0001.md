@@ -3187,3 +3187,124 @@ control-plane-kit-core/test.sh: 374 tests passed, compileall passed, import ok
 top-level ./test.sh: 1205 tests passed
 required-core closeout inventory: 160 incomplete entries across 21 families
 ```
+
+## #743 Interpreter And Runtime Successor Families
+
+#743 resolved the final required-core inventory by reviewing the remaining
+effectful families as handoffs instead of forcing interpreter/runtime behavior
+into `control-plane-kit-core`.
+
+The dry run found that the live inventory differed from the original batch
+plan. Earlier handoffs had already removed pure control-route and verification
+dispatch families, while two moved families were still live:
+
+```text
+test_block_control_fastapi
+test_postgres_scenario_runner
+```
+
+The final #743 source scope was:
+
+```text
+source families: 21
+source entries: 160
+```
+
+Classification:
+
+```text
+reviewed interpreter/runtime handoff
+  families: 18
+  entries: 131
+
+reviewed cpk-server control-process handoff
+  families: 2
+  entries: 14
+
+reviewed operations acceptance handoff
+  families: 1
+  entries: 15
+
+mapped successor entries: 0
+```
+
+This is intentionally severe. These frozen laws are not fake or obsolete. They
+are real laws for the next packages:
+
+```text
+interpreters / runtime packages own
+  Docker effects
+  Docker configuration materialization
+  Docker secret materialization
+  Docker ownership, retention, and cleanup
+  probe execution adapters
+  control HTTP clients and security policy
+  capability interpreter dispatch
+  runtime state interpretation
+
+cpk-server owns
+  executable FastAPI control routes
+  authenticated runtime mutation
+  observer mutation routes
+  bounded process request handling
+
+operations / cpk-server acceptance owns
+  Postgres-backed scenario runner
+  durable workflow services
+  coordinator execution
+  graph advancement
+  read projection over mutable stores
+```
+
+Extracted core already owns the closed contract vocabulary those future owners
+must obey:
+
+```text
+protocol and endpoint descriptors
+control-route descriptors
+verification contracts
+probe intent values
+resource lifecycle values
+effect-boundary contract names
+transaction and UnitOfWork boundary names
+process handoff contracts
+product runtime contracts
+planning and execution scenario language
+```
+
+The manifest review therefore says:
+
+```text
+old assumption:
+  executable runtime/interpreter behavior was counted as required extracted-core behavior
+
+replacement:
+  core keeps closed values and contracts
+  future operations/interpreter/cpk-server packages keep executable behavior
+```
+
+Regenerated evidence:
+
+```text
+artifacts/extraction/interpreter-runtime-batch-closeout.json
+artifacts/extraction/supersession-reviews/extract-e-743-interpreter-runtime-handoff.json
+artifacts/extraction/parity-manifest.json
+artifacts/extraction/required-core-closeout-report.json
+artifacts/extraction/required-core-family-inventory.json
+artifacts/extraction/parity-validation-report.json
+```
+
+Validation so far:
+
+```text
+focused #743 extraction/parity tests: 43 tests passed
+validate-parity.sh foundation: valid=true, findings=0, incomplete_required=100
+required-core closeout inventory: 0 incomplete entries across 0 families
+control-plane-kit-core/test.sh: 374 tests passed, compileall passed, import ok
+top-level ./test.sh: 1207 tests passed
+```
+
+#731 can now dry-run against zero required-core unmapped laws, but it should
+not start automatically. The remaining `validate-parity.sh foundation`
+`incomplete_required=100` are not required-core blockers; they are later
+system, Hello, deferred product/server, or rollout obligations.
