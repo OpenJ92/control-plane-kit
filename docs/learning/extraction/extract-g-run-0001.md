@@ -2684,3 +2684,112 @@ HTTP/MCP request
 The adapter layer should translate auth, route arguments, status codes, and MCP
 content envelopes only. Projection meaning, redaction, pagination bounds, and
 workspace/read errors belong to the operations read service.
+
+## #847 cpk-server Operations Adapter Boundary
+
+#847 introduces the operations-side application boundary that the cpk-server
+HTTP/MCP wrapper can consume without duplicating command or read logic.
+
+The important split is:
+
+```text
+control-plane-kit-servers/cpk-server
+  HTTP/MCP envelope, auth header, route/tool decoding, bounded status response
+
+control-plane-kit-operations
+  route id -> existing application service command/read interpretation
+```
+
+The extracted package now exposes a complete service map:
+
+```python
+services = cpk_server_services(
+    unit_of_work_factory=unit_of_work_factory,
+    planning=planning_service,
+    approval=approval_service,
+    admission=admission_service,
+    lifecycle=lifecycle_service,
+    execution=execution_coordinator,
+)
+```
+
+Those values are deliberately server-framework-neutral. They require only the
+route-shaped request fields already produced by the cpk-server boundary:
+
+```text
+surface
+route_id
+service_role
+path_parameters
+payload
+```
+
+Reads open one request UnitOfWork, construct `InstanceReadService` from the
+shared store bundle, and return the canonical projection descriptor. This means
+HTTP and MCP read paths now share the same projection interpreter:
+
+```text
+HTTP path params or MCP arguments
+  -> CpkServerReadService
+    -> PostgresUnitOfWork
+      -> InstanceReadService
+        -> descriptor
+```
+
+Command routes translate to the existing operations command values rather than
+stringly route-specific commands:
+
+```text
+command.deployment.plan
+  -> RequestActivityPlan
+
+command.approval.decide
+  -> DecideApproval
+
+command.deployment.admit
+  -> RequestPlanExecution
+
+command.run.claim
+  -> ClaimAndOpenActivityRun
+
+command.deployment.execute
+  -> ExecuteActivityRun
+```
+
+Recovery, observation mutation, and authorization service roles are present in
+the service map but explicitly unsupported until their extracted operations
+surfaces exist. They fail closed with bounded `501` errors rather than silently
+becoming demo behavior.
+
+### Server Repository Handoff
+
+The `control-plane-kit-servers` checkout currently contains cpk-server process
+code that still builds `_DemoService` responses. #847 establishes the
+operations package surface it should call. The actual cpk-server source,
+dependency, Dockerfile, descriptor digest, catalogue checksum, and published
+OCI image update must happen through the server wrapper/publish sequence:
+
+```text
+server wrapper imports control-plane-kit-operations
+  -> uses cpk_server_services(...)
+  -> build image
+  -> publish GHCR digest
+  -> update product.cpk.json
+  -> regenerate catalogue
+  -> published-image smoke
+```
+
+That sequence is #848 territory because the published image digest cannot be
+truthfully updated until this operations package commit exists.
+
+### Focused Validation
+
+```text
+git diff --check
+./control-plane-kit-operations/test.sh
+  100 tests passed
+  compileall passed
+  installed import smoke passed
+./test.sh
+  1219 tests passed
+```
