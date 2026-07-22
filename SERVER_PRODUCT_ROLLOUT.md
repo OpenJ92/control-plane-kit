@@ -67,6 +67,32 @@ data-bearing workload product with retained-data and secret-delivery laws; it
 is distinct from the internal Postgres database used by a cpk-server instance
 for control-plane truth.
 
+SERVER-SEED closeout established these immutable seed coordinates:
+
+```text
+hello-server
+  ghcr.io/openj92/control-plane-kit-servers/hello-server@sha256:0b5d62c2706bdfc5b53b67c7e0a72e36b8af7d13f8b2abf26eaa6e6eb7dda5f0
+
+http-active-router
+  ghcr.io/openj92/control-plane-kit-servers/http-active-router@sha256:9edd29c8b62f6413c7acb4009bfa655c065a31a0eac8728ec9d4350122e0a60d
+
+http-multiplexer
+  ghcr.io/openj92/control-plane-kit-servers/http-multiplexer@sha256:2b6466d87c7642691c4ce2ee52022450d7b7cf1055f1f25a1449adbb5c8131ec
+
+postgres-server
+  docker.io/library/postgres@sha256:57c72fd2a128e416c7fcc499958864df5301e940bca0a56f58fddf30ffc07777
+```
+
+Final `control-plane-kit-servers` catalogue checksum after SERVER-SEED:
+
+```text
+0efffbdfe0581b8f47b7cb854480f2b4e79227835b0a0e91f4207fbfe1aa3d7b
+```
+
+These products are accepted as catalogue/product artifacts, not as durable
+workflow acceptance. The next operations milestone must still prove
+plan/approve/admit/execute/advance against them through `cpk-server`.
+
 ## Decisions
 
 ### Repository names
