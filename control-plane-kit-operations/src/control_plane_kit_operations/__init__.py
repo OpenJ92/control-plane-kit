@@ -8,6 +8,14 @@ from .foundation import (
     OPERATIONS_PACKAGE_BOUNDARY,
     OperationsPackageBoundary,
 )
+from .graph_authoring import (
+    GraphAuthoringError,
+    GraphAuthoringService,
+    SelectableProduct,
+    SetDesiredGraphCommand,
+    SetDesiredGraphResult,
+    product_references_in_graph,
+)
 from .products import (
     CatalogueDescriptorSource,
     DescriptorSourceCodec,
@@ -33,6 +41,8 @@ __all__ = [
     "DeploymentProgramStage",
     "CatalogueDescriptorSource",
     "DescriptorSourceCodec",
+    "GraphAuthoringError",
+    "GraphAuthoringService",
     "GraphVersionRecord",
     "ImportProductDescriptorCommand",
     "InlineDescriptorSource",
@@ -46,5 +56,9 @@ __all__ = [
     "RegisteredProduct",
     "RegisteredProductStatus",
     "RemoteDescriptorSource",
+    "SelectableProduct",
+    "SetDesiredGraphCommand",
+    "SetDesiredGraphResult",
     "WorkspaceRecord",
+    "product_references_in_graph",
 ]
