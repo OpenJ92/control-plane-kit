@@ -1807,3 +1807,170 @@ StartOperationSession
 All participating writes must share the same UnitOfWork so desired graph save,
 workspace pointer update, and action history evidence commit or roll back
 together.
+
+## EXTRACT.OPERATIONS #842 Planning Command Service
+
+Status: in progress on `codex/842-planning-command-service`.
+
+### Law Cards
+
+```text
+law: desired graph command composes graph truth and action history
+expected: one command writes graph version, workspace.desired_graph_id, and
+  SET_DESIRED_GRAPH action evidence in one PostgresUnitOfWork
+negative: late action failure rolls back graph insert and workspace pointer
+owner: control-plane-kit-operations
+```
+
+```text
+law: planning pins the graph pointers observed by the operator
+expected: RequestActivityPlan loads the exact current and desired graph ids from
+  workspace truth and rejects stale pointer observations before writing a plan
+negative: missing, cross-workspace, stale, or malformed graph truth writes no
+  plan and no planning action
+owner: control-plane-kit-operations
+```
+
+```text
+law: operations planning uses the extracted pure graph pipeline
+expected: durable graph descriptors decode to typed graphs, validate to
+  ValidatedGraph, diff through diff_graphs, and compile to ActivityPlan
+negative: operations must not invent a parallel diff, plan, or graph model
+owner: control-plane-kit-operations
+```
+
+```text
+law: planning-stage idempotency is exact replay
+expected: same session key plus identical intent returns original graph/plan and
+  action evidence
+negative: same key plus changed actor, graph descriptor, or graph pointer intent
+  conflicts explicitly
+owner: control-plane-kit-operations
+```
+
+### Frozen Lookover
+
+Reviewed:
+
+```text
+control_plane_kit/workflows/graph_edits.py
+control_plane_kit/workflows/planning.py
+control_plane_kit/stores/records.py
+control_plane_kit/stores/postgres.py
+tests/test_desired_graph_commands.py
+tests/test_activity_planning_command_service.py
+tests/test_operation_command_service.py
+```
+
+Finding: #842 should preserve the frozen command-service laws but update the
+vocabulary and pipeline to the extracted package boundaries:
+
+```text
+OperatorCommandKind.SET_DESIRED_GRAPH
+OperatorCommandKind.REQUEST_ACTIVITY_PLAN
+ValidatedGraph -> GraphDiff -> ActivityPlan
+```
+
+### Target-Red And Fix Evidence
+
+First focused implementation exposed a pure-core API mismatch:
+
+```text
+TypeError: diff_graphs requires two ValidatedGraph values
+```
+
+Fix:
+
+```text
+decode graph descriptor
+  -> validate_graph(...)
+  -> require_valid()
+  -> diff_graphs(validated_current, validated_desired)
+```
+
+This keeps operations on the extracted core graph pipeline instead of passing
+raw graphs as the frozen package did.
+
+The next focused run exposed an over-specific scenario expectation:
+
+```text
+expected ReconcileNode
+```
+
+The #842 fixture is initial product-node introduction, not the frozen router
+switch. The strengthened expectation now asserts the actual compiler output:
+
+```text
+ReconcileRuntime -> StartNode -> WaitForHealthy
+```
+
+and checks that the health wait depends on the produced start-node activity id.
+
+### Implementation Shape
+
+Added:
+
+```text
+ActivityPlanStatus
+ActivityPlanRecord
+PostgresActivityHistoryStore.add_plan/get_plan/plans_for_session
+DesiredGraphCommandService
+ActivityPlanningCommandService
+SetDesiredGraph
+RequestActivityPlan
+DesiredGraphEditResult
+ActivityPlanningResult
+```
+
+The desired graph command path is:
+
+```text
+SetDesiredGraph
+  -> open PostgresUnitOfWork
+  -> verify open operation session
+  -> set_desired_graph_in_unit_of_work(...)
+  -> OperationActionRecord(SET_DESIRED_GRAPH)
+  -> one commit
+```
+
+The planning command path is:
+
+```text
+RequestActivityPlan
+  -> open PostgresUnitOfWork
+  -> lock workspace truth
+  -> verify open operation session
+  -> load pinned current/desired graph records
+  -> decode/validate/diff/compile through core
+  -> ActivityPlanRecord
+  -> OperationActionRecord(REQUEST_ACTIVITY_PLAN)
+  -> one commit
+```
+
+Focused validation:
+
+```text
+./control-plane-kit-operations/test.sh
+  50 tests passed
+  compileall passed
+  installed import smoke passed
+```
+
+Full validation:
+
+```text
+git diff --check
+./test.sh
+  extracted core validation passed
+  operations package validation passed
+  packaging smoke passed
+  1219 root Docker/Postgres tests passed
+```
+
+### Handoff
+
+#843 should build approval request and decision truth on top of the persisted
+ActivityPlanRecord and action history. It must not create a second plan model,
+second approval queue, or server route layer. The next service should consume
+`ActivityPlanningResult.plan_record.plan_id` and persist approval facts through
+the same UnitOfWork law.

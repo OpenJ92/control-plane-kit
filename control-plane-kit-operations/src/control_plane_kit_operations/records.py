@@ -7,6 +7,7 @@ from enum import StrEnum
 from typing import Mapping
 
 from control_plane_kit_core.operations.commands import OperatorCommandKind
+from control_plane_kit_core.planning import ActivityPlan
 from control_plane_kit_core.topology import DEFAULT_GRAPH_CODEC, DeploymentGraph
 from control_plane_kit_core.types import WorkspaceLifecycle
 
@@ -20,6 +21,14 @@ class OperationSessionStatus(StrEnum):
 
     OPEN = "open"
     CLOSED = "closed"
+    CANCELLED = "cancelled"
+
+
+class ActivityPlanStatus(StrEnum):
+    """Closed lifecycle vocabulary for persisted activity plans."""
+
+    PLANNED = "planned"
+    SUPERSEDED = "superseded"
     CANCELLED = "cancelled"
 
 
@@ -161,6 +170,30 @@ class OperationActionRecord:
         _validate_text(self.created_at, "created_at")
         _validate_optional_text(self.idempotency_key, "idempotency_key")
         _validate_optional_text(self.intent_fingerprint, "intent_fingerprint")
+
+
+@dataclass(frozen=True)
+class ActivityPlanRecord:
+    """Persisted, inspectable plan before execution."""
+
+    plan_id: str
+    session_id: str
+    base_graph_id: str
+    desired_graph_id: str
+    status: ActivityPlanStatus
+    created_at: str
+    plan: ActivityPlan
+
+    def __post_init__(self) -> None:
+        _validate_text(self.plan_id, "plan_id")
+        _validate_text(self.session_id, "session_id")
+        _validate_text(self.base_graph_id, "base_graph_id")
+        _validate_text(self.desired_graph_id, "desired_graph_id")
+        if not isinstance(self.status, ActivityPlanStatus):
+            raise OperationsRecordError("activity plan status must be ActivityPlanStatus")
+        _validate_text(self.created_at, "created_at")
+        if not isinstance(self.plan, ActivityPlan):
+            raise OperationsRecordError("activity plan record requires ActivityPlan")
 
 
 def _validate_text(value: str, field: str) -> None:
