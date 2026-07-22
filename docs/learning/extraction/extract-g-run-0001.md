@@ -2262,3 +2262,156 @@ ExecutionRequestRecord(QUEUED)
 #862 should reuse the frozen relational shape for claim/open, events, and
 write-once settlement unless the extracted package boundary requires a
 documented difference. #845 must wait for #862.
+
+## #862 Run Lifecycle Claims And Events
+
+### Split Objective
+
+#862 completed the lifecycle half split out of #844. Admission now creates a
+durable queued execution request; lifecycle claims that request, opens an
+activity run, and records append-only run-level events.
+
+The implemented extracted path is:
+
+```text
+ExecutionRequestRecord(QUEUED)
+  -> ClaimAndOpenActivityRun
+    -> ExecutionRequestRecord(CLAIMED, ClaimIdentity)
+    -> ActivityRunRecord(CLAIMED)
+    -> ActivityEventRecord(RUN_OPENED)
+    -> OperationActionRecord(CLAIM_RUN)
+```
+
+and then:
+
+```text
+StartActivityRun    -> RUN_STARTED  -> ActivityRunStatus.RUNNING
+PauseActivityRun    -> RUN_PAUSED   -> ActivityRunStatus.PAUSED
+ResumeActivityRun   -> RUN_RESUMED  -> ActivityRunStatus.RUNNING
+CompleteActivityRun -> RUN_SUCCEEDED -> ActivityRunStatus.SUCCEEDED
+FailActivityRun     -> RUN_FAILED   -> ActivityRunStatus.FAILED
+CancelActivityRun   -> RUN_CANCELLED -> ActivityRunStatus.CANCELLED
+```
+
+No coordinator, runtime adapter, recovery cursor, effect language, or effect
+dispatch moved into operations lifecycle.
+
+### Law Cards
+
+```text
+run-lifecycle.records.closed-status-timing
+run-lifecycle.records.closed-event-scope
+run-lifecycle.evidence.bounded-json-only
+run-lifecycle.evidence.secret-shaped-keys-denied
+run-lifecycle.claim.one-winner
+run-lifecycle.claim.identical-replay
+run-lifecycle.claim.changed-intent-conflict
+run-lifecycle.claim.requires-execution-operate-scope
+run-lifecycle.claim.competing-worker-conflict
+run-lifecycle.transition.worker-owned
+run-lifecycle.transition.compare-and-set-status
+run-lifecycle.transition.append-only-ordinal-events
+run-lifecycle.transition.late-action-failure-rolls-back
+run-lifecycle.transition.terminal-settlement-write-once
+```
+
+### Implementation Shape
+
+Added durable value objects:
+
+```python
+@dataclass(frozen=True)
+class ActivityRunRecord:
+    run_id: str
+    plan_id: str
+    admission: AdmittedRun
+    retry: RetryIdentity
+    status: ActivityRunStatus
+    created_at: str
+    started_at: str | None = None
+    settled_at: str | None = None
+    metadata: BoundedEvidence = field(default_factory=BoundedEvidence)
+```
+
+```python
+@dataclass(frozen=True)
+class ActivityEventRecord:
+    event_id: str
+    run_id: str
+    ordinal: int
+    kind: ActivityEventKind
+    occurred_at: str
+    activity_id: str | None = None
+    evidence: BoundedEvidence = field(default_factory=BoundedEvidence)
+    failure: FailureEvidence | None = None
+```
+
+`BoundedEvidence` is the durable JSON boundary. Internal immutable tuples remain
+possible in domain code, but the persisted operator evidence language accepts
+only deterministic JSON-shaped values. Secret-shaped keys such as `token`,
+`password`, `secret`, `credential`, and `private_key` fail closed.
+
+Added service and authority:
+
+```python
+program = RunLifecycleCommandService(
+    unit_of_work_factory,
+    clock=clock,
+    id_factory=id_factory,
+)
+
+authority = ExecutionWorkerAuthority(
+    worker_id="worker-a",
+    scopes=(PolicyScope.EXECUTION_OPERATE,),
+)
+```
+
+The lifecycle service owns the transaction boundary. Stores do not commit.
+
+### Data-Engineering Notes
+
+`PostgresExecutionStore.claim_request()` locks the request row with
+`FOR UPDATE`, then transitions only `queued -> claimed`. A request already
+claimed by another worker returns no row to the service, producing an explicit
+conflict rather than overwriting ownership.
+
+Run transitions use SQL compare-and-set:
+
+```sql
+UPDATE cpk_activity_runs
+SET status = %s,
+    started_at = COALESCE(%s, started_at),
+    settled_at = COALESCE(settled_at, %s)
+WHERE run_id = %s
+  AND status = %s
+  AND settled_at IS NULL
+```
+
+That preserves the important write-once settlement law at the database
+boundary. If action persistence fails after a run update and event insert, the
+owning `PostgresUnitOfWork` rolls the full command back.
+
+### Focused Validation
+
+```text
+./control-plane-kit-operations/test.sh
+  78 tests passed
+  compileall passed
+  installed import smoke passed
+```
+
+### Handoff
+
+#845 can now assume:
+
+```text
+admitted request
+  -> claimed request
+  -> opened run
+  -> started/paused/resumed/completed/failed/cancelled run events
+```
+
+#845 must not bypass `RunLifecycleCommandService` when it needs run ownership
+or lifecycle truth. Runtime/effect execution remains outside #862; the
+coordinator should consume the claimed/started lifecycle boundary and later
+append step events through the same store/journal shape.

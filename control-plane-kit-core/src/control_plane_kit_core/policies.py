@@ -30,6 +30,7 @@ class PolicyScope(StrEnum):
     PLAN_APPROVE = "plan:approve"
     PLAN_APPROVE_DESTRUCTIVE = "plan:approve-destructive"
     PLAN_EXECUTE = "plan:execute"
+    EXECUTION_OPERATE = "execution:operate"
 
 
 @dataclass(frozen=True, order=True)
