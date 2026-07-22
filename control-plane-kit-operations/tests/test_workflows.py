@@ -256,7 +256,7 @@ class OperationWorkflowTests(unittest.TestCase):
                 "open",  # type: ignore[arg-type]
                 "2026-07-22T10:00:00Z",
             )
-        with self.assertRaisesRegex(Exception, "OperatorCommandKind"):
+        with self.assertRaisesRegex(Exception, "closed command or lifecycle kind"):
             OperationActionRecord(
                 "action-a",
                 "session-a",
