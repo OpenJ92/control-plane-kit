@@ -561,6 +561,87 @@ class ExtractionSuccessorMappingTests(unittest.TestCase):
                     "#742 validation packaging demo closeout",
                 )
 
+    def test_core_public_interface_parity_uses_public_boundaries_without_live_process_claims(self) -> None:
+        manifest = read_bounded_json(ARTIFACT_ROOT / "parity-manifest.json")
+        evidence = read_bounded_json(ARTIFACT_ROOT / "successor-evidence.json")
+        proof = read_bounded_json(
+            ARTIFACT_ROOT
+            / "successor-proofs"
+            / "extract-e-742-core-release-contracts.json"
+        )
+        supersession_review = read_bounded_json(
+            ARTIFACT_ROOT
+            / "supersession-reviews"
+            / "extract-e-742-validation-packaging-demo-handoff.json"
+        )
+
+        evidence_by_id = {
+            entry["id"]: entry
+            for entry in evidence["evidence"]
+        }
+        self.assertEqual(
+            evidence_by_id["extract-e-742.core-release-contracts.unittest"]["status"],
+            "passing",
+        )
+
+        public_references = {
+            "demo.configuration-artifact",
+            "demo.read-interface",
+            "demo.secret-delivery",
+            "demo.transport",
+            "demo.verification-observation",
+            "validation.package-installation",
+        }
+        manifest_by_reference = {
+            entry["reference"]: entry
+            for entry in manifest["entries"]
+            if entry["reference"] in public_references
+        }
+        self.assertEqual(set(manifest_by_reference), public_references)
+        for reference, entry in manifest_by_reference.items():
+            with self.subTest(reference=reference):
+                self.assertEqual(entry["owner_kind"], "core")
+                self.assertEqual(
+                    entry["successors"],
+                    [
+                        {
+                            "id": "core-release.contract-boundary",
+                            "status": "passing",
+                            "evidence": "extract-e-742.core-release-contracts.unittest",
+                        }
+                    ],
+                )
+                self.assertIsNone(entry["supersession"])
+
+        self.assertTrue(
+            {
+                "control-plane-kit-core.tests.test_kernel_pipeline.PureKernelPipelineTests",
+                "control-plane-kit-core.tests.test_deployment_program_boundary.DeploymentProgramBoundaryTests",
+                "control-plane-kit-core.tests.test_unit_of_work_boundary.UnitOfWorkBoundaryTests",
+                "control-plane-kit-core.tests.test_http_api_contract.HttpApiContractTests",
+                "control-plane-kit-core.tests.test_mcp_streamable_http_contract.McpStreamableHttpContractTests",
+                "control-plane-kit-core.tests.test_cpk_server_entrypoint_handoff.CpkServerEntrypointHandoffTests",
+                "control-plane-kit-core.tests.test_package_boundary.PackageBoundaryTests",
+            }
+            <= set(proof["successor_tests"])
+        )
+        self.assertIn("without starting cpk-server", proof["evidence"])
+        self.assertIn("FastAPI", proof["evidence"])
+        self.assertIn("MCP hosting", proof["evidence"])
+
+        superseded = {
+            review["reference"]
+            for review in supersession_review["reviewed_supersessions"]
+        }
+        self.assertTrue(
+            {
+                "demo.docker-publication",
+                "tests.test_read_interface_demo_server.ReadInterfaceDemoServerTests.test_demo_server_requires_configured_token",
+                "tests.test_read_interface_demo_server.ReadInterfaceDemoServerTests.test_demo_server_seeds_and_serves_read_routes",
+            }
+            <= superseded
+        )
+
     def test_interpreter_runtime_families_are_reviewed_handoffs_not_core_successors(self) -> None:
         closeout = self.closeout()
         inventory = inventory_unmapped_required_core_families(closeout)

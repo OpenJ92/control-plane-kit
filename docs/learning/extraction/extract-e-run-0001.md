@@ -3402,3 +3402,66 @@ EXTRACT.F must consume #804 before creating/populating control-plane-kit-servers
 EXTRACT.G must consume #805 before deciding the acceptance harness owner.
 The future interpreter/runtime leg must consume #806 before runtime extraction.
 ```
+
+## #644 Core Public-Interface Parity
+
+#644 did not introduce another migration model. It closed the public-interface
+parity question by tying existing extracted-core evidence together after #731
+proved required-core inventory is zero.
+
+The public core evidence is:
+
+```text
+DeploymentTopology -> DeploymentGraph -> ValidatedGraph -> GraphDiff -> ActivityPlan
+DeploymentProgramBoundary
+UnitOfWorkBoundary
+HttpApiContract
+McpStreamableHttpContract
+CpkServerEntrypointHandoffContract
+```
+
+Those are all exercised through `control_plane_kit_core` public package
+surfaces, not through frozen-package internals.
+
+The #644 guard now asserts:
+
+```text
+demo.configuration-artifact
+demo.read-interface
+demo.secret-delivery
+demo.transport
+demo.verification-observation
+validation.package-installation
+  -> extract-e-742.core-release-contracts.unittest
+```
+
+The same guard also keeps stale live-process behavior out of the core claim:
+
+```text
+demo.docker-publication
+test_read_interface_demo_server
+  -> reviewed handoff / supersession
+```
+
+That means core public-interface parity is package/import and pure contract
+evidence only. It does not claim cpk-server process behavior, a FastAPI app, MCP
+hosting, Docker runtime execution, Hello product behavior, or cloud runtime
+behavior.
+
+Implementation note:
+
+```text
+artifacts/extraction/successor-proofs/extract-e-742-core-release-contracts.json
+  now names the public-boundary test classes explicitly
+
+artifacts/extraction/successor-evidence.json
+  carries the updated proof digest
+```
+
+Handoff:
+
+```text
+#645 should review the package/import/public-language boundary after #644.
+It should not reopen migration ownership unless an architecture guard proves a
+real leak.
+```

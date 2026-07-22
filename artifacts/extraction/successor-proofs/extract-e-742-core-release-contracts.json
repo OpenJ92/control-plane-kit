@@ -12,8 +12,12 @@
   "schema": "cpk.successor-proof",
   "status": "passing",
   "successor_tests": [
+    "control-plane-kit-core.tests.test_kernel_pipeline.PureKernelPipelineTests",
+    "control-plane-kit-core.tests.test_deployment_program_boundary.DeploymentProgramBoundaryTests",
+    "control-plane-kit-core.tests.test_unit_of_work_boundary.UnitOfWorkBoundaryTests",
     "control-plane-kit-core.tests.test_http_api_contract.HttpApiContractTests",
     "control-plane-kit-core.tests.test_mcp_streamable_http_contract.McpStreamableHttpContractTests",
+    "control-plane-kit-core.tests.test_cpk_server_entrypoint_handoff.CpkServerEntrypointHandoffTests",
     "control-plane-kit-core.tests.test_configuration_artifacts.ConfigurationArtifactTests",
     "control-plane-kit-core.tests.test_environment_secrets.EnvironmentSecretTests",
     "control-plane-kit-core.tests.test_verification_capabilities.VerificationContractTests",
