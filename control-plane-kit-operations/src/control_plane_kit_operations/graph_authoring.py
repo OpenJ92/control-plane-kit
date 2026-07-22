@@ -79,48 +79,15 @@ class GraphAuthoringService:
     ) -> SetDesiredGraphResult:
         if not isinstance(command, SetDesiredGraphCommand):
             raise GraphAuthoringError("set_desired_graph requires SetDesiredGraphCommand")
-        product_references = product_references_in_graph(command.graph)
         with self._unit_of_work_factory() as unit_of_work:
-            workspace = unit_of_work.stores.workspaces.get_for_update(
-                command.workspace_id,
-            )
-            if workspace.desired_graph_id != command.expected_desired_graph_id:
-                raise GraphAuthoringError("stale desired graph pointer")
-            for reference in product_references:
-                try:
-                    registered = unit_of_work.stores.registered_products.get(
-                        command.workspace_id,
-                        reference,
-                    )
-                except ProductRegistrationNotFound as error:
-                    raise GraphAuthoringError(
-                        f"unregistered product {reference.identity.key}"
-                    ) from error
-                if registered.status is not RegisteredProductStatus.ACTIVE:
-                    raise GraphAuthoringError(
-                        f"unregistered product {reference.identity.key}"
-                    )
-            graph_version = GraphVersionRecord.from_graph(
+            result = set_desired_graph_in_unit_of_work(
+                unit_of_work,
+                command,
                 graph_id=self._graph_id_factory(),
-                workspace_id=command.workspace_id,
-                version=unit_of_work.stores.graphs.next_version_for_workspace(
-                    command.workspace_id
-                ),
-                graph=command.graph,
-                created_by=command.actor_id,
                 created_at=self._clock(),
             )
-            unit_of_work.stores.graphs.save(graph_version)
-            updated = unit_of_work.stores.workspaces.set_desired_graph(
-                command.workspace_id,
-                graph_version.graph_id,
-            )
             unit_of_work.commit()
-            return SetDesiredGraphResult(
-                workspace=updated,
-                graph_version=graph_version,
-                product_references=product_references,
-            )
+            return result
 
     def selectable_products(self, workspace_id: str) -> tuple[SelectableProduct, ...]:
         _validate_text(workspace_id, "workspace_id")
@@ -134,6 +101,61 @@ class GraphAuthoringService:
                 )
                 for value in registered
             )
+
+
+def set_desired_graph_in_unit_of_work(
+    unit_of_work: Any,
+    command: SetDesiredGraphCommand,
+    *,
+    graph_id: str,
+    created_at: str,
+) -> SetDesiredGraphResult:
+    """Persist desired graph truth on the caller's transaction boundary."""
+
+    if not isinstance(command, SetDesiredGraphCommand):
+        raise GraphAuthoringError("set_desired_graph requires SetDesiredGraphCommand")
+    _validate_text(graph_id, "graph_id")
+    _validate_text(created_at, "created_at")
+    product_references = product_references_in_graph(command.graph)
+    workspace = unit_of_work.stores.workspaces.get_for_update(
+        command.workspace_id,
+    )
+    if workspace.desired_graph_id != command.expected_desired_graph_id:
+        raise GraphAuthoringError("stale desired graph pointer")
+    for reference in product_references:
+        try:
+            registered = unit_of_work.stores.registered_products.get(
+                command.workspace_id,
+                reference,
+            )
+        except ProductRegistrationNotFound as error:
+            raise GraphAuthoringError(
+                f"unregistered product {reference.identity.key}"
+            ) from error
+        if registered.status is not RegisteredProductStatus.ACTIVE:
+            raise GraphAuthoringError(
+                f"unregistered product {reference.identity.key}"
+            )
+    graph_version = GraphVersionRecord.from_graph(
+        graph_id=graph_id,
+        workspace_id=command.workspace_id,
+        version=unit_of_work.stores.graphs.next_version_for_workspace(
+            command.workspace_id
+        ),
+        graph=command.graph,
+        created_by=command.actor_id,
+        created_at=created_at,
+    )
+    unit_of_work.stores.graphs.save(graph_version)
+    updated = unit_of_work.stores.workspaces.set_desired_graph(
+        command.workspace_id,
+        graph_version.graph_id,
+    )
+    return SetDesiredGraphResult(
+        workspace=updated,
+        graph_version=graph_version,
+        product_references=product_references,
+    )
 
 
 def product_references_in_graph(graph: DeploymentGraph) -> tuple[ProductReference, ...]:

@@ -7,8 +7,11 @@ from typing import Any
 from psycopg.types.json import Jsonb
 
 from control_plane_kit_core.operations.commands import OperatorCommandKind
+from control_plane_kit_core.planning import DEFAULT_ACTIVITY_PLAN_CODEC
 from control_plane_kit_operations.postgres.schema import PostgresConnection
 from control_plane_kit_operations.records import (
+    ActivityPlanRecord,
+    ActivityPlanStatus,
     OperationActionRecord,
     OperationSessionRecord,
     OperationSessionStatus,
@@ -190,6 +193,53 @@ class PostgresActivityHistoryStore:
         ).fetchall()
         return tuple(_action_record(row) for row in rows)
 
+    def add_plan(self, record: ActivityPlanRecord) -> ActivityPlanRecord:
+        self._connection.execute(
+            """
+            INSERT INTO cpk_activity_plans
+              (plan_id, session_id, base_graph_id, desired_graph_id, status,
+               created_at, payload)
+            VALUES (%s, %s, %s, %s, %s, %s, %s)
+            """,
+            (
+                record.plan_id,
+                record.session_id,
+                record.base_graph_id,
+                record.desired_graph_id,
+                record.status.value,
+                record.created_at,
+                Jsonb(DEFAULT_ACTIVITY_PLAN_CODEC.encode(record.plan)),
+            ),
+        )
+        return record
+
+    def get_plan(self, plan_id: str) -> ActivityPlanRecord:
+        row = self._connection.execute(
+            """
+            SELECT plan_id, session_id, base_graph_id, desired_graph_id, status,
+                   created_at, payload
+            FROM cpk_activity_plans
+            WHERE plan_id = %s
+            """,
+            (plan_id,),
+        ).fetchone()
+        if row is None:
+            raise KeyError(f"missing activity plan {plan_id!r}")
+        return _plan_record(row)
+
+    def plans_for_session(self, session_id: str) -> tuple[ActivityPlanRecord, ...]:
+        rows = self._connection.execute(
+            """
+            SELECT plan_id, session_id, base_graph_id, desired_graph_id, status,
+                   created_at, payload
+            FROM cpk_activity_plans
+            WHERE session_id = %s
+            ORDER BY created_at ASC, plan_id ASC
+            """,
+            (session_id,),
+        ).fetchall()
+        return tuple(_plan_record(row) for row in rows)
+
 
 def _session_record(row: tuple[Any, ...]) -> OperationSessionRecord:
     return OperationSessionRecord(
@@ -217,4 +267,16 @@ def _action_record(row: tuple[Any, ...]) -> OperationActionRecord:
         created_at=row[6],
         idempotency_key=row[7],
         intent_fingerprint=row[8],
+    )
+
+
+def _plan_record(row: tuple[Any, ...]) -> ActivityPlanRecord:
+    return ActivityPlanRecord(
+        plan_id=row[0],
+        session_id=row[1],
+        base_graph_id=row[2],
+        desired_graph_id=row[3],
+        status=ActivityPlanStatus(row[4]),
+        created_at=row[5],
+        plan=DEFAULT_ACTIVITY_PLAN_CODEC.decode(row[6]),
     )
