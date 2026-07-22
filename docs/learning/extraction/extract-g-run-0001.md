@@ -1647,3 +1647,163 @@ It should not reimplement product registration checks in a parallel model.
 When #841/#842 introduce action records and planning, the desired-graph command
 should call or preserve this path so registered-product admission remains the
 single graph-authoring gate.
+
+## EXTRACT.OPERATIONS #841 Operation Sessions And Command History
+
+Status: in progress on `codex/841-operation-sessions-history`.
+
+### Law Cards
+
+```text
+law: operation session start is one transaction
+expected: session row and initial START_OPERATION_SESSION action row commit
+  together through PostgresUnitOfWork
+negative: late action insert failure rolls back the session row
+owner: control-plane-kit-operations
+```
+
+```text
+law: operation command idempotency is exact intent replay
+expected: same scoped key plus same internal intent returns original durable
+  session/action evidence
+negative: same key plus changed title, actor, action type, or non-secret
+  payload value conflicts
+owner: control-plane-kit-operations
+```
+
+```text
+law: public descriptors redact but fingerprints distinguish intent
+expected: command descriptors omit operator-supplied values where required,
+  while internal fingerprints include validated non-secret intent data
+negative: redacted descriptor shape must not collapse distinct command intent
+owner: control-plane-kit-operations
+```
+
+```text
+law: operation history uses core command identities
+expected: cpk_operation_actions.action_type is OperatorCommandKind, matching
+  the extracted core command contract map
+negative: the old frozen OperationActionKind enum is not preserved as a
+  competing vocabulary
+owner: control-plane-kit-operations
+```
+
+```text
+law: terminal sessions reject new operator actions
+expected: close/cancel transition open sessions once and records terminal
+  action evidence
+negative: closed or cancelled sessions cannot accept later RecordOperationAction
+owner: control-plane-kit-operations
+```
+
+### Frozen Lookover
+
+Reviewed:
+
+```text
+control_plane_kit/stores/records.py
+control_plane_kit/stores/postgres.py
+control_plane_kit/workflows/commands.py
+control_plane_kit/workflows/command_service.py
+tests/test_operation_commands.py
+tests/test_operation_command_service.py
+tests/test_operation_postgres_primitives.py
+tests/test_workflows.py
+```
+
+Finding: #841 should port the durable session/action shape and command-service
+transaction laws, but align the action vocabulary with extracted core
+`OperatorCommandKind`. The old frozen `OperationActionKind` is superseded by
+the core command contract map.
+
+### Target-Red And Fix Evidence
+
+The first focused run after implementation exposed an important boundary bug:
+
+```text
+OperationIdempotencyConflict not raised
+```
+
+Cause:
+
+```text
+fingerprint(command.descriptor())
+```
+
+The descriptor intentionally redacts operator values, so two different payload
+values had the same redacted shape.
+
+Fix:
+
+```text
+public descriptor: redacted operator-facing shape
+internal fingerprint: validated non-secret intent shape
+```
+
+This matches the frozen service precedent without leaking secrets.
+
+### Implementation Shape
+
+Added:
+
+```text
+OperationSessionStatus
+OperationSessionRecord
+OperationActionRecord
+PostgresActivityHistoryStore
+IdempotencyKey
+StartOperationSession
+CloseOperationSession
+CancelOperationSession
+RecordOperationAction
+OperationCommandService
+OperationCommandResult
+```
+
+The command path is:
+
+```text
+OperationCommandService.execute(command)
+  -> compute internal intent fingerprint
+  -> open PostgresUnitOfWork
+  -> read/lock workspace or session truth
+  -> idempotency replay/conflict check
+  -> write session/action rows
+  -> commit once through UnitOfWork
+```
+
+Focused validation:
+
+```text
+./control-plane-kit-operations/test.sh
+  42 tests passed
+  compileall passed
+  installed import smoke passed
+```
+
+Full validation after the record-boundary test hardening:
+
+```text
+git diff --check
+./test.sh
+  extracted core validation passed
+  operations package validation passed
+  packaging smoke passed
+  1219 root Docker/Postgres tests passed
+```
+
+### Handoff
+
+#842 should compose desired graph authoring with operation-session/action
+history instead of introducing a parallel desired graph workflow. The intended
+shape is:
+
+```text
+StartOperationSession
+  -> SetDesiredGraphCommand through GraphAuthoringService
+  -> OperationActionRecord(action_type=OperatorCommandKind.SET_DESIRED_GRAPH)
+```
+
+All participating writes must share the same UnitOfWork so desired graph save,
+workspace pointer update, and action history evidence commit or roll back
+together.
