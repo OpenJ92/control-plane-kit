@@ -5,6 +5,10 @@ from control_plane_kit_operations.postgres.schema import (
     PostgresConnection,
     install_schema,
 )
+from control_plane_kit_operations.postgres.graph_store import (
+    PostgresGraphTopologyStore,
+    PostgresWorkspaceStore,
+)
 from control_plane_kit_operations.postgres.product_store import RegisteredProductStore
 from control_plane_kit_operations.postgres.stores import PostgresStoreBundle
 from control_plane_kit_operations.postgres.unit_of_work import (
@@ -16,10 +20,12 @@ from control_plane_kit_operations.postgres.unit_of_work import (
 
 __all__ = [
     "POSTGRES_SCHEMA",
+    "PostgresGraphTopologyStore",
     "PostgresConnection",
     "PostgresConnectionFactory",
     "PostgresStoreBundle",
     "PostgresUnitOfWork",
+    "PostgresWorkspaceStore",
     "RegisteredProductStore",
     "TransactionalPostgresConnection",
     "UnitOfWorkStateError",
