@@ -52,21 +52,36 @@ class OperationsPackageBoundaryTests(unittest.TestCase):
             "fastapi",
             "httpx",
             "mcp",
-            "psycopg",
             "uvicorn",
         }
 
         imports: set[str] = set()
+        psycopg_imports: set[Path] = set()
         for path in SRC_ROOT.rglob("*.py"):
             tree = ast.parse(path.read_text(encoding="utf-8"))
             for node in ast.walk(tree):
                 if isinstance(node, ast.Import):
-                    imports.update(alias.name.split(".", 1)[0] for alias in node.names)
+                    for alias in node.names:
+                        root = alias.name.split(".", 1)[0]
+                        imports.add(root)
+                        if root == "psycopg":
+                            psycopg_imports.add(path)
                 elif isinstance(node, ast.ImportFrom) and node.module:
-                    imports.add(node.module.split(".", 1)[0])
+                    root = node.module.split(".", 1)[0]
+                    imports.add(root)
+                    if root == "psycopg":
+                        psycopg_imports.add(path)
 
         self.assertFalse(imports & forbidden)
         self.assertIn("control_plane_kit_core", imports)
+        self.assertEqual(
+            {
+                path.relative_to(SRC_ROOT)
+                for path in psycopg_imports
+                if path.relative_to(SRC_ROOT).parts[:1] != ("postgres",)
+            },
+            set(),
+        )
 
 
 if __name__ == "__main__":
