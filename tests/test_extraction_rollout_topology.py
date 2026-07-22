@@ -7,6 +7,7 @@ ROOT = Path(__file__).resolve().parents[1]
 ROLLOUT = ROOT / "SERVER_PRODUCT_ROLLOUT.md"
 EXTRACT_E_LEARNING = ROOT / "docs" / "learning" / "extraction" / "extract-e-run-0001.md"
 CORE_RELEASE_EVIDENCE = ROOT / "artifacts" / "extraction" / "core-release-candidate-evidence.json"
+EXTRACT_E_CLOSEOUT = ROOT / "artifacts" / "extraction" / "extract-e-closeout-report.json"
 
 
 class ExtractionRolloutTopologyTests(unittest.TestCase):
@@ -106,6 +107,33 @@ class ExtractionRolloutTopologyTests(unittest.TestCase):
 
         self.assertIn("## #647 Core Wheel And Evidence Manifest", learning)
         self.assertIn("core release-candidate evidence is a wheel/import/manifest proof", learning)
+
+    def test_extract_e_closeout_stops_before_server_product_migration(self) -> None:
+        closeout = json.loads(EXTRACT_E_CLOSEOUT.read_text(encoding="utf-8"))
+        learning = EXTRACT_E_LEARNING.read_text(encoding="utf-8")
+
+        self.assertEqual(closeout["schema"], "cpk.extract-e.closeout-report")
+        self.assertEqual(closeout["milestone"], "EXTRACT.E")
+        self.assertTrue(closeout["operator_stop_required"])
+        self.assertEqual(closeout["required_core"]["incomplete_required_core"], 0)
+        self.assertEqual(closeout["foundation_parity"]["incomplete_required"], 100)
+        self.assertEqual(closeout["next_allowed_issue_after_operator_approval"], "#600")
+
+        for issue in ("#804", "#805", "#806"):
+            with self.subTest(issue=issue):
+                self.assertIn(issue, closeout["future_handoffs"])
+
+        for forbidden in (
+            "cpk-server process",
+            "cpk-server Dockerfile",
+            "cpk-server OCI image",
+            "cpk-server product descriptor",
+        ):
+            with self.subTest(forbidden=forbidden):
+                self.assertIn(forbidden, closeout["not_in_core"])
+
+        self.assertIn("## #648 Mandatory EXTRACT.E Stop", learning)
+        self.assertIn("operator approval is required before #600 begins", learning)
 
 
 if __name__ == "__main__":
