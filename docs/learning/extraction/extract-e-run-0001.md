@@ -3617,3 +3617,86 @@ or cloud runtime artifacts to extracted core.
 operations/runtime, and interpreter/runtime security evidence that core now
 names only as handoff contracts.
 ```
+
+## #647 Core Wheel And Evidence Manifest
+
+#647 records the core release-candidate artifact shape after #646 review. The
+core release-candidate evidence is a wheel/import/manifest proof, not a server
+image proof.
+
+Machine-readable evidence:
+
+```text
+artifacts/extraction/core-release-candidate-evidence.json
+```
+
+The artifact pins:
+
+```text
+package:
+  control-plane-kit-core 0.1.0
+  dependencies: Jinja2>=3.1, PyYAML>=6.0
+  optional dependency extras: false
+  process entrypoints: false
+
+validation:
+  ./control-plane-kit-core/test.sh
+    374 tests
+    compileall passed
+    import outside source tree passed
+
+  ./validate-parity.sh foundation
+    valid=true
+    migration_complete=false
+    incomplete_required=100
+    findings=0
+
+required-core closeout:
+  required_core=780
+  completed_required_core=780
+  incomplete_required_core=0
+  required_non_core=100
+  deferred=227
+```
+
+Forbidden core artifacts remain explicit:
+
+```text
+cpk-server Dockerfile
+cpk-server OCI image
+cpk-server product descriptor
+hosted FastAPI process
+hosted MCP server
+Postgres store implementation
+Docker interpreter
+cloud runtime interpreter
+```
+
+The important release-candidate interpretation is:
+
+```text
+core wheel evidence
+  = pure package install
+  x unittest discovery
+  x compileall
+  x import outside source tree
+  x parity manifests
+  x required-core zero-unmapped report
+```
+
+It deliberately excludes:
+
+```text
+server process composition
+runtime effect execution
+cloud/runtime interpreter execution
+operations-owned Postgres persistence
+```
+
+Handoff:
+
+```text
+#648 should perform the mandatory EXTRACT.E stop using this artifact as the
+core release-candidate evidence index. It should not reopen #804, #805, or #806
+unless the evidence artifact contradicts the boundary.
+```

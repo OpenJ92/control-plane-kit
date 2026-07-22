@@ -1,3 +1,4 @@
+import json
 from pathlib import Path
 import unittest
 
@@ -5,6 +6,7 @@ import unittest
 ROOT = Path(__file__).resolve().parents[1]
 ROLLOUT = ROOT / "SERVER_PRODUCT_ROLLOUT.md"
 EXTRACT_E_LEARNING = ROOT / "docs" / "learning" / "extraction" / "extract-e-run-0001.md"
+CORE_RELEASE_EVIDENCE = ROOT / "artifacts" / "extraction" / "core-release-candidate-evidence.json"
 
 
 class ExtractionRolloutTopologyTests(unittest.TestCase):
@@ -77,6 +79,33 @@ class ExtractionRolloutTopologyTests(unittest.TestCase):
         self.assertIn("Postgres and UnitOfWork implementations remain non-core", learning)
         self.assertIn("runtime retention and cleanup proofs remain future interpreter/runtime evidence", learning)
         self.assertIn("no test-integrity weakening was accepted", learning)
+
+    def test_extract_e_core_release_candidate_evidence_is_wheel_not_server_image(self) -> None:
+        evidence = json.loads(CORE_RELEASE_EVIDENCE.read_text(encoding="utf-8"))
+        learning = EXTRACT_E_LEARNING.read_text(encoding="utf-8")
+
+        self.assertEqual(evidence["schema"], "cpk.extract-e.core-release-candidate-evidence")
+        self.assertEqual(evidence["package"]["name"], "control-plane-kit-core")
+        self.assertEqual(evidence["package"]["version"], "0.1.0")
+        self.assertEqual(evidence["package"]["dependencies"], ["Jinja2>=3.1", "PyYAML>=6.0"])
+        self.assertEqual(evidence["validation"]["core_test_command"], "./control-plane-kit-core/test.sh")
+        self.assertEqual(evidence["validation"]["core_tests"], 374)
+        self.assertEqual(evidence["required_core_closeout"]["incomplete_required_core"], 0)
+        self.assertEqual(evidence["foundation_parity"]["incomplete_required"], 100)
+
+        forbidden = set(evidence["forbidden_core_artifacts"])
+        for artifact in (
+            "cpk-server Dockerfile",
+            "cpk-server OCI image",
+            "cpk-server product descriptor",
+            "hosted FastAPI process",
+            "hosted MCP server",
+        ):
+            with self.subTest(artifact=artifact):
+                self.assertIn(artifact, forbidden)
+
+        self.assertIn("## #647 Core Wheel And Evidence Manifest", learning)
+        self.assertIn("core release-candidate evidence is a wheel/import/manifest proof", learning)
 
 
 if __name__ == "__main__":
