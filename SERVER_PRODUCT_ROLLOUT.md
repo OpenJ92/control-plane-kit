@@ -48,6 +48,25 @@ No other server product is part of the bootstrap. CoreDNS, routers, gateways,
 proxies, resilience products, discovery, telemetry, and the remaining catalogue
 are accumulated only after this boundary is green and reviewable.
 
+After the cpk-server bootstrap image is published, the first accumulation lane
+is intentionally small and exists to give durable operations realistic future
+targets:
+
+```text
+SERVER-SEED
+  hello-server
+  http-active-router
+  http-multiplexer
+  postgres-server
+```
+
+This lane transfers product descriptors, OCI images, catalogue entries, and
+published-image smokes. It does not claim cpk-server can deploy those products
+until the durable operations milestone exists. `postgres-server` is a
+data-bearing workload product with retained-data and secret-delivery laws; it
+is distinct from the internal Postgres database used by a cpk-server instance
+for control-plane truth.
+
 ## Decisions
 
 ### Repository names
