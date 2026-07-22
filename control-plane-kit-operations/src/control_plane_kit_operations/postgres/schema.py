@@ -103,6 +103,7 @@ CREATE TABLE IF NOT EXISTS cpk_registered_products (
   product_reference jsonb NOT NULL,
   descriptor_sha256 text NOT NULL,
   descriptor_document jsonb NOT NULL,
+  descriptor_content text NOT NULL,
   source jsonb NOT NULL,
   imported_by text NOT NULL,
   imported_at text NOT NULL,
@@ -114,6 +115,9 @@ CREATE TABLE IF NOT EXISTS cpk_registered_products (
     CHECK (descriptor_sha256 ~ '^[0-9a-f]{64}$'),
   UNIQUE (workspace_id, descriptor_sha256)
 );
+
+ALTER TABLE cpk_registered_products
+  ADD COLUMN IF NOT EXISTS descriptor_content text;
 
 CREATE TABLE IF NOT EXISTS cpk_operation_sessions (
   session_id text PRIMARY KEY,

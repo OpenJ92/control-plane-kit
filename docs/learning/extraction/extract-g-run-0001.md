@@ -1227,3 +1227,163 @@ product descriptor admission is durable authority, not core language truth
 
 Do not add workspace/graph stores before #839 and do not introduce runtime
 interpreters.
+
+## EXTRACT.OPERATIONS #832 RegisteredProduct Admission
+
+Status: in progress on `codex/832-registered-product-admission`.
+
+### Law Cards
+
+```text
+law: registration is durable operations truth
+expected: workspace x ProductReference x descriptor document x source evidence
+  becomes RegisteredProduct through an application service and UnitOfWork
+negative: core does not gain registered workspace truth
+owner: control-plane-kit-operations
+```
+
+```text
+law: descriptor source evidence is closed and secret-free
+expected: inline upload, remote descriptor URL, and catalogue URL evidence
+  round-trip through a strict codec
+negative: local host paths, URL credentials, query strings, fragments, and
+  unknown source variants fail closed
+owner: control-plane-kit-operations
+```
+
+```text
+law: duplicate exact descriptor import is idempotent
+expected: duplicate (workspace_id, descriptor_sha256) returns the first durable
+  admission row
+negative: second import does not overwrite source, imported_by, or imported_at
+owner: control-plane-kit-operations
+```
+
+```text
+law: same product identity with a different descriptor digest requires explicit
+  replacement policy
+expected: active conflicting identity/digest fails with ProductRegistrationConflict
+negative: product identity is not last-write-wins
+owner: control-plane-kit-operations
+```
+
+### Frozen Lookover
+
+Reviewed the extracted product language and frozen catalogue/server references:
+
+```text
+control-plane-kit-core/src/control_plane_kit_core/products.py
+control-plane-kit-core/tests/test_product_reference.py
+control_plane_kit/servers/catalog.py
+control_plane_kit/products/servers/catalog.py
+```
+
+Finding: the pure core language already has the right pinning object:
+
+```python
+ProductReference.from_document(document)
+```
+
+#832 should not invent another reference. It should persist the workspace
+admission act around that reference.
+
+### Target-Red Evidence
+
+The first focused operations run failed on the intended missing boundary:
+
+```text
+ModuleNotFoundError:
+  No module named 'control_plane_kit_operations.products'
+```
+
+### Implementation Shape
+
+Added operations-side values:
+
+```text
+RegisteredProduct
+RegisteredProductStatus
+ImportProductDescriptorCommand
+InlineDescriptorSource
+RemoteDescriptorSource
+CatalogueDescriptorSource
+DescriptorSourceCodec
+ProductRegistrationService
+```
+
+Added a Postgres store under the #838 bundle:
+
+```text
+PostgresUnitOfWork.stores.registered_products
+```
+
+The service owns commit:
+
+```text
+ProductRegistrationService.import_descriptor(command)
+  -> open PostgresUnitOfWork
+    -> registered_products.register(...)
+      -> unit_of_work.commit()
+```
+
+The store never commits independently.
+
+### Data-Engineering Finding
+
+The first green attempt exposed an important descriptor-storage boundary.
+`ProductDescriptorDocument.content_digest` is over exact canonical descriptor
+bytes. Postgres `jsonb` intentionally normalizes object representation and
+therefore cannot be the sole authoritative storage for exact descriptor bytes.
+
+The schema now stores both:
+
+```text
+descriptor_document jsonb   # inspectable/queryable descriptor material
+descriptor_content text     # exact canonical product.cpk.json content
+```
+
+Rows reconstruct `ProductDescriptorDocument` from `descriptor_content`; JSONB
+remains projection material. This preserves exact digest identity instead of
+teaching core to accept non-canonical JSONB output.
+
+### Architecture-Policy Finding
+
+The operations package boundary originally forbade `psycopg` everywhere, but
+#837 already made Postgres an operations dependency. #832 refined the rule:
+`psycopg` is allowed only below the `postgres/` adapter package. Docker,
+FastAPI, HTTP clients, server products, MCP process code, and runtime
+interpreters remain forbidden.
+
+### Focused Validation
+
+```text
+./control-plane-kit-operations/test.sh
+  22 tests passed
+  compileall passed
+  installed import smoke passed
+```
+
+Full validation:
+
+```text
+git diff --check
+./test.sh
+  extracted core validation passed
+  operations package validation passed
+  packaging smoke passed
+  1219 root Docker/Postgres tests passed
+```
+
+### Handoff
+
+#839 can now build workspace and graph stores on top of:
+
+```text
+#837 schema
+#838 UnitOfWork
+#832 RegisteredProductStore
+```
+
+Graph authoring should resolve product references against active
+RegisteredProduct rows in the same workspace. It should not use mutable remote
+URLs or OCI image references as product contract truth.

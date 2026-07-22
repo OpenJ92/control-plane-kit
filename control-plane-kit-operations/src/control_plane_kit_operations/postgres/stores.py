@@ -2,8 +2,9 @@
 
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 
+from control_plane_kit_operations.postgres.product_store import RegisteredProductStore
 from control_plane_kit_operations.postgres.schema import PostgresConnection
 
 
@@ -17,3 +18,11 @@ class PostgresStoreBundle:
     """
 
     connection: PostgresConnection
+    registered_products: RegisteredProductStore = field(init=False)
+
+    def __post_init__(self) -> None:
+        object.__setattr__(
+            self,
+            "registered_products",
+            RegisteredProductStore(self.connection),
+        )
