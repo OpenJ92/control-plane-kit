@@ -3,14 +3,24 @@
 from __future__ import annotations
 
 from dataclasses import dataclass, field
+from enum import StrEnum
 from typing import Mapping
 
+from control_plane_kit_core.operations.commands import OperatorCommandKind
 from control_plane_kit_core.topology import DEFAULT_GRAPH_CODEC, DeploymentGraph
 from control_plane_kit_core.types import WorkspaceLifecycle
 
 
 class OperationsRecordError(ValueError):
     """Raised when a durable operations record is malformed."""
+
+
+class OperationSessionStatus(StrEnum):
+    """Closed lifecycle vocabulary for grouped operator intent."""
+
+    OPEN = "open"
+    CLOSED = "closed"
+    CANCELLED = "cancelled"
 
 
 @dataclass(frozen=True)
@@ -82,6 +92,75 @@ class GraphVersionRecord:
             created_at=created_at,
             metadata={} if metadata is None else metadata,
         )
+
+
+@dataclass(frozen=True)
+class OperationSessionRecord:
+    """Grouped operator intent before planning or execution."""
+
+    session_id: str
+    workspace_id: str
+    actor_id: str
+    title: str
+    status: OperationSessionStatus
+    created_at: str
+    closed_at: str | None = None
+    metadata: Mapping[str, object] = field(default_factory=dict)
+    idempotency_key: str | None = None
+    intent_fingerprint: str | None = None
+
+    def __post_init__(self) -> None:
+        _validate_text(self.session_id, "session_id")
+        _validate_text(self.workspace_id, "workspace_id")
+        _validate_text(self.actor_id, "actor_id")
+        _validate_text(self.title, "title")
+        if not isinstance(self.status, OperationSessionStatus):
+            raise OperationsRecordError(
+                "operation session status must be OperationSessionStatus"
+            )
+        _validate_text(self.created_at, "created_at")
+        _validate_optional_text(self.closed_at, "closed_at")
+        _validate_optional_text(self.idempotency_key, "idempotency_key")
+        _validate_optional_text(self.intent_fingerprint, "intent_fingerprint")
+        if not isinstance(self.metadata, Mapping):
+            raise OperationsRecordError("operation session metadata must be mapping")
+        if self.status is OperationSessionStatus.OPEN and self.closed_at is not None:
+            raise OperationsRecordError("open operation sessions must not have closed_at")
+        if self.status is not OperationSessionStatus.OPEN and self.closed_at is None:
+            raise OperationsRecordError(
+                "terminal operation sessions require closed_at"
+            )
+
+
+@dataclass(frozen=True)
+class OperationActionRecord:
+    """One ordered operator action inside a session."""
+
+    action_id: str
+    session_id: str
+    ordinal: int
+    action_type: OperatorCommandKind
+    actor_id: str
+    payload: Mapping[str, object] = field(default_factory=dict)
+    created_at: str = ""
+    idempotency_key: str | None = None
+    intent_fingerprint: str | None = None
+
+    def __post_init__(self) -> None:
+        _validate_text(self.action_id, "action_id")
+        _validate_text(self.session_id, "session_id")
+        if type(self.ordinal) is not int or self.ordinal < 1:
+            raise OperationsRecordError("operation action ordinal must be positive")
+        if not isinstance(self.action_type, OperatorCommandKind):
+            raise OperationsRecordError(
+                "operation action type must be OperatorCommandKind"
+            )
+        _validate_text(self.actor_id, "actor_id")
+        if not isinstance(self.payload, Mapping):
+            raise OperationsRecordError("operation action payload must be mapping")
+        _validate_text(self.created_at, "created_at")
+        _validate_optional_text(self.idempotency_key, "idempotency_key")
+        _validate_optional_text(self.intent_fingerprint, "intent_fingerprint")
 
 
 def _validate_text(value: str, field: str) -> None:

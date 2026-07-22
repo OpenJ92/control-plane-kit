@@ -5,6 +5,9 @@ from control_plane_kit_operations.postgres.schema import (
     PostgresConnection,
     install_schema,
 )
+from control_plane_kit_operations.postgres.activity_history import (
+    PostgresActivityHistoryStore,
+)
 from control_plane_kit_operations.postgres.graph_store import (
     PostgresGraphTopologyStore,
     PostgresWorkspaceStore,
@@ -20,6 +23,7 @@ from control_plane_kit_operations.postgres.unit_of_work import (
 
 __all__ = [
     "POSTGRES_SCHEMA",
+    "PostgresActivityHistoryStore",
     "PostgresGraphTopologyStore",
     "PostgresConnection",
     "PostgresConnectionFactory",
