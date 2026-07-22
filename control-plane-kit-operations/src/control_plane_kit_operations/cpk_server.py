@@ -6,7 +6,10 @@ from dataclasses import dataclass
 from typing import Any, Callable, Mapping, Protocol
 
 from control_plane_kit_core.operations import ControlPlaneServiceRole
+from control_plane_kit_core.operations.commands import OperatorCommandKind
 from control_plane_kit_core.policies import PolicyScope
+from control_plane_kit_core.products import ProductDescriptorCodec, ProductDescriptorError
+from control_plane_kit_core.topology import DEFAULT_GRAPH_CODEC, GraphDescriptorError
 
 from control_plane_kit_operations.admission import (
     ExecutionAdmissionCommandService,
@@ -23,10 +26,26 @@ from control_plane_kit_operations.lifecycle import (
 from control_plane_kit_operations.planning import (
     ActivityPlanningCommandService,
     RequestActivityPlan,
+    DesiredGraphCommandService,
+    SetDesiredGraph,
+)
+from control_plane_kit_operations.products import (
+    DescriptorSourceCodec,
+    ImportProductDescriptorCommand,
+    InlineDescriptorSource,
+    ProductRegistrationService,
 )
 from control_plane_kit_operations.read_services import InstanceReadService, ReadModelError
 from control_plane_kit_operations.records import ApprovalDecisionKind
-from control_plane_kit_operations.workflows import IdempotencyKey
+from control_plane_kit_operations.workflows import (
+    CancelOperationSession,
+    CloseOperationSession,
+    IdempotencyKey,
+    OperationCommandService,
+    RecordOperationAction,
+    StartOperationSession,
+)
+from control_plane_kit_operations.workspaces import CreateWorkspace, WorkspaceCommandService
 
 
 class CpkServerRouteRequest(Protocol):
@@ -124,10 +143,83 @@ class CpkServerReadService:
 
 
 class CpkServerPlanningService:
-    def __init__(self, service: ActivityPlanningCommandService) -> None:
+    def __init__(
+        self,
+        service: ActivityPlanningCommandService,
+        *,
+        workspaces: WorkspaceCommandService | None = None,
+        products: ProductRegistrationService | None = None,
+        desired_graphs: DesiredGraphCommandService | None = None,
+    ) -> None:
         self._service = service
+        self._workspaces = workspaces
+        self._products = products
+        self._desired_graphs = desired_graphs
 
     def handle(self, request: CpkServerRouteRequest) -> Mapping[str, object]:
+        if request.route_id == "command.workspace.create":
+            if self._workspaces is None:
+                raise _service_not_configured(request)
+            payload = _arguments(request)
+            result = self._workspaces.create(
+                CreateWorkspace(
+                    workspace_id=_text(payload, "workspace_id"),
+                    name=_text(payload, "name"),
+                    actor_id=_text(payload, "actor_id"),
+                    idempotency_key=IdempotencyKey(_text(payload, "idempotency_key")),
+                    metadata=_string_mapping(payload, "metadata", default={}),
+                )
+            )
+            return result.descriptor()
+        if request.route_id == "command.product.import":
+            if self._products is None:
+                raise _service_not_configured(request)
+            payload = _arguments(request)
+            _text(payload, "idempotency_key")
+            try:
+                document = ProductDescriptorCodec().decode_document(
+                    _mapping(payload, "descriptor_document")
+                )
+                raw_source = payload.get("source")
+                source = (
+                    InlineDescriptorSource()
+                    if raw_source is None
+                    else DescriptorSourceCodec().decode(_mapping(payload, "source"))
+                )
+            except (ProductDescriptorError, ValueError) as error:
+                raise CpkServerApplicationError(400, str(error)) from error
+            result = self._products.import_descriptor(
+                ImportProductDescriptorCommand(
+                    workspace_id=_workspace_id(payload),
+                    descriptor_document=document,
+                    source=source,
+                    imported_by=_text(payload, "actor_id"),
+                    imported_at=_text(payload, "imported_at"),
+                )
+            )
+            return _registered_product_descriptor(result)
+        if request.route_id == "command.desired-graph.set":
+            if self._desired_graphs is None:
+                raise _service_not_configured(request)
+            payload = _arguments(request)
+            try:
+                graph = DEFAULT_GRAPH_CODEC.decode(_mapping(payload, "graph"))
+            except GraphDescriptorError as error:
+                raise CpkServerApplicationError(400, str(error)) from error
+            result = self._desired_graphs.execute(
+                SetDesiredGraph(
+                    session_id=_text(payload, "session_id"),
+                    workspace_id=_workspace_id(payload),
+                    actor_id=_text(payload, "actor_id"),
+                    graph=graph,
+                    expected_desired_graph_id=_optional_text(
+                        payload,
+                        "expected_desired_graph_id",
+                    ),
+                    idempotency_key=IdempotencyKey(_text(payload, "idempotency_key")),
+                )
+            )
+            return result.descriptor()
         if request.route_id != "command.deployment.plan":
             raise _unsupported_route(request)
         payload = _arguments(request)
@@ -190,10 +282,72 @@ class CpkServerAdmissionService:
 
 
 class CpkServerLifecycleService:
-    def __init__(self, service: RunLifecycleCommandService) -> None:
+    def __init__(
+        self,
+        service: RunLifecycleCommandService,
+        *,
+        operations: OperationCommandService | None = None,
+    ) -> None:
         self._service = service
+        self._operations = operations
 
     def handle(self, request: CpkServerRouteRequest) -> Mapping[str, object]:
+        if request.route_id.startswith("command.operation-session."):
+            if self._operations is None:
+                raise _service_not_configured(request)
+            payload = _arguments(request)
+            if request.route_id == "command.operation-session.start":
+                result = self._operations.execute(
+                    StartOperationSession(
+                        workspace_id=_workspace_id(payload),
+                        actor_id=_text(payload, "actor_id"),
+                        title=_text(payload, "title"),
+                        idempotency_key=IdempotencyKey(
+                            _text(payload, "idempotency_key")
+                        ),
+                        metadata=_string_mapping(payload, "metadata", default={}),
+                    )
+                )
+                return result.descriptor()
+            if request.route_id == "command.operation-session.close":
+                result = self._operations.execute(
+                    CloseOperationSession(
+                        session_id=_path_or_payload(payload, "session_id", "session_id"),
+                        actor_id=_text(payload, "actor_id"),
+                        idempotency_key=IdempotencyKey(
+                            _text(payload, "idempotency_key")
+                        ),
+                    )
+                )
+                return result.descriptor()
+            if request.route_id == "command.operation-session.cancel":
+                result = self._operations.execute(
+                    CancelOperationSession(
+                        session_id=_path_or_payload(payload, "session_id", "session_id"),
+                        actor_id=_text(payload, "actor_id"),
+                        idempotency_key=IdempotencyKey(
+                            _text(payload, "idempotency_key")
+                        ),
+                    )
+                )
+                return result.descriptor()
+            if request.route_id == "command.operation-session.record-action":
+                try:
+                    action_type = OperatorCommandKind(_text(payload, "action_type"))
+                except ValueError as error:
+                    raise CpkServerApplicationError(400, "unknown action_type") from error
+                result = self._operations.execute(
+                    RecordOperationAction(
+                        session_id=_path_or_payload(payload, "session_id", "session_id"),
+                        actor_id=_text(payload, "actor_id"),
+                        action_type=action_type,
+                        idempotency_key=IdempotencyKey(
+                            _text(payload, "idempotency_key")
+                        ),
+                        payload=_mapping(payload, "payload", default={}),
+                    )
+                )
+                return result.descriptor()
         if request.route_id != "command.run.claim":
             raise _unsupported_route(request)
         payload = _arguments(request)
@@ -248,6 +402,10 @@ def cpk_server_services(
     admission: ExecutionAdmissionCommandService,
     lifecycle: RunLifecycleCommandService,
     execution: ExecutionCoordinator,
+    workspaces: WorkspaceCommandService | None = None,
+    products: ProductRegistrationService | None = None,
+    desired_graphs: DesiredGraphCommandService | None = None,
+    operations: OperationCommandService | None = None,
     clock: Callable[[], object] | None = None,
 ) -> Mapping[ControlPlaneServiceRole, CpkServerApplicationService]:
     """Return the complete service map required by cpk-server composition."""
@@ -261,10 +419,18 @@ def cpk_server_services(
         )
     }
     return {
-        ControlPlaneServiceRole.PLANNING: CpkServerPlanningService(planning),
+        ControlPlaneServiceRole.PLANNING: CpkServerPlanningService(
+            planning,
+            workspaces=workspaces,
+            products=products,
+            desired_graphs=desired_graphs,
+        ),
         ControlPlaneServiceRole.APPROVAL: CpkServerApprovalService(approval),
         ControlPlaneServiceRole.ADMISSION: CpkServerAdmissionService(admission),
-        ControlPlaneServiceRole.LIFECYCLE: CpkServerLifecycleService(lifecycle),
+        ControlPlaneServiceRole.LIFECYCLE: CpkServerLifecycleService(
+            lifecycle,
+            operations=operations,
+        ),
         ControlPlaneServiceRole.EXECUTION: CpkServerExecutionService(execution),
         ControlPlaneServiceRole.READS: CpkServerReadService(
             unit_of_work_factory,
@@ -348,6 +514,33 @@ def _path_or_payload(
     return _text(values, payload_name)
 
 
+def _mapping(
+    values: Mapping[str, object],
+    name: str,
+    *,
+    default: Mapping[str, object] | None = None,
+) -> Mapping[str, object]:
+    value = values.get(name, default)
+    if not isinstance(value, Mapping):
+        raise CpkServerApplicationError(400, f"{name} must be an object")
+    return value
+
+
+def _string_mapping(
+    values: Mapping[str, object],
+    name: str,
+    *,
+    default: Mapping[str, object],
+) -> Mapping[str, str]:
+    value = _mapping(values, name, default=default)
+    if not all(
+        isinstance(key, str) and isinstance(item, str)
+        for key, item in value.items()
+    ):
+        raise CpkServerApplicationError(400, f"{name} must be an object of text values")
+    return dict(value)
+
+
 def _text(values: Mapping[str, object], name: str) -> str:
     value = values.get(name)
     if not isinstance(value, str) or not value.strip():
@@ -416,6 +609,26 @@ def _readiness(values: Mapping[str, object]) -> tuple[ExternalReadinessAttestati
 
 def _unsupported_route(request: CpkServerRouteRequest) -> CpkServerApplicationError:
     return CpkServerApplicationError(404, f"unknown route {request.route_id!r}")
+
+
+def _service_not_configured(request: CpkServerRouteRequest) -> CpkServerApplicationError:
+    return CpkServerApplicationError(
+        501,
+        f"{request.route_id!r} is not configured in cpk-server operations",
+    )
+
+
+def _registered_product_descriptor(value: Any) -> dict[str, object]:
+    return {
+        "registration_id": value.registration_id,
+        "workspace_id": value.workspace_id,
+        "reference": value.reference.descriptor(),
+        "status": value.status.value,
+        "product": {
+            "display_name": value.descriptor_document.product.display_name,
+            "description": value.descriptor_document.product.description,
+        },
+    }
 
 
 def _read_error_status(error: ReadModelError) -> int:

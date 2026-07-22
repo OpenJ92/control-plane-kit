@@ -115,6 +115,26 @@ class CommandWorkflowContractTests(unittest.TestCase):
                     ApprovalPolicy.NOT_REQUIRED,
                     ActivityHistoryPolicy.RECORD_ACCEPTED_AND_REJECTED_COMMANDS,
                 ),
+                (
+                    "product-descriptor.import",
+                    OperatorCommandKind.IMPORT_PRODUCT_DESCRIPTOR,
+                    OperatorCommandFamily.PRODUCT_REGISTRATION,
+                    DeploymentProgramStage.PLAN,
+                    ControlPlaneServiceRole.PLANNING,
+                    CommandIdempotencyPolicy.REQUIRED,
+                    ApprovalPolicy.NOT_REQUIRED,
+                    ActivityHistoryPolicy.RECORD_ACCEPTED_AND_REJECTED_COMMANDS,
+                ),
+                (
+                    "workspace.create",
+                    OperatorCommandKind.CREATE_WORKSPACE,
+                    OperatorCommandFamily.WORKSPACE,
+                    DeploymentProgramStage.PLAN,
+                    ControlPlaneServiceRole.PLANNING,
+                    CommandIdempotencyPolicy.REQUIRED,
+                    ApprovalPolicy.NOT_REQUIRED,
+                    ActivityHistoryPolicy.RECORD_ACCEPTED_AND_REJECTED_COMMANDS,
+                ),
             ],
         )
 
