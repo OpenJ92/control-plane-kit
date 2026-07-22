@@ -1522,3 +1522,128 @@ operator desired graph input
 
 Do not let unresolved product identities, mutable catalogue URLs, or OCI image
 references bypass the registered-product admission boundary.
+
+## EXTRACT.OPERATIONS #840 Registered Product Graph Authoring
+
+Status: in progress on `codex/840-registered-product-graph-authoring`.
+
+### Law Cards
+
+```text
+law: desired graph authoring resolves registered products by workspace
+expected: every product-instantiated graph node yields ProductReference and
+  must match an active RegisteredProduct in the same workspace
+negative: registration in another workspace does not authorize this workspace
+owner: control-plane-kit-operations
+```
+
+```text
+law: descriptor digest is graph truth
+expected: product_identity plus product_descriptor_digest pins the exact
+  admitted product descriptor before graph save or planning
+negative: same product identity with a different descriptor digest is rejected
+  rather than silently selecting a newer descriptor
+owner: control-plane-kit-operations
+```
+
+```text
+law: desired graph publication is one transaction
+expected: graph version save and workspace desired pointer update commit
+  together through PostgresUnitOfWork
+negative: stale pointer rejection leaves no orphan graph version
+owner: control-plane-kit-operations
+```
+
+```text
+law: selectable products are an operations read view over active registration
+expected: GraphAuthoringService.selectable_products returns secret-free active
+  ProductReference/display fields for a workspace
+negative: revoked products are not selectable
+owner: control-plane-kit-operations
+```
+
+### Frozen Lookover
+
+Reviewed:
+
+```text
+tests/test_desired_graph_command_service.py
+control-plane-kit-core/tests/test_product_instantiation.py
+control-plane-kit-operations/src/control_plane_kit_operations/products.py
+control-plane-kit-operations/src/control_plane_kit_operations/postgres/product_store.py
+control-plane-kit-operations/src/control_plane_kit_operations/postgres/graph_store.py
+```
+
+Finding: core product instantiation already writes the pure, secret-free
+metadata needed for registration enforcement:
+
+```text
+node.metadata["product_identity"]
+node.metadata["product_descriptor_digest"]
+```
+
+That lets operations enforce product admission without importing
+`control-plane-kit-servers`, looking up mutable catalogue URLs, or treating OCI
+image references as contract truth.
+
+### Target-Red Evidence
+
+The first focused run failed only because the new service module did not exist:
+
+```text
+ModuleNotFoundError:
+  No module named 'control_plane_kit_operations.graph_authoring'
+```
+
+### Implementation Shape
+
+Added:
+
+```text
+SetDesiredGraphCommand
+SetDesiredGraphResult
+SelectableProduct
+GraphAuthoringService
+product_references_in_graph(graph)
+```
+
+The command path is:
+
+```text
+SetDesiredGraphCommand
+  -> extract ProductReference values from graph node metadata
+  -> lock workspace row
+  -> compare expected desired pointer
+  -> require active RegisteredProduct rows in same workspace
+  -> save GraphVersionRecord
+  -> set workspace.desired_graph_id
+  -> commit once through UnitOfWork
+```
+
+Focused validation:
+
+```text
+./control-plane-kit-operations/test.sh
+  33 tests passed
+  compileall passed
+  installed import smoke passed
+```
+
+Full validation:
+
+```text
+git diff --check
+./test.sh
+  extracted core validation passed
+  operations package validation passed
+  packaging smoke passed
+  1219 root Docker/Postgres tests passed
+```
+
+### Handoff
+
+#841 can build operation sessions and command history on top of this boundary.
+It should not reimplement product registration checks in a parallel model.
+When #841/#842 introduce action records and planning, the desired-graph command
+should call or preserve this path so registered-product admission remains the
+single graph-authoring gate.
