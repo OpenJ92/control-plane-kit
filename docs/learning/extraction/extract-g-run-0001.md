@@ -341,3 +341,288 @@ Proceed to #668. No implementation issue is required inside EXTRACT.G.
 
 #668 should publish the final reduced bootstrap closeout and stop before #831,
 #832, or #821 begins.
+
+## #668 Final Reduced Bootstrap Closeout
+
+Status: complete pending operator stop.
+
+EXTRACT.G closes the bootstrap extraction. The system now has:
+
+```text
+control-plane-kit-core
+  pure deployment/product/descriptor/operation contract language
+
+control-plane-kit-servers
+  cpk-server product wrapper
+  reusable seed server products
+  immutable descriptor/catalogue artifacts
+
+SERVER-SEED catalogue
+  realistic future operations targets
+```
+
+The extracted system still does not have durable cpk-server operations. That is
+intentional and must remain explicit.
+
+### Capability Now Established
+
+The bootstrap can now claim:
+
+```text
+frozen reference laws
+  -> extracted core release candidate
+    -> external server-product repository
+      -> published cpk-server OCI baseline
+        -> seed product catalogue artifacts
+          -> operations-ready handoff topology
+```
+
+It cannot yet claim:
+
+```text
+operator imports product
+  -> graph references admitted product
+    -> plan
+      -> approve
+        -> admit
+          -> execute
+            -> advance current graph
+```
+
+That belongs to #831, #832, and #821.
+
+### Objects And Transformations Proven
+
+Objects:
+
+```text
+ProductDescriptorDocument
+ProductCatalogue
+ContainerServerProduct descriptor
+published OCI image digest
+server catalogue declaration
+cpk-server process wrapper descriptor
+SERVER-SEED product coordinates
+```
+
+Transformations:
+
+```text
+core product descriptor
+  -> server package declaration
+    -> packaged catalogue checksum
+
+server product source
+  -> OCI image
+    -> immutable digest
+      -> descriptor digest
+        -> catalogue declaration
+
+frozen behavioral law
+  -> extracted-core or server-product ownership
+    -> deferred operations/interpreter handoff where not implemented
+```
+
+Laws:
+
+- core remains product-independent and server-import-free;
+- server catalogue imports values, not product processes or stores;
+- published OCI digest is execution identity;
+- local image builds are development evidence only;
+- descriptor data, not image URLs alone, is graph-visible product contract;
+- product-artifact smoke is not workflow acceptance;
+- operations admission requires durable workspace truth;
+- one operator command will remain one explicit Postgres transaction once
+  operations exists.
+
+### Final Coordinates
+
+cpk-server:
+
+```text
+image: ghcr.io/openj92/control-plane-kit-servers/cpk-server@sha256:5bdd63738f8d2ea211e02681fbb80760cb581c6435f1c7dd854bceba0b949416
+descriptor sha256: 8f78690897a0e47bf697aaadc4fcd37ac2a9aeaf243a815ad0252e9245a3658e
+```
+
+SERVER-SEED final catalogue checksum:
+
+```text
+0efffbdfe0581b8f47b7cb854480f2b4e79227835b0a0e91f4207fbfe1aa3d7b
+```
+
+SERVER-SEED products:
+
+```text
+hello-server
+  ghcr.io/openj92/control-plane-kit-servers/hello-server@sha256:0b5d62c2706bdfc5b53b67c7e0a72e36b8af7d13f8b2abf26eaa6e6eb7dda5f0
+
+http-active-router
+  ghcr.io/openj92/control-plane-kit-servers/http-active-router@sha256:9edd29c8b62f6413c7acb4009bfa655c065a31a0eac8728ec9d4350122e0a60d
+
+http-multiplexer
+  ghcr.io/openj92/control-plane-kit-servers/http-multiplexer@sha256:2b6466d87c7642691c4ce2ee52022450d7b7cf1055f1f25a1449adbb5c8131ec
+
+postgres-server
+  docker.io/library/postgres@sha256:57c72fd2a128e416c7fcc499958864df5301e940bca0a56f58fddf30ffc07777
+```
+
+### Issue Ledger
+
+Closed:
+
+```text
+#599 EXTRACT.E core release-candidate closeout
+#600 EXTRACT.F cpk-server/server repository foundation
+#820 EXTRACT.G topology refresh
+#822 SERVER-SEED parent
+#827 SERVER-SEED closeout
+#667 EXTRACT.G reduced bootstrap review
+```
+
+Deferred / next:
+
+```text
+#831 ProductReference pure core language
+#832 RegisteredProduct durable operations admission/store
+#821 Durable cpk-server operations and Postgres workflow implementation
+#819 Hello workflow acceptance after operations
+#676 Recursive child cpk-server deployment
+#806 Interpreter/runtime extraction
+```
+
+EXTRACT.G does not close #594 or merge the roadmap to a terminal release. It
+closes only the reduced bootstrap acceptance segment and stops for operator
+approval before operations begins.
+
+### Operations Placement
+
+Operations should be implemented as a sibling distribution in the existing
+`OpenJ92/control-plane-kit` repository:
+
+```text
+control-plane-kit/
+  control-plane-kit-core/
+  control-plane-kit-operations/
+```
+
+Do not create a new GitHub repository for operations unless a later ADR changes
+this decision.
+
+Dependency direction:
+
+```text
+control-plane-kit-core
+  <- control-plane-kit-operations
+    <- control-plane-kit-servers/cpk-server
+```
+
+Rationale:
+
+- operations and core are tightly versioned;
+- operations consumes core contracts constantly;
+- core contract changes will often need operations changes in the same PR;
+- cpk-server depends on both;
+- a separate repository would create version friction before operations
+  stabilizes.
+
+### Product Admission Handoff
+
+The first operations work should begin with the registration split:
+
+```text
+#831 ProductReference
+  pure language for identity + descriptor digest
+
+#832 RegisteredProduct
+  durable workspace admission, source evidence, store, trust policy
+
+#821 operations
+  graph/current topology, sessions, approvals, admission, execution, reads
+```
+
+Data-engineering law:
+
+```text
+one operator command = one explicit Postgres transaction
+```
+
+Application command services own commit/rollback. Stores never commit
+independently.
+
+Descriptor acquisition law:
+
+```text
+InlineDescriptor | RemoteDescriptorUrl | CatalogueUrl
+  acquisition path
+
+ProductReference(identity, descriptor_sha256)
+  graph-visible pure reference
+
+RegisteredProduct(workspace, reference, descriptor, source_evidence)
+  durable operational truth
+```
+
+### Review Findings
+
+Architecture:
+
+- coherent;
+- core/server/operations boundaries are explicit;
+- no hard-coded SERVER-SEED product knowledge is required by core.
+
+Security:
+
+- product descriptor truth excludes secret values;
+- `postgres-server` uses a secret delivery slot rather than a descriptor value;
+- remote descriptor/catalogue URL import remains future work and must receive
+  SSRF, redirect, size, checksum, and trust-policy review.
+
+Data engineering:
+
+- durable registration likely needs a new Postgres-backed store;
+- descriptor admission must be workspace-scoped and digest-pinned;
+- replacement/revocation policy remains unresolved and belongs to #832.
+
+Docker ownership:
+
+- no cpk-server runtime changed during EXTRACT.G;
+- no image republish was required;
+- SERVER-SEED evidence already includes published/live smokes and residue audit.
+
+Test integrity:
+
+- frozen laws were inspected and extracted as review context;
+- no assertions were weakened;
+- stale Hello workflow laws remain deferred, not erased.
+
+### Residual Risks
+
+- #831 must avoid making product registration durable inside core.
+- #832 must avoid accepting image URLs as complete product contracts.
+- #821 must avoid sharing parent/child cpk-server database truth.
+- Remote descriptor acquisition will require security review before network
+  fetches are accepted.
+- Hello dynamic dependency sockets still need a product-parameterization
+  decision before generated Hello workflow acceptance.
+
+### Next Recommended Milestone
+
+Begin operations only after explicit operator approval.
+
+Recommended next prompt should start with:
+
+```text
+Execute the operations extraction topology under AGENTS.md.
+
+Begin with #831, then #832, then the refreshed #821 child topology.
+Implement operations as control-plane-kit-operations beside
+control-plane-kit-core inside OpenJ92/control-plane-kit.
+
+Do not create a new operations repository.
+```
+
+Mandatory stop:
+
+```text
+Do not begin #831, #832, #821, #819, #676, or #806 from EXTRACT.G.
+```
