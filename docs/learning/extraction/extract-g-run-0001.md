@@ -2511,6 +2511,136 @@ git diff --check
   1219 tests passed
 ```
 
+## #849 Docker/Postgres Operations Acceptance
+
+#849 moves cpk-server past read-only bootstrap evidence. The published server
+now uses the extracted operations package for setup commands that are needed
+before full deployment execution can be useful:
+
+```text
+POST /workspaces
+  -> WorkspaceCommandService.create
+    -> workspace row + initial current graph in one UoW transaction
+
+POST /workspaces/{workspace_id}/products/import
+  -> ProductRegistrationService.import_descriptor
+    -> digest-addressed product registration
+
+POST /workspaces/{workspace_id}/sessions
+  -> OperationCommandService.start_session
+
+POST /workspaces/{workspace_id}/graphs/desired
+  -> DesiredGraphCommandService.set_desired_graph
+```
+
+The HTTP and MCP wrappers still remain process/envelope code. They decode route
+identity, auth, path parameters, and JSON payloads, then call the shared
+operations service map:
+
+```text
+FastAPI / MCP envelope
+  -> cpk_server_services(...)
+    -> extracted operations command/read service
+      -> PostgresUnitOfWork
+        -> canonical store bundle
+```
+
+Runtime execution is still intentionally blocked behind the unsupported
+execution adapter. This issue proves that the server can set up durable
+workspace/product/session/desired-graph state through Postgres-backed
+operations, not that it can yet execute a deployment graph.
+
+### Publication Evidence
+
+The operations implementation commit used by the server image is:
+
+```text
+OpenJ92/control-plane-kit
+  5fa927d56a2d3733ff365b25779ff3087eb073af
+```
+
+The cpk-server source image commit in `control-plane-kit-servers` is:
+
+```text
+67dc35f78b650ecdc9e1f9da57ee4b77458f91e6
+```
+
+The published cpk-server image is:
+
+```text
+ghcr.io/openj92/control-plane-kit-servers/cpk-server@sha256:d796b9df23098d87b03d89da5d125102b46482c0562b84179b8cde0d15fc0fb1
+```
+
+The canonical cpk-server product descriptor digest is:
+
+```text
+1d9969abc151275bfa3389d36c4ce0420ac1fda2f693dc6158b93cd3acccc7b2
+```
+
+The packaged server catalogue checksum is:
+
+```text
+7540d38b7cd8fddf65e09cb71f5dff433dfb0c141e8ea29cf928da4ed3d59bdd
+```
+
+### Breaking Points And Fixes
+
+The issue uncovered several useful boundary checks:
+
+- Product import through the public command route needed an explicit
+  `idempotency_key`, even though the product registration service remains
+  digest-idempotent internally. The public command law wins.
+- A test assertion for unsupported routes had drifted into an unreachable helper
+  path. It was restored to the unsupported-route test rather than removed.
+- The server repo `pyproject.toml` still pinned the previous operations commit,
+  so Docker installation could not import `WorkspaceCommandService`. The pin now
+  matches the operations implementation commit.
+- The live smoke used `pg_isready`, which could report readiness before SQL
+  authentication was actually usable. It now waits on `SELECT 1`.
+- The smoke script originally treated an idempotency key as a durable
+  `session_id`. It now parses and threads the returned operation session id.
+- After setup became real, the MCP read assertion had to expect the workspace
+  with its desired graph rather than a missing workspace.
+- Manual descriptor editing broke the strict canonical JSON byte law. The
+  descriptor was re-encoded through `ProductDescriptorCodec`, then the source
+  catalogue and packaged catalogue were regenerated from the canonical bytes.
+
+### Validation
+
+```text
+control-plane-kit:
+  git diff --check
+  ./control-plane-kit-operations/test.sh
+    102 tests passed
+    compileall passed
+    installed import smoke passed
+  ./test.sh
+    1219 tests passed
+
+control-plane-kit-servers:
+  git diff --check
+  ./test.sh
+    21 repository/catalogue tests passed
+    31 cpk-server tests passed
+    8 hello-server tests passed
+    7 active-router tests passed
+    9 multiplexer tests passed
+    7 postgres-server tests passed
+    local cpk-server image smoke passed
+  sh scripts/cpk_server_published_image_smoke.sh
+    published GHCR digest pulled and exercised
+    workspace/product/session/desired-graph setup passed
+    HTTP and MCP reads observed the created desired graph
+    Docker residue audit passed
+```
+
+### Handoff
+
+The next operations step should treat these setup routes as available durable
+surface area. Full graph execution still needs the deployment execution adapter
+and runtime/interpreter lane; until then, cpk-server can persist operational
+truth and product registrations but cannot honestly perform runtime effects.
+
 ### Handoff
 
 #846 can assume an operations coordinator now exists for fake/proof execution:
