@@ -839,3 +839,139 @@ control-plane-kit-core
   <- control-plane-kit-operations
     <- control-plane-kit-servers/cpk-server
 ```
+
+## EXTRACT.OPERATIONS #836 Operations Package Foundation
+
+Status: implemented on `codex/836-operations-package-foundation`.
+
+### Law Cards
+
+```text
+law: operations distribution exists as a sibling of core
+expected: control-plane-kit-operations has pyproject metadata, import package,
+  and Docker-first unittest harness
+negative: a new GitHub repository, hidden package under core, or process-owned
+  package is not accepted
+owner: control-plane-kit-operations
+```
+
+```text
+law: operations depends inward on core and not outward on products/processes
+expected: operations may import control_plane_kit_core contract values
+negative: operations must not import frozen control_plane_kit,
+  control_plane_kit_servers, FastAPI, MCP, Docker, httpx, uvicorn, or psycopg
+  in the foundation issue
+owner: control-plane-kit-operations
+```
+
+```text
+law: root validation exercises the operations package harness
+expected: ./test.sh runs ./control-plane-kit-operations/test.sh after the core
+  harness and before the frozen root Docker/Postgres suite
+negative: operations must not become an untested sibling directory
+owner: system acceptance
+```
+
+### Dry Run
+
+Frozen lookover:
+
+```text
+control_plane_kit/stores/unit_of_work.py
+control_plane_kit/stores/protocols.py
+control_plane_kit/workflows/*.py
+tests/test_unit_of_work.py
+tests/test_operation_postgres_primitives.py
+tests/test_service_infrastructure_program.py
+docs/DEPLOY_PROGRAM.md
+```
+
+Finding: #836 should not port any store, schema, UnitOfWork, command service, or
+adapter behavior. The frozen code confirms those are real durable semantics, so
+they belong to #837 and later. #836 only creates the package shell that can
+receive them.
+
+### Target-Red Evidence
+
+Added `tests/test_operations_package_foundation.py` before implementation. The
+root Docker suite failed with three expected errors:
+
+```text
+control-plane-kit-operations/pyproject.toml missing
+control-plane-kit-operations/src/control_plane_kit_operations/__init__.py missing
+root test image did not expose test.sh for the harness-wiring guard
+```
+
+That red proved the missing behavior was package-boundary evidence, not broken
+collection or an accidental frozen import.
+
+### Implementation
+
+Added the sibling distribution:
+
+```text
+control-plane-kit-operations/
+  AGENTS.md
+  README.md
+  pyproject.toml
+  test.sh
+  src/control_plane_kit_operations/
+    __init__.py
+    foundation.py
+  tests/
+    test_package_boundary.py
+    test_scaffold.py
+```
+
+The package exposes only an inspectable boundary value for now:
+
+```python
+OPERATIONS_PACKAGE_BOUNDARY = OperationsPackageBoundary(
+    distribution="control-plane-kit-operations",
+    import_package="control_plane_kit_operations",
+    depends_on=("control-plane-kit-core",),
+    deployment_spine=tuple(DeploymentProgramStage),
+    future_owners=(
+        "DeploymentProgram",
+        "Deploy",
+        "Postgres schema",
+        "PostgresUnitOfWork",
+        "store bundle",
+        "command services",
+        "read projections",
+        "RegisteredProduct",
+    ),
+    excluded_owners=(
+        "core pure language",
+        "cpk-server process",
+        "HTTP framework adapters",
+        "MCP process adapter",
+        "Docker runtime interpreter",
+        "package-owned server products",
+    ),
+)
+```
+
+`psycopg` is intentionally not a dependency yet. It enters when #837/#838 add
+the real Postgres schema and UnitOfWork/store bundle. This keeps the foundation
+import-light while preserving the data-engineering direction.
+
+### Validation
+
+Focused operations package validation:
+
+```text
+./control-plane-kit-operations/test.sh
+  4 tests passed
+  compileall passed
+  installed import smoke passed
+```
+
+Full root validation is required before the #836 PR.
+
+### Handoff
+
+#837 is next. It should add the operations Postgres schema foundation using the
+frozen explicit-SQL/Jinja2 precedent. Keep schema installation caller
+transactional, idempotent, and non-destructive. Do not introduce stores beyond
+what the schema installer needs to prove migration/install policy.

@@ -75,9 +75,10 @@ FROM package AS test
 COPY SERVER_PRODUCT_ROLLOUT.md ./
 COPY examples ./examples
 COPY artifacts ./artifacts
+COPY control-plane-kit-operations ./control-plane-kit-operations
 COPY docs ./docs
 COPY extraction_parity ./extraction_parity
-COPY reference-inventory.sh reference-test.sh ./
+COPY reference-inventory.sh reference-test.sh test.sh ./
 COPY tests ./tests
 
 RUN python -m pip install ".[test-server]"
