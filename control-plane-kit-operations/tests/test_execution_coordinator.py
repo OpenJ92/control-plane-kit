@@ -11,6 +11,13 @@ from control_plane_kit_core.operations.lifecycle import (
     ExecutionRequestStatus,
     FailureCategory,
 )
+from control_plane_kit_core.products import (
+    ContainerServerProduct,
+    OciImageReference,
+    ProductDescriptorCodec,
+    ProductIdentity,
+    ProductRuntimeContract,
+)
 from control_plane_kit_core.planning import (
     ActivityDependency,
     ActivityId,
@@ -22,12 +29,14 @@ from control_plane_kit_core.planning import (
 from control_plane_kit_core.policies import PolicyScope
 from control_plane_kit_operations.coordinator import (
     ActivityExecutionOutcome,
+    ActivityRealizationContext,
     CoordinatorStatus,
     ExecuteActivityRun,
     ExecutionCoordinator,
     ExecutionCoordinatorConflict,
     ExecutionCoordinatorDenied,
 )
+from control_plane_kit_operations.products import InlineDescriptorSource
 from control_plane_kit_operations.lifecycle import (
     ClaimAndOpenActivityRun,
     ExecutionWorkerAuthority,
@@ -106,10 +115,15 @@ class RecordingAdapter:
         self.tracker = tracker
         self.outcomes = list(outcomes)
         self.calls: list[str] = []
+        self.contexts: list[ActivityRealizationContext] = []
         self.active_during_calls: list[int] = []
 
-    def execute(self, activity: PlannedActivity) -> ActivityExecutionOutcome:
-        self.calls.append(activity.activity_id.value)
+    def execute(
+        self,
+        context: ActivityRealizationContext,
+    ) -> ActivityExecutionOutcome:
+        self.contexts.append(context)
+        self.calls.append(context.activity.activity_id.value)
         self.active_during_calls.append(self.tracker.active)
         outcome = self.outcomes.pop(0)
         if isinstance(outcome, BaseException):
@@ -200,6 +214,24 @@ class ExecutionCoordinatorTests(unittest.TestCase):
         self.assertEqual(result.effects_attempted, 1)
         self.assertEqual(adapter.calls, ["start-api"])
         self.assertEqual(adapter.active_during_calls, [0])
+        context = adapter.contexts[0]
+        self.assertEqual(context.request.identity.request_id, "request-a")
+        self.assertEqual(context.request.identity.workspace_id, "workspace-a")
+        self.assertEqual(context.run.run_id, "run-a")
+        self.assertEqual(context.plan_record.plan_id, "plan-a")
+        self.assertIs(context.plan, context.plan_record.plan)
+        self.assertEqual(context.base_graph.graph_id, "graph-current")
+        self.assertEqual(context.desired_graph.graph_id, "graph-desired")
+        self.assertEqual(
+            [
+                product.descriptor_document.product.identity.name
+                for product in context.registered_products
+            ],
+            ["hello-server"],
+        )
+        self.assertEqual(context.authority.worker_id, "worker-a")
+        self.assertEqual(context.intent_event.kind, ActivityEventKind.STEP_STARTED)
+        self.assertEqual(context.intent_event.activity_id, "start-api")
         with self.unit_of_work() as unit_of_work:
             run = unit_of_work.stores.execution.get_run("run-a")
             events = unit_of_work.stores.execution.events_for_run("run-a")
@@ -217,6 +249,39 @@ class ExecutionCoordinatorTests(unittest.TestCase):
         self.assertEqual(
             [event.activity_id for event in events if event.activity_id is not None],
             ["start-api", "start-api"],
+        )
+
+    def test_incoherent_pinned_graph_material_fails_before_step_intent(self) -> None:
+        self.connection.execute(
+            """
+            INSERT INTO cpk_workspaces (workspace_id, name, lifecycle)
+            VALUES ('workspace-b', 'Workspace B', 'created');
+            UPDATE cpk_graph_versions
+            SET workspace_id = 'workspace-b'
+            WHERE graph_id = 'graph-desired';
+            """
+        )
+        self.claim_and_start()
+        adapter = RecordingAdapter(
+            self.tracker,
+            ActivityExecutionOutcome.succeeded(),
+        )
+
+        with self.assertRaisesRegex(
+            ExecutionCoordinatorConflict,
+            "desired graph must match execution workspace",
+        ):
+            self.coordinator(adapter).execute(self.command())
+
+        self.assertEqual(adapter.calls, [])
+        with self.unit_of_work() as unit_of_work:
+            events = unit_of_work.stores.execution.events_for_run("run-a")
+        self.assertEqual(
+            [event.kind for event in events],
+            [
+                ActivityEventKind.RUN_OPENED,
+                ActivityEventKind.RUN_STARTED,
+            ],
         )
 
     def test_adapter_exception_records_uncertainty_and_does_not_blind_replay(self) -> None:
@@ -384,6 +449,27 @@ class ExecutionCoordinatorTests(unittest.TestCase):
             """
         )
         with self.unit_of_work() as unit_of_work:
+            product_document = ProductDescriptorCodec().encode_document(
+                ContainerServerProduct(
+                    identity=ProductIdentity("control-plane-kit", "hello-server", 1),
+                    image=OciImageReference(
+                        "ghcr.io",
+                        "openj92/control-plane-kit-servers/hello-server",
+                        "sha256:" + "a" * 64,
+                        tag="v1",
+                    ),
+                    runtime_contract=ProductRuntimeContract(),
+                    display_name="hello-server",
+                    description="test product descriptor",
+                )
+            )
+            unit_of_work.stores.registered_products.register(
+                workspace_id="workspace-a",
+                descriptor_document=product_document,
+                source=InlineDescriptorSource(),
+                imported_by="operator-a",
+                imported_at="2026-07-22T12:01:30Z",
+            )
             unit_of_work.stores.activity_history.add_plan(
                 ActivityPlanRecord(
                     "plan-a",

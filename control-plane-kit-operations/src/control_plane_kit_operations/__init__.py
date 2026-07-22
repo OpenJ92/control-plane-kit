@@ -31,6 +31,7 @@ from .admission import (
 from .coordinator import (
     ActivityExecutionAdapter,
     ActivityExecutionOutcome,
+    ActivityRealizationContext,
     CoordinatorStatus,
     ExecuteActivityRun,
     ExecutionCoordinator,
@@ -232,6 +233,7 @@ __all__ = [
     "ExecutionAdmissionResult",
     "ActivityExecutionAdapter",
     "ActivityExecutionOutcome",
+    "ActivityRealizationContext",
     "CoordinatorStatus",
     "CpkServerAdmissionService",
     "CpkServerApplicationError",

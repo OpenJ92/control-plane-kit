@@ -1,6 +1,6 @@
 # EXTRACT.OPERATIONS.ACTIVITY Run 0001
 
-Status: #870 runtime-law inventory in progress.
+Status: #871 activity-realization boundary in progress.
 
 Parent: #869
 
@@ -157,3 +157,92 @@ Keep the existing coordinator, but define a richer pure operations boundary:
 
 The adapter must still be called only after durable intent commits, and it must
 not load mutable current graph truth itself.
+
+## #871 Activity Realization Boundary
+
+#871 turns the fake-execution adapter seam into the boundary needed by the local
+Docker interpreter without implementing Docker behavior yet.
+
+The old extracted seam was intentionally small:
+
+```python
+class ActivityExecutionAdapter(Protocol):
+    def execute(self, activity: PlannedActivity) -> ActivityExecutionOutcome: ...
+```
+
+That shape worked for fake effects, but a real runtime interpreter needs the
+durable material pinned by admission. The new boundary is:
+
+```python
+@dataclass(frozen=True)
+class ActivityRealizationContext:
+    activity: PlannedActivity
+    request: ExecutionRequestRecord
+    run: ActivityRunRecord
+    plan_record: ActivityPlanRecord
+    base_graph: GraphVersionRecord
+    desired_graph: GraphVersionRecord
+    registered_products: tuple[RegisteredProduct, ...]
+    authority: ExecutionWorkerAuthority
+    intent_event: ActivityEventRecord
+
+
+class ActivityExecutionAdapter(Protocol):
+    def execute(
+        self,
+        context: ActivityRealizationContext,
+    ) -> ActivityExecutionOutcome: ...
+```
+
+This preserves the external-effect law:
+
+```text
+short transaction: record durable STEP_STARTED intent
+  -> commit
+    -> adapter receives pinned ActivityRealizationContext
+      -> short transaction: record result event and projection
+```
+
+The coordinator now loads the admitted request, run, exact plan record, pinned
+base/desired graph records, and active registered products before scheduling.
+It validates that this material belongs to the execution workspace and admitted
+plan before any step-start intent is written. The public realization context
+then carries the already-written `STEP_STARTED` event so the adapter can prove
+which durable intent it is satisfying.
+
+The focused regression introduced in #871 corrupts the pinned desired graph
+workspace and proves:
+
+```text
+adapter calls = []
+persisted events = [run_opened, run_started]
+```
+
+So incoherent pinned material cannot create a false step intent.
+
+Validation evidence so far:
+
+```text
+./control-plane-kit-operations/test.sh
+  103 tests passed
+  compileall passed
+  control-plane-kit-operations import ok
+```
+
+#872 handoff:
+
+The minimal Docker interpreter should consume `ActivityRealizationContext`; it
+must not import stores, query the current graph pointer, or reconstruct product
+truth itself. Product realization should be derived from:
+
+```text
+context.activity
+context.plan
+context.base_graph
+context.desired_graph
+context.registered_products
+```
+
+The next implementation should preserve product-generic runtime dispatch and
+keep Hello/router/multiplexer specifics in descriptor data, seeded products, or
+future product-specific renderers rather than in the operations coordinator.
