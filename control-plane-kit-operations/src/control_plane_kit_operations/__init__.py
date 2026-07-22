@@ -4,6 +4,18 @@ from __future__ import annotations
 
 from control_plane_kit_core import DeploymentProgramStage
 
+from .approvals import (
+    ApprovalAuthorizationDenied,
+    ApprovalCommandService,
+    ApprovalDecisionResult,
+    ApprovalIdempotencyConflict,
+    ApprovalRequestResult,
+    ApprovalStateConflict,
+    ApprovalTargetNotFound,
+    ApprovalWorkflowError,
+    DecideApproval,
+    RequestApproval,
+)
 from .foundation import (
     OPERATIONS_PACKAGE_BOUNDARY,
     OperationsPackageBoundary,
@@ -51,6 +63,9 @@ from .products import (
 from .records import (
     ActivityPlanRecord,
     ActivityPlanStatus,
+    ApprovalDecisionKind,
+    ApprovalDecisionRecord,
+    ApprovalRequestRecord,
     GraphVersionRecord,
     OperationActionRecord,
     OperationSessionRecord,
@@ -88,7 +103,19 @@ __all__ = [
     "ActivityPlanningResult",
     "ActivityPlanningSessionConflict",
     "ActivityPlanningWorkspaceNotFound",
+    "ApprovalAuthorizationDenied",
+    "ApprovalCommandService",
+    "ApprovalDecisionKind",
+    "ApprovalDecisionRecord",
+    "ApprovalDecisionResult",
+    "ApprovalIdempotencyConflict",
+    "ApprovalRequestRecord",
+    "ApprovalRequestResult",
+    "ApprovalStateConflict",
+    "ApprovalTargetNotFound",
+    "ApprovalWorkflowError",
     "CatalogueDescriptorSource",
+    "DecideApproval",
     "DescriptorSourceCodec",
     "DesiredGraphCommandError",
     "DesiredGraphCommandService",
@@ -126,6 +153,7 @@ __all__ = [
     "RegisteredProductStatus",
     "RemoteDescriptorSource",
     "RecordOperationAction",
+    "RequestApproval",
     "RequestActivityPlan",
     "SelectableProduct",
     "SetDesiredGraph",

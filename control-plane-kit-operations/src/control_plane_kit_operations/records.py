@@ -8,6 +8,8 @@ from typing import Mapping
 
 from control_plane_kit_core.operations.commands import OperatorCommandKind
 from control_plane_kit_core.planning import ActivityPlan
+from control_plane_kit_core.planning import RiskLevel
+from control_plane_kit_core.policies import PolicyScope
 from control_plane_kit_core.topology import DEFAULT_GRAPH_CODEC, DeploymentGraph
 from control_plane_kit_core.types import WorkspaceLifecycle
 
@@ -30,6 +32,13 @@ class ActivityPlanStatus(StrEnum):
     PLANNED = "planned"
     SUPERSEDED = "superseded"
     CANCELLED = "cancelled"
+
+
+class ApprovalDecisionKind(StrEnum):
+    """Closed approval decision vocabulary."""
+
+    APPROVED = "approved"
+    REJECTED = "rejected"
 
 
 @dataclass(frozen=True)
@@ -194,6 +203,67 @@ class ActivityPlanRecord:
         _validate_text(self.created_at, "created_at")
         if not isinstance(self.plan, ActivityPlan):
             raise OperationsRecordError("activity plan record requires ActivityPlan")
+
+
+@dataclass(frozen=True)
+class ApprovalRequestRecord:
+    """Immutable request for authority over one persisted plan."""
+
+    request_id: str
+    session_id: str
+    plan_id: str
+    requested_by: str
+    requested_at: str
+    required_scope: PolicyScope
+    max_risk: RiskLevel
+    destructive: bool
+    comment: str | None = None
+    idempotency_key: str | None = None
+    intent_fingerprint: str | None = None
+
+    def __post_init__(self) -> None:
+        _validate_text(self.request_id, "request_id")
+        _validate_text(self.session_id, "session_id")
+        _validate_text(self.plan_id, "plan_id")
+        _validate_text(self.requested_by, "requested_by")
+        _validate_text(self.requested_at, "requested_at")
+        if not isinstance(self.required_scope, PolicyScope):
+            raise OperationsRecordError("approval request scope must be PolicyScope")
+        if not isinstance(self.max_risk, RiskLevel):
+            raise OperationsRecordError("approval request max_risk must be RiskLevel")
+        if type(self.destructive) is not bool:
+            raise OperationsRecordError("approval request destructive must be bool")
+        _validate_optional_text(self.comment, "comment")
+        _validate_optional_text(self.idempotency_key, "idempotency_key")
+        _validate_optional_text(self.intent_fingerprint, "intent_fingerprint")
+
+
+@dataclass(frozen=True)
+class ApprovalDecisionRecord:
+    """Immutable answer to exactly one approval request."""
+
+    decision_id: str
+    request_id: str
+    actor_id: str
+    decision: ApprovalDecisionKind
+    scope: PolicyScope
+    decided_at: str
+    comment: str | None = None
+    idempotency_key: str | None = None
+    intent_fingerprint: str | None = None
+
+    def __post_init__(self) -> None:
+        _validate_text(self.decision_id, "decision_id")
+        _validate_text(self.request_id, "request_id")
+        _validate_text(self.actor_id, "actor_id")
+        if not isinstance(self.decision, ApprovalDecisionKind):
+            raise OperationsRecordError("approval decision must be ApprovalDecisionKind")
+        if not isinstance(self.scope, PolicyScope):
+            raise OperationsRecordError("approval decision scope must be PolicyScope")
+        _validate_text(self.decided_at, "decided_at")
+        _validate_optional_text(self.comment, "comment")
+        _validate_optional_text(self.idempotency_key, "idempotency_key")
+        _validate_optional_text(self.intent_fingerprint, "intent_fingerprint")
 
 
 def _validate_text(value: str, field: str) -> None:

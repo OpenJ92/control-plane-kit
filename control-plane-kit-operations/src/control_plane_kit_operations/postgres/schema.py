@@ -15,6 +15,8 @@ from control_plane_kit_core.operations.lifecycle import (
     ExecutionRequestStatus,
     activity_event_scope,
 )
+from control_plane_kit_core.planning import RiskLevel
+from control_plane_kit_core.policies import PolicyScope
 from control_plane_kit_core.types import WorkspaceLifecycle
 
 
@@ -190,7 +192,11 @@ CREATE TABLE IF NOT EXISTS cpk_approval_requests (
   destructive boolean NOT NULL,
   comment text,
   idempotency_key text,
-  intent_fingerprint text
+  intent_fingerprint text,
+  CONSTRAINT cpk_approval_requests_scope_check
+    CHECK (required_scope IN ({{ policy_scopes | sql_values }})),
+  CONSTRAINT cpk_approval_requests_risk_check
+    CHECK (max_risk IN ({{ risk_levels | sql_values }}))
 );
 
 CREATE UNIQUE INDEX IF NOT EXISTS cpk_approval_requests_idempotency
@@ -209,6 +215,8 @@ CREATE TABLE IF NOT EXISTS cpk_approval_decisions (
   intent_fingerprint text,
   CONSTRAINT cpk_approval_decisions_kind_check
     CHECK (decision IN ({{ approval_decision_kinds | sql_values }})),
+  CONSTRAINT cpk_approval_decisions_scope_check
+    CHECK (scope IN ({{ policy_scopes | sql_values }})),
   CONSTRAINT cpk_approval_decisions_request_identity
     UNIQUE (decision_id, request_id)
 );
@@ -358,7 +366,9 @@ POSTGRES_SCHEMA = _SQL_ENVIRONMENT.from_string(_POSTGRES_SCHEMA_TEMPLATE).render
     execution_request_statuses=tuple(ExecutionRequestStatus),
     operation_session_statuses=tuple(_OperationsSessionStatus),
     operator_command_kinds=tuple(OperatorCommandKind),
+    policy_scopes=tuple(PolicyScope),
     registered_product_statuses=tuple(_RegisteredProductStatus),
+    risk_levels=tuple(RiskLevel),
     settled_run_statuses=_SETTLED_RUN_STATUSES,
     started_run_statuses=_STARTED_RUN_STATUSES,
     workspace_lifecycles=tuple(WorkspaceLifecycle),

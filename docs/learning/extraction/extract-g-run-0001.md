@@ -1974,3 +1974,149 @@ ActivityPlanRecord and action history. It must not create a second plan model,
 second approval queue, or server route layer. The next service should consume
 `ActivityPlanningResult.plan_record.plan_id` and persist approval facts through
 the same UnitOfWork law.
+
+## #843 Approval Command Service
+
+### Frozen Lookover
+
+Inspected:
+
+```text
+control_plane_kit/workflows/approvals.py
+tests/test_approval_command_service.py
+control_plane_kit/stores/postgres.py
+```
+
+The frozen implementation already had the right operational shape:
+
+```text
+RequestPlanApproval
+  -> ApprovalRequestRecord
+  -> OperationActionRecord(APPROVAL_REQUESTED)
+
+DecidePlanApproval
+  -> ApprovalDecisionRecord
+  -> OperationActionRecord(APPROVAL_DECIDED)
+```
+
+The extracted package keeps that law while translating vocabulary to the core
+contract language:
+
+```text
+RequestApproval
+  -> ApprovalRequestRecord
+  -> OperationActionRecord(REQUEST_APPROVAL)
+
+DecideApproval
+  -> ApprovalDecisionRecord
+  -> OperationActionRecord(DECIDE_APPROVAL)
+```
+
+### Law Cards
+
+```text
+approval.request.pending-risk-evidence
+approval.decision.distinct-durable-fact
+approval.authority.fails-closed
+approval.destructive.requires-stronger-scope
+approval.idempotency.exact-replay
+approval.idempotency.changed-intent-conflict
+approval.second-decision.rejected
+approval.late-action-failure.rolls-back-request
+approval.late-action-failure.rolls-back-decision
+approval.concurrent-identical-request.one-winner
+approval.concurrent-competing-decision.one-winner
+approval.concurrent-close-and-request.serialized
+approval.sql.closed-scope-and-risk
+```
+
+### Implementation Shape
+
+Added:
+
+```text
+ApprovalDecisionKind
+ApprovalRequestRecord
+ApprovalDecisionRecord
+PostgresActivityHistoryStore approval methods
+ApprovalCommandService
+RequestApproval
+DecideApproval
+ApprovalRequestResult
+ApprovalDecisionResult
+```
+
+The request path is:
+
+```text
+RequestApproval
+  -> open PostgresUnitOfWork
+  -> verify operation session is open
+  -> load persisted ActivityPlanRecord
+  -> derive ApprovalRequirement from core ApprovalPolicy
+  -> persist ApprovalRequestRecord
+  -> persist OperationActionRecord(REQUEST_APPROVAL)
+  -> one commit
+```
+
+The decision path is:
+
+```text
+DecideApproval
+  -> open PostgresUnitOfWork
+  -> verify operation session and request ownership
+  -> verify no prior decision
+  -> check typed PolicyScope authority
+  -> persist ApprovalDecisionRecord
+  -> persist OperationActionRecord(DECIDE_APPROVAL)
+  -> one commit
+```
+
+Approval remains durable evidence rather than a mutable flag on a plan.
+
+### Data-Engineering Finding
+
+The first implementation made `PolicyScope` and `RiskLevel` closed at the
+Python record boundary. Review found that raw SQL could still insert unknown
+approval scope or risk strings into fresh schemas. The fix tightened the
+Postgres schema:
+
+```text
+cpk_approval_requests.required_scope IN PolicyScope
+cpk_approval_requests.max_risk IN RiskLevel
+cpk_approval_decisions.scope IN PolicyScope
+```
+
+and added schema tests proving those strings fail closed. Stores still do not
+commit; schema installation remains caller-transactional.
+
+### Validation
+
+Focused validation:
+
+```text
+git diff --check
+./control-plane-kit-operations/test.sh
+  59 tests passed
+  compileall passed
+  installed import smoke passed
+```
+
+Full validation:
+
+```text
+./test.sh
+  extracted core validation passed
+  operations package validation passed
+  packaging smoke passed
+  1219 root Docker/Postgres tests passed
+```
+
+### Handoff
+
+#844 can treat approval request and decision truth as durable operations data.
+Admission should consume the persisted plan plus the matching approval request
+and approved decision. It must reject stale plan/graph truth, rejected decisions,
+missing authority, and cross-session or cross-workspace approval evidence. It
+should not create another approval store, queue, mutable plan flag, or route
+layer.
