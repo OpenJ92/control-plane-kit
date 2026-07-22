@@ -8,6 +8,10 @@ ROLLOUT = ROOT / "SERVER_PRODUCT_ROLLOUT.md"
 EXTRACT_E_LEARNING = ROOT / "docs" / "learning" / "extraction" / "extract-e-run-0001.md"
 CORE_RELEASE_EVIDENCE = ROOT / "artifacts" / "extraction" / "core-release-candidate-evidence.json"
 EXTRACT_E_CLOSEOUT = ROOT / "artifacts" / "extraction" / "extract-e-closeout-report.json"
+EXTRACT_F_LEARNING = ROOT / "docs" / "learning" / "extraction" / "extract-f-run-0001.md"
+CPK_SERVER_HANDOFF_INVENTORY = (
+    ROOT / "artifacts" / "extraction" / "extract-f-804-cpk-server-handoff-inventory.json"
+)
 
 
 class ExtractionRolloutTopologyTests(unittest.TestCase):
@@ -134,6 +138,39 @@ class ExtractionRolloutTopologyTests(unittest.TestCase):
 
         self.assertIn("## #648 Mandatory EXTRACT.E Stop", learning)
         self.assertIn("operator approval is required before #600 begins", learning)
+
+    def test_extract_f_ingests_cpk_server_control_process_handoff(self) -> None:
+        inventory = json.loads(CPK_SERVER_HANDOFF_INVENTORY.read_text(encoding="utf-8"))
+        learning = EXTRACT_F_LEARNING.read_text(encoding="utf-8")
+
+        self.assertEqual(inventory["schema"], "cpk.extract-f.cpk-server-handoff-inventory")
+        self.assertEqual(inventory["source_issue"], "#743")
+        self.assertEqual(inventory["issue"], "#804")
+        self.assertEqual(inventory["families"]["test_block_control_fastapi"], 8)
+        self.assertEqual(inventory["families"]["test_block_control_state"], 6)
+        self.assertEqual(len(inventory["law_cards"]), 14)
+
+        allowed_targets = {"#813", "#814", "#815", "#816", "#817"}
+        targets = {card["target_issue"] for card in inventory["law_cards"]}
+        self.assertLessEqual(targets, allowed_targets)
+        self.assertTrue(targets)
+        self.assertNotIn("#654", targets)
+        self.assertNotIn("#678", targets)
+
+        for card in inventory["law_cards"]:
+            with self.subTest(law=card["law"]):
+                self.assertTrue(card["reference"].startswith("tests.test_block_control_"))
+                self.assertIn(card["target_issue"], allowed_targets)
+                self.assertNotEqual(card["owner"], "control-plane-kit-core")
+                self.assertEqual(card["owner"], "control-plane-kit-servers/cpk_server")
+                self.assertTrue(card["behavioral_law"])
+                self.assertTrue(card["acceptance_boundary"])
+
+        self.assertIn("## #804 cpk-server Control-Process Handoff Inventory", learning)
+        self.assertIn("test_block_control_fastapi: 8 laws", learning)
+        self.assertIn("test_block_control_state: 6 laws", learning)
+        self.assertIn("Hello must not satisfy cpk-server process laws", learning)
+        self.assertIn("#813 -> #814 -> #815 -> #816 -> #817", learning)
 
 
 if __name__ == "__main__":
