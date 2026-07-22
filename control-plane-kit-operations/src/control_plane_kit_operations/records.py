@@ -21,6 +21,12 @@ from control_plane_kit_core.operations.lifecycle import (
 from control_plane_kit_core.planning import ActivityPlan
 from control_plane_kit_core.planning import RiskLevel
 from control_plane_kit_core.policies import PolicyScope
+from control_plane_kit_core.probe_intents import (
+    EndpointContext,
+    ProbeKind,
+    ProbeOutcome,
+    probe_outcome_is_valid,
+)
 from control_plane_kit_core.topology import DEFAULT_GRAPH_CODEC, DeploymentGraph
 from control_plane_kit_core.types import WorkspaceLifecycle
 
@@ -50,6 +56,41 @@ class ApprovalDecisionKind(StrEnum):
 
     APPROVED = "approved"
     REJECTED = "rejected"
+
+
+class ObservationStatus(StrEnum):
+    """Closed observation vocabulary without optimistic health inference."""
+
+    STARTING = "starting"
+    PROCESS_STARTED = "process_started"
+    REACHABLE = "reachable"
+    HEALTHY = "healthy"
+    UNHEALTHY = "unhealthy"
+    TIMED_OUT = "timed_out"
+    VERIFIED = "verified"
+    VERIFICATION_FAILED = "verification_failed"
+    UNSUPPORTED = "unsupported"
+    REJECTED = "rejected"
+    MALFORMED = "malformed"
+    UNKNOWN = "unknown"
+
+
+class ObservationFreshness(StrEnum):
+    """Whether an observation may still describe current runtime state."""
+
+    FRESH = "fresh"
+    STALE = "stale"
+
+
+class ObservationStaleReason(StrEnum):
+    """Closed reasons immutable evidence cannot describe current state."""
+
+    RECORDED_STALE = "recorded-stale"
+    UNCORRELATED = "uncorrelated"
+    GRAPH_CHANGED = "graph-changed"
+    EXPIRED = "expired"
+    MALFORMED_TIMESTAMP = "malformed-timestamp"
+    FUTURE_TIMESTAMP = "future-timestamp"
 
 
 MAX_EVIDENCE_BYTES = 4096
@@ -519,6 +560,75 @@ class ActivityEventRecord:
                 raise OperationsRecordError("step event requires activity_id")
         elif self.activity_id is not None:
             raise OperationsRecordError("run event must not carry activity_id")
+
+
+@dataclass(frozen=True)
+class ObservationRecord:
+    """Observed runtime evidence kept separate from desired graph truth."""
+
+    observation_id: str
+    workspace_id: str
+    subject_id: str
+    status: ObservationStatus
+    observed_at: str
+    evidence: BoundedEvidence = field(default_factory=BoundedEvidence)
+    freshness: ObservationFreshness = ObservationFreshness.FRESH
+    graph_id: str | None = None
+    probe_kind: ProbeKind | None = None
+    probe_outcome: ProbeOutcome | None = None
+    endpoint_context: EndpointContext | None = None
+
+    def __post_init__(self) -> None:
+        _validate_text(self.observation_id, "observation_id")
+        _validate_text(self.workspace_id, "workspace_id")
+        _validate_text(self.subject_id, "subject_id")
+        if not isinstance(self.status, ObservationStatus):
+            raise OperationsRecordError("observation status must be ObservationStatus")
+        _validate_text(self.observed_at, "observed_at")
+        if not isinstance(self.evidence, BoundedEvidence):
+            raise OperationsRecordError("observation evidence must be BoundedEvidence")
+        if not isinstance(self.freshness, ObservationFreshness):
+            raise OperationsRecordError(
+                "observation freshness must be ObservationFreshness"
+            )
+        _validate_optional_text(self.graph_id, "graph_id")
+        if self.probe_kind is not None and not isinstance(self.probe_kind, ProbeKind):
+            raise OperationsRecordError("observation probe_kind must be ProbeKind")
+        if self.probe_outcome is not None and not isinstance(
+            self.probe_outcome,
+            ProbeOutcome,
+        ):
+            raise OperationsRecordError("observation probe_outcome must be ProbeOutcome")
+        if self.endpoint_context is not None and not isinstance(
+            self.endpoint_context,
+            EndpointContext,
+        ):
+            raise OperationsRecordError(
+                "observation endpoint_context must be EndpointContext"
+            )
+        correlated = (self.graph_id, self.probe_kind, self.probe_outcome)
+        if any(value is not None for value in correlated) and any(
+            value is None for value in correlated
+        ):
+            raise OperationsRecordError(
+                "correlated observation requires graph, probe kind, and outcome"
+            )
+        if (
+            self.probe_kind in (ProbeKind.PROCESS, ProbeKind.READINESS)
+            and self.endpoint_context is not None
+        ):
+            raise OperationsRecordError(
+                f"{self.probe_kind.value} observation cannot claim endpoint context"
+            )
+        if (
+            self.probe_kind is not None
+            and self.probe_outcome is not None
+            and not probe_outcome_is_valid(self.probe_kind, self.probe_outcome)
+        ):
+            raise OperationsRecordError(
+                f"{self.probe_outcome.value} is not a valid "
+                f"{self.probe_kind.value} observation"
+            )
 
 
 _STARTED_RUN_STATUSES = frozenset(

@@ -18,7 +18,13 @@ from control_plane_kit_core.operations.lifecycle import (
 )
 from control_plane_kit_core.planning import RiskLevel
 from control_plane_kit_core.policies import PolicyScope
+from control_plane_kit_core.probe_intents import (
+    EndpointContext,
+    ProbeKind,
+    ProbeOutcome,
+)
 from control_plane_kit_core.types import WorkspaceLifecycle
+from control_plane_kit_operations.records import ObservationFreshness, ObservationStatus
 
 
 class PostgresConnection(Protocol):
@@ -355,6 +361,52 @@ CREATE TABLE IF NOT EXISTS cpk_activity_events (
     ),
   UNIQUE (run_id, ordinal)
 );
+
+CREATE TABLE IF NOT EXISTS cpk_observations (
+  observation_id text PRIMARY KEY,
+  workspace_id text NOT NULL REFERENCES cpk_workspaces(workspace_id),
+  subject_id text NOT NULL,
+  status text NOT NULL,
+  observed_at text NOT NULL,
+  evidence jsonb NOT NULL DEFAULT '{}'::jsonb,
+  freshness text NOT NULL,
+  graph_id text,
+  probe_kind text,
+  probe_outcome text,
+  endpoint_context text,
+  CONSTRAINT cpk_observations_status_check
+    CHECK (status IN ({{ observation_statuses | sql_values }})),
+  CONSTRAINT cpk_observations_freshness_check
+    CHECK (freshness IN ({{ observation_freshnesses | sql_values }})),
+  CONSTRAINT cpk_observations_probe_kind_check
+    CHECK (probe_kind IS NULL OR probe_kind IN ({{ probe_kinds | sql_values }})),
+  CONSTRAINT cpk_observations_probe_outcome_check
+    CHECK (probe_outcome IS NULL OR probe_outcome IN ({{ probe_outcomes | sql_values }})),
+  CONSTRAINT cpk_observations_endpoint_context_check
+    CHECK (endpoint_context IS NULL OR endpoint_context IN ({{ endpoint_contexts | sql_values }})),
+  CONSTRAINT cpk_observations_correlation_check
+    CHECK (
+      (
+        graph_id IS NULL
+        AND probe_kind IS NULL
+        AND probe_outcome IS NULL
+      )
+      OR
+      (
+        graph_id IS NOT NULL
+        AND probe_kind IS NOT NULL
+        AND probe_outcome IS NOT NULL
+      )
+    ),
+  CONSTRAINT cpk_observations_process_endpoint_check
+    CHECK (
+      endpoint_context IS NULL
+      OR probe_kind NOT IN ('process', 'readiness')
+    )
+);
+
+CREATE INDEX IF NOT EXISTS cpk_observations_latest_subject
+  ON cpk_observations (workspace_id, subject_id, observed_at DESC, observation_id DESC);
 """
 
 
@@ -368,7 +420,12 @@ POSTGRES_SCHEMA = _SQL_ENVIRONMENT.from_string(_POSTGRES_SCHEMA_TEMPLATE).render
     operation_action_kinds=tuple(OperatorCommandKind) + tuple(LifecycleOperationKind),
     operation_session_statuses=tuple(_OperationsSessionStatus),
     operator_command_kinds=tuple(OperatorCommandKind),
+    observation_freshnesses=tuple(ObservationFreshness),
+    observation_statuses=tuple(ObservationStatus),
     policy_scopes=tuple(PolicyScope),
+    endpoint_contexts=tuple(EndpointContext),
+    probe_kinds=tuple(ProbeKind),
+    probe_outcomes=tuple(ProbeOutcome),
     registered_product_statuses=tuple(_RegisteredProductStatus),
     risk_levels=tuple(RiskLevel),
     settled_run_statuses=_SETTLED_RUN_STATUSES,
