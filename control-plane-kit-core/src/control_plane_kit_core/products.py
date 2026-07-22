@@ -37,6 +37,7 @@ _REGISTRY = re.compile(r"^[a-z0-9]+(?:[.-][a-z0-9]+)*(?::[0-9]{1,5})?$")
 _REPOSITORY_PART = re.compile(r"^[a-z0-9]+(?:[._-][a-z0-9]+)*$")
 _TAG = re.compile(r"^[A-Za-z0-9_][A-Za-z0-9_.-]{0,127}$")
 _SHA256_DIGEST = re.compile(r"^sha256:[0-9a-f]{64}$")
+_RAW_SHA256_DIGEST = re.compile(r"^[0-9a-f]{64}$")
 _MAX_PART_LENGTH = 96
 _MAX_REPOSITORY_LENGTH = 255
 _MAX_PROVENANCE_FIELDS = 16
@@ -61,6 +62,7 @@ _CONTAINER_PRODUCT_DESCRIPTOR_KEYS = frozenset(
     {"kind", "identity", "image", "runtime_contract", "display_name", "description"}
 )
 _PRODUCT_DOCUMENT_KEYS = frozenset({"schema", "product"})
+_PRODUCT_REFERENCE_KEYS = frozenset({"identity", "descriptor_sha256"})
 _PRODUCT_DOCUMENT_SCHEMA = "control-plane-kit.product"
 _PRODUCT_DOCUMENT_MEDIA_TYPE = "application/vnd.cpk.product+json"
 _PRODUCT_DOCUMENT_FILENAME = "product.cpk.json"
@@ -117,6 +119,10 @@ class ProductDescriptorError(ValueError):
     """Raised when product.cpk.json content is not the current product language."""
 
 
+class ProductReferenceError(ValueError):
+    """Raised when a product reference is not in the closed core language."""
+
+
 class ProductCatalogError(ValueError):
     """Raised when an immutable product catalogue cannot be constructed."""
 
@@ -131,6 +137,89 @@ class UnknownProductIdentity(ProductCatalogError):
 
 class ProductInstantiationError(ValueError):
     """Raised when a product cannot be purely instantiated into topology."""
+
+
+@dataclass(frozen=True, order=True)
+class ProductDescriptorDigest:
+    """Exact SHA-256 digest for canonical product.cpk.json content."""
+
+    value: str
+
+    def __post_init__(self) -> None:
+        if not isinstance(self.value, str):
+            raise ProductReferenceError("descriptor_sha256 must be a string")
+        if not _RAW_SHA256_DIGEST.fullmatch(self.value):
+            raise ProductReferenceError(
+                "descriptor_sha256 must be the exact 64-character sha256 hex digest"
+            )
+
+
+@dataclass(frozen=True, order=True)
+class ProductReference:
+    """Pure graph/planning reference to a pinned external product descriptor."""
+
+    identity: "ProductIdentity"
+    descriptor_sha256: ProductDescriptorDigest
+
+    def __post_init__(self) -> None:
+        if not isinstance(self.identity, ProductIdentity):
+            raise ProductReferenceError("product reference identity must be ProductIdentity")
+        if not isinstance(self.descriptor_sha256, ProductDescriptorDigest):
+            raise ProductReferenceError(
+                "product reference descriptor_sha256 must be ProductDescriptorDigest"
+            )
+
+    @classmethod
+    def from_document(
+        cls,
+        document: "ProductDescriptorDocument",
+    ) -> "ProductReference":
+        if not isinstance(document, ProductDescriptorDocument):
+            raise ProductReferenceError("product reference requires ProductDescriptorDocument")
+        return cls(
+            identity=document.product.identity,
+            descriptor_sha256=ProductDescriptorDigest(document.content_digest),
+        )
+
+    def descriptor(self) -> dict[str, object]:
+        """Return the deterministic durable descriptor form."""
+
+        return {
+            "identity": ProductIdentityCodec().encode(self.identity),
+            "descriptor_sha256": self.descriptor_sha256.value,
+        }
+
+
+class ProductReferenceCodec:
+    """Strict codec for pure product references."""
+
+    def encode(self, reference: ProductReference) -> dict[str, object]:
+        if not isinstance(reference, ProductReference):
+            raise ProductReferenceError("encode requires ProductReference")
+        return reference.descriptor()
+
+    def decode(self, descriptor: Mapping[str, object]) -> ProductReference:
+        mapping = _reference_mapping(descriptor, "product reference")
+        keys = frozenset(mapping)
+        if keys != _PRODUCT_REFERENCE_KEYS:
+            extra = sorted(keys - _PRODUCT_REFERENCE_KEYS)
+            missing = sorted(_PRODUCT_REFERENCE_KEYS - keys)
+            details: list[str] = []
+            if extra:
+                details.append(f"unknown keys: {', '.join(extra)}")
+            if missing:
+                details.append(f"missing keys: {', '.join(missing)}")
+            raise ProductReferenceError(
+                "invalid product reference descriptor; " + "; ".join(details)
+            )
+        return ProductReference(
+            identity=ProductIdentityCodec().decode(
+                _reference_mapping(mapping["identity"], "identity")
+            ),
+            descriptor_sha256=ProductDescriptorDigest(
+                _reference_text(mapping, "descriptor_sha256")
+            ),
+        )
 
 
 @dataclass(frozen=True, order=True)
@@ -715,6 +804,11 @@ class ProductCatalog:
                 return document
         raise UnknownProductIdentity(f"unknown product identity {identity.key}")
 
+    def reference_for(self, identity: ProductIdentity) -> ProductReference:
+        """Return the pure pinned reference for a catalogued product descriptor."""
+
+        return ProductReference.from_document(self.lookup(identity))
+
     def add(self, document: ProductDescriptorDocument) -> "ProductCatalog":
         if not isinstance(document, ProductDescriptorDocument):
             raise ProductCatalogError("add requires ProductDescriptorDocument")
@@ -932,6 +1026,19 @@ def _validate_platform_part(value: str, field: str) -> None:
 def _mapping(value: object, field: str) -> Mapping[str, object]:
     if not isinstance(value, Mapping):
         raise ProductIdentityError(f"{field} must be a mapping")
+    return value
+
+
+def _reference_mapping(value: object, field: str) -> Mapping[str, object]:
+    if not isinstance(value, Mapping):
+        raise ProductReferenceError(f"{field} must be a mapping")
+    return value
+
+
+def _reference_text(mapping: Mapping[str, object], key: str) -> str:
+    value = mapping[key]
+    if not isinstance(value, str):
+        raise ProductReferenceError(f"{key} must be a string")
     return value
 
 
