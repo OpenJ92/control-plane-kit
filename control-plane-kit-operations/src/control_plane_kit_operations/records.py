@@ -2,14 +2,21 @@
 
 from __future__ import annotations
 
+import json
+import math
 from dataclasses import dataclass, field
 from enum import StrEnum
 from typing import Mapping
 
 from control_plane_kit_core.operations.commands import OperatorCommandKind
 from control_plane_kit_core.operations.lifecycle import (
+    ActivityEventKind,
+    ActivityEventScope,
+    ActivityRunStatus,
     ExecutionRequestStatus,
+    FailureCategory,
     LifecycleOperationKind,
+    activity_event_scope,
 )
 from control_plane_kit_core.planning import ActivityPlan
 from control_plane_kit_core.planning import RiskLevel
@@ -43,6 +50,12 @@ class ApprovalDecisionKind(StrEnum):
 
     APPROVED = "approved"
     REJECTED = "rejected"
+
+
+MAX_EVIDENCE_BYTES = 4096
+MAX_EVIDENCE_DEPTH = 4
+MAX_EVIDENCE_ITEMS = 32
+MAX_EVIDENCE_TEXT = 512
 
 
 @dataclass(frozen=True)
@@ -297,6 +310,96 @@ class ClaimIdentity:
 
 
 @dataclass(frozen=True)
+class RetryIdentity:
+    """Identity of an explicit run attempt."""
+
+    attempt: int
+    prior_run_id: str | None = None
+
+    def __post_init__(self) -> None:
+        if type(self.attempt) is not int or self.attempt < 1:
+            raise OperationsRecordError("retry attempt must be a positive integer")
+        if self.attempt == 1 and self.prior_run_id is not None:
+            raise OperationsRecordError("first attempt cannot reference a prior run")
+        if self.attempt > 1:
+            _validate_text(self.prior_run_id, "prior_run_id")
+
+
+@dataclass(frozen=True)
+class AdmittedRun:
+    """Run ownership by one durable execution request."""
+
+    request_id: str
+
+    def __post_init__(self) -> None:
+        _validate_text(self.request_id, "request_id")
+
+
+@dataclass(frozen=True)
+class BoundedEvidence:
+    """Canonical bounded JSON evidence safe for durable operations records."""
+
+    canonical_json: str = "{}"
+
+    @classmethod
+    def from_mapping(
+        cls,
+        value: Mapping[str, object] | None = None,
+    ) -> "BoundedEvidence":
+        candidate = {} if value is None else dict(value)
+        _validate_evidence(candidate, path="evidence", depth=0)
+        canonical = json.dumps(candidate, sort_keys=True, separators=(",", ":"))
+        if len(canonical.encode("utf-8")) > MAX_EVIDENCE_BYTES:
+            raise OperationsRecordError(
+                f"evidence must not exceed {MAX_EVIDENCE_BYTES} encoded bytes"
+            )
+        return cls(canonical)
+
+    def __post_init__(self) -> None:
+        try:
+            value = json.loads(self.canonical_json)
+        except (TypeError, ValueError) as error:
+            raise OperationsRecordError("evidence must be canonical JSON") from error
+        if not isinstance(value, dict):
+            raise OperationsRecordError("evidence must encode an object")
+        _validate_evidence(value, path="evidence", depth=0)
+        canonical = json.dumps(value, sort_keys=True, separators=(",", ":"))
+        if canonical != self.canonical_json:
+            raise OperationsRecordError(
+                "evidence JSON must be deterministic and canonical"
+            )
+        if len(canonical.encode("utf-8")) > MAX_EVIDENCE_BYTES:
+            raise OperationsRecordError(
+                f"evidence must not exceed {MAX_EVIDENCE_BYTES} encoded bytes"
+            )
+
+    def descriptor(self) -> dict[str, object]:
+        return json.loads(self.canonical_json)
+
+
+@dataclass(frozen=True)
+class FailureEvidence:
+    """Bounded failure evidence suitable for events and operator reads."""
+
+    category: FailureCategory
+    code: str
+    message: str
+    details: BoundedEvidence = field(default_factory=BoundedEvidence)
+
+    def __post_init__(self) -> None:
+        if not isinstance(self.category, FailureCategory):
+            raise OperationsRecordError("failure category must be FailureCategory")
+        _validate_text(self.code, "failure code")
+        _validate_text(self.message, "failure message")
+        if len(self.message) > MAX_EVIDENCE_TEXT:
+            raise OperationsRecordError(
+                f"failure message must not exceed {MAX_EVIDENCE_TEXT} characters"
+            )
+        if not isinstance(self.details, BoundedEvidence):
+            raise OperationsRecordError("failure details must be BoundedEvidence")
+
+
+@dataclass(frozen=True)
 class ExecutionRequestIdentity:
     """Stable ownership coordinates for one execution request."""
 
@@ -347,6 +450,159 @@ class ExecutionRequestRecord:
             raise OperationsRecordError(
                 "only a claimed execution request may carry a claim"
             )
+
+
+@dataclass(frozen=True)
+class ActivityRunRecord:
+    """Current projection of one run over its authoritative event history."""
+
+    run_id: str
+    plan_id: str
+    admission: AdmittedRun
+    retry: RetryIdentity
+    status: ActivityRunStatus
+    created_at: str
+    started_at: str | None = None
+    settled_at: str | None = None
+    metadata: BoundedEvidence = field(default_factory=BoundedEvidence)
+
+    def __post_init__(self) -> None:
+        _validate_text(self.run_id, "run_id")
+        _validate_text(self.plan_id, "plan_id")
+        if not isinstance(self.admission, AdmittedRun):
+            raise OperationsRecordError("activity run admission must be AdmittedRun")
+        if not isinstance(self.retry, RetryIdentity):
+            raise OperationsRecordError("activity run retry identity must be typed")
+        if not isinstance(self.status, ActivityRunStatus):
+            raise OperationsRecordError("activity run status must be ActivityRunStatus")
+        _validate_text(self.created_at, "created_at")
+        _validate_optional_text(self.started_at, "started_at")
+        _validate_optional_text(self.settled_at, "settled_at")
+        if not isinstance(self.metadata, BoundedEvidence):
+            raise OperationsRecordError("activity run metadata must be BoundedEvidence")
+        _validate_run_timing(self)
+
+
+@dataclass(frozen=True)
+class ActivityEventRecord:
+    """One ordered canonical event used for history reconstruction."""
+
+    event_id: str
+    run_id: str
+    ordinal: int
+    kind: ActivityEventKind
+    occurred_at: str
+    activity_id: str | None = None
+    evidence: BoundedEvidence = field(default_factory=BoundedEvidence)
+    failure: FailureEvidence | None = None
+
+    def __post_init__(self) -> None:
+        _validate_text(self.event_id, "event_id")
+        _validate_text(self.run_id, "run_id")
+        if type(self.ordinal) is not int or self.ordinal < 1:
+            raise OperationsRecordError("event ordinal must be a positive integer")
+        if not isinstance(self.kind, ActivityEventKind):
+            raise OperationsRecordError("activity event kind must be ActivityEventKind")
+        _validate_text(self.occurred_at, "occurred_at")
+        _validate_optional_text(self.activity_id, "activity_id")
+        if not isinstance(self.evidence, BoundedEvidence):
+            raise OperationsRecordError("activity event evidence must be BoundedEvidence")
+        if self.failure is not None and not isinstance(
+            self.failure,
+            FailureEvidence,
+        ):
+            raise OperationsRecordError(
+                "activity event failure must be FailureEvidence when present"
+            )
+        if activity_event_scope(self.kind) is ActivityEventScope.ACTIVITY:
+            if self.activity_id is None:
+                raise OperationsRecordError("step event requires activity_id")
+        elif self.activity_id is not None:
+            raise OperationsRecordError("run event must not carry activity_id")
+
+
+_STARTED_RUN_STATUSES = frozenset(
+    {
+        ActivityRunStatus.RUNNING,
+        ActivityRunStatus.PAUSED,
+        ActivityRunStatus.SUCCEEDED,
+        ActivityRunStatus.FAILED,
+        ActivityRunStatus.COMPENSATING,
+        ActivityRunStatus.COMPENSATED,
+        ActivityRunStatus.PARTIALLY_FAILED,
+        ActivityRunStatus.UNCOMPENSATED_FAILURE,
+    }
+)
+_SETTLED_RUN_STATUSES = frozenset(
+    {
+        ActivityRunStatus.SUCCEEDED,
+        ActivityRunStatus.COMPENSATED,
+        ActivityRunStatus.PARTIALLY_FAILED,
+        ActivityRunStatus.UNCOMPENSATED_FAILURE,
+        ActivityRunStatus.CANCELLED,
+    }
+)
+
+
+def _validate_run_timing(record: ActivityRunRecord) -> None:
+    if record.status is ActivityRunStatus.CLAIMED and record.started_at is not None:
+        raise OperationsRecordError("claimed runs must not carry started_at")
+    if record.status in _STARTED_RUN_STATUSES and record.started_at is None:
+        raise OperationsRecordError(f"{record.status.value} runs require started_at")
+    if record.status in _SETTLED_RUN_STATUSES and record.settled_at is None:
+        raise OperationsRecordError(f"{record.status.value} runs require settled_at")
+    if record.status not in _SETTLED_RUN_STATUSES and record.settled_at is not None:
+        raise OperationsRecordError(f"{record.status.value} runs must remain unsettled")
+
+
+def _validate_evidence(value: object, *, path: str, depth: int) -> None:
+    if depth > MAX_EVIDENCE_DEPTH:
+        raise OperationsRecordError(
+            f"evidence nesting must not exceed {MAX_EVIDENCE_DEPTH} levels"
+        )
+    if isinstance(value, dict):
+        if len(value) > MAX_EVIDENCE_ITEMS:
+            raise OperationsRecordError(
+                f"{path} must not contain more than {MAX_EVIDENCE_ITEMS} fields"
+            )
+        for key, item in value.items():
+            if not isinstance(key, str) or not key.strip():
+                raise OperationsRecordError(f"{path} keys must be nonempty text")
+            if _secret_shaped(key):
+                raise OperationsRecordError(
+                    f"{path}.{key} is secret-shaped and cannot enter durable evidence"
+                )
+            _validate_evidence(item, path=f"{path}.{key}", depth=depth + 1)
+        return
+    if isinstance(value, list):
+        if len(value) > MAX_EVIDENCE_ITEMS:
+            raise OperationsRecordError(
+                f"{path} must not contain more than {MAX_EVIDENCE_ITEMS} items"
+            )
+        for index, item in enumerate(value):
+            _validate_evidence(item, path=f"{path}[{index}]", depth=depth + 1)
+        return
+    if isinstance(value, str):
+        if len(value) > MAX_EVIDENCE_TEXT:
+            raise OperationsRecordError(
+                f"{path} text must not exceed {MAX_EVIDENCE_TEXT} characters"
+            )
+        return
+    if type(value) is float and not math.isfinite(value):
+        raise OperationsRecordError(f"{path} must contain a finite number")
+    if value is None or type(value) in {bool, int, float}:
+        return
+    raise OperationsRecordError(
+        f"{path} contains unsupported evidence value {type(value).__name__}"
+    )
+
+
+def _secret_shaped(key: str) -> bool:
+    normalized = key.lower().replace("-", "_")
+    return any(
+        marker in normalized
+        for marker in ("password", "secret", "token", "credential", "private_key")
+    )
 
 
 def _validate_text(value: str, field: str) -> None:
