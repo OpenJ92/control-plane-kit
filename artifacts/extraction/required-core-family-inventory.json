@@ -1,7 +1,7 @@
 {
   "counts": {
-    "entries": 177,
-    "families": 25
+    "entries": 160,
+    "families": 21
   },
   "families": [
     {
@@ -715,61 +715,6 @@
       "entries": [
         {
           "kind": "test",
-          "law": "behavior.environment-supplies-base-url-and-token",
-          "owner": "control-plane-kit-core",
-          "owner_kind": "core",
-          "reference": "tests.test_cli.CliTests.test_environment_supplies_base_url_and_token"
-        },
-        {
-          "kind": "test",
-          "law": "behavior.focused-read-commands-encode-identifiers-and-pagination",
-          "owner": "control-plane-kit-core",
-          "owner_kind": "core",
-          "reference": "tests.test_cli.CliTests.test_focused_read_commands_encode_identifiers_and_pagination"
-        },
-        {
-          "kind": "test",
-          "law": "behavior.http-error-returns-nonzero-and-prints-detail",
-          "owner": "control-plane-kit-core",
-          "owner_kind": "core",
-          "reference": "tests.test_cli.CliTests.test_http_error_returns_nonzero_and_prints_detail"
-        },
-        {
-          "kind": "test",
-          "law": "behavior.missing-base-url-is-usage-error",
-          "owner": "control-plane-kit-core",
-          "owner_kind": "core",
-          "reference": "tests.test_cli.CliTests.test_missing_base_url_is_usage_error"
-        },
-        {
-          "kind": "test",
-          "law": "behavior.pointer-and-limit-commands-encode-query-parameters",
-          "owner": "control-plane-kit-core",
-          "owner_kind": "core",
-          "reference": "tests.test_cli.CliTests.test_pointer_and_limit_commands_encode_query_parameters"
-        },
-        {
-          "kind": "test",
-          "law": "behavior.token-sets-bearer-header",
-          "owner": "control-plane-kit-core",
-          "owner_kind": "core",
-          "reference": "tests.test_cli.CliTests.test_token_sets_bearer_header"
-        },
-        {
-          "kind": "test",
-          "law": "behavior.workspace-command-reads-from-base-url-and-prints-json",
-          "owner": "control-plane-kit-core",
-          "owner_kind": "core",
-          "reference": "tests.test_cli.CliTests.test_workspace_command_reads_from_base_url_and_prints_json"
-        }
-      ],
-      "family": "test_cli"
-    },
-    {
-      "count": 7,
-      "entries": [
-        {
-          "kind": "test",
           "law": "behavior.attempted-failure-is-distinct-from-unsupported",
           "owner": "control-plane-kit-core",
           "owner_kind": "core",
@@ -874,54 +819,6 @@
         }
       ],
       "family": "test_resource_lifecycle"
-    },
-    {
-      "count": 6,
-      "entries": [
-        {
-          "kind": "demo",
-          "law": "demo.configuration-artifact",
-          "owner": "control-plane-kit-core",
-          "owner_kind": "core",
-          "reference": "demo.configuration-artifact"
-        },
-        {
-          "kind": "demo",
-          "law": "demo.docker-publication",
-          "owner": "control-plane-kit-core",
-          "owner_kind": "core",
-          "reference": "demo.docker-publication"
-        },
-        {
-          "kind": "demo",
-          "law": "demo.read-interface",
-          "owner": "control-plane-kit-core",
-          "owner_kind": "core",
-          "reference": "demo.read-interface"
-        },
-        {
-          "kind": "demo",
-          "law": "demo.secret-delivery",
-          "owner": "control-plane-kit-core",
-          "owner_kind": "core",
-          "reference": "demo.secret-delivery"
-        },
-        {
-          "kind": "demo",
-          "law": "demo.transport",
-          "owner": "control-plane-kit-core",
-          "owner_kind": "core",
-          "reference": "demo.transport"
-        },
-        {
-          "kind": "demo",
-          "law": "demo.verification-observation",
-          "owner": "control-plane-kit-core",
-          "owner_kind": "core",
-          "reference": "demo.verification-observation"
-        }
-      ],
-      "family": "demo"
     },
     {
       "count": 6,
@@ -1352,46 +1249,6 @@
         }
       ],
       "family": "test_capability_interpreter_registry"
-    },
-    {
-      "count": 2,
-      "entries": [
-        {
-          "kind": "test",
-          "law": "behavior.demo-server-requires-configured-token",
-          "owner": "control-plane-kit-core",
-          "owner_kind": "core",
-          "reference": "tests.test_read_interface_demo_server.ReadInterfaceDemoServerTests.test_demo_server_requires_configured_token"
-        },
-        {
-          "kind": "test",
-          "law": "behavior.demo-server-seeds-and-serves-read-routes",
-          "owner": "control-plane-kit-core",
-          "owner_kind": "core",
-          "reference": "tests.test_read_interface_demo_server.ReadInterfaceDemoServerTests.test_demo_server_seeds_and_serves_read_routes"
-        }
-      ],
-      "family": "test_read_interface_demo_server"
-    },
-    {
-      "count": 2,
-      "entries": [
-        {
-          "kind": "demo",
-          "law": "validation.complete-suite",
-          "owner": "control-plane-kit-core",
-          "owner_kind": "core",
-          "reference": "validation.complete-suite"
-        },
-        {
-          "kind": "demo",
-          "law": "validation.package-installation",
-          "owner": "control-plane-kit-core",
-          "owner_kind": "core",
-          "reference": "validation.package-installation"
-        }
-      ],
-      "family": "validation"
     }
   ],
   "schema": "cpk.required-core-family-inventory",

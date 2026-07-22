@@ -3071,3 +3071,119 @@ The count distinction matters. `validate-parity.sh foundation` still reports
 all incomplete required migration entries, including system and Hello-owned
 work. The `required-core-family-inventory.json` count is the core-closeout
 blocker count that #742 and #743 continue to reduce before #731 can begin.
+
+## #742 Validation, Packaging, And Demo Successor Evidence
+
+#742 resolved the validation, packaging, and demo batch by separating core
+release-candidate evidence from executable process/runtime demos.
+
+The key split is:
+
+```text
+core owns
+  wheel/import/package-boundary proof
+  pure HTTP and MCP contract descriptors
+  configuration artifact values
+  secret-delivery contract values
+  protocol/transport values
+  verification contract values
+
+entrypoints / cpk-server / interpreters own
+  CLI process execution
+  FastAPI demo server execution
+  Postgres-seeded read demo process
+  live Docker host-publication effects
+```
+
+This preserved the public-boundary laws without pretending extracted core
+starts a server, hosts MCP, runs Docker, opens Postgres, or packages a
+`cpk-server` image.
+
+The closeout artifact records:
+
+```text
+source families: 4
+source entries: 17
+
+mapped successor entries: 7
+reviewed supersession entries: 10
+
+split families: 1
+reviewed handoff families: 2
+mapped validation families: 1
+
+unexpected remaining families: 0
+unexpected remaining entries: 0
+```
+
+Mapped core successor evidence:
+
+```text
+demo.configuration-artifact
+demo.read-interface
+demo.secret-delivery
+demo.transport
+demo.verification-observation
+validation.package-installation
+  -> extract-e-742.core-release-contracts.unittest
+
+validation.complete-suite
+  -> extract-e-742.complete-suite.validation
+```
+
+Reviewed handoff / supersession evidence:
+
+```text
+test_cli
+  -> future entrypoint / cpk-server CLI client behavior
+
+test_read_interface_demo_server
+  -> future cpk-server / demo-server process behavior
+
+demo.docker-publication
+  -> #743 interpreter/runtime host-publication behavior
+```
+
+The important test-integrity point is that these reviewed handoffs are not
+counted as migrated core behavior. They are completed in the parity manifest
+only because the old claim that they were core behavior has been explicitly
+reviewed and replaced with a precise future owner.
+
+The first focused proof check exposed one artifact bug: the initial
+`extract-e-742.core-release-contracts.unittest` command mounted the extracted
+core source into a bare `python:3.14-slim` image and ran a unittest slice
+without installing declared core dependencies. That failed at the strict Jinja
+configuration-rendering boundary. The fix was not to remove Jinja or weaken the
+test. The proof now records the dependency-aware core harness:
+
+```text
+./control-plane-kit-core/test.sh
+```
+
+That harness installs the extracted core wheel in an isolated container, runs
+unittest discovery, runs compileall, and verifies `import control_plane_kit_core`
+from outside the source tree.
+
+Regenerated evidence:
+
+```text
+artifacts/extraction/validation-packaging-demo-batch-closeout.json
+artifacts/extraction/successor-proofs/extract-e-742-core-release-contracts.json
+artifacts/extraction/successor-proofs/extract-e-742-complete-suite-validation.json
+artifacts/extraction/supersession-reviews/extract-e-742-validation-packaging-demo-handoff.json
+artifacts/extraction/successor-evidence.json
+artifacts/extraction/parity-manifest.json
+artifacts/extraction/required-core-closeout-report.json
+artifacts/extraction/required-core-family-inventory.json
+artifacts/extraction/parity-validation-report.json
+```
+
+Validation:
+
+```text
+focused #742 extraction/parity tests: 29 tests passed
+validate-parity.sh foundation: valid=true, findings=0, incomplete_required=260
+control-plane-kit-core/test.sh: 374 tests passed, compileall passed, import ok
+top-level ./test.sh: 1205 tests passed
+required-core closeout inventory: 160 incomplete entries across 21 families
+```
