@@ -729,3 +729,113 @@ Full repository suite: 1214 tests passed.
 `ProductReference` as the pure pinned identity of admitted descriptor truth and
 add workspace ownership, source evidence, importer identity, timestamps, trust
 policy, and replacement/revocation behavior under Postgres UnitOfWork control.
+
+## EXTRACT.OPERATIONS #835 Topology Refresh
+
+Status: implemented on `codex/835-operations-topology-refresh`.
+
+### Dry-Run Finding
+
+The original operations prompt ordered:
+
+```text
+#831 -> #832 -> #835 -> #836 -> #837 -> #838
+```
+
+That ordering is not coherent after #831. #832 is explicitly durable
+operations work. It needs `control-plane-kit-operations`, an idempotent
+Postgres schema foundation, and the UnitOfWork/store-bundle boundary before it
+can introduce `RegisteredProductStore`.
+
+Amended canonical order:
+
+```text
+#831
+  -> #835
+    -> #836 -> #837 -> #838
+      -> #832
+        -> #839 -> #840 -> #841 -> #842 -> #843 -> #844
+          -> #845 -> #846 -> #847 -> #848 -> #849 -> #850
+```
+
+This correction was recorded on #821 and #832.
+
+### Machine-Readable Artifact
+
+Added:
+
+```text
+artifacts/extraction/operations-topology-refresh.json
+```
+
+The artifact records:
+
+- the amended issue order;
+- the reason #832 moved after #836/#837/#838;
+- per-issue owners, outputs, and dependencies;
+- frozen-law inventory by data-engineering and service boundary;
+- the DeploymentProgram north star:
+
+```text
+Deploy:
+  plan -> approve -> admit -> claim -> execute -> advance
+
+initial deployment = Deploy(EmptyGraph, desired)
+update             = Deploy(current, desired)
+teardown           = Deploy(current, EmptyGraph)
+no-op              = Deploy(graph, graph)
+```
+
+### Frozen Law Inventory
+
+The #835 artifact keeps these law groups visible for later issues:
+
+```text
+postgres_schema_and_stores
+unit_of_work
+command_services
+read_services_and_adapters
+acceptance_and_runtime_boundary
+```
+
+Important frozen references:
+
+```text
+control_plane_kit/stores/postgres.py
+control_plane_kit/stores/unit_of_work.py
+control_plane_kit/stores/protocols.py
+control_plane_kit/stores/records.py
+control_plane_kit/workflows/*.py
+tests/test_operation_postgres_primitives.py
+tests/test_operation_command_service.py
+tests/test_execution_store.py
+tests/test_execution_schema_migration.py
+tests/test_execution_concurrency.py
+tests/test_recovery_concurrency.py
+tests/postgres_case.py
+```
+
+### Target-Red Evidence
+
+Focused target-red was the missing artifact:
+
+```text
+tests/test_operations_extraction_topology.py
+  -> artifacts/extraction/operations-topology-refresh.json absent
+```
+
+This proves the new guard is about missing topology evidence, not broken
+collection or imports.
+
+### Handoff
+
+#836 is next. It should create the sibling `control-plane-kit-operations`
+distribution with no stores or services beyond minimal scaffolding. Keep
+operations inside this repository, beside `control-plane-kit-core`; do not
+create a new repository. The package boundary must prove:
+
+```text
+control-plane-kit-core
+  <- control-plane-kit-operations
+    <- control-plane-kit-servers/cpk-server
+```
