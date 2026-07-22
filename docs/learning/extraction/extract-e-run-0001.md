@@ -3308,3 +3308,97 @@ top-level ./test.sh: 1207 tests passed
 not start automatically. The remaining `validate-parity.sh foundation`
 `incomplete_required=100` are not required-core blockers; they are later
 system, Hello, deferred product/server, or rollout obligations.
+
+## #731 Zero-Unmapped Required-Core Closeout
+
+#731 closes the EXTRACT.E.1 required-core reconciliation batch. It does not
+start EXTRACT.F, EXTRACT.G, `cpk-server`, Hello, Docker runtime extraction, or
+cloud runtime work.
+
+The closeout is intentionally a report over existing artifacts rather than a
+new model. The governing computed closeout and persisted report agree:
+
+```text
+required-core-family-inventory:
+  valid: true
+  entries: 0
+  families: 0
+
+required-core-closeout-report:
+  valid: true
+  required_core_complete: true
+  entries: 1107
+  required_core: 780
+  completed_required_core: 780
+  incomplete_required_core: 0
+  required_non_core: 100
+  deferred: 227
+  failed_core_successors: 0
+  findings: 0
+```
+
+The broader foundation report remains deliberately incomplete:
+
+```text
+validate-parity.sh foundation:
+  valid: true
+  migration_complete: false
+  required: 880
+  incomplete_required: 100
+  deferred: 227
+  findings: 0
+```
+
+That remaining `incomplete_required=100` is the point, not a bug. It preserves
+non-core work as visible obligations:
+
+```text
+hello: 23
+system: 77
+deferred-product: 227
+```
+
+The #743 future handoffs are now topology-routed:
+
+```text
+#804
+  EXTRACT.F cpk-server control-process handoff ingestion
+  14 laws
+
+#805
+  EXTRACT.G operations/runtime acceptance handoff ingestion
+  all 160 #743 references considered before harness ownership
+
+#806
+  future interpreter/runtime extraction anchor
+  18 families / 131 laws
+```
+
+The closeout guard added for #731 asserts:
+
+```text
+computed required-core closeout == persisted closeout artifact
+required-core inventory is exactly empty
+foundation parity remains valid but migration_complete=false
+the remaining 100 incomplete required laws are non-core
+```
+
+This prevents both bad outcomes:
+
+```text
+bad:
+  required-core closes by hiding unmapped laws
+
+bad:
+  overall migration is claimed complete while Hello/system/product-server
+  obligations are still outstanding
+```
+
+Handoff:
+
+```text
+#644/#645/#646/#647/#648 may proceed after operator approval.
+EXTRACT.F must consume #804 before creating/populating control-plane-kit-servers.
+EXTRACT.G must consume #805 before deciding the acceptance harness owner.
+The future interpreter/runtime leg must consume #806 before runtime extraction.
+```
