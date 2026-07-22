@@ -30,12 +30,15 @@ from control_plane_kit_operations.lifecycle import (
     RunLifecycleCommandService,
     RunLifecycleConflict,
 )
+from control_plane_kit_operations.products import RegisteredProduct
 from control_plane_kit_operations.records import (
     ActivityEventRecord,
+    ActivityPlanRecord,
     ActivityRunRecord,
     BoundedEvidence,
     ExecutionRequestRecord,
     FailureEvidence,
+    GraphVersionRecord,
 )
 from control_plane_kit_operations.workflows import IdempotencyKey, InvalidOperationCommand
 
@@ -85,6 +88,71 @@ class ExecuteActivityRun:
             raise InvalidOperationCommand("idempotency_key must be IdempotencyKey")
         if type(self.max_effects) is not int or self.max_effects < 1:
             raise InvalidOperationCommand("max_effects must be a positive integer")
+
+
+@dataclass(frozen=True)
+class ActivityRealizationContext:
+    """Pinned durable material handed to an execution adapter after intent."""
+
+    activity: PlannedActivity
+    request: ExecutionRequestRecord
+    run: ActivityRunRecord
+    plan_record: ActivityPlanRecord
+    base_graph: GraphVersionRecord
+    desired_graph: GraphVersionRecord
+    registered_products: tuple[RegisteredProduct, ...]
+    authority: ExecutionWorkerAuthority
+    intent_event: ActivityEventRecord
+
+    @property
+    def plan(self) -> ActivityPlan:
+        return self.plan_record.plan
+
+    def __post_init__(self) -> None:
+        if not isinstance(self.activity, PlannedActivity):
+            raise InvalidOperationCommand("realization activity must be PlannedActivity")
+        if not isinstance(self.request, ExecutionRequestRecord):
+            raise InvalidOperationCommand("realization request must be ExecutionRequestRecord")
+        if not isinstance(self.run, ActivityRunRecord):
+            raise InvalidOperationCommand("realization run must be ActivityRunRecord")
+        if not isinstance(self.plan_record, ActivityPlanRecord):
+            raise InvalidOperationCommand("realization plan must be ActivityPlanRecord")
+        if not isinstance(self.base_graph, GraphVersionRecord):
+            raise InvalidOperationCommand("realization base graph must be GraphVersionRecord")
+        if not isinstance(self.desired_graph, GraphVersionRecord):
+            raise InvalidOperationCommand("realization desired graph must be GraphVersionRecord")
+        products = tuple(self.registered_products)
+        if not all(isinstance(value, RegisteredProduct) for value in products):
+            raise InvalidOperationCommand("realization products must be RegisteredProduct values")
+        object.__setattr__(self, "registered_products", products)
+        if not isinstance(self.authority, ExecutionWorkerAuthority):
+            raise InvalidOperationCommand("realization authority must be ExecutionWorkerAuthority")
+        if not isinstance(self.intent_event, ActivityEventRecord):
+            raise InvalidOperationCommand("realization intent must be ActivityEventRecord")
+        workspace_id = self.request.identity.workspace_id
+        if self.run.admission.request_id != self.request.identity.request_id:
+            raise InvalidOperationCommand("realization run must belong to request")
+        if self.run.plan_id != self.plan_record.plan_id:
+            raise InvalidOperationCommand("realization run must use the pinned plan")
+        if self.request.identity.plan_id != self.plan_record.plan_id:
+            raise InvalidOperationCommand("realization request must use the pinned plan")
+        if self.plan_record.base_graph_id != self.base_graph.graph_id:
+            raise InvalidOperationCommand("realization base graph must match plan")
+        if self.plan_record.desired_graph_id != self.desired_graph.graph_id:
+            raise InvalidOperationCommand("realization desired graph must match plan")
+        if self.base_graph.workspace_id != workspace_id:
+            raise InvalidOperationCommand("realization base graph must match workspace")
+        if self.desired_graph.workspace_id != workspace_id:
+            raise InvalidOperationCommand("realization desired graph must match workspace")
+        for product in products:
+            if product.workspace_id != workspace_id:
+                raise InvalidOperationCommand("realization product must match workspace")
+        if self.intent_event.run_id != self.run.run_id:
+            raise InvalidOperationCommand("realization intent must match run")
+        if self.intent_event.kind is not ActivityEventKind.STEP_STARTED:
+            raise InvalidOperationCommand("realization intent must be step_started")
+        if self.intent_event.activity_id != self.activity.activity_id.value:
+            raise InvalidOperationCommand("realization intent must match activity")
 
 
 @dataclass(frozen=True)
@@ -141,7 +209,10 @@ class ActivityExecutionOutcome:
 class ActivityExecutionAdapter(Protocol):
     """Effect-proof adapter called only after durable intent commits."""
 
-    def execute(self, activity: PlannedActivity) -> ActivityExecutionOutcome: ...
+    def execute(
+        self,
+        context: ActivityRealizationContext,
+    ) -> ActivityExecutionOutcome: ...
 
 
 @dataclass(frozen=True)
@@ -194,15 +265,16 @@ class ExecutionCoordinator:
             if activity is None:
                 raise ExecutionCoordinatorConflict("ready activity identity is missing")
             planned = context.plan.activity(ActivityId(activity))
-            self._record_step_event(
+            intent_event = self._record_step_event(
                 command,
                 planned,
                 ActivityEventKind.STEP_STARTED,
                 BoundedEvidence.from_mapping({"phase": "intent"}),
             )
+            realization = context.realization_context(planned, intent_event)
             attempted += 1
             try:
-                outcome = self._adapter.execute(planned)
+                outcome = self._adapter.execute(realization)
             except Exception as error:  # noqa: BLE001 - adapter errors become uncertainty evidence.
                 outcome = ActivityExecutionOutcome.uncertain(
                     FailureEvidence(
@@ -402,6 +474,14 @@ class ExecutionCoordinator:
                 plan_record = stores.activity_history.get_plan(run.plan_id)
             except KeyError as error:
                 raise ExecutionCoordinatorNotFound("activity plan was not found") from error
+            try:
+                base_graph = stores.graphs.get(plan_record.base_graph_id)
+                desired_graph = stores.graphs.get(plan_record.desired_graph_id)
+            except KeyError as error:
+                raise ExecutionCoordinatorNotFound("pinned graph was not found") from error
+            registered_products = stores.registered_products.list_active(
+                request.identity.workspace_id
+            )
             events = stores.execution.events_for_run(run.run_id)
         journal = _journal_events(events)
         projection = project_activity_journal(plan_record.plan, journal)
@@ -409,7 +489,10 @@ class ExecutionCoordinator:
         return _CoordinatorContext(
             request=request,
             run=run,
-            plan=plan_record.plan,
+            plan_record=plan_record,
+            base_graph=base_graph,
+            desired_graph=desired_graph,
+            registered_products=registered_products,
             events=events,
             projection=projection,
             schedule=schedule,
@@ -425,11 +508,55 @@ class ExecutionCoordinator:
 class _CoordinatorContext:
     request: ExecutionRequestRecord
     run: ActivityRunRecord
-    plan: ActivityPlan
+    plan_record: ActivityPlanRecord
+    base_graph: GraphVersionRecord
+    desired_graph: GraphVersionRecord
+    registered_products: tuple[RegisteredProduct, ...]
     events: tuple[ActivityEventRecord, ...]
     projection: SagaJournalProjection
     schedule: ExecutionSchedule
     authority: ExecutionWorkerAuthority
+
+    def __post_init__(self) -> None:
+        workspace_id = self.request.identity.workspace_id
+        if self.run.admission.request_id != self.request.identity.request_id:
+            raise ExecutionCoordinatorConflict("run must belong to execution request")
+        if self.run.plan_id != self.plan_record.plan_id:
+            raise ExecutionCoordinatorConflict("run must use pinned activity plan")
+        if self.request.identity.plan_id != self.plan_record.plan_id:
+            raise ExecutionCoordinatorConflict("request must use pinned activity plan")
+        if self.plan_record.base_graph_id != self.base_graph.graph_id:
+            raise ExecutionCoordinatorConflict("base graph must match activity plan")
+        if self.plan_record.desired_graph_id != self.desired_graph.graph_id:
+            raise ExecutionCoordinatorConflict("desired graph must match activity plan")
+        if self.base_graph.workspace_id != workspace_id:
+            raise ExecutionCoordinatorConflict("base graph must match execution workspace")
+        if self.desired_graph.workspace_id != workspace_id:
+            raise ExecutionCoordinatorConflict("desired graph must match execution workspace")
+        for product in self.registered_products:
+            if product.workspace_id != workspace_id:
+                raise ExecutionCoordinatorConflict("registered product must match workspace")
+
+    @property
+    def plan(self) -> ActivityPlan:
+        return self.plan_record.plan
+
+    def realization_context(
+        self,
+        activity: PlannedActivity,
+        intent_event: ActivityEventRecord,
+    ) -> ActivityRealizationContext:
+        return ActivityRealizationContext(
+            activity=activity,
+            request=self.request,
+            run=self.run,
+            plan_record=self.plan_record,
+            base_graph=self.base_graph,
+            desired_graph=self.desired_graph,
+            registered_products=self.registered_products,
+            authority=self.authority,
+            intent_event=intent_event,
+        )
 
 
 _EVENT_KIND_TO_JOURNAL_KIND = {
