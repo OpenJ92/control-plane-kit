@@ -172,6 +172,12 @@ from .workflows import (
     RecordOperationAction,
     StartOperationSession,
 )
+from .workspaces import (
+    CreateWorkspace,
+    CreateWorkspaceResult,
+    WorkspaceCommandError,
+    WorkspaceCommandService,
+)
 
 __version__ = "0.1.0"
 
@@ -207,6 +213,8 @@ __all__ = [
     "ClaimIdentity",
     "ClaimAndOpenActivityRun",
     "CompleteActivityRun",
+    "CreateWorkspace",
+    "CreateWorkspaceResult",
     "DecideApproval",
     "DescriptorSourceCodec",
     "DesiredGraphCommandError",
@@ -309,6 +317,8 @@ __all__ = [
     "StartActivityRun",
     "StaleDesiredGraph",
     "WorkspaceRecord",
+    "WorkspaceCommandError",
+    "WorkspaceCommandService",
     "WorkspaceReadModel",
     "WorkspaceSummary",
     "ActivityTimelineReadModel",

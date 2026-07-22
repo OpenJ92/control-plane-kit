@@ -24,6 +24,8 @@ class InvalidCommandWorkflowContract(ValueError):
 class OperatorCommandFamily(StrEnum):
     """Closed command families at the operator workflow boundary."""
 
+    WORKSPACE = "workspace"
+    PRODUCT_REGISTRATION = "product-registration"
     OPERATION_SESSION = "operation-session"
     DESIRED_GRAPH = "desired-graph"
     ACTIVITY_PLANNING = "activity-planning"
@@ -33,6 +35,8 @@ class OperatorCommandFamily(StrEnum):
 class OperatorCommandKind(StrEnum):
     """Closed operator command identities independent of stores or routes."""
 
+    CREATE_WORKSPACE = "create-workspace"
+    IMPORT_PRODUCT_DESCRIPTOR = "import-product-descriptor"
     START_OPERATION_SESSION = "start-operation-session"
     CLOSE_OPERATION_SESSION = "close-operation-session"
     CANCEL_OPERATION_SESSION = "cancel-operation-session"
@@ -50,9 +54,14 @@ class CommandPayloadPolicy(StrEnum):
     GRAPH_DESCRIPTOR_REFERENCE = "graph-descriptor-reference"
     PLAN_DESCRIPTOR_REFERENCE = "plan-descriptor-reference"
     APPROVAL_RISK_EVIDENCE = "approval-risk-evidence"
+    PRODUCT_DESCRIPTOR_DOCUMENT = "product-descriptor-document"
 
 
 _KIND_FAMILY = {
+    OperatorCommandKind.CREATE_WORKSPACE: OperatorCommandFamily.WORKSPACE,
+    OperatorCommandKind.IMPORT_PRODUCT_DESCRIPTOR: (
+        OperatorCommandFamily.PRODUCT_REGISTRATION
+    ),
     OperatorCommandKind.START_OPERATION_SESSION: OperatorCommandFamily.OPERATION_SESSION,
     OperatorCommandKind.CLOSE_OPERATION_SESSION: OperatorCommandFamily.OPERATION_SESSION,
     OperatorCommandKind.CANCEL_OPERATION_SESSION: OperatorCommandFamily.OPERATION_SESSION,
@@ -346,6 +355,30 @@ class _CommandDefinition:
 
 
 _CANONICAL_COMMANDS = (
+    _CommandDefinition(
+        "product-descriptor.import",
+        OperatorCommandKind.IMPORT_PRODUCT_DESCRIPTOR,
+        OperatorCommandFamily.PRODUCT_REGISTRATION,
+        DeploymentProgramStage.PLAN,
+        ControlPlaneServiceRole.PLANNING,
+        "ImportProductDescriptor",
+        "RegisteredProductResponse",
+        ApprovalPolicy.NOT_REQUIRED,
+        CommandPayloadPolicy.PRODUCT_DESCRIPTOR_DOCUMENT,
+        requires_open_session=False,
+    ),
+    _CommandDefinition(
+        "workspace.create",
+        OperatorCommandKind.CREATE_WORKSPACE,
+        OperatorCommandFamily.WORKSPACE,
+        DeploymentProgramStage.PLAN,
+        ControlPlaneServiceRole.PLANNING,
+        "CreateWorkspace",
+        "WorkspaceReadResponse",
+        ApprovalPolicy.NOT_REQUIRED,
+        CommandPayloadPolicy.REDACT_OPERATOR_VALUES,
+        requires_open_session=False,
+    ),
     _CommandDefinition(
         "activity-plan.request",
         OperatorCommandKind.REQUEST_ACTIVITY_PLAN,
