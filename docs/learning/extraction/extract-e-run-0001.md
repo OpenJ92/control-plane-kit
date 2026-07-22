@@ -3700,3 +3700,122 @@ Handoff:
 core release-candidate evidence index. It should not reopen #804, #805, or #806
 unless the evidence artifact contradicts the boundary.
 ```
+
+## #648 Mandatory EXTRACT.E Stop
+
+#648 closes EXTRACT.E as an extracted-core release-candidate parity milestone.
+It records the mandatory stop before server-product migration.
+
+Machine-readable closeout:
+
+```text
+artifacts/extraction/extract-e-closeout-report.json
+```
+
+Capability now established:
+
+```text
+frozen reference laws
+  -> parity manifest
+  -> required-core successor evidence
+  -> extracted core public language
+  -> core wheel/import/manifest evidence
+  -> mandatory operator stop
+```
+
+Final counters:
+
+```text
+required_core=780
+completed_required_core=780
+incomplete_required_core=0
+required_non_core=100
+deferred=227
+
+foundation parity:
+  valid=true
+  migration_complete=false
+  entries=1107
+  required=880
+  deferred=227
+  incomplete_required=100
+  findings=0
+```
+
+Core release-candidate evidence:
+
+```text
+control-plane-kit-core 0.1.0
+dependencies: Jinja2>=3.1, PyYAML>=6.0
+
+./control-plane-kit-core/test.sh
+  374 tests
+  compileall passed
+  import outside source tree passed
+
+./test.sh
+  1213 tests passed
+```
+
+What core owns at this stop:
+
+```text
+DeploymentTopology / DeploymentGraph / DeploymentTransition
+GraphDiff / ActivityPlan
+pure descriptors, codecs, validation, and planning contracts
+pure command, read, lifecycle, recovery, coordinator, verification, policy,
+environment, runtime-contract, and cpk-server handoff language
+```
+
+What core still does not own:
+
+```text
+cpk-server process
+cpk-server Dockerfile
+cpk-server OCI image
+cpk-server product descriptor
+hosted FastAPI process
+hosted MCP server
+Postgres store implementation
+Docker interpreter
+cloud runtime interpreter
+```
+
+Future handoffs:
+
+```text
+#804 -> EXTRACT.F cpk-server control-process handoff ingestion
+#805 -> EXTRACT.G operations/runtime acceptance handoff ingestion
+#806 -> future interpreter/runtime extraction anchor
+```
+
+Review findings:
+
+```text
+architecture:
+  core public language and handoff contracts are package-boundary guarded
+
+security:
+  secret values are excluded from durable core graph data
+
+data engineering:
+  Postgres stores and UnitOfWork implementations remain non-core
+
+supply chain:
+  core dependencies are limited to Jinja2 and PyYAML
+
+Docker ownership / retained data:
+  runtime cleanup and ownership proofs remain interpreter/runtime handoffs
+
+test integrity:
+  successor evidence and reviewed supersession preserve required laws without
+  skips, xfails, assertion weakening, or hidden product migration
+```
+
+Mandatory stop:
+
+```text
+operator approval is required before #600 begins.
+Do not begin #804, #805, #806, EXTRACT.F, EXTRACT.G, control-plane-kit-servers,
+Hello transfer, or cpk-server packaging from this milestone closeout.
+```
