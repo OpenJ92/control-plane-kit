@@ -21,6 +21,16 @@
       "status": "passing"
     },
     {
+      "digest": "sha256:5da41921878407fe4494b212539d25e7ae6317092f0c0ac4443f0dd387c1d89d",
+      "id": "extract-e-742.complete-suite.validation",
+      "status": "passing"
+    },
+    {
+      "digest": "sha256:80e0b8a51f03157b70c99084516a85e54fd15d9a221dc9d6d2b5306afceb67e3",
+      "id": "extract-e-742.core-release-contracts.unittest",
+      "status": "passing"
+    },
+    {
       "digest": "sha256:b1b16296e8228f796cb4ad893dfb15bf66f58027ce5c242e7f7221d95e4ea3d6",
       "id": "extract-e-746.topology-protocol-compile.unittest",
       "status": "passing"

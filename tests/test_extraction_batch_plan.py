@@ -340,6 +340,77 @@ class ExtractionBatchPlanTests(unittest.TestCase):
                     family["rationale"],
                 )
 
+    def test_validation_packaging_demo_closeout_splits_core_contracts_from_process_handoffs(
+        self,
+    ) -> None:
+        closeout = read_bounded_json(
+            ARTIFACT_ROOT / "validation-packaging-demo-batch-closeout.json"
+        )
+
+        self.assertEqual(
+            closeout["schema"],
+            "cpk.validation-packaging-demo-batch-closeout",
+        )
+        self.assertEqual(closeout["issue"], "#742")
+        self.assertEqual(closeout["parent"], "#643")
+        self.assertEqual(closeout["source_batch"], "validation_packaging_demo")
+        self.assertEqual(
+            closeout["summary"],
+            {
+                "source_families": 4,
+                "source_entries": 17,
+                "mapped_successor_entries": 7,
+                "reviewed_supersession_entries": 10,
+                "split_families": 1,
+                "reviewed_handoff_families": 2,
+                "mapped_validation_families": 1,
+                "unexpected_remaining_entries": 0,
+                "unexpected_remaining_families": 0,
+            },
+        )
+
+        families = {
+            family["family"]: family
+            for family in closeout["families"]
+        }
+        self.assertEqual(
+            set(families),
+            {"test_cli", "demo", "test_read_interface_demo_server", "validation"},
+        )
+        self.assertEqual(
+            families["test_cli"]["status"],
+            "reviewed_entrypoint_or_server_handoff",
+        )
+        self.assertEqual(
+            families["test_read_interface_demo_server"]["status"],
+            "reviewed_entrypoint_or_server_handoff",
+        )
+        self.assertEqual(
+            families["validation"]["status"],
+            "mapped_to_passing_successor_evidence",
+        )
+        self.assertEqual(
+            families["demo"]["status"],
+            "split_core_successor_and_interpreter_handoff",
+        )
+        self.assertEqual(
+            families["demo"]["superseded_references"],
+            ["demo.docker-publication"],
+        )
+        self.assertEqual(
+            set(families["demo"]["successor_references"]),
+            {
+                "demo.configuration-artifact",
+                "demo.read-interface",
+                "demo.secret-delivery",
+                "demo.transport",
+                "demo.verification-observation",
+            },
+        )
+        for family in families.values():
+            with self.subTest(family=family["family"]):
+                self.assertEqual(family["remaining_live_inventory_count"], 0)
+
 
 if __name__ == "__main__":
     unittest.main()

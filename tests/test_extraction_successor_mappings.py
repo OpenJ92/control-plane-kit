@@ -474,6 +474,93 @@ class ExtractionSuccessorMappingTests(unittest.TestCase):
                     ],
                 )
 
+    def test_validation_packaging_and_demo_families_are_mapped_or_reviewed_handoffs(self) -> None:
+        closeout = self.closeout()
+        inventory = inventory_unmapped_required_core_families(closeout)
+        families = {
+            family["family"]: family
+            for family in inventory["families"]
+        }
+        manifest = read_bounded_json(ARTIFACT_ROOT / "parity-manifest.json")
+        batch_closeout = read_bounded_json(
+            ARTIFACT_ROOT / "validation-packaging-demo-batch-closeout.json"
+        )
+        expected_families = {
+            family["family"]
+            for family in batch_closeout["families"]
+        }
+        expected_references = {
+            reference
+            for family in batch_closeout["families"]
+            for reference in family["references"]
+        }
+        successor_references = {
+            reference
+            for family in batch_closeout["families"]
+            for reference in family["successor_references"]
+        }
+        superseded_references = {
+            reference
+            for family in batch_closeout["families"]
+            for reference in family["superseded_references"]
+        }
+        manifest_entries = {
+            entry["reference"]: entry
+            for entry in manifest["entries"]
+            if entry["reference"] in expected_references
+        }
+
+        self.assertEqual(
+            expected_families,
+            {"test_cli", "demo", "test_read_interface_demo_server", "validation"},
+        )
+        self.assertEqual(len(expected_references), 17)
+        self.assertEqual(len(successor_references), 7)
+        self.assertEqual(len(superseded_references), 10)
+        self.assertFalse(successor_references & superseded_references)
+        self.assertEqual(set(manifest_entries), expected_references)
+        for family_name in sorted(expected_families):
+            with self.subTest(family=family_name):
+                remaining = families.get(family_name)
+                self.assertIsNone(
+                    remaining,
+                    f"{family_name} still has {remaining['count']} unmapped laws"
+                    if remaining is not None
+                    else "",
+                )
+
+        for reference in sorted(successor_references):
+            entry = manifest_entries[reference]
+            with self.subTest(reference=reference):
+                self.assertIsNone(entry["supersession"])
+                expected_successor = (
+                    {
+                        "id": "release-candidate.complete-suite",
+                        "status": "passing",
+                        "evidence": "extract-e-742.complete-suite.validation",
+                    }
+                    if reference == "validation.complete-suite"
+                    else {
+                        "id": "core-release.contract-boundary",
+                        "status": "passing",
+                        "evidence": "extract-e-742.core-release-contracts.unittest",
+                    }
+                )
+                self.assertEqual(
+                    entry["successors"],
+                    [expected_successor],
+                )
+
+        for reference in sorted(superseded_references):
+            entry = manifest_entries[reference]
+            with self.subTest(reference=reference):
+                self.assertEqual(entry["successors"], [])
+                self.assertIsNotNone(entry["supersession"])
+                self.assertEqual(
+                    entry["supersession"]["review"],
+                    "#742 validation packaging demo closeout",
+                )
+
 
 if __name__ == "__main__":
     unittest.main()

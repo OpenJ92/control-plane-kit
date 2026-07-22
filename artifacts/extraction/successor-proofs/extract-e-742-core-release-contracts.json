@@ -1,0 +1,24 @@
+{
+  "command": "./control-plane-kit-core/test.sh",
+  "evidence": "Core release contracts prove package/import readiness and pure public-boundary demo meanings through the dependency-aware extracted-core Docker harness. The harness installs the core wheel in an isolated container, runs unittest discovery, compileall, and verifies import from outside the source tree without starting cpk-server, FastAPI, MCP hosting, Docker runtime, Postgres stores, or package-owned product servers.",
+  "frozen_laws": [
+    "demo.configuration-artifact",
+    "demo.read-interface",
+    "demo.secret-delivery",
+    "demo.transport",
+    "demo.verification-observation",
+    "validation.package-installation"
+  ],
+  "schema": "cpk.successor-proof",
+  "status": "passing",
+  "successor_tests": [
+    "control-plane-kit-core.tests.test_http_api_contract.HttpApiContractTests",
+    "control-plane-kit-core.tests.test_mcp_streamable_http_contract.McpStreamableHttpContractTests",
+    "control-plane-kit-core.tests.test_configuration_artifacts.ConfigurationArtifactTests",
+    "control-plane-kit-core.tests.test_environment_secrets.EnvironmentSecretTests",
+    "control-plane-kit-core.tests.test_verification_capabilities.VerificationContractTests",
+    "control-plane-kit-core.tests.test_protocol.ConnectionProtocolTests",
+    "control-plane-kit-core.tests.test_package_boundary.PackageBoundaryTests",
+    "control-plane-kit-core.tests.test_milestone_closeout.MilestoneCloseoutTests"
+  ]
+}

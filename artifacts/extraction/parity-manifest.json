@@ -7,7 +7,13 @@
       "owner": "control-plane-kit-core",
       "owner_kind": "core",
       "reference": "demo.configuration-artifact",
-      "successors": [],
+      "successors": [
+        {
+          "evidence": "extract-e-742.core-release-contracts.unittest",
+          "id": "core-release.contract-boundary",
+          "status": "passing"
+        }
+      ],
       "supersession": null
     },
     {
@@ -28,7 +34,13 @@
       "owner_kind": "core",
       "reference": "demo.docker-publication",
       "successors": [],
-      "supersession": null
+      "supersession": {
+        "negative_case_disposition": "Private-only defaults, host publication, allocated ports, ownership, cleanup, and reachability negative cases remain required interpreter/runtime proofs in #743.",
+        "obsolete_assumption": "Live Docker publication execution belongs in the extracted core package.",
+        "rationale": "Frozen Docker publication demo executes Docker host-publication effects. Extracted core owns protocol/publication contract values; interpreter/runtime execution belongs to #743.",
+        "replacement": "#742 core protocol/publication contract evidence plus #743 interpreter/runtime host-publication handoff.",
+        "review": "#742 validation packaging demo closeout"
+      }
     },
     {
       "kind": "demo",
@@ -77,7 +89,13 @@
       "owner": "control-plane-kit-core",
       "owner_kind": "core",
       "reference": "demo.read-interface",
-      "successors": [],
+      "successors": [
+        {
+          "evidence": "extract-e-742.core-release-contracts.unittest",
+          "id": "core-release.contract-boundary",
+          "status": "passing"
+        }
+      ],
       "supersession": null
     },
     {
@@ -87,7 +105,13 @@
       "owner": "control-plane-kit-core",
       "owner_kind": "core",
       "reference": "demo.secret-delivery",
-      "successors": [],
+      "successors": [
+        {
+          "evidence": "extract-e-742.core-release-contracts.unittest",
+          "id": "core-release.contract-boundary",
+          "status": "passing"
+        }
+      ],
       "supersession": null
     },
     {
@@ -127,7 +151,13 @@
       "owner": "control-plane-kit-core",
       "owner_kind": "core",
       "reference": "demo.transport",
-      "successors": [],
+      "successors": [
+        {
+          "evidence": "extract-e-742.core-release-contracts.unittest",
+          "id": "core-release.contract-boundary",
+          "status": "passing"
+        }
+      ],
       "supersession": null
     },
     {
@@ -137,7 +167,13 @@
       "owner": "control-plane-kit-core",
       "owner_kind": "core",
       "reference": "demo.verification-observation",
-      "successors": [],
+      "successors": [
+        {
+          "evidence": "extract-e-742.core-release-contracts.unittest",
+          "id": "core-release.contract-boundary",
+          "status": "passing"
+        }
+      ],
       "supersession": null
     },
     {
@@ -157,7 +193,13 @@
       "owner": "control-plane-kit-core",
       "owner_kind": "core",
       "reference": "validation.complete-suite",
-      "successors": [],
+      "successors": [
+        {
+          "evidence": "extract-e-742.complete-suite.validation",
+          "id": "release-candidate.complete-suite",
+          "status": "passing"
+        }
+      ],
       "supersession": null
     },
     {
@@ -167,7 +209,13 @@
       "owner": "control-plane-kit-core",
       "owner_kind": "core",
       "reference": "validation.package-installation",
-      "successors": [],
+      "successors": [
+        {
+          "evidence": "extract-e-742.core-release-contracts.unittest",
+          "id": "core-release.contract-boundary",
+          "status": "passing"
+        }
+      ],
       "supersession": null
     },
     {
@@ -2182,7 +2230,13 @@
       "owner_kind": "core",
       "reference": "tests.test_cli.CliTests.test_environment_supplies_base_url_and_token",
       "successors": [],
-      "supersession": null
+      "supersession": {
+        "negative_case_disposition": "URL encoding, bearer-token placement, usage errors, and HTTP error rendering remain required client/entrypoint tests outside core.",
+        "obsolete_assumption": "The operator CLI process belongs in the extracted core package.",
+        "rationale": "Frozen CLI tests execute a urllib-based client entrypoint. Extracted core owns HTTP route, schema, auth-scope, and projection contract language; executable CLI/client tooling belongs with cpk-server or a future client package.",
+        "replacement": "#788 read projection contracts plus #742 core HTTP/MCP release-contract evidence and a cpk-server/client handoff for executable CLI behavior.",
+        "review": "#742 validation packaging demo closeout"
+      }
     },
     {
       "kind": "test",
@@ -2192,7 +2246,13 @@
       "owner_kind": "core",
       "reference": "tests.test_cli.CliTests.test_focused_read_commands_encode_identifiers_and_pagination",
       "successors": [],
-      "supersession": null
+      "supersession": {
+        "negative_case_disposition": "URL encoding, bearer-token placement, usage errors, and HTTP error rendering remain required client/entrypoint tests outside core.",
+        "obsolete_assumption": "The operator CLI process belongs in the extracted core package.",
+        "rationale": "Frozen CLI tests execute a urllib-based client entrypoint. Extracted core owns HTTP route, schema, auth-scope, and projection contract language; executable CLI/client tooling belongs with cpk-server or a future client package.",
+        "replacement": "#788 read projection contracts plus #742 core HTTP/MCP release-contract evidence and a cpk-server/client handoff for executable CLI behavior.",
+        "review": "#742 validation packaging demo closeout"
+      }
     },
     {
       "kind": "test",
@@ -2202,7 +2262,13 @@
       "owner_kind": "core",
       "reference": "tests.test_cli.CliTests.test_http_error_returns_nonzero_and_prints_detail",
       "successors": [],
-      "supersession": null
+      "supersession": {
+        "negative_case_disposition": "URL encoding, bearer-token placement, usage errors, and HTTP error rendering remain required client/entrypoint tests outside core.",
+        "obsolete_assumption": "The operator CLI process belongs in the extracted core package.",
+        "rationale": "Frozen CLI tests execute a urllib-based client entrypoint. Extracted core owns HTTP route, schema, auth-scope, and projection contract language; executable CLI/client tooling belongs with cpk-server or a future client package.",
+        "replacement": "#788 read projection contracts plus #742 core HTTP/MCP release-contract evidence and a cpk-server/client handoff for executable CLI behavior.",
+        "review": "#742 validation packaging demo closeout"
+      }
     },
     {
       "kind": "test",
@@ -2212,7 +2278,13 @@
       "owner_kind": "core",
       "reference": "tests.test_cli.CliTests.test_missing_base_url_is_usage_error",
       "successors": [],
-      "supersession": null
+      "supersession": {
+        "negative_case_disposition": "URL encoding, bearer-token placement, usage errors, and HTTP error rendering remain required client/entrypoint tests outside core.",
+        "obsolete_assumption": "The operator CLI process belongs in the extracted core package.",
+        "rationale": "Frozen CLI tests execute a urllib-based client entrypoint. Extracted core owns HTTP route, schema, auth-scope, and projection contract language; executable CLI/client tooling belongs with cpk-server or a future client package.",
+        "replacement": "#788 read projection contracts plus #742 core HTTP/MCP release-contract evidence and a cpk-server/client handoff for executable CLI behavior.",
+        "review": "#742 validation packaging demo closeout"
+      }
     },
     {
       "kind": "test",
@@ -2222,7 +2294,13 @@
       "owner_kind": "core",
       "reference": "tests.test_cli.CliTests.test_pointer_and_limit_commands_encode_query_parameters",
       "successors": [],
-      "supersession": null
+      "supersession": {
+        "negative_case_disposition": "URL encoding, bearer-token placement, usage errors, and HTTP error rendering remain required client/entrypoint tests outside core.",
+        "obsolete_assumption": "The operator CLI process belongs in the extracted core package.",
+        "rationale": "Frozen CLI tests execute a urllib-based client entrypoint. Extracted core owns HTTP route, schema, auth-scope, and projection contract language; executable CLI/client tooling belongs with cpk-server or a future client package.",
+        "replacement": "#788 read projection contracts plus #742 core HTTP/MCP release-contract evidence and a cpk-server/client handoff for executable CLI behavior.",
+        "review": "#742 validation packaging demo closeout"
+      }
     },
     {
       "kind": "test",
@@ -2232,7 +2310,13 @@
       "owner_kind": "core",
       "reference": "tests.test_cli.CliTests.test_token_sets_bearer_header",
       "successors": [],
-      "supersession": null
+      "supersession": {
+        "negative_case_disposition": "URL encoding, bearer-token placement, usage errors, and HTTP error rendering remain required client/entrypoint tests outside core.",
+        "obsolete_assumption": "The operator CLI process belongs in the extracted core package.",
+        "rationale": "Frozen CLI tests execute a urllib-based client entrypoint. Extracted core owns HTTP route, schema, auth-scope, and projection contract language; executable CLI/client tooling belongs with cpk-server or a future client package.",
+        "replacement": "#788 read projection contracts plus #742 core HTTP/MCP release-contract evidence and a cpk-server/client handoff for executable CLI behavior.",
+        "review": "#742 validation packaging demo closeout"
+      }
     },
     {
       "kind": "test",
@@ -2242,7 +2326,13 @@
       "owner_kind": "core",
       "reference": "tests.test_cli.CliTests.test_workspace_command_reads_from_base_url_and_prints_json",
       "successors": [],
-      "supersession": null
+      "supersession": {
+        "negative_case_disposition": "URL encoding, bearer-token placement, usage errors, and HTTP error rendering remain required client/entrypoint tests outside core.",
+        "obsolete_assumption": "The operator CLI process belongs in the extracted core package.",
+        "rationale": "Frozen CLI tests execute a urllib-based client entrypoint. Extracted core owns HTTP route, schema, auth-scope, and projection contract language; executable CLI/client tooling belongs with cpk-server or a future client package.",
+        "replacement": "#788 read projection contracts plus #742 core HTTP/MCP release-contract evidence and a cpk-server/client handoff for executable CLI behavior.",
+        "review": "#742 validation packaging demo closeout"
+      }
     },
     {
       "kind": "test",
@@ -12978,7 +13068,13 @@
       "owner_kind": "core",
       "reference": "tests.test_read_interface_demo_server.ReadInterfaceDemoServerTests.test_demo_server_requires_configured_token",
       "successors": [],
-      "supersession": null
+      "supersession": {
+        "negative_case_disposition": "Token enforcement, seeded routes, and real HTTP demo behavior remain required server/system acceptance tests outside core.",
+        "obsolete_assumption": "The read-interface FastAPI demo server belongs in the extracted core package.",
+        "rationale": "Frozen read-interface demo tests execute a FastAPI/Postgres process. Extracted core owns the read-route and MCP contract language, not the hosted demo server process or seeded database.",
+        "replacement": "#788 read projection contracts plus #742 core HTTP/MCP release-contract evidence and cpk-server/system demo handoff.",
+        "review": "#742 validation packaging demo closeout"
+      }
     },
     {
       "kind": "test",
@@ -12988,7 +13084,13 @@
       "owner_kind": "core",
       "reference": "tests.test_read_interface_demo_server.ReadInterfaceDemoServerTests.test_demo_server_seeds_and_serves_read_routes",
       "successors": [],
-      "supersession": null
+      "supersession": {
+        "negative_case_disposition": "Token enforcement, seeded routes, and real HTTP demo behavior remain required server/system acceptance tests outside core.",
+        "obsolete_assumption": "The read-interface FastAPI demo server belongs in the extracted core package.",
+        "rationale": "Frozen read-interface demo tests execute a FastAPI/Postgres process. Extracted core owns the read-route and MCP contract language, not the hosted demo server process or seeded database.",
+        "replacement": "#788 read projection contracts plus #742 core HTTP/MCP release-contract evidence and cpk-server/system demo handoff.",
+        "review": "#742 validation packaging demo closeout"
+      }
     },
     {
       "kind": "test",
