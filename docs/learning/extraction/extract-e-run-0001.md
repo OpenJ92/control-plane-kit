@@ -3536,3 +3536,84 @@ Handoff:
 against this architecture baseline. Treat runtime retention/destructive behavior
 as future runtime/operations evidence unless a core artifact leak is found.
 ```
+
+## #646 Security, Data, Supply-Chain, And Test-Integrity Review
+
+#646 reviewed the extracted core release-candidate surface for security, data,
+supply-chain, and test-integrity risks after #645 confirmed the package
+boundary. No executable store, process, Docker runtime, cloud runtime, or
+`cpk-server` behavior was moved into core.
+
+Review evidence:
+
+```text
+artifacts/extraction/successor-proofs/extract-e-755-environment-secrets.json
+  proves secret values are never durable core graph data. Core owns opaque
+  secret references, closed delivery descriptors, redacted graph descriptors,
+  protected secret-file targets, and runtime-only resolver boundaries.
+
+artifacts/extraction/successor-proofs/extract-e-763-policy-decisions.json
+  proves policy decisions are pure bounded data. Destructive activity
+  classification and approval requirements survive in core without importing
+  authorization gateways, command services, stores, or runtime effects.
+
+artifacts/extraction/successor-proofs/extract-e-791-persistence-boundary-contract.json
+  proves Postgres and UnitOfWork implementations remain non-core. Core names
+  durable store roles, transaction-boundary laws, mutation subject identities,
+  and operations-owned handoff obligations without owning psycopg, DDL, locks,
+  leases, repositories, or mutable publication.
+
+control-plane-kit-core/tests/test_package_boundary.py
+  proves extracted core declares only core-language dependencies and has no
+  optional dependency extras or scripts.
+
+tests/test_architecture_test_integrity.py
+  keeps the architecture-test corpus honest by rejecting hidden tests, weakened
+  assertions, unjustified skips, and excessive mocking.
+
+tests/test_extraction_successor_mappings.py
+  keeps parity evidence honest by rejecting missing, duplicate, or incorrectly
+  completed successor mappings.
+```
+
+Reviewed boundary:
+
+```text
+secret values are never durable core graph data
+Postgres and UnitOfWork implementations remain non-core
+runtime retention and cleanup proofs remain future interpreter/runtime evidence
+no test-integrity weakening was accepted
+```
+
+Findings:
+
+```text
+no secret value leak was found in extracted core descriptors or proof artifacts
+no server/process dependency entered the extracted core package boundary
+no Postgres, Docker, HTTP client, FastAPI, MCP, or cloud SDK dependency entered core
+no retained-data cleanup claim was counted as migrated core behavior
+no assertion weakening, skip, xfail, hidden test, or frozen-implementation import
+was accepted as successor evidence
+```
+
+Supply-chain result:
+
+```text
+control-plane-kit-core currently depends only on Jinja2 and PyYAML. Those are
+used at pure configuration rendering and parser-backed configuration validation
+boundaries. They do not introduce process entrypoints, network clients, runtime
+interpreters, or optional server extras into core.
+```
+
+Handoff:
+
+```text
+#647 should package and prove the core wheel and evidence manifests against
+this review baseline. It must not add cpk-server Dockerfile, OCI image,
+descriptor, FastAPI app, hosted MCP server, Postgres store, Docker interpreter,
+or cloud runtime artifacts to extracted core.
+
+#804, #805, and #806 remain responsible for the executable process,
+operations/runtime, and interpreter/runtime security evidence that core now
+names only as handoff contracts.
+```
