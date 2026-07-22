@@ -1110,3 +1110,120 @@ all stores share the UnitOfWork connection
 The runtime question remains deliberately outside operations schema work:
 Docker, cloud, probe, filesystem, and HTTP effect interpreters belong to the
 later runtime/interpreter extraction track.
+
+## EXTRACT.OPERATIONS #838 Postgres UnitOfWork And Store Bundle
+
+Status: implemented on `codex/838-uow-store-bundle`.
+
+### Law Cards
+
+```text
+law: one application command owns one explicit Postgres transaction
+expected: PostgresUnitOfWork opens one connection, vends stores over that
+  connection, and commits only after explicit commit request plus clean exit
+negative: stores cannot commit or roll back independently
+owner: control-plane-kit-operations
+```
+
+```text
+law: failed or abandoned command work rolls back completely
+expected: uncommitted exit, exceptional exit, exception after commit request,
+  and physical commit failure all roll back and close
+negative: a partial workspace write cannot escape a failed command
+owner: control-plane-kit-operations
+```
+
+```text
+law: UnitOfWork lifecycle is closed
+expected: stores are available only inside an active unfinished UnitOfWork;
+  repeated commit requests and late rollback fail closed
+negative: finished UnitOfWork cannot vend stores for late writes
+owner: control-plane-kit-operations
+```
+
+### Dry Run
+
+Frozen lookover:
+
+```text
+control_plane_kit/stores/unit_of_work.py
+control_plane_kit/stores/protocols.py
+control_plane_kit/stores/postgres.py PostgresStoreBundle
+tests/test_unit_of_work.py
+tests/postgres_case.py
+```
+
+Finding: the frozen UnitOfWork lifecycle can be ported directly, but the frozen
+domain stores should not move in #838. The extracted bundle is intentionally
+minimal so #832/#839 can add RegisteredProduct and workspace/graph stores
+without #838 preempting their ownership.
+
+### Target-Red Evidence
+
+Added `control-plane-kit-operations/tests/test_unit_of_work.py` before
+implementation. The focused run failed for the intended missing module:
+
+```text
+ModuleNotFoundError:
+  No module named 'control_plane_kit_operations.postgres.unit_of_work'
+```
+
+### Implementation
+
+Added:
+
+```text
+control_plane_kit_operations.postgres.stores.PostgresStoreBundle
+control_plane_kit_operations.postgres.unit_of_work.PostgresUnitOfWork
+control_plane_kit_operations.postgres.unit_of_work.UnitOfWorkStateError
+```
+
+The bundle currently exposes only the shared connection:
+
+```python
+@dataclass(frozen=True)
+class PostgresStoreBundle:
+    connection: PostgresConnection
+```
+
+This is a temporary but deliberate #838 shape: it proves connection sharing and
+transaction ownership without pretending the RegisteredProduct or graph stores
+already exist.
+
+### Validation
+
+Focused operations package validation:
+
+```text
+./control-plane-kit-operations/test.sh
+  16 tests passed
+  compileall passed
+  installed import smoke passed
+```
+
+Full root validation is required before the #838 PR.
+
+Full root validation:
+
+```text
+./test.sh
+  extracted core validation passed
+  operations package validation passed
+  packaging smoke passed
+  1219 root Docker/Postgres tests passed
+```
+
+### Handoff
+
+#832 is next in the corrected topology. It should add durable RegisteredProduct
+admission/store behavior on top of the #837 schema and #838 UnitOfWork. Keep
+the same data-engineering law:
+
+```text
+application command service owns commit/rollback
+RegisteredProductStore writes through the UnitOfWork connection
+product descriptor admission is durable authority, not core language truth
+```
+
+Do not add workspace/graph stores before #839 and do not introduce runtime
+interpreters.
