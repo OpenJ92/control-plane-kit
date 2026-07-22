@@ -20,7 +20,14 @@ class OperationsPackageBoundaryTests(unittest.TestCase):
 
         project = metadata["project"]
         self.assertEqual(project["name"], "control-plane-kit-operations")
-        self.assertEqual(project["dependencies"], ["control-plane-kit-core>=0.1.0"])
+        self.assertEqual(
+            project["dependencies"],
+            [
+                "control-plane-kit-core>=0.1.0",
+                "Jinja2>=3.1",
+                "psycopg[binary]>=3.2",
+            ],
+        )
         self.assertNotIn("optional-dependencies", project)
         self.assertNotIn("scripts", project)
 

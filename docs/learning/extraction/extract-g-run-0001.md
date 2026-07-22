@@ -975,3 +975,138 @@ Full root validation is required before the #836 PR.
 frozen explicit-SQL/Jinja2 precedent. Keep schema installation caller
 transactional, idempotent, and non-destructive. Do not introduce stores beyond
 what the schema installer needs to prove migration/install policy.
+
+## EXTRACT.OPERATIONS #837 Postgres Schema Foundation
+
+Status: implemented on `codex/837-postgres-schema-foundation`.
+
+### Law Cards
+
+```text
+law: operations schema installation is caller-transactional
+expected: install_schema(connection) executes on the supplied connection and
+  does not commit
+negative: rolling back the caller transaction leaves no created operations
+  tables behind
+owner: control-plane-kit-operations
+```
+
+```text
+law: repeated schema installation is idempotent and non-destructive
+expected: re-running install_schema preserves existing rows and constraint
+  identities
+negative: no unconditional DROP TABLE, DROP CONSTRAINT, TRUNCATE, or constraint
+  replacement is accepted
+owner: control-plane-kit-operations
+```
+
+```text
+law: durable status and event columns fail closed
+expected: workspace lifecycle, execution request status, activity run status,
+  activity event kind, and activity event payload shape are constrained by the
+  current closed language
+negative: unknown strings, activity events without activity_id, run events with
+  activity_id, and malformed recovery payloads are rejected by Postgres
+owner: control-plane-kit-operations
+```
+
+### Dry Run
+
+Frozen lookover:
+
+```text
+control_plane_kit/stores/postgres.py
+control_plane_kit/stores/unit_of_work.py
+control_plane_kit/stores/records.py
+tests/test_execution_schema_migration.py
+tests/test_operation_postgres_primitives.py
+tests/postgres_case.py
+```
+
+Finding: the frozen schema contains valuable relational shape and constraints,
+but also some in-place compatibility repair from earlier unreleased roadmap
+work. The extracted operations package should use the current schema language
+directly, not preserve old compatibility machinery. Stores and UnitOfWork remain
+out of scope until #838 and later.
+
+### Target-Red Evidence
+
+Added `control-plane-kit-operations/tests/test_postgres_schema.py` before
+implementation. The package harness failed for the expected reason:
+
+```text
+ModuleNotFoundError: No module named 'psycopg'
+```
+
+That red proved the missing behavior was a real Postgres schema/dependency
+boundary, not broken collection or a hidden frozen import.
+
+### Implementation
+
+Added a package-local Postgres schema module:
+
+```python
+from control_plane_kit_core.operations.lifecycle import ActivityEventKind
+from control_plane_kit_core.types import WorkspaceLifecycle
+
+POSTGRES_SCHEMA = _SQL_ENVIRONMENT.from_string(_POSTGRES_SCHEMA_TEMPLATE).render(
+    activity_event_kinds=tuple(ActivityEventKind),
+    workspace_lifecycles=tuple(WorkspaceLifecycle),
+)
+
+def install_schema(connection: PostgresConnection) -> None:
+    connection.execute(POSTGRES_SCHEMA)
+```
+
+The schema is rendered with strict Jinja2 from closed Python enum values where
+core owns the vocabulary. Operations-local closed lists remain private to the
+schema module until the corresponding record/service issue extracts them.
+
+Tables introduced:
+
+```text
+cpk_workspaces
+cpk_graph_versions
+cpk_registered_products
+cpk_operation_sessions
+cpk_operation_actions
+cpk_activity_plans
+cpk_approval_requests
+cpk_approval_decisions
+cpk_execution_requests
+cpk_activity_runs
+cpk_activity_events
+```
+
+`control-plane-kit-operations/test.sh` now starts its own disposable
+`postgres:16-alpine` container and runs the operations package tests against
+that database. This keeps the extracted package self-validating rather than
+borrowing the frozen root harness.
+
+### Validation
+
+Focused operations package validation:
+
+```text
+./control-plane-kit-operations/test.sh
+  8 tests passed
+  compileall passed
+  installed import smoke passed
+```
+
+Full root validation is required before the #837 PR.
+
+### Handoff
+
+#838 is next. It should introduce the UnitOfWork and store-bundle boundary on
+top of this schema. It should not add command-service behavior yet. Preserve:
+
+```text
+one operator command = one explicit Postgres transaction
+stores never commit independently
+all stores share the UnitOfWork connection
+```
+
+The runtime question remains deliberately outside operations schema work:
+Docker, cloud, probe, filesystem, and HTTP effect interpreters belong to the
+later runtime/interpreter extraction track.

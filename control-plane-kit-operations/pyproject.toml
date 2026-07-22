@@ -20,7 +20,9 @@ classifiers = [
   "Topic :: System :: Systems Administration",
 ]
 dependencies = [
-  "control-plane-kit-core>=0.1.0",
+    "control-plane-kit-core>=0.1.0",
+    "Jinja2>=3.1",
+    "psycopg[binary]>=3.2",
 ]
 
 [project.urls]
