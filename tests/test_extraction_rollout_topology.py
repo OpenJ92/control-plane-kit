@@ -41,6 +41,26 @@ class ExtractionRolloutTopologyTests(unittest.TestCase):
         self.assertNotIn("#599 -> #643-#648", rollout)
         self.assertIn("#599 -> #725 plus #643-#648", rollout)
 
+    def test_extract_e_architecture_review_records_guards_and_future_handoffs(self) -> None:
+        learning = EXTRACT_E_LEARNING.read_text(encoding="utf-8")
+
+        self.assertIn("## #645 Architecture, Packaging, Import, And Public-Language Review", learning)
+        for guard in (
+            "tests/test_package_topology.py",
+            "tests/test_package_inventory.py",
+            "tests/test_root_api.py",
+            "control-plane-kit-core/tests/test_package_boundary.py",
+        ):
+            with self.subTest(guard=guard):
+                self.assertIn(guard, learning)
+
+        self.assertIn("core contains handoff contracts, not process entrypoints", learning)
+        self.assertIn("cpk-server remains a future server product/process wrapper", learning)
+        self.assertIn("Docker/cloud/runtime interpreters remain future interpreter/runtime package work", learning)
+        for issue in ("#804", "#805", "#806"):
+            with self.subTest(issue=issue):
+                self.assertIn(issue, learning)
+
 
 if __name__ == "__main__":
     unittest.main()

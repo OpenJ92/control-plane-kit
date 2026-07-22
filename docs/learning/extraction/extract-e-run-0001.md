@@ -3465,3 +3465,74 @@ Handoff:
 It should not reopen migration ownership unless an architecture guard proves a
 real leak.
 ```
+
+## #645 Architecture, Packaging, Import, And Public-Language Review
+
+#645 reviewed the extracted core architecture after required-core closeout and
+#644 public-interface parity. No new package model was introduced. The review
+confirmed that the existing guards are the correct release-candidate evidence
+for package DAG, import surface, public exports, and public-language boundaries.
+
+Review evidence:
+
+```text
+tests/test_package_topology.py
+  proves package DAG acyclicity, root export provenance, optional dependency
+  ownership, domain/product/interpreter/entrypoint direction, and product to
+  process path rejection.
+
+tests/test_package_inventory.py
+  proves module inventory is exhaustive, every current module has one owner,
+  core is the effect-free pipeline floor, and current server modules retain a
+  uniform product exterior while awaiting extraction.
+
+tests/test_root_api.py
+  proves the current root facade imports only pure package surfaces and does
+  not eagerly import optional FastAPI, HTTPX, psycopg, or uvicorn dependencies.
+
+control-plane-kit-core/tests/test_package_boundary.py
+  proves the extracted core wheel has only core-language dependencies, has no
+  optional dependency extras or scripts, and does not name package-owned server
+  products.
+```
+
+Reviewed boundary:
+
+```text
+core contains handoff contracts, not process entrypoints
+cpk-server remains a future server product/process wrapper
+Docker/cloud/runtime interpreters remain future interpreter/runtime package work
+```
+
+The live topology route remains:
+
+```text
+#804
+  EXTRACT.F consumes cpk-server control-process handoff laws.
+
+#805
+  EXTRACT.G consumes operations/runtime acceptance handoff laws.
+
+#806
+  future interpreter/runtime extraction consumes Docker/probe/control HTTP and
+  cloud-runtime-shaped interpreter laws.
+```
+
+Findings:
+
+```text
+no package cycle found
+no optional/server/runtime dependency enters extracted core import
+no cpk-server Dockerfile, image, hosted FastAPI process, or MCP server enters core
+no server product identity is reusable core language
+no required-core law was reopened
+remaining incomplete foundation laws are still non-core obligations
+```
+
+Handoff:
+
+```text
+#646 should perform the security, data, supply-chain, and test-integrity review
+against this architecture baseline. Treat runtime retention/destructive behavior
+as future runtime/operations evidence unless a core artifact leak is found.
+```
