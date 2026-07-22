@@ -7,6 +7,7 @@ from typing import Any
 from psycopg.types.json import Jsonb
 
 from control_plane_kit_core.operations.commands import OperatorCommandKind
+from control_plane_kit_core.operations.lifecycle import LifecycleOperationKind
 from control_plane_kit_core.planning import DEFAULT_ACTIVITY_PLAN_CODEC
 from control_plane_kit_core.planning import RiskLevel
 from control_plane_kit_core.policies import PolicyScope
@@ -399,7 +400,7 @@ def _action_record(row: tuple[Any, ...]) -> OperationActionRecord:
         action_id=row[0],
         session_id=row[1],
         ordinal=row[2],
-        action_type=OperatorCommandKind(row[3]),
+        action_type=_action_kind(row[3]),
         actor_id=row[4],
         payload=row[5],
         created_at=row[6],
@@ -448,3 +449,10 @@ def _approval_decision_record(row: tuple[Any, ...]) -> ApprovalDecisionRecord:
         idempotency_key=row[7],
         intent_fingerprint=row[8],
     )
+
+
+def _action_kind(value: str) -> OperatorCommandKind | LifecycleOperationKind:
+    try:
+        return OperatorCommandKind(value)
+    except ValueError:
+        return LifecycleOperationKind(value)

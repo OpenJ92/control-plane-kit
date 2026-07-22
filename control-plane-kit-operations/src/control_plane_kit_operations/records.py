@@ -7,6 +7,10 @@ from enum import StrEnum
 from typing import Mapping
 
 from control_plane_kit_core.operations.commands import OperatorCommandKind
+from control_plane_kit_core.operations.lifecycle import (
+    ExecutionRequestStatus,
+    LifecycleOperationKind,
+)
 from control_plane_kit_core.planning import ActivityPlan
 from control_plane_kit_core.planning import RiskLevel
 from control_plane_kit_core.policies import PolicyScope
@@ -157,7 +161,7 @@ class OperationActionRecord:
     action_id: str
     session_id: str
     ordinal: int
-    action_type: OperatorCommandKind
+    action_type: OperatorCommandKind | LifecycleOperationKind
     actor_id: str
     payload: Mapping[str, object] = field(default_factory=dict)
     created_at: str = ""
@@ -169,9 +173,9 @@ class OperationActionRecord:
         _validate_text(self.session_id, "session_id")
         if type(self.ordinal) is not int or self.ordinal < 1:
             raise OperationsRecordError("operation action ordinal must be positive")
-        if not isinstance(self.action_type, OperatorCommandKind):
+        if not isinstance(self.action_type, (OperatorCommandKind, LifecycleOperationKind)):
             raise OperationsRecordError(
-                "operation action type must be OperatorCommandKind"
+                "operation action type must be a closed command or lifecycle kind"
             )
         _validate_text(self.actor_id, "actor_id")
         if not isinstance(self.payload, Mapping):
@@ -264,6 +268,85 @@ class ApprovalDecisionRecord:
         _validate_optional_text(self.comment, "comment")
         _validate_optional_text(self.idempotency_key, "idempotency_key")
         _validate_optional_text(self.intent_fingerprint, "intent_fingerprint")
+
+
+@dataclass(frozen=True)
+class ExecutionIdempotency:
+    """Scoped retry identity plus conflict fingerprint for execution admission."""
+
+    key: str
+    intent_fingerprint: str
+
+    def __post_init__(self) -> None:
+        _validate_text(self.key, "execution idempotency key")
+        _validate_text(self.intent_fingerprint, "execution intent_fingerprint")
+
+
+@dataclass(frozen=True)
+class ClaimIdentity:
+    """Worker ownership and bounded lease evidence for a claimed request."""
+
+    worker_id: str
+    claimed_at: str
+    lease_expires_at: str
+
+    def __post_init__(self) -> None:
+        _validate_text(self.worker_id, "worker_id")
+        _validate_text(self.claimed_at, "claimed_at")
+        _validate_text(self.lease_expires_at, "lease_expires_at")
+
+
+@dataclass(frozen=True)
+class ExecutionRequestIdentity:
+    """Stable ownership coordinates for one execution request."""
+
+    request_id: str
+    workspace_id: str
+    session_id: str
+    plan_id: str
+
+    def __post_init__(self) -> None:
+        _validate_text(self.request_id, "request_id")
+        _validate_text(self.workspace_id, "workspace_id")
+        _validate_text(self.session_id, "session_id")
+        _validate_text(self.plan_id, "plan_id")
+
+
+@dataclass(frozen=True)
+class ExecutionRequestRecord:
+    """Durable admitted intent to execute one approved canonical plan."""
+
+    identity: ExecutionRequestIdentity
+    status: ExecutionRequestStatus
+    requested_by: str
+    requested_at: str
+    approval_request_id: str
+    approval_decision_id: str
+    idempotency: ExecutionIdempotency
+    claim: ClaimIdentity | None = None
+
+    def __post_init__(self) -> None:
+        if not isinstance(self.identity, ExecutionRequestIdentity):
+            raise OperationsRecordError("execution request identity must be typed")
+        if not isinstance(self.status, ExecutionRequestStatus):
+            raise OperationsRecordError(
+                "execution request status must be ExecutionRequestStatus"
+            )
+        _validate_text(self.requested_by, "requested_by")
+        _validate_text(self.requested_at, "requested_at")
+        _validate_text(self.approval_request_id, "approval_request_id")
+        _validate_text(self.approval_decision_id, "approval_decision_id")
+        if not isinstance(self.idempotency, ExecutionIdempotency):
+            raise OperationsRecordError("execution request idempotency must be typed")
+        if self.status is ExecutionRequestStatus.CLAIMED:
+            if not isinstance(self.claim, ClaimIdentity):
+                raise OperationsRecordError(
+                    "claimed execution request requires claim identity"
+                )
+        elif self.claim is not None:
+            raise OperationsRecordError(
+                "only a claimed execution request may carry a claim"
+            )
 
 
 def _validate_text(value: str, field: str) -> None:

@@ -13,6 +13,7 @@ from control_plane_kit_core.operations.lifecycle import (
     ActivityEventScope,
     ActivityRunStatus,
     ExecutionRequestStatus,
+    LifecycleOperationKind,
     activity_event_scope,
 )
 from control_plane_kit_core.planning import RiskLevel
@@ -159,7 +160,7 @@ CREATE TABLE IF NOT EXISTS cpk_operation_actions (
   intent_fingerprint text,
   CONSTRAINT cpk_operation_actions_ordinal_check CHECK (ordinal > 0),
   CONSTRAINT cpk_operation_actions_type_check
-    CHECK (action_type IN ({{ operator_command_kinds | sql_values }})),
+    CHECK (action_type IN ({{ operation_action_kinds | sql_values }})),
   UNIQUE (session_id, ordinal)
 );
 
@@ -364,6 +365,7 @@ POSTGRES_SCHEMA = _SQL_ENVIRONMENT.from_string(_POSTGRES_SCHEMA_TEMPLATE).render
     activity_run_statuses=tuple(ActivityRunStatus),
     approval_decision_kinds=tuple(_ApprovalDecisionKind),
     execution_request_statuses=tuple(ExecutionRequestStatus),
+    operation_action_kinds=tuple(OperatorCommandKind) + tuple(LifecycleOperationKind),
     operation_session_statuses=tuple(_OperationsSessionStatus),
     operator_command_kinds=tuple(OperatorCommandKind),
     policy_scopes=tuple(PolicyScope),

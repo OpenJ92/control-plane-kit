@@ -7,6 +7,7 @@ from dataclasses import dataclass, field
 from control_plane_kit_operations.postgres.activity_history import (
     PostgresActivityHistoryStore,
 )
+from control_plane_kit_operations.postgres.execution import PostgresExecutionStore
 from control_plane_kit_operations.postgres.graph_store import (
     PostgresGraphTopologyStore,
     PostgresWorkspaceStore,
@@ -29,6 +30,7 @@ class PostgresStoreBundle:
     graphs: PostgresGraphTopologyStore = field(init=False)
     registered_products: RegisteredProductStore = field(init=False)
     activity_history: PostgresActivityHistoryStore = field(init=False)
+    execution: PostgresExecutionStore = field(init=False)
 
     def __post_init__(self) -> None:
         object.__setattr__(
@@ -50,4 +52,9 @@ class PostgresStoreBundle:
             self,
             "activity_history",
             PostgresActivityHistoryStore(self.connection),
+        )
+        object.__setattr__(
+            self,
+            "execution",
+            PostgresExecutionStore(self.connection),
         )

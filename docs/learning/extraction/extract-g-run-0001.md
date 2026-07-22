@@ -2120,3 +2120,145 @@ and approved decision. It must reject stale plan/graph truth, rejected decisions
 missing authority, and cross-session or cross-workspace approval evidence. It
 should not create another approval store, queue, mutable plan flag, or route
 layer.
+
+## #844 Execution Admission
+
+### Frozen Lookover
+
+Inspected:
+
+```text
+tests/test_execution_admission.py
+tests/test_run_lifecycle.py
+tests/test_execution_concurrency.py
+control_plane_kit/execution/values.py
+control_plane_kit/workflows/run_lifecycle.py
+control_plane_kit/stores/postgres.py
+```
+
+The dry run found that the original #844 issue contained two separable
+surfaces:
+
+```text
+execution admission
+  approved ActivityPlan -> durable execution request
+
+run lifecycle
+  execution request -> claim/open run -> lifecycle events/transitions
+```
+
+Admission is now #844. Run lifecycle moved to #862 and must complete before
+#845 coordinator work.
+
+### Law Cards
+
+```text
+execution-admission.approved-current-plan.admitted-atomically
+execution-admission.no-effect-dependency
+execution-admission.exact-idempotency-replay
+execution-admission.changed-intent-conflict
+execution-admission.concurrent-identical-request.one-winner
+execution-admission.late-action-failure.rolls-back-request
+execution-admission.requires-plan-execute-scope
+execution-admission.rejected-approval-denied
+execution-admission.empty-plan-not-executable
+execution-admission.forged-approval-risk-denied
+execution-admission.foreign-workspace-denied
+execution-admission.stale-graph-pointers-denied
+execution-admission.review-blocker-denied
+execution-admission.database-cutover.requires-reference-evidence
+execution-admission.readiness-evidence.reference-only
+execution-admission.sql.lifecycle-action-kind-closed
+```
+
+### Implementation Shape
+
+Added:
+
+```text
+PolicyScope.PLAN_EXECUTE
+ExecutionIdempotency
+ExecutionRequestIdentity
+ExecutionRequestRecord
+ClaimIdentity
+PostgresExecutionStore
+RequestPlanExecution
+ExternalReadinessAttestation
+ExecutionAdmissionCommandService
+ExecutionAdmissionResult
+```
+
+The command path is:
+
+```text
+RequestPlanExecution
+  -> open PostgresUnitOfWork
+  -> lock execution admission idempotency
+  -> load workspace/session/plan/approval truth
+  -> require PolicyScope.PLAN_EXECUTE
+  -> require matching approved approval decision
+  -> require current workspace graph pointers still match the plan
+  -> require reference-only external readiness for database endpoint cutovers
+  -> persist ExecutionRequestRecord(QUEUED)
+  -> persist OperationActionRecord(ADMIT_EXECUTION)
+  -> one commit
+```
+
+The old frozen `OperationActionKind.EXECUTION_REQUESTED` did not move into
+extracted core. Core already owns the lifecycle operation language, so operation
+actions now accept the closed union:
+
+```python
+OperatorCommandKind | LifecycleOperationKind
+```
+
+and Postgres enforces the same closed union for `cpk_operation_actions`.
+
+### Data-Engineering Notes
+
+Execution admission uses a scoped advisory transaction lock before the execution
+request row exists:
+
+```text
+execution-admission:{workspace_id}:{idempotency_key}
+```
+
+That gives identical concurrent submissions deterministic replay instead of a
+race into the unique index. The durable request insert and operation-action
+insert live in one `PostgresUnitOfWork`; a late action failure rolls back the
+request.
+
+External readiness evidence is intentionally reference-only:
+
+```text
+ExternalReadinessAttestation(activity_id, evidence_ref)
+```
+
+URLs, bearer values, and unbounded strings fail at the command boundary. The
+payload records only bounded references such as
+`migration-check/2026-07-22/a`.
+
+### Focused Validation
+
+```text
+./control-plane-kit-operations/test.sh
+  70 tests passed
+  compileall passed
+  installed import smoke passed
+```
+
+### Handoff
+
+#862 must implement the lifecycle half split out of #844:
+
+```text
+ExecutionRequestRecord(QUEUED)
+  -> one-winner claim
+  -> ActivityRunRecord
+  -> ActivityEventRecord
+  -> worker-owned lifecycle transitions
+```
+
+#862 should reuse the frozen relational shape for claim/open, events, and
+write-once settlement unless the extracted package boundary requires a
+documented difference. #845 must wait for #862.

@@ -150,6 +150,25 @@ class PostgresSchemaFoundationTests(unittest.TestCase):
                         'approved', 'plan:invented', 'approval-at')
                 """
             )
+        with self.assertRaises(CheckViolation):
+            self.connection.execute(
+                """
+                INSERT INTO cpk_operation_actions
+                  (action_id, session_id, ordinal, action_type, actor_id,
+                   created_at)
+                VALUES ('bad-action-type', 'session-a', 1, 'invented',
+                        'operator', 'action-at')
+                """
+            )
+        self.connection.execute(
+            """
+            INSERT INTO cpk_operation_actions
+              (action_id, session_id, ordinal, action_type, actor_id,
+               created_at)
+            VALUES ('admit-action', 'session-a', 1, 'admit-execution',
+                    'operator', 'action-at')
+            """
+        )
 
     def test_schema_text_contains_no_unconditional_destructive_constraint_ddl(self) -> None:
         normalized = " ".join(POSTGRES_SCHEMA.lower().split())
