@@ -626,3 +626,106 @@ Mandatory stop:
 ```text
 Do not begin #831, #832, #821, #819, #676, or #806 from EXTRACT.G.
 ```
+
+## EXTRACT.OPERATIONS #831 ProductReference
+
+Status: implemented on `codex/831-product-reference-language`.
+
+### Law Cards
+
+Frozen reference:
+
+```text
+tests/test_package_server_catalog.py
+control_plane_kit/products/servers/catalog.py
+```
+
+Surviving law:
+
+```text
+product identity + executable descriptor evidence
+  -> deterministic graph/planning reference
+```
+
+Discarded structural assumptions:
+
+- package-owned server enum as the product universe;
+- root imports of product server modules;
+- catalogue lookup by importing Python product code;
+- product-specific names inside core.
+
+Current extracted expression:
+
+```python
+ProductReference(
+    identity=ProductIdentity("cpk-servers", "hello-server", 1),
+    descriptor_sha256=ProductDescriptorDigest("...64 hex characters..."),
+)
+```
+
+`ProductDescriptorDigest` uses the raw SHA-256 hex already produced by
+`ProductDescriptorDocument.content_digest`. This intentionally differs from OCI
+image digests, which remain `sha256:<hex>` image references.
+
+### Boundary Decision
+
+Core now owns only the pure reference:
+
+```text
+ProductDescriptorDocument
+  -> ProductReference
+```
+
+Operations will own durable admission:
+
+```text
+ProductReference
+  + workspace_id
+  + descriptor_document
+  + source_evidence
+  + imported_by/imported_at
+  + trust/replacement policy
+  -> RegisteredProduct
+```
+
+No acquisition path is part of `ProductReference`. URL, upload, and remote
+catalogue details remain future operations source evidence.
+
+### Evidence
+
+Focused target-red evidence:
+
+```text
+./control-plane-kit-core/test.sh control-plane-kit-core/tests/test_product_reference.py
+
+ImportError: cannot import name 'ProductDescriptorDigest'
+```
+
+Focused green evidence after implementation:
+
+```text
+./control-plane-kit-core/test.sh \
+  control-plane-kit-core/tests/test_product_reference.py \
+  control-plane-kit-core/tests/test_product_catalog.py \
+  control-plane-kit-core/tests/test_product_descriptor.py \
+  control-plane-kit-core/tests/test_external_product_fixture.py
+
+379 tests passed; compileall passed; import check passed.
+```
+
+Broader validation:
+
+```text
+git diff --check
+./control-plane-kit-core/test.sh
+./test.sh
+
+Full repository suite: 1214 tests passed.
+```
+
+### Handoff To #832
+
+#832 should persist `RegisteredProduct` in operations, not core. It should use
+`ProductReference` as the pure pinned identity of admitted descriptor truth and
+add workspace ownership, source evidence, importer identity, timestamps, trust
+policy, and replacement/revocation behavior under Postgres UnitOfWork control.
