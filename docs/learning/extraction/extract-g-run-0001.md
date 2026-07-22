@@ -1387,3 +1387,138 @@ git diff --check
 Graph authoring should resolve product references against active
 RegisteredProduct rows in the same workspace. It should not use mutable remote
 URLs or OCI image references as product contract truth.
+
+## EXTRACT.OPERATIONS #839 Workspace And Graph Stores
+
+Status: in progress on `codex/839-workspace-graph-stores`.
+
+### Law Cards
+
+```text
+law: workspace truth owns graph pointers
+expected: WorkspaceRecord stores lifecycle, current_graph_id, desired_graph_id,
+  and metadata in cpk_workspaces
+negative: observed state and product registration do not rewrite workspace
+  graph pointers
+owner: control-plane-kit-operations
+```
+
+```text
+law: graph versions are immutable workspace-scoped descriptor values
+expected: GraphVersionRecord persists extracted-core GraphDescriptorCodec
+  mappings and reconstructs typed graph identity through the same codec
+negative: graph persistence must not erase external product/block identity
+owner: control-plane-kit-operations
+```
+
+```text
+law: current graph advancement primitive is compare-and-set
+expected: compare_and_set_current_graph changes the pointer only when the
+  caller's expected graph id is current
+negative: stale pointer writes return None without last-write-wins behavior
+owner: control-plane-kit-operations
+```
+
+```text
+law: workspace and graph writes share one UnitOfWork connection
+expected: uncommitted workspace plus graph writes roll back together
+negative: neither store commits independently
+owner: control-plane-kit-operations
+```
+
+### Frozen Lookover
+
+Reviewed:
+
+```text
+control_plane_kit/stores/records.py
+control_plane_kit/stores/protocols.py
+control_plane_kit/stores/postgres.py
+tests/test_stores.py
+tests/test_current_graph_advancement.py
+tests/test_desired_graph_command_service.py
+```
+
+Finding: the frozen workspace/graph store shape ports cleanly into operations:
+
+```text
+WorkspaceStore
+GraphTopologyStore
+```
+
+#839 should not port desired-graph command services or current-graph
+advancement services. Those stay in later command-service issues.
+
+### Target-Red Evidence
+
+The first focused run failed on the intended missing records module:
+
+```text
+ModuleNotFoundError:
+  No module named 'control_plane_kit_operations.records'
+```
+
+### Placement Finding
+
+Core product instantiation currently materializes graph nodes from
+`ProductDescriptorDocument`/catalogue values. The #832 registered-product
+resolution law belongs to #840:
+
+```text
+desired graph authoring
+  -> ProductReference
+    -> active RegisteredProduct in same workspace
+      -> graph version save / planning
+```
+
+#839 therefore stores and reconstructs graph descriptors without importing
+server packages or adding graph-authoring policy.
+
+### Implementation Shape
+
+Added:
+
+```text
+WorkspaceRecord
+GraphVersionRecord
+PostgresWorkspaceStore
+PostgresGraphTopologyStore
+PostgresUnitOfWork.stores.workspaces
+PostgresUnitOfWork.stores.graphs
+```
+
+Focused validation:
+
+```text
+./control-plane-kit-operations/test.sh
+  26 tests passed
+  compileall passed
+  installed import smoke passed
+```
+
+Full validation:
+
+```text
+git diff --check
+./test.sh
+  extracted core validation passed
+  operations package validation passed
+  packaging smoke passed
+  1219 root Docker/Postgres tests passed
+```
+
+### Handoff
+
+#840 should integrate RegisteredProduct with graph authoring/planning. It should
+build on #839's graph persistence rather than embedding product descriptors
+directly in a new command model. The command-level law should be:
+
+```text
+operator desired graph input
+  -> resolve ProductReference against active RegisteredProduct rows
+    -> save GraphVersionRecord
+      -> set desired/current pointer through WorkspaceStore
+```
+
+Do not let unresolved product identities, mutable catalogue URLs, or OCI image
+references bypass the registered-product admission boundary.

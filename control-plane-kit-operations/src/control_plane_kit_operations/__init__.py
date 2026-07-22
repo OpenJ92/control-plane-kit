@@ -21,6 +21,11 @@ from .products import (
     RegisteredProductStatus,
     RemoteDescriptorSource,
 )
+from .records import (
+    GraphVersionRecord,
+    OperationsRecordError,
+    WorkspaceRecord,
+)
 
 __version__ = "0.1.0"
 
@@ -28,10 +33,12 @@ __all__ = [
     "DeploymentProgramStage",
     "CatalogueDescriptorSource",
     "DescriptorSourceCodec",
+    "GraphVersionRecord",
     "ImportProductDescriptorCommand",
     "InlineDescriptorSource",
     "OPERATIONS_PACKAGE_BOUNDARY",
     "OperationsPackageBoundary",
+    "OperationsRecordError",
     "ProductRegistrationConflict",
     "ProductRegistrationError",
     "ProductRegistrationNotFound",
@@ -39,4 +46,5 @@ __all__ = [
     "RegisteredProduct",
     "RegisteredProductStatus",
     "RemoteDescriptorSource",
+    "WorkspaceRecord",
 ]
