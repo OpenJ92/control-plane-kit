@@ -61,6 +61,23 @@ class ExtractionRolloutTopologyTests(unittest.TestCase):
             with self.subTest(issue=issue):
                 self.assertIn(issue, learning)
 
+    def test_extract_e_security_data_supply_chain_review_records_core_evidence(self) -> None:
+        learning = EXTRACT_E_LEARNING.read_text(encoding="utf-8")
+
+        self.assertIn("## #646 Security, Data, Supply-Chain, And Test-Integrity Review", learning)
+        for proof in (
+            "extract-e-755-environment-secrets.json",
+            "extract-e-763-policy-decisions.json",
+            "extract-e-791-persistence-boundary-contract.json",
+        ):
+            with self.subTest(proof=proof):
+                self.assertIn(proof, learning)
+
+        self.assertIn("secret values are never durable core graph data", learning)
+        self.assertIn("Postgres and UnitOfWork implementations remain non-core", learning)
+        self.assertIn("runtime retention and cleanup proofs remain future interpreter/runtime evidence", learning)
+        self.assertIn("no test-integrity weakening was accepted", learning)
+
 
 if __name__ == "__main__":
     unittest.main()
