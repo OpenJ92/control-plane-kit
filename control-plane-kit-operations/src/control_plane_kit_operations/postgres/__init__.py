@@ -5,9 +5,21 @@ from control_plane_kit_operations.postgres.schema import (
     PostgresConnection,
     install_schema,
 )
+from control_plane_kit_operations.postgres.stores import PostgresStoreBundle
+from control_plane_kit_operations.postgres.unit_of_work import (
+    PostgresConnectionFactory,
+    PostgresUnitOfWork,
+    TransactionalPostgresConnection,
+    UnitOfWorkStateError,
+)
 
 __all__ = [
     "POSTGRES_SCHEMA",
     "PostgresConnection",
+    "PostgresConnectionFactory",
+    "PostgresStoreBundle",
+    "PostgresUnitOfWork",
+    "TransactionalPostgresConnection",
+    "UnitOfWorkStateError",
     "install_schema",
 ]
