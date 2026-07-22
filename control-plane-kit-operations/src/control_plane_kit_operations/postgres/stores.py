@@ -12,6 +12,9 @@ from control_plane_kit_operations.postgres.graph_store import (
     PostgresGraphTopologyStore,
     PostgresWorkspaceStore,
 )
+from control_plane_kit_operations.postgres.observed_state import (
+    PostgresObservedStateStore,
+)
 from control_plane_kit_operations.postgres.product_store import RegisteredProductStore
 from control_plane_kit_operations.postgres.schema import PostgresConnection
 
@@ -31,6 +34,7 @@ class PostgresStoreBundle:
     registered_products: RegisteredProductStore = field(init=False)
     activity_history: PostgresActivityHistoryStore = field(init=False)
     execution: PostgresExecutionStore = field(init=False)
+    observed_state: PostgresObservedStateStore = field(init=False)
 
     def __post_init__(self) -> None:
         object.__setattr__(
@@ -57,4 +61,9 @@ class PostgresStoreBundle:
             self,
             "execution",
             PostgresExecutionStore(self.connection),
+        )
+        object.__setattr__(
+            self,
+            "observed_state",
+            PostgresObservedStateStore(self.connection),
         )

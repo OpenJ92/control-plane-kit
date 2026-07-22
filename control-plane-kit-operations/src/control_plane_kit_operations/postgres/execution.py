@@ -247,6 +247,19 @@ class PostgresExecutionStore:
         ).fetchall()
         return tuple(_activity_run(row) for row in rows)
 
+    def runs_for_plan(self, plan_id: str) -> tuple[ActivityRunRecord, ...]:
+        rows = self._connection.execute(
+            """
+            SELECT run_id, plan_id, request_id, attempt, prior_run_id, status,
+                   created_at, started_at, settled_at, metadata
+            FROM cpk_activity_runs
+            WHERE plan_id = %s
+            ORDER BY created_at ASC, run_id ASC
+            """,
+            (plan_id,),
+        ).fetchall()
+        return tuple(_activity_run(row) for row in rows)
+
     def add_event(self, record: ActivityEventRecord) -> ActivityEventRecord:
         payload = {
             "activity_id": record.activity_id,

@@ -2527,3 +2527,160 @@ claimed + started run
 Real runtime effect materialization and dispatch remain outside this issue.
 Do not teach operations coordinator about Docker, HTTP, filesystem, cloud, or
 product-specific effects before the interpreter/runtime extraction handoff.
+
+## #846 Observations And Read Projections
+
+#846 ports the read side of operations without moving API, MCP, or runtime
+adapter behavior into the operations package. The frozen package provided the
+shape:
+
+```text
+workspace + graph stores
+  + activity history
+  + execution history
+  + observed state
+    -> redacted bounded read projections
+```
+
+The extracted operations package now has the same operations-side interpreter:
+
+```python
+service = InstanceReadService(
+    workspace_store=stores.workspaces,
+    graph_topology_store=stores.graphs,
+    activity_history_store=stores.activity_history,
+    execution_store=stores.execution,
+    observed_state_store=stores.observed_state,
+)
+```
+
+The service returns descriptor-shaped values for the core read-projection
+contract vocabulary:
+
+```text
+workspace
+current_graph / desired_graph
+operator_graph
+activity_timeline
+open_sessions
+session_detail
+plan_detail
+pending_approvals
+observed_state
+control_surface
+```
+
+API and MCP remain later wrappers over this service. They must not recreate
+their own projection logic in #847.
+
+### Observation Truth
+
+Operations now owns durable observation evidence:
+
+```python
+ObservationRecord(
+    observation_id="obs-new",
+    workspace_id="workspace-a",
+    subject_id="hello",
+    status=ObservationStatus.HEALTHY,
+    observed_at="2026-07-22T13:01:00Z",
+    evidence=BoundedEvidence.from_mapping({"message": "ok"}),
+    graph_id="graph-current",
+    probe_kind=ProbeKind.APPLICATION_HEALTH,
+    probe_outcome=ProbeOutcome.HEALTHY,
+    endpoint_context=EndpointContext.RUNTIME_PRIVATE,
+)
+```
+
+The Postgres table is append-only from the read-model perspective. "Latest
+observed state" is a deterministic query over immutable rows:
+
+```sql
+SELECT DISTINCT ON (subject_id) ...
+FROM cpk_observations
+WHERE workspace_id = %s
+ORDER BY subject_id ASC, observed_at DESC, observation_id DESC
+```
+
+Observed state does not rewrite desired graph truth or current graph pointers.
+Freshness is projected at read time:
+
+```text
+ObservationRecord x current_graph_id x as_of x freshness_policy
+  -> ProjectedObservation
+```
+
+Recorded stale rows, graph changes, malformed/future timestamps, and expiry all
+remain explicit stale reasons.
+
+### Data-Engineering Notes
+
+The schema installer remains caller-transactional and idempotent. The new
+`cpk_observations` constraints keep the durable vocabulary closed:
+
+```text
+ObservationStatus
+ObservationFreshness
+ProbeKind
+ProbeOutcome
+EndpointContext
+```
+
+Correlated probe observations require the graph id, probe kind, and probe
+outcome together. Process and readiness observations cannot claim an endpoint
+context.
+
+`PostgresObservedStateStore` is built from the same `PostgresStoreBundle`
+connection as the other stores:
+
+```text
+PostgresStoreBundle(connection).observed_state
+```
+
+No store commits. No read projection mutates graph truth. The only additional
+execution-store query is `runs_for_plan(plan_id)`, which is read-only and
+orders by `(created_at, run_id)`.
+
+### Redaction And Projection
+
+The extracted read service preserves the frozen redaction posture:
+
+```text
+secret/token/password/private_key/credential/api_key
+address/url/environment/env_assignments
+```
+
+Graph descriptors, action payloads, run metadata, event evidence, observation
+payloads, and failure details are redacted at the read boundary. The tests prove
+that secret-shaped node metadata and action payloads do not leak.
+
+Operator graph projection was adapted directly from typed decoded
+`DeploymentGraph` values. It remains a pure projection over graph truth; it does
+not query runtime state and does not infer health.
+
+### Focused Validation
+
+```text
+git diff --check
+./control-plane-kit-operations/test.sh
+  93 tests passed
+  compileall passed
+  installed import smoke passed
+./test.sh
+  1219 tests passed
+```
+
+### Handoff
+
+#847 can wire HTTP and MCP adapters to this service:
+
+```text
+HTTP/MCP request
+  -> construct UnitOfWork/store bundle
+    -> InstanceReadService
+      -> descriptor response
+```
+
+The adapter layer should translate auth, route arguments, status codes, and MCP
+content envelopes only. Projection meaning, redaction, pagination bounds, and
+workspace/read errors belong to the operations read service.
