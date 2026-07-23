@@ -51,6 +51,7 @@ from .coordinator import (
     ExecutionCoordinatorError,
     ExecutionCoordinatorNotFound,
     ExecutionCoordinatorResult,
+    RuntimeInterpreterDispatcher,
 )
 from .cpk_server import (
     CpkServerAdmissionService,
@@ -283,6 +284,7 @@ __all__ = [
     "ExecutionCoordinatorError",
     "ExecutionCoordinatorNotFound",
     "ExecutionCoordinatorResult",
+    "RuntimeInterpreterDispatcher",
     "ExecutionIdempotency",
     "ExecutionReadinessRequired",
     "ExecutionRequestIdentity",

@@ -1442,3 +1442,53 @@ by itself solve secret-file or configuration-artifact materialization. Those
 remain explicit interpreter laws for #904 and #905, where the implementation must
 prove bounded materialization without leaking secrets through descriptors,
 events, logs, labels, or process arguments.
+
+## #900 Runtime Interpreter Dispatcher
+
+#900 introduced the operations-owned dispatcher seam without importing Docker
+SDK behavior into operations or cpk-server:
+
+```text
+cpk-server
+  -> configured operations application
+    -> ExecutionCoordinator
+      -> RuntimeInterpreterDispatcher
+        -> DockerRuntimeInterpreter
+          -> Python Docker SDK
+```
+
+`RuntimeInterpreterDispatcher` is itself an `ActivityExecutionAdapter`, so the
+existing coordinator continues to own durable execution, worker authority,
+UnitOfWork boundaries, event recording, observations, and advancement evidence.
+The dispatcher only answers one pure question from pinned graph material:
+
+```text
+ActivityRealizationContext x Activity.operation -> RuntimeKind
+RuntimeKind x configured interpreters           -> ActivityExecutionOutcome
+```
+
+The graph source is operation-specific:
+
+```text
+start / reconcile / health work -> desired graph
+stop / remove work              -> base graph
+```
+
+This preserves graph-drift resistance. Runtime dispatch is derived from the same
+approved plan material the coordinator is executing, not from current mutable
+workspace truth. Missing runtime targets and unconfigured runtime kinds return
+explicit unsupported evidence instead of falling through to Docker or inventing
+a default.
+
+The focused proof lives in:
+
+```text
+control-plane-kit-operations/tests/test_runtime_interpreter_dispatcher.py
+```
+
+It proves desired-graph dispatch for start work, base-graph dispatch for removal
+work, runtime-record dispatch, explicit missing-interpreter evidence, and
+explicit unsupported evidence for operations that are not runtime interpreter
+work. #901 can now stabilize the existing local Docker realization adapter
+against this seam before concrete Docker SDK behavior moves into the
+`control-plane-kit-interpreters` package.
