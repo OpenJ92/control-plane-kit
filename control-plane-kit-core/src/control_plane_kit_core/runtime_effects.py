@@ -11,6 +11,10 @@ from dataclasses import dataclass, field
 from enum import StrEnum
 from typing import Mapping
 
+from control_plane_kit_core.environment import (
+    SocketDerivedEnvironmentBinding,
+    environment_binding_from_descriptor,
+)
 from control_plane_kit_core.operations.execution import EffectResultKind
 from control_plane_kit_core.planning import ActivityId, ActivityOperation
 from control_plane_kit_core.planning.codec import activity_operation_descriptor
@@ -97,6 +101,7 @@ class RuntimeProductMaterial:
     runtime_id: str
     reference: ProductReference
     product: ContainerServerProduct
+    socket_environment: tuple[SocketDerivedEnvironmentBinding, ...] = ()
 
     def __post_init__(self) -> None:
         _required_text(self.node_id, "node_id")
@@ -107,6 +112,20 @@ class RuntimeProductMaterial:
             raise RuntimeEffectContractError("product must be ContainerServerProduct")
         if self.reference.identity != self.product.identity:
             raise RuntimeEffectContractError("product material identity mismatch")
+        socket_environment = tuple(sorted(self.socket_environment))
+        if not all(
+            isinstance(value, SocketDerivedEnvironmentBinding)
+            for value in socket_environment
+        ):
+            raise RuntimeEffectContractError(
+                "runtime product socket environment must use socket-derived bindings"
+            )
+        names = tuple(value.name for value in socket_environment)
+        if len(set(names)) != len(names):
+            raise RuntimeEffectContractError(
+                "runtime product socket environment names must be unique"
+            )
+        object.__setattr__(self, "socket_environment", socket_environment)
 
     def descriptor(self) -> dict[str, object]:
         return {
@@ -114,6 +133,9 @@ class RuntimeProductMaterial:
             "runtime_id": self.runtime_id,
             "reference": ProductReferenceCodec().encode(self.reference),
             "product": ContainerServerProductCodec().encode(self.product),
+            "socket_environment": [
+                value.descriptor() for value in self.socket_environment
+            ],
         }
 
     @classmethod
@@ -127,6 +149,10 @@ class RuntimeProductMaterial:
             ),
             product=ContainerServerProductCodec().decode(
                 _mapping(value, "product", "runtime product material")
+            ),
+            socket_environment=_socket_environment(
+                value.get("socket_environment"),
+                "runtime product material",
             ),
         )
 
@@ -308,7 +334,9 @@ _SOURCE_KEYS = frozenset(
         "intent_event_id",
     }
 )
-_PRODUCT_MATERIAL_KEYS = frozenset({"node_id", "runtime_id", "reference", "product"})
+_PRODUCT_MATERIAL_KEYS = frozenset(
+    {"node_id", "runtime_id", "reference", "product", "socket_environment"}
+)
 
 
 def _require_keys(
@@ -336,6 +364,36 @@ def _text(value: Mapping[str, object], key: str) -> str:
     if not isinstance(item, str):
         raise RuntimeEffectContractError(f"{key} must be text")
     return item
+
+
+def _socket_environment(
+    value: object,
+    label: str,
+) -> tuple[SocketDerivedEnvironmentBinding, ...]:
+    if not isinstance(value, list):
+        raise RuntimeEffectContractError(f"{label} socket_environment must be a list")
+    if len(value) > _MAX_EVIDENCE_ITEMS:
+        raise RuntimeEffectContractError(
+            f"{label} socket_environment has too many bindings"
+        )
+    bindings: list[SocketDerivedEnvironmentBinding] = []
+    for item in value:
+        if not isinstance(item, Mapping):
+            raise RuntimeEffectContractError(
+                f"{label} socket_environment binding is malformed"
+            )
+        try:
+            binding = environment_binding_from_descriptor(item)
+        except ValueError as error:
+            raise RuntimeEffectContractError(
+                f"{label} socket_environment binding is malformed"
+            ) from error
+        if not isinstance(binding, SocketDerivedEnvironmentBinding):
+            raise RuntimeEffectContractError(
+                f"{label} socket_environment must be socket-derived"
+            )
+        bindings.append(binding)
+    return tuple(bindings)
 
 
 def _required_text(value: str, name: str) -> None:

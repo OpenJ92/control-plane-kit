@@ -3,6 +3,10 @@ from __future__ import annotations
 import unittest
 
 from control_plane_kit_core.algebra import BlockSockets, ProviderSocket
+from control_plane_kit_core.environment import (
+    PublicStaticEnvironmentBinding,
+    SocketDerivedEnvironmentBinding,
+)
 from control_plane_kit_core.operations.execution import EffectResultKind
 from control_plane_kit_core.planning import ActivityId, NodeTarget, StartNode
 from control_plane_kit_core.probe_intents import (
@@ -70,8 +74,29 @@ class RuntimeEffectContractTests(unittest.TestCase):
         self.assertEqual(product["node_id"], "api")
         self.assertEqual(product["runtime_id"], "docker")
         self.assertEqual(
+            product["socket_environment"],
+            [
+                {
+                    "kind": "socket-derived",
+                    "name": "UPSTREAM_URL",
+                    "value": "http://upstream:8080",
+                    "edge_id": "upstream.internal->api.upstream",
+                }
+            ],
+        )
+        self.assertEqual(
             product["product"]["image"]["digest"],
             "sha256:" + "a" * 64,
+        )
+        self.assertEqual(
+            RuntimeProductMaterial.from_descriptor(product).socket_environment,
+            (
+                SocketDerivedEnvironmentBinding(
+                    "UPSTREAM_URL",
+                    "http://upstream:8080",
+                    "upstream.internal->api.upstream",
+                ),
+            ),
         )
 
     def test_product_material_rejects_identity_mismatch(self) -> None:
@@ -84,6 +109,38 @@ class RuntimeEffectContractTests(unittest.TestCase):
                 runtime_id="docker",
                 reference=ProductReference(other, ProductDescriptorDigest("b" * 64)),
                 product=_product(identity),
+            )
+
+    def test_product_material_rejects_static_or_duplicate_environment_material(self) -> None:
+        identity = ProductIdentity("openj92", "hello-server", 1)
+        with self.assertRaises(RuntimeEffectContractError):
+            RuntimeProductMaterial(
+                node_id="api",
+                runtime_id="docker",
+                reference=ProductReference(identity, ProductDescriptorDigest("b" * 64)),
+                product=_product(identity),
+                socket_environment=(
+                    PublicStaticEnvironmentBinding("UPSTREAM_URL", "http://api:8080"),
+                ),
+            )
+        with self.assertRaises(RuntimeEffectContractError):
+            RuntimeProductMaterial(
+                node_id="api",
+                runtime_id="docker",
+                reference=ProductReference(identity, ProductDescriptorDigest("b" * 64)),
+                product=_product(identity),
+                socket_environment=(
+                    SocketDerivedEnvironmentBinding(
+                        "UPSTREAM_URL",
+                        "http://a:8080",
+                        "a.internal->api.upstream",
+                    ),
+                    SocketDerivedEnvironmentBinding(
+                        "UPSTREAM_URL",
+                        "http://b:8080",
+                        "b.internal->api.upstream",
+                    ),
+                ),
             )
 
     def test_result_descriptor_preserves_observations_as_pure_evidence(self) -> None:
@@ -150,6 +207,13 @@ def _product_material() -> RuntimeProductMaterial:
         runtime_id="docker",
         reference=ProductReference(identity, ProductDescriptorDigest("b" * 64)),
         product=_product(identity),
+        socket_environment=(
+            SocketDerivedEnvironmentBinding(
+                "UPSTREAM_URL",
+                "http://upstream:8080",
+                "upstream.internal->api.upstream",
+            ),
+        ),
     )
 
 

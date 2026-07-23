@@ -1747,3 +1747,73 @@ Validation evidence:
 git diff --check
 control-plane-kit-operations ./test.sh: 124 tests, compileall, import check
 ```
+
+## #918 External Docker Runtime Live Harness
+
+#918 routed the seeded ACTIVITY live harness through the external
+`control-plane-kit-interpreters` Docker implementation instead of the removed
+operations-local Docker adapter.
+
+The live composition is now:
+
+```text
+operations emits RuntimeEffectRequest
+  -> RuntimeInterpreterDispatcher
+    -> DockerRuntimeInterpreter
+      -> Python Docker SDK
+        -> RuntimeEffectResult
+          -> operations records activity result and observations
+```
+
+The harness composes the interpreter at the outside edge:
+
+```python
+adapter = RuntimeInterpreterDispatcher(
+    {RuntimeKind.DOCKER: DockerRuntimeInterpreter(DockerSdkClient())}
+)
+```
+
+and `activity-seeded-live-test.sh` mounts the sibling interpreter repository
+read-only, exposing it only through `PYTHONPATH`. This proves the acceptance
+composition without making `control-plane-kit-operations` depend on the
+concrete interpreter package.
+
+#918 also recorded two pure material-shape decisions needed by the live
+scenario:
+
+- product instantiation now renders private socket endpoints as
+  `scheme://node_id:container_port` when a provider runtime port is known;
+- socket-derived environment bindings are part of pinned
+  `RuntimeProductMaterial`, so routers and multiplexers receive dependency
+  URLs from graph edges rather than product-specific Docker branches.
+
+The Docker interpreter now owns the runtime-side behavior for:
+
+- `StartRuntime`, `ReconcileRuntime`, `StopRuntime`, and
+  `RemoveRuntimeResource`;
+- `StartNode`, `ReconcileNode`, `StopNode`, and `RemoveNodeResource`;
+- HTTP `WaitForHealthy` checks against runtime-private container addresses;
+- strict current-material ownership checks where exact material is being reused;
+- stable resource ownership checks where teardown or reconciliation must handle
+  an older graph fingerprint for the same workspace/runtime/node.
+
+Teardown materialization now resolves stop/remove runtime activities from the
+base graph. That keeps removal tied to the runtime that actually exists rather
+than the desired empty graph used by teardown.
+
+Validation evidence:
+
+```text
+control-plane-kit-core ./test.sh: 390 tests, compileall, import check
+control-plane-kit-operations ./test.sh: 125 tests, compileall, import check
+control-plane-kit-interpreters ./test.sh: 51 tests, compileall
+activity-seeded-live-test.sh: ACTIVITY seeded live proof passed
+```
+
+Residual handoff for #908:
+
+- cpk-server still needs a process/bootstrap injection seam for the dispatcher;
+- the live harness proves the desired composition, but cpk-server has not yet
+  been republished with that composition;
+- interpreter package dependency metadata still needs normal release/commit
+  choreography after the core changes land.

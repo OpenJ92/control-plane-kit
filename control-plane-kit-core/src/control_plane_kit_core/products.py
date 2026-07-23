@@ -1737,10 +1737,11 @@ def _private_endpoint(
     protocol: Protocol,
     container_port: int | None = None,
 ) -> str:
-    host = f"{role_id}-{socket_name}"
     scheme = _endpoint_scheme(protocol)
     if container_port is None:
+        host = f"{role_id}-{socket_name}"
         return f"{scheme}://{host}"
+    host = role_id
     return f"{scheme}://{host}:{container_port}"
 
 

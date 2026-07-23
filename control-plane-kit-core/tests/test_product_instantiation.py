@@ -24,6 +24,7 @@ from control_plane_kit_core.products import (
     ProductInstanceConfiguration,
     ProductInstantiationError,
     ProductRuntimeContract,
+    ProviderRuntimePort,
     instantiate_catalog_product,
     instantiate_product,
 )
@@ -54,6 +55,7 @@ class ProductInstantiationTests(unittest.TestCase):
                         ProviderSocket("http", Protocol.HTTP),
                     )
                 ),
+                provider_ports=(ProviderRuntimePort("http", 8000),),
                 public_environment=(PublicStaticEnvironmentBinding("LOG_LEVEL", "info"),),
                 configuration_artifacts=(
                     ConfigurationArtifact(
@@ -101,7 +103,7 @@ class ProductInstantiationTests(unittest.TestCase):
 
         self.assertEqual(node.block_family, BlockFamily.APPLICATION)
         self.assertEqual(node.kind, "oci-container")
-        self.assertEqual(node.endpoint("http").url, "http://hello-blue-http")
+        self.assertEqual(node.endpoint("http").url, "http://hello-blue:8000")
         self.assertEqual(node.metadata["product_identity"], "cpk-servers/hello/1")
         self.assertEqual(node.metadata["product_descriptor_digest"], document.content_digest)
         self.assertEqual(node.metadata["oci_image"], self.product().image.execution_reference)

@@ -3,6 +3,7 @@ from __future__ import annotations
 import unittest
 
 from control_plane_kit_core.algebra import BlockSockets, BlockSpec, ProviderSocket
+from control_plane_kit_core.environment import SocketDerivedEnvironmentBinding
 from control_plane_kit_core.operations.lifecycle import (
     ActivityEventKind,
     ActivityRunStatus,
@@ -14,6 +15,8 @@ from control_plane_kit_core.planning import (
     NodeTarget,
     PlannedActivity,
     StartNode,
+    StopRuntime,
+    RuntimeTarget,
 )
 from control_plane_kit_core.policies import PolicyScope
 from control_plane_kit_core.products import (
@@ -64,10 +67,41 @@ class RuntimeEffectTranslationTests(unittest.TestCase):
             request.products[0].reference,
             ProductReference.from_document(_registered_product().descriptor_document),
         )
+        self.assertEqual(
+            request.products[0].socket_environment,
+            (
+                SocketDerivedEnvironmentBinding(
+                    "UPSTREAM_URL",
+                    "http://upstream:8080",
+                    "upstream.internal->api.upstream",
+                ),
+            ),
+        )
+
+    def test_runtime_teardown_uses_base_graph_to_resolve_runtime_kind(self) -> None:
+        activity = PlannedActivity(
+            ActivityId("activity-stop-runtime"),
+            StopRuntime(RuntimeTarget("docker")),
+        )
+        context = _context(
+            activity=activity,
+            desired_graph=DeploymentGraph("empty"),
+        )
+
+        request = runtime_effect_request_for_context(context)
+
+        self.assertEqual(request.runtime_kind, RuntimeKind.DOCKER)
+        self.assertEqual(request.operation, StopRuntime(RuntimeTarget("docker")))
+        self.assertEqual(request.products, ())
 
 
-def _context() -> ActivityRealizationContext:
-    activity = PlannedActivity(ActivityId("activity-a"), StartNode(NodeTarget("api")))
+def _context(
+    *,
+    activity: PlannedActivity | None = None,
+    desired_graph: DeploymentGraph | None = None,
+) -> ActivityRealizationContext:
+    if activity is None:
+        activity = PlannedActivity(ActivityId("activity-a"), StartNode(NodeTarget("api")))
     plan = ActivityPlan((activity,))
     graph = _graph()
     return ActivityRealizationContext(
@@ -112,7 +146,7 @@ def _context() -> ActivityRealizationContext:
             graph_id="graph-desired",
             workspace_id="workspace-a",
             version=2,
-            graph=graph,
+            graph=graph if desired_graph is None else desired_graph,
             created_by="operator-a",
             created_at="2026-07-22T10:00:00Z",
         ),
@@ -125,7 +159,7 @@ def _context() -> ActivityRealizationContext:
             event_id="event-started",
             run_id="run-a",
             kind=ActivityEventKind.STEP_STARTED,
-            activity_id="activity-a",
+            activity_id=activity.activity_id.value,
             occurred_at="2026-07-22T10:02:00Z",
             ordinal=3,
         ),
@@ -149,6 +183,13 @@ def _graph() -> DeploymentGraph:
                     "product_identity": reference.identity.key,
                     "product_descriptor_digest": reference.descriptor_sha256.value,
                 },
+                socket_environment=(
+                    SocketDerivedEnvironmentBinding(
+                        "UPSTREAM_URL",
+                        "http://upstream:8080",
+                        "upstream.internal->api.upstream",
+                    ),
+                ),
             )
         },
         runtimes={"docker": RuntimeRecord("docker", RuntimeKind.DOCKER, ("api",))},

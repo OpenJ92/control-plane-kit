@@ -3,6 +3,7 @@ set -euo pipefail
 
 IMAGE_NAME="${CPK_ACTIVITY_LIVE_IMAGE:-control-plane-kit-activity-live-test:local}"
 SERVER_REPO="${CPK_SERVERS_REPO:-../control-plane-kit-servers}"
+INTERPRETERS_REPO="${CPK_INTERPRETERS_REPO:-../control-plane-kit-interpreters}"
 CONTROL_NETWORK="${CPK_ACTIVITY_CONTROL_NETWORK:-cpk-activity-control}"
 POSTGRES_CONTAINER="${CPK_ACTIVITY_POSTGRES:-cpk-activity-control-postgres}"
 CONTROLLER="${CPK_ACTIVITY_CONTROLLER:-cpk-activity-controller}"
@@ -22,30 +23,42 @@ cleanup_activity_resources() {
   local name
   while IFS= read -r name; do
     test -n "$name" || continue
-    if test "$(docker inspect -f '{{ index .Config.Labels "control-plane-kit.owner" }}' "$name")" != "operations"; then
+    if test "$(docker inspect -f '{{ index .Config.Labels "org.openj92.cpk.kind" }}' "$name")" != "container"; then
       echo "Refusing to remove unowned ACTIVITY container: $name" >&2
       return 1
     fi
+    if ! docker inspect -f '{{ index .Config.Labels "org.openj92.cpk.workspace" }}' "$name" | grep "^${WORKSPACE_PREFIX}" >/dev/null; then
+      echo "Refusing to remove foreign ACTIVITY container: $name" >&2
+      return 1
+    fi
     docker rm -f "$name" >/dev/null
-  done < <(docker ps -a --filter "label=control-plane-kit.workspace-id" --format '{{.Names}}' | grep "control-plane-kit-${WORKSPACE_PREFIX}" || true)
+  done < <(docker ps -a --filter "label=org.openj92.cpk.workspace" --format '{{.Names}}' | grep "^cpk-node-${WORKSPACE_PREFIX}" || true)
 
   while IFS= read -r name; do
     test -n "$name" || continue
-    if test "$(docker network inspect -f '{{ index .Labels "control-plane-kit.owner" }}' "$name")" != "operations"; then
+    if test "$(docker network inspect -f '{{ index .Labels "org.openj92.cpk.kind" }}' "$name")" != "runtime-network"; then
       echo "Refusing to remove unowned ACTIVITY network: $name" >&2
       return 1
     fi
+    if ! docker network inspect -f '{{ index .Labels "org.openj92.cpk.workspace" }}' "$name" | grep "^${WORKSPACE_PREFIX}" >/dev/null; then
+      echo "Refusing to remove foreign ACTIVITY network: $name" >&2
+      return 1
+    fi
     docker network rm "$name" >/dev/null || true
-  done < <(docker network ls --filter "label=control-plane-kit.workspace-id" --format '{{.Name}}' | grep "${WORKSPACE_PREFIX}" || true)
+  done < <(docker network ls --filter "label=org.openj92.cpk.workspace" --format '{{.Name}}' | grep "^cpk-net-${WORKSPACE_PREFIX}" || true)
 
   while IFS= read -r name; do
     test -n "$name" || continue
-    if test "$(docker volume inspect -f '{{ index .Labels "control-plane-kit.owner" }}' "$name")" != "operations"; then
+    if ! docker volume inspect -f '{{ index .Labels "org.openj92.cpk.fingerprint" }}' "$name" | grep "." >/dev/null; then
       echo "Refusing to remove unowned ACTIVITY volume: $name" >&2
       return 1
     fi
+    if ! docker volume inspect -f '{{ index .Labels "org.openj92.cpk.workspace" }}' "$name" | grep "^${WORKSPACE_PREFIX}" >/dev/null; then
+      echo "Refusing to remove foreign ACTIVITY volume: $name" >&2
+      return 1
+    fi
     docker volume rm "$name" >/dev/null || true
-  done < <(docker volume ls --filter "label=control-plane-kit.workspace-id" --format '{{.Name}}' | grep "${WORKSPACE_PREFIX}" || true)
+  done < <(docker volume ls --filter "label=org.openj92.cpk.workspace" --format '{{.Name}}' | grep "^cpk-vol-${WORKSPACE_PREFIX}" || true)
 }
 
 cleanup() {
@@ -85,6 +98,11 @@ if test ! -d "$SERVER_REPO/products"; then
   exit 1
 fi
 
+if test ! -d "$INTERPRETERS_REPO/src/control_plane_kit_interpreters"; then
+  echo "CPK_INTERPRETERS_REPO must point at control-plane-kit-interpreters" >&2
+  exit 1
+fi
+
 trap cleanup EXIT
 cleanup
 
@@ -118,10 +136,12 @@ docker run -d \
   --network "$CONTROL_NETWORK" \
   -v /var/run/docker.sock:/var/run/docker.sock \
   -v "$(cd "$SERVER_REPO" && pwd):/workspace/control-plane-kit-servers:ro" \
+  -v "$(cd "$INTERPRETERS_REPO" && pwd):/workspace/control-plane-kit-interpreters:ro" \
   "${DOCKER_CONFIG_MOUNT[@]}" \
   -e CPK_ACTIVITY_DATABASE_URL="$DATABASE_URL" \
   -e CPK_ACTIVITY_CONTROLLER="$CONTROLLER" \
   -e CPK_ACTIVITY_SERVERS_REPO=/workspace/control-plane-kit-servers \
+  -e PYTHONPATH=/workspace/control-plane-kit-interpreters/src \
   "$IMAGE_NAME" sleep infinity >/dev/null
 
 docker exec "$CONTROLLER" python -m examples.activity_seeded_live
