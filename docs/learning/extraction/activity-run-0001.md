@@ -1817,3 +1817,80 @@ Residual handoff for #908:
   been republished with that composition;
 - interpreter package dependency metadata still needs normal release/commit
   choreography after the core changes land.
+
+## #908 cpk-server Runtime Dispatcher Injection
+
+#908 moved the external interpreter seam into the hosted cpk-server process
+composition without making cpk-server own Docker runtime semantics.
+
+The process-level shape is now explicit:
+
+```text
+cpk-server
+  -> configured operations application
+    -> ExecutionCoordinator
+      -> RuntimeInterpreterDispatcher
+        -> DockerRuntimeInterpreter
+          -> Python Docker SDK
+```
+
+The cpk-server bootstrap contract gained a closed runtime interpreter selector:
+
+```text
+CPK_RUNTIME_INTERPRETERS = none | docker
+```
+
+`none` remains the descriptor default and returns a bounded unsupported
+execution result. `docker` lazily imports `control-plane-kit-interpreters[docker]`
+and constructs:
+
+```python
+RuntimeInterpreterDispatcher(
+    {RuntimeKind.DOCKER: DockerRuntimeInterpreter(DockerSdkClient())}
+)
+```
+
+This keeps Docker SDK imports isolated in `control-plane-kit-interpreters`.
+The cpk-server product wrapper composes the dependency, but it does not inspect
+containers, mutate Docker resources, or branch on product-specific runtime
+behavior.
+
+Important implementation decision:
+
+- `control-plane-kit-interpreters` PR #9 aligned its core dependency pin to the
+  same control-plane-kit commit used by cpk-server:
+  `34a7701d1533a8cb4eb2d41c144e209b6432a658`.
+- cpk-server now depends on interpreter commit
+  `c74e4784855eda72881404310fb63370988b674d`.
+- cpk-server descriptor bytes are canonical. Adding
+  `CPK_RUNTIME_INTERPRETERS` required preserving the exact no-trailing-newline
+  product descriptor boundary before updating catalogue checksums.
+
+Validation evidence:
+
+```text
+control-plane-kit-interpreters git diff --check
+control-plane-kit-interpreters ./test.sh: 51 tests passed
+control-plane-kit-servers git diff --check
+control-plane-kit-servers ./test.sh:
+  21 root/catalogue/repository tests passed
+  32 cpk-server tests passed
+  8 hello-server tests passed
+  7 http-active-router tests passed
+  9 http-multiplexer tests passed
+  7 postgres-server tests passed
+  cpk-server image smoke passed
+  Docker residue audit passed
+```
+
+Residual handoff for #909:
+
+- cpk-server backend/runtime behavior changed, so #909 must publish a new
+  GHCR image from the merged cpk-server branch;
+- #909 must update `products/cpk_server/product.cpk.json` image digest,
+  source commit, descriptor digest, catalogue entries, and packaged catalogue
+  checksum;
+- #909 acceptance must pull by immutable GHCR digest, not use a local rebuilt
+  tag;
+- recursive child cpk-server acceptance remains deferred until after the
+  published dispatcher-capable image is proven.
