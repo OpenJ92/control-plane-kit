@@ -1385,3 +1385,60 @@ frontend work
 
 ACTIVITY should close as local Docker realization plus public workflow
 composition, not as recursive or remote hosted runtime execution.
+
+## #897/#898 Interpreter Runtime Dry Run
+
+#897 and #898 refresh the runtime/interpreter extraction before creating the
+`control-plane-kit-interpreters` package. The dry run confirms the intended
+authority chain:
+
+```text
+cpk-server
+  -> configured operations application
+    -> ExecutionCoordinator
+      -> RuntimeInterpreterDispatcher
+        -> DockerRuntimeInterpreter
+          -> Python Docker SDK
+```
+
+The important boundary decision is that operations owns dispatch because it owns
+durable ActivityPlan execution, UnitOfWork, run lifecycle, observations, and
+current graph advancement. The interpreters package owns concrete runtime
+effects such as Docker SDK calls, probe execution, configuration materialization,
+secret materialization, host publication, and cleanup. `cpk-server` remains a
+FastAPI/MCP process wrapper that receives configured runtime authority; it does
+not become the owner of Docker behavior merely because its image can be run by
+Docker.
+
+The dry-run artifact is:
+
+```text
+artifacts/extraction/interpreter-runtime-dry-run.json
+```
+
+It records the #897/#898 topology, law cards, current file anchors, frozen
+inspiration sources, and the Docker SDK coverage assessment. The topology is
+coherent without adjustment before #899:
+
+```text
+#897 -> #898 -> #899 -> #900 -> #901 -> #902 -> #903 -> #904 -> #905
+  -> #906 -> #907 -> #908 -> #909 -> #910 -> #911
+```
+
+The ordering matters. #900 introduces the operations-owned runtime dispatcher
+before any concrete Docker SDK implementation. #901 stabilizes the current
+operations-local Docker adapter seam before replacing CLI mechanics. #908 wires
+cpk-server to receive a proven dispatcher instead of inventing server-local
+Docker behavior. #910 is only the recursive readiness dry run; full recursive
+cpk-server acceptance remains #676.
+
+Frozen `DockerRuntimeInterpreter.up` / `down` remains useful inspiration, but it
+is not the production workflow shape. The canonical workflow remains pinned
+ActivityPlan execution through the coordinator.
+
+The Docker SDK covers the ordinary Docker substrate well: network, container,
+volume, image, port binding, inspection, log, and timeout surfaces. It does not
+by itself solve secret-file or configuration-artifact materialization. Those
+remain explicit interpreter laws for #904 and #905, where the implementation must
+prove bounded materialization without leaking secrets through descriptors,
+events, logs, labels, or process arguments.
