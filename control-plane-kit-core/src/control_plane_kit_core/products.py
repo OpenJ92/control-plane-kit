@@ -4,8 +4,10 @@ from __future__ import annotations
 
 from collections.abc import Iterable, Mapping
 from dataclasses import dataclass, field
+from enum import StrEnum
 import hashlib
 import json
+from pathlib import PurePosixPath
 import re
 
 from control_plane_kit_core.algebra import BlockSockets, ProviderSocket, RequirementSocket
@@ -53,13 +55,22 @@ _PRODUCT_CONTRACT_DESCRIPTOR_KEYS = frozenset(
         "public_environment",
         "configuration_artifacts",
         "secret_deliveries",
+        "retained_data_mounts",
         "capabilities",
         "verification",
         "lifecycle",
     }
 )
 _CONTAINER_PRODUCT_DESCRIPTOR_KEYS = frozenset(
-    {"kind", "identity", "image", "runtime_contract", "display_name", "description"}
+    {
+        "kind",
+        "identity",
+        "image",
+        "runtime_contract",
+        "display_name",
+        "description",
+        "product_family",
+    }
 )
 _PRODUCT_DOCUMENT_KEYS = frozenset({"schema", "product"})
 _PRODUCT_REFERENCE_KEYS = frozenset({"identity", "descriptor_sha256"})
@@ -74,6 +85,7 @@ _REQUIREMENT_DESCRIPTOR_KEYS = frozenset(
 _PROVIDER_DESCRIPTOR_KEYS = frozenset({"protocol"})
 _LIFECYCLE_DESCRIPTOR_KEYS = frozenset({"ownership", "compute", "data"})
 _DATA_RESOURCE_DESCRIPTOR_KEYS = frozenset({"resource_id", "persistence"})
+_RETAINED_DATA_MOUNT_DESCRIPTOR_KEYS = frozenset({"resource_id", "target_path"})
 _SECRET_FIELD_HINTS = ("secret", "token", "password", "credential", "key")
 _MAX_DISPLAY_TEXT_LENGTH = 128
 _MAX_DESCRIPTION_TEXT_LENGTH = 1024
@@ -137,6 +149,13 @@ class UnknownProductIdentity(ProductCatalogError):
 
 class ProductInstantiationError(ValueError):
     """Raised when a product cannot be purely instantiated into topology."""
+
+
+class ProductFamily(StrEnum):
+    """Closed graph-visible product family classification."""
+
+    SERVER = "server"
+    DATA_SERVICE = "data-service"
 
 
 @dataclass(frozen=True, order=True)
@@ -417,6 +436,7 @@ class ProductRuntimeContract:
     public_environment: tuple[PublicStaticEnvironmentBinding, ...] = ()
     configuration_artifacts: tuple[ConfigurationArtifact, ...] = ()
     secret_deliveries: tuple[SecretDelivery, ...] = ()
+    retained_data_mounts: tuple["RetainedDataMount", ...] = ()
     capabilities: tuple[CapabilityName, ...] = ()
     verification: VerificationContract = field(default_factory=VerificationContract)
     lifecycle: ResourceLifecycle = field(default_factory=ResourceLifecycle.owned_ephemeral)
@@ -460,6 +480,19 @@ class ProductRuntimeContract:
             raise ProductRuntimeContractError(
                 "secret deliveries must contain SecretDelivery values"
             )
+        retained_data_mounts = tuple(sorted(self.retained_data_mounts))
+        if not all(isinstance(value, RetainedDataMount) for value in retained_data_mounts):
+            raise ProductRuntimeContractError(
+                "retained data mounts must contain RetainedDataMount values"
+            )
+        _require_unique(
+            tuple(value.resource_id for value in retained_data_mounts),
+            "retained data mount resource identities",
+        )
+        _require_unique(
+            tuple(value.target_path for value in retained_data_mounts),
+            "retained data mount target paths",
+        )
         capabilities = tuple(sorted(self.capabilities, key=lambda value: value.value))
         if not all(isinstance(value, CapabilityName) for value in capabilities):
             raise ProductRuntimeContractError("capabilities must be CapabilityName values")
@@ -471,10 +504,15 @@ class ProductRuntimeContract:
         _validate_verification(self.sockets, self.verification)
         if not isinstance(self.lifecycle, ResourceLifecycle):
             raise ProductRuntimeContractError("lifecycle must be ResourceLifecycle")
-        _validate_lifecycle_distinctions(self.lifecycle, configuration_artifacts)
+        _validate_lifecycle_distinctions(
+            self.lifecycle,
+            configuration_artifacts,
+            retained_data_mounts,
+        )
         object.__setattr__(self, "public_environment", tuple(sorted(public_environment)))
         object.__setattr__(self, "configuration_artifacts", configuration_artifacts)
         object.__setattr__(self, "secret_deliveries", secret_deliveries)
+        object.__setattr__(self, "retained_data_mounts", retained_data_mounts)
         object.__setattr__(self, "capabilities", capabilities)
 
     def descriptor(self) -> dict[str, object]:
@@ -487,6 +525,9 @@ class ProductRuntimeContract:
                 value.descriptor() for value in self.configuration_artifacts
             ],
             "secret_deliveries": [value.descriptor() for value in self.secret_deliveries],
+            "retained_data_mounts": [
+                value.descriptor() for value in self.retained_data_mounts
+            ],
             "capabilities": [value.value for value in self.capabilities],
             "verification": self.verification.descriptor(),
             "lifecycle": self.lifecycle.descriptor(),
@@ -527,6 +568,10 @@ class ProductRuntimeContractCodec:
                     )
                     for value in _product_list(mapping, "secret_deliveries")
                 ),
+                retained_data_mounts=tuple(
+                    _retained_data_mount_from_descriptor(value)
+                    for value in _product_list(mapping, "retained_data_mounts")
+                ),
                 capabilities=tuple(
                     CapabilityName(_product_text_value(value, "capability"))
                     for value in _product_list(mapping, "capabilities")
@@ -542,6 +587,27 @@ class ProductRuntimeContractCodec:
             ) from error
 
 
+@dataclass(frozen=True, order=True)
+class RetainedDataMount:
+    """Descriptor-safe container mount target for one retained data resource."""
+
+    resource_id: str
+    target_path: str
+
+    def __post_init__(self) -> None:
+        if not isinstance(self.resource_id, str) or not self.resource_id.strip():
+            raise ProductRuntimeContractError(
+                "retained data mount resource_id must be a nonempty string"
+            )
+        _validate_retained_data_target_path(self.target_path)
+
+    def descriptor(self) -> dict[str, str]:
+        return {
+            "resource_id": self.resource_id,
+            "target_path": self.target_path,
+        }
+
+
 @dataclass(frozen=True)
 class ContainerServerProduct:
     """Pure external OCI server product value."""
@@ -551,6 +617,7 @@ class ContainerServerProduct:
     runtime_contract: ProductRuntimeContract
     display_name: str | None = None
     description: str | None = None
+    product_family: ProductFamily = ProductFamily.SERVER
 
     def __post_init__(self) -> None:
         if not isinstance(self.identity, ProductIdentity):
@@ -573,6 +640,8 @@ class ContainerServerProduct:
                 "description",
                 max_length=_MAX_DESCRIPTION_TEXT_LENGTH,
             )
+        if not isinstance(self.product_family, ProductFamily):
+            raise ContainerServerProductError("product_family must be ProductFamily")
 
     def descriptor(self) -> dict[str, object]:
         return {
@@ -584,6 +653,7 @@ class ContainerServerProduct:
             ),
             "display_name": self.display_name,
             "description": self.description,
+            "product_family": self.product_family.value,
         }
 
 
@@ -622,6 +692,7 @@ class ContainerServerProductCodec:
                 ),
                 display_name=_container_optional_text(mapping, "display_name"),
                 description=_container_optional_text(mapping, "description"),
+                product_family=ProductFamily(_container_text(mapping, "product_family")),
             )
         except ContainerServerProductError:
             raise
@@ -1198,6 +1269,7 @@ def _validate_verification(
 def _validate_lifecycle_distinctions(
     lifecycle: ResourceLifecycle,
     configuration_artifacts: tuple[ConfigurationArtifact, ...],
+    retained_data_mounts: tuple[RetainedDataMount, ...],
 ) -> None:
     retained_data_ids = {value.resource_id for value in lifecycle.data}
     artifact_ids = {value.artifact_id for value in configuration_artifacts}
@@ -1206,6 +1278,16 @@ def _validate_lifecycle_distinctions(
         raise ProductRuntimeContractError(
             "retained data resources must be distinct from configuration artifacts: "
             + ", ".join(overlap)
+        )
+    unknown_mounts = sorted(
+        value.resource_id
+        for value in retained_data_mounts
+        if value.resource_id not in retained_data_ids
+    )
+    if unknown_mounts:
+        raise ProductRuntimeContractError(
+            "retained data mount references unknown retained data resource: "
+            + ", ".join(unknown_mounts)
         )
 
 
@@ -1313,6 +1395,46 @@ def _data_resource_from_descriptor(value: object) -> DataResourceSpec:
         resource_id=_product_text(descriptor, "resource_id"),
         persistence=ResourcePersistence(_product_text(descriptor, "persistence")),
     )
+
+
+def _retained_data_mount_from_descriptor(value: object) -> RetainedDataMount:
+    descriptor = _product_mapping(value, "retained data mount")
+    _require_product_keys(
+        descriptor,
+        _RETAINED_DATA_MOUNT_DESCRIPTOR_KEYS,
+        "retained data mount",
+    )
+    return RetainedDataMount(
+        resource_id=_product_text(descriptor, "resource_id"),
+        target_path=_product_text(descriptor, "target_path"),
+    )
+
+
+def _validate_retained_data_target_path(value: str) -> None:
+    if not isinstance(value, str) or not value.startswith("/"):
+        raise ProductRuntimeContractError(
+            "retained data mount target_path must be an absolute container path"
+        )
+    path = PurePosixPath(value)
+    if (
+        str(path) != value
+        or value.endswith("/")
+        or any(part in (".", "..") for part in path.parts)
+    ):
+        raise ProductRuntimeContractError(
+            "retained data mount target_path is malformed"
+        )
+    lowered = value.lower()
+    if (
+        lowered == "/"
+        or lowered.startswith("/proc/")
+        or lowered.startswith("/sys/")
+        or lowered.startswith("/var/run/")
+        or "docker.sock" in lowered
+    ):
+        raise ProductRuntimeContractError(
+            "retained data mount target_path uses a forbidden runtime or host namespace"
+        )
 
 
 def _product_mapping(value: object, field: str) -> Mapping[str, object]:

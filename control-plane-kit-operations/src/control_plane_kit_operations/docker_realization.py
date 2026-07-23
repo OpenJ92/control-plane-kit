@@ -18,8 +18,17 @@ from control_plane_kit_core.products import (
     ProductDescriptorDigest,
     ProductIdentity,
     ProductReference,
+    RetainedDataMount,
 )
 from control_plane_kit_core.probe_intents import ProbeKind, ProbeOutcome
+from control_plane_kit_core.secrets import (
+    SecretEnvironmentDelivery,
+    SecretReferenceEnvironmentDelivery,
+    SecretResolutionCode,
+    SecretResolutionError,
+    SecretResolver,
+    require_resolved_secret,
+)
 from control_plane_kit_core.topology import DEFAULT_GRAPH_CODEC, DeploymentGraph
 from control_plane_kit_core.types import RuntimeKind
 from control_plane_kit_operations.coordinator import (
@@ -45,6 +54,7 @@ _LABEL_RUNTIME = "control-plane-kit.runtime-id"
 _LABEL_NODE = "control-plane-kit.node-id"
 _LABEL_PRODUCT = "control-plane-kit.product-identity"
 _LABEL_DESCRIPTOR = "control-plane-kit.product-descriptor-sha256"
+_LABEL_DATA_RESOURCE = "control-plane-kit.data-resource-id"
 
 
 class DockerRealizationClient(Protocol):
@@ -55,6 +65,10 @@ class DockerRealizationClient(Protocol):
     def create_network(self, name: str, *, labels: dict[str, str]) -> None: ...
 
     def inspect_container(self, name: str) -> "DockerResourceInspection | None": ...
+
+    def inspect_volume(self, name: str) -> "DockerResourceInspection | None": ...
+
+    def create_volume(self, name: str, *, labels: dict[str, str]) -> None: ...
 
     def pull_image(self, image: str) -> None: ...
 
@@ -67,6 +81,7 @@ class DockerRealizationClient(Protocol):
         environment: dict[str, str],
         labels: dict[str, str],
         network_aliases: tuple[str, ...],
+        mounts: dict[str, str],
     ) -> None: ...
 
     def start_container(self, name: str) -> None: ...
@@ -122,6 +137,19 @@ class DockerCliRealizationClient:
             labels=labels,
         )
 
+    def inspect_volume(self, name: str) -> DockerResourceInspection | None:
+        if not self._exists("volume", name):
+            return None
+        labels = self._labels("volume", name)
+        return DockerResourceInspection(name=name, running=False, image=None, labels=labels)
+
+    def create_volume(self, name: str, *, labels: dict[str, str]) -> None:
+        args = ["volume", "create"]
+        for key, value in sorted(labels.items()):
+            args.extend(("--label", f"{key}={value}"))
+        args.append(name)
+        self._run(args)
+
     def pull_image(self, image: str) -> None:
         self._run(["pull", image])
 
@@ -134,6 +162,7 @@ class DockerCliRealizationClient:
         environment: dict[str, str],
         labels: dict[str, str],
         network_aliases: tuple[str, ...],
+        mounts: dict[str, str],
     ) -> None:
         args = ["run", "-d", "--name", name, "--network", network]
         for alias in network_aliases:
@@ -142,6 +171,8 @@ class DockerCliRealizationClient:
             args.extend(("-e", key))
         for key, value in sorted(labels.items()):
             args.extend(("--label", f"{key}={value}"))
+        for volume_name, target_path in sorted(mounts.items()):
+            args.extend(("--mount", f"type=volume,source={volume_name},target={target_path}"))
         args.append(image)
         process_environment = None
         if environment:
@@ -207,6 +238,7 @@ class DockerProductRealizationAdapter:
 
     project_name: str = "control-plane-kit"
     client: DockerRealizationClient = DockerCliRealizationClient()
+    secret_resolver: SecretResolver | None = None
 
     def execute(self, context: ActivityRealizationContext) -> ActivityExecutionOutcome:
         if not isinstance(context, ActivityRealizationContext):
@@ -231,6 +263,14 @@ class DockerProductRealizationAdapter:
                     "docker.ownership-conflict",
                     str(error),
                     error.details,
+                )
+            )
+        except SecretResolutionError as error:
+            return ActivityExecutionOutcome.failed(
+                FailureEvidence(
+                    FailureCategory.TERMINAL,
+                    _secret_failure_code(error.code),
+                    "Docker secret resolution failed before resource mutation",
                 )
             )
         except subprocess.TimeoutExpired:
@@ -324,16 +364,6 @@ class DockerProductRealizationAdapter:
                 "configuration artifact materialization is not in #872 scope",
                 node_id=node.node_id,
             )
-        if node.secret_deliveries:
-            raise _UnsupportedDockerRealization(
-                "secret delivery materialization is not in #872 scope",
-                node_id=node.node_id,
-            )
-        if node.lifecycle.data:
-            raise _UnsupportedDockerRealization(
-                "retained data materialization is not in #872 scope",
-                node_id=node.node_id,
-            )
         runtime = graph.runtimes[node.runtime_id]
         if runtime.kind is not RuntimeKind.DOCKER:
             raise _UnsupportedDockerRealization(
@@ -349,6 +379,10 @@ class DockerProductRealizationAdapter:
                 "node image material does not match registered product",
                 node_id=node.node_id,
             )
+        environment = {
+            **node.non_secret_environment(),
+            **self._secret_environment(node.secret_deliveries),
+        }
         network_name = _network_name(context, runtime.runtime_id, runtime.metadata)
         labels = {
             **_base_labels(context, runtime.runtime_id),
@@ -379,14 +413,16 @@ class DockerProductRealizationAdapter:
                     _process_started_observation(context, node.node_id, container_name),
                 ),
             )
+        mounts = self._retained_mounts(context, runtime.runtime_id, node, product)
         self.client.pull_image(image)
         self.client.run_container(
             name=container_name,
             image=image,
             network=network_name,
-            environment=node.non_secret_environment(),
+            environment=environment,
             labels=labels,
             network_aliases=_network_aliases(node),
+            mounts=mounts,
         )
         return ActivityExecutionOutcome.succeeded(
             _container_evidence("start-container", container_name, image, reused=False),
@@ -394,6 +430,76 @@ class DockerProductRealizationAdapter:
                 _process_started_observation(context, node.node_id, container_name),
             ),
         )
+
+    def _secret_environment(self, deliveries: tuple[object, ...]) -> dict[str, str]:
+        environment: dict[str, str] = {}
+        for delivery in deliveries:
+            match delivery:
+                case SecretEnvironmentDelivery(
+                    environment_name=name,
+                    reference=reference,
+                ):
+                    if self.secret_resolver is None:
+                        raise _UnsupportedDockerRealization(
+                            "secret environment delivery requires a runtime resolver"
+                        )
+                    environment[name] = require_resolved_secret(
+                        self.secret_resolver,
+                        reference,
+                    ).reveal()
+                case SecretReferenceEnvironmentDelivery(
+                    environment_name=name,
+                    reference=reference,
+                ):
+                    environment[name] = reference.reference_id
+                case _:
+                    raise _UnsupportedDockerRealization(
+                        "secret file delivery materialization is not in ACTIVITY scope"
+                    )
+        return environment
+
+    def _retained_mounts(
+        self,
+        context: ActivityRealizationContext,
+        runtime_id: str,
+        node,
+        product,
+    ) -> dict[str, str]:
+        if not node.lifecycle.data:
+            return {}
+        mounts_by_resource = {
+            value.resource_id: value
+            for value in product.descriptor_document.product.runtime_contract.retained_data_mounts
+        }
+        mount_targets: dict[str, str] = {}
+        for resource in node.lifecycle.data:
+            retained_mount = mounts_by_resource.get(resource.resource_id)
+            if retained_mount is None:
+                raise _UnsupportedDockerRealization(
+                    "retained data resource lacks product mount material",
+                    node_id=node.node_id,
+                    resource_id=resource.resource_id,
+                )
+            volume_name = _retained_volume_name(
+                self.project_name,
+                context.request.identity.workspace_id,
+                runtime_id,
+                node.node_id,
+                retained_mount,
+            )
+            labels = {
+                **_base_labels(context, runtime_id),
+                _LABEL_NODE: node.node_id,
+                _LABEL_PRODUCT: product.reference.identity.key,
+                _LABEL_DESCRIPTOR: product.reference.descriptor_sha256.value,
+                _LABEL_DATA_RESOURCE: resource.resource_id,
+            }
+            inspected = self.client.inspect_volume(volume_name)
+            _require_owned(inspected, labels, resource_name=volume_name)
+            if inspected is None:
+                self.client.create_volume(volume_name, labels=labels)
+            mount_targets[volume_name] = retained_mount.target_path
+        return mount_targets
 
 
 class _UnsupportedDockerRealization(ValueError):
@@ -479,6 +585,18 @@ def _container_name(
     node_id: str,
 ) -> str:
     return _clean(f"{project_name}-{workspace_id}-{runtime_id}-{node_id}")
+
+
+def _retained_volume_name(
+    project_name: str,
+    workspace_id: str,
+    runtime_id: str,
+    node_id: str,
+    mount: RetainedDataMount,
+) -> str:
+    return _clean(
+        f"{project_name}-{workspace_id}-{runtime_id}-{node_id}-{mount.resource_id}"
+    )
 
 
 def _resource_name(*parts: str) -> str:
@@ -568,3 +686,7 @@ def _process_started_observation(
         probe_kind=ProbeKind.PROCESS,
         probe_outcome=ProbeOutcome.PROCESS_RUNNING,
     )
+
+
+def _secret_failure_code(code: SecretResolutionCode) -> str:
+    return f"docker.secret-{code.value}"
