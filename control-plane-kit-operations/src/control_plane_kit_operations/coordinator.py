@@ -15,14 +15,13 @@ from control_plane_kit_core.operations.lifecycle import (
 )
 from control_plane_kit_core.planning import ActivityId, ActivityPlan, PlannedActivity
 from control_plane_kit_core.planning.saga import (
-    ActivityJournalEvent,
-    ActivityJournalEventKind,
     ExecutionSchedule,
     SagaJournalProjection,
     derive_schedule,
     project_activity_journal,
 )
 from control_plane_kit_core.policies import PolicyScope
+from control_plane_kit_operations.activity_journal import activity_journal_events
 from control_plane_kit_operations.lifecycle import (
     CompleteActivityRun,
     ExecutionWorkerAuthority,
@@ -528,7 +527,7 @@ class ExecutionCoordinator:
                 request.identity.workspace_id
             )
             events = stores.execution.events_for_run(run.run_id)
-        journal = _journal_events(events)
+        journal = activity_journal_events(events)
         projection = project_activity_journal(plan_record.plan, journal)
         schedule = derive_schedule(plan_record.plan, projection.state)
         return _CoordinatorContext(
@@ -602,65 +601,6 @@ class _CoordinatorContext:
             authority=self.authority,
             intent_event=intent_event,
         )
-
-
-_EVENT_KIND_TO_JOURNAL_KIND = {
-    ActivityEventKind.STEP_STARTED: ActivityJournalEventKind.STEP_STARTED,
-    ActivityEventKind.STEP_SUCCEEDED: ActivityJournalEventKind.STEP_SUCCEEDED,
-    ActivityEventKind.STEP_FAILED: ActivityJournalEventKind.STEP_FAILED,
-    ActivityEventKind.STEP_UNSUPPORTED: ActivityJournalEventKind.STEP_UNSUPPORTED,
-    ActivityEventKind.STEP_UNCERTAIN: ActivityJournalEventKind.STEP_UNCERTAIN,
-    ActivityEventKind.STEP_UNCERTAINTY_RESOLVED_SUCCEEDED: (
-        ActivityJournalEventKind.STEP_UNCERTAINTY_RESOLVED_SUCCEEDED
-    ),
-    ActivityEventKind.STEP_UNCERTAINTY_RESOLVED_FAILED: (
-        ActivityJournalEventKind.STEP_UNCERTAINTY_RESOLVED_FAILED
-    ),
-    ActivityEventKind.RUN_COMPENSATION_STARTED: (
-        ActivityJournalEventKind.RUN_COMPENSATION_STARTED
-    ),
-    ActivityEventKind.STEP_COMPENSATION_STARTED: (
-        ActivityJournalEventKind.STEP_COMPENSATION_STARTED
-    ),
-    ActivityEventKind.STEP_COMPENSATION_SUCCEEDED: (
-        ActivityJournalEventKind.STEP_COMPENSATION_SUCCEEDED
-    ),
-    ActivityEventKind.STEP_COMPENSATION_FAILED: (
-        ActivityJournalEventKind.STEP_COMPENSATION_FAILED
-    ),
-    ActivityEventKind.STEP_COMPENSATION_UNSUPPORTED: (
-        ActivityJournalEventKind.STEP_COMPENSATION_UNSUPPORTED
-    ),
-    ActivityEventKind.STEP_COMPENSATION_UNCERTAIN: (
-        ActivityJournalEventKind.STEP_COMPENSATION_UNCERTAIN
-    ),
-    ActivityEventKind.STEP_COMPENSATION_UNCERTAINTY_RESOLVED_SUCCEEDED: (
-        ActivityJournalEventKind.STEP_COMPENSATION_UNCERTAINTY_RESOLVED_SUCCEEDED
-    ),
-    ActivityEventKind.STEP_COMPENSATION_UNCERTAINTY_RESOLVED_FAILED: (
-        ActivityJournalEventKind.STEP_COMPENSATION_UNCERTAINTY_RESOLVED_FAILED
-    ),
-}
-
-
-def _journal_events(
-    events: tuple[ActivityEventRecord, ...],
-) -> tuple[ActivityJournalEvent, ...]:
-    journal: list[ActivityJournalEvent] = []
-    for event in events:
-        kind = _EVENT_KIND_TO_JOURNAL_KIND.get(event.kind)
-        if kind is None:
-            continue
-        journal.append(
-            ActivityJournalEvent(
-                event_id=event.event_id,
-                run_id=event.run_id,
-                ordinal=event.ordinal,
-                kind=kind,
-                activity_id=event.activity_id,
-            )
-        )
-    return tuple(journal)
 
 
 def _get_run(stores: Any, run_id: str) -> ActivityRunRecord:
