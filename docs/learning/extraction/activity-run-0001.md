@@ -1216,3 +1216,172 @@ cpk-server Dockerfile source pin to the merged #877 commit, publish a new GHCR
 image, record the immutable digest, update `products/cpk_server/product.cpk.json`,
 refresh descriptor and catalogue checksums, and run the published-image smoke
 with local rebuild disabled.
+
+## #878 Published cpk-server Activity Baseline
+
+#878 republished the cpk-server OCI image from the merged #877
+control-plane-kit source commit:
+
+```text
+control-plane-kit source commit:
+  fc85788e7b39324091d397f8afa4b1b9b56b3cb7
+
+cpk-server image:
+  ghcr.io/openj92/control-plane-kit-servers/cpk-server@sha256:6d09435ccb579c318b4e4914435e56e1f758ac9d8241e29aae5755b9662c45b0
+
+cpk-server descriptor sha256:
+  003d1673d7c17d12031f14f746c5724375e376fae9678463a2454134b4c6727b
+
+packaged catalogue checksum:
+  48d9569f970f985011cc8abd6dd248c8715578f1c8a47a6885ad061d5f0ba87b
+```
+
+The publication work landed in `control-plane-kit-servers` PR #20. The
+descriptor and packaged catalogue were updated together. During review, the
+new core `ProductDescriptorCodec` correctly rejected a descriptor rewritten
+with a trailing newline. The final descriptor is canonical compact JSON and the
+catalogue digest was recomputed from those exact bytes.
+
+Validation evidence:
+
+```text
+control-plane-kit-servers PR #20
+  git diff --check
+  focused cpk-server product tests
+  scripts/cpk_server_published_image_smoke.sh
+  ./test.sh
+```
+
+The published-image smoke pulled by immutable digest and disabled local rebuild:
+
+```text
+CPK_SERVER_BUILD_IMAGE=0
+docker pull ghcr.io/openj92/control-plane-kit-servers/cpk-server@sha256:6d09435...
+```
+
+Important boundary finding:
+
+The published cpk-server image still contains the explicit
+`_UnsupportedExecutionAdapter` seam. That is not a missed import. Real Docker
+execution from inside the hosted cpk-server image would require a declared
+Docker-host capability, socket/access policy, and runtime/interpreter package
+boundary. ACTIVITY proves local Docker realization through operations and the
+seeded live harness; it does not yet make the published cpk-server image a
+Docker-host controller. That remains a handoff to the runtime/interpreter lane.
+
+## #879 ACTIVITY Closeout
+
+ACTIVITY now establishes the first real extracted operator workflow over
+durable operations:
+
+```text
+create workspace
+  -> import product descriptor
+    -> start operation session
+      -> set desired graph
+        -> plan transition
+          -> request approval
+            -> manager reviews pending approval / plan detail
+              -> manager approves or rejects
+                -> admit approved plan
+                  -> claim run
+                    -> start run
+                      -> execute activities
+                        -> record observations
+                          -> advance current graph only after accepted success
+                            -> read final state
+```
+
+Capabilities now available:
+
+```text
+core
+  pure product, graph, plan, command, read, and route contract language
+
+operations
+  Postgres-backed workspace/product/session/graph/approval/admission/lifecycle
+  services, local Docker product realization, observations, and explicit current
+  graph advancement
+
+cpk-server
+  FastAPI and MCP wrappers over the same operations command/read boundary
+
+control-plane-kit-servers
+  digest-pinned OCI descriptors for cpk-server, hello-server,
+  http-active-router, http-multiplexer, and postgres-server
+```
+
+Real local Docker product operations proven by #877:
+
+```text
+StartRuntime / ReconcileRuntime
+StartNode / ReconcileNode
+WaitForHealthy for HTTP checks
+WaitForHealthy for Postgres checks through the operations-side health checker
+StopNode / RemoveNodeResource
+StopRuntime / RemoveRuntimeResource
+```
+
+Seeded live scenarios exercised:
+
+```text
+Postgres data service + Hello server
+Router deployment: Hello blue -> active router
+Multiplexer deployment: primary Hello + observer Hello -> multiplexer
+Router transition: active router retargets from blue to green
+Router teardown
+```
+
+HTTP/MCP evidence:
+
+#876 proved the public route workflow over both HTTP-shaped and MCP-shaped
+boundaries. Both surfaces traverse the same `CpkServerOperationsApplication`
+service boundary and do not carry duplicate command vocabulary. #877 then
+proved real Docker activity realization through operations with seeded product
+descriptors. The published cpk-server image was republished from the same
+activity-capable operations source, but hosted Docker execution remains
+deferred until cpk-server has a coherent runtime/interpreter capability.
+
+Security and data-engineering review:
+
+- Approval is part of the workflow and admission still rejects missing,
+  rejected, stale, or mismatched approval evidence.
+- Current graph advancement is explicit and guarded by completed run evidence.
+- Observations extend operational evidence and do not rewrite desired graph
+  truth.
+- Product descriptors remain secret-free. Postgres password material is handled
+  through explicit secret delivery in the descriptor and a local-development
+  resolver in the live harness.
+- Stores remain UnitOfWork-owned; stores do not commit independently.
+- The Docker adapter records durable intent before bounded external effects and
+  records result/observation/projection afterward.
+- Docker ownership compatibility ignores plan/graph provenance labels while
+  preserving stable owner/workspace/runtime/node/product/descriptor/data
+  compatibility.
+- Docker cleanup removes only proven-owned ACTIVITY resources and preserves
+  unrelated containers and volumes.
+
+Residual risks and explicit handoffs:
+
+```text
+#676 recursive cpk-server acceptance
+  deferred until hosted cpk-server has a coherent runtime/interpreter capability
+
+#806 runtime/interpreter extraction
+  owns Docker-host access, future Docker SDK/CLI choice, cloud runtimes, and
+  runtime capability publication
+
+#882 future control portals / ingress
+  owns remote over-the-wire control access into CPK-enabled servers
+
+larger topology stress tests
+  should reuse the seeded descriptors and add richer mixed topologies after the
+  runtime/interpreter boundary is explicit
+
+frontend work
+  can consume the approval queue, plan detail, workflow state, and read models
+  after operations closeout
+```
+
+ACTIVITY should close as local Docker realization plus public workflow
+composition, not as recursive or remote hosted runtime execution.
