@@ -344,6 +344,11 @@ def operator_read_http_routes() -> tuple[HttpApiRouteContract, ...]:
                 "PlanDetailReadResponse",
             ),
             (
+                "read.approval-detail",
+                "/workspaces/{workspace_id}/approvals/{approval_id}",
+                "ApprovalDetailReadResponse",
+            ),
+            (
                 "read.pending-approvals",
                 "/workspaces/{workspace_id}/approvals/pending",
                 "PendingApprovalsReadResponse",

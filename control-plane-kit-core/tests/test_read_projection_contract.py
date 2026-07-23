@@ -44,6 +44,14 @@ class ReadProjectionContractTests(unittest.TestCase):
                     True,
                 ),
                 (
+                    "read.approval-detail",
+                    ReadProjectionKind.APPROVAL_DETAIL,
+                    "ApprovalDetailReadResponse",
+                    ReadProjectionPolicy.PINNED_PLAN_AND_RECOVERY,
+                    True,
+                    False,
+                ),
+                (
                     "read.control-surface",
                     ReadProjectionKind.CONTROL_SURFACE,
                     "ControlSurfaceReadResponse",
