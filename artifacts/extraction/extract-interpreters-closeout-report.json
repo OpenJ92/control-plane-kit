@@ -1,0 +1,98 @@
+{
+  "boundary_proofs": [
+    "control-plane-kit-operations tests assert no imports of control_plane_kit_interpreters, docker, subprocess, FastAPI, HTTPX, MCP, Uvicorn, or server-product packages",
+    "control-plane-kit-interpreters tests assert no imports of operations, server packages, FastAPI, or psycopg",
+    "control-plane-kit-interpreters package root does not import Docker SDK eagerly",
+    "cpk-server lazily imports DockerRuntimeInterpreter only when CPK_RUNTIME_INTERPRETERS=docker",
+    "hosted acceptance controller talks to cpk-server over public HTTP/MCP routes and does not import operations internals"
+  ],
+  "completed_issues": [
+    "#916",
+    "#917",
+    "#919",
+    "#918",
+    "#908",
+    "#909"
+  ],
+  "deferred": [
+    "recursive cpk-server acceptance",
+    "future control portals / ingress",
+    "cloud runtime interpreters",
+    "larger topology stress tests",
+    "frontend work"
+  ],
+  "issue": "#910",
+  "package_ownership": {
+    "control-plane-kit-core": [
+      "RuntimeEffectRequest",
+      "RuntimeEffectResult",
+      "RuntimeKind",
+      "pure runtime-effect descriptor and codec language"
+    ],
+    "control-plane-kit-interpreters": [
+      "DockerRuntimeInterpreter",
+      "DockerSdkClient",
+      "Python Docker SDK dependency",
+      "concrete RuntimeEffectRequest -> RuntimeEffectResult effects"
+    ],
+    "control-plane-kit-operations": [
+      "ActivityRealizationContext",
+      "RuntimeInterpreterDispatcher protocol",
+      "ExecutionCoordinator result folding",
+      "activity journal and observation persistence",
+      "Postgres UnitOfWork and stores"
+    ],
+    "control-plane-kit-servers/cpk-server": [
+      "FastAPI and MCP process wrapper",
+      "runtime interpreter selection at bootstrap",
+      "operations dependency composition"
+    ],
+    "control-plane-kit-servers/products": [
+      "product descriptors",
+      "Dockerfiles",
+      "OCI image publication",
+      "catalogue metadata"
+    ]
+  },
+  "parent": "#907",
+  "published_cpk_server": {
+    "catalogue_checksum": "1c3d0dd880caf0b2a065a80403d326db8dd47358e2418afa712f7af0818c4bfc",
+    "descriptor_sha256": "10dafb59f3d98a527e9dc39fe87ab93668774afc8ee5b688bf663bdb1553c159",
+    "image": "ghcr.io/openj92/control-plane-kit-servers/cpk-server@sha256:def866baeeda659d61a821a29a07a8ceb780bcb440ab7fe0c63a8fa8989e7c7a",
+    "server_merge_commit": "9b7aa88edbcfd55d72b4d6ac7e2c82f9422848bf",
+    "server_pr": "OpenJ92/control-plane-kit-servers#22"
+  },
+  "residual_risks": [
+    "GHCR server-product packages are currently private, so hosted local Docker acceptance uses a minimal read-only auth config mounted at runtime",
+    "Docker Desktop socket group authority is environment-specific and remains a local-runtime acceptance concern, not descriptor truth",
+    "the hosted proof covers a one-node hello deployment; larger graph stress remains deferred"
+  ],
+  "schema": "cpk.extract-interpreters-closeout",
+  "status": "closeout-ready",
+  "topology": {
+    "canonical_shape": [
+      "core: RuntimeEffectRequest",
+      "interpreter: RuntimeEffectRequest -> IO RuntimeEffectResult",
+      "operations: ActivityJournal x RuntimeEffectResult -> ActivityJournal'"
+    ],
+    "runtime_composition": [
+      "cpk-server",
+      "configured operations application",
+      "ExecutionCoordinator",
+      "RuntimeInterpreterDispatcher",
+      "DockerRuntimeInterpreter",
+      "Python Docker SDK"
+    ]
+  },
+  "validation": [
+    "control-plane-kit-core ./test.sh: 390 tests, compileall, import check",
+    "control-plane-kit-operations ./test.sh: 125 tests, compileall, import check",
+    "control-plane-kit-interpreters ./test.sh: 51 tests, compileall",
+    "control-plane-kit-interpreters live_docker_runtime_interpreter proof passed",
+    "control-plane-kit-interpreters live_docker_configuration proof passed",
+    "control-plane-kit-servers sh scripts/cpk_server_published_image_smoke.sh passed",
+    "control-plane-kit-servers sh scripts/cpk_server_hosted_activity_smoke.sh passed",
+    "control-plane-kit-servers ./test.sh passed all 86 unit tests plus cpk-server image smoke and residue audit",
+    "control-plane-kit ./test.sh: packaging acceptances plus 1230 tests passed"
+  ]
+}
