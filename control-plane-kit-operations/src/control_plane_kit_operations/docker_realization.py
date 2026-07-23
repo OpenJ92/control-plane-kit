@@ -6,7 +6,8 @@ from dataclasses import dataclass
 import os
 import re
 import subprocess
-from typing import Mapping, Protocol
+from time import sleep
+from typing import Callable, Mapping, Protocol
 from urllib.error import HTTPError, URLError
 from urllib.parse import urljoin
 from urllib.request import HTTPRedirectHandler, Request, build_opener
@@ -18,6 +19,7 @@ from control_plane_kit_core.planning import (
     RemoveNodeResource,
     RemoveRuntimeResource,
     ReconcileNode,
+    ReconcileRuntime,
     StartNode,
     StartRuntime,
     StopNode,
@@ -177,12 +179,15 @@ class _NoRedirects(HTTPRedirectHandler):
 class StdlibDockerHealthCheckClient:
     """Stdlib implementation for HTTP checks; other protocols fail closed."""
 
+    retry_delay_seconds: float = 0.25
+    sleeper: Callable[[float], None] = sleep
+
     def check_http(self, base_url: str, check: HttpCheck) -> DockerHealthCheckResult:
         url = urljoin(base_url.rstrip("/") + "/", check.path.lstrip("/"))
         opener = build_opener(_NoRedirects)
         attempts = 0
         last: DockerHealthCheckResult | None = None
-        for _ in range(check.policy.maximum_attempts):
+        for attempt_index in range(check.policy.maximum_attempts):
             attempts += 1
             try:
                 with opener.open(
@@ -227,6 +232,8 @@ class StdlibDockerHealthCheckClient:
                     VerificationOutcome.MALFORMED,
                     {"kind": "http", "url": url, "attempts": attempts},
                 )
+            if attempt_index + 1 < check.policy.maximum_attempts:
+                self.sleeper(self.retry_delay_seconds)
         assert last is not None
         return last
 
@@ -435,18 +442,26 @@ class DockerProductRealizationAdapter:
                     "Docker command timed out before result was known",
                 )
             )
-        except subprocess.CalledProcessError:
+        except subprocess.CalledProcessError as error:
             return ActivityExecutionOutcome.failed(
                 FailureEvidence(
                     FailureCategory.TERMINAL,
                     "docker.command-failed",
                     "Docker command failed",
+                    BoundedEvidence.from_mapping(
+                        {
+                            "returncode": error.returncode,
+                            "stderr": _bounded_docker_stderr(error.stderr),
+                        }
+                    ),
                 )
             )
 
     def _execute(self, context: ActivityRealizationContext) -> ActivityExecutionOutcome:
         match context.activity.operation:
             case StartRuntime() as operation:
+                return self._start_runtime(context, _desired_graph(context), operation)
+            case ReconcileRuntime() as operation:
                 return self._start_runtime(context, _desired_graph(context), operation)
             case StartNode() as operation:
                 return self._start_node(context, _desired_graph(context), operation)
@@ -481,7 +496,7 @@ class DockerProductRealizationAdapter:
         self,
         context: ActivityRealizationContext,
         graph: DeploymentGraph,
-        operation: StartRuntime,
+        operation: StartRuntime | ReconcileRuntime,
     ) -> ActivityExecutionOutcome:
         runtime = graph.runtimes[operation.target.runtime_id]
         if runtime.kind is not RuntimeKind.DOCKER:
@@ -646,7 +661,24 @@ class DockerProductRealizationAdapter:
                     FailureCategory.TERMINAL,
                     "docker.health-check-failed",
                     "one or more Docker-local health checks failed",
-                    BoundedEvidence.from_mapping({"check_ids": list(failures)}),
+                    BoundedEvidence.from_mapping(
+                        {
+                            "check_ids": list(failures),
+                            "checks": [
+                                {
+                                    "check_id": check_id,
+                                    "outcome": result.outcome.value
+                                    if result.outcome is not None
+                                    else "unsupported",
+                                    "evidence": result.evidence.descriptor()
+                                    if result.evidence is not None
+                                    else {},
+                                }
+                                for check_id, result in results
+                                if result.outcome is not VerificationOutcome.PASSED
+                            ],
+                        }
+                    ),
                 )
             )
         return ActivityExecutionOutcome.succeeded(
@@ -1001,6 +1033,12 @@ def _clean(value: str) -> str:
     return _IDENTITY.sub("-", value).strip("-").lower()
 
 
+def _bounded_docker_stderr(value: str | None) -> str:
+    if value is None:
+        return ""
+    return value.strip()[:512]
+
+
 def _base_labels(
     context: ActivityRealizationContext,
     runtime_id: str,
@@ -1023,6 +1061,8 @@ def _require_owned(
     if inspected is None:
         return
     for key, value in expected.items():
+        if key in {_LABEL_PLAN, _LABEL_GRAPH}:
+            continue
         if inspected.labels.get(key) != value:
             raise _DockerOwnershipConflict(
                 f"Docker resource {resource_name!r} is not owned compatible",

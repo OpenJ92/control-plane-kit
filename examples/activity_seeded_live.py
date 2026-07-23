@@ -7,6 +7,7 @@ from datetime import datetime, timezone
 import json
 import os
 import subprocess
+import time
 from pathlib import Path
 from urllib.request import urlopen
 
@@ -82,16 +83,37 @@ class ActivityPostgresHealth:
         base_url: str,
         check: PostgresQueryCheck,
     ) -> DockerHealthCheckResult:
-        del check
-        with psycopg.connect(f"{base_url}/cpk", user="cpk", password=POSTGRES_SECRET) as conn:
-            value = conn.execute("select 1").fetchone()[0]
-        if value == 1:
-            return DockerHealthCheckResult.passed(
-                {"kind": "postgres", "url": base_url, "operation": "select-one"}
-            )
+        attempts = 0
+        for _ in range(check.policy.maximum_attempts):
+            attempts += 1
+            try:
+                with psycopg.connect(
+                    f"{base_url}/cpk",
+                    user="cpk",
+                    password=POSTGRES_SECRET,
+                    connect_timeout=int(check.policy.timeout_seconds),
+                ) as conn:
+                    value = conn.execute("select 1").fetchone()[0]
+                if value == 1:
+                    return DockerHealthCheckResult.passed(
+                        {
+                            "kind": "postgres",
+                            "url": base_url,
+                            "operation": "select-one",
+                            "attempts": attempts,
+                        }
+                    )
+            except psycopg.OperationalError:
+                if attempts < check.policy.maximum_attempts:
+                    time.sleep(1)
         return DockerHealthCheckResult.failed(
-            VerificationOutcome.FAILED,
-            {"kind": "postgres", "url": base_url, "operation": "select-one"},
+            VerificationOutcome.TIMED_OUT,
+            {
+                "kind": "postgres",
+                "url": base_url,
+                "operation": "select-one",
+                "attempts": attempts,
+            },
         )
 
 
@@ -369,7 +391,7 @@ def _run_transition(
         "actor_scopes": [PolicyScope.EXECUTION_OPERATE.value],
         "idempotency_key": f"{workspace_id}:{title}:start",
     })
-    _execute_to_completion(app, run_id, title)
+    _execute_to_completion(app, workspace_id, run_id, title)
     advanced = _handle(app, "http", "lifecycle", "command.graph.advance-current", {"workspace_id": workspace_id, "run_id": run_id}, {
         "plan_id": plan_id,
         "expected_current_graph_id": current_graph_id,
@@ -381,8 +403,12 @@ def _run_transition(
     return TransitionState(str(advanced["to_graph_id"]), desired_graph_id)
 
 
-def _execute_to_completion(app: CpkServerOperationsApplication, run_id: str, title: str) -> None:
-    connected = False
+def _execute_to_completion(
+    app: CpkServerOperationsApplication,
+    workspace_id: str,
+    run_id: str,
+    title: str,
+) -> None:
     for attempt in range(80):
         result = _handle(app, "mcp", "execution", "command.deployment.execute", {}, {
             "run_id": run_id,
@@ -391,16 +417,23 @@ def _execute_to_completion(app: CpkServerOperationsApplication, run_id: str, tit
             "idempotency_key": f"{run_id}:execute:{attempt}",
             "max_effects": 1,
         })
-        if not connected:
-            connected = _connect_controller_to_runtime_network()
+        _sync_controller_runtime_networks()
         if result["coordinator_status"] == "completed":
             return
         if result["coordinator_status"] in {"failed", "unsupported", "uncertain", "blocked"}:
-            raise RuntimeError(f"{title} stopped with {result}")
+            timeline = _handle(
+                app,
+                "http",
+                "reads",
+                "read.activity",
+                {"workspace_id": workspace_id},
+                {"limit": 50},
+            )
+            raise RuntimeError(f"{title} stopped with {result}; timeline={timeline}")
     raise RuntimeError(f"{title} did not complete")
 
 
-def _connect_controller_to_runtime_network() -> bool:
+def _sync_controller_runtime_networks() -> None:
     controller = _required_env("CPK_ACTIVITY_CONTROLLER")
     networks = subprocess.run(
         ["docker", "network", "ls", "--format", "{{.Name}}"],
@@ -410,21 +443,64 @@ def _connect_controller_to_runtime_network() -> bool:
     ).stdout.splitlines()
     for network in networks:
         if network.startswith("control-plane-kit-activity-live-"):
-            result = subprocess.run(
-                ["docker", "network", "connect", network, controller],
-                stdout=subprocess.DEVNULL,
-                stderr=subprocess.PIPE,
-                check=False,
-                text=True,
-            )
-            if result.returncode == 0:
-                return True
-            if "already exists" in result.stderr.lower():
-                return True
-            raise RuntimeError(
-                f"failed to connect controller to {network}: {result.stderr.strip()}"
-            )
-    return False
+            if _network_has_cpk_containers(network):
+                _connect_controller_to_network(controller, network)
+            else:
+                _disconnect_controller_from_network(controller, network)
+
+
+def _network_has_cpk_containers(network: str) -> bool:
+    containers = subprocess.run(
+        [
+            "docker",
+            "ps",
+            "-a",
+            "--filter",
+            f"network={network}",
+            "--filter",
+            "label=control-plane-kit.owner=operations",
+            "--format",
+            "{{.Names}}",
+        ],
+        check=True,
+        stdout=subprocess.PIPE,
+        text=True,
+    ).stdout.splitlines()
+    return bool(containers)
+
+
+def _connect_controller_to_network(controller: str, network: str) -> None:
+    result = subprocess.run(
+        ["docker", "network", "connect", network, controller],
+        stdout=subprocess.DEVNULL,
+        stderr=subprocess.PIPE,
+        check=False,
+        text=True,
+    )
+    if result.returncode == 0:
+        return
+    if "already exists" in result.stderr.lower():
+        return
+    raise RuntimeError(
+        f"failed to connect controller to {network}: {result.stderr.strip()}"
+    )
+
+
+def _disconnect_controller_from_network(controller: str, network: str) -> None:
+    result = subprocess.run(
+        ["docker", "network", "disconnect", network, controller],
+        stdout=subprocess.DEVNULL,
+        stderr=subprocess.PIPE,
+        check=False,
+        text=True,
+    )
+    if result.returncode == 0:
+        return
+    if "is not connected" in result.stderr.lower() or "not found" in result.stderr.lower():
+        return
+    raise RuntimeError(
+        f"failed to disconnect controller from {network}: {result.stderr.strip()}"
+    )
 
 
 def _handle(app, surface: str, role: str, route_id: str, path: dict[str, str], payload: dict[str, object]):  # noqa: ANN001

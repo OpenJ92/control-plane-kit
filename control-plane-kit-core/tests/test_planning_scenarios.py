@@ -188,6 +188,8 @@ class ExecutionScenarioExpectationTests(unittest.TestCase):
 
     def test_health_operations_have_provider_neutral_observation_expectations(self) -> None:
         for scenario in execution_scenarios():
+            if not isinstance(scenario.expectation.run, RunExpected):
+                continue
             operations = tuple(
                 operation
                 for operation in scenario.planning.expectation.operations

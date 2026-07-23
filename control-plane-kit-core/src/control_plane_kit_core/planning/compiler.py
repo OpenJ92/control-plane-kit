@@ -170,9 +170,12 @@ def compile_activity_plan(diff: GraphDiff) -> ActivityPlan:
                     )
 
     for node_id, changes in sorted(node_reconciliations.items()):
-        draft = _reconcile_node(tuple(changes), node_id)
-        drafts.append(draft)
-        reconcile_node[node_id] = draft
+        reconcile = _reconcile_node(tuple(changes), node_id)
+        healthy = _reconciled_node_health(tuple(changes), node_id)
+        healthy.dependencies.add(reconcile.activity_id)
+        drafts.extend((reconcile, healthy))
+        reconcile_node[node_id] = reconcile
+        healthy_node[node_id] = healthy
     for runtime_id, changes in sorted(runtime_reconciliations.items()):
         drafts.append(_reconcile_runtime(tuple(changes), runtime_id))
 
@@ -463,6 +466,19 @@ def _reconcile_node(changes: tuple[StructuralChange, ...], node_id: str) -> _Act
         ReconcileNode(NodeTarget(node_id)),
         RiskLevel.MEDIUM,
         ActivityImpact.DISRUPTIVE,
+    )
+
+
+def _reconciled_node_health(
+    changes: tuple[StructuralChange, ...],
+    node_id: str,
+) -> _ActivityDraft:
+    return _draft_many(
+        changes,
+        "wait-healthy",
+        WaitForHealthy(NodeTarget(node_id)),
+        RiskLevel.MEDIUM,
+        ActivityImpact.NON_DESTRUCTIVE,
     )
 
 

@@ -8,6 +8,8 @@ POSTGRES_CONTAINER="${CPK_ACTIVITY_POSTGRES:-cpk-activity-control-postgres}"
 CONTROLLER="${CPK_ACTIVITY_CONTROLLER:-cpk-activity-controller}"
 DATABASE_URL="postgresql://cpk:cpk@${POSTGRES_CONTAINER}:5432/cpk"
 WORKSPACE_PREFIX="activity-live"
+DOCKER_CONFIG_DIR=""
+DOCKER_CONFIG_OWNED="0"
 
 remove_container() {
   local name="$1"
@@ -51,6 +53,31 @@ cleanup() {
   cleanup_activity_resources || true
   remove_container "$POSTGRES_CONTAINER" || true
   docker network rm "$CONTROL_NETWORK" >/dev/null 2>&1 || true
+  if test "$DOCKER_CONFIG_OWNED" = "1" && test -n "$DOCKER_CONFIG_DIR" && test -d "$DOCKER_CONFIG_DIR"; then
+    rm -rf "$DOCKER_CONFIG_DIR"
+  fi
+}
+
+prepare_controller_docker_config() {
+  if test -n "${CPK_ACTIVITY_DOCKER_CONFIG:-}"; then
+    DOCKER_CONFIG_DIR="$CPK_ACTIVITY_DOCKER_CONFIG"
+    DOCKER_CONFIG_OWNED="0"
+    return 0
+  fi
+  if ! command -v gh >/dev/null 2>&1; then
+    return 0
+  fi
+  local token
+  if ! token="$(gh auth token 2>/dev/null)"; then
+    return 0
+  fi
+  test -n "$token" || return 0
+  DOCKER_CONFIG_DIR="$(mktemp -d)"
+  DOCKER_CONFIG_OWNED="1"
+  local auth
+  auth="$(printf 'openj92:%s' "$token" | base64 | tr -d '\n')"
+  umask 077
+  printf '{"auths":{"ghcr.io":{"auth":"%s"}}}\n' "$auth" >"$DOCKER_CONFIG_DIR/config.json"
 }
 
 if test ! -d "$SERVER_REPO/products"; then
@@ -79,11 +106,19 @@ until test "$(docker inspect -f '{{.State.Health.Status}}' "$POSTGRES_CONTAINER"
   sleep 1
 done
 
+prepare_controller_docker_config
+
+DOCKER_CONFIG_MOUNT=()
+if test -n "$DOCKER_CONFIG_DIR"; then
+  DOCKER_CONFIG_MOUNT=(-v "$DOCKER_CONFIG_DIR:/root/.docker:ro")
+fi
+
 docker run -d \
   --name "$CONTROLLER" \
   --network "$CONTROL_NETWORK" \
   -v /var/run/docker.sock:/var/run/docker.sock \
   -v "$(cd "$SERVER_REPO" && pwd):/workspace/control-plane-kit-servers:ro" \
+  "${DOCKER_CONFIG_MOUNT[@]}" \
   -e CPK_ACTIVITY_DATABASE_URL="$DATABASE_URL" \
   -e CPK_ACTIVITY_CONTROLLER="$CONTROLLER" \
   -e CPK_ACTIVITY_SERVERS_REPO=/workspace/control-plane-kit-servers \

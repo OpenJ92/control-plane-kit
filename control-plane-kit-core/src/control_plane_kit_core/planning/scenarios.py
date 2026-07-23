@@ -349,16 +349,20 @@ def add_request_observer() -> PlanningScenario:
 def move_service_between_runtimes() -> PlanningScenario:
     current = _runtime_move_graph("runtime-move-current", source="runtime-a")
     desired = _runtime_move_graph("runtime-move-desired", source="runtime-b")
+    reconcile = _op(ReconcileNode, "worker")
+    healthy = _op(WaitForHealthy, "worker")
     return _scenario(
         "move-service-runtime",
         "Move a service between runtimes",
         current,
         desired,
         operations=(
-            _op(ReconcileNode, "worker"),
+            reconcile,
+            healthy,
             _op(ReconcileRuntime, "runtime-a"),
             _op(ReconcileRuntime, "runtime-b"),
         ),
+        dependencies=(_dependency(reconcile, healthy),),
         max_risk=RiskLevel.MEDIUM,
     )
 
@@ -366,12 +370,15 @@ def move_service_between_runtimes() -> PlanningScenario:
 def switch_database_endpoint() -> PlanningScenario:
     current = _database_graph("database-current", active_database_id="postgres-a")
     desired = _database_graph("database-desired", active_database_id="postgres-b")
+    reconcile = _op(ReconcileNode, "api")
+    healthy = _op(WaitForHealthy, "api")
     return _scenario(
         "switch-database-endpoint",
         "Switch between pre-provisioned database endpoints",
         current,
         desired,
-        operations=(_op(ReconcileNode, "api"),),
+        operations=(reconcile, healthy),
+        dependencies=(_dependency(reconcile, healthy),),
         max_risk=RiskLevel.MEDIUM,
     )
 

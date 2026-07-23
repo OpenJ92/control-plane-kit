@@ -1,7 +1,9 @@
 from __future__ import annotations
 
 from dataclasses import replace
+import subprocess
 import unittest
+from unittest.mock import patch
 
 from control_plane_kit_core.algebra import (
     BlockSockets,
@@ -29,6 +31,7 @@ from control_plane_kit_core.planning import (
     RemoveNodeResource,
     RemoveRuntimeResource,
     ReconcileNode,
+    ReconcileRuntime,
     StartNode,
     StartRuntime,
     StopNode,
@@ -64,12 +67,14 @@ from control_plane_kit_core.verification import (
     PostgresQueryCheck,
     VerificationContract,
     VerificationOutcome,
+    VerificationPolicy,
 )
 from control_plane_kit_operations.coordinator import ActivityRealizationContext
 from control_plane_kit_operations.docker_realization import (
     DockerHealthCheckResult,
     DockerProductRealizationAdapter,
     DockerResourceInspection,
+    StdlibDockerHealthCheckClient,
 )
 from control_plane_kit_operations.lifecycle import ExecutionWorkerAuthority
 from control_plane_kit_operations.products import InlineDescriptorSource, RegisteredProduct
@@ -181,6 +186,16 @@ class RecordingDockerClient:
         del self.networks[name]
 
 
+class FailingPullDockerClient(RecordingDockerClient):
+    def pull_image(self, image: str) -> None:
+        self.calls.append(("pull-image", image))
+        raise subprocess.CalledProcessError(
+            125,
+            ["docker", "pull", image],
+            stderr="invalid reference format\n" + ("x" * 3000),
+        )
+
+
 class RecordingHealthClient:
     def __init__(self, *, outcome: VerificationOutcome = VerificationOutcome.PASSED) -> None:
         self.outcome = outcome
@@ -212,6 +227,32 @@ class RecordingHealthClient:
             self.outcome,
             {"kind": "postgres", "url": base_url, "operation": "select-one"},
         )
+
+
+class EventuallyReadyOpener:
+    def __init__(self) -> None:
+        self.calls = 0
+
+    def open(self, request, *, timeout: float):  # noqa: ANN001
+        del request, timeout
+        self.calls += 1
+        if self.calls < 3:
+            raise OSError("not listening yet")
+        return ReadyResponse()
+
+
+class ReadyResponse:
+    status = 200
+
+    def __enter__(self) -> "ReadyResponse":
+        return self
+
+    def __exit__(self, exc_type, exc, traceback) -> None:  # noqa: ANN001
+        del exc_type, exc, traceback
+
+    def read(self, size: int) -> bytes:
+        del size
+        return b"ok"
 
 
 class DockerProductRealizationAdapterTests(unittest.TestCase):
@@ -252,6 +293,48 @@ class DockerProductRealizationAdapterTests(unittest.TestCase):
                 }
             },
         )
+
+    def test_reconcile_runtime_ensures_owned_network_without_new_runtime_model(self) -> None:
+        client = RecordingDockerClient()
+        outcome = DockerProductRealizationAdapter(
+            project_name="cpk",
+            client=client,
+        ).execute(context_for(ReconcileRuntime(RuntimeTarget("docker"))))
+
+        self.assertEqual(outcome.kind.value, "succeeded")
+        self.assertEqual(client.calls[0], ("inspect-network", "cpk-workspace-a-docker"))
+        self.assertEqual(client.calls[1][0], "create-network")
+        self.assertEqual(
+            outcome.evidence.descriptor()["docker"],
+            {
+                "action": "ensure-network",
+                "network": "cpk-workspace-a-docker",
+                "runtime_id": "docker",
+            },
+        )
+
+    def test_reconcile_runtime_accepts_prior_plan_and_graph_provenance_labels(self) -> None:
+        client = RecordingDockerClient()
+        client.networks["cpk-workspace-a-docker"] = DockerResourceInspection(
+            name="cpk-workspace-a-docker",
+            running=False,
+            image=None,
+            labels={
+                "control-plane-kit.graph-id": "graph-before",
+                "control-plane-kit.owner": "operations",
+                "control-plane-kit.plan-id": "plan-before",
+                "control-plane-kit.runtime-id": "docker",
+                "control-plane-kit.workspace-id": "workspace-a",
+            },
+        )
+
+        outcome = DockerProductRealizationAdapter(
+            project_name="cpk",
+            client=client,
+        ).execute(context_for(ReconcileRuntime(RuntimeTarget("docker"))))
+
+        self.assertEqual(outcome.kind.value, "succeeded")
+        self.assertEqual(client.calls, [("inspect-network", "cpk-workspace-a-docker")])
 
     def test_start_node_pulls_digest_and_runs_with_private_aliases_and_labels(self) -> None:
         client = RecordingDockerClient()
@@ -332,6 +415,24 @@ class DockerProductRealizationAdapterTests(unittest.TestCase):
             [name for name, _ in client.calls],
             ["inspect-container"],
         )
+
+    def test_docker_command_failure_records_bounded_stderr_without_command_echo(self) -> None:
+        client = FailingPullDockerClient()
+
+        outcome = DockerProductRealizationAdapter(
+            project_name="cpk",
+            client=client,
+        ).execute(context_for(StartNode(NodeTarget("hello"))))
+
+        self.assertEqual(outcome.kind.value, "failed")
+        assert outcome.failure is not None
+        self.assertEqual(outcome.failure.category, FailureCategory.TERMINAL)
+        self.assertEqual(outcome.failure.code, "docker.command-failed")
+        details = outcome.failure.details.descriptor()
+        self.assertEqual(details["returncode"], 125)
+        self.assertIn("invalid reference format", details["stderr"])
+        self.assertLessEqual(len(details["stderr"]), 512)
+        self.assertNotIn("ghcr.io/openj92", details["stderr"])
 
     def test_data_service_resolves_secret_and_mounts_retained_volume(self) -> None:
         product = postgres_product()
@@ -515,9 +616,49 @@ class DockerProductRealizationAdapterTests(unittest.TestCase):
         self.assertEqual(outcome.failure.code, "docker.health-check-failed")
         self.assertEqual(
             outcome.failure.details.descriptor(),
-            {"check_ids": ["live"]},
+            {
+                "check_ids": ["live"],
+                "checks": [
+                    {
+                        "check_id": "live",
+                        "outcome": "failed",
+                        "evidence": {
+                            "kind": "http",
+                            "status_code": 503,
+                            "url": "http://hello-internal:8000/health/live",
+                        },
+                    }
+                ],
+            },
         )
         self.assertEqual(outcome.observations, ())
+
+    def test_stdlib_http_health_retry_attempts_wait_between_startup_failures(self) -> None:
+        opener = EventuallyReadyOpener()
+        sleeps: list[float] = []
+
+        with patch(
+            "control_plane_kit_operations.docker_realization.build_opener",
+            return_value=opener,
+        ):
+            result = StdlibDockerHealthCheckClient(
+                retry_delay_seconds=0.125,
+                sleeper=sleeps.append,
+            ).check_http(
+                "http://hello-internal:8000",
+                HttpCheck(
+                    check_id="ready",
+                    provider_socket="internal",
+                    path="/health/ready",
+                    policy=VerificationPolicy(maximum_attempts=3),
+                ),
+            )
+
+        self.assertIs(result.outcome, VerificationOutcome.PASSED)
+        self.assertEqual(opener.calls, 3)
+        self.assertEqual(sleeps, [0.125, 0.125])
+        assert result.evidence is not None
+        self.assertEqual(result.evidence.descriptor()["attempts"], 3)
 
     def test_postgres_health_uses_injected_checker_and_provider_port(self) -> None:
         health = RecordingHealthClient()
