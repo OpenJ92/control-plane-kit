@@ -7,7 +7,6 @@ from datetime import datetime, timezone
 import json
 import os
 import subprocess
-import time
 from pathlib import Path
 from urllib.request import urlopen
 
@@ -22,24 +21,14 @@ from control_plane_kit_core.products import (
     ProductInstanceConfiguration,
     instantiate_product,
 )
-from control_plane_kit_core.secrets import (
-    LocalDevelopmentSecretResolver,
-    SecretProviderAuthority,
-    SecretProviderId,
-)
+from control_plane_kit_core.types import RuntimeKind
 from control_plane_kit_core.topology import DEFAULT_GRAPH_CODEC, DeploymentGraph, compile_topology
-from control_plane_kit_core.verification import PostgresQueryCheck, VerificationOutcome
+from control_plane_kit_interpreters.docker import DockerRuntimeInterpreter, DockerSdkClient
 from control_plane_kit_operations.admission import ExecutionAdmissionCommandService
 from control_plane_kit_operations.advancement import CurrentGraphAdvancementCommandService
 from control_plane_kit_operations.approvals import ApprovalCommandService
-from control_plane_kit_operations.coordinator import ExecutionCoordinator
+from control_plane_kit_operations.coordinator import ExecutionCoordinator, RuntimeInterpreterDispatcher
 from control_plane_kit_operations.cpk_server import CpkServerOperationsApplication, cpk_server_services
-from control_plane_kit_operations.docker_realization import (
-    DockerCliRealizationClient,
-    DockerHealthCheckResult,
-    DockerProductRealizationAdapter,
-    StdlibDockerHealthCheckClient,
-)
 from control_plane_kit_operations.lifecycle import RunLifecycleCommandService
 from control_plane_kit_operations.planning import ActivityPlanningCommandService, DesiredGraphCommandService
 from control_plane_kit_operations.postgres import PostgresUnitOfWork, install_schema
@@ -49,7 +38,6 @@ from control_plane_kit_operations.workspaces import WorkspaceCommandService
 
 
 WORKER = "activity-worker"
-POSTGRES_SECRET = "activity-postgres-password"
 
 
 @dataclass(frozen=True)
@@ -69,52 +57,6 @@ class GeneratedIds:
     def __call__(self) -> str:
         self.next += 1
         return f"{self.prefix}-{self.next}"
-
-
-class ActivityPostgresHealth:
-    def __init__(self) -> None:
-        self.http = StdlibDockerHealthCheckClient()
-
-    def check_http(self, base_url, check):  # noqa: ANN001
-        return self.http.check_http(base_url, check)
-
-    def check_postgres(
-        self,
-        base_url: str,
-        check: PostgresQueryCheck,
-    ) -> DockerHealthCheckResult:
-        attempts = 0
-        for _ in range(check.policy.maximum_attempts):
-            attempts += 1
-            try:
-                with psycopg.connect(
-                    f"{base_url}/cpk",
-                    user="cpk",
-                    password=POSTGRES_SECRET,
-                    connect_timeout=int(check.policy.timeout_seconds),
-                ) as conn:
-                    value = conn.execute("select 1").fetchone()[0]
-                if value == 1:
-                    return DockerHealthCheckResult.passed(
-                        {
-                            "kind": "postgres",
-                            "url": base_url,
-                            "operation": "select-one",
-                            "attempts": attempts,
-                        }
-                    )
-            except psycopg.OperationalError:
-                if attempts < check.policy.maximum_attempts:
-                    time.sleep(1)
-        return DockerHealthCheckResult.failed(
-            VerificationOutcome.TIMED_OUT,
-            {
-                "kind": "postgres",
-                "url": base_url,
-                "operation": "select-one",
-                "attempts": attempts,
-            },
-        )
 
 
 def main() -> int:
@@ -138,16 +80,14 @@ def main() -> int:
     _run_transition(
         app,
         workspace_id="activity-live-basic",
-        title="Postgres and hello deployment",
+        title="Hello deployment",
         products=products,
         desired=_graph(
             "activity-live-basic",
-            (
-                _block(products["postgres_server"], "pg"),
-                _block(products["hello_server"], "hello"),
-            ),
+            (_block(products["hello_server"], "hello"),),
         ),
     )
+    _assert_body("http://hello:8000/", "Hello, world!\n")
 
     router_graph = _graph(
         "activity-live-router",
@@ -164,7 +104,7 @@ def main() -> int:
         products=products,
         desired=router_graph,
     )
-    _assert_body("http://router-internal:8000/", "Hello, world!\n")
+    _assert_body("http://router:8000/", "Hello, world!\n")
 
     mux_graph = _graph(
         "activity-live-multiplexer",
@@ -183,7 +123,7 @@ def main() -> int:
         products=products,
         desired=mux_graph,
     )
-    _assert_body("http://multiplexer-internal:8000/", "Hello, world!\n")
+    _assert_body("http://multiplexer:8000/", "Hello, world!\n")
 
     green_graph = _graph(
         "activity-live-router",
@@ -203,8 +143,9 @@ def main() -> int:
         current_graph_id=router_state.current_graph_id,
         expected_desired_graph_id=router_state.desired_graph_id,
     )
-    _assert_body("http://router-internal:8000/", "Hello, world!\n")
+    _assert_body("http://router:8000/", "Hello, world!\n")
 
+    _disconnect_controller_runtime_networks()
     _run_transition(
         app,
         workspace_id="activity-live-router",
@@ -213,6 +154,7 @@ def main() -> int:
         desired=DeploymentGraph("activity-live-router-empty"),
         current_graph_id=updated.current_graph_id,
         expected_desired_graph_id=updated.desired_graph_id,
+        connect_controller=False,
     )
 
     print("seeded ACTIVITY scenarios passed")
@@ -234,17 +176,10 @@ def _application(database_url: str) -> CpkServerOperationsApplication:
         clock=_clock,
         id_factory=GeneratedIds("lifecycle"),
     )
-    adapter = DockerProductRealizationAdapter(
-        project_name="control-plane-kit",
-        client=DockerCliRealizationClient(timeout_seconds=60),
-        secret_resolver=LocalDevelopmentSecretResolver(
-            SecretProviderAuthority(
-                SecretProviderId("control-plane-kit"),
-                (("postgres",),),
-            ),
-            {"secret://control-plane-kit/postgres/password": POSTGRES_SECRET},
-        ),
-        health=ActivityPostgresHealth(),
+    adapter = RuntimeInterpreterDispatcher(
+        {
+            RuntimeKind.DOCKER: DockerRuntimeInterpreter(DockerSdkClient()),
+        }
     )
     return CpkServerOperationsApplication(
         cpk_server_services(
@@ -307,6 +242,7 @@ def _run_transition(
     desired: DeploymentGraph,
     current_graph_id: str | None = None,
     expected_desired_graph_id: str | None = None,
+    connect_controller: bool = True,
 ) -> TransitionState:
     if current_graph_id is None:
         workspace = _handle(app, "http", "planning", "command.workspace.create", {}, {
@@ -391,7 +327,13 @@ def _run_transition(
         "actor_scopes": [PolicyScope.EXECUTION_OPERATE.value],
         "idempotency_key": f"{workspace_id}:{title}:start",
     })
-    _execute_to_completion(app, workspace_id, run_id, title)
+    _execute_to_completion(
+        app,
+        workspace_id,
+        run_id,
+        title,
+        connect_controller=connect_controller,
+    )
     advanced = _handle(app, "http", "lifecycle", "command.graph.advance-current", {"workspace_id": workspace_id, "run_id": run_id}, {
         "plan_id": plan_id,
         "expected_current_graph_id": current_graph_id,
@@ -408,8 +350,11 @@ def _execute_to_completion(
     workspace_id: str,
     run_id: str,
     title: str,
+    connect_controller: bool = True,
 ) -> None:
     for attempt in range(80):
+        if connect_controller:
+            _sync_controller_runtime_networks()
         result = _handle(app, "mcp", "execution", "command.deployment.execute", {}, {
             "run_id": run_id,
             "worker_id": WORKER,
@@ -417,7 +362,8 @@ def _execute_to_completion(
             "idempotency_key": f"{run_id}:execute:{attempt}",
             "max_effects": 1,
         })
-        _sync_controller_runtime_networks()
+        if connect_controller:
+            _sync_controller_runtime_networks()
         if result["coordinator_status"] == "completed":
             return
         if result["coordinator_status"] in {"failed", "unsupported", "uncertain", "blocked"}:
@@ -442,31 +388,8 @@ def _sync_controller_runtime_networks() -> None:
         text=True,
     ).stdout.splitlines()
     for network in networks:
-        if network.startswith("control-plane-kit-activity-live-"):
-            if _network_has_cpk_containers(network):
-                _connect_controller_to_network(controller, network)
-            else:
-                _disconnect_controller_from_network(controller, network)
-
-
-def _network_has_cpk_containers(network: str) -> bool:
-    containers = subprocess.run(
-        [
-            "docker",
-            "ps",
-            "-a",
-            "--filter",
-            f"network={network}",
-            "--filter",
-            "label=control-plane-kit.owner=operations",
-            "--format",
-            "{{.Names}}",
-        ],
-        check=True,
-        stdout=subprocess.PIPE,
-        text=True,
-    ).stdout.splitlines()
-    return bool(containers)
+        if network.startswith("cpk-net-activity-live-"):
+            _connect_controller_to_network(controller, network)
 
 
 def _connect_controller_to_network(controller: str, network: str) -> None:
@@ -486,6 +409,19 @@ def _connect_controller_to_network(controller: str, network: str) -> None:
     )
 
 
+def _disconnect_controller_runtime_networks() -> None:
+    controller = _required_env("CPK_ACTIVITY_CONTROLLER")
+    networks = subprocess.run(
+        ["docker", "network", "ls", "--format", "{{.Name}}"],
+        check=True,
+        stdout=subprocess.PIPE,
+        text=True,
+    ).stdout.splitlines()
+    for network in networks:
+        if network.startswith("cpk-net-activity-live-"):
+            _disconnect_controller_from_network(controller, network)
+
+
 def _disconnect_controller_from_network(controller: str, network: str) -> None:
     result = subprocess.run(
         ["docker", "network", "disconnect", network, controller],
@@ -496,7 +432,8 @@ def _disconnect_controller_from_network(controller: str, network: str) -> None:
     )
     if result.returncode == 0:
         return
-    if "is not connected" in result.stderr.lower() or "not found" in result.stderr.lower():
+    lowered = result.stderr.lower()
+    if "not connected" in lowered or "no such" in lowered:
         return
     raise RuntimeError(
         f"failed to disconnect controller from {network}: {result.stderr.strip()}"

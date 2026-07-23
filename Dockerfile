@@ -78,7 +78,7 @@ COPY artifacts ./artifacts
 COPY control-plane-kit-operations ./control-plane-kit-operations
 COPY docs ./docs
 COPY extraction_parity ./extraction_parity
-COPY reference-inventory.sh reference-test.sh test.sh ./
+COPY activity-seeded-live-test.sh reference-inventory.sh reference-test.sh test.sh ./
 COPY tests ./tests
 
 RUN python -m pip install ".[test-server]"
@@ -107,7 +107,8 @@ COPY control-plane-kit-operations ./control-plane-kit-operations
 COPY examples ./examples
 
 RUN python -m pip install --upgrade pip \
-    && python -m pip install ./control-plane-kit-core ./control-plane-kit-operations
+    && python -m pip install ./control-plane-kit-core ./control-plane-kit-operations \
+    && python -m pip install "docker>=7.1" "httpx>=0.28"
 
 CMD ["python", "-m", "examples.activity_seeded_live"]
 

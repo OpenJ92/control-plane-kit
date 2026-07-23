@@ -9,9 +9,11 @@ from control_plane_kit_core.planning.activity_plan import (
     NodeTarget,
     ReconcileNode,
     RemoveNodeResource,
+    RemoveRuntimeResource,
     RemoveSocketConnection,
     StartNode,
     StopNode,
+    StopRuntime,
     SwitchSocketConnection,
     WaitForHealthy,
 )
@@ -66,7 +68,13 @@ def runtime_effect_request_for_context(
 def _material_graph(context: ActivityRealizationContext) -> DeploymentGraph:
     if isinstance(
         context.activity.operation,
-        (StopNode, RemoveNodeResource, RemoveSocketConnection),
+        (
+            StopNode,
+            RemoveNodeResource,
+            RemoveSocketConnection,
+            StopRuntime,
+            RemoveRuntimeResource,
+        ),
     ):
         return DEFAULT_GRAPH_CODEC.decode(context.base_graph.graph_descriptor)
     return DEFAULT_GRAPH_CODEC.decode(context.desired_graph.graph_descriptor)
@@ -121,6 +129,7 @@ def _products_for_context(
             runtime_id=runtime_id,
             reference=product.reference,
             product=product.descriptor_document.product,
+            socket_environment=node.socket_environment,
         ),
     )
 
