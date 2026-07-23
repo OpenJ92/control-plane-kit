@@ -51,6 +51,7 @@ from .coordinator import (
     ExecutionCoordinatorError,
     ExecutionCoordinatorNotFound,
     ExecutionCoordinatorResult,
+    RuntimeEffectInterpreter,
     RuntimeInterpreterDispatcher,
 )
 from .cpk_server import (
@@ -66,12 +67,6 @@ from .cpk_server import (
     CpkServerRouteRequest,
     CpkServerUnsupportedService,
     cpk_server_services,
-)
-from .docker_realization import (
-    DockerCliRealizationClient,
-    DockerProductRealizationAdapter,
-    DockerRealizationClient,
-    DockerResourceInspection,
 )
 from .foundation import (
     OPERATIONS_PACKAGE_BOUNDARY,
@@ -263,10 +258,6 @@ __all__ = [
     "ActivityExecutionOutcome",
     "ActivityRealizationContext",
     "CoordinatorStatus",
-    "DockerCliRealizationClient",
-    "DockerProductRealizationAdapter",
-    "DockerRealizationClient",
-    "DockerResourceInspection",
     "CpkServerAdmissionService",
     "CpkServerApplicationError",
     "CpkServerApplicationService",
@@ -286,6 +277,7 @@ __all__ = [
     "ExecutionCoordinatorNotFound",
     "ExecutionCoordinatorResult",
     "RuntimeInterpreterDispatcher",
+    "RuntimeEffectInterpreter",
     "ExecutionIdempotency",
     "ExecutionReadinessRequired",
     "ExecutionRequestIdentity",

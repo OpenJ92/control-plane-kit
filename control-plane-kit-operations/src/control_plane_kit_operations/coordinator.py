@@ -14,17 +14,6 @@ from control_plane_kit_core.operations.lifecycle import (
     FailureCategory,
 )
 from control_plane_kit_core.planning import ActivityId, ActivityPlan, PlannedActivity
-from control_plane_kit_core.planning.activity_plan import (
-    ReconcileNode,
-    ReconcileRuntime,
-    RemoveNodeResource,
-    RemoveRuntimeResource,
-    StartNode,
-    StartRuntime,
-    StopNode,
-    StopRuntime,
-    WaitForHealthy,
-)
 from control_plane_kit_core.planning.saga import (
     ExecutionSchedule,
     SagaJournalProjection,
@@ -32,9 +21,16 @@ from control_plane_kit_core.planning.saga import (
     project_activity_journal,
 )
 from control_plane_kit_core.policies import PolicyScope
+from control_plane_kit_core.probe_intents import (
+    ProbeKind,
+    ProbeOutcome,
+    RuntimeEndpointObservation,
+)
+from control_plane_kit_core.runtime_effects import (
+    RuntimeEffectRequest,
+    RuntimeEffectResult,
+)
 from control_plane_kit_core.topology import (
-    DEFAULT_GRAPH_CODEC,
-    DeploymentGraph,
     GraphDescriptorError,
 )
 from control_plane_kit_core.types import RuntimeKind
@@ -56,6 +52,7 @@ from control_plane_kit_operations.records import (
     FailureEvidence,
     GraphVersionRecord,
     ObservationRecord,
+    ObservationStatus,
 )
 from control_plane_kit_operations.workflows import IdempotencyKey, InvalidOperationCommand
 
@@ -242,16 +239,25 @@ class ActivityExecutionAdapter(Protocol):
     ) -> ActivityExecutionOutcome: ...
 
 
+class RuntimeEffectInterpreter(Protocol):
+    """Injected runtime interpreter over the pure core effect boundary."""
+
+    def execute(
+        self,
+        request: RuntimeEffectRequest,
+    ) -> RuntimeEffectResult: ...
+
+
 @dataclass(frozen=True)
 class RuntimeInterpreterDispatcher:
     """Operations-owned adapter that dispatches pinned work by runtime kind."""
 
-    interpreters: Mapping[RuntimeKind, ActivityExecutionAdapter]
+    interpreters: Mapping[RuntimeKind, RuntimeEffectInterpreter]
 
     def __post_init__(self) -> None:
         if not isinstance(self.interpreters, Mapping):
             raise InvalidOperationCommand("runtime interpreters must be a mapping")
-        normalized: dict[RuntimeKind, ActivityExecutionAdapter] = {}
+        normalized: dict[RuntimeKind, RuntimeEffectInterpreter] = {}
         for key, interpreter in self.interpreters.items():
             if not isinstance(key, RuntimeKind):
                 raise InvalidOperationCommand("runtime interpreter keys must be RuntimeKind")
@@ -269,13 +275,18 @@ class RuntimeInterpreterDispatcher:
                 "runtime dispatch requires ActivityRealizationContext"
             )
         try:
-            runtime_kind = _runtime_kind_for_context(context)
-        except (GraphDescriptorError, KeyError, ValueError) as error:
+            from control_plane_kit_operations.runtime_effects import (
+                runtime_effect_request_for_context,
+            )
+
+            request = runtime_effect_request_for_context(context)
+        except (GraphDescriptorError, InvalidOperationCommand, KeyError, ValueError) as error:
             return _unsupported_dispatch(
                 context,
                 "runtime.dispatch-target-unsupported",
                 str(error),
             )
+        runtime_kind = request.runtime_kind
         interpreter = self.interpreters.get(runtime_kind)
         if interpreter is None:
             return _unsupported_dispatch(
@@ -284,7 +295,8 @@ class RuntimeInterpreterDispatcher:
                 f"no runtime interpreter is configured for {runtime_kind.value!r}",
                 runtime_kind=runtime_kind,
             )
-        return interpreter.execute(context)
+        result = interpreter.execute(request)
+        return _outcome_from_runtime_result(context, result)
 
 
 @dataclass(frozen=True)
@@ -717,47 +729,92 @@ def _require_operate_scope(authority: ExecutionWorkerAuthority) -> None:
         raise ExecutionCoordinatorDenied("scope execution:operate is missing")
 
 
-def _runtime_kind_for_context(context: ActivityRealizationContext) -> RuntimeKind:
-    operation = context.activity.operation
-    match operation:
-        case StartRuntime(target=target) | ReconcileRuntime(target=target):
-            return _runtime_kind_for_runtime(_desired_graph(context), target.runtime_id)
-        case StopRuntime(target=target) | RemoveRuntimeResource(target=target):
-            return _runtime_kind_for_runtime(_base_graph(context), target.runtime_id)
-        case StartNode(target=target) | ReconcileNode(target=target) | WaitForHealthy(
-            target=target
-        ):
-            return _runtime_kind_for_node(_desired_graph(context), target.node_id)
-        case StopNode(target=target) | RemoveNodeResource(target=target):
-            return _runtime_kind_for_node(_base_graph(context), target.node_id)
-        case _:
-            raise ValueError(
-                "runtime dispatch does not support "
-                f"{type(context.activity.operation).__name__}"
+def _outcome_from_runtime_result(
+    context: ActivityRealizationContext,
+    result: RuntimeEffectResult,
+) -> ActivityExecutionOutcome:
+    if not isinstance(result, RuntimeEffectResult):
+        return ActivityExecutionOutcome.uncertain(
+            FailureEvidence(
+                FailureCategory.UNCERTAIN,
+                "runtime.result-malformed",
+                "runtime interpreter returned a non-runtime effect result",
             )
+        )
+    if result.effect_id != context.intent_event.event_id:
+        return ActivityExecutionOutcome.uncertain(
+            FailureEvidence(
+                FailureCategory.UNCERTAIN,
+                "runtime.effect-id-mismatch",
+                "runtime interpreter returned a result for a different effect",
+                BoundedEvidence.from_mapping(
+                    {
+                        "expected_effect_id": context.intent_event.event_id,
+                        "actual_effect_id": result.effect_id,
+                    }
+                ),
+            )
+        )
+    observations = tuple(
+        _observation_from_runtime_endpoint(context, index, observation)
+        for index, observation in enumerate(result.observations, start=1)
+    )
+    if result.kind is EffectResultKind.SUCCEEDED:
+        return ActivityExecutionOutcome.succeeded(
+            BoundedEvidence.from_mapping(result.evidence),
+            observations=observations,
+        )
+    assert result.failure is not None
+    failure = FailureEvidence(
+        _failure_category_for_runtime_result(result),
+        result.failure.code,
+        result.failure.message,
+        BoundedEvidence.from_mapping(result.failure.details),
+    )
+    if result.kind is EffectResultKind.FAILED:
+        return ActivityExecutionOutcome.failed(failure)
+    if result.kind is EffectResultKind.UNSUPPORTED:
+        return ActivityExecutionOutcome.unsupported(failure)
+    if result.kind is EffectResultKind.UNCERTAIN:
+        return ActivityExecutionOutcome.uncertain(failure)
+    return ActivityExecutionOutcome.uncertain(
+        FailureEvidence(
+            FailureCategory.UNCERTAIN,
+            "runtime.result-kind-unsupported",
+            "runtime interpreter returned an unsupported result kind",
+        )
+    )
 
 
-def _desired_graph(context: ActivityRealizationContext) -> DeploymentGraph:
-    return DEFAULT_GRAPH_CODEC.decode(context.desired_graph.graph_descriptor)
+def _failure_category_for_runtime_result(
+    result: RuntimeEffectResult,
+) -> FailureCategory:
+    if result.kind is EffectResultKind.UNSUPPORTED:
+        return FailureCategory.OPERATOR_REVIEW
+    if result.kind is EffectResultKind.UNCERTAIN:
+        return FailureCategory.UNCERTAIN
+    return FailureCategory.TERMINAL
 
 
-def _base_graph(context: ActivityRealizationContext) -> DeploymentGraph:
-    return DEFAULT_GRAPH_CODEC.decode(context.base_graph.graph_descriptor)
-
-
-def _runtime_kind_for_runtime(
-    graph: DeploymentGraph,
-    runtime_id: str,
-) -> RuntimeKind:
-    try:
-        return graph.runtimes[runtime_id].kind
-    except KeyError as error:
-        raise KeyError(f"runtime {runtime_id!r} is not present in pinned graph") from error
-
-
-def _runtime_kind_for_node(graph: DeploymentGraph, node_id: str) -> RuntimeKind:
-    node = graph.node(node_id)
-    return _runtime_kind_for_runtime(graph, node.runtime_id)
+def _observation_from_runtime_endpoint(
+    context: ActivityRealizationContext,
+    index: int,
+    observation: RuntimeEndpointObservation,
+) -> ObservationRecord:
+    return ObservationRecord(
+        observation_id=f"{context.intent_event.event_id}:runtime-endpoint:{index}",
+        workspace_id=context.request.identity.workspace_id,
+        subject_id=observation.subject_id,
+        status=ObservationStatus.UNKNOWN,
+        observed_at=context.intent_event.occurred_at,
+        evidence=BoundedEvidence.from_mapping(
+            {"runtime_endpoint": observation.descriptor()}
+        ),
+        graph_id=observation.graph_id,
+        probe_kind=ProbeKind.TRANSPORT,
+        probe_outcome=ProbeOutcome.UNKNOWN,
+        endpoint_context=observation.context,
+    )
 
 
 def _unsupported_dispatch(
