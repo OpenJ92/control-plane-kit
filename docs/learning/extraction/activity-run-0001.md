@@ -1492,3 +1492,57 @@ explicit unsupported evidence for operations that are not runtime interpreter
 work. #901 can now stabilize the existing local Docker realization adapter
 against this seam before concrete Docker SDK behavior moves into the
 `control-plane-kit-interpreters` package.
+
+## #901 Docker Realization Contract
+
+#901 hardened the current operations-local Docker adapter as the compatibility
+target for the future SDK-backed interpreter work. No Docker SDK behavior moved
+yet; the point was to make the existing seam explicit before #902 changes the
+backend.
+
+The preserved spine remains:
+
+```text
+cpk-server
+  -> configured operations application
+    -> ExecutionCoordinator
+      -> RuntimeInterpreterDispatcher
+        -> DockerRuntimeInterpreter
+          -> Python Docker SDK
+```
+
+The focused contract now says:
+
+```text
+RuntimeInterpreterDispatcher({RuntimeKind.DOCKER: DockerProductRealizationAdapter})
+  -> DockerProductRealizationAdapter.execute(ActivityRealizationContext)
+    -> DockerRealizationClient structural backend
+```
+
+`DockerRealizationClient` is the small backend boundary that #902 can implement
+with the Python Docker SDK:
+
+```text
+inspect/create network
+inspect/create volume
+pull image
+inspect/run/start/stop/remove container
+remove network
+```
+
+The #901 proof also pins graph-source behavior at the adapter boundary. A
+teardown activity with the same node id in base and desired graphs must remove
+using the base graph's product material. If the adapter accidentally used the
+desired graph, ownership labels would point at the replacement product and the
+old owned container would not be removed.
+
+The strengthened tests live in:
+
+```text
+control-plane-kit-operations/tests/test_docker_realization.py
+```
+
+They prove the exact client protocol surface, dispatcher-to-adapter composition
+without a cpk-server branch, and base-graph teardown material. #902 should
+implement a Docker SDK client behind this boundary rather than changing
+coordinator, cpk-server, graph, approval, lifecycle, or advancement behavior.

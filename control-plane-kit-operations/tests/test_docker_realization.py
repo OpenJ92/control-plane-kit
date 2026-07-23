@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from dataclasses import replace
 import subprocess
+from typing import get_protocol_members
 import unittest
 from unittest.mock import patch
 
@@ -61,7 +62,7 @@ from control_plane_kit_core.secrets import (
     SecretReference,
 )
 from control_plane_kit_core.topology import DeploymentGraph, compile_topology
-from control_plane_kit_core.types import Protocol
+from control_plane_kit_core.types import Protocol, RuntimeKind
 from control_plane_kit_core.verification import (
     HttpCheck,
     PostgresQueryCheck,
@@ -69,10 +70,14 @@ from control_plane_kit_core.verification import (
     VerificationOutcome,
     VerificationPolicy,
 )
-from control_plane_kit_operations.coordinator import ActivityRealizationContext
+from control_plane_kit_operations.coordinator import (
+    ActivityRealizationContext,
+    RuntimeInterpreterDispatcher,
+)
 from control_plane_kit_operations.docker_realization import (
     DockerHealthCheckResult,
     DockerProductRealizationAdapter,
+    DockerRealizationClient,
     DockerResourceInspection,
     StdlibDockerHealthCheckClient,
 )
@@ -256,6 +261,36 @@ class ReadyResponse:
 
 
 class DockerProductRealizationAdapterTests(unittest.TestCase):
+    def test_client_protocol_is_the_stable_backend_boundary_for_sdk_replacement(self) -> None:
+        self.assertEqual(
+            get_protocol_members(DockerRealizationClient),
+            frozenset(
+                {
+                    "inspect_network",
+                    "create_network",
+                    "inspect_container",
+                    "inspect_volume",
+                    "create_volume",
+                    "pull_image",
+                    "run_container",
+                    "start_container",
+                    "stop_container",
+                    "remove_container",
+                    "remove_network",
+                }
+            ),
+        )
+
+    def test_runtime_dispatcher_can_wrap_docker_adapter_without_server_branch(self) -> None:
+        client = RecordingDockerClient()
+        adapter = DockerProductRealizationAdapter(project_name="cpk", client=client)
+        dispatcher = RuntimeInterpreterDispatcher({RuntimeKind.DOCKER: adapter})
+
+        outcome = dispatcher.execute(context_for(StartNode(NodeTarget("hello"))))
+
+        self.assertEqual(outcome.kind.value, "succeeded")
+        self.assertEqual(client.calls[-1][0], "run-container")
+
     def test_start_runtime_creates_owned_network_with_workspace_and_plan_labels(self) -> None:
         client = RecordingDockerClient()
         outcome = DockerProductRealizationAdapter(
@@ -718,6 +753,42 @@ class DockerProductRealizationAdapterTests(unittest.TestCase):
         self.assertEqual(client.containers, {})
         self.assertEqual(client.networks, {})
 
+    def test_remove_node_resource_uses_base_product_material_when_desired_reuses_node_id(
+        self,
+    ) -> None:
+        base_product = hello_product(name="hello-server")
+        desired_product = hello_product(name="hello-server-v2")
+        base_graph = graph_with_products((product_block(base_product, "hello"),))
+        desired_graph = graph_with_products((product_block(desired_product, "hello"),))
+        client = RecordingDockerClient()
+        adapter = DockerProductRealizationAdapter(project_name="cpk", client=client)
+        adapter.execute(
+            context_for_graph(
+                StartNode(NodeTarget("hello")),
+                graph=base_graph,
+                products=(base_product,),
+            )
+        )
+        client.calls.clear()
+
+        outcome = adapter.execute(
+            context_for_transition(
+                RemoveNodeResource(NodeTarget("hello")),
+                base_graph=base_graph,
+                desired_graph=desired_graph,
+                products=(base_product, desired_product),
+            )
+        )
+
+        self.assertEqual(outcome.kind.value, "succeeded")
+        self.assertEqual(
+            client.calls,
+            [
+                ("inspect-container", "cpk-workspace-a-docker-hello"),
+                ("remove-container", "cpk-workspace-a-docker-hello"),
+            ],
+        )
+
     def test_reconcile_recreates_container_from_desired_material(self) -> None:
         client = RecordingDockerClient()
         adapter = DockerProductRealizationAdapter(project_name="cpk", client=client)
@@ -851,6 +922,98 @@ def context_for_graph(
         ),
         intent_event=ActivityEventRecord(
             "event-start-node",
+            "run-a",
+            3,
+            ActivityEventKind.STEP_STARTED,
+            "2026-07-22T10:03:00Z",
+            activity_id=activity.activity_id.value,
+            evidence=BoundedEvidence.from_mapping({"phase": "intent"}),
+        ),
+    )
+
+
+def context_for_transition(
+    operation,
+    *,
+    base_graph: DeploymentGraph,
+    desired_graph: DeploymentGraph,
+    products: tuple[ContainerServerProduct, ...],
+) -> ActivityRealizationContext:
+    documents = tuple(
+        ProductDescriptorCodec().encode_document(product)
+        for product in products
+    )
+    registered = tuple(
+        RegisteredProduct(
+            f"registration-{index}",
+            "workspace-a",
+            ProductReference.from_document(document),
+            document,
+            InlineDescriptorSource(),
+            "operator-a",
+            "2026-07-22T10:00:10Z",
+        )
+        for index, document in enumerate(documents)
+    )
+    plan = ActivityPlan(
+        (
+            PlannedActivity(ActivityId("remove-node"), operation),
+        )
+    )
+    activity = plan.activity(ActivityId("remove-node"))
+    return ActivityRealizationContext(
+        activity=activity,
+        request=ExecutionRequestRecord(
+            ExecutionRequestIdentity("request-a", "workspace-a", "session-a", "plan-a"),
+            ExecutionRequestStatus.CLAIMED,
+            "operator-a",
+            "2026-07-22T10:00:00Z",
+            "approval-request-a",
+            "approval-decision-a",
+            ExecutionIdempotency("admit-a", "fingerprint-a"),
+            ClaimIdentity("worker-a", "2026-07-22T10:01:00Z", "2026-07-22T10:30:00Z"),
+        ),
+        run=ActivityRunRecord(
+            "run-a",
+            "plan-a",
+            AdmittedRun("request-a"),
+            RetryIdentity(1),
+            ActivityRunStatus.RUNNING,
+            "2026-07-22T10:01:00Z",
+            started_at="2026-07-22T10:02:00Z",
+        ),
+        plan_record=ActivityPlanRecord(
+            "plan-a",
+            "session-a",
+            "graph-current",
+            "graph-desired",
+            ActivityPlanStatus.PLANNED,
+            "2026-07-22T10:00:30Z",
+            plan,
+        ),
+        base_graph=GraphVersionRecord.from_graph(
+            graph_id="graph-current",
+            workspace_id="workspace-a",
+            version=1,
+            graph=base_graph,
+            created_by="operator-a",
+            created_at="2026-07-22T10:00:00Z",
+        ),
+        desired_graph=GraphVersionRecord.from_graph(
+            graph_id="graph-desired",
+            workspace_id="workspace-a",
+            version=2,
+            graph=desired_graph,
+            created_by="operator-a",
+            created_at="2026-07-22T10:00:30Z",
+        ),
+        registered_products=registered,
+        authority=ExecutionWorkerAuthority(
+            "worker-a",
+            (PolicyScope.EXECUTION_OPERATE,),
+        ),
+        intent_event=ActivityEventRecord(
+            "event-remove-node",
             "run-a",
             3,
             ActivityEventKind.STEP_STARTED,
