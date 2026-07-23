@@ -498,6 +498,15 @@ def operator_command_http_routes() -> tuple[HttpApiRouteContract, ...]:
                 "ClaimRunResponse",
             ),
             (
+                "command.run.start",
+                "/workspaces/{workspace_id}/runs/{run_id}/start",
+                ControlPlaneServiceRole.EXECUTION,
+                HttpAuthScope.EXECUTION_RUN,
+                HttpOperationSafety.COMMAND,
+                "StartRunRequest",
+                "ActivityRunTransitionResult",
+            ),
+            (
                 "command.deployment.execute",
                 "/workspaces/{workspace_id}/runs/{run_id}/execute",
                 ControlPlaneServiceRole.EXECUTION,
@@ -505,6 +514,15 @@ def operator_command_http_routes() -> tuple[HttpApiRouteContract, ...]:
                 HttpOperationSafety.DESTRUCTIVE,
                 "ExecuteDeploymentRequest",
                 "ExecutionRunResponse",
+            ),
+            (
+                "command.graph.advance-current",
+                "/workspaces/{workspace_id}/runs/{run_id}/advance-current-graph",
+                ControlPlaneServiceRole.LIFECYCLE,
+                HttpAuthScope.EXECUTION_RUN,
+                HttpOperationSafety.COMMAND,
+                "AdvanceCurrentGraphRequest",
+                "CurrentGraphAdvancementResult",
             ),
             (
                 "command.recovery.decide",

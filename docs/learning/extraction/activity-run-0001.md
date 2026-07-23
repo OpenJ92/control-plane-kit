@@ -893,3 +893,111 @@ command.approval.decide
 
 #878 must still republish cpk-server before final ACTIVITY acceptance because
 the cpk-server backend adapter surface now includes approval request behavior.
+
+## #876 Cpk-Server Public Workflow Routes
+
+#876 completed the first public route proof for the full operator workflow
+without collapsing the durable execution lifecycle. The public command language
+now includes two additional route contracts:
+
+```text
+command.run.start
+  -> /workspaces/{workspace_id}/runs/{run_id}/start
+  -> StartRunRequest
+  -> ActivityRunTransitionResult
+  -> EXECUTION_RUN
+
+command.graph.advance-current
+  -> /workspaces/{workspace_id}/runs/{run_id}/advance-current-graph
+  -> AdvanceCurrentGraphRequest
+  -> CurrentGraphAdvancementResult
+  -> EXECUTION_RUN
+```
+
+The important lifecycle decision is that request, claim, start, execution, and
+advancement remain separate durable steps:
+
+```text
+admit
+  -> execution request id
+claim
+  -> opens activity run and returns run id
+start
+  -> records RUN_STARTED
+execute
+  -> dispatches activities
+advance
+  -> advances current graph from accepted run evidence
+```
+
+The public cpk-server operations adapter test now proves this route sequence:
+
+```text
+workspace.create
+  -> product.import
+    -> operation-session.start
+      -> desired-graph.set
+        -> deployment.plan
+          -> approval.request
+            -> read.pending-approvals
+              -> read.approval-detail
+                -> approval.decide
+                  -> deployment.admit
+                    -> run.claim
+                      -> run.start
+                        -> deployment.execute
+                          -> graph.advance-current
+                            -> read.current-graph
+```
+
+The proof intentionally uses both HTTP-shaped and MCP-shaped route requests
+against the same operations application boundary. The activity adapter is a
+test-local successful adapter, so #876 proves public workflow composition,
+approval preservation, run-id handling, and explicit current-graph advancement;
+it does not claim real Docker acceptance. The real seeded-product Docker proof
+belongs to #877/#878.
+
+Focused evidence also proves the generated plan still dispatches the expected
+semantic activity spine:
+
+```text
+start-runtime -> start-node -> wait-healthy
+```
+
+Validation evidence:
+
+```text
+git diff --check
+./control-plane-kit-core/test.sh
+  379 tests passed
+  compileall passed
+  control-plane-kit-core import ok
+./control-plane-kit-operations/test.sh
+  120 tests passed
+  compileall passed
+  control-plane-kit-operations import ok
+./test.sh
+  1219 tests passed in 233.590s
+```
+
+Review findings:
+
+- approval is not bypassed; admission still depends on current approved plan
+  evidence;
+- claim/start/execute remain distinct and execute/advance use the run id opened
+  by claim, not the admission request id;
+- current graph advancement is explicit, guarded, and does not let observations
+  rewrite desired graph truth;
+- the new routes reuse existing lifecycle, execution, and advancement services
+  rather than creating another workflow model;
+- no transaction or UnitOfWork ownership changes were introduced;
+- core received only closed command/read contract language, not runtime or
+  product-specific behavior.
+
+#877 handoff:
+
+#877 should replace the #876 fake-success adapter with seeded local-Docker
+product realization. Use the existing public workflow shape, then prove real
+setup, dependency binding, observation, cleanup, and current-graph advancement
+for digest-pinned seeded products. #878 must republish cpk-server after the
+backend route changes from #876/#877 are complete.
