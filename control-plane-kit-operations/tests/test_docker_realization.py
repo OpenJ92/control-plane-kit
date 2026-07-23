@@ -8,6 +8,8 @@ from control_plane_kit_core.algebra import (
     DeploymentTopology,
     DockerRuntime,
     ProviderSocket,
+    RequirementSocket,
+    SocketConnection,
 )
 from control_plane_kit_core.environment import PublicStaticEnvironmentBinding
 from control_plane_kit_core.lifecycle import ResourceLifecycle
@@ -254,11 +256,111 @@ class DockerProductRealizationAdapterTests(unittest.TestCase):
         self.assertEqual(outcome.failure.code, "docker.product-runtime-unsupported")
         self.assertEqual(client.calls, [])
 
+    def test_router_target_environment_comes_from_graph_edge(self) -> None:
+        app = hello_product(name="hello-server")
+        router = router_product()
+        graph = graph_with_products(
+            (
+                product_block(app, "app"),
+                product_block(router, "router"),
+                SocketConnection("app", "internal", "router", "active"),
+            )
+        )
+        client = RecordingDockerClient()
+
+        outcome = DockerProductRealizationAdapter(
+            project_name="cpk",
+            client=client,
+        ).execute(
+            context_for_graph(
+                StartNode(NodeTarget("router")),
+                graph=graph,
+                products=(app, router),
+            )
+        )
+
+        self.assertEqual(outcome.kind.value, "succeeded")
+        run_call = client.calls[-1]
+        self.assertEqual(run_call[0], "run-container")
+        self.assertEqual(
+            run_call[1]["environment"],
+            {"ACTIVE_TARGET_URL": graph.node("app").endpoint("internal").url},
+        )
+
+    def test_multiplexer_environment_comes_from_each_connected_requirement(self) -> None:
+        primary = hello_product(name="hello-server")
+        observer = hello_product(name="hello-observer")
+        multiplexer = multiplexer_product()
+        graph = graph_with_products(
+            (
+                product_block(primary, "primary"),
+                product_block(observer, "observer"),
+                product_block(multiplexer, "multiplexer"),
+                SocketConnection("primary", "internal", "multiplexer", "primary"),
+                SocketConnection("observer", "internal", "multiplexer", "observer-a"),
+            )
+        )
+        client = RecordingDockerClient()
+
+        outcome = DockerProductRealizationAdapter(
+            project_name="cpk",
+            client=client,
+        ).execute(
+            context_for_graph(
+                StartNode(NodeTarget("multiplexer")),
+                graph=graph,
+                products=(primary, observer, multiplexer),
+            )
+        )
+
+        self.assertEqual(outcome.kind.value, "succeeded")
+        run_call = client.calls[-1]
+        self.assertEqual(run_call[0], "run-container")
+        self.assertEqual(
+            run_call[1]["environment"],
+            {
+                "MULTIPLEXER_OBSERVER_A_URL": graph.node("observer")
+                .endpoint("internal")
+                .url,
+                "MULTIPLEXER_PRIMARY_URL": graph.node("primary")
+                .endpoint("internal")
+                .url,
+            },
+        )
+        self.assertNotIn("MULTIPLEXER_OBSERVER_B_URL", run_call[1]["environment"])
+
 
 def context_for(operation, *, product: ContainerServerProduct | None = None) -> ActivityRealizationContext:
     product = hello_product() if product is None else product
-    document = ProductDescriptorCodec().encode_document(product)
-    graph = desired_graph(product)
+    return context_for_graph(
+        operation,
+        graph=desired_graph(product),
+        products=(product,),
+    )
+
+
+def context_for_graph(
+    operation,
+    *,
+    graph: DeploymentGraph,
+    products: tuple[ContainerServerProduct, ...],
+) -> ActivityRealizationContext:
+    documents = tuple(
+        ProductDescriptorCodec().encode_document(product)
+        for product in products
+    )
+    registered = tuple(
+        RegisteredProduct(
+            f"registration-{index}",
+            "workspace-a",
+            ProductReference.from_document(document),
+            document,
+            InlineDescriptorSource(),
+            "operator-a",
+            "2026-07-22T10:00:10Z",
+        )
+        for index, document in enumerate(documents)
+    )
     plan = ActivityPlan(
         (
             PlannedActivity(ActivityId("start-runtime"), StartRuntime(RuntimeTarget("docker"))),
@@ -315,17 +417,7 @@ def context_for(operation, *, product: ContainerServerProduct | None = None) -> 
             created_by="operator-a",
             created_at="2026-07-22T10:00:30Z",
         ),
-        registered_products=(
-            RegisteredProduct(
-                "registration-a",
-                "workspace-a",
-                ProductReference.from_document(document),
-                document,
-                InlineDescriptorSource(),
-                "operator-a",
-                "2026-07-22T10:00:10Z",
-            ),
-        ),
+        registered_products=registered,
         authority=ExecutionWorkerAuthority(
             "worker-a",
             (PolicyScope.EXECUTION_OPERATE,),
@@ -343,20 +435,28 @@ def context_for(operation, *, product: ContainerServerProduct | None = None) -> 
 
 
 def desired_graph(product: ContainerServerProduct) -> DeploymentGraph:
-    block = instantiate_product(
-        product,
-        "hello",
-        ProductInstanceConfiguration.from_contract(product.runtime_contract),
-    )
+    block = product_block(product, "hello")
+    return graph_with_products((block,))
+
+
+def graph_with_products(children) -> DeploymentGraph:
     return compile_topology(
         DeploymentTopology(
             "desired",
             DockerRuntime(
                 runtime_id="docker",
                 network_name="cpk-workspace-a-docker",
-                children=(block,),
+                children=tuple(children),
             ),
         )
+    )
+
+
+def product_block(product: ContainerServerProduct, role_id: str):
+    return instantiate_product(
+        product,
+        role_id,
+        ProductInstanceConfiguration.from_contract(product.runtime_contract),
     )
 
 
@@ -382,6 +482,54 @@ def hello_product(
         ),
         display_name=name,
         description="test product",
+    )
+
+
+def router_product() -> ContainerServerProduct:
+    return hello_product(
+        name="http-active-router",
+        contract=ProductRuntimeContract(
+            sockets=BlockSockets(
+                requirements=(
+                    RequirementSocket(
+                        "active",
+                        Protocol.HTTP,
+                        ("ACTIVE_TARGET_URL",),
+                    ),
+                ),
+                providers=(ProviderSocket("internal", Protocol.HTTP),),
+            )
+        ),
+    )
+
+
+def multiplexer_product() -> ContainerServerProduct:
+    return hello_product(
+        name="http-multiplexer",
+        contract=ProductRuntimeContract(
+            sockets=BlockSockets(
+                requirements=(
+                    RequirementSocket(
+                        "primary",
+                        Protocol.HTTP,
+                        ("MULTIPLEXER_PRIMARY_URL",),
+                    ),
+                    RequirementSocket(
+                        "observer-a",
+                        Protocol.HTTP,
+                        ("MULTIPLEXER_OBSERVER_A_URL",),
+                        required=False,
+                    ),
+                    RequirementSocket(
+                        "observer-b",
+                        Protocol.HTTP,
+                        ("MULTIPLEXER_OBSERVER_B_URL",),
+                        required=False,
+                    ),
+                ),
+                providers=(ProviderSocket("internal", Protocol.HTTP),),
+            )
+        ),
     )
 
 
