@@ -791,3 +791,105 @@ The ACTIVITY leg currently keeps Docker realization behind the operations
 adapter seam. A future real `DockerRuntime` implementation should consider a
 Python Docker SDK-backed adapter as one implementation of that seam, while
 preserving the existing split-transaction external-effect law.
+
+## #881 Cpk-Server Approval Workflow Adapters
+
+#881 exposed the approval workflow through the cpk-server adapter surface without
+creating another approval queue, approval decision service, or public command
+vocabulary. The new public command contract is:
+
+```text
+command.approval.request
+  -> /workspaces/{workspace_id}/plans/{plan_id}/approval
+  -> ApprovalRequestRequest
+  -> ApprovalRequestResponse
+  -> PLAN_WRITE
+```
+
+This completes the public approval path started in #880:
+
+```text
+operator requests approval
+  -> manager lists pending approvals
+    -> manager reads approval detail
+      -> manager approves or rejects
+        -> operator admits only with current approval
+```
+
+Core now records request-approval parity beside the existing approval decision
+contract:
+
+```python
+OperationParity(
+    command_name="approval.request",
+    route_id="command.approval.request",
+    mcp_tool_name="request_approval",
+    service_role=ControlPlaneServiceRole.APPROVAL,
+    request_schema="ApprovalRequestRequest",
+    response_schema="ApprovalRequestResponse",
+    approval_policy=ApprovalPolicy.SUBMITS_FOR_APPROVAL,
+)
+```
+
+The cpk-server operations adapter translates that public route into the existing
+approval service command:
+
+```python
+RequestApproval(
+    session_id=...,
+    plan_id=...,
+    actor_id=...,
+    actor_scopes=...,
+    idempotency_key=...,
+    comment=...,
+)
+```
+
+The decision route continues to use `DecideApproval`, so request and decision
+share the same `ApprovalCommandService` and UnitOfWork boundary.
+
+Focused #881 coverage proves:
+
+```text
+core command parity includes approval.request
+HTTP route inventory exposes command.approval.request with PLAN_WRITE scope
+activity-history parity records accepted and rejected approval commands
+cpk-server translates request payloads to RequestApproval
+public approval loop persists request -> reads queue -> reads detail -> decides
+```
+
+The public approval-loop proof intentionally seeds only workspace/session/plan
+truth. It does not insert approval rows directly. The approval request is created
+through `command.approval.request`, then observed through the #880 queue/detail
+read projections, then decided through `command.approval.decide`.
+
+Validation evidence:
+
+```text
+git diff --check
+./control-plane-kit-core/test.sh
+  379 tests passed
+  compileall passed
+  control-plane-kit-core import ok
+./control-plane-kit-operations/test.sh
+  119 tests passed
+  compileall passed
+  control-plane-kit-operations import ok
+./test.sh
+  1219 tests passed in 217.657s
+```
+
+#876 handoff:
+
+#876 can now use the public approval route sequence instead of inserting
+approval records directly:
+
+```text
+command.approval.request
+read.pending-approvals
+read.approval-detail
+command.approval.decide
+```
+
+#878 must still republish cpk-server before final ACTIVITY acceptance because
+the cpk-server backend adapter surface now includes approval request behavior.

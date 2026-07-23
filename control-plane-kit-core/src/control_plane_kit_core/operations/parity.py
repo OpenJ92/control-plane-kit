@@ -975,6 +975,15 @@ _OPERATOR_COMMANDS = (
         ApprovalPolicy.DECIDES_APPROVAL,
     ),
     (
+        "approval.request",
+        "command.approval.request",
+        "request_approval",
+        ControlPlaneServiceRole.APPROVAL,
+        "ApprovalRequestRequest",
+        "ApprovalRequestResponse",
+        ApprovalPolicy.SUBMITS_FOR_APPROVAL,
+    ),
+    (
         "deployment.admit",
         "command.deployment.admit",
         "admit_deployment",

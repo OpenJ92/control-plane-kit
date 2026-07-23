@@ -91,6 +91,14 @@ class CommandParityContractTests(unittest.TestCase):
                     ApprovalPolicy.DECIDES_APPROVAL,
                 ),
                 (
+                    "approval.request",
+                    "command.approval.request",
+                    "request_approval",
+                    ControlPlaneServiceRole.APPROVAL,
+                    CommandIdempotencyPolicy.REQUIRED,
+                    ApprovalPolicy.SUBMITS_FOR_APPROVAL,
+                ),
+                (
                     "deployment.admit",
                     "command.deployment.admit",
                     "admit_deployment",
