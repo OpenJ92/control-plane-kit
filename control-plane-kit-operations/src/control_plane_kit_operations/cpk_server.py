@@ -16,7 +16,11 @@ from control_plane_kit_operations.admission import (
     ExternalReadinessAttestation,
     RequestPlanExecution,
 )
-from control_plane_kit_operations.approvals import ApprovalCommandService, DecideApproval
+from control_plane_kit_operations.approvals import (
+    ApprovalCommandService,
+    DecideApproval,
+    RequestApproval,
+)
 from control_plane_kit_operations.coordinator import ExecuteActivityRun, ExecutionCoordinator
 from control_plane_kit_operations.lifecycle import (
     ClaimAndOpenActivityRun,
@@ -241,6 +245,19 @@ class CpkServerApprovalService:
         self._service = service
 
     def handle(self, request: CpkServerRouteRequest) -> Mapping[str, object]:
+        if request.route_id == "command.approval.request":
+            payload = _arguments(request)
+            result = self._service.execute(
+                RequestApproval(
+                    session_id=_text(payload, "session_id"),
+                    plan_id=_path_or_payload(payload, "plan_id", "plan_id"),
+                    actor_id=_text(payload, "actor_id"),
+                    actor_scopes=_scopes(payload),
+                    idempotency_key=IdempotencyKey(_text(payload, "idempotency_key")),
+                    comment=_optional_text(payload, "comment"),
+                )
+            )
+            return result.descriptor()
         if request.route_id != "command.approval.decide":
             raise _unsupported_route(request)
         payload = _arguments(request)

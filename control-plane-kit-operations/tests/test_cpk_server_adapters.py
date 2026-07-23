@@ -9,6 +9,7 @@ import unittest
 import psycopg
 
 from control_plane_kit_core.operations import ControlPlaneServiceRole
+from control_plane_kit_core.planning import ActivityPlan
 from control_plane_kit_core.policies import PolicyScope
 from control_plane_kit_core.algebra import (
     BlockSockets,
@@ -36,13 +37,21 @@ from control_plane_kit_operations.cpk_server import (
     CpkServerReadService,
     CpkServerUnsupportedService,
 )
+from control_plane_kit_operations.approvals import ApprovalCommandService, RequestApproval
 from control_plane_kit_operations.planning import (
     DesiredGraphCommandService,
     RequestActivityPlan,
 )
 from control_plane_kit_operations.postgres import PostgresUnitOfWork, install_schema
 from control_plane_kit_operations.products import ProductRegistrationService
-from control_plane_kit_operations.records import GraphVersionRecord, WorkspaceRecord
+from control_plane_kit_operations.records import (
+    ActivityPlanRecord,
+    ActivityPlanStatus,
+    GraphVersionRecord,
+    OperationSessionRecord,
+    OperationSessionStatus,
+    WorkspaceRecord,
+)
 from control_plane_kit_operations.workflows import OperationCommandService
 from control_plane_kit_operations.workspaces import WorkspaceCommandService
 
@@ -110,6 +119,46 @@ class CpkServerOperationsAdapterTests(unittest.TestCase):
             unit_of_work.stores.workspaces.set_current_graph(
                 "workspace-a",
                 "graph-current",
+            )
+            unit_of_work.commit()
+
+    def seed_reviewable_plan(self) -> None:
+        self.seed_workspace()
+        with self.unit_of_work() as unit_of_work:
+            unit_of_work.stores.graphs.save(
+                GraphVersionRecord.from_graph(
+                    graph_id="graph-desired",
+                    workspace_id="workspace-a",
+                    version=2,
+                    graph=DeploymentGraph("desired"),
+                    created_by="operator-a",
+                    created_at="2026-07-22T10:01:00Z",
+                )
+            )
+            unit_of_work.stores.workspaces.set_desired_graph(
+                "workspace-a",
+                "graph-desired",
+            )
+            unit_of_work.stores.activity_history.add_session(
+                OperationSessionRecord(
+                    session_id="session-a",
+                    workspace_id="workspace-a",
+                    actor_id="operator-a",
+                    title="Initial deployment",
+                    status=OperationSessionStatus.OPEN,
+                    created_at="2026-07-22T10:02:00Z",
+                )
+            )
+            unit_of_work.stores.activity_history.add_plan(
+                ActivityPlanRecord(
+                    plan_id="plan-a",
+                    session_id="session-a",
+                    base_graph_id="graph-current",
+                    desired_graph_id="graph-desired",
+                    status=ActivityPlanStatus.PLANNED,
+                    created_at="2026-07-22T10:03:00Z",
+                    plan=ActivityPlan(()),
+                )
             )
             unit_of_work.commit()
 
@@ -305,6 +354,121 @@ class CpkServerOperationsAdapterTests(unittest.TestCase):
         self.assertEqual(command.workspace_id, "workspace-a")
         self.assertEqual(command.expected_current_graph_id, "graph-current")
         self.assertEqual(command.idempotency_key.value, "plan-a")
+
+    def test_approval_request_route_translates_payload_to_existing_command(self) -> None:
+        recording = RecordingService()
+        service = CpkServerApprovalService(recording)
+
+        result = service.handle(
+            RouteRequest(
+                surface="mcp",
+                route_id="command.approval.request",
+                service_role=ControlPlaneServiceRole.APPROVAL,
+                path_parameters={"workspace_id": "workspace-a"},
+                payload={
+                    "session_id": "session-a",
+                    "plan_id": "plan-a",
+                    "actor_id": "operator-a",
+                    "actor_scopes": [PolicyScope.PLAN_REQUEST.value],
+                    "idempotency_key": "request-approval-a",
+                    "comment": "Please review the deployment.",
+                },
+            )
+        )
+
+        self.assertEqual(result, {"command_type": "RequestApproval"})
+        command = recording.commands[0]
+        self.assertIsInstance(command, RequestApproval)
+        self.assertEqual(command.session_id, "session-a")
+        self.assertEqual(command.plan_id, "plan-a")
+        self.assertEqual(command.idempotency_key.value, "request-approval-a")
+        self.assertEqual(
+            command.actor_scopes,
+            (PolicyScope.PLAN_REQUEST,),
+        )
+
+    def test_public_approval_loop_persists_and_reads_queue_detail_and_decision(self) -> None:
+        self.seed_reviewable_plan()
+        approval = CpkServerApprovalService(
+            ApprovalCommandService(
+                self.unit_of_work,
+                clock=lambda: "2026-07-22T10:04:00Z",
+                id_factory=self.ids(
+                    "approval-a",
+                    "action-approval",
+                    "decision-a",
+                    "action-decision",
+                ),
+            )
+        )
+        reads = CpkServerReadService(self.unit_of_work)
+
+        requested = approval.handle(
+            RouteRequest(
+                surface="http",
+                route_id="command.approval.request",
+                service_role=ControlPlaneServiceRole.APPROVAL,
+                path_parameters={
+                    "workspace_id": "workspace-a",
+                    "plan_id": "plan-a",
+                },
+                payload={
+                    "session_id": "session-a",
+                    "actor_id": "operator-a",
+                    "actor_scopes": [PolicyScope.PLAN_REQUEST.value],
+                    "idempotency_key": "request-approval-a",
+                    "comment": "Please review the deployment.",
+                },
+            )
+        )
+        self.assertEqual(requested["request_id"], "approval-a")
+        self.assertEqual(requested["state"], "pending")
+
+        pending = reads.handle(
+            RouteRequest(
+                surface="http",
+                route_id="read.pending-approvals",
+                service_role=ControlPlaneServiceRole.READS,
+                path_parameters={"workspace_id": "workspace-a"},
+                payload={"limit": 10, "offset": 0},
+            )
+        )
+        self.assertEqual(pending["items"][0]["request_id"], "approval-a")
+
+        detail = reads.handle(
+            RouteRequest(
+                surface="mcp",
+                route_id="read.approval-detail",
+                service_role=ControlPlaneServiceRole.READS,
+                path_parameters={},
+                payload={
+                    "workspace_id": "workspace-a",
+                    "approval_id": "approval-a",
+                },
+            )
+        )
+        self.assertEqual(detail["approval"]["request_id"], "approval-a")
+        self.assertEqual(detail["plan"]["plan_id"], "plan-a")
+        self.assertEqual(detail["plan"]["risk_summary"]["ready_for_execution"], True)
+
+        decided = approval.handle(
+            RouteRequest(
+                surface="http",
+                route_id="command.approval.decide",
+                service_role=ControlPlaneServiceRole.APPROVAL,
+                path_parameters={"approval_id": "approval-a"},
+                payload={
+                    "session_id": "session-a",
+                    "actor_id": "manager-a",
+                    "actor_scopes": [requested["required_scope"]],
+                    "decision": "approved",
+                    "idempotency_key": "decide-approval-a",
+                    "comment": "Approved.",
+                },
+            )
+        )
+        self.assertEqual(decided["state"], "approved")
+        self.assertEqual(decided["request_id"], "approval-a")
 
     def test_unsupported_services_fail_closed_until_extracted(self) -> None:
         service = CpkServerUnsupportedService(ControlPlaneServiceRole.RECOVERY)

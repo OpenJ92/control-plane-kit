@@ -462,6 +462,15 @@ def operator_command_http_routes() -> tuple[HttpApiRouteContract, ...]:
                 "PlanDeploymentResponse",
             ),
             (
+                "command.approval.request",
+                "/workspaces/{workspace_id}/plans/{plan_id}/approval",
+                ControlPlaneServiceRole.APPROVAL,
+                HttpAuthScope.PLAN_WRITE,
+                HttpOperationSafety.COMMAND,
+                "ApprovalRequestRequest",
+                "ApprovalRequestResponse",
+            ),
+            (
                 "command.approval.decide",
                 "/workspaces/{workspace_id}/approvals/{approval_id}/decision",
                 ControlPlaneServiceRole.APPROVAL,
