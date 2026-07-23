@@ -1659,3 +1659,91 @@ control-plane-kit ./test.sh: core 385, operations 141, root 1224
 The live publication proof uses Docker inspection as the source of truth. It
 refuses to count a host endpoint unless Docker reports the requested transport,
 bind address, and fixed host port when one was requested.
+
+## #916-#919 Runtime Effect Boundary Settlement
+
+#916 moved the cross-package runtime boundary into pure core language:
+
+```text
+RuntimeEffectRequest
+  = pinned durable source
+  x activity operation
+  x runtime kind
+  x selected registered product material
+```
+
+and:
+
+```text
+RuntimeEffectResult
+  = effect id
+  x EffectResultKind
+  x bounded evidence
+  x optional failure
+  x runtime endpoint observations
+```
+
+Operations translates from pinned durable execution material into that core
+request without querying stores inside the translator:
+
+```text
+ActivityRealizationContext -> RuntimeEffectRequest
+```
+
+The translator selects product material from the `RegisteredProduct` values that
+the coordinator already loaded in a short transaction. It matches graph node
+metadata by `ProductReference` identity and descriptor digest. That preserves:
+
+```text
+pinned truth in -> pure request out
+```
+
+#917 implemented the concrete Docker interpreter in the separate
+`control-plane-kit-interpreters` repository:
+
+```text
+RuntimeEffectRequest -> IO RuntimeEffectResult
+```
+
+The Docker SDK, Docker ownership checks, image pulls, container/network/volume
+mutation, configuration materialization, secret resolution, and endpoint
+inspection now live outside operations.
+
+#919 then removed the old operations-owned Docker adapter and CLI client. The
+current spine is:
+
+```text
+cpk-server
+  -> configured operations application
+    -> ExecutionCoordinator
+      -> RuntimeInterpreterDispatcher
+        -> RuntimeEffectRequest
+          -> injected runtime interpreter
+            -> RuntimeEffectResult
+```
+
+Operations still owns durable workflow, UnitOfWork boundaries, journals,
+observations, and advancement. It does not own Docker implementation behavior.
+The dispatcher converts returned runtime results into the existing operations
+activity outcome language:
+
+```text
+ActivityJournal x RuntimeEffectResult -> ActivityJournal'
+```
+
+The #919 tests prove:
+
+- interpreters receive `RuntimeEffectRequest`, not `ActivityRealizationContext`;
+- missing interpreters and unsupported targets fail closed;
+- effect-id mismatches become uncertainty rather than accepted success;
+- runtime endpoint observations become operations observation records;
+- `control-plane-kit-operations` imports no Docker SDK, interpreter package,
+  cpk-server process package, server-product package, subprocess runtime client,
+  FastAPI, HTTPX, MCP, or Uvicorn.
+
+Validation evidence:
+
+```text
+git diff --check
+control-plane-kit-operations ./test.sh: 124 tests, compileall, import check
+```

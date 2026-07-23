@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import unittest
 
-from control_plane_kit_core.algebra import BlockSockets, BlockSpec
+from control_plane_kit_core.algebra import BlockSockets, BlockSpec, ProviderSocket
 from control_plane_kit_core.operations.lifecycle import (
     ActivityEventKind,
     ActivityRunStatus,
@@ -23,21 +23,39 @@ from control_plane_kit_core.planning import (
     SwitchSocketConnection,
 )
 from control_plane_kit_core.policies import PolicyScope
+from control_plane_kit_core.products import (
+    ContainerServerProduct,
+    OciImageReference,
+    ProductDescriptorCodec,
+    ProductIdentity,
+    ProductReference,
+    ProductRuntimeContract,
+    ProviderRuntimePort,
+)
+from control_plane_kit_core.probe_intents import (
+    EndpointContext,
+    LiteralEndpointMaterial,
+    RuntimeEndpointObservation,
+)
+from control_plane_kit_core.runtime_effects import (
+    RuntimeEffectFailure,
+    RuntimeEffectRequest,
+    RuntimeEffectResult,
+)
 from control_plane_kit_core.topology import DeploymentGraph, Node, RuntimeRecord
-from control_plane_kit_core.types import BlockFamily, RuntimeKind
+from control_plane_kit_core.types import BlockFamily, Protocol, RuntimeKind
 from control_plane_kit_operations.coordinator import (
-    ActivityExecutionOutcome,
     ActivityRealizationContext,
     RuntimeInterpreterDispatcher,
 )
 from control_plane_kit_operations.lifecycle import ExecutionWorkerAuthority
+from control_plane_kit_operations.products import InlineDescriptorSource, RegisteredProduct
 from control_plane_kit_operations.records import (
     ActivityEventRecord,
     ActivityPlanRecord,
     ActivityPlanStatus,
     ActivityRunRecord,
     AdmittedRun,
-    BoundedEvidence,
     ClaimIdentity,
     ExecutionIdempotency,
     ExecutionRequestIdentity,
@@ -48,17 +66,19 @@ from control_plane_kit_operations.records import (
 
 
 class RecordingInterpreter:
-    def __init__(self, name: str) -> None:
+    def __init__(self, name: str, result: RuntimeEffectResult | None = None) -> None:
         self.name = name
-        self.contexts: list[ActivityRealizationContext] = []
+        self.result = result
+        self.requests: list[RuntimeEffectRequest] = []
 
     def execute(
         self,
-        context: ActivityRealizationContext,
-    ) -> ActivityExecutionOutcome:
-        self.contexts.append(context)
-        return ActivityExecutionOutcome.succeeded(
-            BoundedEvidence.from_mapping({"interpreter": self.name})
+        request: RuntimeEffectRequest,
+    ) -> RuntimeEffectResult:
+        self.requests.append(request)
+        return self.result or RuntimeEffectResult.succeeded(
+            request.effect_id,
+            evidence={"interpreter": self.name},
         )
 
 
@@ -82,8 +102,10 @@ class RuntimeInterpreterDispatcherTests(unittest.TestCase):
 
         self.assertEqual(outcome.kind.name, "SUCCEEDED")
         self.assertEqual(outcome.evidence.descriptor(), {"interpreter": "docker"})
-        self.assertEqual(docker.contexts, [context])
-        self.assertEqual(dry_run.contexts, [])
+        self.assertEqual(len(docker.requests), 1)
+        self.assertEqual(docker.requests[0].runtime_kind, RuntimeKind.DOCKER)
+        self.assertEqual(docker.requests[0].activity_id, ActivityId("activity-a"))
+        self.assertEqual(dry_run.requests, [])
 
     def test_stop_node_dispatches_by_base_graph_runtime_kind(self) -> None:
         docker = RecordingInterpreter("docker")
@@ -104,8 +126,9 @@ class RuntimeInterpreterDispatcherTests(unittest.TestCase):
 
         self.assertEqual(outcome.kind.name, "SUCCEEDED")
         self.assertEqual(outcome.evidence.descriptor(), {"interpreter": "docker"})
-        self.assertEqual(docker.contexts, [context])
-        self.assertEqual(dry_run.contexts, [])
+        self.assertEqual(len(docker.requests), 1)
+        self.assertEqual(docker.requests[0].runtime_kind, RuntimeKind.DOCKER)
+        self.assertEqual(dry_run.requests, [])
 
     def test_runtime_operation_dispatches_from_pinned_runtime_record(self) -> None:
         dry_run = RecordingInterpreter("dry-run")
@@ -119,7 +142,8 @@ class RuntimeInterpreterDispatcherTests(unittest.TestCase):
         outcome = dispatcher.execute(context)
 
         self.assertEqual(outcome.evidence.descriptor(), {"interpreter": "dry-run"})
-        self.assertEqual(dry_run.contexts, [context])
+        self.assertEqual(len(dry_run.requests), 1)
+        self.assertEqual(dry_run.requests[0].runtime_kind, RuntimeKind.DRY_RUN)
 
     def test_missing_interpreter_is_explicit_unsupported_without_attempt(self) -> None:
         docker = RecordingInterpreter("docker")
@@ -143,7 +167,7 @@ class RuntimeInterpreterDispatcherTests(unittest.TestCase):
                 "runtime_kind": "aws",
             },
         )
-        self.assertEqual(docker.contexts, [])
+        self.assertEqual(docker.requests, [])
 
     def test_operation_without_runtime_target_is_explicit_unsupported(self) -> None:
         docker = RecordingInterpreter("docker")
@@ -165,7 +189,7 @@ class RuntimeInterpreterDispatcherTests(unittest.TestCase):
                 "operation": "SwitchSocketConnection",
             },
         )
-        self.assertEqual(docker.contexts, [])
+        self.assertEqual(docker.requests, [])
 
     def test_missing_base_node_is_explicit_unsupported_without_desired_lookup(self) -> None:
         docker = RecordingInterpreter("docker")
@@ -182,8 +206,75 @@ class RuntimeInterpreterDispatcherTests(unittest.TestCase):
         self.assertIsNotNone(outcome.failure)
         assert outcome.failure is not None
         self.assertEqual(outcome.failure.code, "runtime.dispatch-target-unsupported")
-        self.assertIn("missing node", outcome.failure.message)
-        self.assertEqual(docker.contexts, [])
+        self.assertEqual(outcome.failure.message, "runtime effect node target is missing")
+        self.assertEqual(docker.requests, [])
+
+    def test_runtime_result_failure_is_converted_to_activity_outcome(self) -> None:
+        interpreter = RecordingInterpreter(
+            "docker",
+            RuntimeEffectResult.failed(
+                "event-intent",
+                RuntimeEffectFailure(
+                    "docker.container-failed",
+                    "container failed",
+                    {"container": "api"},
+                ),
+            ),
+        )
+        dispatcher = RuntimeInterpreterDispatcher({RuntimeKind.DOCKER: interpreter})
+
+        outcome = dispatcher.execute(context_for(StartNode(NodeTarget("api"))))
+
+        self.assertEqual(outcome.kind.name, "FAILED")
+        self.assertIsNotNone(outcome.failure)
+        assert outcome.failure is not None
+        self.assertEqual(outcome.failure.code, "docker.container-failed")
+        self.assertEqual(outcome.failure.details.descriptor(), {"container": "api"})
+
+    def test_runtime_result_effect_id_mismatch_becomes_uncertain(self) -> None:
+        interpreter = RecordingInterpreter(
+            "docker",
+            RuntimeEffectResult.succeeded("different-effect"),
+        )
+        dispatcher = RuntimeInterpreterDispatcher({RuntimeKind.DOCKER: interpreter})
+
+        outcome = dispatcher.execute(context_for(StartNode(NodeTarget("api"))))
+
+        self.assertEqual(outcome.kind.name, "UNCERTAIN")
+        self.assertIsNotNone(outcome.failure)
+        assert outcome.failure is not None
+        self.assertEqual(outcome.failure.code, "runtime.effect-id-mismatch")
+
+    def test_runtime_endpoint_observations_become_operations_observations(self) -> None:
+        interpreter = RecordingInterpreter(
+            "docker",
+            RuntimeEffectResult.succeeded(
+                "event-intent",
+                observations=(
+                    RuntimeEndpointObservation(
+                        "api",
+                        "http",
+                        "graph-desired",
+                        Protocol.HTTP,
+                        EndpointContext.RUNTIME_PRIVATE,
+                        LiteralEndpointMaterial("http://api-http:8000"),
+                    ),
+                ),
+            ),
+        )
+        dispatcher = RuntimeInterpreterDispatcher({RuntimeKind.DOCKER: interpreter})
+
+        outcome = dispatcher.execute(context_for(StartNode(NodeTarget("api"))))
+
+        self.assertEqual(outcome.kind.name, "SUCCEEDED")
+        self.assertEqual(len(outcome.observations), 1)
+        observation = outcome.observations[0]
+        self.assertEqual(observation.observation_id, "event-intent:runtime-endpoint:1")
+        self.assertEqual(observation.workspace_id, "workspace-a")
+        self.assertEqual(observation.subject_id, "api")
+        self.assertEqual(observation.graph_id, "graph-desired")
+        self.assertEqual(observation.endpoint_context, EndpointContext.RUNTIME_PRIVATE)
+        self.assertEqual(observation.evidence.descriptor()["runtime_endpoint"]["subject_id"], "api")
 
 
 def context_for(
@@ -234,7 +325,7 @@ def context_for(
             graph_with_node(desired_kind),
             version=2,
         ),
-        registered_products=(),
+        registered_products=(_registered_product(),),
         authority=ExecutionWorkerAuthority(
             "worker-a",
             (PolicyScope.EXECUTION_OPERATE,),
@@ -267,6 +358,7 @@ def graph_version_record_from_graph(
 
 
 def graph_with_node(kind: RuntimeKind) -> DeploymentGraph:
+    reference = ProductReference.from_document(_registered_product().descriptor_document)
     return DeploymentGraph(
         "graph",
         nodes={
@@ -277,6 +369,10 @@ def graph_with_node(kind: RuntimeKind) -> DeploymentGraph:
                 "container",
                 "runtime-a",
                 BlockSockets(),
+                metadata={
+                    "product_identity": reference.identity.key,
+                    "product_descriptor_digest": reference.descriptor_sha256.value,
+                },
             )
         },
         runtimes={
@@ -298,6 +394,28 @@ def graph_without_node(kind: RuntimeKind) -> DeploymentGraph:
                 kind,
             )
         },
+    )
+
+
+def _registered_product() -> RegisteredProduct:
+    product = ContainerServerProduct(
+        identity=ProductIdentity("openj92", "hello-server", 1),
+        image=OciImageReference(
+            registry="ghcr.io",
+            repository="openj92/control-plane-kit-servers/hello-server",
+            digest="sha256:" + "a" * 64,
+        ),
+        runtime_contract=ProductRuntimeContract(
+            sockets=BlockSockets(providers=(ProviderSocket("http", Protocol.HTTP),)),
+            provider_ports=(ProviderRuntimePort("http", 8000),),
+        ),
+    )
+    return RegisteredProduct.from_document(
+        workspace_id="workspace-a",
+        descriptor_document=ProductDescriptorCodec().encode_document(product),
+        source=InlineDescriptorSource(),
+        imported_by="operator-a",
+        imported_at="2026-07-22T09:00:00Z",
     )
 
 

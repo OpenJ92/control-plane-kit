@@ -47,11 +47,13 @@ class OperationsPackageBoundaryTests(unittest.TestCase):
     def test_operations_source_does_not_import_servers_or_process_packages(self) -> None:
         forbidden = {
             "control_plane_kit",
+            "control_plane_kit_interpreters",
             "control_plane_kit_servers",
             "docker",
             "fastapi",
             "httpx",
             "mcp",
+            "subprocess",
             "uvicorn",
         }
 
