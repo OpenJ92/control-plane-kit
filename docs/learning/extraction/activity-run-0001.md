@@ -1546,3 +1546,65 @@ They prove the exact client protocol surface, dispatcher-to-adapter composition
 without a cpk-server branch, and base-graph teardown material. #902 should
 implement a Docker SDK client behind this boundary rather than changing
 coordinator, cpk-server, graph, approval, lifecycle, or advancement behavior.
+
+## #902-#906 Docker SDK Interpreter Foundation
+
+#902 through #906 moved the concrete Docker substrate into
+`control-plane-kit-interpreters` while preserving the same authority chain:
+
+```text
+cpk-server
+  -> configured operations application
+    -> ExecutionCoordinator
+      -> RuntimeInterpreterDispatcher
+        -> DockerRuntimeInterpreter
+          -> Python Docker SDK
+```
+
+#902 introduced the lazy Docker SDK client. The package root and Docker module
+can be imported without importing the optional `docker` dependency; the concrete
+SDK is imported only when `DockerSdkClient()` is constructed without an injected
+client. The client owns inspection, create/pull/run/start/stop/remove calls for
+Docker networks, volumes, images, and containers. It still imports no operations
+stores, UnitOfWork, cpk-server process modules, or product-server code.
+
+#903 added concrete probe and verification adapters. Core still owns probe
+intent and verification value languages; interpreters own bounded TCP, UDP,
+HTTP, Redis, and Postgres checks against authorized endpoint material.
+
+#904 and #905 added Docker materialization for configuration artifacts and
+secret-file deliveries. Configuration uses immutable, bounded, secret-free core
+`ConfigurationArtifact` values. Secrets are resolved only at runtime from
+authorized `SecretReference` material. Both paths use helper containers and
+`put_archive`, not process argv, and both verify durable evidence by digest.
+
+#906 added explicit host publication and endpoint observation support. The
+Docker SDK boundary is now:
+
+```text
+DockerSdkPortBinding
+  -> Docker SDK ports argument
+    -> DockerSdkPublishedPort inspection facts
+      -> verify_published_ports(requested, observed)
+        -> runtime_endpoint_observations(...)
+```
+
+This keeps private endpoints, host-local endpoints, and public endpoints as
+distinct runtime observations. TCP and UDP are matched by typed `Transport`;
+UDP publication is never inferred from TCP publication on the same numeric port.
+Endpoint observations remain evidence for operations to persist and project.
+They do not rewrite desired graph truth.
+
+#906 live evidence:
+
+```text
+git diff --check
+control-plane-kit-interpreters ./test.sh: 38 tests, compileall, import checks
+tests/live_docker_publication.py: published TCP 8000 and UDP 5353, 2 host observations
+host-publication Docker residue audit: no labeled containers, networks, or volumes
+control-plane-kit ./test.sh: core 385, operations 141, root 1224
+```
+
+The live publication proof uses Docker inspection as the source of truth. It
+refuses to count a host endpoint unless Docker reports the requested transport,
+bind address, and fixed host port when one was requested.
