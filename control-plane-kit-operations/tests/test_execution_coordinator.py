@@ -11,6 +11,7 @@ from control_plane_kit_core.operations.lifecycle import (
     ExecutionRequestStatus,
     FailureCategory,
 )
+from control_plane_kit_core.probe_intents import ProbeKind, ProbeOutcome
 from control_plane_kit_core.products import (
     ContainerServerProduct,
     OciImageReference,
@@ -50,6 +51,8 @@ from control_plane_kit_operations.records import (
     ActivityPlanStatus,
     BoundedEvidence,
     FailureEvidence,
+    ObservationRecord,
+    ObservationStatus,
 )
 from control_plane_kit_operations.workflows import IdempotencyKey
 
@@ -204,7 +207,20 @@ class ExecutionCoordinatorTests(unittest.TestCase):
         adapter = RecordingAdapter(
             self.tracker,
             ActivityExecutionOutcome.succeeded(
-                BoundedEvidence.from_mapping({"adapter": "fake"})
+                BoundedEvidence.from_mapping({"adapter": "fake"}),
+                observations=(
+                    ObservationRecord(
+                        "observation-start-api",
+                        "workspace-a",
+                        "api",
+                        ObservationStatus.PROCESS_STARTED,
+                        "2026-07-22T13:01:05Z",
+                        BoundedEvidence.from_mapping({"container": "api"}),
+                        graph_id="graph-desired",
+                        probe_kind=ProbeKind.PROCESS,
+                        probe_outcome=ProbeOutcome.PROCESS_RUNNING,
+                    ),
+                ),
             ),
         )
 
@@ -235,7 +251,14 @@ class ExecutionCoordinatorTests(unittest.TestCase):
         with self.unit_of_work() as unit_of_work:
             run = unit_of_work.stores.execution.get_run("run-a")
             events = unit_of_work.stores.execution.events_for_run("run-a")
+            observation = unit_of_work.stores.observed_state.latest("workspace-a", "api")
         self.assertIs(run.status, ActivityRunStatus.SUCCEEDED)
+        self.assertIsNotNone(observation)
+        assert observation is not None
+        self.assertEqual(observation.observation_id, "observation-start-api")
+        self.assertIs(observation.status, ObservationStatus.PROCESS_STARTED)
+        self.assertEqual(observation.graph_id, "graph-desired")
+        self.assertEqual(observation.evidence.descriptor(), {"container": "api"})
         self.assertEqual(
             [event.kind for event in events],
             [
@@ -300,6 +323,38 @@ class ExecutionCoordinatorTests(unittest.TestCase):
         self.assertIs(run.status, ActivityRunStatus.RUNNING)
         self.assertEqual(events[-1].kind, ActivityEventKind.STEP_UNCERTAIN)
         self.assertEqual(events[-1].failure.category, FailureCategory.UNCERTAIN)
+
+    def test_foreign_workspace_observation_becomes_uncertainty_without_persisting_row(self) -> None:
+        self.claim_and_start()
+        adapter = RecordingAdapter(
+            self.tracker,
+            ActivityExecutionOutcome.succeeded(
+                observations=(
+                    ObservationRecord(
+                        "foreign-observation",
+                        "workspace-b",
+                        "api",
+                        ObservationStatus.PROCESS_STARTED,
+                        "2026-07-22T13:01:05Z",
+                    ),
+                )
+            ),
+        )
+
+        result = self.coordinator(adapter).execute(self.command())
+
+        self.assertIs(result.status, CoordinatorStatus.UNCERTAIN)
+        with self.unit_of_work() as unit_of_work:
+            events = unit_of_work.stores.execution.events_for_run("run-a")
+            workspace_a = unit_of_work.stores.observed_state.latest("workspace-a", "api")
+            workspace_b = unit_of_work.stores.observed_state.latest("workspace-b", "api")
+        self.assertIsNone(workspace_a)
+        self.assertIsNone(workspace_b)
+        self.assertEqual(events[-1].kind, ActivityEventKind.STEP_UNCERTAIN)
+        self.assertEqual(
+            events[-1].failure.code,
+            "adapter-observation-workspace-mismatch",
+        )
 
     def test_started_intent_without_result_is_in_flight_and_not_replayed(self) -> None:
         self.claim_and_start()

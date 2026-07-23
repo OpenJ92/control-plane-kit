@@ -19,13 +19,19 @@ from control_plane_kit_core.products import (
     ProductIdentity,
     ProductReference,
 )
+from control_plane_kit_core.probe_intents import ProbeKind, ProbeOutcome
 from control_plane_kit_core.topology import DEFAULT_GRAPH_CODEC, DeploymentGraph
 from control_plane_kit_core.types import RuntimeKind
 from control_plane_kit_operations.coordinator import (
     ActivityExecutionOutcome,
     ActivityRealizationContext,
 )
-from control_plane_kit_operations.records import BoundedEvidence, FailureEvidence
+from control_plane_kit_operations.records import (
+    BoundedEvidence,
+    FailureEvidence,
+    ObservationRecord,
+    ObservationStatus,
+)
 from control_plane_kit_operations.workflows import InvalidOperationCommand
 
 
@@ -360,12 +366,18 @@ class DockerProductRealizationAdapter:
         _require_owned(inspected, labels, resource_name=container_name)
         if inspected is not None and inspected.running:
             return ActivityExecutionOutcome.succeeded(
-                _container_evidence("start-container", container_name, image, reused=True)
+                _container_evidence("start-container", container_name, image, reused=True),
+                observations=(
+                    _process_started_observation(context, node.node_id, container_name),
+                ),
             )
         if inspected is not None:
             self.client.start_container(container_name)
             return ActivityExecutionOutcome.succeeded(
-                _container_evidence("start-container", container_name, image, reused=True)
+                _container_evidence("start-container", container_name, image, reused=True),
+                observations=(
+                    _process_started_observation(context, node.node_id, container_name),
+                ),
             )
         self.client.pull_image(image)
         self.client.run_container(
@@ -377,7 +389,10 @@ class DockerProductRealizationAdapter:
             network_aliases=_network_aliases(node),
         )
         return ActivityExecutionOutcome.succeeded(
-            _container_evidence("start-container", container_name, image, reused=False)
+            _container_evidence("start-container", container_name, image, reused=False),
+            observations=(
+                _process_started_observation(context, node.node_id, container_name),
+            ),
         )
 
 
@@ -527,4 +542,29 @@ def _container_evidence(
                 "reused": reused,
             }
         }
+    )
+
+
+def _process_started_observation(
+    context: ActivityRealizationContext,
+    node_id: str,
+    container_name: str,
+) -> ObservationRecord:
+    return ObservationRecord(
+        observation_id=f"{context.intent_event.event_id}:process-started",
+        workspace_id=context.request.identity.workspace_id,
+        subject_id=node_id,
+        status=ObservationStatus.PROCESS_STARTED,
+        observed_at=context.intent_event.occurred_at,
+        evidence=BoundedEvidence.from_mapping(
+            {
+                "docker": {
+                    "container": container_name,
+                    "action": "start-container",
+                }
+            }
+        ),
+        graph_id=context.plan_record.desired_graph_id,
+        probe_kind=ProbeKind.PROCESS,
+        probe_outcome=ProbeOutcome.PROCESS_RUNNING,
     )

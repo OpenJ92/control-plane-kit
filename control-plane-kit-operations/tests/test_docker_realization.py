@@ -39,6 +39,7 @@ from control_plane_kit_core.products import (
     instantiate_product,
 )
 from control_plane_kit_core.policies import PolicyScope
+from control_plane_kit_core.probe_intents import ProbeKind, ProbeOutcome
 from control_plane_kit_core.secrets import SecretEnvironmentDelivery, SecretReference
 from control_plane_kit_core.topology import DeploymentGraph, compile_topology
 from control_plane_kit_core.types import Protocol
@@ -61,6 +62,7 @@ from control_plane_kit_operations.records import (
     ExecutionRequestIdentity,
     ExecutionRequestRecord,
     GraphVersionRecord,
+    ObservationStatus,
     RetryIdentity,
 )
 
@@ -204,6 +206,24 @@ class DockerProductRealizationAdapterTests(unittest.TestCase):
         self.assertEqual(
             outcome.evidence.descriptor()["docker"]["action"],
             "start-container",
+        )
+        self.assertEqual(len(outcome.observations), 1)
+        observation = outcome.observations[0]
+        self.assertEqual(observation.observation_id, "event-start-node:process-started")
+        self.assertEqual(observation.workspace_id, "workspace-a")
+        self.assertEqual(observation.subject_id, "hello")
+        self.assertIs(observation.status, ObservationStatus.PROCESS_STARTED)
+        self.assertEqual(observation.graph_id, "graph-desired")
+        self.assertIs(observation.probe_kind, ProbeKind.PROCESS)
+        self.assertIs(observation.probe_outcome, ProbeOutcome.PROCESS_RUNNING)
+        self.assertEqual(
+            observation.evidence.descriptor(),
+            {
+                "docker": {
+                    "action": "start-container",
+                    "container": "cpk-workspace-a-docker-hello",
+                }
+            },
         )
 
     def test_foreign_container_collision_fails_before_pull_or_run(self) -> None:
