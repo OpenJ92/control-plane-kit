@@ -6,13 +6,25 @@ from dataclasses import dataclass
 import os
 import re
 import subprocess
-from typing import Mapping, Protocol
+from time import sleep
+from typing import Callable, Mapping, Protocol
+from urllib.error import HTTPError, URLError
+from urllib.parse import urljoin
+from urllib.request import HTTPRedirectHandler, Request, build_opener
 
 from control_plane_kit_core.lifecycle import ResourceOwnership
+from control_plane_kit_core.operations.execution import EffectResultKind
 from control_plane_kit_core.operations.lifecycle import FailureCategory
 from control_plane_kit_core.planning import (
+    RemoveNodeResource,
+    RemoveRuntimeResource,
+    ReconcileNode,
+    ReconcileRuntime,
     StartNode,
     StartRuntime,
+    StopNode,
+    StopRuntime,
+    WaitForHealthy,
 )
 from control_plane_kit_core.products import (
     ProductDescriptorDigest,
@@ -31,6 +43,11 @@ from control_plane_kit_core.secrets import (
 )
 from control_plane_kit_core.topology import DEFAULT_GRAPH_CODEC, DeploymentGraph
 from control_plane_kit_core.types import RuntimeKind
+from control_plane_kit_core.verification import (
+    HttpCheck,
+    PostgresQueryCheck,
+    VerificationOutcome,
+)
 from control_plane_kit_operations.coordinator import (
     ActivityExecutionOutcome,
     ActivityRealizationContext,
@@ -86,6 +103,24 @@ class DockerRealizationClient(Protocol):
 
     def start_container(self, name: str) -> None: ...
 
+    def stop_container(self, name: str) -> None: ...
+
+    def remove_container(self, name: str) -> None: ...
+
+    def remove_network(self, name: str) -> None: ...
+
+
+class DockerHealthCheckClient(Protocol):
+    """Runtime-private health check capability for Docker-local endpoints."""
+
+    def check_http(self, base_url: str, check: HttpCheck) -> "DockerHealthCheckResult": ...
+
+    def check_postgres(
+        self,
+        base_url: str,
+        check: PostgresQueryCheck,
+    ) -> "DockerHealthCheckResult": ...
+
 
 @dataclass(frozen=True)
 class DockerResourceInspection:
@@ -95,6 +130,122 @@ class DockerResourceInspection:
     running: bool
     image: str | None
     labels: Mapping[str, str]
+
+
+@dataclass(frozen=True)
+class DockerHealthCheckResult:
+    """Bounded result of one Docker-local semantic health check."""
+
+    outcome: VerificationOutcome | None
+    evidence: BoundedEvidence
+    unsupported_reason: str | None = None
+
+    @classmethod
+    def passed(cls, evidence: Mapping[str, object]) -> "DockerHealthCheckResult":
+        return cls(VerificationOutcome.PASSED, BoundedEvidence.from_mapping(evidence))
+
+    @classmethod
+    def failed(
+        cls,
+        outcome: VerificationOutcome,
+        evidence: Mapping[str, object],
+    ) -> "DockerHealthCheckResult":
+        if outcome is VerificationOutcome.PASSED:
+            raise ValueError("failed health check result cannot be passed")
+        return cls(outcome, BoundedEvidence.from_mapping(evidence))
+
+    @classmethod
+    def unsupported(cls, reason: str) -> "DockerHealthCheckResult":
+        return cls(None, BoundedEvidence(), reason)
+
+    def __post_init__(self) -> None:
+        if self.outcome is not None and not isinstance(self.outcome, VerificationOutcome):
+            raise TypeError("health check outcome must be VerificationOutcome")
+        if not isinstance(self.evidence, BoundedEvidence):
+            raise TypeError("health check evidence must be BoundedEvidence")
+        if self.unsupported_reason is not None and not isinstance(
+            self.unsupported_reason,
+            str,
+        ):
+            raise TypeError("unsupported reason must be text")
+
+
+class _NoRedirects(HTTPRedirectHandler):
+    def redirect_request(self, req, fp, code, msg, headers, newurl):  # noqa: ANN001
+        return None
+
+
+@dataclass(frozen=True)
+class StdlibDockerHealthCheckClient:
+    """Stdlib implementation for HTTP checks; other protocols fail closed."""
+
+    retry_delay_seconds: float = 0.25
+    sleeper: Callable[[float], None] = sleep
+
+    def check_http(self, base_url: str, check: HttpCheck) -> DockerHealthCheckResult:
+        url = urljoin(base_url.rstrip("/") + "/", check.path.lstrip("/"))
+        opener = build_opener(_NoRedirects)
+        attempts = 0
+        last: DockerHealthCheckResult | None = None
+        for attempt_index in range(check.policy.maximum_attempts):
+            attempts += 1
+            try:
+                with opener.open(
+                    Request(url, method="GET"),
+                    timeout=float(check.policy.timeout_seconds),
+                ) as response:
+                    body = response.read(check.policy.maximum_evidence_bytes + 1)
+                    evidence = {
+                        "kind": "http",
+                        "url": url,
+                        "status_code": int(response.status),
+                        "response_bytes": min(
+                            len(body),
+                            check.policy.maximum_evidence_bytes,
+                        ),
+                        "attempts": attempts,
+                    }
+                    if int(response.status) in check.expected_statuses:
+                        return DockerHealthCheckResult.passed(evidence)
+                    last = DockerHealthCheckResult.failed(
+                        VerificationOutcome.FAILED,
+                        evidence,
+                    )
+            except HTTPError as error:
+                last = DockerHealthCheckResult.failed(
+                    VerificationOutcome.FAILED,
+                    {
+                        "kind": "http",
+                        "url": url,
+                        "status_code": int(error.code),
+                        "response_bytes": 0,
+                        "attempts": attempts,
+                    },
+                )
+            except TimeoutError:
+                last = DockerHealthCheckResult.failed(
+                    VerificationOutcome.TIMED_OUT,
+                    {"kind": "http", "url": url, "attempts": attempts},
+                )
+            except (OSError, URLError, ValueError):
+                last = DockerHealthCheckResult.failed(
+                    VerificationOutcome.MALFORMED,
+                    {"kind": "http", "url": url, "attempts": attempts},
+                )
+            if attempt_index + 1 < check.policy.maximum_attempts:
+                self.sleeper(self.retry_delay_seconds)
+        assert last is not None
+        return last
+
+    def check_postgres(
+        self,
+        base_url: str,
+        check: PostgresQueryCheck,
+    ) -> DockerHealthCheckResult:
+        del base_url, check
+        return DockerHealthCheckResult.unsupported(
+            "postgres health verification requires an injected Postgres check client"
+        )
 
 
 @dataclass(frozen=True)
@@ -182,6 +333,15 @@ class DockerCliRealizationClient:
     def start_container(self, name: str) -> None:
         self._run(["start", name])
 
+    def stop_container(self, name: str) -> None:
+        self._run(["stop", name])
+
+    def remove_container(self, name: str) -> None:
+        self._run(["rm", name])
+
+    def remove_network(self, name: str) -> None:
+        self._run(["network", "rm", name])
+
     def _exists(self, kind: str, name: str) -> bool:
         result = subprocess.run(
             [self.docker, kind, "inspect", name],
@@ -239,6 +399,7 @@ class DockerProductRealizationAdapter:
     project_name: str = "control-plane-kit"
     client: DockerRealizationClient = DockerCliRealizationClient()
     secret_resolver: SecretResolver | None = None
+    health: DockerHealthCheckClient = StdlibDockerHealthCheckClient()
 
     def execute(self, context: ActivityRealizationContext) -> ActivityExecutionOutcome:
         if not isinstance(context, ActivityRealizationContext):
@@ -281,22 +442,41 @@ class DockerProductRealizationAdapter:
                     "Docker command timed out before result was known",
                 )
             )
-        except subprocess.CalledProcessError:
+        except subprocess.CalledProcessError as error:
             return ActivityExecutionOutcome.failed(
                 FailureEvidence(
                     FailureCategory.TERMINAL,
                     "docker.command-failed",
                     "Docker command failed",
+                    BoundedEvidence.from_mapping(
+                        {
+                            "returncode": error.returncode,
+                            "stderr": _bounded_docker_stderr(error.stderr),
+                        }
+                    ),
                 )
             )
 
     def _execute(self, context: ActivityRealizationContext) -> ActivityExecutionOutcome:
-        graph = _desired_graph(context)
         match context.activity.operation:
             case StartRuntime() as operation:
-                return self._start_runtime(context, graph, operation)
+                return self._start_runtime(context, _desired_graph(context), operation)
+            case ReconcileRuntime() as operation:
+                return self._start_runtime(context, _desired_graph(context), operation)
             case StartNode() as operation:
-                return self._start_node(context, graph, operation)
+                return self._start_node(context, _desired_graph(context), operation)
+            case WaitForHealthy() as operation:
+                return self._wait_for_healthy(context, _desired_graph(context), operation)
+            case ReconcileNode() as operation:
+                return self._reconcile_node(context, _desired_graph(context), operation)
+            case StopNode() as operation:
+                return self._stop_node(context, _base_graph(context), operation)
+            case RemoveNodeResource() as operation:
+                return self._remove_node_resource(context, _base_graph(context), operation)
+            case StopRuntime() as operation:
+                return self._stop_runtime(context, _base_graph(context), operation)
+            case RemoveRuntimeResource() as operation:
+                return self._remove_runtime_resource(context, _base_graph(context), operation)
             case _:
                 return ActivityExecutionOutcome.unsupported(
                     FailureEvidence(
@@ -316,7 +496,7 @@ class DockerProductRealizationAdapter:
         self,
         context: ActivityRealizationContext,
         graph: DeploymentGraph,
-        operation: StartRuntime,
+        operation: StartRuntime | ReconcileRuntime,
     ) -> ActivityExecutionOutcome:
         runtime = graph.runtimes[operation.target.runtime_id]
         if runtime.kind is not RuntimeKind.DOCKER:
@@ -431,6 +611,248 @@ class DockerProductRealizationAdapter:
             ),
         )
 
+    def _wait_for_healthy(
+        self,
+        context: ActivityRealizationContext,
+        graph: DeploymentGraph,
+        operation: WaitForHealthy,
+    ) -> ActivityExecutionOutcome:
+        node = graph.node(operation.target.node_id)
+        checks = node.block_spec.verification.checks
+        if not checks:
+            raise _UnsupportedDockerRealization(
+                "node has no verification contract for health readiness",
+                node_id=node.node_id,
+            )
+        results: list[tuple[str, DockerHealthCheckResult]] = []
+        for check in checks:
+            try:
+                endpoint = node.endpoint(check.provider_socket)
+            except KeyError as error:
+                raise _UnsupportedDockerRealization(
+                    "verification references a missing node endpoint",
+                    node_id=node.node_id,
+                    provider_socket=check.provider_socket,
+                ) from error
+            match check:
+                case HttpCheck():
+                    result = self.health.check_http(endpoint.url, check)
+                case PostgresQueryCheck():
+                    result = self.health.check_postgres(endpoint.url, check)
+                case _:
+                    result = DockerHealthCheckResult.unsupported(
+                        f"verification check {type(check).__name__} is not supported by Docker ACTIVITY"
+                    )
+            if result.unsupported_reason is not None:
+                raise _UnsupportedDockerRealization(
+                    result.unsupported_reason,
+                    node_id=node.node_id,
+                    check_id=check.check_id,
+                )
+            results.append((check.check_id, result))
+        failures = tuple(
+            check_id
+            for check_id, result in results
+            if result.outcome is not VerificationOutcome.PASSED
+        )
+        if failures:
+            return ActivityExecutionOutcome.failed(
+                FailureEvidence(
+                    FailureCategory.TERMINAL,
+                    "docker.health-check-failed",
+                    "one or more Docker-local health checks failed",
+                    BoundedEvidence.from_mapping(
+                        {
+                            "check_ids": list(failures),
+                            "checks": [
+                                {
+                                    "check_id": check_id,
+                                    "outcome": result.outcome.value
+                                    if result.outcome is not None
+                                    else "unsupported",
+                                    "evidence": result.evidence.descriptor()
+                                    if result.evidence is not None
+                                    else {},
+                                }
+                                for check_id, result in results
+                                if result.outcome is not VerificationOutcome.PASSED
+                            ],
+                        }
+                    ),
+                )
+            )
+        return ActivityExecutionOutcome.succeeded(
+            BoundedEvidence.from_mapping(
+                {
+                    "docker": {
+                        "action": "wait-healthy",
+                        "node_id": node.node_id,
+                        "checks": [check_id for check_id, _ in results],
+                    }
+                }
+            ),
+            observations=(
+                _healthy_observation(
+                    context,
+                    node.node_id,
+                    tuple(check_id for check_id, _ in results),
+                ),
+            ),
+        )
+
+    def _reconcile_node(
+        self,
+        context: ActivityRealizationContext,
+        graph: DeploymentGraph,
+        operation: ReconcileNode,
+    ) -> ActivityExecutionOutcome:
+        node = graph.node(operation.target.node_id)
+        runtime = graph.runtimes[node.runtime_id]
+        container_name = _container_name(
+            self.project_name,
+            context.request.identity.workspace_id,
+            runtime.runtime_id,
+            node.node_id,
+        )
+        inspected = self.client.inspect_container(container_name)
+        if inspected is not None:
+            labels = _container_labels(context, runtime.runtime_id, node, graph, self.project_name)
+            _require_owned(inspected, labels, resource_name=container_name)
+            if inspected.running:
+                self.client.stop_container(container_name)
+            self.client.remove_container(container_name)
+        started = self._start_node(context, graph, StartNode(operation.target))
+        if started.kind is not EffectResultKind.SUCCEEDED:
+            return started
+        return ActivityExecutionOutcome.succeeded(
+            BoundedEvidence.from_mapping(
+                {
+                    "docker": {
+                        "action": "reconcile-container",
+                        "container": container_name,
+                        "node_id": node.node_id,
+                    }
+                }
+            ),
+            observations=started.observations,
+        )
+
+    def _stop_node(
+        self,
+        context: ActivityRealizationContext,
+        graph: DeploymentGraph,
+        operation: StopNode,
+    ) -> ActivityExecutionOutcome:
+        node = graph.node(operation.target.node_id)
+        runtime = graph.runtimes[node.runtime_id]
+        labels = _container_labels(context, runtime.runtime_id, node, graph, self.project_name)
+        container_name = _container_name(
+            self.project_name,
+            context.request.identity.workspace_id,
+            runtime.runtime_id,
+            node.node_id,
+        )
+        inspected = self.client.inspect_container(container_name)
+        _require_owned(inspected, labels, resource_name=container_name)
+        if inspected is not None and inspected.running:
+            self.client.stop_container(container_name)
+        return ActivityExecutionOutcome.succeeded(
+            BoundedEvidence.from_mapping(
+                {
+                    "docker": {
+                        "action": "stop-container",
+                        "container": container_name,
+                        "present": inspected is not None,
+                    }
+                }
+            )
+        )
+
+    def _remove_node_resource(
+        self,
+        context: ActivityRealizationContext,
+        graph: DeploymentGraph,
+        operation: RemoveNodeResource,
+    ) -> ActivityExecutionOutcome:
+        node = graph.node(operation.target.node_id)
+        runtime = graph.runtimes[node.runtime_id]
+        labels = _container_labels(context, runtime.runtime_id, node, graph, self.project_name)
+        container_name = _container_name(
+            self.project_name,
+            context.request.identity.workspace_id,
+            runtime.runtime_id,
+            node.node_id,
+        )
+        inspected = self.client.inspect_container(container_name)
+        _require_owned(inspected, labels, resource_name=container_name)
+        if inspected is not None:
+            self.client.remove_container(container_name)
+        return ActivityExecutionOutcome.succeeded(
+            BoundedEvidence.from_mapping(
+                {
+                    "docker": {
+                        "action": "remove-container",
+                        "container": container_name,
+                        "present": inspected is not None,
+                    }
+                }
+            )
+        )
+
+    def _stop_runtime(
+        self,
+        context: ActivityRealizationContext,
+        graph: DeploymentGraph,
+        operation: StopRuntime,
+    ) -> ActivityExecutionOutcome:
+        runtime = graph.runtimes[operation.target.runtime_id]
+        network_name = _network_name(context, runtime.runtime_id, runtime.metadata)
+        inspected = self.client.inspect_network(network_name)
+        _require_owned(
+            inspected,
+            _base_labels(context, runtime.runtime_id),
+            resource_name=network_name,
+        )
+        return ActivityExecutionOutcome.succeeded(
+            BoundedEvidence.from_mapping(
+                {
+                    "docker": {
+                        "action": "stop-runtime",
+                        "network": network_name,
+                        "present": inspected is not None,
+                    }
+                }
+            )
+        )
+
+    def _remove_runtime_resource(
+        self,
+        context: ActivityRealizationContext,
+        graph: DeploymentGraph,
+        operation: RemoveRuntimeResource,
+    ) -> ActivityExecutionOutcome:
+        runtime = graph.runtimes[operation.target.runtime_id]
+        network_name = _network_name(context, runtime.runtime_id, runtime.metadata)
+        inspected = self.client.inspect_network(network_name)
+        _require_owned(
+            inspected,
+            _base_labels(context, runtime.runtime_id),
+            resource_name=network_name,
+        )
+        if inspected is not None:
+            self.client.remove_network(network_name)
+        return ActivityExecutionOutcome.succeeded(
+            BoundedEvidence.from_mapping(
+                {
+                    "docker": {
+                        "action": "remove-runtime-resource",
+                        "network": network_name,
+                        "present": inspected is not None,
+                    }
+                }
+            )
+        )
+
     def _secret_environment(self, deliveries: tuple[object, ...]) -> dict[str, str]:
         environment: dict[str, str] = {}
         for delivery in deliveries:
@@ -516,6 +938,10 @@ class _DockerOwnershipConflict(ValueError):
 
 def _desired_graph(context: ActivityRealizationContext) -> DeploymentGraph:
     return DEFAULT_GRAPH_CODEC.decode(context.desired_graph.graph_descriptor)
+
+
+def _base_graph(context: ActivityRealizationContext) -> DeploymentGraph:
+    return DEFAULT_GRAPH_CODEC.decode(context.base_graph.graph_descriptor)
 
 
 def _registered_product_for_node(
@@ -607,6 +1033,12 @@ def _clean(value: str) -> str:
     return _IDENTITY.sub("-", value).strip("-").lower()
 
 
+def _bounded_docker_stderr(value: str | None) -> str:
+    if value is None:
+        return ""
+    return value.strip()[:512]
+
+
 def _base_labels(
     context: ActivityRealizationContext,
     runtime_id: str,
@@ -629,12 +1061,31 @@ def _require_owned(
     if inspected is None:
         return
     for key, value in expected.items():
+        if key in {_LABEL_PLAN, _LABEL_GRAPH}:
+            continue
         if inspected.labels.get(key) != value:
             raise _DockerOwnershipConflict(
                 f"Docker resource {resource_name!r} is not owned compatible",
                 resource_name=resource_name,
                 label=key,
             )
+
+
+def _container_labels(
+    context: ActivityRealizationContext,
+    runtime_id: str,
+    node,
+    graph: DeploymentGraph,
+    project_name: str,
+) -> dict[str, str]:
+    del graph, project_name
+    product = _registered_product_for_node(context, node.metadata)
+    return {
+        **_base_labels(context, runtime_id),
+        _LABEL_NODE: node.node_id,
+        _LABEL_PRODUCT: product.reference.identity.key,
+        _LABEL_DESCRIPTOR: product.reference.descriptor_sha256.value,
+    }
 
 
 def _network_aliases(node) -> tuple[str, ...]:
@@ -685,6 +1136,31 @@ def _process_started_observation(
         graph_id=context.plan_record.desired_graph_id,
         probe_kind=ProbeKind.PROCESS,
         probe_outcome=ProbeOutcome.PROCESS_RUNNING,
+    )
+
+
+def _healthy_observation(
+    context: ActivityRealizationContext,
+    node_id: str,
+    check_ids: tuple[str, ...],
+) -> ObservationRecord:
+    return ObservationRecord(
+        observation_id=f"{context.intent_event.event_id}:healthy",
+        workspace_id=context.request.identity.workspace_id,
+        subject_id=node_id,
+        status=ObservationStatus.HEALTHY,
+        observed_at=context.intent_event.occurred_at,
+        evidence=BoundedEvidence.from_mapping(
+            {
+                "docker": {
+                    "action": "wait-healthy",
+                    "check_ids": list(check_ids),
+                }
+            }
+        ),
+        graph_id=context.plan_record.desired_graph_id,
+        probe_kind=ProbeKind.APPLICATION_HEALTH,
+        probe_outcome=ProbeOutcome.HEALTHY,
     )
 
 

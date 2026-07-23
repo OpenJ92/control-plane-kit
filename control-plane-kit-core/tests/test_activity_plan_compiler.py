@@ -232,6 +232,30 @@ class ActivityPlanCompilerTests(unittest.TestCase):
             {dependency.predecessor for dependency in old_provider_stop.dependencies},
         )
 
+    def test_reconciled_node_is_checked_healthy_before_transition_advancement(self) -> None:
+        current = validate_graph(service_graph("provider-a"))
+        desired = validate_graph(service_graph("provider-b"))
+
+        plan = compile_activity_plan(diff_graphs(current, desired))
+
+        reconcile = next(
+            activity
+            for activity in plan.activities
+            if isinstance(activity.operation, ReconcileNode)
+            and activity.operation.target.node_id == "consumer"
+        )
+        healthy = next(
+            activity
+            for activity in plan.activities
+            if isinstance(activity.operation, WaitForHealthy)
+            and activity.operation.target.node_id == "consumer"
+        )
+
+        self.assertIn(
+            reconcile.activity_id,
+            {dependency.predecessor for dependency in healthy.dependencies},
+        )
+
     def test_runtime_move_orders_start_reconcile_and_stop(self) -> None:
         before = RuntimeRecord("old", RuntimeKind.DOCKER)
         after = RuntimeRecord("new", RuntimeKind.DOCKER)

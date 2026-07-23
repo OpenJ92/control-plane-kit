@@ -1097,3 +1097,122 @@ harness supplies an explicit secret resolver for
 `secret://control-plane-kit/postgres/password`. Continue to treat remote managed
 databases such as RDS as future runtime/interpreter work rather than as this
 local OCI data-service proof.
+
+## #877 Seeded Product Live Scenarios
+
+#877 replaced the #876 fake-success route workflow with real local-Docker
+activity realization over seeded OCI product descriptors. The live harness
+drives the same public route-shaped application boundary used by cpk-server:
+
+```text
+workspace create
+  -> product import
+    -> session start
+      -> desired graph set
+        -> plan
+          -> approval request
+            -> pending approval queue / approval detail
+              -> approval decision
+                -> admit
+                  -> claim
+                    -> start
+                      -> execute bounded Docker activities
+                        -> advance current graph
+                          -> read current graph
+```
+
+The scenario matrix now proves:
+
+```text
+Postgres data service + Hello server
+Router deployment: Hello blue -> active router
+Multiplexer deployment: primary Hello + observer Hello -> multiplexer
+Router transition: active router retargets from blue to green
+Router teardown: router, Hello nodes, and Docker network are removed
+```
+
+The live proof consumes digest-pinned descriptors from
+`control-plane-kit-servers` and uses Docker-local networking only. That is
+intentional for ACTIVITY. Remote control portals, Cloudflare ingress,
+CPK-enabled backdoor mutation, recursive child cpk-server acceptance, and cloud
+runtimes remain deferred.
+
+Important structural findings:
+
+1. Seeded HTTP descriptors needed bounded readiness retries. One-shot probes
+   made successful Docker startup depend on lucky timing. The server catalogue
+   now records `maximum_attempts: 5` for seeded HTTP live/readiness checks
+   through `control-plane-kit-servers` PR #19. This is descriptor truth, not a
+   local harness sleep.
+2. `VerificationPolicy.maximum_attempts` needed operational cadence. The
+   stdlib Docker health interpreter now sleeps briefly between attempts, so
+   retry policy means bounded startup tolerance rather than immediate repeated
+   connection attempts.
+3. Docker health failure evidence now records failed check ids, outcomes, and
+   bounded per-check evidence. This made live failures inspectable through the
+   activity journal without exposing command strings or secrets.
+4. `ReconcileRuntime` is now interpreted as idempotent owned-network
+   reconciliation. It reuses the same local Docker primitive as
+   `StartRuntime`; no second runtime model was introduced.
+5. Docker plan and graph labels are provenance, not compatibility identity.
+   Multi-plan updates must be allowed to reconcile a runtime network created by
+   a prior approved plan. Ownership compatibility still requires stable owner,
+   workspace, runtime, node, product, descriptor, and data-resource labels.
+6. Reconciled health-checkable nodes now schedule
+   `ReconcileNode -> WaitForHealthy`. The router update exposed this gap:
+   current graph advancement must depend on post-reconcile provider health, not
+   on a demo-side retry after advancement.
+7. The live controller attaches to runtime networks only while CPK-owned graph
+   containers exist there. It detaches before runtime-network removal so the
+   harness probe endpoint does not block legitimate graph teardown. The Docker
+   adapter does not disconnect arbitrary foreign endpoints.
+
+The resulting local Docker interpreter can now perform these real product
+operations:
+
+```text
+StartRuntime / ReconcileRuntime
+StartNode / ReconcileNode
+WaitForHealthy for HTTP checks
+WaitForHealthy for Postgres checks via injected operations-side checker
+StopNode / RemoveNodeResource
+StopRuntime / RemoveRuntimeResource
+```
+
+Validation evidence before PR:
+
+```text
+control-plane-kit-servers PR #19
+  git diff --check
+  ./test.sh
+  GitHub docker-tests passed
+
+./control-plane-kit-core/test.sh
+  385 tests passed
+  compileall passed
+  control-plane-kit-core import ok
+
+./control-plane-kit-operations/test.sh
+  132 tests passed
+  compileall passed
+  control-plane-kit-operations import ok
+
+git diff --check
+python3 -m py_compile examples/activity_seeded_live.py
+
+./activity-seeded-live-test.sh
+  seeded ACTIVITY scenarios passed
+  ACTIVITY seeded live proof passed
+
+./test.sh
+  1219 tests passed in 206.343s
+```
+
+#878 handoff:
+
+#878 must republish cpk-server because #876 and #877 changed backend/runtime
+behavior below the cpk-server image. The publish lane should update the
+cpk-server Dockerfile source pin to the merged #877 commit, publish a new GHCR
+image, record the immutable digest, update `products/cpk_server/product.cpk.json`,
+refresh descriptor and catalogue checksums, and run the published-image smoke
+with local rebuild disabled.
