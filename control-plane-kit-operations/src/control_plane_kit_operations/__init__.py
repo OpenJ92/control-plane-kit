@@ -134,6 +134,7 @@ from .products import (
     RegisteredProductStatus,
     RemoteDescriptorSource,
 )
+from .runtime_effects import runtime_effect_request_for_context
 from .records import (
     ActivityEventRecord,
     ActivityPlanRecord,
@@ -342,6 +343,7 @@ __all__ = [
     "RunLifecycleIdempotencyConflict",
     "RunLifecycleNotFound",
     "RunLifecycleResult",
+    "runtime_effect_request_for_context",
     "PauseActivityRun",
     "SelectableProduct",
     "SetDesiredGraph",

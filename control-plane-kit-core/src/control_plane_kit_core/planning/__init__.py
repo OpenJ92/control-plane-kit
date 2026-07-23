@@ -48,6 +48,8 @@ from control_plane_kit_core.planning.codec import (
     LossyActivityPlanDescriptor,
     MalformedActivityPlanDescriptor,
     UnknownActivityPlanVariant,
+    activity_operation_descriptor,
+    activity_operation_from_descriptor,
 )
 from control_plane_kit_core.planning.compiler import compile_activity_plan
 from control_plane_kit_core.planning.scenarios import (
@@ -162,6 +164,8 @@ __all__ = [
     "ActivityPlan",
     "ActivityPlanDescriptorCodec",
     "ActivityPlanDescriptorError",
+    "activity_operation_descriptor",
+    "activity_operation_from_descriptor",
     "AddSocketConnection",
     "AdmissionExpectation",
     "ApprovalExpectation",

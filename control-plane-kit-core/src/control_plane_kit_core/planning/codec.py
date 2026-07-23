@@ -407,4 +407,16 @@ def _json_value(value: object) -> object:
         raise MalformedActivityPlanDescriptor("descriptor must contain JSON values") from error
 
 
+def activity_operation_descriptor(operation: object) -> dict[str, object]:
+    """Encode one closed activity operation without wrapping it in a plan."""
+
+    return ActivityPlanDescriptorCodec()._encode_operation(operation)
+
+
+def activity_operation_from_descriptor(descriptor: Mapping[str, object]) -> object:
+    """Decode one closed activity operation descriptor."""
+
+    return ActivityPlanDescriptorCodec()._decode_operation(descriptor)
+
+
 DEFAULT_ACTIVITY_PLAN_CODEC = ActivityPlanDescriptorCodec()
