@@ -538,3 +538,145 @@ The next issue should advance the current graph pointer only after accepted
 successful realization. It should not treat observations as desired graph
 mutation, and it should not infer readiness from the process-start observations
 added here.
+
+## #875 Guarded Current Graph Advancement
+
+#875 restores the extracted operations application service that turns complete
+execution evidence into one guarded current-graph projection update.
+
+The key boundary is:
+
+```text
+approved/admitted plan
+  -> claimed run
+    -> complete successful activity event journal
+      -> CurrentGraphAdvancementCommandService
+        -> CURRENT_GRAPH_ADVANCED event
+        -> ADVANCE_CURRENT_GRAPH operation action
+        -> workspace current_graph_id compare-and-set
+```
+
+This preserves the distinction between truth and projection:
+
+```text
+ActivityEventRecord
+  append-only lifecycle / saga truth
+
+Workspace.current_graph_id
+  cached current-topology pointer advanced only from accepted evidence
+
+ObservationRecord
+  runtime observation truth, never graph mutation
+```
+
+The command shape is:
+
+```python
+@dataclass(frozen=True)
+class AdvanceCurrentGraph:
+    workspace_id: str
+    run_id: str
+    plan_id: str
+    expected_current_graph_id: str
+    desired_graph_id: str
+    authority: ExecutionWorkerAuthority
+    idempotency_key: IdempotencyKey
+```
+
+The service validates all pinned identities before mutation:
+
+```text
+request.workspace == command.workspace
+request.plan == command.plan
+run.plan == command.plan
+plan.session == request.session
+plan.base_graph == command.expected_current_graph_id
+plan.desired_graph == command.desired_graph_id
+workspace.current_graph == command.expected_current_graph_id
+workspace.desired_graph == command.desired_graph_id
+base and desired graph records belong to the workspace
+request is still claimed by the advancing worker
+worker has execution:operate
+```
+
+Advancement uses the existing workspace CAS primitive:
+
+```python
+stores.workspaces.compare_and_set_current_graph(
+    command.workspace_id,
+    expected_graph_id=command.expected_current_graph_id,
+    replacement_graph_id=command.desired_graph_id,
+)
+```
+
+The durable event stream is still the saga journal, but extracted core now wants
+pure `ActivityJournalEvent` values. #875 therefore moved the coordinator's
+private event projection into one shared operations interpreter:
+
+```python
+def activity_journal_events(
+    events: tuple[ActivityEventRecord, ...],
+) -> tuple[ActivityJournalEvent, ...]:
+    ...
+```
+
+Both `ExecutionCoordinator` and `CurrentGraphAdvancementCommandService` now use
+that same adapter before calling:
+
+```python
+project_activity_journal(plan, activity_journal_events(events))
+derive_schedule(plan, projection.state)
+```
+
+This matters because advancement is not allowed to trust a naked
+`ActivityRunStatus.SUCCEEDED` projection. It also requires reconstructible saga
+success:
+
+```text
+latest event is RUN_SUCCEEDED
+exactly one terminal RUN_SUCCEEDED exists
+no failed / unsupported / compensating / cancelled evidence appears
+no in-flight or uncertain journal state remains
+successful step evidence exactly covers the ActivityPlan
+```
+
+Focused #875 coverage proves:
+
+```text
+complete durable success advances once and exact replay returns original evidence
+uncertain, unsupported, or failed step evidence cannot advance
+missing scope, foreign worker, and stale graph pointers fail closed
+changed idempotent intent conflicts without a second event
+late operation-action write failure rolls back pointer and event
+concurrent advancement has one winner
+```
+
+Validation evidence:
+
+```text
+git diff --check
+./control-plane-kit-operations/test.sh
+  116 tests passed
+  compileall passed
+  control-plane-kit-operations import ok
+./test.sh
+  1219 tests passed
+```
+
+#880 handoff:
+
+The durable execution spine now has planning, admission, claim/start, execution
+result/observation persistence, and guarded advancement. Before full public
+workflow acceptance, #880 should expose the approval queue/read model needed for
+manager review:
+
+```text
+operator requests approval
+  -> manager lists pending approvals
+    -> manager inspects plan/risk/detail
+      -> manager approves or rejects
+```
+
+#880 should not bypass approval by inserting rows directly in public acceptance
+paths. It should build on the existing approval records and read-service
+projection boundaries, then hand off to #881 for cpk-server HTTP/MCP exposure.
