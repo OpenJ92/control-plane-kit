@@ -247,6 +247,57 @@ The next implementation should preserve product-generic runtime dispatch and
 keep Hello/router/multiplexer specifics in descriptor data, seeded products, or
 future product-specific renderers rather than in the operations coordinator.
 
+## #907 / #916 Runtime Effect Contract Pivot
+
+#907 corrected the transitional #872 shape. Docker realization must not remain
+inside operations and must not become an `operations[docker]` optional extra.
+The boundary is now expressed as a pure core language:
+
+```text
+core:
+  RuntimeEffectRequest
+
+interpreter:
+  RuntimeEffectRequest -> IO RuntimeEffectResult
+
+operations:
+  ActivityJournal x RuntimeEffectResult -> ActivityJournal'
+```
+
+#916 introduces `control_plane_kit_core.runtime_effects` as the value language
+between durable operations and concrete runtime interpreters. The request carries
+only secret-free, pinned material:
+
+```python
+RuntimeEffectRequest(
+    effect_id=context.intent_event.event_id,
+    kind=RuntimeEffectKind.REALIZE_ACTIVITY,
+    runtime_kind=RuntimeKind.DOCKER,
+    source=RuntimeEffectSource(...),
+    activity_id=context.activity.activity_id,
+    operation=context.activity.operation,
+    products=(RuntimeProductMaterial(...),),
+)
+```
+
+Operations now has a translator:
+
+```python
+runtime_effect_request_for_context(context)
+```
+
+That function interprets already-loaded `ActivityRealizationContext` material
+into a pure request. It does not query stores, import Docker SDK, import
+`control-plane-kit-interpreters`, or select mutable current graph truth. For
+node activities, it uses the pinned graph node metadata to find the matching
+`RegisteredProduct` already present in the context, preserving the exact
+`ProductReference` and canonical descriptor document.
+
+The remaining old operations-owned `DockerProductRealizationAdapter` is now
+explicitly transitional. #917 must move Docker execution into
+`control-plane-kit-interpreters`; #919 must reduce operations to translation,
+dispatch, and persistence.
+
 ## #872 Minimal Docker Product Realization
 
 #872 adds the first real local Docker activity interpreter in extracted

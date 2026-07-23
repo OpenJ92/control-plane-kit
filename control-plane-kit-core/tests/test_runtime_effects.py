@@ -1,0 +1,172 @@
+from __future__ import annotations
+
+import unittest
+
+from control_plane_kit_core.algebra import BlockSockets, ProviderSocket
+from control_plane_kit_core.operations.execution import EffectResultKind
+from control_plane_kit_core.planning import ActivityId, NodeTarget, StartNode
+from control_plane_kit_core.probe_intents import (
+    EndpointContext,
+    LiteralEndpointMaterial,
+    RuntimeEndpointObservation,
+)
+from control_plane_kit_core.products import (
+    ContainerServerProduct,
+    OciImageReference,
+    ProductDescriptorDigest,
+    ProductIdentity,
+    ProductReference,
+    ProductRuntimeContract,
+    ProviderRuntimePort,
+)
+from control_plane_kit_core.runtime_effects import (
+    RuntimeEffectContractError,
+    RuntimeEffectFailure,
+    RuntimeEffectKind,
+    RuntimeEffectRequest,
+    RuntimeEffectResult,
+    RuntimeEffectSource,
+    RuntimeProductMaterial,
+)
+from control_plane_kit_core.types import Protocol, RuntimeKind
+
+
+class RuntimeEffectContractTests(unittest.TestCase):
+    def test_request_descriptor_carries_pinned_runtime_material_without_docker(self) -> None:
+        request = RuntimeEffectRequest(
+            effect_id="effect-a",
+            kind=RuntimeEffectKind.REALIZE_ACTIVITY,
+            runtime_kind=RuntimeKind.DOCKER,
+            source=_source(),
+            activity_id=ActivityId("activity-a"),
+            operation=StartNode(NodeTarget("api")),
+            products=(_product_material(),),
+        )
+
+        descriptor = request.descriptor()
+
+        self.assertEqual(descriptor["kind"], "realize-activity")
+        self.assertEqual(descriptor["runtime_kind"], "docker")
+        self.assertEqual(
+            descriptor["source"],
+            {
+                "workspace_id": "workspace-a",
+                "request_id": "request-a",
+                "run_id": "run-a",
+                "plan_id": "plan-a",
+                "base_graph_id": "graph-base",
+                "desired_graph_id": "graph-desired",
+                "intent_event_id": "event-started",
+            },
+        )
+        self.assertEqual(
+            descriptor["operation"],
+            {
+                "kind": "start-node",
+                "target": {"kind": "node", "node_id": "api"},
+            },
+        )
+        product = descriptor["products"][0]
+        self.assertEqual(product["node_id"], "api")
+        self.assertEqual(product["runtime_id"], "docker")
+        self.assertEqual(
+            product["product"]["image"]["digest"],
+            "sha256:" + "a" * 64,
+        )
+
+    def test_product_material_rejects_identity_mismatch(self) -> None:
+        identity = ProductIdentity("openj92", "hello-server", 1)
+        other = ProductIdentity("openj92", "router", 1)
+
+        with self.assertRaises(RuntimeEffectContractError):
+            RuntimeProductMaterial(
+                node_id="api",
+                runtime_id="docker",
+                reference=ProductReference(other, ProductDescriptorDigest("b" * 64)),
+                product=_product(identity),
+            )
+
+    def test_result_descriptor_preserves_observations_as_pure_evidence(self) -> None:
+        result = RuntimeEffectResult.succeeded(
+            "effect-a",
+            evidence={"container": "cpk-api"},
+            observations=(
+                RuntimeEndpointObservation(
+                    subject_id="api",
+                    socket_name="http",
+                    graph_id="graph-desired",
+                    protocol=Protocol.HTTP,
+                    context=EndpointContext.RUNTIME_PRIVATE,
+                    address=LiteralEndpointMaterial("http://api:8000"),
+                ),
+            ),
+        )
+
+        self.assertEqual(result.kind, EffectResultKind.SUCCEEDED)
+        self.assertEqual(
+            result.descriptor()["observations"],
+            [
+                {
+                    "subject_id": "api",
+                    "socket_name": "http",
+                    "graph_id": "graph-desired",
+                    "protocol": {"transport": "tcp", "application": "http"},
+                    "context": "runtime-private",
+                    "address": {"kind": "literal", "value": "http://api:8000"},
+                }
+            ],
+        )
+
+    def test_failure_and_evidence_reject_secret_shaped_text(self) -> None:
+        with self.assertRaises(RuntimeEffectContractError):
+            RuntimeEffectResult.succeeded(
+                "effect-a",
+                evidence={"reason": "token=do-not-store"},
+            )
+
+        with self.assertRaises(RuntimeEffectContractError):
+            RuntimeEffectFailure(
+                "runtime.failure",
+                "password=do-not-store",
+            )
+
+
+def _source() -> RuntimeEffectSource:
+    return RuntimeEffectSource(
+        workspace_id="workspace-a",
+        request_id="request-a",
+        run_id="run-a",
+        plan_id="plan-a",
+        base_graph_id="graph-base",
+        desired_graph_id="graph-desired",
+        intent_event_id="event-started",
+    )
+
+
+def _product_material() -> RuntimeProductMaterial:
+    identity = ProductIdentity("openj92", "hello-server", 1)
+    return RuntimeProductMaterial(
+        node_id="api",
+        runtime_id="docker",
+        reference=ProductReference(identity, ProductDescriptorDigest("b" * 64)),
+        product=_product(identity),
+    )
+
+
+def _product(identity: ProductIdentity) -> ContainerServerProduct:
+    return ContainerServerProduct(
+        identity=identity,
+        image=OciImageReference(
+            registry="ghcr.io",
+            repository="openj92/control-plane-kit-servers/hello-server",
+            digest="sha256:" + "a" * 64,
+        ),
+        runtime_contract=ProductRuntimeContract(
+            sockets=BlockSockets(providers=(ProviderSocket("http", Protocol.HTTP),)),
+            provider_ports=(ProviderRuntimePort("http", 8000),),
+        ),
+    )
+
+
+if __name__ == "__main__":
+    unittest.main()

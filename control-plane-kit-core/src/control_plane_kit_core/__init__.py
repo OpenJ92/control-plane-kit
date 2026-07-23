@@ -166,6 +166,15 @@ from control_plane_kit_core.products import (
     instantiate_product,
     require_unique_product_identities,
 )
+from control_plane_kit_core.runtime_effects import (
+    RuntimeEffectContractError,
+    RuntimeEffectFailure,
+    RuntimeEffectKind,
+    RuntimeEffectRequest,
+    RuntimeEffectResult,
+    RuntimeEffectSource,
+    RuntimeProductMaterial,
+)
 
 __all__ = [
     "ActivityHistoryPolicy",
@@ -282,6 +291,13 @@ __all__ = [
     "ProductRuntimeContractCodec",
     "ProductRuntimeContractError",
     "RetainedDataMount",
+    "RuntimeEffectContractError",
+    "RuntimeEffectFailure",
+    "RuntimeEffectKind",
+    "RuntimeEffectRequest",
+    "RuntimeEffectResult",
+    "RuntimeEffectSource",
+    "RuntimeProductMaterial",
     "ProcessEndpointKind",
     "ProcessStatePolicy",
     "PublicationPolicy",

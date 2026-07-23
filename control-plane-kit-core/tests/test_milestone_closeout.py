@@ -39,6 +39,7 @@ EXPECTED_MODULES = {
     "policies",
     "probe_intents",
     "products",
+    "runtime_effects",
     "secrets",
     "topology.__init__",
     "topology.changes",
