@@ -2000,3 +2000,85 @@ Residual handoff for #910:
   cloud runtimes, and larger topology stress tests remain deferred;
 - any future cpk-server backend/runtime change must repeat the publish-by-digest
   sequence before acceptance.
+
+
+## #910 EXTRACT.INTERPRETERS Closeout
+
+#910 closes the interpreter extraction vertical around a simple algebraic split:
+
+```text
+core:
+  RuntimeEffectRequest
+
+interpreter:
+  RuntimeEffectRequest -> IO RuntimeEffectResult
+
+operations:
+  ActivityJournal x RuntimeEffectResult -> ActivityJournal'
+```
+
+The runtime composition established by the vertical is:
+
+```text
+cpk-server
+  -> configured operations application
+    -> ExecutionCoordinator
+      -> RuntimeInterpreterDispatcher
+        -> DockerRuntimeInterpreter
+          -> Python Docker SDK
+```
+
+What is now true:
+
+- `control-plane-kit-core` owns the pure request/result language and runtime kind
+  values. It does not own Docker, subprocess execution, cpk-server process code,
+  stores, or adapter effects.
+- `control-plane-kit-operations` owns the coordinator, runtime dispatcher
+  protocol, activity journal folding, observations, stores, and UnitOfWork. Its
+  package-boundary tests reject imports of `control_plane_kit_interpreters`,
+  `docker`, `subprocess`, FastAPI, HTTPX, MCP, Uvicorn, and server-product code.
+- `control-plane-kit-interpreters` owns concrete effect execution. The Docker
+  runtime interpreter consumes `RuntimeEffectRequest` values and returns
+  `RuntimeEffectResult` values; Docker SDK is isolated there.
+- `cpk-server` is an API/MCP process wrapper that composes dependencies at
+  startup. It can select `CPK_RUNTIME_INTERPRETERS=none|docker`, but it does not
+  inspect containers, own Docker semantics, or branch on product-specific runtime
+  behavior.
+- `control-plane-kit-servers` owns product descriptors, Dockerfiles, OCI images,
+  and catalogue metadata.
+
+Live evidence now spans both composition styles:
+
+```text
+activity-seeded-live-test.sh
+  operations harness + external DockerRuntimeInterpreter
+
+scripts/cpk_server_hosted_activity_smoke.sh
+  published cpk-server OCI + HTTP/MCP workflow + external DockerRuntimeInterpreter
+```
+
+The hosted proof uses:
+
+```text
+ghcr.io/openj92/control-plane-kit-servers/cpk-server@sha256:def866baeeda659d61a821a29a07a8ceb780bcb440ab7fe0c63a8fa8989e7c7a
+```
+
+with descriptor sha256
+`10dafb59f3d98a527e9dc39fe87ab93668774afc8ee5b688bf663bdb1553c159` and packaged
+catalogue checksum
+`1c3d0dd880caf0b2a065a80403d326db8dd47358e2418afa712f7af0818c4bfc`.
+
+#910 introduced `artifacts/extraction/extract-interpreters-closeout-report.json`
+and `tests/test_extract_interpreters_closeout.py` so the closeout assertions are
+queryable rather than only prose.
+
+Final #910 validation added `control-plane-kit ./test.sh`: packaging acceptances
+plus 1230 tests passed.
+
+Residual deferred work remains intentionally outside this vertical:
+
+- recursive cpk-server acceptance;
+- future control portals / ingress;
+- cloud runtime interpreters;
+- larger topology stress tests;
+- frontend work.
