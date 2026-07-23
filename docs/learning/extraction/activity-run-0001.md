@@ -1894,3 +1894,109 @@ Residual handoff for #909:
   tag;
 - recursive child cpk-server acceptance remains deferred until after the
   published dispatcher-capable image is proven.
+
+
+## #909 Hosted cpk-server Docker Interpreter Acceptance
+
+#909 proved the hosted process boundary after the interpreter split. The accepted
+composition is now live through the published cpk-server OCI image:
+
+```text
+cpk-server
+  -> configured operations application
+    -> ExecutionCoordinator
+      -> RuntimeInterpreterDispatcher
+        -> DockerRuntimeInterpreter
+          -> Python Docker SDK
+```
+
+The hosted acceptance script starts cpk-server from GHCR by immutable digest,
+configures `CPK_RUNTIME_INTERPRETERS=docker`, mounts the Docker socket as an
+explicit local-runtime authority, and then drives the public workflow through
+HTTP and MCP:
+
+```text
+create workspace
+  -> import hello-server descriptor
+    -> start session
+      -> set desired graph
+        -> MCP plan
+          -> HTTP approval request
+            -> MCP pending approval queue
+              -> MCP approval detail
+                -> MCP approval decision
+                  -> HTTP admit
+                    -> HTTP claim
+                      -> HTTP start
+                        -> MCP execute
+                          -> HTTP advance current graph
+                            -> HTTP current graph readback
+```
+
+The hosted smoke intentionally does not import operations application internals,
+PostgresUnitOfWork, or DockerRuntimeInterpreter directly. It talks to cpk-server
+only through its public route surfaces. The only Docker SDK use in the controller
+is harness-side network attachment so the controller and hosted cpk-server
+container can reach the runtime-private Docker network created by the external
+interpreter.
+
+Important implementation decisions:
+
+- cpk-server now composes `CurrentGraphAdvancementCommandService` at the process
+  boundary. Advancement remains an operations command service and is still an
+  explicit public command after accepted execution evidence.
+- `CPK_RUNTIME_INTERPRETERS=docker` is the hosted runtime authority for this
+  acceptance path. The product descriptor default remains `none`, so runtime
+  execution is never inferred from a descriptor alone.
+- Docker Desktop exposes `/var/run/docker.sock` inside the cpk-server container
+  as root-owned group `0` in this environment. The smoke grants that local
+  runtime authority with `--group-add ${CPK_DOCKER_SOCKET_GROUP:-0}`.
+- GHCR server-product packages are currently private. The hosted smoke creates a
+  minimal read-only Docker auth config from `gh auth token` when available and
+  mounts it only for the hosted cpk-server process. Secret material stays out of
+  product descriptors, graph truth, events, observations, and logs.
+- The acceptance uses the published cpk-server image by digest rather than a
+  local rebuilt tag.
+
+Published artifact evidence:
+
+```text
+server PR: OpenJ92/control-plane-kit-servers#22
+server merge commit: 9b7aa88edbcfd55d72b4d6ac7e2c82f9422848bf
+cpk-server image: ghcr.io/openj92/control-plane-kit-servers/cpk-server@sha256:def866baeeda659d61a821a29a07a8ceb780bcb440ab7fe0c63a8fa8989e7c7a
+cpk-server descriptor sha256: 10dafb59f3d98a527e9dc39fe87ab93668774afc8ee5b688bf663bdb1553c159
+packaged catalogue checksum: 1c3d0dd880caf0b2a065a80403d326db8dd47358e2418afa712f7af0818c4bfc
+```
+
+Validation evidence:
+
+```text
+control-plane-kit-servers git diff --check
+control-plane-kit-servers sh scripts/cpk_server_published_image_smoke.sh:
+  cpk-server published image smoke passed
+control-plane-kit-servers sh scripts/cpk_server_hosted_activity_smoke.sh:
+  hosted cpk-server Docker activity smoke passed
+  Docker residue audit passed
+control-plane-kit-servers ./test.sh:
+  21 root/catalogue/repository tests passed
+  34 cpk-server tests passed
+  8 hello-server tests passed
+  7 http-active-router tests passed
+  9 http-multiplexer tests passed
+  7 postgres-server tests passed
+  cpk-server image smoke passed
+  Docker residue audit passed
+GitHub OpenJ92/control-plane-kit-servers#22 docker-tests passed
+```
+
+Residual handoff for #910:
+
+- operations still has no concrete Docker dependency; #910 should verify this
+  from package imports and architecture checks;
+- Docker SDK remains isolated to `control-plane-kit-interpreters`; #910 should
+  include this as closeout evidence;
+- hosted acceptance has proven the external interpreter path for a one-node
+  hello deployment, but recursive cpk-server acceptance, control portals,
+  cloud runtimes, and larger topology stress tests remain deferred;
+- any future cpk-server backend/runtime change must repeat the publish-by-digest
+  sequence before acceptance.
