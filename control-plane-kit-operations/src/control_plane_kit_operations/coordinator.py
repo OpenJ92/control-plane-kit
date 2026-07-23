@@ -39,6 +39,7 @@ from control_plane_kit_operations.records import (
     ExecutionRequestRecord,
     FailureEvidence,
     GraphVersionRecord,
+    ObservationRecord,
 )
 from control_plane_kit_operations.workflows import IdempotencyKey, InvalidOperationCommand
 
@@ -162,13 +163,19 @@ class ActivityExecutionOutcome:
     kind: EffectResultKind
     evidence: BoundedEvidence = field(default_factory=BoundedEvidence)
     failure: FailureEvidence | None = None
+    observations: tuple[ObservationRecord, ...] = ()
 
     @classmethod
     def succeeded(
         cls,
         evidence: BoundedEvidence | None = None,
+        observations: tuple[ObservationRecord, ...] = (),
     ) -> "ActivityExecutionOutcome":
-        return cls(EffectResultKind.SUCCEEDED, evidence or BoundedEvidence())
+        return cls(
+            EffectResultKind.SUCCEEDED,
+            evidence or BoundedEvidence(),
+            observations=observations,
+        )
 
     @classmethod
     def failed(cls, failure: FailureEvidence) -> "ActivityExecutionOutcome":
@@ -189,6 +196,10 @@ class ActivityExecutionOutcome:
             raise InvalidOperationCommand("outcome evidence must be BoundedEvidence")
         if self.failure is not None and not isinstance(self.failure, FailureEvidence):
             raise InvalidOperationCommand("outcome failure must be FailureEvidence")
+        observations = tuple(self.observations)
+        if not all(isinstance(value, ObservationRecord) for value in observations):
+            raise InvalidOperationCommand("outcome observations must be ObservationRecord values")
+        object.__setattr__(self, "observations", observations)
         if self.kind in {
             EffectResultKind.FAILED,
             EffectResultKind.UNSUPPORTED,
@@ -397,6 +408,7 @@ class ExecutionCoordinator:
         kind: ActivityEventKind,
         evidence: BoundedEvidence | None = None,
         failure: FailureEvidence | None = None,
+        observations: tuple[ObservationRecord, ...] = (),
     ) -> ActivityEventRecord:
         now = self._clock()
         with self._unit_of_work_factory() as unit_of_work:
@@ -406,6 +418,10 @@ class ExecutionCoordinator:
             _require_worker_owns(request, command.authority)
             if run.status is not ActivityRunStatus.RUNNING:
                 raise ExecutionCoordinatorConflict("run is not executable")
+            _validate_observations(
+                observations,
+                workspace_id=request.identity.workspace_id,
+            )
             event = stores.execution.add_event(
                 ActivityEventRecord(
                     event_id=self._id_factory(),
@@ -418,6 +434,8 @@ class ExecutionCoordinator:
                     failure=failure,
                 )
             )
+            for observation in observations:
+                stores.observed_state.put(observation)
             unit_of_work.commit()
             return event
 
@@ -427,12 +445,21 @@ class ExecutionCoordinator:
         activity: PlannedActivity,
         outcome: ActivityExecutionOutcome,
     ) -> None:
+        if not self._observations_match_workspace(command, outcome.observations):
+            outcome = ActivityExecutionOutcome.uncertain(
+                FailureEvidence(
+                    FailureCategory.UNCERTAIN,
+                    "adapter-observation-workspace-mismatch",
+                    "adapter returned observation evidence for a different workspace",
+                )
+            )
         if outcome.kind is EffectResultKind.SUCCEEDED:
             self._record_step_event(
                 command,
                 activity,
                 ActivityEventKind.STEP_SUCCEEDED,
                 outcome.evidence,
+                observations=outcome.observations,
             )
             return
         if outcome.kind is EffectResultKind.FAILED:
@@ -442,6 +469,7 @@ class ExecutionCoordinator:
                 activity,
                 ActivityEventKind.STEP_FAILED,
                 failure=outcome.failure,
+                observations=outcome.observations,
             )
             return
         if outcome.kind is EffectResultKind.UNSUPPORTED:
@@ -451,6 +479,7 @@ class ExecutionCoordinator:
                 activity,
                 ActivityEventKind.STEP_UNSUPPORTED,
                 failure=outcome.failure,
+                observations=outcome.observations,
             )
             return
         if outcome.kind is EffectResultKind.UNCERTAIN:
@@ -460,9 +489,25 @@ class ExecutionCoordinator:
                 activity,
                 ActivityEventKind.STEP_UNCERTAIN,
                 failure=outcome.failure,
+                observations=outcome.observations,
             )
             return
         raise ExecutionCoordinatorConflict("unsupported adapter outcome")
+
+    def _observations_match_workspace(
+        self,
+        command: ExecuteActivityRun,
+        observations: tuple[ObservationRecord, ...],
+    ) -> bool:
+        if not observations:
+            return True
+        with self._unit_of_work_factory() as unit_of_work:
+            stores = unit_of_work.stores
+            run = _get_run(stores, command.run_id)
+            request = _get_request(stores, run.admission.request_id)
+            _require_worker_owns(request, command.authority)
+        workspace_id = request.identity.workspace_id
+        return all(observation.workspace_id == workspace_id for observation in observations)
 
     def _load_context(self, command: ExecuteActivityRun) -> "_CoordinatorContext":
         with self._unit_of_work_factory() as unit_of_work:
@@ -637,6 +682,18 @@ def _get_request(stores: Any, request_id: str) -> ExecutionRequestRecord:
         return stores.execution.get_request(request_id)
     except KeyError as error:
         raise ExecutionCoordinatorNotFound("execution request was not found") from error
+
+
+def _validate_observations(
+    observations: tuple[ObservationRecord, ...],
+    *,
+    workspace_id: str,
+) -> None:
+    for observation in observations:
+        if observation.workspace_id != workspace_id:
+            raise ExecutionCoordinatorConflict(
+                "adapter observation must match execution workspace"
+            )
 
 
 def _require_worker_owns(

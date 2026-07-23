@@ -449,3 +449,92 @@ durable STEP_STARTED intent
 Do not add graph-edge binding logic to the coordinator. If a runtime value is
 missing, first inspect graph compilation/validation and product descriptors;
 only then consider adapter-level failure evidence.
+
+## #874 Coordinator Result and Observation Persistence
+
+#874 connects real adapter outcomes to the existing observed-state store without
+creating another journal or projection.
+
+The new outcome shape is:
+
+```python
+@dataclass(frozen=True)
+class ActivityExecutionOutcome:
+    kind: EffectResultKind
+    evidence: BoundedEvidence = field(default_factory=BoundedEvidence)
+    failure: FailureEvidence | None = None
+    observations: tuple[ObservationRecord, ...] = ()
+```
+
+This keeps observations as typed durable values. Adapters do not return raw
+dictionaries, and the coordinator does not infer health from process effects.
+
+The coordinator flow now has the intended post-effect transaction boundary:
+
+```text
+short transaction:
+  STEP_STARTED durable intent
+commit
+
+adapter.execute(ActivityRealizationContext)
+
+short transaction:
+  STEP_SUCCEEDED / STEP_FAILED / STEP_UNSUPPORTED / STEP_UNCERTAIN
+  plus any ObservationRecord values from the adapter
+commit
+```
+
+`_record_step_event()` writes the event and observations through the same
+UnitOfWork connection before committing. If adapter observation evidence names a
+foreign workspace after an effect has returned, the coordinator records
+`STEP_UNCERTAIN` with `adapter-observation-workspace-mismatch` rather than
+leaving an effect-without-result gap or persisting the foreign row.
+
+The local Docker adapter now emits a narrow process observation for `StartNode`:
+
+```python
+ObservationRecord(
+    observation_id=f"{context.intent_event.event_id}:process-started",
+    workspace_id=context.request.identity.workspace_id,
+    subject_id=node_id,
+    status=ObservationStatus.PROCESS_STARTED,
+    observed_at=context.intent_event.occurred_at,
+    graph_id=context.plan_record.desired_graph_id,
+    probe_kind=ProbeKind.PROCESS,
+    probe_outcome=ProbeOutcome.PROCESS_RUNNING,
+)
+```
+
+That deliberately says only "the process was started/running." It does not claim
+transport reachability, application health, or readiness. Runtime network
+creation remains event evidence only.
+
+Validation evidence:
+
+```text
+git diff --check
+./control-plane-kit-operations/test.sh
+  110 tests passed
+  compileall passed
+  control-plane-kit-operations import ok
+./test.sh
+  1219 tests passed
+```
+
+#875 handoff:
+
+#875 can now rely on durable realization evidence existing in two independent
+but correlated streams:
+
+```text
+ActivityEventRecord
+  lifecycle / saga truth
+
+ObservationRecord
+  runtime observation truth, projected separately from graph truth
+```
+
+The next issue should advance the current graph pointer only after accepted
+successful realization. It should not treat observations as desired graph
+mutation, and it should not infer readiness from the process-start observations
+added here.
