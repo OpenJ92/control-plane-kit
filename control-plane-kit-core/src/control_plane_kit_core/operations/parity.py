@@ -818,6 +818,12 @@ def operator_command_parity(
 
 _OPERATOR_READ_PROJECTIONS = (
     (
+        "read.approval-detail",
+        "read.approval-detail",
+        "get_approval_detail",
+        "ApprovalDetailReadResponse",
+    ),
+    (
         "read.workspace",
         "read.workspace",
         "get_workspace",

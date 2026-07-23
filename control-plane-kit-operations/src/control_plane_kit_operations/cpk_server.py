@@ -477,6 +477,12 @@ def _read_model(service: InstanceReadService, request: CpkServerRouteRequest) ->
             _text(args, "plan_id"),
             limit=_positive_int(args, "limit", default=50),
         )
+    if route_id == "read.approval-detail":
+        return service.approval_detail(
+            _workspace_id(args),
+            _text(args, "approval_id"),
+            limit=_positive_int(args, "limit", default=50),
+        )
     if route_id == "read.pending-approvals":
         return service.pending_approvals(
             _workspace_id(args),

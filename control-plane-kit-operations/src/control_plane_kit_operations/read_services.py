@@ -58,6 +58,7 @@ class ActivityHistoryStore(Protocol):
     def actions_for_session(self, session_id: str) -> tuple[object, ...]: ...
     def get_plan(self, plan_id: str) -> ActivityPlanRecord: ...
     def plans_for_session(self, session_id: str) -> tuple[ActivityPlanRecord, ...]: ...
+    def get_approval_request(self, request_id: str) -> ApprovalRequestRecord: ...
     def approval_requests_for_session(self, session_id: str) -> tuple[ApprovalRequestRecord, ...]: ...
     def approval_decision_for_request(self, request_id: str) -> object | None: ...
 
@@ -413,6 +414,40 @@ class InstanceReadService:
                 _approval_descriptor(store, request)
                 for request in pending[offset : offset + limit]
             ),
+        )
+
+    def approval_detail(
+        self,
+        workspace_id: str,
+        approval_request_id: str,
+        *,
+        limit: int = 50,
+    ) -> FocusedDetailReadModel:
+        limit = _bounded_limit(limit)
+        self._workspace(workspace_id)
+        store = self._activity_history()
+        approval = _approval_in_workspace(store, workspace_id, approval_request_id)
+        plan = _plan_in_workspace(store, workspace_id, approval.plan_id)
+        if plan.session_id != approval.session_id:
+            raise ReadModelError(
+                f"approval {approval_request_id!r} references plan truth outside its session"
+            )
+        payload = _plan_descriptor(
+            store,
+            self._execution(),
+            plan,
+            workspace_id=workspace_id,
+            limit=limit,
+        )
+        payload["risk_summary"] = _risk_summary(plan)
+        payload["recovery"] = self._recovery_for_plan(workspace_id, plan)
+        return FocusedDetailReadModel(
+            workspace_id=workspace_id,
+            kind="approval-detail",
+            payload={
+                "approval": _approval_descriptor(store, approval),
+                "plan": payload,
+            },
         )
 
     def observed_state(self, workspace_id: str) -> ObservedStateReadModel:
@@ -975,6 +1010,25 @@ def _plan_in_workspace(
             f"missing plan {plan_id!r} in workspace {workspace_id!r}"
         )
     return plan
+
+
+def _approval_in_workspace(
+    store: ActivityHistoryStore,
+    workspace_id: str,
+    approval_request_id: str,
+) -> ApprovalRequestRecord:
+    try:
+        approval = store.get_approval_request(approval_request_id)
+        session = store.get_session(approval.session_id)
+    except KeyError as exc:
+        raise ReadModelError(
+            f"missing approval {approval_request_id!r} in workspace {workspace_id!r}"
+        ) from exc
+    if session.workspace_id != workspace_id:
+        raise ReadModelError(
+            f"missing approval {approval_request_id!r} in workspace {workspace_id!r}"
+        )
+    return approval
 
 
 def _risk_summary(plan: ActivityPlanRecord) -> dict[str, object]:

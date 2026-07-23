@@ -35,6 +35,12 @@ class AdapterParityContractTests(unittest.TestCase):
                     "ActivityTimelineReadResponse",
                 ),
                 (
+                    "read.approval-detail",
+                    "read.approval-detail",
+                    "get_approval_detail",
+                    "ApprovalDetailReadResponse",
+                ),
+                (
                     "read.control-surface",
                     "read.control-surface",
                     "get_control_surface",

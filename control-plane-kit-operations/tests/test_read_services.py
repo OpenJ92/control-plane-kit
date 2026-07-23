@@ -144,6 +144,23 @@ class InstanceReadServiceTests(unittest.TestCase):
         self.assertEqual(plan["risk_summary"]["ready_for_execution"], True)
         self.assertEqual(plan["recovery"]["mode"], "reverse-transition")
 
+    def test_approval_detail_joins_request_to_pinned_plan_review_context(self) -> None:
+        self.seed_activity()
+        detail = self.service().approval_detail(
+            "workspace-a",
+            "approval-a",
+        ).descriptor()
+
+        approval = detail["approval"]
+        plan = detail["plan"]
+        self.assertEqual(approval["request_id"], "approval-a")
+        self.assertEqual(approval["state"], "pending")
+        self.assertEqual(approval["required_scope"], "plan:approve")
+        self.assertEqual(plan["plan_id"], "plan-a")
+        self.assertEqual(plan["payload"]["schema"], "control-plane-kit.activity-plan")
+        self.assertEqual(plan["risk_summary"]["ready_for_execution"], True)
+        self.assertEqual(plan["recovery"]["mode"], "reverse-transition")
+
     def test_observed_state_is_latest_per_subject_and_does_not_rewrite_graph_truth(self) -> None:
         self.seed_graphs()
         with self.unit_of_work() as unit_of_work:

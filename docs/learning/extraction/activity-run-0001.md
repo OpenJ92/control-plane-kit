@@ -680,3 +680,114 @@ operator requests approval
 #880 should not bypass approval by inserting rows directly in public acceptance
 paths. It should build on the existing approval records and read-service
 projection boundaries, then hand off to #881 for cpk-server HTTP/MCP exposure.
+
+## #880 Approval Queue Read Model And Review Contract
+
+#880 completed the manager-facing read contract needed between plan preparation
+and approval decision. The important distinction is:
+
+```text
+pending approvals
+  = bounded queue rows for triage
+
+approval detail
+  = one approval request
+    + the exact pinned plan/risk/recovery context being reviewed
+```
+
+The core contract language now names this projection explicitly:
+
+```python
+ReadProjectionKind.APPROVAL_DETAIL = "approval-detail"
+
+_ProjectionDefinition(
+    "read.approval-detail",
+    ReadProjectionKind.APPROVAL_DETAIL,
+    "ApprovalDetailReadResponse",
+    ReadProjectionPolicy.PINNED_PLAN_AND_RECOVERY,
+)
+```
+
+Adapter parity also knows the same operation, route, tool, and response shape:
+
+```text
+read.approval-detail
+  -> HTTP route read.approval-detail
+  -> MCP tool get_approval_detail
+  -> ApprovalDetailReadResponse
+```
+
+Operations implements the projection without creating new approval truth:
+
+```python
+approval = _approval_in_workspace(store, workspace_id, approval_request_id)
+plan = _plan_in_workspace(store, workspace_id, approval.plan_id)
+if plan.session_id != approval.session_id:
+    raise ReadModelError(...)
+
+payload = _plan_descriptor(...)
+payload["risk_summary"] = _risk_summary(plan)
+payload["recovery"] = self._recovery_for_plan(workspace_id, plan)
+```
+
+The projection therefore reconstructs manager review context from existing
+durable records:
+
+```text
+ApprovalRequestRecord
+  -> ActivityPlanRecord
+    -> pinned base/desired graph truth
+      -> risk summary
+      -> recovery transition
+```
+
+Focused #880 coverage proves:
+
+```text
+canonical read projection set includes read.approval-detail
+HTTP route inventory includes /workspaces/{workspace_id}/approvals/{approval_id}
+adapter parity binds get_approval_detail to the same projection schema
+security parity keeps approval detail read-only and read-scoped
+Postgres-backed InstanceReadService.approval_detail joins approval to plan review context
+```
+
+Validation evidence:
+
+```text
+git diff --check
+./control-plane-kit-core/test.sh
+  379 tests passed
+  compileall passed
+  control-plane-kit-core import ok
+./control-plane-kit-operations/test.sh
+  117 tests passed
+  compileall passed
+  control-plane-kit-operations import ok
+./test.sh
+  1219 tests passed
+```
+
+#881 handoff:
+
+#881 should expose the complete approval workflow through cpk-server public
+adapters. The read side now has the queue and detail projection. The remaining
+public workflow is:
+
+```text
+operator requests approval
+  -> manager lists pending approvals
+    -> manager reads approval detail
+      -> manager approves or rejects
+        -> operator admits only with current approval
+```
+
+Do not bypass approval in #881 acceptance paths. Public HTTP/MCP calls should
+use the same operations services and UnitOfWork boundaries as direct operations
+tests.
+
+Future runtime handoff:
+
+The ACTIVITY leg currently keeps Docker realization behind the operations
+adapter seam. A future real `DockerRuntime` implementation should consider a
+Python Docker SDK-backed adapter as one implementation of that seam, while
+preserving the existing split-transaction external-effect law.

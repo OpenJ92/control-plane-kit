@@ -25,6 +25,7 @@ class ReadProjectionKind(StrEnum):
     OPEN_SESSIONS = "open-sessions"
     SESSION_DETAIL = "session-detail"
     PLAN_DETAIL = "plan-detail"
+    APPROVAL_DETAIL = "approval-detail"
     PENDING_APPROVALS = "pending-approvals"
     OBSERVED_STATE = "observed-state"
     CONTROL_SURFACE = "control-surface"
@@ -260,6 +261,12 @@ class _ProjectionDefinition:
 
 
 _CANONICAL_PROJECTIONS = (
+    _ProjectionDefinition(
+        "read.approval-detail",
+        ReadProjectionKind.APPROVAL_DETAIL,
+        "ApprovalDetailReadResponse",
+        ReadProjectionPolicy.PINNED_PLAN_AND_RECOVERY,
+    ),
     _ProjectionDefinition(
         "read.activity-timeline",
         ReadProjectionKind.ACTIVITY_TIMELINE,
