@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass, field
 from enum import StrEnum
-from typing import Any, Callable, Protocol
+from typing import Any, Callable, Mapping, Protocol
 
 from control_plane_kit_core.operations.execution import EffectResultKind
 from control_plane_kit_core.operations.lifecycle import (
@@ -14,6 +14,17 @@ from control_plane_kit_core.operations.lifecycle import (
     FailureCategory,
 )
 from control_plane_kit_core.planning import ActivityId, ActivityPlan, PlannedActivity
+from control_plane_kit_core.planning.activity_plan import (
+    ReconcileNode,
+    ReconcileRuntime,
+    RemoveNodeResource,
+    RemoveRuntimeResource,
+    StartNode,
+    StartRuntime,
+    StopNode,
+    StopRuntime,
+    WaitForHealthy,
+)
 from control_plane_kit_core.planning.saga import (
     ExecutionSchedule,
     SagaJournalProjection,
@@ -21,6 +32,12 @@ from control_plane_kit_core.planning.saga import (
     project_activity_journal,
 )
 from control_plane_kit_core.policies import PolicyScope
+from control_plane_kit_core.topology import (
+    DEFAULT_GRAPH_CODEC,
+    DeploymentGraph,
+    GraphDescriptorError,
+)
+from control_plane_kit_core.types import RuntimeKind
 from control_plane_kit_operations.activity_journal import activity_journal_events
 from control_plane_kit_operations.lifecycle import (
     CompleteActivityRun,
@@ -223,6 +240,51 @@ class ActivityExecutionAdapter(Protocol):
         self,
         context: ActivityRealizationContext,
     ) -> ActivityExecutionOutcome: ...
+
+
+@dataclass(frozen=True)
+class RuntimeInterpreterDispatcher:
+    """Operations-owned adapter that dispatches pinned work by runtime kind."""
+
+    interpreters: Mapping[RuntimeKind, ActivityExecutionAdapter]
+
+    def __post_init__(self) -> None:
+        if not isinstance(self.interpreters, Mapping):
+            raise InvalidOperationCommand("runtime interpreters must be a mapping")
+        normalized: dict[RuntimeKind, ActivityExecutionAdapter] = {}
+        for key, interpreter in self.interpreters.items():
+            if not isinstance(key, RuntimeKind):
+                raise InvalidOperationCommand("runtime interpreter keys must be RuntimeKind")
+            if not hasattr(interpreter, "execute"):
+                raise InvalidOperationCommand("runtime interpreter must expose execute")
+            normalized[key] = interpreter
+        object.__setattr__(self, "interpreters", normalized)
+
+    def execute(
+        self,
+        context: ActivityRealizationContext,
+    ) -> ActivityExecutionOutcome:
+        if not isinstance(context, ActivityRealizationContext):
+            raise InvalidOperationCommand(
+                "runtime dispatch requires ActivityRealizationContext"
+            )
+        try:
+            runtime_kind = _runtime_kind_for_context(context)
+        except (GraphDescriptorError, KeyError, ValueError) as error:
+            return _unsupported_dispatch(
+                context,
+                "runtime.dispatch-target-unsupported",
+                str(error),
+            )
+        interpreter = self.interpreters.get(runtime_kind)
+        if interpreter is None:
+            return _unsupported_dispatch(
+                context,
+                "runtime.interpreter-missing",
+                f"no runtime interpreter is configured for {runtime_kind.value!r}",
+                runtime_kind=runtime_kind,
+            )
+        return interpreter.execute(context)
 
 
 @dataclass(frozen=True)
@@ -653,6 +715,72 @@ def _require_worker_owns(
 def _require_operate_scope(authority: ExecutionWorkerAuthority) -> None:
     if PolicyScope.EXECUTION_OPERATE not in authority.scopes:
         raise ExecutionCoordinatorDenied("scope execution:operate is missing")
+
+
+def _runtime_kind_for_context(context: ActivityRealizationContext) -> RuntimeKind:
+    operation = context.activity.operation
+    match operation:
+        case StartRuntime(target=target) | ReconcileRuntime(target=target):
+            return _runtime_kind_for_runtime(_desired_graph(context), target.runtime_id)
+        case StopRuntime(target=target) | RemoveRuntimeResource(target=target):
+            return _runtime_kind_for_runtime(_base_graph(context), target.runtime_id)
+        case StartNode(target=target) | ReconcileNode(target=target) | WaitForHealthy(
+            target=target
+        ):
+            return _runtime_kind_for_node(_desired_graph(context), target.node_id)
+        case StopNode(target=target) | RemoveNodeResource(target=target):
+            return _runtime_kind_for_node(_base_graph(context), target.node_id)
+        case _:
+            raise ValueError(
+                "runtime dispatch does not support "
+                f"{type(context.activity.operation).__name__}"
+            )
+
+
+def _desired_graph(context: ActivityRealizationContext) -> DeploymentGraph:
+    return DEFAULT_GRAPH_CODEC.decode(context.desired_graph.graph_descriptor)
+
+
+def _base_graph(context: ActivityRealizationContext) -> DeploymentGraph:
+    return DEFAULT_GRAPH_CODEC.decode(context.base_graph.graph_descriptor)
+
+
+def _runtime_kind_for_runtime(
+    graph: DeploymentGraph,
+    runtime_id: str,
+) -> RuntimeKind:
+    try:
+        return graph.runtimes[runtime_id].kind
+    except KeyError as error:
+        raise KeyError(f"runtime {runtime_id!r} is not present in pinned graph") from error
+
+
+def _runtime_kind_for_node(graph: DeploymentGraph, node_id: str) -> RuntimeKind:
+    node = graph.node(node_id)
+    return _runtime_kind_for_runtime(graph, node.runtime_id)
+
+
+def _unsupported_dispatch(
+    context: ActivityRealizationContext,
+    code: str,
+    message: str,
+    *,
+    runtime_kind: RuntimeKind | None = None,
+) -> ActivityExecutionOutcome:
+    details: dict[str, object] = {
+        "activity_id": context.activity.activity_id.value,
+        "operation": type(context.activity.operation).__name__,
+    }
+    if runtime_kind is not None:
+        details["runtime_kind"] = runtime_kind.value
+    return ActivityExecutionOutcome.unsupported(
+        FailureEvidence(
+            FailureCategory.OPERATOR_REVIEW,
+            code,
+            message,
+            BoundedEvidence.from_mapping(details),
+        )
+    )
 
 
 def _required_text(value: object, field: str) -> None:
