@@ -246,3 +246,112 @@ context.registered_products
 The next implementation should preserve product-generic runtime dispatch and
 keep Hello/router/multiplexer specifics in descriptor data, seeded products, or
 future product-specific renderers rather than in the operations coordinator.
+
+## #872 Minimal Docker Product Realization
+
+#872 adds the first real local Docker activity interpreter in extracted
+operations. It is intentionally small and product-generic: it consumes the
+`ActivityRealizationContext` introduced in #871 and never imports stores,
+selects current graph truth, or reconstructs registration state during the
+external effect.
+
+The new adapter boundary is:
+
+```python
+class DockerRealizationClient(Protocol):
+    def inspect_network(self, name: str) -> DockerResourceInspection | None: ...
+    def create_network(self, name: str, *, labels: dict[str, str]) -> None: ...
+    def inspect_container(self, name: str) -> DockerResourceInspection | None: ...
+    def pull_image(self, image: str) -> None: ...
+    def run_container(...): ...
+    def start_container(self, name: str) -> None: ...
+
+
+@dataclass(frozen=True)
+class DockerProductRealizationAdapter:
+    client: DockerRealizationClient
+
+    def execute(
+        self,
+        context: ActivityRealizationContext,
+    ) -> ActivityExecutionOutcome: ...
+```
+
+The concrete implementation included in operations is CLI-backed for now. The
+important design decision is that operations depends only on the protocol seam,
+not on the Python Docker SDK. A later Docker runtime/interpreter package can
+provide a `DockerSdkClient` behind the same protocol without changing the
+coordinator or durable service boundary.
+
+Supported in #872:
+
+```text
+StartRuntime(Docker)
+  -> inspect/create one owned private Docker network
+  -> label by workspace, plan, desired graph, runtime, and owner
+
+StartNode(OCI container)
+  -> require owned digest-pinned registered product material
+  -> reject foreign name collisions before pull/run
+  -> pull immutable OCI reference
+  -> run private container on the planned network
+  -> publish provider-socket network aliases
+  -> pass only explicit non-secret public environment values
+```
+
+Unsupported, deliberately before mutation:
+
+```text
+secret deliveries
+configuration artifacts
+retained data resources / volumes
+non-Docker runtimes
+non-OCI product nodes
+local tags without sha256 digest pins
+```
+
+This is a structural limitation, not a shortcut. The Postgres seeded product has
+both secret material and retained data, and generic operations does not yet have
+a typed data mount target or secret resolver. Until those exist, the correct
+runtime result is explicit `OPERATOR_REVIEW` unsupported evidence with no Docker
+mutation.
+
+Focused tests prove:
+
+```text
+owned network creation preserves workspace/plan/graph labels
+digest-pinned node start pulls and runs with private aliases
+foreign container collision fails before pull or run
+secret + retained-data products are unsupported before mutation
+```
+
+Validation evidence:
+
+```text
+git diff --check
+./control-plane-kit-operations/test.sh
+  107 tests passed
+  compileall passed
+  control-plane-kit-operations import ok
+./test.sh
+  1219 tests passed
+```
+
+#873 handoff:
+
+Dependency binding should build on the #872 private-network node start. The next
+step is to derive runtime parameters from graph edges and product contracts, not
+from product-specific branches in the Docker adapter. In particular:
+
+```text
+Hello dependency/env binding
+router target binding
+multiplexer primary/observer binding
+Postgres secret/data/retention handling
+published-image digest truth versus local tags
+```
+
+Postgres realization remains blocked until operations has typed secret
+resolution and retained data mount material. If that scope becomes necessary for
+the ACTIVITY live matrix before #877, create a focused child issue instead of
+adding implicit secret or volume behavior to `DockerProductRealizationAdapter`.

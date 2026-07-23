@@ -55,6 +55,12 @@ from .cpk_server import (
     CpkServerUnsupportedService,
     cpk_server_services,
 )
+from .docker_realization import (
+    DockerCliRealizationClient,
+    DockerProductRealizationAdapter,
+    DockerRealizationClient,
+    DockerResourceInspection,
+)
 from .foundation import (
     OPERATIONS_PACKAGE_BOUNDARY,
     OperationsPackageBoundary,
@@ -235,6 +241,10 @@ __all__ = [
     "ActivityExecutionOutcome",
     "ActivityRealizationContext",
     "CoordinatorStatus",
+    "DockerCliRealizationClient",
+    "DockerProductRealizationAdapter",
+    "DockerRealizationClient",
+    "DockerResourceInspection",
     "CpkServerAdmissionService",
     "CpkServerApplicationError",
     "CpkServerApplicationService",
