@@ -16,6 +16,10 @@ from control_plane_kit_operations.admission import (
     ExternalReadinessAttestation,
     RequestPlanExecution,
 )
+from control_plane_kit_operations.advancement import (
+    AdvanceCurrentGraph,
+    CurrentGraphAdvancementCommandService,
+)
 from control_plane_kit_operations.approvals import (
     ApprovalCommandService,
     DecideApproval,
@@ -26,6 +30,7 @@ from control_plane_kit_operations.lifecycle import (
     ClaimAndOpenActivityRun,
     ExecutionWorkerAuthority,
     RunLifecycleCommandService,
+    StartActivityRun,
 )
 from control_plane_kit_operations.planning import (
     ActivityPlanningCommandService,
@@ -304,9 +309,11 @@ class CpkServerLifecycleService:
         service: RunLifecycleCommandService,
         *,
         operations: OperationCommandService | None = None,
+        advancement: CurrentGraphAdvancementCommandService | None = None,
     ) -> None:
         self._service = service
         self._operations = operations
+        self._advancement = advancement
 
     def handle(self, request: CpkServerRouteRequest) -> Mapping[str, object]:
         if request.route_id.startswith("command.operation-session."):
@@ -365,6 +372,25 @@ class CpkServerLifecycleService:
                     )
                 )
                 return result.descriptor()
+        if request.route_id == "command.graph.advance-current":
+            if self._advancement is None:
+                raise _service_not_configured(request)
+            payload = _arguments(request)
+            result = self._advancement.execute(
+                AdvanceCurrentGraph(
+                    workspace_id=_workspace_id(payload),
+                    run_id=_path_or_payload(payload, "run_id", "run_id"),
+                    plan_id=_text(payload, "plan_id"),
+                    expected_current_graph_id=_text(
+                        payload,
+                        "expected_current_graph_id",
+                    ),
+                    desired_graph_id=_text(payload, "desired_graph_id"),
+                    authority=_worker_authority(payload),
+                    idempotency_key=IdempotencyKey(_text(payload, "idempotency_key")),
+                )
+            )
+            return result.descriptor()
         if request.route_id != "command.run.claim":
             raise _unsupported_route(request)
         payload = _arguments(request)
@@ -380,10 +406,28 @@ class CpkServerLifecycleService:
 
 
 class CpkServerExecutionService:
-    def __init__(self, service: ExecutionCoordinator) -> None:
+    def __init__(
+        self,
+        service: ExecutionCoordinator,
+        *,
+        lifecycle: RunLifecycleCommandService | None = None,
+    ) -> None:
         self._service = service
+        self._lifecycle = lifecycle
 
     def handle(self, request: CpkServerRouteRequest) -> Mapping[str, object]:
+        if request.route_id == "command.run.start":
+            if self._lifecycle is None:
+                raise _service_not_configured(request)
+            payload = _arguments(request)
+            result = self._lifecycle.execute(
+                StartActivityRun(
+                    run_id=_path_or_payload(payload, "run_id", "run_id"),
+                    authority=_worker_authority(payload),
+                    idempotency_key=IdempotencyKey(_text(payload, "idempotency_key")),
+                )
+            )
+            return result.descriptor()
         if request.route_id != "command.deployment.execute":
             raise _unsupported_route(request)
         payload = _arguments(request)
@@ -423,6 +467,7 @@ def cpk_server_services(
     products: ProductRegistrationService | None = None,
     desired_graphs: DesiredGraphCommandService | None = None,
     operations: OperationCommandService | None = None,
+    advancement: CurrentGraphAdvancementCommandService | None = None,
     clock: Callable[[], object] | None = None,
 ) -> Mapping[ControlPlaneServiceRole, CpkServerApplicationService]:
     """Return the complete service map required by cpk-server composition."""
@@ -447,8 +492,12 @@ def cpk_server_services(
         ControlPlaneServiceRole.LIFECYCLE: CpkServerLifecycleService(
             lifecycle,
             operations=operations,
+            advancement=advancement,
         ),
-        ControlPlaneServiceRole.EXECUTION: CpkServerExecutionService(execution),
+        ControlPlaneServiceRole.EXECUTION: CpkServerExecutionService(
+            execution,
+            lifecycle=lifecycle,
+        ),
         ControlPlaneServiceRole.READS: CpkServerReadService(
             unit_of_work_factory,
             clock=clock,
