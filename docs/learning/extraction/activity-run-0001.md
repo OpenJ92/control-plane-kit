@@ -1001,3 +1001,99 @@ product realization. Use the existing public workflow shape, then prove real
 setup, dependency binding, observation, cleanup, and current-graph advancement
 for digest-pinned seeded products. #878 must republish cpk-server after the
 backend route changes from #876/#877 are complete.
+
+## #892 Product Family And Retained Data Mount Material
+
+#877 exposed a real product-language ambiguity before live seeded acceptance:
+`postgres-server` is OCI-backed and graph-visible, but it is not a CPK-managed
+HTTP server process. It is a data-service product with retained data, a private
+Postgres provider socket, public non-secret environment, and a runtime secret
+delivery for `POSTGRES_PASSWORD`.
+
+The structural correction keeps `products/postgres_server` in place and updates
+the product language instead of moving files for naming comfort:
+
+```text
+ProductFamily
+  = server
+  | data-service
+
+RetainedDataMount
+  = resource_id
+  x safe absolute container target_path
+```
+
+The core product descriptor now carries both fields:
+
+```json
+{
+  "product_family": "data-service",
+  "runtime_contract": {
+    "retained_data_mounts": [
+      {
+        "resource_id": "postgres-data",
+        "target_path": "/var/lib/postgresql/data"
+      }
+    ]
+  }
+}
+```
+
+The retained mount target is graph data, but only as a container path. Host
+paths remain outside descriptors and graph truth. The language rejects relative
+paths, path traversal, runtime namespaces such as `/proc` and `/sys`, Docker
+socket paths, duplicate targets, and mount references that do not correspond to
+declared retained data resources.
+
+Operations now interprets the generic OCI product contract without branching on
+`postgres-server` by name:
+
+```text
+OCI image
+  x sockets
+  x public environment
+  x SecretEnvironmentDelivery resolved at runtime
+  x retained data mounts
+    -> Docker network/container/volume materialization
+```
+
+Secret resolution is an explicit operations-side runtime seam. Missing resolver
+authority fails before Docker mutation; resolved secret values are released only
+at the Docker process environment boundary and are not included in events,
+observations, failure evidence, descriptors, or graph data.
+
+Retained data volumes are created with the same workspace/plan/graph/runtime
+ownership labels as containers, plus `control-plane-kit.data-resource-id`.
+Foreign volume collisions fail before image pull or container start. Ordinary
+compute realization mounts retained data; explicit data destruction remains a
+separate future/legacy interpreter concern and must never be inferred from
+compute teardown.
+
+Validation evidence:
+
+```text
+./control-plane-kit-core/test.sh
+  382 tests passed
+  compileall passed
+  control-plane-kit-core import ok
+
+./control-plane-kit-operations/test.sh
+  122 tests passed
+  compileall passed
+  control-plane-kit-operations import ok
+
+git diff --check
+
+./test.sh
+  1219 tests passed in 208.236s
+```
+
+#877 handoff:
+
+Use the new `ProductFamily.DATA_SERVICE` and `RetainedDataMount` language when
+running the seeded Postgres product. The local Docker adapter now supports the
+runtime material needed for the Postgres descriptor, provided the acceptance
+harness supplies an explicit secret resolver for
+`secret://control-plane-kit/postgres/password`. Continue to treat remote managed
+databases such as RDS as future runtime/interpreter work rather than as this
+local OCI data-service proof.

@@ -13,9 +13,11 @@ from control_plane_kit_core.configuration import (
 from control_plane_kit_core.environment import PublicStaticEnvironmentBinding
 from control_plane_kit_core.lifecycle import ResourceLifecycle
 from control_plane_kit_core.products import (
+    ProductFamily,
     ProductRuntimeContract,
     ProductRuntimeContractCodec,
     ProductRuntimeContractError,
+    RetainedDataMount,
 )
 from control_plane_kit_core.secrets import SecretEnvironmentDelivery, SecretReference
 from control_plane_kit_core.types import Protocol
@@ -41,6 +43,7 @@ class ProductRuntimeContractTests(unittest.TestCase):
             secret_deliveries=(
                 SecretEnvironmentDelivery("API_TOKEN", SecretReference("secret://local/api/token")),
             ),
+            retained_data_mounts=(RetainedDataMount("orders-db", "/var/lib/postgresql/data"),),
             capabilities=(CapabilityName.HEALTH_CHECKABLE,),
             verification=VerificationContract(
                 (HttpCheck(check_id="ready", provider_socket="http", path="/health"),)
@@ -55,6 +58,15 @@ class ProductRuntimeContractTests(unittest.TestCase):
             {"transport": "tcp", "application": "http"},
         )
         self.assertEqual(descriptor["capabilities"], ["health-checkable"])
+        self.assertEqual(
+            descriptor["retained_data_mounts"],
+            [
+                {
+                    "resource_id": "orders-db",
+                    "target_path": "/var/lib/postgresql/data",
+                }
+            ],
+        )
         self.assertEqual(
             descriptor["secret_deliveries"][0],
             {
@@ -78,6 +90,48 @@ class ProductRuntimeContractTests(unittest.TestCase):
 
         self.assertEqual(restored, contract)
         self.assertEqual(codec.encode(restored), descriptor)
+
+    def test_retained_data_mounts_are_closed_descriptor_material(self) -> None:
+        mount = RetainedDataMount("orders-db", "/var/lib/postgresql/data")
+        contract = ProductRuntimeContract(
+            retained_data_mounts=(mount,),
+            lifecycle=ResourceLifecycle.owned_with_retained_data("orders-db"),
+        )
+        descriptor = ProductRuntimeContractCodec().encode(contract)
+
+        self.assertEqual(
+            descriptor["retained_data_mounts"],
+            [{"resource_id": "orders-db", "target_path": "/var/lib/postgresql/data"}],
+        )
+        self.assertEqual(
+            ProductRuntimeContractCodec().decode(descriptor).retained_data_mounts,
+            (mount,),
+        )
+
+    def test_retained_data_mounts_reject_host_paths_and_unknown_resources(self) -> None:
+        for target_path in (
+            "var/lib/postgresql/data",
+            "/var/run/docker.sock",
+            "/proc/self",
+            "/sys/kernel",
+            "/var/lib/../postgresql/data",
+        ):
+            with self.subTest(target_path=target_path):
+                with self.assertRaises(ProductRuntimeContractError):
+                    ProductRuntimeContract(
+                        retained_data_mounts=(
+                            RetainedDataMount("orders-db", target_path),
+                        ),
+                        lifecycle=ResourceLifecycle.owned_with_retained_data("orders-db"),
+                    )
+
+        with self.assertRaisesRegex(ProductRuntimeContractError, "retained data mount"):
+            ProductRuntimeContract(
+                retained_data_mounts=(
+                    RetainedDataMount("unknown", "/var/lib/postgresql/data"),
+                ),
+                lifecycle=ResourceLifecycle.owned_with_retained_data("orders-db"),
+            )
 
     def test_verification_protocol_mismatch_fails_before_runtime_effects(self) -> None:
         with self.assertRaisesRegex(ProductRuntimeContractError, "verification"):
@@ -175,6 +229,10 @@ class ProductRuntimeContractTests(unittest.TestCase):
                 roots.add(node.module.split(".", 1)[0])
 
         self.assertEqual(roots & forbidden_import_roots, set())
+
+    def test_product_family_is_a_closed_descriptor_vocabulary(self) -> None:
+        self.assertEqual(ProductFamily.SERVER.value, "server")
+        self.assertEqual(ProductFamily.DATA_SERVICE.value, "data-service")
 
 
 if __name__ == "__main__":

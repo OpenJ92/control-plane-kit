@@ -32,15 +32,23 @@ from control_plane_kit_core.products import (
     ContainerServerProduct,
     OciImageReference,
     ProductDescriptorCodec,
+    ProductFamily,
     ProductInstanceConfiguration,
     ProductReference,
     ProductRuntimeContract,
     ProductIdentity,
+    RetainedDataMount,
     instantiate_product,
 )
 from control_plane_kit_core.policies import PolicyScope
 from control_plane_kit_core.probe_intents import ProbeKind, ProbeOutcome
-from control_plane_kit_core.secrets import SecretEnvironmentDelivery, SecretReference
+from control_plane_kit_core.secrets import (
+    LocalDevelopmentSecretResolver,
+    SecretEnvironmentDelivery,
+    SecretProviderAuthority,
+    SecretProviderId,
+    SecretReference,
+)
 from control_plane_kit_core.topology import DeploymentGraph, compile_topology
 from control_plane_kit_core.types import Protocol
 from control_plane_kit_operations.coordinator import ActivityRealizationContext
@@ -71,6 +79,7 @@ class RecordingDockerClient:
     def __init__(self) -> None:
         self.networks: dict[str, DockerResourceInspection] = {}
         self.containers: dict[str, DockerResourceInspection] = {}
+        self.volumes: dict[str, DockerResourceInspection] = {}
         self.calls: list[tuple[str, object]] = []
 
     def inspect_network(self, name: str) -> DockerResourceInspection | None:
@@ -90,6 +99,19 @@ class RecordingDockerClient:
         self.calls.append(("inspect-container", name))
         return self.containers.get(name)
 
+    def inspect_volume(self, name: str) -> DockerResourceInspection | None:
+        self.calls.append(("inspect-volume", name))
+        return self.volumes.get(name)
+
+    def create_volume(self, name: str, *, labels: dict[str, str]) -> None:
+        self.calls.append(("create-volume", (name, dict(labels))))
+        self.volumes[name] = DockerResourceInspection(
+            name=name,
+            running=False,
+            image=None,
+            labels=dict(labels),
+        )
+
     def pull_image(self, image: str) -> None:
         self.calls.append(("pull-image", image))
 
@@ -102,6 +124,7 @@ class RecordingDockerClient:
         environment: dict[str, str],
         labels: dict[str, str],
         network_aliases: tuple[str, ...],
+        mounts: dict[str, str],
     ) -> None:
         self.calls.append(
             (
@@ -113,6 +136,7 @@ class RecordingDockerClient:
                     "environment": dict(environment),
                     "labels": dict(labels),
                     "network_aliases": list(network_aliases),
+                    "mounts": dict(mounts),
                 },
             )
         )
@@ -248,33 +272,78 @@ class DockerProductRealizationAdapterTests(unittest.TestCase):
             ["inspect-container"],
         )
 
-    def test_secret_and_retained_data_products_are_unsupported_before_mutation(self) -> None:
-        product = hello_product(
-            name="postgres-server",
-            contract=ProductRuntimeContract(
-                sockets=BlockSockets(providers=(ProviderSocket("postgres", Protocol.POSTGRES),)),
-                public_environment=(PublicStaticEnvironmentBinding("POSTGRES_DB", "cpk"),),
-                secret_deliveries=(
-                    SecretEnvironmentDelivery(
-                        "POSTGRES_PASSWORD",
-                        SecretReference("secret://control-plane-kit/postgres/password"),
-                    ),
-                ),
-                lifecycle=ResourceLifecycle.owned_with_retained_data("postgres-data"),
-            ),
-        )
+    def test_data_service_resolves_secret_and_mounts_retained_volume(self) -> None:
+        product = postgres_product()
         context = context_for(StartNode(NodeTarget("hello")), product=product)
         client = RecordingDockerClient()
 
         outcome = DockerProductRealizationAdapter(
             project_name="cpk",
             client=client,
+            secret_resolver=postgres_secret_resolver(),
         ).execute(context)
+
+        self.assertEqual(outcome.kind.value, "succeeded")
+        self.assertEqual(client.calls[0], ("inspect-container", "cpk-workspace-a-docker-hello"))
+        self.assertEqual(client.calls[1][0], "inspect-volume")
+        self.assertEqual(client.calls[1][1], "cpk-workspace-a-docker-hello-postgres-data")
+        self.assertEqual(client.calls[2][0], "create-volume")
+        volume_name, volume_labels = client.calls[2][1]
+        self.assertEqual(volume_name, "cpk-workspace-a-docker-hello-postgres-data")
+        self.assertEqual(
+            volume_labels["control-plane-kit.data-resource-id"],
+            "postgres-data",
+        )
+        run_call = client.calls[-1]
+        self.assertEqual(run_call[0], "run-container")
+        self.assertEqual(
+            run_call[1]["environment"],
+            {"POSTGRES_DB": "cpk", "POSTGRES_PASSWORD": "never-persist-this"},
+        )
+        self.assertEqual(
+            run_call[1]["mounts"],
+            {
+                "cpk-workspace-a-docker-hello-postgres-data": "/var/lib/postgresql/data",
+            },
+        )
+        self.assertNotIn("never-persist-this", repr(outcome.evidence))
+
+    def test_secret_product_requires_runtime_resolver_before_mutation(self) -> None:
+        client = RecordingDockerClient()
+        outcome = DockerProductRealizationAdapter(
+            project_name="cpk",
+            client=client,
+        ).execute(context_for(StartNode(NodeTarget("hello")), product=postgres_product()))
 
         self.assertEqual(outcome.kind.value, "unsupported")
         self.assertEqual(outcome.failure.category, FailureCategory.OPERATOR_REVIEW)
         self.assertEqual(outcome.failure.code, "docker.product-runtime-unsupported")
         self.assertEqual(client.calls, [])
+
+    def test_foreign_retained_volume_fails_before_pull_or_run(self) -> None:
+        client = RecordingDockerClient()
+        client.volumes["cpk-workspace-a-docker-hello-postgres-data"] = (
+            DockerResourceInspection(
+                name="cpk-workspace-a-docker-hello-postgres-data",
+                running=False,
+                image=None,
+                labels={"owner": "somebody-else"},
+            )
+        )
+
+        outcome = DockerProductRealizationAdapter(
+            project_name="cpk",
+            client=client,
+            secret_resolver=postgres_secret_resolver(),
+        ).execute(context_for(StartNode(NodeTarget("hello")), product=postgres_product()))
+
+        self.assertEqual(outcome.kind.value, "failed")
+        self.assertEqual(outcome.failure.category, FailureCategory.TERMINAL)
+        self.assertEqual(outcome.failure.code, "docker.ownership-conflict")
+        self.assertEqual(
+            [name for name, _ in client.calls],
+            ["inspect-container", "inspect-volume"],
+        )
 
     def test_router_target_environment_comes_from_graph_edge(self) -> None:
         app = hello_product(name="hello-server")
@@ -484,6 +553,7 @@ def hello_product(
     *,
     name: str = "hello-server",
     contract: ProductRuntimeContract | None = None,
+    product_family: ProductFamily = ProductFamily.SERVER,
 ) -> ContainerServerProduct:
     return ContainerServerProduct(
         ProductIdentity("control-plane-kit", name, 1),
@@ -502,6 +572,44 @@ def hello_product(
         ),
         display_name=name,
         description="test product",
+        product_family=product_family,
+    )
+
+
+def postgres_product() -> ContainerServerProduct:
+    return hello_product(
+        name="postgres-server",
+        contract=ProductRuntimeContract(
+            sockets=BlockSockets(
+                providers=(ProviderSocket("postgres", Protocol.POSTGRES),),
+            ),
+            public_environment=(
+                PublicStaticEnvironmentBinding("POSTGRES_DB", "cpk"),
+            ),
+            secret_deliveries=(
+                SecretEnvironmentDelivery(
+                    "POSTGRES_PASSWORD",
+                    SecretReference("secret://control-plane-kit/postgres/password"),
+                ),
+            ),
+            retained_data_mounts=(
+                RetainedDataMount("postgres-data", "/var/lib/postgresql/data"),
+            ),
+            lifecycle=ResourceLifecycle.owned_with_retained_data("postgres-data"),
+        ),
+        product_family=ProductFamily.DATA_SERVICE,
+    )
+
+
+def postgres_secret_resolver() -> LocalDevelopmentSecretResolver:
+    return LocalDevelopmentSecretResolver(
+        SecretProviderAuthority(
+            SecretProviderId("control-plane-kit"),
+            (("postgres",),),
+        ),
+        {
+            "secret://control-plane-kit/postgres/password": "never-persist-this",
+        },
     )
 
 
