@@ -93,6 +93,24 @@ COPY --from=docker_cli /usr/local/bin/docker /usr/local/bin/docker
 
 CMD ["python", "tests/live_docker_publication.py", "start"]
 
+FROM python:${PYTHON_VERSION}-slim AS activity-live-test
+
+ENV PYTHONDONTWRITEBYTECODE=1 \
+    PYTHONUNBUFFERED=1 \
+    PIP_NO_CACHE_DIR=1
+
+WORKDIR /workspace/control-plane-kit
+
+COPY --from=docker_cli /usr/local/bin/docker /usr/local/bin/docker
+COPY control-plane-kit-core ./control-plane-kit-core
+COPY control-plane-kit-operations ./control-plane-kit-operations
+COPY examples ./examples
+
+RUN python -m pip install --upgrade pip \
+    && python -m pip install ./control-plane-kit-core ./control-plane-kit-operations
+
+CMD ["python", "-m", "examples.activity_seeded_live"]
+
 FROM package AS demo
 
 COPY examples ./examples

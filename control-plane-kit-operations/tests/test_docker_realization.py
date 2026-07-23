@@ -21,12 +21,19 @@ from control_plane_kit_core.operations.lifecycle import (
 )
 from control_plane_kit_core.planning import (
     ActivityId,
+    ActivityDependency,
     ActivityPlan,
     NodeTarget,
     PlannedActivity,
     RuntimeTarget,
+    RemoveNodeResource,
+    RemoveRuntimeResource,
+    ReconcileNode,
     StartNode,
     StartRuntime,
+    StopNode,
+    StopRuntime,
+    WaitForHealthy,
 )
 from control_plane_kit_core.products import (
     ContainerServerProduct,
@@ -35,6 +42,7 @@ from control_plane_kit_core.products import (
     ProductFamily,
     ProductInstanceConfiguration,
     ProductReference,
+    ProviderRuntimePort,
     ProductRuntimeContract,
     ProductIdentity,
     RetainedDataMount,
@@ -51,8 +59,15 @@ from control_plane_kit_core.secrets import (
 )
 from control_plane_kit_core.topology import DeploymentGraph, compile_topology
 from control_plane_kit_core.types import Protocol
+from control_plane_kit_core.verification import (
+    HttpCheck,
+    PostgresQueryCheck,
+    VerificationContract,
+    VerificationOutcome,
+)
 from control_plane_kit_operations.coordinator import ActivityRealizationContext
 from control_plane_kit_operations.docker_realization import (
+    DockerHealthCheckResult,
     DockerProductRealizationAdapter,
     DockerResourceInspection,
 )
@@ -151,6 +166,52 @@ class RecordingDockerClient:
         self.calls.append(("start-container", name))
         inspected = self.containers[name]
         self.containers[name] = replace(inspected, running=True)
+
+    def stop_container(self, name: str) -> None:
+        self.calls.append(("stop-container", name))
+        inspected = self.containers[name]
+        self.containers[name] = replace(inspected, running=False)
+
+    def remove_container(self, name: str) -> None:
+        self.calls.append(("remove-container", name))
+        del self.containers[name]
+
+    def remove_network(self, name: str) -> None:
+        self.calls.append(("remove-network", name))
+        del self.networks[name]
+
+
+class RecordingHealthClient:
+    def __init__(self, *, outcome: VerificationOutcome = VerificationOutcome.PASSED) -> None:
+        self.outcome = outcome
+        self.http_calls: list[tuple[str, str]] = []
+        self.postgres_calls: list[tuple[str, str]] = []
+
+    def check_http(self, base_url: str, check: HttpCheck) -> DockerHealthCheckResult:
+        self.http_calls.append((base_url, check.check_id))
+        if self.outcome is VerificationOutcome.PASSED:
+            return DockerHealthCheckResult.passed(
+                {"kind": "http", "url": base_url + check.path, "status_code": 200}
+            )
+        return DockerHealthCheckResult.failed(
+            self.outcome,
+            {"kind": "http", "url": base_url + check.path, "status_code": 503},
+        )
+
+    def check_postgres(
+        self,
+        base_url: str,
+        check: PostgresQueryCheck,
+    ) -> DockerHealthCheckResult:
+        self.postgres_calls.append((base_url, check.check_id))
+        if self.outcome is VerificationOutcome.PASSED:
+            return DockerHealthCheckResult.passed(
+                {"kind": "postgres", "url": base_url, "operation": "select-one"}
+            )
+        return DockerHealthCheckResult.failed(
+            self.outcome,
+            {"kind": "postgres", "url": base_url, "operation": "select-one"},
+        )
 
 
 class DockerProductRealizationAdapterTests(unittest.TestCase):
@@ -418,6 +479,120 @@ class DockerProductRealizationAdapterTests(unittest.TestCase):
         )
         self.assertNotIn("MULTIPLEXER_OBSERVER_B_URL", run_call[1]["environment"])
 
+    def test_wait_for_healthy_interprets_http_verification_against_provider_port(self) -> None:
+        health = RecordingHealthClient()
+        outcome = DockerProductRealizationAdapter(
+            project_name="cpk",
+            client=RecordingDockerClient(),
+            health=health,
+        ).execute(context_for(WaitForHealthy(NodeTarget("hello"))))
+
+        self.assertEqual(outcome.kind.value, "succeeded")
+        self.assertEqual(health.http_calls, [("http://hello-internal:8000", "live")])
+        self.assertEqual(
+            outcome.evidence.descriptor()["docker"],
+            {
+                "action": "wait-healthy",
+                "node_id": "hello",
+                "checks": ["live"],
+            },
+        )
+        observation = outcome.observations[0]
+        self.assertEqual(observation.observation_id, "event-start-node:healthy")
+        self.assertIs(observation.status, ObservationStatus.HEALTHY)
+        self.assertIs(observation.probe_kind, ProbeKind.APPLICATION_HEALTH)
+        self.assertIs(observation.probe_outcome, ProbeOutcome.HEALTHY)
+
+    def test_wait_for_healthy_failed_check_fails_without_process_status_rewrite(self) -> None:
+        outcome = DockerProductRealizationAdapter(
+            project_name="cpk",
+            client=RecordingDockerClient(),
+            health=RecordingHealthClient(outcome=VerificationOutcome.FAILED),
+        ).execute(context_for(WaitForHealthy(NodeTarget("hello"))))
+
+        self.assertEqual(outcome.kind.value, "failed")
+        assert outcome.failure is not None
+        self.assertEqual(outcome.failure.code, "docker.health-check-failed")
+        self.assertEqual(
+            outcome.failure.details.descriptor(),
+            {"check_ids": ["live"]},
+        )
+        self.assertEqual(outcome.observations, ())
+
+    def test_postgres_health_uses_injected_checker_and_provider_port(self) -> None:
+        health = RecordingHealthClient()
+        outcome = DockerProductRealizationAdapter(
+            project_name="cpk",
+            client=RecordingDockerClient(),
+            health=health,
+        ).execute(
+            context_for(
+                WaitForHealthy(NodeTarget("hello")),
+                product=postgres_product(),
+            )
+        )
+
+        self.assertEqual(outcome.kind.value, "succeeded")
+        self.assertEqual(
+            health.postgres_calls,
+            [("postgresql://hello-postgres:5432", "select-one")],
+        )
+
+    def test_postgres_health_without_checker_is_explicitly_unsupported(self) -> None:
+        outcome = DockerProductRealizationAdapter(
+            project_name="cpk",
+            client=RecordingDockerClient(),
+        ).execute(
+            context_for(
+                WaitForHealthy(NodeTarget("hello")),
+                product=postgres_product(),
+            )
+        )
+
+        self.assertEqual(outcome.kind.value, "unsupported")
+        assert outcome.failure is not None
+        self.assertEqual(outcome.failure.code, "docker.product-runtime-unsupported")
+        self.assertIn("postgres health verification", outcome.failure.message)
+
+    def test_teardown_stops_and_removes_owned_compute_and_runtime_network(self) -> None:
+        client = RecordingDockerClient()
+        adapter = DockerProductRealizationAdapter(project_name="cpk", client=client)
+
+        adapter.execute(context_for(StartRuntime(RuntimeTarget("docker"))))
+        adapter.execute(context_for(StartNode(NodeTarget("hello"))))
+        stopped = adapter.execute(context_for(StopNode(NodeTarget("hello"))))
+        removed = adapter.execute(context_for(RemoveNodeResource(NodeTarget("hello"))))
+        runtime_stopped = adapter.execute(context_for(StopRuntime(RuntimeTarget("docker"))))
+        runtime_removed = adapter.execute(
+            context_for(RemoveRuntimeResource(RuntimeTarget("docker")))
+        )
+
+        self.assertEqual(stopped.kind.value, "succeeded")
+        self.assertEqual(removed.kind.value, "succeeded")
+        self.assertEqual(runtime_stopped.kind.value, "succeeded")
+        self.assertEqual(runtime_removed.kind.value, "succeeded")
+        self.assertIn(("stop-container", "cpk-workspace-a-docker-hello"), client.calls)
+        self.assertIn(("remove-container", "cpk-workspace-a-docker-hello"), client.calls)
+        self.assertIn(("remove-network", "cpk-workspace-a-docker"), client.calls)
+        self.assertEqual(client.containers, {})
+        self.assertEqual(client.networks, {})
+
+    def test_reconcile_recreates_container_from_desired_material(self) -> None:
+        client = RecordingDockerClient()
+        adapter = DockerProductRealizationAdapter(project_name="cpk", client=client)
+        adapter.execute(context_for(StartNode(NodeTarget("hello"))))
+
+        outcome = adapter.execute(context_for(ReconcileNode(NodeTarget("hello"))))
+
+        self.assertEqual(outcome.kind.value, "succeeded")
+        self.assertIn(("stop-container", "cpk-workspace-a-docker-hello"), client.calls)
+        self.assertIn(("remove-container", "cpk-workspace-a-docker-hello"), client.calls)
+        self.assertEqual(client.calls[-1][0], "run-container")
+        self.assertEqual(
+            outcome.evidence.descriptor()["docker"]["action"],
+            "reconcile-container",
+        )
+
 
 def context_for(operation, *, product: ContainerServerProduct | None = None) -> ActivityRealizationContext:
     product = hello_product() if product is None else product
@@ -450,16 +625,38 @@ def context_for_graph(
         )
         for index, document in enumerate(documents)
     )
-    plan = ActivityPlan(
-        (
-            PlannedActivity(ActivityId("start-runtime"), StartRuntime(RuntimeTarget("docker"))),
-            PlannedActivity(ActivityId("start-node"), operation),
+    if isinstance(operation, WaitForHealthy):
+        plan = ActivityPlan(
+            (
+                PlannedActivity(ActivityId("start-runtime"), StartRuntime(RuntimeTarget("docker"))),
+                PlannedActivity(
+                    ActivityId("start-node"),
+                    StartNode(operation.target),
+                    dependencies=(ActivityDependency(ActivityId("start-runtime")),),
+                ),
+                PlannedActivity(
+                    ActivityId("wait-healthy"),
+                    operation,
+                    dependencies=(ActivityDependency(ActivityId("start-node")),),
+                ),
+            )
         )
-    )
+        activity = plan.activity(ActivityId("wait-healthy"))
+    else:
+        plan = ActivityPlan(
+            (
+                PlannedActivity(ActivityId("start-runtime"), StartRuntime(RuntimeTarget("docker"))),
+                PlannedActivity(ActivityId("start-node"), operation),
+            )
+        )
     if isinstance(operation, StartRuntime):
         activity = plan.activity(ActivityId("start-runtime"))
-    else:
+    elif not isinstance(operation, WaitForHealthy):
         activity = plan.activity(ActivityId("start-node"))
+    source_graph = graph if isinstance(
+        operation,
+        (StopNode, RemoveNodeResource, StopRuntime, RemoveRuntimeResource),
+    ) else DeploymentGraph("current")
     return ActivityRealizationContext(
         activity=activity,
         request=ExecutionRequestRecord(
@@ -494,7 +691,7 @@ def context_for_graph(
             graph_id="graph-current",
             workspace_id="workspace-a",
             version=1,
-            graph=DeploymentGraph("current"),
+            graph=source_graph,
             created_by="operator-a",
             created_at="2026-07-22T10:00:00Z",
         ),
@@ -566,8 +763,18 @@ def hello_product(
         contract
         or ProductRuntimeContract(
             sockets=BlockSockets(providers=(ProviderSocket("internal", Protocol.HTTP),)),
+            provider_ports=(ProviderRuntimePort("internal", 8000),),
             public_environment=(
                 PublicStaticEnvironmentBinding("HELLO_MESSAGE", "Hello from ops"),
+            ),
+            verification=VerificationContract(
+                (
+                    HttpCheck(
+                        check_id="live",
+                        provider_socket="internal",
+                        path="/health/live",
+                    ),
+                )
             ),
         ),
         display_name=name,
@@ -583,6 +790,7 @@ def postgres_product() -> ContainerServerProduct:
             sockets=BlockSockets(
                 providers=(ProviderSocket("postgres", Protocol.POSTGRES),),
             ),
+            provider_ports=(ProviderRuntimePort("postgres", 5432),),
             public_environment=(
                 PublicStaticEnvironmentBinding("POSTGRES_DB", "cpk"),
             ),
@@ -594,6 +802,9 @@ def postgres_product() -> ContainerServerProduct:
             ),
             retained_data_mounts=(
                 RetainedDataMount("postgres-data", "/var/lib/postgresql/data"),
+            ),
+            verification=VerificationContract(
+                (PostgresQueryCheck(check_id="select-one", provider_socket="postgres"),)
             ),
             lifecycle=ResourceLifecycle.owned_with_retained_data("postgres-data"),
         ),
@@ -626,7 +837,11 @@ def router_product() -> ContainerServerProduct:
                     ),
                 ),
                 providers=(ProviderSocket("internal", Protocol.HTTP),),
-            )
+            ),
+            provider_ports=(ProviderRuntimePort("internal", 8000),),
+            verification=VerificationContract(
+                (HttpCheck(check_id="live", provider_socket="internal", path="/health/live"),)
+            ),
         ),
     )
 
@@ -656,7 +871,11 @@ def multiplexer_product() -> ContainerServerProduct:
                     ),
                 ),
                 providers=(ProviderSocket("internal", Protocol.HTTP),),
-            )
+            ),
+            provider_ports=(ProviderRuntimePort("internal", 8000),),
+            verification=VerificationContract(
+                (HttpCheck(check_id="live", provider_socket="internal", path="/health/live"),)
+            ),
         ),
     )
 

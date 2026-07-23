@@ -52,6 +52,7 @@ _PLATFORM_DESCRIPTOR_KEYS = frozenset({"os", "architecture", "variant"})
 _PRODUCT_CONTRACT_DESCRIPTOR_KEYS = frozenset(
     {
         "sockets",
+        "provider_ports",
         "public_environment",
         "configuration_artifacts",
         "secret_deliveries",
@@ -83,6 +84,9 @@ _REQUIREMENT_DESCRIPTOR_KEYS = frozenset(
     {"protocol", "env_bindings", "required", "binding"}
 )
 _PROVIDER_DESCRIPTOR_KEYS = frozenset({"protocol"})
+_PROVIDER_RUNTIME_PORT_DESCRIPTOR_KEYS = frozenset(
+    {"provider_socket", "container_port"}
+)
 _LIFECYCLE_DESCRIPTOR_KEYS = frozenset({"ownership", "compute", "data"})
 _DATA_RESOURCE_DESCRIPTOR_KEYS = frozenset({"resource_id", "persistence"})
 _RETAINED_DATA_MOUNT_DESCRIPTOR_KEYS = frozenset({"resource_id", "target_path"})
@@ -433,6 +437,7 @@ class ProductRuntimeContract:
     """Descriptor-safe runtime contract material for an external product."""
 
     sockets: BlockSockets = field(default_factory=BlockSockets)
+    provider_ports: tuple["ProviderRuntimePort", ...] = ()
     public_environment: tuple[PublicStaticEnvironmentBinding, ...] = ()
     configuration_artifacts: tuple[ConfigurationArtifact, ...] = ()
     secret_deliveries: tuple[SecretDelivery, ...] = ()
@@ -445,6 +450,12 @@ class ProductRuntimeContract:
         if not isinstance(self.sockets, BlockSockets):
             raise ProductRuntimeContractError("product sockets must be BlockSockets")
         _validate_socket_names(self.sockets)
+        provider_ports = tuple(sorted(self.provider_ports))
+        if not all(isinstance(value, ProviderRuntimePort) for value in provider_ports):
+            raise ProductRuntimeContractError(
+                "provider ports must contain ProviderRuntimePort values"
+            )
+        _validate_provider_ports(self.sockets, provider_ports)
         public_environment = tuple(self.public_environment)
         if not all(
             isinstance(value, PublicStaticEnvironmentBinding)
@@ -509,6 +520,7 @@ class ProductRuntimeContract:
             configuration_artifacts,
             retained_data_mounts,
         )
+        object.__setattr__(self, "provider_ports", provider_ports)
         object.__setattr__(self, "public_environment", tuple(sorted(public_environment)))
         object.__setattr__(self, "configuration_artifacts", configuration_artifacts)
         object.__setattr__(self, "secret_deliveries", secret_deliveries)
@@ -518,6 +530,7 @@ class ProductRuntimeContract:
     def descriptor(self) -> dict[str, object]:
         return {
             "sockets": _sockets_descriptor(self.sockets),
+            "provider_ports": [value.descriptor() for value in self.provider_ports],
             "public_environment": [
                 value.descriptor() for value in self.public_environment
             ],
@@ -552,6 +565,10 @@ class ProductRuntimeContractCodec:
             )
             return ProductRuntimeContract(
                 sockets=_sockets_from_descriptor(mapping["sockets"]),
+                provider_ports=tuple(
+                    _provider_runtime_port_from_descriptor(value)
+                    for value in _product_list(mapping, "provider_ports")
+                ),
                 public_environment=tuple(
                     _public_environment_binding(value)
                     for value in _product_list(mapping, "public_environment")
@@ -585,6 +602,30 @@ class ProductRuntimeContractCodec:
             raise ProductRuntimeContractError(
                 "product runtime contract descriptor is malformed"
             ) from error
+
+
+@dataclass(frozen=True, order=True)
+class ProviderRuntimePort:
+    """Descriptor-safe container port material for one provider socket."""
+
+    provider_socket: str
+    container_port: int
+
+    def __post_init__(self) -> None:
+        if not isinstance(self.provider_socket, str) or not self.provider_socket.strip():
+            raise ProductRuntimeContractError(
+                "provider runtime port provider_socket must be nonempty text"
+            )
+        if type(self.container_port) is not int or not 1 <= self.container_port <= 65535:
+            raise ProductRuntimeContractError(
+                "provider runtime port container_port must be between 1 and 65535"
+            )
+
+    def descriptor(self) -> dict[str, object]:
+        return {
+            "provider_socket": self.provider_socket,
+            "container_port": self.container_port,
+        }
 
 
 @dataclass(frozen=True, order=True)
@@ -1000,11 +1041,22 @@ class OciContainerProductImplementation:
         runtime: RuntimeContext,
     ) -> ProductMaterializedBlock:
         del runtime
+        provider_ports = {
+            value.provider_socket: value.container_port
+            for value in self.document.product.runtime_contract.provider_ports
+        }
         return ProductMaterializedBlock(
             kind=self.kind,
             endpoints={
                 socket.name: Endpoint(
-                    LiteralAddress(_private_endpoint(block_id, socket.name, socket.protocol)),
+                    LiteralAddress(
+                        _private_endpoint(
+                            block_id,
+                            socket.name,
+                            socket.protocol,
+                            provider_ports.get(socket.name),
+                        )
+                    ),
                     socket.protocol,
                 )
                 for socket in sockets.providers
@@ -1266,6 +1318,27 @@ def _validate_verification(
             )
 
 
+def _validate_provider_ports(
+    sockets: BlockSockets,
+    provider_ports: tuple[ProviderRuntimePort, ...],
+) -> None:
+    _require_unique(
+        tuple(value.provider_socket for value in provider_ports),
+        "provider runtime port socket names",
+    )
+    provider_names = set(sockets.provider_names())
+    unknown = sorted(
+        value.provider_socket
+        for value in provider_ports
+        if value.provider_socket not in provider_names
+    )
+    if unknown:
+        raise ProductRuntimeContractError(
+            "provider runtime port references unknown provider socket: "
+            + ", ".join(unknown)
+        )
+
+
 def _validate_lifecycle_distinctions(
     lifecycle: ResourceLifecycle,
     configuration_artifacts: tuple[ConfigurationArtifact, ...],
@@ -1410,6 +1483,19 @@ def _retained_data_mount_from_descriptor(value: object) -> RetainedDataMount:
     )
 
 
+def _provider_runtime_port_from_descriptor(value: object) -> ProviderRuntimePort:
+    descriptor = _product_mapping(value, "provider runtime port")
+    _require_product_keys(
+        descriptor,
+        _PROVIDER_RUNTIME_PORT_DESCRIPTOR_KEYS,
+        "provider runtime port",
+    )
+    return ProviderRuntimePort(
+        provider_socket=_product_text(descriptor, "provider_socket"),
+        container_port=_product_integer(descriptor, "container_port"),
+    )
+
+
 def _validate_retained_data_target_path(value: str) -> None:
     if not isinstance(value, str) or not value.startswith("/"):
         raise ProductRuntimeContractError(
@@ -1465,6 +1551,13 @@ def _product_bool(mapping: Mapping[str, object], key: str) -> bool:
     value = mapping[key]
     if type(value) is not bool:
         raise ProductRuntimeContractError(f"{key} must be a boolean")
+    return value
+
+
+def _product_integer(mapping: Mapping[str, object], key: str) -> int:
+    value = mapping[key]
+    if type(value) is not int:
+        raise ProductRuntimeContractError(f"{key} must be an integer")
     return value
 
 
@@ -1638,10 +1731,17 @@ def _require_same_keys(
     )
 
 
-def _private_endpoint(role_id: str, socket_name: str, protocol: Protocol) -> str:
+def _private_endpoint(
+    role_id: str,
+    socket_name: str,
+    protocol: Protocol,
+    container_port: int | None = None,
+) -> str:
     host = f"{role_id}-{socket_name}"
     scheme = _endpoint_scheme(protocol)
-    return f"{scheme}://{host}"
+    if container_port is None:
+        return f"{scheme}://{host}"
+    return f"{scheme}://{host}:{container_port}"
 
 
 def _endpoint_scheme(protocol: Protocol) -> str:

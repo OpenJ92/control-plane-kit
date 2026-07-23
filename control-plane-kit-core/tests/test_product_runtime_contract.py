@@ -14,6 +14,7 @@ from control_plane_kit_core.environment import PublicStaticEnvironmentBinding
 from control_plane_kit_core.lifecycle import ResourceLifecycle
 from control_plane_kit_core.products import (
     ProductFamily,
+    ProviderRuntimePort,
     ProductRuntimeContract,
     ProductRuntimeContractCodec,
     ProductRuntimeContractError,
@@ -31,6 +32,7 @@ class ProductRuntimeContractTests(unittest.TestCase):
                 requirements=(RequirementSocket("database", Protocol.POSTGRES, ("DATABASE_URL",)),),
                 providers=(ProviderSocket("http", Protocol.HTTP),),
             ),
+            provider_ports=(ProviderRuntimePort("http", 8000),),
             public_environment=(PublicStaticEnvironmentBinding("MODE", "demo"),),
             configuration_artifacts=(
                 ConfigurationArtifact(
@@ -59,6 +61,10 @@ class ProductRuntimeContractTests(unittest.TestCase):
         )
         self.assertEqual(descriptor["capabilities"], ["health-checkable"])
         self.assertEqual(
+            descriptor["provider_ports"],
+            [{"provider_socket": "http", "container_port": 8000}],
+        )
+        self.assertEqual(
             descriptor["retained_data_mounts"],
             [
                 {
@@ -79,6 +85,7 @@ class ProductRuntimeContractTests(unittest.TestCase):
     def test_codec_round_trips_strict_descriptor(self) -> None:
         contract = ProductRuntimeContract(
             sockets=BlockSockets(providers=(ProviderSocket("http", Protocol.HTTP),)),
+            provider_ports=(ProviderRuntimePort("http", 8000),),
             verification=VerificationContract(
                 (HttpCheck(check_id="ready", provider_socket="http", path="/health"),)
             ),
@@ -90,6 +97,33 @@ class ProductRuntimeContractTests(unittest.TestCase):
 
         self.assertEqual(restored, contract)
         self.assertEqual(codec.encode(restored), descriptor)
+
+    def test_provider_runtime_ports_are_closed_descriptor_material(self) -> None:
+        contract = ProductRuntimeContract(
+            sockets=BlockSockets(providers=(ProviderSocket("http", Protocol.HTTP),)),
+            provider_ports=(ProviderRuntimePort("http", 8000),),
+        )
+        descriptor = ProductRuntimeContractCodec().encode(contract)
+
+        self.assertEqual(
+            descriptor["provider_ports"],
+            [{"provider_socket": "http", "container_port": 8000}],
+        )
+        self.assertEqual(
+            ProductRuntimeContractCodec().decode(descriptor).provider_ports,
+            (ProviderRuntimePort("http", 8000),),
+        )
+
+    def test_provider_runtime_ports_reject_unknown_socket_and_bad_port(self) -> None:
+        with self.assertRaisesRegex(ProductRuntimeContractError, "provider runtime port"):
+            ProductRuntimeContract(
+                sockets=BlockSockets(providers=(ProviderSocket("http", Protocol.HTTP),)),
+                provider_ports=(ProviderRuntimePort("admin", 8000),),
+            )
+        for port in (0, 65536, True):
+            with self.subTest(port=port):
+                with self.assertRaises(ProductRuntimeContractError):
+                    ProviderRuntimePort("http", port)  # type: ignore[arg-type]
 
     def test_retained_data_mounts_are_closed_descriptor_material(self) -> None:
         mount = RetainedDataMount("orders-db", "/var/lib/postgresql/data")
