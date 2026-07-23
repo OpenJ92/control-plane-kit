@@ -355,3 +355,97 @@ Postgres realization remains blocked until operations has typed secret
 resolution and retained data mount material. If that scope becomes necessary for
 the ACTIVITY live matrix before #877, create a focused child issue instead of
 adding implicit secret or volume behavior to `DockerProductRealizationAdapter`.
+
+## #873 Product Dependency Binding
+
+#873 confirms that dependency binding is already represented by the extracted
+core graph language and hardens the Docker realization boundary so the fact does
+not become implicit.
+
+The important existing pure transformation is:
+
+```text
+SocketConnection(provider, provider_socket, consumer, requirement_socket)
+  -> compile_topology
+    -> Edge(env_assignments)
+      -> consumer Node.socket_environment
+        -> Node.non_secret_environment()
+```
+
+The Docker adapter then consumes the compiled node material:
+
+```python
+self.client.run_container(
+    ...,
+    environment=node.non_secret_environment(),
+    ...,
+)
+```
+
+No second dependency-binding engine was introduced in operations. This is the
+right boundary because protocol compatibility, required/optional sockets, and
+environment binding completeness are pure graph concerns. Runtime realization
+should receive an already-validated node and pass its non-secret runtime material
+to Docker without scanning containers or recognizing product names.
+
+Focused #873 coverage proves:
+
+```text
+router active requirement
+  app.internal -> router.active
+  ACTIVE_TARGET_URL == app.internal endpoint URL
+
+multiplexer requirements
+  primary.internal -> multiplexer.primary
+  observer.internal -> multiplexer.observer-a
+  MULTIPLEXER_PRIMARY_URL == primary endpoint URL
+  MULTIPLEXER_OBSERVER_A_URL == observer endpoint URL
+  absent optional observer-b does not fabricate an env value
+```
+
+The descriptor language is sufficient for the current HTTP seed products:
+
+```text
+http-active-router
+  active: HTTP requirement -> ACTIVE_TARGET_URL
+
+http-multiplexer
+  primary: HTTP requirement -> MULTIPLEXER_PRIMARY_URL
+  observer-a: optional HTTP requirement -> MULTIPLEXER_OBSERVER_A_URL
+  observer-b: optional HTTP requirement -> MULTIPLEXER_OBSERVER_B_URL
+```
+
+The Postgres seeded descriptor remains different. Its graph-visible provider
+socket is ready, but realization still needs typed secret resolution and retained
+data mount material before operations can start it safely. That remains a later
+focused child if the #877 live matrix requires database containers during this
+ACTIVITY leg.
+
+Validation evidence so far:
+
+```text
+git diff --check
+./control-plane-kit-operations/test.sh
+  109 tests passed
+  compileall passed
+  control-plane-kit-operations import ok
+./test.sh
+  1219 tests passed
+```
+
+#874 handoff:
+
+#874 can rely on the Docker adapter receiving fully compiled runtime
+environment for edge-connected HTTP products. It should focus on coordinator
+dispatch and observation persistence:
+
+```text
+durable STEP_STARTED intent
+  -> DockerProductRealizationAdapter executes outside transaction
+    -> STEP_SUCCEEDED / STEP_FAILED / STEP_UNSUPPORTED / STEP_UNCERTAIN
+      -> ObservationRecord / read projection evidence
+```
+
+Do not add graph-edge binding logic to the coordinator. If a runtime value is
+missing, first inspect graph compilation/validation and product descriptors;
+only then consider adapter-level failure evidence.
