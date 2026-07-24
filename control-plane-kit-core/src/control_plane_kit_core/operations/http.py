@@ -408,6 +408,15 @@ def operator_command_http_routes() -> tuple[HttpApiRouteContract, ...]:
                 "RegisteredProductResponse",
             ),
             (
+                "command.image-pull-authority.register",
+                "/workspaces/{workspace_id}/image-pull-authorities",
+                ControlPlaneServiceRole.PLANNING,
+                HttpAuthScope.ADMIN,
+                HttpOperationSafety.COMMAND,
+                "RegisterImagePullAuthorityRequest",
+                "RegisteredImagePullAuthorityResponse",
+            ),
+            (
                 "command.operation-session.start",
                 "/workspaces/{workspace_id}/sessions",
                 ControlPlaneServiceRole.LIFECYCLE,

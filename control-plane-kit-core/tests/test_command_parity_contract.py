@@ -139,6 +139,14 @@ class CommandParityContractTests(unittest.TestCase):
                     ApprovalPolicy.REQUIRES_CURRENT_APPROVAL,
                 ),
                 (
+                    "image-pull-authority.register",
+                    "command.image-pull-authority.register",
+                    "register_image_pull_authority",
+                    ControlPlaneServiceRole.PLANNING,
+                    CommandIdempotencyPolicy.REQUIRED,
+                    ApprovalPolicy.NOT_REQUIRED,
+                ),
+                (
                     "operation-session.cancel",
                     "command.operation-session.cancel",
                     "cancel_operation_session",

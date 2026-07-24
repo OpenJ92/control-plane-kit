@@ -17,6 +17,7 @@ from control_plane_kit_core.algebra import (
     DockerRuntime,
     ProviderSocket,
 )
+from control_plane_kit_core.runtime_effects import ImagePullAuthority
 from control_plane_kit_core.products import (
     ContainerServerProduct,
     OciImageReference,
@@ -52,7 +53,10 @@ from control_plane_kit_operations.planning import (
     RequestActivityPlan,
 )
 from control_plane_kit_operations.postgres import PostgresUnitOfWork, install_schema
-from control_plane_kit_operations.products import ProductRegistrationService
+from control_plane_kit_operations.products import (
+    ImagePullAuthorityRegistrationService,
+    ProductRegistrationService,
+)
 from control_plane_kit_operations.records import (
     ActivityPlanRecord,
     ActivityPlanStatus,
@@ -266,6 +270,9 @@ class CpkServerOperationsAdapterTests(unittest.TestCase):
                 id_factory=self.ids("graph-empty"),
             ),
             products=ProductRegistrationService(self.unit_of_work),
+            image_pull_authorities=ImagePullAuthorityRegistrationService(
+                self.unit_of_work
+            ),
             desired_graphs=DesiredGraphCommandService(
                 self.unit_of_work,
                 clock=lambda: "2026-07-22T10:05:00Z",
@@ -296,6 +303,30 @@ class CpkServerOperationsAdapterTests(unittest.TestCase):
             )
         )
         self.assertEqual(workspace["workspace"]["current_graph_id"], "graph-empty")
+
+        authority = planning.handle(
+            RouteRequest(
+                surface="http",
+                route_id="command.image-pull-authority.register",
+                service_role=ControlPlaneServiceRole.PLANNING,
+                path_parameters={"workspace_id": "workspace-a"},
+                payload={
+                    "registry": "ghcr.io",
+                    "repository": "openj92/control-plane-kit-servers",
+                    "credential_reference": "secret://docker-config/ghcr.io",
+                    "actor_id": "operator-a",
+                    "admitted_at": "2026-07-22T10:01:30Z",
+                    "idempotency_key": "pull-authority-a",
+                },
+            )
+        )
+        self.assertEqual(authority["workspace_id"], "workspace-a")
+        self.assertEqual(authority["authority"]["registry"], "ghcr.io")
+        self.assertEqual(
+            authority["authority"]["credential_reference"],
+            "secret://docker-config/ghcr.io",
+        )
+        self.assertNotIn("token", str(authority).lower())
 
         registered = planning.handle(
             RouteRequest(
@@ -819,6 +850,51 @@ class CpkServerOperationsAdapterTests(unittest.TestCase):
 
         self.assertEqual(raised.exception.status, 501)
         self.assertIn("not implemented", raised.exception.message)
+
+    def test_image_pull_authority_route_requires_service_and_idempotency_key(self) -> None:
+        service = CpkServerPlanningService(RecordingService())
+
+        with self.assertRaises(CpkServerApplicationError) as not_configured:
+            service.handle(
+                RouteRequest(
+                    surface="http",
+                    route_id="command.image-pull-authority.register",
+                    service_role=ControlPlaneServiceRole.PLANNING,
+                    path_parameters={"workspace_id": "workspace-a"},
+                    payload={
+                        "registry": "ghcr.io",
+                        "credential_reference": "secret://docker-config/ghcr.io",
+                        "actor_id": "operator-a",
+                        "admitted_at": "2026-07-22T10:01:30Z",
+                        "idempotency_key": "pull-authority-a",
+                    },
+                )
+            )
+        self.assertEqual(not_configured.exception.status, 501)
+
+        service = CpkServerPlanningService(
+            RecordingService(),
+            image_pull_authorities=ImagePullAuthorityRegistrationService(
+                self.unit_of_work
+            ),
+        )
+        with self.assertRaises(CpkServerApplicationError) as missing_key:
+            service.handle(
+                RouteRequest(
+                    surface="http",
+                    route_id="command.image-pull-authority.register",
+                    service_role=ControlPlaneServiceRole.PLANNING,
+                    path_parameters={"workspace_id": "workspace-a"},
+                    payload={
+                        "registry": "ghcr.io",
+                        "credential_reference": "secret://docker-config/ghcr.io",
+                        "actor_id": "operator-a",
+                        "admitted_at": "2026-07-22T10:01:30Z",
+                    },
+                )
+            )
+        self.assertEqual(missing_key.exception.status, 400)
+        self.assertIn("idempotency_key", missing_key.exception.message)
 
     def test_product_import_requires_public_command_idempotency_key(self) -> None:
         product_document = ProductDescriptorCodec().encode_document(

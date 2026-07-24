@@ -8,6 +8,7 @@ from typing import Any, Callable, Mapping, Protocol
 from control_plane_kit_core.operations import ControlPlaneServiceRole
 from control_plane_kit_core.operations.commands import OperatorCommandKind
 from control_plane_kit_core.policies import PolicyScope
+from control_plane_kit_core.runtime_effects import ImagePullAuthority
 from control_plane_kit_core.products import ProductDescriptorCodec, ProductDescriptorError
 from control_plane_kit_core.topology import DEFAULT_GRAPH_CODEC, GraphDescriptorError
 
@@ -40,9 +41,11 @@ from control_plane_kit_operations.planning import (
 )
 from control_plane_kit_operations.products import (
     DescriptorSourceCodec,
+    ImagePullAuthorityRegistrationService,
     ImportProductDescriptorCommand,
     InlineDescriptorSource,
     ProductRegistrationService,
+    RegisterImagePullAuthorityCommand,
 )
 from control_plane_kit_operations.read_services import InstanceReadService, ReadModelError
 from control_plane_kit_operations.records import ApprovalDecisionKind
@@ -158,11 +161,13 @@ class CpkServerPlanningService:
         *,
         workspaces: WorkspaceCommandService | None = None,
         products: ProductRegistrationService | None = None,
+        image_pull_authorities: ImagePullAuthorityRegistrationService | None = None,
         desired_graphs: DesiredGraphCommandService | None = None,
     ) -> None:
         self._service = service
         self._workspaces = workspaces
         self._products = products
+        self._image_pull_authorities = image_pull_authorities
         self._desired_graphs = desired_graphs
 
     def handle(self, request: CpkServerRouteRequest) -> Mapping[str, object]:
@@ -207,6 +212,28 @@ class CpkServerPlanningService:
                 )
             )
             return _registered_product_descriptor(result)
+        if request.route_id == "command.image-pull-authority.register":
+            if self._image_pull_authorities is None:
+                raise _service_not_configured(request)
+            payload = _arguments(request)
+            _text(payload, "idempotency_key")
+            try:
+                authority = ImagePullAuthority(
+                    registry=_text(payload, "registry"),
+                    repository=_optional_text(payload, "repository"),
+                    credential_reference=_text(payload, "credential_reference"),
+                )
+            except (TypeError, ValueError) as error:
+                raise CpkServerApplicationError(400, str(error)) from error
+            result = self._image_pull_authorities.register(
+                RegisterImagePullAuthorityCommand(
+                    workspace_id=_workspace_id(payload),
+                    authority=authority,
+                    admitted_by=_text(payload, "actor_id"),
+                    admitted_at=_text(payload, "admitted_at"),
+                )
+            )
+            return _registered_image_pull_authority_descriptor(result)
         if request.route_id == "command.desired-graph.set":
             if self._desired_graphs is None:
                 raise _service_not_configured(request)
@@ -465,6 +492,7 @@ def cpk_server_services(
     execution: ExecutionCoordinator,
     workspaces: WorkspaceCommandService | None = None,
     products: ProductRegistrationService | None = None,
+    image_pull_authorities: ImagePullAuthorityRegistrationService | None = None,
     desired_graphs: DesiredGraphCommandService | None = None,
     operations: OperationCommandService | None = None,
     advancement: CurrentGraphAdvancementCommandService | None = None,
@@ -485,6 +513,7 @@ def cpk_server_services(
             planning,
             workspaces=workspaces,
             products=products,
+            image_pull_authorities=image_pull_authorities,
             desired_graphs=desired_graphs,
         ),
         ControlPlaneServiceRole.APPROVAL: CpkServerApprovalService(approval),
@@ -688,6 +717,18 @@ def _service_not_configured(request: CpkServerRouteRequest) -> CpkServerApplicat
         501,
         f"{request.route_id!r} is not configured in cpk-server operations",
     )
+
+
+def _registered_image_pull_authority_descriptor(value: Any) -> dict[str, object]:
+    return {
+        "authority_id": value.authority_id,
+        "workspace_id": value.workspace_id,
+        "authority": value.authority.descriptor(),
+        "admitted_by": value.admitted_by,
+        "admitted_at": value.admitted_at,
+        "status": value.status.value,
+        "metadata": dict(value.metadata),
+    }
 
 
 def _registered_product_descriptor(value: Any) -> dict[str, object]:
