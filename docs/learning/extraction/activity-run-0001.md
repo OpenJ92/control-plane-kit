@@ -2567,3 +2567,83 @@ Residual limitations:
   not part of this acceptance.
 - Seeded topology stress with hello/router/multiplexer/data-service products
   continues in #941.
+
+## #942 Seeded Topology Stress Dry Run
+
+#942 dry-ran the post-recursive seeded topology stress lane and recorded the
+scenario matrix in:
+
+```text
+artifacts/extraction/seeded-stress-942-scenario-matrix.json
+```
+
+The existing issue topology is mostly correct:
+
+```text
+#942 -> #943
+#943 -> #944
+#943 -> #945
+#944 + #945 -> #946 -> #947
+```
+
+The dry run found one necessary refinement. Multiplexer observer delivery is
+proven today in the product unit tests with an in-process recording server, but
+the hosted seeded stress lane needs package-owned live evidence. A `hello-server`
+observer can receive the copied request, but it currently has no public request
+receipt endpoint or bounded request evidence surface. That makes a live
+observer-delivery assertion impossible without weakening the test.
+
+The corrected topology therefore inserts a focused product visibility child
+between #943 and #945:
+
+```text
+#942 -> #943
+#943 -> #944
+#943 -> observer-visibility child -> #945
+#944 + #945 -> #946 -> #947
+```
+
+Blue/green router stress does not require a new core concept. Core already
+allows `ProductInstanceConfiguration` to change public environment values while
+preserving the product contract key set. #944 should configure `hello-blue` and
+`hello-green` with distinct `HELLO_MESSAGE` values, then prove the router
+response changes after the graph transition.
+
+Current seed coordinates:
+
+```text
+catalogue/products.json sha256:
+  0fa521b5800f909160ed959cd25700b38cc39e8345dd699400946d3338ed1e96
+
+cpk-server:
+  descriptor 0ebaa90f824f5a10e7ae7a1c91d83d5aaa8e5c8fc83035b062a23266c3327970
+  image sha256:a92139b66b5fb0e631bb4fe1a401e3c9968ac99227cf0c9dd5b85e52f506b0f4
+
+hello-server:
+  descriptor 7c878cddfa597002f4536c1ac7aea0728df3bbe0e594f6dbc56b646968dab0cc
+  image sha256:0b5d62c2706bdfc5b53b67c7e0a72e36b8af7d13f8b2abf26eaa6e6eb7dda5f0
+
+http-active-router:
+  descriptor c965218c439ea650421220d9977f641330564b86f6397bef05e4a87edbd43c6b
+  image sha256:9edd29c8b62f6413c7acb4009bfa655c065a31a0eac8728ec9d4350122e0a60d
+
+http-multiplexer:
+  descriptor 0b74269a7b8c9b775d431a04382eaa268339330c55d4995a6a52ee6de79abc9d
+  image sha256:2b6466d87c7642691c4ce2ee52022450d7b7cf1055f1f25a1449adbb5c8131ec
+
+postgres-server:
+  descriptor 96307788eb5a6603f3617e1d4b5fd02420997175b969e72304f8e5609acc5f40
+  image sha256:57c72fd2a128e416c7fcc499958864df5301e940bca0a56f58fddf30ffc07777
+```
+
+Handoff:
+
+- #943 should refactor/extend the hosted public workflow controller so the
+  richer graph scenarios do not duplicate workspace/product/approval/run code.
+- #944 should prove router target binding and blue-to-green transition through
+  distinct per-instance Hello messages.
+- The new observer-visibility child should add the smallest package-owned
+  evidence surface needed for live observer-delivery proof and republish the
+  affected product image if its runtime behavior changes.
+- #945 should then prove multiplexer primary/observer binding and Postgres
+  data-service retained/secret behavior.
