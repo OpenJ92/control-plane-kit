@@ -16,6 +16,7 @@ from control_plane_kit import (
     HttpCheck,
     HttpVerificationEvidence,
     ObjectStorageRoundTripCheck,
+    PostgresPasswordAuthentication,
     PlanOnlyImplementation,
     PostgresQueryCheck,
     Protocol,
@@ -23,6 +24,7 @@ from control_plane_kit import (
     RedisCheck,
     RedisVerificationEvidence,
     SmtpAcceptanceCheck,
+    SecretReference,
     VerificationContract,
     VerificationCapability,
     VerificationContractError,
@@ -62,6 +64,13 @@ def complete_contract() -> VerificationContract:
             PostgresQueryCheck(
                 check_id="postgres-connectivity",
                 provider_socket="postgres",
+                authentication=PostgresPasswordAuthentication(
+                    database="cpk",
+                    username="cpk",
+                    password_reference=SecretReference(
+                        "secret://verification/postgres/password"
+                    ),
+                ),
                 policy=policy,
             ),
             RedisCheck(
@@ -262,6 +271,60 @@ class VerificationContractTests(unittest.TestCase):
 
         with self.assertRaisesRegex(VerificationContractError, "unknown or missing"):
             verification_check_from_descriptor(descriptor)
+
+    def test_postgres_authentication_is_explicit_and_secret_free(self) -> None:
+        authentication = PostgresPasswordAuthentication(
+            database="cpk",
+            username="cpk",
+            password_reference=SecretReference("secret://verification/postgres/password"),
+        )
+        check = PostgresQueryCheck(
+            check_id="postgres-connectivity",
+            provider_socket="postgres",
+            authentication=authentication,
+        )
+
+        descriptor = check.descriptor()
+        restored = verification_check_from_descriptor(descriptor)
+
+        self.assertEqual(restored, check)
+        self.assertEqual(
+            descriptor["authentication"],
+            {
+                "kind": "password",
+                "database": "cpk",
+                "username": "cpk",
+                "password_reference_id": "secret://verification/postgres/password",
+            },
+        )
+        self.assertNotIn("raw-password", repr(descriptor))
+
+    def test_postgres_authentication_descriptor_fails_closed(self) -> None:
+        descriptor = PostgresQueryCheck(
+            check_id="postgres-connectivity",
+            provider_socket="postgres",
+            authentication=PostgresPasswordAuthentication(
+                database="cpk",
+                username="cpk",
+                password_reference=SecretReference(
+                    "secret://verification/postgres/password"
+                ),
+            ),
+        ).descriptor()
+        authentication = descriptor["authentication"]
+        self.assertIsInstance(authentication, dict)
+        invalid = (
+            {**authentication, "kind": "future-auth"},
+            {**authentication, "password": "raw-password"},
+            {**authentication, "password_reference_id": "raw-password"},
+            {**authentication, "username": "cpk user"},
+        )
+
+        for value in invalid:
+            broken = {**descriptor, "authentication": value}
+            with self.subTest(authentication=value):
+                with self.assertRaises(VerificationContractError):
+                    verification_check_from_descriptor(broken)
 
     def test_unknown_variants_fields_and_closed_values_fail_closed(self) -> None:
         valid = complete_contract().checks[0].descriptor()
