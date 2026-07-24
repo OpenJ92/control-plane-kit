@@ -2797,3 +2797,191 @@ Handoff:
 - #945 should then prove multiplexer primary/observer binding and Postgres
   data-service behavior using the seeded products and the same hosted public
   workflow controller.
+
+## #961 Runtime Authority Dry Run
+
+#961 dry-ran the gap between opaque recursive cpk-server acceptance and an
+execution-capable child cpk-server. It intentionally changed no production
+behavior. The machine-readable map is:
+
+```text
+artifacts/extraction/runtime-auth-961-dry-run.json
+```
+
+Current parent bootstrap:
+
+```text
+outer smoke harness
+  -> docker run parent cpk-server
+       -v /var/run/docker.sock:/var/run/docker.sock
+       CPK_RUNTIME_INTERPRETERS=docker
+       optional Docker config mount for GHCR pull authority
+       local-development product secret resolver
+       four Postgres store URLs
+```
+
+Code anchors:
+
+```text
+control-plane-kit-servers/scripts/cpk_server_recursive_activity_smoke.sh:108
+control-plane-kit-servers/scripts/cpk_server_recursive_activity_smoke.sh:114
+control-plane-kit-servers/scripts/cpk_server_recursive_activity_smoke.sh:120
+control-plane-kit-servers/scripts/cpk_server_recursive_activity_smoke.sh:121
+control-plane-kit-servers/scripts/cpk_server_recursive_activity_smoke.sh:122
+```
+
+Current cpk-server bootstrap parses `CPK_RUNTIME_INTERPRETERS` as a closed
+process-bootstrap string:
+
+```text
+control-plane-kit-servers/products/cpk_server/src/control_plane_kit_servers_cpk_server/server.py:79
+control-plane-kit-servers/products/cpk_server/src/control_plane_kit_servers_cpk_server/server.py:108
+```
+
+When set to `docker`, cpk-server is currently the composition root that lazy
+imports the Docker interpreter and gives operations a dispatcher:
+
+```text
+control-plane-kit-servers/products/cpk_server/src/control_plane_kit_servers_cpk_server/server.py:343
+control-plane-kit-servers/products/cpk_server/src/control_plane_kit_servers_cpk_server/server.py:353
+control-plane-kit-servers/products/cpk_server/src/control_plane_kit_servers_cpk_server/server.py:366
+```
+
+Operations dispatch is already correctly abstract:
+
+```text
+ActivityRealizationContext
+  -> RuntimeEffectRequest(runtime_kind=...)
+    -> RuntimeInterpreterDispatcher
+      -> interpreter.execute(request)
+```
+
+Anchors:
+
+```text
+control-plane-kit-operations/src/control_plane_kit_operations/coordinator.py:269
+control-plane-kit-operations/src/control_plane_kit_operations/coordinator.py:295
+control-plane-kit-operations/src/control_plane_kit_operations/coordinator.py:307
+```
+
+Runtime-effect translation currently carries product material and OCI pull
+authority, but no runtime-control authority:
+
+```text
+control-plane-kit-operations/src/control_plane_kit_operations/runtime_effects.py:42
+control-plane-kit-operations/src/control_plane_kit_operations/runtime_effects.py:53
+control-plane-kit-operations/src/control_plane_kit_operations/runtime_effects.py:117
+control-plane-kit-operations/src/control_plane_kit_operations/runtime_effects.py:138
+```
+
+Core already has the precedent for secret-free authority references with
+`ImagePullAuthority`:
+
+```text
+control-plane-kit-core/src/control_plane_kit_core/runtime_effects.py:54
+control-plane-kit-core/src/control_plane_kit_core/runtime_effects.py:93
+```
+
+Operations already has the durable admission precedent with
+`RegisteredImagePullAuthority`:
+
+```text
+control-plane-kit-operations/src/control_plane_kit_operations/products.py:219
+```
+
+The child cpk-server remains intentionally opaque today. The recursive
+controller requires direct child health/readiness only and asserts that the
+child reports no runtime interpreters:
+
+```text
+control-plane-kit-servers/scripts/cpk_server_recursive_activity.py:387
+control-plane-kit-servers/scripts/cpk_server_recursive_activity.py:392
+control-plane-kit-servers/products/cpk_server/tests/test_image_bootstrap.py:514
+control-plane-kit-servers/products/cpk_server/tests/test_image_bootstrap.py:519
+```
+
+The cpk-server product descriptor confirms why: the descriptor default is
+`CPK_RUNTIME_INTERPRETERS=none` and there is no runtime-authority requirement:
+
+```text
+control-plane-kit-servers/products/cpk_server/product.cpk.json:95
+control-plane-kit-servers/products/cpk_server/product.cpk.json:107
+```
+
+The corrected conceptual split is:
+
+```text
+Interpreter Availability
+  software installed/enabled in a cpk-server process
+
+RegisteredRuntimeAuthority
+  workspace/operator-admitted concrete runtime target and credential references
+```
+
+Why the parent can execute Docker effects today:
+
+- the harness mounts Docker socket authority into the parent;
+- the harness sets `CPK_RUNTIME_INTERPRETERS=docker`;
+- the cpk-server image includes the Docker interpreter package;
+- cpk-server composes `RuntimeInterpreterDispatcher({DOCKER:
+  DockerRuntimeInterpreter(...)})`.
+
+Why the child cannot execute Docker effects today:
+
+- its descriptor defaults to `CPK_RUNTIME_INTERPRETERS=none`;
+- it receives no graph-visible runtime authority;
+- operations has no `RegisteredRuntimeAuthority` store or command;
+- core runtime requests have no runtime authority reference/material;
+- Docker SDK client construction currently uses `docker.from_env()` at the
+  interpreter boundary.
+
+The target path for #962 through #969 remains coherent:
+
+```text
+#962
+  pure runtime authority reference language
+
+#963
+  operations RegisteredRuntimeAuthority admission/store/read model
+
+#964
+  operations-owned dispatcher bootstrap with lazy interpreter imports
+
+#965
+  Docker local socket and remote TLS authority interpretation
+
+#966
+  cpk-server interpreter-availability product variants
+
+#967
+  cpk-server HTTP/MCP runtime authority registration
+
+#968
+  execution-capable child cpk-server and bounded recursive depth probe
+
+#969
+  closeout and handoff to cloud/runtime stress
+```
+
+#962 should explicitly decide whether the runtime authority reference belongs
+on `RuntimeContext`/`DockerRuntime`, on `RuntimeEffectRequest`, or both. The dry
+run points toward:
+
+```text
+graph runtime
+  -> pure authority_ref
+    -> operations lookup RegisteredRuntimeAuthority
+      -> RuntimeEffectRequest carries secret-free reference/material
+        -> interpreter resolves concrete authority only at IO boundary
+```
+
+Non-goals remain sharp:
+
+- no test-only `spawn child` route;
+- no raw Docker socket path, Docker config JSON, TLS key, token, cloud
+  credential, or password in descriptors, events, observations, read models,
+  logs, or route responses;
+- no operations service/store/coordinator imports of Docker SDK, boto3, Google
+  SDKs, Kubernetes clients, or concrete runtime code;
+- no parent inspection of child graph truth, activity history, operation
+  sessions, or descendant workflow state.
