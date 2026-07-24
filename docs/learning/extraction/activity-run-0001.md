@@ -3329,3 +3329,60 @@ it should keep process capability, workspace runtime authority, and interpreter
 IO authority visibly separate; prevent SDK imports from creeping into operations;
 and preserve `none`, Docker, unknown-kind, and known-kind-without-provider
 semantics.
+
+## #976 Dispatcher Import Guardrails
+
+#976 pins the runtime-authority split as executable package policy rather than
+tribal memory.
+
+The distinction is:
+
+```text
+process capability
+  CPK_RUNTIME_INTERPRETERS
+    -> RuntimeDispatcherBootstrapConfiguration
+      -> RuntimeKind families available to the cpk-server process
+
+workspace authority
+  RegisteredRuntimeAuthority
+    -> durable workspace-scoped authority record
+      -> secret-free descriptors and read models
+
+interpreter IO
+  RuntimeEffectRequest + RegisteredRuntimeAuthority
+    -> concrete SDK/client boundary
+      -> RuntimeEffectResult
+```
+
+The new guardrails prove that ordinary `control-plane-kit-operations` source has
+no imports of concrete runtime providers or SDK roots such as Docker, AWS,
+Kubernetes, or the external interpreters package. Operations owns the dispatcher
+protocol, durable authorities, stores, UnitOfWork, coordinator, read models, and
+application services; it does not own concrete SDK clients.
+
+The cpk-server guardrails prove the process wrapper may lazily compose concrete
+providers at bootstrap, but only inside approved provider/resolver functions:
+
+```text
+_runtime_adapter
+  -> _docker_runtime_interpreter
+    -> control_plane_kit_interpreters.docker
+
+_image_pull_credential_resolver
+  -> control_plane_kit_interpreters.secrets
+
+_product_secret_resolver
+  -> secret-free process config + local development resolver
+```
+
+Disabled runtime dispatch (`CPK_RUNTIME_INTERPRETERS=none`) still returns the
+unsupported execution adapter and does not import the Docker provider. The
+readiness route reports only runtime capability (`runtime_interpreters`) and does
+not expose store endpoints, Docker config paths, tokens, TLS material, socket
+paths, or secret resolver payloads.
+
+A non-blocking residue note remains from earlier seeded topology work: a
+standalone nginx workaround was observed during prior local debugging. It is not
+part of RUNTIME.AUTH and should be cleaned up or eliminated in the seeded
+server-product/topology cleanup lane rather than folded into runtime-authority
+semantics.

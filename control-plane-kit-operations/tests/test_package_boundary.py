@@ -12,6 +12,47 @@ from control_plane_kit_operations import OPERATIONS_PACKAGE_BOUNDARY
 PACKAGE_ROOT = Path(__file__).resolve().parents[1]
 PYPROJECT = PACKAGE_ROOT / "pyproject.toml"
 SRC_ROOT = PACKAGE_ROOT / "src" / "control_plane_kit_operations"
+CONCRETE_RUNTIME_IMPORT_ROOTS = {
+    "boto3",
+    "botocore",
+    "control_plane_kit_interpreters",
+    "docker",
+    "google",
+    "kubernetes",
+}
+PROCESS_IMPORT_ROOTS = {
+    "control_plane_kit_servers",
+    "fastapi",
+    "httpx",
+    "mcp",
+    "uvicorn",
+}
+FORBIDDEN_SOURCE_IMPORT_ROOTS = (
+    CONCRETE_RUNTIME_IMPORT_ROOTS
+    | PROCESS_IMPORT_ROOTS
+    | {"control_plane_kit", "subprocess"}
+)
+
+
+def _source_imports() -> tuple[set[str], set[Path]]:
+    imports: set[str] = set()
+    psycopg_imports: set[Path] = set()
+    for source_path in SRC_ROOT.rglob("*.py"):
+        tree = ast.parse(source_path.read_text(encoding="utf-8"))
+        for node in ast.walk(tree):
+            if isinstance(node, ast.Import):
+                for alias in node.names:
+                    root = alias.name.split(".", 1)[0]
+                    imports.add(root)
+                    if root == "psycopg":
+                        psycopg_imports.add(source_path)
+            elif isinstance(node, ast.ImportFrom) and node.module:
+                root = node.module.split(".", 1)[0]
+                imports.add(root)
+                if root == "psycopg":
+                    psycopg_imports.add(source_path)
+    return imports, psycopg_imports
+
 
 
 class OperationsPackageBoundaryTests(unittest.TestCase):
@@ -45,36 +86,9 @@ class OperationsPackageBoundaryTests(unittest.TestCase):
         self.assertIn("cpk-server process", descriptor["excluded_owners"])
 
     def test_operations_source_does_not_import_servers_or_process_packages(self) -> None:
-        forbidden = {
-            "control_plane_kit",
-            "control_plane_kit_interpreters",
-            "control_plane_kit_servers",
-            "docker",
-            "fastapi",
-            "httpx",
-            "mcp",
-            "subprocess",
-            "uvicorn",
-        }
+        imports, psycopg_imports = _source_imports()
 
-        imports: set[str] = set()
-        psycopg_imports: set[Path] = set()
-        for path in SRC_ROOT.rglob("*.py"):
-            tree = ast.parse(path.read_text(encoding="utf-8"))
-            for node in ast.walk(tree):
-                if isinstance(node, ast.Import):
-                    for alias in node.names:
-                        root = alias.name.split(".", 1)[0]
-                        imports.add(root)
-                        if root == "psycopg":
-                            psycopg_imports.add(path)
-                elif isinstance(node, ast.ImportFrom) and node.module:
-                    root = node.module.split(".", 1)[0]
-                    imports.add(root)
-                    if root == "psycopg":
-                        psycopg_imports.add(path)
-
-        self.assertFalse(imports & forbidden)
+        self.assertFalse(imports & FORBIDDEN_SOURCE_IMPORT_ROOTS)
         self.assertIn("control_plane_kit_core", imports)
         self.assertEqual(
             {
@@ -84,6 +98,32 @@ class OperationsPackageBoundaryTests(unittest.TestCase):
             },
             set(),
         )
+
+    def test_operations_has_no_concrete_runtime_provider_imports(self) -> None:
+        imports, _ = _source_imports()
+
+        self.assertFalse(imports & CONCRETE_RUNTIME_IMPORT_ROOTS)
+
+    def test_runtime_dispatcher_bootstrap_is_not_authority_truth(self) -> None:
+        from control_plane_kit_core.types import RuntimeKind
+        from control_plane_kit_operations import RuntimeDispatcherBootstrapConfiguration
+
+        config = RuntimeDispatcherBootstrapConfiguration.allow((RuntimeKind.DOCKER,))
+        rendered = f"{config!r} {config.descriptor()!r}".lower()
+
+        self.assertEqual(config.descriptor()["runtime_interpreters"], ["docker"])
+        for forbidden in (
+            "authority",
+            "credential",
+            "secret",
+            "token",
+            "tls",
+            "endpoint",
+            "socket",
+            "host",
+            "path",
+        ):
+            self.assertNotIn(forbidden, rendered)
 
 
 if __name__ == "__main__":
