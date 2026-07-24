@@ -2130,3 +2130,62 @@ Handoff to #928:
 - runtime-effect translation should select only opaque pull-authority references
   from pinned context and registered authority, not resolve credentials;
 - missing/revoked/wrong-scope authority should fail closed before blind replay.
+
+
+## #928 Private OCI Pull Authority: Operations Admission
+
+#928 adds durable operations ownership for image-pull authority without changing
+product descriptors or resolving credentials. The new operations truth is:
+
+```text
+RegisteredImagePullAuthority
+  authority_id
+  workspace_id
+  ImagePullAuthority
+  admitted_by
+  admitted_at
+  status
+```
+
+The Postgres table `cpk_image_pull_authorities` stores only the authority
+descriptor and indexed registry/repository scope. It carries a
+`credential_reference` string beginning with `secret://`; it never stores a
+token, Docker config JSON, password, auth blob, or resolved credential.
+
+The coordinator now loads active pull authorities beside active registered
+products and includes them in `ActivityRealizationContext`. Runtime-effect
+translation selects the most-specific admitted authority whose scope permits the
+product image:
+
+```text
+ActivityRealizationContext
+  x RegisteredProduct
+  x RegisteredImagePullAuthority*
+    -> RuntimeProductMaterial(pull_authority=ImagePullAuthority | None)
+```
+
+Important boundary decision: operations does not infer that a registry is
+private from a host name such as `ghcr.io`. It selects authority if the workspace
+has admitted one for the image scope. Interpreter-side #929 is responsible for
+failing closed when runtime material requires a pull authority but the
+configured resolver cannot satisfy it.
+
+Validation:
+
+```text
+./control-plane-kit-operations/test.sh:
+  131 tests passed
+  compileall passed
+  import check passed
+```
+
+Handoff to #929:
+
+- `RuntimeProductMaterial.pull_authority` is populated from durable operations
+  truth when a matching active authority exists;
+- the interpreter should resolve the `credential_reference` only at Docker pull
+  time;
+- missing resolver, denied credential, or wrong scope should fail closed before
+  container creation;
+- resolved credentials must not enter runtime results, events, observations,
+  logs, or reprs.

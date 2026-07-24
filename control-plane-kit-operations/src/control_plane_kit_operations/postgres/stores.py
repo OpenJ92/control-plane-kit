@@ -12,6 +12,9 @@ from control_plane_kit_operations.postgres.graph_store import (
     PostgresGraphTopologyStore,
     PostgresWorkspaceStore,
 )
+from control_plane_kit_operations.postgres.image_pull_authority_store import (
+    ImagePullAuthorityStore,
+)
 from control_plane_kit_operations.postgres.observed_state import (
     PostgresObservedStateStore,
 )
@@ -32,6 +35,7 @@ class PostgresStoreBundle:
     workspaces: PostgresWorkspaceStore = field(init=False)
     graphs: PostgresGraphTopologyStore = field(init=False)
     registered_products: RegisteredProductStore = field(init=False)
+    image_pull_authorities: ImagePullAuthorityStore = field(init=False)
     activity_history: PostgresActivityHistoryStore = field(init=False)
     execution: PostgresExecutionStore = field(init=False)
     observed_state: PostgresObservedStateStore = field(init=False)
@@ -51,6 +55,11 @@ class PostgresStoreBundle:
             self,
             "registered_products",
             RegisteredProductStore(self.connection),
+        )
+        object.__setattr__(
+            self,
+            "image_pull_authorities",
+            ImagePullAuthorityStore(self.connection),
         )
         object.__setattr__(
             self,

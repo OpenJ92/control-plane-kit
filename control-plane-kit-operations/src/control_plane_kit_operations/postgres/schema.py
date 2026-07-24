@@ -49,6 +49,11 @@ class _RegisteredProductStatus(StrEnum):
     REVOKED = "revoked"
 
 
+class _RegisteredImagePullAuthorityStatus(StrEnum):
+    ACTIVE = "active"
+    REVOKED = "revoked"
+
+
 _SETTLED_RUN_STATUSES = frozenset(
     {
         ActivityRunStatus.SUCCEEDED,
@@ -127,6 +132,26 @@ CREATE TABLE IF NOT EXISTS cpk_registered_products (
 
 ALTER TABLE cpk_registered_products
   ADD COLUMN IF NOT EXISTS descriptor_content text;
+
+CREATE TABLE IF NOT EXISTS cpk_image_pull_authorities (
+  authority_id text PRIMARY KEY,
+  workspace_id text NOT NULL REFERENCES cpk_workspaces(workspace_id),
+  authority jsonb NOT NULL,
+  registry text NOT NULL,
+  repository text,
+  credential_reference text NOT NULL,
+  admitted_by text NOT NULL,
+  admitted_at text NOT NULL,
+  status text NOT NULL,
+  metadata jsonb NOT NULL DEFAULT '{}'::jsonb,
+  CONSTRAINT cpk_image_pull_authorities_status_check
+    CHECK (status IN ({{ registered_image_pull_authority_statuses | sql_values }})),
+  CONSTRAINT cpk_image_pull_authorities_reference_check
+    CHECK (credential_reference LIKE 'secret://%')
+);
+
+CREATE INDEX IF NOT EXISTS cpk_image_pull_authorities_active_scope
+  ON cpk_image_pull_authorities (workspace_id, registry, repository, status);
 
 CREATE TABLE IF NOT EXISTS cpk_operation_sessions (
   session_id text PRIMARY KEY,
@@ -427,6 +452,9 @@ POSTGRES_SCHEMA = _SQL_ENVIRONMENT.from_string(_POSTGRES_SCHEMA_TEMPLATE).render
     probe_kinds=tuple(ProbeKind),
     probe_outcomes=tuple(ProbeOutcome),
     registered_product_statuses=tuple(_RegisteredProductStatus),
+    registered_image_pull_authority_statuses=tuple(
+        _RegisteredImagePullAuthorityStatus
+    ),
     risk_levels=tuple(RiskLevel),
     settled_run_statuses=_SETTLED_RUN_STATUSES,
     started_run_statuses=_STARTED_RUN_STATUSES,

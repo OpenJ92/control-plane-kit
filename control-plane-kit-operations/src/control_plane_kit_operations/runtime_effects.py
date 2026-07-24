@@ -23,6 +23,7 @@ from control_plane_kit_core.products import (
     ProductReference,
 )
 from control_plane_kit_core.runtime_effects import (
+    ImagePullAuthority,
     RuntimeEffectKind,
     RuntimeEffectRequest,
     RuntimeEffectSource,
@@ -31,7 +32,10 @@ from control_plane_kit_core.runtime_effects import (
 from control_plane_kit_core.topology import DEFAULT_GRAPH_CODEC, DeploymentGraph
 from control_plane_kit_core.types import RuntimeKind
 from control_plane_kit_operations.coordinator import ActivityRealizationContext
-from control_plane_kit_operations.products import RegisteredProduct
+from control_plane_kit_operations.products import (
+    RegisteredImagePullAuthority,
+    RegisteredProduct,
+)
 from control_plane_kit_operations.workflows import InvalidOperationCommand
 
 
@@ -130,6 +134,10 @@ def _products_for_context(
             reference=product.reference,
             product=product.descriptor_document.product,
             socket_environment=node.socket_environment,
+            pull_authority=_pull_authority_for_product(
+                context.image_pull_authorities,
+                product.descriptor_document.product.image,
+            ),
         ),
     )
 
@@ -166,6 +174,31 @@ def _registered_product_for_node(
         if product.reference == reference:
             return product
     raise InvalidOperationCommand("runtime effect product reference is not registered")
+
+
+def _pull_authority_for_product(
+    authorities: tuple[RegisteredImagePullAuthority, ...],
+    image: object,
+) -> ImagePullAuthority | None:
+    if not hasattr(image, "registry") or not hasattr(image, "repository"):
+        return None
+    matches = tuple(
+        authority.authority
+        for authority in authorities
+        if authority.authority.permits(image)
+    )
+    if not matches:
+        return None
+    return sorted(
+        matches,
+        key=lambda authority: (
+            0 if authority.repository is None else len(authority.repository),
+            authority.registry,
+            authority.repository or "",
+            authority.credential_reference.reference_id,
+        ),
+        reverse=True,
+    )[0]
 
 
 def _product_identity(value: object) -> ProductIdentity:

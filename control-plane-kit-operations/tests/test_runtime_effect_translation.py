@@ -27,11 +27,16 @@ from control_plane_kit_core.products import (
     ProductRuntimeContract,
     ProviderRuntimePort,
 )
+from control_plane_kit_core.runtime_effects import ImagePullAuthority
 from control_plane_kit_core.topology import DeploymentGraph, Node, RuntimeRecord
 from control_plane_kit_core.types import BlockFamily, Protocol, RuntimeKind
 from control_plane_kit_operations.coordinator import ActivityRealizationContext
 from control_plane_kit_operations.lifecycle import ExecutionWorkerAuthority
-from control_plane_kit_operations.products import InlineDescriptorSource, RegisteredProduct
+from control_plane_kit_operations.products import (
+    InlineDescriptorSource,
+    RegisteredImagePullAuthority,
+    RegisteredProduct,
+)
 from control_plane_kit_operations.records import (
     ActivityEventRecord,
     ActivityPlanRecord,
@@ -77,6 +82,45 @@ class RuntimeEffectTranslationTests(unittest.TestCase):
                 ),
             ),
         )
+        self.assertIsNone(request.products[0].pull_authority)
+
+    def test_context_selects_matching_pull_authority_without_credentials(self) -> None:
+        context = _context(
+            pull_authorities=(
+                _registered_pull_authority(
+                    repository="openj92/control-plane-kit-servers"
+                ),
+            )
+        )
+
+        request = runtime_effect_request_for_context(context)
+
+        self.assertIsNotNone(request.products[0].pull_authority)
+        assert request.products[0].pull_authority is not None
+        self.assertEqual(
+            request.products[0].pull_authority.credential_reference.reference_id,
+            "secret://local/workspace-a/ghcr-read-token",
+        )
+        self.assertNotIn("ghp_", repr(request.descriptor()))
+
+    def test_context_prefers_most_specific_matching_pull_authority(self) -> None:
+        context = _context(
+            pull_authorities=(
+                _registered_pull_authority(repository=None),
+                _registered_pull_authority(
+                    repository="openj92/control-plane-kit-servers/hello-server",
+                    credential_reference="secret://local/workspace-a/hello-token",
+                ),
+            )
+        )
+
+        request = runtime_effect_request_for_context(context)
+
+        assert request.products[0].pull_authority is not None
+        self.assertEqual(
+            request.products[0].pull_authority.credential_reference.reference_id,
+            "secret://local/workspace-a/hello-token",
+        )
 
     def test_runtime_teardown_uses_base_graph_to_resolve_runtime_kind(self) -> None:
         activity = PlannedActivity(
@@ -99,6 +143,7 @@ def _context(
     *,
     activity: PlannedActivity | None = None,
     desired_graph: DeploymentGraph | None = None,
+    pull_authorities: tuple[RegisteredImagePullAuthority, ...] = (),
 ) -> ActivityRealizationContext:
     if activity is None:
         activity = PlannedActivity(ActivityId("activity-a"), StartNode(NodeTarget("api")))
@@ -151,6 +196,7 @@ def _context(
             created_at="2026-07-22T10:00:00Z",
         ),
         registered_products=(_registered_product(),),
+        image_pull_authorities=pull_authorities,
         authority=ExecutionWorkerAuthority(
             worker_id="worker-a",
             scopes=(PolicyScope.EXECUTION_OPERATE,),
@@ -233,6 +279,23 @@ def _registered_product() -> RegisteredProduct:
         source=InlineDescriptorSource(),
         imported_by="operator-a",
         imported_at="2026-07-22T09:00:00Z",
+    )
+
+
+def _registered_pull_authority(
+    *,
+    repository: str | None,
+    credential_reference: str = "secret://local/workspace-a/ghcr-read-token",
+) -> RegisteredImagePullAuthority:
+    return RegisteredImagePullAuthority.from_authority(
+        workspace_id="workspace-a",
+        authority=ImagePullAuthority(
+            registry="ghcr.io",
+            repository=repository,
+            credential_reference=credential_reference,
+        ),
+        admitted_by="operator-a",
+        admitted_at="2026-07-22T12:00:00Z",
     )
 
 
