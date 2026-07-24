@@ -38,6 +38,7 @@ _MAX_EVIDENCE_DEPTH = 4
 _MAX_EVIDENCE_ITEMS = 32
 _REGISTRY = re.compile(r"^[a-z0-9]+(?:[.-][a-z0-9]+)*(?::[0-9]{1,5})?$")
 _REPOSITORY_PART = re.compile(r"^[a-z0-9]+(?:[._-][a-z0-9]+)*$")
+_RUNTIME_AUTHORITY_REFERENCE = re.compile(r"^[a-z][a-z0-9._-]{0,127}$")
 _MAX_REPOSITORY_LENGTH = 255
 
 
@@ -49,6 +50,38 @@ class RuntimeEffectKind(StrEnum):
     """Closed runtime-effect intents interpreters can execute."""
 
     REALIZE_ACTIVITY = "realize-activity"
+
+
+@dataclass(frozen=True, order=True)
+class RuntimeAuthorityReference:
+    """Secret-free name for an admitted runtime authority."""
+
+    reference_id: str
+
+    def __post_init__(self) -> None:
+        _validate_runtime_authority_reference(self.reference_id)
+
+    def descriptor(self) -> dict[str, object]:
+        return {"reference_id": self.reference_id}
+
+
+class RuntimeAuthorityReferenceCodec:
+    """Strict codec for runtime authority references."""
+
+    def encode(self, reference: RuntimeAuthorityReference) -> dict[str, object]:
+        if not isinstance(reference, RuntimeAuthorityReference):
+            raise RuntimeEffectContractError(
+                "encode requires RuntimeAuthorityReference"
+            )
+        return reference.descriptor()
+
+    def decode(self, descriptor: Mapping[str, object]) -> RuntimeAuthorityReference:
+        mapping = _authority_mapping(descriptor, "runtime authority reference")
+        _require_authority_keys(mapping, _RUNTIME_AUTHORITY_REFERENCE_KEYS)
+        reference_id = mapping.get("reference_id")
+        if not isinstance(reference_id, str):
+            raise RuntimeEffectContractError("reference_id must be text")
+        return RuntimeAuthorityReference(reference_id)
 
 
 @dataclass(frozen=True, order=True)
@@ -457,6 +490,7 @@ _PRODUCT_MATERIAL_KEYS = frozenset(
 _IMAGE_PULL_AUTHORITY_KEYS = frozenset(
     {"registry", "repository", "credential_reference"}
 )
+_RUNTIME_AUTHORITY_REFERENCE_KEYS = frozenset({"reference_id"})
 
 
 def _require_keys(
@@ -677,4 +711,29 @@ def _validate_repository_scope(value: str) -> None:
     if not parts or any(not _REPOSITORY_PART.fullmatch(part) for part in parts):
         raise RuntimeEffectContractError(
             "repository must be a bounded lowercase OCI path"
+        )
+
+
+def _validate_runtime_authority_reference(value: str) -> None:
+    if not isinstance(value, str):
+        raise RuntimeEffectContractError("runtime authority reference must be text")
+    lowered = value.lower()
+    if any(
+        marker in lowered
+        for marker in (
+            "password",
+            "token",
+            "secret",
+            "private-key",
+            "private_key",
+            "begin-private-key",
+            "dockerconfigjson",
+        )
+    ):
+        raise RuntimeEffectContractError(
+            "runtime authority reference must not contain secret-shaped text"
+        )
+    if not _RUNTIME_AUTHORITY_REFERENCE.fullmatch(value):
+        raise RuntimeEffectContractError(
+            "runtime authority reference must be a bounded lowercase identifier"
         )
