@@ -23,8 +23,13 @@ from control_plane_kit_core.probe_intents import (
     ProbeKind,
     ProbeOutcome,
 )
+from control_plane_kit_core.types import RuntimeKind
 from control_plane_kit_core.types import WorkspaceLifecycle
 from control_plane_kit_operations.records import ObservationFreshness, ObservationStatus
+from control_plane_kit_operations.runtime_authorities import (
+    RegisteredRuntimeAuthorityStatus,
+    RuntimeAuthorityKind,
+)
 
 
 class PostgresConnection(Protocol):
@@ -152,6 +157,34 @@ CREATE TABLE IF NOT EXISTS cpk_image_pull_authorities (
 
 CREATE INDEX IF NOT EXISTS cpk_image_pull_authorities_active_scope
   ON cpk_image_pull_authorities (workspace_id, registry, repository, status);
+
+CREATE TABLE IF NOT EXISTS cpk_runtime_authorities (
+  registration_id text PRIMARY KEY,
+  workspace_id text NOT NULL REFERENCES cpk_workspaces(workspace_id),
+  authority_ref text NOT NULL,
+  runtime_kind text NOT NULL,
+  authority_kind text NOT NULL,
+  authority jsonb NOT NULL,
+  credential_references jsonb NOT NULL DEFAULT '{}'::jsonb,
+  admitted_by text NOT NULL,
+  admitted_at text NOT NULL,
+  status text NOT NULL,
+  metadata jsonb NOT NULL DEFAULT '{}'::jsonb,
+  CONSTRAINT cpk_runtime_authorities_status_check
+    CHECK (status IN ({{ registered_runtime_authority_statuses | sql_values }})),
+  CONSTRAINT cpk_runtime_authorities_runtime_kind_check
+    CHECK (runtime_kind IN ({{ runtime_kinds | sql_values }})),
+  CONSTRAINT cpk_runtime_authorities_authority_kind_check
+    CHECK (authority_kind IN ({{ runtime_authority_kinds | sql_values }})),
+  CONSTRAINT cpk_runtime_authorities_reference_check
+    CHECK (authority_ref ~ '^[a-z][a-z0-9._-]{0,127}$'),
+  CONSTRAINT cpk_runtime_authorities_credential_shape_check
+    CHECK (jsonb_typeof(credential_references) = 'object')
+);
+
+CREATE UNIQUE INDEX IF NOT EXISTS cpk_runtime_authorities_active_ref
+  ON cpk_runtime_authorities (workspace_id, authority_ref)
+  WHERE status = 'active';
 
 CREATE TABLE IF NOT EXISTS cpk_operation_sessions (
   session_id text PRIMARY KEY,
@@ -455,7 +488,10 @@ POSTGRES_SCHEMA = _SQL_ENVIRONMENT.from_string(_POSTGRES_SCHEMA_TEMPLATE).render
     registered_image_pull_authority_statuses=tuple(
         _RegisteredImagePullAuthorityStatus
     ),
+    registered_runtime_authority_statuses=tuple(RegisteredRuntimeAuthorityStatus),
     risk_levels=tuple(RiskLevel),
+    runtime_authority_kinds=tuple(RuntimeAuthorityKind),
+    runtime_kinds=tuple(RuntimeKind),
     settled_run_statuses=_SETTLED_RUN_STATUSES,
     started_run_statuses=_STARTED_RUN_STATUSES,
     workspace_lifecycles=tuple(WorkspaceLifecycle),

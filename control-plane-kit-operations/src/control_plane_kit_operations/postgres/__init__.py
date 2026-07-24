@@ -20,6 +20,9 @@ from control_plane_kit_operations.postgres.observed_state import (
     PostgresObservedStateStore,
 )
 from control_plane_kit_operations.postgres.product_store import RegisteredProductStore
+from control_plane_kit_operations.postgres.runtime_authority_store import (
+    RuntimeAuthorityStore,
+)
 from control_plane_kit_operations.postgres.stores import PostgresStoreBundle
 from control_plane_kit_operations.postgres.unit_of_work import (
     PostgresConnectionFactory,
@@ -41,6 +44,7 @@ __all__ = [
     "PostgresUnitOfWork",
     "PostgresWorkspaceStore",
     "RegisteredProductStore",
+    "RuntimeAuthorityStore",
     "TransactionalPostgresConnection",
     "UnitOfWorkStateError",
     "install_schema",
