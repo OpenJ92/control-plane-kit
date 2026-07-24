@@ -1,0 +1,24 @@
+{
+  "command": "docker run --rm -v /Users/jacobvartuli/Software/self/control-plane-kit/control-plane-kit-core:/pkg:ro -w /pkg -e PYTHONPATH=/pkg/src -e PYTHONDONTWRITEBYTECODE=1 python:3.14-slim python -m unittest tests.test_activity_plan",
+  "evidence": "The extracted core activity-plan unittest module directly proves the remaining frozen ActivityPlan laws without importing the frozen package. The successor tests preserve destructive risk, empty lookup, closed operation target, deterministic tie-break, dependency violation, review-risk, and runtime-target laws.",
+  "frozen_laws": [
+    "behavior.destructive-activity-requires-high-or-critical-risk",
+    "behavior.empty-plan-and-missing-lookup-are-explicit",
+    "behavior.every-closed-operation-accepts-only-its-typed-target",
+    "behavior.independent-activities-use-id-as-deterministic-tie-breaker",
+    "behavior.missing-duplicate-self-and-cycle-dependencies-fail-structurally",
+    "behavior.review-change-cannot-be-downgraded-to-low-risk",
+    "behavior.runtime-lifecycle-operations-use-runtime-targets"
+  ],
+  "schema": "cpk.successor-proof",
+  "status": "passing",
+  "successor_tests": [
+    "control-plane-kit-core.tests.test_activity_plan.ActivityPlanTests.test_destructive_activity_requires_high_or_critical_risk",
+    "control-plane-kit-core.tests.test_activity_plan.ActivityPlanTests.test_empty_plan_and_missing_lookup_are_explicit",
+    "control-plane-kit-core.tests.test_activity_plan.ActivityPlanTests.test_every_closed_operation_accepts_only_its_typed_target",
+    "control-plane-kit-core.tests.test_activity_plan.ActivityPlanTests.test_independent_activities_use_id_as_deterministic_tie_breaker",
+    "control-plane-kit-core.tests.test_activity_plan.ActivityPlanTests.test_missing_duplicate_self_and_cycle_dependencies_fail_structurally",
+    "control-plane-kit-core.tests.test_activity_plan.ActivityPlanTests.test_review_change_cannot_be_downgraded_to_low_risk",
+    "control-plane-kit-core.tests.test_activity_plan.ActivityPlanTests.test_runtime_lifecycle_operations_use_runtime_targets"
+  ]
+}

@@ -1,0 +1,345 @@
+{
+  "schema": "cpk.interpreter-runtime-dry-run",
+  "parent": "#896",
+  "issues": ["#897", "#898"],
+  "related": {
+    "interpreter_runtime_anchor": "#806",
+    "recursive_cpk_server": "#676",
+    "future_control_portal": "#882",
+    "activity_parent": "#869",
+    "activity_closeout": "#879"
+  },
+  "repositories": {
+    "coordination_core_operations": "OpenJ92/control-plane-kit",
+    "server_products": "OpenJ92/control-plane-kit-servers",
+    "interpreters": "OpenJ92/control-plane-kit-interpreters"
+  },
+  "status": "dry-run-complete",
+  "dispatcher_boundary": {
+    "decision": "operations owns runtime dispatch; cpk-server receives a configured dispatcher; interpreters own concrete effect implementations",
+    "shape": [
+      "cpk-server",
+      "configured operations application",
+      "ExecutionCoordinator",
+      "RuntimeInterpreterDispatcher",
+      "DockerRuntimeInterpreter",
+      "Python Docker SDK"
+    ],
+    "must_not_happen": [
+      "cpk-server must not own Docker behavior",
+      "core must not import Docker SDK or concrete runtime effect code",
+      "operations must not import concrete interpreter implementations except in explicit composition tests",
+      "product descriptors must not contain host Docker socket paths or runtime credentials"
+    ]
+  },
+  "topology_decision": {
+    "coherent": true,
+    "canonical_order": [
+      "#897",
+      "#898",
+      "#899",
+      "#900",
+      "#901",
+      "#902",
+      "#903",
+      "#904",
+      "#905",
+      "#906",
+      "#907",
+      "#908",
+      "#909",
+      "#910",
+      "#911"
+    ],
+    "ordering_laws": [
+      "#900 must precede #902 so operations owns dispatcher before Docker SDK implementation exists",
+      "#901 must precede #902 so the current operations-local adapter behavior is stabilized before replacing CLI mechanics",
+      "#904 and #905 are parallel after probe foundation because configuration and secret materialization are distinct runtime surfaces",
+      "#908 must follow #907 so cpk-server receives a proven dispatcher/interpreter seam instead of inventing one",
+      "#910 is a readiness dry run only; full recursive cpk-server acceptance remains #676"
+    ],
+    "adjustments_required_before_899": []
+  },
+  "source_inventory": {
+    "governing_artifacts": [
+      "artifacts/extraction/interpreter-runtime-batch-closeout.json",
+      "artifacts/extraction/supersession-reviews/extract-e-743-interpreter-runtime-handoff.json",
+      "artifacts/extraction/activity-870-runtime-law-inventory.json"
+    ],
+    "frozen_sources": [
+      "control_plane_kit/docker_runtime.py",
+      "tests/test_docker_runtime.py",
+      "tests/test_docker_effects.py",
+      "tests/test_probe_execution.py",
+      "tests/test_docker_ownership.py",
+      "tests/test_docker_retention.py",
+      "tests/test_docker_secrets.py",
+      "tests/test_docker_configuration.py",
+      "tests/test_host_publication.py",
+      "tests/test_control_http_client.py",
+      "tests/test_control_http_security.py",
+      "live_docker_publication.py",
+      "live_docker_secret.py",
+      "live_docker_configuration.py"
+    ],
+    "current_sources": [
+      "control-plane-kit-operations/src/control_plane_kit_operations/coordinator.py",
+      "control-plane-kit-operations/src/control_plane_kit_operations/docker_realization.py",
+      "control-plane-kit-operations/tests/test_docker_realization.py",
+      "control-plane-kit-servers/products/cpk_server/src/control_plane_kit_servers_cpk_server/server.py",
+      "control-plane-kit-servers/products/cpk_server/product.cpk.json",
+      "control-plane-kit-servers/products/hello_server/product.cpk.json",
+      "control-plane-kit-servers/products/http_active_router/product.cpk.json",
+      "control-plane-kit-servers/products/http_multiplexer/product.cpk.json",
+      "control-plane-kit-servers/products/postgres_server/product.cpk.json",
+      "activity-seeded-live-test.sh"
+    ],
+    "line_anchors": {
+      "activity_realization_context": "control-plane-kit-operations/src/control_plane_kit_operations/coordinator.py:94",
+      "activity_execution_adapter": "control-plane-kit-operations/src/control_plane_kit_operations/coordinator.py:219",
+      "execution_coordinator_adapter_injection": "control-plane-kit-operations/src/control_plane_kit_operations/coordinator.py:255",
+      "current_docker_client_protocol": "control-plane-kit-operations/src/control_plane_kit_operations/docker_realization.py:77",
+      "current_docker_cli_client": "control-plane-kit-operations/src/control_plane_kit_operations/docker_realization.py:252",
+      "current_docker_product_adapter": "control-plane-kit-operations/src/control_plane_kit_operations/docker_realization.py:396",
+      "current_cpk_server_unsupported_adapter_injection": "control-plane-kit-servers/products/cpk_server/src/control_plane_kit_servers_cpk_server/server.py:209",
+      "current_cpk_server_unsupported_adapter": "control-plane-kit-servers/products/cpk_server/src/control_plane_kit_servers_cpk_server/server.py:254"
+    }
+  },
+  "ownership_partition": {
+    "core_stays_pure": [
+      "RuntimeKind and runtime topology values",
+      "ActivityPlan operation values",
+      "Product runtime contracts",
+      "Verification contracts",
+      "Probe intent and observation vocabulary",
+      "Resource lifecycle vocabulary"
+    ],
+    "must_stay_in_operations": [
+      "ActivityRealizationContext",
+      "ActivityExecutionAdapter protocol",
+      "ActivityExecutionOutcome",
+      "FailureEvidence and BoundedEvidence records",
+      "ObservationRecord persistence model",
+      "RuntimeInterpreterDispatcher",
+      "UnitOfWork and Postgres transaction ownership",
+      "Coordinator scheduling and intent/result persistence",
+      "RegisteredProduct and store-backed descriptor admission"
+    ],
+    "can_move_to_interpreters": [
+      "Docker SDK realization client",
+      "Docker resource inspection normalization",
+      "Docker ownership-label checks if kept independent of durable stores",
+      "Docker health/probe execution clients",
+      "Docker configuration-artifact materialization",
+      "Docker secret materialization",
+      "Docker host publication realization",
+      "Docker endpoint observation extraction",
+      "Docker residue audit helpers"
+    ],
+    "cpk_server_composition_only": [
+      "Bootstrap parsing for explicit runtime authority",
+      "Construction or receipt of a configured RuntimeInterpreterDispatcher",
+      "Unsupported default when no runtime authority is configured",
+      "HTTP/MCP/auth process wrapper over the same operations services"
+    ],
+    "frozen_inspiration_only": [
+      "DockerRuntimeInterpreter.up",
+      "DockerRuntimeInterpreter.down",
+      "RuntimeState as the primary workflow state",
+      "RuntimePlan as a bypass around durable ActivityPlan execution"
+    ]
+  },
+  "law_cards": [
+    {
+      "id": "runtime.dispatch.from-pinned-context",
+      "classification": "operations dispatcher law",
+      "sources": ["control-plane-kit-operations/src/control_plane_kit_operations/coordinator.py", "control-plane-kit-operations/src/control_plane_kit_operations/docker_realization.py"],
+      "observable_law": "Runtime kind dispatch is derived from the pinned base or desired graph in ActivityRealizationContext, not from mutable current graph truth.",
+      "negative_cases": ["missing interpreter returns unsupported evidence", "non-Docker runtime is not sent to DockerRuntimeInterpreter"],
+      "next_issue": "#900"
+    },
+    {
+      "id": "runtime.network.ensure-owned",
+      "classification": "interpreter SDK client law",
+      "sources": ["control-plane-kit-operations/tests/test_docker_realization.py", "tests/test_docker_effects.py"],
+      "observable_law": "StartRuntime and ReconcileRuntime inspect or create exactly the owned Docker network with workspace, runtime, graph, plan, and owner labels.",
+      "negative_cases": ["foreign network label conflict fails before mutation"],
+      "next_issue": "#902"
+    },
+    {
+      "id": "runtime.container.lifecycle",
+      "classification": "interpreter SDK client law",
+      "sources": ["control-plane-kit-operations/tests/test_docker_realization.py", "tests/test_docker_runtime.py", "tests/test_docker_effects.py"],
+      "observable_law": "StartNode pulls digest-pinned OCI material, reuses owned running containers, restarts owned stopped containers, and separates stop from removal.",
+      "negative_cases": ["unowned container collision fails before pull or run", "compute removal is explicit and separate from stop"],
+      "next_issue": "#902"
+    },
+    {
+      "id": "runtime.image.digest-pinned",
+      "classification": "interpreter SDK client law",
+      "sources": ["control-plane-kit-operations/src/control_plane_kit_operations/docker_realization.py", "control-plane-kit-servers/products/hello_server/product.cpk.json"],
+      "observable_law": "Runtime execution accepts immutable image references and rejects non-digest OCI image material for acceptance.",
+      "negative_cases": ["tag-only image is unsupported for realization acceptance", "node metadata image mismatch conflicts before mutation"],
+      "next_issue": "#902"
+    },
+    {
+      "id": "runtime.edge.environment-binding",
+      "classification": "interpreter SDK client law",
+      "sources": ["control-plane-kit-operations/tests/test_docker_realization.py", "control-plane-kit-servers/products/http_active_router/product.cpk.json", "control-plane-kit-servers/products/http_multiplexer/product.cpk.json"],
+      "observable_law": "Requirement socket environment values are derived from graph edges and product runtime contracts, not product-specific Docker branches.",
+      "negative_cases": ["unconnected required sockets fail before runtime", "optional observer socket remains absent when not connected"],
+      "next_issue": "#901"
+    },
+    {
+      "id": "runtime.retained-volume.ownership",
+      "classification": "interpreter SDK client law",
+      "sources": ["control-plane-kit-operations/tests/test_docker_realization.py", "tests/test_docker_retention.py"],
+      "observable_law": "Retained data mounts create or reuse only owned-compatible volumes and teardown preserves retained data unless explicit data destruction is requested.",
+      "negative_cases": ["foreign volume collision fails before pull or run", "retained data is not removed as compute cleanup"],
+      "next_issue": "#902"
+    },
+    {
+      "id": "runtime.secret.environment",
+      "classification": "interpreter config/secret materialization law",
+      "sources": ["control-plane-kit-operations/tests/test_docker_realization.py", "tests/test_docker_secrets.py"],
+      "observable_law": "Secret environment delivery resolves only at the runtime boundary and fails before mutation when a resolver is missing or denies access.",
+      "negative_cases": ["secret bytes never enter descriptors, evidence, logs, labels, or command arguments"],
+      "next_issue": "#905"
+    },
+    {
+      "id": "runtime.secret.file",
+      "classification": "interpreter config/secret materialization law",
+      "sources": ["tests/test_docker_secrets.py", "live_docker_secret.py"],
+      "observable_law": "Secret-file materialization writes secret bytes only through bounded runtime transport and preserves owned volumes for uncertain recovery.",
+      "negative_cases": ["missing or denied secret fails before volume mutation", "container start failure cleans owned secret volume only when result is known"],
+      "next_issue": "#905"
+    },
+    {
+      "id": "runtime.configuration.artifact",
+      "classification": "interpreter config/secret materialization law",
+      "sources": ["tests/test_docker_configuration.py", "live_docker_configuration.py"],
+      "observable_law": "Configuration artifacts are materialized before container start as immutable read-only owned resources with digest verification and deterministic replay.",
+      "negative_cases": ["wrong digest fails without starting", "partial materialization is uncertain and cleanup is artifact-only"],
+      "next_issue": "#904"
+    },
+    {
+      "id": "runtime.health.http",
+      "classification": "interpreter probe/verification law",
+      "sources": ["control-plane-kit-operations/tests/test_docker_realization.py", "tests/test_probe_execution.py", "tests/test_verification_adapters.py"],
+      "observable_law": "HTTP health checks are bounded, redirect-free, retry-aware, and status-driven against the provider endpoint selected by the verification contract.",
+      "negative_cases": ["failed health does not rewrite process-start observation", "missing endpoint fails before probe attempt"],
+      "next_issue": "#903"
+    },
+    {
+      "id": "runtime.health.postgres",
+      "classification": "interpreter probe/verification law",
+      "sources": ["control-plane-kit-operations/tests/test_docker_realization.py", "tests/test_probe_execution.py"],
+      "observable_law": "Postgres readiness is semantic query readiness and must not be represented as HTTP health or mere TCP reachability.",
+      "negative_cases": ["unreachable Postgres does not run HTTP", "deadline exhaustion records transport evidence"],
+      "next_issue": "#903"
+    },
+    {
+      "id": "runtime.host-publication",
+      "classification": "interpreter host-publication law",
+      "sources": ["tests/test_host_publication.py", "tests/test_docker_effects.py", "live_docker_publication.py"],
+      "observable_law": "Host publication is explicit typed graph material; private-only is the default and UDP/TCP publication semantics remain distinct.",
+      "negative_cases": ["fixed port collisions fail at authoring", "Docker private endpoint is distinct from host-observed endpoint"],
+      "next_issue": "#906"
+    },
+    {
+      "id": "runtime.endpoint.observations",
+      "classification": "interpreter host-publication law",
+      "sources": ["control-plane-kit-core/src/control_plane_kit_core/probe_intents.py", "control-plane-kit-operations/src/control_plane_kit_operations/records.py"],
+      "observable_law": "Runtime endpoint observations are recorded as operational evidence and do not rewrite desired graph truth.",
+      "negative_cases": ["process start is not health", "host-local and public endpoint facts are separate"],
+      "next_issue": "#906"
+    },
+    {
+      "id": "runtime.ownership.conflict",
+      "classification": "interpreter SDK client law",
+      "sources": ["tests/test_docker_ownership.py", "control-plane-kit-operations/tests/test_docker_realization.py"],
+      "observable_law": "Existing Docker resources may be reused only when stable owner/workspace/runtime/node/product/descriptor/data labels are compatible.",
+      "negative_cases": ["changed material conflicts instead of retargeting same name", "unowned name collision is never mutated"],
+      "next_issue": "#902"
+    },
+    {
+      "id": "runtime.failure.uncertainty",
+      "classification": "interpreter SDK client law",
+      "sources": ["tests/test_docker_effects.py", "tests/test_docker_configuration.py", "tests/test_docker_secrets.py"],
+      "observable_law": "Timeouts and unknown result windows become explicit uncertain outcomes without publishing command output or blindly replaying destructive effects.",
+      "negative_cases": ["failure after known removal is uncertain", "partial materialization preserves owned evidence for recovery"],
+      "next_issue": "#902"
+    },
+    {
+      "id": "runtime.cleanup.residue",
+      "classification": "interpreter SDK client law",
+      "sources": ["activity-seeded-live-test.sh", "control-plane-kit-servers/scripts/docker_residue_audit.sh"],
+      "observable_law": "Cleanup removes only proven-owned control-plane-kit runtime resources and refuses broad Docker prune behavior.",
+      "negative_cases": ["Pottery Factory and unrelated resources are preserved", "retained volumes survive compute teardown"],
+      "next_issue": "#907"
+    },
+    {
+      "id": "runtime.cpk-server.authority",
+      "classification": "cpk-server composition law",
+      "sources": ["control-plane-kit-servers/products/cpk_server/src/control_plane_kit_servers_cpk_server/server.py", "docs/roadmap/0009-control-plane-instance-block-and-recursive-navigation.md"],
+      "observable_law": "Hosted cpk-server defaults to unsupported runtime execution and may receive a dispatcher only through explicit runtime authority configuration.",
+      "negative_cases": ["cpk-server image does not mutate Docker merely because it is cpk-server", "host Docker socket paths do not enter product descriptors"],
+      "next_issue": "#908"
+    },
+    {
+      "id": "runtime.agent.future-authority",
+      "classification": "future DockerRuntimeAgent law",
+      "sources": ["docs/roadmap/0009-control-plane-instance-block-and-recursive-navigation.md"],
+      "observable_law": "A DockerRuntimeAgent may become the preferred authority holder for recursive/self-hosted Docker mutation instead of direct socket mount inside every cpk-server.",
+      "negative_cases": ["runtime authority is not implicit", "agent route security must be authenticated and bounded"],
+      "next_issue": "#910"
+    },
+    {
+      "id": "runtime.recursive.cpk-server",
+      "classification": "future recursive cpk-server law",
+      "sources": ["#676", "control-plane-kit-servers/products/cpk_server/product.cpk.json"],
+      "observable_law": "Parent cpk-server admits child cpk-server as an ordinary product descriptor and does not own child graph truth or activity history.",
+      "negative_cases": ["no privileged self-registration", "no recursive parent proxy requirement"],
+      "next_issue": "#910"
+    },
+    {
+      "id": "runtime.cloud.future",
+      "classification": "future cloud runtime law",
+      "sources": ["docs/design/0001-control-plane-kit-architecture.md", "#806"],
+      "observable_law": "AWS, GCP, Kubernetes, and other runtimes interpret the same core topology and activity language through explicit runtime authority and substrate-specific adapters.",
+      "negative_cases": ["Docker behavior must not become the graph model", "cloud credentials do not enter descriptors"],
+      "next_issue": "#911"
+    }
+  ],
+  "docker_sdk_coverage": {
+    "network_lifecycle": "covered by Docker SDK network inspect/create/remove",
+    "container_lifecycle": "covered by Docker SDK image pull, container create/start/stop/remove, network aliases, labels, mounts",
+    "volume_lifecycle": "covered by Docker SDK volume inspect/create/remove and labels",
+    "host_publication": "covered by Docker SDK port bindings; explicit typed transport mapping must be preserved",
+    "inspection": "covered by Docker SDK object attrs; normalize to current DockerResourceInspection",
+    "logs": "available but must remain bounded if surfaced",
+    "timeouts": "Docker SDK supports request timeouts at client/API layers but interpreter must normalize uncertain windows explicitly",
+    "secret_stdin_materialization": "not directly solved by high-level API; likely requires exec/helper-container or archive APIs with strict no-argv proof",
+    "configuration_materialization": "not directly solved by high-level API; likely requires volume helper, archive APIs, or a constrained helper container"
+  },
+  "implementation_hazards": [
+    "Do not move ActivityRealizationContext into interpreters; it is operations-owned durable material.",
+    "Do not make DockerRuntimeInterpreter expose old up/down as the production workflow path.",
+    "Do not let cpk-server import Docker SDK directly as its execution model.",
+    "Do not use product-specific branches for hello, router, multiplexer, cpk-server, or postgres-server.",
+    "Do not weaken secret/config laws when replacing CLI helpers with Docker SDK mechanics.",
+    "Do not treat Docker socket mount as ordinary descriptor data."
+  ],
+  "next_handoff": {
+    "issue": "#899",
+    "ready": true,
+    "summary": "Scaffold control-plane-kit-interpreters with Docker-first unittest harness and architecture boundaries. Keep the package root lightweight. Do not implement Docker SDK behavior until #900 and #901 land.",
+    "must_read": [
+      "artifacts/extraction/interpreter-runtime-dry-run.json",
+      "control-plane-kit-operations/src/control_plane_kit_operations/coordinator.py",
+      "control-plane-kit-operations/src/control_plane_kit_operations/docker_realization.py",
+      "control-plane-kit-operations/tests/test_docker_realization.py",
+      "control-plane-kit-servers/products/cpk_server/src/control_plane_kit_servers_cpk_server/server.py"
+    ]
+  }
+}

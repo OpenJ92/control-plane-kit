@@ -1,0 +1,165 @@
+{
+  "schema": "cpk.extract-f.cpk-server-handoff-inventory",
+  "issue": "#804",
+  "source_issue": "#743",
+  "source_artifacts": [
+    "artifacts/extraction/interpreter-runtime-batch-closeout.json",
+    "artifacts/extraction/supersession-reviews/extract-e-743-interpreter-runtime-handoff.json",
+    "docs/learning/extraction/extract-e-run-0001.md"
+  ],
+  "families": {
+    "test_block_control_fastapi": 8,
+    "test_block_control_state": 6
+  },
+  "target_topology": [
+    "#813",
+    "#814",
+    "#815",
+    "#816",
+    "#817"
+  ],
+  "laws": [
+    "A reviewed handoff is not migration evidence.",
+    "Hello must not satisfy cpk-server process laws.",
+    "Core must not import FastAPI, server process code, stores, or runtime mutation.",
+    "cpk-server owns the runnable process wrapper and composes core services through one application boundary.",
+    "HTTP and MCP must delegate to the same command/read services and must not create duplicate truth."
+  ],
+  "law_cards": [
+    {
+      "law": "behavior.configured-token-protects-control-routes",
+      "reference": "tests.test_block_control_fastapi.BlockControlFastAPITests.test_configured_token_protects_control_routes",
+      "family": "test_block_control_fastapi",
+      "owner": "control-plane-kit-servers/cpk_server",
+      "target_issue": "#814",
+      "behavioral_law": "Configured control-route tokens protect mutation endpoints and fail closed without valid authorization.",
+      "acceptance_boundary": "cpk-server HTTP process boundary"
+    },
+    {
+      "law": "behavior.control-routes-can-be-called-without-token-when-unconfigured",
+      "reference": "tests.test_block_control_fastapi.BlockControlFastAPITests.test_control_routes_can_be_called_without_token_when_unconfigured",
+      "family": "test_block_control_fastapi",
+      "owner": "control-plane-kit-servers/cpk_server",
+      "target_issue": "#814",
+      "behavioral_law": "Unconfigured local control-route mode remains callable for development fixtures without silently implying production authorization.",
+      "acceptance_boundary": "cpk-server HTTP process boundary"
+    },
+    {
+      "law": "behavior.execution-auth-does-not-protect-ordinary-data-routes",
+      "reference": "tests.test_block_control_fastapi.BlockControlFastAPITests.test_execution_auth_does_not_protect_ordinary_data_routes",
+      "family": "test_block_control_fastapi",
+      "owner": "control-plane-kit-servers/cpk_server",
+      "target_issue": "#814",
+      "behavioral_law": "Execution-control authorization is scoped to control routes and must not distort ordinary application data routes.",
+      "acceptance_boundary": "cpk-server HTTP process boundary"
+    },
+    {
+      "law": "behavior.execution-mode-requires-auth-configuration",
+      "reference": "tests.test_block_control_fastapi.BlockControlFastAPITests.test_execution_mode_requires_auth_configuration",
+      "family": "test_block_control_fastapi",
+      "owner": "control-plane-kit-servers/cpk_server",
+      "target_issue": "#813",
+      "behavioral_law": "Execution-capable cpk-server composition requires explicit authentication configuration before exposing mutation routes.",
+      "acceptance_boundary": "cpk-server process composition"
+    },
+    {
+      "law": "behavior.execution-mutation-body-is-bounded-before-application",
+      "reference": "tests.test_block_control_fastapi.BlockControlFastAPITests.test_execution_mutation_body_is_bounded_before_application",
+      "family": "test_block_control_fastapi",
+      "owner": "control-plane-kit-servers/cpk_server",
+      "target_issue": "#814",
+      "behavioral_law": "Mutation request bodies are bounded at the process boundary before reaching application services.",
+      "acceptance_boundary": "cpk-server HTTP process boundary"
+    },
+    {
+      "law": "behavior.execution-mutations-require-identity-replay-and-conflict",
+      "reference": "tests.test_block_control_fastapi.BlockControlFastAPITests.test_execution_mutations_require_identity_replay_and_conflict",
+      "family": "test_block_control_fastapi",
+      "owner": "control-plane-kit-servers/cpk_server",
+      "target_issue": "#813",
+      "behavioral_law": "Runtime mutation commands preserve command identity, exact replay, and conflict behavior through one application service boundary.",
+      "acceptance_boundary": "cpk-server service composition"
+    },
+    {
+      "law": "behavior.observers-route-mutates-state",
+      "reference": "tests.test_block_control_fastapi.BlockControlFastAPITests.test_observers_route_mutates_state",
+      "family": "test_block_control_fastapi",
+      "owner": "control-plane-kit-servers/cpk_server",
+      "target_issue": "#814",
+      "behavioral_law": "Observer mutation routes update process state through the same command surface that HTTP and MCP expose.",
+      "acceptance_boundary": "cpk-server HTTP and MCP process boundary"
+    },
+    {
+      "law": "behavior.unknown-active-target-returns-bad-request",
+      "reference": "tests.test_block_control_fastapi.BlockControlFastAPITests.test_unknown_active_target_returns_bad_request",
+      "family": "test_block_control_fastapi",
+      "owner": "control-plane-kit-servers/cpk_server",
+      "target_issue": "#814",
+      "behavioral_law": "Unknown active-target mutation requests fail closed at the process boundary with a bounded client error.",
+      "acceptance_boundary": "cpk-server HTTP process boundary"
+    },
+    {
+      "law": "behavior.capability-payload-uses-descriptors",
+      "reference": "tests.test_block_control_state.BlockControlStateTests.test_capability_payload_uses_descriptors",
+      "family": "test_block_control_state",
+      "owner": "control-plane-kit-servers/cpk_server",
+      "target_issue": "#816",
+      "behavioral_law": "Advertised control capabilities use descriptor values and remain safe to publish as endpoint/product contract data.",
+      "acceptance_boundary": "cpk-server product descriptor and endpoint contract"
+    },
+    {
+      "law": "behavior.control-state-is-backed-by-runtime-contract",
+      "reference": "tests.test_block_control_state.BlockControlStateTests.test_control_state_is_backed_by_runtime_contract",
+      "family": "test_block_control_state",
+      "owner": "control-plane-kit-servers/cpk_server",
+      "target_issue": "#816",
+      "behavioral_law": "Control state is exposed through a stable runtime contract instead of ad hoc process metadata.",
+      "acceptance_boundary": "cpk-server product descriptor and endpoint contract"
+    },
+    {
+      "law": "behavior.observer-mutation-updates-observer-state",
+      "reference": "tests.test_block_control_state.BlockControlStateTests.test_observer_mutation_updates_observer_state",
+      "family": "test_block_control_state",
+      "owner": "control-plane-kit-servers/cpk_server",
+      "target_issue": "#813",
+      "behavioral_law": "Observer mutation changes process-owned observer state without creating a second graph truth.",
+      "acceptance_boundary": "cpk-server process composition"
+    },
+    {
+      "law": "behavior.replacing-targets-clears-stale-active-target",
+      "reference": "tests.test_block_control_state.BlockControlStateTests.test_replacing_targets_clears_stale_active_target",
+      "family": "test_block_control_state",
+      "owner": "control-plane-kit-servers/cpk_server",
+      "target_issue": "#813",
+      "behavioral_law": "Replacing target sets clears stale active-target state rather than preserving an invalid pointer.",
+      "acceptance_boundary": "cpk-server process composition"
+    },
+    {
+      "law": "behavior.status-and-log-providers-are-used-when-present",
+      "reference": "tests.test_block_control_state.BlockControlStateTests.test_status_and_log_providers_are_used_when_present",
+      "family": "test_block_control_state",
+      "owner": "control-plane-kit-servers/cpk_server",
+      "target_issue": "#817",
+      "behavioral_law": "Live cpk-server status and log providers are surfaced when configured and remain observable in smoke evidence.",
+      "acceptance_boundary": "cpk-server live process smoke"
+    },
+    {
+      "law": "behavior.target-switch-rejects-unknown-targets",
+      "reference": "tests.test_block_control_state.BlockControlStateTests.test_target_switch_rejects_unknown_targets",
+      "family": "test_block_control_state",
+      "owner": "control-plane-kit-servers/cpk_server",
+      "target_issue": "#817",
+      "behavioral_law": "Live target-switch attempts reject unknown targets and leave readiness evidence inspectable.",
+      "acceptance_boundary": "cpk-server live process smoke"
+    }
+  ],
+  "next_issue_handoff": {
+    "issue": "#649",
+    "requirements": [
+      "Create the server repository with room for products/cpk_server but do not implement cpk-server yet.",
+      "Record that #813 through #817 own the 14 control-process laws.",
+      "Preserve core import isolation: core never imports control-plane-kit-servers.",
+      "Keep Hello and cpk-server law ownership distinct."
+    ]
+  }
+}

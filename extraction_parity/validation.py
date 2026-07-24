@@ -25,6 +25,8 @@ class ValidationPolicy(str, Enum):
 
 EVIDENCE_SCHEMA = "cpk.successor-evidence-index"
 REPORT_SCHEMA = "cpk.parity-validation-report"
+CORE_CLOSEOUT_REPORT_SCHEMA = "cpk.required-core-parity-closeout"
+CORE_FAMILY_INVENTORY_SCHEMA = "cpk.required-core-family-inventory"
 MAXIMUM_INPUT_BYTES = 16 * 1024 * 1024
 MAXIMUM_TEXT_BYTES = 512
 _DIGEST = re.compile(r"sha256:[0-9a-f]{64}")
@@ -166,6 +168,198 @@ def validate_parity(
             "findings": len(findings),
             "by_owner": dict(sorted(owner_counts.items())),
         },
+        "findings": findings,
+    }
+
+
+def _entry_reference(entry: dict[str, object]) -> dict[str, str]:
+    return {
+        "kind": str(entry["kind"]),
+        "reference": str(entry["reference"]),
+        "law": str(entry["law"]),
+        "owner_kind": str(entry["owner_kind"]),
+        "owner": str(entry["owner"]),
+    }
+
+
+def _family_for_reference(reference: str) -> str:
+    if reference.startswith("tests."):
+        parts = reference.split(".")
+        if len(parts) >= 2 and parts[1]:
+            return parts[1]
+    if reference.startswith("demo."):
+        return "demo"
+    if reference.startswith("validation."):
+        return "validation"
+    return reference.split(".", maxsplit=1)[0]
+
+
+def _decode_core_closeout_entry(value: object) -> dict[str, str]:
+    expected = {"kind", "reference", "law", "owner_kind", "owner"}
+    if not isinstance(value, dict) or set(value) != expected:
+        raise ValidationError("required-core inventory entry is not closed")
+    return {
+        "kind": _text(value["kind"], "entry.kind"),
+        "reference": _text(value["reference"], "entry.reference"),
+        "law": _text(value["law"], "entry.law"),
+        "owner_kind": _text(value["owner_kind"], "entry.owner_kind"),
+        "owner": _text(value["owner"], "entry.owner"),
+    }
+
+
+def inventory_unmapped_required_core_families(
+    closeout_report: dict[str, object],
+) -> dict[str, object]:
+    if closeout_report.get("schema") != CORE_CLOSEOUT_REPORT_SCHEMA:
+        raise ValidationError("unsupported required-core closeout schema")
+    entries = closeout_report.get("incomplete_required_core_entries")
+    if not isinstance(entries, list):
+        raise ValidationError("incomplete required-core entries must be a list")
+
+    laws: set[str] = set()
+    grouped: dict[str, list[dict[str, str]]] = {}
+    for raw_entry in entries:
+        entry = _decode_core_closeout_entry(raw_entry)
+        if entry["law"] in laws:
+            raise ValidationError("required-core law identities must be unique")
+        laws.add(entry["law"])
+        grouped.setdefault(_family_for_reference(entry["reference"]), []).append(entry)
+
+    families = []
+    for family, family_entries in grouped.items():
+        ordered_entries = sorted(
+            family_entries,
+            key=lambda entry: (entry["kind"], entry["reference"], entry["law"]),
+        )
+        families.append(
+            {
+                "family": family,
+                "count": len(ordered_entries),
+                "entries": ordered_entries,
+            }
+        )
+    families.sort(key=lambda family: (-int(family["count"]), str(family["family"])))
+    return {
+        "schema": CORE_FAMILY_INVENTORY_SCHEMA,
+        "valid": True,
+        "counts": {
+            "entries": len(entries),
+            "families": len(families),
+        },
+        "families": families,
+    }
+
+
+def validate_required_core_closeout(
+    manifest: dict[str, object],
+    ownership: dict[str, object],
+    demos: dict[str, object],
+    evidence_index: dict[str, object],
+) -> dict[str, object]:
+    """Validate the EXTRACT.E required-core parity slice.
+
+    This is deliberately narrower than ``MIGRATION_COMPLETE``: it requires the
+    core-owned required entries to be complete while keeping Hello, system, and
+    deferred product/server work visible for later milestones.
+    """
+
+    foundation = validate_parity(
+        manifest,
+        ownership,
+        demos,
+        evidence_index,
+        policy=ValidationPolicy.FOUNDATION,
+    )
+    evidence = {record["id"]: record for record in decode_evidence_index(evidence_index)["evidence"]}
+    findings = list(foundation["findings"])
+    required_core = 0
+    required_non_core = 0
+    completed_required_core = 0
+    incomplete_required_core = 0
+    passing_core_successors = 0
+    failed_core_successors = 0
+    reviewed_core_supersessions = 0
+    deferred_entries: list[dict[str, str]] = []
+    incomplete_core_entries: list[dict[str, str]] = []
+
+    for entry in decode_manifest(manifest)["entries"]:
+        if entry["supersession"] is not None and entry["owner_kind"] != "core":
+            findings.append(
+                _finding(
+                    "non_core_supersession_in_core_closeout",
+                    entry["kind"],
+                    entry["reference"],
+                    "core closeout cannot supersede non-core behavior",
+                )
+            )
+        if entry["migration_state"] == "deferred":
+            deferred_entries.append(_entry_reference(entry))
+        if entry["migration_state"] != "required":
+            continue
+        if entry["owner_kind"] != "core":
+            required_non_core += 1
+            continue
+        required_core += 1
+        reviewed_core_supersessions += entry["supersession"] is not None
+        complete, passing, failed = _completion(entry, evidence, findings)
+        passing_core_successors += passing
+        failed_core_successors += failed
+        if complete:
+            completed_required_core += 1
+        else:
+            incomplete_required_core += 1
+            incomplete_core_entries.append(_entry_reference(entry))
+            if failed:
+                findings.append(
+                    _finding(
+                        "failed_core_evidence",
+                        entry["kind"],
+                        entry["reference"],
+                        "no passing successor evidence",
+                    )
+                )
+            findings.append(
+                _finding(
+                    "required_core_without_completion",
+                    entry["kind"],
+                    entry["reference"],
+                    "passing successor or reviewed supersession is required",
+                )
+            )
+
+    findings.sort(
+        key=lambda finding: (
+            finding["code"],
+            finding["kind"],
+            finding["reference"],
+            finding["detail"],
+        )
+    )
+    return {
+        "schema": CORE_CLOSEOUT_REPORT_SCHEMA,
+        "reference": manifest["reference"],
+        "valid": not findings and incomplete_required_core == 0,
+        "required_core_complete": incomplete_required_core == 0 and not findings,
+        "counts": {
+            "entries": len(manifest["entries"]),
+            "required_core": required_core,
+            "required_non_core": required_non_core,
+            "deferred": len(deferred_entries),
+            "completed_required_core": completed_required_core,
+            "incomplete_required_core": incomplete_required_core,
+            "passing_core_successors": passing_core_successors,
+            "failed_core_successors": failed_core_successors,
+            "reviewed_core_supersessions": reviewed_core_supersessions,
+            "findings": len(findings),
+        },
+        "deferred_entries": sorted(
+            deferred_entries,
+            key=lambda entry: (entry["kind"], entry["reference"]),
+        ),
+        "incomplete_required_core_entries": sorted(
+            incomplete_core_entries,
+            key=lambda entry: (entry["kind"], entry["reference"]),
+        ),
         "findings": findings,
     }
 

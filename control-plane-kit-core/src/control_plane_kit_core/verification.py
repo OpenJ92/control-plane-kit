@@ -8,6 +8,7 @@ from re import fullmatch
 from typing import Mapping, TypeAlias
 from urllib.parse import urlsplit
 
+from control_plane_kit_core.secrets import SecretReference
 from control_plane_kit_core.types import Protocol
 
 
@@ -48,6 +49,54 @@ class VerificationOutcome(StrEnum):
     TIMED_OUT = "timed-out"
     MALFORMED = "malformed"
     REJECTED = "rejected"
+
+
+@dataclass(frozen=True)
+class PostgresPasswordAuthentication:
+    """Secret-free authentication contract for semantic Postgres verification."""
+
+    database: str
+    username: str
+    password_reference: SecretReference
+
+    def __post_init__(self) -> None:
+        _validate_identity(self.database, "Postgres database")
+        _validate_identity(self.username, "Postgres username")
+        if not isinstance(self.password_reference, SecretReference):
+            raise TypeError("Postgres password authentication requires SecretReference")
+
+    def descriptor(self) -> dict[str, object]:
+        return {
+            "kind": "password",
+            "database": self.database,
+            "username": self.username,
+            "password_reference_id": self.password_reference.reference_id,
+        }
+
+    @classmethod
+    def from_descriptor(cls, value: object) -> "PostgresPasswordAuthentication":
+        descriptor = _mapping(value, "Postgres authentication")
+        _require_keys(
+            descriptor,
+            {"kind", "database", "username", "password_reference_id"},
+            "Postgres authentication",
+        )
+        if _text(descriptor, "kind") != "password":
+            raise VerificationContractError("unknown Postgres authentication variant")
+        try:
+            return cls(
+                database=_text(descriptor, "database"),
+                username=_text(descriptor, "username"),
+                password_reference=SecretReference(
+                    _text(descriptor, "password_reference_id")
+                ),
+            )
+        except (TypeError, ValueError) as error:
+            if isinstance(error, VerificationContractError):
+                raise
+            raise VerificationContractError(
+                "Postgres authentication descriptor is malformed"
+            ) from error
 
 
 @dataclass(frozen=True)
@@ -175,6 +224,7 @@ class PostgresQueryCheck:
     check_id: str
     provider_socket: str
     operation: PostgresVerificationOperation = PostgresVerificationOperation.SELECT_ONE
+    authentication: PostgresPasswordAuthentication | None = None
     policy: VerificationPolicy = field(default_factory=VerificationPolicy)
 
     def __post_init__(self) -> None:
@@ -183,11 +233,23 @@ class PostgresQueryCheck:
             raise TypeError(
                 "Postgres verification operation must be PostgresVerificationOperation"
             )
+        if self.authentication is not None and not isinstance(
+            self.authentication,
+            PostgresPasswordAuthentication,
+        ):
+            raise TypeError(
+                "Postgres verification authentication must be typed or absent"
+            )
 
     def descriptor(self) -> dict[str, object]:
         return {
             **_base_descriptor("postgres-query", self),
             "operation": self.operation.value,
+            "authentication": (
+                None
+                if self.authentication is None
+                else self.authentication.descriptor()
+            ),
         }
 
 
@@ -497,10 +559,18 @@ def verification_check_from_descriptor(value: object) -> VerificationCheck:
                     record_type=DnsRecordType(_text(descriptor, "record_type")),
                 )
             case "postgres-query":
-                _require_keys(descriptor, {"kind", "check_id", "provider_socket", "policy", "operation"}, "Postgres verification check")
+                _require_keys(descriptor, {"kind", "check_id", "provider_socket", "policy", "operation", "authentication"}, "Postgres verification check")
+                authentication = descriptor["authentication"]
                 return PostgresQueryCheck(
                     **common,
                     operation=PostgresVerificationOperation(_text(descriptor, "operation")),
+                    authentication=(
+                        None
+                        if authentication is None
+                        else PostgresPasswordAuthentication.from_descriptor(
+                            authentication
+                        )
+                    ),
                 )
             case "redis":
                 _require_keys(descriptor, {"kind", "check_id", "provider_socket", "policy", "operation"}, "Redis verification check")

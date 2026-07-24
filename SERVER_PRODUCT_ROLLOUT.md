@@ -38,7 +38,8 @@ The initial extraction has a deliberately narrow completion boundary:
 
 ```text
 complete generic control-plane-kit-core
-  + core-owned CPI OCI image and external self descriptor
+  + generic control-plane application services and HTTP/MCP contract language
+  + external cpk-server product package and descriptor
   + one external Hello server product
   + isomorphic unit and live-demo evidence
 ```
@@ -46,6 +47,51 @@ complete generic control-plane-kit-core
 No other server product is part of the bootstrap. CoreDNS, routers, gateways,
 proxies, resilience products, discovery, telemetry, and the remaining catalogue
 are accumulated only after this boundary is green and reviewable.
+
+After the cpk-server bootstrap image is published, the first accumulation lane
+is intentionally small and exists to give durable operations realistic future
+targets:
+
+```text
+SERVER-SEED
+  hello-server
+  http-active-router
+  http-multiplexer
+  postgres-server
+```
+
+This lane transfers product descriptors, OCI images, catalogue entries, and
+published-image smokes. It does not claim cpk-server can deploy those products
+until the durable operations milestone exists. `postgres-server` is a
+data-bearing workload product with retained-data and secret-delivery laws; it
+is distinct from the internal Postgres database used by a cpk-server instance
+for control-plane truth.
+
+SERVER-SEED closeout established these immutable seed coordinates:
+
+```text
+hello-server
+  ghcr.io/openj92/control-plane-kit-servers/hello-server@sha256:0b5d62c2706bdfc5b53b67c7e0a72e36b8af7d13f8b2abf26eaa6e6eb7dda5f0
+
+http-active-router
+  ghcr.io/openj92/control-plane-kit-servers/http-active-router@sha256:9edd29c8b62f6413c7acb4009bfa655c065a31a0eac8728ec9d4350122e0a60d
+
+http-multiplexer
+  ghcr.io/openj92/control-plane-kit-servers/http-multiplexer@sha256:2b6466d87c7642691c4ce2ee52022450d7b7cf1055f1f25a1449adbb5c8131ec
+
+postgres-server
+  docker.io/library/postgres@sha256:57c72fd2a128e416c7fcc499958864df5301e940bca0a56f58fddf30ffc07777
+```
+
+Final `control-plane-kit-servers` catalogue checksum after SERVER-SEED:
+
+```text
+0efffbdfe0581b8f47b7cb854480f2b4e79227835b0a0e91f4207fbfe1aa3d7b
+```
+
+These products are accepted as catalogue/product artifacts, not as durable
+workflow acceptance. The next operations milestone must still prove
+plan/approve/admit/execute/advance against them through `cpk-server`.
 
 ## Decisions
 
@@ -99,21 +145,29 @@ Neither dependency is mandatory for a non-Python or CPK-unaware application.
 Core consumes admitted language-neutral descriptors; it never imports the
 server catalogue or discovers products by importing arbitrary modules.
 
-### Core self-description
+### Control-plane application and cpk-server product
 
-`control-plane-kit-core` also publishes the runnable control-plane instance as
-an immutable OCI image and publishes a companion language-neutral descriptor:
+`control-plane-kit-core` owns the generic control-plane application library:
+planning, approval, admission, execution, recovery, observation, read services,
+authorization vocabulary, UnitOfWork boundaries, and the transport-neutral HTTP
+and MCP contract language. Those services are the reusable control-plane
+semantics.
+
+`cpk-server` owns the runnable process wrapper. It imports core, composes one
+`DeploymentProgram`, hosts the authenticated operator HTTP API and MCP
+Streamable HTTP endpoint, builds the immutable OCI image, and publishes the
+language-neutral descriptor:
 
 ```text
-ghcr.io/openj92/control-plane-kit-core/control-plane-instance@sha256:...
+ghcr.io/openj92/control-plane-kit-servers/cpk-server@sha256:...
 control-plane-instance.product.cpk.json
 ```
 
-This does not make the control-plane instance a built-in case in the core
-algebra. The descriptor is ordinary external product data that declares the
-image, provider and requirement sockets, configuration, verification, and
-capabilities of the process hosted by core. Core must not automatically import,
-trust, or register its own descriptor.
+This keeps `cpk-server` a server product of CPK rather than a built-in case in
+the core algebra. The descriptor is ordinary external product data that declares
+the image, provider and requirement sockets, configuration, verification, and
+capabilities of the composed process. Core must not automatically import,
+trust, register, or special-case its own deployable server.
 
 The bootstrap build proves that the image and descriptor are publishable and
 internally coherent. Recursive self-hosting remains later work:
@@ -128,9 +182,9 @@ published core descriptor
 The same descriptor and image digest must be used later. Gate 9 must not invent
 a second CPI product declaration or a privileged self-registration path.
 
-#### Core operator entry surfaces
+#### Operator entry surfaces
 
-The core OCI image is not complete if it only starts internal application
+The `cpk-server` product is not complete if it only starts internal application
 services. It must host both operator-facing protocol adapters:
 
 ```text
@@ -877,19 +931,22 @@ authority, configuration, secret, capability, and verification contracts. The
 stack product composes public entry, Auth, CPI, Postgres, runtime authority,
 and socket connections when that higher-level product language exists.
 
+The image and descriptor are server-package artifacts. They are not published
+by `control-plane-kit-core`.
+
 Catalogue composition occurs at CPI startup:
 
 ```text
 ProductCatalog.empty()
   + control-plane-kit-servers base catalogue
   + operator-admitted products
-  + admitted core CPI descriptor, when explicitly selected
+  + admitted cpk-server product descriptor, when explicitly selected
 ```
 
 The core package does not import or automatically register the server package.
-The CPI entrypoint is the composition root. The self descriptor is not in the
-catalogue merely because its image hosts the running process; an operator or
-parent CPI admits it through the ordinary authenticated workflow.
+The CPI entrypoint is the composition root. The cpk-server descriptor is not in
+the catalogue merely because its image hosts the running process; an operator
+or parent CPI admits it through the ordinary authenticated workflow.
 
 Recursion is graph recursion:
 
@@ -976,9 +1033,27 @@ as:
     "tests/test_graph_diff.py::test_socket_change_is_structural"
   ],
   "status": "passing",
-  "evidence": "core-ci-run-or-commit"
+  "evidence": "core-ci-run-or-commit",
+  "supersession": null
 }
 ```
+
+When a frozen law is not migrated because it asserted obsolete structure rather
+than behavior, the manifest uses an explicit reviewed supersession record
+instead of successor evidence:
+
+```json
+{
+  "rationale": "obsolete structural assertion replaced by stronger invariant",
+  "review": "issue-732",
+  "obsolete_assumption": "frozen test asserted an old package boundary",
+  "replacement": "successor law asserts the extracted public boundary",
+  "negative_case_disposition": "invalid boundary cases remain covered"
+}
+```
+
+Supersession is not a shortcut for missing behavior. It is mutually exclusive
+with successor evidence and must preserve the negative case somewhere explicit.
 
 Allowed owners are:
 
@@ -1108,7 +1183,8 @@ pipeline, real runtime interpreter, observations, and cleanup path.
 - HTTP, probe, configuration, and secret interpreter tests;
 - package DAG and AST architecture policies;
 - base-wheel and optional-dependency tests;
-- CPI image build, external self-descriptor, and import-isolation tests;
+- core wheel, public import, parity-manifest, and import-isolation tests;
+- cpk-server handoff-contract tests;
 - authenticated HTTP API-gateway and hosted MCP Streamable HTTP contract tests;
 - HTTP/MCP authorization, projection, command, and transaction parity tests;
 - invalid MCP origin, authentication, payload, method, and tool tests;
@@ -1209,29 +1285,29 @@ Deliver in `control-plane-kit-core`:
 8. duplicate and unknown identity rejection;
 9. runtime and capability implementation identities;
 10. admitted descriptor digest semantics;
-11. runnable CPI OCI image and pinned publication workflow;
-12. external `control-plane-instance.product.cpk.json` self descriptor;
-13. authenticated operator HTTP API-gateway entrypoint;
-14. hosted MCP Streamable HTTP entrypoint and closed protocol identity;
-15. shared authorization, application-service, projection, and transaction
-    behavior across HTTP and MCP;
-16. image/descriptor coherence and base live-health proof;
-17. external fixture package proof;
-18. architecture, security, and test-parity review.
+11. generic control-plane application-service composition boundaries;
+12. HTTP API route and schema contracts;
+13. MCP Streamable HTTP as a closed protocol identity;
+14. shared authorization, projection, idempotency, UnitOfWork, and transaction
+    laws across future HTTP and MCP adapters;
+15. `cpk-server` product handoff contract for process composition, OCI image,
+    external descriptor, health, and publication;
+16. external fixture package proof;
+17. architecture, security, and test-parity review.
 
 Stop before moving a real product until an external descriptor can pass the
 entire pure pipeline and produce pinned runtime material.
 
-Gate 1 is completed before `control-plane-kit-servers` receives product code.
-An intentionally tiny fixture may prove the extension boundary, but it is not a
-catalogue product and must not introduce Hello or another server identity into
-core.
+Gate 1 is completed before `control-plane-kit-servers` receives reusable product
+code. It may define the generic control-plane services and the contract expected
+by `cpk-server`, but it must not place the runnable `cpk-server` process,
+Dockerfile, OCI image, or canonical product descriptor inside core.
 
-The core-owned CPI descriptor is the sole deliberate product declaration in the
-core repository. It lives at a publication boundary rather than inside the
-generic graph, planning, execution, or catalogue language. Architecture tests
-must prove that importing core does not load the descriptor, process entrypoint,
-HTTP stack, or image implementation.
+An intentionally tiny fixture may prove the extension boundary, but it is not a
+catalogue product and must not introduce Hello, `cpk-server`, or another server
+identity into core. Architecture tests must prove that importing core does not
+load a descriptor, process entrypoint, HTTP stack, MCP server, Docker image
+implementation, or server catalogue.
 
 ### Gate 2: Server Repository And Hello Proof
 
@@ -1254,11 +1330,12 @@ It is also the complete bootstrap server scope. At Gate 2 closeout:
 
 ```text
 control-plane-kit-core
-  contains the full generic pipeline plus one external self-description
-  for its runnable CPI image; the pipeline contains no product identities
+  contains the full generic pipeline plus reusable control-plane application
+  services and HTTP/MCP contracts; the pipeline contains no product identities
 
 control-plane-kit-servers
-  contains exactly one migrated product: Hello
+  contains the `cpk-server` process wrapper boundary and exactly one migrated
+  reusable product: Hello
 ```
 
 Run the complete core and Hello parity manifests, reproduce every transferred
@@ -1412,9 +1489,22 @@ Create `control-plane-kit-servers` as a new repository. Move products by
 coherent vertical, carrying their tests, examples, and decision history in PR
 documentation. Do not leave duplicate canonical implementations in core.
 
-Initially, move only Hello. Do not scaffold empty directories or premature
-catalogue registrations for later products. Each later product enters through
-its own topologically ordered transfer issue after the bootstrap is accepted.
+The bootstrap server repository has two distinct responsibilities:
+
+```text
+cpk-server
+  the control-plane process wrapper that imports core and packages it as OCI,
+  HTTP, MCP, health, and descriptor artifacts
+
+Hello
+  the first reusable example server product transferred from the frozen
+  catalogue with isomorphic tests and live proof
+```
+
+Do not scaffold empty directories or premature catalogue registrations for
+later products. CoreDNS, routers, gateways, proxies, resilience products, and
+other reusable products enter only through their own topologically ordered
+transfer issues after the bootstrap is accepted.
 
 ### Parity ledger
 
@@ -1455,7 +1545,65 @@ At every gate:
 ## Immediate Issue Topology
 
 The bootstrap issue topology was created in the frozen coordination repository
-on 2026-07-20 because the target repositories do not exist yet. Root issue
+on 2026-07-20 because the target repositories do not exist yet. EXTRACT.D was
+subsequently clarified: it must separate core-owned application services and
+contract language from the `cpk-server` product wrapper. Any stale wording that
+places the runnable CPI OCI image directly inside core is superseded by this
+law:
+
+```text
+control-plane-kit-core
+  owns generic control-plane services and contracts
+
+control-plane-kit-servers/cpk-server
+  owns FastAPI/MCP process composition, OCI image, and product descriptor
+```
+
+EXTRACT.D is therefore executed as a phase rewrite rather than as the original
+"build the CPI image in core" plan:
+
+```text
+D.0 Topology Refresh
+  clarify which existing children are core-service work
+  clarify which children are cpk-server handoff contracts
+  add or retitle children where stale ownership wording would mislead execution
+
+D.1 Core Application Service Composition
+  DeploymentProgram composition root
+  planning, approval, admission, lifecycle, execution, recovery, observation,
+  and read-service boundaries
+  store, UnitOfWork, worker, runtime-authority, and transaction laws
+  no FastAPI process, Dockerfile, OCI image, or product descriptor in core
+
+D.2 Core HTTP/MCP Contract Language
+  route schemas, request/response/error descriptors, auth scopes, endpoint
+  contracts, MCP Streamable HTTP protocol identity, readiness and verification
+  contracts
+  no hosted FastAPI/MCP process in core
+
+D.3 Core Parity Laws
+  HTTP and MCP must delegate to the same application services
+  no duplicate command vocabulary, projection table, UnitOfWork convention, or
+  idempotency/approval bypass
+  prove parity as contract/application-service behavior rather than through a
+  packaged process
+
+D.4 cpk-server Product Handoff Contract
+  required process entrypoints, environment, secret references, configuration,
+  health/readiness, descriptor fields, OCI behavior, publication evidence, and
+  live-test obligations for control-plane-kit-servers/cpk-server
+
+D.5 Mandatory Stop
+  do not build the canonical cpk-server process, Dockerfile, OCI image, or
+  product descriptor inside core
+```
+
+The EXTRACT.D closeout is successful when core can prove the generic services
+and contracts are ready for a `cpk-server` wrapper, and the server-product side
+has an exact handoff contract. It is not successful if core grows a hidden
+deployable CPI product.
+
+Root issue
 [#594](https://github.com/OpenJ92/control-plane-kit/issues/594) owns seven
 mandatory milestone parents and 69 implementation, review, and closeout
 children:
@@ -1464,9 +1612,9 @@ children:
 #595 reference parity
   -> #596 core repository genesis and generic migration
     -> #597 external OCI product language
-      -> #598 CPI image, HTTP API, and MCP
+      -> #598 core application services and cpk-server HTTP/MCP product boundary
         -> #599 core release-candidate mandatory stop
-          -> #600 server repository and Hello-only transfer
+          -> #600 server repository, cpk-server wrapper, and Hello transfer
             -> #601 cross-repository bootstrap acceptance
 ```
 
@@ -1478,10 +1626,34 @@ evidence, stop conditions, and attached sub-issues. The child ranges are:
 #596 -> #610-#619 plus #677 test-context rehearsal
 #597 -> #620-#629
 #598 -> #630-#642
-#599 -> #643-#648
-#600 -> #649-#658 plus #678 Hello test translation
+#599 -> #725 plus #643-#648
+#600 -> #726 plus #649-#658 and #678 Hello test translation
 #601 -> #659-#668
 ```
+
+EXTRACT.E has its own refreshed inner topology because #725 must run before
+the core release-candidate children inherit the EXTRACT.D boundary:
+
+```text
+#642 -> #725
+#725 -> #643
+#725 -> #644
+#643 + #644 -> #645 -> #646 -> #647 -> #648
+```
+
+EXTRACT.E produces the core wheel, parity manifests, review evidence, and
+`cpk-server` handoff readiness. It does not produce the `cpk-server` image or
+descriptor.
+
+EXTRACT.F also begins with a topology refresh:
+
+```text
+#648 -> #726
+```
+
+#726 decides the server-repository issue graph for both the `cpk-server`
+wrapper and the Hello proof before #649 creates or transfers implementation
+work.
 
 Issue ownership migrates only after the target repository exists:
 
@@ -1501,7 +1673,9 @@ each child explain cross-parent edges. If transfer changes issue numbers, update
 the parent topology and this section in the same coordination PR.
 
 The core topology completes and stops at #648 before #649 creates the server
-repository. The Hello live proof in #658 is the first product-level
+repository. The server repository must be able to host `cpk-server` as the
+control-plane process wrapper before broader reusable products accumulate. The
+Hello live proof in #658 remains the first reusable product-level
 cross-repository gate. Full system acceptance begins at #659.
 
 The first core source migration is blocked by #677, which rehearses the full
@@ -1552,11 +1726,12 @@ The bootstrap extraction succeeds when:
 ```text
 control-plane-kit-core
   owns the complete generic pipeline without built-in server-product identity
-  and publishes its CPI image plus external self descriptor, authenticated HTTP
-  API gateway, and hosted MCP Streamable HTTP endpoint
+  and owns the reusable control-plane application services, HTTP contracts, and
+  MCP contract vocabulary
 
 control-plane-kit-servers
-  owns one complete Hello product descriptor and pinned OCI image
+  owns the `cpk-server` product wrapper, its pinned OCI image, its external
+  descriptor, and one complete Hello product descriptor and pinned OCI image
 
 control-plane-kit-test
   proves core and Hello isomorphic test and live-demo parity

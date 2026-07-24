@@ -1,0 +1,322 @@
+{
+  "additional_sources": [
+    "artifacts/extraction/contract-boundary-classification.json",
+    "artifacts/extraction/control-route-boundary-classification.json"
+  ],
+  "families": {
+    "test_activity_planning_command_service": {
+      "count": 9,
+      "decision": "map-command-workflow-contract",
+      "rationale": "Command vocabularies and workflow grouping may become closed contract language; durable command services and session stores remain operations-owned.",
+      "source": "artifacts/extraction/required-core-batch-plan.json",
+      "target_issue": "#787"
+    },
+    "test_approval_command_service": {
+      "count": 10,
+      "decision": "map-command-workflow-contract",
+      "rationale": "Command vocabularies and workflow grouping may become closed contract language; durable command services and session stores remain operations-owned.",
+      "source": "artifacts/extraction/required-core-batch-plan.json",
+      "target_issue": "#787"
+    },
+    "test_backend_boundaries": {
+      "count": 4,
+      "decision": "map-public-boundary-contract",
+      "rationale": "DeploymentProgram stage and public boundary laws describe the operator-facing composition shape; core may retain descriptors and handoff contracts but not executable services.",
+      "source": "artifacts/extraction/required-core-batch-plan.json",
+      "target_issue": "#786"
+    },
+    "test_contracts": {
+      "count": 23,
+      "decision": "map-split-mutation-boundary-and-operations-handoff",
+      "operations_handoff_issue": "#792",
+      "rationale": "The 23 mutation-holder laws are split-boundary laws: extracted core maps the closed EnvironmentContract / RuntimeContract / DerivedResource vocabulary, descriptor no-value/no-secret law, and operations-owned handoff in #791; operations / cpk-server must later prove executable holder mutation, publication, cleanup, rollback, retained-resource, and concurrency behavior.",
+      "references": [
+        "tests.test_contracts.DerivedResourceTests.test_candidate_builder_cannot_publish_nested_contract_mutation",
+        "tests.test_contracts.DerivedResourceTests.test_competing_prepared_mutations_have_one_publication_winner",
+        "tests.test_contracts.DerivedResourceTests.test_completed_identity_rejects_changed_intent_without_retaining_values",
+        "tests.test_contracts.DerivedResourceTests.test_concurrent_identical_mutations_build_dispose_and_publish_once",
+        "tests.test_contracts.DerivedResourceTests.test_descriptor_reports_derived_resource_status_without_resource_value",
+        "tests.test_contracts.DerivedResourceTests.test_drain_required_patch_marks_derived_resource_stale",
+        "tests.test_contracts.DerivedResourceTests.test_explicit_rebuild_refreshes_stale_resource",
+        "tests.test_contracts.DerivedResourceTests.test_late_preparation_failure_preserves_old_projection_and_cleans_candidate",
+        "tests.test_contracts.DerivedResourceTests.test_live_patch_rebuilds_and_disposes_derived_resource",
+        "tests.test_contracts.DerivedResourceTests.test_multi_resource_mutation_prepares_against_candidate_then_publishes_once",
+        "tests.test_contracts.DerivedResourceTests.test_preparation_cleanup_failure_is_bounded_and_does_not_publish",
+        "tests.test_contracts.DerivedResourceTests.test_retained_or_unowned_superseded_resources_are_never_disposed",
+        "tests.test_contracts.DerivedResourceTests.test_superseded_cleanup_failure_keeps_new_projection_and_replays_evidence",
+        "tests.test_contracts.EnvironmentContractTests.test_access_is_always_lookup",
+        "tests.test_contracts.EnvironmentContractTests.test_apply_patch_updates_holder_not_process_environment",
+        "tests.test_contracts.EnvironmentContractTests.test_mutation_and_candidate_descriptors_never_publish_values",
+        "tests.test_contracts.EnvironmentContractTests.test_mutation_prepares_immutable_candidate_without_publication",
+        "tests.test_contracts.EnvironmentContractTests.test_mutation_rejects_stale_version_before_preparation",
+        "tests.test_contracts.EnvironmentContractTests.test_noop_candidate_does_not_advance_version",
+        "tests.test_contracts.EnvironmentContractTests.test_preparation_validates_all_assignments_before_any_publication",
+        "tests.test_contracts.EnvironmentContractTests.test_prepared_mutation_identity_replays_or_rejects_conflicting_intent",
+        "tests.test_contracts.EnvironmentContractTests.test_published_mutation_identity_replays_without_reexecution",
+        "tests.test_contracts.RuntimeContractTests.test_runtime_contract_patch_updates_holder"
+      ],
+      "source": "artifacts/extraction/contract-boundary-classification.json",
+      "target_issue": "#791"
+    },
+    "test_current_graph_advancement": {
+      "count": 11,
+      "decision": "map-lifecycle-admission-contract",
+      "rationale": "Lifecycle, admission, recovery, and advancement values may be closed contracts; durable enforcement, claims, locks, workers, and graph-store mutation remain operations-owned.",
+      "source": "artifacts/extraction/required-core-batch-plan.json",
+      "target_issue": "#789"
+    },
+    "test_deployment_admit_claim_stages": {
+      "count": 1,
+      "decision": "map-public-boundary-contract",
+      "rationale": "DeploymentProgram stage and public boundary laws describe the operator-facing composition shape; core may retain descriptors and handoff contracts but not executable services.",
+      "source": "artifacts/extraction/required-core-batch-plan.json",
+      "target_issue": "#786"
+    },
+    "test_deployment_application_values": {
+      "count": 4,
+      "decision": "map-public-boundary-contract",
+      "rationale": "DeploymentProgram stage and public boundary laws describe the operator-facing composition shape; core may retain descriptors and handoff contracts but not executable services.",
+      "source": "artifacts/extraction/required-core-batch-plan.json",
+      "target_issue": "#786"
+    },
+    "test_deployment_plan_approve_stages": {
+      "count": 3,
+      "decision": "map-public-boundary-contract",
+      "rationale": "DeploymentProgram stage and public boundary laws describe the operator-facing composition shape; core may retain descriptors and handoff contracts but not executable services.",
+      "source": "artifacts/extraction/required-core-batch-plan.json",
+      "target_issue": "#786"
+    },
+    "test_desired_graph_command_service": {
+      "count": 8,
+      "decision": "map-command-workflow-contract",
+      "rationale": "Command vocabularies and workflow grouping may become closed contract language; durable command services and session stores remain operations-owned.",
+      "source": "artifacts/extraction/required-core-batch-plan.json",
+      "target_issue": "#787"
+    },
+    "test_desired_graph_commands": {
+      "count": 3,
+      "decision": "map-command-workflow-contract",
+      "rationale": "Command vocabularies and workflow grouping may become closed contract language; durable command services and session stores remain operations-owned.",
+      "source": "artifacts/extraction/required-core-batch-plan.json",
+      "target_issue": "#787"
+    },
+    "test_execution_admission": {
+      "count": 11,
+      "decision": "map-lifecycle-admission-contract",
+      "rationale": "Lifecycle, admission, recovery, and advancement values may be closed contracts; durable enforcement, claims, locks, workers, and graph-store mutation remain operations-owned.",
+      "source": "artifacts/extraction/required-core-batch-plan.json",
+      "target_issue": "#789"
+    },
+    "test_execution_concurrency": {
+      "count": 5,
+      "decision": "map-lifecycle-admission-contract",
+      "rationale": "Lifecycle, admission, recovery, and advancement values may be closed contracts; durable enforcement, claims, locks, workers, and graph-store mutation remain operations-owned.",
+      "source": "artifacts/extraction/required-core-batch-plan.json",
+      "target_issue": "#789"
+    },
+    "test_execution_coordinator": {
+      "count": 28,
+      "decision": "map-execution-verification-handoff",
+      "rationale": "Coordinator and verification-service laws mostly describe operations/interpreter behavior; core may retain only effect/verification contract descriptors.",
+      "source": "artifacts/extraction/required-core-batch-plan.json",
+      "target_issue": "#790"
+    },
+    "test_execution_schema_migration": {
+      "count": 3,
+      "decision": "map-store-transaction-mutation-handoff",
+      "rationale": "Store, UnitOfWork, Postgres, schema, mutable holder, and derived-resource publication laws are operations/cpk-server handoff unless represented only as pure boundary descriptors.",
+      "source": "artifacts/extraction/required-core-batch-plan.json",
+      "target_issue": "#791"
+    },
+    "test_execution_store": {
+      "count": 3,
+      "decision": "map-store-transaction-mutation-handoff",
+      "rationale": "Store, UnitOfWork, Postgres, schema, mutable holder, and derived-resource publication laws are operations/cpk-server handoff unless represented only as pure boundary descriptors.",
+      "source": "artifacts/extraction/required-core-batch-plan.json",
+      "target_issue": "#791"
+    },
+    "test_execution_values": {
+      "count": 16,
+      "decision": "map-lifecycle-admission-contract",
+      "rationale": "Lifecycle, admission, recovery, and advancement values may be closed contracts; durable enforcement, claims, locks, workers, and graph-store mutation remain operations-owned.",
+      "source": "artifacts/extraction/required-core-batch-plan.json",
+      "target_issue": "#789"
+    },
+    "test_focused_read_hardening": {
+      "count": 7,
+      "decision": "map-read-projection-contract",
+      "rationale": "Read/projection/API/MCP laws should share one contract vocabulary; process routes and store-backed read services remain outside core.",
+      "source": "artifacts/extraction/required-core-batch-plan.json",
+      "target_issue": "#788"
+    },
+    "test_focused_workflow_reads": {
+      "count": 7,
+      "decision": "map-read-projection-contract",
+      "rationale": "Read/projection/API/MCP laws should share one contract vocabulary; process routes and store-backed read services remain outside core.",
+      "source": "artifacts/extraction/required-core-batch-plan.json",
+      "target_issue": "#788"
+    },
+    "test_instance_read_fastapi": {
+      "count": 10,
+      "decision": "map-read-projection-contract",
+      "rationale": "Read/projection/API/MCP laws should share one contract vocabulary; process routes and store-backed read services remain outside core.",
+      "source": "artifacts/extraction/required-core-batch-plan.json",
+      "target_issue": "#788"
+    },
+    "test_instance_read_service": {
+      "count": 21,
+      "decision": "map-read-projection-contract",
+      "rationale": "Read/projection/API/MCP laws should share one contract vocabulary; process routes and store-backed read services remain outside core.",
+      "source": "artifacts/extraction/required-core-batch-plan.json",
+      "target_issue": "#788"
+    },
+    "test_mcp_read": {
+      "count": 8,
+      "decision": "map-read-projection-contract",
+      "rationale": "Read/projection/API/MCP laws should share one contract vocabulary; process routes and store-backed read services remain outside core.",
+      "source": "artifacts/extraction/required-core-batch-plan.json",
+      "target_issue": "#788"
+    },
+    "test_observation_projection": {
+      "count": 5,
+      "decision": "map-read-projection-contract",
+      "rationale": "Read/projection/API/MCP laws should share one contract vocabulary; process routes and store-backed read services remain outside core.",
+      "source": "artifacts/extraction/required-core-batch-plan.json",
+      "target_issue": "#788"
+    },
+    "test_operation_command_service": {
+      "count": 10,
+      "decision": "map-command-workflow-contract",
+      "rationale": "Command vocabularies and workflow grouping may become closed contract language; durable command services and session stores remain operations-owned.",
+      "source": "artifacts/extraction/required-core-batch-plan.json",
+      "target_issue": "#787"
+    },
+    "test_operation_commands": {
+      "count": 8,
+      "decision": "map-command-workflow-contract",
+      "rationale": "Command vocabularies and workflow grouping may become closed contract language; durable command services and session stores remain operations-owned.",
+      "source": "artifacts/extraction/required-core-batch-plan.json",
+      "target_issue": "#787"
+    },
+    "test_operation_postgres_primitives": {
+      "count": 5,
+      "decision": "map-store-transaction-mutation-handoff",
+      "rationale": "Store, UnitOfWork, Postgres, schema, mutable holder, and derived-resource publication laws are operations/cpk-server handoff unless represented only as pure boundary descriptors.",
+      "source": "artifacts/extraction/required-core-batch-plan.json",
+      "target_issue": "#791"
+    },
+    "test_operator_graph_projection": {
+      "count": 5,
+      "decision": "map-read-projection-contract",
+      "rationale": "Read/projection/API/MCP laws should share one contract vocabulary; process routes and store-backed read services remain outside core.",
+      "source": "artifacts/extraction/required-core-batch-plan.json",
+      "target_issue": "#788"
+    },
+    "test_operator_recovery_projection": {
+      "count": 9,
+      "decision": "map-read-projection-contract",
+      "rationale": "Read/projection/API/MCP laws should share one contract vocabulary; process routes and store-backed read services remain outside core.",
+      "source": "artifacts/extraction/required-core-batch-plan.json",
+      "target_issue": "#788"
+    },
+    "test_recovery_concurrency": {
+      "count": 3,
+      "decision": "map-lifecycle-admission-contract",
+      "rationale": "Lifecycle, admission, recovery, and advancement values may be closed contracts; durable enforcement, claims, locks, workers, and graph-store mutation remain operations-owned.",
+      "source": "artifacts/extraction/required-core-batch-plan.json",
+      "target_issue": "#789"
+    },
+    "test_recovery_decisions": {
+      "count": 8,
+      "decision": "map-lifecycle-admission-contract",
+      "rationale": "Lifecycle, admission, recovery, and advancement values may be closed contracts; durable enforcement, claims, locks, workers, and graph-store mutation remain operations-owned.",
+      "source": "artifacts/extraction/required-core-batch-plan.json",
+      "target_issue": "#789"
+    },
+    "test_run_lifecycle": {
+      "count": 21,
+      "decision": "map-lifecycle-admission-contract",
+      "rationale": "Lifecycle, admission, recovery, and advancement values may be closed contracts; durable enforcement, claims, locks, workers, and graph-store mutation remain operations-owned.",
+      "source": "artifacts/extraction/required-core-batch-plan.json",
+      "target_issue": "#789"
+    },
+    "test_stores": {
+      "count": 10,
+      "decision": "map-store-transaction-mutation-handoff",
+      "rationale": "Store, UnitOfWork, Postgres, schema, mutable holder, and derived-resource publication laws are operations/cpk-server handoff unless represented only as pure boundary descriptors.",
+      "source": "artifacts/extraction/required-core-batch-plan.json",
+      "target_issue": "#791"
+    },
+    "test_unit_of_work": {
+      "count": 9,
+      "decision": "map-store-transaction-mutation-handoff",
+      "rationale": "Store, UnitOfWork, Postgres, schema, mutable holder, and derived-resource publication laws are operations/cpk-server handoff unless represented only as pure boundary descriptors.",
+      "source": "artifacts/extraction/required-core-batch-plan.json",
+      "target_issue": "#791"
+    },
+    "test_verification_command_service": {
+      "count": 7,
+      "decision": "map-execution-verification-handoff",
+      "rationale": "Coordinator and verification-service laws mostly describe operations/interpreter behavior; core may retain only effect/verification contract descriptors.",
+      "source": "artifacts/extraction/required-core-batch-plan.json",
+      "target_issue": "#790"
+    },
+    "test_workflows": {
+      "count": 3,
+      "decision": "reviewed-operations-handoff",
+      "rationale": "These laws execute Postgres-backed operation workflow services. #787 maps the command vocabulary; #791 maps persistence boundary contracts; #792 records the executable session service, action ordering, and graph-truth non-mutation behavior as operations/cpk-server handoff rather than core implementation.",
+      "source": "artifacts/extraction/required-core-batch-plan.json",
+      "target_issue": "#792"
+    }
+  },
+  "issue": "#785",
+  "laws": [
+    "Core may define pure operation contracts, descriptors, public command/read vocabulary, and service composition boundaries.",
+    "Core must not own FastAPI or MCP process startup, Docker execution, Postgres integration, worker loops, mutable stores, or coordinator effect dispatch.",
+    "API and MCP parity laws must share a single contract vocabulary rather than duplicate command models.",
+    "Transaction, store, schema, and mutation-holder laws remain operations or cpk-server handoff unless represented only as pure boundary descriptors.",
+    "Every live operations-contract family must have an explicit downstream mapping target before #740 closeout."
+  ],
+  "parent": "#740",
+  "schema": "cpk.operations-contract-batch-audit",
+  "source": "artifacts/extraction/required-core-batch-plan.json",
+  "source_batch": "operations_contract",
+  "summary": {
+    "by_target_issue": {
+      "#786": {
+        "entries": 12,
+        "families": 4
+      },
+      "#787": {
+        "entries": 48,
+        "families": 6
+      },
+      "#788": {
+        "entries": 72,
+        "families": 8
+      },
+      "#789": {
+        "entries": 75,
+        "families": 7
+      },
+      "#790": {
+        "entries": 35,
+        "families": 2
+      },
+      "#791": {
+        "entries": 53,
+        "families": 6
+      },
+      "#792": {
+        "entries": 3,
+        "families": 1
+      }
+    },
+    "entries": 298,
+    "families": 34,
+    "original_batch_entries": 275,
+    "original_batch_families": 33,
+    "split_contract_entries": 23,
+    "split_contract_families": 1
+  }
+}

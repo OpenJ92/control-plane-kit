@@ -1,0 +1,3126 @@
+# EXTRACT.OPERATIONS.ACTIVITY Run 0001
+
+Status: #871 activity-realization boundary in progress.
+
+Parent: #869
+
+Topology:
+
+```text
+#870
+  -> #871 -> #872 -> #873 -> #874 -> #875
+    -> #880 -> #881
+      -> #876 -> #877 -> #878 -> #879
+```
+
+## #870 Runtime Law Inventory
+
+#870 is intentionally documentation and artifact work. It does not implement the
+Docker runtime. Its job is to make the frozen behavior visible before the
+adapter boundary changes in #871.
+
+Machine-readable evidence:
+
+```text
+artifacts/extraction/activity-870-runtime-law-inventory.json
+```
+
+The artifact records 11 law cards and 7 seeded integration scenarios. The
+important split is:
+
+```text
+core
+  ActivityPlan, graph/product/socket language, pure scheduling contracts
+
+operations
+  durable workflow services, Postgres stores, UnitOfWork, coordinator, read models
+
+cpk-server
+  HTTP/MCP process wrapper over operations services
+
+control-plane-kit-servers
+  OCI product descriptors, Dockerfiles, published images, product process code
+```
+
+## Frozen Reference Lookover
+
+The frozen implementation had the full interpreter stack in one package. The
+files most relevant to ACTIVITY were:
+
+```text
+tests/test_docker_effects.py
+tests/test_execution_coordinator.py
+docs/DEPLOY_PROGRAM.md
+control_plane_kit/workflows/execution_coordinator.py
+control_plane_kit/workflows/planning.py
+control_plane_kit/workflows/execution_admission.py
+control_plane_kit/workflows/run_lifecycle.py
+```
+
+The extracted tree currently has the pure plan compiler and durable coordinator
+shape, but the coordinator adapter receives only a `PlannedActivity`:
+
+```python
+class ActivityExecutionAdapter(Protocol):
+    """Effect-proof adapter called only after durable intent commits."""
+
+    def execute(self, activity: PlannedActivity) -> ActivityExecutionOutcome: ...
+```
+
+That is enough for fake execution, but not enough for real product realization.
+The next issue must add a boundary that carries pinned realization material
+without creating a second coordinator, saga, scheduler, or effect language.
+
+## Law Card Summary
+
+The #870 artifact classifies these laws:
+
+| Law | Classification | Next Issue |
+| --- | --- | --- |
+| ActivityPlan remains pure graph-diff output | operations unit law | #871 |
+| Coordinator records intent, commits, then calls adapter | operations unit law | #874 |
+| Execution uses admitted plan truth, not mutable current graph | Docker/Postgres integration | #871/#872/#873 |
+| Docker mutation requires proven ownership | Docker/Postgres integration | #872 |
+| Secret values stay out of descriptors and argv | Docker/Postgres integration | #872 |
+| Socket edges drive runtime dependency bindings | Docker/Postgres integration | #873 |
+| Process start is not health/readiness | Docker/Postgres integration | #872/#874/#875 |
+| Observations do not rewrite desired topology | Docker/Postgres integration | #874/#875 |
+| Approval gates admission | operations unit law | #880/#881 |
+| Published OCI digest is acceptance truth | server-product law | #878 |
+| Public control portals are future work | future non-goal | #882 |
+
+## Seeded Scenario Matrix
+
+The seeded local-Docker ACTIVITY scenarios use only:
+
+```text
+cpk-server
+hello-server
+http-active-router
+http-multiplexer
+postgres-server descriptor
+```
+
+The matrix includes:
+
+1. Initial cpk-server deployment backed by Postgres descriptors.
+2. Standalone hello-server deployment.
+3. Hello-to-hello HTTP dependency once per-instance dependency binding exists.
+4. HTTP active router forwarding to a hello-server target.
+5. HTTP multiplexer with a primary hello and optional observer hello.
+6. Teardown that removes owned compute while preserving retained Postgres data.
+7. Public cpk-server workflow acceptance over HTTP/MCP.
+
+## Product Parameterization Gaps
+
+#870 found five concrete gaps to carry forward:
+
+- Hello currently ships `HELLO_DEPENDENCIES_JSON=[]` and has no base requirement
+  socket, so dependency calls need per-instance parameterization or descriptor
+  evolution in #873.
+- Router target binding must be derived from graph edges, not local smoke-script
+  variables, in #873.
+- Multiplexer binding must distinguish required `primary` from optional
+  `observer-a` and `observer-b` in #873.
+- Postgres needs secret delivery and retained data handling in the local Docker
+  interpreter in #872.
+- cpk-server acceptance must use published image digest truth after backend
+  runtime behavior changes in #878.
+
+## Topology Decision
+
+No new child issue is required before #871. The current order remains coherent:
+
+```text
+#870 inventory
+  -> #871 adapter seam
+    -> #872 minimal Docker interpreter
+      -> #873 dependency binding
+        -> #874 coordinator observations
+          -> #875 current graph advancement
+            -> #880/#881 approval queue public workflow
+              -> #876/#877/#878/#879 acceptance and closeout
+```
+
+The decisive #871 handoff is:
+
+```text
+PlannedActivity alone is too small for real realization.
+
+Keep the existing coordinator, but define a richer pure operations boundary:
+
+  admitted run + pinned plan + graph material + registered products
+    -> realization context
+      -> ActivityExecutionAdapter
+        -> ActivityExecutionOutcome
+```
+
+The adapter must still be called only after durable intent commits, and it must
+not load mutable current graph truth itself.
+
+## #871 Activity Realization Boundary
+
+#871 turns the fake-execution adapter seam into the boundary needed by the local
+Docker interpreter without implementing Docker behavior yet.
+
+The old extracted seam was intentionally small:
+
+```python
+class ActivityExecutionAdapter(Protocol):
+    def execute(self, activity: PlannedActivity) -> ActivityExecutionOutcome: ...
+```
+
+That shape worked for fake effects, but a real runtime interpreter needs the
+durable material pinned by admission. The new boundary is:
+
+```python
+@dataclass(frozen=True)
+class ActivityRealizationContext:
+    activity: PlannedActivity
+    request: ExecutionRequestRecord
+    run: ActivityRunRecord
+    plan_record: ActivityPlanRecord
+    base_graph: GraphVersionRecord
+    desired_graph: GraphVersionRecord
+    registered_products: tuple[RegisteredProduct, ...]
+    authority: ExecutionWorkerAuthority
+    intent_event: ActivityEventRecord
+
+
+class ActivityExecutionAdapter(Protocol):
+    def execute(
+        self,
+        context: ActivityRealizationContext,
+    ) -> ActivityExecutionOutcome: ...
+```
+
+This preserves the external-effect law:
+
+```text
+short transaction: record durable STEP_STARTED intent
+  -> commit
+    -> adapter receives pinned ActivityRealizationContext
+      -> short transaction: record result event and projection
+```
+
+The coordinator now loads the admitted request, run, exact plan record, pinned
+base/desired graph records, and active registered products before scheduling.
+It validates that this material belongs to the execution workspace and admitted
+plan before any step-start intent is written. The public realization context
+then carries the already-written `STEP_STARTED` event so the adapter can prove
+which durable intent it is satisfying.
+
+The focused regression introduced in #871 corrupts the pinned desired graph
+workspace and proves:
+
+```text
+adapter calls = []
+persisted events = [run_opened, run_started]
+```
+
+So incoherent pinned material cannot create a false step intent.
+
+Validation evidence so far:
+
+```text
+./control-plane-kit-operations/test.sh
+  103 tests passed
+  compileall passed
+  control-plane-kit-operations import ok
+```
+
+#872 handoff:
+
+The minimal Docker interpreter should consume `ActivityRealizationContext`; it
+must not import stores, query the current graph pointer, or reconstruct product
+truth itself. Product realization should be derived from:
+
+```text
+context.activity
+context.plan
+context.base_graph
+context.desired_graph
+context.registered_products
+```
+
+The next implementation should preserve product-generic runtime dispatch and
+keep Hello/router/multiplexer specifics in descriptor data, seeded products, or
+future product-specific renderers rather than in the operations coordinator.
+
+## #907 / #916 Runtime Effect Contract Pivot
+
+#907 corrected the transitional #872 shape. Docker realization must not remain
+inside operations and must not become an `operations[docker]` optional extra.
+The boundary is now expressed as a pure core language:
+
+```text
+core:
+  RuntimeEffectRequest
+
+interpreter:
+  RuntimeEffectRequest -> IO RuntimeEffectResult
+
+operations:
+  ActivityJournal x RuntimeEffectResult -> ActivityJournal'
+```
+
+#916 introduces `control_plane_kit_core.runtime_effects` as the value language
+between durable operations and concrete runtime interpreters. The request carries
+only secret-free, pinned material:
+
+```python
+RuntimeEffectRequest(
+    effect_id=context.intent_event.event_id,
+    kind=RuntimeEffectKind.REALIZE_ACTIVITY,
+    runtime_kind=RuntimeKind.DOCKER,
+    source=RuntimeEffectSource(...),
+    activity_id=context.activity.activity_id,
+    operation=context.activity.operation,
+    products=(RuntimeProductMaterial(...),),
+)
+```
+
+Operations now has a translator:
+
+```python
+runtime_effect_request_for_context(context)
+```
+
+That function interprets already-loaded `ActivityRealizationContext` material
+into a pure request. It does not query stores, import Docker SDK, import
+`control-plane-kit-interpreters`, or select mutable current graph truth. For
+node activities, it uses the pinned graph node metadata to find the matching
+`RegisteredProduct` already present in the context, preserving the exact
+`ProductReference` and canonical descriptor document.
+
+The remaining old operations-owned `DockerProductRealizationAdapter` is now
+explicitly transitional. #917 must move Docker execution into
+`control-plane-kit-interpreters`; #919 must reduce operations to translation,
+dispatch, and persistence.
+
+## #872 Minimal Docker Product Realization
+
+#872 adds the first real local Docker activity interpreter in extracted
+operations. It is intentionally small and product-generic: it consumes the
+`ActivityRealizationContext` introduced in #871 and never imports stores,
+selects current graph truth, or reconstructs registration state during the
+external effect.
+
+The new adapter boundary is:
+
+```python
+class DockerRealizationClient(Protocol):
+    def inspect_network(self, name: str) -> DockerResourceInspection | None: ...
+    def create_network(self, name: str, *, labels: dict[str, str]) -> None: ...
+    def inspect_container(self, name: str) -> DockerResourceInspection | None: ...
+    def pull_image(self, image: str) -> None: ...
+    def run_container(...): ...
+    def start_container(self, name: str) -> None: ...
+
+
+@dataclass(frozen=True)
+class DockerProductRealizationAdapter:
+    client: DockerRealizationClient
+
+    def execute(
+        self,
+        context: ActivityRealizationContext,
+    ) -> ActivityExecutionOutcome: ...
+```
+
+The concrete implementation included in operations is CLI-backed for now. The
+important design decision is that operations depends only on the protocol seam,
+not on the Python Docker SDK. A later Docker runtime/interpreter package can
+provide a `DockerSdkClient` behind the same protocol without changing the
+coordinator or durable service boundary.
+
+Supported in #872:
+
+```text
+StartRuntime(Docker)
+  -> inspect/create one owned private Docker network
+  -> label by workspace, plan, desired graph, runtime, and owner
+
+StartNode(OCI container)
+  -> require owned digest-pinned registered product material
+  -> reject foreign name collisions before pull/run
+  -> pull immutable OCI reference
+  -> run private container on the planned network
+  -> publish provider-socket network aliases
+  -> pass only explicit non-secret public environment values
+```
+
+Unsupported, deliberately before mutation:
+
+```text
+secret deliveries
+configuration artifacts
+retained data resources / volumes
+non-Docker runtimes
+non-OCI product nodes
+local tags without sha256 digest pins
+```
+
+This is a structural limitation, not a shortcut. The Postgres seeded product has
+both secret material and retained data, and generic operations does not yet have
+a typed data mount target or secret resolver. Until those exist, the correct
+runtime result is explicit `OPERATOR_REVIEW` unsupported evidence with no Docker
+mutation.
+
+Focused tests prove:
+
+```text
+owned network creation preserves workspace/plan/graph labels
+digest-pinned node start pulls and runs with private aliases
+foreign container collision fails before pull or run
+secret + retained-data products are unsupported before mutation
+```
+
+Validation evidence:
+
+```text
+git diff --check
+./control-plane-kit-operations/test.sh
+  107 tests passed
+  compileall passed
+  control-plane-kit-operations import ok
+./test.sh
+  1219 tests passed
+```
+
+#873 handoff:
+
+Dependency binding should build on the #872 private-network node start. The next
+step is to derive runtime parameters from graph edges and product contracts, not
+from product-specific branches in the Docker adapter. In particular:
+
+```text
+Hello dependency/env binding
+router target binding
+multiplexer primary/observer binding
+Postgres secret/data/retention handling
+published-image digest truth versus local tags
+```
+
+Postgres realization remains blocked until operations has typed secret
+resolution and retained data mount material. If that scope becomes necessary for
+the ACTIVITY live matrix before #877, create a focused child issue instead of
+adding implicit secret or volume behavior to `DockerProductRealizationAdapter`.
+
+## #873 Product Dependency Binding
+
+#873 confirms that dependency binding is already represented by the extracted
+core graph language and hardens the Docker realization boundary so the fact does
+not become implicit.
+
+The important existing pure transformation is:
+
+```text
+SocketConnection(provider, provider_socket, consumer, requirement_socket)
+  -> compile_topology
+    -> Edge(env_assignments)
+      -> consumer Node.socket_environment
+        -> Node.non_secret_environment()
+```
+
+The Docker adapter then consumes the compiled node material:
+
+```python
+self.client.run_container(
+    ...,
+    environment=node.non_secret_environment(),
+    ...,
+)
+```
+
+No second dependency-binding engine was introduced in operations. This is the
+right boundary because protocol compatibility, required/optional sockets, and
+environment binding completeness are pure graph concerns. Runtime realization
+should receive an already-validated node and pass its non-secret runtime material
+to Docker without scanning containers or recognizing product names.
+
+Focused #873 coverage proves:
+
+```text
+router active requirement
+  app.internal -> router.active
+  ACTIVE_TARGET_URL == app.internal endpoint URL
+
+multiplexer requirements
+  primary.internal -> multiplexer.primary
+  observer.internal -> multiplexer.observer-a
+  MULTIPLEXER_PRIMARY_URL == primary endpoint URL
+  MULTIPLEXER_OBSERVER_A_URL == observer endpoint URL
+  absent optional observer-b does not fabricate an env value
+```
+
+The descriptor language is sufficient for the current HTTP seed products:
+
+```text
+http-active-router
+  active: HTTP requirement -> ACTIVE_TARGET_URL
+
+http-multiplexer
+  primary: HTTP requirement -> MULTIPLEXER_PRIMARY_URL
+  observer-a: optional HTTP requirement -> MULTIPLEXER_OBSERVER_A_URL
+  observer-b: optional HTTP requirement -> MULTIPLEXER_OBSERVER_B_URL
+```
+
+The Postgres seeded descriptor remains different. Its graph-visible provider
+socket is ready, but realization still needs typed secret resolution and retained
+data mount material before operations can start it safely. That remains a later
+focused child if the #877 live matrix requires database containers during this
+ACTIVITY leg.
+
+Validation evidence so far:
+
+```text
+git diff --check
+./control-plane-kit-operations/test.sh
+  109 tests passed
+  compileall passed
+  control-plane-kit-operations import ok
+./test.sh
+  1219 tests passed
+```
+
+#874 handoff:
+
+#874 can rely on the Docker adapter receiving fully compiled runtime
+environment for edge-connected HTTP products. It should focus on coordinator
+dispatch and observation persistence:
+
+```text
+durable STEP_STARTED intent
+  -> DockerProductRealizationAdapter executes outside transaction
+    -> STEP_SUCCEEDED / STEP_FAILED / STEP_UNSUPPORTED / STEP_UNCERTAIN
+      -> ObservationRecord / read projection evidence
+```
+
+Do not add graph-edge binding logic to the coordinator. If a runtime value is
+missing, first inspect graph compilation/validation and product descriptors;
+only then consider adapter-level failure evidence.
+
+## #874 Coordinator Result and Observation Persistence
+
+#874 connects real adapter outcomes to the existing observed-state store without
+creating another journal or projection.
+
+The new outcome shape is:
+
+```python
+@dataclass(frozen=True)
+class ActivityExecutionOutcome:
+    kind: EffectResultKind
+    evidence: BoundedEvidence = field(default_factory=BoundedEvidence)
+    failure: FailureEvidence | None = None
+    observations: tuple[ObservationRecord, ...] = ()
+```
+
+This keeps observations as typed durable values. Adapters do not return raw
+dictionaries, and the coordinator does not infer health from process effects.
+
+The coordinator flow now has the intended post-effect transaction boundary:
+
+```text
+short transaction:
+  STEP_STARTED durable intent
+commit
+
+adapter.execute(ActivityRealizationContext)
+
+short transaction:
+  STEP_SUCCEEDED / STEP_FAILED / STEP_UNSUPPORTED / STEP_UNCERTAIN
+  plus any ObservationRecord values from the adapter
+commit
+```
+
+`_record_step_event()` writes the event and observations through the same
+UnitOfWork connection before committing. If adapter observation evidence names a
+foreign workspace after an effect has returned, the coordinator records
+`STEP_UNCERTAIN` with `adapter-observation-workspace-mismatch` rather than
+leaving an effect-without-result gap or persisting the foreign row.
+
+The local Docker adapter now emits a narrow process observation for `StartNode`:
+
+```python
+ObservationRecord(
+    observation_id=f"{context.intent_event.event_id}:process-started",
+    workspace_id=context.request.identity.workspace_id,
+    subject_id=node_id,
+    status=ObservationStatus.PROCESS_STARTED,
+    observed_at=context.intent_event.occurred_at,
+    graph_id=context.plan_record.desired_graph_id,
+    probe_kind=ProbeKind.PROCESS,
+    probe_outcome=ProbeOutcome.PROCESS_RUNNING,
+)
+```
+
+That deliberately says only "the process was started/running." It does not claim
+transport reachability, application health, or readiness. Runtime network
+creation remains event evidence only.
+
+Validation evidence:
+
+```text
+git diff --check
+./control-plane-kit-operations/test.sh
+  110 tests passed
+  compileall passed
+  control-plane-kit-operations import ok
+./test.sh
+  1219 tests passed
+```
+
+#875 handoff:
+
+#875 can now rely on durable realization evidence existing in two independent
+but correlated streams:
+
+```text
+ActivityEventRecord
+  lifecycle / saga truth
+
+ObservationRecord
+  runtime observation truth, projected separately from graph truth
+```
+
+The next issue should advance the current graph pointer only after accepted
+successful realization. It should not treat observations as desired graph
+mutation, and it should not infer readiness from the process-start observations
+added here.
+
+## #875 Guarded Current Graph Advancement
+
+#875 restores the extracted operations application service that turns complete
+execution evidence into one guarded current-graph projection update.
+
+The key boundary is:
+
+```text
+approved/admitted plan
+  -> claimed run
+    -> complete successful activity event journal
+      -> CurrentGraphAdvancementCommandService
+        -> CURRENT_GRAPH_ADVANCED event
+        -> ADVANCE_CURRENT_GRAPH operation action
+        -> workspace current_graph_id compare-and-set
+```
+
+This preserves the distinction between truth and projection:
+
+```text
+ActivityEventRecord
+  append-only lifecycle / saga truth
+
+Workspace.current_graph_id
+  cached current-topology pointer advanced only from accepted evidence
+
+ObservationRecord
+  runtime observation truth, never graph mutation
+```
+
+The command shape is:
+
+```python
+@dataclass(frozen=True)
+class AdvanceCurrentGraph:
+    workspace_id: str
+    run_id: str
+    plan_id: str
+    expected_current_graph_id: str
+    desired_graph_id: str
+    authority: ExecutionWorkerAuthority
+    idempotency_key: IdempotencyKey
+```
+
+The service validates all pinned identities before mutation:
+
+```text
+request.workspace == command.workspace
+request.plan == command.plan
+run.plan == command.plan
+plan.session == request.session
+plan.base_graph == command.expected_current_graph_id
+plan.desired_graph == command.desired_graph_id
+workspace.current_graph == command.expected_current_graph_id
+workspace.desired_graph == command.desired_graph_id
+base and desired graph records belong to the workspace
+request is still claimed by the advancing worker
+worker has execution:operate
+```
+
+Advancement uses the existing workspace CAS primitive:
+
+```python
+stores.workspaces.compare_and_set_current_graph(
+    command.workspace_id,
+    expected_graph_id=command.expected_current_graph_id,
+    replacement_graph_id=command.desired_graph_id,
+)
+```
+
+The durable event stream is still the saga journal, but extracted core now wants
+pure `ActivityJournalEvent` values. #875 therefore moved the coordinator's
+private event projection into one shared operations interpreter:
+
+```python
+def activity_journal_events(
+    events: tuple[ActivityEventRecord, ...],
+) -> tuple[ActivityJournalEvent, ...]:
+    ...
+```
+
+Both `ExecutionCoordinator` and `CurrentGraphAdvancementCommandService` now use
+that same adapter before calling:
+
+```python
+project_activity_journal(plan, activity_journal_events(events))
+derive_schedule(plan, projection.state)
+```
+
+This matters because advancement is not allowed to trust a naked
+`ActivityRunStatus.SUCCEEDED` projection. It also requires reconstructible saga
+success:
+
+```text
+latest event is RUN_SUCCEEDED
+exactly one terminal RUN_SUCCEEDED exists
+no failed / unsupported / compensating / cancelled evidence appears
+no in-flight or uncertain journal state remains
+successful step evidence exactly covers the ActivityPlan
+```
+
+Focused #875 coverage proves:
+
+```text
+complete durable success advances once and exact replay returns original evidence
+uncertain, unsupported, or failed step evidence cannot advance
+missing scope, foreign worker, and stale graph pointers fail closed
+changed idempotent intent conflicts without a second event
+late operation-action write failure rolls back pointer and event
+concurrent advancement has one winner
+```
+
+Validation evidence:
+
+```text
+git diff --check
+./control-plane-kit-operations/test.sh
+  116 tests passed
+  compileall passed
+  control-plane-kit-operations import ok
+./test.sh
+  1219 tests passed
+```
+
+#880 handoff:
+
+The durable execution spine now has planning, admission, claim/start, execution
+result/observation persistence, and guarded advancement. Before full public
+workflow acceptance, #880 should expose the approval queue/read model needed for
+manager review:
+
+```text
+operator requests approval
+  -> manager lists pending approvals
+    -> manager inspects plan/risk/detail
+      -> manager approves or rejects
+```
+
+#880 should not bypass approval by inserting rows directly in public acceptance
+paths. It should build on the existing approval records and read-service
+projection boundaries, then hand off to #881 for cpk-server HTTP/MCP exposure.
+
+## #880 Approval Queue Read Model And Review Contract
+
+#880 completed the manager-facing read contract needed between plan preparation
+and approval decision. The important distinction is:
+
+```text
+pending approvals
+  = bounded queue rows for triage
+
+approval detail
+  = one approval request
+    + the exact pinned plan/risk/recovery context being reviewed
+```
+
+The core contract language now names this projection explicitly:
+
+```python
+ReadProjectionKind.APPROVAL_DETAIL = "approval-detail"
+
+_ProjectionDefinition(
+    "read.approval-detail",
+    ReadProjectionKind.APPROVAL_DETAIL,
+    "ApprovalDetailReadResponse",
+    ReadProjectionPolicy.PINNED_PLAN_AND_RECOVERY,
+)
+```
+
+Adapter parity also knows the same operation, route, tool, and response shape:
+
+```text
+read.approval-detail
+  -> HTTP route read.approval-detail
+  -> MCP tool get_approval_detail
+  -> ApprovalDetailReadResponse
+```
+
+Operations implements the projection without creating new approval truth:
+
+```python
+approval = _approval_in_workspace(store, workspace_id, approval_request_id)
+plan = _plan_in_workspace(store, workspace_id, approval.plan_id)
+if plan.session_id != approval.session_id:
+    raise ReadModelError(...)
+
+payload = _plan_descriptor(...)
+payload["risk_summary"] = _risk_summary(plan)
+payload["recovery"] = self._recovery_for_plan(workspace_id, plan)
+```
+
+The projection therefore reconstructs manager review context from existing
+durable records:
+
+```text
+ApprovalRequestRecord
+  -> ActivityPlanRecord
+    -> pinned base/desired graph truth
+      -> risk summary
+      -> recovery transition
+```
+
+Focused #880 coverage proves:
+
+```text
+canonical read projection set includes read.approval-detail
+HTTP route inventory includes /workspaces/{workspace_id}/approvals/{approval_id}
+adapter parity binds get_approval_detail to the same projection schema
+security parity keeps approval detail read-only and read-scoped
+Postgres-backed InstanceReadService.approval_detail joins approval to plan review context
+```
+
+Validation evidence:
+
+```text
+git diff --check
+./control-plane-kit-core/test.sh
+  379 tests passed
+  compileall passed
+  control-plane-kit-core import ok
+./control-plane-kit-operations/test.sh
+  117 tests passed
+  compileall passed
+  control-plane-kit-operations import ok
+./test.sh
+  1219 tests passed
+```
+
+#881 handoff:
+
+#881 should expose the complete approval workflow through cpk-server public
+adapters. The read side now has the queue and detail projection. The remaining
+public workflow is:
+
+```text
+operator requests approval
+  -> manager lists pending approvals
+    -> manager reads approval detail
+      -> manager approves or rejects
+        -> operator admits only with current approval
+```
+
+Do not bypass approval in #881 acceptance paths. Public HTTP/MCP calls should
+use the same operations services and UnitOfWork boundaries as direct operations
+tests.
+
+Future runtime handoff:
+
+The ACTIVITY leg currently keeps Docker realization behind the operations
+adapter seam. A future real `DockerRuntime` implementation should consider a
+Python Docker SDK-backed adapter as one implementation of that seam, while
+preserving the existing split-transaction external-effect law.
+
+## #881 Cpk-Server Approval Workflow Adapters
+
+#881 exposed the approval workflow through the cpk-server adapter surface without
+creating another approval queue, approval decision service, or public command
+vocabulary. The new public command contract is:
+
+```text
+command.approval.request
+  -> /workspaces/{workspace_id}/plans/{plan_id}/approval
+  -> ApprovalRequestRequest
+  -> ApprovalRequestResponse
+  -> PLAN_WRITE
+```
+
+This completes the public approval path started in #880:
+
+```text
+operator requests approval
+  -> manager lists pending approvals
+    -> manager reads approval detail
+      -> manager approves or rejects
+        -> operator admits only with current approval
+```
+
+Core now records request-approval parity beside the existing approval decision
+contract:
+
+```python
+OperationParity(
+    command_name="approval.request",
+    route_id="command.approval.request",
+    mcp_tool_name="request_approval",
+    service_role=ControlPlaneServiceRole.APPROVAL,
+    request_schema="ApprovalRequestRequest",
+    response_schema="ApprovalRequestResponse",
+    approval_policy=ApprovalPolicy.SUBMITS_FOR_APPROVAL,
+)
+```
+
+The cpk-server operations adapter translates that public route into the existing
+approval service command:
+
+```python
+RequestApproval(
+    session_id=...,
+    plan_id=...,
+    actor_id=...,
+    actor_scopes=...,
+    idempotency_key=...,
+    comment=...,
+)
+```
+
+The decision route continues to use `DecideApproval`, so request and decision
+share the same `ApprovalCommandService` and UnitOfWork boundary.
+
+Focused #881 coverage proves:
+
+```text
+core command parity includes approval.request
+HTTP route inventory exposes command.approval.request with PLAN_WRITE scope
+activity-history parity records accepted and rejected approval commands
+cpk-server translates request payloads to RequestApproval
+public approval loop persists request -> reads queue -> reads detail -> decides
+```
+
+The public approval-loop proof intentionally seeds only workspace/session/plan
+truth. It does not insert approval rows directly. The approval request is created
+through `command.approval.request`, then observed through the #880 queue/detail
+read projections, then decided through `command.approval.decide`.
+
+Validation evidence:
+
+```text
+git diff --check
+./control-plane-kit-core/test.sh
+  379 tests passed
+  compileall passed
+  control-plane-kit-core import ok
+./control-plane-kit-operations/test.sh
+  119 tests passed
+  compileall passed
+  control-plane-kit-operations import ok
+./test.sh
+  1219 tests passed in 217.657s
+```
+
+#876 handoff:
+
+#876 can now use the public approval route sequence instead of inserting
+approval records directly:
+
+```text
+command.approval.request
+read.pending-approvals
+read.approval-detail
+command.approval.decide
+```
+
+#878 must still republish cpk-server before final ACTIVITY acceptance because
+the cpk-server backend adapter surface now includes approval request behavior.
+
+## #876 Cpk-Server Public Workflow Routes
+
+#876 completed the first public route proof for the full operator workflow
+without collapsing the durable execution lifecycle. The public command language
+now includes two additional route contracts:
+
+```text
+command.run.start
+  -> /workspaces/{workspace_id}/runs/{run_id}/start
+  -> StartRunRequest
+  -> ActivityRunTransitionResult
+  -> EXECUTION_RUN
+
+command.graph.advance-current
+  -> /workspaces/{workspace_id}/runs/{run_id}/advance-current-graph
+  -> AdvanceCurrentGraphRequest
+  -> CurrentGraphAdvancementResult
+  -> EXECUTION_RUN
+```
+
+The important lifecycle decision is that request, claim, start, execution, and
+advancement remain separate durable steps:
+
+```text
+admit
+  -> execution request id
+claim
+  -> opens activity run and returns run id
+start
+  -> records RUN_STARTED
+execute
+  -> dispatches activities
+advance
+  -> advances current graph from accepted run evidence
+```
+
+The public cpk-server operations adapter test now proves this route sequence:
+
+```text
+workspace.create
+  -> product.import
+    -> operation-session.start
+      -> desired-graph.set
+        -> deployment.plan
+          -> approval.request
+            -> read.pending-approvals
+              -> read.approval-detail
+                -> approval.decide
+                  -> deployment.admit
+                    -> run.claim
+                      -> run.start
+                        -> deployment.execute
+                          -> graph.advance-current
+                            -> read.current-graph
+```
+
+The proof intentionally uses both HTTP-shaped and MCP-shaped route requests
+against the same operations application boundary. The activity adapter is a
+test-local successful adapter, so #876 proves public workflow composition,
+approval preservation, run-id handling, and explicit current-graph advancement;
+it does not claim real Docker acceptance. The real seeded-product Docker proof
+belongs to #877/#878.
+
+Focused evidence also proves the generated plan still dispatches the expected
+semantic activity spine:
+
+```text
+start-runtime -> start-node -> wait-healthy
+```
+
+Validation evidence:
+
+```text
+git diff --check
+./control-plane-kit-core/test.sh
+  379 tests passed
+  compileall passed
+  control-plane-kit-core import ok
+./control-plane-kit-operations/test.sh
+  120 tests passed
+  compileall passed
+  control-plane-kit-operations import ok
+./test.sh
+  1219 tests passed in 233.590s
+```
+
+Review findings:
+
+- approval is not bypassed; admission still depends on current approved plan
+  evidence;
+- claim/start/execute remain distinct and execute/advance use the run id opened
+  by claim, not the admission request id;
+- current graph advancement is explicit, guarded, and does not let observations
+  rewrite desired graph truth;
+- the new routes reuse existing lifecycle, execution, and advancement services
+  rather than creating another workflow model;
+- no transaction or UnitOfWork ownership changes were introduced;
+- core received only closed command/read contract language, not runtime or
+  product-specific behavior.
+
+#877 handoff:
+
+#877 should replace the #876 fake-success adapter with seeded local-Docker
+product realization. Use the existing public workflow shape, then prove real
+setup, dependency binding, observation, cleanup, and current-graph advancement
+for digest-pinned seeded products. #878 must republish cpk-server after the
+backend route changes from #876/#877 are complete.
+
+## #892 Product Family And Retained Data Mount Material
+
+#877 exposed a real product-language ambiguity before live seeded acceptance:
+`postgres-server` is OCI-backed and graph-visible, but it is not a CPK-managed
+HTTP server process. It is a data-service product with retained data, a private
+Postgres provider socket, public non-secret environment, and a runtime secret
+delivery for `POSTGRES_PASSWORD`.
+
+The structural correction keeps `products/postgres_server` in place and updates
+the product language instead of moving files for naming comfort:
+
+```text
+ProductFamily
+  = server
+  | data-service
+
+RetainedDataMount
+  = resource_id
+  x safe absolute container target_path
+```
+
+The core product descriptor now carries both fields:
+
+```json
+{
+  "product_family": "data-service",
+  "runtime_contract": {
+    "retained_data_mounts": [
+      {
+        "resource_id": "postgres-data",
+        "target_path": "/var/lib/postgresql/data"
+      }
+    ]
+  }
+}
+```
+
+The retained mount target is graph data, but only as a container path. Host
+paths remain outside descriptors and graph truth. The language rejects relative
+paths, path traversal, runtime namespaces such as `/proc` and `/sys`, Docker
+socket paths, duplicate targets, and mount references that do not correspond to
+declared retained data resources.
+
+Operations now interprets the generic OCI product contract without branching on
+`postgres-server` by name:
+
+```text
+OCI image
+  x sockets
+  x public environment
+  x SecretEnvironmentDelivery resolved at runtime
+  x retained data mounts
+    -> Docker network/container/volume materialization
+```
+
+Secret resolution is an explicit operations-side runtime seam. Missing resolver
+authority fails before Docker mutation; resolved secret values are released only
+at the Docker process environment boundary and are not included in events,
+observations, failure evidence, descriptors, or graph data.
+
+Retained data volumes are created with the same workspace/plan/graph/runtime
+ownership labels as containers, plus `control-plane-kit.data-resource-id`.
+Foreign volume collisions fail before image pull or container start. Ordinary
+compute realization mounts retained data; explicit data destruction remains a
+separate future/legacy interpreter concern and must never be inferred from
+compute teardown.
+
+Validation evidence:
+
+```text
+./control-plane-kit-core/test.sh
+  382 tests passed
+  compileall passed
+  control-plane-kit-core import ok
+
+./control-plane-kit-operations/test.sh
+  122 tests passed
+  compileall passed
+  control-plane-kit-operations import ok
+
+git diff --check
+
+./test.sh
+  1219 tests passed in 208.236s
+```
+
+#877 handoff:
+
+Use the new `ProductFamily.DATA_SERVICE` and `RetainedDataMount` language when
+running the seeded Postgres product. The local Docker adapter now supports the
+runtime material needed for the Postgres descriptor, provided the acceptance
+harness supplies an explicit secret resolver for
+`secret://control-plane-kit/postgres/password`. Continue to treat remote managed
+databases such as RDS as future runtime/interpreter work rather than as this
+local OCI data-service proof.
+
+## #877 Seeded Product Live Scenarios
+
+#877 replaced the #876 fake-success route workflow with real local-Docker
+activity realization over seeded OCI product descriptors. The live harness
+drives the same public route-shaped application boundary used by cpk-server:
+
+```text
+workspace create
+  -> product import
+    -> session start
+      -> desired graph set
+        -> plan
+          -> approval request
+            -> pending approval queue / approval detail
+              -> approval decision
+                -> admit
+                  -> claim
+                    -> start
+                      -> execute bounded Docker activities
+                        -> advance current graph
+                          -> read current graph
+```
+
+The scenario matrix now proves:
+
+```text
+Postgres data service + Hello server
+Router deployment: Hello blue -> active router
+Multiplexer deployment: primary Hello + observer Hello -> multiplexer
+Router transition: active router retargets from blue to green
+Router teardown: router, Hello nodes, and Docker network are removed
+```
+
+The live proof consumes digest-pinned descriptors from
+`control-plane-kit-servers` and uses Docker-local networking only. That is
+intentional for ACTIVITY. Remote control portals, Cloudflare ingress,
+CPK-enabled backdoor mutation, recursive child cpk-server acceptance, and cloud
+runtimes remain deferred.
+
+Important structural findings:
+
+1. Seeded HTTP descriptors needed bounded readiness retries. One-shot probes
+   made successful Docker startup depend on lucky timing. The server catalogue
+   now records `maximum_attempts: 5` for seeded HTTP live/readiness checks
+   through `control-plane-kit-servers` PR #19. This is descriptor truth, not a
+   local harness sleep.
+2. `VerificationPolicy.maximum_attempts` needed operational cadence. The
+   stdlib Docker health interpreter now sleeps briefly between attempts, so
+   retry policy means bounded startup tolerance rather than immediate repeated
+   connection attempts.
+3. Docker health failure evidence now records failed check ids, outcomes, and
+   bounded per-check evidence. This made live failures inspectable through the
+   activity journal without exposing command strings or secrets.
+4. `ReconcileRuntime` is now interpreted as idempotent owned-network
+   reconciliation. It reuses the same local Docker primitive as
+   `StartRuntime`; no second runtime model was introduced.
+5. Docker plan and graph labels are provenance, not compatibility identity.
+   Multi-plan updates must be allowed to reconcile a runtime network created by
+   a prior approved plan. Ownership compatibility still requires stable owner,
+   workspace, runtime, node, product, descriptor, and data-resource labels.
+6. Reconciled health-checkable nodes now schedule
+   `ReconcileNode -> WaitForHealthy`. The router update exposed this gap:
+   current graph advancement must depend on post-reconcile provider health, not
+   on a demo-side retry after advancement.
+7. The live controller attaches to runtime networks only while CPK-owned graph
+   containers exist there. It detaches before runtime-network removal so the
+   harness probe endpoint does not block legitimate graph teardown. The Docker
+   adapter does not disconnect arbitrary foreign endpoints.
+
+The resulting local Docker interpreter can now perform these real product
+operations:
+
+```text
+StartRuntime / ReconcileRuntime
+StartNode / ReconcileNode
+WaitForHealthy for HTTP checks
+WaitForHealthy for Postgres checks via injected operations-side checker
+StopNode / RemoveNodeResource
+StopRuntime / RemoveRuntimeResource
+```
+
+Validation evidence before PR:
+
+```text
+control-plane-kit-servers PR #19
+  git diff --check
+  ./test.sh
+  GitHub docker-tests passed
+
+./control-plane-kit-core/test.sh
+  385 tests passed
+  compileall passed
+  control-plane-kit-core import ok
+
+./control-plane-kit-operations/test.sh
+  132 tests passed
+  compileall passed
+  control-plane-kit-operations import ok
+
+git diff --check
+python3 -m py_compile examples/activity_seeded_live.py
+
+./activity-seeded-live-test.sh
+  seeded ACTIVITY scenarios passed
+  ACTIVITY seeded live proof passed
+
+./test.sh
+  1219 tests passed in 206.343s
+```
+
+#878 handoff:
+
+#878 must republish cpk-server because #876 and #877 changed backend/runtime
+behavior below the cpk-server image. The publish lane should update the
+cpk-server Dockerfile source pin to the merged #877 commit, publish a new GHCR
+image, record the immutable digest, update `products/cpk_server/product.cpk.json`,
+refresh descriptor and catalogue checksums, and run the published-image smoke
+with local rebuild disabled.
+
+## #878 Published cpk-server Activity Baseline
+
+#878 republished the cpk-server OCI image from the merged #877
+control-plane-kit source commit:
+
+```text
+control-plane-kit source commit:
+  fc85788e7b39324091d397f8afa4b1b9b56b3cb7
+
+cpk-server image:
+  ghcr.io/openj92/control-plane-kit-servers/cpk-server@sha256:6d09435ccb579c318b4e4914435e56e1f758ac9d8241e29aae5755b9662c45b0
+
+cpk-server descriptor sha256:
+  003d1673d7c17d12031f14f746c5724375e376fae9678463a2454134b4c6727b
+
+packaged catalogue checksum:
+  48d9569f970f985011cc8abd6dd248c8715578f1c8a47a6885ad061d5f0ba87b
+```
+
+The publication work landed in `control-plane-kit-servers` PR #20. The
+descriptor and packaged catalogue were updated together. During review, the
+new core `ProductDescriptorCodec` correctly rejected a descriptor rewritten
+with a trailing newline. The final descriptor is canonical compact JSON and the
+catalogue digest was recomputed from those exact bytes.
+
+Validation evidence:
+
+```text
+control-plane-kit-servers PR #20
+  git diff --check
+  focused cpk-server product tests
+  scripts/cpk_server_published_image_smoke.sh
+  ./test.sh
+```
+
+The published-image smoke pulled by immutable digest and disabled local rebuild:
+
+```text
+CPK_SERVER_BUILD_IMAGE=0
+docker pull ghcr.io/openj92/control-plane-kit-servers/cpk-server@sha256:6d09435...
+```
+
+Important boundary finding:
+
+The published cpk-server image still contains the explicit
+`_UnsupportedExecutionAdapter` seam. That is not a missed import. Real Docker
+execution from inside the hosted cpk-server image would require a declared
+Docker-host capability, socket/access policy, and runtime/interpreter package
+boundary. ACTIVITY proves local Docker realization through operations and the
+seeded live harness; it does not yet make the published cpk-server image a
+Docker-host controller. That remains a handoff to the runtime/interpreter lane.
+
+## #879 ACTIVITY Closeout
+
+ACTIVITY now establishes the first real extracted operator workflow over
+durable operations:
+
+```text
+create workspace
+  -> import product descriptor
+    -> start operation session
+      -> set desired graph
+        -> plan transition
+          -> request approval
+            -> manager reviews pending approval / plan detail
+              -> manager approves or rejects
+                -> admit approved plan
+                  -> claim run
+                    -> start run
+                      -> execute activities
+                        -> record observations
+                          -> advance current graph only after accepted success
+                            -> read final state
+```
+
+Capabilities now available:
+
+```text
+core
+  pure product, graph, plan, command, read, and route contract language
+
+operations
+  Postgres-backed workspace/product/session/graph/approval/admission/lifecycle
+  services, local Docker product realization, observations, and explicit current
+  graph advancement
+
+cpk-server
+  FastAPI and MCP wrappers over the same operations command/read boundary
+
+control-plane-kit-servers
+  digest-pinned OCI descriptors for cpk-server, hello-server,
+  http-active-router, http-multiplexer, and postgres-server
+```
+
+Real local Docker product operations proven by #877:
+
+```text
+StartRuntime / ReconcileRuntime
+StartNode / ReconcileNode
+WaitForHealthy for HTTP checks
+WaitForHealthy for Postgres checks through the operations-side health checker
+StopNode / RemoveNodeResource
+StopRuntime / RemoveRuntimeResource
+```
+
+Seeded live scenarios exercised:
+
+```text
+Postgres data service + Hello server
+Router deployment: Hello blue -> active router
+Multiplexer deployment: primary Hello + observer Hello -> multiplexer
+Router transition: active router retargets from blue to green
+Router teardown
+```
+
+HTTP/MCP evidence:
+
+#876 proved the public route workflow over both HTTP-shaped and MCP-shaped
+boundaries. Both surfaces traverse the same `CpkServerOperationsApplication`
+service boundary and do not carry duplicate command vocabulary. #877 then
+proved real Docker activity realization through operations with seeded product
+descriptors. The published cpk-server image was republished from the same
+activity-capable operations source, but hosted Docker execution remains
+deferred until cpk-server has a coherent runtime/interpreter capability.
+
+Security and data-engineering review:
+
+- Approval is part of the workflow and admission still rejects missing,
+  rejected, stale, or mismatched approval evidence.
+- Current graph advancement is explicit and guarded by completed run evidence.
+- Observations extend operational evidence and do not rewrite desired graph
+  truth.
+- Product descriptors remain secret-free. Postgres password material is handled
+  through explicit secret delivery in the descriptor and a local-development
+  resolver in the live harness.
+- Stores remain UnitOfWork-owned; stores do not commit independently.
+- The Docker adapter records durable intent before bounded external effects and
+  records result/observation/projection afterward.
+- Docker ownership compatibility ignores plan/graph provenance labels while
+  preserving stable owner/workspace/runtime/node/product/descriptor/data
+  compatibility.
+- Docker cleanup removes only proven-owned ACTIVITY resources and preserves
+  unrelated containers and volumes.
+
+Residual risks and explicit handoffs:
+
+```text
+#676 recursive cpk-server acceptance
+  deferred until hosted cpk-server has a coherent runtime/interpreter capability
+
+#806 runtime/interpreter extraction
+  owns Docker-host access, future Docker SDK/CLI choice, cloud runtimes, and
+  runtime capability publication
+
+#882 future control portals / ingress
+  owns remote over-the-wire control access into CPK-enabled servers
+
+larger topology stress tests
+  should reuse the seeded descriptors and add richer mixed topologies after the
+  runtime/interpreter boundary is explicit
+
+frontend work
+  can consume the approval queue, plan detail, workflow state, and read models
+  after operations closeout
+```
+
+ACTIVITY should close as local Docker realization plus public workflow
+composition, not as recursive or remote hosted runtime execution.
+
+## #897/#898 Interpreter Runtime Dry Run
+
+#897 and #898 refresh the runtime/interpreter extraction before creating the
+`control-plane-kit-interpreters` package. The dry run confirms the intended
+authority chain:
+
+```text
+cpk-server
+  -> configured operations application
+    -> ExecutionCoordinator
+      -> RuntimeInterpreterDispatcher
+        -> DockerRuntimeInterpreter
+          -> Python Docker SDK
+```
+
+The important boundary decision is that operations owns dispatch because it owns
+durable ActivityPlan execution, UnitOfWork, run lifecycle, observations, and
+current graph advancement. The interpreters package owns concrete runtime
+effects such as Docker SDK calls, probe execution, configuration materialization,
+secret materialization, host publication, and cleanup. `cpk-server` remains a
+FastAPI/MCP process wrapper that receives configured runtime authority; it does
+not become the owner of Docker behavior merely because its image can be run by
+Docker.
+
+The dry-run artifact is:
+
+```text
+artifacts/extraction/interpreter-runtime-dry-run.json
+```
+
+It records the #897/#898 topology, law cards, current file anchors, frozen
+inspiration sources, and the Docker SDK coverage assessment. The topology is
+coherent without adjustment before #899:
+
+```text
+#897 -> #898 -> #899 -> #900 -> #901 -> #902 -> #903 -> #904 -> #905
+  -> #906 -> #907 -> #908 -> #909 -> #910 -> #911
+```
+
+The ordering matters. #900 introduces the operations-owned runtime dispatcher
+before any concrete Docker SDK implementation. #901 stabilizes the current
+operations-local Docker adapter seam before replacing CLI mechanics. #908 wires
+cpk-server to receive a proven dispatcher instead of inventing server-local
+Docker behavior. #910 is only the recursive readiness dry run; full recursive
+cpk-server acceptance remains #676.
+
+Frozen `DockerRuntimeInterpreter.up` / `down` remains useful inspiration, but it
+is not the production workflow shape. The canonical workflow remains pinned
+ActivityPlan execution through the coordinator.
+
+The Docker SDK covers the ordinary Docker substrate well: network, container,
+volume, image, port binding, inspection, log, and timeout surfaces. It does not
+by itself solve secret-file or configuration-artifact materialization. Those
+remain explicit interpreter laws for #904 and #905, where the implementation must
+prove bounded materialization without leaking secrets through descriptors,
+events, logs, labels, or process arguments.
+
+## #900 Runtime Interpreter Dispatcher
+
+#900 introduced the operations-owned dispatcher seam without importing Docker
+SDK behavior into operations or cpk-server:
+
+```text
+cpk-server
+  -> configured operations application
+    -> ExecutionCoordinator
+      -> RuntimeInterpreterDispatcher
+        -> DockerRuntimeInterpreter
+          -> Python Docker SDK
+```
+
+`RuntimeInterpreterDispatcher` is itself an `ActivityExecutionAdapter`, so the
+existing coordinator continues to own durable execution, worker authority,
+UnitOfWork boundaries, event recording, observations, and advancement evidence.
+The dispatcher only answers one pure question from pinned graph material:
+
+```text
+ActivityRealizationContext x Activity.operation -> RuntimeKind
+RuntimeKind x configured interpreters           -> ActivityExecutionOutcome
+```
+
+The graph source is operation-specific:
+
+```text
+start / reconcile / health work -> desired graph
+stop / remove work              -> base graph
+```
+
+This preserves graph-drift resistance. Runtime dispatch is derived from the same
+approved plan material the coordinator is executing, not from current mutable
+workspace truth. Missing runtime targets and unconfigured runtime kinds return
+explicit unsupported evidence instead of falling through to Docker or inventing
+a default.
+
+The focused proof lives in:
+
+```text
+control-plane-kit-operations/tests/test_runtime_interpreter_dispatcher.py
+```
+
+It proves desired-graph dispatch for start work, base-graph dispatch for removal
+work, runtime-record dispatch, explicit missing-interpreter evidence, and
+explicit unsupported evidence for operations that are not runtime interpreter
+work. #901 can now stabilize the existing local Docker realization adapter
+against this seam before concrete Docker SDK behavior moves into the
+`control-plane-kit-interpreters` package.
+
+## #901 Docker Realization Contract
+
+#901 hardened the current operations-local Docker adapter as the compatibility
+target for the future SDK-backed interpreter work. No Docker SDK behavior moved
+yet; the point was to make the existing seam explicit before #902 changes the
+backend.
+
+The preserved spine remains:
+
+```text
+cpk-server
+  -> configured operations application
+    -> ExecutionCoordinator
+      -> RuntimeInterpreterDispatcher
+        -> DockerRuntimeInterpreter
+          -> Python Docker SDK
+```
+
+The focused contract now says:
+
+```text
+RuntimeInterpreterDispatcher({RuntimeKind.DOCKER: DockerProductRealizationAdapter})
+  -> DockerProductRealizationAdapter.execute(ActivityRealizationContext)
+    -> DockerRealizationClient structural backend
+```
+
+`DockerRealizationClient` is the small backend boundary that #902 can implement
+with the Python Docker SDK:
+
+```text
+inspect/create network
+inspect/create volume
+pull image
+inspect/run/start/stop/remove container
+remove network
+```
+
+The #901 proof also pins graph-source behavior at the adapter boundary. A
+teardown activity with the same node id in base and desired graphs must remove
+using the base graph's product material. If the adapter accidentally used the
+desired graph, ownership labels would point at the replacement product and the
+old owned container would not be removed.
+
+The strengthened tests live in:
+
+```text
+control-plane-kit-operations/tests/test_docker_realization.py
+```
+
+They prove the exact client protocol surface, dispatcher-to-adapter composition
+without a cpk-server branch, and base-graph teardown material. #902 should
+implement a Docker SDK client behind this boundary rather than changing
+coordinator, cpk-server, graph, approval, lifecycle, or advancement behavior.
+
+## #902-#906 Docker SDK Interpreter Foundation
+
+#902 through #906 moved the concrete Docker substrate into
+`control-plane-kit-interpreters` while preserving the same authority chain:
+
+```text
+cpk-server
+  -> configured operations application
+    -> ExecutionCoordinator
+      -> RuntimeInterpreterDispatcher
+        -> DockerRuntimeInterpreter
+          -> Python Docker SDK
+```
+
+#902 introduced the lazy Docker SDK client. The package root and Docker module
+can be imported without importing the optional `docker` dependency; the concrete
+SDK is imported only when `DockerSdkClient()` is constructed without an injected
+client. The client owns inspection, create/pull/run/start/stop/remove calls for
+Docker networks, volumes, images, and containers. It still imports no operations
+stores, UnitOfWork, cpk-server process modules, or product-server code.
+
+#903 added concrete probe and verification adapters. Core still owns probe
+intent and verification value languages; interpreters own bounded TCP, UDP,
+HTTP, Redis, and Postgres checks against authorized endpoint material.
+
+#904 and #905 added Docker materialization for configuration artifacts and
+secret-file deliveries. Configuration uses immutable, bounded, secret-free core
+`ConfigurationArtifact` values. Secrets are resolved only at runtime from
+authorized `SecretReference` material. Both paths use helper containers and
+`put_archive`, not process argv, and both verify durable evidence by digest.
+
+#906 added explicit host publication and endpoint observation support. The
+Docker SDK boundary is now:
+
+```text
+DockerSdkPortBinding
+  -> Docker SDK ports argument
+    -> DockerSdkPublishedPort inspection facts
+      -> verify_published_ports(requested, observed)
+        -> runtime_endpoint_observations(...)
+```
+
+This keeps private endpoints, host-local endpoints, and public endpoints as
+distinct runtime observations. TCP and UDP are matched by typed `Transport`;
+UDP publication is never inferred from TCP publication on the same numeric port.
+Endpoint observations remain evidence for operations to persist and project.
+They do not rewrite desired graph truth.
+
+#906 live evidence:
+
+```text
+git diff --check
+control-plane-kit-interpreters ./test.sh: 38 tests, compileall, import checks
+tests/live_docker_publication.py: published TCP 8000 and UDP 5353, 2 host observations
+host-publication Docker residue audit: no labeled containers, networks, or volumes
+control-plane-kit ./test.sh: core 385, operations 141, root 1224
+```
+
+The live publication proof uses Docker inspection as the source of truth. It
+refuses to count a host endpoint unless Docker reports the requested transport,
+bind address, and fixed host port when one was requested.
+
+## #916-#919 Runtime Effect Boundary Settlement
+
+#916 moved the cross-package runtime boundary into pure core language:
+
+```text
+RuntimeEffectRequest
+  = pinned durable source
+  x activity operation
+  x runtime kind
+  x selected registered product material
+```
+
+and:
+
+```text
+RuntimeEffectResult
+  = effect id
+  x EffectResultKind
+  x bounded evidence
+  x optional failure
+  x runtime endpoint observations
+```
+
+Operations translates from pinned durable execution material into that core
+request without querying stores inside the translator:
+
+```text
+ActivityRealizationContext -> RuntimeEffectRequest
+```
+
+The translator selects product material from the `RegisteredProduct` values that
+the coordinator already loaded in a short transaction. It matches graph node
+metadata by `ProductReference` identity and descriptor digest. That preserves:
+
+```text
+pinned truth in -> pure request out
+```
+
+#917 implemented the concrete Docker interpreter in the separate
+`control-plane-kit-interpreters` repository:
+
+```text
+RuntimeEffectRequest -> IO RuntimeEffectResult
+```
+
+The Docker SDK, Docker ownership checks, image pulls, container/network/volume
+mutation, configuration materialization, secret resolution, and endpoint
+inspection now live outside operations.
+
+#919 then removed the old operations-owned Docker adapter and CLI client. The
+current spine is:
+
+```text
+cpk-server
+  -> configured operations application
+    -> ExecutionCoordinator
+      -> RuntimeInterpreterDispatcher
+        -> RuntimeEffectRequest
+          -> injected runtime interpreter
+            -> RuntimeEffectResult
+```
+
+Operations still owns durable workflow, UnitOfWork boundaries, journals,
+observations, and advancement. It does not own Docker implementation behavior.
+The dispatcher converts returned runtime results into the existing operations
+activity outcome language:
+
+```text
+ActivityJournal x RuntimeEffectResult -> ActivityJournal'
+```
+
+The #919 tests prove:
+
+- interpreters receive `RuntimeEffectRequest`, not `ActivityRealizationContext`;
+- missing interpreters and unsupported targets fail closed;
+- effect-id mismatches become uncertainty rather than accepted success;
+- runtime endpoint observations become operations observation records;
+- `control-plane-kit-operations` imports no Docker SDK, interpreter package,
+  cpk-server process package, server-product package, subprocess runtime client,
+  FastAPI, HTTPX, MCP, or Uvicorn.
+
+Validation evidence:
+
+```text
+git diff --check
+control-plane-kit-operations ./test.sh: 124 tests, compileall, import check
+```
+
+## #918 External Docker Runtime Live Harness
+
+#918 routed the seeded ACTIVITY live harness through the external
+`control-plane-kit-interpreters` Docker implementation instead of the removed
+operations-local Docker adapter.
+
+The live composition is now:
+
+```text
+operations emits RuntimeEffectRequest
+  -> RuntimeInterpreterDispatcher
+    -> DockerRuntimeInterpreter
+      -> Python Docker SDK
+        -> RuntimeEffectResult
+          -> operations records activity result and observations
+```
+
+The harness composes the interpreter at the outside edge:
+
+```python
+adapter = RuntimeInterpreterDispatcher(
+    {RuntimeKind.DOCKER: DockerRuntimeInterpreter(DockerSdkClient())}
+)
+```
+
+and `activity-seeded-live-test.sh` mounts the sibling interpreter repository
+read-only, exposing it only through `PYTHONPATH`. This proves the acceptance
+composition without making `control-plane-kit-operations` depend on the
+concrete interpreter package.
+
+#918 also recorded two pure material-shape decisions needed by the live
+scenario:
+
+- product instantiation now renders private socket endpoints as
+  `scheme://node_id:container_port` when a provider runtime port is known;
+- socket-derived environment bindings are part of pinned
+  `RuntimeProductMaterial`, so routers and multiplexers receive dependency
+  URLs from graph edges rather than product-specific Docker branches.
+
+The Docker interpreter now owns the runtime-side behavior for:
+
+- `StartRuntime`, `ReconcileRuntime`, `StopRuntime`, and
+  `RemoveRuntimeResource`;
+- `StartNode`, `ReconcileNode`, `StopNode`, and `RemoveNodeResource`;
+- HTTP `WaitForHealthy` checks against runtime-private container addresses;
+- strict current-material ownership checks where exact material is being reused;
+- stable resource ownership checks where teardown or reconciliation must handle
+  an older graph fingerprint for the same workspace/runtime/node.
+
+Teardown materialization now resolves stop/remove runtime activities from the
+base graph. That keeps removal tied to the runtime that actually exists rather
+than the desired empty graph used by teardown.
+
+Validation evidence:
+
+```text
+control-plane-kit-core ./test.sh: 390 tests, compileall, import check
+control-plane-kit-operations ./test.sh: 125 tests, compileall, import check
+control-plane-kit-interpreters ./test.sh: 51 tests, compileall
+activity-seeded-live-test.sh: ACTIVITY seeded live proof passed
+```
+
+Residual handoff for #908:
+
+- cpk-server still needs a process/bootstrap injection seam for the dispatcher;
+- the live harness proves the desired composition, but cpk-server has not yet
+  been republished with that composition;
+- interpreter package dependency metadata still needs normal release/commit
+  choreography after the core changes land.
+
+## #908 cpk-server Runtime Dispatcher Injection
+
+#908 moved the external interpreter seam into the hosted cpk-server process
+composition without making cpk-server own Docker runtime semantics.
+
+The process-level shape is now explicit:
+
+```text
+cpk-server
+  -> configured operations application
+    -> ExecutionCoordinator
+      -> RuntimeInterpreterDispatcher
+        -> DockerRuntimeInterpreter
+          -> Python Docker SDK
+```
+
+The cpk-server bootstrap contract gained a closed runtime interpreter selector:
+
+```text
+CPK_RUNTIME_INTERPRETERS = none | docker
+```
+
+`none` remains the descriptor default and returns a bounded unsupported
+execution result. `docker` lazily imports `control-plane-kit-interpreters[docker]`
+and constructs:
+
+```python
+RuntimeInterpreterDispatcher(
+    {RuntimeKind.DOCKER: DockerRuntimeInterpreter(DockerSdkClient())}
+)
+```
+
+This keeps Docker SDK imports isolated in `control-plane-kit-interpreters`.
+The cpk-server product wrapper composes the dependency, but it does not inspect
+containers, mutate Docker resources, or branch on product-specific runtime
+behavior.
+
+Important implementation decision:
+
+- `control-plane-kit-interpreters` PR #9 aligned its core dependency pin to the
+  same control-plane-kit commit used by cpk-server:
+  `34a7701d1533a8cb4eb2d41c144e209b6432a658`.
+- cpk-server now depends on interpreter commit
+  `c74e4784855eda72881404310fb63370988b674d`.
+- cpk-server descriptor bytes are canonical. Adding
+  `CPK_RUNTIME_INTERPRETERS` required preserving the exact no-trailing-newline
+  product descriptor boundary before updating catalogue checksums.
+
+Validation evidence:
+
+```text
+control-plane-kit-interpreters git diff --check
+control-plane-kit-interpreters ./test.sh: 51 tests passed
+control-plane-kit-servers git diff --check
+control-plane-kit-servers ./test.sh:
+  21 root/catalogue/repository tests passed
+  32 cpk-server tests passed
+  8 hello-server tests passed
+  7 http-active-router tests passed
+  9 http-multiplexer tests passed
+  7 postgres-server tests passed
+  cpk-server image smoke passed
+  Docker residue audit passed
+```
+
+Residual handoff for #909:
+
+- cpk-server backend/runtime behavior changed, so #909 must publish a new
+  GHCR image from the merged cpk-server branch;
+- #909 must update `products/cpk_server/product.cpk.json` image digest,
+  source commit, descriptor digest, catalogue entries, and packaged catalogue
+  checksum;
+- #909 acceptance must pull by immutable GHCR digest, not use a local rebuilt
+  tag;
+- recursive child cpk-server acceptance remains deferred until after the
+  published dispatcher-capable image is proven.
+
+
+## #909 Hosted cpk-server Docker Interpreter Acceptance
+
+#909 proved the hosted process boundary after the interpreter split. The accepted
+composition is now live through the published cpk-server OCI image:
+
+```text
+cpk-server
+  -> configured operations application
+    -> ExecutionCoordinator
+      -> RuntimeInterpreterDispatcher
+        -> DockerRuntimeInterpreter
+          -> Python Docker SDK
+```
+
+The hosted acceptance script starts cpk-server from GHCR by immutable digest,
+configures `CPK_RUNTIME_INTERPRETERS=docker`, mounts the Docker socket as an
+explicit local-runtime authority, and then drives the public workflow through
+HTTP and MCP:
+
+```text
+create workspace
+  -> import hello-server descriptor
+    -> start session
+      -> set desired graph
+        -> MCP plan
+          -> HTTP approval request
+            -> MCP pending approval queue
+              -> MCP approval detail
+                -> MCP approval decision
+                  -> HTTP admit
+                    -> HTTP claim
+                      -> HTTP start
+                        -> MCP execute
+                          -> HTTP advance current graph
+                            -> HTTP current graph readback
+```
+
+The hosted smoke intentionally does not import operations application internals,
+PostgresUnitOfWork, or DockerRuntimeInterpreter directly. It talks to cpk-server
+only through its public route surfaces. The only Docker SDK use in the controller
+is harness-side network attachment so the controller and hosted cpk-server
+container can reach the runtime-private Docker network created by the external
+interpreter.
+
+Important implementation decisions:
+
+- cpk-server now composes `CurrentGraphAdvancementCommandService` at the process
+  boundary. Advancement remains an operations command service and is still an
+  explicit public command after accepted execution evidence.
+- `CPK_RUNTIME_INTERPRETERS=docker` is the hosted runtime authority for this
+  acceptance path. The product descriptor default remains `none`, so runtime
+  execution is never inferred from a descriptor alone.
+- Docker Desktop exposes `/var/run/docker.sock` inside the cpk-server container
+  as root-owned group `0` in this environment. The smoke grants that local
+  runtime authority with `--group-add ${CPK_DOCKER_SOCKET_GROUP:-0}`.
+- GHCR server-product packages are currently private. The hosted smoke creates a
+  minimal read-only Docker auth config from `gh auth token` when available and
+  mounts it only for the hosted cpk-server process. Secret material stays out of
+  product descriptors, graph truth, events, observations, and logs.
+- The acceptance uses the published cpk-server image by digest rather than a
+  local rebuilt tag.
+
+Published artifact evidence:
+
+```text
+server PR: OpenJ92/control-plane-kit-servers#22
+server merge commit: 9b7aa88edbcfd55d72b4d6ac7e2c82f9422848bf
+cpk-server image: ghcr.io/openj92/control-plane-kit-servers/cpk-server@sha256:def866baeeda659d61a821a29a07a8ceb780bcb440ab7fe0c63a8fa8989e7c7a
+cpk-server descriptor sha256: 10dafb59f3d98a527e9dc39fe87ab93668774afc8ee5b688bf663bdb1553c159
+packaged catalogue checksum: 1c3d0dd880caf0b2a065a80403d326db8dd47358e2418afa712f7af0818c4bfc
+```
+
+Validation evidence:
+
+```text
+control-plane-kit-servers git diff --check
+control-plane-kit-servers sh scripts/cpk_server_published_image_smoke.sh:
+  cpk-server published image smoke passed
+control-plane-kit-servers sh scripts/cpk_server_hosted_activity_smoke.sh:
+  hosted cpk-server Docker activity smoke passed
+  Docker residue audit passed
+control-plane-kit-servers ./test.sh:
+  21 root/catalogue/repository tests passed
+  34 cpk-server tests passed
+  8 hello-server tests passed
+  7 http-active-router tests passed
+  9 http-multiplexer tests passed
+  7 postgres-server tests passed
+  cpk-server image smoke passed
+  Docker residue audit passed
+GitHub OpenJ92/control-plane-kit-servers#22 docker-tests passed
+```
+
+Residual handoff for #910:
+
+- operations still has no concrete Docker dependency; #910 should verify this
+  from package imports and architecture checks;
+- Docker SDK remains isolated to `control-plane-kit-interpreters`; #910 should
+  include this as closeout evidence;
+- hosted acceptance has proven the external interpreter path for a one-node
+  hello deployment, but recursive cpk-server acceptance, control portals,
+  cloud runtimes, and larger topology stress tests remain deferred;
+- any future cpk-server backend/runtime change must repeat the publish-by-digest
+  sequence before acceptance.
+
+
+## #910 EXTRACT.INTERPRETERS Closeout
+
+#910 closes the interpreter extraction vertical around a simple algebraic split:
+
+```text
+core:
+  RuntimeEffectRequest
+
+interpreter:
+  RuntimeEffectRequest -> IO RuntimeEffectResult
+
+operations:
+  ActivityJournal x RuntimeEffectResult -> ActivityJournal'
+```
+
+The runtime composition established by the vertical is:
+
+```text
+cpk-server
+  -> configured operations application
+    -> ExecutionCoordinator
+      -> RuntimeInterpreterDispatcher
+        -> DockerRuntimeInterpreter
+          -> Python Docker SDK
+```
+
+What is now true:
+
+- `control-plane-kit-core` owns the pure request/result language and runtime kind
+  values. It does not own Docker, subprocess execution, cpk-server process code,
+  stores, or adapter effects.
+- `control-plane-kit-operations` owns the coordinator, runtime dispatcher
+  protocol, activity journal folding, observations, stores, and UnitOfWork. Its
+  package-boundary tests reject imports of `control_plane_kit_interpreters`,
+  `docker`, `subprocess`, FastAPI, HTTPX, MCP, Uvicorn, and server-product code.
+- `control-plane-kit-interpreters` owns concrete effect execution. The Docker
+  runtime interpreter consumes `RuntimeEffectRequest` values and returns
+  `RuntimeEffectResult` values; Docker SDK is isolated there.
+- `cpk-server` is an API/MCP process wrapper that composes dependencies at
+  startup. It can select `CPK_RUNTIME_INTERPRETERS=none|docker`, but it does not
+  inspect containers, own Docker semantics, or branch on product-specific runtime
+  behavior.
+- `control-plane-kit-servers` owns product descriptors, Dockerfiles, OCI images,
+  and catalogue metadata.
+
+Live evidence now spans both composition styles:
+
+```text
+activity-seeded-live-test.sh
+  operations harness + external DockerRuntimeInterpreter
+
+scripts/cpk_server_hosted_activity_smoke.sh
+  published cpk-server OCI + HTTP/MCP workflow + external DockerRuntimeInterpreter
+```
+
+The hosted proof uses:
+
+```text
+ghcr.io/openj92/control-plane-kit-servers/cpk-server@sha256:def866baeeda659d61a821a29a07a8ceb780bcb440ab7fe0c63a8fa8989e7c7a
+```
+
+with descriptor sha256
+`10dafb59f3d98a527e9dc39fe87ab93668774afc8ee5b688bf663bdb1553c159` and packaged
+catalogue checksum
+`1c3d0dd880caf0b2a065a80403d326db8dd47358e2418afa712f7af0818c4bfc`.
+
+#910 introduced `artifacts/extraction/extract-interpreters-closeout-report.json`
+and `tests/test_extract_interpreters_closeout.py` so the closeout assertions are
+queryable rather than only prose.
+
+Final #910 validation added `control-plane-kit ./test.sh`: packaging acceptances
+plus 1230 tests passed.
+
+Residual deferred work remains intentionally outside this vertical:
+
+- recursive cpk-server acceptance;
+- future control portals / ingress;
+- cloud runtime interpreters;
+- larger topology stress tests;
+- frontend work.
+
+
+## #927 Private OCI Pull Authority: Core Language
+
+#927 begins the #926 private OCI registry pull authority hardening pass. The dry
+run found that image identity and pull authority were still conflated by the
+hosted smoke harness rather than the language: product descriptors already carry
+digest-pinned `OciImageReference` values, while cpk-server hosted acceptance
+mounted Docker auth config into the process as bootstrap scaffolding.
+
+The first implementation slice adds only pure core language:
+
+```text
+OciImageReference
+  = immutable image identity / digest truth
+
+ImagePullAuthority
+  = registry/repository scope
+  x opaque CredentialReference
+```
+
+`ImagePullAuthority` lives in `control_plane_kit_core.runtime_effects` because it
+is interpreter-bound runtime material, not product descriptor truth. It reuses
+the existing `CredentialReference = SecretReference` vocabulary, so no new
+secret-reference language or secret store is introduced.
+
+`RuntimeProductMaterial` now carries an optional `pull_authority` field. The
+descriptor form contains only the registry scope and secret reference id; it does
+not carry a token, Docker config JSON, password, auth blob, or resolved
+credential.
+
+Validation:
+
+```text
+./control-plane-kit-core/test.sh:
+  393 tests passed
+  compileall passed
+  import check passed
+```
+
+Handoff to #928:
+
+- operations should admit workspace/runtime pull authority as durable operational
+  truth;
+- product descriptors must remain unchanged and secret-free;
+- runtime-effect translation should select only opaque pull-authority references
+  from pinned context and registered authority, not resolve credentials;
+- missing/revoked/wrong-scope authority should fail closed before blind replay.
+
+
+## #928 Private OCI Pull Authority: Operations Admission
+
+#928 adds durable operations ownership for image-pull authority without changing
+product descriptors or resolving credentials. The new operations truth is:
+
+```text
+RegisteredImagePullAuthority
+  authority_id
+  workspace_id
+  ImagePullAuthority
+  admitted_by
+  admitted_at
+  status
+```
+
+The Postgres table `cpk_image_pull_authorities` stores only the authority
+descriptor and indexed registry/repository scope. It carries a
+`credential_reference` string beginning with `secret://`; it never stores a
+token, Docker config JSON, password, auth blob, or resolved credential.
+
+The coordinator now loads active pull authorities beside active registered
+products and includes them in `ActivityRealizationContext`. Runtime-effect
+translation selects the most-specific admitted authority whose scope permits the
+product image:
+
+```text
+ActivityRealizationContext
+  x RegisteredProduct
+  x RegisteredImagePullAuthority*
+    -> RuntimeProductMaterial(pull_authority=ImagePullAuthority | None)
+```
+
+Important boundary decision: operations does not infer that a registry is
+private from a host name such as `ghcr.io`. It selects authority if the workspace
+has admitted one for the image scope. Interpreter-side #929 is responsible for
+failing closed when runtime material requires a pull authority but the
+configured resolver cannot satisfy it.
+
+Validation:
+
+```text
+./control-plane-kit-operations/test.sh:
+  131 tests passed
+  compileall passed
+  import check passed
+```
+
+Handoff to #929:
+
+- `RuntimeProductMaterial.pull_authority` is populated from durable operations
+  truth when a matching active authority exists;
+- the interpreter should resolve the `credential_reference` only at Docker pull
+  time;
+- missing resolver, denied credential, or wrong scope should fail closed before
+  container creation;
+- resolved credentials must not enter runtime results, events, observations,
+  logs, or reprs.
+
+## #937 Recursive cpk-server Scenario Matrix
+
+#937 dry-ran the recursive cpk-server acceptance shape against the live extracted
+repositories. The accepted proof is intentionally small and opaque:
+
+```text
+parent cpk-server
+  -> public HTTP/MCP workflow
+    -> desired graph:
+         child-postgres: postgres-server
+         child-cpk:      cpk-server
+         child-postgres.postgres -> child-cpk.workplace-store
+         child-postgres.postgres -> child-cpk.activity-history-store
+         child-postgres.postgres -> child-cpk.observer-state-store
+         child-postgres.postgres -> child-cpk.graph-topology-store
+      -> RuntimeInterpreterDispatcher
+        -> DockerRuntimeInterpreter
+          -> child containers
+```
+
+The parent may observe the child cpk-server's readiness and liveness endpoints,
+but must not inspect child graph truth, operation sessions, approvals, activity
+history, or current graph. That preserves the recursive boundary:
+
+```text
+parent owns the child as a deployable node
+child owns its own control-plane truth
+```
+
+The dry run chose one `postgres-server` data-service node instead of four. The
+cpk-server descriptor has four Postgres requirement sockets, and the graph
+compiler already turns socket connections into socket-derived environment
+bindings. Four explicit edges from the single Postgres provider therefore
+produce the four required `CPK_*_DATABASE_URL` values without cpk-server-specific
+shell wiring.
+
+Current seed coordinates:
+
+```text
+cpk-server image:
+  ghcr.io/openj92/control-plane-kit-servers/cpk-server@sha256:12e9eb53d1b61d662d10f007dccec91e9858e5a6bc015b96a703add341421899
+
+cpk-server descriptor sha256:
+  a5d87c6593a07a7c5aa98228fe1350cfb75ea734ab43aedd6358c1e31013d12f
+
+postgres-server image:
+  docker.io/library/postgres@sha256:57c72fd2a128e416c7fcc499958864df5301e940bca0a56f58fddf30ffc07777
+
+postgres-server descriptor sha256:
+  942c32d198c185bb98afdec03d310a69ed11d3c41a14040644212187c842b193
+
+server catalogue checksum:
+  3b52f41d84469ac1d2386652cb022a7a47cb6c8cd8a7a904b15e3dae1da210e7
+```
+
+The child cpk-server should run with `CPK_RUNTIME_INTERPRETERS=none` for #936.
+Recursive acceptance proves the parent can realize and observe a child
+control-plane process. It does not require the child to spawn grandchildren.
+
+The important prerequisite is #948. `postgres-server` correctly declares
+`POSTGRES_PASSWORD` as a descriptor secret delivery, but the current external
+Docker interpreter still rejects all secret-bearing products before container
+creation. #948 must implement generic secret delivery resolution at the Docker
+interpreter boundary:
+
+```text
+product descriptor secret reference
+  -> RuntimeEffectRequest remains secret-free
+    -> DockerRuntimeInterpreter resolves secret material at IO boundary
+      -> Docker SDK receives in-memory environment/file material
+```
+
+This must not become a Postgres branch, cpk-server branch, env-file shortcut, or
+operations-level secret materialization. Secret values must stay out of graph
+descriptors, runtime requests, events, observations, read models, route
+responses, logs, and errors.
+
+The machine-readable scenario matrix is recorded in
+`artifacts/extraction/recursive-cpk-server-scenario-matrix.json`.
+
+## #952 Explicit Postgres Verification Credentials
+
+#938 dry-run evidence showed that the recursive child cpk-server cannot be
+accepted with a generic Postgres semantic readiness check unless the pure
+verification language carries secret-free authentication intent. The seeded
+`postgres-server` product has a real password requirement, and a future RDS-like
+data service will have the same shape: endpoint reachability is not enough to
+prove semantic database readiness.
+
+#952 therefore adds a closed authentication contract to `PostgresQueryCheck`:
+
+```text
+PostgresQueryCheck
+  = check identity
+    x provider socket
+    x operation
+    x optional PostgresPasswordAuthentication
+    x verification policy
+
+PostgresPasswordAuthentication
+  = database
+    x username
+    x SecretReference(password)
+```
+
+The descriptor records only:
+
+```json
+{
+  "kind": "password",
+  "database": "cpk",
+  "username": "cpk",
+  "password_reference_id": "secret://verification/postgres/password"
+}
+```
+
+No raw password enters graph descriptors, product descriptors, runtime effect
+requests, events, observations, read models, logs, or route responses. The
+interpreter leg will resolve the `SecretReference` at the Docker/Postgres IO
+boundary and use it only in memory.
+
+Validation evidence:
+
+```text
+./control-plane-kit-core/test.sh
+  395 tests passed
+
+git diff --check
+  passed
+
+./test.sh
+  1232 tests passed
+```
+
+Handoff:
+
+- `control-plane-kit-servers` must update `postgres-server` to include the new
+  explicit authentication descriptor before recursive acceptance.
+- #950 must teach `DockerRuntimeInterpreter` to execute `postgres-query`
+  readiness through the concrete Postgres verification adapter using this
+  contract.
+
+## #950/#938 Recursive cpk-server Acceptance Evidence
+
+#950 completed the concrete Postgres semantic readiness path in
+`control-plane-kit-interpreters`. A live recursive smoke then exposed that the
+official Postgres image needs real startup pacing: five immediate `SELECT 1`
+attempts were not enough. The fix belongs in the generic Postgres verification
+interpreter, not in a recursive script or product-specific Docker branch:
+
+```text
+PostgresQueryCheck
+  -> PostgresVerificationInterpreter
+    -> resolve SecretReference at IO boundary
+      -> bounded select-one attempts
+        -> one-second pacing between attempts
+```
+
+The same live smoke then showed the child `cpk-server` descriptor had a
+one-attempt HTTP readiness contract. That was too narrow for a normal Uvicorn
+startup window. The product descriptor now advertises ten bounded attempts for
+`/health/live` and `/health/ready`, matching the existing HTTP retry behavior
+without changing runtime semantics.
+
+#938 adds a recursive local-Docker harness in `control-plane-kit-servers`:
+
+```text
+parent cpk-server published OCI image
+  -> public HTTP/MCP workflow
+    -> import cpk-server and postgres-server descriptors
+      -> plan / approval queue / approve / admit / claim / start / execute
+        -> RuntimeEffectRequest
+          -> RuntimeInterpreterDispatcher
+            -> DockerRuntimeInterpreter
+              -> child postgres-server
+              -> opaque child cpk-server
+                -> parent observes /health/live and /health/ready only
+```
+
+The child remains opaque. Parent acceptance does not inspect child graph truth,
+activity history, operation sessions, or descendant workflow state.
+
+OCI coordinate handling was tightened during #938. Server-products now treats
+`coordinates/server-products.json` as the source of truth for upstream package
+pins and product image coordinates. The cpk-server smoke scripts derive their
+default image from `products/cpk_server/product.cpk.json`, so digest updates do
+not scatter across tests and shell fixtures.
+
+Published cpk-server evidence for #938:
+
+```text
+image:
+  ghcr.io/openj92/control-plane-kit-servers/cpk-server@sha256:a92139b66b5fb0e631bb4fe1a401e3c9968ac99227cf0c9dd5b85e52f506b0f4
+
+interpreter commit:
+  4da9711281ba40286f5331c9bc842d588d1f4090
+
+cpk-server descriptor sha256:
+  updated through coordinates/server-products.json and scripts/apply_coordinates.py
+
+catalogue checksum:
+  98b016107885f44cae2737d7b38d15b56063ec4707c7a5f4b04e31de3a614cae
+```
+
+Validation evidence:
+
+```text
+control-plane-kit-interpreters ./test.sh
+  67 tests passed
+
+control-plane-kit-servers ./test.sh
+  passed
+
+scripts/cpk_server_recursive_activity_smoke.sh
+  recursive cpk-server Docker activity smoke passed
+  control-plane-kit-servers Docker residue audit passed
+```
+
+Handoff:
+
+- #939 should harden observation and cleanup assertions around the same
+  recursive harness, including parent-recorded runtime result evidence and
+  proof that only owned recursive resources are cleaned.
+- #940 should close recursive acceptance and hand off to #941 seeded topology
+  stress.
+- Future control portal work remains out of scope; the parent observes the child
+  only through public health endpoints.
+
+## #939 Recursive Observation And Cleanup Evidence
+
+#939 kept the #938 recursive topology and tightened what the parent must prove
+through public CPK read surfaces:
+
+```text
+parent cpk-server
+  -> read.activity
+    -> session
+      -> plan
+        -> run
+          -> events
+            -> child-postgres created + postgres readiness evidence
+            -> child-cpk created + HTTP live/ready readiness evidence
+```
+
+The important shape correction was that `read.activity` exposes runs under
+`sessions[].plans[].runs[]`, not directly under `sessions[].runs[]`. The
+recursive harness now follows the canonical read model instead of inventing a
+flat testing shape.
+
+The parent observation assertions verify:
+
+- `child-postgres` was created from the pinned official Postgres OCI digest;
+- `child-postgres` recorded the semantic `select-one` Postgres readiness check;
+- `child-cpk` was created from the pinned published cpk-server GHCR digest;
+- `child-cpk` recorded both `/health/live` and `/health/ready` HTTP checks;
+- recorded container names remain under the recursive workspace ownership
+  prefix.
+
+The recursive smoke script also has explicit label-scoped cleanup guards:
+
+```text
+docker ps -aq --filter "label=$WORKSPACE_LABEL"
+docker volume ls -q --filter "label=$WORKSPACE_LABEL"
+docker network ls -q --filter "label=$WORKSPACE_LABEL"
+```
+
+It still forbids broad cleanup such as `docker system prune` or
+`docker volume prune`. This preserves Pottery Factory and unrelated Docker
+resources.
+
+Validation evidence:
+
+```text
+PYTHONPATH=src python3 scripts/apply_coordinates.py --check
+git diff --check
+python3 -m unittest \
+  products.cpk_server.tests.test_image_bootstrap.CpkServerImageBootstrapTests.\
+test_recursive_activity_controller_uses_parent_routes_and_opaque_child -v
+./test.sh
+scripts/cpk_server_recursive_activity_smoke.sh
+  recursive cpk-server Docker activity smoke passed
+  control-plane-kit-servers Docker residue audit passed
+```
+
+Published cpk-server evidence remains:
+
+```text
+ghcr.io/openj92/control-plane-kit-servers/cpk-server@sha256:a92139b66b5fb0e631bb4fe1a401e3c9968ac99227cf0c9dd5b85e52f506b0f4
+catalogue checksum: 98b016107885f44cae2737d7b38d15b56063ec4707c7a5f4b04e31de3a614cae
+```
+
+Handoff:
+
+- #940 can close recursive cpk-server acceptance using #937 through #939.
+- #940 should explicitly report that the parent can spawn and observe an opaque
+  child cpk-server, but does not own or inspect the child's graph truth,
+  activity history, operation sessions, or descendant workflow state.
+- #941 seeded topology stress remains the next topological issue after #940.
+
+## #940 Recursive cpk-server Acceptance Closeout
+
+Recursive cpk-server acceptance is closed at the local-Docker runtime boundary.
+The accepted behavior is:
+
+```text
+parent cpk-server
+  -> public HTTP/MCP workflow
+    -> operations application services
+      -> RuntimeInterpreterDispatcher
+        -> DockerRuntimeInterpreter
+          -> published child cpk-server OCI image
+          -> Postgres data-service descriptor
+```
+
+The parent can spawn and observe an opaque child cpk-server. The parent does
+not own or inspect the child's graph truth, activity history, operation
+sessions, or descendant workflow state. The child is treated as an ordinary
+product node whose public health endpoints are the acceptance boundary.
+
+Immutable coordinates at closeout:
+
+```text
+cpk-server image:
+  ghcr.io/openj92/control-plane-kit-servers/cpk-server@sha256:a92139b66b5fb0e631bb4fe1a401e3c9968ac99227cf0c9dd5b85e52f506b0f4
+
+cpk-server descriptor_sha256:
+  0ebaa90f824f5a10e7ae7a1c91d83d5aaa8e5c8fc83035b062a23266c3327970
+
+server-products catalogue/products.json sha256:
+  0fa521b5800f909160ed959cd25700b38cc39e8345dd699400946d3338ed1e96
+```
+
+Review findings:
+
+- Architecture: cpk-server remains an ordinary product descriptor. Core has no
+  cpk-server specialization.
+- Data engineering: the child cpk-server owns its own Postgres-backed truth.
+  Parent acceptance observes only the child's public health surface.
+- Transactionality: runtime effects occur through the external Docker
+  interpreter after operations emits durable intent; no Postgres transaction is
+  held across Docker, network, or health effects.
+- Security: product descriptors remain secret-free. Postgres passwords and
+  private OCI credentials are resolved only at interpreter/bootstrap IO
+  boundaries and are not written into events, observations, read models, logs,
+  or route responses.
+- Docker ownership: recursive cleanup is scoped to the
+  `org.openj92.cpk.workspace=recursive-cpk-server` label and forbids broad prune
+  commands.
+- Retained data: Postgres remains a retained data-service descriptor. Cleanup
+  distinguishes owned ephemeral compute from retained data resources.
+- Test integrity: acceptance uses the published GHCR image digest, public
+  HTTP/MCP routes, and the real `read.activity` shape. It does not use local-tag
+  acceptance, direct operations imports, skips, or weakened assertions.
+
+Validation evidence from #939 remains the closeout proof:
+
+```text
+PYTHONPATH=src python3 scripts/apply_coordinates.py --check
+git diff --check
+python3 -m unittest \
+  products.cpk_server.tests.test_image_bootstrap.CpkServerImageBootstrapTests.\
+test_recursive_activity_controller_uses_parent_routes_and_opaque_child -v
+./test.sh
+scripts/cpk_server_recursive_activity_smoke.sh
+  recursive cpk-server Docker activity smoke passed
+  control-plane-kit-servers Docker residue audit passed
+```
+
+Residual limitations:
+
+- This is local-Docker acceptance. Remote Docker, cloud runtimes, Kubernetes,
+  Cloudflare/control portals, and public over-the-wire control ingress remain
+  future work.
+- The child cpk-server is intentionally opaque. Recursive grandchild spawning is
+  not part of this acceptance.
+- Seeded topology stress with hello/router/multiplexer/data-service products
+  continues in #941.
+
+## #942 Seeded Topology Stress Dry Run
+
+#942 dry-ran the post-recursive seeded topology stress lane and recorded the
+scenario matrix in:
+
+```text
+artifacts/extraction/seeded-stress-942-scenario-matrix.json
+```
+
+The existing issue topology is mostly correct:
+
+```text
+#942 -> #943
+#943 -> #944
+#943 -> #945
+#944 + #945 -> #946 -> #947
+```
+
+The dry run found one necessary refinement. Multiplexer observer delivery is
+proven today in the product unit tests with an in-process recording server, but
+the hosted seeded stress lane needs package-owned live evidence. A `hello-server`
+observer can receive the copied request, but it currently has no public request
+receipt endpoint or bounded request evidence surface. That makes a live
+observer-delivery assertion impossible without weakening the test.
+
+The corrected topology therefore inserts a focused product visibility child
+between #943 and #945:
+
+```text
+#942 -> #943
+#943 -> #944
+#943 -> observer-visibility child -> #945
+#944 + #945 -> #946 -> #947
+```
+
+Blue/green router stress does not require a new core concept. Core already
+allows `ProductInstanceConfiguration` to change public environment values while
+preserving the product contract key set. #944 should configure `hello-blue` and
+`hello-green` with distinct `HELLO_MESSAGE` values, then prove the router
+response changes after the graph transition.
+
+Current seed coordinates:
+
+```text
+catalogue/products.json sha256:
+  0fa521b5800f909160ed959cd25700b38cc39e8345dd699400946d3338ed1e96
+
+cpk-server:
+  descriptor 0ebaa90f824f5a10e7ae7a1c91d83d5aaa8e5c8fc83035b062a23266c3327970
+  image sha256:a92139b66b5fb0e631bb4fe1a401e3c9968ac99227cf0c9dd5b85e52f506b0f4
+
+hello-server:
+  descriptor 7c878cddfa597002f4536c1ac7aea0728df3bbe0e594f6dbc56b646968dab0cc
+  image sha256:0b5d62c2706bdfc5b53b67c7e0a72e36b8af7d13f8b2abf26eaa6e6eb7dda5f0
+
+http-active-router:
+  descriptor c965218c439ea650421220d9977f641330564b86f6397bef05e4a87edbd43c6b
+  image sha256:9edd29c8b62f6413c7acb4009bfa655c065a31a0eac8728ec9d4350122e0a60d
+
+http-multiplexer:
+  descriptor 0b74269a7b8c9b775d431a04382eaa268339330c55d4995a6a52ee6de79abc9d
+  image sha256:2b6466d87c7642691c4ce2ee52022450d7b7cf1055f1f25a1449adbb5c8131ec
+
+postgres-server:
+  descriptor 96307788eb5a6603f3617e1d4b5fd02420997175b969e72304f8e5609acc5f40
+  image sha256:57c72fd2a128e416c7fcc499958864df5301e940bca0a56f58fddf30ffc07777
+```
+
+Handoff:
+
+- #943 should refactor/extend the hosted public workflow controller so the
+  richer graph scenarios do not duplicate workspace/product/approval/run code.
+- #944 should prove router target binding and blue-to-green transition through
+  distinct per-instance Hello messages.
+- The new observer-visibility child should add the smallest package-owned
+  evidence surface needed for live observer-delivery proof and republish the
+  affected product image if its runtime behavior changes.
+- #945 should then prove multiplexer primary/observer binding and Postgres
+  data-service retained/secret behavior.
+
+## #943 Hosted Workflow Helpers
+
+#943 moved the hosted cpk-server ACTIVITY smoke script from a single inline
+workflow into a reusable public-boundary controller in the server-products
+repository:
+
+```text
+HostedWorkflow
+  -> create workspace
+  -> import products
+  -> start session
+  -> set desired graph
+  -> plan
+  -> request/list/detail/decide approval
+  -> admit
+  -> claim
+  -> start run
+  -> execute to completion
+  -> advance current graph
+  -> read current graph
+```
+
+The helper remains intentionally outside cpk-server internals. It talks over
+HTTP and MCP only, carries `workspace_id` and `worker_id` through the execution
+polling loop, and still relies on the same hosted Docker acceptance script for
+network attachment during local-Docker smoke tests.
+
+Validation:
+
+```text
+control-plane-kit-servers:
+  python3 -m unittest products.cpk_server.tests.test_image_bootstrap.CpkServerImageBootstrapTests.test_hosted_activity_controller_drives_public_workflow_over_http_and_mcp -v
+  python3 -m compileall scripts/cpk_server_hosted_activity.py
+  PYTHONPATH=src python3 scripts/apply_coordinates.py --check
+  git diff --check
+  ./test.sh
+  scripts/cpk_server_hosted_activity_smoke.sh
+```
+
+Handoff:
+
+- #944 can now drive blue/green router transitions without duplicating the
+  workspace/product/approval/run lifecycle.
+- #955 should add the smallest package-owned observer receipt evidence before
+  #945 attempts the live multiplexer observer proof.
+
+## #944 Router Transition Stress
+
+#944 proved the first seeded topology transition with graph-driven HTTP
+dependency binding:
+
+```text
+hello-blue(HELLO_MESSAGE="Hello from blue")
+  -> router(active -> blue)
+
+transition:
+
+hello-green(HELLO_MESSAGE="Hello from green")
+  -> router(active -> green)
+```
+
+The initial live failure was useful. The hosted scenario reached the router, but
+the router returned the Hello descriptor default:
+
+```text
+http://router:8000/ -> "Hello, world!\n"
+```
+
+That showed the socket edge was working while the selected product-instance
+environment was not reaching the realized Hello container. The structural fix
+landed across the language/interpreter boundary:
+
+```text
+ProductInstanceConfiguration.public_environment
+  -> RuntimeProductMaterial.public_environment
+    -> RuntimeEffectRequest descriptor
+      -> DockerRuntimeInterpreter container environment
+```
+
+The important decision is that Docker now uses the selected runtime material,
+not the product descriptor defaults, when it starts a node. The descriptor still
+defines the contract; the instance supplies the chosen public values. This keeps
+the blue/green assertion honest without manual shell environment injection or
+product-specific branches in core, operations, or the Docker interpreter.
+
+Validation evidence:
+
+```text
+control-plane-kit:
+  git diff --check
+  ./control-plane-kit-core/test.sh
+    395 tests, compileall, import check
+  ./control-plane-kit-operations/test.sh
+    132 tests, compileall, import check
+  ./test.sh
+    1232 tests
+
+control-plane-kit-interpreters:
+  git diff --check
+  ./test.sh
+    68 tests
+
+control-plane-kit-servers:
+  git diff --check
+  python3 -m unittest \
+    products.cpk_server.tests.test_image_bootstrap.CpkServerImageBootstrapTests.\
+test_hosted_activity_smoke_uses_published_image_and_docker_runtime_authority \
+    products.cpk_server.tests.test_image_bootstrap.CpkServerImageBootstrapTests.\
+test_hosted_activity_controller_drives_public_workflow_over_http_and_mcp -v
+  python3 -m compileall scripts/cpk_server_hosted_activity.py
+  CPK_HOSTED_ACTIVITY_SCENARIO=router-transition \
+    scripts/cpk_server_hosted_activity_smoke.sh
+    hosted cpk-server Docker activity smoke passed: router-transition
+    control-plane-kit-servers Docker residue audit passed
+  ./test.sh
+```
+
+Published cpk-server coordinate after #944:
+
+```text
+source commit:
+  794fb88033115080a5aad829a0e6e8a47dd350c2
+
+image:
+  ghcr.io/openj92/control-plane-kit-servers/cpk-server@sha256:112cad7c5b52e456cc6ea38980d04900de46f25ccdbfe40918e481d83a31ef19
+
+catalogue checksum:
+  f8aa411067e8937971ebe4763d67489d8b177c7e2908c101a4c2af0bbdd96001
+```
+
+Review findings:
+
+- Router target binding remains derived from `SocketConnection` data.
+- Hello message binding now comes from product instance public environment.
+- The smoke script does not inject `ACTIVE_TARGET_URL` or `HELLO_MESSAGE`.
+- The hosted execute MCP call uses a longer client timeout because it may pull
+  and reconcile Docker resources; this is a boundary timeout, not a semantic
+  retry or assertion weakening.
+- A transient local image smoke once failed to read a Docker-published host port
+  during the full suite. The isolated rerun and final full suite passed, and the
+  final acceptance evidence uses the published router-transition coordinate.
+
+Handoff:
+
+- #955 should add package-owned observer receipt evidence before multiplexer
+  observer delivery is asserted live.
+- #945 should then prove multiplexer primary/observer binding and Postgres
+  data-service behavior using the seeded products and the same hosted public
+  workflow controller.
+
+## #961 Runtime Authority Dry Run
+
+#961 dry-ran the gap between opaque recursive cpk-server acceptance and an
+execution-capable child cpk-server. It intentionally changed no production
+behavior. The machine-readable map is:
+
+```text
+artifacts/extraction/runtime-auth-961-dry-run.json
+```
+
+Current parent bootstrap:
+
+```text
+outer smoke harness
+  -> docker run parent cpk-server
+       -v /var/run/docker.sock:/var/run/docker.sock
+       CPK_RUNTIME_INTERPRETERS=docker
+       optional Docker config mount for GHCR pull authority
+       local-development product secret resolver
+       four Postgres store URLs
+```
+
+Code anchors:
+
+```text
+control-plane-kit-servers/scripts/cpk_server_recursive_activity_smoke.sh:108
+control-plane-kit-servers/scripts/cpk_server_recursive_activity_smoke.sh:114
+control-plane-kit-servers/scripts/cpk_server_recursive_activity_smoke.sh:120
+control-plane-kit-servers/scripts/cpk_server_recursive_activity_smoke.sh:121
+control-plane-kit-servers/scripts/cpk_server_recursive_activity_smoke.sh:122
+```
+
+Current cpk-server bootstrap parses `CPK_RUNTIME_INTERPRETERS` as a closed
+process-bootstrap string:
+
+```text
+control-plane-kit-servers/products/cpk_server/src/control_plane_kit_servers_cpk_server/server.py:79
+control-plane-kit-servers/products/cpk_server/src/control_plane_kit_servers_cpk_server/server.py:108
+```
+
+When set to `docker`, cpk-server is currently the composition root that lazy
+imports the Docker interpreter and gives operations a dispatcher:
+
+```text
+control-plane-kit-servers/products/cpk_server/src/control_plane_kit_servers_cpk_server/server.py:343
+control-plane-kit-servers/products/cpk_server/src/control_plane_kit_servers_cpk_server/server.py:353
+control-plane-kit-servers/products/cpk_server/src/control_plane_kit_servers_cpk_server/server.py:366
+```
+
+Operations dispatch is already correctly abstract:
+
+```text
+ActivityRealizationContext
+  -> RuntimeEffectRequest(runtime_kind=...)
+    -> RuntimeInterpreterDispatcher
+      -> interpreter.execute(request)
+```
+
+Anchors:
+
+```text
+control-plane-kit-operations/src/control_plane_kit_operations/coordinator.py:269
+control-plane-kit-operations/src/control_plane_kit_operations/coordinator.py:295
+control-plane-kit-operations/src/control_plane_kit_operations/coordinator.py:307
+```
+
+Runtime-effect translation currently carries product material and OCI pull
+authority, but no runtime-control authority:
+
+```text
+control-plane-kit-operations/src/control_plane_kit_operations/runtime_effects.py:42
+control-plane-kit-operations/src/control_plane_kit_operations/runtime_effects.py:53
+control-plane-kit-operations/src/control_plane_kit_operations/runtime_effects.py:117
+control-plane-kit-operations/src/control_plane_kit_operations/runtime_effects.py:138
+```
+
+Core already has the precedent for secret-free authority references with
+`ImagePullAuthority`:
+
+```text
+control-plane-kit-core/src/control_plane_kit_core/runtime_effects.py:54
+control-plane-kit-core/src/control_plane_kit_core/runtime_effects.py:93
+```
+
+Operations already has the durable admission precedent with
+`RegisteredImagePullAuthority`:
+
+```text
+control-plane-kit-operations/src/control_plane_kit_operations/products.py:219
+```
+
+The child cpk-server remains intentionally opaque today. The recursive
+controller requires direct child health/readiness only and asserts that the
+child reports no runtime interpreters:
+
+```text
+control-plane-kit-servers/scripts/cpk_server_recursive_activity.py:387
+control-plane-kit-servers/scripts/cpk_server_recursive_activity.py:392
+control-plane-kit-servers/products/cpk_server/tests/test_image_bootstrap.py:514
+control-plane-kit-servers/products/cpk_server/tests/test_image_bootstrap.py:519
+```
+
+The cpk-server product descriptor confirms why: the descriptor default is
+`CPK_RUNTIME_INTERPRETERS=none` and there is no runtime-authority requirement:
+
+```text
+control-plane-kit-servers/products/cpk_server/product.cpk.json:95
+control-plane-kit-servers/products/cpk_server/product.cpk.json:107
+```
+
+The corrected conceptual split is:
+
+```text
+Interpreter Availability
+  software installed/enabled in a cpk-server process
+
+RegisteredRuntimeAuthority
+  workspace/operator-admitted concrete runtime target and credential references
+```
+
+Why the parent can execute Docker effects today:
+
+- the harness mounts Docker socket authority into the parent;
+- the harness sets `CPK_RUNTIME_INTERPRETERS=docker`;
+- the cpk-server image includes the Docker interpreter package;
+- cpk-server composes `RuntimeInterpreterDispatcher({DOCKER:
+  DockerRuntimeInterpreter(...)})`.
+
+Why the child cannot execute Docker effects today:
+
+- its descriptor defaults to `CPK_RUNTIME_INTERPRETERS=none`;
+- it receives no graph-visible runtime authority;
+- operations has no `RegisteredRuntimeAuthority` store or command;
+- core runtime requests have no runtime authority reference/material;
+- Docker SDK client construction currently uses `docker.from_env()` at the
+  interpreter boundary.
+
+The target path for #962 through #969 remains coherent:
+
+```text
+#962
+  pure runtime authority reference language
+
+#963
+  operations RegisteredRuntimeAuthority admission/store/read model
+
+#964
+  operations-owned dispatcher bootstrap with lazy interpreter imports
+
+#965
+  Docker local socket and remote TLS authority interpretation
+
+#966
+  cpk-server interpreter-availability product variants
+
+#967
+  cpk-server HTTP/MCP runtime authority registration
+
+#968
+  execution-capable child cpk-server and bounded recursive depth probe
+
+#969
+  closeout and handoff to cloud/runtime stress
+```
+
+#962 should explicitly decide whether the runtime authority reference belongs
+on `RuntimeContext`/`DockerRuntime`, on `RuntimeEffectRequest`, or both. The dry
+run points toward:
+
+```text
+graph runtime
+  -> pure authority_ref
+    -> operations lookup RegisteredRuntimeAuthority
+      -> RuntimeEffectRequest carries secret-free reference/material
+        -> interpreter resolves concrete authority only at IO boundary
+```
+
+Non-goals remain sharp:
+
+- no test-only `spawn child` route;
+- no raw Docker socket path, Docker config JSON, TLS key, token, cloud
+  credential, or password in descriptors, events, observations, read models,
+  logs, or route responses;
+- no operations service/store/coordinator imports of Docker SDK, boto3, Google
+  SDKs, Kubernetes clients, or concrete runtime code;
+- no parent inspection of child graph truth, activity history, operation
+  sessions, or descendant workflow state.
+
+## Runtime Authority: Reference Value
+
+#971 introduced the first pure runtime-authority value:
+
+```python
+RuntimeAuthorityReference("mac-mini-docker")
+```
+
+The reference is intentionally only a stable, secret-free name for an admitted
+runtime authority. It is not durable registration truth, not Docker endpoint
+material, not image-pull authority, and not a secret reference. The descriptor
+shape is:
+
+```python
+{"reference_id": "mac-mini-docker"}
+```
+
+Malformed values fail closed when they look like endpoint URLs, host paths,
+Docker config JSON, token/password/secret material, or TLS key material. This
+preserves the compatibility path where an omitted runtime authority still means
+the existing ambient/local interpreter configuration, while future execution-
+capable child and remote runtime scenarios can opt into explicit
+`authority_ref` values.
+
+Validation evidence:
+
+```text
+git diff --check
+./control-plane-kit-core/test.sh
+  397 tests, compileall, import check
+```
+
+## Runtime Authority: Graph Reference
+
+#972 propagated the pure authority reference into the runtime graph language:
+
+```python
+DockerRuntime(
+    runtime_id="remote-mac-mini",
+    authority_ref=RuntimeAuthorityReference("mac-mini-docker"),
+    children=(api,),
+)
+```
+
+The compiled graph now preserves the reference on `RuntimeRecord`, and the
+durable graph descriptor carries:
+
+```python
+"authority_ref": {"reference_id": "mac-mini-docker"}
+```
+
+An omitted authority remains `None`, preserving the existing ambient/local
+Docker acceptance path without pretending local Docker is the semantic default.
+Changing the reference is now an explicit graph diff field:
+
+```text
+StructuralField.RUNTIME_AUTHORITY
+```
+
+Registration is still not validated by core. That belongs to operations in
+#963. Core only proves the reference is well-formed, JSON-shaped, and
+secret-free.
+
+Validation evidence:
+
+```text
+cd control-plane-kit-core && \
+  PYTHONPATH=src python3 -m unittest \
+    tests.test_runtime_effects \
+    tests.test_graph_codec \
+    tests.test_graph_diff \
+    tests.test_milestone_closeout
+  35 tests
+git diff --check
+./control-plane-kit-core/test.sh
+  400 tests, compileall, import check
+```
+
+## Runtime Authority: Effect Request Material
+
+#973 decided the first request-level material boundary conservatively:
+
+```text
+RuntimeEffectRequest.authority_ref: RuntimeAuthorityReference | None
+```
+
+The request carries the graph-selected authority name, not concrete Docker
+daemon material. This keeps the request pure and secret-free while still
+pinning which admitted runtime authority operations must use once #963 adds
+durable `RegisteredRuntimeAuthority` truth.
+
+The translation now reads:
+
+```text
+graph.runtimes[runtime_id].authority_ref
+  -> RuntimeEffectRequest.authority_ref
+    -> interpreter boundary
+```
+
+When `authority_ref` is omitted, the request descriptor carries `None`, which
+preserves the existing ambient/local interpreter compatibility path. That is
+not a claim that local Docker is the semantic default. Execution-capable child,
+remote Docker, and cloud scenarios should use explicit authority references
+after registration exists.
+
+Concrete authority material remains deferred:
+
+```text
+#963 RegisteredRuntimeAuthority
+  -> resolve workspace authority truth
+    -> future request authority material
+      -> #965 Docker local/remote authority interpretation
+```
+
+Validation evidence:
+
+```text
+cd control-plane-kit-core && \
+  PYTHONPATH=src python3 -m unittest tests.test_runtime_effects
+  11 tests
+cd control-plane-kit-operations && \
+  PYTHONPATH=src:../control-plane-kit-core/src \
+  python3 -m unittest tests.test_runtime_effect_translation
+  5 tests
+git diff --check
+./control-plane-kit-core/test.sh
+  401 tests, compileall, import check
+./control-plane-kit-operations/test.sh
+  133 tests, compileall, import check
+./test.sh
+  root suite: 1232 tests
+```
+
+The first full-suite attempt failed during Docker image export with a Docker
+Desktop storage error. The recovery inspected Docker resources, confirmed the
+running containers were Pottery Factory containers, found no CPK-named volumes,
+and pruned only Docker build cache before rerunning the suite from the
+beginning. Pottery Factory containers were left running.

@@ -1,0 +1,476 @@
+{
+  "schema": "cpk.extract-operations-activity.runtime-law-inventory",
+  "issue": "#870",
+  "parent": "#869",
+  "roadmap_branch": "roadmap/extract-c-external-product-language",
+  "active_branch": "codex/870-activity-runtime-law-inventory",
+  "scope": "Inventory frozen runtime laws and define the seeded local-Docker integration scenario matrix. No runtime implementation is introduced by this artifact.",
+  "canonical_activity_order": [
+    "#870",
+    "#871",
+    "#872",
+    "#873",
+    "#874",
+    "#875",
+    "#880",
+    "#881",
+    "#876",
+    "#877",
+    "#878",
+    "#879"
+  ],
+  "frozen_reference_sources_inspected": [
+    "tests/test_docker_effects.py",
+    "tests/test_execution_coordinator.py",
+    "docs/DEPLOY_PROGRAM.md",
+    "control_plane_kit/workflows/execution_coordinator.py",
+    "control_plane_kit/workflows/planning.py",
+    "control_plane_kit/workflows/execution_admission.py",
+    "control_plane_kit/workflows/run_lifecycle.py"
+  ],
+  "current_sources_inspected": [
+    "control-plane-kit-core/src/control_plane_kit_core/planning/compiler.py",
+    "control-plane-kit-operations/src/control_plane_kit_operations/coordinator.py",
+    "control-plane-kit-operations/src/control_plane_kit_operations/cpk_server.py",
+    "control-plane-kit-servers/products/cpk_server/product.cpk.json",
+    "control-plane-kit-servers/products/hello_server/product.cpk.json",
+    "control-plane-kit-servers/products/http_active_router/product.cpk.json",
+    "control-plane-kit-servers/products/http_multiplexer/product.cpk.json",
+    "control-plane-kit-servers/products/postgres_server/product.cpk.json",
+    "control-plane-kit-servers/scripts/*_published_image_smoke.sh"
+  ],
+  "law_classifications": [
+    {
+      "law_id": "activity.runtime.plan-compile-is-pure",
+      "title": "ActivityPlan remains pure graph-diff output",
+      "classification": "operations unit law",
+      "frozen_sources": [
+        "control_plane_kit/workflows/planning.py",
+        "tests/test_activity_planning_command_service.py",
+        "tests/test_activity_plan.py"
+      ],
+      "current_sources": [
+        "control-plane-kit-core/src/control_plane_kit_core/planning/compiler.py:84",
+        "control-plane-kit-core/src/control_plane_kit_core/planning/activity_plan.py:295",
+        "control-plane-kit-operations/src/control_plane_kit_operations/planning.py:324"
+      ],
+      "behavior": "GraphDiff compiles to ActivityPlan without persistence, Docker, HTTP, filesystem, or product-specific interpretation.",
+      "negative_cases": [
+        "planning must reject stale current/desired graph evidence",
+        "planning must not import Docker/runtime interpreters",
+        "planning must not treat observations as desired topology"
+      ],
+      "handoff": "#871 consumes this by defining what additional pinned material the realization adapter needs beyond PlannedActivity."
+    },
+    {
+      "law_id": "activity.runtime.coordinator-short-transactions",
+      "title": "Coordinator records durable intent, commits, then calls the adapter",
+      "classification": "operations unit law",
+      "frozen_sources": [
+        "tests/test_execution_coordinator.py",
+        "control_plane_kit/workflows/execution_coordinator.py"
+      ],
+      "current_sources": [
+        "control-plane-kit-operations/src/control_plane_kit_operations/coordinator.py:184",
+        "control-plane-kit-operations/src/control_plane_kit_operations/coordinator.py:321"
+      ],
+      "behavior": "One coordinator command advances at most max_effects ready activities by journaling STEP_STARTED before effect execution and journaling a terminal step result afterward.",
+      "negative_cases": [
+        "no UnitOfWork or Postgres lock may remain active while an adapter executes",
+        "an adapter exception becomes explicit uncertainty, not an erased failure",
+        "completed replay must not repeat an already recorded effect"
+      ],
+      "handoff": "#874 must preserve this transaction shape when the adapter becomes real Docker realization."
+    },
+    {
+      "law_id": "activity.runtime.pinned-material-no-retarget",
+      "title": "Execution uses admitted plan truth, not current mutable graph truth",
+      "classification": "operations Docker/Postgres integration law",
+      "frozen_sources": [
+        "tests/test_execution_coordinator.py::test_later_workspace_pointer_does_not_retarget_pinned_graph_material",
+        "tests/test_execution_coordinator.py::test_cross_workspace_graph_substitution_fails_before_intent"
+      ],
+      "current_sources": [
+        "control-plane-kit-operations/src/control_plane_kit_operations/coordinator.py:189",
+        "control-plane-kit-operations/src/control_plane_kit_operations/admission.py",
+        "control-plane-kit-operations/src/control_plane_kit_operations/stores.py"
+      ],
+      "behavior": "Realization material must be derived from the exact graph/plan admitted for the run; later workspace graph pointer movement cannot retarget work.",
+      "negative_cases": [
+        "workspace mismatch fails before durable intent",
+        "graph drift after approval/admission does not change runtime targets",
+        "adapters must not load current graph truth themselves"
+      ],
+      "handoff": "#871 should introduce or name the pinned realization context; #872/#873 should use it for Docker material."
+    },
+    {
+      "law_id": "activity.runtime.docker-ownership-before-mutation",
+      "title": "Docker mutation requires proven ownership",
+      "classification": "operations Docker/Postgres integration law",
+      "frozen_sources": [
+        "tests/test_docker_effects.py::test_reconcile_owned_node_rejects_foreign_container_before_mutation",
+        "tests/test_docker_effects.py::test_compute_removal_is_explicit_and_separate_from_stop"
+      ],
+      "current_sources": [
+        "control-plane-kit-servers/products/*/product.cpk.json:1",
+        "control-plane-kit-operations/src/control_plane_kit_operations/coordinator.py:141"
+      ],
+      "behavior": "The Docker interpreter may mutate or remove only resources with matching CPK ownership fingerprints; stop and remove remain distinct operations.",
+      "negative_cases": [
+        "foreign container identity must fail before mutation",
+        "retained data must not be removed as compute cleanup",
+        "stop-node must not imply remove-node-resource"
+      ],
+      "handoff": "#872 must define owned local Docker naming/label/fingerprint proof for seeded products."
+    },
+    {
+      "law_id": "activity.runtime.secrets-stay-out-of-descriptors-and-argv",
+      "title": "Secret values are resolved only at effect boundary",
+      "classification": "operations Docker/Postgres integration law",
+      "frozen_sources": [
+        "tests/test_docker_effects.py::test_create_container_uses_secret_environment_without_putting_values_in_args",
+        "tests/test_docker_effects.py::test_reconcile_node_resolves_desired_secrets_before_removal"
+      ],
+      "current_sources": [
+        "control-plane-kit-servers/products/postgres_server/product.cpk.json:1",
+        "control-plane-kit-servers/products/postgres_server/tests/test_postgres_server_product.py"
+      ],
+      "behavior": "Product descriptors may declare secret delivery requirements, but actual secret values must not enter descriptors, logs, events, errors, argv evidence, or public environment.",
+      "negative_cases": [
+        "POSTGRES_PASSWORD must not appear in public_environment",
+        "Docker command evidence must not include secret values",
+        "secret-free products must not gain implicit secret channels"
+      ],
+      "handoff": "#872 can use a bounded test secret resolver for local Docker; generalized secret management remains outside ACTIVITY unless an issue explicitly scopes it."
+    },
+    {
+      "law_id": "activity.runtime.socket-binding-from-graph-edges",
+      "title": "Socket edges drive runtime dependency bindings",
+      "classification": "operations Docker/Postgres integration law",
+      "frozen_sources": [
+        "tests/test_docker_effects.py",
+        "tests/test_activity_plan_compiler.py",
+        "tests/test_scenarios.py"
+      ],
+      "current_sources": [
+        "control-plane-kit-core/src/control_plane_kit_core/planning/compiler.py:108",
+        "control-plane-kit-servers/products/http_multiplexer/product.cpk.json:1",
+        "control-plane-kit-servers/products/cpk_server/product.cpk.json:1"
+      ],
+      "behavior": "Requirement/provider socket connections in the desired graph determine runtime environment bindings and endpoint references for containers.",
+      "negative_cases": [
+        "missing required provider binding fails before container start",
+        "incompatible protocol/socket bindings fail at graph validation or materialization",
+        "Docker-local endpoint synthesis must not rewrite graph truth"
+      ],
+      "handoff": "#873 owns URL/connection-string synthesis for hello, router, multiplexer, cpk-server, and postgres descriptor edges."
+    },
+    {
+      "law_id": "activity.runtime.process-start-not-health",
+      "title": "Container start and application readiness are distinct",
+      "classification": "operations Docker/Postgres integration law",
+      "frozen_sources": [
+        "tests/test_docker_effects.py::test_start_node_records_process_started_not_application_health",
+        "tests/test_execution_coordinator.py"
+      ],
+      "current_sources": [
+        "control-plane-kit-servers/products/hello_server/product.cpk.json:1",
+        "control-plane-kit-servers/products/cpk_server/product.cpk.json:1",
+        "control-plane-kit-servers/products/postgres_server/product.cpk.json:1"
+      ],
+      "behavior": "Starting compute proves only process/container creation; health/readiness requires separate verification checks and observations.",
+      "negative_cases": [
+        "process start must not mark WaitForHealthy as satisfied",
+        "TCP reachability must not imply HTTP or Postgres verification success",
+        "failed readiness blocks current graph advancement"
+      ],
+      "handoff": "#872 can start containers; #874 records observations; #875 advances only after accepted success."
+    },
+    {
+      "law_id": "activity.runtime.observations-do-not-rewrite-topology",
+      "title": "Observed runtime state extends read truth without mutating desired graph",
+      "classification": "operations Docker/Postgres integration law",
+      "frozen_sources": [
+        "tests/test_observer_store.py",
+        "tests/test_execution_coordinator.py",
+        "tests/test_current_graph_advancement.py"
+      ],
+      "current_sources": [
+        "control-plane-kit-operations/src/control_plane_kit_operations/read_services.py",
+        "control-plane-kit-operations/src/control_plane_kit_operations/graph_store.py"
+      ],
+      "behavior": "Runtime observations are durable evidence and projections; they do not become the desired graph or silently advance the current graph pointer.",
+      "negative_cases": [
+        "observed endpoint data must be bounded/redacted where required",
+        "failed or uncertain observations block advancement",
+        "current graph compare-and-set must reject stale base truth"
+      ],
+      "handoff": "#874 persists observations; #875 performs accepted current graph advancement."
+    },
+    {
+      "law_id": "activity.runtime.approval-required-before-admission",
+      "title": "Approved plan review gates execution admission",
+      "classification": "operations unit law",
+      "frozen_sources": [
+        "tests/test_approval_command_service.py",
+        "tests/test_execution_admission.py",
+        "tests/test_deployment_plan_approve_stages.py"
+      ],
+      "current_sources": [
+        "control-plane-kit-operations/src/control_plane_kit_operations/approval.py",
+        "control-plane-kit-operations/src/control_plane_kit_operations/admission.py",
+        "control-plane-kit-operations/src/control_plane_kit_operations/cpk_server.py:239"
+      ],
+      "behavior": "The operator requests a plan, a manager reviews and approves/rejects it, and admission accepts only current sufficient approval evidence for that exact plan/session.",
+      "negative_cases": [
+        "missing, rejected, stale, insufficient-scope, or different-plan approval fails closed",
+        "acceptance paths must not insert approval rows directly except store-primitive tests",
+        "approval queue read/detail surfaces must show enough plan/risk evidence for review"
+      ],
+      "handoff": "#880/#881 fill the approval queue/detail public workflow before cpk-server route acceptance."
+    },
+    {
+      "law_id": "activity.runtime.published-image-digest-truth",
+      "title": "Acceptance uses immutable OCI coordinates, not local tags",
+      "classification": "server-product descriptor/published-image law",
+      "frozen_sources": [
+        "tests/test_package_server_catalog.py",
+        "live demo scripts"
+      ],
+      "current_sources": [
+        "control-plane-kit-servers/src/control_plane_kit_servers/catalogue.json",
+        "control-plane-kit-servers/products/*/product.cpk.json:1",
+        "control-plane-kit-servers/scripts/*_published_image_smoke.sh"
+      ],
+      "behavior": "Seeded product descriptors pin image digest/provenance, and published-image smokes pull by digest with local rebuild disabled.",
+      "negative_cases": [
+        "a local tag is development evidence only",
+        "descriptor digest and catalogue checksum must change after republishing cpk-server backend/runtime behavior",
+        "acceptance cannot claim published proof from a local build"
+      ],
+      "handoff": "#878 owns cpk-server republish after runtime behavior enters the server backend."
+    },
+    {
+      "law_id": "activity.runtime.control-portals-are-future-non-goal",
+      "title": "Remote control access points are explicit future work",
+      "classification": "future control-portal/non-goal",
+      "frozen_sources": [],
+      "current_sources": [
+        "GitHub issue #882"
+      ],
+      "behavior": "ACTIVITY may verify via Docker-local networking; public CPK control ingress, Cloudflare portals, and remote over-the-wire control dispatch remain future topology/runtime work.",
+      "negative_cases": [
+        "do not add portal URLs as magic cpk-server node properties",
+        "do not require arbitrary product servers to expose CPK wrapper routes in ACTIVITY",
+        "do not implement AWS/GCP/Kubernetes runtime portals in local Docker activity realization"
+      ],
+      "handoff": "#879 closeout should explicitly point remote control communication back to #882 and later runtime extraction."
+    }
+  ],
+  "seeded_integration_scenario_matrix": [
+    {
+      "scenario_id": "activity.scenario.initial-cpk-server-with-postgres",
+      "title": "Initial deployment of cpk-server backed by Postgres descriptors",
+      "graph_transition": "EmptyGraph -> desired graph",
+      "products": [
+        "cpk-server",
+        "postgres-server"
+      ],
+      "edges": [
+        "cpk-server.activity-history-store -> postgres-server.postgres",
+        "cpk-server.graph-topology-store -> postgres-server.postgres",
+        "cpk-server.observer-state-store -> postgres-server.postgres",
+        "cpk-server.workplace-store -> postgres-server.postgres"
+      ],
+      "expected_proof": [
+        "containers start on an owned Docker network",
+        "Postgres password is delivered as secret environment only",
+        "cpk-server readiness succeeds through HTTP provider socket",
+        "current graph advances after accepted successful realization"
+      ],
+      "known_gaps": [
+        "Postgres retained data volume ownership and cleanup policy must be implemented in Docker interpreter",
+        "connection-string synthesis from provider socket to cpk-server env bindings belongs to #873"
+      ],
+      "owner": "operations Docker/Postgres integration law"
+    },
+    {
+      "scenario_id": "activity.scenario.hello-single-node",
+      "title": "Initial deployment of standalone hello-server",
+      "graph_transition": "EmptyGraph -> desired graph",
+      "products": [
+        "hello-server"
+      ],
+      "edges": [],
+      "expected_proof": [
+        "published hello-server image is pulled by digest",
+        "HELLO_MESSAGE and HELLO_DEPENDENCIES_JSON public env are applied",
+        "HTTP live/ready checks pass on the internal provider socket"
+      ],
+      "known_gaps": [
+        "dynamic per-instance dependency declarations are not part of the base descriptor yet"
+      ],
+      "owner": "operations Docker/Postgres integration law"
+    },
+    {
+      "scenario_id": "activity.scenario.hello-http-dependency",
+      "title": "Hello server with an HTTP dependency edge",
+      "graph_transition": "EmptyGraph -> desired graph",
+      "products": [
+        "hello-server",
+        "hello-server"
+      ],
+      "edges": [
+        "hello-api.dependency -> hello-service.internal"
+      ],
+      "expected_proof": [
+        "graph edge is materialized as HELLO_DEPENDENCIES_JSON for the dependent node",
+        "dependent hello can perform an HTTP call to its provider over Docker-local networking"
+      ],
+      "known_gaps": [
+        "hello-server descriptor currently has no explicit requirement socket; #873 must decide whether per-instance product parameterization can add the requirement without changing base product truth"
+      ],
+      "owner": "operations Docker/Postgres integration law"
+    },
+    {
+      "scenario_id": "activity.scenario.router-to-hello",
+      "title": "HTTP active router forwards to hello-server target",
+      "graph_transition": "EmptyGraph -> desired graph, then update target if supported",
+      "products": [
+        "http-active-router",
+        "hello-server"
+      ],
+      "edges": [
+        "router.active-target -> hello.internal"
+      ],
+      "expected_proof": [
+        "router target environment/control parameter is derived from graph edge",
+        "external smoke request to router receives hello response",
+        "target switch is represented as graph change and activity plan work, not observed-state rewrite"
+      ],
+      "known_gaps": [
+        "router target binding details must be read from product descriptor/current server tests in #873",
+        "runtime mutation/control route is not in ACTIVITY unless already descriptor-supported by local Docker parameters"
+      ],
+      "owner": "operations Docker/Postgres integration law"
+    },
+    {
+      "scenario_id": "activity.scenario.multiplexer-primary-observer",
+      "title": "HTTP multiplexer primary response with observer delivery",
+      "graph_transition": "EmptyGraph -> desired graph",
+      "products": [
+        "http-multiplexer",
+        "hello-server",
+        "hello-server"
+      ],
+      "edges": [
+        "multiplexer.primary -> hello-primary.internal",
+        "multiplexer.observer-a -> hello-observer.internal"
+      ],
+      "expected_proof": [
+        "MULTIPLEXER_PRIMARY_URL is required and bound from graph edge",
+        "MULTIPLEXER_OBSERVER_A_URL is optional and bound when present",
+        "primary response drives client-visible result while observer delivery remains process behavior"
+      ],
+      "known_gaps": [
+        "observer delivery evidence is product smoke/integration evidence, not durable CPK observation unless #874 explicitly records it"
+      ],
+      "owner": "operations Docker/Postgres integration law"
+    },
+    {
+      "scenario_id": "activity.scenario.teardown-retains-postgres-data",
+      "title": "Teardown removes owned compute while preserving retained Postgres data",
+      "graph_transition": "current graph -> EmptyGraph",
+      "products": [
+        "postgres-server",
+        "hello-server"
+      ],
+      "edges": [],
+      "expected_proof": [
+        "owned compute is stopped/removed through explicit activities",
+        "retained postgres-data volume is not removed by configuration/compute cleanup",
+        "current graph advances to EmptyGraph only after accepted teardown result"
+      ],
+      "known_gaps": [
+        "retained data ownership fingerprints must be distinct from ephemeral compute cleanup fingerprints"
+      ],
+      "owner": "operations Docker/Postgres integration law"
+    },
+    {
+      "scenario_id": "activity.scenario.public-cpk-server-workflow",
+      "title": "cpk-server HTTP/MCP workflow exercises same operations services",
+      "graph_transition": "operator-created desired graph -> admitted run -> local Docker realization",
+      "products": [
+        "cpk-server",
+        "hello-server",
+        "http-active-router",
+        "http-multiplexer",
+        "postgres-server"
+      ],
+      "edges": [
+        "scenario-specific edges from the cases above"
+      ],
+      "expected_proof": [
+        "operator imports product descriptors",
+        "operator starts session, sets desired graph, requests plan, requests approval",
+        "manager lists pending approval and decides",
+        "operator admits, claims, executes, reads final state through HTTP and MCP"
+      ],
+      "known_gaps": [
+        "approval queue/detail routes are #880/#881",
+        "published cpk-server image must be republished in #878 after backend runtime behavior changes"
+      ],
+      "owner": "cpk-server HTTP/MCP acceptance law"
+    }
+  ],
+  "product_parameterization_gaps": [
+    {
+      "gap": "Hello dependency/env binding",
+      "evidence": "Base hello-server descriptor has no requirement socket and ships HELLO_DEPENDENCIES_JSON=[] as public env.",
+      "impact": "A dependent hello scenario needs explicit per-instance parameterization or descriptor evolution before graph edges can drive dependency calls.",
+      "target_issue": "#873"
+    },
+    {
+      "gap": "Router target binding",
+      "evidence": "http-active-router is seeded as a descriptor/image product, but #870 has not yet proven the exact edge-to-target runtime parameter path.",
+      "impact": "Router scenarios must not hard-code local script variables outside graph-derived material.",
+      "target_issue": "#873"
+    },
+    {
+      "gap": "Multiplexer primary/observer binding",
+      "evidence": "Descriptor exposes primary required and observer-a/observer-b optional HTTP requirement sockets with env bindings.",
+      "impact": "Binding synthesis must handle required and optional requirements differently.",
+      "target_issue": "#873"
+    },
+    {
+      "gap": "Postgres secret/data/retention handling",
+      "evidence": "postgres-server descriptor declares POSTGRES_PASSWORD as secret delivery and postgres-data as retained data.",
+      "impact": "Docker interpreter needs a secret resolver and ownership-retained volume model; no password may enter durable descriptors or logs.",
+      "target_issue": "#872"
+    },
+    {
+      "gap": "Published image digest truth versus local tags",
+      "evidence": "seed descriptors pin GHCR/Docker Hub digests and published-image smoke scripts disable local rebuilds.",
+      "impact": "Final ACTIVITY acceptance must use immutable digest pulls; cpk-server backend changes require republish and descriptor/catalogue checksum updates.",
+      "target_issue": "#878"
+    }
+  ],
+  "topology_decision": {
+    "changes_required_before_871": false,
+    "reason": "The inserted approval queue issues #880 and #881 remain correctly positioned before public cpk-server route acceptance. The next needed change is not another topology issue; it is the #871 adapter boundary that carries pinned realization material into the existing coordinator seam.",
+    "handoff_to_871": [
+      "Keep ExecutionCoordinator as the single durable coordinator.",
+      "Do not introduce a second effect language or scheduler.",
+      "Define a realization boundary richer than PlannedActivity alone, including run/workspace identity, admitted plan truth, desired/current graph material, registered product documents, and bounded runtime configuration evidence.",
+      "The adapter still executes only after durable intent commits and returns ActivityExecutionOutcome."
+    ]
+  },
+  "non_goals": [
+    "Cloudflare/public portal language",
+    "remote over-the-wire CPK control dispatch",
+    "CPK wrapper routes inside arbitrary product servers",
+    "automatic scaling or metrics-driven replanning",
+    "AWS/GCP/ECS/Kubernetes runtimes",
+    "recursive child cpk-server acceptance"
+  ]
+}

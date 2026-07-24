@@ -1,0 +1,369 @@
+from __future__ import annotations
+
+import unittest
+
+from control_plane_kit_core.algebra import BlockSockets, BlockSpec, ProviderSocket
+from control_plane_kit_core.environment import (
+    PublicStaticEnvironmentBinding,
+    SocketDerivedEnvironmentBinding,
+)
+from control_plane_kit_core.operations.lifecycle import (
+    ActivityEventKind,
+    ActivityRunStatus,
+    ExecutionRequestStatus,
+)
+from control_plane_kit_core.planning import (
+    ActivityId,
+    ActivityPlan,
+    NodeTarget,
+    PlannedActivity,
+    StartNode,
+    StopRuntime,
+    RuntimeTarget,
+)
+from control_plane_kit_core.policies import PolicyScope
+from control_plane_kit_core.products import (
+    ContainerServerProduct,
+    OciImageReference,
+    ProductDescriptorCodec,
+    ProductReference,
+    ProductRuntimeContract,
+    ProviderRuntimePort,
+)
+from control_plane_kit_core.runtime_authority import RuntimeAuthorityReference
+from control_plane_kit_core.runtime_effects import ImagePullAuthority
+from control_plane_kit_core.topology import DeploymentGraph, Node, RuntimeRecord
+from control_plane_kit_core.types import BlockFamily, Protocol, RuntimeKind
+from control_plane_kit_operations.coordinator import ActivityRealizationContext
+from control_plane_kit_operations.lifecycle import ExecutionWorkerAuthority
+from control_plane_kit_operations.products import (
+    InlineDescriptorSource,
+    RegisteredImagePullAuthority,
+    RegisteredProduct,
+)
+from control_plane_kit_operations.records import (
+    ActivityEventRecord,
+    ActivityPlanRecord,
+    ActivityPlanStatus,
+    ActivityRunRecord,
+    AdmittedRun,
+    ClaimIdentity,
+    ExecutionIdempotency,
+    ExecutionRequestIdentity,
+    ExecutionRequestRecord,
+    GraphVersionRecord,
+    RetryIdentity,
+)
+from control_plane_kit_operations.runtime_effects import runtime_effect_request_for_context
+
+
+class RuntimeEffectTranslationTests(unittest.TestCase):
+    def test_context_translates_to_core_runtime_effect_request(self) -> None:
+        context = _context()
+
+        request = runtime_effect_request_for_context(context)
+
+        self.assertEqual(request.effect_id, "event-started")
+        self.assertEqual(request.runtime_kind, RuntimeKind.DOCKER)
+        self.assertIsNone(request.authority_ref)
+        self.assertEqual(request.source.workspace_id, "workspace-a")
+        self.assertEqual(request.source.desired_graph_id, "graph-desired")
+        self.assertEqual(request.activity_id, ActivityId("activity-a"))
+        self.assertEqual(request.operation, StartNode(NodeTarget("api")))
+        self.assertEqual(len(request.products), 1)
+        self.assertEqual(request.products[0].node_id, "api")
+        self.assertEqual(request.products[0].runtime_id, "docker")
+        self.assertEqual(
+            request.products[0].reference,
+            ProductReference.from_document(_registered_product().descriptor_document),
+        )
+        self.assertEqual(
+            request.products[0].socket_environment,
+            (
+                SocketDerivedEnvironmentBinding(
+                    "UPSTREAM_URL",
+                    "http://upstream:8080",
+                    "upstream.internal->api.upstream",
+                ),
+            ),
+        )
+        self.assertEqual(
+            request.products[0].public_environment,
+            (
+                PublicStaticEnvironmentBinding(
+                    "HELLO_MESSAGE",
+                    "Hello from selected instance",
+                ),
+            ),
+        )
+        self.assertIsNone(request.products[0].pull_authority)
+
+    def test_context_selects_matching_pull_authority_without_credentials(self) -> None:
+        context = _context(
+            pull_authorities=(
+                _registered_pull_authority(
+                    repository="openj92/control-plane-kit-servers"
+                ),
+            )
+        )
+
+        request = runtime_effect_request_for_context(context)
+
+        self.assertIsNotNone(request.products[0].pull_authority)
+        assert request.products[0].pull_authority is not None
+        self.assertEqual(
+            request.products[0].pull_authority.credential_reference.reference_id,
+            "secret://local/workspace-a/ghcr-read-token",
+        )
+        self.assertNotIn("ghp_", repr(request.descriptor()))
+
+    def test_context_prefers_most_specific_matching_pull_authority(self) -> None:
+        context = _context(
+            pull_authorities=(
+                _registered_pull_authority(repository=None),
+                _registered_pull_authority(
+                    repository="openj92/control-plane-kit-servers/hello-server",
+                    credential_reference="secret://local/workspace-a/hello-token",
+                ),
+            )
+        )
+
+        request = runtime_effect_request_for_context(context)
+
+        assert request.products[0].pull_authority is not None
+        self.assertEqual(
+            request.products[0].pull_authority.credential_reference.reference_id,
+            "secret://local/workspace-a/hello-token",
+        )
+
+    def test_runtime_teardown_uses_base_graph_to_resolve_runtime_kind(self) -> None:
+        activity = PlannedActivity(
+            ActivityId("activity-stop-runtime"),
+            StopRuntime(RuntimeTarget("docker")),
+        )
+        context = _context(
+            activity=activity,
+            desired_graph=DeploymentGraph("empty"),
+        )
+
+        request = runtime_effect_request_for_context(context)
+
+        self.assertEqual(request.runtime_kind, RuntimeKind.DOCKER)
+        self.assertEqual(request.operation, StopRuntime(RuntimeTarget("docker")))
+        self.assertEqual(request.products, ())
+
+    def test_context_carries_runtime_authority_reference_from_graph_to_request(self) -> None:
+        graph = _graph(
+            authority_ref=RuntimeAuthorityReference("mac-mini-docker"),
+        )
+        context = _context(desired_graph=graph)
+
+        request = runtime_effect_request_for_context(context)
+
+        self.assertEqual(
+            request.authority_ref,
+            RuntimeAuthorityReference("mac-mini-docker"),
+        )
+        self.assertEqual(
+            request.descriptor()["authority_ref"],
+            {"reference_id": "mac-mini-docker"},
+        )
+        self.assertNotIn("tcp://", repr(request.descriptor()))
+
+
+def _context(
+    *,
+    activity: PlannedActivity | None = None,
+    desired_graph: DeploymentGraph | None = None,
+    pull_authorities: tuple[RegisteredImagePullAuthority, ...] = (),
+) -> ActivityRealizationContext:
+    if activity is None:
+        activity = PlannedActivity(ActivityId("activity-a"), StartNode(NodeTarget("api")))
+    plan = ActivityPlan((activity,))
+    graph = _graph()
+    return ActivityRealizationContext(
+        activity=activity,
+        request=ExecutionRequestRecord(
+            ExecutionRequestIdentity("request-a", "workspace-a", "session-a", "plan-a"),
+            ExecutionRequestStatus.CLAIMED,
+            "operator-a",
+            "2026-07-22T10:00:00Z",
+            "approval-request-a",
+            "approval-decision-a",
+            ExecutionIdempotency("execute-a", "fingerprint-a"),
+            ClaimIdentity("worker-a", "2026-07-22T10:01:00Z", "2026-07-22T10:30:00Z"),
+        ),
+        run=ActivityRunRecord(
+            "run-a",
+            "plan-a",
+            AdmittedRun("request-a"),
+            RetryIdentity(1),
+            ActivityRunStatus.RUNNING,
+            "2026-07-22T10:01:00Z",
+            started_at="2026-07-22T10:02:00Z",
+        ),
+        plan_record=ActivityPlanRecord(
+            "plan-a",
+            "session-a",
+            "graph-base",
+            "graph-desired",
+            ActivityPlanStatus.PLANNED,
+            "2026-07-22T10:00:00Z",
+            plan,
+        ),
+        base_graph=GraphVersionRecord.from_graph(
+            graph_id="graph-base",
+            workspace_id="workspace-a",
+            version=1,
+            graph=graph,
+            created_by="operator-a",
+            created_at="2026-07-22T09:00:00Z",
+        ),
+        desired_graph=GraphVersionRecord.from_graph(
+            graph_id="graph-desired",
+            workspace_id="workspace-a",
+            version=2,
+            graph=graph if desired_graph is None else desired_graph,
+            created_by="operator-a",
+            created_at="2026-07-22T10:00:00Z",
+        ),
+        registered_products=(_registered_product(),),
+        image_pull_authorities=pull_authorities,
+        authority=ExecutionWorkerAuthority(
+            worker_id="worker-a",
+            scopes=(PolicyScope.EXECUTION_OPERATE,),
+        ),
+        intent_event=ActivityEventRecord(
+            event_id="event-started",
+            run_id="run-a",
+            kind=ActivityEventKind.STEP_STARTED,
+            activity_id=activity.activity_id.value,
+            occurred_at="2026-07-22T10:02:00Z",
+            ordinal=3,
+        ),
+    )
+
+
+def _graph(
+    *,
+    authority_ref: RuntimeAuthorityReference | None = None,
+) -> DeploymentGraph:
+    product = _registered_product()
+    reference = product.reference
+    return DeploymentGraph(
+        name="demo",
+        nodes={
+            "api": Node(
+                node_id="api",
+                block_family=BlockFamily.APPLICATION,
+                block_spec=BlockSpec("api"),
+                kind="container-server",
+                runtime_id="docker",
+                sockets=BlockSockets(providers=(ProviderSocket("http", Protocol.HTTP),)),
+                metadata={
+                    "product_identity": reference.identity.key,
+                    "product_descriptor_digest": reference.descriptor_sha256.value,
+                },
+                public_environment=(
+                    PublicStaticEnvironmentBinding(
+                        "HELLO_MESSAGE",
+                        "Hello from selected instance",
+                    ),
+                ),
+                socket_environment=(
+                    SocketDerivedEnvironmentBinding(
+                        "UPSTREAM_URL",
+                        "http://upstream:8080",
+                        "upstream.internal->api.upstream",
+                    ),
+                ),
+            )
+        },
+        runtimes={
+            "docker": RuntimeRecord(
+                "docker",
+                RuntimeKind.DOCKER,
+                ("api",),
+                authority_ref=authority_ref,
+            )
+        },
+    )
+
+
+def _registered_product() -> RegisteredProduct:
+    product = ContainerServerProduct(
+        identity=ProductReference.from_document(
+            ProductDescriptorCodec().encode_document(
+                ContainerServerProduct(
+                    identity=_identity(),
+                    image=OciImageReference(
+                        registry="ghcr.io",
+                        repository="openj92/control-plane-kit-servers/hello-server",
+                        digest="sha256:" + "a" * 64,
+                    ),
+                    runtime_contract=ProductRuntimeContract(
+                        sockets=BlockSockets(
+                            providers=(ProviderSocket("http", Protocol.HTTP),)
+                        ),
+                        provider_ports=(ProviderRuntimePort("http", 8000),),
+                        public_environment=(
+                            PublicStaticEnvironmentBinding(
+                                "HELLO_MESSAGE",
+                                "Hello from descriptor default",
+                            ),
+                        ),
+                    ),
+                )
+            )
+        ).identity,
+        image=OciImageReference(
+            registry="ghcr.io",
+            repository="openj92/control-plane-kit-servers/hello-server",
+            digest="sha256:" + "a" * 64,
+        ),
+        runtime_contract=ProductRuntimeContract(
+            sockets=BlockSockets(providers=(ProviderSocket("http", Protocol.HTTP),)),
+            provider_ports=(ProviderRuntimePort("http", 8000),),
+            public_environment=(
+                PublicStaticEnvironmentBinding(
+                    "HELLO_MESSAGE",
+                    "Hello from descriptor default",
+                ),
+            ),
+        ),
+    )
+    document = ProductDescriptorCodec().encode_document(product)
+    return RegisteredProduct.from_document(
+        workspace_id="workspace-a",
+        descriptor_document=document,
+        source=InlineDescriptorSource(),
+        imported_by="operator-a",
+        imported_at="2026-07-22T09:00:00Z",
+    )
+
+
+def _registered_pull_authority(
+    *,
+    repository: str | None,
+    credential_reference: str = "secret://local/workspace-a/ghcr-read-token",
+) -> RegisteredImagePullAuthority:
+    return RegisteredImagePullAuthority.from_authority(
+        workspace_id="workspace-a",
+        authority=ImagePullAuthority(
+            registry="ghcr.io",
+            repository=repository,
+            credential_reference=credential_reference,
+        ),
+        admitted_by="operator-a",
+        admitted_at="2026-07-22T12:00:00Z",
+    )
+
+
+def _identity():
+    from control_plane_kit_core.products import ProductIdentity
+
+    return ProductIdentity("openj92", "hello-server", 1)
+
+
+if __name__ == "__main__":
+    unittest.main()

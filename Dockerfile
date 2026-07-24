@@ -72,10 +72,13 @@ CMD ["python", "-c", "import control_plane_kit; print('control-plane-kit ready')
 
 FROM package AS test
 
+COPY SERVER_PRODUCT_ROLLOUT.md ./
 COPY examples ./examples
+COPY artifacts ./artifacts
+COPY control-plane-kit-operations ./control-plane-kit-operations
 COPY docs ./docs
 COPY extraction_parity ./extraction_parity
-COPY reference-inventory.sh reference-test.sh ./
+COPY activity-seeded-live-test.sh reference-inventory.sh reference-test.sh test.sh ./
 COPY tests ./tests
 
 RUN python -m pip install ".[test-server]"
@@ -89,6 +92,25 @@ FROM test AS live-test
 COPY --from=docker_cli /usr/local/bin/docker /usr/local/bin/docker
 
 CMD ["python", "tests/live_docker_publication.py", "start"]
+
+FROM python:${PYTHON_VERSION}-slim AS activity-live-test
+
+ENV PYTHONDONTWRITEBYTECODE=1 \
+    PYTHONUNBUFFERED=1 \
+    PIP_NO_CACHE_DIR=1
+
+WORKDIR /workspace/control-plane-kit
+
+COPY --from=docker_cli /usr/local/bin/docker /usr/local/bin/docker
+COPY control-plane-kit-core ./control-plane-kit-core
+COPY control-plane-kit-operations ./control-plane-kit-operations
+COPY examples ./examples
+
+RUN python -m pip install --upgrade pip \
+    && python -m pip install ./control-plane-kit-core ./control-plane-kit-operations \
+    && python -m pip install "docker>=7.1" "httpx>=0.28"
+
+CMD ["python", "-m", "examples.activity_seeded_live"]
 
 FROM package AS demo
 

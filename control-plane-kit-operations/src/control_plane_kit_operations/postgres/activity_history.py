@@ -1,0 +1,458 @@
+"""Postgres store for operation sessions and command history."""
+
+from __future__ import annotations
+
+from typing import Any
+
+from psycopg.types.json import Jsonb
+
+from control_plane_kit_core.operations.commands import OperatorCommandKind
+from control_plane_kit_core.operations.lifecycle import LifecycleOperationKind
+from control_plane_kit_core.planning import DEFAULT_ACTIVITY_PLAN_CODEC
+from control_plane_kit_core.planning import RiskLevel
+from control_plane_kit_core.policies import PolicyScope
+from control_plane_kit_operations.postgres.schema import PostgresConnection
+from control_plane_kit_operations.records import (
+    ActivityPlanRecord,
+    ActivityPlanStatus,
+    ApprovalDecisionKind,
+    ApprovalDecisionRecord,
+    ApprovalRequestRecord,
+    OperationActionRecord,
+    OperationSessionRecord,
+    OperationSessionStatus,
+)
+
+
+class PostgresActivityHistoryStore:
+    """Postgres-backed operation session and action history store."""
+
+    def __init__(self, connection: PostgresConnection) -> None:
+        self._connection = connection
+
+    def add_session(self, record: OperationSessionRecord) -> OperationSessionRecord:
+        self._connection.execute(
+            """
+            INSERT INTO cpk_operation_sessions
+              (session_id, workspace_id, actor_id, title, status, created_at, closed_at,
+               metadata, idempotency_key, intent_fingerprint)
+            VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+            """,
+            (
+                record.session_id,
+                record.workspace_id,
+                record.actor_id,
+                record.title,
+                record.status.value,
+                record.created_at,
+                record.closed_at,
+                Jsonb(record.metadata),
+                record.idempotency_key,
+                record.intent_fingerprint,
+            ),
+        )
+        return record
+
+    def lock_session_idempotency(self, workspace_id: str, idempotency_key: str) -> None:
+        """Serialize session starts before the session row exists."""
+
+        self._connection.execute(
+            "SELECT pg_advisory_xact_lock(hashtextextended(%s, 0))",
+            (f"operation-session:{workspace_id}:{idempotency_key}",),
+        )
+
+    def get_session(self, session_id: str) -> OperationSessionRecord:
+        row = self._connection.execute(
+            """
+            SELECT session_id, workspace_id, actor_id, title, status, created_at,
+                   closed_at, metadata, idempotency_key, intent_fingerprint
+            FROM cpk_operation_sessions
+            WHERE session_id = %s
+            """,
+            (session_id,),
+        ).fetchone()
+        if row is None:
+            raise KeyError(f"missing session {session_id!r}")
+        return _session_record(row)
+
+    def session_for_idempotency(
+        self,
+        workspace_id: str,
+        idempotency_key: str,
+    ) -> OperationSessionRecord | None:
+        row = self._connection.execute(
+            """
+            SELECT session_id, workspace_id, actor_id, title, status, created_at,
+                   closed_at, metadata, idempotency_key, intent_fingerprint
+            FROM cpk_operation_sessions
+            WHERE workspace_id = %s AND idempotency_key = %s
+            """,
+            (workspace_id, idempotency_key),
+        ).fetchone()
+        return None if row is None else _session_record(row)
+
+    def sessions_for_workspace(
+        self,
+        workspace_id: str,
+    ) -> tuple[OperationSessionRecord, ...]:
+        rows = self._connection.execute(
+            """
+            SELECT session_id, workspace_id, actor_id, title, status, created_at,
+                   closed_at, metadata, idempotency_key, intent_fingerprint
+            FROM cpk_operation_sessions
+            WHERE workspace_id = %s
+            ORDER BY created_at ASC, session_id ASC
+            """,
+            (workspace_id,),
+        ).fetchall()
+        return tuple(_session_record(row) for row in rows)
+
+    def transition_open_session(
+        self,
+        session_id: str,
+        *,
+        replacement: OperationSessionStatus,
+        closed_at: str,
+    ) -> OperationSessionRecord | None:
+        if replacement not in {
+            OperationSessionStatus.CLOSED,
+            OperationSessionStatus.CANCELLED,
+        }:
+            raise ValueError("operation sessions may transition only to terminal")
+        row = self._connection.execute(
+            """
+            UPDATE cpk_operation_sessions
+            SET status = %s, closed_at = %s
+            WHERE session_id = %s AND status = 'open'
+            RETURNING session_id, workspace_id, actor_id, title, status, created_at,
+                      closed_at, metadata, idempotency_key, intent_fingerprint
+            """,
+            (replacement.value, closed_at, session_id),
+        ).fetchone()
+        return None if row is None else _session_record(row)
+
+    def add_action(self, record: OperationActionRecord) -> OperationActionRecord:
+        self._connection.execute(
+            """
+            INSERT INTO cpk_operation_actions
+              (action_id, session_id, ordinal, action_type, actor_id, payload,
+               created_at, idempotency_key, intent_fingerprint)
+            VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s)
+            """,
+            (
+                record.action_id,
+                record.session_id,
+                record.ordinal,
+                record.action_type.value,
+                record.actor_id,
+                Jsonb(record.payload),
+                record.created_at,
+                record.idempotency_key,
+                record.intent_fingerprint,
+            ),
+        )
+        return record
+
+    def action_for_idempotency(
+        self,
+        session_id: str,
+        idempotency_key: str,
+    ) -> OperationActionRecord | None:
+        row = self._connection.execute(
+            """
+            SELECT action_id, session_id, ordinal, action_type, actor_id, payload,
+                   created_at, idempotency_key, intent_fingerprint
+            FROM cpk_operation_actions
+            WHERE session_id = %s AND idempotency_key = %s
+            """,
+            (session_id, idempotency_key),
+        ).fetchone()
+        return None if row is None else _action_record(row)
+
+    def next_action_ordinal(self, session_id: str) -> int:
+        session = self._connection.execute(
+            "SELECT session_id FROM cpk_operation_sessions WHERE session_id = %s FOR UPDATE",
+            (session_id,),
+        ).fetchone()
+        if session is None:
+            raise KeyError(f"missing session {session_id!r}")
+        row = self._connection.execute(
+            """
+            SELECT COALESCE(MAX(ordinal), 0) + 1
+            FROM cpk_operation_actions
+            WHERE session_id = %s
+            """,
+            (session_id,),
+        ).fetchone()
+        return int(row[0])
+
+    def actions_for_session(self, session_id: str) -> tuple[OperationActionRecord, ...]:
+        rows = self._connection.execute(
+            """
+            SELECT action_id, session_id, ordinal, action_type, actor_id, payload,
+                   created_at, idempotency_key, intent_fingerprint
+            FROM cpk_operation_actions
+            WHERE session_id = %s
+            ORDER BY ordinal ASC
+            """,
+            (session_id,),
+        ).fetchall()
+        return tuple(_action_record(row) for row in rows)
+
+    def add_plan(self, record: ActivityPlanRecord) -> ActivityPlanRecord:
+        self._connection.execute(
+            """
+            INSERT INTO cpk_activity_plans
+              (plan_id, session_id, base_graph_id, desired_graph_id, status,
+               created_at, payload)
+            VALUES (%s, %s, %s, %s, %s, %s, %s)
+            """,
+            (
+                record.plan_id,
+                record.session_id,
+                record.base_graph_id,
+                record.desired_graph_id,
+                record.status.value,
+                record.created_at,
+                Jsonb(DEFAULT_ACTIVITY_PLAN_CODEC.encode(record.plan)),
+            ),
+        )
+        return record
+
+    def get_plan(self, plan_id: str) -> ActivityPlanRecord:
+        row = self._connection.execute(
+            """
+            SELECT plan_id, session_id, base_graph_id, desired_graph_id, status,
+                   created_at, payload
+            FROM cpk_activity_plans
+            WHERE plan_id = %s
+            """,
+            (plan_id,),
+        ).fetchone()
+        if row is None:
+            raise KeyError(f"missing activity plan {plan_id!r}")
+        return _plan_record(row)
+
+    def plans_for_session(self, session_id: str) -> tuple[ActivityPlanRecord, ...]:
+        rows = self._connection.execute(
+            """
+            SELECT plan_id, session_id, base_graph_id, desired_graph_id, status,
+                   created_at, payload
+            FROM cpk_activity_plans
+            WHERE session_id = %s
+            ORDER BY created_at ASC, plan_id ASC
+            """,
+            (session_id,),
+        ).fetchall()
+        return tuple(_plan_record(row) for row in rows)
+
+    def add_approval_request(
+        self,
+        record: ApprovalRequestRecord,
+    ) -> ApprovalRequestRecord:
+        self._connection.execute(
+            """
+            INSERT INTO cpk_approval_requests
+              (request_id, session_id, plan_id, requested_by, requested_at,
+               required_scope, max_risk, destructive, comment, idempotency_key,
+               intent_fingerprint)
+            VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+            """,
+            (
+                record.request_id,
+                record.session_id,
+                record.plan_id,
+                record.requested_by,
+                record.requested_at,
+                record.required_scope.value,
+                record.max_risk.value,
+                record.destructive,
+                record.comment,
+                record.idempotency_key,
+                record.intent_fingerprint,
+            ),
+        )
+        return record
+
+    def get_approval_request(self, request_id: str) -> ApprovalRequestRecord:
+        row = self._connection.execute(
+            """
+            SELECT request_id, session_id, plan_id, requested_by, requested_at,
+                   required_scope, max_risk, destructive, comment,
+                   idempotency_key, intent_fingerprint
+            FROM cpk_approval_requests
+            WHERE request_id = %s
+            """,
+            (request_id,),
+        ).fetchone()
+        if row is None:
+            raise KeyError(f"missing approval request {request_id!r}")
+        return _approval_request_record(row)
+
+    def approval_request_for_idempotency(
+        self,
+        session_id: str,
+        idempotency_key: str,
+    ) -> ApprovalRequestRecord | None:
+        row = self._connection.execute(
+            """
+            SELECT request_id, session_id, plan_id, requested_by, requested_at,
+                   required_scope, max_risk, destructive, comment,
+                   idempotency_key, intent_fingerprint
+            FROM cpk_approval_requests
+            WHERE session_id = %s AND idempotency_key = %s
+            """,
+            (session_id, idempotency_key),
+        ).fetchone()
+        return None if row is None else _approval_request_record(row)
+
+    def approval_requests_for_session(
+        self,
+        session_id: str,
+    ) -> tuple[ApprovalRequestRecord, ...]:
+        rows = self._connection.execute(
+            """
+            SELECT request_id, session_id, plan_id, requested_by, requested_at,
+                   required_scope, max_risk, destructive, comment,
+                   idempotency_key, intent_fingerprint
+            FROM cpk_approval_requests
+            WHERE session_id = %s
+            ORDER BY requested_at ASC, request_id ASC
+            """,
+            (session_id,),
+        ).fetchall()
+        return tuple(_approval_request_record(row) for row in rows)
+
+    def add_approval_decision(
+        self,
+        record: ApprovalDecisionRecord,
+    ) -> ApprovalDecisionRecord:
+        self._connection.execute(
+            """
+            INSERT INTO cpk_approval_decisions
+              (decision_id, request_id, actor_id, decision, scope, decided_at,
+               comment, idempotency_key, intent_fingerprint)
+            VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s)
+            """,
+            (
+                record.decision_id,
+                record.request_id,
+                record.actor_id,
+                record.decision.value,
+                record.scope.value,
+                record.decided_at,
+                record.comment,
+                record.idempotency_key,
+                record.intent_fingerprint,
+            ),
+        )
+        return record
+
+    def approval_decision_for_request(
+        self,
+        request_id: str,
+    ) -> ApprovalDecisionRecord | None:
+        row = self._connection.execute(
+            """
+            SELECT decision_id, request_id, actor_id, decision, scope, decided_at,
+                   comment, idempotency_key, intent_fingerprint
+            FROM cpk_approval_decisions
+            WHERE request_id = %s
+            """,
+            (request_id,),
+        ).fetchone()
+        return None if row is None else _approval_decision_record(row)
+
+    def approval_decision_for_idempotency(
+        self,
+        request_id: str,
+        idempotency_key: str,
+    ) -> ApprovalDecisionRecord | None:
+        row = self._connection.execute(
+            """
+            SELECT decision_id, request_id, actor_id, decision, scope, decided_at,
+                   comment, idempotency_key, intent_fingerprint
+            FROM cpk_approval_decisions
+            WHERE request_id = %s AND idempotency_key = %s
+            """,
+            (request_id, idempotency_key),
+        ).fetchone()
+        return None if row is None else _approval_decision_record(row)
+
+
+def _session_record(row: tuple[Any, ...]) -> OperationSessionRecord:
+    return OperationSessionRecord(
+        session_id=row[0],
+        workspace_id=row[1],
+        actor_id=row[2],
+        title=row[3],
+        status=OperationSessionStatus(row[4]),
+        created_at=row[5],
+        closed_at=row[6],
+        metadata=row[7],
+        idempotency_key=row[8],
+        intent_fingerprint=row[9],
+    )
+
+
+def _action_record(row: tuple[Any, ...]) -> OperationActionRecord:
+    return OperationActionRecord(
+        action_id=row[0],
+        session_id=row[1],
+        ordinal=row[2],
+        action_type=_action_kind(row[3]),
+        actor_id=row[4],
+        payload=row[5],
+        created_at=row[6],
+        idempotency_key=row[7],
+        intent_fingerprint=row[8],
+    )
+
+
+def _plan_record(row: tuple[Any, ...]) -> ActivityPlanRecord:
+    return ActivityPlanRecord(
+        plan_id=row[0],
+        session_id=row[1],
+        base_graph_id=row[2],
+        desired_graph_id=row[3],
+        status=ActivityPlanStatus(row[4]),
+        created_at=row[5],
+        plan=DEFAULT_ACTIVITY_PLAN_CODEC.decode(row[6]),
+    )
+
+
+def _approval_request_record(row: tuple[Any, ...]) -> ApprovalRequestRecord:
+    return ApprovalRequestRecord(
+        request_id=row[0],
+        session_id=row[1],
+        plan_id=row[2],
+        requested_by=row[3],
+        requested_at=row[4],
+        required_scope=PolicyScope(row[5]),
+        max_risk=RiskLevel(row[6]),
+        destructive=row[7],
+        comment=row[8],
+        idempotency_key=row[9],
+        intent_fingerprint=row[10],
+    )
+
+
+def _approval_decision_record(row: tuple[Any, ...]) -> ApprovalDecisionRecord:
+    return ApprovalDecisionRecord(
+        decision_id=row[0],
+        request_id=row[1],
+        actor_id=row[2],
+        decision=ApprovalDecisionKind(row[3]),
+        scope=PolicyScope(row[4]),
+        decided_at=row[5],
+        comment=row[6],
+        idempotency_key=row[7],
+        intent_fingerprint=row[8],
+    )
+
+
+def _action_kind(value: str) -> OperatorCommandKind | LifecycleOperationKind:
+    try:
+        return OperatorCommandKind(value)
+    except ValueError:
+        return LifecycleOperationKind(value)

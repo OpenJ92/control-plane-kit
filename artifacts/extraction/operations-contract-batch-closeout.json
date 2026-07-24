@@ -1,0 +1,340 @@
+{
+  "families": [
+    {
+      "audit_decision": "map-command-workflow-contract",
+      "family": "test_activity_planning_command_service",
+      "rationale": "Command vocabularies and workflow grouping may become closed contract language; durable command services and session stores remain operations-owned.",
+      "remaining_live_inventory_count": 0,
+      "source_count": 9,
+      "status": "mapped",
+      "target_issue": "#787"
+    },
+    {
+      "audit_decision": "map-command-workflow-contract",
+      "family": "test_approval_command_service",
+      "rationale": "Command vocabularies and workflow grouping may become closed contract language; durable command services and session stores remain operations-owned.",
+      "remaining_live_inventory_count": 0,
+      "source_count": 10,
+      "status": "mapped",
+      "target_issue": "#787"
+    },
+    {
+      "audit_decision": "map-public-boundary-contract",
+      "family": "test_backend_boundaries",
+      "rationale": "DeploymentProgram stage and public boundary laws describe the operator-facing composition shape; core may retain descriptors and handoff contracts but not executable services.",
+      "remaining_live_inventory_count": 0,
+      "source_count": 4,
+      "status": "mapped",
+      "target_issue": "#786"
+    },
+    {
+      "audit_decision": "map-split-mutation-boundary-and-operations-handoff",
+      "core_successor": "extract-e-791.persistence-boundary-contract.unittest",
+      "family": "test_contracts",
+      "operations_handoff": "Mutable holder execution, publication, cleanup, rollback, retained-resource, and concurrency behavior remain operations/cpk-server proof.",
+      "operations_handoff_issue": "#792",
+      "rationale": "The 23 mutation-holder laws are split-boundary laws: extracted core maps the closed EnvironmentContract / RuntimeContract / DerivedResource vocabulary, descriptor no-value/no-secret law, and operations-owned handoff in #791; operations / cpk-server must later prove executable holder mutation, publication, cleanup, rollback, retained-resource, and concurrency behavior.",
+      "remaining_live_inventory_count": 0,
+      "source_count": 23,
+      "status": "split_core_mapped_operations_handoff",
+      "target_issue": "#791"
+    },
+    {
+      "audit_decision": "map-lifecycle-admission-contract",
+      "family": "test_current_graph_advancement",
+      "rationale": "Lifecycle, admission, recovery, and advancement values may be closed contracts; durable enforcement, claims, locks, workers, and graph-store mutation remain operations-owned.",
+      "remaining_live_inventory_count": 0,
+      "source_count": 11,
+      "status": "mapped",
+      "target_issue": "#789"
+    },
+    {
+      "audit_decision": "map-public-boundary-contract",
+      "family": "test_deployment_admit_claim_stages",
+      "rationale": "DeploymentProgram stage and public boundary laws describe the operator-facing composition shape; core may retain descriptors and handoff contracts but not executable services.",
+      "remaining_live_inventory_count": 0,
+      "source_count": 1,
+      "status": "mapped",
+      "target_issue": "#786"
+    },
+    {
+      "audit_decision": "map-public-boundary-contract",
+      "family": "test_deployment_application_values",
+      "rationale": "DeploymentProgram stage and public boundary laws describe the operator-facing composition shape; core may retain descriptors and handoff contracts but not executable services.",
+      "remaining_live_inventory_count": 0,
+      "source_count": 4,
+      "status": "mapped",
+      "target_issue": "#786"
+    },
+    {
+      "audit_decision": "map-public-boundary-contract",
+      "family": "test_deployment_plan_approve_stages",
+      "rationale": "DeploymentProgram stage and public boundary laws describe the operator-facing composition shape; core may retain descriptors and handoff contracts but not executable services.",
+      "remaining_live_inventory_count": 0,
+      "source_count": 3,
+      "status": "mapped",
+      "target_issue": "#786"
+    },
+    {
+      "audit_decision": "map-command-workflow-contract",
+      "family": "test_desired_graph_command_service",
+      "rationale": "Command vocabularies and workflow grouping may become closed contract language; durable command services and session stores remain operations-owned.",
+      "remaining_live_inventory_count": 0,
+      "source_count": 8,
+      "status": "mapped",
+      "target_issue": "#787"
+    },
+    {
+      "audit_decision": "map-command-workflow-contract",
+      "family": "test_desired_graph_commands",
+      "rationale": "Command vocabularies and workflow grouping may become closed contract language; durable command services and session stores remain operations-owned.",
+      "remaining_live_inventory_count": 0,
+      "source_count": 3,
+      "status": "mapped",
+      "target_issue": "#787"
+    },
+    {
+      "audit_decision": "map-lifecycle-admission-contract",
+      "family": "test_execution_admission",
+      "rationale": "Lifecycle, admission, recovery, and advancement values may be closed contracts; durable enforcement, claims, locks, workers, and graph-store mutation remain operations-owned.",
+      "remaining_live_inventory_count": 0,
+      "source_count": 11,
+      "status": "mapped",
+      "target_issue": "#789"
+    },
+    {
+      "audit_decision": "map-lifecycle-admission-contract",
+      "family": "test_execution_concurrency",
+      "rationale": "Lifecycle, admission, recovery, and advancement values may be closed contracts; durable enforcement, claims, locks, workers, and graph-store mutation remain operations-owned.",
+      "remaining_live_inventory_count": 0,
+      "source_count": 5,
+      "status": "mapped",
+      "target_issue": "#789"
+    },
+    {
+      "audit_decision": "map-execution-verification-handoff",
+      "family": "test_execution_coordinator",
+      "rationale": "Coordinator and verification-service laws mostly describe operations/interpreter behavior; core may retain only effect/verification contract descriptors.",
+      "remaining_live_inventory_count": 0,
+      "source_count": 28,
+      "status": "mapped",
+      "target_issue": "#790"
+    },
+    {
+      "audit_decision": "map-store-transaction-mutation-handoff",
+      "family": "test_execution_schema_migration",
+      "rationale": "Store, UnitOfWork, Postgres, schema, mutable holder, and derived-resource publication laws are operations/cpk-server handoff unless represented only as pure boundary descriptors.",
+      "remaining_live_inventory_count": 0,
+      "source_count": 3,
+      "status": "mapped",
+      "target_issue": "#791"
+    },
+    {
+      "audit_decision": "map-store-transaction-mutation-handoff",
+      "family": "test_execution_store",
+      "rationale": "Store, UnitOfWork, Postgres, schema, mutable holder, and derived-resource publication laws are operations/cpk-server handoff unless represented only as pure boundary descriptors.",
+      "remaining_live_inventory_count": 0,
+      "source_count": 3,
+      "status": "mapped",
+      "target_issue": "#791"
+    },
+    {
+      "audit_decision": "map-lifecycle-admission-contract",
+      "family": "test_execution_values",
+      "rationale": "Lifecycle, admission, recovery, and advancement values may be closed contracts; durable enforcement, claims, locks, workers, and graph-store mutation remain operations-owned.",
+      "remaining_live_inventory_count": 0,
+      "source_count": 16,
+      "status": "mapped",
+      "target_issue": "#789"
+    },
+    {
+      "audit_decision": "map-read-projection-contract",
+      "family": "test_focused_read_hardening",
+      "rationale": "Read/projection/API/MCP laws should share one contract vocabulary; process routes and store-backed read services remain outside core.",
+      "remaining_live_inventory_count": 0,
+      "source_count": 7,
+      "status": "mapped",
+      "target_issue": "#788"
+    },
+    {
+      "audit_decision": "map-read-projection-contract",
+      "family": "test_focused_workflow_reads",
+      "rationale": "Read/projection/API/MCP laws should share one contract vocabulary; process routes and store-backed read services remain outside core.",
+      "remaining_live_inventory_count": 0,
+      "source_count": 7,
+      "status": "mapped",
+      "target_issue": "#788"
+    },
+    {
+      "audit_decision": "map-read-projection-contract",
+      "family": "test_instance_read_fastapi",
+      "rationale": "Read/projection/API/MCP laws should share one contract vocabulary; process routes and store-backed read services remain outside core.",
+      "remaining_live_inventory_count": 0,
+      "source_count": 10,
+      "status": "mapped",
+      "target_issue": "#788"
+    },
+    {
+      "audit_decision": "map-read-projection-contract",
+      "family": "test_instance_read_service",
+      "rationale": "Read/projection/API/MCP laws should share one contract vocabulary; process routes and store-backed read services remain outside core.",
+      "remaining_live_inventory_count": 0,
+      "source_count": 21,
+      "status": "mapped",
+      "target_issue": "#788"
+    },
+    {
+      "audit_decision": "map-read-projection-contract",
+      "family": "test_mcp_read",
+      "rationale": "Read/projection/API/MCP laws should share one contract vocabulary; process routes and store-backed read services remain outside core.",
+      "remaining_live_inventory_count": 0,
+      "source_count": 8,
+      "status": "mapped",
+      "target_issue": "#788"
+    },
+    {
+      "audit_decision": "map-read-projection-contract",
+      "family": "test_observation_projection",
+      "rationale": "Read/projection/API/MCP laws should share one contract vocabulary; process routes and store-backed read services remain outside core.",
+      "remaining_live_inventory_count": 0,
+      "source_count": 5,
+      "status": "mapped",
+      "target_issue": "#788"
+    },
+    {
+      "audit_decision": "map-command-workflow-contract",
+      "family": "test_operation_command_service",
+      "rationale": "Command vocabularies and workflow grouping may become closed contract language; durable command services and session stores remain operations-owned.",
+      "remaining_live_inventory_count": 0,
+      "source_count": 10,
+      "status": "mapped",
+      "target_issue": "#787"
+    },
+    {
+      "audit_decision": "map-command-workflow-contract",
+      "family": "test_operation_commands",
+      "rationale": "Command vocabularies and workflow grouping may become closed contract language; durable command services and session stores remain operations-owned.",
+      "remaining_live_inventory_count": 0,
+      "source_count": 8,
+      "status": "mapped",
+      "target_issue": "#787"
+    },
+    {
+      "audit_decision": "map-store-transaction-mutation-handoff",
+      "family": "test_operation_postgres_primitives",
+      "rationale": "Store, UnitOfWork, Postgres, schema, mutable holder, and derived-resource publication laws are operations/cpk-server handoff unless represented only as pure boundary descriptors.",
+      "remaining_live_inventory_count": 0,
+      "source_count": 5,
+      "status": "mapped",
+      "target_issue": "#791"
+    },
+    {
+      "audit_decision": "map-read-projection-contract",
+      "family": "test_operator_graph_projection",
+      "rationale": "Read/projection/API/MCP laws should share one contract vocabulary; process routes and store-backed read services remain outside core.",
+      "remaining_live_inventory_count": 0,
+      "source_count": 5,
+      "status": "mapped",
+      "target_issue": "#788"
+    },
+    {
+      "audit_decision": "map-read-projection-contract",
+      "family": "test_operator_recovery_projection",
+      "rationale": "Read/projection/API/MCP laws should share one contract vocabulary; process routes and store-backed read services remain outside core.",
+      "remaining_live_inventory_count": 0,
+      "source_count": 9,
+      "status": "mapped",
+      "target_issue": "#788"
+    },
+    {
+      "audit_decision": "map-lifecycle-admission-contract",
+      "family": "test_recovery_concurrency",
+      "rationale": "Lifecycle, admission, recovery, and advancement values may be closed contracts; durable enforcement, claims, locks, workers, and graph-store mutation remain operations-owned.",
+      "remaining_live_inventory_count": 0,
+      "source_count": 3,
+      "status": "mapped",
+      "target_issue": "#789"
+    },
+    {
+      "audit_decision": "map-lifecycle-admission-contract",
+      "family": "test_recovery_decisions",
+      "rationale": "Lifecycle, admission, recovery, and advancement values may be closed contracts; durable enforcement, claims, locks, workers, and graph-store mutation remain operations-owned.",
+      "remaining_live_inventory_count": 0,
+      "source_count": 8,
+      "status": "mapped",
+      "target_issue": "#789"
+    },
+    {
+      "audit_decision": "map-lifecycle-admission-contract",
+      "family": "test_run_lifecycle",
+      "rationale": "Lifecycle, admission, recovery, and advancement values may be closed contracts; durable enforcement, claims, locks, workers, and graph-store mutation remain operations-owned.",
+      "remaining_live_inventory_count": 0,
+      "source_count": 21,
+      "status": "mapped",
+      "target_issue": "#789"
+    },
+    {
+      "audit_decision": "map-store-transaction-mutation-handoff",
+      "family": "test_stores",
+      "rationale": "Store, UnitOfWork, Postgres, schema, mutable holder, and derived-resource publication laws are operations/cpk-server handoff unless represented only as pure boundary descriptors.",
+      "remaining_live_inventory_count": 0,
+      "source_count": 10,
+      "status": "mapped",
+      "target_issue": "#791"
+    },
+    {
+      "audit_decision": "map-store-transaction-mutation-handoff",
+      "family": "test_unit_of_work",
+      "rationale": "Store, UnitOfWork, Postgres, schema, mutable holder, and derived-resource publication laws are operations/cpk-server handoff unless represented only as pure boundary descriptors.",
+      "remaining_live_inventory_count": 0,
+      "source_count": 9,
+      "status": "mapped",
+      "target_issue": "#791"
+    },
+    {
+      "audit_decision": "map-execution-verification-handoff",
+      "family": "test_verification_command_service",
+      "rationale": "Coordinator and verification-service laws mostly describe operations/interpreter behavior; core may retain only effect/verification contract descriptors.",
+      "remaining_live_inventory_count": 0,
+      "source_count": 7,
+      "status": "mapped",
+      "target_issue": "#790"
+    },
+    {
+      "audit_decision": "reviewed-operations-handoff",
+      "family": "test_workflows",
+      "operations_handoff": "Operation session execution, action ordering, and graph-truth non-mutation remain operations/cpk-server proof.",
+      "operations_handoff_issue": "#792",
+      "rationale": "These laws execute Postgres-backed operation workflow services. #787 maps the command vocabulary; #791 maps persistence boundary contracts; #792 records the executable session service, action ordering, and graph-truth non-mutation behavior as operations/cpk-server handoff rather than core implementation.",
+      "remaining_live_inventory_count": 0,
+      "reviewed_supersession": "parity-manifest entries carry reviewed #792 supersession records",
+      "source_count": 3,
+      "status": "reviewed_operations_handoff",
+      "target_issue": "#792"
+    }
+  ],
+  "issue": "#792",
+  "laws": [
+    "Every #740 family must be mapped, explicitly split with operations handoff, or reviewed as operations/cpk-server handoff.",
+    "Split-boundary laws are not counted as executable operations behavior completed in core.",
+    "Workflow service execution laws are superseded only as core obligations and remain operations/cpk-server proof obligations.",
+    "No Postgres, UnitOfWork, mutable holder, route, or runtime-effect implementation moves into extracted core.",
+    "The live required-core inventory must contain no unexpected #740 family after closeout."
+  ],
+  "live_inventory": "artifacts/extraction/required-core-family-inventory.json",
+  "parent": "#740",
+  "schema": "cpk.operations-contract-batch-closeout",
+  "source_audit": "artifacts/extraction/operations-contract-batch-audit.json",
+  "summary": {
+    "mapped_successor_entries": 272,
+    "mapped_successor_families": 32,
+    "reviewed_operations_handoff_entries": 3,
+    "reviewed_operations_handoff_families": 1,
+    "source_entries": 298,
+    "source_families": 34,
+    "split_boundary_entries": 23,
+    "split_boundary_families": 1,
+    "unexpected_remaining_entries": 0,
+    "unexpected_remaining_families": 0
+  }
+}

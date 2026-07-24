@@ -1,13 +1,133 @@
 {
   "evidence": [
     {
+      "digest": "sha256:a10e898280dcbb8360dcde26de49f605f42b5472c8a8ceeaf03f982865e00074",
+      "id": "extract-b-614.pure-kernel.unittest",
+      "status": "passing"
+    },
+    {
       "digest": "sha256:4bff6481ba3871f90aeae2735b6b6085f24413506a4bae9a0aaae61384af99ae",
       "id": "extract-b-677.graph-duplicate-identity.unittest",
       "status": "passing"
     },
     {
-      "digest": "sha256:a10e898280dcbb8360dcde26de49f605f42b5472c8a8ceeaf03f982865e00074",
-      "id": "extract-b-614.pure-kernel.unittest",
+      "digest": "sha256:2c7b9252548e9b8232c1121d4d9a0fa65f0e8e752357150d15c5a5ffd34bb18f",
+      "id": "extract-e-729.activity-plan-family.unittest",
+      "status": "passing"
+    },
+    {
+      "digest": "sha256:ab765a4b017228d63836ce49cd95901bf25bf7a1498c9f6886926bb9841e1064",
+      "id": "extract-e-741.architecture-test-harness.unittest",
+      "status": "passing"
+    },
+    {
+      "digest": "sha256:5da41921878407fe4494b212539d25e7ae6317092f0c0ac4443f0dd387c1d89d",
+      "id": "extract-e-742.complete-suite.validation",
+      "status": "passing"
+    },
+    {
+      "digest": "sha256:9b967c7a7513c7ea31a0ef0adbfecb4485ef436fbc95543daf80dc0d9202ac0a",
+      "id": "extract-e-742.core-release-contracts.unittest",
+      "status": "passing"
+    },
+    {
+      "digest": "sha256:b1b16296e8228f796cb4ad893dfb15bf66f58027ce5c242e7f7221d95e4ea3d6",
+      "id": "extract-e-746.topology-protocol-compile.unittest",
+      "status": "passing"
+    },
+    {
+      "digest": "sha256:4129f9ec7c1d9d74710e55fa9f2114b577da9f8b8e7ae031eac2d5df61a0773c",
+      "id": "extract-e-747.graph-codec-validation-diff.unittest",
+      "status": "passing"
+    },
+    {
+      "digest": "sha256:bf67dd993f51ead5a96a87562ed89a8e3564bf7a8044238d1454017a0ebf5146",
+      "id": "extract-e-754.configuration-rendering.unittest",
+      "status": "passing"
+    },
+    {
+      "digest": "sha256:a277db1f9bea09d6250039802d3657b9ee546fb021552c5c451bee5c5be97f8b",
+      "id": "extract-e-755.environment-secrets.unittest",
+      "status": "passing"
+    },
+    {
+      "digest": "sha256:7359e2c04449bf94222a746b81218007f4e68f94a9b59ba4e4d076825432e785",
+      "id": "extract-e-756.verification-capabilities.unittest",
+      "status": "passing"
+    },
+    {
+      "digest": "sha256:9b7840575b476973697364a7ff80a86c22106840f5c218c3f3799753b435ea5f",
+      "id": "extract-e-761.probe-intents.unittest",
+      "status": "passing"
+    },
+    {
+      "digest": "sha256:0ec33eab1c43173b03c8957301f3b64cffa81410af9897649f83100b41a5e69a",
+      "id": "extract-e-762-control-routes.unittest",
+      "status": "passing"
+    },
+    {
+      "digest": "sha256:a0b94bc54eb5b11df95ecc4de8032fa46ebafac34cf5e966da7355428944f0f0",
+      "id": "extract-e-763.policy-decisions.unittest",
+      "status": "passing"
+    },
+    {
+      "digest": "sha256:5b16b47efae4e8d423dfbd19f9d5f4d8db73cff8f44035549ca790a11ee8c6e2",
+      "id": "extract-e-764.control-contracts.unittest",
+      "status": "passing"
+    },
+    {
+      "digest": "sha256:351c12c19e29f02ca4cfe4ce418ff1f23b7dd0ef0a3a4cc67c5a4971cbe71e93",
+      "id": "extract-e-772.activity-plan-codec-compiler.unittest",
+      "status": "passing"
+    },
+    {
+      "digest": "sha256:b5e074c1460f3fa607dc0568ca46fd33e993dd771b406eeed5e08f25a264aebf",
+      "id": "extract-e-773.planning-scenario-expectations.unittest",
+      "status": "passing"
+    },
+    {
+      "digest": "sha256:45a6aab9876e18e75278f9ba929cc87701d41d65f631f0bb8a63e7772694b480",
+      "id": "extract-e-774.saga-program-state-journal.unittest",
+      "status": "passing"
+    },
+    {
+      "digest": "sha256:65c1cc124be739d939068e778711ea8ba5d10ed92de3e32915be371e55020415",
+      "id": "extract-e-775.pure-scheduling-laws.unittest",
+      "status": "passing"
+    },
+    {
+      "digest": "sha256:7c3c65ac428e880a2376b404b4209d3daa597b69530a9af6916823baa9c52cf3",
+      "id": "extract-e-776.compensation-recovery-planning.unittest",
+      "status": "passing"
+    },
+    {
+      "digest": "sha256:858f3ae9cb3b24e29415a0a9d69dfb4a3940c4e13300f9334dbe6e0682f387ab",
+      "id": "extract-e-786.deployment-program-boundary.unittest",
+      "status": "passing"
+    },
+    {
+      "digest": "sha256:0cf7e6877af2c0f4633f0bef1b992f01f6a1198770732cc81e65c103b3b73f58",
+      "id": "extract-e-787.command-workflow-contract.unittest",
+      "status": "passing"
+    },
+    {
+      "digest": "sha256:d964936d20df974850dddb388e8efa83d2b193f7fbc7a914c348c664a7d3b67d",
+      "id": "extract-e-788.read-projection-contract.unittest",
+      "status": "passing"
+    },
+    {
+      "digest": "sha256:eef908b9c5190bb3f6085c68b59e4ffd00da0ca048ef5fdd4f7949d879384c11",
+      "id": "extract-e-789.execution-lifecycle-contract.unittest",
+      "status": "passing"
+    },
+    {
+      "digest": "sha256:6d468eefb5e530fb56224c770961255c2271886f7efeaeba358a67a42e54a4a5",
+      "id": "extract-e-790.execution-coordinator-contract.unittest",
+      "status": "passing"
+    },
+    {
+      "digest": "sha256:88e255d5eda11ffd2a0f9fe377ccbf60a4d88ee517a60077096579e6ce61c3df",
+      "id": "extract-e-791.persistence-boundary-contract.unittest",
       "status": "passing"
     }
   ],

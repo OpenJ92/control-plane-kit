@@ -102,7 +102,75 @@ def app_with_database_topology() -> DeploymentTopology:
     )
 
 
+def split_service_topology() -> DeploymentTopology:
+    api = ApplicationBlock(
+        BlockSpec("api"),
+        PureImplementation("application", {"public": "http://api"}),
+        BlockSockets(
+            requirements=(
+                RequirementSocket(
+                    "inventory-service",
+                    Protocol.HTTP,
+                    ("INVENTORY_SERVICE_URL",),
+                ),
+            ),
+            providers=(ProviderSocket("public", Protocol.HTTP),),
+        ),
+    )
+    inventory = ApplicationBlock(
+        BlockSpec("inventory-service"),
+        PureImplementation("application", {"internal": "http://inventory"}),
+        BlockSockets(
+            requirements=(RequirementSocket("database", Protocol.POSTGRES, ("DATABASE_URL",)),),
+            providers=(ProviderSocket("internal", Protocol.HTTP),),
+        ),
+    )
+    database = DataBlock(
+        BlockSpec("postgres"),
+        PureImplementation("data", {"internal": "postgresql://postgres:5432/app"}),
+        BlockSockets(providers=(ProviderSocket("internal", Protocol.POSTGRES),)),
+    )
+    return DeploymentTopology(
+        "split-service",
+        DockerRuntime(
+            children=(
+                api,
+                inventory,
+                database,
+                SocketConnection("inventory-service", "internal", "api", "inventory-service"),
+                SocketConnection("postgres", "internal", "inventory-service", "database"),
+            )
+        ),
+    )
+
+
 class PureKernelPipelineTests(unittest.TestCase):
+    def test_socket_names_are_accessible_and_binding_laws_are_structural(self) -> None:
+        sockets = BlockSockets(
+            requirements=(RequirementSocket("database", Protocol.POSTGRES, ("DATABASE_URL",)),),
+            providers=(ProviderSocket("internal", Protocol.HTTP),),
+        )
+
+        self.assertEqual(sockets.requirement("database").protocol, Protocol.POSTGRES)
+        self.assertEqual(sockets.provider("internal").protocol, Protocol.HTTP)
+
+        with self.assertRaisesRegex(ValueError, "needs at least one env binding"):
+            RequirementSocket("database", Protocol.POSTGRES, ())
+        runtime_socket = RequirementSocket(
+            "active",
+            Protocol.HTTP,
+            (),
+            binding=SocketBinding.RUNTIME_CONTROL,
+        )
+        self.assertIs(runtime_socket.binding, SocketBinding.RUNTIME_CONTROL)
+        with self.assertRaisesRegex(ValueError, "runtime-controlled"):
+            RequirementSocket(
+                "active",
+                Protocol.HTTP,
+                ("ACTIVE_URL",),
+                binding=SocketBinding.RUNTIME_CONTROL,
+            )
+
     def test_topology_compilation_wires_provider_to_requirement_environment(self) -> None:
         graph = compile_topology(app_with_database_topology())
 
@@ -137,6 +205,30 @@ class PureKernelPipelineTests(unittest.TestCase):
 
         with self.assertRaises(ValueError):
             compile_topology(broken)
+
+    def test_split_service_wires_http_and_postgres_requirements(self) -> None:
+        graph = compile_topology(split_service_topology())
+
+        api = graph.node("api")
+        inventory = graph.node("inventory-service")
+        postgres = graph.node("postgres")
+
+        self.assertEqual(
+            api.non_secret_environment()["INVENTORY_SERVICE_URL"],
+            inventory.endpoint("internal").url,
+        )
+        self.assertEqual(
+            inventory.non_secret_environment()["DATABASE_URL"],
+            postgres.endpoint("internal").url,
+        )
+        self.assertEqual(
+            graph.edges["inventory-service.internal-to-api.inventory-service"].protocol,
+            Protocol.HTTP,
+        )
+        self.assertEqual(
+            graph.edges["postgres.internal-to-inventory-service.database"].protocol,
+            Protocol.POSTGRES,
+        )
 
     def test_graph_descriptor_round_trip_preserves_typed_identity(self) -> None:
         graph = compile_topology(app_with_database_topology())

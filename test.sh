@@ -18,6 +18,7 @@ cleanup
 
 ./packaging-test.sh
 ./control-plane-kit-core/test.sh
+./control-plane-kit-operations/test.sh
 
 docker build --target test -t "$IMAGE_NAME" .
 

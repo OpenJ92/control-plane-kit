@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from enum import StrEnum
+import hashlib
 from typing import Mapping, TypeAlias
 
 from control_plane_kit_core.algebra import BlockSockets, BlockSpec
@@ -43,6 +44,7 @@ class StructuralField(StrEnum):
     GRAPH_NAME = "graph-name"
     RUNTIME_KIND = "runtime-kind"
     RUNTIME_CONTAINMENT = "runtime-containment"
+    RUNTIME_AUTHORITY = "runtime-authority"
     RUNTIME_METADATA = "runtime-metadata"
     BLOCK_FAMILY = "block-family"
     BLOCK_SPECIFICATION = "block-specification"
@@ -141,11 +143,18 @@ class ConfigurationArtifactsValue:
 class SecretDeliveriesValue:
     values: tuple[SecretDelivery, ...]
 
-    def descriptor(self) -> list[dict[str, str]]:
-        return [
-            value.descriptor()
-            for value in sorted(self.values, key=secret_delivery_sort_key)
-        ]
+    def descriptor(self) -> list[dict[str, object]]:
+        descriptors: list[dict[str, object]] = []
+        for value in sorted(self.values, key=secret_delivery_sort_key):
+            descriptor = dict(value.descriptor())
+            reference_id = descriptor.get("reference_id")
+            if isinstance(reference_id, str):
+                descriptor["reference_fingerprint"] = hashlib.sha256(
+                    reference_id.encode("utf-8")
+                ).hexdigest()
+            descriptor["reference_id"] = _REDACTED
+            descriptors.append(descriptor)
+        return descriptors
 
 
 @dataclass(frozen=True)

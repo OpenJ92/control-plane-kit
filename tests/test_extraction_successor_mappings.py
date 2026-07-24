@@ -1,0 +1,747 @@
+from __future__ import annotations
+
+import unittest
+from pathlib import Path
+
+from extraction_parity.validation import (
+    inventory_unmapped_required_core_families,
+    read_bounded_json,
+    validate_required_core_closeout,
+)
+
+
+ARTIFACT_ROOT = Path(__file__).parents[1] / "artifacts" / "extraction"
+
+
+class ExtractionSuccessorMappingTests(unittest.TestCase):
+    def closeout(self) -> dict[str, object]:
+        return validate_required_core_closeout(
+            read_bounded_json(ARTIFACT_ROOT / "parity-manifest.json"),
+            read_bounded_json(ARTIFACT_ROOT / "reference-law-ownership.json"),
+            read_bounded_json(ARTIFACT_ROOT / "reference-demos.json"),
+            read_bounded_json(ARTIFACT_ROOT / "successor-evidence.json"),
+        )
+
+    def test_activity_plan_family_is_fully_mapped_to_passing_successor_evidence(self) -> None:
+        inventory = inventory_unmapped_required_core_families(self.closeout())
+        families = {
+            family["family"]: family
+            for family in inventory["families"]
+        }
+
+        remaining = families.get("test_activity_plan")
+        self.assertIsNone(
+            remaining,
+            f"test_activity_plan still has {remaining['count']} unmapped laws"
+            if remaining is not None
+            else "",
+        )
+
+    def test_activity_plan_codec_and_compiler_families_are_fully_mapped(self) -> None:
+        inventory = inventory_unmapped_required_core_families(self.closeout())
+        families = {
+            family["family"]: family
+            for family in inventory["families"]
+        }
+
+        for family_name in ("test_activity_plan_codec", "test_activity_plan_compiler"):
+            with self.subTest(family=family_name):
+                remaining = families.get(family_name)
+                self.assertIsNone(
+                    remaining,
+                    f"{family_name} still has {remaining['count']} unmapped laws"
+                    if remaining is not None
+                    else "",
+                )
+
+    def test_planning_scenario_families_are_fully_mapped_or_superseded(self) -> None:
+        inventory = inventory_unmapped_required_core_families(self.closeout())
+        families = {
+            family["family"]: family
+            for family in inventory["families"]
+        }
+
+        for family_name in (
+            "test_planning_scenarios",
+            "test_execution_scenario_expectations",
+        ):
+            with self.subTest(family=family_name):
+                remaining = families.get(family_name)
+                self.assertIsNone(
+                    remaining,
+                    f"{family_name} still has {remaining['count']} unmapped laws"
+                    if remaining is not None
+                    else "",
+                )
+
+    def test_saga_program_state_and_journal_families_are_fully_mapped(self) -> None:
+        inventory = inventory_unmapped_required_core_families(self.closeout())
+        families = {
+            family["family"]: family
+            for family in inventory["families"]
+        }
+
+        for family_name in (
+            "test_saga_program",
+            "test_saga_state",
+            "test_saga_journal",
+        ):
+            with self.subTest(family=family_name):
+                remaining = families.get(family_name)
+                self.assertIsNone(
+                    remaining,
+                    f"{family_name} still has {remaining['count']} unmapped laws"
+                    if remaining is not None
+                    else "",
+                )
+
+    def test_scheduling_families_are_fully_mapped(self) -> None:
+        inventory = inventory_unmapped_required_core_families(self.closeout())
+        families = {
+            family["family"]: family
+            for family in inventory["families"]
+        }
+
+        for family_name in (
+            "test_scheduling",
+            "test_scheduling_scenarios",
+        ):
+            with self.subTest(family=family_name):
+                remaining = families.get(family_name)
+                self.assertIsNone(
+                    remaining,
+                    f"{family_name} still has {remaining['count']} unmapped laws"
+                    if remaining is not None
+                    else "",
+                )
+
+    def test_compensation_and_recovery_planning_families_are_fully_mapped(self) -> None:
+        inventory = inventory_unmapped_required_core_families(self.closeout())
+        families = {
+            family["family"]: family
+            for family in inventory["families"]
+        }
+
+        for family_name in (
+            "test_compensation_planning",
+            "test_recovery_planning",
+        ):
+            with self.subTest(family=family_name):
+                remaining = families.get(family_name)
+                self.assertIsNone(
+                    remaining,
+                    f"{family_name} still has {remaining['count']} unmapped laws"
+                    if remaining is not None
+                    else "",
+                )
+
+    def test_environment_secret_families_are_fully_mapped_to_passing_successor_evidence(self) -> None:
+        inventory = inventory_unmapped_required_core_families(self.closeout())
+        families = {
+            family["family"]: family
+            for family in inventory["families"]
+        }
+
+        for family_name in (
+            "test_environment_bindings",
+            "test_secret_delivery_topology",
+            "test_secrets",
+        ):
+            with self.subTest(family=family_name):
+                remaining = families.get(family_name)
+                self.assertIsNone(
+                    remaining,
+                    f"{family_name} still has {remaining['count']} unmapped laws"
+                    if remaining is not None
+                    else "",
+                )
+
+    def test_verification_capability_families_are_fully_mapped_to_passing_successor_evidence(self) -> None:
+        inventory = inventory_unmapped_required_core_families(self.closeout())
+        families = {
+            family["family"]: family
+            for family in inventory["families"]
+        }
+
+        for family_name in (
+            "test_capabilities",
+            "test_capability_compile",
+            "test_verification_contract",
+            "test_verification_dispatch",
+        ):
+            with self.subTest(family=family_name):
+                remaining = families.get(family_name)
+                self.assertIsNone(
+                    remaining,
+                    f"{family_name} still has {remaining['count']} unmapped laws"
+                    if remaining is not None
+                    else "",
+                )
+
+    def test_pure_contract_laws_are_mapped_without_claiming_operations_laws(self) -> None:
+        closeout = self.closeout()
+        classification = read_bounded_json(
+            ARTIFACT_ROOT / "contract-boundary-classification.json"
+        )
+        manifest = read_bounded_json(ARTIFACT_ROOT / "parity-manifest.json")
+
+        incomplete = {
+            entry["reference"]
+            for entry in closeout["incomplete_required_core_entries"]
+        }
+        manifest_by_reference = {
+            entry["reference"]: entry
+            for entry in manifest["entries"]
+        }
+        pure_references = {
+            decision["reference"]
+            for decision in classification["decisions"]
+            if decision["decision"] == "pure-successor"
+        }
+        operations_references = {
+            decision["reference"]
+            for decision in classification["decisions"]
+            if decision["decision"] == "move-to-operations"
+        }
+        split_decisions = [
+            decision
+            for decision in classification["decisions"]
+            if decision["decision"] == "split-boundary"
+        ]
+        split_references = {
+            decision["reference"]
+            for decision in split_decisions
+        }
+
+        self.assertEqual(len(pure_references), 18)
+        self.assertEqual(len(split_references), 23)
+        self.assertFalse(pure_references & incomplete)
+        self.assertTrue(operations_references <= incomplete)
+        self.assertFalse(split_references & incomplete)
+        for decision in split_decisions:
+            with self.subTest(reference=decision["reference"]):
+                self.assertEqual(
+                    decision["core_successor"],
+                    "extract-e-791.persistence-boundary-contract.unittest",
+                )
+                self.assertEqual(decision["operations_target_issue"], "#792")
+                self.assertIn("holder mutation", decision["operations_handoff"])
+                successors = manifest_by_reference[decision["reference"]]["successors"]
+                self.assertTrue(
+                    any(
+                        successor["evidence"] == decision["core_successor"]
+                        and successor["status"] == "passing"
+                        for successor in successors
+                    )
+                )
+
+    def test_policy_family_is_fully_mapped_to_passing_successor_evidence(self) -> None:
+        inventory = inventory_unmapped_required_core_families(self.closeout())
+        families = {
+            family["family"]: family
+            for family in inventory["families"]
+        }
+
+        remaining = families.get("test_policies")
+        self.assertIsNone(
+            remaining,
+            f"test_policies still has {remaining['count']} unmapped laws"
+            if remaining is not None
+            else "",
+        )
+
+    def test_probe_intent_family_is_fully_mapped_to_passing_successor_evidence(self) -> None:
+        inventory = inventory_unmapped_required_core_families(self.closeout())
+        families = {
+            family["family"]: family
+            for family in inventory["families"]
+        }
+
+        remaining = families.get("test_probe_intents")
+        self.assertIsNone(
+            remaining,
+            f"test_probe_intents still has {remaining['count']} unmapped laws"
+            if remaining is not None
+            else "",
+        )
+
+    def test_control_route_family_is_fully_mapped_to_passing_successor_evidence(self) -> None:
+        inventory = inventory_unmapped_required_core_families(self.closeout())
+        families = {
+            family["family"]: family
+            for family in inventory["families"]
+        }
+
+        remaining = families.get("test_control_routes")
+        self.assertIsNone(
+            remaining,
+            f"test_control_routes still has {remaining['count']} unmapped laws"
+            if remaining is not None
+            else "",
+        )
+
+    def test_deployment_program_boundary_families_are_fully_mapped(self) -> None:
+        inventory = inventory_unmapped_required_core_families(self.closeout())
+        families = {
+            family["family"]: family
+            for family in inventory["families"]
+        }
+
+        for family_name in (
+            "test_backend_boundaries",
+            "test_deployment_application_values",
+            "test_deployment_plan_approve_stages",
+            "test_deployment_admit_claim_stages",
+        ):
+            with self.subTest(family=family_name):
+                remaining = families.get(family_name)
+                self.assertIsNone(
+                    remaining,
+                    f"{family_name} still has {remaining['count']} unmapped laws"
+                    if remaining is not None
+                    else "",
+                )
+
+    def test_command_workflow_contract_families_are_fully_mapped(self) -> None:
+        inventory = inventory_unmapped_required_core_families(self.closeout())
+        families = {
+            family["family"]: family
+            for family in inventory["families"]
+        }
+
+        for family_name in (
+            "test_activity_planning_command_service",
+            "test_approval_command_service",
+            "test_desired_graph_command_service",
+            "test_desired_graph_commands",
+            "test_operation_command_service",
+            "test_operation_commands",
+        ):
+            with self.subTest(family=family_name):
+                remaining = families.get(family_name)
+                self.assertIsNone(
+                    remaining,
+                    f"{family_name} still has {remaining['count']} unmapped laws"
+                    if remaining is not None
+                    else "",
+                )
+
+    def test_read_projection_contract_families_are_fully_mapped(self) -> None:
+        inventory = inventory_unmapped_required_core_families(self.closeout())
+        families = {
+            family["family"]: family
+            for family in inventory["families"]
+        }
+
+        for family_name in (
+            "test_instance_read_service",
+            "test_instance_read_fastapi",
+            "test_mcp_read",
+            "test_focused_read_hardening",
+            "test_focused_workflow_reads",
+            "test_operator_graph_projection",
+            "test_observation_projection",
+            "test_operator_recovery_projection",
+        ):
+            with self.subTest(family=family_name):
+                remaining = families.get(family_name)
+                self.assertIsNone(
+                    remaining,
+                    f"{family_name} still has {remaining['count']} unmapped laws"
+                    if remaining is not None
+                    else "",
+                )
+
+    def test_admission_lifecycle_recovery_and_advancement_families_are_fully_mapped(self) -> None:
+        inventory = inventory_unmapped_required_core_families(self.closeout())
+        families = {
+            family["family"]: family
+            for family in inventory["families"]
+        }
+
+        for family_name in (
+            "test_execution_values",
+            "test_execution_admission",
+            "test_run_lifecycle",
+            "test_recovery_decisions",
+            "test_execution_concurrency",
+            "test_recovery_concurrency",
+            "test_current_graph_advancement",
+        ):
+            with self.subTest(family=family_name):
+                remaining = families.get(family_name)
+                self.assertIsNone(
+                    remaining,
+                    f"{family_name} still has {remaining['count']} unmapped laws"
+                    if remaining is not None
+                    else "",
+                )
+
+    def test_execution_coordinator_and_verification_command_families_are_fully_mapped(self) -> None:
+        inventory = inventory_unmapped_required_core_families(self.closeout())
+        families = {
+            family["family"]: family
+            for family in inventory["families"]
+        }
+
+        for family_name in (
+            "test_execution_coordinator",
+            "test_verification_command_service",
+        ):
+            with self.subTest(family=family_name):
+                remaining = families.get(family_name)
+                self.assertIsNone(
+                    remaining,
+                    f"{family_name} still has {remaining['count']} unmapped laws"
+                    if remaining is not None
+                    else "",
+                )
+
+    def test_store_uow_postgres_and_mutation_holder_families_are_fully_mapped(self) -> None:
+        inventory = inventory_unmapped_required_core_families(self.closeout())
+        families = {
+            family["family"]: family
+            for family in inventory["families"]
+        }
+
+        for family_name in (
+            "test_stores",
+            "test_unit_of_work",
+            "test_operation_postgres_primitives",
+            "test_execution_schema_migration",
+            "test_execution_store",
+            "test_contracts",
+        ):
+            with self.subTest(family=family_name):
+                remaining = families.get(family_name)
+                self.assertIsNone(
+                    remaining,
+                    f"{family_name} still has {remaining['count']} unmapped laws"
+                    if remaining is not None
+                    else "",
+                )
+
+    def test_architecture_and_test_harness_families_are_fully_mapped_without_supersession(self) -> None:
+        closeout = self.closeout()
+        inventory = inventory_unmapped_required_core_families(closeout)
+        families = {
+            family["family"]: family
+            for family in inventory["families"]
+        }
+        manifest = read_bounded_json(ARTIFACT_ROOT / "parity-manifest.json")
+        batch_closeout = read_bounded_json(
+            ARTIFACT_ROOT / "architecture-test-harness-batch-closeout.json"
+        )
+        expected_families = {
+            family["family"]
+            for family in batch_closeout["families"]
+        }
+        expected_references = {
+            reference
+            for family in batch_closeout["families"]
+            for reference in family["references"]
+        }
+        manifest_entries = {
+            entry["reference"]: entry
+            for entry in manifest["entries"]
+            if entry["reference"] in expected_references
+        }
+
+        self.assertEqual(len(expected_families), 10)
+        self.assertEqual(len(expected_references), 58)
+        self.assertEqual(set(manifest_entries), expected_references)
+        for family_name in sorted(expected_families):
+            with self.subTest(family=family_name):
+                remaining = families.get(family_name)
+                self.assertIsNone(
+                    remaining,
+                    f"{family_name} still has {remaining['count']} unmapped laws"
+                    if remaining is not None
+                    else "",
+                )
+
+        for reference, entry in manifest_entries.items():
+            with self.subTest(reference=reference):
+                self.assertIsNone(entry["supersession"])
+                self.assertEqual(
+                    entry["successors"],
+                    [
+                        {
+                            "id": "neutral-harness.architecture-test-harness",
+                            "status": "passing",
+                            "evidence": "extract-e-741.architecture-test-harness.unittest",
+                        }
+                    ],
+                )
+
+    def test_validation_packaging_and_demo_families_are_mapped_or_reviewed_handoffs(self) -> None:
+        closeout = self.closeout()
+        inventory = inventory_unmapped_required_core_families(closeout)
+        families = {
+            family["family"]: family
+            for family in inventory["families"]
+        }
+        manifest = read_bounded_json(ARTIFACT_ROOT / "parity-manifest.json")
+        batch_closeout = read_bounded_json(
+            ARTIFACT_ROOT / "validation-packaging-demo-batch-closeout.json"
+        )
+        expected_families = {
+            family["family"]
+            for family in batch_closeout["families"]
+        }
+        expected_references = {
+            reference
+            for family in batch_closeout["families"]
+            for reference in family["references"]
+        }
+        successor_references = {
+            reference
+            for family in batch_closeout["families"]
+            for reference in family["successor_references"]
+        }
+        superseded_references = {
+            reference
+            for family in batch_closeout["families"]
+            for reference in family["superseded_references"]
+        }
+        manifest_entries = {
+            entry["reference"]: entry
+            for entry in manifest["entries"]
+            if entry["reference"] in expected_references
+        }
+
+        self.assertEqual(
+            expected_families,
+            {"test_cli", "demo", "test_read_interface_demo_server", "validation"},
+        )
+        self.assertEqual(len(expected_references), 17)
+        self.assertEqual(len(successor_references), 7)
+        self.assertEqual(len(superseded_references), 10)
+        self.assertFalse(successor_references & superseded_references)
+        self.assertEqual(set(manifest_entries), expected_references)
+        for family_name in sorted(expected_families):
+            with self.subTest(family=family_name):
+                remaining = families.get(family_name)
+                self.assertIsNone(
+                    remaining,
+                    f"{family_name} still has {remaining['count']} unmapped laws"
+                    if remaining is not None
+                    else "",
+                )
+
+        for reference in sorted(successor_references):
+            entry = manifest_entries[reference]
+            with self.subTest(reference=reference):
+                self.assertIsNone(entry["supersession"])
+                expected_successor = (
+                    {
+                        "id": "release-candidate.complete-suite",
+                        "status": "passing",
+                        "evidence": "extract-e-742.complete-suite.validation",
+                    }
+                    if reference == "validation.complete-suite"
+                    else {
+                        "id": "core-release.contract-boundary",
+                        "status": "passing",
+                        "evidence": "extract-e-742.core-release-contracts.unittest",
+                    }
+                )
+                self.assertEqual(
+                    entry["successors"],
+                    [expected_successor],
+                )
+
+        for reference in sorted(superseded_references):
+            entry = manifest_entries[reference]
+            with self.subTest(reference=reference):
+                self.assertEqual(entry["successors"], [])
+                self.assertIsNotNone(entry["supersession"])
+                self.assertEqual(
+                    entry["supersession"]["review"],
+                    "#742 validation packaging demo closeout",
+                )
+
+    def test_core_public_interface_parity_uses_public_boundaries_without_live_process_claims(self) -> None:
+        manifest = read_bounded_json(ARTIFACT_ROOT / "parity-manifest.json")
+        evidence = read_bounded_json(ARTIFACT_ROOT / "successor-evidence.json")
+        proof = read_bounded_json(
+            ARTIFACT_ROOT
+            / "successor-proofs"
+            / "extract-e-742-core-release-contracts.json"
+        )
+        supersession_review = read_bounded_json(
+            ARTIFACT_ROOT
+            / "supersession-reviews"
+            / "extract-e-742-validation-packaging-demo-handoff.json"
+        )
+
+        evidence_by_id = {
+            entry["id"]: entry
+            for entry in evidence["evidence"]
+        }
+        self.assertEqual(
+            evidence_by_id["extract-e-742.core-release-contracts.unittest"]["status"],
+            "passing",
+        )
+
+        public_references = {
+            "demo.configuration-artifact",
+            "demo.read-interface",
+            "demo.secret-delivery",
+            "demo.transport",
+            "demo.verification-observation",
+            "validation.package-installation",
+        }
+        manifest_by_reference = {
+            entry["reference"]: entry
+            for entry in manifest["entries"]
+            if entry["reference"] in public_references
+        }
+        self.assertEqual(set(manifest_by_reference), public_references)
+        for reference, entry in manifest_by_reference.items():
+            with self.subTest(reference=reference):
+                self.assertEqual(entry["owner_kind"], "core")
+                self.assertEqual(
+                    entry["successors"],
+                    [
+                        {
+                            "id": "core-release.contract-boundary",
+                            "status": "passing",
+                            "evidence": "extract-e-742.core-release-contracts.unittest",
+                        }
+                    ],
+                )
+                self.assertIsNone(entry["supersession"])
+
+        self.assertTrue(
+            {
+                "control-plane-kit-core.tests.test_kernel_pipeline.PureKernelPipelineTests",
+                "control-plane-kit-core.tests.test_deployment_program_boundary.DeploymentProgramBoundaryTests",
+                "control-plane-kit-core.tests.test_unit_of_work_boundary.UnitOfWorkBoundaryTests",
+                "control-plane-kit-core.tests.test_http_api_contract.HttpApiContractTests",
+                "control-plane-kit-core.tests.test_mcp_streamable_http_contract.McpStreamableHttpContractTests",
+                "control-plane-kit-core.tests.test_cpk_server_entrypoint_handoff.CpkServerEntrypointHandoffTests",
+                "control-plane-kit-core.tests.test_package_boundary.PackageBoundaryTests",
+            }
+            <= set(proof["successor_tests"])
+        )
+        self.assertIn("without starting cpk-server", proof["evidence"])
+        self.assertIn("FastAPI", proof["evidence"])
+        self.assertIn("MCP hosting", proof["evidence"])
+
+        superseded = {
+            review["reference"]
+            for review in supersession_review["reviewed_supersessions"]
+        }
+        self.assertTrue(
+            {
+                "demo.docker-publication",
+                "tests.test_read_interface_demo_server.ReadInterfaceDemoServerTests.test_demo_server_requires_configured_token",
+                "tests.test_read_interface_demo_server.ReadInterfaceDemoServerTests.test_demo_server_seeds_and_serves_read_routes",
+            }
+            <= superseded
+        )
+
+    def test_interpreter_runtime_families_are_reviewed_handoffs_not_core_successors(self) -> None:
+        closeout = self.closeout()
+        inventory = inventory_unmapped_required_core_families(closeout)
+        families = {
+            family["family"]: family
+            for family in inventory["families"]
+        }
+        manifest = read_bounded_json(ARTIFACT_ROOT / "parity-manifest.json")
+        batch_closeout = read_bounded_json(
+            ARTIFACT_ROOT / "interpreter-runtime-batch-closeout.json"
+        )
+        expected_references = {
+            reference
+            for family in batch_closeout["families"]
+            for reference in family["references"]
+        }
+        manifest_entries = {
+            entry["reference"]: entry
+            for entry in manifest["entries"]
+            if entry["reference"] in expected_references
+        }
+
+        self.assertEqual(batch_closeout["summary"]["source_entries"], 160)
+        self.assertEqual(batch_closeout["summary"]["mapped_successor_entries"], 0)
+        self.assertEqual(
+            batch_closeout["summary"]["reviewed_supersession_entries"],
+            160,
+        )
+        self.assertEqual(set(manifest_entries), expected_references)
+        self.assertEqual(families, {})
+
+        for reference, entry in manifest_entries.items():
+            with self.subTest(reference=reference):
+                self.assertEqual(entry["successors"], [])
+                self.assertIsNotNone(entry["supersession"])
+                self.assertEqual(
+                    entry["supersession"]["review"],
+                    "#743 interpreter runtime closeout",
+                )
+                self.assertIn(
+                    "outside the pure core package",
+                    entry["supersession"]["obsolete_assumption"],
+                )
+
+    def test_required_core_closeout_is_zero_without_claiming_non_core_completion(self) -> None:
+        closeout = self.closeout()
+        persisted_closeout = read_bounded_json(
+            ARTIFACT_ROOT / "required-core-closeout-report.json"
+        )
+        inventory = read_bounded_json(
+            ARTIFACT_ROOT / "required-core-family-inventory.json"
+        )
+        parity_report = read_bounded_json(
+            ARTIFACT_ROOT / "parity-validation-report.json"
+        )
+
+        self.assertEqual(closeout, persisted_closeout)
+        self.assertTrue(closeout["valid"])
+        self.assertTrue(closeout["required_core_complete"])
+        self.assertEqual(closeout["findings"], [])
+        self.assertEqual(closeout["incomplete_required_core_entries"], [])
+        self.assertEqual(
+            closeout["counts"],
+            {
+                "entries": 1107,
+                "required_core": 780,
+                "completed_required_core": 780,
+                "incomplete_required_core": 0,
+                "required_non_core": 100,
+                "deferred": 227,
+                "passing_core_successors": 1046,
+                "failed_core_successors": 0,
+                "reviewed_core_supersessions": 174,
+                "findings": 0,
+            },
+        )
+        self.assertEqual(
+            inventory,
+            {
+                "schema": "cpk.required-core-family-inventory",
+                "valid": True,
+                "counts": {"entries": 0, "families": 0},
+                "families": [],
+            },
+        )
+
+        self.assertTrue(parity_report["valid"])
+        self.assertFalse(parity_report["migration_complete"])
+        self.assertEqual(parity_report["findings"], [])
+        self.assertEqual(parity_report["counts"]["incomplete_required"], 100)
+        self.assertEqual(
+            parity_report["counts"]["by_owner"],
+            {
+                "core": 780,
+                "hello": 23,
+                "system": 77,
+                "deferred-product": 227,
+            },
+        )
+
+
+if __name__ == "__main__":
+    unittest.main()
