@@ -3386,3 +3386,57 @@ standalone nginx workaround was observed during prior local debugging. It is not
 part of RUNTIME.AUTH and should be cleaned up or eliminated in the seeded
 server-product/topology cleanup lane rather than folded into runtime-authority
 semantics.
+
+
+## #965 Docker Runtime Authority Interpretation
+
+#965 moves admitted runtime-authority use to the concrete interpreter IO boundary.
+The governing shape remains:
+
+```text
+cpk-server
+  -> configured operations application
+    -> ExecutionCoordinator
+      -> RuntimeInterpreterDispatcher
+        -> DockerRuntimeInterpreter
+          -> Python Docker SDK
+```
+
+Operations now loads active `RegisteredRuntimeAuthority` records into the pinned
+activity realization context and supplies a matching authority only when the pure
+`RuntimeEffectRequest.authority_ref` requests one. Missing registrations fail
+closed before interpreter IO with `runtime.authority-missing`; a configured
+interpreter that cannot consume authorities fails closed with
+`runtime.authority-interpreter-unsupported`. Requests without an authority
+reference keep the existing ambient/local runtime path.
+
+The Docker interpreter consumes the authority structurally rather than importing
+operations models:
+
+```text
+RuntimeEffectRequest + authority-like object
+  -> local-docker-socket: reuse ambient DockerSdkClient
+  -> remote-docker-tls: resolve ca/cert/key SecretReference values
+    -> DockerTlsClientConfig
+      -> docker.DockerClient(base_url=..., tls=...)
+```
+
+The runtime authority is still generic at the operations boundary. Docker is only
+the first concrete authority family implemented. Remote TLS material remains
+secret-free until interpreter IO: descriptors, runtime requests, events,
+observations, read models, route responses, and failure messages contain only
+bounded references and status codes, never certificate/key bytes.
+
+Validation evidence:
+
+```text
+control-plane-kit-operations ./test.sh: 150 tests passed, compileall, import ok
+control-plane-kit-interpreters ./test.sh: 74 tests passed, compileall, import ok
+git diff --check: passed for control-plane-kit-interpreters before closeout
+```
+
+Handoff: #966/#967 can now exercise runtime authorities through cpk-server and
+published-image acceptance without teaching operations or core about Docker SDK
+clients. Future AWS/GCP/Kubernetes/remote-Docker authority variants should reuse
+the same split: generic durable authority admission in operations, concrete SDK
+client construction in the matching interpreter package.
