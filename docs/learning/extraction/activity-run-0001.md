@@ -2082,3 +2082,51 @@ Residual deferred work remains intentionally outside this vertical:
 - cloud runtime interpreters;
 - larger topology stress tests;
 - frontend work.
+
+
+## #927 Private OCI Pull Authority: Core Language
+
+#927 begins the #926 private OCI registry pull authority hardening pass. The dry
+run found that image identity and pull authority were still conflated by the
+hosted smoke harness rather than the language: product descriptors already carry
+digest-pinned `OciImageReference` values, while cpk-server hosted acceptance
+mounted Docker auth config into the process as bootstrap scaffolding.
+
+The first implementation slice adds only pure core language:
+
+```text
+OciImageReference
+  = immutable image identity / digest truth
+
+ImagePullAuthority
+  = registry/repository scope
+  x opaque CredentialReference
+```
+
+`ImagePullAuthority` lives in `control_plane_kit_core.runtime_effects` because it
+is interpreter-bound runtime material, not product descriptor truth. It reuses
+the existing `CredentialReference = SecretReference` vocabulary, so no new
+secret-reference language or secret store is introduced.
+
+`RuntimeProductMaterial` now carries an optional `pull_authority` field. The
+descriptor form contains only the registry scope and secret reference id; it does
+not carry a token, Docker config JSON, password, auth blob, or resolved
+credential.
+
+Validation:
+
+```text
+./control-plane-kit-core/test.sh:
+  393 tests passed
+  compileall passed
+  import check passed
+```
+
+Handoff to #928:
+
+- operations should admit workspace/runtime pull authority as durable operational
+  truth;
+- product descriptors must remain unchanged and secret-free;
+- runtime-effect translation should select only opaque pull-authority references
+  from pinned context and registered authority, not resolve credentials;
+- missing/revoked/wrong-scope authority should fail closed before blind replay.

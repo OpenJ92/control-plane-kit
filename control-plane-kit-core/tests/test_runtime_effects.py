@@ -24,6 +24,8 @@ from control_plane_kit_core.products import (
     ProviderRuntimePort,
 )
 from control_plane_kit_core.runtime_effects import (
+    ImagePullAuthority,
+    ImagePullAuthorityCodec,
     RuntimeEffectContractError,
     RuntimeEffectFailure,
     RuntimeEffectKind,
@@ -142,6 +144,82 @@ class RuntimeEffectContractTests(unittest.TestCase):
                     ),
                 ),
             )
+
+    def test_image_pull_authority_is_secret_free_runtime_material(self) -> None:
+        authority = ImagePullAuthority(
+            registry="ghcr.io",
+            repository="openj92/control-plane-kit-servers",
+            credential_reference="secret://local/workspace-a/ghcr-read-token",
+        )
+
+        descriptor = ImagePullAuthorityCodec().encode(authority)
+
+        self.assertEqual(
+            descriptor,
+            {
+                "registry": "ghcr.io",
+                "repository": "openj92/control-plane-kit-servers",
+                "credential_reference": "secret://local/workspace-a/ghcr-read-token",
+            },
+        )
+        self.assertEqual(ImagePullAuthorityCodec().decode(descriptor), authority)
+        self.assertTrue(
+            authority.permits(
+                OciImageReference(
+                    registry="ghcr.io",
+                    repository="openj92/control-plane-kit-servers/hello-server",
+                    digest="sha256:" + "a" * 64,
+                )
+            )
+        )
+        self.assertFalse(
+            authority.permits(
+                OciImageReference(
+                    registry="docker.io",
+                    repository="library/postgres",
+                    digest="sha256:" + "a" * 64,
+                )
+            )
+        )
+
+    def test_image_pull_authority_fails_closed_on_unknown_or_secret_material(self) -> None:
+        authority = ImagePullAuthority(
+            registry="ghcr.io",
+            repository=None,
+            credential_reference="secret://local/workspace-a/ghcr-read-token",
+        )
+        descriptor = ImagePullAuthorityCodec().encode(authority)
+
+        with self.assertRaisesRegex(RuntimeEffectContractError, "unknown keys"):
+            ImagePullAuthorityCodec().decode({**descriptor, "token": "do-not-store"})
+        with self.assertRaises(RuntimeEffectContractError):
+            ImagePullAuthority(
+                registry="ghcr.io",
+                repository=None,
+                credential_reference="ghp_do-not-store",
+            )
+
+    def test_product_material_carries_pull_authority_reference_not_credentials(self) -> None:
+        material = RuntimeProductMaterial(
+            node_id="api",
+            runtime_id="docker",
+            reference=_product_material().reference,
+            product=_product_material().product,
+            pull_authority=ImagePullAuthority(
+                registry="ghcr.io",
+                repository="openj92/control-plane-kit-servers",
+                credential_reference="secret://local/workspace-a/ghcr-read-token",
+            ),
+        )
+
+        descriptor = material.descriptor()
+
+        self.assertEqual(
+            descriptor["pull_authority"]["credential_reference"],
+            "secret://local/workspace-a/ghcr-read-token",
+        )
+        self.assertNotIn("token=", repr(descriptor))
+        self.assertEqual(RuntimeProductMaterial.from_descriptor(descriptor), material)
 
     def test_result_descriptor_preserves_observations_as_pure_evidence(self) -> None:
         result = RuntimeEffectResult.succeeded(
