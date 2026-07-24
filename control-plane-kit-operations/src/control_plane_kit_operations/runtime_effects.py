@@ -22,6 +22,7 @@ from control_plane_kit_core.products import (
     ProductIdentity,
     ProductReference,
 )
+from control_plane_kit_core.runtime_authority import RuntimeAuthorityReference
 from control_plane_kit_core.runtime_effects import (
     ImagePullAuthority,
     RuntimeEffectKind,
@@ -54,6 +55,7 @@ def runtime_effect_request_for_context(
         effect_id=context.intent_event.event_id,
         kind=RuntimeEffectKind.REALIZE_ACTIVITY,
         runtime_kind=_runtime_kind_for_context(context, graph, runtime_id),
+        authority_ref=_runtime_authority_ref_for_context(graph, runtime_id),
         source=RuntimeEffectSource(
             workspace_id=context.request.identity.workspace_id,
             request_id=context.request.identity.request_id,
@@ -110,6 +112,16 @@ def _runtime_kind_for_context(
     del context
     try:
         return graph.runtimes[runtime_id].kind
+    except KeyError as error:
+        raise InvalidOperationCommand("runtime effect runtime target is missing") from error
+
+
+def _runtime_authority_ref_for_context(
+    graph: DeploymentGraph,
+    runtime_id: str,
+) -> RuntimeAuthorityReference | None:
+    try:
+        return graph.runtimes[runtime_id].authority_ref
     except KeyError as error:
         raise InvalidOperationCommand("runtime effect runtime target is missing") from error
 

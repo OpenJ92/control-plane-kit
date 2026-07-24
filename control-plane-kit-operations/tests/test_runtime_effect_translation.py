@@ -30,6 +30,7 @@ from control_plane_kit_core.products import (
     ProductRuntimeContract,
     ProviderRuntimePort,
 )
+from control_plane_kit_core.runtime_authority import RuntimeAuthorityReference
 from control_plane_kit_core.runtime_effects import ImagePullAuthority
 from control_plane_kit_core.topology import DeploymentGraph, Node, RuntimeRecord
 from control_plane_kit_core.types import BlockFamily, Protocol, RuntimeKind
@@ -64,6 +65,7 @@ class RuntimeEffectTranslationTests(unittest.TestCase):
 
         self.assertEqual(request.effect_id, "event-started")
         self.assertEqual(request.runtime_kind, RuntimeKind.DOCKER)
+        self.assertIsNone(request.authority_ref)
         self.assertEqual(request.source.workspace_id, "workspace-a")
         self.assertEqual(request.source.desired_graph_id, "graph-desired")
         self.assertEqual(request.activity_id, ActivityId("activity-a"))
@@ -150,6 +152,24 @@ class RuntimeEffectTranslationTests(unittest.TestCase):
         self.assertEqual(request.operation, StopRuntime(RuntimeTarget("docker")))
         self.assertEqual(request.products, ())
 
+    def test_context_carries_runtime_authority_reference_from_graph_to_request(self) -> None:
+        graph = _graph(
+            authority_ref=RuntimeAuthorityReference("mac-mini-docker"),
+        )
+        context = _context(desired_graph=graph)
+
+        request = runtime_effect_request_for_context(context)
+
+        self.assertEqual(
+            request.authority_ref,
+            RuntimeAuthorityReference("mac-mini-docker"),
+        )
+        self.assertEqual(
+            request.descriptor()["authority_ref"],
+            {"reference_id": "mac-mini-docker"},
+        )
+        self.assertNotIn("tcp://", repr(request.descriptor()))
+
 
 def _context(
     *,
@@ -224,7 +244,10 @@ def _context(
     )
 
 
-def _graph() -> DeploymentGraph:
+def _graph(
+    *,
+    authority_ref: RuntimeAuthorityReference | None = None,
+) -> DeploymentGraph:
     product = _registered_product()
     reference = product.reference
     return DeploymentGraph(
@@ -256,7 +279,14 @@ def _graph() -> DeploymentGraph:
                 ),
             )
         },
-        runtimes={"docker": RuntimeRecord("docker", RuntimeKind.DOCKER, ("api",))},
+        runtimes={
+            "docker": RuntimeRecord(
+                "docker",
+                RuntimeKind.DOCKER,
+                ("api",),
+                authority_ref=authority_ref,
+            )
+        },
     )
 
 

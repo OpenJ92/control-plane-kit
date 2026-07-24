@@ -3063,3 +3063,64 @@ git diff --check
 ./control-plane-kit-core/test.sh
   400 tests, compileall, import check
 ```
+
+## Runtime Authority: Effect Request Material
+
+#973 decided the first request-level material boundary conservatively:
+
+```text
+RuntimeEffectRequest.authority_ref: RuntimeAuthorityReference | None
+```
+
+The request carries the graph-selected authority name, not concrete Docker
+daemon material. This keeps the request pure and secret-free while still
+pinning which admitted runtime authority operations must use once #963 adds
+durable `RegisteredRuntimeAuthority` truth.
+
+The translation now reads:
+
+```text
+graph.runtimes[runtime_id].authority_ref
+  -> RuntimeEffectRequest.authority_ref
+    -> interpreter boundary
+```
+
+When `authority_ref` is omitted, the request descriptor carries `None`, which
+preserves the existing ambient/local interpreter compatibility path. That is
+not a claim that local Docker is the semantic default. Execution-capable child,
+remote Docker, and cloud scenarios should use explicit authority references
+after registration exists.
+
+Concrete authority material remains deferred:
+
+```text
+#963 RegisteredRuntimeAuthority
+  -> resolve workspace authority truth
+    -> future request authority material
+      -> #965 Docker local/remote authority interpretation
+```
+
+Validation evidence:
+
+```text
+cd control-plane-kit-core && \
+  PYTHONPATH=src python3 -m unittest tests.test_runtime_effects
+  11 tests
+cd control-plane-kit-operations && \
+  PYTHONPATH=src:../control-plane-kit-core/src \
+  python3 -m unittest tests.test_runtime_effect_translation
+  5 tests
+git diff --check
+./control-plane-kit-core/test.sh
+  401 tests, compileall, import check
+./control-plane-kit-operations/test.sh
+  133 tests, compileall, import check
+./test.sh
+  root suite: 1232 tests
+```
+
+The first full-suite attempt failed during Docker image export with a Docker
+Desktop storage error. The recovery inspected Docker resources, confirmed the
+running containers were Pottery Factory containers, found no CPK-named volumes,
+and pruned only Docker build cache before rerunning the suite from the
+beginning. Pottery Factory containers were left running.

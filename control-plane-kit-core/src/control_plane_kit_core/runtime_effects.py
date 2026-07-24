@@ -277,6 +277,7 @@ class RuntimeEffectRequest:
     source: RuntimeEffectSource
     activity_id: ActivityId
     operation: ActivityOperation
+    authority_ref: RuntimeAuthorityReference | None = None
     products: tuple[RuntimeProductMaterial, ...] = ()
 
     def __post_init__(self) -> None:
@@ -285,6 +286,13 @@ class RuntimeEffectRequest:
             raise RuntimeEffectContractError("runtime effect kind must be closed")
         if not isinstance(self.runtime_kind, RuntimeKind):
             raise RuntimeEffectContractError("runtime kind must be RuntimeKind")
+        if self.authority_ref is not None and not isinstance(
+            self.authority_ref,
+            RuntimeAuthorityReference,
+        ):
+            raise RuntimeEffectContractError(
+                "runtime authority reference must be RuntimeAuthorityReference"
+            )
         if not isinstance(self.source, RuntimeEffectSource):
             raise RuntimeEffectContractError("runtime effect source is malformed")
         if not isinstance(self.activity_id, ActivityId):
@@ -308,6 +316,9 @@ class RuntimeEffectRequest:
             "effect_id": self.effect_id,
             "kind": self.kind.value,
             "runtime_kind": self.runtime_kind.value,
+            "authority_ref": None
+            if self.authority_ref is None
+            else self.authority_ref.descriptor(),
             "source": self.source.descriptor(),
             "activity_id": self.activity_id.value,
             "operation": activity_operation_descriptor(self.operation),

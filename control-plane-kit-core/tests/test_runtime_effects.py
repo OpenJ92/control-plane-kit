@@ -91,6 +91,7 @@ class RuntimeEffectContractTests(unittest.TestCase):
 
         self.assertEqual(descriptor["kind"], "realize-activity")
         self.assertEqual(descriptor["runtime_kind"], "docker")
+        self.assertIsNone(descriptor["authority_ref"])
         self.assertEqual(
             descriptor["source"],
             {
@@ -152,6 +153,27 @@ class RuntimeEffectContractTests(unittest.TestCase):
             RuntimeProductMaterial.from_descriptor(product).public_environment,
             (PublicStaticEnvironmentBinding("HELLO_MESSAGE", "Hello from graph"),),
         )
+
+    def test_request_descriptor_carries_runtime_authority_reference_not_material(self) -> None:
+        request = RuntimeEffectRequest(
+            effect_id="effect-a",
+            kind=RuntimeEffectKind.REALIZE_ACTIVITY,
+            runtime_kind=RuntimeKind.DOCKER,
+            authority_ref=RuntimeAuthorityReference("mac-mini-docker"),
+            source=_source(),
+            activity_id=ActivityId("activity-a"),
+            operation=StartNode(NodeTarget("api")),
+        )
+
+        descriptor = request.descriptor()
+
+        self.assertEqual(
+            descriptor["authority_ref"],
+            {"reference_id": "mac-mini-docker"},
+        )
+        self.assertNotIn("tcp://", repr(descriptor))
+        self.assertNotIn("docker.sock", repr(descriptor))
+        self.assertNotIn("token=", repr(descriptor))
 
     def test_product_material_rejects_identity_mismatch(self) -> None:
         identity = ProductIdentity("openj92", "hello-server", 1)
