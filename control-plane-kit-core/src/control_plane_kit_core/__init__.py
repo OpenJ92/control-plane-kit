@@ -167,6 +167,8 @@ from control_plane_kit_core.products import (
     require_unique_product_identities,
 )
 from control_plane_kit_core.runtime_effects import (
+    ImagePullAuthority,
+    ImagePullAuthorityCodec,
     RuntimeEffectContractError,
     RuntimeEffectFailure,
     RuntimeEffectKind,
@@ -291,6 +293,8 @@ __all__ = [
     "ProductRuntimeContractCodec",
     "ProductRuntimeContractError",
     "RetainedDataMount",
+    "ImagePullAuthority",
+    "ImagePullAuthorityCodec",
     "RuntimeEffectContractError",
     "RuntimeEffectFailure",
     "RuntimeEffectKind",

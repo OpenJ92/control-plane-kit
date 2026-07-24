@@ -9,6 +9,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass, field
 from enum import StrEnum
+import re
 from typing import Mapping
 
 from control_plane_kit_core.environment import (
@@ -22,9 +23,11 @@ from control_plane_kit_core.probe_intents import RuntimeEndpointObservation
 from control_plane_kit_core.products import (
     ContainerServerProduct,
     ContainerServerProductCodec,
+    OciImageReference,
     ProductReference,
     ProductReferenceCodec,
 )
+from control_plane_kit_core.secrets import CredentialReference, SecretResolutionError
 from control_plane_kit_core.types import RuntimeKind
 
 
@@ -32,6 +35,9 @@ _MAX_TEXT = 512
 _MAX_EVIDENCE_FIELDS = 32
 _MAX_EVIDENCE_DEPTH = 4
 _MAX_EVIDENCE_ITEMS = 32
+_REGISTRY = re.compile(r"^[a-z0-9]+(?:[.-][a-z0-9]+)*(?::[0-9]{1,5})?$")
+_REPOSITORY_PART = re.compile(r"^[a-z0-9]+(?:[._-][a-z0-9]+)*$")
+_MAX_REPOSITORY_LENGTH = 255
 
 
 class RuntimeEffectContractError(ValueError):
@@ -42,6 +48,74 @@ class RuntimeEffectKind(StrEnum):
     """Closed runtime-effect intents interpreters can execute."""
 
     REALIZE_ACTIVITY = "realize-activity"
+
+
+@dataclass(frozen=True, order=True)
+class ImagePullAuthority:
+    """Secret-free authority reference for pulling an OCI image."""
+
+    registry: str
+    repository: str | None
+    credential_reference: CredentialReference
+
+    def __post_init__(self) -> None:
+        _validate_registry_scope(self.registry)
+        if self.repository is not None:
+            _validate_repository_scope(self.repository)
+        reference = self.credential_reference
+        if isinstance(reference, str):
+            try:
+                reference = CredentialReference(reference)
+            except SecretResolutionError as error:
+                raise RuntimeEffectContractError(
+                    "image pull authority credential_reference is malformed"
+                ) from error
+        if not isinstance(reference, CredentialReference):
+            raise RuntimeEffectContractError(
+                "image pull authority credential_reference must be CredentialReference"
+            )
+        object.__setattr__(self, "credential_reference", reference)
+
+    def permits(self, image: OciImageReference) -> bool:
+        """Return whether this authority scope covers an immutable image reference."""
+
+        if not isinstance(image, OciImageReference):
+            raise RuntimeEffectContractError("image pull authority requires OCI image")
+        if image.registry != self.registry:
+            return False
+        if self.repository is None:
+            return True
+        return image.repository == self.repository or image.repository.startswith(
+            f"{self.repository}/"
+        )
+
+    def descriptor(self) -> dict[str, object]:
+        return {
+            "registry": self.registry,
+            "repository": self.repository,
+            "credential_reference": self.credential_reference.reference_id,
+        }
+
+
+class ImagePullAuthorityCodec:
+    """Strict codec for secret-free image pull authority references."""
+
+    def encode(self, authority: ImagePullAuthority) -> dict[str, object]:
+        if not isinstance(authority, ImagePullAuthority):
+            raise RuntimeEffectContractError("encode requires ImagePullAuthority")
+        return authority.descriptor()
+
+    def decode(self, descriptor: Mapping[str, object]) -> ImagePullAuthority:
+        mapping = _authority_mapping(descriptor, "image pull authority")
+        _require_authority_keys(mapping, _IMAGE_PULL_AUTHORITY_KEYS)
+        credential = mapping.get("credential_reference")
+        if not isinstance(credential, str):
+            raise RuntimeEffectContractError("credential_reference must be text")
+        return ImagePullAuthority(
+            registry=_authority_text(mapping, "registry"),
+            repository=_authority_optional_text(mapping, "repository"),
+            credential_reference=CredentialReference(credential),
+        )
 
 
 @dataclass(frozen=True)
@@ -102,6 +176,7 @@ class RuntimeProductMaterial:
     reference: ProductReference
     product: ContainerServerProduct
     socket_environment: tuple[SocketDerivedEnvironmentBinding, ...] = ()
+    pull_authority: ImagePullAuthority | None = None
 
     def __post_init__(self) -> None:
         _required_text(self.node_id, "node_id")
@@ -125,6 +200,13 @@ class RuntimeProductMaterial:
             raise RuntimeEffectContractError(
                 "runtime product socket environment names must be unique"
             )
+        if self.pull_authority is not None and not isinstance(
+            self.pull_authority,
+            ImagePullAuthority,
+        ):
+            raise RuntimeEffectContractError(
+                "runtime product pull_authority must be ImagePullAuthority"
+            )
         object.__setattr__(self, "socket_environment", socket_environment)
 
     def descriptor(self) -> dict[str, object]:
@@ -136,6 +218,9 @@ class RuntimeProductMaterial:
             "socket_environment": [
                 value.descriptor() for value in self.socket_environment
             ],
+            "pull_authority": None
+            if self.pull_authority is None
+            else ImagePullAuthorityCodec().encode(self.pull_authority),
         }
 
     @classmethod
@@ -154,6 +239,7 @@ class RuntimeProductMaterial:
                 value.get("socket_environment"),
                 "runtime product material",
             ),
+            pull_authority=_pull_authority(value.get("pull_authority")),
         )
 
 
@@ -335,7 +421,17 @@ _SOURCE_KEYS = frozenset(
     }
 )
 _PRODUCT_MATERIAL_KEYS = frozenset(
-    {"node_id", "runtime_id", "reference", "product", "socket_environment"}
+    {
+        "node_id",
+        "runtime_id",
+        "reference",
+        "product",
+        "socket_environment",
+        "pull_authority",
+    }
+)
+_IMAGE_PULL_AUTHORITY_KEYS = frozenset(
+    {"registry", "repository", "credential_reference"}
 )
 
 
@@ -394,6 +490,16 @@ def _socket_environment(
             )
         bindings.append(binding)
     return tuple(bindings)
+
+
+def _pull_authority(value: object) -> ImagePullAuthority | None:
+    if value is None:
+        return None
+    if not isinstance(value, Mapping):
+        raise RuntimeEffectContractError(
+            "runtime product material pull_authority must be a mapping or null"
+        )
+    return ImagePullAuthorityCodec().decode(value)
 
 
 def _required_text(value: str, name: str) -> None:
@@ -456,3 +562,65 @@ def _reject_secret_text(value: str, name: str) -> None:
     lowered = value.lower()
     if any(marker in lowered for marker in ("password=", "token=", "secret=")):
         raise RuntimeEffectContractError(f"{name} contains secret-shaped text")
+
+
+def _authority_mapping(value: object, label: str) -> Mapping[str, object]:
+    if not isinstance(value, Mapping):
+        raise RuntimeEffectContractError(f"{label} descriptor must be a mapping")
+    return value
+
+
+def _require_authority_keys(
+    mapping: Mapping[str, object],
+    expected: frozenset[str],
+) -> None:
+    keys = frozenset(mapping)
+    if keys == expected:
+        return
+    extra = sorted(keys - expected)
+    missing = sorted(expected - keys)
+    details: list[str] = []
+    if extra:
+        details.append(f"unknown keys: {', '.join(extra)}")
+    if missing:
+        details.append(f"missing keys: {', '.join(missing)}")
+    raise RuntimeEffectContractError(
+        "invalid image pull authority descriptor; " + "; ".join(details)
+    )
+
+
+def _authority_text(mapping: Mapping[str, object], key: str) -> str:
+    value = mapping.get(key)
+    if not isinstance(value, str):
+        raise RuntimeEffectContractError(f"{key} must be text")
+    return value
+
+
+def _authority_optional_text(mapping: Mapping[str, object], key: str) -> str | None:
+    value = mapping.get(key)
+    if value is None:
+        return None
+    if not isinstance(value, str):
+        raise RuntimeEffectContractError(f"{key} must be text or null")
+    return value
+
+
+def _validate_registry_scope(value: str) -> None:
+    if not isinstance(value, str):
+        raise RuntimeEffectContractError("registry must be text")
+    if "@" in value:
+        raise RuntimeEffectContractError("registry must not contain credentials")
+    if not _REGISTRY.fullmatch(value):
+        raise RuntimeEffectContractError("registry must be a bounded OCI registry host")
+
+
+def _validate_repository_scope(value: str) -> None:
+    if not isinstance(value, str):
+        raise RuntimeEffectContractError("repository must be text or null")
+    if len(value) > _MAX_REPOSITORY_LENGTH:
+        raise RuntimeEffectContractError("repository is too long")
+    parts = value.split("/")
+    if not parts or any(not _REPOSITORY_PART.fullmatch(part) for part in parts):
+        raise RuntimeEffectContractError(
+            "repository must be a bounded lowercase OCI path"
+        )
