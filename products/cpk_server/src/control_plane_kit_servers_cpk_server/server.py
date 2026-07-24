@@ -32,6 +32,8 @@ from control_plane_kit_operations import (
     ImagePullAuthorityRegistrationService,
     OperationCommandService,
     ProductRegistrationService,
+    RuntimeDispatcherBootstrapConfiguration,
+    RuntimeDispatcherBootstrapError,
     RuntimeInterpreterDispatcher,
     RunLifecycleCommandService,
     WorkspaceCommandService,
@@ -60,7 +62,7 @@ class CpkServerBootstrapConfiguration:
     mode: str
     control_auth_configured: bool
     port: int
-    runtime_interpreters: str
+    runtime_dispatcher: RuntimeDispatcherBootstrapConfiguration
     image_pull_credential_resolver: str
     product_secret_resolver: str
     product_secret_values_json: str | None = field(repr=False)
@@ -76,7 +78,12 @@ class CpkServerBootstrapConfiguration:
         mode = _required(values, "CPK_SERVER_MODE")
         auth = _required(values, "CPK_CONTROL_AUTH_CONFIGURED")
         port_text = _required(values, "CPK_PORT")
-        runtime_interpreters = _required(values, "CPK_RUNTIME_INTERPRETERS")
+        try:
+            runtime_dispatcher = RuntimeDispatcherBootstrapConfiguration.from_process_value(
+                _required(values, "CPK_RUNTIME_INTERPRETERS")
+            )
+        except RuntimeDispatcherBootstrapError as error:
+            raise BootstrapConfigurationError(str(error)) from error
         image_pull_credential_resolver = values.get(
             "CPK_IMAGE_PULL_CREDENTIAL_RESOLVER",
             "none",
@@ -105,10 +112,6 @@ class CpkServerBootstrapConfiguration:
             raise BootstrapConfigurationError("CPK_PORT must be an integer") from error
         if not 1 <= port <= 65535:
             raise BootstrapConfigurationError("CPK_PORT must be in TCP port range")
-        if runtime_interpreters not in {"none", "docker"}:
-            raise BootstrapConfigurationError(
-                "CPK_RUNTIME_INTERPRETERS must be one of: none, docker"
-            )
         if image_pull_credential_resolver not in {"none", "docker-config"}:
             raise BootstrapConfigurationError(
                 "CPK_IMAGE_PULL_CREDENTIAL_RESOLVER must be one of: none, docker-config"
@@ -119,17 +122,17 @@ class CpkServerBootstrapConfiguration:
             )
         if (
             image_pull_credential_resolver == "docker-config"
-            and runtime_interpreters != "docker"
+            and RuntimeKind.DOCKER not in runtime_dispatcher.runtime_kinds
         ):
             raise BootstrapConfigurationError(
                 "CPK_IMAGE_PULL_CREDENTIAL_RESOLVER=docker-config requires "
-                "CPK_RUNTIME_INTERPRETERS=docker"
+                "a Docker runtime interpreter"
             )
         if product_secret_resolver == "local-development":
-            if runtime_interpreters != "docker":
+            if RuntimeKind.DOCKER not in runtime_dispatcher.runtime_kinds:
                 raise BootstrapConfigurationError(
                     "CPK_PRODUCT_SECRET_RESOLVER=local-development requires "
-                    "CPK_RUNTIME_INTERPRETERS=docker"
+                    "a Docker runtime interpreter"
                 )
             if product_secret_values_json is None or product_secret_values_json == "":
                 raise BootstrapConfigurationError(
@@ -140,7 +143,7 @@ class CpkServerBootstrapConfiguration:
             mode=mode,
             control_auth_configured=True,
             port=port,
-            runtime_interpreters=runtime_interpreters,
+            runtime_dispatcher=runtime_dispatcher,
             image_pull_credential_resolver=image_pull_credential_resolver,
             product_secret_resolver=product_secret_resolver,
             product_secret_values_json=product_secret_values_json,
@@ -189,7 +192,7 @@ def create_app(config: CpkServerBootstrapConfiguration) -> FastAPI:
                 "status": "ready",
                 "application": "configured",
                 "stores": "configured",
-                "runtime_interpreters": config.runtime_interpreters,
+                "runtime_interpreters": str(config.runtime_dispatcher),
             },
         )
 
@@ -343,16 +346,20 @@ class _UnsupportedExecutionAdapter:
 def _runtime_adapter(
     config: CpkServerBootstrapConfiguration,
 ) -> _UnsupportedExecutionAdapter | RuntimeInterpreterDispatcher:
-    if config.runtime_interpreters == "none":
+    if not config.runtime_dispatcher.enabled:
         return _UnsupportedExecutionAdapter()
-    if config.runtime_interpreters == "docker":
-        return _docker_runtime_dispatcher(config)
-    raise AssertionError("runtime interpreter set validated at bootstrap")
+    interpreters = {}
+    for runtime_kind in config.runtime_dispatcher.runtime_kinds:
+        if runtime_kind is RuntimeKind.DOCKER:
+            interpreters[RuntimeKind.DOCKER] = _docker_runtime_interpreter(config)
+            continue
+        raise BootstrapConfigurationError(
+            f"no runtime interpreter provider is available for {runtime_kind.value!r}"
+        )
+    return RuntimeInterpreterDispatcher(interpreters)
 
 
-def _docker_runtime_dispatcher(
-    config: CpkServerBootstrapConfiguration,
-) -> RuntimeInterpreterDispatcher:
+def _docker_runtime_interpreter(config: CpkServerBootstrapConfiguration):
     try:
         from control_plane_kit_interpreters.docker import (
             DockerRuntimeInterpreter,
@@ -363,14 +370,10 @@ def _docker_runtime_dispatcher(
             "CPK_RUNTIME_INTERPRETERS=docker requires "
             "control-plane-kit-interpreters[docker]"
         ) from error
-    return RuntimeInterpreterDispatcher(
-        {
-            RuntimeKind.DOCKER: DockerRuntimeInterpreter(
-                DockerSdkClient(),
-                image_pull_credentials=_image_pull_credential_resolver(config),
-                secret_resolver=_product_secret_resolver(config),
-            ),
-        }
+    return DockerRuntimeInterpreter(
+        DockerSdkClient(),
+        image_pull_credentials=_image_pull_credential_resolver(config),
+        secret_resolver=_product_secret_resolver(config),
     )
 
 

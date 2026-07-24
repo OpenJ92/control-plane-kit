@@ -116,7 +116,7 @@ class CpkServerImageBootstrapTests(unittest.TestCase):
                 )
 
             self.assertEqual(set(config.store_endpoints), set(STORE_ENVIRONMENT))
-            self.assertEqual(config.runtime_interpreters, "none")
+            self.assertEqual(str(config.runtime_dispatcher), "none")
             self.assertEqual(config.image_pull_credential_resolver, "none")
             self.assertEqual(config.product_secret_resolver, "none")
             self.assertNotIn("postgres://", repr(config.process_configuration()))
@@ -288,7 +288,7 @@ class CpkServerImageBootstrapTests(unittest.TestCase):
                 "CPK_SERVER_MODE": "execution-capable",
                 "CPK_CONTROL_AUTH_CONFIGURED": "true",
                 "CPK_PORT": "8080",
-                "CPK_RUNTIME_INTERPRETERS": "aws",
+                "CPK_RUNTIME_INTERPRETERS": "made-up-runtime",
                 "CPK_WORKPLACE_DATABASE_URL": "postgres://user:pass@db/cpk",
                 "CPK_ACTIVITY_HISTORY_DATABASE_URL": "postgres://user:pass@db/cpk",
                 "CPK_OBSERVER_STATE_DATABASE_URL": "postgres://user:pass@db/cpk",
@@ -297,9 +297,83 @@ class CpkServerImageBootstrapTests(unittest.TestCase):
 
             with self.assertRaisesRegex(
                 server_module.BootstrapConfigurationError,
-                "CPK_RUNTIME_INTERPRETERS must be one of",
+                "runtime dispatcher bootstrap includes an unknown runtime kind",
             ):
                 server_module.CpkServerBootstrapConfiguration.from_environment(environ)
+        finally:
+            sys.path.remove(str(PRODUCT_SRC))
+            for name in list(sys.modules):
+                if name == "control_plane_kit_servers_cpk_server" or name.startswith(
+                    "control_plane_kit_servers_cpk_server."
+                ):
+                    sys.modules.pop(name, None)
+
+    def test_bootstrap_closed_runtime_without_provider_fails_at_adapter_boundary(
+        self,
+    ) -> None:
+        sys.path.insert(0, str(PRODUCT_SRC))
+        try:
+            server_module = importlib.import_module(
+                "control_plane_kit_servers_cpk_server.server"
+            )
+
+            config = server_module.CpkServerBootstrapConfiguration.from_environment(
+                {
+                    "CPK_SERVER_MODE": "execution-capable",
+                    "CPK_CONTROL_AUTH_CONFIGURED": "true",
+                    "CPK_PORT": "8080",
+                    "CPK_RUNTIME_INTERPRETERS": "aws",
+                    "CPK_WORKPLACE_DATABASE_URL": "postgres://user:pass@db/cpk",
+                    "CPK_ACTIVITY_HISTORY_DATABASE_URL": "postgres://user:pass@db/cpk",
+                    "CPK_OBSERVER_STATE_DATABASE_URL": "postgres://user:pass@db/cpk",
+                    "CPK_GRAPH_TOPOLOGY_DATABASE_URL": "postgres://user:pass@db/cpk",
+                }
+            )
+
+            with self.assertRaisesRegex(
+                server_module.BootstrapConfigurationError,
+                "no runtime interpreter provider is available for 'aws'",
+            ):
+                server_module._runtime_adapter(config)
+        finally:
+            sys.path.remove(str(PRODUCT_SRC))
+            for name in list(sys.modules):
+                if name == "control_plane_kit_servers_cpk_server" or name.startswith(
+                    "control_plane_kit_servers_cpk_server."
+                ):
+                    sys.modules.pop(name, None)
+
+    def test_bootstrap_uses_operations_runtime_dispatcher_language(self) -> None:
+        sys.path.insert(0, str(PRODUCT_SRC))
+        try:
+            server_module = importlib.import_module(
+                "control_plane_kit_servers_cpk_server.server"
+            )
+            from control_plane_kit_core.types import RuntimeKind
+            from control_plane_kit_operations import (
+                RuntimeDispatcherBootstrapConfiguration,
+            )
+
+            config = server_module.CpkServerBootstrapConfiguration.from_environment(
+                {
+                    "CPK_SERVER_MODE": "execution-capable",
+                    "CPK_CONTROL_AUTH_CONFIGURED": "true",
+                    "CPK_PORT": "8080",
+                    "CPK_RUNTIME_INTERPRETERS": "docker",
+                    "CPK_WORKPLACE_DATABASE_URL": "postgres://user:pass@db/cpk",
+                    "CPK_ACTIVITY_HISTORY_DATABASE_URL": "postgres://user:pass@db/cpk",
+                    "CPK_OBSERVER_STATE_DATABASE_URL": "postgres://user:pass@db/cpk",
+                    "CPK_GRAPH_TOPOLOGY_DATABASE_URL": "postgres://user:pass@db/cpk",
+                }
+            )
+
+            self.assertIsInstance(
+                config.runtime_dispatcher,
+                RuntimeDispatcherBootstrapConfiguration,
+            )
+            self.assertEqual(config.runtime_dispatcher.runtime_kinds, (RuntimeKind.DOCKER,))
+            self.assertEqual(str(config.runtime_dispatcher), "docker")
+            self.assertNotIn("authority", repr(config.runtime_dispatcher).lower())
         finally:
             sys.path.remove(str(PRODUCT_SRC))
             for name in list(sys.modules):
@@ -324,6 +398,7 @@ class CpkServerImageBootstrapTests(unittest.TestCase):
         self.assertIn("DesiredGraphCommandService", source)
         self.assertIn("OperationCommandService", source)
         self.assertIn("CurrentGraphAdvancementCommandService", source)
+        self.assertIn("RuntimeDispatcherBootstrapConfiguration", source)
         self.assertIn("RuntimeInterpreterDispatcher", source)
         self.assertIn("control_plane_kit_interpreters.docker", source)
         self.assertIn("CPK_RUNTIME_INTERPRETERS", source)
