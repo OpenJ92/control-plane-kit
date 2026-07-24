@@ -2331,3 +2331,89 @@ Handoff:
 - #950 must teach `DockerRuntimeInterpreter` to execute `postgres-query`
   readiness through the concrete Postgres verification adapter using this
   contract.
+
+## #950/#938 Recursive cpk-server Acceptance Evidence
+
+#950 completed the concrete Postgres semantic readiness path in
+`control-plane-kit-interpreters`. A live recursive smoke then exposed that the
+official Postgres image needs real startup pacing: five immediate `SELECT 1`
+attempts were not enough. The fix belongs in the generic Postgres verification
+interpreter, not in a recursive script or product-specific Docker branch:
+
+```text
+PostgresQueryCheck
+  -> PostgresVerificationInterpreter
+    -> resolve SecretReference at IO boundary
+      -> bounded select-one attempts
+        -> one-second pacing between attempts
+```
+
+The same live smoke then showed the child `cpk-server` descriptor had a
+one-attempt HTTP readiness contract. That was too narrow for a normal Uvicorn
+startup window. The product descriptor now advertises ten bounded attempts for
+`/health/live` and `/health/ready`, matching the existing HTTP retry behavior
+without changing runtime semantics.
+
+#938 adds a recursive local-Docker harness in `control-plane-kit-servers`:
+
+```text
+parent cpk-server published OCI image
+  -> public HTTP/MCP workflow
+    -> import cpk-server and postgres-server descriptors
+      -> plan / approval queue / approve / admit / claim / start / execute
+        -> RuntimeEffectRequest
+          -> RuntimeInterpreterDispatcher
+            -> DockerRuntimeInterpreter
+              -> child postgres-server
+              -> opaque child cpk-server
+                -> parent observes /health/live and /health/ready only
+```
+
+The child remains opaque. Parent acceptance does not inspect child graph truth,
+activity history, operation sessions, or descendant workflow state.
+
+OCI coordinate handling was tightened during #938. Server-products now treats
+`coordinates/server-products.json` as the source of truth for upstream package
+pins and product image coordinates. The cpk-server smoke scripts derive their
+default image from `products/cpk_server/product.cpk.json`, so digest updates do
+not scatter across tests and shell fixtures.
+
+Published cpk-server evidence for #938:
+
+```text
+image:
+  ghcr.io/openj92/control-plane-kit-servers/cpk-server@sha256:a92139b66b5fb0e631bb4fe1a401e3c9968ac99227cf0c9dd5b85e52f506b0f4
+
+interpreter commit:
+  4da9711281ba40286f5331c9bc842d588d1f4090
+
+cpk-server descriptor sha256:
+  updated through coordinates/server-products.json and scripts/apply_coordinates.py
+
+catalogue checksum:
+  98b016107885f44cae2737d7b38d15b56063ec4707c7a5f4b04e31de3a614cae
+```
+
+Validation evidence:
+
+```text
+control-plane-kit-interpreters ./test.sh
+  67 tests passed
+
+control-plane-kit-servers ./test.sh
+  passed
+
+scripts/cpk_server_recursive_activity_smoke.sh
+  recursive cpk-server Docker activity smoke passed
+  control-plane-kit-servers Docker residue audit passed
+```
+
+Handoff:
+
+- #939 should harden observation and cleanup assertions around the same
+  recursive harness, including parent-recorded runtime result evidence and
+  proof that only owned recursive resources are cleaned.
+- #940 should close recursive acceptance and hand off to #941 seeded topology
+  stress.
+- Future control portal work remains out of scope; the parent observes the child
+  only through public health endpoints.
