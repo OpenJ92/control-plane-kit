@@ -5,6 +5,7 @@
 ```text
 products/<product_id>/
   descriptor.py          # graph-visible value declarations only
+  product*.cpk.json      # generated descriptor contracts; explicit variants allowed
   image/                 # Dockerfile, image build context, digest evidence
   entrypoint/            # runnable process/bootstrap code
   tests/                 # product-owned unit, architecture, and live tests
@@ -20,7 +21,7 @@ connections, read secrets, or mutate stores.
 local product operations, and pinned core contracts required to expose the
 server.
 
-`image/` owns OCI material and digest evidence for exactly one product.
+`image/` owns OCI material and digest evidence for one product implementation lane. A lane may publish explicit descriptor variants when the image/process supports more than one bootstrap capability profile.
 
 `tests/` owns isomorphic successor tests for the product and any live proof that
 the issue requires.
@@ -28,12 +29,12 @@ the issue requires.
 Current bootstrap product layouts:
 
 ```text
-products/cpk_server  # active cpk-server product wrapper and descriptor
+products/cpk_server  # active cpk-server product wrapper and descriptor variants
 products/hello_server # active first ordinary reusable server product
 ```
 
 These names are tracked by `coordination/product-inventory.json`. `cpk-server`
-is now the first published descriptor. `hello` remains reserved until its
+is now the first published descriptor; `cpk-server-docker` is an explicit Docker-capable variant from the same implementation lane. `hello` remains reserved until its
 implementation issues open.
 
 No shared support without evidence from two products or an explicit bootstrap
@@ -53,7 +54,7 @@ Forbidden patterns:
 
 - catalogue loading imports process code;
 - descriptor loading starts Docker or reads process environment;
-- one product reaches into another product directory;
+- one product reaches into another product implementation directory;
 - package root imports FastAPI apps or product implementation modules;
 - product descriptors contain secrets;
 - cleanup uses broad Docker prune;

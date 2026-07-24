@@ -2,12 +2,22 @@
   "products": [
     {
       "descriptor_path": "products/cpk_server/product.cpk.json",
-      "descriptor_sha256": "3872f9a759bc1f04ae84837caf0e018a3e6c6616c987dcf4d8805ee253c314d4",
-      "image_digest": "sha256:112cad7c5b52e456cc6ea38980d04900de46f25ccdbfe40918e481d83a31ef19",
-      "image_ref": "ghcr.io/openj92/control-plane-kit-servers/cpk-server:router-transition-944",
+      "descriptor_sha256": "366f3c96482f43cc76f5473659d9532c6c29b0bb572c44b6d161edf38f86ef6b",
+      "image_digest": "sha256:a8cfb503c3a7fc2ed8d34366e822587f134c09eee1cbfc24b553782050f95c6c",
+      "image_ref": "ghcr.io/openj92/control-plane-kit-servers/cpk-server:runtime-auth-966",
       "owner_directory": "products/cpk_server",
       "product_id": "cpk-server",
-      "source_commit": "794fb88033115080a5aad829a0e6e8a47dd350c2",
+      "source_commit": "3ca45d36622f1ed2de673f3027d92420c3aba445",
+      "status": "completed"
+    },
+    {
+      "descriptor_path": "products/cpk_server/product.docker.cpk.json",
+      "descriptor_sha256": "7afe717acb81967b83500f3273dddef5faa9acf4eed7109662eae4bbadfebaa1",
+      "image_digest": "sha256:a8cfb503c3a7fc2ed8d34366e822587f134c09eee1cbfc24b553782050f95c6c",
+      "image_ref": "ghcr.io/openj92/control-plane-kit-servers/cpk-server:runtime-auth-966",
+      "owner_directory": "products/cpk_server",
+      "product_id": "cpk-server-docker",
+      "source_commit": "3ca45d36622f1ed2de673f3027d92420c3aba445",
       "status": "completed"
     },
     {

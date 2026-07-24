@@ -19,7 +19,7 @@ class ServerRepositoryPolicyTests(unittest.TestCase):
             "focused target tests",
             "prove focused target red",
             "Docker-first validation",
-            "one product owns one directory",
+            "one product implementation lane owns one directory",
             "Core never imports servers",
             "cpk-server and Hello have different roles",
             "Do not use broad Docker prune",
@@ -72,6 +72,7 @@ class ServerRepositoryPolicyTests(unittest.TestCase):
             [product["product_id"] for product in inventory["products"]],
             [
                 "cpk-server",
+                "cpk-server-docker",
                 "hello-server",
                 "http-active-router",
                 "http-multiplexer",
@@ -86,6 +87,7 @@ class ServerRepositoryPolicyTests(unittest.TestCase):
                 "descriptor-published",
                 "descriptor-published",
                 "descriptor-published",
+                "descriptor-published",
             ],
         )
         self.assertEqual(
@@ -94,21 +96,25 @@ class ServerRepositoryPolicyTests(unittest.TestCase):
         )
         self.assertEqual(
             inventory["products"][1]["descriptor_issue"],
-            "OpenJ92/control-plane-kit#824",
+            "OpenJ92/control-plane-kit#966",
         )
         self.assertEqual(
             inventory["products"][2]["descriptor_issue"],
-            "OpenJ92/control-plane-kit#825",
+            "OpenJ92/control-plane-kit#824",
         )
         self.assertEqual(
             inventory["products"][3]["descriptor_issue"],
-            "OpenJ92/control-plane-kit#826",
+            "OpenJ92/control-plane-kit#825",
         )
         self.assertEqual(
             inventory["products"][4]["descriptor_issue"],
+            "OpenJ92/control-plane-kit#826",
+        )
+        self.assertEqual(
+            inventory["products"][5]["descriptor_issue"],
             "OpenJ92/control-plane-kit#828",
         )
-        self.assertEqual(inventory["products"][4]["image_source"], "external-oci")
+        self.assertEqual(inventory["products"][5]["image_source"], "external-oci")
         catalogue = json.loads(
             (ROOT / "catalogue" / "products.json").read_text(encoding="utf-8")
         )
@@ -116,6 +122,7 @@ class ServerRepositoryPolicyTests(unittest.TestCase):
             [product["product_id"] for product in catalogue["products"]],
             [
                 "cpk-server",
+                "cpk-server-docker",
                 "hello-server",
                 "http-active-router",
                 "http-multiplexer",

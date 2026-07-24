@@ -53,6 +53,7 @@ class DockerHarnessTests(unittest.TestCase):
             [product["product_id"] for product in report["products"]],
             [
                 "cpk-server",
+                "cpk-server-docker",
                 "hello-server",
                 "http-active-router",
                 "http-multiplexer",
@@ -64,6 +65,12 @@ class DockerHarnessTests(unittest.TestCase):
             [
                 {
                     "product_id": "cpk-server",
+                    "image_source": "local-dockerfile",
+                    "dockerfile": "products/cpk_server/Dockerfile",
+                    "status": "image-definition-present",
+                },
+                {
+                    "product_id": "cpk-server-docker",
                     "image_source": "local-dockerfile",
                     "dockerfile": "products/cpk_server/Dockerfile",
                     "status": "image-definition-present",

@@ -6,7 +6,7 @@ default_image() {
 import json
 from pathlib import Path
 
-image = json.loads(Path("products/cpk_server/product.cpk.json").read_text())["product"]["image"]
+image = json.loads(Path("products/cpk_server/product.docker.cpk.json").read_text())["product"]["image"]
 print(f"{image['registry']}/{image['repository']}@{image['digest']}")
 PY
 }

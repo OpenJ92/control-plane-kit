@@ -7,7 +7,7 @@ contracts, process handoff contracts, and tests. Core never imports servers.
 
 ## Repository Law
 
-- one product owns one directory.
+- one product implementation lane owns one directory; explicit descriptor variants may share that lane.
 - Catalogue imports values, not applications or stores.
 - cpk-server and Hello have different roles and neither substitutes for the
   other.
@@ -52,7 +52,7 @@ unittest` commands against the current tree.
 
 ## Product Ownership
 
-Each product directory owns its descriptor declaration, implementation,
+Each product implementation directory owns its descriptor declaration or explicit descriptor variants, implementation,
 entrypoint/process wrapper, Dockerfile or image build material, verification
 contracts, image publication evidence, tests, examples, and learning notes.
 

@@ -130,6 +130,7 @@ class CpkServerProcessCompositionTests(unittest.TestCase):
                 [item.product_id for item in catalogue],
                 [
                     "cpk-server",
+                    "cpk-server-docker",
                     "hello-server",
                     "http-active-router",
                     "http-multiplexer",

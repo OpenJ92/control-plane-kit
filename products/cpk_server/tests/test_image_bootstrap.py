@@ -571,7 +571,7 @@ class CpkServerImageBootstrapTests(unittest.TestCase):
             encoding="utf-8"
         )
 
-        self.assertIn("products/cpk_server/product.cpk.json", smoke)
+        self.assertIn("products/cpk_server/product.docker.cpk.json", smoke)
         self.assertIn("@{image['digest']}", smoke)
         self.assertIn("docker pull", smoke)
         self.assertIn("CPK_RUNTIME_INTERPRETERS=docker", smoke)
@@ -648,7 +648,7 @@ class CpkServerImageBootstrapTests(unittest.TestCase):
             encoding="utf-8"
         )
 
-        self.assertIn("products/cpk_server/product.cpk.json", smoke)
+        self.assertIn("products/cpk_server/product.docker.cpk.json", smoke)
         self.assertIn("@{image['digest']}", smoke)
         self.assertIn("docker pull", smoke)
         self.assertIn("CPK_RUNTIME_INTERPRETERS=docker", smoke)

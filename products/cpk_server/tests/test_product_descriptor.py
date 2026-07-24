@@ -21,6 +21,7 @@ from control_plane_kit_core.types import Protocol
 ROOT = Path(__file__).resolve().parents[3]
 PRODUCT = ROOT / "products" / "cpk_server"
 DESCRIPTOR = PRODUCT / "product.cpk.json"
+DOCKER_DESCRIPTOR = PRODUCT / "product.docker.cpk.json"
 CATALOGUE = ROOT / "catalogue" / "products.json"
 COORDINATES = ROOT / "coordinates" / "server-products.json"
 
@@ -33,9 +34,16 @@ def _product_coordinates(product_id: str) -> dict[str, object]:
     raise AssertionError(f"missing product coordinates: {product_id}")
 
 
+def _public_env(product, name: str) -> str:
+    for item in product.runtime_contract.public_environment:
+        if item.name == name:
+            return item.value
+    raise AssertionError(f"missing public environment value: {name}")
+
+
 class CpkServerProductDescriptorTests(unittest.TestCase):
-    def decode(self):
-        return ProductDescriptorCodec().decode_document(DESCRIPTOR.read_bytes())
+    def decode(self, path: Path = DESCRIPTOR):
+        return ProductDescriptorCodec().decode_document(path.read_bytes())
 
     def test_descriptor_round_trips_through_core_product_language(self) -> None:
         document = self.decode()
@@ -65,6 +73,31 @@ class CpkServerProductDescriptorTests(unittest.TestCase):
             ProductDescriptorCodec().encode_document(product).content,
             DESCRIPTOR.read_bytes(),
         )
+
+
+    def test_descriptor_variants_separate_interpreter_availability_from_authority(self) -> None:
+        base = self.decode(DESCRIPTOR).product
+        docker = self.decode(DOCKER_DESCRIPTOR).product
+
+        self.assertEqual(base.identity, ProductIdentity("control-plane-kit", "cpk-server", 1))
+        self.assertEqual(
+            docker.identity,
+            ProductIdentity("control-plane-kit", "cpk-server-docker", 1),
+        )
+        self.assertEqual(_public_env(base, "CPK_RUNTIME_INTERPRETERS"), "none")
+        self.assertEqual(_public_env(docker, "CPK_RUNTIME_INTERPRETERS"), "docker")
+        self.assertIn("Docker runtime interpreter software", docker.description)
+        self.assertIn("Runtime authority endpoints and credentials remain", docker.description)
+
+        for path in (DESCRIPTOR, DOCKER_DESCRIPTOR):
+            rendered = path.read_text(encoding="utf-8").lower()
+            with self.subTest(path=path.name):
+                self.assertNotIn("docker_host", rendered)
+                self.assertNotIn("/var/run/docker.sock", rendered)
+                self.assertNotIn("client-cert", rendered)
+                self.assertNotIn("client-key", rendered)
+                self.assertNotIn("tls", rendered)
+                self.assertNotIn("registeredruntimeauthority", rendered)
 
     def test_descriptor_declares_http_mcp_and_store_contracts_without_values(self) -> None:
         product = self.decode().product
@@ -141,18 +174,43 @@ class CpkServerProductDescriptorTests(unittest.TestCase):
             declaration.product_id: declaration
             for declaration in load_catalogue(CATALOGUE)
         }
-        declaration = declarations["cpk-server"]
         document = self.decode()
+        docker_document = self.decode(DOCKER_DESCRIPTOR)
         catalog = load_product_catalog(CATALOGUE, root=ROOT)
 
-        self.assertEqual(declaration.product_id, "cpk-server")
-        self.assertEqual(declaration.descriptor_sha256, document.content_digest)
-        self.assertEqual(declaration.image_digest, document.product.image.digest)
+        self.assertEqual(
+            sorted(declarations),
+            [
+                "cpk-server",
+                "cpk-server-docker",
+                "hello-server",
+                "http-active-router",
+                "http-multiplexer",
+                "postgres-server",
+            ],
+        )
+        for product_id, expected in (
+            ("cpk-server", document),
+            ("cpk-server-docker", docker_document),
+        ):
+            declaration = declarations[product_id]
+            with self.subTest(product_id=product_id):
+                self.assertEqual(declaration.product_id, product_id)
+                self.assertEqual(declaration.descriptor_sha256, expected.content_digest)
+                self.assertEqual(declaration.image_digest, expected.product.image.digest)
+
         self.assertEqual(
             catalog.lookup(ProductIdentity("control-plane-kit", "cpk-server", 1)),
             document,
         )
-        self.assertEqual(ProductCatalog.empty().add(document).products, (document,))
+        self.assertEqual(
+            catalog.lookup(ProductIdentity("control-plane-kit", "cpk-server-docker", 1)),
+            docker_document,
+        )
+        self.assertEqual(
+            ProductCatalog.empty().add(document).add(docker_document).products,
+            (document, docker_document),
+        )
 
     def test_catalogue_rejects_descriptor_and_image_digest_mismatch(self) -> None:
         from control_plane_kit_servers.catalogue import CatalogueError, load_product_catalog
