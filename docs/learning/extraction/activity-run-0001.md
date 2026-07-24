@@ -2488,3 +2488,82 @@ Handoff:
   child cpk-server, but does not own or inspect the child's graph truth,
   activity history, operation sessions, or descendant workflow state.
 - #941 seeded topology stress remains the next topological issue after #940.
+
+## #940 Recursive cpk-server Acceptance Closeout
+
+Recursive cpk-server acceptance is closed at the local-Docker runtime boundary.
+The accepted behavior is:
+
+```text
+parent cpk-server
+  -> public HTTP/MCP workflow
+    -> operations application services
+      -> RuntimeInterpreterDispatcher
+        -> DockerRuntimeInterpreter
+          -> published child cpk-server OCI image
+          -> Postgres data-service descriptor
+```
+
+The parent can spawn and observe an opaque child cpk-server. The parent does
+not own or inspect the child's graph truth, activity history, operation
+sessions, or descendant workflow state. The child is treated as an ordinary
+product node whose public health endpoints are the acceptance boundary.
+
+Immutable coordinates at closeout:
+
+```text
+cpk-server image:
+  ghcr.io/openj92/control-plane-kit-servers/cpk-server@sha256:a92139b66b5fb0e631bb4fe1a401e3c9968ac99227cf0c9dd5b85e52f506b0f4
+
+cpk-server descriptor_sha256:
+  0ebaa90f824f5a10e7ae7a1c91d83d5aaa8e5c8fc83035b062a23266c3327970
+
+server-products catalogue/products.json sha256:
+  0fa521b5800f909160ed959cd25700b38cc39e8345dd699400946d3338ed1e96
+```
+
+Review findings:
+
+- Architecture: cpk-server remains an ordinary product descriptor. Core has no
+  cpk-server specialization.
+- Data engineering: the child cpk-server owns its own Postgres-backed truth.
+  Parent acceptance observes only the child's public health surface.
+- Transactionality: runtime effects occur through the external Docker
+  interpreter after operations emits durable intent; no Postgres transaction is
+  held across Docker, network, or health effects.
+- Security: product descriptors remain secret-free. Postgres passwords and
+  private OCI credentials are resolved only at interpreter/bootstrap IO
+  boundaries and are not written into events, observations, read models, logs,
+  or route responses.
+- Docker ownership: recursive cleanup is scoped to the
+  `org.openj92.cpk.workspace=recursive-cpk-server` label and forbids broad prune
+  commands.
+- Retained data: Postgres remains a retained data-service descriptor. Cleanup
+  distinguishes owned ephemeral compute from retained data resources.
+- Test integrity: acceptance uses the published GHCR image digest, public
+  HTTP/MCP routes, and the real `read.activity` shape. It does not use local-tag
+  acceptance, direct operations imports, skips, or weakened assertions.
+
+Validation evidence from #939 remains the closeout proof:
+
+```text
+PYTHONPATH=src python3 scripts/apply_coordinates.py --check
+git diff --check
+python3 -m unittest \
+  products.cpk_server.tests.test_image_bootstrap.CpkServerImageBootstrapTests.\
+test_recursive_activity_controller_uses_parent_routes_and_opaque_child -v
+./test.sh
+scripts/cpk_server_recursive_activity_smoke.sh
+  recursive cpk-server Docker activity smoke passed
+  control-plane-kit-servers Docker residue audit passed
+```
+
+Residual limitations:
+
+- This is local-Docker acceptance. Remote Docker, cloud runtimes, Kubernetes,
+  Cloudflare/control portals, and public over-the-wire control ingress remain
+  future work.
+- The child cpk-server is intentionally opaque. Recursive grandchild spawning is
+  not part of this acceptance.
+- Seeded topology stress with hello/router/multiplexer/data-service products
+  continues in #941.
