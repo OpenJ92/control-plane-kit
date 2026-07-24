@@ -3277,3 +3277,55 @@ Handoff:
   harden package-boundary tests so Docker SDK and concrete interpreter imports
   stay out of operations source
 ```
+
+## Runtime Authority: cpk-server Dispatcher Bootstrap Behavior
+
+Issue #975 moved cpk-server process bootstrap onto the generic operations
+runtime dispatcher language introduced by #974. The key distinction is now
+explicit:
+
+```text
+CPK_RUNTIME_INTERPRETERS
+  -> RuntimeDispatcherBootstrapConfiguration
+    -> RuntimeKind family availability for this cpk-server process
+```
+
+This value is not a workspace runtime authority. It answers only which concrete
+interpreter families the process may compose. Endpoint, socket, TLS, token,
+cloud account, and credential truth remain workspace-scoped
+`RegisteredRuntimeAuthority` facts and are interpreted later at the IO boundary.
+
+The cpk-server wrapper now parses `CPK_RUNTIME_INTERPRETERS` through
+`RuntimeDispatcherBootstrapConfiguration`. It still reports the configured set
+through readiness as a compatibility string such as `none` or `docker`, but the
+internal value is closed `RuntimeKind` data. Unknown process values fail closed
+at the operations bootstrap parser. Known runtime kinds without a cpk-server
+provider fail at adapter construction with an explicit missing-provider error.
+
+Docker remains lazy. The cpk-server source imports
+`control_plane_kit_interpreters.docker` only inside the Docker provider function,
+so a `none` process does not construct Docker clients and future runtime kinds
+can be added without making Docker the semantic shape of runtime authority.
+
+Cross-repo coordinate note: #975 required aligning the interpreters package core
+pin with the #974 control-plane-kit merge commit. The server-products coordinate
+manifest now points at:
+
+```text
+control-plane-kit:              1c78f9584a0334446f468f98ba2a0b9505bb727f
+control-plane-kit-interpreters: 8e545b7eb3ac33d857c82cfac5af8448cf40d29f
+```
+
+Validation evidence:
+
+```text
+control-plane-kit-interpreters ./test.sh: 68 tests passed
+control-plane-kit-servers ./test.sh: package suites, cpk-server image build/smoke,
+  and Docker residue audits passed
+```
+
+Handoff: #976 should add broader guardrails around this boundary. In particular,
+it should keep process capability, workspace runtime authority, and interpreter
+IO authority visibly separate; prevent SDK imports from creeping into operations;
+and preserve `none`, Docker, unknown-kind, and known-kind-without-provider
+semantics.
