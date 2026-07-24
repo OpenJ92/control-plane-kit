@@ -6,6 +6,13 @@ connections. Tools can build topology visually, diff it, compile an activity
 plan, request explicit approval, and execute the approved transition through
 runtime adapters.
 
+The current language dictionary is maintained in
+[Control Plane Kit Language](docs/CONTROL_PLANE_LANGUAGE.md). It defines the
+core topology, product, operations, runtime-effect, interpreter, OCI authority,
+and cpk-server terms used across the extracted packages. The companion
+[Language Study Guide](docs/CONTROL_PLANE_LANGUAGE_STUDY_GUIDE.md) gives a
+paper-map reading plan for absorbing the full system.
+
 The central equation is:
 
 ```text
