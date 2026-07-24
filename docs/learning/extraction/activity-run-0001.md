@@ -3124,3 +3124,80 @@ Desktop storage error. The recovery inspected Docker resources, confirmed the
 running containers were Pottery Factory containers, found no CPK-named volumes,
 and pruned only Docker build cache before rerunning the suite from the
 beginning. Pottery Factory containers were left running.
+
+## Runtime Authority: Durable Admission
+
+#963 introduced operations-owned runtime authority truth:
+
+```text
+RegisteredRuntimeAuthority
+  workspace_id
+  authority_ref: RuntimeAuthorityReference
+  runtime_kind
+  authority_kind
+  authority storage data
+  credential_references
+  admitted_by / admitted_at
+  status
+```
+
+The first closed authority variants are intentionally Docker-shaped because the
+current interpreter lane is Docker-only:
+
+```text
+LocalDockerSocketAuthority
+RemoteDockerTlsAuthority
+```
+
+This does not move Docker execution into operations. It admits operator
+runtime-authority truth so later interpreter work can resolve it at the IO
+boundary:
+
+```text
+workspace registered runtime authority
+  -> runtime effect request authority_ref
+    -> interpreter authority resolver
+      -> Docker SDK client configuration
+```
+
+The durable store may retain a remote Docker TCP endpoint because the
+interpreter cannot use a remote daemon without it. Public descriptors and read
+models do not publish that endpoint:
+
+```python
+RemoteDockerTlsAuthority(...).descriptor()["endpoint"] == "<redacted>"
+```
+
+Only `SecretReference` identities are accepted for TLS credential material.
+Raw TLS keys, tokens, Docker config JSON, local socket paths, and cloud
+credentials do not enter runtime authority descriptors, read models, events, or
+runtime-effect requests.
+
+The Postgres table is `cpk_runtime_authorities`. It preserves workspace scope,
+closed status values, closed runtime/authority kinds, active-reference
+uniqueness, and caller-owned transaction behavior through the existing
+`PostgresUnitOfWork` bundle.
+
+Validation evidence:
+
+```text
+./control-plane-kit-operations/test.sh
+  140 tests, compileall, import check
+./test.sh
+  1232 tests
+git diff --check
+```
+
+Handoff:
+
+```text
+#964
+  operations bootstrap can compose dispatcher availability
+
+#965
+  Docker interpreter resolves RegisteredRuntimeAuthority into concrete SDK
+  client material at IO time
+
+#967
+  cpk-server exposes registration/read workflow over HTTP and MCP
+```

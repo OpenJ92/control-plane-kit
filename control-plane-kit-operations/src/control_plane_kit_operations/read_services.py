@@ -73,6 +73,10 @@ class ObservedStateStore(Protocol):
     def latest_for_workspace(self, workspace_id: str) -> tuple[ObservationRecord, ...]: ...
 
 
+class RuntimeAuthorityStore(Protocol):
+    def list_active(self, workspace_id: str) -> tuple[object, ...]: ...
+
+
 @dataclass(frozen=True)
 class WorkspaceSummary:
     """Small workspace identity and lifecycle summary."""
@@ -198,6 +202,18 @@ class ObservedStateReadModel:
 
 
 @dataclass(frozen=True)
+class RuntimeAuthorityCollectionReadModel:
+    workspace_id: str
+    items: tuple[Mapping[str, object], ...]
+
+    def descriptor(self) -> dict[str, object]:
+        return {
+            "workspace_id": self.workspace_id,
+            "items": [dict(item) for item in self.items],
+        }
+
+
+@dataclass(frozen=True)
 class ControlSurfaceReadModel:
     workspace_id: str
     pointer: str
@@ -248,6 +264,7 @@ class InstanceReadService:
         activity_history_store: ActivityHistoryStore | None = None,
         execution_store: ExecutionStore | None = None,
         observed_state_store: ObservedStateStore | None = None,
+        runtime_authority_store: RuntimeAuthorityStore | None = None,
         graph_codec: GraphDescriptorCodec = DEFAULT_GRAPH_CODEC,
         clock=lambda: datetime.now(timezone.utc),
         observation_freshness: ObservationFreshnessPolicy = ObservationFreshnessPolicy(),
@@ -257,6 +274,7 @@ class InstanceReadService:
         self._activity_history_store = activity_history_store
         self._execution_store = execution_store
         self._observed_state_store = observed_state_store
+        self._runtime_authority_store = runtime_authority_store
         self._graph_codec = graph_codec
         self._clock = clock
         self._observation_freshness = observation_freshness
@@ -467,6 +485,21 @@ class InstanceReadService:
             for record in self._observed_state().latest_for_workspace(workspace_id)
         )
         return ObservedStateReadModel(workspace_id=workspace_id, observations=observations)
+
+    def runtime_authorities(
+        self,
+        workspace_id: str,
+    ) -> RuntimeAuthorityCollectionReadModel:
+        self._workspace(workspace_id)
+        if self._runtime_authority_store is None:
+            raise ReadModelError("runtime authority store is not configured")
+        return RuntimeAuthorityCollectionReadModel(
+            workspace_id=workspace_id,
+            items=tuple(
+                _redacted_runtime_authority(value)
+                for value in self._runtime_authority_store.list_active(workspace_id)
+            ),
+        )
 
     def control_surface(
         self,
@@ -742,6 +775,14 @@ def _node_control_surface(node_id: str, descriptor: Mapping[str, object]) -> dic
         },
         "warnings": [],
     }
+
+
+def _redacted_runtime_authority(value: object) -> Mapping[str, object]:
+    descriptor_method = getattr(value, "descriptor", None)
+    if not callable(descriptor_method):
+        raise ReadModelError("runtime authority record cannot be projected")
+    descriptor = _mapping(descriptor_method())
+    return _redact_descriptor_value("runtime_authority", descriptor)
 
 
 def _mapping(value: object) -> Mapping[str, object]:
