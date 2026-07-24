@@ -147,6 +147,10 @@ from .runtime_authorities import (
     RuntimeAuthorityRegistrationService,
     runtime_authority_registration_id_for,
 )
+from .runtime_dispatcher_bootstrap import (
+    RuntimeDispatcherBootstrapConfiguration,
+    RuntimeDispatcherBootstrapError,
+)
 from .runtime_effects import runtime_effect_request_for_context
 from .records import (
     ActivityEventRecord,
@@ -370,6 +374,8 @@ __all__ = [
     "RuntimeAuthorityRegistrationConflict",
     "RuntimeAuthorityRegistrationError",
     "RuntimeAuthorityRegistrationService",
+    "RuntimeDispatcherBootstrapConfiguration",
+    "RuntimeDispatcherBootstrapError",
     "runtime_effect_request_for_context",
     "runtime_authority_registration_id_for",
     "PauseActivityRun",

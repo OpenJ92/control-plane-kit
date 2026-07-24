@@ -43,6 +43,7 @@ OPERATIONS_PACKAGE_BOUNDARY = OperationsPackageBoundary(
         "command services",
         "read projections",
         "RegisteredProduct",
+        "runtime dispatcher bootstrap",
     ),
     excluded_owners=(
         "core pure language",
