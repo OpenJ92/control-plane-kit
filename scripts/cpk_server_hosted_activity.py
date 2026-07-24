@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import json
 import os
+from dataclasses import dataclass
 from pathlib import Path
 import socket
 import time
@@ -26,229 +27,395 @@ WORKER_ID = "hosted-worker"
 AUTHORIZATION = "Bearer present"
 
 
-def main() -> int:
-    base_url = _required_env("CPK_HOSTED_ACTIVITY_BASE_URL").rstrip("/")
-    server_container = _required_env("CPK_HOSTED_ACTIVITY_SERVER_CONTAINER")
-    servers_repo = Path(_required_env("CPK_HOSTED_ACTIVITY_SERVERS_REPO"))
+@dataclass(frozen=True)
+class HostedTransitionResult:
+    current_graph_id: str
+    desired_graph_id: str
+    plan_id: str
+    approval_id: str
+    run_id: str
 
-    _wait_ready(base_url)
-    product_document = _product_document(servers_repo, "hello_server")
-    graph = _single_hello_graph(product_document)
 
-    workspace = _http(
-        base_url,
-        "POST",
-        "/workspaces",
-        {
-            "workspace_id": WORKSPACE_ID,
-            "name": "Hosted activity smoke",
-            "actor_id": "operator-a",
-            "idempotency_key": f"{WORKSPACE_ID}:workspace",
-        },
-    )
-    current_graph_id = str(workspace["workspace"]["current_graph_id"])
+class HostedWorkflow:
+    """Public HTTP/MCP workflow driver for hosted cpk-server acceptance."""
 
-    _http(
-        base_url,
-        "POST",
-        f"/workspaces/{WORKSPACE_ID}/products/import",
-        {
-            "descriptor_document": json.loads(product_document.content.decode("utf-8")),
-            "actor_id": "operator-a",
-            "imported_at": _clock(),
-            "idempotency_key": f"{WORKSPACE_ID}:import:hello",
-        },
-    )
+    def __init__(
+        self,
+        base_url: str,
+        *,
+        workspace_id: str,
+        worker_id: str,
+        server_container: str,
+    ) -> None:
+        self.base_url = base_url.rstrip("/")
+        self.workspace_id = workspace_id
+        self.worker_id = worker_id
+        self.server_container = server_container
 
-    if os.environ.get("CPK_HOSTED_ACTIVITY_REGISTER_PULL_AUTHORITY") == "docker-config":
-        _http(
-            base_url,
+    def wait_ready(self) -> None:
+        _wait_ready(self.base_url)
+
+    def create_workspace(self, *, name: str, actor_id: str = "operator-a") -> str:
+        workspace = _http(
+            self.base_url,
             "POST",
-            f"/workspaces/{WORKSPACE_ID}/image-pull-authorities",
+            "/workspaces",
+            {
+                "workspace_id": self.workspace_id,
+                "name": name,
+                "actor_id": actor_id,
+                "idempotency_key": f"{self.workspace_id}:workspace",
+            },
+        )
+        return str(workspace["workspace"]["current_graph_id"])
+
+    def import_product(self, label: str, product_document: Any) -> None:
+        _http(
+            self.base_url,
+            "POST",
+            f"/workspaces/{self.workspace_id}/products/import",
+            {
+                "descriptor_document": json.loads(product_document.content.decode("utf-8")),
+                "actor_id": "operator-a",
+                "imported_at": _clock(),
+                "idempotency_key": f"{self.workspace_id}:import:{label}",
+            },
+        )
+
+    def register_ghcr_pull_authority_from_docker_config(self) -> None:
+        _http(
+            self.base_url,
+            "POST",
+            f"/workspaces/{self.workspace_id}/image-pull-authorities",
             {
                 "registry": "ghcr.io",
                 "repository": "openj92/control-plane-kit-servers",
                 "credential_reference": "secret://docker-config/ghcr.io",
                 "actor_id": "operator-a",
                 "admitted_at": _clock(),
-                "idempotency_key": f"{WORKSPACE_ID}:pull-authority:ghcr",
+                "idempotency_key": f"{self.workspace_id}:pull-authority:ghcr",
             },
         )
 
-    session = _http(
-        base_url,
-        "POST",
-        f"/workspaces/{WORKSPACE_ID}/sessions",
-        {
-            "actor_id": "operator-a",
-            "title": "Hosted hello deployment",
-            "idempotency_key": f"{WORKSPACE_ID}:session",
-        },
-    )
-    session_id = str(session["session_id"])
+    def start_session(self, title: str) -> str:
+        session = _http(
+            self.base_url,
+            "POST",
+            f"/workspaces/{self.workspace_id}/sessions",
+            {
+                "actor_id": "operator-a",
+                "title": title,
+                "idempotency_key": f"{self.workspace_id}:{title}:session",
+            },
+        )
+        return str(session["session_id"])
 
-    desired = _http(
-        base_url,
-        "POST",
-        f"/workspaces/{WORKSPACE_ID}/graphs/desired",
-        {
-            "session_id": session_id,
-            "actor_id": "operator-a",
-            "graph": DEFAULT_GRAPH_CODEC.encode(graph),
-            "expected_desired_graph_id": None,
-            "idempotency_key": f"{WORKSPACE_ID}:desired",
-        },
-    )
-    desired_graph_id = str(desired["desired_graph_id"])
+    def set_desired_graph(
+        self,
+        *,
+        session_id: str,
+        graph: DeploymentGraph,
+        title: str,
+        expected_desired_graph_id: str | None,
+    ) -> str:
+        desired = _http(
+            self.base_url,
+            "POST",
+            f"/workspaces/{self.workspace_id}/graphs/desired",
+            {
+                "session_id": session_id,
+                "actor_id": "operator-a",
+                "graph": DEFAULT_GRAPH_CODEC.encode(graph),
+                "expected_desired_graph_id": expected_desired_graph_id,
+                "idempotency_key": f"{self.workspace_id}:{title}:desired",
+            },
+        )
+        return str(desired["desired_graph_id"])
 
-    planned = _mcp_tool(
-        base_url,
-        "command.deployment.plan",
-        {
-            "workspace_id": WORKSPACE_ID,
-            "session_id": session_id,
-            "actor_id": "operator-a",
-            "expected_current_graph_id": current_graph_id,
-            "expected_desired_graph_id": desired_graph_id,
-            "idempotency_key": f"{WORKSPACE_ID}:plan",
-        },
-    )
-    plan_id = str(planned["plan_id"])
-    if not planned.get("ready_for_execution", False):
-        raise RuntimeError(f"plan was not approval-ready: {planned}")
+    def plan_transition(
+        self,
+        *,
+        session_id: str,
+        title: str,
+        current_graph_id: str,
+        desired_graph_id: str,
+    ) -> str:
+        planned = _mcp_tool(
+            self.base_url,
+            "command.deployment.plan",
+            {
+                "workspace_id": self.workspace_id,
+                "session_id": session_id,
+                "actor_id": "operator-a",
+                "expected_current_graph_id": current_graph_id,
+                "expected_desired_graph_id": desired_graph_id,
+                "idempotency_key": f"{self.workspace_id}:{title}:plan",
+            },
+        )
+        if not planned.get("ready_for_execution", False):
+            raise RuntimeError(f"plan was not approval-ready: {planned}")
+        return str(planned["plan_id"])
 
-    requested = _http(
-        base_url,
-        "POST",
-        f"/workspaces/{WORKSPACE_ID}/plans/{plan_id}/approval",
-        {
-            "session_id": session_id,
-            "actor_id": "operator-a",
-            "actor_scopes": [PolicyScope.PLAN_REQUEST.value],
-            "idempotency_key": f"{WORKSPACE_ID}:approval-request",
-        },
-    )
-    approval_id = str(requested["request_id"])
+    def request_approval(self, *, session_id: str, title: str, plan_id: str) -> dict[str, Any]:
+        return _http(
+            self.base_url,
+            "POST",
+            f"/workspaces/{self.workspace_id}/plans/{plan_id}/approval",
+            {
+                "session_id": session_id,
+                "actor_id": "operator-a",
+                "actor_scopes": [PolicyScope.PLAN_REQUEST.value],
+                "idempotency_key": f"{self.workspace_id}:{title}:approval-request",
+            },
+        )
 
-    pending = _mcp_read(
-        base_url,
-        "read.pending-approvals",
-        {"workspace_id": WORKSPACE_ID, "limit": 10, "offset": 0},
-    )
-    if approval_id not in {item["request_id"] for item in pending["items"]}:
-        raise RuntimeError("approval request was not visible in pending queue")
+    def assert_approval_visible(self, approval_id: str, plan_id: str) -> None:
+        pending = _mcp_read(
+            self.base_url,
+            "read.pending-approvals",
+            {"workspace_id": self.workspace_id, "limit": 10, "offset": 0},
+        )
+        if approval_id not in {item["request_id"] for item in pending["items"]}:
+            raise RuntimeError("approval request was not visible in pending queue")
+        detail = _mcp_read(
+            self.base_url,
+            "read.approval-detail",
+            {"workspace_id": self.workspace_id, "approval_id": approval_id},
+        )
+        if detail["plan"]["plan_id"] != plan_id:
+            raise RuntimeError("approval detail did not expose the planned transition")
 
-    detail = _mcp_read(
-        base_url,
-        "read.approval-detail",
-        {"workspace_id": WORKSPACE_ID, "approval_id": approval_id},
-    )
-    if detail["plan"]["plan_id"] != plan_id:
-        raise RuntimeError("approval detail did not expose the planned transition")
+    def approve(self, *, session_id: str, title: str, approval: dict[str, Any]) -> None:
+        _mcp_tool(
+            self.base_url,
+            "command.approval.decide",
+            {
+                "session_id": session_id,
+                "request_id": str(approval["request_id"]),
+                "actor_id": "manager-a",
+                "actor_scopes": [approval["required_scope"]],
+                "decision": "approved",
+                "idempotency_key": f"{self.workspace_id}:{title}:approval-decision",
+            },
+        )
 
-    _mcp_tool(
+    def admit(
+        self,
+        *,
+        session_id: str,
+        title: str,
+        plan_id: str,
+        approval_id: str,
+    ) -> str:
+        admitted = _http(
+            self.base_url,
+            "POST",
+            f"/workspaces/{self.workspace_id}/plans/{plan_id}/admission",
+            {
+                "session_id": session_id,
+                "approval_request_id": approval_id,
+                "actor_id": "operator-a",
+                "actor_scopes": [PolicyScope.PLAN_EXECUTE.value],
+                "idempotency_key": f"{self.workspace_id}:{title}:admit",
+                "readiness": [],
+            },
+        )
+        return str(admitted["execution_request_id"])
+
+    def claim(self, *, title: str, request_id: str) -> str:
+        claimed = _http(
+            self.base_url,
+            "POST",
+            f"/workspaces/{self.workspace_id}/runs/{request_id}/claim",
+            {
+                "worker_id": self.worker_id,
+                "actor_scopes": [PolicyScope.EXECUTION_OPERATE.value],
+                "lease_expires_at": "2026-07-22T12:00:00Z",
+                "idempotency_key": f"{self.workspace_id}:{title}:claim",
+            },
+        )
+        return str(claimed["run_id"])
+
+    def start_run(self, *, title: str, run_id: str) -> None:
+        _http(
+            self.base_url,
+            "POST",
+            f"/workspaces/{self.workspace_id}/runs/{run_id}/start",
+            {
+                "worker_id": self.worker_id,
+                "actor_scopes": [PolicyScope.EXECUTION_OPERATE.value],
+                "idempotency_key": f"{self.workspace_id}:{title}:start",
+            },
+        )
+
+    def execute_to_completion(self, run_id: str) -> None:
+        _execute_to_completion(
+            self.base_url,
+            self.server_container,
+            run_id,
+            workspace_id=self.workspace_id,
+            worker_id=self.worker_id,
+        )
+
+    def advance_current_graph(
+        self,
+        *,
+        title: str,
+        run_id: str,
+        plan_id: str,
+        current_graph_id: str,
+        desired_graph_id: str,
+    ) -> str:
+        advanced = _http(
+            self.base_url,
+            "POST",
+            f"/workspaces/{self.workspace_id}/runs/{run_id}/advance-current-graph",
+            {
+                "plan_id": plan_id,
+                "expected_current_graph_id": current_graph_id,
+                "desired_graph_id": desired_graph_id,
+                "worker_id": self.worker_id,
+                "actor_scopes": [PolicyScope.EXECUTION_OPERATE.value],
+                "idempotency_key": f"{self.workspace_id}:{title}:advance",
+            },
+        )
+        return str(advanced["to_graph_id"])
+
+    def read_current_graph_id(self) -> str:
+        current = _http(self.base_url, "GET", f"/workspaces/{self.workspace_id}/graphs/current")
+        return str(current["graph_id"])
+
+    def read_activity(self, *, limit: int = 200) -> dict[str, Any]:
+        return _mcp_read(
+            self.base_url,
+            "read.activity",
+            {"workspace_id": self.workspace_id, "limit": limit},
+        )
+
+    def run_approved_transition(
+        self,
+        *,
+        title: str,
+        graph: DeploymentGraph,
+        current_graph_id: str,
+        expected_desired_graph_id: str | None = None,
+    ) -> HostedTransitionResult:
+        session_id = self.start_session(title)
+        desired_graph_id = self.set_desired_graph(
+            session_id=session_id,
+            graph=graph,
+            title=title,
+            expected_desired_graph_id=expected_desired_graph_id,
+        )
+        plan_id = self.plan_transition(
+            session_id=session_id,
+            title=title,
+            current_graph_id=current_graph_id,
+            desired_graph_id=desired_graph_id,
+        )
+        approval = self.request_approval(
+            session_id=session_id,
+            title=title,
+            plan_id=plan_id,
+        )
+        approval_id = str(approval["request_id"])
+        self.assert_approval_visible(approval_id, plan_id)
+        self.approve(session_id=session_id, title=title, approval=approval)
+        request_id = self.admit(
+            session_id=session_id,
+            title=title,
+            plan_id=plan_id,
+            approval_id=approval_id,
+        )
+        run_id = self.claim(title=title, request_id=request_id)
+        self.start_run(title=title, run_id=run_id)
+        self.execute_to_completion(run_id)
+        advanced_graph_id = self.advance_current_graph(
+            title=title,
+            run_id=run_id,
+            plan_id=plan_id,
+            current_graph_id=current_graph_id,
+            desired_graph_id=desired_graph_id,
+        )
+        if advanced_graph_id != desired_graph_id:
+            raise RuntimeError(
+                f"current graph did not advance: {advanced_graph_id} != {desired_graph_id}"
+            )
+        readback_graph_id = self.read_current_graph_id()
+        if readback_graph_id != desired_graph_id:
+            raise RuntimeError(f"current graph readback mismatch: {readback_graph_id}")
+        return HostedTransitionResult(
+            current_graph_id=advanced_graph_id,
+            desired_graph_id=desired_graph_id,
+            plan_id=plan_id,
+            approval_id=approval_id,
+            run_id=run_id,
+        )
+
+
+def main() -> int:
+    base_url = _required_env("CPK_HOSTED_ACTIVITY_BASE_URL").rstrip("/")
+    server_container = _required_env("CPK_HOSTED_ACTIVITY_SERVER_CONTAINER")
+    servers_repo = Path(_required_env("CPK_HOSTED_ACTIVITY_SERVERS_REPO"))
+    workflow = HostedWorkflow(
         base_url,
-        "command.approval.decide",
-        {
-            "session_id": session_id,
-            "request_id": approval_id,
-            "actor_id": "manager-a",
-            "actor_scopes": [requested["required_scope"]],
-            "decision": "approved",
-            "idempotency_key": f"{WORKSPACE_ID}:approval-decision",
-        },
+        workspace_id=WORKSPACE_ID,
+        worker_id=WORKER_ID,
+        server_container=server_container,
     )
 
-    admitted = _http(
-        base_url,
-        "POST",
-        f"/workspaces/{WORKSPACE_ID}/plans/{plan_id}/admission",
-        {
-            "session_id": session_id,
-            "approval_request_id": approval_id,
-            "actor_id": "operator-a",
-            "actor_scopes": [PolicyScope.PLAN_EXECUTE.value],
-            "idempotency_key": f"{WORKSPACE_ID}:admit",
-            "readiness": [],
-        },
-    )
-    request_id = str(admitted["execution_request_id"])
+    workflow.wait_ready()
+    product_document = _product_document(servers_repo, "hello_server")
+    graph = _single_hello_graph(product_document)
 
-    claimed = _http(
-        base_url,
-        "POST",
-        f"/workspaces/{WORKSPACE_ID}/runs/{request_id}/claim",
-        {
-            "worker_id": WORKER_ID,
-            "actor_scopes": [PolicyScope.EXECUTION_OPERATE.value],
-            "lease_expires_at": "2026-07-22T12:00:00Z",
-            "idempotency_key": f"{WORKSPACE_ID}:claim",
-        },
-    )
-    run_id = str(claimed["run_id"])
+    current_graph_id = workflow.create_workspace(name="Hosted activity smoke")
+    workflow.import_product("hello", product_document)
 
-    _http(
-        base_url,
-        "POST",
-        f"/workspaces/{WORKSPACE_ID}/runs/{run_id}/start",
-        {
-            "worker_id": WORKER_ID,
-            "actor_scopes": [PolicyScope.EXECUTION_OPERATE.value],
-            "idempotency_key": f"{WORKSPACE_ID}:start",
-        },
-    )
+    if os.environ.get("CPK_HOSTED_ACTIVITY_REGISTER_PULL_AUTHORITY") == "docker-config":
+        workflow.register_ghcr_pull_authority_from_docker_config()
 
-    _execute_to_completion(base_url, server_container, run_id)
+    workflow.run_approved_transition(
+        title="Hosted hello deployment",
+        graph=graph,
+        current_graph_id=current_graph_id,
+    )
     _assert_body("http://hello:8000/", "Hello, world!\n")
-
-    advanced = _http(
-        base_url,
-        "POST",
-        f"/workspaces/{WORKSPACE_ID}/runs/{run_id}/advance-current-graph",
-        {
-            "plan_id": plan_id,
-            "expected_current_graph_id": current_graph_id,
-            "desired_graph_id": desired_graph_id,
-            "worker_id": WORKER_ID,
-            "actor_scopes": [PolicyScope.EXECUTION_OPERATE.value],
-            "idempotency_key": f"{WORKSPACE_ID}:advance",
-        },
-    )
-    if advanced["to_graph_id"] != desired_graph_id:
-        raise RuntimeError(f"current graph did not advance: {advanced}")
-
-    current = _http(base_url, "GET", f"/workspaces/{WORKSPACE_ID}/graphs/current")
-    if current["graph_id"] != desired_graph_id:
-        raise RuntimeError(f"current graph readback mismatch: {current}")
 
     print("hosted cpk-server Docker activity smoke passed")
     return 0
 
 
-def _execute_to_completion(base_url: str, server_container: str, run_id: str) -> None:
+def _execute_to_completion(
+    base_url: str,
+    server_container: str,
+    run_id: str,
+    *,
+    workspace_id: str = WORKSPACE_ID,
+    worker_id: str = WORKER_ID,
+) -> None:
     for attempt in range(80):
-        _sync_runtime_networks(server_container)
+        _sync_runtime_networks(server_container, workspace_id=workspace_id)
         result = _mcp_tool(
             base_url,
             "command.deployment.execute",
             {
                 "run_id": run_id,
-                "worker_id": WORKER_ID,
+                "worker_id": worker_id,
                 "actor_scopes": [PolicyScope.EXECUTION_OPERATE.value],
-                "idempotency_key": f"{WORKSPACE_ID}:execute:{attempt}",
+                "idempotency_key": f"{workspace_id}:execute:{attempt}",
                 "max_effects": 1,
             },
         )
-        _sync_runtime_networks(server_container)
+        _sync_runtime_networks(server_container, workspace_id=workspace_id)
         if result["coordinator_status"] == "completed":
             return
         if result["coordinator_status"] in {"failed", "unsupported", "uncertain", "blocked"}:
-            timeline = _http(base_url, "GET", f"/workspaces/{WORKSPACE_ID}/activity")
+            timeline = _http(base_url, "GET", f"/workspaces/{workspace_id}/activity")
             raise RuntimeError(f"execution stopped with {result}; timeline={timeline}")
     raise RuntimeError("hosted activity execution did not complete")
 
 
-def _sync_runtime_networks(server_container: str) -> None:
+def _sync_runtime_networks(server_container: str, *, workspace_id: str = WORKSPACE_ID) -> None:
     import docker
     from docker.errors import APIError, NotFound
 
@@ -256,7 +423,7 @@ def _sync_runtime_networks(server_container: str) -> None:
     controller_container = socket.gethostname()
     for network in client.networks.list():
         name = network.name
-        if not name.startswith(f"cpk-net-{WORKSPACE_ID}"):
+        if not name.startswith(f"cpk-net-{workspace_id}"):
             continue
         for container in (server_container, controller_container):
             try:
