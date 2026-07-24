@@ -1,3 +1,4 @@
+import ast
 import base64
 import importlib
 import json
@@ -23,6 +24,21 @@ STORE_ENVIRONMENT = [
     "CPK_OBSERVER_STATE_DATABASE_URL",
     "CPK_GRAPH_TOPOLOGY_DATABASE_URL",
 ]
+SERVER_SOURCE = PRODUCT_SRC / "control_plane_kit_servers_cpk_server" / "server.py"
+CONCRETE_PROVIDER_IMPORT_ROOTS = {
+    "boto3",
+    "botocore",
+    "control_plane_kit_interpreters",
+    "docker",
+    "google",
+    "kubernetes",
+}
+APPROVED_PROVIDER_FUNCTIONS = {
+    "_docker_runtime_interpreter",
+    "_image_pull_credential_resolver",
+    "_product_secret_resolver",
+}
+
 
 
 class CpkServerImageBootstrapTests(unittest.TestCase):
@@ -382,10 +398,100 @@ class CpkServerImageBootstrapTests(unittest.TestCase):
                 ):
                     sys.modules.pop(name, None)
 
+    def test_runtime_provider_import_is_lazy_when_dispatch_is_disabled(self) -> None:
+        sys.path.insert(0, str(PRODUCT_SRC))
+        try:
+            sys.modules.pop("control_plane_kit_interpreters.docker", None)
+            server_module = importlib.import_module(
+                "control_plane_kit_servers_cpk_server.server"
+            )
+            sys.modules.pop("control_plane_kit_interpreters.docker", None)
+            config = server_module.CpkServerBootstrapConfiguration.from_environment(
+                {
+                    "CPK_SERVER_MODE": "execution-capable",
+                    "CPK_CONTROL_AUTH_CONFIGURED": "true",
+                    "CPK_PORT": "8080",
+                    "CPK_RUNTIME_INTERPRETERS": "none",
+                    "CPK_WORKPLACE_DATABASE_URL": "postgres://user:pass@db/cpk",
+                    "CPK_ACTIVITY_HISTORY_DATABASE_URL": "postgres://user:pass@db/cpk",
+                    "CPK_OBSERVER_STATE_DATABASE_URL": "postgres://user:pass@db/cpk",
+                    "CPK_GRAPH_TOPOLOGY_DATABASE_URL": "postgres://user:pass@db/cpk",
+                }
+            )
+
+            adapter = server_module._runtime_adapter(config)
+
+            self.assertEqual(type(adapter).__name__, "_UnsupportedExecutionAdapter")
+            self.assertNotIn("control_plane_kit_interpreters.docker", sys.modules)
+        finally:
+            sys.path.remove(str(PRODUCT_SRC))
+            for name in list(sys.modules):
+                if name == "control_plane_kit_servers_cpk_server" or name.startswith(
+                    "control_plane_kit_servers_cpk_server."
+                ):
+                    sys.modules.pop(name, None)
+
+    def test_concrete_provider_imports_are_confined_to_bootstrap_functions(self) -> None:
+        tree = ast.parse(SERVER_SOURCE.read_text(encoding="utf-8"))
+        function_stack: list[str] = []
+        violations: list[tuple[str, str, int]] = []
+
+        class ImportVisitor(ast.NodeVisitor):
+            def visit_FunctionDef(self, node: ast.FunctionDef) -> None:
+                function_stack.append(node.name)
+                self.generic_visit(node)
+                function_stack.pop()
+
+            def visit_AsyncFunctionDef(self, node: ast.AsyncFunctionDef) -> None:
+                function_stack.append(node.name)
+                self.generic_visit(node)
+                function_stack.pop()
+
+            def visit_Import(self, node: ast.Import) -> None:
+                for alias in node.names:
+                    self._record(alias.name.split(".", 1)[0], node.lineno)
+
+            def visit_ImportFrom(self, node: ast.ImportFrom) -> None:
+                if node.module:
+                    self._record(node.module.split(".", 1)[0], node.lineno)
+
+            def _record(self, root: str, line: int) -> None:
+                owner = function_stack[-1] if function_stack else "<module>"
+                if (
+                    root in CONCRETE_PROVIDER_IMPORT_ROOTS
+                    and owner not in APPROVED_PROVIDER_FUNCTIONS
+                ):
+                    violations.append((owner, root, line))
+
+        ImportVisitor().visit(tree)
+
+        self.assertEqual(violations, [])
+
+    def test_ready_route_reports_capability_not_authority_material(self) -> None:
+        source = SERVER_SOURCE.read_text(encoding="utf-8")
+        ready_start = source.index("@app.get(\"/health/ready\")")
+        ready_end = source.index("@app.post(\"/mcp\")")
+        ready_source = source[ready_start:ready_end].lower()
+
+        self.assertIn("runtime_interpreters", ready_source)
+        for forbidden in (
+            "store_endpoints",
+            "docker_config_path",
+            "product_secret_values_json",
+            "cpk_product_secret_values_json",
+            "cpk_docker_auth_config",
+            "docker_config",
+            "credential",
+            "secret",
+            "token",
+            "tls",
+            "endpoint",
+            "socket",
+        ):
+            self.assertNotIn(forbidden, ready_source)
+
     def test_hosted_process_is_fastapi_over_operations_boundary(self) -> None:
-        source = (
-            PRODUCT_SRC / "control_plane_kit_servers_cpk_server" / "server.py"
-        ).read_text(encoding="utf-8")
+        source = SERVER_SOURCE.read_text(encoding="utf-8")
 
         self.assertIn("from fastapi import FastAPI, Request", source)
         self.assertIn("uvicorn.run", source)
