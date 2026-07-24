@@ -2693,3 +2693,107 @@ Handoff:
   workspace/product/approval/run lifecycle.
 - #955 should add the smallest package-owned observer receipt evidence before
   #945 attempts the live multiplexer observer proof.
+
+## #944 Router Transition Stress
+
+#944 proved the first seeded topology transition with graph-driven HTTP
+dependency binding:
+
+```text
+hello-blue(HELLO_MESSAGE="Hello from blue")
+  -> router(active -> blue)
+
+transition:
+
+hello-green(HELLO_MESSAGE="Hello from green")
+  -> router(active -> green)
+```
+
+The initial live failure was useful. The hosted scenario reached the router, but
+the router returned the Hello descriptor default:
+
+```text
+http://router:8000/ -> "Hello, world!\n"
+```
+
+That showed the socket edge was working while the selected product-instance
+environment was not reaching the realized Hello container. The structural fix
+landed across the language/interpreter boundary:
+
+```text
+ProductInstanceConfiguration.public_environment
+  -> RuntimeProductMaterial.public_environment
+    -> RuntimeEffectRequest descriptor
+      -> DockerRuntimeInterpreter container environment
+```
+
+The important decision is that Docker now uses the selected runtime material,
+not the product descriptor defaults, when it starts a node. The descriptor still
+defines the contract; the instance supplies the chosen public values. This keeps
+the blue/green assertion honest without manual shell environment injection or
+product-specific branches in core, operations, or the Docker interpreter.
+
+Validation evidence:
+
+```text
+control-plane-kit:
+  git diff --check
+  ./control-plane-kit-core/test.sh
+    395 tests, compileall, import check
+  ./control-plane-kit-operations/test.sh
+    132 tests, compileall, import check
+  ./test.sh
+    1232 tests
+
+control-plane-kit-interpreters:
+  git diff --check
+  ./test.sh
+    68 tests
+
+control-plane-kit-servers:
+  git diff --check
+  python3 -m unittest \
+    products.cpk_server.tests.test_image_bootstrap.CpkServerImageBootstrapTests.\
+test_hosted_activity_smoke_uses_published_image_and_docker_runtime_authority \
+    products.cpk_server.tests.test_image_bootstrap.CpkServerImageBootstrapTests.\
+test_hosted_activity_controller_drives_public_workflow_over_http_and_mcp -v
+  python3 -m compileall scripts/cpk_server_hosted_activity.py
+  CPK_HOSTED_ACTIVITY_SCENARIO=router-transition \
+    scripts/cpk_server_hosted_activity_smoke.sh
+    hosted cpk-server Docker activity smoke passed: router-transition
+    control-plane-kit-servers Docker residue audit passed
+  ./test.sh
+```
+
+Published cpk-server coordinate after #944:
+
+```text
+source commit:
+  794fb88033115080a5aad829a0e6e8a47dd350c2
+
+image:
+  ghcr.io/openj92/control-plane-kit-servers/cpk-server@sha256:112cad7c5b52e456cc6ea38980d04900de46f25ccdbfe40918e481d83a31ef19
+
+catalogue checksum:
+  f8aa411067e8937971ebe4763d67489d8b177c7e2908c101a4c2af0bbdd96001
+```
+
+Review findings:
+
+- Router target binding remains derived from `SocketConnection` data.
+- Hello message binding now comes from product instance public environment.
+- The smoke script does not inject `ACTIVE_TARGET_URL` or `HELLO_MESSAGE`.
+- The hosted execute MCP call uses a longer client timeout because it may pull
+  and reconcile Docker resources; this is a boundary timeout, not a semantic
+  retry or assertion weakening.
+- A transient local image smoke once failed to read a Docker-published host port
+  during the full suite. The isolated rerun and final full suite passed, and the
+  final acceptance evidence uses the published router-transition coordinate.
+
+Handoff:
+
+- #955 should add package-owned observer receipt evidence before multiplexer
+  observer delivery is asserted live.
+- #945 should then prove multiplexer primary/observer binding and Postgres
+  data-service behavior using the seeded products and the same hosted public
+  workflow controller.
