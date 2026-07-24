@@ -2647,3 +2647,49 @@ Handoff:
   affected product image if its runtime behavior changes.
 - #945 should then prove multiplexer primary/observer binding and Postgres
   data-service retained/secret behavior.
+
+## #943 Hosted Workflow Helpers
+
+#943 moved the hosted cpk-server ACTIVITY smoke script from a single inline
+workflow into a reusable public-boundary controller in the server-products
+repository:
+
+```text
+HostedWorkflow
+  -> create workspace
+  -> import products
+  -> start session
+  -> set desired graph
+  -> plan
+  -> request/list/detail/decide approval
+  -> admit
+  -> claim
+  -> start run
+  -> execute to completion
+  -> advance current graph
+  -> read current graph
+```
+
+The helper remains intentionally outside cpk-server internals. It talks over
+HTTP and MCP only, carries `workspace_id` and `worker_id` through the execution
+polling loop, and still relies on the same hosted Docker acceptance script for
+network attachment during local-Docker smoke tests.
+
+Validation:
+
+```text
+control-plane-kit-servers:
+  python3 -m unittest products.cpk_server.tests.test_image_bootstrap.CpkServerImageBootstrapTests.test_hosted_activity_controller_drives_public_workflow_over_http_and_mcp -v
+  python3 -m compileall scripts/cpk_server_hosted_activity.py
+  PYTHONPATH=src python3 scripts/apply_coordinates.py --check
+  git diff --check
+  ./test.sh
+  scripts/cpk_server_hosted_activity_smoke.sh
+```
+
+Handoff:
+
+- #944 can now drive blue/green router transitions without duplicating the
+  workspace/product/approval/run lifecycle.
+- #955 should add the smallest package-owned observer receipt evidence before
+  #945 attempts the live multiplexer observer proof.
