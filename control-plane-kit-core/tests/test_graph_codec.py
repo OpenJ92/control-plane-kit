@@ -16,6 +16,7 @@ from control_plane_kit_core.algebra import (
 )
 from control_plane_kit_core.environment import SocketDerivedEnvironmentBinding
 from control_plane_kit_core.lifecycle import OWNED_EPHEMERAL
+from control_plane_kit_core.runtime_authority import RuntimeAuthorityReference
 from control_plane_kit_core.topology import (
     Endpoint,
     GraphDescriptorCodec,
@@ -120,6 +121,47 @@ class GraphDescriptorCodecTests(unittest.TestCase):
             restored.node("instance-a").block_spec,
             ExampleInstanceSpec,
         )
+
+    def test_runtime_authority_ref_round_trips_as_secret_free_graph_data(self) -> None:
+        app = ApplicationBlock(
+            ExampleInstanceSpec("instance-a", public_provider="operator"),
+            PureImplementation("instance", {"operator": "http://instance"}),
+            BlockSockets(providers=(ProviderSocket("operator", Protocol.HTTP),)),
+        )
+        graph = compile_topology(
+            DeploymentTopology(
+                "instance",
+                DockerRuntime(
+                    authority_ref=RuntimeAuthorityReference("mac-mini-docker"),
+                    children=(app,),
+                ),
+            )
+        )
+        codec = GraphDescriptorCodec(spec_codecs=(ExampleInstanceSpecCodec(),))
+
+        descriptor = codec.encode(graph)
+        restored = codec.decode(descriptor)
+
+        self.assertEqual(
+            descriptor["runtimes"]["docker"]["authority_ref"],
+            {"reference_id": "mac-mini-docker"},
+        )
+        self.assertEqual(
+            restored.runtimes["docker"].authority_ref,
+            RuntimeAuthorityReference("mac-mini-docker"),
+        )
+
+    def test_runtime_authority_ref_rejects_material_in_graph_descriptor(self) -> None:
+        codec = GraphDescriptorCodec()
+        descriptor = codec.encode(app_with_database_graph())
+
+        self.assertIsNone(descriptor["runtimes"]["docker"]["authority_ref"])
+        descriptor["runtimes"]["docker"]["authority_ref"] = {
+            "reference_id": "tcp://mac-mini.local:2376"
+        }
+
+        with self.assertRaises(MalformedGraphDescriptor):
+            codec.decode(descriptor)
 
     def test_secret_reference_address_round_trips_without_secret_resolution(self) -> None:
         graph = app_with_database_graph()

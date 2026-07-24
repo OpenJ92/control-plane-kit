@@ -32,6 +32,11 @@ from control_plane_kit_core.lifecycle import (
     ResourceOwnership,
     ResourcePersistence,
 )
+from control_plane_kit_core.runtime_authority import (
+    RuntimeAuthorityReference,
+    RuntimeAuthorityReferenceCodec,
+    RuntimeEffectContractError,
+)
 from control_plane_kit_core.topology.graph import (
     DeploymentGraph,
     Edge,
@@ -206,6 +211,7 @@ class GraphDescriptorCodec:
             runtime_id=runtime_id,
             kind=kind,
             children=tuple(str(child) for child in _list(descriptor.get("children", []))),
+            authority_ref=_runtime_authority_ref(descriptor.get("authority_ref")),
             metadata=_string_mapping(descriptor.get("metadata", {}), "runtime.metadata"),
             lifecycle=_lifecycle(descriptor.get("lifecycle"), "runtime.lifecycle"),
         )
@@ -453,6 +459,17 @@ def _lifecycle(value: object, path: str) -> ResourceLifecycle:
     except ValueError as error:
         raise UnknownGraphVariant(f"unknown resource lifecycle variant: {error}") from error
     return ResourceLifecycle(ownership, compute, data)
+
+
+def _runtime_authority_ref(value: object) -> RuntimeAuthorityReference | None:
+    if value is None:
+        return None
+    try:
+        return RuntimeAuthorityReferenceCodec().decode(
+            _mapping(value, "runtime.authority_ref")
+        )
+    except RuntimeEffectContractError as error:
+        raise MalformedGraphDescriptor(str(error)) from error
 
 
 def _endpoint_address(value: object) -> LiteralAddress | SecretReferenceAddress:

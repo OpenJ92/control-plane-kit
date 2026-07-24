@@ -122,6 +122,14 @@ def _diff_runtimes(
                     StringTupleValue(after.children),
                 )
             )
+        if before.authority_ref != after.authority_ref:
+            changes.append(
+                ModifiedChange(
+                    FieldSubject(subject, StructuralField.RUNTIME_AUTHORITY),
+                    MetadataValue(_runtime_authority_value(before)),
+                    MetadataValue(_runtime_authority_value(after)),
+                )
+            )
         if before.metadata != after.metadata:
             changes.append(
                 ModifiedChange(
@@ -138,6 +146,14 @@ def _diff_runtimes(
                     MetadataValue(after.lifecycle.descriptor()),
                 )
             )
+
+
+def _runtime_authority_value(runtime: RuntimeRecord) -> dict[str, object]:
+    return {
+        "authority_ref": None
+        if runtime.authority_ref is None
+        else runtime.authority_ref.descriptor()
+    }
 
 
 def _diff_nodes(

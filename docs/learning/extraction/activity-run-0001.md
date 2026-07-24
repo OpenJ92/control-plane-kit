@@ -3017,3 +3017,49 @@ git diff --check
 ./control-plane-kit-core/test.sh
   397 tests, compileall, import check
 ```
+
+## Runtime Authority: Graph Reference
+
+#972 propagated the pure authority reference into the runtime graph language:
+
+```python
+DockerRuntime(
+    runtime_id="remote-mac-mini",
+    authority_ref=RuntimeAuthorityReference("mac-mini-docker"),
+    children=(api,),
+)
+```
+
+The compiled graph now preserves the reference on `RuntimeRecord`, and the
+durable graph descriptor carries:
+
+```python
+"authority_ref": {"reference_id": "mac-mini-docker"}
+```
+
+An omitted authority remains `None`, preserving the existing ambient/local
+Docker acceptance path without pretending local Docker is the semantic default.
+Changing the reference is now an explicit graph diff field:
+
+```text
+StructuralField.RUNTIME_AUTHORITY
+```
+
+Registration is still not validated by core. That belongs to operations in
+#963. Core only proves the reference is well-formed, JSON-shaped, and
+secret-free.
+
+Validation evidence:
+
+```text
+cd control-plane-kit-core && \
+  PYTHONPATH=src python3 -m unittest \
+    tests.test_runtime_effects \
+    tests.test_graph_codec \
+    tests.test_graph_diff \
+    tests.test_milestone_closeout
+  35 tests
+git diff --check
+./control-plane-kit-core/test.sh
+  400 tests, compileall, import check
+```
