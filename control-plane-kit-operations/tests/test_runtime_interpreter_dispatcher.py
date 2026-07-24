@@ -37,6 +37,7 @@ from control_plane_kit_core.probe_intents import (
     LiteralEndpointMaterial,
     RuntimeEndpointObservation,
 )
+from control_plane_kit_core.runtime_authority import RuntimeAuthorityReference
 from control_plane_kit_core.runtime_effects import (
     RuntimeEffectFailure,
     RuntimeEffectRequest,
@@ -50,6 +51,10 @@ from control_plane_kit_operations.coordinator import (
 )
 from control_plane_kit_operations.lifecycle import ExecutionWorkerAuthority
 from control_plane_kit_operations.products import InlineDescriptorSource, RegisteredProduct
+from control_plane_kit_operations.runtime_authorities import (
+    LocalDockerSocketAuthority,
+    RegisteredRuntimeAuthority,
+)
 from control_plane_kit_operations.records import (
     ActivityEventRecord,
     ActivityPlanRecord,
@@ -79,6 +84,24 @@ class RecordingInterpreter:
         return self.result or RuntimeEffectResult.succeeded(
             request.effect_id,
             evidence={"interpreter": self.name},
+        )
+
+
+class AuthorityAwareRecordingInterpreter(RecordingInterpreter):
+    def __init__(self, name: str, result: RuntimeEffectResult | None = None) -> None:
+        super().__init__(name, result)
+        self.authorities: list[RegisteredRuntimeAuthority] = []
+
+    def execute_with_authority(
+        self,
+        request: RuntimeEffectRequest,
+        authority: RegisteredRuntimeAuthority,
+    ) -> RuntimeEffectResult:
+        self.requests.append(request)
+        self.authorities.append(authority)
+        return self.result or RuntimeEffectResult.succeeded(
+            request.effect_id,
+            evidence={"authority_ref": authority.authority_ref.reference_id},
         )
 
 
@@ -166,6 +189,66 @@ class RuntimeInterpreterDispatcherTests(unittest.TestCase):
                 "operation": "StartRuntime",
                 "runtime_kind": "aws",
             },
+        )
+        self.assertEqual(docker.requests, [])
+
+    def test_registered_runtime_authority_is_supplied_to_authority_aware_interpreter(self) -> None:
+        docker = AuthorityAwareRecordingInterpreter("docker")
+        dispatcher = RuntimeInterpreterDispatcher({RuntimeKind.DOCKER: docker})
+        authority = _registered_runtime_authority()
+        context = context_for(
+            StartRuntime(RuntimeTarget("runtime-a")),
+            authority_ref=authority.authority_ref,
+            runtime_authorities=(authority,),
+        )
+
+        outcome = dispatcher.execute(context)
+
+        self.assertEqual(outcome.kind.name, "SUCCEEDED")
+        self.assertEqual(
+            outcome.evidence.descriptor(),
+            {"authority_ref": "local-docker"},
+        )
+        self.assertEqual(len(docker.requests), 1)
+        self.assertEqual(docker.requests[0].authority_ref, RuntimeAuthorityReference("local-docker"))
+        self.assertEqual(docker.authorities, [authority])
+
+    def test_missing_registered_runtime_authority_fails_before_interpreter_io(self) -> None:
+        docker = AuthorityAwareRecordingInterpreter("docker")
+        dispatcher = RuntimeInterpreterDispatcher({RuntimeKind.DOCKER: docker})
+        context = context_for(
+            StartRuntime(RuntimeTarget("runtime-a")),
+            authority_ref=RuntimeAuthorityReference("missing-docker"),
+            runtime_authorities=(),
+        )
+
+        outcome = dispatcher.execute(context)
+
+        self.assertEqual(outcome.kind.name, "UNSUPPORTED")
+        self.assertIsNotNone(outcome.failure)
+        assert outcome.failure is not None
+        self.assertEqual(outcome.failure.code, "runtime.authority-missing")
+        self.assertEqual(docker.requests, [])
+        self.assertEqual(docker.authorities, [])
+
+    def test_authority_ref_requires_authority_aware_interpreter(self) -> None:
+        docker = RecordingInterpreter("docker")
+        dispatcher = RuntimeInterpreterDispatcher({RuntimeKind.DOCKER: docker})
+        authority = _registered_runtime_authority()
+        context = context_for(
+            StartRuntime(RuntimeTarget("runtime-a")),
+            authority_ref=authority.authority_ref,
+            runtime_authorities=(authority,),
+        )
+
+        outcome = dispatcher.execute(context)
+
+        self.assertEqual(outcome.kind.name, "UNSUPPORTED")
+        self.assertIsNotNone(outcome.failure)
+        assert outcome.failure is not None
+        self.assertEqual(
+            outcome.failure.code,
+            "runtime.authority-interpreter-unsupported",
         )
         self.assertEqual(docker.requests, [])
 
@@ -283,6 +366,8 @@ def context_for(
     base_kind: RuntimeKind = RuntimeKind.DOCKER,
     desired_kind: RuntimeKind = RuntimeKind.DOCKER,
     base_graph: DeploymentGraph | None = None,
+    authority_ref: RuntimeAuthorityReference | None = None,
+    runtime_authorities: tuple[RegisteredRuntimeAuthority, ...] = (),
 ) -> ActivityRealizationContext:
     activity = PlannedActivity(ActivityId("activity-a"), operation)
     plan = ActivityPlan((activity,))
@@ -322,7 +407,7 @@ def context_for(
         ),
         desired_graph=graph_version_record_from_graph(
             "graph-desired",
-            graph_with_node(desired_kind),
+            graph_with_node(desired_kind, authority_ref=authority_ref),
             version=2,
         ),
         registered_products=(_registered_product(),),
@@ -330,6 +415,7 @@ def context_for(
             "worker-a",
             (PolicyScope.EXECUTION_OPERATE,),
         ),
+        runtime_authorities=runtime_authorities,
         intent_event=ActivityEventRecord(
             "event-intent",
             "run-a",
@@ -357,7 +443,11 @@ def graph_version_record_from_graph(
     )
 
 
-def graph_with_node(kind: RuntimeKind) -> DeploymentGraph:
+def graph_with_node(
+    kind: RuntimeKind,
+    *,
+    authority_ref: RuntimeAuthorityReference | None = None,
+) -> DeploymentGraph:
     reference = ProductReference.from_document(_registered_product().descriptor_document)
     return DeploymentGraph(
         "graph",
@@ -380,6 +470,7 @@ def graph_with_node(kind: RuntimeKind) -> DeploymentGraph:
                 "runtime-a",
                 kind,
                 children=("api",),
+                authority_ref=authority_ref,
             )
         },
     )
@@ -394,6 +485,17 @@ def graph_without_node(kind: RuntimeKind) -> DeploymentGraph:
                 kind,
             )
         },
+    )
+
+
+def _registered_runtime_authority() -> RegisteredRuntimeAuthority:
+    return RegisteredRuntimeAuthority.from_authority(
+        workspace_id="workspace-a",
+        authority_ref=RuntimeAuthorityReference("local-docker"),
+        runtime_kind=RuntimeKind.DOCKER,
+        authority=LocalDockerSocketAuthority(),
+        admitted_by="operator-a",
+        admitted_at="2026-07-22T09:30:00Z",
     )
 
 

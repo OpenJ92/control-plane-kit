@@ -46,6 +46,9 @@ from control_plane_kit_operations.products import (
     RegisteredImagePullAuthority,
     RegisteredProduct,
 )
+from control_plane_kit_operations.runtime_authorities import (
+    RegisteredRuntimeAuthority,
+)
 from control_plane_kit_operations.records import (
     ActivityEventRecord,
     ActivityPlanRecord,
@@ -121,6 +124,7 @@ class ActivityRealizationContext:
     authority: ExecutionWorkerAuthority
     intent_event: ActivityEventRecord
     image_pull_authorities: tuple[RegisteredImagePullAuthority, ...] = ()
+    runtime_authorities: tuple[RegisteredRuntimeAuthority, ...] = ()
 
     @property
     def plan(self) -> ActivityPlan:
@@ -152,6 +156,15 @@ class ActivityRealizationContext:
                 "realization image pull authorities must be RegisteredImagePullAuthority values"
             )
         object.__setattr__(self, "image_pull_authorities", pull_authorities)
+        runtime_authorities = tuple(self.runtime_authorities)
+        if not all(
+            isinstance(value, RegisteredRuntimeAuthority)
+            for value in runtime_authorities
+        ):
+            raise InvalidOperationCommand(
+                "realization runtime authorities must be RegisteredRuntimeAuthority values"
+            )
+        object.__setattr__(self, "runtime_authorities", runtime_authorities)
         if not isinstance(self.authority, ExecutionWorkerAuthority):
             raise InvalidOperationCommand("realization authority must be ExecutionWorkerAuthority")
         if not isinstance(self.intent_event, ActivityEventRecord):
@@ -178,6 +191,11 @@ class ActivityRealizationContext:
             if pull_authority.workspace_id != workspace_id:
                 raise InvalidOperationCommand(
                     "realization image pull authority must match workspace"
+                )
+        for runtime_authority in runtime_authorities:
+            if runtime_authority.workspace_id != workspace_id:
+                raise InvalidOperationCommand(
+                    "realization runtime authority must match workspace"
                 )
         if self.intent_event.run_id != self.run.run_id:
             raise InvalidOperationCommand("realization intent must match run")
@@ -266,6 +284,16 @@ class RuntimeEffectInterpreter(Protocol):
     ) -> RuntimeEffectResult: ...
 
 
+class RuntimeAuthorityAwareInterpreter(Protocol):
+    """Runtime interpreter that can consume admitted authority material."""
+
+    def execute_with_authority(
+        self,
+        request: RuntimeEffectRequest,
+        authority: RegisteredRuntimeAuthority,
+    ) -> RuntimeEffectResult: ...
+
+
 @dataclass(frozen=True)
 class RuntimeInterpreterDispatcher:
     """Operations-owned adapter that dispatches pinned work by runtime kind."""
@@ -313,9 +341,47 @@ class RuntimeInterpreterDispatcher:
                 f"no runtime interpreter is configured for {runtime_kind.value!r}",
                 runtime_kind=runtime_kind,
             )
-        result = interpreter.execute(request)
+        authority = _runtime_authority_for_request(context, request)
+        if authority is _MISSING_RUNTIME_AUTHORITY:
+            return _unsupported_dispatch(
+                context,
+                "runtime.authority-missing",
+                "runtime authority reference has no active registration",
+                runtime_kind=runtime_kind,
+            )
+        if authority is None:
+            result = interpreter.execute(request)
+        else:
+            execute_with_authority = getattr(interpreter, "execute_with_authority", None)
+            if execute_with_authority is None:
+                return _unsupported_dispatch(
+                    context,
+                    "runtime.authority-interpreter-unsupported",
+                    "runtime interpreter cannot consume registered runtime authority",
+                    runtime_kind=runtime_kind,
+                )
+            result = execute_with_authority(request, authority)
         return _outcome_from_runtime_result(context, result)
 
+
+
+_MISSING_RUNTIME_AUTHORITY = object()
+
+
+def _runtime_authority_for_request(
+    context: ActivityRealizationContext,
+    request: RuntimeEffectRequest,
+) -> RegisteredRuntimeAuthority | None | object:
+    authority_ref = request.authority_ref
+    if authority_ref is None:
+        return None
+    for authority in context.runtime_authorities:
+        if (
+            authority.authority_ref == authority_ref
+            and authority.runtime_kind is request.runtime_kind
+        ):
+            return authority
+    return _MISSING_RUNTIME_AUTHORITY
 
 @dataclass(frozen=True)
 class ExecutionCoordinatorResult:
@@ -621,6 +687,9 @@ class ExecutionCoordinator:
             image_pull_authorities = stores.image_pull_authorities.list_active(
                 request.identity.workspace_id
             )
+            runtime_authorities = stores.runtime_authorities.list_active(
+                request.identity.workspace_id
+            )
             events = stores.execution.events_for_run(run.run_id)
         journal = activity_journal_events(events)
         projection = project_activity_journal(plan_record.plan, journal)
@@ -633,6 +702,7 @@ class ExecutionCoordinator:
             desired_graph=desired_graph,
             registered_products=registered_products,
             image_pull_authorities=image_pull_authorities,
+            runtime_authorities=runtime_authorities,
             events=events,
             projection=projection,
             schedule=schedule,
@@ -653,6 +723,7 @@ class _CoordinatorContext:
     desired_graph: GraphVersionRecord
     registered_products: tuple[RegisteredProduct, ...]
     image_pull_authorities: tuple[RegisteredImagePullAuthority, ...]
+    runtime_authorities: tuple[RegisteredRuntimeAuthority, ...]
     events: tuple[ActivityEventRecord, ...]
     projection: SagaJournalProjection
     schedule: ExecutionSchedule
@@ -682,6 +753,11 @@ class _CoordinatorContext:
                 raise ExecutionCoordinatorConflict(
                     "registered image pull authority must match workspace"
                 )
+        for runtime_authority in self.runtime_authorities:
+            if runtime_authority.workspace_id != workspace_id:
+                raise ExecutionCoordinatorConflict(
+                    "registered runtime authority must match workspace"
+                )
 
     @property
     def plan(self) -> ActivityPlan:
@@ -703,6 +779,7 @@ class _CoordinatorContext:
             authority=self.authority,
             intent_event=intent_event,
             image_pull_authorities=self.image_pull_authorities,
+            runtime_authorities=self.runtime_authorities,
         )
 
 
