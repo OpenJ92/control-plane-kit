@@ -188,6 +188,7 @@ def main() -> int:
     )
 
     _execute_to_completion(base_url, parent_container, run_id)
+    _assert_parent_observations(base_url, run_id)
     _assert_child_health()
 
     advanced = _http(
@@ -266,6 +267,103 @@ def _execute_to_completion(base_url: str, parent_container: str, run_id: str) ->
             timeline = _http(base_url, "GET", f"/workspaces/{WORKSPACE_ID}/activity")
             raise RuntimeError(f"recursive execution stopped with {result}; timeline={timeline}")
     raise RuntimeError("recursive activity execution did not complete")
+
+
+def _assert_parent_observations(base_url: str, run_id: str) -> None:
+    timeline = _mcp_read(
+        base_url,
+        "read.activity",
+        {"workspace_id": WORKSPACE_ID, "limit": 200},
+    )
+    events = _events_for_run(timeline, run_id)
+    _assert_step_evidence(
+        events,
+        node_id="child-postgres",
+        action="created",
+        image_contains="docker.io/library/postgres@sha256:",
+    )
+    _assert_health_evidence(
+        events,
+        node_id="child-postgres",
+        capability="postgres",
+        expected_checks={"select-one"},
+    )
+    _assert_step_evidence(
+        events,
+        node_id="child-cpk",
+        action="created",
+        image_contains="ghcr.io/openj92/control-plane-kit-servers/cpk-server@sha256:",
+    )
+    _assert_health_evidence(
+        events,
+        node_id="child-cpk",
+        capability="http",
+        expected_checks={"live", "ready"},
+    )
+
+
+def _events_for_run(timeline: dict[str, Any], run_id: str) -> list[dict[str, Any]]:
+    for session in timeline.get("sessions", []):
+        for plan in session.get("plans", []):
+            for run in plan.get("runs", []):
+                if run.get("run_id") == run_id:
+                    events = run.get("events")
+                    if isinstance(events, list):
+                        return events
+    raise RuntimeError(f"parent activity timeline did not expose run {run_id}")
+
+
+def _assert_step_evidence(
+    events: list[dict[str, Any]],
+    *,
+    node_id: str,
+    action: str,
+    image_contains: str,
+) -> None:
+    for event in events:
+        if event.get("event_type") != "step_succeeded":
+            continue
+        payload = event.get("payload", {})
+        if payload.get("node_id") != node_id:
+            continue
+        if payload.get("action") != action:
+            continue
+        if image_contains not in str(payload.get("image", "")):
+            raise RuntimeError(f"parent recorded wrong image evidence for {node_id}: {payload}")
+        if not str(payload.get("container", "")).startswith(
+            f"cpk-node-{WORKSPACE_ID}-{node_id}-"
+        ):
+            raise RuntimeError(f"parent recorded wrong container evidence for {node_id}: {payload}")
+        return
+    raise RuntimeError(f"parent did not record {action} evidence for {node_id}")
+
+
+def _assert_health_evidence(
+    events: list[dict[str, Any]],
+    *,
+    node_id: str,
+    capability: str,
+    expected_checks: set[str],
+) -> None:
+    observed: set[str] = set()
+    for event in events:
+        if event.get("event_type") != "step_succeeded":
+            continue
+        payload = event.get("payload", {})
+        if payload.get("node_id") != node_id:
+            continue
+        if payload.get("action") != "verified-healthy":
+            continue
+        for check in payload.get("checks", []):
+            identity = check.get("identity", {})
+            if check.get("capability") != capability:
+                continue
+            if check.get("outcome") != "passed":
+                raise RuntimeError(f"parent recorded failed health evidence for {node_id}: {check}")
+            observed.add(str(identity.get("check_id")))
+    missing = expected_checks.difference(observed)
+    if missing:
+        raise RuntimeError(f"parent did not record health evidence for {node_id}: {missing}")
 
 
 def _sync_runtime_networks(parent_container: str) -> None:
