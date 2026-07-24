@@ -13,6 +13,7 @@ from control_plane_kit_core.products import (
     ProductIdentity,
     ProductRuntimeContract,
 )
+from control_plane_kit_core.runtime_effects import ImagePullAuthority
 from control_plane_kit_core.types import Protocol
 from control_plane_kit_operations.postgres import (
     PostgresUnitOfWork,
@@ -21,8 +22,11 @@ from control_plane_kit_operations.postgres import (
 from control_plane_kit_operations.products import (
     CatalogueDescriptorSource,
     DescriptorSourceCodec,
+    ImagePullAuthorityRegistrationService,
     InlineDescriptorSource,
     ImportProductDescriptorCommand,
+    RegisterImagePullAuthorityCommand,
+    RegisteredImagePullAuthorityStatus,
     ProductRegistrationConflict,
     ProductRegistrationService,
     RegisteredProductStatus,
@@ -199,6 +203,101 @@ class RegisteredProductStoreTests(unittest.TestCase):
             )
             self.assertEqual(revoked.status, RegisteredProductStatus.REVOKED)
 
+    def test_service_registers_workspace_scoped_image_pull_authority(self) -> None:
+        service = ImagePullAuthorityRegistrationService(self.unit_of_work)
+        authority = self.pull_authority("openj92/control-plane-kit-servers")
+
+        registered = service.register(
+            RegisterImagePullAuthorityCommand(
+                workspace_id="workspace-a",
+                authority=authority,
+                admitted_by="operator-a",
+                admitted_at="2026-07-22T12:00:00Z",
+            )
+        )
+
+        self.assertEqual(registered.workspace_id, "workspace-a")
+        self.assertEqual(registered.authority, authority)
+        self.assertEqual(registered.status, RegisteredImagePullAuthorityStatus.ACTIVE)
+        with self.unit_of_work() as unit_of_work:
+            self.assertEqual(
+                unit_of_work.stores.image_pull_authorities.list_active("workspace-a"),
+                (registered,),
+            )
+            self.assertEqual(
+                unit_of_work.stores.image_pull_authorities.list_active("workspace-b"),
+                (),
+            )
+
+    def test_authority_registration_is_idempotent_and_replacement_is_explicit(self) -> None:
+        service = ImagePullAuthorityRegistrationService(self.unit_of_work)
+        first = self.pull_authority("openj92/control-plane-kit-servers")
+        changed = ImagePullAuthority(
+            registry="ghcr.io",
+            repository="openj92/control-plane-kit-servers",
+            credential_reference="secret://local/workspace-a/other-ghcr-token",
+        )
+        command = RegisterImagePullAuthorityCommand(
+            workspace_id="workspace-a",
+            authority=first,
+            admitted_by="operator-a",
+            admitted_at="2026-07-22T12:00:00Z",
+        )
+
+        registered = service.register(command)
+        self.assertEqual(service.register(command), registered)
+        with self.assertRaisesRegex(ProductRegistrationConflict, "replacement"):
+            service.register(
+                RegisterImagePullAuthorityCommand(
+                    workspace_id="workspace-a",
+                    authority=changed,
+                    admitted_by="operator-a",
+                    admitted_at="2026-07-22T12:05:00Z",
+                )
+            )
+
+    def test_revoked_image_pull_authority_is_not_selectable(self) -> None:
+        service = ImagePullAuthorityRegistrationService(self.unit_of_work)
+        registered = service.register(
+            RegisterImagePullAuthorityCommand(
+                workspace_id="workspace-a",
+                authority=self.pull_authority("openj92/control-plane-kit-servers"),
+                admitted_by="operator-a",
+                admitted_at="2026-07-22T12:00:00Z",
+            )
+        )
+
+        service.revoke(
+            workspace_id="workspace-a",
+            authority_id=registered.authority_id,
+        )
+
+        with self.unit_of_work() as unit_of_work:
+            self.assertEqual(
+                unit_of_work.stores.image_pull_authorities.list_active("workspace-a"),
+                (),
+            )
+            revoked = unit_of_work.stores.image_pull_authorities.get(
+                "workspace-a",
+                registered.authority_id,
+            )
+            self.assertEqual(revoked.status, RegisteredImagePullAuthorityStatus.REVOKED)
+
+    def test_authority_store_writes_roll_back_when_service_does_not_commit(self) -> None:
+        with self.unit_of_work() as unit_of_work:
+            unit_of_work.stores.image_pull_authorities.register(
+                workspace_id="workspace-a",
+                authority=self.pull_authority("openj92/control-plane-kit-servers"),
+                admitted_by="operator-a",
+                admitted_at="2026-07-22T12:00:00Z",
+            )
+
+        with self.unit_of_work() as unit_of_work:
+            self.assertEqual(
+                unit_of_work.stores.image_pull_authorities.list_active("workspace-a"),
+                (),
+            )
+
     def document(self, name: str, *, image_digit: str):
         product = ContainerServerProduct(
             identity=ProductIdentity("cpk-servers", name, 1),
@@ -215,6 +314,13 @@ class RegisteredProductStoreTests(unittest.TestCase):
             description="Server product used for operations registration tests.",
         )
         return ProductDescriptorCodec().encode_document(product)
+
+    def pull_authority(self, repository: str | None) -> ImagePullAuthority:
+        return ImagePullAuthority(
+            registry="ghcr.io",
+            repository=repository,
+            credential_reference="secret://local/workspace-a/ghcr-read-token",
+        )
 
     def _row_count(self) -> int:
         return self.connection.execute(

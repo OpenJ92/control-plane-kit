@@ -42,7 +42,10 @@ from control_plane_kit_operations.lifecycle import (
     RunLifecycleCommandService,
     RunLifecycleConflict,
 )
-from control_plane_kit_operations.products import RegisteredProduct
+from control_plane_kit_operations.products import (
+    RegisteredImagePullAuthority,
+    RegisteredProduct,
+)
 from control_plane_kit_operations.records import (
     ActivityEventRecord,
     ActivityPlanRecord,
@@ -117,6 +120,7 @@ class ActivityRealizationContext:
     registered_products: tuple[RegisteredProduct, ...]
     authority: ExecutionWorkerAuthority
     intent_event: ActivityEventRecord
+    image_pull_authorities: tuple[RegisteredImagePullAuthority, ...] = ()
 
     @property
     def plan(self) -> ActivityPlan:
@@ -139,6 +143,15 @@ class ActivityRealizationContext:
         if not all(isinstance(value, RegisteredProduct) for value in products):
             raise InvalidOperationCommand("realization products must be RegisteredProduct values")
         object.__setattr__(self, "registered_products", products)
+        pull_authorities = tuple(self.image_pull_authorities)
+        if not all(
+            isinstance(value, RegisteredImagePullAuthority)
+            for value in pull_authorities
+        ):
+            raise InvalidOperationCommand(
+                "realization image pull authorities must be RegisteredImagePullAuthority values"
+            )
+        object.__setattr__(self, "image_pull_authorities", pull_authorities)
         if not isinstance(self.authority, ExecutionWorkerAuthority):
             raise InvalidOperationCommand("realization authority must be ExecutionWorkerAuthority")
         if not isinstance(self.intent_event, ActivityEventRecord):
@@ -161,6 +174,11 @@ class ActivityRealizationContext:
         for product in products:
             if product.workspace_id != workspace_id:
                 raise InvalidOperationCommand("realization product must match workspace")
+        for pull_authority in pull_authorities:
+            if pull_authority.workspace_id != workspace_id:
+                raise InvalidOperationCommand(
+                    "realization image pull authority must match workspace"
+                )
         if self.intent_event.run_id != self.run.run_id:
             raise InvalidOperationCommand("realization intent must match run")
         if self.intent_event.kind is not ActivityEventKind.STEP_STARTED:
@@ -600,6 +618,9 @@ class ExecutionCoordinator:
             registered_products = stores.registered_products.list_active(
                 request.identity.workspace_id
             )
+            image_pull_authorities = stores.image_pull_authorities.list_active(
+                request.identity.workspace_id
+            )
             events = stores.execution.events_for_run(run.run_id)
         journal = activity_journal_events(events)
         projection = project_activity_journal(plan_record.plan, journal)
@@ -611,6 +632,7 @@ class ExecutionCoordinator:
             base_graph=base_graph,
             desired_graph=desired_graph,
             registered_products=registered_products,
+            image_pull_authorities=image_pull_authorities,
             events=events,
             projection=projection,
             schedule=schedule,
@@ -630,6 +652,7 @@ class _CoordinatorContext:
     base_graph: GraphVersionRecord
     desired_graph: GraphVersionRecord
     registered_products: tuple[RegisteredProduct, ...]
+    image_pull_authorities: tuple[RegisteredImagePullAuthority, ...]
     events: tuple[ActivityEventRecord, ...]
     projection: SagaJournalProjection
     schedule: ExecutionSchedule
@@ -654,6 +677,11 @@ class _CoordinatorContext:
         for product in self.registered_products:
             if product.workspace_id != workspace_id:
                 raise ExecutionCoordinatorConflict("registered product must match workspace")
+        for pull_authority in self.image_pull_authorities:
+            if pull_authority.workspace_id != workspace_id:
+                raise ExecutionCoordinatorConflict(
+                    "registered image pull authority must match workspace"
+                )
 
     @property
     def plan(self) -> ActivityPlan:
@@ -674,6 +702,7 @@ class _CoordinatorContext:
             registered_products=self.registered_products,
             authority=self.authority,
             intent_event=intent_event,
+            image_pull_authorities=self.image_pull_authorities,
         )
 
 

@@ -16,6 +16,7 @@ from control_plane_kit_core.products import (
     ProductReference,
     ProductReferenceCodec,
 )
+from control_plane_kit_core.runtime_effects import ImagePullAuthority
 
 
 class ProductRegistrationError(ValueError):
@@ -32,6 +33,13 @@ class ProductRegistrationNotFound(ProductRegistrationError):
 
 class RegisteredProductStatus(StrEnum):
     """Closed durable status for workspace product registration."""
+
+    ACTIVE = "active"
+    REVOKED = "revoked"
+
+
+class RegisteredImagePullAuthorityStatus(StrEnum):
+    """Closed durable status for workspace image-pull authority."""
 
     ACTIVE = "active"
     REVOKED = "revoked"
@@ -209,6 +217,56 @@ class RegisteredProduct:
 
 
 @dataclass(frozen=True)
+class RegisteredImagePullAuthority:
+    """Workspace-scoped authority reference for pulling OCI images."""
+
+    authority_id: str
+    workspace_id: str
+    authority: ImagePullAuthority
+    admitted_by: str
+    admitted_at: str
+    status: RegisteredImagePullAuthorityStatus = (
+        RegisteredImagePullAuthorityStatus.ACTIVE
+    )
+    metadata: Mapping[str, object] = field(default_factory=dict)
+
+    def __post_init__(self) -> None:
+        _validate_identifier(self.authority_id, "authority_id")
+        _validate_identifier(self.workspace_id, "workspace_id")
+        _validate_identifier(self.admitted_by, "admitted_by")
+        _validate_identifier(self.admitted_at, "admitted_at")
+        if not isinstance(self.authority, ImagePullAuthority):
+            raise ProductRegistrationError(
+                "registered image pull authority requires ImagePullAuthority"
+            )
+        if not isinstance(self.status, RegisteredImagePullAuthorityStatus):
+            raise ProductRegistrationError(
+                "registered image pull authority status is unsupported"
+            )
+        if not isinstance(self.metadata, Mapping):
+            raise ProductRegistrationError(
+                "registered image pull authority metadata must be mapping"
+            )
+
+    @classmethod
+    def from_authority(
+        cls,
+        *,
+        workspace_id: str,
+        authority: ImagePullAuthority,
+        admitted_by: str,
+        admitted_at: str,
+    ) -> "RegisteredImagePullAuthority":
+        return cls(
+            authority_id=image_pull_authority_id_for(workspace_id, authority),
+            workspace_id=workspace_id,
+            authority=authority,
+            admitted_by=admitted_by,
+            admitted_at=admitted_at,
+        )
+
+
+@dataclass(frozen=True)
 class ImportProductDescriptorCommand:
     """Application command to admit one product descriptor into a workspace."""
 
@@ -225,6 +283,24 @@ class ImportProductDescriptorCommand:
             source=self.source,
             imported_by=self.imported_by,
             imported_at=self.imported_at,
+        )
+
+
+@dataclass(frozen=True)
+class RegisterImagePullAuthorityCommand:
+    """Application command to admit OCI pull authority for one workspace."""
+
+    workspace_id: str
+    authority: ImagePullAuthority
+    admitted_by: str
+    admitted_at: str
+
+    def __post_init__(self) -> None:
+        RegisteredImagePullAuthority.from_authority(
+            workspace_id=self.workspace_id,
+            authority=self.authority,
+            admitted_by=self.admitted_by,
+            admitted_at=self.admitted_at,
         )
 
 
@@ -263,6 +339,45 @@ class ProductRegistrationService:
             return registered
 
 
+class ImagePullAuthorityRegistrationService:
+    """Application service owning image pull authority transaction boundaries."""
+
+    def __init__(self, unit_of_work_factory: Any) -> None:
+        self._unit_of_work_factory = unit_of_work_factory
+
+    def register(
+        self,
+        command: RegisterImagePullAuthorityCommand,
+    ) -> RegisteredImagePullAuthority:
+        if not isinstance(command, RegisterImagePullAuthorityCommand):
+            raise ProductRegistrationError(
+                "register requires RegisterImagePullAuthorityCommand"
+            )
+        with self._unit_of_work_factory() as unit_of_work:
+            registered = unit_of_work.stores.image_pull_authorities.register(
+                workspace_id=command.workspace_id,
+                authority=command.authority,
+                admitted_by=command.admitted_by,
+                admitted_at=command.admitted_at,
+            )
+            unit_of_work.commit()
+            return registered
+
+    def revoke(
+        self,
+        *,
+        workspace_id: str,
+        authority_id: str,
+    ) -> RegisteredImagePullAuthority:
+        with self._unit_of_work_factory() as unit_of_work:
+            registered = unit_of_work.stores.image_pull_authorities.revoke(
+                workspace_id,
+                authority_id,
+            )
+            unit_of_work.commit()
+            return registered
+
+
 def registration_id_for(workspace_id: str, reference: ProductReference) -> str:
     """Return deterministic registration identity for workspace plus digest."""
 
@@ -273,6 +388,28 @@ def registration_id_for(workspace_id: str, reference: ProductReference) -> str:
         f"{workspace_id}\0{reference.descriptor_sha256.value}".encode("utf-8")
     ).hexdigest()
     return f"rprod_{digest}"
+
+
+def image_pull_authority_id_for(
+    workspace_id: str,
+    authority: ImagePullAuthority,
+) -> str:
+    """Return deterministic identity for workspace plus pull-authority reference."""
+
+    _validate_identifier(workspace_id, "workspace_id")
+    if not isinstance(authority, ImagePullAuthority):
+        raise ProductRegistrationError(
+            "image pull authority id requires ImagePullAuthority"
+        )
+    digest = sha256(
+        (
+            f"{workspace_id}\0"
+            f"{authority.registry}\0"
+            f"{authority.repository or ''}\0"
+            f"{authority.credential_reference.reference_id}"
+        ).encode("utf-8")
+    ).hexdigest()
+    return f"ipull_{digest}"
 
 
 def _validate_source_url(url: str) -> None:

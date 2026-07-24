@@ -13,6 +13,9 @@ from control_plane_kit_operations.postgres.graph_store import (
     PostgresGraphTopologyStore,
     PostgresWorkspaceStore,
 )
+from control_plane_kit_operations.postgres.image_pull_authority_store import (
+    ImagePullAuthorityStore,
+)
 from control_plane_kit_operations.postgres.observed_state import (
     PostgresObservedStateStore,
 )
@@ -30,6 +33,7 @@ __all__ = [
     "PostgresActivityHistoryStore",
     "PostgresExecutionStore",
     "PostgresGraphTopologyStore",
+    "ImagePullAuthorityStore",
     "PostgresObservedStateStore",
     "PostgresConnection",
     "PostgresConnectionFactory",
