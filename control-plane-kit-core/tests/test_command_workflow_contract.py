@@ -76,6 +76,16 @@ class CommandWorkflowContractTests(unittest.TestCase):
                     ActivityHistoryPolicy.RECORD_ACCEPTED_AND_REJECTED_COMMANDS,
                 ),
                 (
+                    "image-pull-authority.register",
+                    OperatorCommandKind.REGISTER_IMAGE_PULL_AUTHORITY,
+                    OperatorCommandFamily.PRODUCT_REGISTRATION,
+                    DeploymentProgramStage.PLAN,
+                    ControlPlaneServiceRole.PLANNING,
+                    CommandIdempotencyPolicy.REQUIRED,
+                    ApprovalPolicy.NOT_REQUIRED,
+                    ActivityHistoryPolicy.RECORD_ACCEPTED_AND_REJECTED_COMMANDS,
+                ),
+                (
                     "operation-session.cancel",
                     OperatorCommandKind.CANCEL_OPERATION_SESSION,
                     OperatorCommandFamily.OPERATION_SESSION,

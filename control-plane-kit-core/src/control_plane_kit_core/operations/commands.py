@@ -37,6 +37,7 @@ class OperatorCommandKind(StrEnum):
 
     CREATE_WORKSPACE = "create-workspace"
     IMPORT_PRODUCT_DESCRIPTOR = "import-product-descriptor"
+    REGISTER_IMAGE_PULL_AUTHORITY = "register-image-pull-authority"
     START_OPERATION_SESSION = "start-operation-session"
     CLOSE_OPERATION_SESSION = "close-operation-session"
     CANCEL_OPERATION_SESSION = "cancel-operation-session"
@@ -55,11 +56,15 @@ class CommandPayloadPolicy(StrEnum):
     PLAN_DESCRIPTOR_REFERENCE = "plan-descriptor-reference"
     APPROVAL_RISK_EVIDENCE = "approval-risk-evidence"
     PRODUCT_DESCRIPTOR_DOCUMENT = "product-descriptor-document"
+    IMAGE_PULL_AUTHORITY_REFERENCE = "image-pull-authority-reference"
 
 
 _KIND_FAMILY = {
     OperatorCommandKind.CREATE_WORKSPACE: OperatorCommandFamily.WORKSPACE,
     OperatorCommandKind.IMPORT_PRODUCT_DESCRIPTOR: (
+        OperatorCommandFamily.PRODUCT_REGISTRATION
+    ),
+    OperatorCommandKind.REGISTER_IMAGE_PULL_AUTHORITY: (
         OperatorCommandFamily.PRODUCT_REGISTRATION
     ),
     OperatorCommandKind.START_OPERATION_SESSION: OperatorCommandFamily.OPERATION_SESSION,
@@ -365,6 +370,18 @@ _CANONICAL_COMMANDS = (
         "RegisteredProductResponse",
         ApprovalPolicy.NOT_REQUIRED,
         CommandPayloadPolicy.PRODUCT_DESCRIPTOR_DOCUMENT,
+        requires_open_session=False,
+    ),
+    _CommandDefinition(
+        "image-pull-authority.register",
+        OperatorCommandKind.REGISTER_IMAGE_PULL_AUTHORITY,
+        OperatorCommandFamily.PRODUCT_REGISTRATION,
+        DeploymentProgramStage.PLAN,
+        ControlPlaneServiceRole.PLANNING,
+        "RegisterImagePullAuthority",
+        "RegisteredImagePullAuthorityResponse",
+        ApprovalPolicy.NOT_REQUIRED,
+        CommandPayloadPolicy.IMAGE_PULL_AUTHORITY_REFERENCE,
         requires_open_session=False,
     ),
     _CommandDefinition(

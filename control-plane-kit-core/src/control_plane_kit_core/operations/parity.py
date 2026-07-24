@@ -912,6 +912,15 @@ _OPERATOR_COMMANDS = (
         ApprovalPolicy.NOT_REQUIRED,
     ),
     (
+        "image-pull-authority.register",
+        "command.image-pull-authority.register",
+        "register_image_pull_authority",
+        ControlPlaneServiceRole.PLANNING,
+        "RegisterImagePullAuthorityRequest",
+        "RegisteredImagePullAuthorityResponse",
+        ApprovalPolicy.NOT_REQUIRED,
+    ),
+    (
         "operation-session.start",
         "command.operation-session.start",
         "start_operation_session",
