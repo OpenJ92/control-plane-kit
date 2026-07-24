@@ -23,6 +23,7 @@ from control_plane_kit_core.secrets import (
     secret_delivery_sort_key,
 )
 from control_plane_kit_core.lifecycle import OWNED_EPHEMERAL, ResourceLifecycle
+from control_plane_kit_core.runtime_authority import RuntimeAuthorityReference
 from control_plane_kit_core.types import (
     BlockFamily,
     EndpointScope,
@@ -285,11 +286,15 @@ class RuntimeRecord:
     children: tuple[str, ...] = ()
     metadata: Mapping[str, str] = field(default_factory=dict)
     lifecycle: ResourceLifecycle = OWNED_EPHEMERAL
+    authority_ref: RuntimeAuthorityReference | None = None
 
     def descriptor(self) -> dict[str, object]:
         return {
             "kind": self.kind.value,
             "children": list(self.children),
+            "authority_ref": None
+            if self.authority_ref is None
+            else self.authority_ref.descriptor(),
             "metadata": dict(self.metadata),
             "lifecycle": self.lifecycle.descriptor(),
         }

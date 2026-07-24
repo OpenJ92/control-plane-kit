@@ -8,6 +8,7 @@ from typing import Protocol as TypingProtocol, TypeAlias
 
 from control_plane_kit_core.capabilities import CapabilityName
 from control_plane_kit_core.lifecycle import EXTERNAL_RETAINED, OWNED_EPHEMERAL, ResourceLifecycle
+from control_plane_kit_core.runtime_authority import RuntimeAuthorityReference
 from control_plane_kit_core.types import Protocol, RuntimeKind, SocketBinding
 from control_plane_kit_core.verification import VerificationContract
 
@@ -150,6 +151,7 @@ class RuntimeContext:
 
     runtime_id: str
     kind: RuntimeKind
+    authority_ref: RuntimeAuthorityReference | None = None
     children: tuple[DeploymentExpr, ...] = ()
     metadata: dict[str, str] = field(default_factory=dict)
     lifecycle: ResourceLifecycle = OWNED_EPHEMERAL
@@ -166,6 +168,7 @@ class DockerRuntime(RuntimeContext):
     runtime_id: str = "docker"
     kind: RuntimeKind = RuntimeKind.DOCKER
     network_name: str = "control-plane-kit-network"
+    authority_ref: RuntimeAuthorityReference | None = None
     children: tuple[DeploymentExpr, ...] = ()
     metadata: dict[str, str] = field(default_factory=dict)
     lifecycle: ResourceLifecycle = OWNED_EPHEMERAL
@@ -177,6 +180,7 @@ class ExternalRuntime(RuntimeContext):
 
     runtime_id: str = "external"
     kind: RuntimeKind = RuntimeKind.EXTERNAL
+    authority_ref: RuntimeAuthorityReference | None = None
     children: tuple[DeploymentExpr, ...] = ()
     metadata: dict[str, str] = field(default_factory=dict)
     lifecycle: ResourceLifecycle = EXTERNAL_RETAINED

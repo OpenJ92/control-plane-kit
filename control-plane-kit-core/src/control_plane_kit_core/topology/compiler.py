@@ -61,6 +61,7 @@ def _compile_runtime(
             children=tuple(child_nodes),
             metadata=_runtime_metadata(runtime),
             lifecycle=runtime.lifecycle,
+            authority_ref=runtime.authority_ref,
         )
     )
     return next_graph, tuple(connections)

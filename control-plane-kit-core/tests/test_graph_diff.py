@@ -25,6 +25,7 @@ from control_plane_kit_core.environment import (
     SocketDerivedEnvironmentBinding,
 )
 from control_plane_kit_core.lifecycle import OWNED_EPHEMERAL
+from control_plane_kit_core.runtime_authority import RuntimeAuthorityReference
 from control_plane_kit_core.secrets import SecretEnvironmentDelivery, SecretReference
 from control_plane_kit_core.topology import (
     AddedChange,
@@ -247,6 +248,37 @@ class GraphDiffTests(unittest.TestCase):
                 UnsupportedReason.RUNTIME_KIND_TRANSITION,
                 UnsupportedReason.IMPLEMENTATION_KIND_TRANSITION,
             },
+        )
+
+    def test_runtime_authority_ref_change_is_explicit_graph_change(self) -> None:
+        current = simple_graph()
+        runtime = current.runtimes["docker"]
+        desired = replace(
+            current,
+            runtimes={
+                "docker": replace(
+                    runtime,
+                    authority_ref=RuntimeAuthorityReference("mac-mini-docker"),
+                )
+            },
+        )
+
+        result = diff_graphs(validate_graph(current), validate_graph(desired))
+
+        fields = modified_fields(result)
+        self.assertIn(StructuralField.RUNTIME_AUTHORITY, fields)
+        self.assertNotIn(StructuralField.RUNTIME_METADATA, fields)
+        change = next(
+            change
+            for change in result.changes
+            if isinstance(change, ModifiedChange)
+            and isinstance(change.subject, FieldSubject)
+            and change.subject.field is StructuralField.RUNTIME_AUTHORITY
+        )
+        self.assertEqual(change.before.descriptor(), {"authority_ref": None})
+        self.assertEqual(
+            change.after.descriptor(),
+            {"authority_ref": {"reference_id": "mac-mini-docker"}},
         )
 
     def test_node_identity_reuse_and_codec_language_mismatch_are_ambiguous(self) -> None:

@@ -44,6 +44,7 @@ class StructuralField(StrEnum):
     GRAPH_NAME = "graph-name"
     RUNTIME_KIND = "runtime-kind"
     RUNTIME_CONTAINMENT = "runtime-containment"
+    RUNTIME_AUTHORITY = "runtime-authority"
     RUNTIME_METADATA = "runtime-metadata"
     BLOCK_FAMILY = "block-family"
     BLOCK_SPECIFICATION = "block-specification"
