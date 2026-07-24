@@ -12,7 +12,8 @@ from typing import Any
 from urllib.error import HTTPError
 from urllib.request import Request, urlopen
 
-from control_plane_kit_core.algebra import DeploymentTopology, DockerRuntime
+from control_plane_kit_core.algebra import DeploymentTopology, DockerRuntime, SocketConnection
+from control_plane_kit_core.environment import PublicStaticEnvironmentBinding
 from control_plane_kit_core.products import (
     ProductDescriptorCodec,
     ProductInstanceConfiguration,
@@ -357,6 +358,7 @@ def main() -> int:
     base_url = _required_env("CPK_HOSTED_ACTIVITY_BASE_URL").rstrip("/")
     server_container = _required_env("CPK_HOSTED_ACTIVITY_SERVER_CONTAINER")
     servers_repo = Path(_required_env("CPK_HOSTED_ACTIVITY_SERVERS_REPO"))
+    scenario = os.environ.get("CPK_HOSTED_ACTIVITY_SCENARIO", "single-hello")
     workflow = HostedWorkflow(
         base_url,
         workspace_id=WORKSPACE_ID,
@@ -365,14 +367,25 @@ def main() -> int:
     )
 
     workflow.wait_ready()
+
+    if scenario == "single-hello":
+        _run_single_hello(workflow, servers_repo)
+    elif scenario == "router-transition":
+        _run_router_transition(workflow, servers_repo)
+    else:
+        raise RuntimeError(f"unknown hosted activity scenario: {scenario}")
+
+    print(f"hosted cpk-server Docker activity smoke passed: {scenario}")
+    return 0
+
+
+def _run_single_hello(workflow: HostedWorkflow, servers_repo: Path) -> None:
     product_document = _product_document(servers_repo, "hello_server")
-    graph = _single_hello_graph(product_document)
+    graph = _single_hello_graph(product_document, workspace_id=workflow.workspace_id)
 
     current_graph_id = workflow.create_workspace(name="Hosted activity smoke")
+    _register_pull_authority_if_requested(workflow)
     workflow.import_product("hello", product_document)
-
-    if os.environ.get("CPK_HOSTED_ACTIVITY_REGISTER_PULL_AUTHORITY") == "docker-config":
-        workflow.register_ghcr_pull_authority_from_docker_config()
 
     workflow.run_approved_transition(
         title="Hosted hello deployment",
@@ -381,8 +394,49 @@ def main() -> int:
     )
     _assert_body("http://hello:8000/", "Hello, world!\n")
 
-    print("hosted cpk-server Docker activity smoke passed")
-    return 0
+
+def _run_router_transition(workflow: HostedWorkflow, servers_repo: Path) -> None:
+    hello_document = _product_document(servers_repo, "hello_server")
+    router_document = _product_document(servers_repo, "http_active_router")
+
+    current_graph_id = workflow.create_workspace(name="Hosted router transition")
+    _register_pull_authority_if_requested(workflow)
+    workflow.import_product("hello", hello_document)
+    workflow.import_product("router", router_document)
+
+    blue_graph = _router_graph(
+        hello_document,
+        router_document,
+        workspace_id=workflow.workspace_id,
+        active_hello_role="hello-blue",
+        message="Hello from blue",
+    )
+    blue = workflow.run_approved_transition(
+        title="Hosted router blue",
+        graph=blue_graph,
+        current_graph_id=current_graph_id,
+    )
+    _assert_body("http://router:8000/", "Hello from blue\n")
+
+    green_graph = _router_graph(
+        hello_document,
+        router_document,
+        workspace_id=workflow.workspace_id,
+        active_hello_role="hello-green",
+        message="Hello from green",
+    )
+    workflow.run_approved_transition(
+        title="Hosted router green",
+        graph=green_graph,
+        current_graph_id=blue.current_graph_id,
+        expected_desired_graph_id=blue.desired_graph_id,
+    )
+    _assert_body("http://router:8000/", "Hello from green\n")
+
+
+def _register_pull_authority_if_requested(workflow: HostedWorkflow) -> None:
+    if os.environ.get("CPK_HOSTED_ACTIVITY_REGISTER_PULL_AUTHORITY") == "docker-config":
+        workflow.register_ghcr_pull_authority_from_docker_config()
 
 
 def _execute_to_completion(
@@ -405,6 +459,7 @@ def _execute_to_completion(
                 "idempotency_key": f"{workspace_id}:execute:{attempt}",
                 "max_effects": 1,
             },
+            timeout=60,
         )
         _sync_runtime_networks(server_container, workspace_id=workspace_id)
         if result["coordinator_status"] == "completed":
@@ -451,7 +506,7 @@ def _wait_ready(base_url: str) -> None:
     raise RuntimeError("cpk-server did not become ready")
 
 
-def _single_hello_graph(product_document: Any) -> DeploymentGraph:
+def _single_hello_graph(product_document: Any, *, workspace_id: str = WORKSPACE_ID) -> DeploymentGraph:
     product = product_document.product
     block = instantiate_product(
         product,
@@ -460,13 +515,73 @@ def _single_hello_graph(product_document: Any) -> DeploymentGraph:
     )
     return compile_topology(
         DeploymentTopology(
-            WORKSPACE_ID,
+            workspace_id,
             DockerRuntime(
                 runtime_id="docker",
-                network_name=f"control-plane-kit-{WORKSPACE_ID}-docker",
+                network_name=f"control-plane-kit-{workspace_id}-docker",
                 children=(block,),
             ),
         )
+    )
+
+
+def _router_graph(
+    hello_document: Any,
+    router_document: Any,
+    *,
+    workspace_id: str,
+    active_hello_role: str,
+    message: str,
+) -> DeploymentGraph:
+    hello_product = hello_document.product
+    router_product = router_document.product
+    hello = instantiate_product(
+        hello_product,
+        active_hello_role,
+        _with_public_environment(
+            ProductInstanceConfiguration.from_contract(hello_product.runtime_contract),
+            {"HELLO_MESSAGE": message},
+        ),
+    )
+    router = instantiate_product(
+        router_product,
+        "router",
+        ProductInstanceConfiguration.from_contract(router_product.runtime_contract),
+    )
+    return compile_topology(
+        DeploymentTopology(
+            workspace_id,
+            DockerRuntime(
+                runtime_id="docker",
+                network_name=f"control-plane-kit-{workspace_id}-docker",
+                children=(
+                    hello,
+                    router,
+                    SocketConnection(
+                        active_hello_role,
+                        "internal",
+                        "router",
+                        "active",
+                    ),
+                ),
+            ),
+        )
+    )
+
+
+def _with_public_environment(
+    configuration: ProductInstanceConfiguration,
+    replacements: dict[str, str],
+) -> ProductInstanceConfiguration:
+    bindings = {binding.name: binding for binding in configuration.public_environment}
+    for name, value in replacements.items():
+        if name not in bindings:
+            raise RuntimeError(f"product does not declare public environment {name}")
+        bindings[name] = PublicStaticEnvironmentBinding(name, value)
+    return ProductInstanceConfiguration(
+        public_environment=tuple(bindings.values()),
+        configuration_artifacts=configuration.configuration_artifacts,
+        secret_deliveries=configuration.secret_deliveries,
     )
 
 
@@ -476,15 +591,28 @@ def _product_document(servers_repo: Path, product_name: str) -> Any:
     )
 
 
-def _mcp_tool(base_url: str, name: str, arguments: dict[str, object]) -> dict[str, Any]:
-    return _mcp(base_url, "tools/call", name, arguments)
+def _mcp_tool(
+    base_url: str,
+    name: str,
+    arguments: dict[str, object],
+    *,
+    timeout: int = 10,
+) -> dict[str, Any]:
+    return _mcp(base_url, "tools/call", name, arguments, timeout=timeout)
 
 
 def _mcp_read(base_url: str, name: str, arguments: dict[str, object]) -> dict[str, Any]:
     return _mcp(base_url, "resources/read", name, arguments)
 
 
-def _mcp(base_url: str, method: str, name: str, arguments: dict[str, object]) -> dict[str, Any]:
+def _mcp(
+    base_url: str,
+    method: str,
+    name: str,
+    arguments: dict[str, object],
+    *,
+    timeout: int = 10,
+) -> dict[str, Any]:
     response = _http(
         base_url,
         "POST",
@@ -500,6 +628,7 @@ def _mcp(base_url: str, method: str, name: str, arguments: dict[str, object]) ->
             "MCP-Protocol-Version": "2025-06-18",
             "Mcp-Method": method,
         },
+        timeout=timeout,
     )
     if "error" in response:
         raise RuntimeError(f"MCP {name} failed: {response}")
@@ -517,6 +646,7 @@ def _http(
     *,
     authorize: bool = True,
     extra_headers: dict[str, str] | None = None,
+    timeout: int = 10,
 ) -> dict[str, Any]:
     body = None if payload is None else json.dumps(payload).encode("utf-8")
     headers = {"Content-Type": "application/json"}
@@ -531,7 +661,7 @@ def _http(
         method=method,
     )
     try:
-        with urlopen(request, timeout=10) as response:
+        with urlopen(request, timeout=timeout) as response:
             data = response.read(1024 * 1024)
     except HTTPError as error:
         detail = error.read(8192).decode("utf-8", errors="replace")

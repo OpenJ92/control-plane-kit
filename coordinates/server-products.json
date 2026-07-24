@@ -1,20 +1,20 @@
 {
   "schema": "cpk-servers.coordinates",
   "upstreams": {
-    "control_plane_kit_commit": "8f6201d4302dae443b7a0e7ff34ead90244c039e",
-    "control_plane_kit_interpreters_commit": "4da9711281ba40286f5331c9bc842d588d1f4090"
+    "control_plane_kit_commit": "167af0a5c60f697db5c42e61f0a743f1dfbb5298",
+    "control_plane_kit_interpreters_commit": "f8e38a78580d66f2bc70213830b32a58e1922c3d"
   },
   "products": [
     {
       "product_id": "cpk-server",
       "owner_directory": "products/cpk_server",
       "descriptor_path": "products/cpk_server/product.cpk.json",
-      "source_commit": "cd786f11201ff0164061c73a04e6430db8f441f4",
+      "source_commit": "794fb88033115080a5aad829a0e6e8a47dd350c2",
       "image": {
         "registry": "ghcr.io",
         "repository": "openj92/control-plane-kit-servers/cpk-server",
-        "tag": "recursive-938",
-        "digest": "sha256:a92139b66b5fb0e631bb4fe1a401e3c9968ac99227cf0c9dd5b85e52f506b0f4"
+        "tag": "router-transition-944",
+        "digest": "sha256:112cad7c5b52e456cc6ea38980d04900de46f25ccdbfe40918e481d83a31ef19"
       }
     },
     {
