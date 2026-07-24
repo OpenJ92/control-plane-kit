@@ -2189,3 +2189,83 @@ Handoff to #929:
   container creation;
 - resolved credentials must not enter runtime results, events, observations,
   logs, or reprs.
+
+## #937 Recursive cpk-server Scenario Matrix
+
+#937 dry-ran the recursive cpk-server acceptance shape against the live extracted
+repositories. The accepted proof is intentionally small and opaque:
+
+```text
+parent cpk-server
+  -> public HTTP/MCP workflow
+    -> desired graph:
+         child-postgres: postgres-server
+         child-cpk:      cpk-server
+         child-postgres.postgres -> child-cpk.workplace-store
+         child-postgres.postgres -> child-cpk.activity-history-store
+         child-postgres.postgres -> child-cpk.observer-state-store
+         child-postgres.postgres -> child-cpk.graph-topology-store
+      -> RuntimeInterpreterDispatcher
+        -> DockerRuntimeInterpreter
+          -> child containers
+```
+
+The parent may observe the child cpk-server's readiness and liveness endpoints,
+but must not inspect child graph truth, operation sessions, approvals, activity
+history, or current graph. That preserves the recursive boundary:
+
+```text
+parent owns the child as a deployable node
+child owns its own control-plane truth
+```
+
+The dry run chose one `postgres-server` data-service node instead of four. The
+cpk-server descriptor has four Postgres requirement sockets, and the graph
+compiler already turns socket connections into socket-derived environment
+bindings. Four explicit edges from the single Postgres provider therefore
+produce the four required `CPK_*_DATABASE_URL` values without cpk-server-specific
+shell wiring.
+
+Current seed coordinates:
+
+```text
+cpk-server image:
+  ghcr.io/openj92/control-plane-kit-servers/cpk-server@sha256:12e9eb53d1b61d662d10f007dccec91e9858e5a6bc015b96a703add341421899
+
+cpk-server descriptor sha256:
+  a5d87c6593a07a7c5aa98228fe1350cfb75ea734ab43aedd6358c1e31013d12f
+
+postgres-server image:
+  docker.io/library/postgres@sha256:57c72fd2a128e416c7fcc499958864df5301e940bca0a56f58fddf30ffc07777
+
+postgres-server descriptor sha256:
+  942c32d198c185bb98afdec03d310a69ed11d3c41a14040644212187c842b193
+
+server catalogue checksum:
+  3b52f41d84469ac1d2386652cb022a7a47cb6c8cd8a7a904b15e3dae1da210e7
+```
+
+The child cpk-server should run with `CPK_RUNTIME_INTERPRETERS=none` for #936.
+Recursive acceptance proves the parent can realize and observe a child
+control-plane process. It does not require the child to spawn grandchildren.
+
+The important prerequisite is #948. `postgres-server` correctly declares
+`POSTGRES_PASSWORD` as a descriptor secret delivery, but the current external
+Docker interpreter still rejects all secret-bearing products before container
+creation. #948 must implement generic secret delivery resolution at the Docker
+interpreter boundary:
+
+```text
+product descriptor secret reference
+  -> RuntimeEffectRequest remains secret-free
+    -> DockerRuntimeInterpreter resolves secret material at IO boundary
+      -> Docker SDK receives in-memory environment/file material
+```
+
+This must not become a Postgres branch, cpk-server branch, env-file shortcut, or
+operations-level secret materialization. Secret values must stay out of graph
+descriptors, runtime requests, events, observations, read models, route
+responses, logs, and errors.
+
+The machine-readable scenario matrix is recorded in
+`artifacts/extraction/recursive-cpk-server-scenario-matrix.json`.

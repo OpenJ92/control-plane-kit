@@ -1,0 +1,161 @@
+{
+  "schema": "control-plane-kit.extraction.recursive-cpk-server-scenario-matrix",
+  "issue": 937,
+  "parent_issue": 936,
+  "status": "dry-run-complete",
+  "topology": [
+    937,
+    948,
+    938,
+    939,
+    940,
+    941
+  ],
+  "artifact_coordinates": {
+    "control_plane_kit_servers_catalogue_sha256": "3b52f41d84469ac1d2386652cb022a7a47cb6c8cd8a7a904b15e3dae1da210e7",
+    "cpk_server": {
+      "descriptor_path": "products/cpk_server/product.cpk.json",
+      "descriptor_sha256": "a5d87c6593a07a7c5aa98228fe1350cfb75ea734ab43aedd6358c1e31013d12f",
+      "image": "ghcr.io/openj92/control-plane-kit-servers/cpk-server@sha256:12e9eb53d1b61d662d10f007dccec91e9858e5a6bc015b96a703add341421899"
+    },
+    "postgres_server": {
+      "descriptor_path": "products/postgres_server/product.cpk.json",
+      "descriptor_sha256": "942c32d198c185bb98afdec03d310a69ed11d3c41a14040644212187c842b193",
+      "image": "docker.io/library/postgres@sha256:57c72fd2a128e416c7fcc499958864df5301e940bca0a56f58fddf30ffc07777"
+    }
+  },
+  "scenario": {
+    "workspace_id": "recursive-cpk-server",
+    "runtime": {
+      "kind": "docker",
+      "runtime_id": "docker",
+      "network_name": "control-plane-kit-recursive-cpk-server-docker"
+    },
+    "nodes": [
+      {
+        "role_id": "child-postgres",
+        "product": "control-plane-kit/postgres-server/1",
+        "purpose": "ordinary data-service node for child cpk-server stores",
+        "provider_sockets": [
+          "postgres"
+        ],
+        "secret_deliveries": [
+          {
+            "kind": "environment",
+            "environment_name": "POSTGRES_PASSWORD",
+            "reference_id": "secret://control-plane-kit/postgres/password"
+          }
+        ],
+        "retained_data_mounts": [
+          {
+            "resource_id": "postgres-data",
+            "target_path": "/var/lib/postgresql/data"
+          }
+        ]
+      },
+      {
+        "role_id": "child-cpk",
+        "product": "control-plane-kit/cpk-server/1",
+        "purpose": "opaque child control-plane instance",
+        "requirement_sockets": [
+          "workplace-store",
+          "activity-history-store",
+          "observer-state-store",
+          "graph-topology-store"
+        ],
+        "provider_sockets": [
+          "http-api",
+          "mcp"
+        ],
+        "required_runtime_environment": [
+          {
+            "name": "CPK_RUNTIME_INTERPRETERS",
+            "value": "none",
+            "reason": "recursive acceptance proves child liveness/readiness only, not grandchildren"
+          }
+        ]
+      }
+    ],
+    "socket_connections": [
+      {
+        "provider_role": "child-postgres",
+        "provider_socket": "postgres",
+        "consumer_role": "child-cpk",
+        "requirement_socket": "workplace-store",
+        "derived_environment": [
+          "CPK_WORKPLACE_DATABASE_URL"
+        ]
+      },
+      {
+        "provider_role": "child-postgres",
+        "provider_socket": "postgres",
+        "consumer_role": "child-cpk",
+        "requirement_socket": "activity-history-store",
+        "derived_environment": [
+          "CPK_ACTIVITY_HISTORY_DATABASE_URL"
+        ]
+      },
+      {
+        "provider_role": "child-postgres",
+        "provider_socket": "postgres",
+        "consumer_role": "child-cpk",
+        "requirement_socket": "observer-state-store",
+        "derived_environment": [
+          "CPK_OBSERVER_STATE_DATABASE_URL"
+        ]
+      },
+      {
+        "provider_role": "child-postgres",
+        "provider_socket": "postgres",
+        "consumer_role": "child-cpk",
+        "requirement_socket": "graph-topology-store",
+        "derived_environment": [
+          "CPK_GRAPH_TOPOLOGY_DATABASE_URL"
+        ]
+      }
+    ],
+    "public_workflow": [
+      "create workspace",
+      "import postgres-server descriptor",
+      "import cpk-server descriptor",
+      "register GHCR image pull authority when needed",
+      "start operation session",
+      "set desired recursive graph",
+      "plan transition",
+      "request approval",
+      "read pending approval queue",
+      "read approval detail",
+      "approve",
+      "admit",
+      "claim",
+      "start",
+      "execute through RuntimeInterpreterDispatcher",
+      "advance current graph",
+      "observe child health only"
+    ],
+    "accepted_observations": [
+      "child /health/live returns healthy status",
+      "child /health/ready returns ready status",
+      "parent current graph advances to desired graph after accepted realization",
+      "parent read models show child as graph/runtime evidence"
+    ],
+    "forbidden_observations": [
+      "parent reads child graph truth",
+      "parent reads child operation sessions",
+      "parent reads child approvals",
+      "parent reads child activity history",
+      "parent proxies recursive child commands"
+    ]
+  },
+  "decisions": {
+    "postgres_shape": "Use one postgres-server node connected to all four child cpk-server store requirements. This proves graph socket binding without inventing four separate data-service products.",
+    "runtime_shape": "Child cpk-server starts with CPK_RUNTIME_INTERPRETERS=none. Recursive grandchildren are outside #936.",
+    "observation_shape": "The harness may join Docker-local runtime networks to call the child readiness endpoints. Public control portals remain #882 future work.",
+    "secret_prerequisite": "#938 waits for #948 because postgres-server secret delivery must be resolved generically by DockerRuntimeInterpreter before Docker mutation."
+  },
+  "handoff": {
+    "next_issue": 948,
+    "after_948": "Build #938 recursive harness from this matrix using descriptor-backed product imports and public parent cpk-server routes.",
+    "after_940": "Proceed to #941 seeded topology stress only after recursive acceptance closes coherently."
+  }
+}
