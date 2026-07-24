@@ -3201,3 +3201,79 @@ Handoff:
 #967
   cpk-server exposes registration/read workflow over HTTP and MCP
 ```
+
+## Runtime Authority: Dispatcher Bootstrap
+
+#974 introduced the operations-owned runtime dispatcher bootstrap value:
+
+```text
+RuntimeDispatcherBootstrapConfiguration
+  runtime_kinds: tuple[RuntimeKind, ...]
+```
+
+This is process capability configuration, not workspace authority. It answers:
+
+```text
+which runtime interpreter families may this operations process compose?
+```
+
+It does not answer:
+
+```text
+which Docker daemon, cloud account, TLS credential, token, or socket may this
+workspace use?
+```
+
+That second question remains durable `RegisteredRuntimeAuthority` truth from
+#963 and concrete IO interpretation work for #965.
+
+The process value stays deliberately small:
+
+```text
+none
+docker
+docker,kubernetes
+```
+
+`none` is explicit disabled dispatch and cannot be combined with runtime kinds.
+Unknown runtime names fail closed. Duplicate runtime names converge to the
+canonical closed `RuntimeKind` tuple, ordered by generated descriptor identity.
+
+The bootstrap API imports only operations/core language. It does not import
+`control_plane_kit_interpreters`, Docker SDK, Kubernetes SDK, boto3, FastAPI, MCP,
+HTTPX, Uvicorn, or server-product code. #975 may use this value at the
+cpk-server/bootstrap composition edge to load optional providers lazily, but
+operations itself remains free of concrete SDK dependencies.
+
+Validation evidence:
+
+```text
+./control-plane-kit-operations/test.sh
+  145 tests, compileall, import check
+./test.sh
+  1232 tests
+git diff --check
+```
+
+Docker storage note:
+
+```text
+The first full-suite attempt exhausted Docker Postgres storage. Inspection found
+only Pottery Factory containers running, and hundreds of unused 64-hex anonymous
+Docker volumes with zero links. Cleanup removed only those anonymous volumes and
+unused control-plane-kit/nginx images. Named Pottery Factory, Starcraft, and
+BuildKit volumes were preserved. Pottery Factory containers and the running
+Pottery Postgres image were preserved.
+```
+
+Handoff:
+
+```text
+#975
+  consume RuntimeDispatcherBootstrapConfiguration at the cpk-server/process
+  bootstrap edge and implement lazy provider loading / missing-extra behavior
+
+#976
+  harden package-boundary tests so Docker SDK and concrete interpreter imports
+  stay out of operations source
+```
