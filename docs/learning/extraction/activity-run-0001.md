@@ -2985,3 +2985,35 @@ Non-goals remain sharp:
   SDKs, Kubernetes clients, or concrete runtime code;
 - no parent inspection of child graph truth, activity history, operation
   sessions, or descendant workflow state.
+
+## Runtime Authority: Reference Value
+
+#971 introduced the first pure runtime-authority value:
+
+```python
+RuntimeAuthorityReference("mac-mini-docker")
+```
+
+The reference is intentionally only a stable, secret-free name for an admitted
+runtime authority. It is not durable registration truth, not Docker endpoint
+material, not image-pull authority, and not a secret reference. The descriptor
+shape is:
+
+```python
+{"reference_id": "mac-mini-docker"}
+```
+
+Malformed values fail closed when they look like endpoint URLs, host paths,
+Docker config JSON, token/password/secret material, or TLS key material. This
+preserves the compatibility path where an omitted runtime authority still means
+the existing ambient/local interpreter configuration, while future execution-
+capable child and remote runtime scenarios can opt into explicit
+`authority_ref` values.
+
+Validation evidence:
+
+```text
+git diff --check
+./control-plane-kit-core/test.sh
+  397 tests, compileall, import check
+```

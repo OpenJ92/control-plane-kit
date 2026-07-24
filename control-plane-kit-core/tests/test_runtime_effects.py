@@ -26,6 +26,8 @@ from control_plane_kit_core.products import (
 from control_plane_kit_core.runtime_effects import (
     ImagePullAuthority,
     ImagePullAuthorityCodec,
+    RuntimeAuthorityReference,
+    RuntimeAuthorityReferenceCodec,
     RuntimeEffectContractError,
     RuntimeEffectFailure,
     RuntimeEffectKind,
@@ -38,6 +40,42 @@ from control_plane_kit_core.types import Protocol, RuntimeKind
 
 
 class RuntimeEffectContractTests(unittest.TestCase):
+    def test_runtime_authority_reference_is_secret_free_named_authority(self) -> None:
+        reference = RuntimeAuthorityReference("mac-mini-docker")
+
+        descriptor = RuntimeAuthorityReferenceCodec().encode(reference)
+
+        self.assertEqual(descriptor, {"reference_id": "mac-mini-docker"})
+        self.assertEqual(RuntimeAuthorityReferenceCodec().decode(descriptor), reference)
+        self.assertNotIn("docker.sock", repr(descriptor))
+
+    def test_runtime_authority_reference_fails_closed_on_material_or_secrets(self) -> None:
+        invalid = (
+            "",
+            "MacMiniDocker",
+            "mac mini docker",
+            "remote/docker",
+            "tcp://mac-mini.local:2376",
+            "/var/run/docker.sock",
+            '{"auths": {"ghcr.io": "do-not-store"}}',
+            "password=do-not-store",
+            "token=do-not-store",
+            "secret=do-not-store",
+            "begin-private-key",
+            "dockerconfigjson",
+        )
+
+        for value in invalid:
+            with self.subTest(value=value):
+                with self.assertRaises(RuntimeEffectContractError):
+                    RuntimeAuthorityReference(value)
+
+        descriptor = RuntimeAuthorityReference("mac-mini-docker").descriptor()
+        with self.assertRaisesRegex(RuntimeEffectContractError, "unknown keys"):
+            RuntimeAuthorityReferenceCodec().decode(
+                {**descriptor, "endpoint": "tcp://mac-mini.local:2376"}
+            )
+
     def test_request_descriptor_carries_pinned_runtime_material_without_docker(self) -> None:
         request = RuntimeEffectRequest(
             effect_id="effect-a",
