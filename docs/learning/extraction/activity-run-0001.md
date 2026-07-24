@@ -2417,3 +2417,74 @@ Handoff:
   stress.
 - Future control portal work remains out of scope; the parent observes the child
   only through public health endpoints.
+
+## #939 Recursive Observation And Cleanup Evidence
+
+#939 kept the #938 recursive topology and tightened what the parent must prove
+through public CPK read surfaces:
+
+```text
+parent cpk-server
+  -> read.activity
+    -> session
+      -> plan
+        -> run
+          -> events
+            -> child-postgres created + postgres readiness evidence
+            -> child-cpk created + HTTP live/ready readiness evidence
+```
+
+The important shape correction was that `read.activity` exposes runs under
+`sessions[].plans[].runs[]`, not directly under `sessions[].runs[]`. The
+recursive harness now follows the canonical read model instead of inventing a
+flat testing shape.
+
+The parent observation assertions verify:
+
+- `child-postgres` was created from the pinned official Postgres OCI digest;
+- `child-postgres` recorded the semantic `select-one` Postgres readiness check;
+- `child-cpk` was created from the pinned published cpk-server GHCR digest;
+- `child-cpk` recorded both `/health/live` and `/health/ready` HTTP checks;
+- recorded container names remain under the recursive workspace ownership
+  prefix.
+
+The recursive smoke script also has explicit label-scoped cleanup guards:
+
+```text
+docker ps -aq --filter "label=$WORKSPACE_LABEL"
+docker volume ls -q --filter "label=$WORKSPACE_LABEL"
+docker network ls -q --filter "label=$WORKSPACE_LABEL"
+```
+
+It still forbids broad cleanup such as `docker system prune` or
+`docker volume prune`. This preserves Pottery Factory and unrelated Docker
+resources.
+
+Validation evidence:
+
+```text
+PYTHONPATH=src python3 scripts/apply_coordinates.py --check
+git diff --check
+python3 -m unittest \
+  products.cpk_server.tests.test_image_bootstrap.CpkServerImageBootstrapTests.\
+test_recursive_activity_controller_uses_parent_routes_and_opaque_child -v
+./test.sh
+scripts/cpk_server_recursive_activity_smoke.sh
+  recursive cpk-server Docker activity smoke passed
+  control-plane-kit-servers Docker residue audit passed
+```
+
+Published cpk-server evidence remains:
+
+```text
+ghcr.io/openj92/control-plane-kit-servers/cpk-server@sha256:a92139b66b5fb0e631bb4fe1a401e3c9968ac99227cf0c9dd5b85e52f506b0f4
+catalogue checksum: 98b016107885f44cae2737d7b38d15b56063ec4707c7a5f4b04e31de3a614cae
+```
+
+Handoff:
+
+- #940 can close recursive cpk-server acceptance using #937 through #939.
+- #940 should explicitly report that the parent can spawn and observe an opaque
+  child cpk-server, but does not own or inspect the child's graph truth,
+  activity history, operation sessions, or descendant workflow state.
+- #941 seeded topology stress remains the next topological issue after #940.
