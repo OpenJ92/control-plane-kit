@@ -2269,3 +2269,65 @@ responses, logs, and errors.
 
 The machine-readable scenario matrix is recorded in
 `artifacts/extraction/recursive-cpk-server-scenario-matrix.json`.
+
+## #952 Explicit Postgres Verification Credentials
+
+#938 dry-run evidence showed that the recursive child cpk-server cannot be
+accepted with a generic Postgres semantic readiness check unless the pure
+verification language carries secret-free authentication intent. The seeded
+`postgres-server` product has a real password requirement, and a future RDS-like
+data service will have the same shape: endpoint reachability is not enough to
+prove semantic database readiness.
+
+#952 therefore adds a closed authentication contract to `PostgresQueryCheck`:
+
+```text
+PostgresQueryCheck
+  = check identity
+    x provider socket
+    x operation
+    x optional PostgresPasswordAuthentication
+    x verification policy
+
+PostgresPasswordAuthentication
+  = database
+    x username
+    x SecretReference(password)
+```
+
+The descriptor records only:
+
+```json
+{
+  "kind": "password",
+  "database": "cpk",
+  "username": "cpk",
+  "password_reference_id": "secret://verification/postgres/password"
+}
+```
+
+No raw password enters graph descriptors, product descriptors, runtime effect
+requests, events, observations, read models, logs, or route responses. The
+interpreter leg will resolve the `SecretReference` at the Docker/Postgres IO
+boundary and use it only in memory.
+
+Validation evidence:
+
+```text
+./control-plane-kit-core/test.sh
+  395 tests passed
+
+git diff --check
+  passed
+
+./test.sh
+  1232 tests passed
+```
+
+Handoff:
+
+- `control-plane-kit-servers` must update `postgres-server` to include the new
+  explicit authentication descriptor before recursive acceptance.
+- #950 must teach `DockerRuntimeInterpreter` to execute `postgres-query`
+  readiness through the concrete Postgres verification adapter using this
+  contract.
