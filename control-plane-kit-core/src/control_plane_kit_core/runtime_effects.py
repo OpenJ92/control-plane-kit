@@ -13,6 +13,7 @@ import re
 from typing import Mapping
 
 from control_plane_kit_core.environment import (
+    PublicStaticEnvironmentBinding,
     SocketDerivedEnvironmentBinding,
     environment_binding_from_descriptor,
 )
@@ -175,6 +176,7 @@ class RuntimeProductMaterial:
     runtime_id: str
     reference: ProductReference
     product: ContainerServerProduct
+    public_environment: tuple[PublicStaticEnvironmentBinding, ...] = ()
     socket_environment: tuple[SocketDerivedEnvironmentBinding, ...] = ()
     pull_authority: ImagePullAuthority | None = None
 
@@ -187,6 +189,19 @@ class RuntimeProductMaterial:
             raise RuntimeEffectContractError("product must be ContainerServerProduct")
         if self.reference.identity != self.product.identity:
             raise RuntimeEffectContractError("product material identity mismatch")
+        public_environment = tuple(sorted(self.public_environment))
+        if not all(
+            isinstance(value, PublicStaticEnvironmentBinding)
+            for value in public_environment
+        ):
+            raise RuntimeEffectContractError(
+                "runtime product public environment must use public-static bindings"
+            )
+        public_names = tuple(value.name for value in public_environment)
+        if len(set(public_names)) != len(public_names):
+            raise RuntimeEffectContractError(
+                "runtime product public environment names must be unique"
+            )
         socket_environment = tuple(sorted(self.socket_environment))
         if not all(
             isinstance(value, SocketDerivedEnvironmentBinding)
@@ -207,6 +222,7 @@ class RuntimeProductMaterial:
             raise RuntimeEffectContractError(
                 "runtime product pull_authority must be ImagePullAuthority"
             )
+        object.__setattr__(self, "public_environment", public_environment)
         object.__setattr__(self, "socket_environment", socket_environment)
 
     def descriptor(self) -> dict[str, object]:
@@ -215,6 +231,9 @@ class RuntimeProductMaterial:
             "runtime_id": self.runtime_id,
             "reference": ProductReferenceCodec().encode(self.reference),
             "product": ContainerServerProductCodec().encode(self.product),
+            "public_environment": [
+                value.descriptor() for value in self.public_environment
+            ],
             "socket_environment": [
                 value.descriptor() for value in self.socket_environment
             ],
@@ -234,6 +253,10 @@ class RuntimeProductMaterial:
             ),
             product=ContainerServerProductCodec().decode(
                 _mapping(value, "product", "runtime product material")
+            ),
+            public_environment=_public_environment(
+                value.get("public_environment"),
+                "runtime product material",
             ),
             socket_environment=_socket_environment(
                 value.get("socket_environment"),
@@ -426,6 +449,7 @@ _PRODUCT_MATERIAL_KEYS = frozenset(
         "runtime_id",
         "reference",
         "product",
+        "public_environment",
         "socket_environment",
         "pull_authority",
     }
@@ -487,6 +511,36 @@ def _socket_environment(
         if not isinstance(binding, SocketDerivedEnvironmentBinding):
             raise RuntimeEffectContractError(
                 f"{label} socket_environment must be socket-derived"
+            )
+        bindings.append(binding)
+    return tuple(bindings)
+
+
+def _public_environment(
+    value: object,
+    label: str,
+) -> tuple[PublicStaticEnvironmentBinding, ...]:
+    if not isinstance(value, list):
+        raise RuntimeEffectContractError(f"{label} public_environment must be a list")
+    if len(value) > _MAX_EVIDENCE_ITEMS:
+        raise RuntimeEffectContractError(
+            f"{label} public_environment has too many bindings"
+        )
+    bindings: list[PublicStaticEnvironmentBinding] = []
+    for item in value:
+        if not isinstance(item, Mapping):
+            raise RuntimeEffectContractError(
+                f"{label} public_environment binding is malformed"
+            )
+        try:
+            binding = environment_binding_from_descriptor(item)
+        except ValueError as error:
+            raise RuntimeEffectContractError(
+                f"{label} public_environment binding is malformed"
+            ) from error
+        if not isinstance(binding, PublicStaticEnvironmentBinding):
+            raise RuntimeEffectContractError(
+                f"{label} public_environment must be public-static"
             )
         bindings.append(binding)
     return tuple(bindings)

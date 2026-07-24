@@ -133,6 +133,7 @@ def _products_for_context(
             runtime_id=runtime_id,
             reference=product.reference,
             product=product.descriptor_document.product,
+            public_environment=node.public_environment,
             socket_environment=node.socket_environment,
             pull_authority=_pull_authority_for_product(
                 context.image_pull_authorities,

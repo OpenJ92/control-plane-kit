@@ -76,6 +76,16 @@ class RuntimeEffectContractTests(unittest.TestCase):
         self.assertEqual(product["node_id"], "api")
         self.assertEqual(product["runtime_id"], "docker")
         self.assertEqual(
+            product["public_environment"],
+            [
+                {
+                    "kind": "public-static",
+                    "name": "HELLO_MESSAGE",
+                    "value": "Hello from graph",
+                }
+            ],
+        )
+        self.assertEqual(
             product["socket_environment"],
             [
                 {
@@ -100,6 +110,10 @@ class RuntimeEffectContractTests(unittest.TestCase):
                 ),
             ),
         )
+        self.assertEqual(
+            RuntimeProductMaterial.from_descriptor(product).public_environment,
+            (PublicStaticEnvironmentBinding("HELLO_MESSAGE", "Hello from graph"),),
+        )
 
     def test_product_material_rejects_identity_mismatch(self) -> None:
         identity = ProductIdentity("openj92", "hello-server", 1)
@@ -113,8 +127,33 @@ class RuntimeEffectContractTests(unittest.TestCase):
                 product=_product(identity),
             )
 
-    def test_product_material_rejects_static_or_duplicate_environment_material(self) -> None:
+    def test_product_material_rejects_wrong_or_duplicate_environment_material(self) -> None:
         identity = ProductIdentity("openj92", "hello-server", 1)
+        with self.assertRaises(RuntimeEffectContractError):
+            RuntimeProductMaterial(
+                node_id="api",
+                runtime_id="docker",
+                reference=ProductReference(identity, ProductDescriptorDigest("b" * 64)),
+                product=_product(identity),
+                public_environment=(
+                    SocketDerivedEnvironmentBinding(
+                        "HELLO_MESSAGE",
+                        "http://api:8080",
+                        "api.internal->router.active",
+                    ),
+                ),
+            )
+        with self.assertRaises(RuntimeEffectContractError):
+            RuntimeProductMaterial(
+                node_id="api",
+                runtime_id="docker",
+                reference=ProductReference(identity, ProductDescriptorDigest("b" * 64)),
+                product=_product(identity),
+                public_environment=(
+                    PublicStaticEnvironmentBinding("HELLO_MESSAGE", "a"),
+                    PublicStaticEnvironmentBinding("HELLO_MESSAGE", "b"),
+                ),
+            )
         with self.assertRaises(RuntimeEffectContractError):
             RuntimeProductMaterial(
                 node_id="api",
@@ -285,6 +324,9 @@ def _product_material() -> RuntimeProductMaterial:
         runtime_id="docker",
         reference=ProductReference(identity, ProductDescriptorDigest("b" * 64)),
         product=_product(identity),
+        public_environment=(
+            PublicStaticEnvironmentBinding("HELLO_MESSAGE", "Hello from graph"),
+        ),
         socket_environment=(
             SocketDerivedEnvironmentBinding(
                 "UPSTREAM_URL",

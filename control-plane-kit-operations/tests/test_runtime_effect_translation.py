@@ -3,7 +3,10 @@ from __future__ import annotations
 import unittest
 
 from control_plane_kit_core.algebra import BlockSockets, BlockSpec, ProviderSocket
-from control_plane_kit_core.environment import SocketDerivedEnvironmentBinding
+from control_plane_kit_core.environment import (
+    PublicStaticEnvironmentBinding,
+    SocketDerivedEnvironmentBinding,
+)
 from control_plane_kit_core.operations.lifecycle import (
     ActivityEventKind,
     ActivityRunStatus,
@@ -79,6 +82,15 @@ class RuntimeEffectTranslationTests(unittest.TestCase):
                     "UPSTREAM_URL",
                     "http://upstream:8080",
                     "upstream.internal->api.upstream",
+                ),
+            ),
+        )
+        self.assertEqual(
+            request.products[0].public_environment,
+            (
+                PublicStaticEnvironmentBinding(
+                    "HELLO_MESSAGE",
+                    "Hello from selected instance",
                 ),
             ),
         )
@@ -229,6 +241,12 @@ def _graph() -> DeploymentGraph:
                     "product_identity": reference.identity.key,
                     "product_descriptor_digest": reference.descriptor_sha256.value,
                 },
+                public_environment=(
+                    PublicStaticEnvironmentBinding(
+                        "HELLO_MESSAGE",
+                        "Hello from selected instance",
+                    ),
+                ),
                 socket_environment=(
                     SocketDerivedEnvironmentBinding(
                         "UPSTREAM_URL",
@@ -258,6 +276,12 @@ def _registered_product() -> RegisteredProduct:
                             providers=(ProviderSocket("http", Protocol.HTTP),)
                         ),
                         provider_ports=(ProviderRuntimePort("http", 8000),),
+                        public_environment=(
+                            PublicStaticEnvironmentBinding(
+                                "HELLO_MESSAGE",
+                                "Hello from descriptor default",
+                            ),
+                        ),
                     ),
                 )
             )
@@ -270,6 +294,12 @@ def _registered_product() -> RegisteredProduct:
         runtime_contract=ProductRuntimeContract(
             sockets=BlockSockets(providers=(ProviderSocket("http", Protocol.HTTP),)),
             provider_ports=(ProviderRuntimePort("http", 8000),),
+            public_environment=(
+                PublicStaticEnvironmentBinding(
+                    "HELLO_MESSAGE",
+                    "Hello from descriptor default",
+                ),
+            ),
         ),
     )
     document = ProductDescriptorCodec().encode_document(product)
