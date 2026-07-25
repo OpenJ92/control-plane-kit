@@ -3504,3 +3504,77 @@ register a local/remote Docker authority through public routes and then execute 
 child topology against that registered authority. If the cpk-server image embeds
 the updated operations commit for that acceptance, republish the image and update
 server-product coordinates before the live smoke.
+
+
+## #988 Authority Delivery Dry Run
+
+#988 records the missing concept exposed by the local recursive cpk-server chain
+experiment. The experiment attempted this operator story:
+
+```text
+parent cpk-server
+  -> spawns child cpk-server-docker
+    -> controller enters child
+      -> child registers local-docker-socket authority
+        -> child attempts to spawn the next cpk-server
+```
+
+The child correctly admitted a workspace runtime authority, but execution failed
+when the child interpreter tried to connect to local Docker:
+
+```text
+docker.runtime-authority-uncertain
+DockerException: Error while fetching server API version:
+FileNotFoundError(2, "No such file or directory")
+```
+
+The failure is not a bug in `DockerSdkClient.from_authority(...)`. It proves the
+new law:
+
+```text
+RegisteredRuntimeAuthority
+  = a workspace/operator has admitted a runtime target
+
+RuntimeAuthorityAccessDelivery
+  = a specific cpk-server process has received the capability material needed
+    to use that target
+```
+
+Law cards:
+
+| Law | Evidence | Consequence |
+| --- | --- | --- |
+| Authority admission does not imply delivery | child could register `local-docker-socket`, then failed to connect | add a distinct delivery concept |
+| Interpreter availability does not imply delivery | child reported `runtime_interpreters=docker` but had no socket | never infer socket mount from `CPK_RUNTIME_INTERPRETERS=docker` |
+| Local Docker socket is capability material | missing `/var/run/docker.sock` stopped execution | model delivery as privileged runtime access, not ordinary env |
+| Remote TLS is the same policy shape with different material | TLS proof passes by endpoint plus `SecretReference` certs | keep one authority/delivery vocabulary across local and remote Docker |
+| Cloud runtimes need the same split | AWS/GCP/Kubernetes will require role/session/token delivery | do not make the concept Docker-local only |
+| Product identity must not drive delivery | cpk-server needs access only when explicitly granted | no `if cpk-server then mount socket` branch |
+
+Chosen vocabulary for the next issues:
+
+```text
+authority = approved runtime target
+delivery  = how this process receives access material for that authority
+```
+
+The uncommitted local-chain scaffold in `control-plane-kit-servers` is useful,
+but it belongs to #992 after #989, #990, and #991 introduce the language,
+operations truth, and interpreter materialization. It should not be committed as
+part of #988 because it currently assumes delivery without representing it.
+
+Confirmed topology:
+
+```text
+#988 dry-run authority delivery laws and recursive local failure
+  -> #989 add pure runtime authority delivery contract language
+    -> #990 admit/expose delivery intent in operations
+      -> #991 materialize local Docker socket delivery in DockerRuntimeInterpreter
+        -> #992 prove bounded local recursive cpk-server chain
+          -> #993 close authority delivery lane
+```
+
+Handoff: #989 should add only the pure contract language. It should reject raw
+host paths, TLS keys, tokens, Docker config JSON, cloud keys, kubeconfigs, and
+other capability material in durable descriptors. #992 should later convert the
+existing local-chain harness rather than rebuilding it from scratch.
