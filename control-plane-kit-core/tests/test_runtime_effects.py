@@ -225,6 +225,7 @@ class RuntimeEffectContractTests(unittest.TestCase):
         self.assertEqual(descriptor["kind"], "realize-activity")
         self.assertEqual(descriptor["runtime_kind"], "docker")
         self.assertIsNone(descriptor["authority_ref"])
+        self.assertEqual(descriptor["authority_deliveries"], [])
         self.assertEqual(
             descriptor["source"],
             {
@@ -286,6 +287,69 @@ class RuntimeEffectContractTests(unittest.TestCase):
             RuntimeProductMaterial.from_descriptor(product).public_environment,
             (PublicStaticEnvironmentBinding("HELLO_MESSAGE", "Hello from graph"),),
         )
+
+    def test_request_carries_explicit_authority_delivery_without_socket_material(self) -> None:
+        delivery = RuntimeAuthorityAccessDelivery(
+            RuntimeAuthorityReference("local-docker"),
+            RuntimeAuthorityAccessDeliveryKind.LOCAL_DOCKER_SOCKET_MOUNT,
+        )
+        request = RuntimeEffectRequest(
+            effect_id="effect-a",
+            kind=RuntimeEffectKind.REALIZE_ACTIVITY,
+            runtime_kind=RuntimeKind.DOCKER,
+            source=_source(),
+            activity_id=ActivityId("activity-a"),
+            operation=StartNode(NodeTarget("api")),
+            authority_ref=RuntimeAuthorityReference("local-docker"),
+            authority_deliveries=(delivery,),
+            products=(_product_material(),),
+        )
+
+        descriptor = request.descriptor()
+
+        self.assertEqual(
+            descriptor["authority_deliveries"],
+            [
+                {
+                    "authority_ref": {"reference_id": "local-docker"},
+                    "delivery_kind": "local-docker-socket-mount",
+                    "secret_references": [],
+                }
+            ],
+        )
+        self.assertNotIn("/var/run/docker.sock", repr(descriptor))
+        self.assertNotIn("unix://", repr(descriptor))
+
+    def test_request_rejects_delivery_without_matching_authority_reference(self) -> None:
+        delivery = RuntimeAuthorityAccessDelivery(
+            RuntimeAuthorityReference("local-docker"),
+            RuntimeAuthorityAccessDeliveryKind.LOCAL_DOCKER_SOCKET_MOUNT,
+        )
+
+        with self.assertRaises(RuntimeEffectContractError):
+            RuntimeEffectRequest(
+                effect_id="effect-a",
+                kind=RuntimeEffectKind.REALIZE_ACTIVITY,
+                runtime_kind=RuntimeKind.DOCKER,
+                source=_source(),
+                activity_id=ActivityId("activity-a"),
+                operation=StartNode(NodeTarget("api")),
+                authority_deliveries=(delivery,),
+                products=(_product_material(),),
+            )
+
+        with self.assertRaises(RuntimeEffectContractError):
+            RuntimeEffectRequest(
+                effect_id="effect-a",
+                kind=RuntimeEffectKind.REALIZE_ACTIVITY,
+                runtime_kind=RuntimeKind.DOCKER,
+                source=_source(),
+                activity_id=ActivityId("activity-a"),
+                operation=StartNode(NodeTarget("api")),
+                authority_ref=RuntimeAuthorityReference("other-docker"),
+                authority_deliveries=(delivery,),
+                products=(_product_material(),),
+            )
 
     def test_request_descriptor_carries_runtime_authority_reference_not_material(self) -> None:
         request = RuntimeEffectRequest(

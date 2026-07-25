@@ -573,7 +573,7 @@ RuntimeAuthorityAccessDelivery
 
 owned by:
   `control-plane-kit-core` owns the pure descriptor language.
-  Operations will own workspace admission and readback.
+  Operations owns workspace admission and readback.
   Interpreters will own concrete materialization.
 
 durable:
@@ -865,8 +865,10 @@ interpreted by:
 
 laws:
   It contains pinned source identities and product material selected from
-  durable truth. It does not contain Docker clients, HTTP clients, stores,
-  credentials, or process handles.
+  durable truth. When an authority has an admitted access delivery, it may carry
+  the matching secret-free `RuntimeAuthorityAccessDelivery` contract. It does
+  not contain Docker clients, HTTP clients, stores, credentials, socket paths,
+  host paths, or process handles.
 
 ### RuntimeProductMaterial
 

@@ -30,7 +30,11 @@ from control_plane_kit_core.products import (
     ProductRuntimeContract,
     ProviderRuntimePort,
 )
-from control_plane_kit_core.runtime_authority import RuntimeAuthorityReference
+from control_plane_kit_core.runtime_authority import (
+    RuntimeAuthorityAccessDelivery,
+    RuntimeAuthorityAccessDeliveryKind,
+    RuntimeAuthorityReference,
+)
 from control_plane_kit_core.runtime_effects import ImagePullAuthority
 from control_plane_kit_core.topology import DeploymentGraph, Node, RuntimeRecord
 from control_plane_kit_core.types import BlockFamily, Protocol, RuntimeKind
@@ -55,6 +59,9 @@ from control_plane_kit_operations.records import (
     RetryIdentity,
 )
 from control_plane_kit_operations.runtime_effects import runtime_effect_request_for_context
+from control_plane_kit_operations.runtime_authorities import (
+    RegisteredRuntimeAuthorityDelivery,
+)
 
 
 class RuntimeEffectTranslationTests(unittest.TestCase):
@@ -170,12 +177,60 @@ class RuntimeEffectTranslationTests(unittest.TestCase):
         )
         self.assertNotIn("tcp://", repr(request.descriptor()))
 
+    def test_context_carries_matching_authority_delivery_without_socket_material(self) -> None:
+        delivery = RegisteredRuntimeAuthorityDelivery.from_delivery(
+            workspace_id="workspace-a",
+            delivery=RuntimeAuthorityAccessDelivery(
+                RuntimeAuthorityReference("local-docker"),
+                RuntimeAuthorityAccessDeliveryKind.LOCAL_DOCKER_SOCKET_MOUNT,
+            ),
+            admitted_by="operator-a",
+            admitted_at="2026-07-22T10:03:00Z",
+        )
+        graph = _graph(authority_ref=RuntimeAuthorityReference("local-docker"))
+        context = _context(
+            desired_graph=graph,
+            runtime_authority_deliveries=(delivery,),
+        )
+
+        request = runtime_effect_request_for_context(context)
+
+        self.assertEqual(request.authority_ref, RuntimeAuthorityReference("local-docker"))
+        self.assertEqual(
+            tuple(value.delivery_kind for value in request.authority_deliveries),
+            (RuntimeAuthorityAccessDeliveryKind.LOCAL_DOCKER_SOCKET_MOUNT,),
+        )
+        self.assertNotIn("/var/run/docker.sock", repr(request.descriptor()))
+        self.assertNotIn("unix://", repr(request.descriptor()))
+
+    def test_context_does_not_carry_unrelated_authority_delivery(self) -> None:
+        delivery = RegisteredRuntimeAuthorityDelivery.from_delivery(
+            workspace_id="workspace-a",
+            delivery=RuntimeAuthorityAccessDelivery(
+                RuntimeAuthorityReference("other-docker"),
+                RuntimeAuthorityAccessDeliveryKind.LOCAL_DOCKER_SOCKET_MOUNT,
+            ),
+            admitted_by="operator-a",
+            admitted_at="2026-07-22T10:03:00Z",
+        )
+        graph = _graph(authority_ref=RuntimeAuthorityReference("local-docker"))
+        context = _context(
+            desired_graph=graph,
+            runtime_authority_deliveries=(delivery,),
+        )
+
+        request = runtime_effect_request_for_context(context)
+
+        self.assertEqual(request.authority_ref, RuntimeAuthorityReference("local-docker"))
+        self.assertEqual(request.authority_deliveries, ())
+
 
 def _context(
     *,
     activity: PlannedActivity | None = None,
     desired_graph: DeploymentGraph | None = None,
     pull_authorities: tuple[RegisteredImagePullAuthority, ...] = (),
+    runtime_authority_deliveries: tuple[RegisteredRuntimeAuthorityDelivery, ...] = (),
 ) -> ActivityRealizationContext:
     if activity is None:
         activity = PlannedActivity(ActivityId("activity-a"), StartNode(NodeTarget("api")))
@@ -229,6 +284,7 @@ def _context(
         ),
         registered_products=(_registered_product(),),
         image_pull_authorities=pull_authorities,
+        runtime_authority_deliveries=runtime_authority_deliveries,
         authority=ExecutionWorkerAuthority(
             worker_id="worker-a",
             scopes=(PolicyScope.EXECUTION_OPERATE,),

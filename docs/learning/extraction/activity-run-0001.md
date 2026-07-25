@@ -3717,3 +3717,49 @@ Handoff: #991 should consume this operations truth and materialize
 `LOCAL_DOCKER_SOCKET_MOUNT` at the Docker interpreter/process boundary. It should
 not introduce `if cpk-server then mount socket`; delivery records, not product
 identity or interpreter availability, must drive the capability handoff.
+
+## #991 Runtime Authority Delivery Materialization
+
+#991 adds the missing pure bridge between operations-owned delivery admission
+and concrete runtime interpretation:
+
+```text
+RegisteredRuntimeAuthorityDelivery
+  -> ActivityRealizationContext.runtime_authority_deliveries
+    -> RuntimeEffectRequest.authority_deliveries
+      -> DockerRuntimeInterpreter authority-delivery mount material
+```
+
+The `RuntimeEffectRequest` still does not contain `/var/run/docker.sock`,
+`unix://...`, host paths, TLS material, tokens, or secret values. It carries only
+the closed `RuntimeAuthorityAccessDelivery` descriptor for the request's
+matching `authority_ref`.
+
+Important implementation decision:
+
+```text
+authority_ref mismatch
+  -> delivery is not included in the request
+
+delivery without authority_ref
+  -> invalid RuntimeEffectRequest
+
+local-docker-socket-mount
+  -> interpreter-owned bind mount constant, not durable graph truth
+```
+
+Validation so far:
+
+```text
+./control-plane-kit-core/test.sh
+./control-plane-kit-operations/test.sh
+```
+
+Core passed 407 tests, compileall, and import check. Operations passed 160
+tests, compileall, and import check.
+
+Handoff to the interpreter half of #991: materialize
+`LOCAL_DOCKER_SOCKET_MOUNT` only from `RuntimeEffectRequest.authority_deliveries`.
+Handoff to #992: convert the local recursive cpk-server experiment by registering
+both `local-docker-socket` authority and `local-docker-socket-mount` delivery
+inside each child before executing its next graph.
