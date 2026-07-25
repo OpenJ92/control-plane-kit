@@ -741,6 +741,8 @@ class CpkServerImageBootstrapTests(unittest.TestCase):
         self.assertIn("secret://control-plane-kit/child/product-secret-values-json", smoke)
         self.assertIn("CPK_RUNTIME_INTERPRETERS=docker", smoke)
         self.assertIn("CPK_RECURSIVE_TLS_DOCKER_ENDPOINT=tcp://docker:2376", smoke)
+        self.assertIn('FAMILY_SIZE="${CPK_RECURSIVE_TLS_FAMILY_SIZE:-1}"', smoke)
+        self.assertIn('CPK_RECURSIVE_TLS_FAMILY_SIZE="$FAMILY_SIZE"', smoke)
         self.assertIn(
             'CPK_RECURSIVE_TLS_REGISTER_CHILD_PULL_AUTHORITY="$IMAGE_PULL_RESOLVER"',
             smoke,
@@ -763,6 +765,9 @@ class CpkServerImageBootstrapTests(unittest.TestCase):
         self.assertIn('PARENT_WORKSPACE_ID = "recursive-cpk-server-tls-parent"', controller)
         self.assertIn('CHILD_WORKSPACE_ID = "recursive-cpk-server-tls-child"', controller)
         self.assertIn('CHILD_AUTHORITY_REF = "ephemeral-docker-tls"', controller)
+        self.assertIn("MAX_FAMILY_SIZE = 10", controller)
+        self.assertIn('os.environ.get("CPK_RECURSIVE_TLS_FAMILY_SIZE", "1")', controller)
+        self.assertIn("_cpk_family_with_postgres_graph", controller)
         self.assertIn("cpk-server-docker-tls-harness", controller)
         self.assertIn("cpk-server-no-health-tls-harness", controller)
         self.assertIn("postgres-server-no-health-tls-harness", controller)
@@ -780,8 +785,8 @@ class CpkServerImageBootstrapTests(unittest.TestCase):
         self.assertIn("RuntimeAuthorityReference(CHILD_AUTHORITY_REF)", controller)
         self.assertIn("authority_ref=authority_ref", controller)
         self.assertIn("run_approved_transition", controller)
-        self.assertIn("grandchild-cpk", controller)
-        self.assertIn("grandchild-postgres", controller)
+        self.assertIn('f"grandchild-cpk-{index}"', controller)
+        self.assertIn('f"grandchild-postgres-{index}"', controller)
         self.assertIn("network.connect(container, aliases=aliases)", controller)
         self.assertIn('"docker"', controller)
         self.assertIn("begin private key", controller)

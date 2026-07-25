@@ -48,6 +48,7 @@ PARENT_WORKER_ID = "recursive-tls-parent-worker"
 CHILD_WORKSPACE_ID = "recursive-cpk-server-tls-child"
 CHILD_WORKER_ID = "recursive-tls-child-worker"
 CHILD_AUTHORITY_REF = "ephemeral-docker-tls"
+MAX_FAMILY_SIZE = 10
 
 
 def main() -> int:
@@ -56,6 +57,7 @@ def main() -> int:
     dind_container = _required_env("CPK_RECURSIVE_TLS_DOCKER_AUTHORITY_CONTAINER")
     docker_endpoint = _required_env("CPK_RECURSIVE_TLS_DOCKER_ENDPOINT")
     servers_repo = Path(_required_env("CPK_RECURSIVE_TLS_SERVERS_REPO"))
+    family_size = _recursive_family_size()
 
     _wait_ready(parent_url)
 
@@ -140,24 +142,42 @@ def main() -> int:
     _register_child_pull_authority_if_requested(child)
 
     child_result = child.run_approved_transition(
-        title="Recursive TLS grandchild cpk-server",
-        graph=_cpk_with_postgres_graph(
+        title=f"Recursive TLS cpk-server family x{family_size}",
+        graph=_cpk_family_with_postgres_graph(
             workspace_id=CHILD_WORKSPACE_ID,
             runtime_id="remote-docker",
-            cpk_node_id="grandchild-cpk",
-            postgres_node_id="grandchild-postgres",
             cpk_document=grandchild_cpk,
             postgres_document=grandchild_postgres,
+            family_size=family_size,
             authority_ref=RuntimeAuthorityReference(CHILD_AUTHORITY_REF),
         ),
         current_graph_id=child_current,
     )
-    _assert_activity_mentions(child.base_url, child_result.run_id, "grandchild-cpk")
-    _assert_activity_mentions(child.base_url, child_result.run_id, "grandchild-postgres")
+    for index in range(1, family_size + 1):
+        _assert_activity_mentions(child.base_url, child_result.run_id, f"grandchild-cpk-{index}")
+        _assert_activity_mentions(
+            child.base_url,
+            child_result.run_id,
+            f"grandchild-postgres-{index}",
+        )
     _assert_parent_mentions(parent.base_url, parent_result.run_id, "child-cpk")
 
-    print("recursive TLS cpk-server activity smoke passed")
+    print(f"recursive TLS cpk-server activity smoke passed with family_size={family_size}")
     return 0
+
+
+def _recursive_family_size() -> int:
+    raw = os.environ.get("CPK_RECURSIVE_TLS_FAMILY_SIZE", "1")
+    try:
+        value = int(raw)
+    except ValueError as error:
+        raise RuntimeError("CPK_RECURSIVE_TLS_FAMILY_SIZE must be an integer") from error
+    if not 1 <= value <= MAX_FAMILY_SIZE:
+        raise RuntimeError(
+            "CPK_RECURSIVE_TLS_FAMILY_SIZE must be between "
+            f"1 and {MAX_FAMILY_SIZE}"
+        )
+    return value
 
 
 def _register_pull_authority_if_requested(workflow: HostedWorkflow) -> None:
@@ -278,6 +298,74 @@ def _cpk_with_postgres_graph(
                         "graph-topology-store",
                     ),
                 ),
+            ),
+        )
+    )
+
+
+def _cpk_family_with_postgres_graph(
+    *,
+    workspace_id: str,
+    runtime_id: str,
+    cpk_document: Any,
+    postgres_document: Any,
+    family_size: int,
+    authority_ref: RuntimeAuthorityReference,
+) -> DeploymentGraph:
+    children: list[Any] = []
+    for index in range(1, family_size + 1):
+        cpk_node_id = f"grandchild-cpk-{index}"
+        postgres_node_id = f"grandchild-postgres-{index}"
+        children.extend(
+            (
+                instantiate_product(
+                    postgres_document.product,
+                    postgres_node_id,
+                    ProductInstanceConfiguration.from_contract(
+                        postgres_document.product.runtime_contract
+                    ),
+                ),
+                instantiate_product(
+                    cpk_document.product,
+                    cpk_node_id,
+                    ProductInstanceConfiguration.from_contract(
+                        cpk_document.product.runtime_contract
+                    ),
+                ),
+                SocketConnection(
+                    postgres_node_id,
+                    "postgres",
+                    cpk_node_id,
+                    "workplace-store",
+                ),
+                SocketConnection(
+                    postgres_node_id,
+                    "postgres",
+                    cpk_node_id,
+                    "activity-history-store",
+                ),
+                SocketConnection(
+                    postgres_node_id,
+                    "postgres",
+                    cpk_node_id,
+                    "observer-state-store",
+                ),
+                SocketConnection(
+                    postgres_node_id,
+                    "postgres",
+                    cpk_node_id,
+                    "graph-topology-store",
+                ),
+            )
+        )
+    return compile_topology(
+        DeploymentTopology(
+            workspace_id,
+            DockerRuntime(
+                runtime_id=runtime_id,
+                network_name=f"control-plane-kit-{workspace_id}-{runtime_id}",
+                authority_ref=authority_ref,
+                children=tuple(children),
             ),
         )
     )
