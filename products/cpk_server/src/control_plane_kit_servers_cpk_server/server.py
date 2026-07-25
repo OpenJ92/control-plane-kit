@@ -32,6 +32,7 @@ from control_plane_kit_operations import (
     ImagePullAuthorityRegistrationService,
     OperationCommandService,
     ProductRegistrationService,
+    RuntimeAuthorityRegistrationService,
     RuntimeDispatcherBootstrapConfiguration,
     RuntimeDispatcherBootstrapError,
     RuntimeInterpreterDispatcher,
@@ -294,6 +295,7 @@ def _operations_application(
             ),
             products=ProductRegistrationService(unit_of_work),
             image_pull_authorities=ImagePullAuthorityRegistrationService(unit_of_work),
+            runtime_authorities=RuntimeAuthorityRegistrationService(unit_of_work),
             desired_graphs=DesiredGraphCommandService(
                 unit_of_work,
                 clock=_clock,

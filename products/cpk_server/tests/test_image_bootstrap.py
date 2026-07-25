@@ -501,6 +501,8 @@ class CpkServerImageBootstrapTests(unittest.TestCase):
         self.assertIn("WorkspaceCommandService", source)
         self.assertIn("ProductRegistrationService", source)
         self.assertIn("ImagePullAuthorityRegistrationService", source)
+        self.assertIn("RuntimeAuthorityRegistrationService", source)
+        self.assertIn("runtime_authorities=RuntimeAuthorityRegistrationService", source)
         self.assertIn("DesiredGraphCommandService", source)
         self.assertIn("OperationCommandService", source)
         self.assertIn("CurrentGraphAdvancementCommandService", source)
