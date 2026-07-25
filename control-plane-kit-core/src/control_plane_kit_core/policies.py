@@ -31,6 +31,10 @@ class PolicyScope(StrEnum):
     PLAN_APPROVE_DESTRUCTIVE = "plan:approve-destructive"
     PLAN_EXECUTE = "plan:execute"
     EXECUTION_OPERATE = "execution:operate"
+    RUNTIME_AUTHORITY_REGISTER = "runtime-authority:register"
+    RUNTIME_AUTHORITY_READ = "runtime-authority:read"
+    RUNTIME_AUTHORITY_REVOKE = "runtime-authority:revoke"
+    RUNTIME_AUTHORITY_USE = "runtime-authority:use"
 
 
 @dataclass(frozen=True, order=True)

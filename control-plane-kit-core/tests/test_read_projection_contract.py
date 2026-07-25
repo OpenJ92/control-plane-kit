@@ -116,6 +116,22 @@ class ReadProjectionContractTests(unittest.TestCase):
                     False,
                 ),
                 (
+                    "read.runtime-authorities",
+                    ReadProjectionKind.RUNTIME_AUTHORITIES,
+                    "RuntimeAuthorityCollectionReadResponse",
+                    ReadProjectionPolicy.REDACTED_RUNTIME_AUTHORITY,
+                    True,
+                    False,
+                ),
+                (
+                    "read.runtime-authority-detail",
+                    ReadProjectionKind.RUNTIME_AUTHORITY_DETAIL,
+                    "RuntimeAuthorityDetailReadResponse",
+                    ReadProjectionPolicy.REDACTED_RUNTIME_AUTHORITY,
+                    True,
+                    False,
+                ),
+                (
                     "read.session-detail",
                     ReadProjectionKind.SESSION_DETAIL,
                     "SessionDetailReadResponse",

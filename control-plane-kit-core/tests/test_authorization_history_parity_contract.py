@@ -82,7 +82,7 @@ class AuthorizationHistoryParityTests(unittest.TestCase):
     def test_security_parity_covers_read_and_command_operations(self) -> None:
         parity = _security_parity()
 
-        self.assertEqual(len(parity.operations), 29)
+        self.assertEqual(len(parity.operations), 33)
         command = parity.operation("deployment.execute")
         self.assertEqual(command.auth_scope, HttpAuthScope.EXECUTION_RUN)
         self.assertEqual(command.safety, HttpOperationSafety.DESTRUCTIVE)
@@ -135,6 +135,22 @@ class AuthorizationHistoryParityTests(unittest.TestCase):
         self.assertEqual(
             run_start.activity_history,
             ActivityHistoryPolicy.RECORD_ACCEPTED_AND_REJECTED_COMMANDS,
+        )
+
+        authority_register = parity.operation("runtime-authority.register")
+        self.assertEqual(authority_register.auth_scope, HttpAuthScope.ADMIN)
+        self.assertEqual(authority_register.safety, HttpOperationSafety.COMMAND)
+        self.assertEqual(
+            authority_register.activity_history,
+            ActivityHistoryPolicy.RECORD_ACCEPTED_AND_REJECTED_COMMANDS,
+        )
+
+        authority_read = parity.operation("read.runtime-authorities")
+        self.assertEqual(authority_read.auth_scope, HttpAuthScope.READ)
+        self.assertEqual(authority_read.safety, HttpOperationSafety.READ_ONLY)
+        self.assertEqual(
+            authority_read.activity_history,
+            ActivityHistoryPolicy.NOT_RECORDED,
         )
 
     def test_descriptor_is_closed_redacted_and_round_trips(self) -> None:

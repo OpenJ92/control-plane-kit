@@ -3440,3 +3440,67 @@ published-image acceptance without teaching operations or core about Docker SDK
 clients. Future AWS/GCP/Kubernetes/remote-Docker authority variants should reuse
 the same split: generic durable authority admission in operations, concrete SDK
 client construction in the matching interpreter package.
+
+
+## #967 Runtime Authority HTTP/MCP Registration Surface
+
+#967 exposes runtime-authority admission through the same cpk-server application
+boundary used by the rest of the operator workflow. The resulting split is:
+
+```text
+Interpreter Availability
+  = process-level installed/enabled interpreter families
+
+RegisteredRuntimeAuthority
+  = workspace-scoped operational truth for one concrete runtime target
+```
+
+Core now names the public command/read surfaces and focused permission scopes:
+
+```text
+runtime-authority.register
+runtime-authority.revoke
+read.runtime-authorities
+read.runtime-authority-detail
+
+runtime-authority:register
+runtime-authority:read
+runtime-authority:revoke
+runtime-authority:use
+```
+
+Operations owns the durable service and transaction boundary. Registration and
+revocation require their focused scopes; graph execution permission alone does
+not admit or revoke runtime authority truth. The cpk-server adapter only parses
+HTTP/MCP shaped payloads and calls operations services:
+
+```text
+HTTP/MCP route
+  -> CpkServerPlanningService / CpkServerReadService
+    -> RuntimeAuthorityRegistrationService / InstanceReadService
+      -> Postgres UnitOfWork
+```
+
+Readback remains intentionally redacted. A remote Docker TLS authority can store
+the endpoint and secret references in operations-owned storage, but public
+descriptors expose only bounded metadata and `SecretReference` ids. The tests
+prove that route responses do not contain the endpoint host/port or secret
+material.
+
+Important decision: #967 does not perform Docker effects. It registers the
+authority a later execution may use. Concrete authority materialization still
+belongs to the interpreter IO boundary established by #965.
+
+Validation evidence:
+
+```text
+control-plane-kit-core ./test.sh: 401 tests passed, compileall, import ok
+control-plane-kit-operations ./test.sh: 152 tests passed, compileall, import ok
+git diff --check: passed
+```
+
+Handoff: #968 can now prove that an already-running Docker-capable cpk-server can
+register a local/remote Docker authority through public routes and then execute a
+child topology against that registered authority. If the cpk-server image embeds
+the updated operations commit for that acceptance, republish the image and update
+server-product coordinates before the live smoke.

@@ -363,6 +363,16 @@ def operator_read_http_routes() -> tuple[HttpApiRouteContract, ...]:
                 "/workspaces/{workspace_id}/control-surface",
                 "ControlSurfaceReadResponse",
             ),
+            (
+                "read.runtime-authorities",
+                "/workspaces/{workspace_id}/runtime-authorities",
+                "RuntimeAuthorityCollectionReadResponse",
+            ),
+            (
+                "read.runtime-authority-detail",
+                "/workspaces/{workspace_id}/runtime-authorities/{authority_ref}",
+                "RuntimeAuthorityDetailReadResponse",
+            ),
         )
     )
 
@@ -415,6 +425,24 @@ def operator_command_http_routes() -> tuple[HttpApiRouteContract, ...]:
                 HttpOperationSafety.COMMAND,
                 "RegisterImagePullAuthorityRequest",
                 "RegisteredImagePullAuthorityResponse",
+            ),
+            (
+                "command.runtime-authority.register",
+                "/workspaces/{workspace_id}/runtime-authorities",
+                ControlPlaneServiceRole.PLANNING,
+                HttpAuthScope.ADMIN,
+                HttpOperationSafety.COMMAND,
+                "RegisterRuntimeAuthorityRequest",
+                "RegisteredRuntimeAuthorityResponse",
+            ),
+            (
+                "command.runtime-authority.revoke",
+                "/workspaces/{workspace_id}/runtime-authorities/{authority_ref}/revoke",
+                ControlPlaneServiceRole.PLANNING,
+                HttpAuthScope.ADMIN,
+                HttpOperationSafety.COMMAND,
+                "RevokeRuntimeAuthorityRequest",
+                "RegisteredRuntimeAuthorityResponse",
             ),
             (
                 "command.operation-session.start",

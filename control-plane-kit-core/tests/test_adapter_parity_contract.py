@@ -89,6 +89,18 @@ class AdapterParityContractTests(unittest.TestCase):
                     "PlanDetailReadResponse",
                 ),
                 (
+                    "read.runtime-authorities",
+                    "read.runtime-authorities",
+                    "list_runtime_authorities",
+                    "RuntimeAuthorityCollectionReadResponse",
+                ),
+                (
+                    "read.runtime-authority-detail",
+                    "read.runtime-authority-detail",
+                    "get_runtime_authority_detail",
+                    "RuntimeAuthorityDetailReadResponse",
+                ),
+                (
                     "read.session-detail",
                     "read.session-detail",
                     "get_session_detail",

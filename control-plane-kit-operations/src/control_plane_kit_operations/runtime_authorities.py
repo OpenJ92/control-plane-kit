@@ -8,6 +8,7 @@ from hashlib import sha256
 from typing import Any, Mapping
 from urllib.parse import urlsplit
 
+from control_plane_kit_core.policies import PolicyScope
 from control_plane_kit_core.runtime_authority import RuntimeAuthorityReference
 from control_plane_kit_core.secrets import SecretReference
 from control_plane_kit_core.types import RuntimeKind
@@ -19,6 +20,10 @@ class RuntimeAuthorityRegistrationError(ValueError):
 
 class RuntimeAuthorityRegistrationConflict(RuntimeAuthorityRegistrationError):
     """Raised when an authority replacement requires an explicit decision."""
+
+
+class RuntimeAuthorityAuthorizationDenied(RuntimeAuthorityRegistrationError):
+    """Raised when an actor lacks a focused runtime authority scope."""
 
 
 class RuntimeAuthorityNotFound(RuntimeAuthorityRegistrationError):
@@ -247,8 +252,10 @@ class RegisterRuntimeAuthorityCommand:
     authority: DockerRuntimeAuthority
     admitted_by: str
     admitted_at: str
+    actor_scopes: tuple[PolicyScope, ...]
 
     def __post_init__(self) -> None:
+        object.__setattr__(self, "actor_scopes", _scopes(self.actor_scopes))
         RegisteredRuntimeAuthority.from_authority(
             workspace_id=self.workspace_id,
             authority_ref=self.authority_ref,
@@ -257,6 +264,23 @@ class RegisterRuntimeAuthorityCommand:
             admitted_by=self.admitted_by,
             admitted_at=self.admitted_at,
         )
+
+
+@dataclass(frozen=True)
+class RevokeRuntimeAuthorityCommand:
+    """Application command to revoke one workspace runtime authority."""
+
+    workspace_id: str
+    authority_ref: RuntimeAuthorityReference
+    actor_scopes: tuple[PolicyScope, ...]
+
+    def __post_init__(self) -> None:
+        _validate_identifier(self.workspace_id, "workspace_id")
+        if not isinstance(self.authority_ref, RuntimeAuthorityReference):
+            raise RuntimeAuthorityRegistrationError(
+                "revoke requires RuntimeAuthorityReference"
+            )
+        object.__setattr__(self, "actor_scopes", _scopes(self.actor_scopes))
 
 
 class RuntimeAuthorityRegistrationService:
@@ -273,6 +297,10 @@ class RuntimeAuthorityRegistrationService:
             raise RuntimeAuthorityRegistrationError(
                 "register requires RegisterRuntimeAuthorityCommand"
             )
+        if PolicyScope.RUNTIME_AUTHORITY_REGISTER not in command.actor_scopes:
+            raise RuntimeAuthorityAuthorizationDenied(
+                "runtime authority registration requires runtime-authority:register"
+            )
         with self._unit_of_work_factory() as unit_of_work:
             registered = unit_of_work.stores.runtime_authorities.register(
                 workspace_id=command.workspace_id,
@@ -287,14 +315,20 @@ class RuntimeAuthorityRegistrationService:
 
     def revoke(
         self,
-        *,
-        workspace_id: str,
-        authority_ref: RuntimeAuthorityReference,
+        command: RevokeRuntimeAuthorityCommand,
     ) -> RegisteredRuntimeAuthority:
+        if not isinstance(command, RevokeRuntimeAuthorityCommand):
+            raise RuntimeAuthorityRegistrationError(
+                "revoke requires RevokeRuntimeAuthorityCommand"
+            )
+        if PolicyScope.RUNTIME_AUTHORITY_REVOKE not in command.actor_scopes:
+            raise RuntimeAuthorityAuthorizationDenied(
+                "runtime authority revocation requires runtime-authority:revoke"
+            )
         with self._unit_of_work_factory() as unit_of_work:
             registered = unit_of_work.stores.runtime_authorities.revoke(
-                workspace_id,
-                authority_ref,
+                command.workspace_id,
+                command.authority_ref,
             )
             unit_of_work.commit()
             return registered
@@ -384,6 +418,18 @@ def _validate_identifier(value: str, field: str) -> None:
         raise RuntimeAuthorityRegistrationError(
             f"{field} must not contain control characters"
         )
+
+
+def _scopes(value: tuple[PolicyScope, ...]) -> tuple[PolicyScope, ...]:
+    if not isinstance(value, tuple):
+        raise RuntimeAuthorityRegistrationError(
+            "actor_scopes must be a tuple of PolicyScope"
+        )
+    if not all(isinstance(scope, PolicyScope) for scope in value):
+        raise RuntimeAuthorityRegistrationError(
+            "actor_scopes must contain only PolicyScope"
+        )
+    return value
 
 
 def _mapping(value: object, field: str) -> Mapping[str, object]:
