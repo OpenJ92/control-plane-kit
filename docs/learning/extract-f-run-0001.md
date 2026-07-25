@@ -525,3 +525,53 @@ Handoff to #676:
 - entering a child means using the child public endpoint/auth boundary directly;
 - #817 does not prove child deployment execution, only child process readiness
   and endpoint contract coherence.
+
+
+## #992 Recursive Local Runtime Authority Delivery
+
+#992 proves the local recursive cpk-server chain through explicit runtime
+authority delivery:
+
+```text
+parent cpk-server-docker
+  -> registers local Docker authority
+  -> registers LOCAL_DOCKER_SOCKET_MOUNT delivery
+  -> spawns child cpk-server-docker
+    -> child registers its own local Docker authority and delivery
+    -> child spawns another cpk-server-docker
+```
+
+The smoke is bounded by `CPK_RECURSIVE_LOCAL_CHAIN_DEPTH`, defaulting to `1` and
+failing closed above `10`. The depth-2 proof passed with:
+
+```text
+CPK_RECURSIVE_LOCAL_CHAIN_DEPTH=2 sh scripts/cpk_server_recursive_activity_smoke.sh
+```
+
+Important implementation decisions:
+
+- Docker socket access is explicit delivery material, not inferred from
+  `cpk-server` identity or `CPK_RUNTIME_INTERPRETERS=docker`.
+- The Docker interpreter mounts `/var/run/docker.sock` only when the
+  `RuntimeEffectRequest` carries `LOCAL_DOCKER_SOCKET_MOUNT`.
+- The interpreter adds the host socket group id as a supplementary group for the
+  realized container, keeping cpk-server non-root.
+- The recursive smoke pre-cleans only resources with CPK-owned recursive
+  workspace labels, preserving unrelated and Pottery Factory Docker resources.
+- Child secret material is finite delegated bootstrap material generated to the
+  requested chain depth. It remains explicit secret delivery and never enters
+  descriptors, graph data, runtime request descriptors, observations, read
+  models, or logs.
+
+Current published cpk-server digest used by the smoke:
+
+```text
+ghcr.io/openj92/control-plane-kit-servers/cpk-server@sha256:9eacda293d09953289a50adb9476a290b73a2406698ce352bb97904f27c1415b
+```
+
+Validation evidence:
+
+- focused recursive static tests passed;
+- coordinate source-of-truth check passed;
+- published-image smoke passed;
+- full `./test.sh` passed.

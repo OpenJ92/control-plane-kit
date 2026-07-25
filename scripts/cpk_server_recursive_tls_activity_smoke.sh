@@ -13,52 +13,43 @@ PY
 
 IMAGE="${CPK_SERVER_IMAGE:-$(default_image)}"
 CONTROLLER_IMAGE="${CPK_SERVERS_TEST_IMAGE:-control-plane-kit-servers-test:local}"
-BUILD_CONTROLLER="${CPK_RECURSIVE_BUILD_CONTROLLER:-1}"
-CHAIN_DEPTH="${CPK_RECURSIVE_LOCAL_CHAIN_DEPTH:-1}"
-NETWORK="cpk-server-recursive-$$"
+DIND_IMAGE="${CPK_RECURSIVE_TLS_DIND_IMAGE:-docker:27-dind}"
+BUILD_CONTROLLER="${CPK_RECURSIVE_TLS_BUILD_CONTROLLER:-1}"
+FAMILY_SIZE="${CPK_RECURSIVE_TLS_FAMILY_SIZE:-1}"
+NETWORK="cpk-server-recursive-tls-$$"
 LABEL="org.openj92.project=control-plane-kit-servers"
-WORKSPACE_LABEL_KEY="org.openj92.cpk.workspace"
+PARENT_WORKSPACE_LABEL="org.openj92.cpk.workspace=recursive-cpk-server-tls-parent"
+CHILD_WORKSPACE_LABEL="org.openj92.cpk.workspace=recursive-cpk-server-tls-child"
 POSTGRES_CONTAINER=""
 PARENT_CONTAINER=""
+DIND_CONTAINER=""
 DOCKER_SOCKET_GROUP="${CPK_DOCKER_SOCKET_GROUP:-0}"
 AUTH_CONFIG_SOURCE="${CPK_DOCKER_AUTH_CONFIG:-$HOME/.docker/config.json}"
 AUTH_CONFIG_DIR=""
+CERT_DIR=""
 IMAGE_PULL_RESOLVER="none"
 
-cleanup_recursive_resources() {
-  docker ps -aq --filter "label=$WORKSPACE_LABEL_KEY" \
-    | while IFS= read -r container; do
-        if [ -n "$container" ]; then
-          workspace="$(docker inspect "$container" --format "{{ index .Config.Labels \"$WORKSPACE_LABEL_KEY\" }}" 2>/dev/null || true)"
-          case "$workspace" in
-            recursive-cpk-server|recursive-cpk-server-local-chain-*)
-              docker rm -f "$container" >/dev/null 2>&1 || true
-              ;;
-          esac
-        fi
-      done
-  docker volume ls -q --filter "label=$WORKSPACE_LABEL_KEY" \
-    | while IFS= read -r volume; do
-        if [ -n "$volume" ]; then
-          workspace="$(docker volume inspect "$volume" --format "{{ index .Labels \"$WORKSPACE_LABEL_KEY\" }}" 2>/dev/null || true)"
-          case "$workspace" in
-            recursive-cpk-server|recursive-cpk-server-local-chain-*)
-              docker volume rm "$volume" >/dev/null 2>&1 || true
-              ;;
-          esac
-        fi
-      done
-  docker network ls -q --filter "label=$WORKSPACE_LABEL_KEY" \
-    | while IFS= read -r network; do
-        if [ -n "$network" ]; then
-          workspace="$(docker network inspect "$network" --format "{{ index .Labels \"$WORKSPACE_LABEL_KEY\" }}" 2>/dev/null || true)"
-          case "$workspace" in
-            recursive-cpk-server|recursive-cpk-server-local-chain-*)
-              docker network rm "$network" >/dev/null 2>&1 || true
-              ;;
-          esac
-        fi
-      done
+cleanup_workspace_resources() {
+  for workspace_label in "$PARENT_WORKSPACE_LABEL" "$CHILD_WORKSPACE_LABEL"; do
+    docker ps -aq --filter "label=$workspace_label" \
+      | while IFS= read -r container; do
+          if [ -n "$container" ]; then
+            docker rm -f "$container" >/dev/null 2>&1 || true
+          fi
+        done
+    docker volume ls -q --filter "label=$workspace_label" \
+      | while IFS= read -r volume; do
+          if [ -n "$volume" ]; then
+            docker volume rm "$volume" >/dev/null 2>&1 || true
+          fi
+        done
+    docker network ls -q --filter "label=$workspace_label" \
+      | while IFS= read -r network; do
+          if [ -n "$network" ]; then
+            docker network rm "$network" >/dev/null 2>&1 || true
+          fi
+        done
+  done
 }
 
 cleanup() {
@@ -68,21 +59,38 @@ cleanup() {
   if [ -n "$POSTGRES_CONTAINER" ]; then
     docker rm -f "$POSTGRES_CONTAINER" >/dev/null 2>&1 || true
   fi
+  if [ -n "$DIND_CONTAINER" ]; then
+    docker rm -f "$DIND_CONTAINER" >/dev/null 2>&1 || true
+  fi
   docker network rm "$NETWORK" >/dev/null 2>&1 || true
-  cleanup_recursive_resources
+  cleanup_workspace_resources
   if [ -n "$AUTH_CONFIG_DIR" ]; then
     rm -rf "$AUTH_CONFIG_DIR"
+  fi
+  if [ -n "$CERT_DIR" ]; then
+    rm -rf "$CERT_DIR"
   fi
 }
 trap cleanup EXIT INT TERM
 
-cleanup_recursive_resources
+dump_recursive_logs() {
+  for workspace_label in "$PARENT_WORKSPACE_LABEL" "$CHILD_WORKSPACE_LABEL"; do
+    docker ps -aq --filter "label=$workspace_label" \
+      | while IFS= read -r container; do
+          if [ -n "$container" ]; then
+            echo "----- logs for $container -----" >&2
+            docker logs "$container" 2>&1 | tail -n 100 >&2 || true
+          fi
+        done
+  done
+}
 
 if [ "$BUILD_CONTROLLER" = "1" ]; then
   docker build -f Dockerfile.test -t "$CONTROLLER_IMAGE" .
 fi
 
 docker pull "$IMAGE"
+docker pull "$DIND_IMAGE"
 docker network create "$NETWORK" >/dev/null
 
 POSTGRES_CONTAINER="$(docker run -d \
@@ -108,6 +116,40 @@ if [ "$POSTGRES_READY" != "1" ]; then
   exit 1
 fi
 
+DIND_CONTAINER="$(docker run -d \
+  --privileged \
+  --label "$LABEL" \
+  --network "$NETWORK" \
+  --network-alias docker \
+  -e DOCKER_TLS_CERTDIR=/certs \
+  "$DIND_IMAGE")"
+
+DIND_READY=0
+for _ in 1 2 3 4 5 6 7 8 9 10 11 12 13 14 15 16 17 18 19 20; do
+  if docker exec "$DIND_CONTAINER" docker \
+    --tlsverify \
+    --tlscacert=/certs/client/ca.pem \
+    --tlscert=/certs/client/cert.pem \
+    --tlskey=/certs/client/key.pem \
+    -H tcp://127.0.0.1:2376 version >/dev/null 2>&1; then
+    DIND_READY=1
+    break
+  fi
+  sleep 1
+done
+
+if [ "$DIND_READY" != "1" ]; then
+  echo "ephemeral Docker TLS authority did not become ready" >&2
+  docker logs "$DIND_CONTAINER" 2>&1 | tail -n 100 >&2 || true
+  exit 1
+fi
+
+CERT_DIR="$(mktemp -d)"
+docker cp "$DIND_CONTAINER:/certs/client/ca.pem" "$CERT_DIR/ca.pem"
+docker cp "$DIND_CONTAINER:/certs/client/cert.pem" "$CERT_DIR/cert.pem"
+docker cp "$DIND_CONTAINER:/certs/client/key.pem" "$CERT_DIR/key.pem"
+chmod 0400 "$CERT_DIR"/*.pem
+
 if command -v gh >/dev/null 2>&1 && GHCR_TOKEN="$(gh auth token 2>/dev/null)"; then
   AUTH_CONFIG_DIR="$(mktemp -d)"
   GHCR_AUTH="$(printf 'OpenJ92:%s' "$GHCR_TOKEN" | base64 | tr -d '\n')"
@@ -124,42 +166,24 @@ elif [ -r "$AUTH_CONFIG_SOURCE" ]; then
 fi
 
 PRODUCT_SECRET_VALUES_JSON="$(
-  python3 - "${AUTH_CONFIG_DIR:-}" "$CHAIN_DEPTH" <<'PY'
+  python3 - "$CERT_DIR" "${AUTH_CONFIG_DIR:-}" <<'PY'
 import json
 from pathlib import Path
 import sys
 
-auth_config_dir = Path(sys.argv[1]) if len(sys.argv) > 1 and sys.argv[1] else None
-chain_depth = int(sys.argv[2])
-auth_config_json = None
+cert_dir = Path(sys.argv[1])
+auth_config_dir = Path(sys.argv[2]) if len(sys.argv) > 2 and sys.argv[2] else None
+child_values = {
+    "secret://control-plane-kit/postgres/password": "cpk",
+    "secret://control-plane-kit/docker-tls/ca": (cert_dir / "ca.pem").read_text(encoding="utf-8"),
+    "secret://control-plane-kit/docker-tls/cert": (cert_dir / "cert.pem").read_text(encoding="utf-8"),
+    "secret://control-plane-kit/docker-tls/key": (cert_dir / "key.pem").read_text(encoding="utf-8"),
+    "secret://control-plane-kit/child/image-pull-credential-resolver": "docker-config",
+}
 if auth_config_dir is not None:
-    auth_config_json = (auth_config_dir / "config.json").read_text(encoding="utf-8")
-
-
-def child_secret_values(remaining_depth: int) -> dict[str, str]:
-    values = {
-        "secret://control-plane-kit/postgres/password": "cpk",
-        "secret://control-plane-kit/child/image-pull-credential-resolver": "docker-config",
-    }
-    if auth_config_json is not None:
-        values["secret://control-plane-kit/child/docker-auth-config-json"] = (
-            auth_config_json
-        )
-    next_values = (
-        child_secret_values(remaining_depth - 1)
-        if remaining_depth > 1
-        else {"secret://control-plane-kit/postgres/password": "cpk"}
-    )
-    values["secret://control-plane-kit/child/product-secret-resolver"] = (
-        "local-development"
-    )
-    values["secret://control-plane-kit/child/product-secret-values-json"] = (
-        json.dumps(next_values, sort_keys=True, separators=(",", ":"))
-    )
-    return values
-
-
-child_values = child_secret_values(chain_depth)
+    child_values["secret://control-plane-kit/child/docker-auth-config-json"] = (
+        auth_config_dir / "config.json"
+    ).read_text(encoding="utf-8")
 parent_values = {
     "secret://control-plane-kit/postgres/password": "cpk",
     "secret://control-plane-kit/child/product-secret-resolver": "local-development",
@@ -170,8 +194,10 @@ parent_values = {
         separators=(",", ":"),
     ),
 }
-if auth_config_json is not None:
-    parent_values["secret://control-plane-kit/child/docker-auth-config-json"] = auth_config_json
+if auth_config_dir is not None:
+    parent_values["secret://control-plane-kit/child/docker-auth-config-json"] = (
+        auth_config_dir / "config.json"
+    ).read_text(encoding="utf-8")
 print(json.dumps(parent_values, sort_keys=True, separators=(",", ":")))
 PY
 )"
@@ -221,21 +247,27 @@ if ! docker run --rm \
   --label "$LABEL" \
   --network "$NETWORK" \
   -v /var/run/docker.sock:/var/run/docker.sock \
-  -e CPK_RECURSIVE_BASE_URL=http://cpk-server:8080 \
-  -e CPK_RECURSIVE_PARENT_CONTAINER="$PARENT_CONTAINER" \
-  -e CPK_RECURSIVE_SERVERS_REPO=/app \
-  -e CPK_RECURSIVE_LOCAL_CHAIN_DEPTH="$CHAIN_DEPTH" \
-  -e CPK_RECURSIVE_REGISTER_PULL_AUTHORITY="$IMAGE_PULL_RESOLVER" \
+  -e CPK_RECURSIVE_TLS_BASE_URL=http://cpk-server:8080 \
+  -e CPK_RECURSIVE_TLS_PARENT_CONTAINER="$PARENT_CONTAINER" \
+  -e CPK_RECURSIVE_TLS_DOCKER_AUTHORITY_CONTAINER="$DIND_CONTAINER" \
+  -e CPK_RECURSIVE_TLS_DOCKER_ENDPOINT=tcp://docker:2376 \
+  -e CPK_RECURSIVE_TLS_SERVERS_REPO=/app \
+  -e CPK_RECURSIVE_TLS_FAMILY_SIZE="$FAMILY_SIZE" \
+  -e CPK_RECURSIVE_TLS_REGISTER_PULL_AUTHORITY="$IMAGE_PULL_RESOLVER" \
+  -e CPK_RECURSIVE_TLS_REGISTER_CHILD_PULL_AUTHORITY="$IMAGE_PULL_RESOLVER" \
   "$CONTROLLER_IMAGE" \
-  python scripts/cpk_server_recursive_activity.py; then
+  python scripts/cpk_server_recursive_tls_activity.py; then
+  dump_recursive_logs
   docker logs "$PARENT_CONTAINER" 2>&1 | tail -n 100 >&2 || true
+  docker logs "$DIND_CONTAINER" 2>&1 | tail -n 100 >&2 || true
   exit 1
 fi
 
 cleanup
 POSTGRES_CONTAINER=""
 PARENT_CONTAINER=""
+DIND_CONTAINER=""
 
 sh scripts/docker_residue_audit.sh
 
-echo "recursive cpk-server activity smoke passed"
+echo "recursive TLS cpk-server activity smoke passed"

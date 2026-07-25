@@ -2,22 +2,22 @@
   "products": [
     {
       "descriptor_path": "products/cpk_server/product.cpk.json",
-      "descriptor_sha256": "fef8f0bfeac89f478e0fff4aef64eb9bc17e3ebb80e9a5617ba2824d61562989",
-      "image_digest": "sha256:b7a2fa5f4455a70965e8d8e806a332e02c457c29e1e5739014b96c4f136cd5f2",
-      "image_ref": "ghcr.io/openj92/control-plane-kit-servers/cpk-server:runtime-auth-968",
+      "descriptor_sha256": "f90968dc9641aa875d84c47bc8e7c29ecce94c513aacdf31ee2f848c230620a7",
+      "image_digest": "sha256:9eacda293d09953289a50adb9476a290b73a2406698ce352bb97904f27c1415b",
+      "image_ref": "ghcr.io/openj92/control-plane-kit-servers/cpk-server:runtime-auth-992-local-chain-gid",
       "owner_directory": "products/cpk_server",
       "product_id": "cpk-server",
-      "source_commit": "fc667bb79802e15e0fee851f3a90805256cf50b6",
+      "source_commit": "e87a939739ef81ab002c594a349344f693cb13f4",
       "status": "completed"
     },
     {
       "descriptor_path": "products/cpk_server/product.docker.cpk.json",
-      "descriptor_sha256": "1d355c6bf73df2dcd188b35c569d4d79f4b6add6cc881b0f801312d249039165",
-      "image_digest": "sha256:b7a2fa5f4455a70965e8d8e806a332e02c457c29e1e5739014b96c4f136cd5f2",
-      "image_ref": "ghcr.io/openj92/control-plane-kit-servers/cpk-server:runtime-auth-968",
+      "descriptor_sha256": "0581717ca9dfd2b374ad3913e7b82b9355cf15c4aa83638e724b9ff6436bde88",
+      "image_digest": "sha256:9eacda293d09953289a50adb9476a290b73a2406698ce352bb97904f27c1415b",
+      "image_ref": "ghcr.io/openj92/control-plane-kit-servers/cpk-server:runtime-auth-992-local-chain-gid",
       "owner_directory": "products/cpk_server",
       "product_id": "cpk-server-docker",
-      "source_commit": "fc667bb79802e15e0fee851f3a90805256cf50b6",
+      "source_commit": "e87a939739ef81ab002c594a349344f693cb13f4",
       "status": "completed"
     },
     {

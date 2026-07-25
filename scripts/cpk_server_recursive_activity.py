@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import json
 import os
+from dataclasses import replace
 from pathlib import Path
 import socket
 import time
@@ -21,12 +22,16 @@ from control_plane_kit_core.algebra import (
 from control_plane_kit_core.products import (
     ProductDescriptorCodec,
     ProductInstanceConfiguration,
+    ProductIdentity,
     instantiate_product,
 )
+from control_plane_kit_core.runtime_authority import RuntimeAuthorityReference
+from control_plane_kit_core.secrets import SecretEnvironmentDelivery, SecretReference
 from control_plane_kit_core.topology import DEFAULT_GRAPH_CODEC, DeploymentGraph, compile_topology
 from control_plane_kit_core.policies import PolicyScope
 
 from cpk_server_hosted_activity import (
+    HostedWorkflow,
     _clock,
     _http,
     _mcp_read,
@@ -38,17 +43,24 @@ from cpk_server_hosted_activity import (
 
 WORKSPACE_ID = "recursive-cpk-server"
 WORKER_ID = "recursive-worker"
+LOCAL_CHAIN_AUTHORITY_REF = "local-docker"
+MAX_LOCAL_CHAIN_DEPTH = 10
 
 
 def main() -> int:
     base_url = _required_env("CPK_RECURSIVE_BASE_URL").rstrip("/")
     parent_container = _required_env("CPK_RECURSIVE_PARENT_CONTAINER")
     servers_repo = Path(_required_env("CPK_RECURSIVE_SERVERS_REPO"))
+    chain_depth = _local_chain_depth()
 
     _wait_ready(base_url)
-    cpk_document = _product_document(servers_repo, "cpk_server")
+    cpk_document = _chain_cpk_document(servers_repo)
     postgres_document = _product_document(servers_repo, "postgres_server")
-    graph = _recursive_graph(cpk_document, postgres_document)
+    graph = _recursive_graph(
+        cpk_document,
+        postgres_document,
+        authority_ref=RuntimeAuthorityReference(LOCAL_CHAIN_AUTHORITY_REF),
+    )
 
     workspace = _http(
         base_url,
@@ -63,6 +75,8 @@ def main() -> int:
     )
     current_graph_id = str(workspace["workspace"]["current_graph_id"])
 
+    _register_local_docker_authority(base_url, WORKSPACE_ID)
+    _register_local_docker_delivery(base_url, WORKSPACE_ID)
     _import_product(base_url, "postgres", postgres_document)
     _import_product(base_url, "cpk-server", cpk_document)
     if os.environ.get("CPK_RECURSIVE_REGISTER_PULL_AUTHORITY") == "docker-config":
@@ -189,7 +203,7 @@ def main() -> int:
 
     _execute_to_completion(base_url, parent_container, run_id)
     _assert_parent_observations(base_url, run_id)
-    _assert_child_health()
+    _assert_child_health(expect_runtime_interpreters="docker" if chain_depth > 1 else "none")
 
     advanced = _http(
         base_url,
@@ -210,9 +224,124 @@ def main() -> int:
     current = _http(base_url, "GET", f"/workspaces/{WORKSPACE_ID}/graphs/current")
     if current["graph_id"] != desired_graph_id:
         raise RuntimeError(f"current graph readback mismatch: {current}")
+    if chain_depth > 1:
+        child_container = _find_runtime_container(WORKSPACE_ID, "child-cpk")
+        _sync_runtime_networks(parent_container, child_container)
+        _run_local_chain(
+            base_url="http://child-cpk:8080",
+            server_container=child_container,
+            servers_repo=servers_repo,
+            remaining_depth=chain_depth - 1,
+            level=2,
+        )
 
-    print("recursive cpk-server Docker activity smoke passed")
+    print(f"recursive cpk-server Docker activity smoke passed with chain_depth={chain_depth}")
     return 0
+
+
+def _local_chain_depth() -> int:
+    raw = os.environ.get("CPK_RECURSIVE_LOCAL_CHAIN_DEPTH", "1")
+    try:
+        value = int(raw)
+    except ValueError as error:
+        raise RuntimeError("CPK_RECURSIVE_LOCAL_CHAIN_DEPTH must be an integer") from error
+    if not 1 <= value <= MAX_LOCAL_CHAIN_DEPTH:
+        raise RuntimeError(
+            "CPK_RECURSIVE_LOCAL_CHAIN_DEPTH must be between "
+            f"1 and {MAX_LOCAL_CHAIN_DEPTH}"
+        )
+    return value
+
+
+def _run_local_chain(
+    *,
+    base_url: str,
+    server_container: str,
+    servers_repo: Path,
+    remaining_depth: int,
+    level: int,
+) -> None:
+    workflow = HostedWorkflow(
+        base_url,
+        workspace_id=f"recursive-cpk-server-local-chain-{level}",
+        worker_id=f"recursive-local-chain-worker-{level}",
+        server_container=server_container,
+    )
+    workflow.wait_ready()
+    current_graph_id = workflow.create_workspace(
+        name=f"Recursive local chain level {level}"
+    )
+    _register_local_docker_authority(workflow.base_url, workflow.workspace_id)
+    _register_local_docker_delivery(workflow.base_url, workflow.workspace_id)
+    if os.environ.get("CPK_RECURSIVE_REGISTER_PULL_AUTHORITY") == "docker-config":
+        workflow.register_ghcr_pull_authority_from_docker_config()
+
+    cpk_document = _chain_cpk_document(servers_repo)
+    postgres_document = _product_document(servers_repo, "postgres_server")
+    workflow.import_product(f"chain-cpk-{level}", cpk_document)
+    workflow.import_product(f"chain-postgres-{level}", postgres_document)
+    cpk_node_id = f"chain-cpk-{level}"
+    postgres_node_id = f"chain-postgres-{level}"
+    result = workflow.run_approved_transition(
+        title=f"Recursive local chain level {level}",
+        graph=_recursive_graph(
+            cpk_document,
+            postgres_document,
+            workspace_id=workflow.workspace_id,
+            cpk_node_id=cpk_node_id,
+            postgres_node_id=postgres_node_id,
+            authority_ref=RuntimeAuthorityReference(LOCAL_CHAIN_AUTHORITY_REF),
+        ),
+        current_graph_id=current_graph_id,
+    )
+    _assert_activity_step(workflow.base_url, workflow.workspace_id, result.run_id, cpk_node_id)
+    if remaining_depth <= 1:
+        return
+    child_container = _find_runtime_container(workflow.workspace_id, cpk_node_id)
+    _sync_runtime_networks(server_container, child_container)
+    _run_local_chain(
+        base_url=f"http://{cpk_node_id}:8080",
+        server_container=child_container,
+        servers_repo=servers_repo,
+        remaining_depth=remaining_depth - 1,
+        level=level + 1,
+    )
+
+
+def _register_local_docker_authority(base_url: str, workspace_id: str) -> None:
+    _mcp_tool(
+        base_url,
+        "command.runtime-authority.register",
+        {
+            "workspace_id": workspace_id,
+            "authority_ref": LOCAL_CHAIN_AUTHORITY_REF,
+            "runtime_kind": "docker",
+            "authority": {"kind": "local-docker-socket"},
+            "actor_id": "operator-a",
+            "actor_scopes": [PolicyScope.RUNTIME_AUTHORITY_REGISTER.value],
+            "admitted_at": _clock(),
+            "idempotency_key": f"{workspace_id}:runtime-authority:local-docker",
+        },
+    )
+
+
+def _register_local_docker_delivery(base_url: str, workspace_id: str) -> None:
+    _mcp_tool(
+        base_url,
+        "command.runtime-authority-delivery.register",
+        {
+            "workspace_id": workspace_id,
+            "delivery": {
+                "authority_ref": {"reference_id": LOCAL_CHAIN_AUTHORITY_REF},
+                "delivery_kind": "local-docker-socket-mount",
+                "secret_references": [],
+            },
+            "actor_id": "operator-a",
+            "actor_scopes": [PolicyScope.RUNTIME_AUTHORITY_DELIVERY_REGISTER.value],
+            "admitted_at": _clock(),
+            "idempotency_key": f"{workspace_id}:runtime-authority-delivery:local-docker",
+        },
+    )
 
 
 def _import_product(base_url: str, label: str, document: Any) -> None:
@@ -366,14 +495,14 @@ def _assert_health_evidence(
         raise RuntimeError(f"parent did not record health evidence for {node_id}: {missing}")
 
 
-def _sync_runtime_networks(parent_container: str) -> None:
+def _sync_runtime_networks(*containers: str) -> None:
     client = docker.from_env()
     controller_container = socket.gethostname()
     for network in client.networks.list():
         name = network.name
-        if not name.startswith(f"cpk-net-{WORKSPACE_ID}"):
+        if not name.startswith("cpk-net-recursive-cpk-server"):
             continue
-        for container in (parent_container, controller_container):
+        for container in (controller_container, *containers):
             try:
                 network.connect(container)
             except APIError as error:
@@ -384,13 +513,16 @@ def _sync_runtime_networks(parent_container: str) -> None:
                 continue
 
 
-def _assert_child_health() -> None:
+def _assert_child_health(*, expect_runtime_interpreters: str) -> None:
     _assert_json("http://child-cpk:8080/health/live", {"status": "live"})
     ready = _json("http://child-cpk:8080/health/ready")
     if ready.get("status") != "ready":
         raise RuntimeError(f"child cpk-server is not ready: {ready}")
-    if ready.get("runtime_interpreters") != "none":
-        raise RuntimeError(f"child cpk-server should remain opaque: {ready}")
+    if ready.get("runtime_interpreters") != expect_runtime_interpreters:
+        raise RuntimeError(
+            "child cpk-server reported unexpected runtime interpreters: "
+            f"{ready}"
+        )
 
 
 def _assert_json(url: str, expected: dict[str, object]) -> None:
@@ -413,50 +545,59 @@ def _json(url: str) -> dict[str, Any]:
     raise RuntimeError(f"could not read JSON from {url}")
 
 
-def _recursive_graph(cpk_document: Any, postgres_document: Any) -> DeploymentGraph:
+def _recursive_graph(
+    cpk_document: Any,
+    postgres_document: Any,
+    *,
+    workspace_id: str = WORKSPACE_ID,
+    cpk_node_id: str = "child-cpk",
+    postgres_node_id: str = "child-postgres",
+    authority_ref: RuntimeAuthorityReference | None = None,
+) -> DeploymentGraph:
     cpk = cpk_document.product
     postgres = postgres_document.product
     child_cpk = instantiate_product(
         cpk,
-        "child-cpk",
+        cpk_node_id,
         ProductInstanceConfiguration.from_contract(cpk.runtime_contract),
     )
     child_postgres = instantiate_product(
         postgres,
-        "child-postgres",
+        postgres_node_id,
         ProductInstanceConfiguration.from_contract(postgres.runtime_contract),
     )
     return compile_topology(
         DeploymentTopology(
-            WORKSPACE_ID,
+            workspace_id,
             DockerRuntime(
                 runtime_id="docker",
-                network_name=f"control-plane-kit-{WORKSPACE_ID}-docker",
+                network_name=f"control-plane-kit-{workspace_id}-docker",
+                authority_ref=authority_ref,
                 children=(
                     child_postgres,
                     child_cpk,
                     SocketConnection(
-                        "child-postgres",
+                        postgres_node_id,
                         "postgres",
-                        "child-cpk",
+                        cpk_node_id,
                         "workplace-store",
                     ),
                     SocketConnection(
-                        "child-postgres",
+                        postgres_node_id,
                         "postgres",
-                        "child-cpk",
+                        cpk_node_id,
                         "activity-history-store",
                     ),
                     SocketConnection(
-                        "child-postgres",
+                        postgres_node_id,
                         "postgres",
-                        "child-cpk",
+                        cpk_node_id,
                         "observer-state-store",
                     ),
                     SocketConnection(
-                        "child-postgres",
+                        postgres_node_id,
                         "postgres",
-                        "child-cpk",
+                        cpk_node_id,
                         "graph-topology-store",
                     ),
                 ),
@@ -469,6 +610,94 @@ def _product_document(servers_repo: Path, product_name: str) -> Any:
     return ProductDescriptorCodec().decode_document(
         (servers_repo / "products" / product_name / "product.cpk.json").read_bytes()
     )
+
+
+def _chain_cpk_document(servers_repo: Path) -> Any:
+    codec = ProductDescriptorCodec()
+    document = codec.decode_document(
+        (servers_repo / "products" / "cpk_server" / "product.docker.cpk.json").read_bytes()
+    )
+    product = document.product
+    added = (
+        SecretEnvironmentDelivery(
+            environment_name="CPK_DOCKER_AUTH_CONFIG_JSON",
+            reference=SecretReference(
+                "secret://control-plane-kit/child/docker-auth-config-json"
+            ),
+        ),
+        SecretEnvironmentDelivery(
+            environment_name="CPK_IMAGE_PULL_CREDENTIAL_RESOLVER",
+            reference=SecretReference(
+                "secret://control-plane-kit/child/image-pull-credential-resolver"
+            ),
+        ),
+        SecretEnvironmentDelivery(
+            environment_name="CPK_PRODUCT_SECRET_RESOLVER",
+            reference=SecretReference(
+                "secret://control-plane-kit/child/product-secret-resolver"
+            ),
+        ),
+        SecretEnvironmentDelivery(
+            environment_name="CPK_PRODUCT_SECRET_VALUES_JSON",
+            reference=SecretReference(
+                "secret://control-plane-kit/child/product-secret-values-json"
+            ),
+        ),
+    )
+    contract = replace(
+        product.runtime_contract,
+        secret_deliveries=product.runtime_contract.secret_deliveries + added,
+    )
+    return codec.encode_document(
+        replace(
+            product,
+            identity=ProductIdentity(
+                product.identity.namespace,
+                "cpk-server-docker-local-chain-harness",
+                product.identity.contract_revision,
+            ),
+            runtime_contract=contract,
+            description=(
+                product.description
+                + " Harness-only descriptor variant for bounded local recursive "
+                "chain acceptance."
+            ),
+        )
+    )
+
+
+def _find_runtime_container(workspace_id: str, node_id: str) -> str:
+    client = docker.from_env()
+    filters = {
+        "label": [
+            f"org.openj92.cpk.workspace={workspace_id}",
+            f"org.openj92.cpk.node={node_id}",
+        ]
+    }
+    matches = client.containers.list(all=True, filters=filters)
+    if len(matches) != 1:
+        names = [container.name for container in matches]
+        raise RuntimeError(f"expected one container for {workspace_id}/{node_id}: {names}")
+    return str(matches[0].name)
+
+
+def _assert_activity_step(
+    base_url: str,
+    workspace_id: str,
+    run_id: str,
+    node_id: str,
+) -> None:
+    timeline = _mcp_read(
+        base_url,
+        "read.activity",
+        {"workspace_id": workspace_id, "limit": 200},
+    )
+    events = _events_for_run(timeline, run_id)
+    for event in events:
+        payload = event.get("payload", {})
+        if payload.get("node_id") == node_id and event.get("event_type") == "step_succeeded":
+            return
+    raise RuntimeError(f"activity timeline did not record successful step for {node_id}")
 
 
 if __name__ == "__main__":

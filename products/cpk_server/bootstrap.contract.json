@@ -61,6 +61,13 @@
       ]
     },
     {
+      "name": "CPK_DOCKER_AUTH_CONFIG_JSON",
+      "required": false,
+      "allowed_values": [
+        "runtime-secret-delivered-docker-config-json"
+      ]
+    },
+    {
       "name": "CPK_WORKPLACE_DATABASE_URL",
       "required": true,
       "allowed_values": [
