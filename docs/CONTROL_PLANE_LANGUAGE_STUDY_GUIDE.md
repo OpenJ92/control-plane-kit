@@ -111,6 +111,8 @@ ProductDescriptor != RegisteredProduct
 
 OciImageReference != ImagePullAuthority != resolved credential
 
+RuntimeAuthorityReference != RuntimeAuthorityAccessDelivery != delivered socket/TLS/session
+
 DesiredGraph != CurrentGraph != Observation
 
 ActivityPlan != AdmittedRun != ActivityRun

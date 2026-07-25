@@ -29,6 +29,11 @@ from control_plane_kit_core.products import (
     ProductReferenceCodec,
 )
 from control_plane_kit_core.runtime_authority import (
+    RuntimeAuthorityAccessDelivery,
+    RuntimeAuthorityAccessDeliveryCodec,
+    RuntimeAuthorityAccessDeliveryKind,
+    RuntimeAuthorityDeliverySecretReference,
+    RuntimeAuthorityDeliverySecretReferenceCodec,
     RuntimeAuthorityReference,
     RuntimeAuthorityReferenceCodec,
     RuntimeEffectContractError,

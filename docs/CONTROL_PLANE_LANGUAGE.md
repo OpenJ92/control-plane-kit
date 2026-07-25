@@ -558,6 +558,41 @@ laws:
   Missing or denied authority fails closed before image pull, network,
   configuration, volume, or container mutation.
 
+### RuntimeAuthorityAccessDelivery
+
+meaning:
+  Secret-free statement that a specific process should receive access material
+  for an admitted runtime authority:
+
+```text
+RuntimeAuthorityAccessDelivery
+  = RuntimeAuthorityReference
+  x RuntimeAuthorityAccessDeliveryKind
+  x labeled SecretReference*
+```
+
+owned by:
+  `control-plane-kit-core` owns the pure descriptor language.
+  Operations will own workspace admission and readback.
+  Interpreters will own concrete materialization.
+
+durable:
+  The delivery contract may be durable as operational truth. The delivered
+  socket, TLS key, token, cloud session, kubeconfig, or other capability material
+  must not be durable in descriptors or read models.
+
+may contain secrets:
+  No. It may contain `SecretReference` identities when the delivery kind needs
+  referenced secret material, such as remote Docker TLS files.
+
+interpreted by:
+  Runtime interpreters and process/bootstrap composition.
+
+laws:
+  Runtime authority admission does not imply access delivery. Interpreter
+  availability does not imply access delivery. Local Docker socket delivery is a
+  closed capability intent, not a stored `/var/run/docker.sock` host path.
+
 ## Planning Language
 
 ### DeploymentTransition
