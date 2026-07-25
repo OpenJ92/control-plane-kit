@@ -364,6 +364,7 @@ def _runtime_adapter(
 def _docker_runtime_interpreter(config: CpkServerBootstrapConfiguration):
     try:
         from control_plane_kit_interpreters.docker import (
+            DockerLocalAmbientClientConfig,
             DockerRuntimeInterpreter,
             DockerSdkClient,
         )
@@ -373,7 +374,10 @@ def _docker_runtime_interpreter(config: CpkServerBootstrapConfiguration):
             "control-plane-kit-interpreters[docker]"
         ) from error
     return DockerRuntimeInterpreter(
-        DockerSdkClient(),
+        DockerSdkClient.from_authority(
+            DockerLocalAmbientClientConfig(),
+            connect_on_init=False,
+        ),
         image_pull_credentials=_image_pull_credential_resolver(config),
         secret_resolver=_product_secret_resolver(config),
     )

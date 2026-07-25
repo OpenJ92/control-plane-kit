@@ -431,6 +431,18 @@ class CpkServerImageBootstrapTests(unittest.TestCase):
                 ):
                     sys.modules.pop(name, None)
 
+    def test_docker_runtime_bootstrap_defers_docker_client_until_authority_execution(
+        self,
+    ) -> None:
+        source = (
+            PRODUCT_SRC / "control_plane_kit_servers_cpk_server" / "server.py"
+        ).read_text(encoding="utf-8")
+
+        self.assertIn("DockerLocalAmbientClientConfig", source)
+        self.assertIn("DockerSdkClient.from_authority", source)
+        self.assertIn("connect_on_init=False", source)
+        self.assertNotIn("DockerSdkClient(),", source)
+
     def test_concrete_provider_imports_are_confined_to_bootstrap_functions(self) -> None:
         tree = ast.parse(SERVER_SOURCE.read_text(encoding="utf-8"))
         function_stack: list[str] = []
