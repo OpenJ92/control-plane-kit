@@ -8,7 +8,10 @@ from typing import Any, Callable, Mapping, Protocol
 from control_plane_kit_core.operations import ControlPlaneServiceRole
 from control_plane_kit_core.operations.commands import OperatorCommandKind
 from control_plane_kit_core.policies import PolicyScope
-from control_plane_kit_core.runtime_authority import RuntimeAuthorityReference
+from control_plane_kit_core.runtime_authority import (
+    RuntimeAuthorityAccessDeliveryCodec,
+    RuntimeAuthorityReference,
+)
 from control_plane_kit_core.runtime_effects import ImagePullAuthority
 from control_plane_kit_core.products import ProductDescriptorCodec, ProductDescriptorError
 from control_plane_kit_core.secrets import SecretReference
@@ -55,9 +58,12 @@ from control_plane_kit_operations.records import ApprovalDecisionKind
 from control_plane_kit_operations.runtime_authorities import (
     LocalDockerSocketAuthority,
     RegisterRuntimeAuthorityCommand,
+    RegisterRuntimeAuthorityDeliveryCommand,
     RegisteredRuntimeAuthority,
+    RegisteredRuntimeAuthorityDelivery,
     RemoteDockerTlsAuthority,
     RevokeRuntimeAuthorityCommand,
+    RevokeRuntimeAuthorityDeliveryCommand,
     RuntimeAuthorityAuthorizationDenied,
     RuntimeAuthorityRegistrationError,
     RuntimeAuthorityRegistrationService,
@@ -156,6 +162,9 @@ class CpkServerReadService:
                 "execution_store": stores.execution,
                 "observed_state_store": stores.observed_state,
                 "runtime_authority_store": stores.runtime_authorities,
+                "runtime_authority_delivery_store": (
+                    stores.runtime_authority_deliveries
+                ),
             }
             if self._clock is not None:
                 kwargs["clock"] = self._clock
@@ -294,6 +303,48 @@ class CpkServerPlanningService:
             except (ValueError, RuntimeAuthorityRegistrationError) as error:
                 raise CpkServerApplicationError(400, str(error)) from error
             return _registered_runtime_authority_descriptor(result)
+        if request.route_id == "command.runtime-authority-delivery.register":
+            if self._runtime_authorities is None:
+                raise _service_not_configured(request)
+            payload = _arguments(request)
+            _text(payload, "idempotency_key")
+            try:
+                result = self._runtime_authorities.register_delivery(
+                    RegisterRuntimeAuthorityDeliveryCommand(
+                        workspace_id=_workspace_id(payload),
+                        delivery=RuntimeAuthorityAccessDeliveryCodec().decode(
+                            _mapping(payload, "delivery")
+                        ),
+                        admitted_by=_text(payload, "actor_id"),
+                        admitted_at=_text(payload, "admitted_at"),
+                        actor_scopes=_scopes(payload),
+                    )
+                )
+            except RuntimeAuthorityAuthorizationDenied as error:
+                raise CpkServerApplicationError(403, str(error)) from error
+            except (ValueError, RuntimeAuthorityRegistrationError) as error:
+                raise CpkServerApplicationError(400, str(error)) from error
+            return _registered_runtime_authority_delivery_descriptor(result)
+        if request.route_id == "command.runtime-authority-delivery.revoke":
+            if self._runtime_authorities is None:
+                raise _service_not_configured(request)
+            payload = _arguments(request)
+            _text(payload, "idempotency_key")
+            try:
+                result = self._runtime_authorities.revoke_delivery(
+                    RevokeRuntimeAuthorityDeliveryCommand(
+                        workspace_id=_workspace_id(payload),
+                        authority_ref=RuntimeAuthorityReference(
+                            _path_or_payload(payload, "authority_ref", "authority_ref")
+                        ),
+                        actor_scopes=_scopes(payload),
+                    )
+                )
+            except RuntimeAuthorityAuthorizationDenied as error:
+                raise CpkServerApplicationError(403, str(error)) from error
+            except (ValueError, RuntimeAuthorityRegistrationError) as error:
+                raise CpkServerApplicationError(400, str(error)) from error
+            return _registered_runtime_authority_delivery_descriptor(result)
         if request.route_id == "command.desired-graph.set":
             if self._desired_graphs is None:
                 raise _service_not_configured(request)
@@ -664,6 +715,17 @@ def _read_model(service: InstanceReadService, request: CpkServerRouteRequest) ->
                 _path_or_payload(args, "authority_ref", "authority_ref")
             ),
         )
+    if route_id == "read.runtime-authority-deliveries":
+        _require_scope(args, PolicyScope.RUNTIME_AUTHORITY_DELIVERY_READ)
+        return service.runtime_authority_deliveries(_workspace_id(args))
+    if route_id == "read.runtime-authority-delivery-detail":
+        _require_scope(args, PolicyScope.RUNTIME_AUTHORITY_DELIVERY_READ)
+        return service.runtime_authority_delivery_detail(
+            _workspace_id(args),
+            RuntimeAuthorityReference(
+                _path_or_payload(args, "authority_ref", "authority_ref")
+            ),
+        )
     raise _unsupported_route(request)
 
 
@@ -833,6 +895,12 @@ def _registered_runtime_authority_descriptor(
     return value.descriptor()
 
 
+def _registered_runtime_authority_delivery_descriptor(
+    value: RegisteredRuntimeAuthorityDelivery,
+) -> dict[str, object]:
+    return value.descriptor()
+
+
 def _registered_product_descriptor(value: Any) -> dict[str, object]:
     return {
         "registration_id": value.registration_id,
@@ -854,6 +922,7 @@ def _read_error_status(error: ReadModelError) -> int:
             "missing session",
             "missing plan",
             "missing runtime authority",
+            "missing runtime authority delivery",
         )
     ):
         return 404

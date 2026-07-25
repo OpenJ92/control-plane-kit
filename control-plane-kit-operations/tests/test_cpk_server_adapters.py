@@ -1009,6 +1009,152 @@ class CpkServerOperationsAdapterTests(unittest.TestCase):
         )
         self.assertNotIn("mac-mini.local", repr(detail))
 
+        delivery_payload = {
+            "authority_ref": {"reference_id": "remote-docker"},
+            "delivery_kind": "remote-docker-tls-secret-files",
+            "secret_references": [
+                {
+                    "label": "ca-cert",
+                    "reference_id": "secret://docker/ca",
+                },
+                {
+                    "label": "client-cert",
+                    "reference_id": "secret://docker/cert",
+                },
+                {
+                    "label": "client-key",
+                    "reference_id": "secret://docker/key",
+                },
+            ],
+        }
+        with self.assertRaises(CpkServerApplicationError) as missing_delivery_scope:
+            planning.handle(
+                RouteRequest(
+                    surface="http",
+                    route_id="command.runtime-authority-delivery.register",
+                    service_role=ControlPlaneServiceRole.PLANNING,
+                    path_parameters={"workspace_id": "workspace-a"},
+                    payload={
+                        "delivery": delivery_payload,
+                        "actor_id": "operator-a",
+                        "actor_scopes": [PolicyScope.RUNTIME_AUTHORITY_REGISTER.value],
+                        "admitted_at": "2026-07-22T10:02:00Z",
+                        "idempotency_key": "runtime-authority-delivery-a",
+                    },
+                )
+            )
+        self.assertEqual(missing_delivery_scope.exception.status, 403)
+        self.assertIn(
+            "runtime-authority-delivery:register",
+            missing_delivery_scope.exception.message,
+        )
+
+        delivery = planning.handle(
+            RouteRequest(
+                surface="mcp",
+                route_id="command.runtime-authority-delivery.register",
+                service_role=ControlPlaneServiceRole.PLANNING,
+                path_parameters={},
+                payload={
+                    "workspace_id": "workspace-a",
+                    "delivery": delivery_payload,
+                    "actor_id": "operator-a",
+                    "actor_scopes": [
+                        PolicyScope.RUNTIME_AUTHORITY_DELIVERY_REGISTER.value
+                    ],
+                    "admitted_at": "2026-07-22T10:02:00Z",
+                    "idempotency_key": "runtime-authority-delivery-a",
+                },
+            )
+        )
+        self.assertEqual(delivery["workspace_id"], "workspace-a")
+        self.assertEqual(delivery["authority_ref"], "remote-docker")
+        self.assertEqual(delivery["delivery_kind"], "remote-docker-tls-secret-files")
+        self.assertNotIn("mac-mini.local", repr(delivery))
+        self.assertNotIn("PRIVATE KEY", repr(delivery))
+
+        listed_deliveries = reads.handle(
+            RouteRequest(
+                surface="http",
+                route_id="read.runtime-authority-deliveries",
+                service_role=ControlPlaneServiceRole.READS,
+                path_parameters={"workspace_id": "workspace-a"},
+                payload={
+                    "actor_scopes": [
+                        PolicyScope.RUNTIME_AUTHORITY_DELIVERY_READ.value
+                    ]
+                },
+            )
+        )
+        self.assertEqual(
+            listed_deliveries["items"][0]["delivery"]["secret_references"],
+            "<redacted>",
+        )
+        self.assertNotIn("secret://docker/key", repr(listed_deliveries))
+
+        delivery_detail = reads.handle(
+            RouteRequest(
+                surface="mcp",
+                route_id="read.runtime-authority-delivery-detail",
+                service_role=ControlPlaneServiceRole.READS,
+                path_parameters={},
+                payload={
+                    "workspace_id": "workspace-a",
+                    "authority_ref": "remote-docker",
+                    "actor_scopes": [
+                        PolicyScope.RUNTIME_AUTHORITY_DELIVERY_READ.value
+                    ],
+                },
+            )
+        )
+        self.assertEqual(
+            delivery_detail["runtime_authority_delivery"]["authority_ref"],
+            "remote-docker",
+        )
+
+        with self.assertRaises(CpkServerApplicationError) as missing_delivery_revoke:
+            planning.handle(
+                RouteRequest(
+                    surface="http",
+                    route_id="command.runtime-authority-delivery.revoke",
+                    service_role=ControlPlaneServiceRole.PLANNING,
+                    path_parameters={
+                        "workspace_id": "workspace-a",
+                        "authority_ref": "remote-docker",
+                    },
+                    payload={
+                        "actor_scopes": [
+                            PolicyScope.RUNTIME_AUTHORITY_DELIVERY_REGISTER.value
+                        ],
+                        "idempotency_key": "revoke-runtime-authority-delivery-a",
+                    },
+                )
+            )
+        self.assertEqual(missing_delivery_revoke.exception.status, 403)
+        self.assertIn(
+            "runtime-authority-delivery:revoke",
+            missing_delivery_revoke.exception.message,
+        )
+
+        revoked_delivery = planning.handle(
+            RouteRequest(
+                surface="http",
+                route_id="command.runtime-authority-delivery.revoke",
+                service_role=ControlPlaneServiceRole.PLANNING,
+                path_parameters={
+                    "workspace_id": "workspace-a",
+                    "authority_ref": "remote-docker",
+                },
+                payload={
+                    "actor_scopes": [
+                        PolicyScope.RUNTIME_AUTHORITY_DELIVERY_REVOKE.value
+                    ],
+                    "idempotency_key": "revoke-runtime-authority-delivery-a",
+                },
+            )
+        )
+        self.assertEqual(revoked_delivery["status"], "revoked")
+
         with self.assertRaises(CpkServerApplicationError) as missing_revoke_scope:
             planning.handle(
                 RouteRequest(

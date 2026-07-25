@@ -80,6 +80,11 @@ class RuntimeAuthorityStore(Protocol):
     def list_active(self, workspace_id: str) -> tuple[object, ...]: ...
 
 
+class RuntimeAuthorityDeliveryStore(Protocol):
+    def get(self, workspace_id: str, authority_ref: RuntimeAuthorityReference) -> object: ...
+    def list_active(self, workspace_id: str) -> tuple[object, ...]: ...
+
+
 @dataclass(frozen=True)
 class WorkspaceSummary:
     """Small workspace identity and lifecycle summary."""
@@ -268,6 +273,7 @@ class InstanceReadService:
         execution_store: ExecutionStore | None = None,
         observed_state_store: ObservedStateStore | None = None,
         runtime_authority_store: RuntimeAuthorityStore | None = None,
+        runtime_authority_delivery_store: RuntimeAuthorityDeliveryStore | None = None,
         graph_codec: GraphDescriptorCodec = DEFAULT_GRAPH_CODEC,
         clock=lambda: datetime.now(timezone.utc),
         observation_freshness: ObservationFreshnessPolicy = ObservationFreshnessPolicy(),
@@ -278,6 +284,7 @@ class InstanceReadService:
         self._execution_store = execution_store
         self._observed_state_store = observed_state_store
         self._runtime_authority_store = runtime_authority_store
+        self._runtime_authority_delivery_store = runtime_authority_delivery_store
         self._graph_codec = graph_codec
         self._clock = clock
         self._observation_freshness = observation_freshness
@@ -522,6 +529,50 @@ class InstanceReadService:
             workspace_id=workspace_id,
             kind="runtime-authority-detail",
             payload={"runtime_authority": _redacted_runtime_authority(authority)},
+        )
+
+    def runtime_authority_deliveries(
+        self,
+        workspace_id: str,
+    ) -> RuntimeAuthorityCollectionReadModel:
+        self._workspace(workspace_id)
+        if self._runtime_authority_delivery_store is None:
+            raise ReadModelError("runtime authority delivery store is not configured")
+        return RuntimeAuthorityCollectionReadModel(
+            workspace_id=workspace_id,
+            items=tuple(
+                _redacted_runtime_authority_delivery(value)
+                for value in self._runtime_authority_delivery_store.list_active(
+                    workspace_id
+                )
+            ),
+        )
+
+    def runtime_authority_delivery_detail(
+        self,
+        workspace_id: str,
+        authority_ref: RuntimeAuthorityReference,
+    ) -> FocusedDetailReadModel:
+        self._workspace(workspace_id)
+        if self._runtime_authority_delivery_store is None:
+            raise ReadModelError("runtime authority delivery store is not configured")
+        try:
+            delivery = self._runtime_authority_delivery_store.get(
+                workspace_id,
+                authority_ref,
+            )
+        except (KeyError, RuntimeAuthorityNotFound) as exc:
+            raise ReadModelError(
+                f"missing runtime authority delivery {authority_ref.reference_id!r}"
+            ) from exc
+        return FocusedDetailReadModel(
+            workspace_id=workspace_id,
+            kind="runtime-authority-delivery-detail",
+            payload={
+                "runtime_authority_delivery": (
+                    _redacted_runtime_authority_delivery(delivery)
+                )
+            },
         )
 
     def control_surface(
@@ -806,6 +857,14 @@ def _redacted_runtime_authority(value: object) -> Mapping[str, object]:
         raise ReadModelError("runtime authority record cannot be projected")
     descriptor = _mapping(descriptor_method())
     return _redact_descriptor_value("runtime_authority", descriptor)
+
+
+def _redacted_runtime_authority_delivery(value: object) -> Mapping[str, object]:
+    descriptor_method = getattr(value, "descriptor", None)
+    if not callable(descriptor_method):
+        raise ReadModelError("runtime authority delivery record cannot be projected")
+    descriptor = _mapping(descriptor_method())
+    return _redact_descriptor_value("runtime_authority_delivery", descriptor)
 
 
 def _mapping(value: object) -> Mapping[str, object]:

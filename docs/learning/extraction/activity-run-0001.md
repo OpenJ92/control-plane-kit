@@ -3650,3 +3650,70 @@ Handoff: #990 should admit and expose delivery intent in operations as
 workspace-scoped, secret-free truth. #991 should materialize
 `LOCAL_DOCKER_SOCKET_MOUNT` inside the Docker interpreter/process delivery
 boundary without introducing product-specific cpk-server branches.
+
+
+## #990 Runtime Authority Delivery Admission
+
+#990 adds operations-owned durable truth for authority delivery:
+
+```text
+RegisteredRuntimeAuthority
+  = workspace admits target
+
+RegisteredRuntimeAuthorityDelivery
+  = workspace admits that a process may receive access material for that target
+```
+
+The Postgres schema now includes `cpk_runtime_authority_deliveries`, with one
+active delivery per `(workspace_id, authority_ref)`. Delivery registration
+requires an active registered runtime authority in the same workspace; missing
+or revoked authority fails closed before any runtime effect.
+
+The application service extends `RuntimeAuthorityRegistrationService` with:
+
+```python
+register_delivery(RegisterRuntimeAuthorityDeliveryCommand(...))
+revoke_delivery(RevokeRuntimeAuthorityDeliveryCommand(...))
+```
+
+and the cpk-server operations adapter now recognizes route-shaped commands and
+reads:
+
+```text
+command.runtime-authority-delivery.register
+command.runtime-authority-delivery.revoke
+read.runtime-authority-deliveries
+read.runtime-authority-delivery-detail
+```
+
+The permission split is explicit:
+
+```text
+runtime-authority:register
+  != runtime-authority-delivery:register
+  != runtime-authority-delivery:read
+  != runtime-authority-delivery:revoke
+  != runtime-authority:use
+```
+
+The read model runs delivery descriptors through the existing redaction policy.
+That means delivery secret-reference lists are stored for later interpreter or
+bootstrap IO, but public readback reports them as `"<redacted>"`. This is stricter
+than merely exposing `SecretReference` identities and keeps the later secrets
+service path clean.
+
+Validation:
+
+```text
+git diff --check
+./control-plane-kit-operations/test.sh
+./control-plane-kit-core/test.sh
+```
+
+Operations passed 158 tests, compileall, and import check. Core passed 405 tests,
+compileall, and import check.
+
+Handoff: #991 should consume this operations truth and materialize
+`LOCAL_DOCKER_SOCKET_MOUNT` at the Docker interpreter/process boundary. It should
+not introduce `if cpk-server then mount socket`; delivery records, not product
+identity or interpreter availability, must drive the capability handoff.

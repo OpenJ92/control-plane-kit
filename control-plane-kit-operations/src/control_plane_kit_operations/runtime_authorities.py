@@ -9,7 +9,11 @@ from typing import Any, Mapping
 from urllib.parse import urlsplit
 
 from control_plane_kit_core.policies import PolicyScope
-from control_plane_kit_core.runtime_authority import RuntimeAuthorityReference
+from control_plane_kit_core.runtime_authority import (
+    RuntimeAuthorityAccessDelivery,
+    RuntimeAuthorityAccessDeliveryCodec,
+    RuntimeAuthorityReference,
+)
 from control_plane_kit_core.secrets import SecretReference
 from control_plane_kit_core.types import RuntimeKind
 
@@ -39,6 +43,13 @@ class RuntimeAuthorityKind(StrEnum):
 
 class RegisteredRuntimeAuthorityStatus(StrEnum):
     """Closed durable status for workspace runtime authority registration."""
+
+    ACTIVE = "active"
+    REVOKED = "revoked"
+
+
+class RegisteredRuntimeAuthorityDeliveryStatus(StrEnum):
+    """Closed durable status for runtime authority access delivery admission."""
 
     ACTIVE = "active"
     REVOKED = "revoked"
@@ -243,6 +254,76 @@ class RegisteredRuntimeAuthority:
 
 
 @dataclass(frozen=True)
+class RegisteredRuntimeAuthorityDelivery:
+    """Workspace/process admission for receiving runtime authority access."""
+
+    delivery_id: str
+    workspace_id: str
+    delivery: RuntimeAuthorityAccessDelivery
+    admitted_by: str
+    admitted_at: str
+    status: RegisteredRuntimeAuthorityDeliveryStatus = (
+        RegisteredRuntimeAuthorityDeliveryStatus.ACTIVE
+    )
+    metadata: Mapping[str, object] = field(default_factory=dict)
+
+    def __post_init__(self) -> None:
+        _validate_identifier(self.delivery_id, "delivery_id")
+        _validate_identifier(self.workspace_id, "workspace_id")
+        _validate_identifier(self.admitted_by, "admitted_by")
+        _validate_identifier(self.admitted_at, "admitted_at")
+        if not isinstance(self.delivery, RuntimeAuthorityAccessDelivery):
+            raise RuntimeAuthorityRegistrationError(
+                "registered runtime authority delivery requires RuntimeAuthorityAccessDelivery"
+            )
+        if not isinstance(self.status, RegisteredRuntimeAuthorityDeliveryStatus):
+            raise RuntimeAuthorityRegistrationError(
+                "registered runtime authority delivery status is unsupported"
+            )
+        if not isinstance(self.metadata, Mapping):
+            raise RuntimeAuthorityRegistrationError(
+                "registered runtime authority delivery metadata must be mapping"
+            )
+
+    @property
+    def authority_ref(self) -> RuntimeAuthorityReference:
+        return self.delivery.authority_ref
+
+    def descriptor(self) -> dict[str, object]:
+        return {
+            "delivery_id": self.delivery_id,
+            "workspace_id": self.workspace_id,
+            "authority_ref": self.authority_ref.reference_id,
+            "delivery_kind": self.delivery.delivery_kind.value,
+            "delivery": self.delivery.descriptor(),
+            "admitted_by": self.admitted_by,
+            "admitted_at": self.admitted_at,
+            "status": self.status.value,
+            "metadata": dict(self.metadata),
+        }
+
+    @classmethod
+    def from_delivery(
+        cls,
+        *,
+        workspace_id: str,
+        delivery: RuntimeAuthorityAccessDelivery,
+        admitted_by: str,
+        admitted_at: str,
+    ) -> "RegisteredRuntimeAuthorityDelivery":
+        return cls(
+            delivery_id=runtime_authority_delivery_id_for(
+                workspace_id,
+                delivery,
+            ),
+            workspace_id=workspace_id,
+            delivery=delivery,
+            admitted_by=admitted_by,
+            admitted_at=admitted_at,
+        )
+
+
+@dataclass(frozen=True)
 class RegisterRuntimeAuthorityCommand:
     """Application command to admit one runtime authority for a workspace."""
 
@@ -267,6 +348,26 @@ class RegisterRuntimeAuthorityCommand:
 
 
 @dataclass(frozen=True)
+class RegisterRuntimeAuthorityDeliveryCommand:
+    """Application command to admit access delivery for one runtime authority."""
+
+    workspace_id: str
+    delivery: RuntimeAuthorityAccessDelivery
+    admitted_by: str
+    admitted_at: str
+    actor_scopes: tuple[PolicyScope, ...]
+
+    def __post_init__(self) -> None:
+        object.__setattr__(self, "actor_scopes", _scopes(self.actor_scopes))
+        RegisteredRuntimeAuthorityDelivery.from_delivery(
+            workspace_id=self.workspace_id,
+            delivery=self.delivery,
+            admitted_by=self.admitted_by,
+            admitted_at=self.admitted_at,
+        )
+
+
+@dataclass(frozen=True)
 class RevokeRuntimeAuthorityCommand:
     """Application command to revoke one workspace runtime authority."""
 
@@ -279,6 +380,23 @@ class RevokeRuntimeAuthorityCommand:
         if not isinstance(self.authority_ref, RuntimeAuthorityReference):
             raise RuntimeAuthorityRegistrationError(
                 "revoke requires RuntimeAuthorityReference"
+            )
+        object.__setattr__(self, "actor_scopes", _scopes(self.actor_scopes))
+
+
+@dataclass(frozen=True)
+class RevokeRuntimeAuthorityDeliveryCommand:
+    """Application command to revoke one runtime authority access delivery."""
+
+    workspace_id: str
+    authority_ref: RuntimeAuthorityReference
+    actor_scopes: tuple[PolicyScope, ...]
+
+    def __post_init__(self) -> None:
+        _validate_identifier(self.workspace_id, "workspace_id")
+        if not isinstance(self.authority_ref, RuntimeAuthorityReference):
+            raise RuntimeAuthorityRegistrationError(
+                "delivery revoke requires RuntimeAuthorityReference"
             )
         object.__setattr__(self, "actor_scopes", _scopes(self.actor_scopes))
 
@@ -313,6 +431,31 @@ class RuntimeAuthorityRegistrationService:
             unit_of_work.commit()
             return registered
 
+    def register_delivery(
+        self,
+        command: RegisterRuntimeAuthorityDeliveryCommand,
+    ) -> RegisteredRuntimeAuthorityDelivery:
+        if not isinstance(command, RegisterRuntimeAuthorityDeliveryCommand):
+            raise RuntimeAuthorityRegistrationError(
+                "register_delivery requires RegisterRuntimeAuthorityDeliveryCommand"
+            )
+        if (
+            PolicyScope.RUNTIME_AUTHORITY_DELIVERY_REGISTER
+            not in command.actor_scopes
+        ):
+            raise RuntimeAuthorityAuthorizationDenied(
+                "runtime authority delivery registration requires runtime-authority-delivery:register"
+            )
+        with self._unit_of_work_factory() as unit_of_work:
+            registered = unit_of_work.stores.runtime_authority_deliveries.register(
+                workspace_id=command.workspace_id,
+                delivery=command.delivery,
+                admitted_by=command.admitted_by,
+                admitted_at=command.admitted_at,
+            )
+            unit_of_work.commit()
+            return registered
+
     def revoke(
         self,
         command: RevokeRuntimeAuthorityCommand,
@@ -327,6 +470,26 @@ class RuntimeAuthorityRegistrationService:
             )
         with self._unit_of_work_factory() as unit_of_work:
             registered = unit_of_work.stores.runtime_authorities.revoke(
+                command.workspace_id,
+                command.authority_ref,
+            )
+            unit_of_work.commit()
+            return registered
+
+    def revoke_delivery(
+        self,
+        command: RevokeRuntimeAuthorityDeliveryCommand,
+    ) -> RegisteredRuntimeAuthorityDelivery:
+        if not isinstance(command, RevokeRuntimeAuthorityDeliveryCommand):
+            raise RuntimeAuthorityRegistrationError(
+                "revoke_delivery requires RevokeRuntimeAuthorityDeliveryCommand"
+            )
+        if PolicyScope.RUNTIME_AUTHORITY_DELIVERY_REVOKE not in command.actor_scopes:
+            raise RuntimeAuthorityAuthorizationDenied(
+                "runtime authority delivery revocation requires runtime-authority-delivery:revoke"
+            )
+        with self._unit_of_work_factory() as unit_of_work:
+            registered = unit_of_work.stores.runtime_authority_deliveries.revoke(
                 command.workspace_id,
                 command.authority_ref,
             )
@@ -363,6 +526,22 @@ def runtime_authority_registration_id_for(
         ).encode("utf-8")
     ).hexdigest()
     return f"rauth_{digest}"
+
+
+def runtime_authority_delivery_id_for(
+    workspace_id: str,
+    delivery: RuntimeAuthorityAccessDelivery,
+) -> str:
+    """Return deterministic identity for one authority delivery admission."""
+
+    _validate_identifier(workspace_id, "workspace_id")
+    if not isinstance(delivery, RuntimeAuthorityAccessDelivery):
+        raise RuntimeAuthorityRegistrationError(
+            "runtime authority delivery id requires RuntimeAuthorityAccessDelivery"
+        )
+    encoded = RuntimeAuthorityAccessDeliveryCodec().encode(delivery)
+    digest = sha256(repr((workspace_id, encoded)).encode("utf-8")).hexdigest()
+    return f"radel_{digest}"
 
 
 def _validate_tcp_endpoint(endpoint: str) -> None:
