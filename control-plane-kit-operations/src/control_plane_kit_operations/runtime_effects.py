@@ -22,7 +22,10 @@ from control_plane_kit_core.products import (
     ProductIdentity,
     ProductReference,
 )
-from control_plane_kit_core.runtime_authority import RuntimeAuthorityReference
+from control_plane_kit_core.runtime_authority import (
+    RuntimeAuthorityAccessDelivery,
+    RuntimeAuthorityReference,
+)
 from control_plane_kit_core.runtime_effects import (
     ImagePullAuthority,
     RuntimeEffectKind,
@@ -36,6 +39,9 @@ from control_plane_kit_operations.coordinator import ActivityRealizationContext
 from control_plane_kit_operations.products import (
     RegisteredImagePullAuthority,
     RegisteredProduct,
+)
+from control_plane_kit_operations.runtime_authorities import (
+    RegisteredRuntimeAuthorityDelivery,
 )
 from control_plane_kit_operations.workflows import InvalidOperationCommand
 
@@ -51,11 +57,16 @@ def runtime_effect_request_for_context(
         )
     graph = _material_graph(context)
     runtime_id = _runtime_id_for_context(context, graph)
+    authority_ref = _runtime_authority_ref_for_context(graph, runtime_id)
     return RuntimeEffectRequest(
         effect_id=context.intent_event.event_id,
         kind=RuntimeEffectKind.REALIZE_ACTIVITY,
         runtime_kind=_runtime_kind_for_context(context, graph, runtime_id),
-        authority_ref=_runtime_authority_ref_for_context(graph, runtime_id),
+        authority_ref=authority_ref,
+        authority_deliveries=_runtime_authority_deliveries_for_context(
+            context.runtime_authority_deliveries,
+            authority_ref,
+        ),
         source=RuntimeEffectSource(
             workspace_id=context.request.identity.workspace_id,
             request_id=context.request.identity.request_id,
@@ -124,6 +135,19 @@ def _runtime_authority_ref_for_context(
         return graph.runtimes[runtime_id].authority_ref
     except KeyError as error:
         raise InvalidOperationCommand("runtime effect runtime target is missing") from error
+
+
+def _runtime_authority_deliveries_for_context(
+    deliveries: tuple[RegisteredRuntimeAuthorityDelivery, ...],
+    authority_ref: RuntimeAuthorityReference | None,
+) -> tuple[RuntimeAuthorityAccessDelivery, ...]:
+    if authority_ref is None:
+        return ()
+    return tuple(
+        delivery.delivery
+        for delivery in sorted(deliveries, key=lambda value: value.delivery_id)
+        if delivery.authority_ref == authority_ref
+    )
 
 
 def _products_for_context(

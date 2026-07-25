@@ -283,6 +283,7 @@ class RuntimeEffectRequest:
     activity_id: ActivityId
     operation: ActivityOperation
     authority_ref: RuntimeAuthorityReference | None = None
+    authority_deliveries: tuple[RuntimeAuthorityAccessDelivery, ...] = ()
     products: tuple[RuntimeProductMaterial, ...] = ()
 
     def __post_init__(self) -> None:
@@ -298,6 +299,32 @@ class RuntimeEffectRequest:
             raise RuntimeEffectContractError(
                 "runtime authority reference must be RuntimeAuthorityReference"
             )
+        authority_deliveries = tuple(sorted(self.authority_deliveries))
+        if not all(
+            isinstance(value, RuntimeAuthorityAccessDelivery)
+            for value in authority_deliveries
+        ):
+            raise RuntimeEffectContractError(
+                "runtime authority deliveries must be RuntimeAuthorityAccessDelivery"
+            )
+        authority_refs = tuple(
+            value.authority_ref for value in authority_deliveries
+        )
+        if len(set(authority_refs)) != len(authority_refs):
+            raise RuntimeEffectContractError(
+                "runtime authority deliveries must be unique by authority reference"
+            )
+        if self.authority_ref is None and authority_deliveries:
+            raise RuntimeEffectContractError(
+                "runtime authority deliveries require runtime authority reference"
+            )
+        if self.authority_ref is not None:
+            for delivery in authority_deliveries:
+                if delivery.authority_ref != self.authority_ref:
+                    raise RuntimeEffectContractError(
+                        "runtime authority delivery reference must match request authority"
+                    )
+        object.__setattr__(self, "authority_deliveries", authority_deliveries)
         if not isinstance(self.source, RuntimeEffectSource):
             raise RuntimeEffectContractError("runtime effect source is malformed")
         if not isinstance(self.activity_id, ActivityId):
@@ -324,6 +351,9 @@ class RuntimeEffectRequest:
             "authority_ref": None
             if self.authority_ref is None
             else self.authority_ref.descriptor(),
+            "authority_deliveries": [
+                value.descriptor() for value in self.authority_deliveries
+            ],
             "source": self.source.descriptor(),
             "activity_id": self.activity_id.value,
             "operation": activity_operation_descriptor(self.operation),
