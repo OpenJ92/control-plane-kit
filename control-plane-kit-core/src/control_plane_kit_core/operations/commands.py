@@ -41,6 +41,8 @@ class OperatorCommandKind(StrEnum):
     REGISTER_IMAGE_PULL_AUTHORITY = "register-image-pull-authority"
     REGISTER_RUNTIME_AUTHORITY = "register-runtime-authority"
     REVOKE_RUNTIME_AUTHORITY = "revoke-runtime-authority"
+    REGISTER_RUNTIME_AUTHORITY_DELIVERY = "register-runtime-authority-delivery"
+    REVOKE_RUNTIME_AUTHORITY_DELIVERY = "revoke-runtime-authority-delivery"
     START_OPERATION_SESSION = "start-operation-session"
     CLOSE_OPERATION_SESSION = "close-operation-session"
     CANCEL_OPERATION_SESSION = "cancel-operation-session"
@@ -61,6 +63,7 @@ class CommandPayloadPolicy(StrEnum):
     PRODUCT_DESCRIPTOR_DOCUMENT = "product-descriptor-document"
     IMAGE_PULL_AUTHORITY_REFERENCE = "image-pull-authority-reference"
     RUNTIME_AUTHORITY_REFERENCE = "runtime-authority-reference"
+    RUNTIME_AUTHORITY_DELIVERY_REFERENCE = "runtime-authority-delivery-reference"
 
 
 _KIND_FAMILY = {
@@ -75,6 +78,12 @@ _KIND_FAMILY = {
         OperatorCommandFamily.RUNTIME_AUTHORITY
     ),
     OperatorCommandKind.REVOKE_RUNTIME_AUTHORITY: OperatorCommandFamily.RUNTIME_AUTHORITY,
+    OperatorCommandKind.REGISTER_RUNTIME_AUTHORITY_DELIVERY: (
+        OperatorCommandFamily.RUNTIME_AUTHORITY
+    ),
+    OperatorCommandKind.REVOKE_RUNTIME_AUTHORITY_DELIVERY: (
+        OperatorCommandFamily.RUNTIME_AUTHORITY
+    ),
     OperatorCommandKind.START_OPERATION_SESSION: OperatorCommandFamily.OPERATION_SESSION,
     OperatorCommandKind.CLOSE_OPERATION_SESSION: OperatorCommandFamily.OPERATION_SESSION,
     OperatorCommandKind.CANCEL_OPERATION_SESSION: OperatorCommandFamily.OPERATION_SESSION,
@@ -414,6 +423,30 @@ _CANONICAL_COMMANDS = (
         "RegisteredRuntimeAuthorityResponse",
         ApprovalPolicy.NOT_REQUIRED,
         CommandPayloadPolicy.RUNTIME_AUTHORITY_REFERENCE,
+        requires_open_session=False,
+    ),
+    _CommandDefinition(
+        "runtime-authority-delivery.register",
+        OperatorCommandKind.REGISTER_RUNTIME_AUTHORITY_DELIVERY,
+        OperatorCommandFamily.RUNTIME_AUTHORITY,
+        DeploymentProgramStage.PLAN,
+        ControlPlaneServiceRole.PLANNING,
+        "RegisterRuntimeAuthorityDelivery",
+        "RegisteredRuntimeAuthorityDeliveryResponse",
+        ApprovalPolicy.NOT_REQUIRED,
+        CommandPayloadPolicy.RUNTIME_AUTHORITY_DELIVERY_REFERENCE,
+        requires_open_session=False,
+    ),
+    _CommandDefinition(
+        "runtime-authority-delivery.revoke",
+        OperatorCommandKind.REVOKE_RUNTIME_AUTHORITY_DELIVERY,
+        OperatorCommandFamily.RUNTIME_AUTHORITY,
+        DeploymentProgramStage.PLAN,
+        ControlPlaneServiceRole.PLANNING,
+        "RevokeRuntimeAuthorityDelivery",
+        "RegisteredRuntimeAuthorityDeliveryResponse",
+        ApprovalPolicy.NOT_REQUIRED,
+        CommandPayloadPolicy.RUNTIME_AUTHORITY_DELIVERY_REFERENCE,
         requires_open_session=False,
     ),
     _CommandDefinition(

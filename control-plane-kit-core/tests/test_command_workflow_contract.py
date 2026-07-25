@@ -136,6 +136,26 @@ class CommandWorkflowContractTests(unittest.TestCase):
                     ActivityHistoryPolicy.RECORD_ACCEPTED_AND_REJECTED_COMMANDS,
                 ),
                 (
+                    "runtime-authority-delivery.register",
+                    OperatorCommandKind.REGISTER_RUNTIME_AUTHORITY_DELIVERY,
+                    OperatorCommandFamily.RUNTIME_AUTHORITY,
+                    DeploymentProgramStage.PLAN,
+                    ControlPlaneServiceRole.PLANNING,
+                    CommandIdempotencyPolicy.REQUIRED,
+                    ApprovalPolicy.NOT_REQUIRED,
+                    ActivityHistoryPolicy.RECORD_ACCEPTED_AND_REJECTED_COMMANDS,
+                ),
+                (
+                    "runtime-authority-delivery.revoke",
+                    OperatorCommandKind.REVOKE_RUNTIME_AUTHORITY_DELIVERY,
+                    OperatorCommandFamily.RUNTIME_AUTHORITY,
+                    DeploymentProgramStage.PLAN,
+                    ControlPlaneServiceRole.PLANNING,
+                    CommandIdempotencyPolicy.REQUIRED,
+                    ApprovalPolicy.NOT_REQUIRED,
+                    ActivityHistoryPolicy.RECORD_ACCEPTED_AND_REJECTED_COMMANDS,
+                ),
+                (
                     "runtime-authority.register",
                     OperatorCommandKind.REGISTER_RUNTIME_AUTHORITY,
                     OperatorCommandFamily.RUNTIME_AUTHORITY,
@@ -224,6 +244,14 @@ class CommandWorkflowContractTests(unittest.TestCase):
         self.assertIs(
             contract.command("runtime-authority.revoke").payload_policy,
             CommandPayloadPolicy.RUNTIME_AUTHORITY_REFERENCE,
+        )
+        self.assertIs(
+            contract.command("runtime-authority-delivery.register").payload_policy,
+            CommandPayloadPolicy.RUNTIME_AUTHORITY_DELIVERY_REFERENCE,
+        )
+        self.assertIs(
+            contract.command("runtime-authority-delivery.revoke").payload_policy,
+            CommandPayloadPolicy.RUNTIME_AUTHORITY_DELIVERY_REFERENCE,
         )
 
     def test_contract_rejects_duplicate_weak_or_mismatched_commands(self) -> None:

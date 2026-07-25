@@ -95,6 +95,18 @@ class AdapterParityContractTests(unittest.TestCase):
                     "RuntimeAuthorityCollectionReadResponse",
                 ),
                 (
+                    "read.runtime-authority-deliveries",
+                    "read.runtime-authority-deliveries",
+                    "list_runtime_authority_deliveries",
+                    "RuntimeAuthorityDeliveryCollectionReadResponse",
+                ),
+                (
+                    "read.runtime-authority-delivery-detail",
+                    "read.runtime-authority-delivery-detail",
+                    "get_runtime_authority_delivery_detail",
+                    "RuntimeAuthorityDeliveryDetailReadResponse",
+                ),
+                (
                     "read.runtime-authority-detail",
                     "read.runtime-authority-detail",
                     "get_runtime_authority_detail",

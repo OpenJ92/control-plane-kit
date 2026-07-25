@@ -211,6 +211,22 @@ class CommandParityContractTests(unittest.TestCase):
                     ApprovalPolicy.REQUIRES_CURRENT_APPROVAL,
                 ),
                 (
+                    "runtime-authority-delivery.register",
+                    "command.runtime-authority-delivery.register",
+                    "register_runtime_authority_delivery",
+                    ControlPlaneServiceRole.PLANNING,
+                    CommandIdempotencyPolicy.REQUIRED,
+                    ApprovalPolicy.NOT_REQUIRED,
+                ),
+                (
+                    "runtime-authority-delivery.revoke",
+                    "command.runtime-authority-delivery.revoke",
+                    "revoke_runtime_authority_delivery",
+                    ControlPlaneServiceRole.PLANNING,
+                    CommandIdempotencyPolicy.REQUIRED,
+                    ApprovalPolicy.NOT_REQUIRED,
+                ),
+                (
                     "runtime-authority.register",
                     "command.runtime-authority.register",
                     "register_runtime_authority",
