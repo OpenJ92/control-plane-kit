@@ -136,6 +136,26 @@ class CommandWorkflowContractTests(unittest.TestCase):
                     ActivityHistoryPolicy.RECORD_ACCEPTED_AND_REJECTED_COMMANDS,
                 ),
                 (
+                    "runtime-authority.register",
+                    OperatorCommandKind.REGISTER_RUNTIME_AUTHORITY,
+                    OperatorCommandFamily.RUNTIME_AUTHORITY,
+                    DeploymentProgramStage.PLAN,
+                    ControlPlaneServiceRole.PLANNING,
+                    CommandIdempotencyPolicy.REQUIRED,
+                    ApprovalPolicy.NOT_REQUIRED,
+                    ActivityHistoryPolicy.RECORD_ACCEPTED_AND_REJECTED_COMMANDS,
+                ),
+                (
+                    "runtime-authority.revoke",
+                    OperatorCommandKind.REVOKE_RUNTIME_AUTHORITY,
+                    OperatorCommandFamily.RUNTIME_AUTHORITY,
+                    DeploymentProgramStage.PLAN,
+                    ControlPlaneServiceRole.PLANNING,
+                    CommandIdempotencyPolicy.REQUIRED,
+                    ApprovalPolicy.NOT_REQUIRED,
+                    ActivityHistoryPolicy.RECORD_ACCEPTED_AND_REJECTED_COMMANDS,
+                ),
+                (
                     "workspace.create",
                     OperatorCommandKind.CREATE_WORKSPACE,
                     OperatorCommandFamily.WORKSPACE,
@@ -196,6 +216,14 @@ class CommandWorkflowContractTests(unittest.TestCase):
         self.assertIs(
             contract.command("approval.request").payload_policy,
             CommandPayloadPolicy.APPROVAL_RISK_EVIDENCE,
+        )
+        self.assertIs(
+            contract.command("runtime-authority.register").payload_policy,
+            CommandPayloadPolicy.RUNTIME_AUTHORITY_REFERENCE,
+        )
+        self.assertIs(
+            contract.command("runtime-authority.revoke").payload_policy,
+            CommandPayloadPolicy.RUNTIME_AUTHORITY_REFERENCE,
         )
 
     def test_contract_rejects_duplicate_weak_or_mismatched_commands(self) -> None:

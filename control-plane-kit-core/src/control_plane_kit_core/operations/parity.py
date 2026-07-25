@@ -889,6 +889,18 @@ _OPERATOR_READ_PROJECTIONS = (
         "get_control_surface",
         "ControlSurfaceReadResponse",
     ),
+    (
+        "read.runtime-authorities",
+        "read.runtime-authorities",
+        "list_runtime_authorities",
+        "RuntimeAuthorityCollectionReadResponse",
+    ),
+    (
+        "read.runtime-authority-detail",
+        "read.runtime-authority-detail",
+        "get_runtime_authority_detail",
+        "RuntimeAuthorityDetailReadResponse",
+    ),
 )
 
 
@@ -918,6 +930,24 @@ _OPERATOR_COMMANDS = (
         ControlPlaneServiceRole.PLANNING,
         "RegisterImagePullAuthorityRequest",
         "RegisteredImagePullAuthorityResponse",
+        ApprovalPolicy.NOT_REQUIRED,
+    ),
+    (
+        "runtime-authority.register",
+        "command.runtime-authority.register",
+        "register_runtime_authority",
+        ControlPlaneServiceRole.PLANNING,
+        "RegisterRuntimeAuthorityRequest",
+        "RegisteredRuntimeAuthorityResponse",
+        ApprovalPolicy.NOT_REQUIRED,
+    ),
+    (
+        "runtime-authority.revoke",
+        "command.runtime-authority.revoke",
+        "revoke_runtime_authority",
+        ControlPlaneServiceRole.PLANNING,
+        "RevokeRuntimeAuthorityRequest",
+        "RegisteredRuntimeAuthorityResponse",
         ApprovalPolicy.NOT_REQUIRED,
     ),
     (

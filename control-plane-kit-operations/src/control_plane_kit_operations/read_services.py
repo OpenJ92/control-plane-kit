@@ -13,6 +13,7 @@ from control_plane_kit_core.planning import (
     RiskLevel,
     plan_recovery_transition,
 )
+from control_plane_kit_core.runtime_authority import RuntimeAuthorityReference
 from control_plane_kit_core.topology import (
     DEFAULT_GRAPH_CODEC,
     GraphDescriptorError,
@@ -34,6 +35,7 @@ from control_plane_kit_operations.records import (
     OperationSessionStatus,
     WorkspaceRecord,
 )
+from control_plane_kit_operations.runtime_authorities import RuntimeAuthorityNotFound
 
 _REDACTED = "<redacted>"
 _SECRET_MARKERS = ("secret", "token", "password", "private_key", "credential", "api_key")
@@ -74,6 +76,7 @@ class ObservedStateStore(Protocol):
 
 
 class RuntimeAuthorityStore(Protocol):
+    def get(self, workspace_id: str, authority_ref: RuntimeAuthorityReference) -> object: ...
     def list_active(self, workspace_id: str) -> tuple[object, ...]: ...
 
 
@@ -499,6 +502,26 @@ class InstanceReadService:
                 _redacted_runtime_authority(value)
                 for value in self._runtime_authority_store.list_active(workspace_id)
             ),
+        )
+
+    def runtime_authority_detail(
+        self,
+        workspace_id: str,
+        authority_ref: RuntimeAuthorityReference,
+    ) -> FocusedDetailReadModel:
+        self._workspace(workspace_id)
+        if self._runtime_authority_store is None:
+            raise ReadModelError("runtime authority store is not configured")
+        try:
+            authority = self._runtime_authority_store.get(workspace_id, authority_ref)
+        except (KeyError, RuntimeAuthorityNotFound) as exc:
+            raise ReadModelError(
+                f"missing runtime authority {authority_ref.reference_id!r}"
+            ) from exc
+        return FocusedDetailReadModel(
+            workspace_id=workspace_id,
+            kind="runtime-authority-detail",
+            payload={"runtime_authority": _redacted_runtime_authority(authority)},
         )
 
     def control_surface(

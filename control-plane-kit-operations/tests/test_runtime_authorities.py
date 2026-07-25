@@ -5,6 +5,7 @@ import unittest
 
 import psycopg
 
+from control_plane_kit_core.policies import PolicyScope
 from control_plane_kit_core.runtime_authority import RuntimeAuthorityReference
 from control_plane_kit_core.secrets import SecretReference
 from control_plane_kit_core.types import RuntimeKind
@@ -17,7 +18,9 @@ from control_plane_kit_operations.runtime_authorities import (
     RegisterRuntimeAuthorityCommand,
     RegisteredRuntimeAuthorityStatus,
     RemoteDockerTlsAuthority,
+    RevokeRuntimeAuthorityCommand,
     RuntimeAuthorityKind,
+    RuntimeAuthorityRegistrationError,
     RuntimeAuthorityRegistrationService,
     RuntimeAuthorityRegistrationConflict,
 )
@@ -114,6 +117,7 @@ class RuntimeAuthorityStoreTests(unittest.TestCase):
                 authority=self.remote_authority(),
                 admitted_by="operator-a",
                 admitted_at="2026-07-24T12:00:00Z",
+                actor_scopes=(PolicyScope.RUNTIME_AUTHORITY_REGISTER,),
             )
         )
 
@@ -144,6 +148,7 @@ class RuntimeAuthorityStoreTests(unittest.TestCase):
             authority=self.remote_authority(endpoint="tcp://mac-mini.local:2376"),
             admitted_by="operator-a",
             admitted_at="2026-07-24T12:00:00Z",
+            actor_scopes=(PolicyScope.RUNTIME_AUTHORITY_REGISTER,),
         )
 
         registered = service.register(command)
@@ -158,6 +163,7 @@ class RuntimeAuthorityStoreTests(unittest.TestCase):
                     authority=self.remote_authority(endpoint="tcp://other.local:2376"),
                     admitted_by="operator-a",
                     admitted_at="2026-07-24T12:05:00Z",
+                    actor_scopes=(PolicyScope.RUNTIME_AUTHORITY_REGISTER,),
                 )
             )
 
@@ -173,12 +179,16 @@ class RuntimeAuthorityStoreTests(unittest.TestCase):
                 authority=LocalDockerSocketAuthority(),
                 admitted_by="operator-a",
                 admitted_at="2026-07-24T12:00:00Z",
+                actor_scopes=(PolicyScope.RUNTIME_AUTHORITY_REGISTER,),
             )
         )
 
         service.revoke(
-            workspace_id="workspace-a",
-            authority_ref=RuntimeAuthorityReference("local-docker"),
+            RevokeRuntimeAuthorityCommand(
+                workspace_id="workspace-a",
+                authority_ref=RuntimeAuthorityReference("local-docker"),
+                actor_scopes=(PolicyScope.RUNTIME_AUTHORITY_REVOKE,),
+            )
         )
 
         with self.unit_of_work() as unit_of_work:
@@ -220,6 +230,7 @@ class RuntimeAuthorityStoreTests(unittest.TestCase):
                 authority=self.remote_authority(),
                 admitted_by="operator-a",
                 admitted_at="2026-07-24T12:00:00Z",
+                actor_scopes=(PolicyScope.RUNTIME_AUTHORITY_REGISTER,),
             )
         )
         read_service = InstanceReadService(
@@ -237,6 +248,42 @@ class RuntimeAuthorityStoreTests(unittest.TestCase):
         self.assertEqual(descriptor["items"][0]["authority"]["endpoint"], "<redacted>")
         self.assertNotIn("mac-mini.local", repr(descriptor))
         self.assertNotIn("2376", repr(descriptor))
+
+    def test_service_requires_focused_runtime_authority_scopes(self) -> None:
+        service = RuntimeAuthorityRegistrationService(self.unit_of_work)
+        with self.assertRaisesRegex(RuntimeAuthorityRegistrationError, "register"):
+            service.register(
+                RegisterRuntimeAuthorityCommand(
+                    workspace_id="workspace-a",
+                    authority_ref=RuntimeAuthorityReference("local-docker"),
+                    runtime_kind=RuntimeKind.DOCKER,
+                    authority=LocalDockerSocketAuthority(),
+                    admitted_by="operator-a",
+                    admitted_at="2026-07-24T12:00:00Z",
+                    actor_scopes=(PolicyScope.PLAN_EXECUTE,),
+                )
+            )
+
+        service.register(
+            RegisterRuntimeAuthorityCommand(
+                workspace_id="workspace-a",
+                authority_ref=RuntimeAuthorityReference("local-docker"),
+                runtime_kind=RuntimeKind.DOCKER,
+                authority=LocalDockerSocketAuthority(),
+                admitted_by="operator-a",
+                admitted_at="2026-07-24T12:00:00Z",
+                actor_scopes=(PolicyScope.RUNTIME_AUTHORITY_REGISTER,),
+            )
+        )
+
+        with self.assertRaisesRegex(RuntimeAuthorityRegistrationError, "revoke"):
+            service.revoke(
+                RevokeRuntimeAuthorityCommand(
+                    workspace_id="workspace-a",
+                    authority_ref=RuntimeAuthorityReference("local-docker"),
+                    actor_scopes=(PolicyScope.PLAN_EXECUTE,),
+                )
+            )
 
     def remote_authority(
         self,

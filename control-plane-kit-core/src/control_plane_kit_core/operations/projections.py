@@ -29,6 +29,8 @@ class ReadProjectionKind(StrEnum):
     PENDING_APPROVALS = "pending-approvals"
     OBSERVED_STATE = "observed-state"
     CONTROL_SURFACE = "control-surface"
+    RUNTIME_AUTHORITIES = "runtime-authorities"
+    RUNTIME_AUTHORITY_DETAIL = "runtime-authority-detail"
 
 
 class ReadProjectionPolicy(StrEnum):
@@ -40,6 +42,7 @@ class ReadProjectionPolicy(StrEnum):
     REDACTED_PAGED_HISTORY = "redacted-paged-history"
     PINNED_PLAN_AND_RECOVERY = "pinned-plan-and-recovery"
     OBSERVED_STATE_EVIDENCE = "observed-state-evidence"
+    REDACTED_RUNTIME_AUTHORITY = "redacted-runtime-authority"
 
 
 @dataclass(frozen=True)
@@ -298,6 +301,18 @@ _CANONICAL_PROJECTIONS = (
         ReadProjectionKind.OBSERVED_STATE,
         "ObservedStateReadResponse",
         ReadProjectionPolicy.OBSERVED_STATE_EVIDENCE,
+    ),
+    _ProjectionDefinition(
+        "read.runtime-authorities",
+        ReadProjectionKind.RUNTIME_AUTHORITIES,
+        "RuntimeAuthorityCollectionReadResponse",
+        ReadProjectionPolicy.REDACTED_RUNTIME_AUTHORITY,
+    ),
+    _ProjectionDefinition(
+        "read.runtime-authority-detail",
+        ReadProjectionKind.RUNTIME_AUTHORITY_DETAIL,
+        "RuntimeAuthorityDetailReadResponse",
+        ReadProjectionPolicy.REDACTED_RUNTIME_AUTHORITY,
     ),
     _ProjectionDefinition(
         "read.open-sessions",

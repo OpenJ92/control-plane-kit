@@ -8,9 +8,12 @@ from typing import Any, Callable, Mapping, Protocol
 from control_plane_kit_core.operations import ControlPlaneServiceRole
 from control_plane_kit_core.operations.commands import OperatorCommandKind
 from control_plane_kit_core.policies import PolicyScope
+from control_plane_kit_core.runtime_authority import RuntimeAuthorityReference
 from control_plane_kit_core.runtime_effects import ImagePullAuthority
 from control_plane_kit_core.products import ProductDescriptorCodec, ProductDescriptorError
+from control_plane_kit_core.secrets import SecretReference
 from control_plane_kit_core.topology import DEFAULT_GRAPH_CODEC, GraphDescriptorError
+from control_plane_kit_core.types import RuntimeKind
 
 from control_plane_kit_operations.admission import (
     ExecutionAdmissionCommandService,
@@ -49,6 +52,16 @@ from control_plane_kit_operations.products import (
 )
 from control_plane_kit_operations.read_services import InstanceReadService, ReadModelError
 from control_plane_kit_operations.records import ApprovalDecisionKind
+from control_plane_kit_operations.runtime_authorities import (
+    LocalDockerSocketAuthority,
+    RegisterRuntimeAuthorityCommand,
+    RegisteredRuntimeAuthority,
+    RemoteDockerTlsAuthority,
+    RevokeRuntimeAuthorityCommand,
+    RuntimeAuthorityAuthorizationDenied,
+    RuntimeAuthorityRegistrationError,
+    RuntimeAuthorityRegistrationService,
+)
 from control_plane_kit_operations.workflows import (
     CancelOperationSession,
     CloseOperationSession,
@@ -142,6 +155,7 @@ class CpkServerReadService:
                 "activity_history_store": stores.activity_history,
                 "execution_store": stores.execution,
                 "observed_state_store": stores.observed_state,
+                "runtime_authority_store": stores.runtime_authorities,
             }
             if self._clock is not None:
                 kwargs["clock"] = self._clock
@@ -162,12 +176,14 @@ class CpkServerPlanningService:
         workspaces: WorkspaceCommandService | None = None,
         products: ProductRegistrationService | None = None,
         image_pull_authorities: ImagePullAuthorityRegistrationService | None = None,
+        runtime_authorities: RuntimeAuthorityRegistrationService | None = None,
         desired_graphs: DesiredGraphCommandService | None = None,
     ) -> None:
         self._service = service
         self._workspaces = workspaces
         self._products = products
         self._image_pull_authorities = image_pull_authorities
+        self._runtime_authorities = runtime_authorities
         self._desired_graphs = desired_graphs
 
     def handle(self, request: CpkServerRouteRequest) -> Mapping[str, object]:
@@ -234,6 +250,50 @@ class CpkServerPlanningService:
                 )
             )
             return _registered_image_pull_authority_descriptor(result)
+        if request.route_id == "command.runtime-authority.register":
+            if self._runtime_authorities is None:
+                raise _service_not_configured(request)
+            payload = _arguments(request)
+            _text(payload, "idempotency_key")
+            try:
+                result = self._runtime_authorities.register(
+                    RegisterRuntimeAuthorityCommand(
+                        workspace_id=_workspace_id(payload),
+                        authority_ref=RuntimeAuthorityReference(
+                            _text(payload, "authority_ref")
+                        ),
+                        runtime_kind=RuntimeKind(_text(payload, "runtime_kind")),
+                        authority=_runtime_authority(payload),
+                        admitted_by=_text(payload, "actor_id"),
+                        admitted_at=_text(payload, "admitted_at"),
+                        actor_scopes=_scopes(payload),
+                    )
+                )
+            except RuntimeAuthorityAuthorizationDenied as error:
+                raise CpkServerApplicationError(403, str(error)) from error
+            except (ValueError, RuntimeAuthorityRegistrationError) as error:
+                raise CpkServerApplicationError(400, str(error)) from error
+            return _registered_runtime_authority_descriptor(result)
+        if request.route_id == "command.runtime-authority.revoke":
+            if self._runtime_authorities is None:
+                raise _service_not_configured(request)
+            payload = _arguments(request)
+            _text(payload, "idempotency_key")
+            try:
+                result = self._runtime_authorities.revoke(
+                    RevokeRuntimeAuthorityCommand(
+                        workspace_id=_workspace_id(payload),
+                        authority_ref=RuntimeAuthorityReference(
+                            _path_or_payload(payload, "authority_ref", "authority_ref")
+                        ),
+                        actor_scopes=_scopes(payload),
+                    )
+                )
+            except RuntimeAuthorityAuthorizationDenied as error:
+                raise CpkServerApplicationError(403, str(error)) from error
+            except (ValueError, RuntimeAuthorityRegistrationError) as error:
+                raise CpkServerApplicationError(400, str(error)) from error
+            return _registered_runtime_authority_descriptor(result)
         if request.route_id == "command.desired-graph.set":
             if self._desired_graphs is None:
                 raise _service_not_configured(request)
@@ -493,6 +553,7 @@ def cpk_server_services(
     workspaces: WorkspaceCommandService | None = None,
     products: ProductRegistrationService | None = None,
     image_pull_authorities: ImagePullAuthorityRegistrationService | None = None,
+    runtime_authorities: RuntimeAuthorityRegistrationService | None = None,
     desired_graphs: DesiredGraphCommandService | None = None,
     operations: OperationCommandService | None = None,
     advancement: CurrentGraphAdvancementCommandService | None = None,
@@ -514,6 +575,7 @@ def cpk_server_services(
             workspaces=workspaces,
             products=products,
             image_pull_authorities=image_pull_authorities,
+            runtime_authorities=runtime_authorities,
             desired_graphs=desired_graphs,
         ),
         ControlPlaneServiceRole.APPROVAL: CpkServerApprovalService(approval),
@@ -590,6 +652,17 @@ def _read_model(service: InstanceReadService, request: CpkServerRouteRequest) ->
         return service.control_surface(
             _workspace_id(args),
             pointer=_optional_text(args, "pointer") or "current",
+        )
+    if route_id == "read.runtime-authorities":
+        _require_scope(args, PolicyScope.RUNTIME_AUTHORITY_READ)
+        return service.runtime_authorities(_workspace_id(args))
+    if route_id == "read.runtime-authority-detail":
+        _require_scope(args, PolicyScope.RUNTIME_AUTHORITY_READ)
+        return service.runtime_authority_detail(
+            _workspace_id(args),
+            RuntimeAuthorityReference(
+                _path_or_payload(args, "authority_ref", "authority_ref")
+            ),
         )
     raise _unsupported_route(request)
 
@@ -684,6 +757,29 @@ def _scopes(values: Mapping[str, object]) -> tuple[PolicyScope, ...]:
         raise CpkServerApplicationError(400, "actor_scopes contains an unknown scope") from error
 
 
+def _require_scope(values: Mapping[str, object], scope: PolicyScope) -> None:
+    if scope not in _scopes(values):
+        raise CpkServerApplicationError(403, f"missing required scope {scope.value!r}")
+
+
+def _runtime_authority(values: Mapping[str, object]) -> object:
+    raw = _mapping(values, "authority")
+    kind = _text(raw, "kind")
+    if kind == "local-docker-socket":
+        return LocalDockerSocketAuthority()
+    if kind == "remote-docker-tls":
+        try:
+            return RemoteDockerTlsAuthority(
+                endpoint=_text(raw, "endpoint"),
+                ca_certificate=SecretReference(_text(raw, "ca_certificate")),
+                client_certificate=SecretReference(_text(raw, "client_certificate")),
+                client_key=SecretReference(_text(raw, "client_key")),
+            )
+        except (TypeError, ValueError) as error:
+            raise CpkServerApplicationError(400, str(error)) from error
+    raise CpkServerApplicationError(400, "unsupported runtime authority")
+
+
 def _worker_authority(values: Mapping[str, object]) -> ExecutionWorkerAuthority:
     return ExecutionWorkerAuthority(
         worker_id=_text(values, "worker_id"),
@@ -731,6 +827,12 @@ def _registered_image_pull_authority_descriptor(value: Any) -> dict[str, object]
     }
 
 
+def _registered_runtime_authority_descriptor(
+    value: RegisteredRuntimeAuthority,
+) -> dict[str, object]:
+    return value.descriptor()
+
+
 def _registered_product_descriptor(value: Any) -> dict[str, object]:
     return {
         "registration_id": value.registration_id,
@@ -746,7 +848,14 @@ def _registered_product_descriptor(value: Any) -> dict[str, object]:
 
 def _read_error_status(error: ReadModelError) -> int:
     message = str(error)
-    if message.startswith(("missing workspace", "missing session", "missing plan")):
+    if message.startswith(
+        (
+            "missing workspace",
+            "missing session",
+            "missing plan",
+            "missing runtime authority",
+        )
+    ):
         return 404
     if "store is not configured" in message:
         return 503

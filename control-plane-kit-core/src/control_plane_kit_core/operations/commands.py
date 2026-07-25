@@ -30,6 +30,7 @@ class OperatorCommandFamily(StrEnum):
     DESIRED_GRAPH = "desired-graph"
     ACTIVITY_PLANNING = "activity-planning"
     APPROVAL = "approval"
+    RUNTIME_AUTHORITY = "runtime-authority"
 
 
 class OperatorCommandKind(StrEnum):
@@ -38,6 +39,8 @@ class OperatorCommandKind(StrEnum):
     CREATE_WORKSPACE = "create-workspace"
     IMPORT_PRODUCT_DESCRIPTOR = "import-product-descriptor"
     REGISTER_IMAGE_PULL_AUTHORITY = "register-image-pull-authority"
+    REGISTER_RUNTIME_AUTHORITY = "register-runtime-authority"
+    REVOKE_RUNTIME_AUTHORITY = "revoke-runtime-authority"
     START_OPERATION_SESSION = "start-operation-session"
     CLOSE_OPERATION_SESSION = "close-operation-session"
     CANCEL_OPERATION_SESSION = "cancel-operation-session"
@@ -57,6 +60,7 @@ class CommandPayloadPolicy(StrEnum):
     APPROVAL_RISK_EVIDENCE = "approval-risk-evidence"
     PRODUCT_DESCRIPTOR_DOCUMENT = "product-descriptor-document"
     IMAGE_PULL_AUTHORITY_REFERENCE = "image-pull-authority-reference"
+    RUNTIME_AUTHORITY_REFERENCE = "runtime-authority-reference"
 
 
 _KIND_FAMILY = {
@@ -67,6 +71,10 @@ _KIND_FAMILY = {
     OperatorCommandKind.REGISTER_IMAGE_PULL_AUTHORITY: (
         OperatorCommandFamily.PRODUCT_REGISTRATION
     ),
+    OperatorCommandKind.REGISTER_RUNTIME_AUTHORITY: (
+        OperatorCommandFamily.RUNTIME_AUTHORITY
+    ),
+    OperatorCommandKind.REVOKE_RUNTIME_AUTHORITY: OperatorCommandFamily.RUNTIME_AUTHORITY,
     OperatorCommandKind.START_OPERATION_SESSION: OperatorCommandFamily.OPERATION_SESSION,
     OperatorCommandKind.CLOSE_OPERATION_SESSION: OperatorCommandFamily.OPERATION_SESSION,
     OperatorCommandKind.CANCEL_OPERATION_SESSION: OperatorCommandFamily.OPERATION_SESSION,
@@ -382,6 +390,30 @@ _CANONICAL_COMMANDS = (
         "RegisteredImagePullAuthorityResponse",
         ApprovalPolicy.NOT_REQUIRED,
         CommandPayloadPolicy.IMAGE_PULL_AUTHORITY_REFERENCE,
+        requires_open_session=False,
+    ),
+    _CommandDefinition(
+        "runtime-authority.register",
+        OperatorCommandKind.REGISTER_RUNTIME_AUTHORITY,
+        OperatorCommandFamily.RUNTIME_AUTHORITY,
+        DeploymentProgramStage.PLAN,
+        ControlPlaneServiceRole.PLANNING,
+        "RegisterRuntimeAuthority",
+        "RegisteredRuntimeAuthorityResponse",
+        ApprovalPolicy.NOT_REQUIRED,
+        CommandPayloadPolicy.RUNTIME_AUTHORITY_REFERENCE,
+        requires_open_session=False,
+    ),
+    _CommandDefinition(
+        "runtime-authority.revoke",
+        OperatorCommandKind.REVOKE_RUNTIME_AUTHORITY,
+        OperatorCommandFamily.RUNTIME_AUTHORITY,
+        DeploymentProgramStage.PLAN,
+        ControlPlaneServiceRole.PLANNING,
+        "RevokeRuntimeAuthority",
+        "RegisteredRuntimeAuthorityResponse",
+        ApprovalPolicy.NOT_REQUIRED,
+        CommandPayloadPolicy.RUNTIME_AUTHORITY_REFERENCE,
         requires_open_session=False,
     ),
     _CommandDefinition(

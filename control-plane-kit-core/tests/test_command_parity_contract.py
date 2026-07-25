@@ -211,6 +211,22 @@ class CommandParityContractTests(unittest.TestCase):
                     ApprovalPolicy.REQUIRES_CURRENT_APPROVAL,
                 ),
                 (
+                    "runtime-authority.register",
+                    "command.runtime-authority.register",
+                    "register_runtime_authority",
+                    ControlPlaneServiceRole.PLANNING,
+                    CommandIdempotencyPolicy.REQUIRED,
+                    ApprovalPolicy.NOT_REQUIRED,
+                ),
+                (
+                    "runtime-authority.revoke",
+                    "command.runtime-authority.revoke",
+                    "revoke_runtime_authority",
+                    ControlPlaneServiceRole.PLANNING,
+                    CommandIdempotencyPolicy.REQUIRED,
+                    ApprovalPolicy.NOT_REQUIRED,
+                ),
+                (
                     "workspace.create",
                     "command.workspace.create",
                     "create_workspace",

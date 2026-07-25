@@ -66,6 +66,9 @@ from control_plane_kit_operations.records import (
     OperationSessionStatus,
     WorkspaceRecord,
 )
+from control_plane_kit_operations.runtime_authorities import (
+    RuntimeAuthorityRegistrationService,
+)
 from control_plane_kit_operations.workflows import OperationCommandService
 from control_plane_kit_operations.workspaces import WorkspaceCommandService
 
@@ -895,6 +898,152 @@ class CpkServerOperationsAdapterTests(unittest.TestCase):
             )
         self.assertEqual(missing_key.exception.status, 400)
         self.assertIn("idempotency_key", missing_key.exception.message)
+
+    def test_runtime_authority_routes_enforce_focused_scopes_and_redact_detail(self) -> None:
+        self.seed_workspace()
+        planning = CpkServerPlanningService(
+            RecordingService(),
+            runtime_authorities=RuntimeAuthorityRegistrationService(self.unit_of_work),
+        )
+        reads = CpkServerReadService(self.unit_of_work)
+
+        with self.assertRaises(CpkServerApplicationError) as missing_register_scope:
+            planning.handle(
+                RouteRequest(
+                    surface="http",
+                    route_id="command.runtime-authority.register",
+                    service_role=ControlPlaneServiceRole.PLANNING,
+                    path_parameters={"workspace_id": "workspace-a"},
+                    payload={
+                        "authority_ref": "remote-docker",
+                        "runtime_kind": "docker",
+                        "authority": {
+                            "kind": "remote-docker-tls",
+                            "endpoint": "tcp://mac-mini.local:2376",
+                            "ca_certificate": "secret://docker/ca",
+                            "client_certificate": "secret://docker/cert",
+                            "client_key": "secret://docker/key",
+                        },
+                        "actor_id": "operator-a",
+                        "actor_scopes": [PolicyScope.PLAN_EXECUTE.value],
+                        "admitted_at": "2026-07-22T10:01:30Z",
+                        "idempotency_key": "runtime-authority-a",
+                    },
+                )
+            )
+        self.assertEqual(missing_register_scope.exception.status, 403)
+        self.assertIn("runtime-authority:register", missing_register_scope.exception.message)
+
+        registered = planning.handle(
+            RouteRequest(
+                surface="mcp",
+                route_id="command.runtime-authority.register",
+                service_role=ControlPlaneServiceRole.PLANNING,
+                path_parameters={},
+                payload={
+                    "workspace_id": "workspace-a",
+                    "authority_ref": "remote-docker",
+                    "runtime_kind": "docker",
+                    "authority": {
+                        "kind": "remote-docker-tls",
+                        "endpoint": "tcp://mac-mini.local:2376",
+                        "ca_certificate": "secret://docker/ca",
+                        "client_certificate": "secret://docker/cert",
+                        "client_key": "secret://docker/key",
+                    },
+                    "actor_id": "operator-a",
+                    "actor_scopes": [PolicyScope.RUNTIME_AUTHORITY_REGISTER.value],
+                    "admitted_at": "2026-07-22T10:01:30Z",
+                    "idempotency_key": "runtime-authority-a",
+                },
+            )
+        )
+
+        self.assertEqual(registered["workspace_id"], "workspace-a")
+        self.assertEqual(registered["authority_ref"], "remote-docker")
+        self.assertEqual(registered["authority"]["endpoint"], "<redacted>")
+        self.assertNotIn("mac-mini.local", repr(registered))
+        self.assertNotIn("2376", repr(registered))
+
+        with self.assertRaises(CpkServerApplicationError) as missing_read_scope:
+            reads.handle(
+                RouteRequest(
+                    surface="http",
+                    route_id="read.runtime-authorities",
+                    service_role=ControlPlaneServiceRole.READS,
+                    path_parameters={"workspace_id": "workspace-a"},
+                    payload={"actor_scopes": [PolicyScope.PLAN_EXECUTE.value]},
+                )
+            )
+        self.assertEqual(missing_read_scope.exception.status, 403)
+        self.assertIn("runtime-authority:read", missing_read_scope.exception.message)
+
+        listed = reads.handle(
+            RouteRequest(
+                surface="http",
+                route_id="read.runtime-authorities",
+                service_role=ControlPlaneServiceRole.READS,
+                path_parameters={"workspace_id": "workspace-a"},
+                payload={"actor_scopes": [PolicyScope.RUNTIME_AUTHORITY_READ.value]},
+            )
+        )
+        self.assertEqual(listed["items"][0]["authority_ref"], "remote-docker")
+        self.assertNotIn("mac-mini.local", repr(listed))
+
+        detail = reads.handle(
+            RouteRequest(
+                surface="mcp",
+                route_id="read.runtime-authority-detail",
+                service_role=ControlPlaneServiceRole.READS,
+                path_parameters={},
+                payload={
+                    "workspace_id": "workspace-a",
+                    "authority_ref": "remote-docker",
+                    "actor_scopes": [PolicyScope.RUNTIME_AUTHORITY_READ.value],
+                },
+            )
+        )
+        self.assertEqual(
+            detail["runtime_authority"]["authority"]["endpoint"],
+            "<redacted>",
+        )
+        self.assertNotIn("mac-mini.local", repr(detail))
+
+        with self.assertRaises(CpkServerApplicationError) as missing_revoke_scope:
+            planning.handle(
+                RouteRequest(
+                    surface="http",
+                    route_id="command.runtime-authority.revoke",
+                    service_role=ControlPlaneServiceRole.PLANNING,
+                    path_parameters={
+                        "workspace_id": "workspace-a",
+                        "authority_ref": "remote-docker",
+                    },
+                    payload={
+                        "actor_scopes": [PolicyScope.RUNTIME_AUTHORITY_REGISTER.value],
+                        "idempotency_key": "revoke-runtime-authority-a",
+                    },
+                )
+            )
+        self.assertEqual(missing_revoke_scope.exception.status, 403)
+        self.assertIn("runtime-authority:revoke", missing_revoke_scope.exception.message)
+
+        revoked = planning.handle(
+            RouteRequest(
+                surface="http",
+                route_id="command.runtime-authority.revoke",
+                service_role=ControlPlaneServiceRole.PLANNING,
+                path_parameters={
+                    "workspace_id": "workspace-a",
+                    "authority_ref": "remote-docker",
+                },
+                payload={
+                    "actor_scopes": [PolicyScope.RUNTIME_AUTHORITY_REVOKE.value],
+                    "idempotency_key": "revoke-runtime-authority-a",
+                },
+            )
+        )
+        self.assertEqual(revoked["status"], "revoked")
 
     def test_product_import_requires_public_command_idempotency_key(self) -> None:
         product_document = ProductDescriptorCodec().encode_document(
