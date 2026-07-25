@@ -56,7 +56,11 @@ def main() -> int:
     _wait_ready(base_url)
     cpk_document = _chain_cpk_document(servers_repo)
     postgres_document = _product_document(servers_repo, "postgres_server")
-    graph = _recursive_graph(cpk_document, postgres_document)
+    graph = _recursive_graph(
+        cpk_document,
+        postgres_document,
+        authority_ref=RuntimeAuthorityReference(LOCAL_CHAIN_AUTHORITY_REF),
+    )
 
     workspace = _http(
         base_url,
@@ -71,6 +75,8 @@ def main() -> int:
     )
     current_graph_id = str(workspace["workspace"]["current_graph_id"])
 
+    _register_local_docker_authority(base_url, WORKSPACE_ID)
+    _register_local_docker_delivery(base_url, WORKSPACE_ID)
     _import_product(base_url, "postgres", postgres_document)
     _import_product(base_url, "cpk-server", cpk_document)
     if os.environ.get("CPK_RECURSIVE_REGISTER_PULL_AUTHORITY") == "docker-config":
@@ -326,7 +332,7 @@ def _register_local_docker_delivery(base_url: str, workspace_id: str) -> None:
         {
             "workspace_id": workspace_id,
             "delivery": {
-                "authority_ref": {"value": LOCAL_CHAIN_AUTHORITY_REF},
+                "authority_ref": {"reference_id": LOCAL_CHAIN_AUTHORITY_REF},
                 "delivery_kind": "local-docker-socket-mount",
                 "secret_references": [],
             },
@@ -623,6 +629,18 @@ def _chain_cpk_document(servers_repo: Path) -> Any:
             environment_name="CPK_IMAGE_PULL_CREDENTIAL_RESOLVER",
             reference=SecretReference(
                 "secret://control-plane-kit/child/image-pull-credential-resolver"
+            ),
+        ),
+        SecretEnvironmentDelivery(
+            environment_name="CPK_PRODUCT_SECRET_RESOLVER",
+            reference=SecretReference(
+                "secret://control-plane-kit/child/product-secret-resolver"
+            ),
+        ),
+        SecretEnvironmentDelivery(
+            environment_name="CPK_PRODUCT_SECRET_VALUES_JSON",
+            reference=SecretReference(
+                "secret://control-plane-kit/child/product-secret-values-json"
             ),
         ),
     )

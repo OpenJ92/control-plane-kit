@@ -17,7 +17,7 @@ BUILD_CONTROLLER="${CPK_RECURSIVE_BUILD_CONTROLLER:-1}"
 CHAIN_DEPTH="${CPK_RECURSIVE_LOCAL_CHAIN_DEPTH:-1}"
 NETWORK="cpk-server-recursive-$$"
 LABEL="org.openj92.project=control-plane-kit-servers"
-WORKSPACE_LABEL="org.openj92.cpk.workspace=recursive-cpk-server"
+WORKSPACE_LABEL_KEY="org.openj92.cpk.workspace"
 POSTGRES_CONTAINER=""
 PARENT_CONTAINER=""
 DOCKER_SOCKET_GROUP="${CPK_DOCKER_SOCKET_GROUP:-0}"
@@ -26,22 +26,37 @@ AUTH_CONFIG_DIR=""
 IMAGE_PULL_RESOLVER="none"
 
 cleanup_recursive_resources() {
-  docker ps -aq --filter "label=$WORKSPACE_LABEL" \
+  docker ps -aq --filter "label=$WORKSPACE_LABEL_KEY" \
     | while IFS= read -r container; do
         if [ -n "$container" ]; then
-          docker rm -f "$container" >/dev/null 2>&1 || true
+          workspace="$(docker inspect "$container" --format "{{ index .Config.Labels \"$WORKSPACE_LABEL_KEY\" }}" 2>/dev/null || true)"
+          case "$workspace" in
+            recursive-cpk-server|recursive-cpk-server-local-chain-*)
+              docker rm -f "$container" >/dev/null 2>&1 || true
+              ;;
+          esac
         fi
       done
-  docker volume ls -q --filter "label=$WORKSPACE_LABEL" \
+  docker volume ls -q --filter "label=$WORKSPACE_LABEL_KEY" \
     | while IFS= read -r volume; do
         if [ -n "$volume" ]; then
-          docker volume rm "$volume" >/dev/null 2>&1 || true
+          workspace="$(docker volume inspect "$volume" --format "{{ index .Labels \"$WORKSPACE_LABEL_KEY\" }}" 2>/dev/null || true)"
+          case "$workspace" in
+            recursive-cpk-server|recursive-cpk-server-local-chain-*)
+              docker volume rm "$volume" >/dev/null 2>&1 || true
+              ;;
+          esac
         fi
       done
-  docker network ls -q --filter "label=$WORKSPACE_LABEL" \
+  docker network ls -q --filter "label=$WORKSPACE_LABEL_KEY" \
     | while IFS= read -r network; do
         if [ -n "$network" ]; then
-          docker network rm "$network" >/dev/null 2>&1 || true
+          workspace="$(docker network inspect "$network" --format "{{ index .Labels \"$WORKSPACE_LABEL_KEY\" }}" 2>/dev/null || true)"
+          case "$workspace" in
+            recursive-cpk-server|recursive-cpk-server-local-chain-*)
+              docker network rm "$network" >/dev/null 2>&1 || true
+              ;;
+          esac
         fi
       done
 }
@@ -60,6 +75,8 @@ cleanup() {
   fi
 }
 trap cleanup EXIT INT TERM
+
+cleanup_recursive_resources
 
 if [ "$BUILD_CONTROLLER" = "1" ]; then
   docker build -f Dockerfile.test -t "$CONTROLLER_IMAGE" .
@@ -107,20 +124,42 @@ elif [ -r "$AUTH_CONFIG_SOURCE" ]; then
 fi
 
 PRODUCT_SECRET_VALUES_JSON="$(
-  python3 - "${AUTH_CONFIG_DIR:-}" <<'PY'
+  python3 - "${AUTH_CONFIG_DIR:-}" "$CHAIN_DEPTH" <<'PY'
 import json
 from pathlib import Path
 import sys
 
 auth_config_dir = Path(sys.argv[1]) if len(sys.argv) > 1 and sys.argv[1] else None
-child_values = {
-    "secret://control-plane-kit/postgres/password": "cpk",
-    "secret://control-plane-kit/child/image-pull-credential-resolver": "docker-config",
-}
+chain_depth = int(sys.argv[2])
+auth_config_json = None
 if auth_config_dir is not None:
-    child_values["secret://control-plane-kit/child/docker-auth-config-json"] = (
-        auth_config_dir / "config.json"
-    ).read_text(encoding="utf-8")
+    auth_config_json = (auth_config_dir / "config.json").read_text(encoding="utf-8")
+
+
+def child_secret_values(remaining_depth: int) -> dict[str, str]:
+    values = {
+        "secret://control-plane-kit/postgres/password": "cpk",
+        "secret://control-plane-kit/child/image-pull-credential-resolver": "docker-config",
+    }
+    if auth_config_json is not None:
+        values["secret://control-plane-kit/child/docker-auth-config-json"] = (
+            auth_config_json
+        )
+    next_values = (
+        child_secret_values(remaining_depth - 1)
+        if remaining_depth > 1
+        else {"secret://control-plane-kit/postgres/password": "cpk"}
+    )
+    values["secret://control-plane-kit/child/product-secret-resolver"] = (
+        "local-development"
+    )
+    values["secret://control-plane-kit/child/product-secret-values-json"] = (
+        json.dumps(next_values, sort_keys=True, separators=(",", ":"))
+    )
+    return values
+
+
+child_values = child_secret_values(chain_depth)
 parent_values = {
     "secret://control-plane-kit/postgres/password": "cpk",
     "secret://control-plane-kit/child/product-secret-resolver": "local-development",
@@ -131,10 +170,8 @@ parent_values = {
         separators=(",", ":"),
     ),
 }
-if auth_config_dir is not None:
-    parent_values["secret://control-plane-kit/child/docker-auth-config-json"] = (
-        auth_config_dir / "config.json"
-    ).read_text(encoding="utf-8")
+if auth_config_json is not None:
+    parent_values["secret://control-plane-kit/child/docker-auth-config-json"] = auth_config_json
 print(json.dumps(parent_values, sort_keys=True, separators=(",", ":")))
 PY
 )"
