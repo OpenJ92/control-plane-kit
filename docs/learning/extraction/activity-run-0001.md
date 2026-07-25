@@ -3753,10 +3753,24 @@ Validation so far:
 ```text
 ./control-plane-kit-core/test.sh
 ./control-plane-kit-operations/test.sh
+control-plane-kit-interpreters ./test.sh
 ```
 
 Core passed 407 tests, compileall, and import check. Operations passed 160
-tests, compileall, and import check.
+tests, compileall, and import check. Interpreters passed 79 tests, compileall,
+and Docker-first package validation.
+
+Hardening found during #991:
+
+```text
+unsupported delivery
+  -> validate before secret resolution, image pull auth, network creation,
+     configuration volume materialization, or container creation
+```
+
+The first interpreter test run showed unsupported delivery was detected too late,
+after configuration helper materialization. The final implementation validates
+authority delivery mounts immediately after selecting node product material.
 
 Handoff to the interpreter half of #991: materialize
 `LOCAL_DOCKER_SOCKET_MOUNT` only from `RuntimeEffectRequest.authority_deliveries`.
