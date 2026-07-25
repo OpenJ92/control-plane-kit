@@ -119,7 +119,7 @@ DIND_CONTAINER="$(docker run -d \
   --privileged \
   --label "$LABEL" \
   --network "$NETWORK" \
-  --network-alias docker-authority \
+  --network-alias docker \
   -e DOCKER_TLS_CERTDIR=/certs \
   "$DIND_IMAGE")"
 
@@ -165,18 +165,23 @@ elif [ -r "$AUTH_CONFIG_SOURCE" ]; then
 fi
 
 PRODUCT_SECRET_VALUES_JSON="$(
-  python3 - "$CERT_DIR" <<'PY'
+  python3 - "$CERT_DIR" "${AUTH_CONFIG_DIR:-}" <<'PY'
 import json
 from pathlib import Path
 import sys
 
 cert_dir = Path(sys.argv[1])
+auth_config_dir = Path(sys.argv[2]) if len(sys.argv) > 2 and sys.argv[2] else None
 child_values = {
     "secret://control-plane-kit/postgres/password": "cpk",
-    "secret://docker-tls/ca": (cert_dir / "ca.pem").read_text(encoding="utf-8"),
-    "secret://docker-tls/cert": (cert_dir / "cert.pem").read_text(encoding="utf-8"),
-    "secret://docker-tls/key": (cert_dir / "key.pem").read_text(encoding="utf-8"),
+    "secret://control-plane-kit/docker-tls/ca": (cert_dir / "ca.pem").read_text(encoding="utf-8"),
+    "secret://control-plane-kit/docker-tls/cert": (cert_dir / "cert.pem").read_text(encoding="utf-8"),
+    "secret://control-plane-kit/docker-tls/key": (cert_dir / "key.pem").read_text(encoding="utf-8"),
 }
+if auth_config_dir is not None:
+    child_values["secret://control-plane-kit/child/docker-auth-config-json"] = (
+        auth_config_dir / "config.json"
+    ).read_text(encoding="utf-8")
 parent_values = {
     "secret://control-plane-kit/postgres/password": "cpk",
     "secret://control-plane-kit/child/product-secret-resolver": "local-development",
@@ -238,7 +243,7 @@ if ! docker run --rm \
   -e CPK_RECURSIVE_TLS_BASE_URL=http://cpk-server:8080 \
   -e CPK_RECURSIVE_TLS_PARENT_CONTAINER="$PARENT_CONTAINER" \
   -e CPK_RECURSIVE_TLS_DOCKER_AUTHORITY_CONTAINER="$DIND_CONTAINER" \
-  -e CPK_RECURSIVE_TLS_DOCKER_ENDPOINT=tcp://docker-authority:2376 \
+  -e CPK_RECURSIVE_TLS_DOCKER_ENDPOINT=tcp://docker:2376 \
   -e CPK_RECURSIVE_TLS_SERVERS_REPO=/app \
   -e CPK_RECURSIVE_TLS_REGISTER_PULL_AUTHORITY="$IMAGE_PULL_RESOLVER" \
   "$CONTROLLER_IMAGE" \

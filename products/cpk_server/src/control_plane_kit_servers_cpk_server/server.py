@@ -68,6 +68,7 @@ class CpkServerBootstrapConfiguration:
     product_secret_resolver: str
     product_secret_values_json: str | None = field(repr=False)
     docker_config_path: str | None
+    docker_config_json: str | None = field(repr=False)
     store_endpoints: Mapping[str, str]
 
     @classmethod
@@ -92,6 +93,7 @@ class CpkServerBootstrapConfiguration:
         product_secret_resolver = values.get("CPK_PRODUCT_SECRET_RESOLVER", "none")
         product_secret_values_json = values.get("CPK_PRODUCT_SECRET_VALUES_JSON")
         docker_config_path = _docker_config_path(values)
+        docker_config_json = values.get("CPK_DOCKER_AUTH_CONFIG_JSON")
         store_endpoints = {
             name: _required(values, name)
             for name in (
@@ -129,6 +131,15 @@ class CpkServerBootstrapConfiguration:
                 "CPK_IMAGE_PULL_CREDENTIAL_RESOLVER=docker-config requires "
                 "a Docker runtime interpreter"
             )
+        if (
+            image_pull_credential_resolver == "docker-config"
+            and docker_config_path is None
+            and not docker_config_json
+        ):
+            raise BootstrapConfigurationError(
+                "CPK_IMAGE_PULL_CREDENTIAL_RESOLVER=docker-config requires "
+                "DOCKER_CONFIG, CPK_DOCKER_AUTH_CONFIG, or CPK_DOCKER_AUTH_CONFIG_JSON"
+            )
         if product_secret_resolver == "local-development":
             if RuntimeKind.DOCKER not in runtime_dispatcher.runtime_kinds:
                 raise BootstrapConfigurationError(
@@ -149,6 +160,7 @@ class CpkServerBootstrapConfiguration:
             product_secret_resolver=product_secret_resolver,
             product_secret_values_json=product_secret_values_json,
             docker_config_path=docker_config_path,
+            docker_config_json=docker_config_json,
             store_endpoints=store_endpoints,
         )
 
@@ -388,10 +400,10 @@ def _image_pull_credential_resolver(config: CpkServerBootstrapConfiguration):
         return None
     if config.image_pull_credential_resolver != "docker-config":
         raise AssertionError("image pull resolver set validated at bootstrap")
-    if config.docker_config_path is None:
+    if config.docker_config_path is None and not config.docker_config_json:
         raise BootstrapConfigurationError(
             "CPK_IMAGE_PULL_CREDENTIAL_RESOLVER=docker-config requires "
-            "DOCKER_CONFIG or CPK_DOCKER_AUTH_CONFIG"
+            "DOCKER_CONFIG, CPK_DOCKER_AUTH_CONFIG, or CPK_DOCKER_AUTH_CONFIG_JSON"
         )
     try:
         from control_plane_kit_core.secrets import SecretProviderId, SecretValue
@@ -408,8 +420,14 @@ def _image_pull_credential_resolver(config: CpkServerBootstrapConfiguration):
         ) from error
 
     class DockerConfigImagePullCredentialResolver:
-        def __init__(self, config_path: str) -> None:
+        def __init__(
+            self,
+            *,
+            config_path: str | None,
+            config_json: str | None,
+        ) -> None:
             self._config_path = config_path
+            self._config_json = config_json
 
         def resolve(self, authority):
             reference = authority.credential_reference
@@ -455,11 +473,17 @@ def _image_pull_credential_resolver(config: CpkServerBootstrapConfiguration):
             return ImagePullCredentialMissing(reference)
 
         def _auths(self) -> Mapping[str, object]:
-            try:
-                with open(self._config_path, encoding="utf-8") as file:
-                    config_doc = json.load(file)
-            except OSError:
-                return {}
+            if self._config_json:
+                try:
+                    config_doc = json.loads(self._config_json)
+                except json.JSONDecodeError:
+                    return {}
+            else:
+                try:
+                    with open(str(self._config_path), encoding="utf-8") as file:
+                        config_doc = json.load(file)
+                except OSError:
+                    return {}
             if not isinstance(config_doc, Mapping):
                 return {}
             auths = config_doc.get("auths")
@@ -470,7 +494,10 @@ def _image_pull_credential_resolver(config: CpkServerBootstrapConfiguration):
         def __repr__(self) -> str:
             return "DockerConfigImagePullCredentialResolver(<redacted>)"
 
-    return DockerConfigImagePullCredentialResolver(config.docker_config_path)
+    return DockerConfigImagePullCredentialResolver(
+        config_path=config.docker_config_path,
+        config_json=config.docker_config_json,
+    )
 
 
 def _product_secret_resolver(config: CpkServerBootstrapConfiguration):

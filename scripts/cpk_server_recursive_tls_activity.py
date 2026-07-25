@@ -19,6 +19,7 @@ from control_plane_kit_core.algebra import (
     DockerRuntime,
     SocketConnection,
 )
+from control_plane_kit_core.environment import PublicStaticEnvironmentBinding
 from control_plane_kit_core.products import (
     ProductDescriptorCodec,
     ProductInstanceConfiguration,
@@ -82,6 +83,17 @@ def main() -> int:
                 "environment_name": "CPK_PRODUCT_SECRET_VALUES_JSON",
                 "reference_id": "secret://control-plane-kit/child/product-secret-values-json",
             },
+            {
+                "kind": "environment",
+                "environment_name": "CPK_DOCKER_AUTH_CONFIG_JSON",
+                "reference_id": "secret://control-plane-kit/child/docker-auth-config-json",
+            },
+        ),
+        extra_public_environment=(
+            PublicStaticEnvironmentBinding(
+                "CPK_IMAGE_PULL_CREDENTIAL_RESOLVER",
+                "docker-config",
+            ),
         ),
     )
     parent_postgres = _product_document(servers_repo, "postgres_server")
@@ -124,7 +136,7 @@ def main() -> int:
     )
     child.import_product("grandchild-cpk", grandchild_cpk)
     child.import_product("grandchild-postgres", grandchild_postgres)
-    _register_pull_authority_if_requested(child)
+    _register_child_pull_authority_if_requested(child)
 
     child_result = child.run_approved_transition(
         title="Recursive TLS grandchild cpk-server",
@@ -152,6 +164,14 @@ def _register_pull_authority_if_requested(workflow: HostedWorkflow) -> None:
         workflow.register_ghcr_pull_authority_from_docker_config()
 
 
+def _register_child_pull_authority_if_requested(workflow: HostedWorkflow) -> None:
+    if (
+        os.environ.get("CPK_RECURSIVE_TLS_REGISTER_CHILD_PULL_AUTHORITY")
+        == "docker-config"
+    ):
+        workflow.register_ghcr_pull_authority_from_docker_config()
+
+
 def _register_remote_docker_tls_authority(base_url: str, endpoint: str) -> None:
     _mcp_tool(
         base_url,
@@ -163,9 +183,9 @@ def _register_remote_docker_tls_authority(base_url: str, endpoint: str) -> None:
             "authority": {
                 "kind": "remote-docker-tls",
                 "endpoint": endpoint,
-                "ca_certificate": "secret://docker-tls/ca",
-                "client_certificate": "secret://docker-tls/cert",
-                "client_key": "secret://docker-tls/key",
+                "ca_certificate": "secret://control-plane-kit/docker-tls/ca",
+                "client_certificate": "secret://control-plane-kit/docker-tls/cert",
+                "client_key": "secret://control-plane-kit/docker-tls/key",
             },
             "actor_id": "operator-a",
             "actor_scopes": [PolicyScope.RUNTIME_AUTHORITY_REGISTER.value],
@@ -301,6 +321,7 @@ def _product_document_with_secret_deliveries(
     *,
     identity_name: str,
     extra_deliveries: tuple[dict[str, str], ...],
+    extra_public_environment: tuple[PublicStaticEnvironmentBinding, ...] = (),
 ) -> Any:
     codec = ProductDescriptorCodec()
     document = codec.decode_document(descriptor_path.read_bytes())
@@ -314,6 +335,9 @@ def _product_document_with_secret_deliveries(
     )
     contract = replace(
         product.runtime_contract,
+        public_environment=(
+            product.runtime_contract.public_environment + extra_public_environment
+        ),
         secret_deliveries=product.runtime_contract.secret_deliveries + added,
     )
     return codec.encode_document(
@@ -348,7 +372,7 @@ def _sync_outer_networks(
         for container, aliases in (
             (parent_container, None),
             (controller_container, None),
-            (dind_container, ["docker-authority"]),
+            (dind_container, ["docker"]),
         ):
             try:
                 if aliases:
