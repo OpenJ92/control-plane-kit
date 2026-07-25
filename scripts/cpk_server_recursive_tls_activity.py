@@ -19,7 +19,6 @@ from control_plane_kit_core.algebra import (
     DockerRuntime,
     SocketConnection,
 )
-from control_plane_kit_core.environment import PublicStaticEnvironmentBinding
 from control_plane_kit_core.products import (
     ProductDescriptorCodec,
     ProductInstanceConfiguration,
@@ -88,12 +87,14 @@ def main() -> int:
                 "environment_name": "CPK_DOCKER_AUTH_CONFIG_JSON",
                 "reference_id": "secret://control-plane-kit/child/docker-auth-config-json",
             },
-        ),
-        extra_public_environment=(
-            PublicStaticEnvironmentBinding(
-                "CPK_IMAGE_PULL_CREDENTIAL_RESOLVER",
-                "docker-config",
-            ),
+            {
+                "kind": "environment",
+                "environment_name": "CPK_IMAGE_PULL_CREDENTIAL_RESOLVER",
+                "reference_id": (
+                    "secret://control-plane-kit/child/"
+                    "image-pull-credential-resolver"
+                ),
+            },
         ),
     )
     parent_postgres = _product_document(servers_repo, "postgres_server")
@@ -321,7 +322,6 @@ def _product_document_with_secret_deliveries(
     *,
     identity_name: str,
     extra_deliveries: tuple[dict[str, str], ...],
-    extra_public_environment: tuple[PublicStaticEnvironmentBinding, ...] = (),
 ) -> Any:
     codec = ProductDescriptorCodec()
     document = codec.decode_document(descriptor_path.read_bytes())
@@ -335,9 +335,6 @@ def _product_document_with_secret_deliveries(
     )
     contract = replace(
         product.runtime_contract,
-        public_environment=(
-            product.runtime_contract.public_environment + extra_public_environment
-        ),
         secret_deliveries=product.runtime_contract.secret_deliveries + added,
     )
     return codec.encode_document(

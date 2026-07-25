@@ -9,24 +9,24 @@
       "product_id": "cpk-server",
       "owner_directory": "products/cpk_server",
       "descriptor_path": "products/cpk_server/product.cpk.json",
-      "source_commit": "fc667bb79802e15e0fee851f3a90805256cf50b6",
+      "source_commit": "607e9db682967d92ecf32709e4d99bf5840e2c85",
       "image": {
         "registry": "ghcr.io",
         "repository": "openj92/control-plane-kit-servers/cpk-server",
-        "tag": "runtime-auth-968",
-        "digest": "sha256:b7a2fa5f4455a70965e8d8e806a332e02c457c29e1e5739014b96c4f136cd5f2"
+        "tag": "runtime-auth-968-authority-json",
+        "digest": "sha256:18ff2c5d4ef6c8169b3b6e2a62403b160db33325066e038457d6d589ff8882f2"
       }
     },
     {
       "product_id": "cpk-server-docker",
       "owner_directory": "products/cpk_server",
       "descriptor_path": "products/cpk_server/product.docker.cpk.json",
-      "source_commit": "fc667bb79802e15e0fee851f3a90805256cf50b6",
+      "source_commit": "607e9db682967d92ecf32709e4d99bf5840e2c85",
       "image": {
         "registry": "ghcr.io",
         "repository": "openj92/control-plane-kit-servers/cpk-server",
-        "tag": "runtime-auth-968",
-        "digest": "sha256:b7a2fa5f4455a70965e8d8e806a332e02c457c29e1e5739014b96c4f136cd5f2"
+        "tag": "runtime-auth-968-authority-json",
+        "digest": "sha256:18ff2c5d4ef6c8169b3b6e2a62403b160db33325066e038457d6d589ff8882f2"
       }
     },
     {

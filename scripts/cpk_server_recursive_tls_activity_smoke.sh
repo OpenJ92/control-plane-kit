@@ -177,6 +177,7 @@ child_values = {
     "secret://control-plane-kit/docker-tls/ca": (cert_dir / "ca.pem").read_text(encoding="utf-8"),
     "secret://control-plane-kit/docker-tls/cert": (cert_dir / "cert.pem").read_text(encoding="utf-8"),
     "secret://control-plane-kit/docker-tls/key": (cert_dir / "key.pem").read_text(encoding="utf-8"),
+    "secret://control-plane-kit/child/image-pull-credential-resolver": "docker-config",
 }
 if auth_config_dir is not None:
     child_values["secret://control-plane-kit/child/docker-auth-config-json"] = (
@@ -185,12 +186,17 @@ if auth_config_dir is not None:
 parent_values = {
     "secret://control-plane-kit/postgres/password": "cpk",
     "secret://control-plane-kit/child/product-secret-resolver": "local-development",
+    "secret://control-plane-kit/child/image-pull-credential-resolver": "docker-config",
     "secret://control-plane-kit/child/product-secret-values-json": json.dumps(
         child_values,
         sort_keys=True,
         separators=(",", ":"),
     ),
 }
+if auth_config_dir is not None:
+    parent_values["secret://control-plane-kit/child/docker-auth-config-json"] = (
+        auth_config_dir / "config.json"
+    ).read_text(encoding="utf-8")
 print(json.dumps(parent_values, sort_keys=True, separators=(",", ":")))
 PY
 )"
@@ -246,6 +252,7 @@ if ! docker run --rm \
   -e CPK_RECURSIVE_TLS_DOCKER_ENDPOINT=tcp://docker:2376 \
   -e CPK_RECURSIVE_TLS_SERVERS_REPO=/app \
   -e CPK_RECURSIVE_TLS_REGISTER_PULL_AUTHORITY="$IMAGE_PULL_RESOLVER" \
+  -e CPK_RECURSIVE_TLS_REGISTER_CHILD_PULL_AUTHORITY="$IMAGE_PULL_RESOLVER" \
   "$CONTROLLER_IMAGE" \
   python scripts/cpk_server_recursive_tls_activity.py; then
   dump_recursive_logs

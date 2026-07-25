@@ -736,10 +736,15 @@ class CpkServerImageBootstrapTests(unittest.TestCase):
         self.assertIn("secret://control-plane-kit/docker-tls/cert", smoke)
         self.assertIn("secret://control-plane-kit/docker-tls/key", smoke)
         self.assertIn("secret://control-plane-kit/child/docker-auth-config-json", smoke)
+        self.assertIn("secret://control-plane-kit/child/image-pull-credential-resolver", smoke)
         self.assertIn("secret://control-plane-kit/child/product-secret-resolver", smoke)
         self.assertIn("secret://control-plane-kit/child/product-secret-values-json", smoke)
         self.assertIn("CPK_RUNTIME_INTERPRETERS=docker", smoke)
         self.assertIn("CPK_RECURSIVE_TLS_DOCKER_ENDPOINT=tcp://docker:2376", smoke)
+        self.assertIn(
+            'CPK_RECURSIVE_TLS_REGISTER_CHILD_PULL_AUTHORITY="$IMAGE_PULL_RESOLVER"',
+            smoke,
+        )
         self.assertIn("python scripts/cpk_server_recursive_tls_activity.py", smoke)
         self.assertIn("org.openj92.cpk.workspace=recursive-cpk-server-tls-parent", smoke)
         self.assertIn("org.openj92.cpk.workspace=recursive-cpk-server-tls-child", smoke)
@@ -769,6 +774,7 @@ class CpkServerImageBootstrapTests(unittest.TestCase):
         self.assertIn("secret://control-plane-kit/docker-tls/cert", controller)
         self.assertIn("secret://control-plane-kit/docker-tls/key", controller)
         self.assertIn("secret://control-plane-kit/child/docker-auth-config-json", controller)
+        self.assertIn("image-pull-credential-resolver", controller)
         self.assertIn("CPK_DOCKER_AUTH_CONFIG_JSON", controller)
         self.assertIn("CPK_IMAGE_PULL_CREDENTIAL_RESOLVER", controller)
         self.assertIn("RuntimeAuthorityReference(CHILD_AUTHORITY_REF)", controller)
