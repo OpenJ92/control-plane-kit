@@ -610,7 +610,7 @@ class CpkServerImageBootstrapTests(unittest.TestCase):
         self.assertIn("command.deployment.plan", controller)
         self.assertIn("/image-pull-authorities", controller)
         self.assertIn("command.approval.decide", controller)
-        self.assertIn("command.deployment.execute", controller)
+        self.assertIn("run_approved_transition", controller)
         self.assertIn("secret://docker-config/ghcr.io", controller)
         self.assertIn("read.pending-approvals", controller)
         self.assertIn("read.approval-detail", controller)
@@ -692,6 +692,7 @@ class CpkServerImageBootstrapTests(unittest.TestCase):
         self.assertIn("read.pending-approvals", controller)
         self.assertIn("read.approval-detail", controller)
         self.assertIn("child-cpk", controller)
+        self.assertIn("command.deployment.execute", controller)
         self.assertIn("/health/live", controller)
         self.assertIn("/health/ready", controller)
         self.assertIn('ready.get("runtime_interpreters") != "none"', controller)
@@ -701,6 +702,65 @@ class CpkServerImageBootstrapTests(unittest.TestCase):
         self.assertNotIn("DockerRuntimeInterpreter", controller)
         self.assertNotIn("/workspaces/child", controller)
         self.assertNotIn("/activity-history", controller)
+
+    def test_recursive_tls_activity_smoke_uses_ephemeral_dind_authority(
+        self,
+    ) -> None:
+        smoke = (
+            ROOT / "scripts" / "cpk_server_recursive_tls_activity_smoke.sh"
+        ).read_text(encoding="utf-8")
+
+        self.assertIn("products/cpk_server/product.docker.cpk.json", smoke)
+        self.assertIn("@{image['digest']}", smoke)
+        self.assertIn("docker pull", smoke)
+        self.assertIn('DIND_IMAGE="${CPK_RECURSIVE_TLS_DIND_IMAGE:-docker:27-dind}"', smoke)
+        self.assertIn("--privileged", smoke)
+        self.assertIn("DOCKER_TLS_CERTDIR=/certs", smoke)
+        self.assertIn("-H tcp://127.0.0.1:2376 version", smoke)
+        self.assertIn("docker cp", smoke)
+        self.assertIn("secret://docker-tls/ca", smoke)
+        self.assertIn("secret://docker-tls/cert", smoke)
+        self.assertIn("secret://docker-tls/key", smoke)
+        self.assertIn("secret://control-plane-kit/child/product-secret-resolver", smoke)
+        self.assertIn("secret://control-plane-kit/child/product-secret-values-json", smoke)
+        self.assertIn("CPK_RUNTIME_INTERPRETERS=docker", smoke)
+        self.assertIn("CPK_RECURSIVE_TLS_DOCKER_ENDPOINT=tcp://docker-authority:2376", smoke)
+        self.assertIn("python scripts/cpk_server_recursive_tls_activity.py", smoke)
+        self.assertIn("org.openj92.cpk.workspace=recursive-cpk-server-tls-parent", smoke)
+        self.assertIn("org.openj92.cpk.workspace=recursive-cpk-server-tls-child", smoke)
+        self.assertIn("docker rm -f", smoke)
+        self.assertIn("docker network rm", smoke)
+        self.assertNotIn("docker system prune", smoke)
+        self.assertNotIn("docker volume prune", smoke)
+
+    def test_recursive_tls_controller_registers_authority_inside_child(
+        self,
+    ) -> None:
+        controller = (
+            ROOT / "scripts" / "cpk_server_recursive_tls_activity.py"
+        ).read_text(encoding="utf-8")
+
+        self.assertIn('PARENT_WORKSPACE_ID = "recursive-cpk-server-tls-parent"', controller)
+        self.assertIn('CHILD_WORKSPACE_ID = "recursive-cpk-server-tls-child"', controller)
+        self.assertIn('CHILD_AUTHORITY_REF = "ephemeral-docker-tls"', controller)
+        self.assertIn("cpk-server-docker-tls-harness", controller)
+        self.assertIn("cpk-server-no-health-tls-harness", controller)
+        self.assertIn("postgres-server-no-health-tls-harness", controller)
+        self.assertIn("command.runtime-authority.register", controller)
+        self.assertIn("read.runtime-authorities", controller)
+        self.assertIn("read.runtime-authority-detail", controller)
+        self.assertIn('"kind": "remote-docker-tls"', controller)
+        self.assertIn("RuntimeAuthorityReference(CHILD_AUTHORITY_REF)", controller)
+        self.assertIn("authority_ref=authority_ref", controller)
+        self.assertIn("run_approved_transition", controller)
+        self.assertIn("grandchild-cpk", controller)
+        self.assertIn("grandchild-postgres", controller)
+        self.assertIn("network.connect(container, aliases=aliases)", controller)
+        self.assertIn("docker-authority", controller)
+        self.assertIn("begin private key", controller)
+        self.assertNotIn("CpkServerOperationsApplication", controller)
+        self.assertNotIn("PostgresUnitOfWork", controller)
+        self.assertNotIn("DockerRuntimeInterpreter", controller)
 
 
 if __name__ == "__main__":
