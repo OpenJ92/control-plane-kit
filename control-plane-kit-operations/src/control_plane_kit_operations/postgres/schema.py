@@ -27,6 +27,7 @@ from control_plane_kit_core.types import RuntimeKind
 from control_plane_kit_core.types import WorkspaceLifecycle
 from control_plane_kit_operations.records import ObservationFreshness, ObservationStatus
 from control_plane_kit_operations.runtime_authorities import (
+    RegisteredRuntimeAuthorityDeliveryStatus,
     RegisteredRuntimeAuthorityStatus,
     RuntimeAuthorityKind,
 )
@@ -184,6 +185,31 @@ CREATE TABLE IF NOT EXISTS cpk_runtime_authorities (
 
 CREATE UNIQUE INDEX IF NOT EXISTS cpk_runtime_authorities_active_ref
   ON cpk_runtime_authorities (workspace_id, authority_ref)
+  WHERE status = 'active';
+
+CREATE TABLE IF NOT EXISTS cpk_runtime_authority_deliveries (
+  delivery_id text PRIMARY KEY,
+  workspace_id text NOT NULL REFERENCES cpk_workspaces(workspace_id),
+  authority_ref text NOT NULL,
+  delivery_kind text NOT NULL,
+  delivery jsonb NOT NULL,
+  secret_references jsonb NOT NULL DEFAULT '[]'::jsonb,
+  admitted_by text NOT NULL,
+  admitted_at text NOT NULL,
+  status text NOT NULL,
+  metadata jsonb NOT NULL DEFAULT '{}'::jsonb,
+  CONSTRAINT cpk_runtime_authority_deliveries_status_check
+    CHECK (status IN ({{ registered_runtime_authority_delivery_statuses | sql_values }})),
+  CONSTRAINT cpk_runtime_authority_deliveries_reference_check
+    CHECK (authority_ref ~ '^[a-z][a-z0-9._-]{0,127}$'),
+  CONSTRAINT cpk_runtime_authority_deliveries_delivery_shape_check
+    CHECK (jsonb_typeof(delivery) = 'object'),
+  CONSTRAINT cpk_runtime_authority_deliveries_secret_refs_shape_check
+    CHECK (jsonb_typeof(secret_references) = 'array')
+);
+
+CREATE UNIQUE INDEX IF NOT EXISTS cpk_runtime_authority_deliveries_active_ref
+  ON cpk_runtime_authority_deliveries (workspace_id, authority_ref)
   WHERE status = 'active';
 
 CREATE TABLE IF NOT EXISTS cpk_operation_sessions (
@@ -489,6 +515,9 @@ POSTGRES_SCHEMA = _SQL_ENVIRONMENT.from_string(_POSTGRES_SCHEMA_TEMPLATE).render
         _RegisteredImagePullAuthorityStatus
     ),
     registered_runtime_authority_statuses=tuple(RegisteredRuntimeAuthorityStatus),
+    registered_runtime_authority_delivery_statuses=tuple(
+        RegisteredRuntimeAuthorityDeliveryStatus
+    ),
     risk_levels=tuple(RiskLevel),
     runtime_authority_kinds=tuple(RuntimeAuthorityKind),
     runtime_kinds=tuple(RuntimeKind),

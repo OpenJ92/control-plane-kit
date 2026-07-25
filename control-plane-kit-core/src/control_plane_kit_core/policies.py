@@ -35,6 +35,9 @@ class PolicyScope(StrEnum):
     RUNTIME_AUTHORITY_READ = "runtime-authority:read"
     RUNTIME_AUTHORITY_REVOKE = "runtime-authority:revoke"
     RUNTIME_AUTHORITY_USE = "runtime-authority:use"
+    RUNTIME_AUTHORITY_DELIVERY_REGISTER = "runtime-authority-delivery:register"
+    RUNTIME_AUTHORITY_DELIVERY_READ = "runtime-authority-delivery:read"
+    RUNTIME_AUTHORITY_DELIVERY_REVOKE = "runtime-authority-delivery:revoke"
 
 
 @dataclass(frozen=True, order=True)
