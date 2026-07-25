@@ -124,6 +124,22 @@ class ReadProjectionContractTests(unittest.TestCase):
                     False,
                 ),
                 (
+                    "read.runtime-authority-deliveries",
+                    ReadProjectionKind.RUNTIME_AUTHORITY_DELIVERIES,
+                    "RuntimeAuthorityDeliveryCollectionReadResponse",
+                    ReadProjectionPolicy.REDACTED_RUNTIME_AUTHORITY_DELIVERY,
+                    True,
+                    False,
+                ),
+                (
+                    "read.runtime-authority-delivery-detail",
+                    ReadProjectionKind.RUNTIME_AUTHORITY_DELIVERY_DETAIL,
+                    "RuntimeAuthorityDeliveryDetailReadResponse",
+                    ReadProjectionPolicy.REDACTED_RUNTIME_AUTHORITY_DELIVERY,
+                    True,
+                    False,
+                ),
+                (
                     "read.runtime-authority-detail",
                     ReadProjectionKind.RUNTIME_AUTHORITY_DETAIL,
                     "RuntimeAuthorityDetailReadResponse",

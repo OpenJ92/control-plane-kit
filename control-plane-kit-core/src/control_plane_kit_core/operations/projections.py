@@ -31,6 +31,8 @@ class ReadProjectionKind(StrEnum):
     CONTROL_SURFACE = "control-surface"
     RUNTIME_AUTHORITIES = "runtime-authorities"
     RUNTIME_AUTHORITY_DETAIL = "runtime-authority-detail"
+    RUNTIME_AUTHORITY_DELIVERIES = "runtime-authority-deliveries"
+    RUNTIME_AUTHORITY_DELIVERY_DETAIL = "runtime-authority-delivery-detail"
 
 
 class ReadProjectionPolicy(StrEnum):
@@ -43,6 +45,7 @@ class ReadProjectionPolicy(StrEnum):
     PINNED_PLAN_AND_RECOVERY = "pinned-plan-and-recovery"
     OBSERVED_STATE_EVIDENCE = "observed-state-evidence"
     REDACTED_RUNTIME_AUTHORITY = "redacted-runtime-authority"
+    REDACTED_RUNTIME_AUTHORITY_DELIVERY = "redacted-runtime-authority-delivery"
 
 
 @dataclass(frozen=True)
@@ -313,6 +316,18 @@ _CANONICAL_PROJECTIONS = (
         ReadProjectionKind.RUNTIME_AUTHORITY_DETAIL,
         "RuntimeAuthorityDetailReadResponse",
         ReadProjectionPolicy.REDACTED_RUNTIME_AUTHORITY,
+    ),
+    _ProjectionDefinition(
+        "read.runtime-authority-deliveries",
+        ReadProjectionKind.RUNTIME_AUTHORITY_DELIVERIES,
+        "RuntimeAuthorityDeliveryCollectionReadResponse",
+        ReadProjectionPolicy.REDACTED_RUNTIME_AUTHORITY_DELIVERY,
+    ),
+    _ProjectionDefinition(
+        "read.runtime-authority-delivery-detail",
+        ReadProjectionKind.RUNTIME_AUTHORITY_DELIVERY_DETAIL,
+        "RuntimeAuthorityDeliveryDetailReadResponse",
+        ReadProjectionPolicy.REDACTED_RUNTIME_AUTHORITY_DELIVERY,
     ),
     _ProjectionDefinition(
         "read.open-sessions",

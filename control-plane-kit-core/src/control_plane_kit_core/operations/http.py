@@ -373,6 +373,16 @@ def operator_read_http_routes() -> tuple[HttpApiRouteContract, ...]:
                 "/workspaces/{workspace_id}/runtime-authorities/{authority_ref}",
                 "RuntimeAuthorityDetailReadResponse",
             ),
+            (
+                "read.runtime-authority-deliveries",
+                "/workspaces/{workspace_id}/runtime-authority-deliveries",
+                "RuntimeAuthorityDeliveryCollectionReadResponse",
+            ),
+            (
+                "read.runtime-authority-delivery-detail",
+                "/workspaces/{workspace_id}/runtime-authority-deliveries/{authority_ref}",
+                "RuntimeAuthorityDeliveryDetailReadResponse",
+            ),
         )
     )
 
@@ -443,6 +453,24 @@ def operator_command_http_routes() -> tuple[HttpApiRouteContract, ...]:
                 HttpOperationSafety.COMMAND,
                 "RevokeRuntimeAuthorityRequest",
                 "RegisteredRuntimeAuthorityResponse",
+            ),
+            (
+                "command.runtime-authority-delivery.register",
+                "/workspaces/{workspace_id}/runtime-authority-deliveries",
+                ControlPlaneServiceRole.PLANNING,
+                HttpAuthScope.ADMIN,
+                HttpOperationSafety.COMMAND,
+                "RegisterRuntimeAuthorityDeliveryRequest",
+                "RegisteredRuntimeAuthorityDeliveryResponse",
+            ),
+            (
+                "command.runtime-authority-delivery.revoke",
+                "/workspaces/{workspace_id}/runtime-authority-deliveries/{authority_ref}/revoke",
+                ControlPlaneServiceRole.PLANNING,
+                HttpAuthScope.ADMIN,
+                HttpOperationSafety.COMMAND,
+                "RevokeRuntimeAuthorityDeliveryRequest",
+                "RegisteredRuntimeAuthorityDeliveryResponse",
             ),
             (
                 "command.operation-session.start",

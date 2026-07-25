@@ -901,6 +901,18 @@ _OPERATOR_READ_PROJECTIONS = (
         "get_runtime_authority_detail",
         "RuntimeAuthorityDetailReadResponse",
     ),
+    (
+        "read.runtime-authority-deliveries",
+        "read.runtime-authority-deliveries",
+        "list_runtime_authority_deliveries",
+        "RuntimeAuthorityDeliveryCollectionReadResponse",
+    ),
+    (
+        "read.runtime-authority-delivery-detail",
+        "read.runtime-authority-delivery-detail",
+        "get_runtime_authority_delivery_detail",
+        "RuntimeAuthorityDeliveryDetailReadResponse",
+    ),
 )
 
 
@@ -948,6 +960,24 @@ _OPERATOR_COMMANDS = (
         ControlPlaneServiceRole.PLANNING,
         "RevokeRuntimeAuthorityRequest",
         "RegisteredRuntimeAuthorityResponse",
+        ApprovalPolicy.NOT_REQUIRED,
+    ),
+    (
+        "runtime-authority-delivery.register",
+        "command.runtime-authority-delivery.register",
+        "register_runtime_authority_delivery",
+        ControlPlaneServiceRole.PLANNING,
+        "RegisterRuntimeAuthorityDeliveryRequest",
+        "RegisteredRuntimeAuthorityDeliveryResponse",
+        ApprovalPolicy.NOT_REQUIRED,
+    ),
+    (
+        "runtime-authority-delivery.revoke",
+        "command.runtime-authority-delivery.revoke",
+        "revoke_runtime_authority_delivery",
+        ControlPlaneServiceRole.PLANNING,
+        "RevokeRuntimeAuthorityDeliveryRequest",
+        "RegisteredRuntimeAuthorityDeliveryResponse",
         ApprovalPolicy.NOT_REQUIRED,
     ),
     (
