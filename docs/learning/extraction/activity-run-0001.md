@@ -3578,3 +3578,75 @@ Handoff: #989 should add only the pure contract language. It should reject raw
 host paths, TLS keys, tokens, Docker config JSON, cloud keys, kubeconfigs, and
 other capability material in durable descriptors. #992 should later convert the
 existing local-chain harness rather than rebuilding it from scratch.
+
+
+## #989 Runtime Authority Delivery Contract Language
+
+#989 adds the pure contract vocabulary that #988 found missing:
+
+```python
+RuntimeAuthorityAccessDelivery(
+    authority_ref=RuntimeAuthorityReference("mac-mini-docker"),
+    delivery_kind=RuntimeAuthorityAccessDeliveryKind.LOCAL_DOCKER_SOCKET_MOUNT,
+)
+```
+
+That descriptor is intentionally capability-shaped, not material-shaped:
+
+```python
+{
+    "authority_ref": {"reference_id": "mac-mini-docker"},
+    "delivery_kind": "local-docker-socket-mount",
+    "secret_references": [],
+}
+```
+
+Remote Docker TLS and future cloud sessions use the same algebra with labeled
+`SecretReference` identities:
+
+```python
+RuntimeAuthorityAccessDelivery(
+    authority_ref=RuntimeAuthorityReference("mac-mini-docker"),
+    delivery_kind=RuntimeAuthorityAccessDeliveryKind.REMOTE_DOCKER_TLS_SECRET_FILES,
+    secret_references=(
+        RuntimeAuthorityDeliverySecretReference(
+            "client-key",
+            "secret://local/workspace-a/docker/client-key",
+        ),
+    ),
+)
+```
+
+The descriptor still does not contain the key value, mounted file path, Docker
+host, socket path, token, Docker config JSON, or cloud credential material. The
+strict codec rejects unknown fields such as `host_path`, `endpoint`, `token`, or
+secret-reference target paths. This keeps delivery visible in the language
+without converting it into an escape hatch.
+
+The new law is:
+
+```text
+RuntimeAuthorityReference
+  = which admitted runtime target a graph/runtime effect wants
+
+RuntimeAuthorityAccessDelivery
+  = which authority access capability this cpk-server process should receive
+
+delivered material
+  = interpreter/bootstrap IO, never durable descriptor truth
+```
+
+Validation:
+
+```text
+git diff --check
+./control-plane-kit-core/test.sh
+```
+
+`./control-plane-kit-core/test.sh` passed 405 unit tests, compileall, and the
+package import check after the #989 language addition.
+
+Handoff: #990 should admit and expose delivery intent in operations as
+workspace-scoped, secret-free truth. #991 should materialize
+`LOCAL_DOCKER_SOCKET_MOUNT` inside the Docker interpreter/process delivery
+boundary without introducing product-specific cpk-server branches.

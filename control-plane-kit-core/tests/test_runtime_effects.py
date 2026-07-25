@@ -26,6 +26,11 @@ from control_plane_kit_core.products import (
 from control_plane_kit_core.runtime_effects import (
     ImagePullAuthority,
     ImagePullAuthorityCodec,
+    RuntimeAuthorityAccessDelivery,
+    RuntimeAuthorityAccessDeliveryCodec,
+    RuntimeAuthorityAccessDeliveryKind,
+    RuntimeAuthorityDeliverySecretReference,
+    RuntimeAuthorityDeliverySecretReferenceCodec,
     RuntimeAuthorityReference,
     RuntimeAuthorityReferenceCodec,
     RuntimeEffectContractError,
@@ -74,6 +79,134 @@ class RuntimeEffectContractTests(unittest.TestCase):
         with self.assertRaisesRegex(RuntimeEffectContractError, "unknown keys"):
             RuntimeAuthorityReferenceCodec().decode(
                 {**descriptor, "endpoint": "tcp://mac-mini.local:2376"}
+            )
+
+    def test_runtime_authority_access_delivery_is_secret_free_contract(self) -> None:
+        delivery = RuntimeAuthorityAccessDelivery(
+            authority_ref=RuntimeAuthorityReference("mac-mini-docker"),
+            delivery_kind=RuntimeAuthorityAccessDeliveryKind.LOCAL_DOCKER_SOCKET_MOUNT,
+        )
+
+        descriptor = RuntimeAuthorityAccessDeliveryCodec().encode(delivery)
+
+        self.assertEqual(
+            descriptor,
+            {
+                "authority_ref": {"reference_id": "mac-mini-docker"},
+                "delivery_kind": "local-docker-socket-mount",
+                "secret_references": [],
+            },
+        )
+        self.assertEqual(
+            RuntimeAuthorityAccessDeliveryCodec().decode(descriptor),
+            delivery,
+        )
+        self.assertNotIn("/var/run/docker.sock", repr(descriptor))
+        self.assertNotIn("tcp://", repr(descriptor))
+
+    def test_runtime_authority_access_delivery_can_reference_tls_secrets(self) -> None:
+        delivery = RuntimeAuthorityAccessDelivery(
+            authority_ref=RuntimeAuthorityReference("mac-mini-docker"),
+            delivery_kind=(
+                RuntimeAuthorityAccessDeliveryKind.REMOTE_DOCKER_TLS_SECRET_FILES
+            ),
+            secret_references=(
+                RuntimeAuthorityDeliverySecretReference(
+                    "ca-cert",
+                    "secret://local/workspace-a/docker/ca-cert",
+                ),
+                RuntimeAuthorityDeliverySecretReference(
+                    "client-cert",
+                    "secret://local/workspace-a/docker/client-cert",
+                ),
+                RuntimeAuthorityDeliverySecretReference(
+                    "client-key",
+                    "secret://local/workspace-a/docker/client-key",
+                ),
+            ),
+        )
+
+        descriptor = RuntimeAuthorityAccessDeliveryCodec().encode(delivery)
+
+        self.assertEqual(
+            tuple(value["label"] for value in descriptor["secret_references"]),
+            ("ca-cert", "client-cert", "client-key"),
+        )
+        self.assertEqual(
+            RuntimeAuthorityAccessDeliveryCodec().decode(descriptor),
+            delivery,
+        )
+        self.assertNotIn("BEGIN", repr(descriptor))
+        self.assertNotIn("PRIVATE KEY", repr(descriptor))
+
+    def test_runtime_authority_access_delivery_fails_closed_on_material(self) -> None:
+        descriptor = RuntimeAuthorityAccessDelivery(
+            authority_ref=RuntimeAuthorityReference("mac-mini-docker"),
+            delivery_kind=RuntimeAuthorityAccessDeliveryKind.LOCAL_DOCKER_SOCKET_MOUNT,
+        ).descriptor()
+
+        invalid_descriptors = (
+            {**descriptor, "host_path": "/var/run/docker.sock"},
+            {**descriptor, "endpoint": "tcp://docker.local:2376"},
+            {**descriptor, "token": "do-not-store"},
+            {
+                **descriptor,
+                "delivery_kind": "ambient-env",
+            },
+            {
+                **descriptor,
+                "secret_references": [
+                    {
+                        "label": "client-key",
+                        "reference_id": "secret://local/workspace-a/docker/key",
+                        "target_path": "/run/secrets/docker-key",
+                    }
+                ],
+            },
+        )
+
+        for value in invalid_descriptors:
+            with self.subTest(value=value):
+                with self.assertRaises(RuntimeEffectContractError):
+                    RuntimeAuthorityAccessDeliveryCodec().decode(value)
+
+        with self.assertRaises(RuntimeEffectContractError):
+            RuntimeAuthorityAccessDelivery(
+                authority_ref=RuntimeAuthorityReference("mac-mini-docker"),
+                delivery_kind=(
+                    RuntimeAuthorityAccessDeliveryKind.LOCAL_DOCKER_SOCKET_MOUNT
+                ),
+                secret_references=(
+                    RuntimeAuthorityDeliverySecretReference(
+                        "client-key",
+                        "secret://local/workspace-a/docker/client-key",
+                    ),
+                ),
+            )
+
+    def test_runtime_authority_delivery_secret_reference_codec_is_strict(self) -> None:
+        reference = RuntimeAuthorityDeliverySecretReference(
+            "client-cert",
+            "secret://local/workspace-a/docker/client-cert",
+        )
+
+        descriptor = RuntimeAuthorityDeliverySecretReferenceCodec().encode(reference)
+
+        self.assertEqual(
+            descriptor,
+            {
+                "label": "client-cert",
+                "reference_id": "secret://local/workspace-a/docker/client-cert",
+            },
+        )
+        self.assertEqual(
+            RuntimeAuthorityDeliverySecretReferenceCodec().decode(descriptor),
+            reference,
+        )
+        with self.assertRaises(RuntimeEffectContractError):
+            RuntimeAuthorityDeliverySecretReference(
+                "token",
+                "secret://local/workspace-a/docker/token",
             )
 
     def test_request_descriptor_carries_pinned_runtime_material_without_docker(self) -> None:
