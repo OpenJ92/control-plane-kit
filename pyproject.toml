@@ -9,9 +9,9 @@ description = "Reusable OCI server products and descriptors for control-plane-ki
 readme = "README.md"
 requires-python = ">=3.12"
 dependencies = [
-  "control-plane-kit-core @ https://github.com/OpenJ92/control-plane-kit/archive/10212acb1f7351bfff0febe7ebcb57c84e1c17e5.zip#subdirectory=control-plane-kit-core",
-  "control-plane-kit-operations @ https://github.com/OpenJ92/control-plane-kit/archive/10212acb1f7351bfff0febe7ebcb57c84e1c17e5.zip#subdirectory=control-plane-kit-operations",
-  "control-plane-kit-interpreters[docker] @ https://github.com/OpenJ92/control-plane-kit-interpreters/archive/5a711b74f773f5c27acf3575cd5669d18d7e0dbf.zip",
+  "control-plane-kit-core @ https://github.com/OpenJ92/control-plane-kit/archive/a87acb67afd56b38867eb6ca141ab03919ceed65.zip#subdirectory=control-plane-kit-core",
+  "control-plane-kit-operations @ https://github.com/OpenJ92/control-plane-kit/archive/a87acb67afd56b38867eb6ca141ab03919ceed65.zip#subdirectory=control-plane-kit-operations",
+  "control-plane-kit-interpreters[docker] @ https://github.com/OpenJ92/control-plane-kit-interpreters/archive/b74d5f189f4f75aca14968c652cbe3762e38d28a.zip",
   "fastapi>=0.115",
   "uvicorn>=0.30",
 ]
