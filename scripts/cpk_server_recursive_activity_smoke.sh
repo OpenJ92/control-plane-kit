@@ -14,6 +14,7 @@ PY
 IMAGE="${CPK_SERVER_IMAGE:-$(default_image)}"
 CONTROLLER_IMAGE="${CPK_SERVERS_TEST_IMAGE:-control-plane-kit-servers-test:local}"
 BUILD_CONTROLLER="${CPK_RECURSIVE_BUILD_CONTROLLER:-1}"
+CHAIN_DEPTH="${CPK_RECURSIVE_LOCAL_CHAIN_DEPTH:-1}"
 NETWORK="cpk-server-recursive-$$"
 LABEL="org.openj92.project=control-plane-kit-servers"
 WORKSPACE_LABEL="org.openj92.cpk.workspace=recursive-cpk-server"
@@ -105,6 +106,39 @@ elif [ -r "$AUTH_CONFIG_SOURCE" ]; then
   IMAGE_PULL_RESOLVER="docker-config"
 fi
 
+PRODUCT_SECRET_VALUES_JSON="$(
+  python3 - "${AUTH_CONFIG_DIR:-}" <<'PY'
+import json
+from pathlib import Path
+import sys
+
+auth_config_dir = Path(sys.argv[1]) if len(sys.argv) > 1 and sys.argv[1] else None
+child_values = {
+    "secret://control-plane-kit/postgres/password": "cpk",
+    "secret://control-plane-kit/child/image-pull-credential-resolver": "docker-config",
+}
+if auth_config_dir is not None:
+    child_values["secret://control-plane-kit/child/docker-auth-config-json"] = (
+        auth_config_dir / "config.json"
+    ).read_text(encoding="utf-8")
+parent_values = {
+    "secret://control-plane-kit/postgres/password": "cpk",
+    "secret://control-plane-kit/child/product-secret-resolver": "local-development",
+    "secret://control-plane-kit/child/image-pull-credential-resolver": "docker-config",
+    "secret://control-plane-kit/child/product-secret-values-json": json.dumps(
+        child_values,
+        sort_keys=True,
+        separators=(",", ":"),
+    ),
+}
+if auth_config_dir is not None:
+    parent_values["secret://control-plane-kit/child/docker-auth-config-json"] = (
+        auth_config_dir / "config.json"
+    ).read_text(encoding="utf-8")
+print(json.dumps(parent_values, sort_keys=True, separators=(",", ":")))
+PY
+)"
+
 if [ -n "$AUTH_CONFIG_DIR" ]; then
   PARENT_CONTAINER="$(docker run -d \
     --label "$LABEL" \
@@ -120,7 +154,7 @@ if [ -n "$AUTH_CONFIG_DIR" ]; then
     -e CPK_RUNTIME_INTERPRETERS=docker \
     -e CPK_IMAGE_PULL_CREDENTIAL_RESOLVER="$IMAGE_PULL_RESOLVER" \
     -e CPK_PRODUCT_SECRET_RESOLVER=local-development \
-    -e CPK_PRODUCT_SECRET_VALUES_JSON='{"secret://control-plane-kit/postgres/password":"cpk"}' \
+    -e CPK_PRODUCT_SECRET_VALUES_JSON="$PRODUCT_SECRET_VALUES_JSON" \
     -e CPK_WORKPLACE_DATABASE_URL=postgresql://cpk:cpk@cpk-postgres:5432/cpk \
     -e CPK_ACTIVITY_HISTORY_DATABASE_URL=postgresql://cpk:cpk@cpk-postgres:5432/cpk \
     -e CPK_OBSERVER_STATE_DATABASE_URL=postgresql://cpk:cpk@cpk-postgres:5432/cpk \
@@ -138,7 +172,7 @@ else
     -e CPK_PORT=8080 \
     -e CPK_RUNTIME_INTERPRETERS=docker \
     -e CPK_PRODUCT_SECRET_RESOLVER=local-development \
-    -e CPK_PRODUCT_SECRET_VALUES_JSON='{"secret://control-plane-kit/postgres/password":"cpk"}' \
+    -e CPK_PRODUCT_SECRET_VALUES_JSON="$PRODUCT_SECRET_VALUES_JSON" \
     -e CPK_WORKPLACE_DATABASE_URL=postgresql://cpk:cpk@cpk-postgres:5432/cpk \
     -e CPK_ACTIVITY_HISTORY_DATABASE_URL=postgresql://cpk:cpk@cpk-postgres:5432/cpk \
     -e CPK_OBSERVER_STATE_DATABASE_URL=postgresql://cpk:cpk@cpk-postgres:5432/cpk \
@@ -153,6 +187,7 @@ if ! docker run --rm \
   -e CPK_RECURSIVE_BASE_URL=http://cpk-server:8080 \
   -e CPK_RECURSIVE_PARENT_CONTAINER="$PARENT_CONTAINER" \
   -e CPK_RECURSIVE_SERVERS_REPO=/app \
+  -e CPK_RECURSIVE_LOCAL_CHAIN_DEPTH="$CHAIN_DEPTH" \
   -e CPK_RECURSIVE_REGISTER_PULL_AUTHORITY="$IMAGE_PULL_RESOLVER" \
   "$CONTROLLER_IMAGE" \
   python scripts/cpk_server_recursive_activity.py; then

@@ -1,19 +1,19 @@
 {
   "schema": "cpk-servers.coordinates",
   "upstreams": {
-    "control_plane_kit_commit": "a87acb67afd56b38867eb6ca141ab03919ceed65",
-    "control_plane_kit_interpreters_commit": "728f23295e1a929c73e1b497fec0aeda4be3acab"
+    "control_plane_kit_commit": "1bc014ae35571113424491f776c5b2ad0d2b41e6",
+    "control_plane_kit_interpreters_commit": "07e011286d9fe4801d536515c020624e3d7779ce"
   },
   "products": [
     {
       "product_id": "cpk-server",
       "owner_directory": "products/cpk_server",
       "descriptor_path": "products/cpk_server/product.cpk.json",
-      "source_commit": "607e9db682967d92ecf32709e4d99bf5840e2c85",
+      "source_commit": "ebbdf10ad4287bbba9052c09f6c96b3cf6ba1647",
       "image": {
         "registry": "ghcr.io",
         "repository": "openj92/control-plane-kit-servers/cpk-server",
-        "tag": "runtime-auth-968-authority-json",
+        "tag": "runtime-auth-992-local-chain",
         "digest": "sha256:18ff2c5d4ef6c8169b3b6e2a62403b160db33325066e038457d6d589ff8882f2"
       }
     },
@@ -21,11 +21,11 @@
       "product_id": "cpk-server-docker",
       "owner_directory": "products/cpk_server",
       "descriptor_path": "products/cpk_server/product.docker.cpk.json",
-      "source_commit": "607e9db682967d92ecf32709e4d99bf5840e2c85",
+      "source_commit": "ebbdf10ad4287bbba9052c09f6c96b3cf6ba1647",
       "image": {
         "registry": "ghcr.io",
         "repository": "openj92/control-plane-kit-servers/cpk-server",
-        "tag": "runtime-auth-968-authority-json",
+        "tag": "runtime-auth-992-local-chain",
         "digest": "sha256:18ff2c5d4ef6c8169b3b6e2a62403b160db33325066e038457d6d589ff8882f2"
       }
     },

@@ -667,10 +667,14 @@ class CpkServerImageBootstrapTests(unittest.TestCase):
         self.assertIn("products/cpk_server/product.docker.cpk.json", smoke)
         self.assertIn("@{image['digest']}", smoke)
         self.assertIn("docker pull", smoke)
+        self.assertIn('CHAIN_DEPTH="${CPK_RECURSIVE_LOCAL_CHAIN_DEPTH:-1}"', smoke)
+        self.assertIn('CPK_RECURSIVE_LOCAL_CHAIN_DEPTH="$CHAIN_DEPTH"', smoke)
         self.assertIn("CPK_RUNTIME_INTERPRETERS=docker", smoke)
         self.assertIn("CPK_PRODUCT_SECRET_RESOLVER=local-development", smoke)
         self.assertIn("CPK_PRODUCT_SECRET_VALUES_JSON", smoke)
         self.assertIn("secret://control-plane-kit/postgres/password", smoke)
+        self.assertIn("secret://control-plane-kit/child/docker-auth-config-json", smoke)
+        self.assertIn("secret://control-plane-kit/child/image-pull-credential-resolver", smoke)
         self.assertIn("CPK_RECURSIVE_REGISTER_PULL_AUTHORITY", smoke)
         self.assertIn("python scripts/cpk_server_recursive_activity.py", smoke)
         self.assertIn("org.openj92.cpk.workspace=recursive-cpk-server", smoke)
@@ -682,7 +686,7 @@ class CpkServerImageBootstrapTests(unittest.TestCase):
         self.assertNotIn("docker system prune", smoke)
         self.assertNotIn("docker volume prune", smoke)
 
-    def test_recursive_activity_controller_uses_parent_routes_and_opaque_child(
+    def test_recursive_activity_controller_uses_parent_routes_and_local_chain(
         self,
     ) -> None:
         controller = (ROOT / "scripts" / "cpk_server_recursive_activity.py").read_text(
@@ -690,8 +694,20 @@ class CpkServerImageBootstrapTests(unittest.TestCase):
         )
 
         self.assertIn('WORKSPACE_ID = "recursive-cpk-server"', controller)
-        self.assertIn("_product_document(servers_repo, \"cpk_server\")", controller)
+        self.assertIn("MAX_LOCAL_CHAIN_DEPTH = 10", controller)
+        self.assertIn('os.environ.get("CPK_RECURSIVE_LOCAL_CHAIN_DEPTH", "1")', controller)
+        self.assertIn('LOCAL_CHAIN_AUTHORITY_REF = "local-docker"', controller)
+        self.assertIn("_chain_cpk_document(servers_repo)", controller)
         self.assertIn("_product_document(servers_repo, \"postgres_server\")", controller)
+        self.assertIn('"kind": "local-docker-socket"', controller)
+        self.assertIn("command.runtime-authority.register", controller)
+        self.assertIn("command.runtime-authority-delivery.register", controller)
+        self.assertIn('"delivery_kind": "local-docker-socket-mount"', controller)
+        self.assertIn("PolicyScope.RUNTIME_AUTHORITY_DELIVERY_REGISTER.value", controller)
+        self.assertIn("_register_local_docker_delivery", controller)
+        self.assertIn("_run_local_chain", controller)
+        self.assertIn("cpk-server-docker-local-chain-harness", controller)
+        self.assertIn("RuntimeAuthorityReference(LOCAL_CHAIN_AUTHORITY_REF)", controller)
         self.assertIn("command.deployment.plan", controller)
         self.assertIn("command.approval.decide", controller)
         self.assertIn("command.deployment.execute", controller)
@@ -709,13 +725,13 @@ class CpkServerImageBootstrapTests(unittest.TestCase):
         self.assertIn("command.deployment.execute", controller)
         self.assertIn("/health/live", controller)
         self.assertIn("/health/ready", controller)
-        self.assertIn('ready.get("runtime_interpreters") != "none"', controller)
+        self.assertIn("workflow.wait_ready()", controller)
         self.assertEqual(controller.count('SocketConnection('), 4)
         self.assertNotIn("CpkServerOperationsApplication", controller)
         self.assertNotIn("PostgresUnitOfWork", controller)
         self.assertNotIn("DockerRuntimeInterpreter", controller)
-        self.assertNotIn("/workspaces/child", controller)
         self.assertNotIn("/activity-history", controller)
+        self.assertNotIn("CPK_RUNTIME_INTERPRETERS=docker implies socket", controller)
 
     def test_recursive_tls_activity_smoke_uses_ephemeral_dind_authority(
         self,
