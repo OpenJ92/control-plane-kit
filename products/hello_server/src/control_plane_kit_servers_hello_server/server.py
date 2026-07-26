@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from collections import deque
 from dataclasses import dataclass
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 import json
@@ -9,6 +10,7 @@ import os
 import re
 import socket
 import sys
+from threading import Lock
 from typing import Mapping
 from urllib.error import HTTPError, URLError
 from urllib.parse import urlsplit
@@ -17,6 +19,9 @@ from urllib.request import Request, build_opener, HTTPRedirectHandler
 
 _DEPENDENCY_NAME = re.compile(r"[a-z][a-z0-9-]*\Z")
 _MAX_RESPONSE_BYTES = 16_384
+_OBSERVED_REQUEST_LIMIT = 20
+_OBSERVED_REQUESTS: deque[dict[str, str]] = deque(maxlen=_OBSERVED_REQUEST_LIMIT)
+_OBSERVED_REQUESTS_LOCK = Lock()
 
 
 class HelloConfigurationError(ValueError):
@@ -134,7 +139,19 @@ class HelloHandler(BaseHTTPRequestHandler):
             ).encode("utf-8")
             self._send(200, payload, content_type="application/json")
             return
+        if self.path == "/observations/requests":
+            self._send(
+                200,
+                json.dumps(
+                    _observed_requests_payload(),
+                    sort_keys=True,
+                    separators=(",", ":"),
+                ).encode("utf-8"),
+                content_type="application/json",
+            )
+            return
         if self.path == "/":
+            _record_observed_request("GET", self.path)
             message = os.environ.get("HELLO_MESSAGE", "Hello, world!")
             self._send(200, (message + "\n").encode("utf-8"))
             return
@@ -173,6 +190,28 @@ def _dependency_failures(environ: Mapping[str, str]) -> list[str]:
 
 def _dependencies() -> tuple[DependencyCheck, ...]:
     return load_dependencies(os.environ.get("HELLO_DEPENDENCIES_JSON", "[]"))
+
+
+def _record_observed_request(method: str, target: str) -> None:
+    parsed = urlsplit(target)
+    observed = {"method": method, "path": parsed.path or "/"}
+    with _OBSERVED_REQUESTS_LOCK:
+        _OBSERVED_REQUESTS.append(observed)
+
+
+def _observed_requests_payload() -> dict[str, object]:
+    with _OBSERVED_REQUESTS_LOCK:
+        requests = tuple(_OBSERVED_REQUESTS)
+    return {
+        "count": len(requests),
+        "retained_limit": _OBSERVED_REQUEST_LIMIT,
+        "requests": requests,
+    }
+
+
+def _clear_observed_requests() -> None:
+    with _OBSERVED_REQUESTS_LOCK:
+        _OBSERVED_REQUESTS.clear()
 
 
 def _check_http(name: str, url: str) -> list[str]:

@@ -154,6 +154,30 @@ class HelloServerProductTests(unittest.TestCase):
         self.assertNotIn('startswith("postgresql")', source)
         self.assertNotIn("Hello, block!", source)
 
+    def test_process_observer_receipt_evidence_is_bounded_and_redacted(self) -> None:
+        from control_plane_kit_servers_hello_server.server import (
+            _OBSERVED_REQUEST_LIMIT,
+            _clear_observed_requests,
+            _observed_requests_payload,
+            _record_observed_request,
+        )
+
+        _clear_observed_requests()
+        for index in range(_OBSERVED_REQUEST_LIMIT + 3):
+            _record_observed_request("GET", f"/?token=secret-{index}")
+
+        payload = _observed_requests_payload()
+
+        self.assertEqual(payload["count"], _OBSERVED_REQUEST_LIMIT)
+        self.assertEqual(payload["retained_limit"], _OBSERVED_REQUEST_LIMIT)
+        self.assertEqual(
+            payload["requests"],
+            tuple({"method": "GET", "path": "/"} for _ in range(_OBSERVED_REQUEST_LIMIT)),
+        )
+        self.assertNotIn("secret", json.dumps(payload))
+        self.assertNotIn("headers", json.dumps(payload).lower())
+        self.assertNotIn("body", json.dumps(payload).lower())
+
     def test_dockerfile_uses_product_entrypoint_and_not_embedded_message(self) -> None:
         dockerfile = (PRODUCT / "Dockerfile").read_text(encoding="utf-8")
 

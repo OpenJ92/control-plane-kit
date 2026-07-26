@@ -33,12 +33,12 @@
       "product_id": "hello-server",
       "owner_directory": "products/hello_server",
       "descriptor_path": "products/hello_server/product.cpk.json",
-      "source_commit": "89b07ff26c2a8c2980395b5e07825f93266097d7",
+      "source_commit": "e5bd98ec68451fc4b0634a604e5d4b5fc6301080",
       "image": {
         "registry": "ghcr.io",
         "repository": "openj92/control-plane-kit-servers/hello-server",
-        "tag": "server-seed-824",
-        "digest": "sha256:0b5d62c2706bdfc5b53b67c7e0a72e36b8af7d13f8b2abf26eaa6e6eb7dda5f0"
+        "tag": "seeded-stress-955-observer",
+        "digest": "sha256:e2288b23844b1f0b7526d2798cbc1eaf6e9f536399173a043e7957f0e7730cbf"
       }
     },
     {

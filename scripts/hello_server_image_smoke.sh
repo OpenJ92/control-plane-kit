@@ -47,4 +47,13 @@ if [ "$DEPENDENCIES" != "[]" ]; then
   exit 1
 fi
 
+OBSERVATIONS="$(curl -fsS "http://127.0.0.1:$PORT/observations/requests")"
+printf '%s' "$OBSERVATIONS" | grep -q '"count":1'
+printf '%s' "$OBSERVATIONS" | grep -q '"method":"GET"'
+printf '%s' "$OBSERVATIONS" | grep -q '"path":"/"'
+if printf '%s' "$OBSERVATIONS" | grep -Eiq 'headers|body|secret'; then
+  echo "observer evidence leaked forbidden request material: $OBSERVATIONS" >&2
+  exit 1
+fi
+
 echo "hello-server image smoke passed: $MESSAGE"

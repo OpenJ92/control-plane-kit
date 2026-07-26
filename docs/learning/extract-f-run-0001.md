@@ -655,3 +655,46 @@ Validation target:
 ```text
 scripts/cpk_server_workspace_a_router_transition_smoke.sh
 ```
+
+
+## #955 Hello Observer Visibility
+
+#955 adds the smallest package-owned observer receipt surface needed for the
+live multiplexer stress proof:
+
+```text
+hello-server GET /
+  -> records bounded process-local method/path evidence
+    -> GET /observations/requests
+```
+
+The endpoint is intentionally not a durable observability system. It keeps only
+the last 20 requests in process memory and records method plus path only. Query
+strings, headers, and bodies are not retained or returned.
+
+Important implementation decisions:
+
+- observer visibility lives inside `hello-server`, not core, operations, the
+  Docker interpreter, or the multiplexer;
+- `/observations/requests` returns bounded JSON evidence suitable for live
+  product acceptance;
+- the published-image smoke now proves the endpoint by digest;
+- the `hello-server` descriptor image coordinate is regenerated from
+  `coordinates/server-products.json`;
+- catalogue checksum after regeneration:
+  `d8647b7c4a12c0966302ba0ebdde5b3d554d518289faba29f6a9c97755bb030f`.
+
+Published image:
+
+```text
+ghcr.io/openj92/control-plane-kit-servers/hello-server@sha256:e2288b23844b1f0b7526d2798cbc1eaf6e9f536399173a043e7957f0e7730cbf
+```
+
+Handoff to #1008:
+
+- use `hello-primary` for the primary response;
+- use `hello-observer` as the observer target;
+- after one request through `http-multiplexer`, read
+  `http://hello-observer:8000/observations/requests`;
+- prove primary response still wins and observer evidence contains a bounded
+  `GET /` receipt without headers, bodies, or secret material.
