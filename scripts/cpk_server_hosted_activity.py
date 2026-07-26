@@ -428,6 +428,15 @@ def main() -> int:
             ),
             servers_repo,
         )
+    elif scenario == "workspace-b-multiplexer-observer":
+        _run_multiplexer_observer(
+            _workflow_for(
+                base_url,
+                server_container=server_container,
+                workspace_id="workspace-b-multiplexer",
+            ),
+            servers_repo,
+        )
     elif scenario == "multi-workspace-foundation":
         _run_multi_workspace_foundation(base_url, server_container, servers_repo)
     else:
@@ -550,6 +559,38 @@ def _run_multi_workspace_foundation(
             register_runtime_authority=True,
             register_runtime_delivery=True,
         )
+
+
+def _run_multiplexer_observer(workflow: HostedWorkflow, servers_repo: Path) -> None:
+    hello_document = _product_document(servers_repo, "hello_server")
+    multiplexer_document = _product_document(servers_repo, "http_multiplexer")
+    graph = _multiplexer_graph(
+        hello_document,
+        multiplexer_document,
+        workspace_id=workflow.workspace_id,
+        authority_ref=RuntimeAuthorityReference(LOCAL_DOCKER_AUTHORITY_REF),
+    )
+
+    current_graph_id = _bootstrap_workspace(
+        workflow,
+        name="Hosted multiplexer observer",
+        product_documents={
+            "hello": hello_document,
+            "multiplexer": multiplexer_document,
+        },
+        register_runtime_authority=True,
+        register_runtime_delivery=True,
+    )
+    result = workflow.run_approved_transition(
+        title="Hosted multiplexer observer",
+        graph=graph,
+        current_graph_id=current_graph_id,
+    )
+    _assert_activity_mentions(workflow, result.run_id, "hello-primary")
+    _assert_activity_mentions(workflow, result.run_id, "hello-observer")
+    _assert_activity_mentions(workflow, result.run_id, "multiplexer")
+    _assert_body("http://multiplexer:8000/", "Primary response\n")
+    _assert_observer_receipt("http://hello-observer:8000/observations/requests")
 
 
 def _workflow_for(
@@ -752,6 +793,60 @@ def _router_graph(
     )
 
 
+def _multiplexer_graph(
+    hello_document: Any,
+    multiplexer_document: Any,
+    *,
+    workspace_id: str,
+    authority_ref: RuntimeAuthorityReference | None = None,
+) -> DeploymentGraph:
+    hello_product = hello_document.product
+    multiplexer_product = multiplexer_document.product
+    primary = instantiate_product(
+        hello_product,
+        "hello-primary",
+        _with_public_environment(
+            ProductInstanceConfiguration.from_contract(hello_product.runtime_contract),
+            {"HELLO_MESSAGE": "Primary response"},
+        ),
+    )
+    observer = instantiate_product(
+        hello_product,
+        "hello-observer",
+        _with_public_environment(
+            ProductInstanceConfiguration.from_contract(hello_product.runtime_contract),
+            {"HELLO_MESSAGE": "Observer response"},
+        ),
+    )
+    multiplexer = instantiate_product(
+        multiplexer_product,
+        "multiplexer",
+        ProductInstanceConfiguration.from_contract(multiplexer_product.runtime_contract),
+    )
+    return compile_topology(
+        DeploymentTopology(
+            workspace_id,
+            DockerRuntime(
+                runtime_id="docker",
+                network_name=f"control-plane-kit-{workspace_id}-docker",
+                authority_ref=authority_ref,
+                children=(
+                    primary,
+                    observer,
+                    multiplexer,
+                    SocketConnection("hello-primary", "internal", "multiplexer", "primary"),
+                    SocketConnection(
+                        "hello-observer",
+                        "internal",
+                        "multiplexer",
+                        "observer-a",
+                    ),
+                ),
+            ),
+        )
+    )
+
+
 def _with_public_environment(
     configuration: ProductInstanceConfiguration,
     replacements: dict[str, str],
@@ -860,6 +955,21 @@ def _assert_body(url: str, expected: str) -> None:
         body = response.read(1024).decode("utf-8")
     if body != expected:
         raise RuntimeError(f"unexpected response from {url}: {body!r}")
+
+
+def _assert_observer_receipt(url: str) -> None:
+    with urlopen(url, timeout=5) as response:
+        payload = json.loads(response.read(16_384).decode("utf-8"))
+    encoded = json.dumps(payload, sort_keys=True)
+    if any(forbidden in encoded.lower() for forbidden in ("headers", "body", "secret")):
+        raise RuntimeError(f"observer receipt leaked forbidden material: {encoded}")
+    requests = payload.get("requests")
+    if not isinstance(requests, list) or not requests:
+        raise RuntimeError(f"observer receipt did not include requests: {payload}")
+    for observed in requests:
+        if observed == {"method": "GET", "path": "/"}:
+            return
+    raise RuntimeError(f"observer did not record copied GET / request: {payload}")
 
 
 def _clock() -> str:

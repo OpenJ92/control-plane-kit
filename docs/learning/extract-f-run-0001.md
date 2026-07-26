@@ -698,3 +698,45 @@ Handoff to #1008:
   `http://hello-observer:8000/observations/requests`;
 - prove primary response still wins and observer evidence contains a bounded
   `GET /` receipt without headers, bodies, or secret material.
+
+
+## #1008 Workspace B Multiplexer Observer Stress
+
+#1008 uses the #955 observer endpoint to prove live multiplexer fan-out through
+the public cpk-server workflow:
+
+```text
+workspace-b-multiplexer
+  -> hello-primary
+  -> hello-observer
+  -> http-multiplexer
+    primary    <- hello-primary/internal
+    observer-a <- hello-observer/internal
+```
+
+The scenario request goes to `http://multiplexer:8000/`. The response must be
+`Primary response`, proving the primary target owns the client response. The
+observer proof reads:
+
+```text
+http://hello-observer:8000/observations/requests
+```
+
+and requires a bounded `{"method": "GET", "path": "/"}` receipt.
+
+Important implementation decisions:
+
+- `workspace-b-multiplexer-observer` is a first-class hosted scenario;
+- the smoke wrapper delegates to the common hosted activity smoke;
+- `MULTIPLEXER_PRIMARY_URL` and `MULTIPLEXER_OBSERVER_A_URL` are not injected by
+  shell or controller code; they are produced by graph socket binding;
+- activity timeline evidence is checked for `hello-primary`, `hello-observer`,
+  and `multiplexer`;
+- observer receipt evidence is accepted only if it avoids headers, bodies, and
+  secret-shaped material.
+
+Validation target:
+
+```text
+scripts/cpk_server_workspace_b_multiplexer_observer_smoke.sh
+```

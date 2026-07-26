@@ -729,6 +729,47 @@ class CpkServerImageBootstrapTests(unittest.TestCase):
         self.assertIn("CPK_HOSTED_ACTIVITY_SCENARIO=workspace-a-router-transition", smoke)
         self.assertIn("scripts/cpk_server_hosted_activity_smoke.sh", smoke)
 
+    def test_hosted_activity_controller_proves_workspace_b_multiplexer_observer(
+        self,
+    ) -> None:
+        controller = (ROOT / "scripts" / "cpk_server_hosted_activity.py").read_text(
+            encoding="utf-8"
+        )
+
+        self.assertIn('"workspace-b-multiplexer-observer"', controller)
+        self.assertIn('workspace_id="workspace-b-multiplexer"', controller)
+        self.assertIn("def _run_multiplexer_observer", controller)
+        self.assertIn("def _multiplexer_graph", controller)
+        self.assertIn('"hello-primary"', controller)
+        self.assertIn('"hello-observer"', controller)
+        self.assertIn('"multiplexer"', controller)
+        self.assertIn('"Primary response"', controller)
+        self.assertIn('"Observer response"', controller)
+        self.assertIn(
+            'SocketConnection("hello-primary", "internal", "multiplexer", "primary")',
+            controller,
+        )
+        self.assertIn('"observer-a"', controller)
+        self.assertIn('_assert_body("http://multiplexer:8000/", "Primary response\\n")', controller)
+        self.assertIn(
+            '_assert_observer_receipt("http://hello-observer:8000/observations/requests")',
+            controller,
+        )
+        self.assertIn('_assert_activity_mentions(workflow, result.run_id, "hello-primary")', controller)
+        self.assertIn('_assert_activity_mentions(workflow, result.run_id, "hello-observer")', controller)
+        self.assertIn('_assert_activity_mentions(workflow, result.run_id, "multiplexer")', controller)
+        self.assertIn('"headers", "body", "secret"', controller)
+        self.assertIn('{"method": "GET", "path": "/"}', controller)
+        self.assertNotIn('"MULTIPLEXER_PRIMARY_URL"', controller)
+        self.assertNotIn('"MULTIPLEXER_OBSERVER_A_URL"', controller)
+        self.assertNotIn("DockerRuntimeInterpreter", controller)
+
+        smoke = (
+            ROOT / "scripts" / "cpk_server_workspace_b_multiplexer_observer_smoke.sh"
+        ).read_text(encoding="utf-8")
+        self.assertIn("CPK_HOSTED_ACTIVITY_SCENARIO=workspace-b-multiplexer-observer", smoke)
+        self.assertIn("scripts/cpk_server_hosted_activity_smoke.sh", smoke)
+
     def test_recursive_activity_smoke_uses_published_parent_and_secret_authority(
         self,
     ) -> None:
