@@ -42,6 +42,7 @@ from control_plane_kit_core.runtime_authority import (
     RuntimeAuthorityReference,
 )
 from control_plane_kit_core.runtime_effects import ImagePullAuthority
+from control_plane_kit_core.secrets import SecretEnvironmentDelivery, SecretReference
 from control_plane_kit_core.topology import DeploymentGraph, Edge, Node, RuntimeRecord
 from control_plane_kit_core.types import BlockFamily, Protocol, RuntimeKind, SocketBinding
 from control_plane_kit_operations.coordinator import ActivityRealizationContext
@@ -281,6 +282,9 @@ class RuntimeEffectTranslationTests(unittest.TestCase):
                     "protocol": "postgres",
                     "host": "postgres",
                     "port": 5432,
+                    "database": "cpk",
+                    "username": "cpk",
+                    "password_environment": "POSTGRES_PASSWORD",
                 },
                 "router.internal": {
                     "protocol": "http",
@@ -288,7 +292,7 @@ class RuntimeEffectTranslationTests(unittest.TestCase):
                 },
             },
         )
-        self.assertNotIn("password", repr(request.descriptor()).lower())
+        self.assertNotIn("cpk-postgres-smoke-password", repr(request.descriptor()))
         self.assertNotIn("secret://", repr(request.descriptor()))
 
     def test_gateway_target_map_requires_declared_provider_port(self) -> None:
@@ -584,6 +588,16 @@ def _gateway_graph(
                         postgres_reference.descriptor_sha256.value
                     ),
                 },
+                public_environment=(
+                    PublicStaticEnvironmentBinding("POSTGRES_DB", "cpk"),
+                    PublicStaticEnvironmentBinding("POSTGRES_USER", "cpk"),
+                ),
+                secret_deliveries=(
+                    SecretEnvironmentDelivery(
+                        "POSTGRES_PASSWORD",
+                        SecretReference("secret://control-plane-kit/postgres/password"),
+                    ),
+                ),
             ),
             "router": Node(
                 node_id="router",
