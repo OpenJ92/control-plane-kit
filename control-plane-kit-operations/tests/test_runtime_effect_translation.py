@@ -1,8 +1,14 @@
 from __future__ import annotations
 
+import json
 import unittest
 
-from control_plane_kit_core.algebra import BlockSockets, BlockSpec, ProviderSocket
+from control_plane_kit_core.algebra import (
+    BlockSockets,
+    BlockSpec,
+    ProviderSocket,
+    RequirementSocket,
+)
 from control_plane_kit_core.environment import (
     PublicStaticEnvironmentBinding,
     SocketDerivedEnvironmentBinding,
@@ -36,8 +42,8 @@ from control_plane_kit_core.runtime_authority import (
     RuntimeAuthorityReference,
 )
 from control_plane_kit_core.runtime_effects import ImagePullAuthority
-from control_plane_kit_core.topology import DeploymentGraph, Node, RuntimeRecord
-from control_plane_kit_core.types import BlockFamily, Protocol, RuntimeKind
+from control_plane_kit_core.topology import DeploymentGraph, Edge, Node, RuntimeRecord
+from control_plane_kit_core.types import BlockFamily, Protocol, RuntimeKind, SocketBinding
 from control_plane_kit_operations.coordinator import ActivityRealizationContext
 from control_plane_kit_operations.lifecycle import ExecutionWorkerAuthority
 from control_plane_kit_operations.products import (
@@ -62,6 +68,7 @@ from control_plane_kit_operations.runtime_effects import runtime_effect_request_
 from control_plane_kit_operations.runtime_authorities import (
     RegisteredRuntimeAuthorityDelivery,
 )
+from control_plane_kit_operations.workflows import InvalidOperationCommand
 
 
 class RuntimeEffectTranslationTests(unittest.TestCase):
@@ -224,6 +231,149 @@ class RuntimeEffectTranslationTests(unittest.TestCase):
         self.assertEqual(request.authority_ref, RuntimeAuthorityReference("local-docker"))
         self.assertEqual(request.authority_deliveries, ())
 
+    def test_gateway_node_receives_graph_derived_target_map_environment(self) -> None:
+        graph = _gateway_graph()
+        context = _context(
+            activity=PlannedActivity(
+                ActivityId("activity-gateway"),
+                StartNode(NodeTarget("gateway")),
+            ),
+            desired_graph=graph,
+            registered_products=(
+                _registered_product(
+                    name="cpk-local-gateway",
+                    provider_socket="control",
+                    protocol=Protocol.HTTP,
+                    port=8000,
+                    public_environment=(
+                        PublicStaticEnvironmentBinding(
+                            "CPK_GATEWAY_TARGETS_JSON",
+                            "{}",
+                        ),
+                    ),
+                ),
+                _registered_product(
+                    name="postgres-server",
+                    provider_socket="postgres",
+                    protocol=Protocol.POSTGRES,
+                    port=5432,
+                ),
+                _registered_product(
+                    name="http-active-router",
+                    provider_socket="internal",
+                    protocol=Protocol.HTTP,
+                    port=8000,
+                ),
+            ),
+        )
+
+        request = runtime_effect_request_for_context(context)
+
+        environment = {
+            binding.name: binding.value
+            for binding in request.products[0].public_environment
+        }
+        target_map = json.loads(environment["CPK_GATEWAY_TARGETS_JSON"])
+        self.assertEqual(
+            target_map,
+            {
+                "postgres.postgres": {
+                    "protocol": "postgres",
+                    "host": "postgres",
+                    "port": 5432,
+                },
+                "router.internal": {
+                    "protocol": "http",
+                    "url": "http://router:8000",
+                },
+            },
+        )
+        self.assertNotIn("password", repr(request.descriptor()).lower())
+        self.assertNotIn("secret://", repr(request.descriptor()))
+
+    def test_gateway_target_map_requires_declared_provider_port(self) -> None:
+        graph = _gateway_graph(postgres_product_provider_socket="other")
+        context = _context(
+            activity=PlannedActivity(
+                ActivityId("activity-gateway"),
+                StartNode(NodeTarget("gateway")),
+            ),
+            desired_graph=graph,
+            registered_products=(
+                _registered_product(
+                    name="cpk-local-gateway",
+                    provider_socket="control",
+                    protocol=Protocol.HTTP,
+                    port=8000,
+                    public_environment=(
+                        PublicStaticEnvironmentBinding(
+                            "CPK_GATEWAY_TARGETS_JSON",
+                            "{}",
+                        ),
+                    ),
+                ),
+                _registered_product(
+                    name="postgres-server",
+                    provider_socket="other",
+                    protocol=Protocol.POSTGRES,
+                    port=5432,
+                ),
+                _registered_product(
+                    name="http-active-router",
+                    provider_socket="internal",
+                    protocol=Protocol.HTTP,
+                    port=8000,
+                ),
+            ),
+        )
+
+        with self.assertRaisesRegex(InvalidOperationCommand, "provider port"):
+            runtime_effect_request_for_context(context)
+
+    def test_target_map_is_not_delivered_to_ordinary_products(self) -> None:
+        graph = _gateway_graph()
+        context = _context(
+            activity=PlannedActivity(
+                ActivityId("activity-postgres"),
+                StartNode(NodeTarget("postgres")),
+            ),
+            desired_graph=graph,
+            registered_products=(
+                _registered_product(
+                    name="cpk-local-gateway",
+                    provider_socket="control",
+                    protocol=Protocol.HTTP,
+                    port=8000,
+                    public_environment=(
+                        PublicStaticEnvironmentBinding(
+                            "CPK_GATEWAY_TARGETS_JSON",
+                            "{}",
+                        ),
+                    ),
+                ),
+                _registered_product(
+                    name="postgres-server",
+                    provider_socket="postgres",
+                    protocol=Protocol.POSTGRES,
+                    port=5432,
+                ),
+                _registered_product(
+                    name="http-active-router",
+                    provider_socket="internal",
+                    protocol=Protocol.HTTP,
+                    port=8000,
+                ),
+            ),
+        )
+
+        request = runtime_effect_request_for_context(context)
+
+        environment = {
+            binding.name: binding.value
+            for binding in request.products[0].public_environment
+        }
+        self.assertNotIn("CPK_GATEWAY_TARGETS_JSON", environment)
+
 
 def _context(
     *,
@@ -231,6 +381,7 @@ def _context(
     desired_graph: DeploymentGraph | None = None,
     pull_authorities: tuple[RegisteredImagePullAuthority, ...] = (),
     runtime_authority_deliveries: tuple[RegisteredRuntimeAuthorityDelivery, ...] = (),
+    registered_products: tuple[RegisteredProduct, ...] | None = None,
 ) -> ActivityRealizationContext:
     if activity is None:
         activity = PlannedActivity(ActivityId("activity-a"), StartNode(NodeTarget("api")))
@@ -282,7 +433,11 @@ def _context(
             created_by="operator-a",
             created_at="2026-07-22T10:00:00Z",
         ),
-        registered_products=(_registered_product(),),
+        registered_products=(
+            (_registered_product(),)
+            if registered_products is None
+            else registered_products
+        ),
         image_pull_authorities=pull_authorities,
         runtime_authority_deliveries=runtime_authority_deliveries,
         authority=ExecutionWorkerAuthority(
@@ -346,27 +501,168 @@ def _graph(
     )
 
 
-def _registered_product() -> RegisteredProduct:
+def _gateway_graph(
+    *,
+    postgres_product_provider_socket: str = "postgres",
+) -> DeploymentGraph:
+    gateway_reference = _registered_product(
+        name="cpk-local-gateway",
+        provider_socket="control",
+        protocol=Protocol.HTTP,
+        port=8000,
+        public_environment=(
+            PublicStaticEnvironmentBinding("CPK_GATEWAY_TARGETS_JSON", "{}"),
+        ),
+    ).reference
+    postgres_reference = _registered_product(
+        name="postgres-server",
+        provider_socket=postgres_product_provider_socket,
+        protocol=Protocol.POSTGRES,
+        port=5432,
+    ).reference
+    router_reference = _registered_product(
+        name="http-active-router",
+        provider_socket="internal",
+        protocol=Protocol.HTTP,
+        port=8000,
+    ).reference
+    consumer = Node(
+        node_id="api",
+        block_family=BlockFamily.APPLICATION,
+        block_spec=BlockSpec("api"),
+        kind="container-server",
+        runtime_id="docker",
+        sockets=BlockSockets(
+            requirements=(
+                RequirementSocket(
+                    "store",
+                    Protocol.POSTGRES,
+                    env_bindings=("DATABASE_URL",),
+                ),
+                RequirementSocket(
+                    "http",
+                    Protocol.HTTP,
+                    env_bindings=("ROUTER_URL",),
+                ),
+            )
+        ),
+    )
+    return DeploymentGraph(
+        name="gateway-demo",
+        nodes={
+            "gateway": Node(
+                node_id="gateway",
+                block_family=BlockFamily.APPLICATION,
+                block_spec=BlockSpec("gateway"),
+                kind="container-server",
+                runtime_id="docker",
+                sockets=BlockSockets(
+                    providers=(ProviderSocket("control", Protocol.HTTP),)
+                ),
+                metadata={
+                    "product_identity": gateway_reference.identity.key,
+                    "product_descriptor_digest": (
+                        gateway_reference.descriptor_sha256.value
+                    ),
+                },
+                public_environment=(
+                    PublicStaticEnvironmentBinding("CPK_GATEWAY_TARGETS_JSON", "{}"),
+                ),
+            ),
+            "postgres": Node(
+                node_id="postgres",
+                block_family=BlockFamily.APPLICATION,
+                block_spec=BlockSpec("postgres"),
+                kind="container-server",
+                runtime_id="docker",
+                sockets=BlockSockets(
+                    providers=(ProviderSocket("postgres", Protocol.POSTGRES),)
+                ),
+                metadata={
+                    "product_identity": postgres_reference.identity.key,
+                    "product_descriptor_digest": (
+                        postgres_reference.descriptor_sha256.value
+                    ),
+                },
+            ),
+            "router": Node(
+                node_id="router",
+                block_family=BlockFamily.APPLICATION,
+                block_spec=BlockSpec("router"),
+                kind="container-server",
+                runtime_id="docker",
+                sockets=BlockSockets(
+                    providers=(ProviderSocket("internal", Protocol.HTTP),)
+                ),
+                metadata={
+                    "product_identity": router_reference.identity.key,
+                    "product_descriptor_digest": router_reference.descriptor_sha256.value,
+                },
+            ),
+            "api": consumer,
+        },
+        edges={
+            "api.store->postgres.postgres": Edge(
+                "api.store->postgres.postgres",
+                provider_role="postgres",
+                provider_socket="postgres",
+                consumer_role="api",
+                requirement_socket="store",
+                protocol=Protocol.POSTGRES,
+                binding=SocketBinding.ENVIRONMENT,
+            ),
+            "api.http->router.internal": Edge(
+                "api.http->router.internal",
+                provider_role="router",
+                provider_socket="internal",
+                consumer_role="api",
+                requirement_socket="http",
+                protocol=Protocol.HTTP,
+                binding=SocketBinding.ENVIRONMENT,
+            ),
+        },
+        runtimes={
+            "docker": RuntimeRecord(
+                "docker",
+                RuntimeKind.DOCKER,
+                ("gateway", "postgres", "router", "api"),
+            )
+        },
+    )
+
+
+def _registered_product(
+    *,
+    name: str = "hello-server",
+    provider_socket: str = "http",
+    protocol: Protocol = Protocol.HTTP,
+    port: int = 8000,
+    public_environment: tuple[PublicStaticEnvironmentBinding, ...] | None = None,
+) -> RegisteredProduct:
     product = ContainerServerProduct(
         identity=ProductReference.from_document(
             ProductDescriptorCodec().encode_document(
                 ContainerServerProduct(
-                    identity=_identity(),
+                    identity=_identity(name),
                     image=OciImageReference(
                         registry="ghcr.io",
-                        repository="openj92/control-plane-kit-servers/hello-server",
+                        repository=f"openj92/control-plane-kit-servers/{name}",
                         digest="sha256:" + "a" * 64,
                     ),
                     runtime_contract=ProductRuntimeContract(
                         sockets=BlockSockets(
-                            providers=(ProviderSocket("http", Protocol.HTTP),)
+                            providers=(ProviderSocket(provider_socket, protocol),)
                         ),
-                        provider_ports=(ProviderRuntimePort("http", 8000),),
+                        provider_ports=(ProviderRuntimePort(provider_socket, port),),
                         public_environment=(
-                            PublicStaticEnvironmentBinding(
-                                "HELLO_MESSAGE",
-                                "Hello from descriptor default",
-                            ),
+                            (
+                                PublicStaticEnvironmentBinding(
+                                    "HELLO_MESSAGE",
+                                    "Hello from descriptor default",
+                                ),
+                            )
+                            if public_environment is None
+                            else public_environment
                         ),
                     ),
                 )
@@ -374,17 +670,21 @@ def _registered_product() -> RegisteredProduct:
         ).identity,
         image=OciImageReference(
             registry="ghcr.io",
-            repository="openj92/control-plane-kit-servers/hello-server",
+            repository=f"openj92/control-plane-kit-servers/{name}",
             digest="sha256:" + "a" * 64,
         ),
         runtime_contract=ProductRuntimeContract(
-            sockets=BlockSockets(providers=(ProviderSocket("http", Protocol.HTTP),)),
-            provider_ports=(ProviderRuntimePort("http", 8000),),
+            sockets=BlockSockets(providers=(ProviderSocket(provider_socket, protocol),)),
+            provider_ports=(ProviderRuntimePort(provider_socket, port),),
             public_environment=(
-                PublicStaticEnvironmentBinding(
-                    "HELLO_MESSAGE",
-                    "Hello from descriptor default",
-                ),
+                (
+                    PublicStaticEnvironmentBinding(
+                        "HELLO_MESSAGE",
+                        "Hello from descriptor default",
+                    ),
+                )
+                if public_environment is None
+                else public_environment
             ),
         ),
     )
@@ -415,10 +715,10 @@ def _registered_pull_authority(
     )
 
 
-def _identity():
+def _identity(name: str = "hello-server"):
     from control_plane_kit_core.products import ProductIdentity
 
-    return ProductIdentity("openj92", "hello-server", 1)
+    return ProductIdentity("openj92", name, 1)
 
 
 if __name__ == "__main__":

@@ -4023,3 +4023,57 @@ interpreter:
 gateway product:
   closed semantic probes against declared private targets
 ```
+
+## #1025 Gateway Target-Map Materialization
+
+#1025 used the existing generic public-environment materialization path rather
+than adding a Docker-specific gateway branch. The selected product instance opts
+in by carrying the public environment name:
+
+```text
+CPK_GATEWAY_TARGETS_JSON
+```
+
+When operations starts a node with that environment binding, it derives a
+gateway target map from the desired graph:
+
+```text
+same-runtime graph edges
+  -> provider node id
+  -> provider socket
+  -> provider protocol
+  -> registered provider runtime port
+  -> gateway process JSON
+```
+
+The Docker interpreter does not know `cpk-local-gateway` exists. It already
+knows how to pass `RuntimeProductMaterial.public_environment` into a container,
+so the generated target map flows through the same path as any other
+non-secret product configuration.
+
+The first-pass process JSON remains aligned to the #1023 gateway process:
+
+```json
+{
+  "postgres.postgres": {"protocol": "postgres", "host": "postgres", "port": 5432},
+  "router.internal": {"protocol": "http", "url": "http://router:8000"}
+}
+```
+
+Laws preserved:
+
+- no target map is generated from product identity;
+- no target map is delivered to ordinary products unless they opt in through
+  the public environment contract;
+- missing provider runtime ports fail closed;
+- unsupported target protocols fail closed;
+- target maps contain no raw secrets;
+- Docker remains generic environment materialization.
+
+Handoff to #1026:
+
+The live Docker proof should instantiate `cpk-local-gateway` alongside Postgres
+and an HTTP product, then use the gateway control endpoint to run private
+Postgres `select-one` and HTTP status probes. If Postgres authentication is
+needed, keep it in explicit secret delivery/environment material and do not put
+the password into target-map JSON.

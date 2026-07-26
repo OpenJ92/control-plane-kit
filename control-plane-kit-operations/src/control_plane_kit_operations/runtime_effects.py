@@ -2,8 +2,10 @@
 
 from __future__ import annotations
 
+import json
 from typing import Mapping
 
+from control_plane_kit_core.environment import PublicStaticEnvironmentBinding
 from control_plane_kit_core.planning.activity_plan import (
     AddSocketConnection,
     NodeTarget,
@@ -27,6 +29,11 @@ from control_plane_kit_core.runtime_authority import (
     RuntimeAuthorityReference,
 )
 from control_plane_kit_core.runtime_effects import (
+    GatewayHttpTarget,
+    GatewayPostgresTarget,
+    GatewayTarget,
+    GatewayTargetId,
+    GatewayTargetMap,
     ImagePullAuthority,
     RuntimeEffectKind,
     RuntimeEffectRequest,
@@ -34,7 +41,7 @@ from control_plane_kit_core.runtime_effects import (
     RuntimeProductMaterial,
 )
 from control_plane_kit_core.topology import DEFAULT_GRAPH_CODEC, DeploymentGraph
-from control_plane_kit_core.types import RuntimeKind
+from control_plane_kit_core.types import Protocol, RuntimeKind
 from control_plane_kit_operations.coordinator import ActivityRealizationContext
 from control_plane_kit_operations.products import (
     RegisteredImagePullAuthority,
@@ -44,6 +51,8 @@ from control_plane_kit_operations.runtime_authorities import (
     RegisteredRuntimeAuthorityDelivery,
 )
 from control_plane_kit_operations.workflows import InvalidOperationCommand
+
+_GATEWAY_TARGETS_ENVIRONMENT = "CPK_GATEWAY_TARGETS_JSON"
 
 
 def runtime_effect_request_for_context(
@@ -163,13 +172,20 @@ def _products_for_context(
     except KeyError as error:
         raise InvalidOperationCommand("runtime effect node target is missing") from error
     product = _registered_product_for_node(context.registered_products, node.metadata)
+    public_environment = _public_environment_for_node(
+        graph=graph,
+        node_id=node_id,
+        node=node,
+        product=product,
+        registered_products=context.registered_products,
+    )
     return (
         RuntimeProductMaterial(
             node_id=node_id,
             runtime_id=runtime_id,
             reference=product.reference,
             product=product.descriptor_document.product,
-            public_environment=node.public_environment,
+            public_environment=public_environment,
             socket_environment=node.socket_environment,
             pull_authority=_pull_authority_for_product(
                 context.image_pull_authorities,
@@ -177,6 +193,144 @@ def _products_for_context(
             ),
         ),
     )
+
+
+def _public_environment_for_node(
+    *,
+    graph: DeploymentGraph,
+    node_id: str,
+    node: object,
+    product: RegisteredProduct,
+    registered_products: tuple[RegisteredProduct, ...],
+) -> tuple[PublicStaticEnvironmentBinding, ...]:
+    del product
+    public_environment = tuple(node.public_environment)
+    if not any(binding.name == _GATEWAY_TARGETS_ENVIRONMENT for binding in public_environment):
+        return public_environment
+    target_map = _gateway_target_map_for_node(
+        graph,
+        node_id=node_id,
+        registered_products=registered_products,
+    )
+    target_map_json = json.dumps(
+        _gateway_process_target_map_descriptor(target_map),
+        ensure_ascii=True,
+        separators=(",", ":"),
+        sort_keys=True,
+    )
+    return tuple(
+        PublicStaticEnvironmentBinding(binding.name, target_map_json)
+        if binding.name == _GATEWAY_TARGETS_ENVIRONMENT
+        else binding
+        for binding in public_environment
+    )
+
+
+def _gateway_target_map_for_node(
+    graph: DeploymentGraph,
+    *,
+    node_id: str,
+    registered_products: tuple[RegisteredProduct, ...],
+) -> GatewayTargetMap:
+    try:
+        gateway_node = graph.nodes[node_id]
+    except KeyError as error:
+        raise InvalidOperationCommand("gateway target map node is missing") from error
+    targets: dict[GatewayTargetId, GatewayTarget] = {}
+    source_edges: dict[GatewayTargetId, list[str]] = {}
+    for edge in sorted(graph.edges.values(), key=lambda value: value.edge_id):
+        try:
+            provider_node = graph.nodes[edge.provider_role]
+        except KeyError as error:
+            raise InvalidOperationCommand(
+                "gateway target map provider node is missing"
+            ) from error
+        if provider_node.runtime_id != gateway_node.runtime_id:
+            continue
+        target_id = GatewayTargetId(f"{edge.provider_role}.{edge.provider_socket}")
+        source_edges.setdefault(target_id, []).append(edge.edge_id)
+        if target_id in targets:
+            continue
+        product = _registered_product_for_node(
+            registered_products,
+            provider_node.metadata,
+        )
+        port = _provider_port_for_socket(product, edge.provider_socket)
+        if edge.protocol == Protocol.HTTP:
+            targets[target_id] = GatewayHttpTarget(
+                target_id=target_id,
+                node_id=edge.provider_role,
+                provider_socket=edge.provider_socket,
+                url=f"http://{edge.provider_role}:{port}",
+                source_edges=(),
+            )
+        elif edge.protocol == Protocol.POSTGRES:
+            targets[target_id] = GatewayPostgresTarget(
+                target_id=target_id,
+                node_id=edge.provider_role,
+                provider_socket=edge.provider_socket,
+                host=edge.provider_role,
+                port=port,
+                source_edges=(),
+            )
+        else:
+            raise InvalidOperationCommand(
+                "gateway target map protocol is unsupported"
+            )
+    return GatewayTargetMap(
+        tuple(
+            _with_source_edges(target, tuple(source_edges[target.target_id]))
+            for target in targets.values()
+        )
+    )
+
+
+def _with_source_edges(
+    target: GatewayTarget,
+    source_edges: tuple[str, ...],
+) -> GatewayTarget:
+    if isinstance(target, GatewayHttpTarget):
+        return GatewayHttpTarget(
+            target_id=target.target_id,
+            node_id=target.node_id,
+            provider_socket=target.provider_socket,
+            url=target.url,
+            source_edges=source_edges,
+        )
+    return GatewayPostgresTarget(
+        target_id=target.target_id,
+        node_id=target.node_id,
+        provider_socket=target.provider_socket,
+        host=target.host,
+        port=target.port,
+        source_edges=source_edges,
+    )
+
+
+def _provider_port_for_socket(product: RegisteredProduct, provider_socket: str) -> int:
+    for port in product.descriptor_document.product.runtime_contract.provider_ports:
+        if port.provider_socket == provider_socket:
+            return port.container_port
+    raise InvalidOperationCommand("gateway target provider port is missing")
+
+
+def _gateway_process_target_map_descriptor(
+    target_map: GatewayTargetMap,
+) -> dict[str, object]:
+    descriptor: dict[str, object] = {}
+    for target in target_map.targets:
+        if isinstance(target, GatewayHttpTarget):
+            descriptor[target.target_id.value] = {
+                "protocol": "http",
+                "url": target.url,
+            }
+        else:
+            descriptor[target.target_id.value] = {
+                "protocol": "postgres",
+                "host": target.host,
+                "port": target.port,
+            }
+    return descriptor
 
 
 def _node_target(context: ActivityRealizationContext) -> str | None:
