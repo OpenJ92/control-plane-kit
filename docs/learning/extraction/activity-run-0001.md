@@ -4077,3 +4077,92 @@ and an HTTP product, then use the gateway control endpoint to run private
 Postgres `select-one` and HTTP status probes. If Postgres authentication is
 needed, keep it in explicit secret delivery/environment material and do not put
 the password into target-map JSON.
+
+## #1027 Local Gateway Foundation Closeout
+
+#1026 proved the focused local runtime-island gateway behavior in
+`control-plane-kit-servers` through PR #41:
+
+```text
+host / parent probe client
+  -> cpk-local-gateway public control endpoint
+    -> private Docker network
+      -> hello-server HTTP readiness
+      -> postgres-server SELECT 1
+```
+
+The smoke intentionally exposed only the gateway on the host:
+
+```text
+127.0.0.1:$GATEWAY_PORT -> cpk-local-gateway:8000
+```
+
+`hello-server` and `postgres-server` remained private Docker-network targets.
+The smoke rejected unknown targets and unsupported probe kinds, so the gateway
+did not become an arbitrary HTTP/TCP proxy.
+
+Final first-pass gateway shape:
+
+```text
+cpk-local-gateway:
+  GET /health/live
+  GET /health/ready
+  POST /cpk/probes
+
+closed probes:
+  http-status
+  postgres-select-one
+```
+
+The gateway still does not own graph truth, maintain local topology, spawn
+nodes, or mutate runtime state. Parent `cpk-server` continues to own desired
+graph, current graph, approval, history, and read models. The gateway receives
+graph-derived target material and performs bounded local semantic probes from
+inside the runtime island.
+
+Security/data findings:
+
+- gateway target maps are secret-free;
+- Postgres password material stayed in explicit process environment for the
+  direct smoke and did not enter target-map JSON or probe responses;
+- probe responses were bounded and redacted;
+- database sockets remained private by default;
+- cleanup removed only labelled smoke resources and used no broad Docker prune.
+
+Validation evidence:
+
+```text
+control-plane-kit-servers ./test.sh
+scripts/cpk_local_gateway_private_probe_smoke.sh
+git diff --check
+```
+
+Handoff back to #1007:
+
+The paused workspace C Postgres retained-data stress should resume by routing
+semantic readiness through the gateway:
+
+```text
+cpk-server hosted workflow
+  -> graph contains cpk-local-gateway + postgres-server
+  -> operations materializes CPK_GATEWAY_TARGETS_JSON from graph edges
+  -> runtime starts both nodes on the same Docker network
+  -> PostgresQueryCheck(select-one) or equivalent closed probe goes through
+     cpk-local-gateway
+```
+
+Avoid `sync_runtime_networks` for this semantic readiness path except as a
+documented diagnostic. Retained volume assertions and secret leak assertions
+remain required.
+
+Handoff to #1012:
+
+Cloudflare/control ingress should target the gateway control endpoint, not every
+private workload service. Per-service ingress remains an explicit
+application-facing requirement, not the default control-plane probing strategy.
+
+Handoff to #1020:
+
+The gateway solves first-pass local probe reachability. It does not solve
+runtime spawning delegation, local graph ownership, offline agent behavior, or a
+full CPK client. Those remain future client/agent work.
