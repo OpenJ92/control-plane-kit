@@ -66,6 +66,18 @@
       }
     },
     {
+      "product_id": "cpk-local-gateway",
+      "owner_directory": "products/cpk_local_gateway",
+      "descriptor_path": "products/cpk_local_gateway/product.cpk.json",
+      "source_commit": "00bcb69f77d386f5ab280dfa61a0b7d1fd84f4c1",
+      "image": {
+        "registry": "ghcr.io",
+        "repository": "openj92/control-plane-kit-servers/cpk-local-gateway",
+        "tag": "local-gateway-1023",
+        "digest": "sha256:77637c12d734768ae8a53afd6ea8b7a8e7fe4a62b485a9899e9b080779e275e4"
+      }
+    },
+    {
       "product_id": "postgres-server",
       "owner_directory": "products/postgres_server",
       "descriptor_path": "products/postgres_server/product.cpk.json",

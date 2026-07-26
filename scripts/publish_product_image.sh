@@ -23,6 +23,10 @@ case "$PRODUCT_ID" in
     DOCKERFILE="products/http_multiplexer/Dockerfile"
     IMAGE_NAME="http-multiplexer"
     ;;
+  cpk-local-gateway)
+    DOCKERFILE="products/cpk_local_gateway/Dockerfile"
+    IMAGE_NAME="cpk-local-gateway"
+    ;;
   *)
     echo "unsupported product id: $PRODUCT_ID" >&2
     exit 2

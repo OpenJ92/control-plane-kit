@@ -129,6 +129,7 @@ class CpkServerProcessCompositionTests(unittest.TestCase):
             self.assertEqual(
                 [item.product_id for item in catalogue],
                 [
+                    "cpk-local-gateway",
                     "cpk-server",
                     "cpk-server-docker",
                     "hello-server",
@@ -141,6 +142,10 @@ class CpkServerProcessCompositionTests(unittest.TestCase):
             self.assertNotIn("control_plane_kit_servers_hello_server", sys.modules)
             self.assertNotIn(
                 "control_plane_kit_servers_http_active_router",
+                sys.modules,
+            )
+            self.assertNotIn(
+                "control_plane_kit_servers_cpk_local_gateway",
                 sys.modules,
             )
             self.assertNotIn(

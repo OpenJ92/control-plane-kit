@@ -30,6 +30,7 @@ class DescriptorCatalogueTests(unittest.TestCase):
         self.assertEqual(
             [item.product_id for item in catalogue],
             [
+                "cpk-local-gateway",
                 "cpk-server",
                 "cpk-server-docker",
                 "hello-server",

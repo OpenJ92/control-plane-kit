@@ -17,7 +17,7 @@ dependencies = [
 ]
 
 [tool.setuptools.packages.find]
-where = ["src", "products/cpk_server/src", "products/hello_server/src", "products/http_active_router/src", "products/http_multiplexer/src"]
+where = ["src", "products/cpk_server/src", "products/hello_server/src", "products/http_active_router/src", "products/http_multiplexer/src", "products/cpk_local_gateway/src"]
 
 [tool.setuptools.package-data]
 control_plane_kit_servers = ["catalogue.json", "catalogue.json.sha256"]

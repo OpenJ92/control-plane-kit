@@ -49,6 +49,16 @@
       "status": "descriptor-published"
     },
     {
+      "product_id": "cpk-local-gateway",
+      "target_directory": "products/cpk_local_gateway",
+      "dockerfile": "products/cpk_local_gateway/Dockerfile",
+      "implementation_issue": "OpenJ92/control-plane-kit#1023",
+      "image_issue": "OpenJ92/control-plane-kit#1023",
+      "descriptor_issue": "OpenJ92/control-plane-kit#1023",
+      "status": "descriptor-published",
+      "role": "local runtime-island gateway for closed semantic probes"
+    },
+    {
       "product_id": "postgres-server",
       "target_directory": "products/postgres_server",
       "image_source": "external-oci",
@@ -74,6 +84,6 @@
     "One product implementation lane owns one directory; descriptor variants remain explicit catalogue entries.",
     "Catalogue imports values, not applications or stores.",
     "Core dependency points inward; core never imports servers.",
-    "cpk-server, Hello, active-router, multiplexer, and Postgres have different roles and none substitutes for the other."
+    "cpk-server, Hello, active-router, multiplexer, cpk-local-gateway, and Postgres have different roles and none substitutes for the other."
   ]
 }

@@ -52,6 +52,15 @@ def main() -> int:
         "unittest",
         "discover",
         "-s",
+        "products/cpk_local_gateway/tests",
+        "-v",
+    ])
+    run([
+        sys.executable,
+        "-m",
+        "unittest",
+        "discover",
+        "-s",
         "products/postgres_server/tests",
         "-v",
     ])

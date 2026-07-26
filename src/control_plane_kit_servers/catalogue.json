@@ -1,6 +1,16 @@
 {
   "products": [
     {
+      "descriptor_path": "products/cpk_local_gateway/product.cpk.json",
+      "descriptor_sha256": "00cda9219ab61f3b668ee1c0a69e95084fedf0b98b5000bc8a3b6a44732f1fac",
+      "image_digest": "sha256:77637c12d734768ae8a53afd6ea8b7a8e7fe4a62b485a9899e9b080779e275e4",
+      "image_ref": "ghcr.io/openj92/control-plane-kit-servers/cpk-local-gateway:local-gateway-1023",
+      "owner_directory": "products/cpk_local_gateway",
+      "product_id": "cpk-local-gateway",
+      "source_commit": "00bcb69f77d386f5ab280dfa61a0b7d1fd84f4c1",
+      "status": "completed"
+    },
+    {
       "descriptor_path": "products/cpk_server/product.cpk.json",
       "descriptor_sha256": "f90968dc9641aa875d84c47bc8e7c29ecce94c513aacdf31ee2f848c230620a7",
       "image_digest": "sha256:9eacda293d09953289a50adb9476a290b73a2406698ce352bb97904f27c1415b",

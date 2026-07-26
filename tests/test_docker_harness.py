@@ -31,6 +31,7 @@ class DockerHarnessTests(unittest.TestCase):
         self.assertIn("products/hello_server/tests", runner)
         self.assertIn("products/http_active_router/tests", runner)
         self.assertIn("products/http_multiplexer/tests", runner)
+        self.assertIn("products/cpk_local_gateway/tests", runner)
         self.assertIn("products/postgres_server/tests", runner)
         self.assertIn("product_image_lane.py", runner)
 
@@ -57,6 +58,7 @@ class DockerHarnessTests(unittest.TestCase):
                 "hello-server",
                 "http-active-router",
                 "http-multiplexer",
+                "cpk-local-gateway",
                 "postgres-server",
             ],
         )
@@ -94,6 +96,12 @@ class DockerHarnessTests(unittest.TestCase):
                     "status": "image-definition-present",
                 },
                 {
+                    "product_id": "cpk-local-gateway",
+                    "image_source": "local-dockerfile",
+                    "dockerfile": "products/cpk_local_gateway/Dockerfile",
+                    "status": "image-definition-present",
+                },
+                {
                     "product_id": "postgres-server",
                     "image_source": "external-oci",
                     "external_image": "docker.io/library/postgres@sha256:57c72fd2a128e416c7fcc499958864df5301e940bca0a56f58fddf30ffc07777",
@@ -120,6 +128,7 @@ class DockerHarnessTests(unittest.TestCase):
         self.assertIn("products/hello_server/Dockerfile", script)
         self.assertIn("products/http_active_router/Dockerfile", script)
         self.assertIn("products/http_multiplexer/Dockerfile", script)
+        self.assertIn("products/cpk_local_gateway/Dockerfile", script)
         self.assertIn("unsupported product id", script)
         self.assertNotIn("docker system prune", script)
         self.assertNotIn("docker volume prune", script)

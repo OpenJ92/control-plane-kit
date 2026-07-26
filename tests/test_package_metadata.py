@@ -56,6 +56,7 @@ class PackageMetadataTests(unittest.TestCase):
             self.assertEqual(
                 [item.product_id for item in catalogue],
                 [
+                    "cpk-local-gateway",
                     "cpk-server",
                     "cpk-server-docker",
                     "hello-server",
@@ -76,6 +77,10 @@ class PackageMetadataTests(unittest.TestCase):
                 "control_plane_kit_servers_http_multiplexer.server",
                 sys.modules,
             )
+            self.assertNotIn(
+                "control_plane_kit_servers_cpk_local_gateway.server",
+                sys.modules,
+            )
         finally:
             sys.path.remove(str(SRC))
             sys.modules.pop("control_plane_kit_servers", None)
@@ -90,6 +95,7 @@ class PackageMetadataTests(unittest.TestCase):
             self.assertEqual(
                 [item.product_id for item in catalogue],
                 [
+                    "cpk-local-gateway",
                     "cpk-server",
                     "cpk-server-docker",
                     "hello-server",
@@ -115,6 +121,7 @@ class PackageMetadataTests(unittest.TestCase):
             "control_plane_kit_servers.products.hello_server",
             "control_plane_kit_servers.products.http_active_router",
             "control_plane_kit_servers.products.http_multiplexer",
+            "control_plane_kit_servers.products.cpk_local_gateway",
         }
         findings: list[tuple[Path, str]] = []
         for path in sorted((SRC / "control_plane_kit_servers").rglob("*.py")):

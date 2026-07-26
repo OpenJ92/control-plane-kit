@@ -181,6 +181,7 @@ class CpkServerProductDescriptorTests(unittest.TestCase):
         self.assertEqual(
             sorted(declarations),
             [
+                "cpk-local-gateway",
                 "cpk-server",
                 "cpk-server-docker",
                 "hello-server",
@@ -222,6 +223,11 @@ class CpkServerProductDescriptorTests(unittest.TestCase):
             descriptor_copy = descriptor_path / "product.cpk.json"
             descriptor_copy.write_bytes(DESCRIPTOR.read_bytes())
             catalogue = json.loads(CATALOGUE.read_text(encoding="utf-8"))
+            catalogue["products"] = [
+                product
+                for product in catalogue["products"]
+                if product["product_id"] == "cpk-server"
+            ]
             catalogue["products"][0]["descriptor_sha256"] = "0" * 64
             source = root / "products.json"
             source.write_text(json.dumps(catalogue), encoding="utf-8")
@@ -229,6 +235,11 @@ class CpkServerProductDescriptorTests(unittest.TestCase):
                 load_product_catalog(source, root=root)
 
             catalogue = json.loads(CATALOGUE.read_text(encoding="utf-8"))
+            catalogue["products"] = [
+                product
+                for product in catalogue["products"]
+                if product["product_id"] == "cpk-server"
+            ]
             catalogue["products"][0]["image_digest"] = "sha256:" + "1" * 64
             source.write_text(json.dumps(catalogue), encoding="utf-8")
             with self.assertRaisesRegex(CatalogueError, "image digest mismatch"):
