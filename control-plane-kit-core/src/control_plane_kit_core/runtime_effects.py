@@ -51,6 +51,7 @@ _REGISTRY = re.compile(r"^[a-z0-9]+(?:[.-][a-z0-9]+)*(?::[0-9]{1,5})?$")
 _REPOSITORY_PART = re.compile(r"^[a-z0-9]+(?:[._-][a-z0-9]+)*$")
 _MAX_REPOSITORY_LENGTH = 255
 _GATEWAY_TARGET_PART = re.compile(r"^[a-z][a-z0-9-]{0,62}$")
+_GATEWAY_ENVIRONMENT_NAME = re.compile(r"^[A-Z][A-Z0-9_]{0,127}$")
 _GATEWAY_HOST = re.compile(
     r"^[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?(?:\.[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?)*$"
 )
@@ -341,6 +342,9 @@ class GatewayPostgresTarget:
     provider_socket: str
     host: str
     port: int
+    database: str | None = None
+    username: str | None = None
+    password_environment: str | None = None
     source_edges: tuple[str, ...] = ()
     protocol: Protocol = Protocol.POSTGRES
 
@@ -358,6 +362,15 @@ class GatewayPostgresTarget:
         _validate_gateway_host(self.host)
         if type(self.port) is not int or not 1 <= self.port <= 65535:
             raise RuntimeEffectContractError("gateway target port is invalid")
+        if self.database is not None:
+            _validate_gateway_identity(self.database, "gateway target database")
+        if self.username is not None:
+            _validate_gateway_identity(self.username, "gateway target username")
+        if self.password_environment is not None:
+            _validate_gateway_environment_name(
+                self.password_environment,
+                "gateway target password environment",
+            )
         source_edges = _gateway_source_edges(self.source_edges)
         object.__setattr__(self, "source_edges", source_edges)
 
@@ -370,6 +383,9 @@ class GatewayPostgresTarget:
             "protocol": self.protocol.descriptor(),
             "host": self.host,
             "port": self.port,
+            "database": self.database,
+            "username": self.username,
+            "password_environment": self.password_environment,
             "source_edges": list(self.source_edges),
         }
 
@@ -672,6 +688,9 @@ _GATEWAY_POSTGRES_TARGET_KEYS = frozenset(
         "protocol",
         "host",
         "port",
+        "database",
+        "username",
+        "password_environment",
         "source_edges",
     }
 )
@@ -699,6 +718,15 @@ def _mapping(
 
 def _text(value: Mapping[str, object], key: str) -> str:
     item = value.get(key)
+    if not isinstance(item, str):
+        raise RuntimeEffectContractError(f"{key} must be text")
+    return item
+
+
+def _optional_text(value: Mapping[str, object], key: str) -> str | None:
+    item = value.get(key)
+    if item is None:
+        return None
     if not isinstance(item, str):
         raise RuntimeEffectContractError(f"{key} must be text")
     return item
@@ -868,6 +896,9 @@ def _gateway_target_from_descriptor(value: object) -> GatewayTarget:
             protocol=protocol,
             host=_text(value, "host"),
             port=port,
+            database=_optional_text(value, "database"),
+            username=_optional_text(value, "username"),
+            password_environment=_optional_text(value, "password_environment"),
             source_edges=_source_edges_from_descriptor(value.get("source_edges")),
         )
     raise RuntimeEffectContractError("gateway target kind is unsupported")
@@ -971,6 +1002,12 @@ def _validate_gateway_host(value: str) -> None:
     _reject_gateway_secret_text(value, "gateway target host")
     if len(value) > _MAX_TEXT or not _GATEWAY_HOST.fullmatch(value):
         raise RuntimeEffectContractError("gateway target host is invalid")
+
+
+def _validate_gateway_environment_name(value: str, label: str) -> None:
+    if not isinstance(value, str) or not _GATEWAY_ENVIRONMENT_NAME.fullmatch(value):
+        raise RuntimeEffectContractError(f"{label} is invalid")
+    _reject_gateway_secret_text(value, label)
 
 
 def _reject_gateway_secret_text(value: str, name: str) -> None:

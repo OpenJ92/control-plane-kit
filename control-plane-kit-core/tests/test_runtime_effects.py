@@ -575,6 +575,9 @@ class RuntimeEffectContractTests(unittest.TestCase):
                     provider_socket="postgres",
                     host="postgres",
                     port=5432,
+                    database="cpk",
+                    username="cpk",
+                    password_environment="POSTGRES_PASSWORD",
                     source_edges=("api.store->postgres.postgres",),
                 ),
                 GatewayHttpTarget(
@@ -604,6 +607,9 @@ class RuntimeEffectContractTests(unittest.TestCase):
                         },
                         "host": "postgres",
                         "port": 5432,
+                        "database": "cpk",
+                        "username": "cpk",
+                        "password_environment": "POSTGRES_PASSWORD",
                         "source_edges": ["api.store->postgres.postgres"],
                     },
                     {
@@ -695,6 +701,9 @@ class RuntimeEffectContractTests(unittest.TestCase):
                     },
                     "host": "postgres",
                     "port": 5432,
+                    "database": None,
+                    "username": None,
+                    "password_environment": None,
                     "source_edges": [],
                     "password": "do-not-store",
                 }
@@ -702,6 +711,16 @@ class RuntimeEffectContractTests(unittest.TestCase):
         }
         with self.assertRaisesRegex(RuntimeEffectContractError, "unknown"):
             GatewayTargetMapCodec().decode(descriptor)
+
+        with self.assertRaisesRegex(RuntimeEffectContractError, "environment"):
+            GatewayPostgresTarget(
+                target_id=GatewayTargetId("postgres.postgres"),
+                node_id="postgres",
+                provider_socket="postgres",
+                host="postgres",
+                port=5432,
+                password_environment="password=do-not-store",
+            )
 
 
 def _source() -> RuntimeEffectSource:

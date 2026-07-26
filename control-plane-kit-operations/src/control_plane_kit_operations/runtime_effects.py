@@ -40,6 +40,7 @@ from control_plane_kit_core.runtime_effects import (
     RuntimeEffectSource,
     RuntimeProductMaterial,
 )
+from control_plane_kit_core.secrets import SecretEnvironmentDelivery
 from control_plane_kit_core.topology import DEFAULT_GRAPH_CODEC, DeploymentGraph
 from control_plane_kit_core.types import Protocol, RuntimeKind
 from control_plane_kit_operations.coordinator import ActivityRealizationContext
@@ -265,12 +266,16 @@ def _gateway_target_map_for_node(
                 source_edges=(),
             )
         elif edge.protocol == Protocol.POSTGRES:
+            postgres_target = _postgres_target_details(provider_node)
             targets[target_id] = GatewayPostgresTarget(
                 target_id=target_id,
                 node_id=edge.provider_role,
                 provider_socket=edge.provider_socket,
                 host=edge.provider_role,
                 port=port,
+                database=postgres_target.get("database"),
+                username=postgres_target.get("username"),
+                password_environment=postgres_target.get("password_environment"),
                 source_edges=(),
             )
         else:
@@ -303,8 +308,31 @@ def _with_source_edges(
         provider_socket=target.provider_socket,
         host=target.host,
         port=target.port,
+        database=target.database,
+        username=target.username,
+        password_environment=target.password_environment,
         source_edges=source_edges,
     )
+
+
+def _postgres_target_details(provider_node: object) -> dict[str, str]:
+    public_environment = {
+        binding.name: binding.value
+        for binding in getattr(provider_node, "public_environment", ())
+    }
+    secret_environment_names = {
+        delivery.environment_name
+        for delivery in getattr(provider_node, "secret_deliveries", ())
+        if isinstance(delivery, SecretEnvironmentDelivery)
+    }
+    details: dict[str, str] = {}
+    if "POSTGRES_DB" in public_environment:
+        details["database"] = public_environment["POSTGRES_DB"]
+    if "POSTGRES_USER" in public_environment:
+        details["username"] = public_environment["POSTGRES_USER"]
+    if "POSTGRES_PASSWORD" in secret_environment_names:
+        details["password_environment"] = "POSTGRES_PASSWORD"
+    return details
 
 
 def _provider_port_for_socket(product: RegisteredProduct, provider_socket: str) -> int:
@@ -325,11 +353,18 @@ def _gateway_process_target_map_descriptor(
                 "url": target.url,
             }
         else:
-            descriptor[target.target_id.value] = {
+            postgres_descriptor = {
                 "protocol": "postgres",
                 "host": target.host,
                 "port": target.port,
             }
+            if target.database is not None:
+                postgres_descriptor["database"] = target.database
+            if target.username is not None:
+                postgres_descriptor["username"] = target.username
+            if target.password_environment is not None:
+                postgres_descriptor["password_environment"] = target.password_environment
+            descriptor[target.target_id.value] = postgres_descriptor
     return descriptor
 
 
