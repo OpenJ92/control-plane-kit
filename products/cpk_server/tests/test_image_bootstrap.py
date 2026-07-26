@@ -699,6 +699,36 @@ class CpkServerImageBootstrapTests(unittest.TestCase):
         self.assertNotIn("PostgresUnitOfWork", controller)
         self.assertNotIn("DockerRuntimeInterpreter", controller)
 
+    def test_hosted_activity_controller_proves_workspace_a_router_transition(
+        self,
+    ) -> None:
+        controller = (ROOT / "scripts" / "cpk_server_hosted_activity.py").read_text(
+            encoding="utf-8"
+        )
+
+        self.assertIn('"workspace-a-router-transition"', controller)
+        self.assertIn('workspace_id="workspace-a-router"', controller)
+        self.assertIn('"Hello from blue"', controller)
+        self.assertIn('"Hello from green"', controller)
+        self.assertIn('_assert_body("http://router:8000/", "Hello from blue\\n")', controller)
+        self.assertIn('_assert_body("http://router:8000/", "Hello from green\\n")', controller)
+        self.assertIn('_assert_activity_mentions(workflow, blue.run_id, "hello-blue")', controller)
+        self.assertIn('_assert_activity_mentions(workflow, blue.run_id, "router")', controller)
+        self.assertIn('_assert_activity_mentions(workflow, green.run_id, "hello-green")', controller)
+        self.assertIn('_assert_activity_mentions(workflow, green.run_id, "router")', controller)
+        self.assertIn("read.activity", controller)
+        self.assertIn("step_succeeded", controller)
+        self.assertIn('"HELLO_MESSAGE": message', controller)
+        self.assertIn("SocketConnection(", controller)
+        self.assertNotIn('"ACTIVE_TARGET_URL"', controller)
+        self.assertNotIn("DockerRuntimeInterpreter", controller)
+
+        smoke = (
+            ROOT / "scripts" / "cpk_server_workspace_a_router_transition_smoke.sh"
+        ).read_text(encoding="utf-8")
+        self.assertIn("CPK_HOSTED_ACTIVITY_SCENARIO=workspace-a-router-transition", smoke)
+        self.assertIn("scripts/cpk_server_hosted_activity_smoke.sh", smoke)
+
     def test_recursive_activity_smoke_uses_published_parent_and_secret_authority(
         self,
     ) -> None:

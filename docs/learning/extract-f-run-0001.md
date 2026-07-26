@@ -619,3 +619,39 @@ Validation evidence:
   passed;
 - full `./test.sh` passed, including cpk-server image smoke and Docker residue
   audit.
+
+
+## #1006 Workspace A Router Transition
+
+#1006 turns the seeded workspace A router law into an executable named hosted
+scenario:
+
+```text
+workspace-a-router
+  -> deploy hello-blue + http-active-router
+    -> observe "Hello from blue"
+      -> transition to hello-green behind the router
+        -> observe "Hello from green"
+```
+
+The scenario still runs through one bootstrapped published `cpk-server-docker`
+and the public HTTP/MCP workflow. It does not inject `ACTIVE_TARGET_URL` from
+the shell. The router target is derived from graph socket connections and the
+Hello messages are per-instance public environment bindings.
+
+Important implementation decisions:
+
+- `workspace-a-router-transition` is a first-class scenario name;
+- `scripts/cpk_server_workspace_a_router_transition_smoke.sh` selects that
+  scenario while delegating to the common hosted activity smoke;
+- the scenario asserts activity timeline evidence for both `hello-blue` and
+  `hello-green`, plus the router, before accepting the response assertions;
+- current graph advancement remains explicit inside `run_approved_transition`;
+- workspace A keeps its own workspace id so later stress scenarios can prove
+  cross-workspace isolation instead of relying on the legacy basic workspace.
+
+Validation target:
+
+```text
+scripts/cpk_server_workspace_a_router_transition_smoke.sh
+```

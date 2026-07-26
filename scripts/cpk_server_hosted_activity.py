@@ -419,6 +419,15 @@ def main() -> int:
         _run_single_hello(workflow, servers_repo)
     elif scenario == "router-transition":
         _run_router_transition(workflow, servers_repo)
+    elif scenario == "workspace-a-router-transition":
+        _run_router_transition(
+            _workflow_for(
+                base_url,
+                server_container=server_container,
+                workspace_id="workspace-a-router",
+            ),
+            servers_repo,
+        )
     elif scenario == "multi-workspace-foundation":
         _run_multi_workspace_foundation(base_url, server_container, servers_repo)
     else:
@@ -477,6 +486,8 @@ def _run_router_transition(workflow: HostedWorkflow, servers_repo: Path) -> None
         graph=blue_graph,
         current_graph_id=current_graph_id,
     )
+    _assert_activity_mentions(workflow, blue.run_id, "hello-blue")
+    _assert_activity_mentions(workflow, blue.run_id, "router")
     _assert_body("http://router:8000/", "Hello from blue\n")
 
     green_graph = _router_graph(
@@ -487,12 +498,14 @@ def _run_router_transition(workflow: HostedWorkflow, servers_repo: Path) -> None
         message="Hello from green",
         authority_ref=RuntimeAuthorityReference(LOCAL_DOCKER_AUTHORITY_REF),
     )
-    workflow.run_approved_transition(
+    green = workflow.run_approved_transition(
         title="Hosted router green",
         graph=green_graph,
         current_graph_id=blue.current_graph_id,
         expected_desired_graph_id=blue.desired_graph_id,
     )
+    _assert_activity_mentions(workflow, green.run_id, "hello-green")
+    _assert_activity_mentions(workflow, green.run_id, "router")
     _assert_body("http://router:8000/", "Hello from green\n")
 
 
@@ -575,6 +588,30 @@ def _bootstrap_workspace(
 def _register_pull_authority_if_requested(workflow: HostedWorkflow) -> None:
     if os.environ.get("CPK_HOSTED_ACTIVITY_REGISTER_PULL_AUTHORITY") == "docker-config":
         workflow.register_ghcr_pull_authority_from_docker_config()
+
+
+def _assert_activity_mentions(
+    workflow: HostedWorkflow,
+    run_id: str,
+    node_id: str,
+) -> None:
+    events = _events_for_run(workflow.read_activity(limit=200), run_id)
+    for event in events:
+        payload = event.get("payload", {})
+        if payload.get("node_id") == node_id and event.get("event_type") == "step_succeeded":
+            return
+    raise RuntimeError(f"activity timeline did not record successful step for {node_id}")
+
+
+def _events_for_run(timeline: dict[str, Any], run_id: str) -> list[dict[str, Any]]:
+    for session in timeline.get("sessions", []):
+        for plan in session.get("plans", []):
+            for run in plan.get("runs", []):
+                if run.get("run_id") == run_id:
+                    events = run.get("events")
+                    if isinstance(events, list):
+                        return events
+    raise RuntimeError(f"activity timeline did not expose run {run_id}")
 
 
 def _execute_to_completion(
