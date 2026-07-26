@@ -3777,3 +3777,106 @@ Handoff to the interpreter half of #991: materialize
 Handoff to #992: convert the local recursive cpk-server experiment by registering
 both `local-docker-socket` authority and `local-docker-socket-mount` delivery
 inside each child before executing its next graph.
+
+## #1004 Seeded Stress Public Workspace Matrix
+
+#1004 refreshes #941 after RUNTIME.AUTH and authority delivery closeout. The
+important topology change is that seeded stress is no longer a single hosted
+scenario. It is now a public multi-workspace acceptance lane driven by one
+published `cpk-server-docker`:
+
+```text
+one published cpk-server-docker
+  -> public HTTP/MCP workflow
+    -> workspace A router transition
+    -> workspace B multiplexer observer delivery
+    -> workspace C postgres data-service retained/secret behavior
+    -> workspace D negative cases and cleanup
+```
+
+The current coordinate truth is recorded in:
+
+```text
+artifacts/extraction/seeded-stress-1004-public-workspace-matrix.json
+```
+
+Current server-product coordinates at dry run:
+
+```text
+cpk-server-docker descriptor:
+  0581717ca9dfd2b374ad3913e7b82b9355cf15c4aa83638e724b9ff6436bde88
+
+cpk-server image:
+  ghcr.io/openj92/control-plane-kit-servers/cpk-server@sha256:9eacda293d09953289a50adb9476a290b73a2406698ce352bb97904f27c1415b
+
+catalogue/products.json:
+  03695d4aa51577556e2cb8149f8127be6f9eb8d4a355ee0ba957829555a31515
+```
+
+This supersedes the older #942 matrix checksums. The older artifact remains
+historical evidence; #1004 is the governing matrix for the post-delivery stress
+lane.
+
+The existing hosted activity controller already has the public workflow spine:
+
+```text
+create workspace
+  -> import product
+    -> set desired graph
+      -> MCP plan
+        -> request approval
+          -> MCP pending/detail
+            -> MCP approve
+              -> admit
+                -> claim
+                  -> start
+                    -> MCP execute
+                      -> advance current graph
+                        -> read current graph
+```
+
+#1005 should factor that controller into reusable multi-workspace helpers. It
+does not need new runtime semantics. It does need to make workspace identity,
+runtime authority registration, runtime authority delivery registration, image
+pull authority registration, scenario selection, and cleanup labels reusable
+rather than fixed to `cpk-hosted-activity-basic`.
+
+#955 remains required before #1008. The current `hello-server` exposes
+`/health/live`, `/health/ready`, `/dependencies`, and `/`, but no bounded request
+receipt endpoint. Without #955 or equivalent product-owned observer evidence,
+the multiplexer proof would collapse to primary-response-only, which is not
+acceptable for #941.
+
+The refined order is:
+
+```text
+#1004 -> #1005
+
+#1005 -> #1006
+#1005 -> #1008
+#1005 -> #1007
+
+#1006 + #1008 + #1007 -> #1009 -> #1010
+```
+
+Relationship to old children:
+
+```text
+#945 = superseded by #1008 and #1007 once complete
+#946 = superseded by #1009 once complete
+#947 = superseded by #1010 once complete
+```
+
+The closeout should explicitly connect the proof back to Pottery Factory uptime:
+
+```text
+Deploy(current, saved_good_topology)
+```
+
+and the future shape:
+
+```text
+auth
+  -> router/load balancer
+    -> pottery-factory-api/services
+```
