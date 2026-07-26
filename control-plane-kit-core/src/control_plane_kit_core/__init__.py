@@ -167,6 +167,11 @@ from control_plane_kit_core.products import (
     require_unique_product_identities,
 )
 from control_plane_kit_core.runtime_effects import (
+    GatewayHttpTarget,
+    GatewayPostgresTarget,
+    GatewayTargetId,
+    GatewayTargetMap,
+    GatewayTargetMapCodec,
     ImagePullAuthority,
     ImagePullAuthorityCodec,
     RuntimeAuthorityAccessDelivery,
@@ -239,6 +244,11 @@ __all__ = [
     "ExternalEffectPolicy",
     "FailureVisibilityPolicy",
     "FailureCategory",
+    "GatewayHttpTarget",
+    "GatewayPostgresTarget",
+    "GatewayTargetId",
+    "GatewayTargetMap",
+    "GatewayTargetMapCodec",
     "HttpApiContract",
     "HttpApiRouteContract",
     "HttpAuthScope",
