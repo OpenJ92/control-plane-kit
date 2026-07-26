@@ -19,13 +19,22 @@ from control_plane_kit_core.products import (
     ProductInstanceConfiguration,
     instantiate_product,
 )
+from control_plane_kit_core.runtime_authority import RuntimeAuthorityReference
 from control_plane_kit_core.topology import DEFAULT_GRAPH_CODEC, DeploymentGraph, compile_topology
 from control_plane_kit_core.policies import PolicyScope
 
 
-WORKSPACE_ID = "cpk-hosted-activity-basic"
+DEFAULT_WORKSPACE_ID = "cpk-hosted-activity-basic"
+WORKSPACE_ID = DEFAULT_WORKSPACE_ID
+WORKSPACE_IDS = (
+    "workspace-a-router",
+    "workspace-b-multiplexer",
+    "workspace-c-postgres",
+    "workspace-d-negative-cleanup",
+)
 WORKER_ID = "hosted-worker"
 AUTHORIZATION = "Bearer present"
+LOCAL_DOCKER_AUTHORITY_REF = "local-docker"
 
 
 @dataclass(frozen=True)
@@ -95,6 +104,42 @@ class HostedWorkflow:
                 "actor_id": "operator-a",
                 "admitted_at": _clock(),
                 "idempotency_key": f"{self.workspace_id}:pull-authority:ghcr",
+            },
+        )
+
+    def register_local_docker_authority(self) -> None:
+        _mcp_tool(
+            self.base_url,
+            "command.runtime-authority.register",
+            {
+                "workspace_id": self.workspace_id,
+                "authority_ref": LOCAL_DOCKER_AUTHORITY_REF,
+                "runtime_kind": "docker",
+                "authority": {"kind": "local-docker-socket"},
+                "actor_id": "operator-a",
+                "actor_scopes": [PolicyScope.RUNTIME_AUTHORITY_REGISTER.value],
+                "admitted_at": _clock(),
+                "idempotency_key": f"{self.workspace_id}:runtime-authority:local-docker",
+            },
+        )
+
+    def register_local_docker_delivery(self) -> None:
+        _mcp_tool(
+            self.base_url,
+            "command.runtime-authority-delivery.register",
+            {
+                "workspace_id": self.workspace_id,
+                "delivery": {
+                    "authority_ref": {"reference_id": LOCAL_DOCKER_AUTHORITY_REF},
+                    "delivery_kind": "local-docker-socket-mount",
+                    "secret_references": [],
+                },
+                "actor_id": "operator-a",
+                "actor_scopes": [PolicyScope.RUNTIME_AUTHORITY_DELIVERY_REGISTER.value],
+                "admitted_at": _clock(),
+                "idempotency_key": (
+                    f"{self.workspace_id}:runtime-authority-delivery:local-docker"
+                ),
             },
         )
 
@@ -359,11 +404,13 @@ def main() -> int:
     server_container = _required_env("CPK_HOSTED_ACTIVITY_SERVER_CONTAINER")
     servers_repo = Path(_required_env("CPK_HOSTED_ACTIVITY_SERVERS_REPO"))
     scenario = os.environ.get("CPK_HOSTED_ACTIVITY_SCENARIO", "single-hello")
-    workflow = HostedWorkflow(
+    workflow = _workflow_for(
         base_url,
-        workspace_id=WORKSPACE_ID,
-        worker_id=WORKER_ID,
         server_container=server_container,
+        workspace_id=os.environ.get(
+            "CPK_HOSTED_ACTIVITY_WORKSPACE_ID",
+            DEFAULT_WORKSPACE_ID,
+        ),
     )
 
     workflow.wait_ready()
@@ -372,6 +419,8 @@ def main() -> int:
         _run_single_hello(workflow, servers_repo)
     elif scenario == "router-transition":
         _run_router_transition(workflow, servers_repo)
+    elif scenario == "multi-workspace-foundation":
+        _run_multi_workspace_foundation(base_url, server_container, servers_repo)
     else:
         raise RuntimeError(f"unknown hosted activity scenario: {scenario}")
 
@@ -381,11 +430,19 @@ def main() -> int:
 
 def _run_single_hello(workflow: HostedWorkflow, servers_repo: Path) -> None:
     product_document = _product_document(servers_repo, "hello_server")
-    graph = _single_hello_graph(product_document, workspace_id=workflow.workspace_id)
+    graph = _single_hello_graph(
+        product_document,
+        workspace_id=workflow.workspace_id,
+        authority_ref=RuntimeAuthorityReference(LOCAL_DOCKER_AUTHORITY_REF),
+    )
 
-    current_graph_id = workflow.create_workspace(name="Hosted activity smoke")
-    _register_pull_authority_if_requested(workflow)
-    workflow.import_product("hello", product_document)
+    current_graph_id = _bootstrap_workspace(
+        workflow,
+        name="Hosted activity smoke",
+        product_documents={"hello": product_document},
+        register_runtime_authority=True,
+        register_runtime_delivery=True,
+    )
 
     workflow.run_approved_transition(
         title="Hosted hello deployment",
@@ -399,10 +456,13 @@ def _run_router_transition(workflow: HostedWorkflow, servers_repo: Path) -> None
     hello_document = _product_document(servers_repo, "hello_server")
     router_document = _product_document(servers_repo, "http_active_router")
 
-    current_graph_id = workflow.create_workspace(name="Hosted router transition")
-    _register_pull_authority_if_requested(workflow)
-    workflow.import_product("hello", hello_document)
-    workflow.import_product("router", router_document)
+    current_graph_id = _bootstrap_workspace(
+        workflow,
+        name="Hosted router transition",
+        product_documents={"hello": hello_document, "router": router_document},
+        register_runtime_authority=True,
+        register_runtime_delivery=True,
+    )
 
     blue_graph = _router_graph(
         hello_document,
@@ -410,6 +470,7 @@ def _run_router_transition(workflow: HostedWorkflow, servers_repo: Path) -> None
         workspace_id=workflow.workspace_id,
         active_hello_role="hello-blue",
         message="Hello from blue",
+        authority_ref=RuntimeAuthorityReference(LOCAL_DOCKER_AUTHORITY_REF),
     )
     blue = workflow.run_approved_transition(
         title="Hosted router blue",
@@ -424,6 +485,7 @@ def _run_router_transition(workflow: HostedWorkflow, servers_repo: Path) -> None
         workspace_id=workflow.workspace_id,
         active_hello_role="hello-green",
         message="Hello from green",
+        authority_ref=RuntimeAuthorityReference(LOCAL_DOCKER_AUTHORITY_REF),
     )
     workflow.run_approved_transition(
         title="Hosted router green",
@@ -432,6 +494,82 @@ def _run_router_transition(workflow: HostedWorkflow, servers_repo: Path) -> None
         expected_desired_graph_id=blue.desired_graph_id,
     )
     _assert_body("http://router:8000/", "Hello from green\n")
+
+
+def _run_multi_workspace_foundation(
+    base_url: str,
+    server_container: str,
+    servers_repo: Path,
+) -> None:
+    documents = {
+        "hello": _product_document(servers_repo, "hello_server"),
+        "router": _product_document(servers_repo, "http_active_router"),
+        "multiplexer": _product_document(servers_repo, "http_multiplexer"),
+        "postgres": _product_document(servers_repo, "postgres_server"),
+    }
+    workspace_products = {
+        "workspace-a-router": {
+            "hello": documents["hello"],
+            "router": documents["router"],
+        },
+        "workspace-b-multiplexer": {
+            "hello": documents["hello"],
+            "multiplexer": documents["multiplexer"],
+        },
+        "workspace-c-postgres": {"postgres": documents["postgres"]},
+        "workspace-d-negative-cleanup": {
+            "hello": documents["hello"],
+            "router": documents["router"],
+            "multiplexer": documents["multiplexer"],
+            "postgres": documents["postgres"],
+        },
+    }
+    for workspace_id in WORKSPACE_IDS:
+        workflow = _workflow_for(
+            base_url,
+            server_container=server_container,
+            workspace_id=workspace_id,
+        )
+        _bootstrap_workspace(
+            workflow,
+            name=f"Hosted seeded stress {workspace_id}",
+            product_documents=workspace_products[workspace_id],
+            register_runtime_authority=True,
+            register_runtime_delivery=True,
+        )
+
+
+def _workflow_for(
+    base_url: str,
+    *,
+    server_container: str,
+    workspace_id: str,
+) -> HostedWorkflow:
+    return HostedWorkflow(
+        base_url,
+        workspace_id=workspace_id,
+        worker_id=WORKER_ID,
+        server_container=server_container,
+    )
+
+
+def _bootstrap_workspace(
+    workflow: HostedWorkflow,
+    *,
+    name: str,
+    product_documents: dict[str, Any],
+    register_runtime_authority: bool,
+    register_runtime_delivery: bool,
+) -> str:
+    current_graph_id = workflow.create_workspace(name=name)
+    _register_pull_authority_if_requested(workflow)
+    if register_runtime_authority:
+        workflow.register_local_docker_authority()
+    if register_runtime_delivery:
+        workflow.register_local_docker_delivery()
+    for label, document in product_documents.items():
+        workflow.import_product(label, document)
+    return current_graph_id
 
 
 def _register_pull_authority_if_requested(workflow: HostedWorkflow) -> None:
@@ -506,7 +644,12 @@ def _wait_ready(base_url: str) -> None:
     raise RuntimeError("cpk-server did not become ready")
 
 
-def _single_hello_graph(product_document: Any, *, workspace_id: str = WORKSPACE_ID) -> DeploymentGraph:
+def _single_hello_graph(
+    product_document: Any,
+    *,
+    workspace_id: str = WORKSPACE_ID,
+    authority_ref: RuntimeAuthorityReference | None = None,
+) -> DeploymentGraph:
     product = product_document.product
     block = instantiate_product(
         product,
@@ -519,6 +662,7 @@ def _single_hello_graph(product_document: Any, *, workspace_id: str = WORKSPACE_
             DockerRuntime(
                 runtime_id="docker",
                 network_name=f"control-plane-kit-{workspace_id}-docker",
+                authority_ref=authority_ref,
                 children=(block,),
             ),
         )
@@ -532,6 +676,7 @@ def _router_graph(
     workspace_id: str,
     active_hello_role: str,
     message: str,
+    authority_ref: RuntimeAuthorityReference | None = None,
 ) -> DeploymentGraph:
     hello_product = hello_document.product
     router_product = router_document.product
@@ -554,6 +699,7 @@ def _router_graph(
             DockerRuntime(
                 runtime_id="docker",
                 network_name=f"control-plane-kit-{workspace_id}-docker",
+                authority_ref=authority_ref,
                 children=(
                     hello,
                     router,

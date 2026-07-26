@@ -16,6 +16,7 @@ CONTROLLER_IMAGE="${CPK_SERVERS_TEST_IMAGE:-control-plane-kit-servers-test:local
 BUILD_CONTROLLER="${CPK_HOSTED_ACTIVITY_BUILD_CONTROLLER:-1}"
 NETWORK="cpk-server-hosted-activity-$$"
 LABEL="org.openj92.project=control-plane-kit-servers"
+WORKSPACE_LABEL_KEY="org.openj92.cpk.workspace"
 WORKSPACE_LABEL="org.openj92.cpk.workspace=cpk-hosted-activity-basic"
 POSTGRES_CONTAINER=""
 SERVER_CONTAINER=""
@@ -25,22 +26,40 @@ AUTH_CONFIG_DIR=""
 IMAGE_PULL_RESOLVER="none"
 
 cleanup_activity_resources() {
-  docker ps -aq --filter "label=$WORKSPACE_LABEL" \
+  docker ps -aq --filter "label=$WORKSPACE_LABEL_KEY" \
     | while IFS= read -r container; do
         if [ -n "$container" ]; then
-          docker rm -f "$container" >/dev/null 2>&1 || true
+          workspace="$(docker inspect -f "{{ index .Config.Labels \"$WORKSPACE_LABEL_KEY\" }}" "$container" 2>/dev/null || true)"
+          case "$workspace" in
+            cpk-hosted-activity-basic|workspace-a-router|workspace-b-multiplexer|\
+workspace-c-postgres|workspace-d-negative-cleanup)
+              docker rm -f "$container" >/dev/null 2>&1 || true
+              ;;
+          esac
         fi
       done
-  docker volume ls -q --filter "label=$WORKSPACE_LABEL" \
+  docker volume ls -q --filter "label=$WORKSPACE_LABEL_KEY" \
     | while IFS= read -r volume; do
         if [ -n "$volume" ]; then
-          docker volume rm "$volume" >/dev/null 2>&1 || true
+          workspace="$(docker volume inspect -f "{{ index .Labels \"$WORKSPACE_LABEL_KEY\" }}" "$volume" 2>/dev/null || true)"
+          case "$workspace" in
+            cpk-hosted-activity-basic|workspace-a-router|workspace-b-multiplexer|\
+workspace-c-postgres|workspace-d-negative-cleanup)
+              docker volume rm "$volume" >/dev/null 2>&1 || true
+              ;;
+          esac
         fi
       done
-  docker network ls -q --filter "label=$WORKSPACE_LABEL" \
+  docker network ls -q --filter "label=$WORKSPACE_LABEL_KEY" \
     | while IFS= read -r network; do
         if [ -n "$network" ]; then
-          docker network rm "$network" >/dev/null 2>&1 || true
+          workspace="$(docker network inspect -f "{{ index .Labels \"$WORKSPACE_LABEL_KEY\" }}" "$network" 2>/dev/null || true)"
+          case "$workspace" in
+            cpk-hosted-activity-basic|workspace-a-router|workspace-b-multiplexer|\
+workspace-c-postgres|workspace-d-negative-cleanup)
+              docker network rm "$network" >/dev/null 2>&1 || true
+              ;;
+          esac
         fi
       done
 }

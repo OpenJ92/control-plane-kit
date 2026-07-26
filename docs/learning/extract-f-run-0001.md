@@ -575,3 +575,47 @@ Validation evidence:
 - coordinate source-of-truth check passed;
 - published-image smoke passed;
 - full `./test.sh` passed.
+
+
+## #1005 Public Multi-Workspace Stress Harness Foundation
+
+#1005 extends the hosted activity controller from a single-workspace smoke into
+a reusable public multi-workspace harness foundation for SEEDED.STRESS:
+
+```text
+one published cpk-server-docker
+  -> public HTTP/MCP workflow boundary
+    -> workspace-a-router
+    -> workspace-b-multiplexer
+    -> workspace-c-postgres
+    -> workspace-d-negative-cleanup
+```
+
+The controller now has a shared bootstrap path that creates each workspace,
+imports only the seeded product descriptors needed for that workspace, registers
+the local Docker runtime authority, and registers the explicit local Docker
+socket delivery. The controller remains outside the application service layer:
+it does not import operations stores, `PostgresUnitOfWork`, or
+`DockerRuntimeInterpreter`.
+
+Important implementation decisions:
+
+- local Docker execution is still admitted through
+  `RegisteredRuntimeAuthority` plus `RuntimeAuthorityDelivery`;
+- graph runtimes carry `RuntimeAuthorityReference("local-docker")` instead of
+  relying on ambient interpreter availability;
+- the harness can choose a workspace through `CPK_HOSTED_ACTIVITY_WORKSPACE_ID`;
+- `multi-workspace-foundation` prepares the seeded workspace set without
+  pretending the later router, multiplexer, Postgres, and negative cleanup
+  scenario laws have already been proven;
+- cleanup now filters by the CPK workspace label key and removes only the
+  known hosted/stress workspace labels, preserving unrelated resources and
+  Pottery Factory containers.
+
+Validation evidence:
+
+- focused hosted activity controller tests passed;
+- shell syntax validation for `scripts/cpk_server_hosted_activity_smoke.sh`
+  passed;
+- full `./test.sh` passed, including cpk-server image smoke and Docker residue
+  audit.
