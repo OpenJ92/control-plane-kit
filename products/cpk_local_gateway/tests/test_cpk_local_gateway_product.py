@@ -207,6 +207,25 @@ class CpkLocalGatewayProductTests(unittest.TestCase):
         )
         self.assertEqual(entry["descriptor_sha256"], digest)
 
+    def test_private_probe_smoke_uses_gateway_as_only_public_probe_surface(self) -> None:
+        smoke = (
+            ROOT / "scripts" / "cpk_local_gateway_private_probe_smoke.sh"
+        ).read_text(encoding="utf-8")
+
+        self.assertIn("products/cpk_local_gateway/product.cpk.json", smoke)
+        self.assertIn("products/hello_server/product.cpk.json", smoke)
+        self.assertIn("products/postgres_server/product.cpk.json", smoke)
+        self.assertIn("docker pull \"$GATEWAY_IMAGE\"", smoke)
+        self.assertIn("127.0.0.1:$GATEWAY_PORT:8000", smoke)
+        self.assertIn('"kind":"http-status"', smoke)
+        self.assertIn('"kind":"postgres-select-one"', smoke)
+        self.assertIn('"target_id":"missing.http"', smoke)
+        self.assertIn('"kind":"tcp-open"', smoke)
+        self.assertIn("password_environment", smoke)
+        self.assertNotIn("sync_runtime_networks", smoke)
+        self.assertNotIn("-p 5432", smoke)
+        self.assertNotIn("docker system prune", smoke)
+
 
 if __name__ == "__main__":
     unittest.main()
