@@ -13,6 +13,102 @@ Topology:
       -> #876 -> #877 -> #878 -> #879
 ```
 
+## #1022 Local Runtime-Island Gateway Boundary
+
+#1007 exposed a real reachability boundary in the seeded stress lane:
+
+```text
+postgres-server starts inside a DockerRuntime network
+  -> parent cpk-server tries PostgresQueryCheck(select-one)
+    -> parent process cannot rely on postgres:5432 being reachable
+      -> semantic readiness fails even though the runtime node exists
+```
+
+The direct diagnostic workaround is to attach parent cpk-server to the workload
+network. That proves the failure is reachability, but it should not become the
+architecture. Parent cpk-server should not join every runtime island merely to
+probe private sockets.
+
+The first-pass replacement is a local runtime-island gateway:
+
+```text
+cpk-server owns topology/history/approval/read models
+  -> DockerRuntime contains gateway + workload nodes
+    -> Docker interpreter realizes all nodes
+      -> gateway receives graph-derived target map
+        -> gateway probes private local sockets
+```
+
+The gateway is an ordinary graph/product node. It is not a second control plane.
+
+### First-Pass Laws
+
+- gateway does not own desired graph truth;
+- gateway does not own current graph truth;
+- gateway does not maintain a local topology graph;
+- gateway does not spawn nodes;
+- gateway receives graph-derived target material at startup/configuration time;
+- gateway accepts only closed semantic probe/control commands;
+- gateway may call only declared local targets;
+- gateway returns bounded redacted results;
+- parent cpk-server records observations and history;
+- gateway is not an arbitrary HTTP/TCP proxy;
+- database sockets remain private by default.
+
+### Target Map Shape
+
+The target map is derived from explicit graph/provider socket facts, not from
+product-specific gateway behavior. A first-pass map can be read as:
+
+```json
+{
+  "postgres.postgres": {
+    "protocol": "postgres",
+    "host": "postgres",
+    "port": 5432
+  },
+  "router.internal": {
+    "protocol": "http",
+    "url": "http://router:8000"
+  }
+}
+```
+
+The identity is `node_id.provider_socket`. The target material may include a
+runtime-private host, port, URL, protocol, and source edge/provider evidence. It
+must not contain raw secrets, credentials, tokens, inline database passwords,
+Docker authority material, or public ingress assumptions.
+
+### Scenario Matrix
+
+The first gateway implementation should prove these scenarios before #1007
+resumes:
+
+| Scenario | Runtime Island | Gateway Probe | Expected Result |
+| --- | --- | --- | --- |
+| Postgres readiness | gateway + postgres-server | `postgres.select-one` against `postgres.postgres` | SELECT 1 passes without public DB exposure |
+| HTTP readiness | gateway + hello-server or router | HTTP status/health against `*.internal` | HTTP probe passes through private runtime DNS |
+| Unknown target | gateway + any seeded node | probe undeclared target id | request fails closed |
+| Unsupported probe | gateway + any seeded node | unsupported probe kind | request fails closed |
+
+### Handoff Topology
+
+The #1021 parent is split into:
+
+```text
+#1022 local gateway boundary
+  -> #1023 cpk-local-gateway product and closed probe API
+  -> #1024 graph-derived gateway target-map language
+      -> #1025 runtime-effect target-map materialization
+          -> #1026 live gateway-mediated private probes
+              -> #1027 close gateway foundation and resume seeded stress
+```
+
+After #1027, #1007 should resume by replacing direct parent runtime-network
+reachability with gateway-mediated Postgres readiness. #1012 should then treat
+Cloudflare as ingress to the gateway control endpoint, not as one ingress per
+private workload socket.
+
 ## #870 Runtime Law Inventory
 
 #870 is intentionally documentation and artifact work. It does not implement the
