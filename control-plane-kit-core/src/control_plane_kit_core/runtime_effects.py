@@ -11,6 +11,7 @@ from dataclasses import dataclass, field
 from enum import StrEnum
 import re
 from typing import Mapping
+from urllib.parse import urlsplit
 
 from control_plane_kit_core.environment import (
     PublicStaticEnvironmentBinding,
@@ -39,7 +40,7 @@ from control_plane_kit_core.runtime_authority import (
     RuntimeEffectContractError,
 )
 from control_plane_kit_core.secrets import CredentialReference, SecretResolutionError
-from control_plane_kit_core.types import RuntimeKind
+from control_plane_kit_core.types import Protocol, RuntimeKind
 
 
 _MAX_TEXT = 512
@@ -49,6 +50,10 @@ _MAX_EVIDENCE_ITEMS = 32
 _REGISTRY = re.compile(r"^[a-z0-9]+(?:[.-][a-z0-9]+)*(?::[0-9]{1,5})?$")
 _REPOSITORY_PART = re.compile(r"^[a-z0-9]+(?:[._-][a-z0-9]+)*$")
 _MAX_REPOSITORY_LENGTH = 255
+_GATEWAY_TARGET_PART = re.compile(r"^[a-z][a-z0-9-]{0,62}$")
+_GATEWAY_HOST = re.compile(
+    r"^[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?(?:\.[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?)*$"
+)
 
 
 class RuntimeEffectKind(StrEnum):
@@ -269,6 +274,148 @@ class RuntimeProductMaterial:
                 "runtime product material",
             ),
             pull_authority=_pull_authority(value.get("pull_authority")),
+        )
+
+
+@dataclass(frozen=True, order=True)
+class GatewayTargetId:
+    """Stable target identity derived from node id x provider socket."""
+
+    value: str
+
+    def __post_init__(self) -> None:
+        if not isinstance(self.value, str) or not self.value:
+            raise RuntimeEffectContractError("gateway target id must be text")
+        _reject_gateway_secret_text(self.value, "gateway target id")
+        parts = self.value.split(".")
+        if len(parts) != 2 or any(
+            not _GATEWAY_TARGET_PART.fullmatch(part) for part in parts
+        ):
+            raise RuntimeEffectContractError(
+                "gateway target id must be node_id.provider_socket"
+            )
+
+
+@dataclass(frozen=True)
+class GatewayHttpTarget:
+    """Secret-free runtime-private HTTP target for gateway probe dispatch."""
+
+    target_id: GatewayTargetId
+    node_id: str
+    provider_socket: str
+    url: str
+    source_edges: tuple[str, ...] = ()
+    protocol: Protocol = Protocol.HTTP
+
+    def __post_init__(self) -> None:
+        _validate_gateway_identity(self.node_id, "gateway target node id")
+        _validate_gateway_identity(
+            self.provider_socket,
+            "gateway target provider socket",
+        )
+        _validate_gateway_target_id(self.target_id, self.node_id, self.provider_socket)
+        if self.protocol != Protocol.HTTP:
+            raise RuntimeEffectContractError("gateway HTTP target protocol is invalid")
+        _validate_gateway_url(self.url)
+        source_edges = _gateway_source_edges(self.source_edges)
+        object.__setattr__(self, "source_edges", source_edges)
+
+    def descriptor(self) -> dict[str, object]:
+        return {
+            "kind": "http",
+            "target_id": self.target_id.value,
+            "node_id": self.node_id,
+            "provider_socket": self.provider_socket,
+            "protocol": self.protocol.descriptor(),
+            "url": self.url,
+            "source_edges": list(self.source_edges),
+        }
+
+
+@dataclass(frozen=True)
+class GatewayPostgresTarget:
+    """Secret-free runtime-private Postgres target for semantic probes."""
+
+    target_id: GatewayTargetId
+    node_id: str
+    provider_socket: str
+    host: str
+    port: int
+    source_edges: tuple[str, ...] = ()
+    protocol: Protocol = Protocol.POSTGRES
+
+    def __post_init__(self) -> None:
+        _validate_gateway_identity(self.node_id, "gateway target node id")
+        _validate_gateway_identity(
+            self.provider_socket,
+            "gateway target provider socket",
+        )
+        _validate_gateway_target_id(self.target_id, self.node_id, self.provider_socket)
+        if self.protocol != Protocol.POSTGRES:
+            raise RuntimeEffectContractError(
+                "gateway Postgres target protocol is invalid"
+            )
+        _validate_gateway_host(self.host)
+        if type(self.port) is not int or not 1 <= self.port <= 65535:
+            raise RuntimeEffectContractError("gateway target port is invalid")
+        source_edges = _gateway_source_edges(self.source_edges)
+        object.__setattr__(self, "source_edges", source_edges)
+
+    def descriptor(self) -> dict[str, object]:
+        return {
+            "kind": "postgres",
+            "target_id": self.target_id.value,
+            "node_id": self.node_id,
+            "provider_socket": self.provider_socket,
+            "protocol": self.protocol.descriptor(),
+            "host": self.host,
+            "port": self.port,
+            "source_edges": list(self.source_edges),
+        }
+
+
+GatewayTarget = GatewayHttpTarget | GatewayPostgresTarget
+
+
+@dataclass(frozen=True)
+class GatewayTargetMap:
+    """Closed graph-derived target material for a local runtime-island gateway."""
+
+    targets: tuple[GatewayTarget, ...] = ()
+
+    def __post_init__(self) -> None:
+        targets = tuple(sorted(self.targets, key=lambda value: value.target_id.value))
+        if len(targets) > _MAX_EVIDENCE_ITEMS:
+            raise RuntimeEffectContractError("gateway target map has too many targets")
+        if not all(
+            isinstance(value, (GatewayHttpTarget, GatewayPostgresTarget))
+            for value in targets
+        ):
+            raise RuntimeEffectContractError("gateway target map contains unknown target")
+        target_ids = tuple(value.target_id for value in targets)
+        if len(set(target_ids)) != len(target_ids):
+            raise RuntimeEffectContractError("gateway target ids must be unique")
+        object.__setattr__(self, "targets", targets)
+
+    def descriptor(self) -> dict[str, object]:
+        return {"targets": [value.descriptor() for value in self.targets]}
+
+
+class GatewayTargetMapCodec:
+    """Strict codec for local gateway target-map material."""
+
+    def encode(self, target_map: GatewayTargetMap) -> dict[str, object]:
+        if not isinstance(target_map, GatewayTargetMap):
+            raise RuntimeEffectContractError("encode requires GatewayTargetMap")
+        return target_map.descriptor()
+
+    def decode(self, descriptor: Mapping[str, object]) -> GatewayTargetMap:
+        _require_keys(descriptor, _GATEWAY_TARGET_MAP_KEYS, "gateway target map")
+        targets = descriptor["targets"]
+        if not isinstance(targets, list):
+            raise RuntimeEffectContractError("gateway target map targets must be a list")
+        return GatewayTargetMap(
+            tuple(_gateway_target_from_descriptor(item) for item in targets)
         )
 
 
@@ -504,6 +651,30 @@ _PRODUCT_MATERIAL_KEYS = frozenset(
 _IMAGE_PULL_AUTHORITY_KEYS = frozenset(
     {"registry", "repository", "credential_reference"}
 )
+_GATEWAY_TARGET_MAP_KEYS = frozenset({"targets"})
+_GATEWAY_HTTP_TARGET_KEYS = frozenset(
+    {
+        "kind",
+        "target_id",
+        "node_id",
+        "provider_socket",
+        "protocol",
+        "url",
+        "source_edges",
+    }
+)
+_GATEWAY_POSTGRES_TARGET_KEYS = frozenset(
+    {
+        "kind",
+        "target_id",
+        "node_id",
+        "provider_socket",
+        "protocol",
+        "host",
+        "port",
+        "source_edges",
+    }
+)
 
 
 def _require_keys(
@@ -662,6 +833,158 @@ def _evidence_value(value: object, label: str, *, depth: int) -> object:
 def _reject_secret_text(value: str, name: str) -> None:
     lowered = value.lower()
     if any(marker in lowered for marker in ("password=", "token=", "secret=")):
+        raise RuntimeEffectContractError(f"{name} contains secret-shaped text")
+
+
+def _gateway_target_from_descriptor(value: object) -> GatewayTarget:
+    if not isinstance(value, Mapping):
+        raise RuntimeEffectContractError("gateway target descriptor must be a mapping")
+    kind = value.get("kind")
+    if kind == "http":
+        _require_gateway_keys(value, _GATEWAY_HTTP_TARGET_KEYS, "gateway HTTP target")
+        protocol = _gateway_protocol(value, Protocol.HTTP)
+        return GatewayHttpTarget(
+            target_id=GatewayTargetId(_text(value, "target_id")),
+            node_id=_text(value, "node_id"),
+            provider_socket=_text(value, "provider_socket"),
+            protocol=protocol,
+            url=_text(value, "url"),
+            source_edges=_source_edges_from_descriptor(value.get("source_edges")),
+        )
+    if kind == "postgres":
+        _require_gateway_keys(
+            value,
+            _GATEWAY_POSTGRES_TARGET_KEYS,
+            "gateway Postgres target",
+        )
+        protocol = _gateway_protocol(value, Protocol.POSTGRES)
+        port = value.get("port")
+        if type(port) is not int:
+            raise RuntimeEffectContractError("gateway target port is invalid")
+        return GatewayPostgresTarget(
+            target_id=GatewayTargetId(_text(value, "target_id")),
+            node_id=_text(value, "node_id"),
+            provider_socket=_text(value, "provider_socket"),
+            protocol=protocol,
+            host=_text(value, "host"),
+            port=port,
+            source_edges=_source_edges_from_descriptor(value.get("source_edges")),
+        )
+    raise RuntimeEffectContractError("gateway target kind is unsupported")
+
+
+def _require_gateway_keys(
+    mapping: Mapping[str, object],
+    expected: frozenset[str],
+    label: str,
+) -> None:
+    keys = frozenset(mapping)
+    if keys == expected:
+        return
+    extra = sorted(keys - expected)
+    missing = sorted(expected - keys)
+    details: list[str] = []
+    if extra:
+        details.append(f"unknown keys: {', '.join(extra)}")
+    if missing:
+        details.append(f"missing keys: {', '.join(missing)}")
+    raise RuntimeEffectContractError(f"invalid {label}; " + "; ".join(details))
+
+
+def _gateway_protocol(
+    value: Mapping[str, object],
+    expected: Protocol,
+) -> Protocol:
+    protocol_descriptor = value.get("protocol")
+    if not isinstance(protocol_descriptor, Mapping):
+        raise RuntimeEffectContractError("gateway target protocol is malformed")
+    try:
+        protocol = Protocol.from_descriptor(protocol_descriptor)
+    except ValueError as error:
+        raise RuntimeEffectContractError("gateway target protocol is malformed") from error
+    if protocol != expected:
+        raise RuntimeEffectContractError("gateway target protocol is unsupported")
+    return protocol
+
+
+def _source_edges_from_descriptor(value: object) -> tuple[str, ...]:
+    if not isinstance(value, list):
+        raise RuntimeEffectContractError("gateway target source_edges must be a list")
+    return tuple(value)
+
+
+def _validate_gateway_target_id(
+    target_id: GatewayTargetId,
+    node_id: str,
+    provider_socket: str,
+) -> None:
+    if not isinstance(target_id, GatewayTargetId):
+        raise RuntimeEffectContractError("gateway target id must be GatewayTargetId")
+    if target_id.value != f"{node_id}.{provider_socket}":
+        raise RuntimeEffectContractError(
+            "gateway target id must match node id and provider socket"
+        )
+
+
+def _validate_gateway_identity(value: str, label: str) -> None:
+    if not isinstance(value, str) or not _GATEWAY_TARGET_PART.fullmatch(value):
+        raise RuntimeEffectContractError(f"{label} is invalid")
+    _reject_gateway_secret_text(value, label)
+
+
+def _gateway_source_edges(value: tuple[str, ...]) -> tuple[str, ...]:
+    if not isinstance(value, tuple) or len(value) > _MAX_EVIDENCE_ITEMS:
+        raise RuntimeEffectContractError("gateway target source edges are malformed")
+    edges: list[str] = []
+    for item in value:
+        if not isinstance(item, str) or not item or len(item) > _MAX_TEXT:
+            raise RuntimeEffectContractError("gateway target source edge is invalid")
+        _reject_gateway_secret_text(item, "gateway target source edge")
+        edges.append(item)
+    if len(set(edges)) != len(edges):
+        raise RuntimeEffectContractError("gateway target source edges must be unique")
+    return tuple(sorted(edges))
+
+
+def _validate_gateway_url(value: str) -> None:
+    if not isinstance(value, str) or not value:
+        raise RuntimeEffectContractError("gateway HTTP target url must be text")
+    _reject_gateway_secret_text(value, "gateway HTTP target url")
+    if len(value) > _MAX_TEXT:
+        raise RuntimeEffectContractError("gateway HTTP target url is too long")
+    parsed = urlsplit(value)
+    if parsed.scheme not in {"http", "https"} or not parsed.netloc:
+        raise RuntimeEffectContractError("gateway HTTP target url is invalid")
+    if parsed.username is not None or parsed.password is not None:
+        raise RuntimeEffectContractError(
+            "gateway HTTP target url must not contain credentials"
+        )
+    if parsed.query or parsed.fragment:
+        raise RuntimeEffectContractError(
+            "gateway HTTP target url must not contain query or fragment"
+        )
+
+
+def _validate_gateway_host(value: str) -> None:
+    if not isinstance(value, str):
+        raise RuntimeEffectContractError("gateway target host must be text")
+    _reject_gateway_secret_text(value, "gateway target host")
+    if len(value) > _MAX_TEXT or not _GATEWAY_HOST.fullmatch(value):
+        raise RuntimeEffectContractError("gateway target host is invalid")
+
+
+def _reject_gateway_secret_text(value: str, name: str) -> None:
+    lowered = value.lower()
+    secret_markers = (
+        "password=",
+        "token=",
+        "secret=",
+        "credential=",
+        "secret://",
+        "begin-private-key",
+        "private key",
+    )
+    if any(marker in lowered for marker in secret_markers):
         raise RuntimeEffectContractError(f"{name} contains secret-shaped text")
 
 

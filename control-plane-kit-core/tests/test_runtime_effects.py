@@ -24,6 +24,11 @@ from control_plane_kit_core.products import (
     ProviderRuntimePort,
 )
 from control_plane_kit_core.runtime_effects import (
+    GatewayHttpTarget,
+    GatewayPostgresTarget,
+    GatewayTargetId,
+    GatewayTargetMap,
+    GatewayTargetMapCodec,
     ImagePullAuthority,
     ImagePullAuthorityCodec,
     RuntimeAuthorityAccessDelivery,
@@ -560,6 +565,143 @@ class RuntimeEffectContractTests(unittest.TestCase):
                 "runtime.failure",
                 "password=do-not-store",
             )
+
+    def test_gateway_target_map_encodes_http_and_postgres_targets(self) -> None:
+        target_map = GatewayTargetMap(
+            targets=(
+                GatewayPostgresTarget(
+                    target_id=GatewayTargetId("postgres.postgres"),
+                    node_id="postgres",
+                    provider_socket="postgres",
+                    host="postgres",
+                    port=5432,
+                    source_edges=("api.store->postgres.postgres",),
+                ),
+                GatewayHttpTarget(
+                    target_id=GatewayTargetId("router.internal"),
+                    node_id="router",
+                    provider_socket="internal",
+                    url="http://router:8000",
+                    source_edges=("client.http->router.internal",),
+                ),
+            )
+        )
+
+        descriptor = GatewayTargetMapCodec().encode(target_map)
+
+        self.assertEqual(
+            descriptor,
+            {
+                "targets": [
+                    {
+                        "kind": "postgres",
+                        "target_id": "postgres.postgres",
+                        "node_id": "postgres",
+                        "provider_socket": "postgres",
+                        "protocol": {
+                            "transport": "tcp",
+                            "application": "postgres",
+                        },
+                        "host": "postgres",
+                        "port": 5432,
+                        "source_edges": ["api.store->postgres.postgres"],
+                    },
+                    {
+                        "kind": "http",
+                        "target_id": "router.internal",
+                        "node_id": "router",
+                        "provider_socket": "internal",
+                        "protocol": {
+                            "transport": "tcp",
+                            "application": "http",
+                        },
+                        "url": "http://router:8000",
+                        "source_edges": ["client.http->router.internal"],
+                    },
+                ]
+            },
+        )
+        self.assertEqual(GatewayTargetMapCodec().decode(descriptor), target_map)
+        self.assertNotIn("cpk-local-gateway", repr(descriptor))
+
+    def test_gateway_target_map_fails_closed_on_duplicate_targets(self) -> None:
+        with self.assertRaisesRegex(RuntimeEffectContractError, "unique"):
+            GatewayTargetMap(
+                targets=(
+                    GatewayHttpTarget(
+                        target_id=GatewayTargetId("router.internal"),
+                        node_id="router",
+                        provider_socket="internal",
+                        url="http://router:8000",
+                    ),
+                    GatewayHttpTarget(
+                        target_id=GatewayTargetId("router.internal"),
+                        node_id="router",
+                        provider_socket="internal",
+                        url="http://router:9000",
+                    ),
+                )
+            )
+
+    def test_gateway_target_map_codec_fails_closed_on_unknown_protocol(self) -> None:
+        descriptor = GatewayTargetMapCodec().encode(
+            GatewayTargetMap(
+                targets=(
+                    GatewayHttpTarget(
+                        target_id=GatewayTargetId("router.internal"),
+                        node_id="router",
+                        provider_socket="internal",
+                        url="http://router:8000",
+                    ),
+                )
+            )
+        )
+        descriptor["targets"][0]["protocol"] = {
+            "transport": "tcp",
+            "application": "redis",
+        }
+
+        with self.assertRaisesRegex(RuntimeEffectContractError, "protocol"):
+            GatewayTargetMapCodec().decode(descriptor)
+
+    def test_gateway_target_map_rejects_credentials_and_secret_shaped_values(self) -> None:
+        with self.assertRaisesRegex(RuntimeEffectContractError, "credentials"):
+            GatewayHttpTarget(
+                target_id=GatewayTargetId("router.internal"),
+                node_id="router",
+                provider_socket="internal",
+                url="http://user:pass@router:8000",
+            )
+
+        with self.assertRaises(RuntimeEffectContractError):
+            GatewayPostgresTarget(
+                target_id=GatewayTargetId("postgres.postgres"),
+                node_id="postgres",
+                provider_socket="postgres",
+                host="password=do-not-store",
+                port=5432,
+            )
+
+        descriptor = {
+            "targets": [
+                {
+                    "kind": "postgres",
+                    "target_id": "postgres.postgres",
+                    "node_id": "postgres",
+                    "provider_socket": "postgres",
+                    "protocol": {
+                        "transport": "tcp",
+                        "application": "postgres",
+                    },
+                    "host": "postgres",
+                    "port": 5432,
+                    "source_edges": [],
+                    "password": "do-not-store",
+                }
+            ]
+        }
+        with self.assertRaisesRegex(RuntimeEffectContractError, "unknown"):
+            GatewayTargetMapCodec().decode(descriptor)
 
 
 def _source() -> RuntimeEffectSource:

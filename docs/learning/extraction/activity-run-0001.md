@@ -3976,3 +3976,50 @@ auth
   -> router/load balancer
     -> pottery-factory-api/services
 ```
+
+## #1024 Gateway Target-Map Language
+
+#1024 confirmed that the gateway target map belongs in core as pure runtime
+effect language. It is not durable registration truth, not a product descriptor,
+and not gateway process implementation. It is the bounded value operations can
+derive from graph/socket truth and hand toward a runtime interpreter.
+
+The first-pass shape is intentionally narrow:
+
+```text
+GatewayTargetMap
+  GatewayHttpTarget(target_id, node_id, provider_socket, url, source_edges)
+  GatewayPostgresTarget(target_id, node_id, provider_socket, host, port, source_edges)
+```
+
+Important laws now tested in `control-plane-kit-core`:
+
+- target id is `node_id.provider_socket`;
+- HTTP and Postgres protocols are closed and decoded strictly;
+- duplicate target ids fail closed;
+- unsupported protocols fail closed;
+- HTTP URL credentials fail closed;
+- secret-shaped target values fail closed;
+- the descriptor does not mention `cpk-local-gateway` product identity.
+
+The Postgres target map stays secret-free. It carries host/port only. The
+gateway process added in #1023 can read a password from a named environment
+slot, but #1024 does not put that slot into core target-map truth. #1025 must
+decide how explicit graph/secret delivery material populates gateway runtime
+configuration while preserving the no-secret-descriptor law.
+
+Handoff:
+
+```text
+core:
+  GatewayTargetMap
+
+operations:
+  graph/socket truth -> GatewayTargetMap
+
+interpreter:
+  GatewayTargetMap -> cpk-local-gateway runtime configuration
+
+gateway product:
+  closed semantic probes against declared private targets
+```
