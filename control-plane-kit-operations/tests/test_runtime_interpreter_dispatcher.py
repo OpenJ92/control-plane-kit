@@ -252,7 +252,7 @@ class RuntimeInterpreterDispatcherTests(unittest.TestCase):
         )
         self.assertEqual(docker.requests, [])
 
-    def test_operation_without_runtime_target_is_explicit_unsupported(self) -> None:
+    def test_socket_connection_operation_is_recorded_without_runtime_effect(self) -> None:
         docker = RecordingInterpreter("docker")
         dispatcher = RuntimeInterpreterDispatcher({RuntimeKind.DOCKER: docker})
         context = context_for(
@@ -261,14 +261,13 @@ class RuntimeInterpreterDispatcherTests(unittest.TestCase):
 
         outcome = dispatcher.execute(context)
 
-        self.assertEqual(outcome.kind.name, "UNSUPPORTED")
-        self.assertIsNotNone(outcome.failure)
-        assert outcome.failure is not None
-        self.assertEqual(outcome.failure.code, "runtime.dispatch-target-unsupported")
+        self.assertEqual(outcome.kind.name, "SUCCEEDED")
+        self.assertIsNone(outcome.failure)
         self.assertEqual(
-            outcome.failure.details.descriptor(),
+            outcome.evidence.descriptor(),
             {
-                "activity_id": "activity-a",
+                "action": "socket-connection-recorded",
+                "edge_id": "edge-a",
                 "operation": "SwitchSocketConnection",
             },
         )

@@ -13,7 +13,14 @@ from control_plane_kit_core.operations.lifecycle import (
     ExecutionRequestStatus,
     FailureCategory,
 )
-from control_plane_kit_core.planning import ActivityId, ActivityPlan, PlannedActivity
+from control_plane_kit_core.planning import (
+    ActivityId,
+    ActivityPlan,
+    AddSocketConnection,
+    PlannedActivity,
+    RemoveSocketConnection,
+    SwitchSocketConnection,
+)
 from control_plane_kit_core.planning.saga import (
     ExecutionSchedule,
     SagaJournalProjection,
@@ -340,6 +347,8 @@ class RuntimeInterpreterDispatcher:
             raise InvalidOperationCommand(
                 "runtime dispatch requires ActivityRealizationContext"
             )
+        if _is_socket_connection_operation(context.activity):
+            return _socket_connection_outcome(context)
         try:
             from control_plane_kit_operations.runtime_effects import (
                 runtime_effect_request_for_context,
@@ -382,6 +391,30 @@ class RuntimeInterpreterDispatcher:
                 )
             result = execute_with_authority(request, authority)
         return _outcome_from_runtime_result(context, result)
+
+
+def _is_socket_connection_operation(activity: PlannedActivity) -> bool:
+    return isinstance(
+        activity.operation,
+        (AddSocketConnection, SwitchSocketConnection, RemoveSocketConnection),
+    )
+
+
+def _socket_connection_outcome(
+    context: ActivityRealizationContext,
+) -> ActivityExecutionOutcome:
+    operation = context.activity.operation
+    target = getattr(operation, "target", None)
+    edge_id = getattr(target, "edge_id", None)
+    return ActivityExecutionOutcome.succeeded(
+        BoundedEvidence.from_mapping(
+            {
+                "action": "socket-connection-recorded",
+                "operation": type(operation).__name__,
+                "edge_id": edge_id,
+            }
+        )
+    )
 
 
 
