@@ -4166,3 +4166,54 @@ Handoff to #1020:
 The gateway solves first-pass local probe reachability. It does not solve
 runtime spawning delegation, local graph ownership, offline agent behavior, or a
 full CPK client. Those remain future client/agent work.
+
+## #1014 Named Public Ingress Core Language
+
+#1014 added the provider-neutral ingress vocabulary needed before the Cloudflare
+Model B interpreter lane:
+
+```text
+NamedPublicIngress
+  -> IngressAuthorityReference
+  -> PublicIngressTarget(node_id, provider_socket)
+  -> hostname
+  -> exposure
+  -> lifecycle
+```
+
+The important naming decision is that core does not own
+`CloudflareNamedIngress`. Cloudflare is the first concrete provider, but core
+only says:
+
+```text
+expose this declared provider socket
+at this stable public hostname
+using this admitted ingress authority
+```
+
+The concrete provider work remains later:
+
+```text
+operations:
+  RegisteredIngressAuthority(provider_kind="cloudflare")
+
+interpreters:
+  CloudflareNamedIngressInterpreter
+
+server-products:
+  cloudflared connector product
+```
+
+The new language preserves the gateway boundary: sockets still describe private
+topology wiring, and named public ingress is socket-adjacent exposure. It does
+not replace socket compatibility, make the gateway a graph owner, or expose
+private workload sockets directly.
+
+Security findings:
+
+- `IngressAuthorityReference` is secret-free;
+- `NamedPublicIngress` descriptors reject provider-specific fields such as
+  tunnel tokens and API tokens;
+- `PublicIngressObservation` stores bounded endpoint evidence only;
+- Cloudflare API tokens and generated tunnel tokens remain future
+  secret-reference/IO-boundary work for #1035, #1016, and #1037.

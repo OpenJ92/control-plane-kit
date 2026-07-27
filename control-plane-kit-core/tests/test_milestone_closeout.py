@@ -39,6 +39,7 @@ EXPECTED_MODULES = {
     "policies",
     "probe_intents",
     "products",
+    "public_ingress",
     "runtime_authority",
     "runtime_effects",
     "secrets",
