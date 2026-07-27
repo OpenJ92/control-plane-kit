@@ -15,7 +15,8 @@ from control_plane_kit_core.products import (
     ProductInstanceConfiguration,
     instantiate_product,
 )
-from control_plane_kit_core.types import Protocol
+from control_plane_kit_core.secrets import SecretEnvironmentDelivery, SecretReference
+from control_plane_kit_core.types import Protocol, SocketBinding
 
 
 ROOT = Path(__file__).resolve().parents[3]
@@ -71,14 +72,46 @@ class CpkLocalGatewayProductTests(unittest.TestCase):
             },
             {"control": 8000},
         )
-        self.assertEqual(sockets.requirement_names(), ())
+        self.assertEqual(
+            sockets.requirement_names(),
+            ("target-http", "target-postgres"),
+        )
+        self.assertEqual(sockets.requirement("target-http").protocol, Protocol.HTTP)
+        self.assertEqual(
+            sockets.requirement("target-http").env_bindings,
+            (),
+        )
+        self.assertIs(
+            sockets.requirement("target-http").binding,
+            SocketBinding.RUNTIME_CONTROL,
+        )
+        self.assertEqual(
+            sockets.requirement("target-postgres").protocol,
+            Protocol.POSTGRES,
+        )
+        self.assertEqual(
+            sockets.requirement("target-postgres").env_bindings,
+            (),
+        )
+        self.assertIs(
+            sockets.requirement("target-postgres").binding,
+            SocketBinding.RUNTIME_CONTROL,
+        )
         self.assertEqual(
             product.runtime_contract.public_environment,
             (
                 PublicStaticEnvironmentBinding("CPK_GATEWAY_TARGETS_JSON", "{}"),
             ),
         )
-        self.assertEqual(product.runtime_contract.secret_deliveries, ())
+        self.assertEqual(
+            product.runtime_contract.secret_deliveries,
+            (
+                SecretEnvironmentDelivery(
+                    "POSTGRES_PASSWORD",
+                    SecretReference("secret://control-plane-kit/postgres/password"),
+                ),
+            ),
+        )
         self.assertEqual(product.runtime_contract.retained_data_mounts, ())
         self.assertIn("closed semantic probe", product.description.lower())
 

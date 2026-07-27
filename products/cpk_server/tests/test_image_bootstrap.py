@@ -770,6 +770,53 @@ class CpkServerImageBootstrapTests(unittest.TestCase):
         self.assertIn("CPK_HOSTED_ACTIVITY_SCENARIO=workspace-b-multiplexer-observer", smoke)
         self.assertIn("scripts/cpk_server_hosted_activity_smoke.sh", smoke)
 
+    def test_hosted_activity_controller_proves_workspace_c_postgres_retained_data(
+        self,
+    ) -> None:
+        controller = (ROOT / "scripts" / "cpk_server_hosted_activity.py").read_text(
+            encoding="utf-8"
+        )
+
+        self.assertIn('"workspace-c-postgres-retained-data"', controller)
+        self.assertIn('workspace_id="workspace-c-postgres"', controller)
+        self.assertIn("def _run_postgres_retained_data", controller)
+        self.assertIn("def _postgres_graph", controller)
+        self.assertIn('"cpk_local_gateway"', controller)
+        self.assertIn('"gateway"', controller)
+        self.assertIn('"postgres_server"', controller)
+        self.assertIn('"postgres"', controller)
+        self.assertIn("DeploymentGraph(workflow.workspace_id)", controller)
+        self.assertIn(
+            "spec=replace(gateway.spec, verification=VerificationContract())",
+            controller,
+        )
+        self.assertIn(
+            "spec=replace(postgres.spec, verification=VerificationContract())",
+            controller,
+        )
+        self.assertIn("VerificationContract()", controller)
+        self.assertIn("_assert_gateway_postgres_query_ready", controller)
+        self.assertIn("_retained_data_volumes", controller)
+        self.assertIn("_assert_retained_volumes_still_exist", controller)
+        self.assertIn("_assert_no_node_containers", controller)
+        self.assertIn("_assert_no_runtime_networks", controller)
+        self.assertIn("_assert_secret_absent_from_activity", controller)
+        self.assertIn('"cpk-postgres-smoke-password"', controller)
+        self.assertIn("sync_runtime_networks=False", controller)
+        self.assertIn('"target-postgres"', controller)
+        self.assertIn('"postgres-select-one"', controller)
+        self.assertIn('"target_id": "postgres.postgres"', controller)
+        self.assertIn('"org.openj92.cpk.volume.kind=retained-data"', controller)
+        self.assertNotIn('["psql", "-U", "cpk", "-d", "cpk", "-c", "SELECT 1"]', controller)
+        self.assertNotIn('"POSTGRES_PASSWORD"', controller)
+        self.assertNotIn("DockerRuntimeInterpreter", controller)
+
+        smoke = (
+            ROOT / "scripts" / "cpk_server_workspace_c_postgres_retained_data_smoke.sh"
+        ).read_text(encoding="utf-8")
+        self.assertIn("CPK_HOSTED_ACTIVITY_SCENARIO=workspace-c-postgres-retained-data", smoke)
+        self.assertIn("scripts/cpk_server_hosted_activity_smoke.sh", smoke)
+
     def test_recursive_activity_smoke_uses_published_parent_and_secret_authority(
         self,
     ) -> None:

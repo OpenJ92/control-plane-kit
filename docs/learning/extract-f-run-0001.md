@@ -740,3 +740,58 @@ Validation target:
 ```text
 scripts/cpk_server_workspace_b_multiplexer_observer_smoke.sh
 ```
+
+
+## #1007 Workspace C Postgres Retained-Data Stress
+
+#1007 proves the seeded `postgres-server` data-service descriptor through the
+public cpk-server workflow:
+
+```text
+workspace-c-postgres
+  -> postgres-server
+    provider: postgres/postgres
+    secret:   POSTGRES_PASSWORD <- SecretReference
+    data:     postgres-data retained volume
+    check:    postgres-query select-one
+```
+
+The scenario deploys the pinned official Postgres OCI descriptor and the
+`cpk-local-gateway` descriptor, but clears the workspace-C Postgres and gateway
+nodes' direct verification contracts. That preserves the published descriptors
+while making this stress case about local-island reachability: the parent
+`cpk-server` is intentionally not attached to the workload network, so semantic
+readiness is verified through `cpk-local-gateway` using the closed
+`postgres-select-one` probe after both nodes exist. The controller may enter the
+gateway container to call the gateway control endpoint, but it does not run `psql`
+against the Postgres container directly and does not attach parent `cpk-server` to
+the workload network for semantic readiness. The scenario then transitions the
+desired graph to an empty graph and requires:
+
+- the Postgres compute container is removed;
+- the runtime network is removed;
+- the retained `postgres-data` volume still exists at the post-teardown
+  checkpoint;
+- activity readback does not contain the smoke-only product password.
+
+Important implementation decisions:
+
+- the Postgres password uses the existing product secret resolver and remains
+  referenced by `secret://control-plane-kit/postgres/password`;
+- the gateway receives graph-derived target material from the
+  `postgres.postgres -> gateway.target-postgres` edge;
+- gateway target sockets use `runtime-control` binding so they declare graph
+  reachability without generating duplicate environment URL bindings;
+- the smoke value is unique (`cpk-postgres-smoke-password`) so leakage is
+  detectable;
+- the controller does not inject `POSTGRES_PASSWORD` into graph or shell
+  material;
+- Postgres does not require a product-specific Docker interpreter branch;
+- the final shell cleanup may remove the retained volume after the proof
+  checkpoint so CI remains residue-free.
+
+Validation target:
+
+```text
+scripts/cpk_server_workspace_c_postgres_retained_data_smoke.sh
+```
