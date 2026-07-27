@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+from dataclasses import replace
 from typing import Mapping
 
 from control_plane_kit_core.environment import PublicStaticEnvironmentBinding
@@ -41,7 +42,7 @@ from control_plane_kit_core.runtime_effects import (
     RuntimeProductMaterial,
 )
 from control_plane_kit_core.secrets import SecretEnvironmentDelivery
-from control_plane_kit_core.topology import DEFAULT_GRAPH_CODEC, DeploymentGraph
+from control_plane_kit_core.topology import DEFAULT_GRAPH_CODEC, DeploymentGraph, Node
 from control_plane_kit_core.types import Protocol, RuntimeKind
 from control_plane_kit_operations.coordinator import ActivityRealizationContext
 from control_plane_kit_operations.products import (
@@ -185,13 +186,27 @@ def _products_for_context(
             node_id=node_id,
             runtime_id=runtime_id,
             reference=product.reference,
-            product=product.descriptor_document.product,
+            product=_product_material_for_node(product, node),
             public_environment=public_environment,
             socket_environment=node.socket_environment,
             pull_authority=_pull_authority_for_product(
                 context.image_pull_authorities,
                 product.descriptor_document.product.image,
             ),
+        ),
+    )
+
+
+def _product_material_for_node(
+    product: RegisteredProduct,
+    node: Node,
+):
+    descriptor_product = product.descriptor_document.product
+    return replace(
+        descriptor_product,
+        runtime_contract=replace(
+            descriptor_product.runtime_contract,
+            verification=node.block_spec.verification,
         ),
     )
 

@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import json
 import unittest
+from dataclasses import replace
 
 from control_plane_kit_core.algebra import (
     BlockSockets,
@@ -45,6 +46,7 @@ from control_plane_kit_core.runtime_effects import ImagePullAuthority
 from control_plane_kit_core.secrets import SecretEnvironmentDelivery, SecretReference
 from control_plane_kit_core.topology import DeploymentGraph, Edge, Node, RuntimeRecord
 from control_plane_kit_core.types import BlockFamily, Protocol, RuntimeKind, SocketBinding
+from control_plane_kit_core.verification import HttpCheck, VerificationContract
 from control_plane_kit_operations.coordinator import ActivityRealizationContext
 from control_plane_kit_operations.lifecycle import ExecutionWorkerAuthority
 from control_plane_kit_operations.products import (
@@ -112,6 +114,50 @@ class RuntimeEffectTranslationTests(unittest.TestCase):
             ),
         )
         self.assertIsNone(request.products[0].pull_authority)
+
+    def test_runtime_material_uses_graph_node_verification(self) -> None:
+        descriptor_verification = VerificationContract(
+            (
+                HttpCheck(
+                    check_id="ready",
+                    provider_socket="http",
+                    path="/health/ready",
+                ),
+            )
+        )
+        registered = _registered_product(verification=descriptor_verification)
+        graph = _graph()
+        node = graph.nodes["api"]
+        graph = graph.update_node(
+            replace(
+                node,
+                block_spec=replace(
+                    node.block_spec,
+                    verification=VerificationContract(),
+                ),
+                metadata={
+                    "product_identity": registered.reference.identity.key,
+                    "product_descriptor_digest": (
+                        registered.reference.descriptor_sha256.value
+                    ),
+                },
+            )
+        )
+        context = _context(
+            desired_graph=graph,
+            registered_products=(registered,),
+        )
+
+        request = runtime_effect_request_for_context(context)
+
+        self.assertEqual(
+            registered.descriptor_document.product.runtime_contract.verification,
+            descriptor_verification,
+        )
+        self.assertEqual(
+            request.products[0].product.runtime_contract.verification,
+            VerificationContract(),
+        )
 
     def test_context_selects_matching_pull_authority_without_credentials(self) -> None:
         context = _context(
@@ -652,7 +698,9 @@ def _registered_product(
     protocol: Protocol = Protocol.HTTP,
     port: int = 8000,
     public_environment: tuple[PublicStaticEnvironmentBinding, ...] | None = None,
+    verification: VerificationContract | None = None,
 ) -> RegisteredProduct:
+    runtime_verification = VerificationContract() if verification is None else verification
     product = ContainerServerProduct(
         identity=ProductReference.from_document(
             ProductDescriptorCodec().encode_document(
@@ -678,6 +726,7 @@ def _registered_product(
                             if public_environment is None
                             else public_environment
                         ),
+                        verification=runtime_verification,
                     ),
                 )
             )
@@ -700,6 +749,7 @@ def _registered_product(
                 if public_environment is None
                 else public_environment
             ),
+            verification=runtime_verification,
         ),
     )
     document = ProductDescriptorCodec().encode_document(product)
