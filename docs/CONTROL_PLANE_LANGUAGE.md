@@ -593,6 +593,49 @@ laws:
   availability does not imply access delivery. Local Docker socket delivery is a
   closed capability intent, not a stored `/var/run/docker.sock` host path.
 
+### NamedPublicIngress
+
+meaning:
+  Provider-neutral request to expose one declared provider socket at one stable
+  public hostname:
+
+```text
+NamedPublicIngress
+  = ingress_id
+  x IngressAuthorityReference
+  x PublicIngressTarget(node_id, provider_socket)
+  x hostname
+  x PublicIngressExposure
+  x PublicIngressLifecycle
+```
+
+owned by:
+  `control-plane-kit-core` owns the pure provider-neutral value, strict codec,
+  and bounded observation language. Operations owns authority admission,
+  activity ordering, and durable evidence. Interpreters own concrete provider
+  effects such as Cloudflare tunnel/DNS mutation.
+
+durable:
+  The desired hostname and target socket may be graph/control-plane truth.
+  Provider-generated tunnel ids, DNS record ids, and readiness checks are
+  effect evidence and observations.
+
+may contain secrets:
+  No. The authority is referenced by `IngressAuthorityReference`; provider API
+  tokens and generated connector tokens stay behind secret references and IO
+  boundaries.
+
+interpreted by:
+  The first concrete interpreter will be a Cloudflare named-ingress
+  interpreter. Future cloud/native ingress interpreters may consume the same
+  provider-neutral request language.
+
+laws:
+  Named public ingress is socket-adjacent exposure, not a replacement for
+  sockets. Core does not define `CloudflareNamedIngress`. Cloudflare appears as
+  provider data and interpreter implementation, not as the name of the core
+  graph language.
+
 ## Planning Language
 
 ### DeploymentTransition
