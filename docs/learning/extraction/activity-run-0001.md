@@ -4324,3 +4324,49 @@ Handoff:
 - #1017 can use the evidence plan for two-island live tunnel cleanup.
 - A durable ingress-resource store remains deferred until live execution proves
   the exact persistence boundary.
+
+## #1037 Cloudflare Tunnel Token Delivery
+
+#1037 adds the first explicit delivery plan for a generated Cloudflare tunnel
+token. The token itself remains IO-bound secret material. Operations records and
+passes only a `SecretReference` through a closed `SecretEnvironmentDelivery`:
+
+```text
+Cloudflare API allocation
+  -> generated tunnel token value
+    -> record as secret material outside graph/runtime descriptors
+      -> SecretEnvironmentDelivery("TUNNEL_TOKEN", SecretReference(...))
+        -> start cloudflared connector
+```
+
+The delivery plan preserves deterministic activity ordering:
+
+```text
+allocate-named-ingress
+  -> record-tunnel-token-secret
+    -> start-cloudflared-connector
+```
+
+This keeps the split crisp:
+
+- Docker materialization receives an ordinary secret delivery and never calls
+  Cloudflare APIs.
+- Cloudflare interpretation creates ingress resources and never starts Docker
+  containers.
+- The connector cannot start unless exactly one explicit `TUNNEL_TOKEN` delivery
+  is present.
+- Zone and hostname authority checks still gate token delivery.
+
+Validation evidence:
+
+- `git diff --check` passed.
+- `./control-plane-kit-operations/test.sh` passed 179 tests, compileall, and
+  import.
+
+Handoff:
+
+- #1017 can now run two runtime islands by combining Cloudflare allocation,
+  owned-resource evidence, explicit tunnel-token secret delivery, and Docker
+  connector startup.
+- A real secret provider/service remains future work; this pass models the
+  secret reference and delivery contract that such a provider will satisfy.
