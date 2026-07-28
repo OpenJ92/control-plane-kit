@@ -14,12 +14,15 @@ from control_plane_kit_core.planning.activity_plan import (
     ActivityImpact,
     ActivityOperation,
     ActivityPlan,
+    AllocatePublicIngress,
     AddSocketConnection,
     ChangeTarget,
     NodeTarget,
     PlannedActivity,
+    PublicIngressActivityTarget,
     ReconcileNode,
     ReconcileRuntime,
+    RemovePublicIngress,
     RemoveNodeResource,
     RemoveRuntimeResource,
     RemoveSocketConnection,
@@ -44,6 +47,7 @@ from control_plane_kit_core.topology.changes import (
     GraphDiff,
     ModifiedChange,
     NodeValue,
+    PublicIngressValue,
     RemovedChange,
     RuntimeValue,
     StructuralChange,
@@ -55,6 +59,7 @@ from control_plane_kit_core.topology.validation import (
     EdgeSubject,
     GraphSubject,
     NodeSubject,
+    PublicIngressSubject,
     RuntimeSubject,
 )
 from control_plane_kit_core.topology import SocketBinding
@@ -95,6 +100,10 @@ def compile_activity_plan(diff: GraphDiff) -> ActivityPlan:
     healthy_node: dict[str, _ActivityDraft] = {}
     stop_node: dict[str, _ActivityDraft] = {}
     remove_node: dict[str, _ActivityDraft] = {}
+    allocate_ingress: dict[str, _ActivityDraft] = {}
+    remove_ingress: dict[str, _ActivityDraft] = {}
+    added_public_ingresses: dict[str, PublicIngressValue] = {}
+    removed_public_ingresses: dict[str, PublicIngressValue] = {}
     reconcile_node: dict[str, _ActivityDraft] = {}
     removed_node_runtime: dict[str, str] = {}
     removed_edges: dict[str, tuple[_ActivityDraft | None, EdgeValue]] = {}
@@ -121,6 +130,16 @@ def compile_activity_plan(diff: GraphDiff) -> ActivityPlan:
                 or after.binding is SocketBinding.ENVIRONMENT
             ):
                 modified_edges[edge_id] = (None, change.before, change.after)
+            case AddedChange(
+                subject=PublicIngressSubject(ingress_id=ingress_id),
+                after=PublicIngressValue(),
+            ):
+                added_public_ingresses[ingress_id] = change.after
+            case RemovedChange(
+                subject=PublicIngressSubject(ingress_id=ingress_id),
+                before=PublicIngressValue(),
+            ):
+                removed_public_ingresses[ingress_id] = change.before
         match _reconciliation_owner(change):
             case NodeSubject(node_id=node_id):
                 node_reconciliations.setdefault(node_id, []).append(change)
@@ -156,6 +175,14 @@ def compile_activity_plan(diff: GraphDiff) -> ActivityPlan:
                     change.before, EdgeValue
                 ):
                     removed_edges[edge_id] = (draft, change.before)
+                case AllocatePublicIngress(
+                    target=PublicIngressActivityTarget(ingress_id=ingress_id)
+                ):
+                    allocate_ingress[ingress_id] = draft
+                case RemovePublicIngress(
+                    target=PublicIngressActivityTarget(ingress_id=ingress_id)
+                ):
+                    remove_ingress[ingress_id] = draft
                 case SwitchSocketConnection(
                     target=SocketConnectionTarget(edge_id=edge_id)
                 ) if (
@@ -190,6 +217,10 @@ def compile_activity_plan(diff: GraphDiff) -> ActivityPlan:
             healthy_node=healthy_node,
             stop_node=stop_node,
             remove_node=remove_node,
+            allocate_ingress=allocate_ingress,
+            remove_ingress=remove_ingress,
+            added_public_ingresses=added_public_ingresses,
+            removed_public_ingresses=removed_public_ingresses,
             reconcile_node=reconcile_node,
             removed_node_runtime=removed_node_runtime,
             removed_edges=removed_edges,
@@ -348,6 +379,32 @@ def _compile_change(change: StructuralChange) -> tuple[_ActivityDraft, ...]:
                     ActivityImpact.DISRUPTIVE,
                 ),
             )
+        case AddedChange(
+            subject=PublicIngressSubject(ingress_id=ingress_id),
+            after=PublicIngressValue(),
+        ):
+            return (
+                _draft(
+                    change,
+                    "allocate-public-ingress",
+                    AllocatePublicIngress(PublicIngressActivityTarget(ingress_id)),
+                    RiskLevel.MEDIUM,
+                    ActivityImpact.NON_DESTRUCTIVE,
+                ),
+            )
+        case RemovedChange(
+            subject=PublicIngressSubject(ingress_id=ingress_id),
+            before=PublicIngressValue(),
+        ):
+            return (
+                _draft(
+                    change,
+                    "remove-public-ingress",
+                    RemovePublicIngress(PublicIngressActivityTarget(ingress_id)),
+                    RiskLevel.HIGH,
+                    ActivityImpact.DISRUPTIVE,
+                ),
+            )
         case ModifiedChange(subject=FieldSubject(owner=GraphSubject())):
             return ()
         case UnsupportedChange(subject=subject):
@@ -369,6 +426,10 @@ def _add_dependencies(
     healthy_node: dict[str, _ActivityDraft],
     stop_node: dict[str, _ActivityDraft],
     remove_node: dict[str, _ActivityDraft],
+    allocate_ingress: dict[str, _ActivityDraft],
+    remove_ingress: dict[str, _ActivityDraft],
+    added_public_ingresses: dict[str, PublicIngressValue],
+    removed_public_ingresses: dict[str, PublicIngressValue],
     reconcile_node: dict[str, _ActivityDraft],
     removed_node_runtime: dict[str, str],
     removed_edges: dict[str, tuple[_ActivityDraft | None, EdgeValue]],
@@ -382,6 +443,22 @@ def _add_dependencies(
         case AddedChange(subject=NodeSubject(node_id=node_id), after=NodeValue(node=node)):
             if runtime := start_runtime.get(node.runtime_id):
                 start_node[node_id].dependencies.add(runtime.activity_id)
+            for ingress_id, ingress_value in added_public_ingresses.items():
+                if ingress_value.ingress.connector_node_id != node_id:
+                    continue
+                if allocate := allocate_ingress.get(ingress_id):
+                    start_node[node_id].dependencies.add(allocate.activity_id)
+        case AddedChange(
+            subject=PublicIngressSubject(ingress_id=ingress_id),
+            after=PublicIngressValue(ingress=ingress),
+        ):
+            if allocate := allocate_ingress.get(ingress_id):
+                if healthy := healthy_node.get(ingress.target.node_id):
+                    allocate.dependencies.add(healthy.activity_id)
+                if reconcile := reconcile_node.get(ingress.target.node_id):
+                    allocate.dependencies.add(reconcile.activity_id)
+                if connector_start := start_node.get(ingress.connector_node_id):
+                    connector_start.dependencies.add(allocate.activity_id)
         case AddedChange(subject=EdgeSubject(), after=EdgeValue(edge=edge)):
             if not matching:
                 predecessor = healthy_node.get(edge.provider_role)
@@ -407,6 +484,12 @@ def _add_dependencies(
         case RemovedChange(subject=NodeSubject(node_id=node_id), before=NodeValue()):
             if node_id not in stop_node:
                 return
+            for ingress_id, ingress_value in removed_public_ingresses.items():
+                ingress = ingress_value.ingress
+                if node_id not in (ingress.target.node_id, ingress.connector_node_id):
+                    continue
+                if remove := remove_ingress.get(ingress_id):
+                    stop_node[node_id].dependencies.add(remove.activity_id)
             for remove, edge_value in removed_edges.values():
                 edge = edge_value.edge
                 if node_id in (edge.provider_role, edge.consumer_role):

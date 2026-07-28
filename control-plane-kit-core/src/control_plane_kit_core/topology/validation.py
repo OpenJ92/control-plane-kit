@@ -81,6 +81,14 @@ class EdgeSubject:
 
 
 @dataclass(frozen=True)
+class PublicIngressSubject:
+    ingress_id: str
+
+    def descriptor(self) -> dict[str, str]:
+        return {"kind": "public-ingress", "ingress_id": self.ingress_id}
+
+
+@dataclass(frozen=True)
 class SocketSubject:
     node_id: str
     socket_name: str
@@ -95,7 +103,14 @@ class SocketSubject:
         }
 
 
-ValidationSubject = GraphSubject | RuntimeSubject | NodeSubject | EdgeSubject | SocketSubject
+ValidationSubject = (
+    GraphSubject
+    | RuntimeSubject
+    | NodeSubject
+    | EdgeSubject
+    | PublicIngressSubject
+    | SocketSubject
+)
 
 
 @dataclass(frozen=True)

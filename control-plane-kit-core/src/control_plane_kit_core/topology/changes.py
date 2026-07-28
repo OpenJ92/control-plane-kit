@@ -13,6 +13,7 @@ from control_plane_kit_core.environment import (
     PublicStaticEnvironmentBinding,
     SocketDerivedEnvironmentBinding,
 )
+from control_plane_kit_core.public_ingress import NamedPublicIngress
 from control_plane_kit_core.secrets import SecretDelivery, secret_delivery_sort_key
 from control_plane_kit_core.topology.graph import (
     Edge,
@@ -26,6 +27,7 @@ from control_plane_kit_core.topology.validation import (
     EdgeSubject,
     GraphSubject,
     NodeSubject,
+    PublicIngressSubject,
     RuntimeSubject,
 )
 
@@ -60,7 +62,7 @@ class StructuralField(StrEnum):
     RESOURCE_LIFECYCLE = "resource-lifecycle"
 
 
-DiffOwner: TypeAlias = GraphSubject | RuntimeSubject | NodeSubject
+DiffOwner: TypeAlias = GraphSubject | RuntimeSubject | NodeSubject | PublicIngressSubject
 
 
 @dataclass(frozen=True)
@@ -80,7 +82,12 @@ class FieldSubject:
 
 
 DiffSubject: TypeAlias = (
-    GraphSubject | RuntimeSubject | NodeSubject | EdgeSubject | FieldSubject
+    GraphSubject
+    | RuntimeSubject
+    | NodeSubject
+    | EdgeSubject
+    | PublicIngressSubject
+    | FieldSubject
 )
 
 
@@ -280,6 +287,14 @@ class EdgeValue:
         }
 
 
+@dataclass(frozen=True)
+class PublicIngressValue:
+    ingress: NamedPublicIngress
+
+    def descriptor(self) -> dict[str, object]:
+        return self.ingress.descriptor()
+
+
 DiffValue: TypeAlias = (
     TextValue
     | StringTupleValue
@@ -293,6 +308,7 @@ DiffValue: TypeAlias = (
     | RuntimeValue
     | NodeValue
     | EdgeValue
+    | PublicIngressValue
 )
 
 

@@ -65,6 +65,15 @@ class SocketConnectionTarget:
 
 
 @dataclass(frozen=True)
+class PublicIngressActivityTarget:
+    ingress_id: str
+
+    def __post_init__(self) -> None:
+        if not self.ingress_id.strip():
+            raise ValueError("public ingress activity target must not be empty")
+
+
+@dataclass(frozen=True)
 class ChangeTarget:
     subject: DiffSubject
 
@@ -106,6 +115,16 @@ class SwitchSocketConnection:
 @dataclass(frozen=True)
 class RemoveSocketConnection:
     target: SocketConnectionTarget
+
+
+@dataclass(frozen=True)
+class AllocatePublicIngress:
+    target: PublicIngressActivityTarget
+
+
+@dataclass(frozen=True)
+class RemovePublicIngress:
+    target: PublicIngressActivityTarget
 
 
 @dataclass(frozen=True)
@@ -157,6 +176,8 @@ ActivityOperation: TypeAlias = (
     | AddSocketConnection
     | SwitchSocketConnection
     | RemoveSocketConnection
+    | AllocatePublicIngress
+    | RemovePublicIngress
     | ReconcileNode
     | ReconcileRuntime
     | StartRuntime
@@ -335,6 +356,10 @@ def _require_typed_operation(operation: object) -> None:
             return
         case RemoveSocketConnection(target=SocketConnectionTarget()):
             return
+        case AllocatePublicIngress(target=PublicIngressActivityTarget()):
+            return
+        case RemovePublicIngress(target=PublicIngressActivityTarget()):
+            return
         case ReconcileNode(target=NodeTarget()):
             return
         case ReconcileRuntime(target=RuntimeTarget()):
@@ -378,6 +403,16 @@ def compensation_for_operation(operation: ActivityOperation) -> CompensationSpec
         case SwitchSocketConnection(target=target):
             return Compensate(
                 SwitchSocketConnection(target),
+                CompensationMaterialSource.BASE_GRAPH,
+            )
+        case AllocatePublicIngress(target=target):
+            return Compensate(
+                RemovePublicIngress(target),
+                CompensationMaterialSource.DESIRED_GRAPH,
+            )
+        case RemovePublicIngress(target=target):
+            return Compensate(
+                AllocatePublicIngress(target),
                 CompensationMaterialSource.BASE_GRAPH,
             )
         case ReconcileNode(target=target):
