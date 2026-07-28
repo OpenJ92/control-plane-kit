@@ -60,6 +60,7 @@ from control_plane_kit_operations.ingress_authorities import (
     GeneratedIngressSecretReference,
     GeneratedSecretPurpose,
     IngressAuthorityProviderKind,
+    OwnedIngressResourceStatus,
     RegisteredIngressAuthority,
 )
 from control_plane_kit_operations.lifecycle import ExecutionWorkerAuthority
@@ -291,6 +292,70 @@ class RuntimeEffectTranslationTests(unittest.TestCase):
 
         self.assertEqual(request.authority_ref, RuntimeAuthorityReference("local-docker"))
         self.assertEqual(request.authority_deliveries, ())
+
+    def test_cloudflared_connector_uses_active_ingress_resource_epoch(self) -> None:
+        removed_resource = replace(
+            _cloudflare_resource(),
+            status=OwnedIngressResourceStatus.REMOVED,
+            removed_at="2026-07-28T08:05:00Z",
+            removed_by_run_id="run-remove",
+        )
+        active_resource = replace(
+            _cloudflare_resource(),
+            tunnel_name="cpk-gateway-002",
+            tunnel_id="tunnel-002",
+            dns_record_id="dns-002",
+            hostname="cpk-gateway-002.openj92.dev",
+            source_run_id="run-realloc",
+            source_activity_id="allocate-ingress-again",
+            source_event_id="event-realloc",
+            epoch=2,
+        )
+        active_secret = replace(
+            _generated_ingress_secret(),
+            secret_ref=SecretReference(
+                "secret://generated/ingress/workspace-a/"
+                "cloudflared-tunnel-token/run-realloc/"
+                "allocate-ingress-again/event-realloc"
+            ),
+            source_run_id="run-realloc",
+            source_activity_id="allocate-ingress-again",
+            source_event_id="event-realloc",
+        )
+        graph = _public_ingress_graph()
+        context = _context(
+            activity=PlannedActivity(
+                ActivityId("start-cloudflared"),
+                StartNode(NodeTarget("cloudflared")),
+            ),
+            desired_graph=graph,
+            registered_products=(
+                _registered_product(
+                    name="cpk-local-gateway",
+                    provider_socket="control",
+                    protocol=Protocol.HTTP,
+                    port=8000,
+                ),
+                _registered_product(name="cloudflared-connector"),
+            ),
+            ingress_authorities=(_registered_ingress_authority(),),
+            ingress_resources=(removed_resource, active_resource),
+            generated_ingress_secrets=(_generated_ingress_secret(), active_secret),
+        )
+
+        request = runtime_effect_request_for_context(context)
+
+        deliveries = request.products[0].product.runtime_contract.secret_deliveries
+        self.assertEqual(
+            tuple(
+                delivery.reference.reference_id
+                for delivery in deliveries
+                if isinstance(delivery, SecretEnvironmentDelivery)
+                and delivery.environment_name == "TUNNEL_TOKEN"
+            ),
+            (active_secret.secret_ref.reference_id,),
+        )
+        self.assertNotIn("tunnel-token-value", repr(request.descriptor()).lower())
 
     def test_gateway_node_receives_graph_derived_target_map_environment(self) -> None:
         graph = _gateway_graph()

@@ -28,6 +28,11 @@ from control_plane_kit_core.planning import (
     StartNode,
 )
 from control_plane_kit_core.policies import PolicyScope
+from control_plane_kit_core.public_ingress import (
+    IngressAuthorityReference,
+    PublicIngressLifecycle,
+)
+from control_plane_kit_core.secrets import SecretReference
 from control_plane_kit_operations.coordinator import (
     ActivityExecutionOutcome,
     ActivityRealizationContext,
@@ -36,6 +41,12 @@ from control_plane_kit_operations.coordinator import (
     ExecutionCoordinator,
     ExecutionCoordinatorConflict,
     ExecutionCoordinatorDenied,
+)
+from control_plane_kit_operations.ingress_authorities import (
+    CloudflareOwnedIngressResource,
+    GeneratedIngressSecretReference,
+    GeneratedSecretPurpose,
+    IngressAuthorityProviderKind,
 )
 from control_plane_kit_operations.products import InlineDescriptorSource
 from control_plane_kit_operations.lifecycle import (
@@ -134,6 +145,50 @@ class RecordingAdapter:
         if not isinstance(outcome, ActivityExecutionOutcome):
             raise AssertionError("test adapter outcome must be ActivityExecutionOutcome")
         return outcome
+
+
+class SideEvidenceWritingAdapter:
+    def __init__(self, tracker: TrackingUnitOfWorkFactory) -> None:
+        self.tracker = tracker
+        self.calls: list[str] = []
+        self.contexts: list[ActivityRealizationContext] = []
+        self.active_during_calls: list[int] = []
+
+    def execute(
+        self,
+        context: ActivityRealizationContext,
+    ) -> ActivityExecutionOutcome:
+        self.calls.append(context.activity.activity_id.value)
+        self.contexts.append(context)
+        self.active_during_calls.append(self.tracker.active)
+        if context.activity.activity_id == ActivityId("start-api"):
+            self._record_side_evidence(context)
+        return ActivityExecutionOutcome.succeeded()
+
+    def _record_side_evidence(self, context: ActivityRealizationContext) -> None:
+        with self.tracker() as unit_of_work:
+            unit_of_work.stores.ingress_resources.record_cloudflare(
+                _cloudflare_resource(
+                    workspace_id=context.request.identity.workspace_id,
+                    source_run_id=context.run.run_id,
+                    source_activity_id=context.activity.activity_id.value,
+                    source_event_id=context.intent_event.event_id,
+                )
+            )
+            unit_of_work.stores.generated_ingress_secrets.record(
+                GeneratedIngressSecretReference(
+                    workspace_id=context.request.identity.workspace_id,
+                    purpose=GeneratedSecretPurpose.CLOUDFLARED_TUNNEL_TOKEN,
+                    secret_ref=SecretReference(
+                        "secret://generated/ingress/workspace-a/token"
+                    ),
+                    recorded_at="2026-07-22T13:01:10Z",
+                    source_run_id=context.run.run_id,
+                    source_activity_id=context.activity.activity_id.value,
+                    source_event_id=context.intent_event.event_id,
+                )
+            )
+            unit_of_work.commit()
 
 
 class ExecutionCoordinatorTests(unittest.TestCase):
@@ -464,6 +519,29 @@ class ExecutionCoordinatorTests(unittest.TestCase):
         self.assertIs(completed.status, CoordinatorStatus.COMPLETED)
         self.assertEqual(adapter.calls, ["start-api", "wait-api"])
 
+    def test_next_activity_sees_side_evidence_written_by_prior_activity(self) -> None:
+        self.reset_execution_request(plan=two_step_plan())
+        self.claim_and_start()
+        adapter = SideEvidenceWritingAdapter(self.tracker)
+
+        result = self.coordinator(adapter).execute(self.command(max_effects=2))
+
+        self.assertIs(result.status, CoordinatorStatus.COMPLETED)
+        self.assertEqual(adapter.calls, ["start-api", "wait-api"])
+        self.assertEqual(adapter.active_during_calls, [0, 0])
+        self.assertEqual(adapter.contexts[0].ingress_resources, ())
+        self.assertEqual(
+            [resource.tunnel_id for resource in adapter.contexts[1].ingress_resources],
+            ["tunnel-001"],
+        )
+        self.assertEqual(
+            [
+                secret.secret_ref.reference_id
+                for secret in adapter.contexts[1].generated_ingress_secrets
+            ],
+            ["secret://generated/ingress/workspace-a/token"],
+        )
+
     def claim(self) -> None:
         self.lifecycle_with_ids("run-a", "event-open", "action-claim").execute(
             ClaimAndOpenActivityRun(
@@ -580,6 +658,33 @@ def two_step_plan() -> ActivityPlan:
                 (ActivityDependency(ActivityId("start-api")),),
             ),
         )
+    )
+
+
+def _cloudflare_resource(
+    *,
+    workspace_id: str,
+    source_run_id: str,
+    source_activity_id: str,
+    source_event_id: str,
+) -> CloudflareOwnedIngressResource:
+    return CloudflareOwnedIngressResource(
+        workspace_id=workspace_id,
+        runtime_id="docker",
+        ingress_id="gateway-public",
+        authority_ref=IngressAuthorityReference("openj92-public-ingress"),
+        provider_kind=IngressAuthorityProviderKind.CLOUDFLARE,
+        tunnel_name="cpk-gateway-001",
+        tunnel_id="tunnel-001",
+        dns_record_id="dns-001",
+        hostname="cpk-gateway-001.openj92.dev",
+        zone_id="zone-openj92",
+        lifecycle=PublicIngressLifecycle.EPHEMERAL,
+        created_at="2026-07-22T13:01:05Z",
+        observed_at="2026-07-22T13:01:06Z",
+        source_run_id=source_run_id,
+        source_activity_id=source_activity_id,
+        source_event_id=source_event_id,
     )
 
 
