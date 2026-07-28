@@ -6,9 +6,14 @@ import unittest
 import psycopg
 
 from control_plane_kit_core.policies import PolicyScope
-from control_plane_kit_core.public_ingress import IngressAuthorityReference
+from control_plane_kit_core.public_ingress import (
+    IngressAuthorityReference,
+    PublicIngressLifecycle,
+)
 from control_plane_kit_core.secrets import SecretReference
 from control_plane_kit_operations.ingress_authorities import (
+    CloudflareIngressTeardownActionKind,
+    CloudflareOwnedIngressResource,
     CloudflareZoneIngressAuthority,
     IngressAuthorityAuthorizationDenied,
     IngressAuthorityNotFound,
@@ -18,6 +23,7 @@ from control_plane_kit_operations.ingress_authorities import (
     RegisterIngressAuthorityCommand,
     RegisteredIngressAuthorityStatus,
     RevokeIngressAuthorityCommand,
+    cloudflare_ingress_teardown_plan,
 )
 from control_plane_kit_operations.postgres import (
     PostgresStoreBundle,
@@ -75,6 +81,109 @@ class IngressAuthorityValueTests(unittest.TestCase):
                 api_token_ref=SecretReference("secret://cloudflare/openj92/api-token"),
                 allowed_hostname_pattern="cpk-token-*.openj92.dev",
             )
+
+    def test_cloudflare_owned_resource_evidence_is_bounded_and_secret_free(self) -> None:
+        resource = self.cloudflare_resource()
+
+        descriptor = resource.descriptor()
+
+        self.assertEqual(descriptor["workspace_id"], "workspace-a")
+        self.assertEqual(descriptor["runtime_id"], "docker-a")
+        self.assertEqual(descriptor["tunnel_id"], "tunnel-001")
+        self.assertEqual(descriptor["dns_record_id"], "dns-001")
+        self.assertEqual(descriptor["hostname"], "cpk-gateway-001.openj92.dev")
+        self.assertEqual(descriptor["lifecycle"], "ephemeral")
+        self.assertNotIn("cf_api_token", repr(descriptor).lower())
+        self.assertNotIn("bearer", repr(descriptor).lower())
+        self.assertNotIn("eyj", repr(descriptor).lower())
+
+    def test_cloudflare_teardown_uses_recorded_ids_not_broad_search(self) -> None:
+        plan = cloudflare_ingress_teardown_plan(
+            authority=self.cloudflare_authority(),
+            resource=self.cloudflare_resource(),
+        )
+
+        self.assertEqual(
+            [action.kind for action in plan.actions],
+            [
+                CloudflareIngressTeardownActionKind.DELETE_DNS_RECORD,
+                CloudflareIngressTeardownActionKind.DELETE_TUNNEL,
+            ],
+        )
+        self.assertEqual(plan.actions[0].resource_id, "dns-001")
+        self.assertEqual(plan.actions[1].resource_id, "tunnel-001")
+        self.assertNotIn("search", repr(plan.descriptor()).lower())
+        self.assertNotIn("list", repr(plan.descriptor()).lower())
+
+    def test_cloudflare_teardown_skips_retained_and_external_lifecycles(self) -> None:
+        for lifecycle in (
+            PublicIngressLifecycle.RETAINED,
+            PublicIngressLifecycle.EXTERNAL,
+        ):
+            with self.subTest(lifecycle=lifecycle):
+                plan = cloudflare_ingress_teardown_plan(
+                    authority=self.cloudflare_authority(),
+                    resource=self.cloudflare_resource(lifecycle=lifecycle),
+                )
+
+                self.assertEqual(
+                    [action.kind for action in plan.actions],
+                    [CloudflareIngressTeardownActionKind.SKIP_RETAINED_OR_EXTERNAL],
+                )
+
+    def test_cloudflare_teardown_fails_closed_on_missing_or_ambiguous_evidence(
+        self,
+    ) -> None:
+        authority = self.cloudflare_authority()
+
+        with self.assertRaisesRegex(ValueError, "ownership evidence"):
+            cloudflare_ingress_teardown_plan(authority=authority, resource=None)
+        with self.assertRaisesRegex(ValueError, "zone"):
+            cloudflare_ingress_teardown_plan(
+                authority=authority,
+                resource=self.cloudflare_resource(zone_id="zone-other"),
+            )
+        with self.assertRaisesRegex(ValueError, "hostname"):
+            cloudflare_ingress_teardown_plan(
+                authority=authority,
+                resource=self.cloudflare_resource(hostname="gateway-001.cpk.openj92.dev"),
+            )
+        with self.assertRaisesRegex(ValueError, "ambiguous"):
+            cloudflare_ingress_teardown_plan(
+                authority=authority,
+                resource=self.cloudflare_resource(tunnel_name="auth-potteryfactory"),
+            )
+
+    def cloudflare_authority(self) -> CloudflareZoneIngressAuthority:
+        return CloudflareZoneIngressAuthority(
+            account_id="account-openj92",
+            zone_id="zone-openj92",
+            zone_name="openj92.dev",
+            api_token_ref=SecretReference("secret://cloudflare/openj92/api-token"),
+            allowed_hostname_pattern="cpk-gateway-*.openj92.dev",
+        )
+
+    def cloudflare_resource(
+        self,
+        *,
+        lifecycle: PublicIngressLifecycle = PublicIngressLifecycle.EPHEMERAL,
+        zone_id: str = "zone-openj92",
+        hostname: str = "cpk-gateway-001.openj92.dev",
+        tunnel_name: str = "cpk-gateway-001",
+    ) -> CloudflareOwnedIngressResource:
+        return CloudflareOwnedIngressResource(
+            workspace_id="workspace-a",
+            runtime_id="docker-a",
+            ingress_id="gateway-001",
+            tunnel_name=tunnel_name,
+            tunnel_id="tunnel-001",
+            dns_record_id="dns-001",
+            hostname=hostname,
+            zone_id=zone_id,
+            lifecycle=lifecycle,
+            created_at="2026-07-27T23:30:00Z",
+            observed_at="2026-07-27T23:31:00Z",
+        )
 
 
 class IngressAuthorityStoreTests(unittest.TestCase):
