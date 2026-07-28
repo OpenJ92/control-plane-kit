@@ -21,6 +21,7 @@ from control_plane_kit_operations.ingress_authorities import (
     IngressAuthorityProviderKind,
     IngressAuthorityRegistrationConflict,
     IngressAuthorityRegistrationService,
+    OwnedIngressResourceConflict,
     RegisterIngressAuthorityCommand,
     RegisteredIngressAuthorityStatus,
     RevokeIngressAuthorityCommand,
@@ -255,19 +256,25 @@ class IngressAuthorityValueTests(unittest.TestCase):
         zone_id: str = "zone-openj92",
         hostname: str = "cpk-gateway-001.openj92.dev",
         tunnel_name: str = "cpk-gateway-001",
+        tunnel_id: str = "tunnel-001",
     ) -> CloudflareOwnedIngressResource:
         return CloudflareOwnedIngressResource(
             workspace_id="workspace-a",
             runtime_id="docker-a",
             ingress_id="gateway-001",
+            authority_ref=IngressAuthorityReference("openj92-public-ingress"),
+            provider_kind=IngressAuthorityProviderKind.CLOUDFLARE,
             tunnel_name=tunnel_name,
-            tunnel_id="tunnel-001",
+            tunnel_id=tunnel_id,
             dns_record_id="dns-001",
             hostname=hostname,
             zone_id=zone_id,
             lifecycle=lifecycle,
             created_at="2026-07-27T23:30:00Z",
             observed_at="2026-07-27T23:31:00Z",
+            source_run_id="run-001",
+            source_activity_id="activity-001",
+            source_event_id="event-001",
         )
 
 
@@ -462,6 +469,53 @@ class IngressAuthorityStoreTests(unittest.TestCase):
                     IngressAuthorityReference("openj92-public-ingress"),
                     "gateway-001.cpk.openj92.dev",
                 )
+
+    def test_owned_cloudflare_resource_evidence_is_durable_and_idempotent(
+        self,
+    ) -> None:
+        resource = IngressAuthorityValueTests().cloudflare_resource()
+        with self.unit_of_work() as unit_of_work:
+            recorded = unit_of_work.stores.ingress_resources.record_cloudflare(
+                resource
+            )
+            unit_of_work.commit()
+
+        with self.unit_of_work() as unit_of_work:
+            self.assertEqual(
+                unit_of_work.stores.ingress_resources.get_cloudflare(
+                    "workspace-a",
+                    "gateway-001",
+                ),
+                recorded,
+            )
+            self.assertEqual(
+                unit_of_work.stores.ingress_resources.list_cloudflare("workspace-a"),
+                (recorded,),
+            )
+            self.assertEqual(
+                unit_of_work.stores.ingress_resources.list_cloudflare("workspace-b"),
+                (),
+            )
+            self.assertEqual(
+                unit_of_work.stores.ingress_resources.record_cloudflare(resource),
+                recorded,
+            )
+            with self.assertRaisesRegex(OwnedIngressResourceConflict, "replacement"):
+                unit_of_work.stores.ingress_resources.record_cloudflare(
+                    IngressAuthorityValueTests().cloudflare_resource(
+                        tunnel_id="tunnel-002"
+                    )
+                )
+
+        descriptor = recorded.descriptor()
+        self.assertEqual(descriptor["authority_ref"], "openj92-public-ingress")
+        self.assertEqual(descriptor["provider_kind"], "cloudflare")
+        self.assertEqual(descriptor["source_run_id"], "run-001")
+        self.assertEqual(descriptor["source_activity_id"], "activity-001")
+        self.assertEqual(descriptor["source_event_id"], "event-001")
+        self.assertNotIn("cf_api_token", repr(descriptor).lower())
+        self.assertNotIn("bearer", repr(descriptor).lower())
+        self.assertNotIn("eyj", repr(descriptor).lower())
 
     def read_service(self) -> InstanceReadService:
         stores = PostgresStoreBundle(self.connection)

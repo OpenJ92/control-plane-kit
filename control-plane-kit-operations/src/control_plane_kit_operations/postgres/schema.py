@@ -18,6 +18,7 @@ from control_plane_kit_core.operations.lifecycle import (
 )
 from control_plane_kit_core.planning import RiskLevel
 from control_plane_kit_core.policies import PolicyScope
+from control_plane_kit_core.public_ingress import PublicIngressLifecycle
 from control_plane_kit_core.probe_intents import (
     EndpointContext,
     ProbeKind,
@@ -243,6 +244,38 @@ CREATE TABLE IF NOT EXISTS cpk_ingress_authorities (
 CREATE UNIQUE INDEX IF NOT EXISTS cpk_ingress_authorities_active_ref
   ON cpk_ingress_authorities (workspace_id, authority_ref)
   WHERE status = 'active';
+
+CREATE TABLE IF NOT EXISTS cpk_cloudflare_ingress_resources (
+  workspace_id text NOT NULL REFERENCES cpk_workspaces(workspace_id),
+  runtime_id text NOT NULL,
+  ingress_id text NOT NULL,
+  authority_ref text NOT NULL,
+  provider_kind text NOT NULL,
+  tunnel_name text NOT NULL,
+  tunnel_id text NOT NULL,
+  dns_record_id text NOT NULL,
+  hostname text NOT NULL,
+  zone_id text NOT NULL,
+  lifecycle text NOT NULL,
+  created_at text NOT NULL,
+  observed_at text NOT NULL,
+  source_run_id text NOT NULL,
+  source_activity_id text NOT NULL,
+  source_event_id text NOT NULL,
+  metadata jsonb NOT NULL DEFAULT '{}'::jsonb,
+  PRIMARY KEY (workspace_id, ingress_id),
+  CONSTRAINT cpk_cloudflare_ingress_resources_provider_kind_check
+    CHECK (provider_kind = 'cloudflare'),
+  CONSTRAINT cpk_cloudflare_ingress_resources_lifecycle_check
+    CHECK (lifecycle IN ({{ public_ingress_lifecycles | sql_values }})),
+  CONSTRAINT cpk_cloudflare_ingress_resources_authority_ref_check
+    CHECK (authority_ref ~ '^[a-z][a-z0-9._-]{0,127}$'),
+  CONSTRAINT cpk_cloudflare_ingress_resources_metadata_shape_check
+    CHECK (jsonb_typeof(metadata) = 'object')
+);
+
+CREATE INDEX IF NOT EXISTS cpk_cloudflare_ingress_resources_workspace
+  ON cpk_cloudflare_ingress_resources (workspace_id, observed_at DESC, ingress_id);
 
 CREATE TABLE IF NOT EXISTS cpk_operation_sessions (
   session_id text PRIMARY KEY,
@@ -538,6 +571,7 @@ POSTGRES_SCHEMA = _SQL_ENVIRONMENT.from_string(_POSTGRES_SCHEMA_TEMPLATE).render
     operator_command_kinds=tuple(OperatorCommandKind),
     observation_freshnesses=tuple(ObservationFreshness),
     observation_statuses=tuple(ObservationStatus),
+    public_ingress_lifecycles=tuple(PublicIngressLifecycle),
     policy_scopes=tuple(PolicyScope),
     endpoint_contexts=tuple(EndpointContext),
     probe_kinds=tuple(ProbeKind),
