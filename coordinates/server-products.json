@@ -1,44 +1,44 @@
 {
   "schema": "cpk-servers.coordinates",
   "upstreams": {
-    "control_plane_kit_commit": "b84c492ffe5b574d8884d47fc6b9bcb317fe33c1",
-    "control_plane_kit_interpreters_commit": "7541f5e7d98a0e4ef3f3997d845b58617e3740e7"
+    "control_plane_kit_commit": "39822c61d61f7fddc5cb98899e8be15d2774ea62",
+    "control_plane_kit_interpreters_commit": "71f57db620af03ef459412e22859e54c1443405a"
   },
   "products": [
     {
       "product_id": "cpk-server",
       "owner_directory": "products/cpk_server",
       "descriptor_path": "products/cpk_server/product.cpk.json",
-      "source_commit": "9baa1cd6723cf3837123a54606fac19a175c5e20",
+      "source_commit": "73fd6314b22284490ab7f7a121bdda4439c6265a",
       "image": {
         "registry": "ghcr.io",
         "repository": "openj92/control-plane-kit-servers/cpk-server",
-        "tag": "seeded-ingress-1048-cpk-server",
-        "digest": "sha256:0e4bc3bc207e7eac6868093277d17818cced7387b7397a2fde9ab46c3041cb49"
+        "tag": "seeded-ingress-1066-cpk-server",
+        "digest": "sha256:2f67100b589a14a7c29827ae477739c77f63cbbc12bc75a9c7642af4dc8a2eb4"
       }
     },
     {
       "product_id": "cpk-server-docker",
       "owner_directory": "products/cpk_server",
       "descriptor_path": "products/cpk_server/product.docker.cpk.json",
-      "source_commit": "9baa1cd6723cf3837123a54606fac19a175c5e20",
+      "source_commit": "73fd6314b22284490ab7f7a121bdda4439c6265a",
       "image": {
         "registry": "ghcr.io",
         "repository": "openj92/control-plane-kit-servers/cpk-server",
-        "tag": "seeded-ingress-1048-cpk-server",
-        "digest": "sha256:0e4bc3bc207e7eac6868093277d17818cced7387b7397a2fde9ab46c3041cb49"
+        "tag": "seeded-ingress-1066-cpk-server",
+        "digest": "sha256:2f67100b589a14a7c29827ae477739c77f63cbbc12bc75a9c7642af4dc8a2eb4"
       }
     },
     {
       "product_id": "cpk-server-docker-cloudflare",
       "owner_directory": "products/cpk_server",
       "descriptor_path": "products/cpk_server/product.docker-cloudflare.cpk.json",
-      "source_commit": "9baa1cd6723cf3837123a54606fac19a175c5e20",
+      "source_commit": "73fd6314b22284490ab7f7a121bdda4439c6265a",
       "image": {
         "registry": "ghcr.io",
         "repository": "openj92/control-plane-kit-servers/cpk-server",
-        "tag": "seeded-ingress-1048-cpk-server",
-        "digest": "sha256:0e4bc3bc207e7eac6868093277d17818cced7387b7397a2fde9ab46c3041cb49"
+        "tag": "seeded-ingress-1066-cpk-server",
+        "digest": "sha256:2f67100b589a14a7c29827ae477739c77f63cbbc12bc75a9c7642af4dc8a2eb4"
       }
     },
     {
