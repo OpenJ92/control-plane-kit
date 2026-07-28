@@ -38,6 +38,10 @@ class PolicyScope(StrEnum):
     RUNTIME_AUTHORITY_DELIVERY_REGISTER = "runtime-authority-delivery:register"
     RUNTIME_AUTHORITY_DELIVERY_READ = "runtime-authority-delivery:read"
     RUNTIME_AUTHORITY_DELIVERY_REVOKE = "runtime-authority-delivery:revoke"
+    INGRESS_AUTHORITY_REGISTER = "ingress-authority:register"
+    INGRESS_AUTHORITY_READ = "ingress-authority:read"
+    INGRESS_AUTHORITY_REVOKE = "ingress-authority:revoke"
+    INGRESS_AUTHORITY_USE = "ingress-authority:use"
 
 
 @dataclass(frozen=True, order=True)

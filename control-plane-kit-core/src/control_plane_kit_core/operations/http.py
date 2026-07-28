@@ -359,6 +359,16 @@ def operator_read_http_routes() -> tuple[HttpApiRouteContract, ...]:
                 "ObservedStateReadResponse",
             ),
             (
+                "read.ingress-authorities",
+                "/workspaces/{workspace_id}/ingress-authorities",
+                "IngressAuthorityCollectionReadResponse",
+            ),
+            (
+                "read.ingress-authority-detail",
+                "/workspaces/{workspace_id}/ingress-authorities/{authority_ref}",
+                "IngressAuthorityDetailReadResponse",
+            ),
+            (
                 "read.control-surface",
                 "/workspaces/{workspace_id}/control-surface",
                 "ControlSurfaceReadResponse",
@@ -471,6 +481,24 @@ def operator_command_http_routes() -> tuple[HttpApiRouteContract, ...]:
                 HttpOperationSafety.COMMAND,
                 "RevokeRuntimeAuthorityDeliveryRequest",
                 "RegisteredRuntimeAuthorityDeliveryResponse",
+            ),
+            (
+                "command.ingress-authority.register",
+                "/workspaces/{workspace_id}/ingress-authorities",
+                ControlPlaneServiceRole.PLANNING,
+                HttpAuthScope.ADMIN,
+                HttpOperationSafety.COMMAND,
+                "RegisterIngressAuthorityRequest",
+                "RegisteredIngressAuthorityResponse",
+            ),
+            (
+                "command.ingress-authority.revoke",
+                "/workspaces/{workspace_id}/ingress-authorities/{authority_ref}/revoke",
+                ControlPlaneServiceRole.PLANNING,
+                HttpAuthScope.ADMIN,
+                HttpOperationSafety.COMMAND,
+                "RevokeIngressAuthorityRequest",
+                "RegisteredIngressAuthorityResponse",
             ),
             (
                 "command.operation-session.start",

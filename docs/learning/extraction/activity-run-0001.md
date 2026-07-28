@@ -4217,3 +4217,57 @@ Security findings:
 - `PublicIngressObservation` stores bounded endpoint evidence only;
 - Cloudflare API tokens and generated tunnel tokens remain future
   secret-reference/IO-boundary work for #1035, #1016, and #1037.
+
+## #1035 Cloudflare Ingress Authority Admission
+
+#1035 adds the operations-owned admission surface for named public ingress
+authority. Core remains provider-neutral: it knows only ingress authority
+references, named ingress requests, targets, and observations. Operations now
+admits a concrete Cloudflare zone authority as workspace-scoped durable truth:
+
+```text
+RegisteredIngressAuthority
+  -> authority_ref
+  -> provider_kind="cloudflare"
+  -> zone_name
+  -> allowed_hostname_pattern
+  -> api_token_ref
+```
+
+The authority is intentionally not an interpreter. It does not create tunnels,
+DNS records, or Docker containers. It records that a workspace may later ask an
+ingress interpreter to allocate hostnames matching the admitted policy.
+
+Security and authorization decisions:
+
+- Cloudflare API token material is represented only by `SecretReference`.
+- Read models expose bounded authority metadata and the secret reference id, not
+  token values.
+- `ingress-authority:register`, `ingress-authority:read`,
+  `ingress-authority:revoke`, and `ingress-authority:use` are distinct from
+  graph execution permission.
+- Hostname selection fails closed when the admitted pattern does not match.
+- `cpk-gateway-*.openj92.dev` is allowed for this lane; nested
+  `gateway-001.cpk.openj92.dev` remains out of scope until wildcard certificate
+  coverage is explicitly added.
+
+Validation evidence:
+
+- `./control-plane-kit-core/test.sh` passed 417 tests, compileall, and import.
+- `./control-plane-kit-operations/test.sh` passed 172 tests, compileall, and
+  import.
+- Full root `./test.sh` remains diagnostic evidence for this surface rather
+  than a child-issue merge gate when unrelated generated live-process tests are
+  red. The #1035 retry ran 1232 tests and failed in three pre-existing live
+  readiness paths:
+  `test_http_bulkhead_server_block`,
+  `test_http_load_generator`, and `test_idempotency_gateway`. None exercised
+  ingress authority registration, readback, revocation, or secret redaction.
+
+Handoff:
+
+- #1015 can introduce the `cloudflared` connector product descriptor without
+  storing tunnel tokens in descriptors.
+- #1016 can implement `CloudflareNamedIngressInterpreter` by resolving the
+  admitted `RegisteredIngressAuthority` token reference only at the IO boundary.
+- #1036 must record owned Cloudflare resource evidence before any teardown.

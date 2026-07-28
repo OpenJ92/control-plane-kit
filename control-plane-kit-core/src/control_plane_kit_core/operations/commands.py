@@ -31,6 +31,7 @@ class OperatorCommandFamily(StrEnum):
     ACTIVITY_PLANNING = "activity-planning"
     APPROVAL = "approval"
     RUNTIME_AUTHORITY = "runtime-authority"
+    INGRESS_AUTHORITY = "ingress-authority"
 
 
 class OperatorCommandKind(StrEnum):
@@ -43,6 +44,8 @@ class OperatorCommandKind(StrEnum):
     REVOKE_RUNTIME_AUTHORITY = "revoke-runtime-authority"
     REGISTER_RUNTIME_AUTHORITY_DELIVERY = "register-runtime-authority-delivery"
     REVOKE_RUNTIME_AUTHORITY_DELIVERY = "revoke-runtime-authority-delivery"
+    REGISTER_INGRESS_AUTHORITY = "register-ingress-authority"
+    REVOKE_INGRESS_AUTHORITY = "revoke-ingress-authority"
     START_OPERATION_SESSION = "start-operation-session"
     CLOSE_OPERATION_SESSION = "close-operation-session"
     CANCEL_OPERATION_SESSION = "cancel-operation-session"
@@ -64,6 +67,7 @@ class CommandPayloadPolicy(StrEnum):
     IMAGE_PULL_AUTHORITY_REFERENCE = "image-pull-authority-reference"
     RUNTIME_AUTHORITY_REFERENCE = "runtime-authority-reference"
     RUNTIME_AUTHORITY_DELIVERY_REFERENCE = "runtime-authority-delivery-reference"
+    INGRESS_AUTHORITY_REFERENCE = "ingress-authority-reference"
 
 
 _KIND_FAMILY = {
@@ -83,6 +87,12 @@ _KIND_FAMILY = {
     ),
     OperatorCommandKind.REVOKE_RUNTIME_AUTHORITY_DELIVERY: (
         OperatorCommandFamily.RUNTIME_AUTHORITY
+    ),
+    OperatorCommandKind.REGISTER_INGRESS_AUTHORITY: (
+        OperatorCommandFamily.INGRESS_AUTHORITY
+    ),
+    OperatorCommandKind.REVOKE_INGRESS_AUTHORITY: (
+        OperatorCommandFamily.INGRESS_AUTHORITY
     ),
     OperatorCommandKind.START_OPERATION_SESSION: OperatorCommandFamily.OPERATION_SESSION,
     OperatorCommandKind.CLOSE_OPERATION_SESSION: OperatorCommandFamily.OPERATION_SESSION,
@@ -447,6 +457,30 @@ _CANONICAL_COMMANDS = (
         "RegisteredRuntimeAuthorityDeliveryResponse",
         ApprovalPolicy.NOT_REQUIRED,
         CommandPayloadPolicy.RUNTIME_AUTHORITY_DELIVERY_REFERENCE,
+        requires_open_session=False,
+    ),
+    _CommandDefinition(
+        "ingress-authority.register",
+        OperatorCommandKind.REGISTER_INGRESS_AUTHORITY,
+        OperatorCommandFamily.INGRESS_AUTHORITY,
+        DeploymentProgramStage.PLAN,
+        ControlPlaneServiceRole.PLANNING,
+        "RegisterIngressAuthority",
+        "RegisteredIngressAuthorityResponse",
+        ApprovalPolicy.NOT_REQUIRED,
+        CommandPayloadPolicy.INGRESS_AUTHORITY_REFERENCE,
+        requires_open_session=False,
+    ),
+    _CommandDefinition(
+        "ingress-authority.revoke",
+        OperatorCommandKind.REVOKE_INGRESS_AUTHORITY,
+        OperatorCommandFamily.INGRESS_AUTHORITY,
+        DeploymentProgramStage.PLAN,
+        ControlPlaneServiceRole.PLANNING,
+        "RevokeIngressAuthority",
+        "RegisteredIngressAuthorityResponse",
+        ApprovalPolicy.NOT_REQUIRED,
+        CommandPayloadPolicy.INGRESS_AUTHORITY_REFERENCE,
         requires_open_session=False,
     ),
     _CommandDefinition(
