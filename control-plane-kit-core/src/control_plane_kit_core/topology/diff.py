@@ -21,6 +21,7 @@ from control_plane_kit_core.topology.changes import (
     MetadataValue,
     ModifiedChange,
     NodeValue,
+    PublicIngressValue,
     RemovedChange,
     RuntimeValue,
     SocketContractValue,
@@ -36,6 +37,7 @@ from control_plane_kit_core.topology.validation import (
     EdgeSubject,
     GraphSubject,
     NodeSubject,
+    PublicIngressSubject,
     RuntimeSubject,
     ValidatedGraph,
 )
@@ -73,6 +75,7 @@ def diff_graphs(current: ValidatedGraph, desired: ValidatedGraph) -> GraphDiff:
     _diff_runtimes(current_graph, desired_graph, changes)
     _diff_nodes(current_graph, desired_graph, codec, changes)
     _diff_edges(current_graph, desired_graph, changes)
+    _diff_public_ingresses(current_graph, desired_graph, changes)
     return GraphDiff(
         current_graph.name,
         desired_graph.name,
@@ -328,6 +331,40 @@ def _diff_edges(
                     EdgeSubject(edge_id),
                     EdgeValue(current.edges[edge_id]),
                     EdgeValue(desired.edges[edge_id]),
+                )
+            )
+
+
+def _diff_public_ingresses(
+    current: DeploymentGraph,
+    desired: DeploymentGraph,
+    changes: list[StructuralChange],
+) -> None:
+    current_by_id = {ingress.ingress_id: ingress for ingress in current.public_ingresses}
+    desired_by_id = {ingress.ingress_id: ingress for ingress in desired.public_ingresses}
+    current_ids = set(current_by_id)
+    desired_ids = set(desired_by_id)
+    for ingress_id in sorted(desired_ids - current_ids):
+        changes.append(
+            AddedChange(
+                PublicIngressSubject(ingress_id),
+                PublicIngressValue(desired_by_id[ingress_id]),
+            )
+        )
+    for ingress_id in sorted(current_ids - desired_ids):
+        changes.append(
+            RemovedChange(
+                PublicIngressSubject(ingress_id),
+                PublicIngressValue(current_by_id[ingress_id]),
+            )
+        )
+    for ingress_id in sorted(current_ids & desired_ids):
+        if current_by_id[ingress_id] != desired_by_id[ingress_id]:
+            changes.append(
+                ModifiedChange(
+                    PublicIngressSubject(ingress_id),
+                    PublicIngressValue(current_by_id[ingress_id]),
+                    PublicIngressValue(desired_by_id[ingress_id]),
                 )
             )
 

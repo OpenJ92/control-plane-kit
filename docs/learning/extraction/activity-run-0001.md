@@ -4492,3 +4492,58 @@ Handoff:
   in-memory smoke artifacts.
 - Replacement, retention read UX, and a durable secret provider remain separate
   future work.
+
+## #1053 Public Ingress Diff And Activity Language
+
+#1053 makes named public ingress visible to the pure graph diff and activity
+planning language. This is still provider-neutral core language:
+
+```text
+DeploymentGraph.public_ingresses
+  -> PublicIngressSubject(ingress_id)
+    -> PublicIngressValue(NamedPublicIngress)
+      -> AllocatePublicIngress(PublicIngressActivityTarget)
+      -> RemovePublicIngress(PublicIngressActivityTarget)
+```
+
+The compiler now treats added public ingress as an allocation obligation and
+removed public ingress as a removal obligation. Allocation waits for the private
+target node to be healthy before public exposure begins, and the connector node
+starts only after allocation has produced the later operations-owned delivery
+material:
+
+```text
+start target
+  -> wait target healthy
+    -> allocate public ingress
+      -> start connector
+```
+
+Teardown reverses the public reachability first:
+
+```text
+remove public ingress
+  -> stop connector / target
+```
+
+No Cloudflare provider type entered core. The graph value remains
+`NamedPublicIngress`; provider-specific authority resolution, Cloudflare API IO,
+generated tunnel-token recording, and Docker connector token delivery remain in
+the following #1046 child issues.
+
+Validation evidence:
+
+- `git diff --check` passed.
+- `./control-plane-kit-core/test.sh` passed 423 tests, compileall, and import.
+- `./control-plane-kit-operations/test.sh` passed 180 tests, compileall, and
+  import.
+
+Handoff:
+
+- #1054 must define how operations records generated tunnel tokens as
+  `SecretReference` without exposing raw token material.
+- #1055 must call the provider interpreter outside the Postgres transaction and
+  fold bounded ingress allocation evidence into operations.
+- #1056 must deliver the generated token reference to the connector startup path
+  without inferring behavior from product identity or
+  `CPK_RUNTIME_INTERPRETERS`.

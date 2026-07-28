@@ -41,6 +41,8 @@ from control_plane_kit_core.topology import (
     LiteralAddress,
     ModifiedChange,
     NodeSubject,
+    PublicIngressSubject,
+    PublicIngressValue,
     RemovedChange,
     RuntimeRecord,
     RuntimeSubject,
@@ -55,7 +57,7 @@ from control_plane_kit_core.topology import (
 from control_plane_kit_core.types import BlockFamily, Protocol, RuntimeKind, SocketBinding
 from control_plane_kit_core.verification import HttpCheck, VerificationContract
 
-from tests.test_graph_codec import PureImplementation
+from tests.test_graph_codec import PureImplementation, public_ingress_graph
 
 
 @dataclass(frozen=True)
@@ -150,6 +152,34 @@ class GraphDiffTests(unittest.TestCase):
                 for change in removals.changes
             )
         )
+
+    def test_public_ingress_obligations_are_explicit_structural_changes(self) -> None:
+        populated = validate_graph(public_ingress_graph())
+        empty = validate_graph(DeploymentGraph(populated.graph.name))
+
+        additions = diff_graphs(empty, populated)
+        removals = diff_graphs(populated, empty)
+
+        added = [
+            change
+            for change in additions.changes
+            if isinstance(change, AddedChange)
+            and isinstance(change.subject, PublicIngressSubject)
+        ]
+        removed = [
+            change
+            for change in removals.changes
+            if isinstance(change, RemovedChange)
+            and isinstance(change.subject, PublicIngressSubject)
+        ]
+
+        self.assertEqual(len(added), 1)
+        self.assertEqual(len(removed), 1)
+        self.assertIsInstance(added[0].after, PublicIngressValue)
+        self.assertEqual(added[0].subject.ingress_id, "gateway-public")
+        descriptor = json.dumps(added[0].descriptor()).lower()
+        self.assertNotIn("provider_kind", descriptor)
+        self.assertNotIn("cloudflarenamedingress", descriptor)
 
     def test_router_swap_is_a_typed_socket_connection_change(self) -> None:
         result = diff_graphs(

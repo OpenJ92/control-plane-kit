@@ -14,8 +14,10 @@ from control_plane_kit_core.algebra import (
 )
 from control_plane_kit_core.planning import (
     ActivityImpact,
+    AllocatePublicIngress,
     AddSocketConnection,
     ReconcileNode,
+    RemovePublicIngress,
     RemoveNodeResource,
     RemoveRuntimeResource,
     RemoveSocketConnection,
@@ -59,6 +61,7 @@ from tests.test_kernel_pipeline import (
     app_with_database_topology,
     split_service_topology,
 )
+from tests.test_graph_codec import public_ingress_graph
 
 
 class ActivityPlanCompilerTests(unittest.TestCase):
@@ -135,6 +138,74 @@ class ActivityPlanCompilerTests(unittest.TestCase):
                 )
                 for activity in plan.activities
             )
+        )
+
+    def test_public_ingress_allocation_waits_for_target_before_connector_start(self) -> None:
+        desired = validate_graph(public_ingress_graph())
+        current = validate_graph(DeploymentGraph(desired.graph.name))
+
+        plan = compile_activity_plan(diff_graphs(current, desired))
+
+        allocation = next(
+            activity
+            for activity in plan.activities
+            if isinstance(activity.operation, AllocatePublicIngress)
+        )
+        connector_start = next(
+            activity
+            for activity in plan.activities
+            if isinstance(activity.operation, StartNode)
+            and activity.operation.target.node_id == "cloudflared-gateway"
+        )
+        target_health = next(
+            activity
+            for activity in plan.activities
+            if isinstance(activity.operation, WaitForHealthy)
+            and activity.operation.target.node_id == "gateway"
+        )
+
+        self.assertEqual(allocation.operation.target.ingress_id, "gateway-public")
+        self.assertIn(
+            target_health.activity_id,
+            {dependency.predecessor for dependency in allocation.dependencies},
+        )
+        self.assertIn(
+            allocation.activity_id,
+            {dependency.predecessor for dependency in connector_start.dependencies},
+        )
+
+    def test_public_ingress_removal_precedes_connector_and_target_stop(self) -> None:
+        populated = validate_graph(public_ingress_graph())
+        empty = validate_graph(DeploymentGraph(populated.graph.name))
+
+        plan = compile_activity_plan(diff_graphs(populated, empty))
+
+        removal = next(
+            activity
+            for activity in plan.activities
+            if isinstance(activity.operation, RemovePublicIngress)
+        )
+        gateway_stop = next(
+            activity
+            for activity in plan.activities
+            if isinstance(activity.operation, StopNode)
+            and activity.operation.target.node_id == "gateway"
+        )
+        connector_stop = next(
+            activity
+            for activity in plan.activities
+            if isinstance(activity.operation, StopNode)
+            and activity.operation.target.node_id == "cloudflared-gateway"
+        )
+
+        self.assertEqual(removal.operation.target.ingress_id, "gateway-public")
+        self.assertIn(
+            removal.activity_id,
+            {dependency.predecessor for dependency in gateway_stop.dependencies},
+        )
+        self.assertIn(
+            removal.activity_id,
+            {dependency.predecessor for dependency in connector_stop.dependencies},
         )
 
     def test_teardown_dependencies_remove_connections_before_nodes_and_runtime(self) -> None:
