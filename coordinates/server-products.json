@@ -9,36 +9,36 @@
       "product_id": "cpk-server",
       "owner_directory": "products/cpk_server",
       "descriptor_path": "products/cpk_server/product.cpk.json",
-      "source_commit": "9177e4895f7b6fc16f0cb149a62dbf9b538f5467",
+      "source_commit": "1199e75f8467231d710ac3d404bc55681fe5a1c8",
       "image": {
         "registry": "ghcr.io",
         "repository": "openj92/control-plane-kit-servers/cpk-server",
-        "tag": "seeded-ingress-1076-cpk-server",
-        "digest": "sha256:278329fbcb5fc0f9c26b9b19fe51e139ee3a1e507f9af7fe58571aa107942433"
+        "tag": "seeded-ingress-1080-cpk-server",
+        "digest": "sha256:f67c5f75e7ffc1d6e0932a3042eb22b3bf5f0e0d5fafb83f57e435eeb0c68f8a"
       }
     },
     {
       "product_id": "cpk-server-docker",
       "owner_directory": "products/cpk_server",
       "descriptor_path": "products/cpk_server/product.docker.cpk.json",
-      "source_commit": "9177e4895f7b6fc16f0cb149a62dbf9b538f5467",
+      "source_commit": "1199e75f8467231d710ac3d404bc55681fe5a1c8",
       "image": {
         "registry": "ghcr.io",
         "repository": "openj92/control-plane-kit-servers/cpk-server",
-        "tag": "seeded-ingress-1076-cpk-server",
-        "digest": "sha256:278329fbcb5fc0f9c26b9b19fe51e139ee3a1e507f9af7fe58571aa107942433"
+        "tag": "seeded-ingress-1080-cpk-server",
+        "digest": "sha256:f67c5f75e7ffc1d6e0932a3042eb22b3bf5f0e0d5fafb83f57e435eeb0c68f8a"
       }
     },
     {
       "product_id": "cpk-server-docker-cloudflare",
       "owner_directory": "products/cpk_server",
       "descriptor_path": "products/cpk_server/product.docker-cloudflare.cpk.json",
-      "source_commit": "9177e4895f7b6fc16f0cb149a62dbf9b538f5467",
+      "source_commit": "1199e75f8467231d710ac3d404bc55681fe5a1c8",
       "image": {
         "registry": "ghcr.io",
         "repository": "openj92/control-plane-kit-servers/cpk-server",
-        "tag": "seeded-ingress-1076-cpk-server",
-        "digest": "sha256:278329fbcb5fc0f9c26b9b19fe51e139ee3a1e507f9af7fe58571aa107942433"
+        "tag": "seeded-ingress-1080-cpk-server",
+        "digest": "sha256:f67c5f75e7ffc1d6e0932a3042eb22b3bf5f0e0d5fafb83f57e435eeb0c68f8a"
       }
     },
     {
