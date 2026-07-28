@@ -4939,3 +4939,68 @@ Handoff:
   Cloudflare has attached the connector.
 - #1080 should retry `public-gateway-toggle` after the #1078/#1079 fixes are
   available in the published cpk-server image used by the smoke.
+
+## #1081 Public Ingress Lifecycle Acceptance
+
+#1081 closed the focused public-ingress lifecycle retry. The successful live
+acceptance path used the published cpk-server image, not a local rebuild:
+
+```text
+ghcr.io/openj92/control-plane-kit-servers/cpk-server
+  @sha256:f67c5f75e7ffc1d6e0932a3042eb22b3bf5f0e0d5fafb83f57e435eeb0c68f8a
+```
+
+The accepted graph sequence was:
+
+```text
+Deploy(empty, workload + gateway + cloudflared + NamedPublicIngress)
+  -> public gateway probe succeeds
+
+Deploy(current, workload only)
+  -> public gateway becomes unreachable
+  -> workload remains alive privately
+
+Deploy(current, workload + gateway + cloudflared + NamedPublicIngress)
+  -> public gateway probe succeeds again
+```
+
+This proves the gateway/ingress pair is an access overlay, not the spawning or
+control path. cpk-server continued to control the Docker runtime through the
+registered runtime authority while the public access surface was removed and
+re-created.
+
+The readiness fix from #1079 matters here: Cloudflare can return fast non-ready
+HTTP responses before the connector has attached. The public readiness loop now
+paces all unsuccessful attempts, not only exceptions, so it is a real bounded
+wait instead of a tight retry loop.
+
+Coordinate evidence:
+
+- control-plane-kit commit:
+  `066f8a42cfa3a4767fb366ec5adccf02eccc9d99`
+- control-plane-kit-interpreters commit:
+  `994edc4d28fe9db48d32c853830558dff72f33ab`
+- cpk-server image source commit:
+  `9bd63b68d4817ac9925e303e7071b144ddf700ff`
+- catalogue checksum:
+  `66a2418a50a24ba7227cd0eb24a68a9ea140eee5925ff6161d8bda21debaa272`
+
+Validation evidence:
+
+- `PYTHONPATH=src python3 scripts/apply_coordinates.py --check` passed.
+- `git diff --check` passed.
+- `scripts/cpk_server_published_image_smoke.sh sha256:f67c5f75e7ffc1d6e0932a3042eb22b3bf5f0e0d5fafb83f57e435eeb0c68f8a`
+  passed.
+- `./test.sh` passed in `control-plane-kit-servers`.
+- `CPK_HOSTED_ACTIVITY_SCENARIO=public-gateway-toggle
+  CPK_HOSTED_ACTIVITY_BUILD_CONTROLLER=1
+  scripts/cpk_server_hosted_activity_smoke.sh` passed.
+
+Handoff:
+
+- #1066 can close the lifecycle child topology with the overlay-toggle evidence.
+- #1049 / #1038 can resume seeded stress with public gateway ingress available
+  as a proven access overlay.
+- Future lifecycle generalization should preserve this graph-transition shape
+  for servers, runtimes, ingress, and cleanup rather than treating public
+  access teardown as provider scripting outside the deploy program.
