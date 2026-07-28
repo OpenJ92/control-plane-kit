@@ -19,6 +19,7 @@ from control_plane_kit_core.planning import (
     AllocatePublicIngress,
     PlannedActivity,
     PublicIngressActivityTarget,
+    RemovePublicIngress,
 )
 from control_plane_kit_core.public_ingress import (
     IngressAuthorityReference,
@@ -36,10 +37,12 @@ from control_plane_kit_core.topology import (
 from control_plane_kit_core.types import BlockFamily, Protocol, RuntimeKind
 from control_plane_kit_operations.coordinator import ActivityRealizationContext
 from control_plane_kit_operations.ingress_authorities import (
+    CloudflareOwnedIngressResource,
     CloudflareZoneIngressAuthority,
     GeneratedSecretPurpose,
     InMemoryGeneratedSecretRecorder,
     IngressAuthorityProviderKind,
+    OwnedIngressResourceStatus,
 )
 from control_plane_kit_operations.ingress_realization import IngressRealizationAdapter
 from control_plane_kit_operations.lifecycle import ExecutionWorkerAuthority
@@ -119,6 +122,9 @@ class RecordingIngressInterpreter:
         self.create_active_counts: list[int] = []
         self.create_origins: list[str] = []
         self.create_authorities: list[CloudflareZoneIngressAuthority] = []
+        self.teardown_active_counts: list[int] = []
+        self.teardown_resources: list[CloudflareOwnedIngressResource] = []
+        self.fail_teardown = False
 
     def create(
         self,
@@ -136,9 +142,13 @@ class RecordingIngressInterpreter:
         self,
         *,
         authority: CloudflareZoneIngressAuthority,
-        resources: object,
+        resources: CloudflareOwnedIngressResource,
     ) -> None:
-        del authority, resources
+        del authority
+        self.teardown_active_counts.append(self.tracker.active)
+        self.teardown_resources.append(resources)
+        if self.fail_teardown:
+            raise RuntimeError("provider teardown failed")
 
 
 class IngressRealizationAdapterTests(unittest.TestCase):
@@ -241,8 +251,79 @@ class IngressRealizationAdapterTests(unittest.TestCase):
             "eyJ-cloudflare-tunnel-token-bearer-value",
         )
 
-    def context(self) -> ActivityRealizationContext:
-        graph = DeploymentGraph(
+    def test_remove_public_ingress_marks_resource_removed_around_provider_io(
+        self,
+    ) -> None:
+        interpreter = RecordingIngressInterpreter(self.tracker)
+        adapter = IngressRealizationAdapter(
+            self.unit_of_work,
+            interpreters={IngressAuthorityProviderKind.CLOUDFLARE: interpreter},
+            generated_secret_recorder=InMemoryGeneratedSecretRecorder(),
+            clock=lambda: "2026-07-28T08:02:00Z",
+        )
+        with self.unit_of_work() as unit_of_work:
+            unit_of_work.stores.ingress_resources.record_cloudflare(
+                self.cloudflare_resource()
+            )
+            unit_of_work.commit()
+
+        outcome = adapter.execute(
+            self.context(
+                activity_id="remove-gateway",
+                operation=RemovePublicIngress(PublicIngressActivityTarget("gateway-001")),
+                base_graph=self.graph(),
+                desired_graph=DeploymentGraph("empty"),
+            )
+        )
+
+        self.assertEqual(outcome.kind.name, "SUCCEEDED")
+        self.assertEqual(interpreter.teardown_active_counts, [0])
+        self.assertEqual(interpreter.teardown_resources[0].status.name, "REMOVING")
+        with self.unit_of_work() as unit_of_work:
+            history = unit_of_work.stores.ingress_resources.list_cloudflare(
+                "workspace-a"
+            )
+        self.assertEqual(history[0].status, OwnedIngressResourceStatus.REMOVED)
+        self.assertEqual(history[0].removed_at, "2026-07-28T08:02:00Z")
+        self.assertEqual(history[0].removed_by_run_id, "run-a")
+
+    def test_remove_public_ingress_marks_uncertain_when_provider_fails(
+        self,
+    ) -> None:
+        interpreter = RecordingIngressInterpreter(self.tracker)
+        interpreter.fail_teardown = True
+        adapter = IngressRealizationAdapter(
+            self.unit_of_work,
+            interpreters={IngressAuthorityProviderKind.CLOUDFLARE: interpreter},
+            generated_secret_recorder=InMemoryGeneratedSecretRecorder(),
+            clock=lambda: "2026-07-28T08:02:00Z",
+        )
+        with self.unit_of_work() as unit_of_work:
+            unit_of_work.stores.ingress_resources.record_cloudflare(
+                self.cloudflare_resource()
+            )
+            unit_of_work.commit()
+
+        outcome = adapter.execute(
+            self.context(
+                activity_id="remove-gateway",
+                operation=RemovePublicIngress(PublicIngressActivityTarget("gateway-001")),
+                base_graph=self.graph(),
+                desired_graph=DeploymentGraph("empty"),
+            )
+        )
+
+        self.assertEqual(outcome.kind.name, "UNCERTAIN")
+        self.assertEqual(interpreter.teardown_active_counts, [0])
+        with self.unit_of_work() as unit_of_work:
+            resource = unit_of_work.stores.ingress_resources.get_cloudflare(
+                "workspace-a",
+                "gateway-001",
+            )
+        self.assertEqual(resource.status, OwnedIngressResourceStatus.UNCERTAIN)
+
+    def graph(self) -> DeploymentGraph:
+        return DeploymentGraph(
             "ingress-test",
             nodes={
                 "gateway": Node(
@@ -287,9 +368,42 @@ class IngressRealizationAdapterTests(unittest.TestCase):
                 ),
             ),
         )
+
+    def cloudflare_resource(self) -> CloudflareOwnedIngressResource:
+        return CloudflareOwnedIngressResource(
+            workspace_id="workspace-a",
+            runtime_id="docker-a",
+            ingress_id="gateway-001",
+            authority_ref=IngressAuthorityReference("openj92-public-ingress"),
+            provider_kind=IngressAuthorityProviderKind.CLOUDFLARE,
+            tunnel_name="cpk-gateway-001",
+            tunnel_id="tunnel-001",
+            dns_record_id="dns-001",
+            hostname="cpk-gateway-001.openj92.dev",
+            zone_id="zone-openj92",
+            lifecycle=self.graph().public_ingresses[0].lifecycle,
+            created_at="2026-07-28T08:01:00Z",
+            observed_at="2026-07-28T08:01:00Z",
+            source_run_id="run-a",
+            source_activity_id="allocate-gateway",
+            source_event_id="event-001",
+        )
+
+    def context(
+        self,
+        *,
+        activity_id: str = "allocate-gateway",
+        operation: object | None = None,
+        base_graph: DeploymentGraph | None = None,
+        desired_graph: DeploymentGraph | None = None,
+    ) -> ActivityRealizationContext:
+        graph = self.graph()
+        operation = operation or AllocatePublicIngress(
+            PublicIngressActivityTarget("gateway-001")
+        )
         activity = PlannedActivity(
-            ActivityId("allocate-gateway"),
-            AllocatePublicIngress(PublicIngressActivityTarget("gateway-001")),
+            ActivityId(activity_id),
+            operation,
         )
         return ActivityRealizationContext(
             activity=activity,
@@ -334,7 +448,7 @@ class IngressRealizationAdapterTests(unittest.TestCase):
                 graph_id="graph-current",
                 workspace_id="workspace-a",
                 version=1,
-                graph=DeploymentGraph("empty"),
+                graph=base_graph or DeploymentGraph("empty"),
                 created_by="operator-a",
                 created_at="2026-07-28T08:00:00Z",
             ),
@@ -342,7 +456,7 @@ class IngressRealizationAdapterTests(unittest.TestCase):
                 graph_id="graph-desired",
                 workspace_id="workspace-a",
                 version=2,
-                graph=graph,
+                graph=desired_graph or graph,
                 created_by="operator-a",
                 created_at="2026-07-28T08:00:05Z",
             ),
@@ -357,7 +471,7 @@ class IngressRealizationAdapterTests(unittest.TestCase):
                 1,
                 ActivityEventKind.STEP_STARTED,
                 "2026-07-28T08:01:00Z",
-                activity_id="allocate-gateway",
+                activity_id=activity_id,
             ),
         )
 

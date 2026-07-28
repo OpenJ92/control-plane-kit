@@ -25,6 +25,7 @@ from control_plane_kit_operations.ingress_authorities import (
     CloudflareZoneIngressAuthority,
     GeneratedSecretPurpose,
     GeneratedSecretRecorder,
+    IngressAuthorityNotFound,
     IngressAuthorityProviderKind,
     IngressAuthorityRegistrationError,
     cloudflare_ingress_teardown_plan,
@@ -130,9 +131,24 @@ class IngressRealizationAdapter:
             origin_service_url = _origin_service_url(graph, ingress)
             authority = self._active_authority(context, ingress)
             interpreter = self._interpreter(authority.provider_kind)
+            with self.unit_of_work_factory() as unit_of_work:
+                try:
+                    unit_of_work.stores.ingress_resources.get_cloudflare(
+                        context.request.identity.workspace_id,
+                        ingress.ingress_id,
+                    )
+                except IngressAuthorityNotFound:
+                    pass
+                else:
+                    return _unsupported(
+                        context,
+                        "ingress.allocate-conflict",
+                        "owned ingress resource already exists",
+                    )
         except (KeyError, ValueError, InvalidOperationCommand) as error:
             return _unsupported(context, "ingress.allocate-unsupported", str(error))
 
+        resource: CloudflareOwnedIngressResource | None = None
         try:
             allocation = interpreter.create(
                 ingress,
@@ -176,6 +192,11 @@ class IngressRealizationAdapter:
                 unit_of_work.stores.generated_ingress_secrets.record(secret_evidence)
                 unit_of_work.commit()
         except Exception as error:  # noqa: BLE001 - incomplete folding is uncertain.
+            if resource is not None:
+                try:
+                    interpreter.teardown(authority=authority.authority, resources=resource)
+                except Exception:  # noqa: BLE001 - compensation failure is bounded.
+                    pass
             return _uncertain("ingress.record-uncertain", type(error).__name__)
 
         return ActivityExecutionOutcome.succeeded(
@@ -202,7 +223,7 @@ class IngressRealizationAdapter:
             ingress = _ingress_by_id(graph, operation.target.ingress_id)
             authority = self._active_authority(context, ingress)
             with self.unit_of_work_factory() as unit_of_work:
-                resource = unit_of_work.stores.ingress_resources.get_cloudflare(
+                resource = unit_of_work.stores.ingress_resources.require_active_cloudflare(
                     context.request.identity.workspace_id,
                     ingress.ingress_id,
                 )
@@ -220,10 +241,32 @@ class IngressRealizationAdapter:
             return ActivityExecutionOutcome.succeeded(
                 BoundedEvidence.from_mapping(plan.descriptor())
             )
+        with self.unit_of_work_factory() as unit_of_work:
+            resource = unit_of_work.stores.ingress_resources.mark_removing(
+                context.request.identity.workspace_id,
+                ingress.ingress_id,
+                source_run_id=context.run.run_id,
+            )
+            unit_of_work.commit()
         try:
             interpreter.teardown(authority=authority.authority, resources=resource)
         except Exception as error:  # noqa: BLE001 - provider failures are bounded.
+            with self.unit_of_work_factory() as unit_of_work:
+                unit_of_work.stores.ingress_resources.mark_uncertain(
+                    context.request.identity.workspace_id,
+                    ingress.ingress_id,
+                    source_run_id=context.run.run_id,
+                )
+                unit_of_work.commit()
             return _uncertain("ingress.remove-uncertain", type(error).__name__)
+        with self.unit_of_work_factory() as unit_of_work:
+            unit_of_work.stores.ingress_resources.mark_removed(
+                context.request.identity.workspace_id,
+                ingress.ingress_id,
+                removed_at=self.clock(),
+                removed_by_run_id=context.run.run_id,
+            )
+            unit_of_work.commit()
         return ActivityExecutionOutcome.succeeded(
             BoundedEvidence.from_mapping(plan.descriptor())
         )
