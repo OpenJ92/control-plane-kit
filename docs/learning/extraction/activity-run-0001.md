@@ -4757,3 +4757,52 @@ Handoff:
 - #1067 should fold allocation/removal through short transactions around
   provider IO, using the live states to avoid the orphan window discovered by
   #1064.
+
+## #1068 Owned Ingress Resource Epoch Stores
+
+#1068 turns the #1069 model into executable store behavior:
+
+```text
+record active ingress with no history
+  -> epoch 1 active
+
+mark epoch 1 removed
+  -> epoch 1 remains in history
+
+record same ingress after removal
+  -> epoch 2 active
+```
+
+The store now treats `allocating`, `active`, `removing`, `uncertain`, and
+`orphaned` as blocking states. A removed epoch no longer satisfies active
+lookup and no longer blocks reallocation. This preserves provider-resource
+history while letting graph transitions remove and later recreate the same
+public ingress overlay.
+
+The new transition methods are intentionally small:
+
+```text
+require_active_cloudflare(workspace, ingress)
+mark_removing(workspace, ingress, source_run_id)
+mark_removed(workspace, ingress, removed_at, removed_by_run_id)
+mark_uncertain(workspace, ingress, source_run_id)
+```
+
+They update durable ingress-resource state only. They do not call Cloudflare,
+resolve secrets, start containers, or commit independently. Command services and
+coordinator folding still own transaction boundaries.
+
+Validation evidence:
+
+- `git diff --check` passed.
+- `./control-plane-kit-operations/test.sh` passed 190 tests, compileall, and
+  import.
+
+Handoff:
+
+- #1067 should use `mark_removing` before Cloudflare teardown IO and
+  `mark_removed` after successful provider deletion.
+- #1067 should reserve or otherwise protect allocation epochs before Cloudflare
+  creation, then mark active or uncertain after the provider result.
+- #1067 should leave uncertain/orphaned rows visible and blocking until a
+  deliberate reconciliation path exists.

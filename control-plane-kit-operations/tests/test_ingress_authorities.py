@@ -331,6 +331,7 @@ class IngressAuthorityValueTests(unittest.TestCase):
         self,
         *,
         lifecycle: PublicIngressLifecycle = PublicIngressLifecycle.EPHEMERAL,
+        ingress_id: str = "gateway-001",
         epoch: int = 1,
         status: OwnedIngressResourceStatus = OwnedIngressResourceStatus.ACTIVE,
         zone_id: str = "zone-openj92",
@@ -343,7 +344,7 @@ class IngressAuthorityValueTests(unittest.TestCase):
         return CloudflareOwnedIngressResource(
             workspace_id="workspace-a",
             runtime_id="docker-a",
-            ingress_id="gateway-001",
+            ingress_id=ingress_id,
             authority_ref=IngressAuthorityReference("openj92-public-ingress"),
             provider_kind=IngressAuthorityProviderKind.CLOUDFLARE,
             tunnel_name=tunnel_name,
@@ -602,6 +603,113 @@ class IngressAuthorityStoreTests(unittest.TestCase):
         self.assertNotIn("cf_api_token", repr(descriptor).lower())
         self.assertNotIn("bearer", repr(descriptor).lower())
         self.assertNotIn("eyj", repr(descriptor).lower())
+
+    def test_removed_cloudflare_resource_permits_new_epoch_without_losing_history(
+        self,
+    ) -> None:
+        resource = IngressAuthorityValueTests().cloudflare_resource()
+        with self.unit_of_work() as unit_of_work:
+            recorded = unit_of_work.stores.ingress_resources.record_cloudflare(
+                resource
+            )
+            removed = unit_of_work.stores.ingress_resources.mark_removed(
+                "workspace-a",
+                "gateway-001",
+                removed_at="removed-at",
+                removed_by_run_id="run-002",
+            )
+            reallocated = unit_of_work.stores.ingress_resources.record_cloudflare(
+                IngressAuthorityValueTests().cloudflare_resource(
+                    tunnel_id="tunnel-002"
+                )
+            )
+            unit_of_work.commit()
+
+        self.assertEqual(recorded.epoch, 1)
+        self.assertEqual(removed.epoch, 1)
+        self.assertEqual(removed.status, OwnedIngressResourceStatus.REMOVED)
+        self.assertEqual(reallocated.epoch, 2)
+        self.assertEqual(reallocated.status, OwnedIngressResourceStatus.ACTIVE)
+
+        with self.unit_of_work() as unit_of_work:
+            self.assertEqual(
+                unit_of_work.stores.ingress_resources.get_cloudflare(
+                    "workspace-a",
+                    "gateway-001",
+                ),
+                reallocated,
+            )
+            history = unit_of_work.stores.ingress_resources.list_cloudflare(
+                "workspace-a"
+            )
+
+        self.assertEqual(history, (removed, reallocated))
+        self.assertNotIn("cf_api_token", repr(history).lower())
+        self.assertNotIn("bearer", repr(history).lower())
+        self.assertNotIn("eyj", repr(history).lower())
+
+    def test_uncertain_and_orphaned_cloudflare_resources_block_reentry(
+        self,
+    ) -> None:
+        for status in (
+            OwnedIngressResourceStatus.UNCERTAIN,
+            OwnedIngressResourceStatus.ORPHANED,
+        ):
+            with self.subTest(status=status):
+                with self.unit_of_work() as unit_of_work:
+                    resource = unit_of_work.stores.ingress_resources.record_cloudflare(
+                        IngressAuthorityValueTests().cloudflare_resource(
+                            ingress_id=f"gateway-{status.value}",
+                            status=status,
+                            tunnel_id=f"tunnel-{status.value}",
+                        )
+                    )
+                    unit_of_work.commit()
+
+                with self.unit_of_work() as unit_of_work:
+                    self.assertEqual(
+                        unit_of_work.stores.ingress_resources.get_cloudflare(
+                            "workspace-a",
+                            f"gateway-{status.value}",
+                        ),
+                        resource,
+                    )
+                    with self.assertRaisesRegex(
+                        OwnedIngressResourceConflict,
+                        "replacement",
+                    ):
+                        unit_of_work.stores.ingress_resources.record_cloudflare(
+                            IngressAuthorityValueTests().cloudflare_resource(
+                                ingress_id=f"gateway-{status.value}",
+                                tunnel_id="tunnel-reentry"
+                            )
+                        )
+
+    def test_cloudflare_resource_transition_methods_preserve_epoch(
+        self,
+    ) -> None:
+        with self.unit_of_work() as unit_of_work:
+            unit_of_work.stores.ingress_resources.record_cloudflare(
+                IngressAuthorityValueTests().cloudflare_resource()
+            )
+            removing = unit_of_work.stores.ingress_resources.mark_removing(
+                "workspace-a",
+                "gateway-001",
+                source_run_id="run-002",
+            )
+            removed = unit_of_work.stores.ingress_resources.mark_removed(
+                "workspace-a",
+                "gateway-001",
+                removed_at="removed-at",
+                removed_by_run_id="run-003",
+            )
+            unit_of_work.commit()
+
+        self.assertEqual(removing.epoch, 1)
+        self.assertEqual(removing.status, OwnedIngressResourceStatus.REMOVING)
+        self.assertEqual(removed.epoch, 1)
+        self.assertEqual(removed.status, OwnedIngressResourceStatus.REMOVED)
+        self.assertEqual(removed.removed_by_run_id, "run-003")
 
     def test_generated_ingress_secret_reference_is_durable_and_secret_free(
         self,

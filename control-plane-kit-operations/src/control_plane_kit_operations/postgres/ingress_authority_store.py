@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from dataclasses import replace
 from typing import Any
 
 from psycopg.types.json import Jsonb
@@ -21,12 +22,22 @@ from control_plane_kit_operations.ingress_authorities import (
     IngressAuthorityNotFound,
     IngressAuthorityProviderKind,
     IngressAuthorityRegistrationConflict,
+    IngressAuthorityRegistrationError,
     OwnedIngressResourceStatus,
     OwnedIngressResourceConflict,
     RegisteredIngressAuthority,
     RegisteredIngressAuthorityStatus,
 )
 from control_plane_kit_operations.postgres.schema import PostgresConnection
+
+
+_BLOCKING_INGRESS_RESOURCE_STATUSES = (
+    OwnedIngressResourceStatus.ALLOCATING,
+    OwnedIngressResourceStatus.ACTIVE,
+    OwnedIngressResourceStatus.REMOVING,
+    OwnedIngressResourceStatus.UNCERTAIN,
+    OwnedIngressResourceStatus.ORPHANED,
+)
 
 
 class IngressAuthorityStore:
@@ -218,13 +229,23 @@ class IngressResourceStore:
     ) -> CloudflareOwnedIngressResource:
         if not isinstance(resource, CloudflareOwnedIngressResource):
             raise TypeError("record_cloudflare requires CloudflareOwnedIngressResource")
-        existing = self._get_cloudflare(resource.workspace_id, resource.ingress_id)
+        existing = self._get_blocking_cloudflare(
+            resource.workspace_id,
+            resource.ingress_id,
+        )
         if existing is not None:
             if existing == resource:
                 return existing
             raise OwnedIngressResourceConflict(
                 "owned ingress resource replacement requires explicit policy"
             )
+        resource = replace(
+            resource,
+            epoch=self._next_cloudflare_epoch(
+                resource.workspace_id,
+                resource.ingress_id,
+            ),
+        )
         self._connection.execute(
             """
             INSERT INTO cpk_cloudflare_ingress_resources (
@@ -279,12 +300,87 @@ class IngressResourceStore:
         )
         return resource
 
+    def require_active_cloudflare(
+        self,
+        workspace_id: str,
+        ingress_id: str,
+    ) -> CloudflareOwnedIngressResource:
+        resource = self._get_cloudflare_by_status(
+            workspace_id,
+            ingress_id,
+            (OwnedIngressResourceStatus.ACTIVE,),
+        )
+        if resource is None:
+            raise IngressAuthorityNotFound("active owned ingress resource was not found")
+        return resource
+
+    def mark_removing(
+        self,
+        workspace_id: str,
+        ingress_id: str,
+        *,
+        source_run_id: str,
+    ) -> CloudflareOwnedIngressResource:
+        resource = self.require_active_cloudflare(workspace_id, ingress_id)
+        updated = replace(
+            resource,
+            status=OwnedIngressResourceStatus.REMOVING,
+            source_run_id=source_run_id,
+        )
+        self._update_cloudflare_status(updated)
+        return updated
+
+    def mark_removed(
+        self,
+        workspace_id: str,
+        ingress_id: str,
+        *,
+        removed_at: str,
+        removed_by_run_id: str,
+    ) -> CloudflareOwnedIngressResource:
+        resource = self._get_cloudflare_by_status(
+            workspace_id,
+            ingress_id,
+            (
+                OwnedIngressResourceStatus.ACTIVE,
+                OwnedIngressResourceStatus.REMOVING,
+            ),
+        )
+        if resource is None:
+            raise IngressAuthorityNotFound("removable owned ingress resource was not found")
+        updated = replace(
+            resource,
+            status=OwnedIngressResourceStatus.REMOVED,
+            removed_at=removed_at,
+            removed_by_run_id=removed_by_run_id,
+        )
+        self._update_cloudflare_status(updated)
+        return updated
+
+    def mark_uncertain(
+        self,
+        workspace_id: str,
+        ingress_id: str,
+        *,
+        source_run_id: str,
+    ) -> CloudflareOwnedIngressResource:
+        resource = self._get_blocking_cloudflare(workspace_id, ingress_id)
+        if resource is None:
+            raise IngressAuthorityNotFound("owned ingress resource was not found")
+        updated = replace(
+            resource,
+            status=OwnedIngressResourceStatus.UNCERTAIN,
+            source_run_id=source_run_id,
+        )
+        self._update_cloudflare_status(updated)
+        return updated
+
     def get_cloudflare(
         self,
         workspace_id: str,
         ingress_id: str,
     ) -> CloudflareOwnedIngressResource:
-        resource = self._get_cloudflare(workspace_id, ingress_id)
+        resource = self._get_blocking_cloudflare(workspace_id, ingress_id)
         if resource is None:
             raise IngressAuthorityNotFound("owned ingress resource was not found")
         return resource
@@ -324,11 +420,27 @@ class IngressResourceStore:
         ).fetchall()
         return tuple(_row_to_cloudflare_resource(row) for row in rows)
 
-    def _get_cloudflare(
+    def _get_blocking_cloudflare(
         self,
         workspace_id: str,
         ingress_id: str,
     ) -> CloudflareOwnedIngressResource | None:
+        return self._get_cloudflare_by_status(
+            workspace_id,
+            ingress_id,
+            _BLOCKING_INGRESS_RESOURCE_STATUSES,
+        )
+
+    def _get_cloudflare_by_status(
+        self,
+        workspace_id: str,
+        ingress_id: str,
+        statuses: tuple[OwnedIngressResourceStatus, ...],
+    ) -> CloudflareOwnedIngressResource | None:
+        if not statuses:
+            raise IngressAuthorityRegistrationError(
+                "owned ingress status filter must not be empty"
+            )
         row = self._connection.execute(
             """
             SELECT
@@ -355,15 +467,54 @@ class IngressResourceStore:
             FROM cpk_cloudflare_ingress_resources
             WHERE workspace_id = %s
               AND ingress_id = %s
-              AND status IN ('allocating', 'active', 'removing')
+              AND status = ANY(%s)
             ORDER BY epoch DESC
             LIMIT 1
             """,
-            (workspace_id, ingress_id),
+            (workspace_id, ingress_id, [status.value for status in statuses]),
         ).fetchone()
         if row is None:
             return None
         return _row_to_cloudflare_resource(row)
+
+    def _next_cloudflare_epoch(self, workspace_id: str, ingress_id: str) -> int:
+        row = self._connection.execute(
+            """
+            SELECT COALESCE(MAX(epoch), 0) + 1
+            FROM cpk_cloudflare_ingress_resources
+            WHERE workspace_id = %s
+              AND ingress_id = %s
+            """,
+            (workspace_id, ingress_id),
+        ).fetchone()
+        return row[0]
+
+    def _update_cloudflare_status(
+        self,
+        resource: CloudflareOwnedIngressResource,
+    ) -> None:
+        self._connection.execute(
+            """
+            UPDATE cpk_cloudflare_ingress_resources
+            SET
+              status = %s,
+              source_run_id = %s,
+              removed_at = %s,
+              removed_by_run_id = %s
+            WHERE workspace_id = %s
+              AND ingress_id = %s
+              AND epoch = %s
+            """,
+            (
+                resource.status.value,
+                resource.source_run_id,
+                resource.removed_at,
+                resource.removed_by_run_id,
+                resource.workspace_id,
+                resource.ingress_id,
+                resource.epoch,
+            ),
+        )
 
 
 class GeneratedIngressSecretReferenceStore:
