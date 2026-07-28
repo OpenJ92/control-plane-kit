@@ -71,6 +71,56 @@ class PostgresSchemaFoundationTests(unittest.TestCase):
             ],
         )
 
+    def test_cloudflare_owned_ingress_resources_are_epoch_history_records(
+        self,
+    ) -> None:
+        install_schema(self.connection)
+
+        columns = {
+            row[0]: (row[1], row[2])
+            for row in self.connection.execute(
+                """
+                SELECT column_name, data_type, is_nullable
+                FROM information_schema.columns
+                WHERE table_schema = %s
+                  AND table_name = 'cpk_cloudflare_ingress_resources'
+                """,
+                (self.schema,),
+            ).fetchall()
+        }
+        self.assertEqual(columns["epoch"], ("integer", "NO"))
+        self.assertEqual(columns["status"], ("text", "NO"))
+        self.assertEqual(columns["removed_at"], ("text", "YES"))
+        self.assertEqual(columns["removed_by_run_id"], ("text", "YES"))
+
+        primary_key_columns = self.connection.execute(
+            """
+            SELECT a.attname
+            FROM pg_index i
+            JOIN pg_attribute a
+              ON a.attrelid = i.indrelid
+             AND a.attnum = ANY(i.indkey)
+            WHERE i.indrelid = 'cpk_cloudflare_ingress_resources'::regclass
+              AND i.indisprimary
+            ORDER BY array_position(i.indkey, a.attnum)
+            """
+        ).fetchall()
+        self.assertEqual(
+            [column[0] for column in primary_key_columns],
+            ["workspace_id", "ingress_id", "epoch"],
+        )
+
+        active_index = self.connection.execute(
+            """
+            SELECT pg_get_expr(indpred, indrelid)
+            FROM pg_index
+            WHERE indexrelid = 'cpk_cloudflare_ingress_resources_active_key'::regclass
+            """
+        ).fetchone()
+        self.assertIn("'active'::text", active_index[0])
+        self.assertIn("'allocating'::text", active_index[0])
+        self.assertIn("'removing'::text", active_index[0])
+
     def test_closed_values_and_event_shapes_fail_closed(self) -> None:
         install_schema(self.connection)
         self._seed_minimal_execution_truth(include_events=False)

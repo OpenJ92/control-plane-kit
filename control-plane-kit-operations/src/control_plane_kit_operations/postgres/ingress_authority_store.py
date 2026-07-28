@@ -21,6 +21,7 @@ from control_plane_kit_operations.ingress_authorities import (
     IngressAuthorityNotFound,
     IngressAuthorityProviderKind,
     IngressAuthorityRegistrationConflict,
+    OwnedIngressResourceStatus,
     OwnedIngressResourceConflict,
     RegisteredIngressAuthority,
     RegisteredIngressAuthorityStatus,
@@ -230,6 +231,8 @@ class IngressResourceStore:
               workspace_id,
               runtime_id,
               ingress_id,
+              epoch,
+              status,
               authority_ref,
               provider_kind,
               tunnel_name,
@@ -242,14 +245,21 @@ class IngressResourceStore:
               observed_at,
               source_run_id,
               source_activity_id,
-              source_event_id
+              source_event_id,
+              removed_at,
+              removed_by_run_id
             )
-            VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+            VALUES (
+              %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s,
+              %s, %s, %s, %s, %s
+            )
             """,
             (
                 resource.workspace_id,
                 resource.runtime_id,
                 resource.ingress_id,
+                resource.epoch,
+                resource.status.value,
                 resource.authority_ref.reference_id,
                 resource.provider_kind.value,
                 resource.tunnel_name,
@@ -263,6 +273,8 @@ class IngressResourceStore:
                 resource.source_run_id,
                 resource.source_activity_id,
                 resource.source_event_id,
+                resource.removed_at,
+                resource.removed_by_run_id,
             ),
         )
         return resource
@@ -287,6 +299,8 @@ class IngressResourceStore:
               workspace_id,
               runtime_id,
               ingress_id,
+              epoch,
+              status,
               authority_ref,
               provider_kind,
               tunnel_name,
@@ -299,10 +313,12 @@ class IngressResourceStore:
               observed_at,
               source_run_id,
               source_activity_id,
-              source_event_id
+              source_event_id,
+              removed_at,
+              removed_by_run_id
             FROM cpk_cloudflare_ingress_resources
             WHERE workspace_id = %s
-            ORDER BY ingress_id
+            ORDER BY ingress_id, epoch
             """,
             (workspace_id,),
         ).fetchall()
@@ -319,6 +335,8 @@ class IngressResourceStore:
               workspace_id,
               runtime_id,
               ingress_id,
+              epoch,
+              status,
               authority_ref,
               provider_kind,
               tunnel_name,
@@ -331,10 +349,15 @@ class IngressResourceStore:
               observed_at,
               source_run_id,
               source_activity_id,
-              source_event_id
+              source_event_id,
+              removed_at,
+              removed_by_run_id
             FROM cpk_cloudflare_ingress_resources
             WHERE workspace_id = %s
               AND ingress_id = %s
+              AND status IN ('allocating', 'active', 'removing')
+            ORDER BY epoch DESC
+            LIMIT 1
             """,
             (workspace_id, ingress_id),
         ).fetchone()
@@ -494,19 +517,23 @@ def _row_to_cloudflare_resource(row: tuple[Any, ...]) -> CloudflareOwnedIngressR
         workspace_id=row[0],
         runtime_id=row[1],
         ingress_id=row[2],
-        authority_ref=IngressAuthorityReference(row[3]),
-        provider_kind=IngressAuthorityProviderKind(row[4]),
-        tunnel_name=row[5],
-        tunnel_id=row[6],
-        dns_record_id=row[7],
-        hostname=row[8],
-        zone_id=row[9],
-        lifecycle=PublicIngressLifecycle(row[10]),
-        created_at=row[11],
-        observed_at=row[12],
-        source_run_id=row[13],
-        source_activity_id=row[14],
-        source_event_id=row[15],
+        epoch=row[3],
+        status=OwnedIngressResourceStatus(row[4]),
+        authority_ref=IngressAuthorityReference(row[5]),
+        provider_kind=IngressAuthorityProviderKind(row[6]),
+        tunnel_name=row[7],
+        tunnel_id=row[8],
+        dns_record_id=row[9],
+        hostname=row[10],
+        zone_id=row[11],
+        lifecycle=PublicIngressLifecycle(row[12]),
+        created_at=row[13],
+        observed_at=row[14],
+        source_run_id=row[15],
+        source_activity_id=row[16],
+        source_event_id=row[17],
+        removed_at=row[18],
+        removed_by_run_id=row[19],
     )
 
 

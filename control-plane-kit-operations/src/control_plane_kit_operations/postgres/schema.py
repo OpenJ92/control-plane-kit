@@ -30,6 +30,7 @@ from control_plane_kit_operations.records import ObservationFreshness, Observati
 from control_plane_kit_operations.ingress_authorities import (
     GeneratedSecretPurpose,
     IngressAuthorityProviderKind,
+    OwnedIngressResourceStatus,
     RegisteredIngressAuthorityStatus,
 )
 from control_plane_kit_operations.runtime_authorities import (
@@ -250,6 +251,8 @@ CREATE TABLE IF NOT EXISTS cpk_cloudflare_ingress_resources (
   workspace_id text NOT NULL REFERENCES cpk_workspaces(workspace_id),
   runtime_id text NOT NULL,
   ingress_id text NOT NULL,
+  epoch integer NOT NULL DEFAULT 1,
+  status text NOT NULL DEFAULT 'active',
   authority_ref text NOT NULL,
   provider_kind text NOT NULL,
   tunnel_name text NOT NULL,
@@ -263,20 +266,35 @@ CREATE TABLE IF NOT EXISTS cpk_cloudflare_ingress_resources (
   source_run_id text NOT NULL,
   source_activity_id text NOT NULL,
   source_event_id text NOT NULL,
+  removed_at text,
+  removed_by_run_id text,
   metadata jsonb NOT NULL DEFAULT '{}'::jsonb,
-  PRIMARY KEY (workspace_id, ingress_id),
+  PRIMARY KEY (workspace_id, ingress_id, epoch),
   CONSTRAINT cpk_cloudflare_ingress_resources_provider_kind_check
     CHECK (provider_kind = 'cloudflare'),
+  CONSTRAINT cpk_cloudflare_ingress_resources_epoch_check
+    CHECK (epoch > 0),
+  CONSTRAINT cpk_cloudflare_ingress_resources_status_check
+    CHECK (status IN ({{ owned_ingress_resource_statuses | sql_values }})),
   CONSTRAINT cpk_cloudflare_ingress_resources_lifecycle_check
     CHECK (lifecycle IN ({{ public_ingress_lifecycles | sql_values }})),
   CONSTRAINT cpk_cloudflare_ingress_resources_authority_ref_check
     CHECK (authority_ref ~ '^[a-z][a-z0-9._-]{0,127}$'),
+  CONSTRAINT cpk_cloudflare_ingress_resources_removed_evidence_check
+    CHECK (
+      (status = 'removed' AND removed_at IS NOT NULL AND removed_by_run_id IS NOT NULL)
+      OR (status <> 'removed' AND removed_at IS NULL AND removed_by_run_id IS NULL)
+    ),
   CONSTRAINT cpk_cloudflare_ingress_resources_metadata_shape_check
     CHECK (jsonb_typeof(metadata) = 'object')
 );
 
 CREATE INDEX IF NOT EXISTS cpk_cloudflare_ingress_resources_workspace
-  ON cpk_cloudflare_ingress_resources (workspace_id, observed_at DESC, ingress_id);
+  ON cpk_cloudflare_ingress_resources (workspace_id, observed_at DESC, ingress_id, epoch);
+
+CREATE UNIQUE INDEX IF NOT EXISTS cpk_cloudflare_ingress_resources_active_key
+  ON cpk_cloudflare_ingress_resources (workspace_id, ingress_id)
+  WHERE status IN ('allocating', 'active', 'removing');
 
 CREATE TABLE IF NOT EXISTS cpk_generated_ingress_secret_references (
   workspace_id text NOT NULL REFERENCES cpk_workspaces(workspace_id),
@@ -600,6 +618,7 @@ POSTGRES_SCHEMA = _SQL_ENVIRONMENT.from_string(_POSTGRES_SCHEMA_TEMPLATE).render
     observation_freshnesses=tuple(ObservationFreshness),
     observation_statuses=tuple(ObservationStatus),
     public_ingress_lifecycles=tuple(PublicIngressLifecycle),
+    owned_ingress_resource_statuses=tuple(OwnedIngressResourceStatus),
     policy_scopes=tuple(PolicyScope),
     endpoint_contexts=tuple(EndpointContext),
     probe_kinds=tuple(ProbeKind),
