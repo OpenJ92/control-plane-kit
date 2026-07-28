@@ -231,8 +231,9 @@ class IngressRealizationAdapterTests(unittest.TestCase):
         self.assertEqual(
             generated.secret_ref.reference_id,
             (
-                "secret://generated/ingress/workspace-a/"
-                "cloudflared-tunnel-token/run-a/allocate-gateway/event-001"
+                "secret://generated/ingress/b64-d29ya3NwYWNlLWE/"
+                "b64-Y2xvdWRmbGFyZWQtdHVubmVsLXRva2Vu/b64-cnVuLWE/"
+                "b64-YWxsb2NhdGUtZ2F0ZXdheQ/b64-ZXZlbnQtMDAx"
             ),
         )
         self.assertEqual(

@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import base64
 from dataclasses import dataclass, field
 from enum import StrEnum
 from hashlib import sha256
@@ -378,11 +379,11 @@ class InMemoryGeneratedSecretRecorder:
             "/".join(
                 (
                     self._reference_root,
-                    workspace_id,
-                    purpose.value,
-                    source_run_id,
-                    source_activity_id,
-                    source_event_id,
+                    _secret_reference_segment(workspace_id),
+                    _secret_reference_segment(purpose.value),
+                    _secret_reference_segment(source_run_id),
+                    _secret_reference_segment(source_activity_id),
+                    _secret_reference_segment(source_event_id),
                 )
             )
         )
@@ -434,6 +435,11 @@ def record_generated_ingress_secret(
         source_activity_id=source_activity_id,
         source_event_id=source_event_id,
     )
+
+
+def _secret_reference_segment(value: str) -> str:
+    encoded = base64.urlsafe_b64encode(value.encode("utf-8")).decode("ascii")
+    return "b64-" + encoded.rstrip("=")
 
 
 def cloudflare_ingress_teardown_plan(
