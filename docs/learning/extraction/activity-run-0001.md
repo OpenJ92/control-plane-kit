@@ -4422,9 +4422,73 @@ Validation evidence:
 
 Handoff:
 
-- #1045 should translate graph-level `NamedPublicIngress` into ordered activity
-  without adding provider names to core.
+- #1045 should persist owned allocation evidence before later translation work
+  attaches `NamedPublicIngress` to ordered activity.
 - #1047 should keep the Cloudflare interpreter attached to the ingress authority
   and generated secret delivery path.
 - #1048 should verify route parity without letting cpk-server own ingress
   semantics.
+
+## #1045 Public Ingress Allocation Evidence
+
+#1045 moves Cloudflare ingress allocation evidence from value-only planning into
+operations-owned Postgres truth. The resource evidence remains bounded and
+secret-free:
+
+```text
+CloudflareOwnedIngressResource
+  workspace_id
+  runtime_id
+  ingress_id
+  authority_ref
+  provider_kind = cloudflare
+  hostname
+  zone_id
+  tunnel_name
+  tunnel_id
+  dns_record_id
+  lifecycle
+  created_at / observed_at
+  source_run_id / source_activity_id / source_event_id
+```
+
+The new `IngressResourceStore` records this evidence through the same
+UnitOfWork-backed Postgres connection as the rest of operations. It never
+commits independently. Replaying the exact same allocation evidence is
+idempotent; conflicting replacement for the same `(workspace_id, ingress_id)`
+fails closed until a future explicit replacement policy exists.
+
+Schema added:
+
+```text
+cpk_cloudflare_ingress_resources
+  primary key (workspace_id, ingress_id)
+  provider_kind check = cloudflare
+  lifecycle check = PublicIngressLifecycle
+  metadata jsonb object check
+```
+
+This gives teardown and later interpreter integration a durable owned-resource
+record:
+
+```text
+allocation effect result
+  -> short transaction records ids and source event
+    -> future teardown deletes only by recorded owned ids
+```
+
+Validation evidence:
+
+- `git diff --check` passed.
+- `./control-plane-kit-operations/test.sh` passed 180 tests, compileall, and
+  import.
+
+Handoff:
+
+- #1046/#1047 can use `IngressResourceStore.record_cloudflare(...)` after the
+  Cloudflare allocation effect succeeds and before connector startup depends on
+  generated token delivery.
+- #1036 cleanup policy can now be backed by durable evidence rather than
+  in-memory smoke artifacts.
+- Replacement, retention read UX, and a durable secret provider remain separate
+  future work.

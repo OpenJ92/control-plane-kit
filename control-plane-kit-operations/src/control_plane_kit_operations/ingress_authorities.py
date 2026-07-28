@@ -39,6 +39,10 @@ class IngressAuthorityRegistrationConflict(IngressAuthorityRegistrationError):
     """Raised when authority replacement requires an explicit decision."""
 
 
+class OwnedIngressResourceConflict(IngressAuthorityRegistrationError):
+    """Raised when owned ingress evidence conflicts with existing truth."""
+
+
 class IngressAuthorityAuthorizationDenied(IngressAuthorityRegistrationError):
     """Raised when an actor lacks a focused ingress authority scope."""
 
@@ -131,6 +135,8 @@ class CloudflareOwnedIngressResource:
     workspace_id: str
     runtime_id: str
     ingress_id: str
+    authority_ref: IngressAuthorityReference
+    provider_kind: IngressAuthorityProviderKind
     tunnel_name: str
     tunnel_id: str
     dns_record_id: str
@@ -139,11 +145,22 @@ class CloudflareOwnedIngressResource:
     lifecycle: PublicIngressLifecycle
     created_at: str
     observed_at: str
+    source_run_id: str
+    source_activity_id: str
+    source_event_id: str
 
     def __post_init__(self) -> None:
         _validate_identifier(self.workspace_id, "workspace_id")
         _validate_identifier(self.runtime_id, "runtime_id")
         _validate_identifier(self.ingress_id, "ingress_id")
+        if not isinstance(self.authority_ref, IngressAuthorityReference):
+            raise IngressAuthorityRegistrationError(
+                "Cloudflare ingress resource requires IngressAuthorityReference"
+            )
+        if self.provider_kind is not IngressAuthorityProviderKind.CLOUDFLARE:
+            raise IngressAuthorityRegistrationError(
+                "Cloudflare ingress resource provider kind must be cloudflare"
+            )
         _validate_identifier(self.tunnel_name, "tunnel_name")
         _validate_identifier(self.tunnel_id, "tunnel_id")
         _validate_identifier(self.dns_record_id, "dns_record_id")
@@ -155,6 +172,9 @@ class CloudflareOwnedIngressResource:
             )
         _validate_identifier(self.created_at, "created_at")
         _validate_identifier(self.observed_at, "observed_at")
+        _validate_identifier(self.source_run_id, "source_run_id")
+        _validate_identifier(self.source_activity_id, "source_activity_id")
+        _validate_identifier(self.source_event_id, "source_event_id")
         if any(marker in repr(self.descriptor()).lower() for marker in _SECRET_MARKERS):
             raise IngressAuthorityRegistrationError(
                 "Cloudflare ingress resource evidence must be secret-free"
@@ -165,6 +185,8 @@ class CloudflareOwnedIngressResource:
             "workspace_id": self.workspace_id,
             "runtime_id": self.runtime_id,
             "ingress_id": self.ingress_id,
+            "authority_ref": self.authority_ref.reference_id,
+            "provider_kind": self.provider_kind.value,
             "tunnel_name": self.tunnel_name,
             "tunnel_id": self.tunnel_id,
             "dns_record_id": self.dns_record_id,
@@ -173,6 +195,9 @@ class CloudflareOwnedIngressResource:
             "lifecycle": self.lifecycle.value,
             "created_at": self.created_at,
             "observed_at": self.observed_at,
+            "source_run_id": self.source_run_id,
+            "source_activity_id": self.source_activity_id,
+            "source_event_id": self.source_event_id,
         }
 
 

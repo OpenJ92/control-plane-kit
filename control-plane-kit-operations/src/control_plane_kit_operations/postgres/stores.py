@@ -17,6 +17,7 @@ from control_plane_kit_operations.postgres.image_pull_authority_store import (
 )
 from control_plane_kit_operations.postgres.ingress_authority_store import (
     IngressAuthorityStore,
+    IngressResourceStore,
 )
 from control_plane_kit_operations.postgres.observed_state import (
     PostgresObservedStateStore,
@@ -44,6 +45,7 @@ class PostgresStoreBundle:
     registered_products: RegisteredProductStore = field(init=False)
     image_pull_authorities: ImagePullAuthorityStore = field(init=False)
     ingress_authorities: IngressAuthorityStore = field(init=False)
+    ingress_resources: IngressResourceStore = field(init=False)
     runtime_authorities: RuntimeAuthorityStore = field(init=False)
     runtime_authority_deliveries: RuntimeAuthorityDeliveryStore = field(init=False)
     activity_history: PostgresActivityHistoryStore = field(init=False)
@@ -75,6 +77,11 @@ class PostgresStoreBundle:
             self,
             "ingress_authorities",
             IngressAuthorityStore(self.connection),
+        )
+        object.__setattr__(
+            self,
+            "ingress_resources",
+            IngressResourceStore(self.connection),
         )
         object.__setattr__(
             self,
