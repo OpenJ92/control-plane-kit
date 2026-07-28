@@ -651,6 +651,7 @@ class CpkServerImageBootstrapTests(unittest.TestCase):
         self.assertIn("IngressAuthorityRegistrationService", source)
         self.assertIn("control_plane_kit_interpreters.docker", source)
         self.assertIn("control_plane_kit_interpreters.cloudflare", source)
+        self.assertIn("allocation_name=allocation_name", source)
         self.assertIn("CPK_RUNTIME_INTERPRETERS", source)
         self.assertIn("CPK_INGRESS_INTERPRETERS", source)
         self.assertNotIn("BaseHTTPRequestHandler", source)
@@ -727,6 +728,13 @@ class CpkServerImageBootstrapTests(unittest.TestCase):
         self.assertIn('CPK_IMAGE_PULL_CREDENTIAL_RESOLVER="$IMAGE_PULL_RESOLVER"', smoke)
         self.assertIn("CPK_HOSTED_ACTIVITY_REGISTER_PULL_AUTHORITY", smoke)
         self.assertIn("CPK_HOSTED_ACTIVITY_SCENARIO", smoke)
+        self.assertIn('NEEDS_INGRESS=1', smoke)
+        self.assertIn("public-gateway-ingress|public-gateway-toggle|", smoke)
+        self.assertIn("workspace-a-router-transition|", smoke)
+        self.assertIn(
+            "workspace-b-multiplexer-observer|workspace-c-postgres-retained-data)",
+            smoke,
+        )
         self.assertIn("CPK_CLOUDFLARE_ENV_FILE", smoke)
         self.assertIn("OPENJ92_CLOUDFLARE_ACCOUNT_ID", smoke)
         self.assertIn("OPENJ92_CLOUDFLARE_ZONE_ID", smoke)
@@ -796,21 +804,49 @@ class CpkServerImageBootstrapTests(unittest.TestCase):
         self.assertIn("runtime_interpreters", controller)
         self.assertIn("http://hello:8000/", controller)
         self.assertIn('"public-gateway-ingress"', controller)
+        self.assertIn('"public-gateway-toggle"', controller)
+        self.assertIn("def _public_gateway_overlay", controller)
+        self.assertIn("def _named_public_gateway_ingress", controller)
         self.assertIn("command.ingress-authority.register", controller)
         self.assertIn("read.ingress-authority-detail", controller)
         self.assertIn('"authority_ref": OPENJ92_INGRESS_AUTHORITY_REF', controller)
         self.assertIn("PolicyScope.INGRESS_AUTHORITY_READ.value", controller)
         self.assertIn("NamedPublicIngress(", controller)
-        self.assertIn("PublicIngressTarget(\"gateway\", \"control\")", controller)
+        self.assertIn("PublicIngressTarget(target_node_id, target_provider_socket)", controller)
         self.assertIn('"cloudflared_connector"', controller)
         self.assertIn('"cloudflared-gateway"', controller)
         self.assertIn("cpk-gateway-001.openj92.dev", controller)
+        self.assertIn("def _assert_public_gateway_http_probe", controller)
+        self.assertIn("def _assert_public_gateway_postgres_query_ready", controller)
+        self.assertIn("def _assert_public_gateway_unreachable", controller)
         self.assertIn('"1.1.1.1"', controller)
         self.assertIn('hostname="cloudflare-dns.com"', controller)
         self.assertIn("server_hostname=hostname", controller)
         self.assertIn("secret://cloudflare/openj92/api-token", controller)
         self.assertNotIn("CpkServerOperationsApplication", controller)
         self.assertNotIn("PostgresUnitOfWork", controller)
+        self.assertNotIn("DockerRuntimeInterpreter", controller)
+
+    def test_hosted_activity_controller_proves_public_gateway_toggle_overlay(
+        self,
+    ) -> None:
+        controller = (ROOT / "scripts" / "cpk_server_hosted_activity.py").read_text(
+            encoding="utf-8"
+        )
+
+        self.assertIn('"public-gateway-toggle"', controller)
+        self.assertIn("def _run_public_gateway_toggle", controller)
+        self.assertIn("Hosted public gateway toggle on", controller)
+        self.assertIn("Hosted public gateway toggle off", controller)
+        self.assertIn("Hosted public gateway toggle on again", controller)
+        self.assertIn("public_graph = _public_gateway_ingress_graph", controller)
+        self.assertIn("private_graph = _single_hello_graph", controller)
+        self.assertIn("graph=private_graph", controller)
+        self.assertIn("_assert_public_gateway_unreachable(PUBLIC_GATEWAY_HOSTNAME)", controller)
+        self.assertIn('_assert_body("http://hello:8000/", "Hello through public ingress\\n")', controller)
+        self.assertIn("graph=public_graph", controller)
+        self.assertIn("_disconnect_runtime_networks(workflow.server_container, workspace_id=workflow.workspace_id)", controller)
+        self.assertIn("graph=DeploymentGraph(workflow.workspace_id)", controller)
         self.assertNotIn("DockerRuntimeInterpreter", controller)
 
     def test_hosted_activity_controller_supports_multi_workspace_stress_harness(
@@ -858,14 +894,29 @@ class CpkServerImageBootstrapTests(unittest.TestCase):
 
         self.assertIn('"workspace-a-router-transition"', controller)
         self.assertIn('workspace_id="workspace-a-router"', controller)
+        self.assertIn('_product_document(servers_repo, "cpk_local_gateway")', controller)
+        self.assertIn('_product_document(servers_repo, "cloudflared_connector")', controller)
+        self.assertIn("workflow.register_cloudflare_ingress_authority()", controller)
         self.assertIn('"Hello from blue"', controller)
         self.assertIn('"Hello from green"', controller)
+        self.assertIn('SocketConnection("router", "internal", "gateway", "target-http")', controller)
+        self.assertIn(
+            '_assert_public_gateway_http_probe(PUBLIC_GATEWAY_HOSTNAME, "router.internal")',
+            controller,
+        )
         self.assertIn('_assert_body("http://router:8000/", "Hello from blue\\n")', controller)
         self.assertIn('_assert_body("http://router:8000/", "Hello from green\\n")', controller)
         self.assertIn('_assert_activity_mentions(workflow, blue.run_id, "hello-blue")', controller)
         self.assertIn('_assert_activity_mentions(workflow, blue.run_id, "router")', controller)
         self.assertIn('_assert_activity_mentions(workflow, green.run_id, "hello-green")', controller)
         self.assertIn('_assert_activity_mentions(workflow, green.run_id, "router")', controller)
+        self.assertIn('title="Hosted router teardown"', controller)
+        self.assertIn("graph=DeploymentGraph(workflow.workspace_id)", controller)
+        self.assertIn(
+            "_disconnect_runtime_networks(workflow.server_container, workspace_id=workflow.workspace_id)",
+            controller,
+        )
+        self.assertIn('_assert_activity_mentions(workflow, removed.run_id, "cloudflared-gateway")', controller)
         self.assertIn("read.activity", controller)
         self.assertIn("step_succeeded", controller)
         self.assertIn('"HELLO_MESSAGE": message', controller)
@@ -890,6 +941,9 @@ class CpkServerImageBootstrapTests(unittest.TestCase):
         self.assertIn('workspace_id="workspace-b-multiplexer"', controller)
         self.assertIn("def _run_multiplexer_observer", controller)
         self.assertIn("def _multiplexer_graph", controller)
+        self.assertIn('_product_document(servers_repo, "cpk_local_gateway")', controller)
+        self.assertIn('_product_document(servers_repo, "cloudflared_connector")', controller)
+        self.assertIn("workflow.register_cloudflare_ingress_authority()", controller)
         self.assertIn('"hello-primary"', controller)
         self.assertIn('"hello-observer"', controller)
         self.assertIn('"multiplexer"', controller)
@@ -900,6 +954,11 @@ class CpkServerImageBootstrapTests(unittest.TestCase):
             controller,
         )
         self.assertIn('"observer-a"', controller)
+        self.assertIn('SocketConnection("multiplexer", "internal", "gateway", "target-http")', controller)
+        self.assertIn(
+            '_assert_public_gateway_http_probe(PUBLIC_GATEWAY_HOSTNAME, "multiplexer.internal")',
+            controller,
+        )
         self.assertIn('_assert_body("http://multiplexer:8000/", "Primary response\\n")', controller)
         self.assertIn(
             '_assert_observer_receipt("http://hello-observer:8000/observations/requests")',
@@ -908,6 +967,13 @@ class CpkServerImageBootstrapTests(unittest.TestCase):
         self.assertIn('_assert_activity_mentions(workflow, result.run_id, "hello-primary")', controller)
         self.assertIn('_assert_activity_mentions(workflow, result.run_id, "hello-observer")', controller)
         self.assertIn('_assert_activity_mentions(workflow, result.run_id, "multiplexer")', controller)
+        self.assertIn('title="Hosted multiplexer teardown"', controller)
+        self.assertIn("graph=DeploymentGraph(workflow.workspace_id)", controller)
+        self.assertIn(
+            "_disconnect_runtime_networks(workflow.server_container, workspace_id=workflow.workspace_id)",
+            controller,
+        )
+        self.assertIn('_assert_activity_mentions(workflow, removed.run_id, "cloudflared-gateway")', controller)
         self.assertIn('"headers", "body", "secret"', controller)
         self.assertIn('{"method": "GET", "path": "/"}', controller)
         self.assertNotIn('"MULTIPLEXER_PRIMARY_URL"', controller)
@@ -935,6 +1001,8 @@ class CpkServerImageBootstrapTests(unittest.TestCase):
         self.assertIn('"gateway"', controller)
         self.assertIn('"postgres_server"', controller)
         self.assertIn('"postgres"', controller)
+        self.assertIn('"cloudflared_connector"', controller)
+        self.assertIn("workflow.register_cloudflare_ingress_authority()", controller)
         self.assertIn("DeploymentGraph(workflow.workspace_id)", controller)
         self.assertIn(
             "spec=replace(gateway.spec, verification=VerificationContract())",
@@ -946,6 +1014,7 @@ class CpkServerImageBootstrapTests(unittest.TestCase):
         )
         self.assertIn("VerificationContract()", controller)
         self.assertIn("_assert_gateway_postgres_query_ready", controller)
+        self.assertIn("_assert_public_gateway_postgres_query_ready", controller)
         self.assertIn("_retained_data_volumes", controller)
         self.assertIn("_assert_retained_volumes_still_exist", controller)
         self.assertIn("_assert_no_node_containers", controller)

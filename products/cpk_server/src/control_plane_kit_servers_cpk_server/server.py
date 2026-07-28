@@ -558,6 +558,7 @@ def _cloudflare_ingress_interpreter(config: CpkServerBootstrapConfiguration):
             ingress,
             *,
             authority: CloudflareZoneIngressAuthority,
+            allocation_name: str,
             origin_service_url: str,
         ):
             return self._inner.create(
@@ -569,6 +570,7 @@ def _cloudflare_ingress_interpreter(config: CpkServerBootstrapConfiguration):
                     api_token_ref=authority.api_token_ref,
                     allowed_hostname_pattern=authority.allowed_hostname_pattern,
                 ),
+                allocation_name=allocation_name,
                 origin_service_url=origin_service_url,
             )
 

@@ -36,7 +36,17 @@ IMAGE_PULL_RESOLVER="none"
 INGRESS_INTERPRETERS="none"
 PRODUCT_SECRET_VALUES_JSON='{"secret://control-plane-kit/postgres/password":"cpk-postgres-smoke-password"}'
 
-if [ "$SCENARIO" = "public-gateway-ingress" ]; then
+case "$SCENARIO" in
+  public-gateway-ingress|public-gateway-toggle|workspace-a-router-transition|\
+workspace-b-multiplexer-observer|workspace-c-postgres-retained-data)
+    NEEDS_INGRESS=1
+    ;;
+  *)
+    NEEDS_INGRESS=0
+    ;;
+esac
+
+if [ "$NEEDS_INGRESS" = "1" ]; then
   CLOUDFLARE_ENV_FILE="${CPK_CLOUDFLARE_ENV_FILE:-env/cloudflare.openj92.local.dev}"
   if [ -r "$CLOUDFLARE_ENV_FILE" ]; then
     set -a

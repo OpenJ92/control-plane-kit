@@ -503,6 +503,8 @@ def main() -> int:
         _run_multi_workspace_foundation(base_url, server_container, servers_repo)
     elif scenario == "public-gateway-ingress":
         _run_public_gateway_ingress(workflow, servers_repo)
+    elif scenario == "public-gateway-toggle":
+        _run_public_gateway_toggle(workflow, servers_repo)
     else:
         raise RuntimeError(f"unknown hosted activity scenario: {scenario}")
 
@@ -537,22 +539,33 @@ def _run_single_hello(workflow: HostedWorkflow, servers_repo: Path) -> None:
 def _run_router_transition(workflow: HostedWorkflow, servers_repo: Path) -> None:
     hello_document = _product_document(servers_repo, "hello_server")
     router_document = _product_document(servers_repo, "http_active_router")
+    gateway_document = _product_document(servers_repo, "cpk_local_gateway")
+    cloudflared_document = _product_document(servers_repo, "cloudflared_connector")
 
     current_graph_id = _bootstrap_workspace(
         workflow,
         name="Hosted router transition",
-        product_documents={"hello": hello_document, "router": router_document},
+        product_documents={
+            "hello": hello_document,
+            "router": router_document,
+            "gateway": gateway_document,
+            "cloudflared": cloudflared_document,
+        },
         register_runtime_authority=True,
         register_runtime_delivery=True,
     )
+    workflow.register_cloudflare_ingress_authority()
 
     blue_graph = _router_graph(
         hello_document,
         router_document,
+        gateway_document,
+        cloudflared_document,
         workspace_id=workflow.workspace_id,
         active_hello_role="hello-blue",
         message="Hello from blue",
         authority_ref=RuntimeAuthorityReference(LOCAL_DOCKER_AUTHORITY_REF),
+        public_hostname=PUBLIC_GATEWAY_HOSTNAME,
     )
     blue = workflow.run_approved_transition(
         title="Hosted router blue",
@@ -561,15 +574,22 @@ def _run_router_transition(workflow: HostedWorkflow, servers_repo: Path) -> None
     )
     _assert_activity_mentions(workflow, blue.run_id, "hello-blue")
     _assert_activity_mentions(workflow, blue.run_id, "router")
+    _assert_activity_mentions(workflow, blue.run_id, "gateway")
+    _assert_activity_mentions(workflow, blue.run_id, "cloudflared-gateway")
+    _wait_public_gateway_ready(PUBLIC_GATEWAY_HOSTNAME)
+    _assert_public_gateway_http_probe(PUBLIC_GATEWAY_HOSTNAME, "router.internal")
     _assert_body("http://router:8000/", "Hello from blue\n")
 
     green_graph = _router_graph(
         hello_document,
         router_document,
+        gateway_document,
+        cloudflared_document,
         workspace_id=workflow.workspace_id,
         active_hello_role="hello-green",
         message="Hello from green",
         authority_ref=RuntimeAuthorityReference(LOCAL_DOCKER_AUTHORITY_REF),
+        public_hostname=PUBLIC_GATEWAY_HOSTNAME,
     )
     green = workflow.run_approved_transition(
         title="Hosted router green",
@@ -579,7 +599,19 @@ def _run_router_transition(workflow: HostedWorkflow, servers_repo: Path) -> None
     )
     _assert_activity_mentions(workflow, green.run_id, "hello-green")
     _assert_activity_mentions(workflow, green.run_id, "router")
+    _wait_public_gateway_ready(PUBLIC_GATEWAY_HOSTNAME)
+    _assert_public_gateway_http_probe(PUBLIC_GATEWAY_HOSTNAME, "router.internal")
     _assert_body("http://router:8000/", "Hello from green\n")
+    _disconnect_runtime_networks(workflow.server_container, workspace_id=workflow.workspace_id)
+    removed = workflow.run_approved_transition(
+        title="Hosted router teardown",
+        graph=DeploymentGraph(workflow.workspace_id),
+        current_graph_id=green.current_graph_id,
+        expected_desired_graph_id=green.desired_graph_id,
+        sync_runtime_networks=False,
+    )
+    _assert_activity_mentions(workflow, removed.run_id, "cloudflared-gateway")
+    _assert_no_runtime_networks(workflow.workspace_id)
 
 
 def _run_multi_workspace_foundation(
@@ -628,11 +660,16 @@ def _run_multi_workspace_foundation(
 def _run_multiplexer_observer(workflow: HostedWorkflow, servers_repo: Path) -> None:
     hello_document = _product_document(servers_repo, "hello_server")
     multiplexer_document = _product_document(servers_repo, "http_multiplexer")
+    gateway_document = _product_document(servers_repo, "cpk_local_gateway")
+    cloudflared_document = _product_document(servers_repo, "cloudflared_connector")
     graph = _multiplexer_graph(
         hello_document,
         multiplexer_document,
+        gateway_document,
+        cloudflared_document,
         workspace_id=workflow.workspace_id,
         authority_ref=RuntimeAuthorityReference(LOCAL_DOCKER_AUTHORITY_REF),
+        public_hostname=PUBLIC_GATEWAY_HOSTNAME,
     )
 
     current_graph_id = _bootstrap_workspace(
@@ -641,10 +678,13 @@ def _run_multiplexer_observer(workflow: HostedWorkflow, servers_repo: Path) -> N
         product_documents={
             "hello": hello_document,
             "multiplexer": multiplexer_document,
+            "gateway": gateway_document,
+            "cloudflared": cloudflared_document,
         },
         register_runtime_authority=True,
         register_runtime_delivery=True,
     )
+    workflow.register_cloudflare_ingress_authority()
     result = workflow.run_approved_transition(
         title="Hosted multiplexer observer",
         graph=graph,
@@ -653,18 +693,35 @@ def _run_multiplexer_observer(workflow: HostedWorkflow, servers_repo: Path) -> N
     _assert_activity_mentions(workflow, result.run_id, "hello-primary")
     _assert_activity_mentions(workflow, result.run_id, "hello-observer")
     _assert_activity_mentions(workflow, result.run_id, "multiplexer")
+    _assert_activity_mentions(workflow, result.run_id, "gateway")
+    _assert_activity_mentions(workflow, result.run_id, "cloudflared-gateway")
+    _wait_public_gateway_ready(PUBLIC_GATEWAY_HOSTNAME)
+    _assert_public_gateway_http_probe(PUBLIC_GATEWAY_HOSTNAME, "multiplexer.internal")
     _assert_body("http://multiplexer:8000/", "Primary response\n")
     _assert_observer_receipt("http://hello-observer:8000/observations/requests")
+    _disconnect_runtime_networks(workflow.server_container, workspace_id=workflow.workspace_id)
+    removed = workflow.run_approved_transition(
+        title="Hosted multiplexer teardown",
+        graph=DeploymentGraph(workflow.workspace_id),
+        current_graph_id=result.current_graph_id,
+        expected_desired_graph_id=result.desired_graph_id,
+        sync_runtime_networks=False,
+    )
+    _assert_activity_mentions(workflow, removed.run_id, "cloudflared-gateway")
+    _assert_no_runtime_networks(workflow.workspace_id)
 
 
 def _run_postgres_retained_data(workflow: HostedWorkflow, servers_repo: Path) -> None:
     gateway_document = _product_document(servers_repo, "cpk_local_gateway")
     postgres_document = _product_document(servers_repo, "postgres_server")
+    cloudflared_document = _product_document(servers_repo, "cloudflared_connector")
     graph = _postgres_graph(
         gateway_document,
         postgres_document,
+        cloudflared_document,
         workspace_id=workflow.workspace_id,
         authority_ref=RuntimeAuthorityReference(LOCAL_DOCKER_AUTHORITY_REF),
+        public_hostname=PUBLIC_GATEWAY_HOSTNAME,
     )
 
     current_graph_id = _bootstrap_workspace(
@@ -673,10 +730,12 @@ def _run_postgres_retained_data(workflow: HostedWorkflow, servers_repo: Path) ->
         product_documents={
             "gateway": gateway_document,
             "postgres": postgres_document,
+            "cloudflared": cloudflared_document,
         },
         register_runtime_authority=True,
         register_runtime_delivery=True,
     )
+    workflow.register_cloudflare_ingress_authority()
     deployed = workflow.run_approved_transition(
         title="Hosted postgres deploy",
         graph=graph,
@@ -685,6 +744,9 @@ def _run_postgres_retained_data(workflow: HostedWorkflow, servers_repo: Path) ->
     )
     _assert_activity_mentions(workflow, deployed.run_id, "gateway")
     _assert_activity_mentions(workflow, deployed.run_id, "postgres")
+    _assert_activity_mentions(workflow, deployed.run_id, "cloudflared-gateway")
+    _wait_public_gateway_ready(PUBLIC_GATEWAY_HOSTNAME)
+    _assert_public_gateway_postgres_query_ready(PUBLIC_GATEWAY_HOSTNAME)
     _assert_gateway_postgres_query_ready(workflow.workspace_id, "gateway")
     retained_volumes = _retained_data_volumes(workflow.workspace_id, "postgres")
     if not retained_volumes:
@@ -751,6 +813,86 @@ def _run_public_gateway_ingress(workflow: HostedWorkflow, servers_repo: Path) ->
         graph=DeploymentGraph(workflow.workspace_id),
         current_graph_id=deployed.current_graph_id,
         expected_desired_graph_id=deployed.desired_graph_id,
+        sync_runtime_networks=False,
+    )
+    _assert_activity_mentions(workflow, removed.run_id, "cloudflared-gateway")
+    _assert_no_runtime_networks(workflow.workspace_id)
+
+
+def _run_public_gateway_toggle(workflow: HostedWorkflow, servers_repo: Path) -> None:
+    gateway_document = _product_document(servers_repo, "cpk_local_gateway")
+    hello_document = _product_document(servers_repo, "hello_server")
+    cloudflared_document = _product_document(servers_repo, "cloudflared_connector")
+
+    public_graph = _public_gateway_ingress_graph(
+        gateway_document,
+        hello_document,
+        cloudflared_document,
+        workspace_id=workflow.workspace_id,
+        authority_ref=RuntimeAuthorityReference(LOCAL_DOCKER_AUTHORITY_REF),
+    )
+    private_graph = _single_hello_graph(
+        hello_document,
+        workspace_id=workflow.workspace_id,
+        authority_ref=RuntimeAuthorityReference(LOCAL_DOCKER_AUTHORITY_REF),
+        message="Hello through public ingress",
+    )
+
+    current_graph_id = _bootstrap_workspace(
+        workflow,
+        name="Hosted public gateway toggle",
+        product_documents={
+            "gateway": gateway_document,
+            "hello": hello_document,
+            "cloudflared": cloudflared_document,
+        },
+        register_runtime_authority=True,
+        register_runtime_delivery=True,
+    )
+    workflow.register_cloudflare_ingress_authority()
+
+    public_on = workflow.run_approved_transition(
+        title="Hosted public gateway toggle on",
+        graph=public_graph,
+        current_graph_id=current_graph_id,
+        sync_runtime_networks=False,
+    )
+    _assert_activity_mentions(workflow, public_on.run_id, "gateway")
+    _assert_activity_mentions(workflow, public_on.run_id, "hello")
+    _assert_activity_mentions(workflow, public_on.run_id, "cloudflared-gateway")
+    _wait_public_gateway_ready(PUBLIC_GATEWAY_HOSTNAME)
+    _assert_public_gateway_private_probe(PUBLIC_GATEWAY_HOSTNAME)
+
+    public_off = workflow.run_approved_transition(
+        title="Hosted public gateway toggle off",
+        graph=private_graph,
+        current_graph_id=public_on.current_graph_id,
+        expected_desired_graph_id=public_on.desired_graph_id,
+        sync_runtime_networks=False,
+    )
+    _assert_activity_mentions(workflow, public_off.run_id, "cloudflared-gateway")
+    _assert_public_gateway_unreachable(PUBLIC_GATEWAY_HOSTNAME)
+    _sync_runtime_networks(workflow.server_container, workspace_id=workflow.workspace_id)
+    _assert_body("http://hello:8000/", "Hello through public ingress\n")
+
+    public_on_again = workflow.run_approved_transition(
+        title="Hosted public gateway toggle on again",
+        graph=public_graph,
+        current_graph_id=public_off.current_graph_id,
+        expected_desired_graph_id=public_off.desired_graph_id,
+        sync_runtime_networks=True,
+    )
+    _assert_activity_mentions(workflow, public_on_again.run_id, "gateway")
+    _assert_activity_mentions(workflow, public_on_again.run_id, "cloudflared-gateway")
+    _wait_public_gateway_ready(PUBLIC_GATEWAY_HOSTNAME)
+    _assert_public_gateway_private_probe(PUBLIC_GATEWAY_HOSTNAME)
+
+    _disconnect_runtime_networks(workflow.server_container, workspace_id=workflow.workspace_id)
+    removed = workflow.run_approved_transition(
+        title="Hosted public gateway toggle teardown",
+        graph=DeploymentGraph(workflow.workspace_id),
+        current_graph_id=public_on_again.current_graph_id,
+        expected_desired_graph_id=public_on_again.desired_graph_id,
         sync_runtime_networks=False,
     )
     _assert_activity_mentions(workflow, removed.run_id, "cloudflared-gateway")
@@ -874,6 +1016,32 @@ def _sync_runtime_networks(server_container: str, *, workspace_id: str = WORKSPA
                 continue
 
 
+def _disconnect_runtime_networks(
+    server_container: str,
+    *,
+    workspace_id: str = WORKSPACE_ID,
+) -> None:
+    import docker
+    from docker.errors import APIError, NotFound
+
+    client = docker.from_env()
+    controller_container = socket.gethostname()
+    for network in client.networks.list():
+        name = network.name
+        if not name.startswith(f"cpk-net-{workspace_id}"):
+            continue
+        for container in (server_container, controller_container):
+            try:
+                network.disconnect(container, force=True)
+            except APIError as error:
+                message = str(error).lower()
+                if "not connected" in message or "no such container" in message:
+                    continue
+                raise
+            except NotFound:
+                continue
+
+
 def _wait_ready(base_url: str) -> None:
     for _ in range(30):
         try:
@@ -894,12 +1062,19 @@ def _single_hello_graph(
     *,
     workspace_id: str = WORKSPACE_ID,
     authority_ref: RuntimeAuthorityReference | None = None,
+    message: str | None = None,
 ) -> DeploymentGraph:
     product = product_document.product
+    configuration = ProductInstanceConfiguration.from_contract(product.runtime_contract)
+    if message is not None:
+        configuration = _with_public_environment(
+            configuration,
+            {"HELLO_MESSAGE": message},
+        )
     block = instantiate_product(
         product,
         "hello",
-        ProductInstanceConfiguration.from_contract(product.runtime_contract),
+        configuration,
     )
     return compile_topology(
         DeploymentTopology(
@@ -917,11 +1092,14 @@ def _single_hello_graph(
 def _router_graph(
     hello_document: Any,
     router_document: Any,
+    gateway_document: Any | None = None,
+    cloudflared_document: Any | None = None,
     *,
     workspace_id: str,
     active_hello_role: str,
     message: str,
     authority_ref: RuntimeAuthorityReference | None = None,
+    public_hostname: str | None = None,
 ) -> DeploymentGraph:
     hello_product = hello_document.product
     router_product = router_document.product
@@ -938,6 +1116,34 @@ def _router_graph(
         "router",
         ProductInstanceConfiguration.from_contract(router_product.runtime_contract),
     )
+    children: tuple[object, ...] = (
+        hello,
+        router,
+        SocketConnection(
+            active_hello_role,
+            "internal",
+            "router",
+            "active",
+        ),
+    )
+    public_ingresses: tuple[NamedPublicIngress, ...] = ()
+    if public_hostname is not None:
+        if gateway_document is None or cloudflared_document is None:
+            raise RuntimeError("public router graph requires gateway and cloudflared products")
+        gateway, cloudflared, ingress = _public_gateway_overlay(
+            gateway_document,
+            cloudflared_document,
+            target_node_id="gateway",
+            target_provider_socket="control",
+            connector_node_id="cloudflared-gateway",
+            public_hostname=public_hostname,
+        )
+        children = children + (
+            gateway,
+            cloudflared,
+            SocketConnection("router", "internal", "gateway", "target-http"),
+        )
+        public_ingresses = (ingress,)
     return compile_topology(
         DeploymentTopology(
             workspace_id,
@@ -945,17 +1151,9 @@ def _router_graph(
                 runtime_id="docker",
                 network_name=f"control-plane-kit-{workspace_id}-docker",
                 authority_ref=authority_ref,
-                children=(
-                    hello,
-                    router,
-                    SocketConnection(
-                        active_hello_role,
-                        "internal",
-                        "router",
-                        "active",
-                    ),
-                ),
+                children=children,
             ),
+            public_ingresses=public_ingresses,
         )
     )
 
@@ -963,9 +1161,12 @@ def _router_graph(
 def _multiplexer_graph(
     hello_document: Any,
     multiplexer_document: Any,
+    gateway_document: Any | None = None,
+    cloudflared_document: Any | None = None,
     *,
     workspace_id: str,
     authority_ref: RuntimeAuthorityReference | None = None,
+    public_hostname: str | None = None,
 ) -> DeploymentGraph:
     hello_product = hello_document.product
     multiplexer_product = multiplexer_document.product
@@ -990,6 +1191,36 @@ def _multiplexer_graph(
         "multiplexer",
         ProductInstanceConfiguration.from_contract(multiplexer_product.runtime_contract),
     )
+    children: tuple[object, ...] = (
+        primary,
+        observer,
+        multiplexer,
+        SocketConnection("hello-primary", "internal", "multiplexer", "primary"),
+        SocketConnection(
+            "hello-observer",
+            "internal",
+            "multiplexer",
+            "observer-a",
+        ),
+    )
+    public_ingresses: tuple[NamedPublicIngress, ...] = ()
+    if public_hostname is not None:
+        if gateway_document is None or cloudflared_document is None:
+            raise RuntimeError("public multiplexer graph requires gateway and cloudflared products")
+        gateway, cloudflared, ingress = _public_gateway_overlay(
+            gateway_document,
+            cloudflared_document,
+            target_node_id="gateway",
+            target_provider_socket="control",
+            connector_node_id="cloudflared-gateway",
+            public_hostname=public_hostname,
+        )
+        children = children + (
+            gateway,
+            cloudflared,
+            SocketConnection("multiplexer", "internal", "gateway", "target-http"),
+        )
+        public_ingresses = (ingress,)
     return compile_topology(
         DeploymentTopology(
             workspace_id,
@@ -997,19 +1228,9 @@ def _multiplexer_graph(
                 runtime_id="docker",
                 network_name=f"control-plane-kit-{workspace_id}-docker",
                 authority_ref=authority_ref,
-                children=(
-                    primary,
-                    observer,
-                    multiplexer,
-                    SocketConnection("hello-primary", "internal", "multiplexer", "primary"),
-                    SocketConnection(
-                        "hello-observer",
-                        "internal",
-                        "multiplexer",
-                        "observer-a",
-                    ),
-                ),
+                children=children,
             ),
+            public_ingresses=public_ingresses,
         )
     )
 
@@ -1017,9 +1238,11 @@ def _multiplexer_graph(
 def _postgres_graph(
     gateway_document: Any,
     postgres_document: Any,
+    cloudflared_document: Any | None = None,
     *,
     workspace_id: str,
     authority_ref: RuntimeAuthorityReference | None = None,
+    public_hostname: str | None = None,
 ) -> DeploymentGraph:
     gateway_product = gateway_document.product
     postgres_product = postgres_document.product
@@ -1041,6 +1264,37 @@ def _postgres_graph(
         postgres,
         spec=replace(postgres.spec, verification=VerificationContract()),
     )
+    children: tuple[object, ...] = (
+        gateway,
+        postgres,
+        SocketConnection(
+            "postgres",
+            "postgres",
+            "gateway",
+            "target-postgres",
+        ),
+    )
+    public_ingresses: tuple[NamedPublicIngress, ...] = ()
+    if public_hostname is not None:
+        if cloudflared_document is None:
+            raise RuntimeError("public postgres graph requires cloudflared product")
+        cloudflared_product = cloudflared_document.product
+        cloudflared = instantiate_product(
+            cloudflared_product,
+            "cloudflared-gateway",
+            ProductInstanceConfiguration.from_contract(
+                cloudflared_product.runtime_contract
+            ),
+        )
+        children = children + (cloudflared,)
+        public_ingresses = (
+            _named_public_gateway_ingress(
+                target_node_id="gateway",
+                target_provider_socket="control",
+                connector_node_id="cloudflared-gateway",
+                public_hostname=public_hostname,
+            ),
+        )
     return compile_topology(
         DeploymentTopology(
             workspace_id,
@@ -1048,17 +1302,9 @@ def _postgres_graph(
                 runtime_id="docker",
                 network_name=f"control-plane-kit-{workspace_id}-docker",
                 authority_ref=authority_ref,
-                children=(
-                    gateway,
-                    postgres,
-                    SocketConnection(
-                        "postgres",
-                        "postgres",
-                        "gateway",
-                        "target-postgres",
-                    ),
-                ),
+                children=children,
             ),
+            public_ingresses=public_ingresses,
         )
     )
 
@@ -1071,14 +1317,7 @@ def _public_gateway_ingress_graph(
     workspace_id: str,
     authority_ref: RuntimeAuthorityReference | None = None,
 ) -> DeploymentGraph:
-    gateway_product = gateway_document.product
     hello_product = hello_document.product
-    cloudflared_product = cloudflared_document.product
-    gateway = instantiate_product(
-        gateway_product,
-        "gateway",
-        ProductInstanceConfiguration.from_contract(gateway_product.runtime_contract),
-    )
     hello = instantiate_product(
         hello_product,
         "hello",
@@ -1087,10 +1326,13 @@ def _public_gateway_ingress_graph(
             {"HELLO_MESSAGE": "Hello through public ingress"},
         ),
     )
-    cloudflared = instantiate_product(
-        cloudflared_product,
-        "cloudflared-gateway",
-        ProductInstanceConfiguration.from_contract(cloudflared_product.runtime_contract),
+    gateway, cloudflared, ingress = _public_gateway_overlay(
+        gateway_document,
+        cloudflared_document,
+        target_node_id="gateway",
+        target_provider_socket="control",
+        connector_node_id="cloudflared-gateway",
+        public_hostname=PUBLIC_GATEWAY_HOSTNAME,
     )
     return compile_topology(
         DeploymentTopology(
@@ -1106,18 +1348,59 @@ def _public_gateway_ingress_graph(
                     SocketConnection("hello", "internal", "gateway", "target-http"),
                 ),
             ),
-            public_ingresses=(
-                NamedPublicIngress(
-                    ingress_id="gateway-public",
-                    authority_ref=IngressAuthorityReference(
-                        OPENJ92_INGRESS_AUTHORITY_REF,
-                    ),
-                    target=PublicIngressTarget("gateway", "control"),
-                    connector_node_id="cloudflared-gateway",
-                    hostname=PUBLIC_GATEWAY_HOSTNAME,
-                ),
-            ),
+            public_ingresses=(ingress,),
         )
+    )
+
+
+def _public_gateway_overlay(
+    gateway_document: Any,
+    cloudflared_document: Any,
+    *,
+    target_node_id: str,
+    target_provider_socket: str,
+    connector_node_id: str,
+    public_hostname: str,
+) -> tuple[object, object, NamedPublicIngress]:
+    gateway_product = gateway_document.product
+    cloudflared_product = cloudflared_document.product
+    gateway = instantiate_product(
+        gateway_product,
+        target_node_id,
+        ProductInstanceConfiguration.from_contract(gateway_product.runtime_contract),
+    )
+    cloudflared = instantiate_product(
+        cloudflared_product,
+        connector_node_id,
+        ProductInstanceConfiguration.from_contract(cloudflared_product.runtime_contract),
+    )
+    return (
+        gateway,
+        cloudflared,
+        _named_public_gateway_ingress(
+            target_node_id=target_node_id,
+            target_provider_socket=target_provider_socket,
+            connector_node_id=connector_node_id,
+            public_hostname=public_hostname,
+        ),
+    )
+
+
+def _named_public_gateway_ingress(
+    *,
+    target_node_id: str,
+    target_provider_socket: str,
+    connector_node_id: str,
+    public_hostname: str,
+) -> NamedPublicIngress:
+    return NamedPublicIngress(
+        ingress_id="gateway-public",
+        authority_ref=IngressAuthorityReference(
+            OPENJ92_INGRESS_AUTHORITY_REF,
+        ),
+        target=PublicIngressTarget(target_node_id, target_provider_socket),
+        connector_node_id=connector_node_id,
+        hostname=public_hostname,
     )
 
 
@@ -1313,12 +1596,16 @@ def _wait_public_gateway_ready(hostname: str) -> None:
 
 
 def _assert_public_gateway_private_probe(hostname: str) -> None:
+    _assert_public_gateway_http_probe(hostname, "hello.internal")
+
+
+def _assert_public_gateway_http_probe(hostname: str, target_id: str) -> None:
     response = _public_https_json(
         hostname,
         "POST",
         "/cpk/probes",
         body=json.dumps(
-            {"kind": "http-status", "target_id": "hello.internal", "path": "/"},
+            {"kind": "http-status", "target_id": target_id, "path": "/"},
             separators=(",", ":"),
             sort_keys=True,
         ).encode("utf-8"),
@@ -1330,6 +1617,50 @@ def _assert_public_gateway_private_probe(hostname: str) -> None:
     encoded = json.dumps(payload).lower()
     if "secret" in encoded or "token" in encoded or "password" in encoded:
         raise RuntimeError("public probe response leaked secret-shaped material")
+
+
+def _assert_public_gateway_postgres_query_ready(hostname: str) -> None:
+    response = _public_https_json(
+        hostname,
+        "POST",
+        "/cpk/probes",
+        body=json.dumps(
+            {"kind": "postgres-select-one", "target_id": "postgres.postgres"},
+            separators=(",", ":"),
+            sort_keys=True,
+        ).encode("utf-8"),
+        timeout=10,
+    )
+    payload = json.loads(response.body.decode("utf-8"))
+    if payload.get("outcome") != "passed" or payload.get("probe") != "postgres-select-one":
+        raise RuntimeError(f"public gateway postgres probe failed: {payload!r}")
+    encoded = json.dumps(payload).lower()
+    if "secret" in encoded or "token" in encoded or "password" in encoded:
+        raise RuntimeError("public postgres probe response leaked secret-shaped material")
+
+
+def _assert_public_gateway_unreachable(hostname: str) -> None:
+    last_success: str | None = None
+    for _ in range(30):
+        try:
+            response = _public_https_json(
+                hostname,
+                "GET",
+                "/health/ready",
+                timeout=5,
+            )
+            if response.status == 200:
+                body = json.loads(response.body.decode("utf-8"))
+                if body.get("status") == "ready":
+                    last_success = repr(body)
+                    time.sleep(2)
+                    continue
+            return
+        except Exception:
+            return
+    raise RuntimeError(
+        f"public gateway remained reachable after overlay removal: {last_success}"
+    )
 
 
 @dataclass(frozen=True)
