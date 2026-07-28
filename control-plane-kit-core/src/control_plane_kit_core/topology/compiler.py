@@ -22,7 +22,7 @@ from control_plane_kit_core.types import BlockFamily
 def compile_topology(topology: DeploymentTopology) -> DeploymentGraph:
     """Compile a deployment topology into a pure graph."""
 
-    graph = DeploymentGraph(topology.name)
+    graph = DeploymentGraph(topology.name, public_ingresses=topology.public_ingresses)
     graph, connections = _compile_runtime(topology.root, graph)
     for connection in connections:
         graph = _apply_connection(graph, connection)

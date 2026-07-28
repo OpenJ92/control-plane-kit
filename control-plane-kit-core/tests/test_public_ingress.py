@@ -26,6 +26,7 @@ class PublicIngressLanguageTests(unittest.TestCase):
             ingress_id="gateway-001",
             authority_ref=IngressAuthorityReference("openj92-public-ingress"),
             target=PublicIngressTarget("gateway", "control"),
+            connector_node_id="cloudflared-gateway",
             hostname="cpk-gateway-001.openj92.dev",
         )
 
@@ -40,6 +41,7 @@ class PublicIngressLanguageTests(unittest.TestCase):
                     "node_id": "gateway",
                     "provider_socket": "control",
                 },
+                "connector_node_id": "cloudflared-gateway",
                 "hostname": "cpk-gateway-001.openj92.dev",
                 "exposure": "https",
                 "lifecycle": "ephemeral",
@@ -48,7 +50,9 @@ class PublicIngressLanguageTests(unittest.TestCase):
         self.assertEqual(NamedPublicIngressCodec().decode(descriptor), ingress)
         self.assertIs(PublicIngressRequest, NamedPublicIngress)
         self.assertNotIn("Cloudflare", type(ingress).__name__)
-        self.assertNotIn("cloudflare", repr(descriptor).lower())
+        self.assertNotIn("provider_kind", descriptor)
+        self.assertNotIn("api_token", repr(descriptor).lower())
+        self.assertNotIn("tunnel_token", repr(descriptor).lower())
 
     def test_ingress_authority_reference_is_secret_free(self) -> None:
         reference = IngressAuthorityReference("openj92-public-ingress")
@@ -92,6 +96,7 @@ class PublicIngressLanguageTests(unittest.TestCase):
             ingress_id="gateway-001",
             authority_ref=IngressAuthorityReference("openj92-public-ingress"),
             target=PublicIngressTarget("gateway", "control"),
+            connector_node_id="cloudflared-gateway",
             hostname="cpk-gateway-001.openj92.dev",
             exposure=PublicIngressExposure.HTTPS,
             lifecycle=PublicIngressLifecycle.RETAINED,
