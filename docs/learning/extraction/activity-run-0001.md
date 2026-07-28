@@ -4271,3 +4271,56 @@ Handoff:
 - #1016 can implement `CloudflareNamedIngressInterpreter` by resolving the
   admitted `RegisteredIngressAuthority` token reference only at the IO boundary.
 - #1036 must record owned Cloudflare resource evidence before any teardown.
+
+## #1036 Cloudflare Owned Resource Evidence
+
+#1036 adds the first operations-side cleanup policy for named public ingress.
+Core remains provider-neutral; Cloudflare names stay at the operations and
+interpreter boundary.
+
+The evidence shape is intentionally bounded and secret-free:
+
+```text
+CloudflareOwnedIngressResource
+  workspace_id
+  runtime_id
+  ingress_id
+  tunnel_name
+  tunnel_id
+  dns_record_id
+  hostname
+  zone_id
+  lifecycle = ephemeral | retained | external
+  created_at
+  observed_at
+```
+
+Teardown is now an evidence-derived plan rather than a broad search:
+
+```text
+ephemeral owned resource
+  -> delete DNS record by recorded dns_record_id
+  -> delete tunnel by recorded tunnel_id
+
+retained/external resource
+  -> observe and skip deletion
+```
+
+The policy fails closed when ownership evidence is missing, the zone does not
+match the admitted authority, the hostname falls outside the admitted pattern, or
+the tunnel name lacks the CPK-owned prefix. It does not delete or mutate
+`auth-potteryfactory`, permanent `cpk.openj92.dev`, unrelated Cloudflare
+resources, or Pottery Factory resources.
+
+Validation evidence:
+
+- `git diff --check` passed.
+- `./control-plane-kit-operations/test.sh` passed 176 tests, compileall, and
+  import.
+
+Handoff:
+
+- #1037 can attach generated tunnel-token delivery to this ownership evidence.
+- #1017 can use the evidence plan for two-island live tunnel cleanup.
+- A durable ingress-resource store remains deferred until live execution proves
+  the exact persistence boundary.

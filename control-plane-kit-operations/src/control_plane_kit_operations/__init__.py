@@ -73,6 +73,10 @@ from .foundation import (
     OperationsPackageBoundary,
 )
 from .ingress_authorities import (
+    CloudflareIngressTeardownAction,
+    CloudflareIngressTeardownActionKind,
+    CloudflareIngressTeardownPlan,
+    CloudflareOwnedIngressResource,
     CloudflareZoneIngressAuthority,
     CloudflareZoneIngressAuthorityCodec,
     IngressAuthorityAuthorizationDenied,
@@ -85,6 +89,7 @@ from .ingress_authorities import (
     RegisteredIngressAuthority,
     RegisteredIngressAuthorityStatus,
     RevokeIngressAuthorityCommand,
+    cloudflare_ingress_teardown_plan,
     ingress_authority_registration_id_for,
 )
 from .graph_authoring import (
@@ -274,6 +279,10 @@ __all__ = [
     "CancelActivityRun",
     "ClaimIdentity",
     "ClaimAndOpenActivityRun",
+    "CloudflareIngressTeardownAction",
+    "CloudflareIngressTeardownActionKind",
+    "CloudflareIngressTeardownPlan",
+    "CloudflareOwnedIngressResource",
     "CloudflareZoneIngressAuthority",
     "CloudflareZoneIngressAuthorityCodec",
     "CompleteActivityRun",
@@ -418,6 +427,7 @@ __all__ = [
     "RuntimeAuthorityRegistrationService",
     "RuntimeDispatcherBootstrapConfiguration",
     "RuntimeDispatcherBootstrapError",
+    "cloudflare_ingress_teardown_plan",
     "ingress_authority_registration_id_for",
     "runtime_effect_request_for_context",
     "runtime_authority_delivery_id_for",

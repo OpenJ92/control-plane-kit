@@ -9,7 +9,10 @@ import re
 from typing import Any, Mapping
 
 from control_plane_kit_core.policies import PolicyScope
-from control_plane_kit_core.public_ingress import IngressAuthorityReference
+from control_plane_kit_core.public_ingress import (
+    IngressAuthorityReference,
+    PublicIngressLifecycle,
+)
 from control_plane_kit_core.secrets import SecretReference
 
 
@@ -55,6 +58,14 @@ class RegisteredIngressAuthorityStatus(StrEnum):
 
     ACTIVE = "active"
     REVOKED = "revoked"
+
+
+class CloudflareIngressTeardownActionKind(StrEnum):
+    """Closed Cloudflare cleanup actions derived from owned evidence."""
+
+    DELETE_DNS_RECORD = "delete-dns-record"
+    DELETE_TUNNEL = "delete-tunnel"
+    SKIP_RETAINED_OR_EXTERNAL = "skip-retained-or-external"
 
 
 @dataclass(frozen=True)
@@ -103,6 +114,148 @@ class CloudflareZoneIngressAuthority:
 
 
 IngressAuthority = CloudflareZoneIngressAuthority
+
+
+@dataclass(frozen=True)
+class CloudflareOwnedIngressResource:
+    """Bounded evidence for Cloudflare resources allocated by one CPK activity."""
+
+    workspace_id: str
+    runtime_id: str
+    ingress_id: str
+    tunnel_name: str
+    tunnel_id: str
+    dns_record_id: str
+    hostname: str
+    zone_id: str
+    lifecycle: PublicIngressLifecycle
+    created_at: str
+    observed_at: str
+
+    def __post_init__(self) -> None:
+        _validate_identifier(self.workspace_id, "workspace_id")
+        _validate_identifier(self.runtime_id, "runtime_id")
+        _validate_identifier(self.ingress_id, "ingress_id")
+        _validate_identifier(self.tunnel_name, "tunnel_name")
+        _validate_identifier(self.tunnel_id, "tunnel_id")
+        _validate_identifier(self.dns_record_id, "dns_record_id")
+        _validate_hostname(self.hostname)
+        _validate_identifier(self.zone_id, "zone_id")
+        if not isinstance(self.lifecycle, PublicIngressLifecycle):
+            raise IngressAuthorityRegistrationError(
+                "Cloudflare ingress resource lifecycle must be closed"
+            )
+        _validate_identifier(self.created_at, "created_at")
+        _validate_identifier(self.observed_at, "observed_at")
+        if any(marker in repr(self.descriptor()).lower() for marker in _SECRET_MARKERS):
+            raise IngressAuthorityRegistrationError(
+                "Cloudflare ingress resource evidence must be secret-free"
+            )
+
+    def descriptor(self) -> dict[str, object]:
+        return {
+            "workspace_id": self.workspace_id,
+            "runtime_id": self.runtime_id,
+            "ingress_id": self.ingress_id,
+            "tunnel_name": self.tunnel_name,
+            "tunnel_id": self.tunnel_id,
+            "dns_record_id": self.dns_record_id,
+            "hostname": self.hostname,
+            "zone_id": self.zone_id,
+            "lifecycle": self.lifecycle.value,
+            "created_at": self.created_at,
+            "observed_at": self.observed_at,
+        }
+
+
+@dataclass(frozen=True)
+class CloudflareIngressTeardownAction:
+    """One bounded Cloudflare cleanup action derived from recorded ids."""
+
+    kind: CloudflareIngressTeardownActionKind
+    resource_id: str | None = None
+    hostname: str | None = None
+
+    def __post_init__(self) -> None:
+        if not isinstance(self.kind, CloudflareIngressTeardownActionKind):
+            raise IngressAuthorityRegistrationError(
+                "Cloudflare teardown action kind must be closed"
+            )
+        if self.resource_id is not None:
+            _validate_identifier(self.resource_id, "resource_id")
+        if self.hostname is not None:
+            _validate_hostname(self.hostname)
+
+    def descriptor(self) -> dict[str, object]:
+        return {
+            "kind": self.kind.value,
+            "resource_id": self.resource_id,
+            "hostname": self.hostname,
+        }
+
+
+@dataclass(frozen=True)
+class CloudflareIngressTeardownPlan:
+    """Fail-closed cleanup plan; no broad Cloudflare search is implied."""
+
+    resource: CloudflareOwnedIngressResource
+    actions: tuple[CloudflareIngressTeardownAction, ...]
+
+    def descriptor(self) -> dict[str, object]:
+        return {
+            "resource": self.resource.descriptor(),
+            "actions": [action.descriptor() for action in self.actions],
+        }
+
+
+def cloudflare_ingress_teardown_plan(
+    *,
+    authority: CloudflareZoneIngressAuthority,
+    resource: CloudflareOwnedIngressResource | None,
+) -> CloudflareIngressTeardownPlan:
+    """Return the precise teardown plan permitted by recorded ownership evidence."""
+
+    if resource is None:
+        raise IngressAuthorityRegistrationError(
+            "Cloudflare ingress teardown requires ownership evidence"
+        )
+    if resource.zone_id != authority.zone_id:
+        raise IngressAuthorityRegistrationError(
+            "Cloudflare ingress ownership zone does not match authority"
+        )
+    if not authority.allows_hostname(resource.hostname):
+        raise IngressAuthorityRegistrationError(
+            "Cloudflare ingress ownership hostname is outside authority policy"
+        )
+    if not resource.tunnel_name.startswith("cpk-"):
+        raise IngressAuthorityRegistrationError(
+            "Cloudflare ingress tunnel ownership is ambiguous"
+        )
+    if resource.lifecycle is not PublicIngressLifecycle.EPHEMERAL:
+        return CloudflareIngressTeardownPlan(
+            resource=resource,
+            actions=(
+                CloudflareIngressTeardownAction(
+                    CloudflareIngressTeardownActionKind.SKIP_RETAINED_OR_EXTERNAL,
+                    hostname=resource.hostname,
+                ),
+            ),
+        )
+    return CloudflareIngressTeardownPlan(
+        resource=resource,
+        actions=(
+            CloudflareIngressTeardownAction(
+                CloudflareIngressTeardownActionKind.DELETE_DNS_RECORD,
+                resource_id=resource.dns_record_id,
+                hostname=resource.hostname,
+            ),
+            CloudflareIngressTeardownAction(
+                CloudflareIngressTeardownActionKind.DELETE_TUNNEL,
+                resource_id=resource.tunnel_id,
+                hostname=resource.hostname,
+            ),
+        ),
+    )
 
 
 class CloudflareZoneIngressAuthorityCodec:
