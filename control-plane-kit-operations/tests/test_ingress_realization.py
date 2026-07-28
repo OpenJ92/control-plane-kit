@@ -120,6 +120,7 @@ class RecordingIngressInterpreter:
     def __init__(self, tracker: TrackingUnitOfWorkFactory) -> None:
         self.tracker = tracker
         self.create_active_counts: list[int] = []
+        self.create_allocation_names: list[str] = []
         self.create_origins: list[str] = []
         self.create_authorities: list[CloudflareZoneIngressAuthority] = []
         self.teardown_active_counts: list[int] = []
@@ -131,12 +132,17 @@ class RecordingIngressInterpreter:
         ingress: NamedPublicIngress,
         *,
         authority: CloudflareZoneIngressAuthority,
+        allocation_name: str,
         origin_service_url: str,
     ) -> FakeIngressAllocation:
         self.create_active_counts.append(self.tracker.active)
+        self.create_allocation_names.append(allocation_name)
         self.create_origins.append(origin_service_url)
         self.create_authorities.append(authority)
-        return FakeIngressAllocation(hostname=ingress.hostname)
+        return FakeIngressAllocation(
+            tunnel_name=allocation_name,
+            hostname=ingress.hostname,
+        )
 
     def teardown(
         self,
@@ -215,6 +221,10 @@ class IngressRealizationAdapterTests(unittest.TestCase):
             "secret://cloudflare/openj92/api-token",
         )
         self.assertEqual(outcome.kind.name, "SUCCEEDED")
+        self.assertEqual(
+            interpreter.create_allocation_names,
+            ["cpk-gateway-001-c0303ba7369e"],
+        )
         descriptor = outcome.evidence.descriptor()
         self.assertEqual(descriptor["provider_kind"], "cloudflare")
         self.assertEqual(descriptor["ingress_id"], "gateway-001")
@@ -237,6 +247,7 @@ class IngressRealizationAdapterTests(unittest.TestCase):
             )
 
         self.assertEqual(resource.tunnel_id, "tunnel-001")
+        self.assertEqual(resource.tunnel_name, "cpk-gateway-001-c0303ba7369e")
         self.assertEqual(resource.dns_record_id, "dns-001")
         self.assertEqual(
             generated.secret_ref.reference_id,
@@ -250,6 +261,40 @@ class IngressRealizationAdapterTests(unittest.TestCase):
             recorder.resolve_generated_secret(generated.secret_ref).reveal(),
             "eyJ-cloudflare-tunnel-token-bearer-value",
         )
+
+    def test_allocate_public_ingress_uses_unique_tunnel_names_for_distinct_runs(
+        self,
+    ) -> None:
+        interpreter = RecordingIngressInterpreter(self.tracker)
+        adapter = IngressRealizationAdapter(
+            self.unit_of_work,
+            interpreters={IngressAuthorityProviderKind.CLOUDFLARE: interpreter},
+            generated_secret_recorder=InMemoryGeneratedSecretRecorder(),
+            clock=lambda: "2026-07-28T08:01:00Z",
+        )
+
+        first = adapter.execute(self.context())
+        with self.unit_of_work() as unit_of_work:
+            unit_of_work.stores.ingress_resources.mark_removed(
+                "workspace-a",
+                "gateway-001",
+                removed_at="2026-07-28T08:02:00Z",
+                removed_by_run_id="run-a",
+            )
+            unit_of_work.commit()
+        second = adapter.execute(
+            self.context(run_id="run-b", intent_event_id="event-002")
+        )
+
+        self.assertEqual(first.kind.name, "SUCCEEDED")
+        self.assertEqual(second.kind.name, "SUCCEEDED")
+        self.assertEqual(len(interpreter.create_allocation_names), 2)
+        self.assertNotEqual(
+            interpreter.create_allocation_names[0],
+            interpreter.create_allocation_names[1],
+        )
+        for allocation_name in interpreter.create_allocation_names:
+            self.assertRegex(allocation_name, r"^cpk-gateway-001-[0-9a-f]{12}$")
 
     def test_remove_public_ingress_marks_resource_removed_around_provider_io(
         self,
@@ -393,6 +438,8 @@ class IngressRealizationAdapterTests(unittest.TestCase):
         self,
         *,
         activity_id: str = "allocate-gateway",
+        run_id: str = "run-a",
+        intent_event_id: str = "event-001",
         operation: object | None = None,
         base_graph: DeploymentGraph | None = None,
         desired_graph: DeploymentGraph | None = None,
@@ -427,7 +474,7 @@ class IngressRealizationAdapterTests(unittest.TestCase):
                 ),
             ),
             run=ActivityRunRecord(
-                "run-a",
+                run_id,
                 "plan-a",
                 AdmittedRun("request-a"),
                 RetryIdentity(1),
@@ -466,8 +513,8 @@ class IngressRealizationAdapterTests(unittest.TestCase):
                 (PolicyScope.EXECUTION_OPERATE,),
             ),
             intent_event=ActivityEventRecord(
-                "event-001",
-                "run-a",
+                intent_event_id,
+                run_id,
                 1,
                 ActivityEventKind.STEP_STARTED,
                 "2026-07-28T08:01:00Z",

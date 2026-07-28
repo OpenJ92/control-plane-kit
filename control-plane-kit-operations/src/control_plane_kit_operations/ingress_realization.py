@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
+import hashlib
 from typing import Any, Mapping, Protocol
 
 from control_plane_kit_core.operations.execution import EffectResultKind
@@ -52,6 +53,7 @@ class IngressProviderInterpreter(Protocol):
         ingress: NamedPublicIngress,
         *,
         authority: CloudflareZoneIngressAuthority,
+        allocation_name: str,
         origin_service_url: str,
     ) -> IngressAllocationResult: ...
 
@@ -153,6 +155,7 @@ class IngressRealizationAdapter:
             allocation = interpreter.create(
                 ingress,
                 authority=authority.authority,
+                allocation_name=_allocation_name(context, ingress),
                 origin_service_url=origin_service_url,
             )
         except Exception as error:  # noqa: BLE001 - provider failures are bounded.
@@ -313,6 +316,32 @@ def _origin_service_url(graph: DeploymentGraph, ingress: NamedPublicIngress) -> 
             "public ingress origin must be an internal HTTP URL"
         )
     return url
+
+
+def _allocation_name(
+    context: ActivityRealizationContext,
+    ingress: NamedPublicIngress,
+) -> str:
+    digest = hashlib.sha256(
+        "|".join(
+            (
+                context.request.identity.workspace_id,
+                ingress.ingress_id,
+                context.run.run_id,
+                context.activity.activity_id.value,
+                context.intent_event.event_id,
+            )
+        ).encode("utf-8")
+    ).hexdigest()[:12]
+    ingress_part = "".join(
+        character if character.isalnum() or character in "._:-" else "-"
+        for character in ingress.ingress_id
+    ).strip(".:-_")
+    if not ingress_part:
+        ingress_part = "ingress"
+    prefix = f"cpk-{ingress_part}"
+    max_prefix_length = 128 - 1 - len(digest)
+    return f"{prefix[:max_prefix_length]}-{digest}"
 
 
 def _unsupported(
