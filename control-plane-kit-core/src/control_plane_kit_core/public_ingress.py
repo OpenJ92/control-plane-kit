@@ -16,7 +16,15 @@ _HOST_LABEL = re.compile(r"^[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?$")
 _PUBLIC_INGRESS_REFERENCE_KEYS = frozenset({"reference_id"})
 _PUBLIC_INGRESS_TARGET_KEYS = frozenset({"node_id", "provider_socket"})
 _NAMED_PUBLIC_INGRESS_KEYS = frozenset(
-    {"ingress_id", "authority_ref", "target", "hostname", "exposure", "lifecycle"}
+    {
+        "ingress_id",
+        "authority_ref",
+        "target",
+        "connector_node_id",
+        "hostname",
+        "exposure",
+        "lifecycle",
+    }
 )
 _PUBLIC_INGRESS_OBSERVATION_KEYS = frozenset(
     {
@@ -134,6 +142,7 @@ class NamedPublicIngress:
     ingress_id: str
     authority_ref: IngressAuthorityReference
     target: PublicIngressTarget
+    connector_node_id: str
     hostname: str
     exposure: PublicIngressExposure = PublicIngressExposure.HTTPS
     lifecycle: PublicIngressLifecycle = PublicIngressLifecycle.EPHEMERAL
@@ -148,6 +157,7 @@ class NamedPublicIngress:
             raise PublicIngressContractError(
                 "public ingress target must be PublicIngressTarget"
             )
+        _validate_node_id(self.connector_node_id)
         _validate_hostname(self.hostname)
         if not isinstance(self.exposure, PublicIngressExposure):
             raise PublicIngressContractError("public ingress exposure must be closed")
@@ -159,6 +169,7 @@ class NamedPublicIngress:
             "ingress_id": self.ingress_id,
             "authority_ref": self.authority_ref.descriptor(),
             "target": self.target.descriptor(),
+            "connector_node_id": self.connector_node_id,
             "hostname": self.hostname,
             "exposure": self.exposure.value,
             "lifecycle": self.lifecycle.value,
@@ -200,6 +211,7 @@ class NamedPublicIngressCodec:
             target=PublicIngressTargetCodec().decode(
                 _mapping(mapping.get("target"), "target")
             ),
+            connector_node_id=_text(mapping, "connector_node_id"),
             hostname=_text(mapping, "hostname"),
             exposure=exposure_value,
             lifecycle=lifecycle_value,

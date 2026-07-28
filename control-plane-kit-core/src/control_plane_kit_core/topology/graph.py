@@ -23,6 +23,7 @@ from control_plane_kit_core.secrets import (
     secret_delivery_sort_key,
 )
 from control_plane_kit_core.lifecycle import OWNED_EPHEMERAL, ResourceLifecycle
+from control_plane_kit_core.public_ingress import NamedPublicIngress
 from control_plane_kit_core.runtime_authority import RuntimeAuthorityReference
 from control_plane_kit_core.types import (
     BlockFamily,
@@ -308,6 +309,7 @@ class GraphIdentityKind(StrEnum):
     NODE = "node"
     EDGE = "edge"
     RUNTIME = "runtime"
+    PUBLIC_INGRESS = "public-ingress"
 
 
 class GraphConstructionError(ValueError):
@@ -335,6 +337,19 @@ class DeploymentGraph:
     nodes: Mapping[str, Node] = field(default_factory=dict)
     edges: Mapping[str, Edge] = field(default_factory=dict)
     runtimes: Mapping[str, RuntimeRecord] = field(default_factory=dict)
+    public_ingresses: tuple[NamedPublicIngress, ...] = ()
+
+    def __post_init__(self) -> None:
+        identities = tuple(ingress.ingress_id for ingress in self.public_ingresses)
+        if len(set(identities)) != len(identities):
+            duplicate = next(
+                identity for identity in identities if identities.count(identity) > 1
+            )
+            raise GraphConstructionError(
+                GraphConstructionCode.DUPLICATE_IDENTITY,
+                GraphIdentityKind.PUBLIC_INGRESS,
+                duplicate,
+            )
 
     def node(self, node_id: str) -> Node:
         try:
@@ -369,6 +384,25 @@ class DeploymentGraph:
                 runtime.runtime_id,
             )
         return replace(self, runtimes={**self.runtimes, runtime.runtime_id: runtime})
+
+    def add_public_ingress(self, ingress: NamedPublicIngress) -> DeploymentGraph:
+        if ingress.ingress_id in {
+            value.ingress_id for value in self.public_ingresses
+        }:
+            raise GraphConstructionError(
+                GraphConstructionCode.DUPLICATE_IDENTITY,
+                GraphIdentityKind.PUBLIC_INGRESS,
+                ingress.ingress_id,
+            )
+        return replace(
+            self,
+            public_ingresses=tuple(
+                sorted(
+                    (*self.public_ingresses, ingress),
+                    key=lambda value: value.ingress_id,
+                )
+            ),
+        )
 
     def update_node(self, node: Node) -> DeploymentGraph:
         if node.node_id not in self.nodes:

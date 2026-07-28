@@ -8,6 +8,7 @@ from typing import Protocol as TypingProtocol, TypeAlias
 
 from control_plane_kit_core.capabilities import CapabilityName
 from control_plane_kit_core.lifecycle import EXTERNAL_RETAINED, OWNED_EPHEMERAL, ResourceLifecycle
+from control_plane_kit_core.public_ingress import NamedPublicIngress
 from control_plane_kit_core.runtime_authority import RuntimeAuthorityReference
 from control_plane_kit_core.types import Protocol, RuntimeKind, SocketBinding
 from control_plane_kit_core.verification import VerificationContract
@@ -195,6 +196,7 @@ class DeploymentTopology:
 
     name: str
     root: RuntimeContext
+    public_ingresses: tuple[NamedPublicIngress, ...] = ()
 
 
 # Backward-compatible rollout alias. New code should use DeploymentTopology.

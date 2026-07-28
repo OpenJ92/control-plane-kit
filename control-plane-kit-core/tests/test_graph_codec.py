@@ -16,6 +16,11 @@ from control_plane_kit_core.algebra import (
 )
 from control_plane_kit_core.environment import SocketDerivedEnvironmentBinding
 from control_plane_kit_core.lifecycle import OWNED_EPHEMERAL
+from control_plane_kit_core.public_ingress import (
+    IngressAuthorityReference,
+    NamedPublicIngress,
+    PublicIngressTarget,
+)
 from control_plane_kit_core.runtime_authority import RuntimeAuthorityReference
 from control_plane_kit_core.topology import (
     Endpoint,
@@ -263,6 +268,61 @@ class GraphDescriptorCodecTests(unittest.TestCase):
         with self.assertRaisesRegex(UnknownGraphVariant, "unknown protocol"):
             codec.decode(descriptor)
 
+    def test_named_public_ingress_round_trips_as_graph_level_obligation(self) -> None:
+        graph = public_ingress_graph()
+        codec = GraphDescriptorCodec()
+
+        descriptor = codec.encode(graph)
+        restored = codec.decode(descriptor)
+
+        self.assertEqual(
+            descriptor["public_ingresses"],
+            [
+                {
+                    "ingress_id": "gateway-public",
+                    "authority_ref": {"reference_id": "openj92-public-ingress"},
+                    "target": {
+                        "node_id": "gateway",
+                        "provider_socket": "control",
+                    },
+                    "connector_node_id": "cloudflared-gateway",
+                    "hostname": "cpk-gateway-001.openj92.dev",
+                    "exposure": "https",
+                    "lifecycle": "ephemeral",
+                }
+            ],
+        )
+        self.assertEqual(restored.public_ingresses, graph.public_ingresses)
+        self.assertIn("cloudflared-gateway", restored.nodes)
+        self.assertNotIn("cloudflare", str(type(restored.public_ingresses[0])).lower())
+
+    def test_public_ingress_descriptor_rejects_provider_keys_and_missing_targets(
+        self,
+    ) -> None:
+        codec = GraphDescriptorCodec()
+        descriptor = codec.encode(public_ingress_graph())
+        descriptor["public_ingresses"][0]["provider_kind"] = "cloudflare"
+
+        with self.assertRaises(ValueError):
+            codec.decode(descriptor)
+
+        descriptor = codec.encode(public_ingress_graph())
+        descriptor["public_ingresses"][0]["target"]["provider_socket"] = "missing"
+        with self.assertRaises(InvalidGraphReference):
+            codec.decode(descriptor)
+
+        descriptor = codec.encode(public_ingress_graph())
+        descriptor["public_ingresses"][0]["connector_node_id"] = "missing"
+        with self.assertRaises(InvalidGraphReference):
+            codec.decode(descriptor)
+
+    def test_public_ingress_connector_must_share_target_runtime(self) -> None:
+        graph = public_ingress_graph(cross_runtime_connector=True)
+        codec = GraphDescriptorCodec()
+
+        with self.assertRaisesRegex(InvalidGraphReference, "share target runtime"):
+            codec.encode(graph)
+
     def test_tuple_input_malformed_shape_and_unknown_fields_fail_closed(self) -> None:
         codec = GraphDescriptorCodec()
         descriptor = codec.encode(app_with_database_graph())
@@ -307,6 +367,58 @@ def app_with_database_graph():
                     database,
                     SocketConnection("postgres", "internal", "api", "database"),
                 )
+            ),
+        )
+    )
+
+
+def public_ingress_graph(*, cross_runtime_connector: bool = False):
+    gateway = ApplicationBlock(
+        BlockSpec("gateway"),
+        PureImplementation("gateway", {"control": "http://gateway:8000"}),
+        BlockSockets(providers=(ProviderSocket("control", Protocol.HTTP),)),
+    )
+    cloudflared = ApplicationBlock(
+        BlockSpec("cloudflared-gateway"),
+        PureImplementation("connector", {}),
+        BlockSockets(),
+    )
+    if cross_runtime_connector:
+        root = DockerRuntime(
+            runtime_id="runtime-a",
+            children=(gateway,),
+        )
+        connector_runtime = DockerRuntime(
+            runtime_id="runtime-b",
+            network_name="runtime-b-network",
+            children=(cloudflared,),
+        )
+        children = (root, connector_runtime)
+    else:
+        children = (
+            DockerRuntime(
+                children=(
+                    gateway,
+                    cloudflared,
+                )
+            ),
+        )
+    return compile_topology(
+        DeploymentTopology(
+            "public-gateway",
+            DockerRuntime(
+                runtime_id="root",
+                network_name="root-network",
+                children=children,
+            ),
+            public_ingresses=(
+                NamedPublicIngress(
+                    ingress_id="gateway-public",
+                    authority_ref=IngressAuthorityReference("openj92-public-ingress"),
+                    target=PublicIngressTarget("gateway", "control"),
+                    connector_node_id="cloudflared-gateway",
+                    hostname="cpk-gateway-001.openj92.dev",
+                ),
             ),
         )
     )

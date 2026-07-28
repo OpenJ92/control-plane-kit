@@ -4370,3 +4370,61 @@ Handoff:
   connector startup.
 - A real secret provider/service remains future work; this pass models the
   secret reference and delivery contract that such a provider will satisfy.
+
+## #1044 Named Public Ingress Graph Topology
+
+#1044 attaches provider-neutral public ingress intent to the graph language.
+`NamedPublicIngress` is graph-level desired exposure, not a Cloudflare object and
+not an ordinary product node:
+
+```text
+NamedPublicIngress
+  authority_ref -> RegisteredIngressAuthority
+  target -> node provider socket
+  connector_node_id -> ordinary connector node in the same runtime island
+  hostname -> stable desired public name
+  lifecycle -> ephemeral | retained | external
+```
+
+The connector remains explicit because the runtime still has to realize an
+ordinary workload that can attach to the allocated ingress. For Cloudflare, that
+ordinary workload is the `cloudflared-connector` product. Core does not name
+Cloudflare or tunnel resources; it only records that a named public ingress
+requires a connector node and a target provider socket.
+
+The graph codec now preserves `public_ingresses` and validates:
+
+- target node exists;
+- target provider socket exists;
+- connector node exists;
+- connector and target share a runtime island;
+- provider-specific keys such as `provider_kind` are rejected at the core graph
+  boundary.
+
+This keeps sockets as private topology wiring while making public exposure a
+socket-adjacent graph obligation. Later issues can compile this graph obligation
+into operations activity:
+
+```text
+NamedPublicIngress
+  -> allocate provider ingress
+    -> deliver generated tunnel token secret
+      -> start connector node
+        -> observe public hostname reaching the private gateway socket
+```
+
+Validation evidence:
+
+- `git diff --check` passed.
+- `./control-plane-kit-core/test.sh` passed 420 tests, compileall, and import.
+- `./control-plane-kit-operations/test.sh` passed 179 tests, compileall, and
+  import.
+
+Handoff:
+
+- #1045 should translate graph-level `NamedPublicIngress` into ordered activity
+  without adding provider names to core.
+- #1047 should keep the Cloudflare interpreter attached to the ingress authority
+  and generated secret delivery path.
+- #1048 should verify route parity without letting cpk-server own ingress
+  semantics.

@@ -32,6 +32,7 @@ from control_plane_kit_core.lifecycle import (
     ResourceOwnership,
     ResourcePersistence,
 )
+from control_plane_kit_core.public_ingress import NamedPublicIngressCodec
 from control_plane_kit_core.runtime_authority import (
     RuntimeAuthorityReference,
     RuntimeAuthorityReferenceCodec,
@@ -156,6 +157,13 @@ class GraphDescriptorCodec:
                 key: self._encode_node(value) for key, value in sorted(graph.nodes.items())
             },
             "edges": {key: value.descriptor() for key, value in sorted(graph.edges.items())},
+            "public_ingresses": [
+                NamedPublicIngressCodec().encode(value)
+                for value in sorted(
+                    graph.public_ingresses,
+                    key=lambda ingress: ingress.ingress_id,
+                )
+            ],
         }
         self._validate(graph)
         return descriptor
@@ -191,6 +199,12 @@ class GraphDescriptorCodec:
             graph = graph.add_node(self._decode_node(str(node_id), _mapping(value, "node")))
         for edge_id, value in sorted(_mapping(top.get("edges", {}), "edges").items()):
             graph = graph.add_edge(self._decode_edge(str(edge_id), _mapping(value, "edge")))
+        for value in _list(top.get("public_ingresses", [])):
+            graph = graph.add_public_ingress(
+                NamedPublicIngressCodec().decode(
+                    _mapping(value, "public ingress")
+                )
+            )
         self._validate(graph)
         encoded = self.encode(graph)
         if encoded != _json_value(descriptor):
@@ -354,6 +368,17 @@ class GraphDescriptorCodec:
                 raise InvalidGraphReference(str(error)) from error
             if provider.protocol != edge.protocol or requirement.protocol != edge.protocol:
                 raise InvalidGraphReference(f"edge {edge_id!r} has incompatible protocol")
+        for ingress in graph.public_ingresses:
+            try:
+                target = graph.node(ingress.target.node_id)
+                target.provider_socket(ingress.target.provider_socket)
+                connector = graph.node(ingress.connector_node_id)
+            except KeyError as error:
+                raise InvalidGraphReference(str(error)) from error
+            if connector.runtime_id != target.runtime_id:
+                raise InvalidGraphReference(
+                    f"public ingress {ingress.ingress_id!r} connector must share target runtime"
+                )
 
 
 DEFAULT_GRAPH_CODEC = GraphDescriptorCodec()
