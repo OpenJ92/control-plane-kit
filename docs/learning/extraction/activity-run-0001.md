@@ -4806,3 +4806,56 @@ Handoff:
   creation, then mark active or uncertain after the provider result.
 - #1067 should leave uncertain/orphaned rows visible and blocking until a
   deliberate reconciliation path exists.
+
+## #1067 Owned Ingress Lifecycle Folding
+
+#1067 wires the owned-resource lifecycle states into the public-ingress
+realization adapter without moving Cloudflare semantics into operations:
+
+```text
+remove-public-ingress
+  -> short tx: require active owned resource and mark removing
+    -> CloudflareNamedIngressInterpreter.teardown(...)
+      -> short tx: mark removed
+```
+
+If provider teardown fails, operations records the epoch as `uncertain` in a
+separate short transaction. That preserves the exact provider-resource evidence
+and blocks unsafe same-key reentry until a deliberate reconciliation path exists.
+
+Allocation now preflights for existing blocking resource evidence before calling
+the provider. If provider allocation succeeds but durable result folding fails,
+the adapter attempts bounded compensation by asking the provider interpreter to
+tear down the just-created resources, then returns an uncertain result. This is
+not a full reconciliation system, but it closes the easy orphan window exposed
+by the first public gateway toggle attempt.
+
+The boundary remains:
+
+```text
+operations:
+  load authority/resource truth
+  fold lifecycle status
+  record bounded evidence
+
+Cloudflare interpreter:
+  provider API calls only
+
+Postgres:
+  never held open across Cloudflare API IO
+```
+
+Validation evidence:
+
+- `git diff --check` passed.
+- `./control-plane-kit-operations/test.sh` passed 192 tests, compileall, and
+  import.
+
+Handoff:
+
+- #1066 should resume the server-products `public-gateway-toggle` scenario.
+- The expected third transition should now allocate a new active epoch after
+  the first epoch is removed.
+- If cpk-server image acceptance uses these operations changes, server-products
+  coordinates must be updated and cpk-server variants republished before the
+  final published-image smoke.
