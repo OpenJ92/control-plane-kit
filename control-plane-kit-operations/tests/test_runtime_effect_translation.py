@@ -29,6 +29,12 @@ from control_plane_kit_core.planning import (
     RuntimeTarget,
 )
 from control_plane_kit_core.policies import PolicyScope
+from control_plane_kit_core.public_ingress import (
+    IngressAuthorityReference,
+    NamedPublicIngress,
+    PublicIngressLifecycle,
+    PublicIngressTarget,
+)
 from control_plane_kit_core.products import (
     ContainerServerProduct,
     OciImageReference,
@@ -48,6 +54,14 @@ from control_plane_kit_core.topology import DeploymentGraph, Edge, Node, Runtime
 from control_plane_kit_core.types import BlockFamily, Protocol, RuntimeKind, SocketBinding
 from control_plane_kit_core.verification import HttpCheck, VerificationContract
 from control_plane_kit_operations.coordinator import ActivityRealizationContext
+from control_plane_kit_operations.ingress_authorities import (
+    CloudflareOwnedIngressResource,
+    CloudflareZoneIngressAuthority,
+    GeneratedIngressSecretReference,
+    GeneratedSecretPurpose,
+    IngressAuthorityProviderKind,
+    RegisteredIngressAuthority,
+)
 from control_plane_kit_operations.lifecycle import ExecutionWorkerAuthority
 from control_plane_kit_operations.products import (
     InlineDescriptorSource,
@@ -432,6 +446,9 @@ def _context(
     pull_authorities: tuple[RegisteredImagePullAuthority, ...] = (),
     runtime_authority_deliveries: tuple[RegisteredRuntimeAuthorityDelivery, ...] = (),
     registered_products: tuple[RegisteredProduct, ...] | None = None,
+    ingress_authorities: tuple[RegisteredIngressAuthority, ...] = (),
+    ingress_resources: tuple[CloudflareOwnedIngressResource, ...] = (),
+    generated_ingress_secrets: tuple[GeneratedIngressSecretReference, ...] = (),
 ) -> ActivityRealizationContext:
     if activity is None:
         activity = PlannedActivity(ActivityId("activity-a"), StartNode(NodeTarget("api")))
@@ -490,6 +507,9 @@ def _context(
         ),
         image_pull_authorities=pull_authorities,
         runtime_authority_deliveries=runtime_authority_deliveries,
+        ingress_authorities=ingress_authorities,
+        ingress_resources=ingress_resources,
+        generated_ingress_secrets=generated_ingress_secrets,
         authority=ExecutionWorkerAuthority(
             worker_id="worker-a",
             scopes=(PolicyScope.EXECUTION_OPERATE,),
@@ -546,6 +566,62 @@ def _graph(
                 RuntimeKind.DOCKER,
                 ("api",),
                 authority_ref=authority_ref,
+            )
+        },
+    )
+
+
+def _public_ingress_graph(
+    *,
+    public_ingresses: tuple[NamedPublicIngress, ...] | None = None,
+    connector_deliveries: tuple[SecretEnvironmentDelivery, ...] = (),
+    ingress_lifecycle: PublicIngressLifecycle = PublicIngressLifecycle.EPHEMERAL,
+) -> DeploymentGraph:
+    gateway = Node(
+        node_id="gateway",
+        block_family=BlockFamily.APPLICATION,
+        block_spec=BlockSpec("gateway"),
+        kind="container-server",
+        runtime_id="docker",
+        sockets=BlockSockets(providers=(ProviderSocket("control", Protocol.HTTP),)),
+    )
+    cloudflared_reference = _registered_product(name="cloudflared-connector").reference
+    ingress = NamedPublicIngress(
+        ingress_id="gateway-public",
+        authority_ref=IngressAuthorityReference("openj92-public-ingress"),
+        target=PublicIngressTarget("gateway", "control"),
+        connector_node_id="cloudflared",
+        hostname="cpk-gateway-001.openj92.dev",
+        lifecycle=ingress_lifecycle,
+    )
+    return DeploymentGraph(
+        name="public-ingress-demo",
+        nodes={
+            "gateway": gateway,
+            "cloudflared": Node(
+                node_id="cloudflared",
+                block_family=BlockFamily.APPLICATION,
+                block_spec=BlockSpec("cloudflared"),
+                kind="container-server",
+                runtime_id="docker",
+                sockets=BlockSockets(),
+                metadata={
+                    "product_identity": cloudflared_reference.identity.key,
+                    "product_descriptor_digest": (
+                        cloudflared_reference.descriptor_sha256.value
+                    ),
+                },
+                secret_deliveries=connector_deliveries,
+            ),
+        },
+        public_ingresses=(
+            (ingress,) if public_ingresses is None else public_ingresses
+        ),
+        runtimes={
+            "docker": RuntimeRecord(
+                "docker",
+                RuntimeKind.DOCKER,
+                ("gateway", "cloudflared"),
             )
         },
     )
@@ -759,6 +835,58 @@ def _registered_product(
         source=InlineDescriptorSource(),
         imported_by="operator-a",
         imported_at="2026-07-22T09:00:00Z",
+    )
+
+
+def _registered_ingress_authority() -> RegisteredIngressAuthority:
+    return RegisteredIngressAuthority.from_authority(
+        workspace_id="workspace-a",
+        authority_ref=IngressAuthorityReference("openj92-public-ingress"),
+        authority=CloudflareZoneIngressAuthority(
+            account_id="account-openj92",
+            zone_id="zone-openj92",
+            zone_name="openj92.dev",
+            api_token_ref=SecretReference("secret://cloudflare/openj92/api-token"),
+            allowed_hostname_pattern="cpk-gateway-*.openj92.dev",
+        ),
+        admitted_by="operator-a",
+        admitted_at="2026-07-28T08:00:00Z",
+    )
+
+
+def _cloudflare_resource() -> CloudflareOwnedIngressResource:
+    return CloudflareOwnedIngressResource(
+        workspace_id="workspace-a",
+        runtime_id="docker",
+        ingress_id="gateway-public",
+        authority_ref=IngressAuthorityReference("openj92-public-ingress"),
+        provider_kind=IngressAuthorityProviderKind.CLOUDFLARE,
+        tunnel_name="cpk-gateway-001",
+        tunnel_id="tunnel-001",
+        dns_record_id="dns-001",
+        hostname="cpk-gateway-001.openj92.dev",
+        zone_id="zone-openj92",
+        lifecycle=PublicIngressLifecycle.EPHEMERAL,
+        created_at="2026-07-28T08:01:00Z",
+        observed_at="2026-07-28T08:01:01Z",
+        source_run_id="run-alloc",
+        source_activity_id="allocate-ingress",
+        source_event_id="event-alloc",
+    )
+
+
+def _generated_ingress_secret() -> GeneratedIngressSecretReference:
+    return GeneratedIngressSecretReference(
+        workspace_id="workspace-a",
+        purpose=GeneratedSecretPurpose.CLOUDFLARED_TUNNEL_TOKEN,
+        secret_ref=SecretReference(
+            "secret://generated/ingress/workspace-a/"
+            "cloudflared-tunnel-token/run-alloc/allocate-ingress/event-alloc"
+        ),
+        recorded_at="2026-07-28T08:01:02Z",
+        source_run_id="run-alloc",
+        source_activity_id="allocate-ingress",
+        source_event_id="event-alloc",
     )
 
 

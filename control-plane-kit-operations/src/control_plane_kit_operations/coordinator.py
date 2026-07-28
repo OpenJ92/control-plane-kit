@@ -49,6 +49,11 @@ from control_plane_kit_operations.lifecycle import (
     RunLifecycleCommandService,
     RunLifecycleConflict,
 )
+from control_plane_kit_operations.ingress_authorities import (
+    CloudflareOwnedIngressResource,
+    GeneratedIngressSecretReference,
+    RegisteredIngressAuthority,
+)
 from control_plane_kit_operations.products import (
     RegisteredImagePullAuthority,
     RegisteredProduct,
@@ -134,6 +139,9 @@ class ActivityRealizationContext:
     image_pull_authorities: tuple[RegisteredImagePullAuthority, ...] = ()
     runtime_authorities: tuple[RegisteredRuntimeAuthority, ...] = ()
     runtime_authority_deliveries: tuple[RegisteredRuntimeAuthorityDelivery, ...] = ()
+    ingress_authorities: tuple[RegisteredIngressAuthority, ...] = ()
+    ingress_resources: tuple[CloudflareOwnedIngressResource, ...] = ()
+    generated_ingress_secrets: tuple[GeneratedIngressSecretReference, ...] = ()
 
     @property
     def plan(self) -> ActivityPlan:
@@ -187,6 +195,37 @@ class ActivityRealizationContext:
             "runtime_authority_deliveries",
             runtime_authority_deliveries,
         )
+        ingress_authorities = tuple(self.ingress_authorities)
+        if not all(
+            isinstance(value, RegisteredIngressAuthority)
+            for value in ingress_authorities
+        ):
+            raise InvalidOperationCommand(
+                "realization ingress authorities must be RegisteredIngressAuthority values"
+            )
+        object.__setattr__(self, "ingress_authorities", ingress_authorities)
+        ingress_resources = tuple(self.ingress_resources)
+        if not all(
+            isinstance(value, CloudflareOwnedIngressResource)
+            for value in ingress_resources
+        ):
+            raise InvalidOperationCommand(
+                "realization ingress resources must be CloudflareOwnedIngressResource values"
+            )
+        object.__setattr__(self, "ingress_resources", ingress_resources)
+        generated_ingress_secrets = tuple(self.generated_ingress_secrets)
+        if not all(
+            isinstance(value, GeneratedIngressSecretReference)
+            for value in generated_ingress_secrets
+        ):
+            raise InvalidOperationCommand(
+                "realization generated ingress secrets must be GeneratedIngressSecretReference values"
+            )
+        object.__setattr__(
+            self,
+            "generated_ingress_secrets",
+            generated_ingress_secrets,
+        )
         if not isinstance(self.authority, ExecutionWorkerAuthority):
             raise InvalidOperationCommand("realization authority must be ExecutionWorkerAuthority")
         if not isinstance(self.intent_event, ActivityEventRecord):
@@ -223,6 +262,21 @@ class ActivityRealizationContext:
             if runtime_authority_delivery.workspace_id != workspace_id:
                 raise InvalidOperationCommand(
                     "realization runtime authority delivery must match workspace"
+                )
+        for ingress_authority in ingress_authorities:
+            if ingress_authority.workspace_id != workspace_id:
+                raise InvalidOperationCommand(
+                    "realization ingress authority must match workspace"
+                )
+        for ingress_resource in ingress_resources:
+            if ingress_resource.workspace_id != workspace_id:
+                raise InvalidOperationCommand(
+                    "realization ingress resource must match workspace"
+                )
+        for generated_ingress_secret in generated_ingress_secrets:
+            if generated_ingress_secret.workspace_id != workspace_id:
+                raise InvalidOperationCommand(
+                    "realization generated ingress secret must match workspace"
                 )
         if self.intent_event.run_id != self.run.run_id:
             raise InvalidOperationCommand("realization intent must match run")
@@ -748,6 +802,17 @@ class ExecutionCoordinator:
                     request.identity.workspace_id
                 )
             )
+            ingress_authorities = stores.ingress_authorities.list_active(
+                request.identity.workspace_id
+            )
+            ingress_resources = stores.ingress_resources.list_cloudflare(
+                request.identity.workspace_id
+            )
+            generated_ingress_secrets = (
+                stores.generated_ingress_secrets.list_for_workspace(
+                    request.identity.workspace_id
+                )
+            )
             events = stores.execution.events_for_run(run.run_id)
         journal = activity_journal_events(events)
         projection = project_activity_journal(plan_record.plan, journal)
@@ -762,6 +827,9 @@ class ExecutionCoordinator:
             image_pull_authorities=image_pull_authorities,
             runtime_authorities=runtime_authorities,
             runtime_authority_deliveries=runtime_authority_deliveries,
+            ingress_authorities=ingress_authorities,
+            ingress_resources=ingress_resources,
+            generated_ingress_secrets=generated_ingress_secrets,
             events=events,
             projection=projection,
             schedule=schedule,
@@ -784,6 +852,9 @@ class _CoordinatorContext:
     image_pull_authorities: tuple[RegisteredImagePullAuthority, ...]
     runtime_authorities: tuple[RegisteredRuntimeAuthority, ...]
     runtime_authority_deliveries: tuple[RegisteredRuntimeAuthorityDelivery, ...]
+    ingress_authorities: tuple[RegisteredIngressAuthority, ...]
+    ingress_resources: tuple[CloudflareOwnedIngressResource, ...]
+    generated_ingress_secrets: tuple[GeneratedIngressSecretReference, ...]
     events: tuple[ActivityEventRecord, ...]
     projection: SagaJournalProjection
     schedule: ExecutionSchedule
@@ -823,6 +894,21 @@ class _CoordinatorContext:
                 raise ExecutionCoordinatorConflict(
                     "registered runtime authority delivery must match workspace"
                 )
+        for ingress_authority in self.ingress_authorities:
+            if ingress_authority.workspace_id != workspace_id:
+                raise ExecutionCoordinatorConflict(
+                    "registered ingress authority must match workspace"
+                )
+        for ingress_resource in self.ingress_resources:
+            if ingress_resource.workspace_id != workspace_id:
+                raise ExecutionCoordinatorConflict(
+                    "owned ingress resource must match workspace"
+                )
+        for generated_ingress_secret in self.generated_ingress_secrets:
+            if generated_ingress_secret.workspace_id != workspace_id:
+                raise ExecutionCoordinatorConflict(
+                    "generated ingress secret must match workspace"
+                )
 
     @property
     def plan(self) -> ActivityPlan:
@@ -846,6 +932,9 @@ class _CoordinatorContext:
             image_pull_authorities=self.image_pull_authorities,
             runtime_authorities=self.runtime_authorities,
             runtime_authority_deliveries=self.runtime_authority_deliveries,
+            ingress_authorities=self.ingress_authorities,
+            ingress_resources=self.ingress_resources,
+            generated_ingress_secrets=self.generated_ingress_secrets,
         )
 
 
