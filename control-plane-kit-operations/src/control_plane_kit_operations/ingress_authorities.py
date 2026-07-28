@@ -73,6 +73,17 @@ class RegisteredIngressAuthorityStatus(StrEnum):
     REVOKED = "revoked"
 
 
+class OwnedIngressResourceStatus(StrEnum):
+    """Closed durable lifecycle states for provider-owned ingress resources."""
+
+    ALLOCATING = "allocating"
+    ACTIVE = "active"
+    REMOVING = "removing"
+    REMOVED = "removed"
+    UNCERTAIN = "uncertain"
+    ORPHANED = "orphaned"
+
+
 class CloudflareIngressTeardownActionKind(StrEnum):
     """Closed Cloudflare cleanup actions derived from owned evidence."""
 
@@ -178,11 +189,19 @@ class CloudflareOwnedIngressResource:
     source_run_id: str
     source_activity_id: str
     source_event_id: str
+    epoch: int = 1
+    status: OwnedIngressResourceStatus = OwnedIngressResourceStatus.ACTIVE
+    removed_at: str | None = None
+    removed_by_run_id: str | None = None
 
     def __post_init__(self) -> None:
         _validate_identifier(self.workspace_id, "workspace_id")
         _validate_identifier(self.runtime_id, "runtime_id")
         _validate_identifier(self.ingress_id, "ingress_id")
+        if type(self.epoch) is not int or self.epoch < 1:
+            raise IngressAuthorityRegistrationError(
+                "Cloudflare ingress resource epoch must be a positive integer"
+            )
         if not isinstance(self.authority_ref, IngressAuthorityReference):
             raise IngressAuthorityRegistrationError(
                 "Cloudflare ingress resource requires IngressAuthorityReference"
@@ -200,11 +219,28 @@ class CloudflareOwnedIngressResource:
             raise IngressAuthorityRegistrationError(
                 "Cloudflare ingress resource lifecycle must be closed"
             )
+        if not isinstance(self.status, OwnedIngressResourceStatus):
+            raise IngressAuthorityRegistrationError(
+                "Cloudflare ingress resource status must be closed"
+            )
         _validate_identifier(self.created_at, "created_at")
         _validate_identifier(self.observed_at, "observed_at")
         _validate_identifier(self.source_run_id, "source_run_id")
         _validate_identifier(self.source_activity_id, "source_activity_id")
         _validate_identifier(self.source_event_id, "source_event_id")
+        if self.removed_at is not None:
+            _validate_identifier(self.removed_at, "removed_at")
+        if self.removed_by_run_id is not None:
+            _validate_identifier(self.removed_by_run_id, "removed_by_run_id")
+        if self.status is OwnedIngressResourceStatus.REMOVED:
+            if self.removed_at is None or self.removed_by_run_id is None:
+                raise IngressAuthorityRegistrationError(
+                    "removed ingress resources require removal evidence"
+                )
+        elif self.removed_at is not None or self.removed_by_run_id is not None:
+            raise IngressAuthorityRegistrationError(
+                "only removed ingress resources may carry removal evidence"
+            )
         if any(marker in repr(self.descriptor()).lower() for marker in _SECRET_MARKERS):
             raise IngressAuthorityRegistrationError(
                 "Cloudflare ingress resource evidence must be secret-free"
@@ -215,6 +251,8 @@ class CloudflareOwnedIngressResource:
             "workspace_id": self.workspace_id,
             "runtime_id": self.runtime_id,
             "ingress_id": self.ingress_id,
+            "epoch": self.epoch,
+            "status": self.status.value,
             "authority_ref": self.authority_ref.reference_id,
             "provider_kind": self.provider_kind.value,
             "tunnel_name": self.tunnel_name,
@@ -228,6 +266,8 @@ class CloudflareOwnedIngressResource:
             "source_run_id": self.source_run_id,
             "source_activity_id": self.source_activity_id,
             "source_event_id": self.source_event_id,
+            "removed_at": self.removed_at,
+            "removed_by_run_id": self.removed_by_run_id,
         }
 
 

@@ -24,6 +24,8 @@ from control_plane_kit_operations.ingress_authorities import (
     IngressAuthorityProviderKind,
     IngressAuthorityRegistrationConflict,
     IngressAuthorityRegistrationService,
+    IngressAuthorityRegistrationError,
+    OwnedIngressResourceStatus,
     OwnedIngressResourceConflict,
     RegisterIngressAuthorityCommand,
     RegisteredIngressAuthorityStatus,
@@ -100,10 +102,48 @@ class IngressAuthorityValueTests(unittest.TestCase):
         self.assertEqual(descriptor["tunnel_id"], "tunnel-001")
         self.assertEqual(descriptor["dns_record_id"], "dns-001")
         self.assertEqual(descriptor["hostname"], "cpk-gateway-001.openj92.dev")
+        self.assertEqual(descriptor["epoch"], 1)
+        self.assertEqual(descriptor["status"], "active")
         self.assertEqual(descriptor["lifecycle"], "ephemeral")
         self.assertNotIn("cf_api_token", repr(descriptor).lower())
         self.assertNotIn("bearer", repr(descriptor).lower())
         self.assertNotIn("eyj", repr(descriptor).lower())
+
+    def test_owned_ingress_resource_status_is_operations_lifecycle_truth(
+        self,
+    ) -> None:
+        self.assertNotIsInstance(
+            OwnedIngressResourceStatus.ACTIVE,
+            PublicIngressLifecycle,
+        )
+        resource = self.cloudflare_resource(
+            epoch=2,
+            status=OwnedIngressResourceStatus.REMOVED,
+            removed_at="removed-at",
+            removed_by_run_id="run-002",
+        )
+
+        descriptor = resource.descriptor()
+        self.assertEqual(descriptor["epoch"], 2)
+        self.assertEqual(descriptor["status"], "removed")
+        self.assertEqual(descriptor["lifecycle"], "ephemeral")
+        self.assertEqual(descriptor["removed_at"], "removed-at")
+        self.assertEqual(descriptor["removed_by_run_id"], "run-002")
+
+        with self.assertRaisesRegex(
+            IngressAuthorityRegistrationError,
+            "removal evidence",
+        ):
+            self.cloudflare_resource(status=OwnedIngressResourceStatus.REMOVED)
+        with self.assertRaisesRegex(
+            IngressAuthorityRegistrationError,
+            "only removed",
+        ):
+            self.cloudflare_resource(
+                status=OwnedIngressResourceStatus.ACTIVE,
+                removed_at="removed-at",
+                removed_by_run_id="run-002",
+            )
 
     def test_cloudflare_teardown_uses_recorded_ids_not_broad_search(self) -> None:
         plan = cloudflare_ingress_teardown_plan(
@@ -291,10 +331,14 @@ class IngressAuthorityValueTests(unittest.TestCase):
         self,
         *,
         lifecycle: PublicIngressLifecycle = PublicIngressLifecycle.EPHEMERAL,
+        epoch: int = 1,
+        status: OwnedIngressResourceStatus = OwnedIngressResourceStatus.ACTIVE,
         zone_id: str = "zone-openj92",
         hostname: str = "cpk-gateway-001.openj92.dev",
         tunnel_name: str = "cpk-gateway-001",
         tunnel_id: str = "tunnel-001",
+        removed_at: str | None = None,
+        removed_by_run_id: str | None = None,
     ) -> CloudflareOwnedIngressResource:
         return CloudflareOwnedIngressResource(
             workspace_id="workspace-a",
@@ -313,6 +357,10 @@ class IngressAuthorityValueTests(unittest.TestCase):
             source_run_id="run-001",
             source_activity_id="activity-001",
             source_event_id="event-001",
+            epoch=epoch,
+            status=status,
+            removed_at=removed_at,
+            removed_by_run_id=removed_by_run_id,
         )
 
 

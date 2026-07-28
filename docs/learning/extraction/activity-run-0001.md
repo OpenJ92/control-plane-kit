@@ -4697,3 +4697,63 @@ Handoff:
 - A later cleanup/hardening pass can refactor more product-specific startup
   magic into `SecretEnvironmentDelivery` and eventually replace the in-memory
   generated-secret recorder with a dedicated secret-service product.
+
+## #1069 Owned Ingress Lifecycle Model
+
+#1069 separates two concepts that were previously too close together:
+
+```text
+PublicIngressLifecycle
+  desired graph policy: ephemeral | retained | external
+
+OwnedIngressResourceStatus
+  operations-owned provider resource state:
+    allocating | active | removing | removed | uncertain | orphaned
+```
+
+The new status is operations language, not core algebra. Core still describes a
+provider-neutral named public ingress and its desired lifecycle policy.
+Operations now has the durable vocabulary needed to remember provider-resource
+history without treating a removed ingress as if it still blocked all future
+allocation forever.
+
+The schema shape now makes Cloudflare owned-resource evidence epoch-bearing:
+
+```text
+cpk_cloudflare_ingress_resources(
+  workspace_id,
+  ingress_id,
+  epoch,
+  status,
+  ...
+)
+```
+
+with a primary key on `(workspace_id, ingress_id, epoch)` and an active partial
+unique index over live states: `allocating`, `active`, and `removing`. This is
+the data-engineering shape needed for the public gateway overlay toggle:
+
+```text
+G0 = workload + gateway + ingress
+G1 = workload
+G2 = workload + gateway + ingress
+```
+
+#1069 intentionally does not implement reallocation or lifecycle transitions.
+It gives #1068/#1067 the durable state machine and schema target they need.
+
+Validation evidence:
+
+- `git diff --check` passed.
+- `./control-plane-kit-operations/test.sh` passed 187 tests, compileall, and
+  import.
+
+Handoff:
+
+- #1068 should add active/latest lookup and transition methods over the new
+  epoch/status shape.
+- #1068 should preserve idempotent same-epoch recording, reject active
+  replacement, and permit reallocation only after a previous epoch is removed.
+- #1067 should fold allocation/removal through short transactions around
+  provider IO, using the live states to avoid the orphan window discovered by
+  #1064.
