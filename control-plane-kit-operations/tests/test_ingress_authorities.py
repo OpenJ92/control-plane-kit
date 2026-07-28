@@ -10,12 +10,15 @@ from control_plane_kit_core.public_ingress import (
     IngressAuthorityReference,
     PublicIngressLifecycle,
 )
-from control_plane_kit_core.secrets import SecretReference
+from control_plane_kit_core.secrets import SecretReference, SecretValue
 from control_plane_kit_operations.ingress_authorities import (
     CloudflareIngressTeardownActionKind,
     CloudflareOwnedIngressResource,
     CloudflareTunnelTokenDeliveryStep,
     CloudflareZoneIngressAuthority,
+    GeneratedSecretPurpose,
+    GeneratedSecretRecordingConflict,
+    InMemoryGeneratedSecretRecorder,
     IngressAuthorityAuthorizationDenied,
     IngressAuthorityNotFound,
     IngressAuthorityProviderKind,
@@ -27,6 +30,7 @@ from control_plane_kit_operations.ingress_authorities import (
     RevokeIngressAuthorityCommand,
     cloudflare_ingress_teardown_plan,
     cloudflare_tunnel_token_delivery_plan,
+    record_generated_ingress_secret,
     require_cloudflared_tunnel_token_delivery,
 )
 from control_plane_kit_operations.postgres import (
@@ -192,6 +196,39 @@ class IngressAuthorityValueTests(unittest.TestCase):
         self.assertNotIn("eyj", repr(plan).lower())
         self.assertNotIn("bearer", repr(plan).lower())
         self.assertNotIn("cf_api_token", repr(plan).lower())
+
+    def test_generated_tunnel_token_recording_returns_secret_reference_evidence(
+        self,
+    ) -> None:
+        recorder = InMemoryGeneratedSecretRecorder()
+
+        evidence = record_generated_ingress_secret(
+            recorder=recorder,
+            workspace_id="workspace-a",
+            purpose=GeneratedSecretPurpose.CLOUDFLARED_TUNNEL_TOKEN,
+            source_run_id="run-001",
+            source_activity_id="activity-001",
+            source_event_id="event-001",
+            recorded_at="2026-07-28T07:00:00Z",
+            secret_value=SecretValue("eyJ-cloudflare-tunnel-token-bearer-value"),
+        )
+        descriptor = evidence.descriptor()
+
+        self.assertEqual(
+            evidence.secret_ref.reference_id,
+            (
+                "secret://generated/ingress/workspace-a/"
+                "cloudflared-tunnel-token/run-001/activity-001/event-001"
+            ),
+        )
+        self.assertEqual(
+            recorder.resolve_generated_secret(evidence.secret_ref).reveal(),
+            "eyJ-cloudflare-tunnel-token-bearer-value",
+        )
+        self.assertEqual(descriptor["purpose"], "cloudflared-tunnel-token")
+        self.assertEqual(descriptor["source_event_id"], "event-001")
+        self.assertNotIn("eyj-cloudflare", repr(descriptor).lower())
+        self.assertNotIn("bearer-value", repr(descriptor).lower())
 
     def test_cloudflared_connector_requires_explicit_tunnel_token_delivery(
         self,
@@ -516,6 +553,82 @@ class IngressAuthorityStoreTests(unittest.TestCase):
         self.assertNotIn("cf_api_token", repr(descriptor).lower())
         self.assertNotIn("bearer", repr(descriptor).lower())
         self.assertNotIn("eyj", repr(descriptor).lower())
+
+    def test_generated_ingress_secret_reference_is_durable_and_secret_free(
+        self,
+    ) -> None:
+        recorder = InMemoryGeneratedSecretRecorder()
+        evidence = record_generated_ingress_secret(
+            recorder=recorder,
+            workspace_id="workspace-a",
+            purpose=GeneratedSecretPurpose.CLOUDFLARED_TUNNEL_TOKEN,
+            source_run_id="run-001",
+            source_activity_id="activity-001",
+            source_event_id="event-001",
+            recorded_at="2026-07-28T07:00:00Z",
+            secret_value=SecretValue("eyJ-cloudflare-tunnel-token-bearer-value"),
+        )
+
+        with self.unit_of_work() as unit_of_work:
+            recorded = unit_of_work.stores.generated_ingress_secrets.record(evidence)
+            unit_of_work.commit()
+
+        with self.unit_of_work() as unit_of_work:
+            self.assertEqual(
+                unit_of_work.stores.generated_ingress_secrets.get_by_source(
+                    workspace_id="workspace-a",
+                    purpose=GeneratedSecretPurpose.CLOUDFLARED_TUNNEL_TOKEN,
+                    source_run_id="run-001",
+                    source_activity_id="activity-001",
+                    source_event_id="event-001",
+                ),
+                recorded,
+            )
+            self.assertEqual(
+                unit_of_work.stores.generated_ingress_secrets.list_for_workspace(
+                    "workspace-a"
+                ),
+                (recorded,),
+            )
+            self.assertEqual(
+                unit_of_work.stores.generated_ingress_secrets.list_for_workspace(
+                    "workspace-b"
+                ),
+                (),
+            )
+            self.assertEqual(
+                unit_of_work.stores.generated_ingress_secrets.record(evidence),
+                recorded,
+            )
+            with self.assertRaisesRegex(GeneratedSecretRecordingConflict, "replacement"):
+                unit_of_work.stores.generated_ingress_secrets.record(
+                    record_generated_ingress_secret(
+                        recorder=InMemoryGeneratedSecretRecorder(
+                            "secret://generated/alternate"
+                        ),
+                        workspace_id="workspace-a",
+                        purpose=GeneratedSecretPurpose.CLOUDFLARED_TUNNEL_TOKEN,
+                        source_run_id="run-001",
+                        source_activity_id="activity-001",
+                        source_event_id="event-001",
+                        recorded_at="2026-07-28T07:00:00Z",
+                        secret_value=SecretValue(
+                            "eyJ-cloudflare-tunnel-token-bearer-value"
+                        ),
+                    )
+                )
+
+        descriptor = recorded.descriptor()
+        self.assertEqual(
+            descriptor["secret_ref"],
+            (
+                "secret://generated/ingress/workspace-a/"
+                "cloudflared-tunnel-token/run-001/activity-001/event-001"
+            ),
+        )
+        self.assertNotIn("eyj-cloudflare", repr(descriptor).lower())
+        self.assertNotIn("bearer-value", repr(descriptor).lower())
+        self.assertNotIn("cf_api_token", repr(descriptor).lower())
 
     def read_service(self) -> InstanceReadService:
         stores = PostgresStoreBundle(self.connection)

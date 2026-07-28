@@ -28,6 +28,7 @@ from control_plane_kit_core.types import RuntimeKind
 from control_plane_kit_core.types import WorkspaceLifecycle
 from control_plane_kit_operations.records import ObservationFreshness, ObservationStatus
 from control_plane_kit_operations.ingress_authorities import (
+    GeneratedSecretPurpose,
     IngressAuthorityProviderKind,
     RegisteredIngressAuthorityStatus,
 )
@@ -276,6 +277,33 @@ CREATE TABLE IF NOT EXISTS cpk_cloudflare_ingress_resources (
 
 CREATE INDEX IF NOT EXISTS cpk_cloudflare_ingress_resources_workspace
   ON cpk_cloudflare_ingress_resources (workspace_id, observed_at DESC, ingress_id);
+
+CREATE TABLE IF NOT EXISTS cpk_generated_ingress_secret_references (
+  workspace_id text NOT NULL REFERENCES cpk_workspaces(workspace_id),
+  purpose text NOT NULL,
+  secret_ref text NOT NULL,
+  recorded_at text NOT NULL,
+  source_run_id text NOT NULL,
+  source_activity_id text NOT NULL,
+  source_event_id text NOT NULL,
+  metadata jsonb NOT NULL DEFAULT '{}'::jsonb,
+  PRIMARY KEY (
+    workspace_id,
+    purpose,
+    source_run_id,
+    source_activity_id,
+    source_event_id
+  ),
+  CONSTRAINT cpk_generated_ingress_secret_references_purpose_check
+    CHECK (purpose IN ({{ generated_secret_purposes | sql_values }})),
+  CONSTRAINT cpk_generated_ingress_secret_references_ref_check
+    CHECK (secret_ref ~ '^secret://[a-z][a-z0-9-]{0,62}/[A-Za-z0-9._/-]+$'),
+  CONSTRAINT cpk_generated_ingress_secret_references_metadata_shape_check
+    CHECK (jsonb_typeof(metadata) = 'object')
+);
+
+CREATE UNIQUE INDEX IF NOT EXISTS cpk_generated_ingress_secret_references_secret_ref
+  ON cpk_generated_ingress_secret_references (workspace_id, secret_ref);
 
 CREATE TABLE IF NOT EXISTS cpk_operation_sessions (
   session_id text PRIMARY KEY,
@@ -585,6 +613,7 @@ POSTGRES_SCHEMA = _SQL_ENVIRONMENT.from_string(_POSTGRES_SCHEMA_TEMPLATE).render
         RegisteredRuntimeAuthorityDeliveryStatus
     ),
     registered_ingress_authority_statuses=tuple(RegisteredIngressAuthorityStatus),
+    generated_secret_purposes=tuple(GeneratedSecretPurpose),
     ingress_authority_provider_kinds=tuple(IngressAuthorityProviderKind),
     risk_levels=tuple(RiskLevel),
     runtime_authority_kinds=tuple(RuntimeAuthorityKind),
