@@ -9,7 +9,7 @@
       "product_id": "cpk-server",
       "owner_directory": "products/cpk_server",
       "descriptor_path": "products/cpk_server/product.cpk.json",
-      "source_commit": "1199e75f8467231d710ac3d404bc55681fe5a1c8",
+      "source_commit": "9bd63b68d4817ac9925e303e7071b144ddf700ff",
       "image": {
         "registry": "ghcr.io",
         "repository": "openj92/control-plane-kit-servers/cpk-server",
@@ -21,7 +21,7 @@
       "product_id": "cpk-server-docker",
       "owner_directory": "products/cpk_server",
       "descriptor_path": "products/cpk_server/product.docker.cpk.json",
-      "source_commit": "1199e75f8467231d710ac3d404bc55681fe5a1c8",
+      "source_commit": "9bd63b68d4817ac9925e303e7071b144ddf700ff",
       "image": {
         "registry": "ghcr.io",
         "repository": "openj92/control-plane-kit-servers/cpk-server",
@@ -33,7 +33,7 @@
       "product_id": "cpk-server-docker-cloudflare",
       "owner_directory": "products/cpk_server",
       "descriptor_path": "products/cpk_server/product.docker-cloudflare.cpk.json",
-      "source_commit": "1199e75f8467231d710ac3d404bc55681fe5a1c8",
+      "source_commit": "9bd63b68d4817ac9925e303e7071b144ddf700ff",
       "image": {
         "registry": "ghcr.io",
         "repository": "openj92/control-plane-kit-servers/cpk-server",

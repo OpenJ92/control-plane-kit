@@ -22,32 +22,32 @@
     },
     {
       "descriptor_path": "products/cpk_server/product.cpk.json",
-      "descriptor_sha256": "cf717d38098430bd43299632c0362f8a6cdb9f51cd4c33e368b6b765d1291d18",
+      "descriptor_sha256": "c356efc8dbd837da6cebea38833a27f69fd842c9d7dbcb5a10018aa91b017796",
       "image_digest": "sha256:f67c5f75e7ffc1d6e0932a3042eb22b3bf5f0e0d5fafb83f57e435eeb0c68f8a",
       "image_ref": "ghcr.io/openj92/control-plane-kit-servers/cpk-server:seeded-ingress-1080-cpk-server",
       "owner_directory": "products/cpk_server",
       "product_id": "cpk-server",
-      "source_commit": "1199e75f8467231d710ac3d404bc55681fe5a1c8",
+      "source_commit": "9bd63b68d4817ac9925e303e7071b144ddf700ff",
       "status": "completed"
     },
     {
       "descriptor_path": "products/cpk_server/product.docker.cpk.json",
-      "descriptor_sha256": "98df719887aa90ccb47df0f8c25aa428b2562f24bcb3eaa85e4801d8818cbd69",
+      "descriptor_sha256": "54ecd5abf577820d62773f20328eaff8aad99ec8b9dcefd30a69777842a5fd93",
       "image_digest": "sha256:f67c5f75e7ffc1d6e0932a3042eb22b3bf5f0e0d5fafb83f57e435eeb0c68f8a",
       "image_ref": "ghcr.io/openj92/control-plane-kit-servers/cpk-server:seeded-ingress-1080-cpk-server",
       "owner_directory": "products/cpk_server",
       "product_id": "cpk-server-docker",
-      "source_commit": "1199e75f8467231d710ac3d404bc55681fe5a1c8",
+      "source_commit": "9bd63b68d4817ac9925e303e7071b144ddf700ff",
       "status": "completed"
     },
     {
       "descriptor_path": "products/cpk_server/product.docker-cloudflare.cpk.json",
-      "descriptor_sha256": "12e08bce90f4fb93cb2ab0ad427f7333f5a4f5e2efeb55065b28747720e5fd3f",
+      "descriptor_sha256": "35d01dc52ad753857972c60dea5ba63466e1b6ffbd387593c0edc18e2e251484",
       "image_digest": "sha256:f67c5f75e7ffc1d6e0932a3042eb22b3bf5f0e0d5fafb83f57e435eeb0c68f8a",
       "image_ref": "ghcr.io/openj92/control-plane-kit-servers/cpk-server:seeded-ingress-1080-cpk-server",
       "owner_directory": "products/cpk_server",
       "product_id": "cpk-server-docker-cloudflare",
-      "source_commit": "1199e75f8467231d710ac3d404bc55681fe5a1c8",
+      "source_commit": "9bd63b68d4817ac9925e303e7071b144ddf700ff",
       "status": "completed"
     },
     {
