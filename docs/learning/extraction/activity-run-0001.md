@@ -4600,3 +4600,47 @@ Handoff:
   operation transaction that records bounded allocation/delivery evidence.
 - A future secret-service product should replace the in-memory recorder without
   changing the durable `SecretReference` evidence shape.
+
+## #1055 Ingress Provider Effect Folding
+
+#1055 adds the operations-owned adapter that turns public-ingress activities into
+provider IO without letting operations own Cloudflare SDK behavior:
+
+```text
+AllocatePublicIngress
+  -> load active RegisteredIngressAuthority in a short transaction
+    -> call injected IngressProviderInterpreter outside Postgres
+      -> record owned Cloudflare resource evidence in a short transaction
+      -> record GeneratedIngressSecretReference in the same short transaction
+        -> return bounded activity evidence
+```
+
+The adapter is intentionally provider-neutral at the coordinator boundary. It
+receives an injected interpreter keyed by `IngressAuthorityProviderKind`; the
+Cloudflare-specific API client still belongs outside operations. Operations only
+resolves admitted authority truth, enforces hostname policy through the store,
+records owned resource evidence, and records the generated connector material as
+a reference.
+
+A useful guardrail surfaced during validation: activity evidence rejected
+`tunnel_token_ref` because secret-shaped keys cannot enter durable event
+evidence. The final shape keeps the reference in
+`cpk_generated_ingress_secret_references` and exposes only
+`connector_material_recorded = true` in bounded outcome evidence. That prevents
+observations/read models from becoming a secret-reference index while preserving
+lineage for the later connector delivery issue.
+
+Validation evidence:
+
+- `git diff --check` passed.
+- `./control-plane-kit-operations/test.sh` passed 183 tests, compileall, and
+  import.
+
+Handoff:
+
+- #1056 should consume the generated ingress secret reference through the
+  explicit delivery path and materialize it into the cloudflared connector
+  startup without putting raw tokens or secret references into graph descriptors.
+- The cpk-server composition pass must adapt the concrete Cloudflare interpreter
+  into the operations `IngressProviderInterpreter` protocol; cpk-server should
+  compose this dependency but not own provider semantics.
