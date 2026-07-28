@@ -34,6 +34,7 @@ class DescriptorCatalogueTests(unittest.TestCase):
                 "cpk-local-gateway",
                 "cpk-server",
                 "cpk-server-docker",
+                "cpk-server-docker-cloudflare",
                 "hello-server",
                 "http-active-router",
                 "http-multiplexer",

@@ -34,6 +34,7 @@ CONCRETE_PROVIDER_IMPORT_ROOTS = {
     "kubernetes",
 }
 APPROVED_PROVIDER_FUNCTIONS = {
+    "_cloudflare_ingress_interpreter",
     "_docker_runtime_interpreter",
     "_image_pull_credential_resolver",
     "_product_secret_resolver",
@@ -59,7 +60,7 @@ class CpkServerImageBootstrapTests(unittest.TestCase):
             dockerfile,
         )
         self.assertIn(
-            "control-plane-kit-interpreters[docker] @ "
+            "control-plane-kit-interpreters[cloudflare,docker] @ "
             "https://github.com/OpenJ92/control-plane-kit-interpreters/archive/"
             f"{INTERPRETERS_PIN}.zip",
             dockerfile,
@@ -86,6 +87,7 @@ class CpkServerImageBootstrapTests(unittest.TestCase):
                 "CPK_CONTROL_AUTH_CONFIGURED",
                 "CPK_PORT",
                 "CPK_RUNTIME_INTERPRETERS",
+                "CPK_INGRESS_INTERPRETERS",
                 "CPK_IMAGE_PULL_CREDENTIAL_RESOLVER",
                 "CPK_PRODUCT_SECRET_RESOLVER",
                 "CPK_PRODUCT_SECRET_VALUES_JSON",
@@ -134,6 +136,7 @@ class CpkServerImageBootstrapTests(unittest.TestCase):
 
             self.assertEqual(set(config.store_endpoints), set(STORE_ENVIRONMENT))
             self.assertEqual(str(config.runtime_dispatcher), "none")
+            self.assertEqual(str(config.ingress_interpreters), "none")
             self.assertEqual(config.image_pull_credential_resolver, "none")
             self.assertEqual(config.product_secret_resolver, "none")
             self.assertNotIn("postgres://", repr(config.process_configuration()))
@@ -238,7 +241,10 @@ class CpkServerImageBootstrapTests(unittest.TestCase):
                         {
                             "secret://control-plane-kit/postgres/password": (
                                 "postgres-secret-not-for-output"
-                            )
+                            ),
+                            "secret://cloudflare/openj92/api-token": (
+                                "cloudflare-token-not-for-output"
+                            ),
                         }
                     ),
                     "CPK_WORKPLACE_DATABASE_URL": "postgres://user:pass@db/cpk",
@@ -251,12 +257,19 @@ class CpkServerImageBootstrapTests(unittest.TestCase):
             resolved = resolver.resolve(
                 SecretReference("secret://control-plane-kit/postgres/password")
             )
+            cloudflare_resolved = resolver.resolve(
+                SecretReference("secret://cloudflare/openj92/api-token")
+            )
 
             self.assertIsInstance(resolved, SecretResolved)
+            self.assertIsInstance(cloudflare_resolved, SecretResolved)
             self.assertEqual(config.product_secret_resolver, "local-development")
             self.assertNotIn("postgres-secret-not-for-output", repr(config))
+            self.assertNotIn("cloudflare-token-not-for-output", repr(config))
             self.assertNotIn("postgres-secret-not-for-output", repr(resolver))
+            self.assertNotIn("cloudflare-token-not-for-output", repr(resolver))
             self.assertNotIn("postgres-secret-not-for-output", repr(resolved))
+            self.assertNotIn("cloudflare-token-not-for-output", repr(cloudflare_resolved))
         finally:
             sys.path.remove(str(PRODUCT_SRC))
             for name in list(sys.modules):
@@ -318,6 +331,116 @@ class CpkServerImageBootstrapTests(unittest.TestCase):
                 "runtime dispatcher bootstrap includes an unknown runtime kind",
             ):
                 server_module.CpkServerBootstrapConfiguration.from_environment(environ)
+        finally:
+            sys.path.remove(str(PRODUCT_SRC))
+            for name in list(sys.modules):
+                if name == "control_plane_kit_servers_cpk_server" or name.startswith(
+                    "control_plane_kit_servers_cpk_server."
+                ):
+                    sys.modules.pop(name, None)
+
+    def test_bootstrap_ingress_interpreter_selection_is_closed(self) -> None:
+        sys.path.insert(0, str(PRODUCT_SRC))
+        try:
+            server_module = importlib.import_module(
+                "control_plane_kit_servers_cpk_server.server"
+            )
+            environ = {
+                "CPK_SERVER_MODE": "execution-capable",
+                "CPK_CONTROL_AUTH_CONFIGURED": "true",
+                "CPK_PORT": "8080",
+                "CPK_RUNTIME_INTERPRETERS": "none",
+                "CPK_INGRESS_INTERPRETERS": "made-up-provider",
+                "CPK_WORKPLACE_DATABASE_URL": "postgres://user:pass@db/cpk",
+                "CPK_ACTIVITY_HISTORY_DATABASE_URL": "postgres://user:pass@db/cpk",
+                "CPK_OBSERVER_STATE_DATABASE_URL": "postgres://user:pass@db/cpk",
+                "CPK_GRAPH_TOPOLOGY_DATABASE_URL": "postgres://user:pass@db/cpk",
+            }
+
+            with self.assertRaisesRegex(
+                server_module.BootstrapConfigurationError,
+                "ingress interpreter bootstrap includes an unknown provider kind",
+            ):
+                server_module.CpkServerBootstrapConfiguration.from_environment(environ)
+        finally:
+            sys.path.remove(str(PRODUCT_SRC))
+            for name in list(sys.modules):
+                if name == "control_plane_kit_servers_cpk_server" or name.startswith(
+                    "control_plane_kit_servers_cpk_server."
+                ):
+                    sys.modules.pop(name, None)
+
+    def test_cloudflare_ingress_bootstrap_requires_secret_resolver(self) -> None:
+        sys.path.insert(0, str(PRODUCT_SRC))
+        try:
+            server_module = importlib.import_module(
+                "control_plane_kit_servers_cpk_server.server"
+            )
+            environ = {
+                "CPK_SERVER_MODE": "execution-capable",
+                "CPK_CONTROL_AUTH_CONFIGURED": "true",
+                "CPK_PORT": "8080",
+                "CPK_RUNTIME_INTERPRETERS": "docker",
+                "CPK_INGRESS_INTERPRETERS": "cloudflare",
+                "CPK_WORKPLACE_DATABASE_URL": "postgres://user:pass@db/cpk",
+                "CPK_ACTIVITY_HISTORY_DATABASE_URL": "postgres://user:pass@db/cpk",
+                "CPK_OBSERVER_STATE_DATABASE_URL": "postgres://user:pass@db/cpk",
+                "CPK_GRAPH_TOPOLOGY_DATABASE_URL": "postgres://user:pass@db/cpk",
+            }
+
+            with self.assertRaisesRegex(
+                server_module.BootstrapConfigurationError,
+                "CPK_INGRESS_INTERPRETERS=cloudflare requires CPK_PRODUCT_SECRET_RESOLVER",
+            ):
+                server_module.CpkServerBootstrapConfiguration.from_environment(environ)
+        finally:
+            sys.path.remove(str(PRODUCT_SRC))
+            for name in list(sys.modules):
+                if name == "control_plane_kit_servers_cpk_server" or name.startswith(
+                    "control_plane_kit_servers_cpk_server."
+                ):
+                    sys.modules.pop(name, None)
+
+    def test_cloudflare_ingress_bootstrap_composes_explicit_provider_adapter(
+        self,
+    ) -> None:
+        sys.path.insert(0, str(PRODUCT_SRC))
+        try:
+            server_module = importlib.import_module(
+                "control_plane_kit_servers_cpk_server.server"
+            )
+            config = server_module.CpkServerBootstrapConfiguration.from_environment(
+                {
+                    "CPK_SERVER_MODE": "execution-capable",
+                    "CPK_CONTROL_AUTH_CONFIGURED": "true",
+                    "CPK_PORT": "8080",
+                    "CPK_RUNTIME_INTERPRETERS": "docker",
+                    "CPK_INGRESS_INTERPRETERS": "cloudflare",
+                    "CPK_PRODUCT_SECRET_RESOLVER": "local-development",
+                    "CPK_PRODUCT_SECRET_VALUES_JSON": json.dumps(
+                        {
+                            "secret://cloudflare/openj92/api-token": (
+                                "cloudflare-token-not-for-output"
+                            )
+                        }
+                    ),
+                    "CPK_WORKPLACE_DATABASE_URL": "postgres://user:pass@db/cpk",
+                    "CPK_ACTIVITY_HISTORY_DATABASE_URL": "postgres://user:pass@db/cpk",
+                    "CPK_OBSERVER_STATE_DATABASE_URL": "postgres://user:pass@db/cpk",
+                    "CPK_GRAPH_TOPOLOGY_DATABASE_URL": "postgres://user:pass@db/cpk",
+                }
+            )
+            from control_plane_kit_operations import InMemoryGeneratedSecretRecorder
+
+            adapter = server_module._activity_adapter(
+                config,
+                lambda: None,
+                InMemoryGeneratedSecretRecorder(),
+            )
+
+            self.assertEqual(str(config.ingress_interpreters), "cloudflare")
+            self.assertEqual(type(adapter).__name__, "_CompositeExecutionAdapter")
+            self.assertNotIn("cloudflare-token-not-for-output", repr(adapter))
         finally:
             sys.path.remove(str(PRODUCT_SRC))
             for name in list(sys.modules):
@@ -391,6 +514,7 @@ class CpkServerImageBootstrapTests(unittest.TestCase):
             )
             self.assertEqual(config.runtime_dispatcher.runtime_kinds, (RuntimeKind.DOCKER,))
             self.assertEqual(str(config.runtime_dispatcher), "docker")
+            self.assertEqual(str(config.ingress_interpreters), "none")
             self.assertNotIn("authority", repr(config.runtime_dispatcher).lower())
         finally:
             sys.path.remove(str(PRODUCT_SRC))
@@ -488,6 +612,7 @@ class CpkServerImageBootstrapTests(unittest.TestCase):
         ready_source = source[ready_start:ready_end].lower()
 
         self.assertIn("runtime_interpreters", ready_source)
+        self.assertIn("ingress_interpreters", ready_source)
         for forbidden in (
             "store_endpoints",
             "docker_config_path",
@@ -522,8 +647,12 @@ class CpkServerImageBootstrapTests(unittest.TestCase):
         self.assertIn("CurrentGraphAdvancementCommandService", source)
         self.assertIn("RuntimeDispatcherBootstrapConfiguration", source)
         self.assertIn("RuntimeInterpreterDispatcher", source)
+        self.assertIn("IngressRealizationAdapter", source)
+        self.assertIn("IngressAuthorityRegistrationService", source)
         self.assertIn("control_plane_kit_interpreters.docker", source)
+        self.assertIn("control_plane_kit_interpreters.cloudflare", source)
         self.assertIn("CPK_RUNTIME_INTERPRETERS", source)
+        self.assertIn("CPK_INGRESS_INTERPRETERS", source)
         self.assertNotIn("BaseHTTPRequestHandler", source)
         self.assertNotIn("ThreadingHTTPServer", source)
         self.assertNotIn("_DemoService", source)

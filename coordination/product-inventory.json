@@ -22,6 +22,16 @@
       "role": "Docker-runtime-capable cpk-server descriptor variant"
     },
     {
+      "product_id": "cpk-server-docker-cloudflare",
+      "target_directory": "products/cpk_server",
+      "dockerfile": "products/cpk_server/Dockerfile",
+      "implementation_issue": "OpenJ92/control-plane-kit#1047",
+      "image_issue": "OpenJ92/control-plane-kit#1047",
+      "descriptor_issue": "OpenJ92/control-plane-kit#1047",
+      "status": "descriptor-published",
+      "role": "Docker runtime plus Cloudflare named-ingress interpreter descriptor variant"
+    },
+    {
       "product_id": "hello-server",
       "target_directory": "products/hello_server",
       "dockerfile": "products/hello_server/Dockerfile",
@@ -95,6 +105,6 @@
     "One product implementation lane owns one directory; descriptor variants remain explicit catalogue entries.",
     "Catalogue imports values, not applications or stores.",
     "Core dependency points inward; core never imports servers.",
-    "cpk-server, Hello, active-router, multiplexer, cpk-local-gateway, cloudflared connector, and Postgres have different roles and none substitutes for the other."
+    "cpk-server, cpk-server descriptor variants, Hello, active-router, multiplexer, cpk-local-gateway, cloudflared connector, and Postgres have different roles and none substitutes for the other."
   ]
 }

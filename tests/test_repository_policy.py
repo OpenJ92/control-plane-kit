@@ -73,6 +73,7 @@ class ServerRepositoryPolicyTests(unittest.TestCase):
             [
                 "cpk-server",
                 "cpk-server-docker",
+                "cpk-server-docker-cloudflare",
                 "hello-server",
                 "http-active-router",
                 "http-multiplexer",
@@ -84,6 +85,7 @@ class ServerRepositoryPolicyTests(unittest.TestCase):
         self.assertEqual(
             [product["status"] for product in inventory["products"]],
             [
+                "descriptor-published",
                 "descriptor-published",
                 "descriptor-published",
                 "descriptor-published",
@@ -104,30 +106,34 @@ class ServerRepositoryPolicyTests(unittest.TestCase):
         )
         self.assertEqual(
             inventory["products"][2]["descriptor_issue"],
-            "OpenJ92/control-plane-kit#824",
+            "OpenJ92/control-plane-kit#1047",
         )
         self.assertEqual(
             inventory["products"][3]["descriptor_issue"],
-            "OpenJ92/control-plane-kit#825",
+            "OpenJ92/control-plane-kit#824",
         )
         self.assertEqual(
             inventory["products"][4]["descriptor_issue"],
-            "OpenJ92/control-plane-kit#826",
+            "OpenJ92/control-plane-kit#825",
         )
         self.assertEqual(
             inventory["products"][5]["descriptor_issue"],
-            "OpenJ92/control-plane-kit#1023",
+            "OpenJ92/control-plane-kit#826",
         )
         self.assertEqual(
             inventory["products"][6]["descriptor_issue"],
-            "OpenJ92/control-plane-kit#1015",
+            "OpenJ92/control-plane-kit#1023",
         )
-        self.assertEqual(inventory["products"][6]["image_source"], "external-oci")
         self.assertEqual(
             inventory["products"][7]["descriptor_issue"],
-            "OpenJ92/control-plane-kit#828",
+            "OpenJ92/control-plane-kit#1015",
         )
         self.assertEqual(inventory["products"][7]["image_source"], "external-oci")
+        self.assertEqual(
+            inventory["products"][8]["descriptor_issue"],
+            "OpenJ92/control-plane-kit#828",
+        )
+        self.assertEqual(inventory["products"][8]["image_source"], "external-oci")
         catalogue = json.loads(
             (ROOT / "catalogue" / "products.json").read_text(encoding="utf-8")
         )
@@ -136,6 +142,7 @@ class ServerRepositoryPolicyTests(unittest.TestCase):
             [
                 "cpk-server",
                 "cpk-server-docker",
+                "cpk-server-docker-cloudflare",
                 "hello-server",
                 "http-active-router",
                 "http-multiplexer",

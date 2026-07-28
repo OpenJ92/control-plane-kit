@@ -56,6 +56,7 @@ class DockerHarnessTests(unittest.TestCase):
             [
                 "cpk-server",
                 "cpk-server-docker",
+                "cpk-server-docker-cloudflare",
                 "hello-server",
                 "http-active-router",
                 "http-multiplexer",
@@ -75,6 +76,12 @@ class DockerHarnessTests(unittest.TestCase):
                 },
                 {
                     "product_id": "cpk-server-docker",
+                    "image_source": "local-dockerfile",
+                    "dockerfile": "products/cpk_server/Dockerfile",
+                    "status": "image-definition-present",
+                },
+                {
+                    "product_id": "cpk-server-docker-cloudflare",
                     "image_source": "local-dockerfile",
                     "dockerfile": "products/cpk_server/Dockerfile",
                     "status": "image-definition-present",

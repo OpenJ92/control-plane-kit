@@ -22,6 +22,7 @@ ROOT = Path(__file__).resolve().parents[3]
 PRODUCT = ROOT / "products" / "cpk_server"
 DESCRIPTOR = PRODUCT / "product.cpk.json"
 DOCKER_DESCRIPTOR = PRODUCT / "product.docker.cpk.json"
+DOCKER_CLOUDFLARE_DESCRIPTOR = PRODUCT / "product.docker-cloudflare.cpk.json"
 CATALOGUE = ROOT / "catalogue" / "products.json"
 COORDINATES = ROOT / "coordinates" / "server-products.json"
 
@@ -78,18 +79,35 @@ class CpkServerProductDescriptorTests(unittest.TestCase):
     def test_descriptor_variants_separate_interpreter_availability_from_authority(self) -> None:
         base = self.decode(DESCRIPTOR).product
         docker = self.decode(DOCKER_DESCRIPTOR).product
+        docker_cloudflare = self.decode(DOCKER_CLOUDFLARE_DESCRIPTOR).product
 
         self.assertEqual(base.identity, ProductIdentity("control-plane-kit", "cpk-server", 1))
         self.assertEqual(
             docker.identity,
             ProductIdentity("control-plane-kit", "cpk-server-docker", 1),
         )
+        self.assertEqual(
+            docker_cloudflare.identity,
+            ProductIdentity("control-plane-kit", "cpk-server-docker-cloudflare", 1),
+        )
         self.assertEqual(_public_env(base, "CPK_RUNTIME_INTERPRETERS"), "none")
+        self.assertEqual(_public_env(base, "CPK_INGRESS_INTERPRETERS"), "none")
         self.assertEqual(_public_env(docker, "CPK_RUNTIME_INTERPRETERS"), "docker")
+        self.assertEqual(_public_env(docker, "CPK_INGRESS_INTERPRETERS"), "none")
+        self.assertEqual(
+            _public_env(docker_cloudflare, "CPK_RUNTIME_INTERPRETERS"),
+            "docker",
+        )
+        self.assertEqual(
+            _public_env(docker_cloudflare, "CPK_INGRESS_INTERPRETERS"),
+            "cloudflare",
+        )
         self.assertIn("Docker runtime interpreter software", docker.description)
         self.assertIn("Runtime authority endpoints and credentials remain", docker.description)
+        self.assertIn("Cloudflare named ingress interpreter", docker_cloudflare.description)
+        self.assertIn("workspace-scoped operational truth", docker_cloudflare.description)
 
-        for path in (DESCRIPTOR, DOCKER_DESCRIPTOR):
+        for path in (DESCRIPTOR, DOCKER_DESCRIPTOR, DOCKER_CLOUDFLARE_DESCRIPTOR):
             rendered = path.read_text(encoding="utf-8").lower()
             with self.subTest(path=path.name):
                 self.assertNotIn("docker_host", rendered)
@@ -98,6 +116,8 @@ class CpkServerProductDescriptorTests(unittest.TestCase):
                 self.assertNotIn("client-key", rendered)
                 self.assertNotIn("tls", rendered)
                 self.assertNotIn("registeredruntimeauthority", rendered)
+                self.assertNotIn("api-token-not-for-output", rendered)
+                self.assertNotIn("tunnel-token-not-for-output", rendered)
 
     def test_descriptor_declares_http_mcp_and_store_contracts_without_values(self) -> None:
         product = self.decode().product
@@ -176,6 +196,7 @@ class CpkServerProductDescriptorTests(unittest.TestCase):
         }
         document = self.decode()
         docker_document = self.decode(DOCKER_DESCRIPTOR)
+        docker_cloudflare_document = self.decode(DOCKER_CLOUDFLARE_DESCRIPTOR)
         catalog = load_product_catalog(CATALOGUE, root=ROOT)
 
         self.assertEqual(
@@ -185,6 +206,7 @@ class CpkServerProductDescriptorTests(unittest.TestCase):
                 "cpk-local-gateway",
                 "cpk-server",
                 "cpk-server-docker",
+                "cpk-server-docker-cloudflare",
                 "hello-server",
                 "http-active-router",
                 "http-multiplexer",
@@ -194,6 +216,7 @@ class CpkServerProductDescriptorTests(unittest.TestCase):
         for product_id, expected in (
             ("cpk-server", document),
             ("cpk-server-docker", docker_document),
+            ("cpk-server-docker-cloudflare", docker_cloudflare_document),
         ):
             declaration = declarations[product_id]
             with self.subTest(product_id=product_id):
@@ -210,8 +233,18 @@ class CpkServerProductDescriptorTests(unittest.TestCase):
             docker_document,
         )
         self.assertEqual(
-            ProductCatalog.empty().add(document).add(docker_document).products,
-            (document, docker_document),
+            catalog.lookup(
+                ProductIdentity("control-plane-kit", "cpk-server-docker-cloudflare", 1)
+            ),
+            docker_cloudflare_document,
+        )
+        self.assertEqual(
+            ProductCatalog.empty()
+            .add(document)
+            .add(docker_document)
+            .add(docker_cloudflare_document)
+            .products,
+            (document, docker_document, docker_cloudflare_document),
         )
 
     def test_catalogue_rejects_descriptor_and_image_digest_mismatch(self) -> None:

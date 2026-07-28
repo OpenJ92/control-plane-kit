@@ -19,10 +19,13 @@ from control_plane_kit_core.operations.lifecycle import FailureCategory
 from control_plane_kit_core.types import RuntimeKind
 from control_plane_kit_operations import (
     ActivityExecutionOutcome,
+    ActivityExecutionAdapter,
     ActivityPlanningCommandService,
     ActivityRealizationContext,
     ApprovalCommandService,
     BoundedEvidence,
+    CloudflareOwnedIngressResource,
+    CloudflareZoneIngressAuthority,
     CpkServerOperationsApplication,
     CurrentGraphAdvancementCommandService,
     DesiredGraphCommandService,
@@ -30,6 +33,10 @@ from control_plane_kit_operations import (
     ExecutionCoordinator,
     FailureEvidence,
     ImagePullAuthorityRegistrationService,
+    InMemoryGeneratedSecretRecorder,
+    IngressAuthorityProviderKind,
+    IngressAuthorityRegistrationService,
+    IngressRealizationAdapter,
     OperationCommandService,
     ProductRegistrationService,
     RuntimeAuthorityRegistrationService,
@@ -59,11 +66,67 @@ class BootstrapConfigurationError(ValueError):
 
 
 @dataclass(frozen=True, slots=True)
+class IngressInterpreterBootstrapConfiguration:
+    """Closed process-local ingress interpreter availability."""
+
+    provider_kinds: tuple[IngressAuthorityProviderKind, ...] = ()
+
+    def __post_init__(self) -> None:
+        if not isinstance(self.provider_kinds, tuple):
+            raise BootstrapConfigurationError(
+                "ingress interpreter provider kinds must be a tuple"
+            )
+        if len(set(self.provider_kinds)) != len(self.provider_kinds):
+            raise BootstrapConfigurationError(
+                "ingress interpreter providers must be unique"
+            )
+        if not all(
+            isinstance(kind, IngressAuthorityProviderKind)
+            for kind in self.provider_kinds
+        ):
+            raise BootstrapConfigurationError(
+                "ingress interpreter providers must be closed provider kinds"
+            )
+
+    @property
+    def enabled(self) -> bool:
+        return bool(self.provider_kinds)
+
+    @classmethod
+    def from_process_value(
+        cls,
+        value: str,
+    ) -> "IngressInterpreterBootstrapConfiguration":
+        if value == "none":
+            return cls(())
+        parts = tuple(part.strip() for part in value.split(",") if part.strip())
+        if not parts:
+            raise BootstrapConfigurationError(
+                "CPK_INGRESS_INTERPRETERS must be one of: none, cloudflare"
+            )
+        providers: list[IngressAuthorityProviderKind] = []
+        for part in parts:
+            try:
+                providers.append(IngressAuthorityProviderKind(part))
+            except ValueError as error:
+                raise BootstrapConfigurationError(
+                    "ingress interpreter bootstrap includes an unknown provider kind"
+                ) from error
+        return cls(tuple(providers))
+
+    def __str__(self) -> str:
+        if not self.provider_kinds:
+            return "none"
+        return ",".join(kind.value for kind in self.provider_kinds)
+
+
+@dataclass(frozen=True, slots=True)
 class CpkServerBootstrapConfiguration:
     mode: str
     control_auth_configured: bool
     port: int
     runtime_dispatcher: RuntimeDispatcherBootstrapConfiguration
+    ingress_interpreters: IngressInterpreterBootstrapConfiguration
     image_pull_credential_resolver: str
     product_secret_resolver: str
     product_secret_values_json: str | None = field(repr=False)
@@ -86,6 +149,9 @@ class CpkServerBootstrapConfiguration:
             )
         except RuntimeDispatcherBootstrapError as error:
             raise BootstrapConfigurationError(str(error)) from error
+        ingress_interpreters = IngressInterpreterBootstrapConfiguration.from_process_value(
+            values.get("CPK_INGRESS_INTERPRETERS", "none")
+        )
         image_pull_credential_resolver = values.get(
             "CPK_IMAGE_PULL_CREDENTIAL_RESOLVER",
             "none",
@@ -140,22 +206,37 @@ class CpkServerBootstrapConfiguration:
                 "CPK_IMAGE_PULL_CREDENTIAL_RESOLVER=docker-config requires "
                 "DOCKER_CONFIG, CPK_DOCKER_AUTH_CONFIG, or CPK_DOCKER_AUTH_CONFIG_JSON"
             )
+        if (
+            product_secret_resolver == "local-development"
+            and RuntimeKind.DOCKER not in runtime_dispatcher.runtime_kinds
+            and IngressAuthorityProviderKind.CLOUDFLARE
+            not in ingress_interpreters.provider_kinds
+        ):
+            raise BootstrapConfigurationError(
+                "CPK_PRODUCT_SECRET_RESOLVER=local-development requires "
+                "a Docker runtime interpreter or Cloudflare ingress interpreter"
+            )
         if product_secret_resolver == "local-development":
-            if RuntimeKind.DOCKER not in runtime_dispatcher.runtime_kinds:
-                raise BootstrapConfigurationError(
-                    "CPK_PRODUCT_SECRET_RESOLVER=local-development requires "
-                    "a Docker runtime interpreter"
-                )
             if product_secret_values_json is None or product_secret_values_json == "":
                 raise BootstrapConfigurationError(
                     "CPK_PRODUCT_SECRET_RESOLVER=local-development requires "
                     "CPK_PRODUCT_SECRET_VALUES_JSON"
                 )
+        if (
+            IngressAuthorityProviderKind.CLOUDFLARE
+            in ingress_interpreters.provider_kinds
+            and product_secret_resolver == "none"
+        ):
+            raise BootstrapConfigurationError(
+                "CPK_INGRESS_INTERPRETERS=cloudflare requires "
+                "CPK_PRODUCT_SECRET_RESOLVER"
+            )
         return cls(
             mode=mode,
             control_auth_configured=True,
             port=port,
             runtime_dispatcher=runtime_dispatcher,
+            ingress_interpreters=ingress_interpreters,
             image_pull_credential_resolver=image_pull_credential_resolver,
             product_secret_resolver=product_secret_resolver,
             product_secret_values_json=product_secret_values_json,
@@ -206,6 +287,7 @@ def create_app(config: CpkServerBootstrapConfiguration) -> FastAPI:
                 "application": "configured",
                 "stores": "configured",
                 "runtime_interpreters": str(config.runtime_dispatcher),
+                "ingress_interpreters": str(config.ingress_interpreters),
             },
         )
 
@@ -285,10 +367,11 @@ def _operations_application(
         clock=_clock,
         id_factory=_id,
     )
+    generated_secret_recorder = InMemoryGeneratedSecretRecorder()
     execution = ExecutionCoordinator(
         unit_of_work,
         lifecycle=lifecycle,
-        adapter=_runtime_adapter(config),
+        adapter=_activity_adapter(config, unit_of_work, generated_secret_recorder),
         clock=_clock,
         id_factory=_id,
     )
@@ -308,6 +391,7 @@ def _operations_application(
             products=ProductRegistrationService(unit_of_work),
             image_pull_authorities=ImagePullAuthorityRegistrationService(unit_of_work),
             runtime_authorities=RuntimeAuthorityRegistrationService(unit_of_work),
+            ingress_authorities=IngressAuthorityRegistrationService(unit_of_work),
             desired_graphs=DesiredGraphCommandService(
                 unit_of_work,
                 clock=_clock,
@@ -357,15 +441,52 @@ class _UnsupportedExecutionAdapter:
         )
 
 
+@dataclass(frozen=True)
+class _CompositeExecutionAdapter:
+    adapters: tuple[ActivityExecutionAdapter, ...]
+
+    def execute(self, context: ActivityRealizationContext) -> ActivityExecutionOutcome:
+        last_unsupported: ActivityExecutionOutcome | None = None
+        for adapter in self.adapters:
+            outcome = adapter.execute(context)
+            if outcome.kind is EffectResultKind.UNSUPPORTED:
+                last_unsupported = outcome
+                continue
+            return outcome
+        assert last_unsupported is not None
+        return last_unsupported
+
+
+def _activity_adapter(
+    config: CpkServerBootstrapConfiguration,
+    unit_of_work,
+    generated_secret_recorder: InMemoryGeneratedSecretRecorder,
+) -> ActivityExecutionAdapter:
+    runtime = _runtime_adapter(config, generated_secret_recorder)
+    if not config.ingress_interpreters.enabled:
+        return runtime
+    ingress = IngressRealizationAdapter(
+        unit_of_work,
+        interpreters=_ingress_interpreters(config),
+        generated_secret_recorder=generated_secret_recorder,
+        clock=_clock,
+    )
+    return _CompositeExecutionAdapter((ingress, runtime))
+
+
 def _runtime_adapter(
     config: CpkServerBootstrapConfiguration,
+    generated_secret_recorder: InMemoryGeneratedSecretRecorder | None = None,
 ) -> _UnsupportedExecutionAdapter | RuntimeInterpreterDispatcher:
     if not config.runtime_dispatcher.enabled:
         return _UnsupportedExecutionAdapter()
     interpreters = {}
     for runtime_kind in config.runtime_dispatcher.runtime_kinds:
         if runtime_kind is RuntimeKind.DOCKER:
-            interpreters[RuntimeKind.DOCKER] = _docker_runtime_interpreter(config)
+            interpreters[RuntimeKind.DOCKER] = _docker_runtime_interpreter(
+                config,
+                generated_secret_recorder,
+            )
             continue
         raise BootstrapConfigurationError(
             f"no runtime interpreter provider is available for {runtime_kind.value!r}"
@@ -373,7 +494,10 @@ def _runtime_adapter(
     return RuntimeInterpreterDispatcher(interpreters)
 
 
-def _docker_runtime_interpreter(config: CpkServerBootstrapConfiguration):
+def _docker_runtime_interpreter(
+    config: CpkServerBootstrapConfiguration,
+    generated_secret_recorder: InMemoryGeneratedSecretRecorder | None = None,
+):
     try:
         from control_plane_kit_interpreters.docker import (
             DockerLocalAmbientClientConfig,
@@ -391,8 +515,89 @@ def _docker_runtime_interpreter(config: CpkServerBootstrapConfiguration):
             connect_on_init=False,
         ),
         image_pull_credentials=_image_pull_credential_resolver(config),
-        secret_resolver=_product_secret_resolver(config),
+        secret_resolver=_combined_product_secret_resolver(
+            config,
+            generated_secret_recorder,
+        ),
     )
+
+
+def _ingress_interpreters(config: CpkServerBootstrapConfiguration):
+    interpreters = {}
+    for provider_kind in config.ingress_interpreters.provider_kinds:
+        if provider_kind is IngressAuthorityProviderKind.CLOUDFLARE:
+            interpreters[provider_kind] = _cloudflare_ingress_interpreter(config)
+            continue
+        raise BootstrapConfigurationError(
+            f"no ingress interpreter provider is available for {provider_kind.value!r}"
+        )
+    return interpreters
+
+
+def _cloudflare_ingress_interpreter(config: CpkServerBootstrapConfiguration):
+    try:
+        from control_plane_kit_interpreters.cloudflare import (
+            CloudflareNamedIngressInterpreter,
+            CloudflareOwnedIngressResources,
+            CloudflareZoneAuthority,
+        )
+    except ModuleNotFoundError as error:
+        raise BootstrapConfigurationError(
+            "CPK_INGRESS_INTERPRETERS=cloudflare requires "
+            "control-plane-kit-interpreters[cloudflare]"
+        ) from error
+
+    class CloudflareIngressProvider:
+        def __init__(self, secret_resolver) -> None:
+            self._inner = CloudflareNamedIngressInterpreter(
+                secret_resolver=secret_resolver,
+            )
+
+        def create(
+            self,
+            ingress,
+            *,
+            authority: CloudflareZoneIngressAuthority,
+            origin_service_url: str,
+        ):
+            return self._inner.create(
+                ingress,
+                authority=CloudflareZoneAuthority(
+                    account_id=authority.account_id,
+                    zone_id=authority.zone_id,
+                    zone_name=authority.zone_name,
+                    api_token_ref=authority.api_token_ref,
+                    allowed_hostname_pattern=authority.allowed_hostname_pattern,
+                ),
+                origin_service_url=origin_service_url,
+            )
+
+        def teardown(
+            self,
+            *,
+            authority: CloudflareZoneIngressAuthority,
+            resources: CloudflareOwnedIngressResource,
+        ) -> None:
+            return self._inner.teardown(
+                authority=CloudflareZoneAuthority(
+                    account_id=authority.account_id,
+                    zone_id=authority.zone_id,
+                    zone_name=authority.zone_name,
+                    api_token_ref=authority.api_token_ref,
+                    allowed_hostname_pattern=authority.allowed_hostname_pattern,
+                ),
+                resources=CloudflareOwnedIngressResources(
+                    tunnel_id=resources.tunnel_id,
+                    dns_record_id=resources.dns_record_id,
+                    tunnel_name=resources.tunnel_name,
+                    hostname=resources.hostname,
+                ),
+            )
+
+        def __repr__(self) -> str:
+            return "CloudflareIngressProvider(<redacted>)"
+
+    return CloudflareIngressProvider(_product_secret_resolver(config))
 
 
 def _image_pull_credential_resolver(config: CpkServerBootstrapConfiguration):
@@ -529,31 +734,105 @@ def _product_secret_resolver(config: CpkServerBootstrapConfiguration):
         raise BootstrapConfigurationError(
             "CPK_PRODUCT_SECRET_VALUES_JSON must be a non-empty JSON object"
         )
-    values: dict[str, str] = {}
-    provider_id: SecretProviderId | None = None
-    allowed_prefixes: set[tuple[str, ...]] = set()
+    values_by_provider: dict[SecretProviderId, dict[str, str]] = {}
+    prefixes_by_provider: dict[SecretProviderId, set[tuple[str, ...]]] = {}
     for reference_id, secret_value in raw_values.items():
         if not isinstance(reference_id, str) or not isinstance(secret_value, str):
             raise BootstrapConfigurationError(
                 "CPK_PRODUCT_SECRET_VALUES_JSON entries must map strings to strings"
             )
         reference = SecretReference(reference_id)
-        if provider_id is None:
-            provider_id = reference.provider_id
-        elif reference.provider_id != provider_id:
-            raise BootstrapConfigurationError(
-                "CPK_PRODUCT_SECRET_VALUES_JSON must use one secret provider"
-            )
-        allowed_prefixes.add(reference.path)
-        values[reference.reference_id] = secret_value
-    if provider_id is None:
+        prefixes_by_provider.setdefault(reference.provider_id, set()).add(reference.path)
+        values_by_provider.setdefault(reference.provider_id, {})[
+            reference.reference_id
+        ] = secret_value
+    if not values_by_provider:
         raise BootstrapConfigurationError(
             "CPK_PRODUCT_SECRET_VALUES_JSON must include at least one secret"
         )
-    return LocalDevelopmentSecretResolver(
-        SecretProviderAuthority(provider_id, tuple(sorted(allowed_prefixes))),
-        values,
+    resolvers = tuple(
+        LocalDevelopmentSecretResolver(
+            SecretProviderAuthority(
+                provider_id,
+                tuple(sorted(prefixes_by_provider[provider_id])),
+            ),
+            values,
+        )
+        for provider_id, values in sorted(
+            values_by_provider.items(),
+            key=lambda item: item[0].value,
+        )
     )
+    if len(resolvers) == 1:
+        return resolvers[0]
+    return _CompositeSecretResolver(resolvers)
+
+
+def _combined_product_secret_resolver(
+    config: CpkServerBootstrapConfiguration,
+    generated_secret_recorder: InMemoryGeneratedSecretRecorder | None,
+):
+    base = _product_secret_resolver(config)
+    if generated_secret_recorder is None:
+        return base
+    if base is None:
+        return _GeneratedSecretResolver(generated_secret_recorder)
+    return _CompositeSecretResolver((base, _GeneratedSecretResolver(generated_secret_recorder)))
+
+
+@dataclass(frozen=True)
+class _GeneratedSecretResolver:
+    generated_secret_recorder: InMemoryGeneratedSecretRecorder
+
+    @property
+    def authority(self):
+        from control_plane_kit_core.secrets import SecretProviderAuthority, SecretProviderId
+
+        return SecretProviderAuthority(SecretProviderId("generated"), (("ingress",),))
+
+    def resolve(self, reference):
+        from control_plane_kit_core.secrets import (
+            SecretDenied,
+            SecretMissing,
+            SecretResolved,
+        )
+
+        if not self.authority.permits(reference):
+            return SecretDenied(reference)
+        try:
+            value = self.generated_secret_recorder.resolve_generated_secret(reference)
+        except Exception:
+            return SecretMissing(reference)
+        return SecretResolved(reference, value)
+
+    def __repr__(self) -> str:
+        return "GeneratedSecretResolver(<redacted>)"
+
+
+@dataclass(frozen=True)
+class _CompositeSecretResolver:
+    resolvers: tuple[object, ...]
+
+    @property
+    def authority(self):
+        return self.resolvers[0].authority
+
+    def resolve(self, reference):
+        from control_plane_kit_core.secrets import SecretDenied, SecretMissing
+
+        denied = None
+        for resolver in self.resolvers:
+            result = resolver.resolve(reference)
+            if not isinstance(result, (SecretDenied, SecretMissing)):
+                return result
+            if isinstance(result, SecretDenied):
+                denied = result
+        if denied is not None:
+            return denied
+        return SecretMissing(reference)
+
+    def __repr__(self) -> str:
+        return "CompositeSecretResolver(<redacted>)"
 
 
 def _install_operations_schema(database_url: str) -> None:

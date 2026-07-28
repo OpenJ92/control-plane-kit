@@ -10,9 +10,9 @@ WORKDIR /app
 RUN python -m pip install --no-cache-dir \
     "fastapi>=0.115" \
     "uvicorn>=0.30" \
-    "control-plane-kit-core @ https://github.com/OpenJ92/control-plane-kit/archive/f9fb7cc041ac1c3daf562d941676f67ad28722ee.zip#subdirectory=control-plane-kit-core" \
-    "control-plane-kit-operations @ https://github.com/OpenJ92/control-plane-kit/archive/f9fb7cc041ac1c3daf562d941676f67ad28722ee.zip#subdirectory=control-plane-kit-operations" \
-    "control-plane-kit-interpreters[docker] @ https://github.com/OpenJ92/control-plane-kit-interpreters/archive/b1bff88e08189e67949dcf481c50cb9a68630e2a.zip"
+    "control-plane-kit-core @ https://github.com/OpenJ92/control-plane-kit/archive/a7dec699ba9fa8b27bbdd583a30211034c6447e1.zip#subdirectory=control-plane-kit-core" \
+    "control-plane-kit-operations @ https://github.com/OpenJ92/control-plane-kit/archive/a7dec699ba9fa8b27bbdd583a30211034c6447e1.zip#subdirectory=control-plane-kit-operations" \
+    "control-plane-kit-interpreters[cloudflare,docker] @ https://github.com/OpenJ92/control-plane-kit-interpreters/archive/05f08baf87c7c7eb969bf34b32fd594b4018e9ce.zip"
 
 COPY products/cpk_server/src ./products/cpk_server/src
 

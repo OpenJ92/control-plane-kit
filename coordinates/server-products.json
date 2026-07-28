@@ -1,8 +1,8 @@
 {
   "schema": "cpk-servers.coordinates",
   "upstreams": {
-    "control_plane_kit_commit": "f9fb7cc041ac1c3daf562d941676f67ad28722ee",
-    "control_plane_kit_interpreters_commit": "b1bff88e08189e67949dcf481c50cb9a68630e2a"
+    "control_plane_kit_commit": "a7dec699ba9fa8b27bbdd583a30211034c6447e1",
+    "control_plane_kit_interpreters_commit": "05f08baf87c7c7eb969bf34b32fd594b4018e9ce"
   },
   "products": [
     {
@@ -21,6 +21,18 @@
       "product_id": "cpk-server-docker",
       "owner_directory": "products/cpk_server",
       "descriptor_path": "products/cpk_server/product.docker.cpk.json",
+      "source_commit": "773595201a6d349ff92a10c58d38df95a25e25af",
+      "image": {
+        "registry": "ghcr.io",
+        "repository": "openj92/control-plane-kit-servers/cpk-server",
+        "tag": "seeded-stress-1007-gateway-postgres-v3",
+        "digest": "sha256:534b674d9f5df7efca23e41628abb7b45f99bb1192cca271029423462fc54584"
+      }
+    },
+    {
+      "product_id": "cpk-server-docker-cloudflare",
+      "owner_directory": "products/cpk_server",
+      "descriptor_path": "products/cpk_server/product.docker-cloudflare.cpk.json",
       "source_commit": "773595201a6d349ff92a10c58d38df95a25e25af",
       "image": {
         "registry": "ghcr.io",

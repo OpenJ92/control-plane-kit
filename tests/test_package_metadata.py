@@ -37,7 +37,7 @@ class PackageMetadataTests(unittest.TestCase):
             project["dependencies"],
         )
         self.assertIn(
-            "control-plane-kit-interpreters[docker] @ "
+            "control-plane-kit-interpreters[cloudflare,docker] @ "
             "https://github.com/OpenJ92/control-plane-kit-interpreters/archive/"
             f"{INTERPRETERS_PIN}.zip",
             project["dependencies"],
@@ -60,6 +60,7 @@ class PackageMetadataTests(unittest.TestCase):
                     "cpk-local-gateway",
                     "cpk-server",
                     "cpk-server-docker",
+                    "cpk-server-docker-cloudflare",
                     "hello-server",
                     "http-active-router",
                     "http-multiplexer",
@@ -100,6 +101,7 @@ class PackageMetadataTests(unittest.TestCase):
                     "cpk-local-gateway",
                     "cpk-server",
                     "cpk-server-docker",
+                    "cpk-server-docker-cloudflare",
                     "hello-server",
                     "http-active-router",
                     "http-multiplexer",

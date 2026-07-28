@@ -152,7 +152,7 @@ fi
 desired_response="$(curl -fsS \
   -H 'Authorization: Bearer present' \
   -H 'Content-Type: application/json' \
-  -d '{"session_id":"'"$SESSION_ID"'","actor_id":"operator-a","graph":{"name":"desired","runtimes":{},"nodes":{},"edges":{}},"expected_desired_graph_id":null,"idempotency_key":"desired-a"}' \
+  -d '{"session_id":"'"$SESSION_ID"'","actor_id":"operator-a","graph":{"name":"desired","runtimes":{},"nodes":{},"edges":{},"public_ingresses":[]},"expected_desired_graph_id":null,"idempotency_key":"desired-a"}' \
   "$BASE/workspaces/workspace-a/graphs/desired")"
 printf '%s' "$desired_response" | grep -q '"desired_graph_id"'
 

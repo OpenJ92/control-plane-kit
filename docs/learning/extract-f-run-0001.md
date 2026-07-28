@@ -795,3 +795,65 @@ Validation target:
 ```text
 scripts/cpk_server_workspace_c_postgres_retained_data_smoke.sh
 ```
+
+
+## #1047 cpk-server Ingress Interpreter Composition
+
+#1047 adds an explicit cpk-server process-composition seam for named public
+ingress interpreters:
+
+```text
+cpk-server
+  -> operations coordinator
+    -> IngressRealizationAdapter
+      -> CloudflareNamedIngressInterpreter
+        -> generated secret recorder
+          -> DockerRuntimeInterpreter secret resolver
+            -> cloudflared connector receives TUNNEL_TOKEN
+```
+
+The cpk-server wrapper remains a composition root. It selects available ingress
+interpreter software from `CPK_INGRESS_INTERPRETERS`, but it does not own
+Cloudflare allocation semantics, Docker container semantics, registered ingress
+authority truth, graph truth, or generated tunnel-token truth.
+
+Important implementation decisions:
+
+- `CPK_INGRESS_INTERPRETERS` is closed to `none` or `cloudflare`;
+- base `cpk-server` and `cpk-server-docker` descriptors keep ingress disabled;
+- `cpk-server-docker-cloudflare` is the explicit descriptor variant for Docker
+  runtime plus Cloudflare named-ingress interpreter software;
+- the Dockerfile and package metadata depend on
+  `control-plane-kit-interpreters[cloudflare,docker]`;
+- generated ingress secrets are resolved by composition at the Docker IO
+  boundary rather than by product identity inference;
+- `CPK_PRODUCT_SECRET_RESOLVER` is not baked into the descriptor as public
+  environment, because its name is secret-shaped and live/operator configuration
+  should supply resolver policy explicitly;
+- the cpk-server smoke graph payload now includes the current
+  `public_ingresses` graph field.
+
+The tests caught two useful guardrails:
+
+- core rejected a secret-shaped public environment variable in the
+  Cloudflare-capable descriptor, forcing resolver policy out of static product
+  metadata;
+- core rejected shell-like punctuation in descriptor prose, keeping public
+  product metadata non-executable.
+
+Handoff to #1048:
+
+- live ingress acceptance must use the `cpk-server-docker-cloudflare` variant;
+- if the cpk-server image is republished, update coordinates first and regenerate
+  descriptors/catalogue/checksum from the coordinate manifest;
+- runtime Cloudflare API token material must be supplied as secret resolver input
+  for the live process, not as product descriptor data.
+
+Validation targets:
+
+```text
+git diff --check
+PYTHONPATH=src python3 scripts/apply_coordinates.py --check
+sh scripts/cpk_server_image_smoke.sh
+./test.sh
+```
