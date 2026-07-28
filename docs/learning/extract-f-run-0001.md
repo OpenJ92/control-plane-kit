@@ -857,3 +857,81 @@ PYTHONPATH=src python3 scripts/apply_coordinates.py --check
 sh scripts/cpk_server_image_smoke.sh
 ./test.sh
 ```
+
+
+## #1048 cpk-server Driven Public Ingress Proof
+
+#1048 turns the earlier low-level Cloudflare/gateway smoke into an operator
+program proof:
+
+```text
+operator
+  -> cpk-server public routes
+    -> operations workflow
+      -> DockerRuntimeInterpreter
+      -> CloudflareNamedIngressInterpreter
+        -> generated TUNNEL_TOKEN secret delivery
+          -> cloudflared connector
+            -> cpk-local-gateway
+              -> private hello target
+```
+
+The important distinction is that the live proof no longer creates Cloudflare
+and Docker resources from the host as the acceptance boundary. The host script
+only boots the parent cpk-server and acts as the operator. The graph execution
+then registers a Docker runtime authority, registers the Cloudflare ingress
+authority, imports the gateway/hello/cloudflared products, plans, approves,
+executes, observes, advances, and tears down through cpk-server.
+
+Implementation notes:
+
+- `cpk-server-docker-cloudflare` is the descriptor variant used for the parent;
+- Cloudflare API token material remains external secret resolver input;
+- the generated per-tunnel `TUNNEL_TOKEN` is delivered at runtime to the dumb
+  `cloudflared-connector` product;
+- the official Cloudflare image default command was not sufficient for the
+  connector contract, so `cloudflared-connector` now uses an owned wrapper image
+  whose command is `cloudflared --no-autoupdate tunnel run`;
+- public gateway readiness is checked through HTTPS after resolving the
+  hostname via a bounded DNS-over-HTTPS fallback to avoid Docker embedded DNS
+  negative-cache timing;
+- teardown exposed a real activity-planning bug: the connector must stop before
+  deleting the managed Cloudflare tunnel, while the gateway/origin target remains
+  alive until after ingress removal.
+
+Published coordinates:
+
+```text
+cpk-server:
+  ghcr.io/openj92/control-plane-kit-servers/cpk-server@sha256:0e4bc3bc207e7eac6868093277d17818cced7387b7397a2fde9ab46c3041cb49
+
+cloudflared-connector:
+  ghcr.io/openj92/control-plane-kit-servers/cloudflared-connector@sha256:b5db8bec60f852c1cb488fe6ea79efa38d1016878acd05d2a83089c50b94909e
+
+catalogue checksum:
+  253153b651a3497d4f0652276c7be975328c61e31aca066d7fed0e7f1a5712ef
+```
+
+Cross-repo dependency evidence:
+
+```text
+control-plane-kit:
+  e91a6f4bb6ec9b9a1be7b4571fc087b533922d7e
+
+control-plane-kit-interpreters:
+  dec22de268f6aaf5a6c73864fbcc477673346f52
+```
+
+Validation evidence:
+
+```text
+git diff --check
+PYTHONPATH=src python3 scripts/apply_coordinates.py --check
+docker run ... python -m unittest \
+  products.cpk_server.tests.test_image_bootstrap \
+  products.cloudflared_connector.tests.test_cloudflared_connector_product
+CPK_HOSTED_ACTIVITY_SCENARIO=public-gateway-ingress \
+  CPK_HOSTED_ACTIVITY_BUILD_CONTROLLER=1 \
+  scripts/cpk_server_hosted_activity_smoke.sh
+./test.sh
+```

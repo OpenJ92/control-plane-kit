@@ -13,8 +13,6 @@ from control_plane_kit_core.products import (
     ProductInstanceConfiguration,
     instantiate_product,
 )
-from control_plane_kit_core.secrets import SecretEnvironmentDelivery
-
 
 ROOT = Path(__file__).resolve().parents[3]
 PRODUCT = ROOT / "products" / "cloudflared_connector"
@@ -35,12 +33,15 @@ class CloudflaredConnectorProductTests(unittest.TestCase):
         )
         self.assertEqual(product.display_name, "cloudflared-connector")
         self.assertIs(product.product_family, ProductFamily.SERVER)
-        self.assertEqual(product.image.registry, "docker.io")
-        self.assertEqual(product.image.repository, "cloudflare/cloudflared")
-        self.assertEqual(product.image.tag, "2026.6.1")
+        self.assertEqual(product.image.registry, "ghcr.io")
+        self.assertEqual(
+            product.image.repository,
+            "openj92/control-plane-kit-servers/cloudflared-connector",
+        )
+        self.assertEqual(product.image.tag, "seeded-ingress-1048-cloudflared")
         self.assertEqual(
             product.image.digest,
-            "sha256:6d91c121b803126f7a5344005d17a9324788fc09d305b6e2560ec6040a7ae283",
+            "sha256:b5db8bec60f852c1cb488fe6ea79efa38d1016878acd05d2a83089c50b94909e",
         )
         self.assertEqual(
             ProductDescriptorCodec().encode_document(product).content,
@@ -64,19 +65,13 @@ class CloudflaredConnectorProductTests(unittest.TestCase):
         self.assertIn("not the gateway", product.description.lower())
         self.assertIn("outbound cloudflare tunnel", product.description.lower())
 
-    def test_descriptor_delivers_tunnel_token_only_as_secret_material(self) -> None:
+    def test_descriptor_waits_for_runtime_generated_tunnel_token_delivery(self) -> None:
         product = self.decode().product
 
-        (delivery,) = product.runtime_contract.secret_deliveries
-        self.assertIsInstance(delivery, SecretEnvironmentDelivery)
-        self.assertEqual(delivery.environment_name, "TUNNEL_TOKEN")
-        self.assertEqual(
-            delivery.reference.reference_id,
-            "secret://control-plane-kit/cloudflare/tunnel-token",
-        )
+        self.assertEqual(product.runtime_contract.secret_deliveries, ())
 
         descriptor = DESCRIPTOR.read_text(encoding="utf-8").lower()
-        self.assertIn("tunnel_token", descriptor)
+        self.assertIn("runtime-delivered tunnel token", descriptor)
         self.assertNotIn("eyj", descriptor)
         self.assertNotIn("api_token", descriptor)
         self.assertNotIn("cloudflare_api_token", descriptor)
@@ -98,20 +93,31 @@ class CloudflaredConnectorProductTests(unittest.TestCase):
         self.assertNotIn('"dns_record_id"', descriptor)
         self.assertNotIn('"cpk_gateway_targets_json"', descriptor)
 
-    def test_official_image_command_gap_is_explicit_handoff(self) -> None:
+    def test_owned_wrapper_closes_official_image_command_gap(self) -> None:
         product = self.decode().product
         provenance = dict(product.image.provenance)
 
-        self.assertEqual(provenance["source"], "official-cloudflared-image")
+        self.assertEqual(provenance["source"], "owned-cloudflared-wrapper")
+        self.assertEqual(provenance["publish"], "ghcr")
+        self.assertEqual(
+            provenance["dockerfile"],
+            "products/cloudflared_connector/Dockerfile",
+        )
+        self.assertEqual(
+            provenance["base-image"],
+            (
+                "docker.io/cloudflare/cloudflared:2026.6.1@sha256:"
+                "6d91c121b803126f7a5344005d17a9324788fc09d305b6e2560ec6040a7ae283"
+            ),
+        )
         self.assertEqual(
             provenance["inspected-entrypoint"],
             "cloudflared --no-autoupdate",
         )
-        self.assertEqual(provenance["inspected-cmd"], "version")
-        self.assertEqual(
-            provenance["command-handoff"],
-            "OpenJ92/control-plane-kit#1037",
-        )
+        self.assertEqual(provenance["runtime-cmd"], "tunnel run")
+        dockerfile = (PRODUCT / "Dockerfile").read_text(encoding="utf-8")
+        self.assertIn('CMD ["tunnel", "run"]', dockerfile)
+        self.assertNotIn("$TUNNEL_TOKEN", dockerfile)
 
     def test_descriptor_digest_is_catalogue_ready(self) -> None:
         content = DESCRIPTOR.read_bytes()

@@ -1,44 +1,44 @@
 {
   "schema": "cpk-servers.coordinates",
   "upstreams": {
-    "control_plane_kit_commit": "a7dec699ba9fa8b27bbdd583a30211034c6447e1",
-    "control_plane_kit_interpreters_commit": "05f08baf87c7c7eb969bf34b32fd594b4018e9ce"
+    "control_plane_kit_commit": "e91a6f4bb6ec9b9a1be7b4571fc087b533922d7e",
+    "control_plane_kit_interpreters_commit": "dec22de268f6aaf5a6c73864fbcc477673346f52"
   },
   "products": [
     {
       "product_id": "cpk-server",
       "owner_directory": "products/cpk_server",
       "descriptor_path": "products/cpk_server/product.cpk.json",
-      "source_commit": "773595201a6d349ff92a10c58d38df95a25e25af",
+      "source_commit": "9baa1cd6723cf3837123a54606fac19a175c5e20",
       "image": {
         "registry": "ghcr.io",
         "repository": "openj92/control-plane-kit-servers/cpk-server",
-        "tag": "seeded-stress-1007-gateway-postgres-v3",
-        "digest": "sha256:534b674d9f5df7efca23e41628abb7b45f99bb1192cca271029423462fc54584"
+        "tag": "seeded-ingress-1048-cpk-server",
+        "digest": "sha256:0e4bc3bc207e7eac6868093277d17818cced7387b7397a2fde9ab46c3041cb49"
       }
     },
     {
       "product_id": "cpk-server-docker",
       "owner_directory": "products/cpk_server",
       "descriptor_path": "products/cpk_server/product.docker.cpk.json",
-      "source_commit": "773595201a6d349ff92a10c58d38df95a25e25af",
+      "source_commit": "9baa1cd6723cf3837123a54606fac19a175c5e20",
       "image": {
         "registry": "ghcr.io",
         "repository": "openj92/control-plane-kit-servers/cpk-server",
-        "tag": "seeded-stress-1007-gateway-postgres-v3",
-        "digest": "sha256:534b674d9f5df7efca23e41628abb7b45f99bb1192cca271029423462fc54584"
+        "tag": "seeded-ingress-1048-cpk-server",
+        "digest": "sha256:0e4bc3bc207e7eac6868093277d17818cced7387b7397a2fde9ab46c3041cb49"
       }
     },
     {
       "product_id": "cpk-server-docker-cloudflare",
       "owner_directory": "products/cpk_server",
       "descriptor_path": "products/cpk_server/product.docker-cloudflare.cpk.json",
-      "source_commit": "773595201a6d349ff92a10c58d38df95a25e25af",
+      "source_commit": "9baa1cd6723cf3837123a54606fac19a175c5e20",
       "image": {
         "registry": "ghcr.io",
         "repository": "openj92/control-plane-kit-servers/cpk-server",
-        "tag": "seeded-stress-1007-gateway-postgres-v3",
-        "digest": "sha256:534b674d9f5df7efca23e41628abb7b45f99bb1192cca271029423462fc54584"
+        "tag": "seeded-ingress-1048-cpk-server",
+        "digest": "sha256:0e4bc3bc207e7eac6868093277d17818cced7387b7397a2fde9ab46c3041cb49"
       }
     },
     {
@@ -93,12 +93,12 @@
       "product_id": "cloudflared-connector",
       "owner_directory": "products/cloudflared_connector",
       "descriptor_path": "products/cloudflared_connector/product.cpk.json",
-      "source_commit": "17a747426f5bbcb927502b728a397df60984625d",
+      "source_commit": "9baa1cd6723cf3837123a54606fac19a175c5e20",
       "image": {
-        "registry": "docker.io",
-        "repository": "cloudflare/cloudflared",
-        "tag": "2026.6.1",
-        "digest": "sha256:6d91c121b803126f7a5344005d17a9324788fc09d305b6e2560ec6040a7ae283"
+        "registry": "ghcr.io",
+        "repository": "openj92/control-plane-kit-servers/cloudflared-connector",
+        "tag": "seeded-ingress-1048-cloudflared",
+        "digest": "sha256:b5db8bec60f852c1cb488fe6ea79efa38d1016878acd05d2a83089c50b94909e"
       }
     },
     {

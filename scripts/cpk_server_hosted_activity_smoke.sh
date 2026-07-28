@@ -4,16 +4,25 @@ set -eu
 default_image() {
   python3 - <<'PY'
 import json
+import os
 from pathlib import Path
 
-image = json.loads(Path("products/cpk_server/product.docker.cpk.json").read_text())["product"]["image"]
+descriptor = os.environ.get("CPK_SERVER_DESCRIPTOR_PATH")
+if descriptor is None:
+    if os.environ.get("CPK_HOSTED_ACTIVITY_SCENARIO") == "public-gateway-ingress":
+        descriptor = "products/cpk_server/product.docker-cloudflare.cpk.json"
+    else:
+        descriptor = "products/cpk_server/product.docker.cpk.json"
+image = json.loads(Path(descriptor).read_text())["product"]["image"]
 print(f"{image['registry']}/{image['repository']}@{image['digest']}")
 PY
 }
 
+SCENARIO="${CPK_HOSTED_ACTIVITY_SCENARIO:-single-hello}"
 IMAGE="${CPK_SERVER_IMAGE:-$(default_image)}"
 CONTROLLER_IMAGE="${CPK_SERVERS_TEST_IMAGE:-control-plane-kit-servers-test:local}"
 BUILD_CONTROLLER="${CPK_HOSTED_ACTIVITY_BUILD_CONTROLLER:-1}"
+KEEP_ON_FAILURE="${CPK_HOSTED_ACTIVITY_KEEP_ON_FAILURE:-0}"
 NETWORK="cpk-server-hosted-activity-$$"
 LABEL="org.openj92.project=control-plane-kit-servers"
 WORKSPACE_LABEL_KEY="org.openj92.cpk.workspace"
@@ -24,6 +33,32 @@ DOCKER_SOCKET_GROUP="${CPK_DOCKER_SOCKET_GROUP:-0}"
 AUTH_CONFIG_SOURCE="${CPK_DOCKER_AUTH_CONFIG:-$HOME/.docker/config.json}"
 AUTH_CONFIG_DIR=""
 IMAGE_PULL_RESOLVER="none"
+INGRESS_INTERPRETERS="none"
+PRODUCT_SECRET_VALUES_JSON='{"secret://control-plane-kit/postgres/password":"cpk-postgres-smoke-password"}'
+
+if [ "$SCENARIO" = "public-gateway-ingress" ]; then
+  CLOUDFLARE_ENV_FILE="${CPK_CLOUDFLARE_ENV_FILE:-env/cloudflare.openj92.local.dev}"
+  if [ -r "$CLOUDFLARE_ENV_FILE" ]; then
+    set -a
+    . "$CLOUDFLARE_ENV_FILE"
+    set +a
+  fi
+  : "${OPENJ92_CLOUDFLARE_ACCOUNT_ID:?OPENJ92_CLOUDFLARE_ACCOUNT_ID is required}"
+  : "${OPENJ92_CLOUDFLARE_ZONE_ID:?OPENJ92_CLOUDFLARE_ZONE_ID is required}"
+  : "${OPENJ92_CLOUDFLARE_API_TOKEN:?OPENJ92_CLOUDFLARE_API_TOKEN is required}"
+  : "${OPENJ92_CLOUDFLARE_ZONE:=openj92.dev}"
+  INGRESS_INTERPRETERS="cloudflare"
+  PRODUCT_SECRET_VALUES_JSON="$(python3 - <<'PY'
+import json
+import os
+
+print(json.dumps({
+    "secret://control-plane-kit/postgres/password": "cpk-postgres-smoke-password",
+    "secret://cloudflare/openj92/api-token": os.environ["OPENJ92_CLOUDFLARE_API_TOKEN"],
+}, separators=(",", ":"), sort_keys=True))
+PY
+)"
+fi
 
 cleanup_activity_resources() {
   docker ps -aq --filter "label=$WORKSPACE_LABEL_KEY" \
@@ -137,9 +172,10 @@ if [ -n "$AUTH_CONFIG_DIR" ]; then
     -e CPK_CONTROL_AUTH_CONFIGURED=true \
     -e CPK_PORT=8080 \
     -e CPK_RUNTIME_INTERPRETERS=docker \
+    -e CPK_INGRESS_INTERPRETERS="$INGRESS_INTERPRETERS" \
     -e CPK_IMAGE_PULL_CREDENTIAL_RESOLVER="$IMAGE_PULL_RESOLVER" \
     -e CPK_PRODUCT_SECRET_RESOLVER=local-development \
-    -e CPK_PRODUCT_SECRET_VALUES_JSON='{"secret://control-plane-kit/postgres/password":"cpk-postgres-smoke-password"}' \
+    -e CPK_PRODUCT_SECRET_VALUES_JSON="$PRODUCT_SECRET_VALUES_JSON" \
     -e CPK_WORKPLACE_DATABASE_URL=postgresql://cpk:cpk@cpk-postgres:5432/cpk \
     -e CPK_ACTIVITY_HISTORY_DATABASE_URL=postgresql://cpk:cpk@cpk-postgres:5432/cpk \
     -e CPK_OBSERVER_STATE_DATABASE_URL=postgresql://cpk:cpk@cpk-postgres:5432/cpk \
@@ -156,8 +192,9 @@ else
     -e CPK_CONTROL_AUTH_CONFIGURED=true \
     -e CPK_PORT=8080 \
     -e CPK_RUNTIME_INTERPRETERS=docker \
+    -e CPK_INGRESS_INTERPRETERS="$INGRESS_INTERPRETERS" \
     -e CPK_PRODUCT_SECRET_RESOLVER=local-development \
-    -e CPK_PRODUCT_SECRET_VALUES_JSON='{"secret://control-plane-kit/postgres/password":"cpk-postgres-smoke-password"}' \
+    -e CPK_PRODUCT_SECRET_VALUES_JSON="$PRODUCT_SECRET_VALUES_JSON" \
     -e CPK_WORKPLACE_DATABASE_URL=postgresql://cpk:cpk@cpk-postgres:5432/cpk \
     -e CPK_ACTIVITY_HISTORY_DATABASE_URL=postgresql://cpk:cpk@cpk-postgres:5432/cpk \
     -e CPK_OBSERVER_STATE_DATABASE_URL=postgresql://cpk:cpk@cpk-postgres:5432/cpk \
@@ -172,11 +209,22 @@ if ! docker run --rm \
   -e CPK_HOSTED_ACTIVITY_BASE_URL=http://cpk-server:8080 \
   -e CPK_HOSTED_ACTIVITY_SERVER_CONTAINER="$SERVER_CONTAINER" \
   -e CPK_HOSTED_ACTIVITY_SERVERS_REPO=/app \
-  -e CPK_HOSTED_ACTIVITY_SCENARIO="${CPK_HOSTED_ACTIVITY_SCENARIO:-single-hello}" \
+  -e CPK_HOSTED_ACTIVITY_SCENARIO="$SCENARIO" \
   -e CPK_HOSTED_ACTIVITY_REGISTER_PULL_AUTHORITY="$IMAGE_PULL_RESOLVER" \
+  -e OPENJ92_CLOUDFLARE_ACCOUNT_ID="${OPENJ92_CLOUDFLARE_ACCOUNT_ID:-}" \
+  -e OPENJ92_CLOUDFLARE_ZONE_ID="${OPENJ92_CLOUDFLARE_ZONE_ID:-}" \
+  -e OPENJ92_CLOUDFLARE_ZONE="${OPENJ92_CLOUDFLARE_ZONE:-}" \
+  -e OPENJ92_CLOUDFLARE_API_TOKEN="${OPENJ92_CLOUDFLARE_API_TOKEN:-}" \
   "$CONTROLLER_IMAGE" \
   python scripts/cpk_server_hosted_activity.py; then
   docker logs "$SERVER_CONTAINER" 2>&1 | tail -n 100 >&2 || true
+  if [ "$KEEP_ON_FAILURE" = "1" ]; then
+    trap - EXIT INT TERM
+    echo "cpk-server hosted activity smoke failed; preserving containers for inspection" >&2
+    echo "server_container=$SERVER_CONTAINER" >&2
+    echo "postgres_container=$POSTGRES_CONTAINER" >&2
+    echo "network=$NETWORK" >&2
+  fi
   exit 1
 fi
 

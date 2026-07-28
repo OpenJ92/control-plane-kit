@@ -3,7 +3,9 @@
 from __future__ import annotations
 
 import json
+import http.client
 import os
+import ssl
 from dataclasses import dataclass, replace
 from pathlib import Path
 import socket
@@ -14,6 +16,11 @@ from urllib.request import Request, urlopen
 
 from control_plane_kit_core.algebra import DeploymentTopology, DockerRuntime, SocketConnection
 from control_plane_kit_core.environment import PublicStaticEnvironmentBinding
+from control_plane_kit_core.public_ingress import (
+    IngressAuthorityReference,
+    NamedPublicIngress,
+    PublicIngressTarget,
+)
 from control_plane_kit_core.products import (
     ProductDescriptorCodec,
     ProductInstanceConfiguration,
@@ -36,6 +43,8 @@ WORKSPACE_IDS = (
 WORKER_ID = "hosted-worker"
 AUTHORIZATION = "Bearer present"
 LOCAL_DOCKER_AUTHORITY_REF = "local-docker"
+OPENJ92_INGRESS_AUTHORITY_REF = "openj92-cloudflare"
+PUBLIC_GATEWAY_HOSTNAME = "cpk-gateway-001.openj92.dev"
 
 
 @dataclass(frozen=True)
@@ -143,6 +152,42 @@ class HostedWorkflow:
                 ),
             },
         )
+
+    def register_cloudflare_ingress_authority(self) -> None:
+        _mcp_tool(
+            self.base_url,
+            "command.ingress-authority.register",
+            {
+                "workspace_id": self.workspace_id,
+                "authority_ref": OPENJ92_INGRESS_AUTHORITY_REF,
+                "authority": {
+                    "provider_kind": "cloudflare",
+                    "account_id": _required_env("OPENJ92_CLOUDFLARE_ACCOUNT_ID"),
+                    "zone_id": _required_env("OPENJ92_CLOUDFLARE_ZONE_ID"),
+                    "zone_name": os.environ.get("OPENJ92_CLOUDFLARE_ZONE", "openj92.dev"),
+                    "api_token_ref": "secret://cloudflare/openj92/api-token",
+                    "allowed_hostname_pattern": "cpk-gateway-*.openj92.dev",
+                },
+                "actor_id": "operator-a",
+                "actor_scopes": [PolicyScope.INGRESS_AUTHORITY_REGISTER.value],
+                "admitted_at": _clock(),
+                "idempotency_key": (
+                    f"{self.workspace_id}:ingress-authority:openj92-cloudflare"
+                ),
+            },
+        )
+        detail = _mcp_read(
+            self.base_url,
+            "read.ingress-authority-detail",
+            {
+                "workspace_id": self.workspace_id,
+                "authority_ref": OPENJ92_INGRESS_AUTHORITY_REF,
+                "actor_scopes": [PolicyScope.INGRESS_AUTHORITY_READ.value],
+            },
+        )
+        authority = detail.get("ingress_authority", {})
+        if authority.get("authority_ref") != OPENJ92_INGRESS_AUTHORITY_REF:
+            raise RuntimeError("registered ingress authority was not readable")
 
     def start_session(self, title: str) -> str:
         session = _http(
@@ -456,6 +501,8 @@ def main() -> int:
         )
     elif scenario == "multi-workspace-foundation":
         _run_multi_workspace_foundation(base_url, server_container, servers_repo)
+    elif scenario == "public-gateway-ingress":
+        _run_public_gateway_ingress(workflow, servers_repo)
     else:
         raise RuntimeError(f"unknown hosted activity scenario: {scenario}")
 
@@ -658,6 +705,56 @@ def _run_postgres_retained_data(workflow: HostedWorkflow, servers_repo: Path) ->
         workflow,
         "cpk-postgres-smoke-password",
     )
+
+
+def _run_public_gateway_ingress(workflow: HostedWorkflow, servers_repo: Path) -> None:
+    gateway_document = _product_document(servers_repo, "cpk_local_gateway")
+    hello_document = _product_document(servers_repo, "hello_server")
+    cloudflared_document = _product_document(servers_repo, "cloudflared_connector")
+    graph = _public_gateway_ingress_graph(
+        gateway_document,
+        hello_document,
+        cloudflared_document,
+        workspace_id=workflow.workspace_id,
+        authority_ref=RuntimeAuthorityReference(LOCAL_DOCKER_AUTHORITY_REF),
+    )
+
+    current_graph_id = _bootstrap_workspace(
+        workflow,
+        name="Hosted public gateway ingress",
+        product_documents={
+            "gateway": gateway_document,
+            "hello": hello_document,
+            "cloudflared": cloudflared_document,
+        },
+        register_runtime_authority=True,
+        register_runtime_delivery=True,
+    )
+    workflow.register_cloudflare_ingress_authority()
+    deployed = workflow.run_approved_transition(
+        title="Hosted public gateway ingress",
+        graph=graph,
+        current_graph_id=current_graph_id,
+        sync_runtime_networks=False,
+    )
+    _assert_activity_mentions(workflow, deployed.run_id, "gateway")
+    _assert_activity_mentions(workflow, deployed.run_id, "hello")
+    _assert_activity_mentions(workflow, deployed.run_id, "cloudflared-gateway")
+    _wait_public_gateway_ready(PUBLIC_GATEWAY_HOSTNAME)
+    _assert_public_gateway_private_probe(PUBLIC_GATEWAY_HOSTNAME)
+    _assert_secret_absent_from_activity(
+        workflow,
+        _required_env("OPENJ92_CLOUDFLARE_API_TOKEN"),
+    )
+    removed = workflow.run_approved_transition(
+        title="Hosted public gateway ingress teardown",
+        graph=DeploymentGraph(workflow.workspace_id),
+        current_graph_id=deployed.current_graph_id,
+        expected_desired_graph_id=deployed.desired_graph_id,
+        sync_runtime_networks=False,
+    )
+    _assert_activity_mentions(workflow, removed.run_id, "cloudflared-gateway")
+    _assert_no_runtime_networks(workflow.workspace_id)
 
 
 def _workflow_for(
@@ -966,6 +1063,64 @@ def _postgres_graph(
     )
 
 
+def _public_gateway_ingress_graph(
+    gateway_document: Any,
+    hello_document: Any,
+    cloudflared_document: Any,
+    *,
+    workspace_id: str,
+    authority_ref: RuntimeAuthorityReference | None = None,
+) -> DeploymentGraph:
+    gateway_product = gateway_document.product
+    hello_product = hello_document.product
+    cloudflared_product = cloudflared_document.product
+    gateway = instantiate_product(
+        gateway_product,
+        "gateway",
+        ProductInstanceConfiguration.from_contract(gateway_product.runtime_contract),
+    )
+    hello = instantiate_product(
+        hello_product,
+        "hello",
+        _with_public_environment(
+            ProductInstanceConfiguration.from_contract(hello_product.runtime_contract),
+            {"HELLO_MESSAGE": "Hello through public ingress"},
+        ),
+    )
+    cloudflared = instantiate_product(
+        cloudflared_product,
+        "cloudflared-gateway",
+        ProductInstanceConfiguration.from_contract(cloudflared_product.runtime_contract),
+    )
+    return compile_topology(
+        DeploymentTopology(
+            workspace_id,
+            DockerRuntime(
+                runtime_id="docker",
+                network_name=f"control-plane-kit-{workspace_id}-docker",
+                authority_ref=authority_ref,
+                children=(
+                    gateway,
+                    hello,
+                    cloudflared,
+                    SocketConnection("hello", "internal", "gateway", "target-http"),
+                ),
+            ),
+            public_ingresses=(
+                NamedPublicIngress(
+                    ingress_id="gateway-public",
+                    authority_ref=IngressAuthorityReference(
+                        OPENJ92_INGRESS_AUTHORITY_REF,
+                    ),
+                    target=PublicIngressTarget("gateway", "control"),
+                    connector_node_id="cloudflared-gateway",
+                    hostname=PUBLIC_GATEWAY_HOSTNAME,
+                ),
+            ),
+        )
+    )
+
+
 def _with_public_environment(
     configuration: ProductInstanceConfiguration,
     replacements: dict[str, str],
@@ -1130,6 +1285,143 @@ print(json.dumps(decoded, sort_keys=True))
             return
         time.sleep(1)
     raise RuntimeError(f"gateway postgres readiness failed: {last_output}")
+
+
+def _wait_public_gateway_ready(hostname: str) -> None:
+    last_error = "not attempted"
+    for _ in range(60):
+        try:
+            response = _public_https_json(
+                hostname,
+                "GET",
+                "/health/ready",
+                timeout=5,
+            )
+            if response.status == 200:
+                body = json.loads(response.body.decode("utf-8"))
+                if body.get("status") == "ready":
+                    return
+                last_error = f"status={response.status} body={body!r}"
+            else:
+                last_error = f"status={response.status} body={response.body[:256]!r}"
+        except Exception as error:
+            last_error = f"{type(error).__name__}: {error}"
+            time.sleep(2)
+    raise RuntimeError(
+        f"public gateway did not become ready: {hostname}; last_error={last_error}"
+    )
+
+
+def _assert_public_gateway_private_probe(hostname: str) -> None:
+    response = _public_https_json(
+        hostname,
+        "POST",
+        "/cpk/probes",
+        body=json.dumps(
+            {"kind": "http-status", "target_id": "hello.internal", "path": "/"},
+            separators=(",", ":"),
+            sort_keys=True,
+        ).encode("utf-8"),
+        timeout=10,
+    )
+    payload = json.loads(response.body.decode("utf-8"))
+    if payload.get("outcome") != "passed" or payload.get("status") != 200:
+        raise RuntimeError(f"public gateway private probe failed: {payload!r}")
+    encoded = json.dumps(payload).lower()
+    if "secret" in encoded or "token" in encoded or "password" in encoded:
+        raise RuntimeError("public probe response leaked secret-shaped material")
+
+
+@dataclass(frozen=True)
+class _PublicHttpsResponse:
+    status: int
+    body: bytes
+
+
+def _public_https_json(
+    hostname: str,
+    method: str,
+    path: str,
+    *,
+    body: bytes | None = None,
+    timeout: float,
+) -> _PublicHttpsResponse:
+    address = _public_ingress_address(hostname)
+    return _https_request_to_address(
+        address,
+        hostname=hostname,
+        method=method,
+        path=path,
+        body=body,
+        headers={"Accept": "application/json"},
+        timeout=timeout,
+    )
+
+
+def _https_request_to_address(
+    address: str,
+    *,
+    hostname: str,
+    method: str,
+    path: str,
+    body: bytes | None,
+    headers: dict[str, str],
+    timeout: float,
+) -> _PublicHttpsResponse:
+    context = ssl.create_default_context()
+    with socket.create_connection((address, 443), timeout=timeout) as sock:
+        with context.wrap_socket(sock, server_hostname=hostname) as tls:
+            connection = http.client.HTTPSConnection(hostname, timeout=timeout)
+            connection.sock = tls
+            try:
+                headers = {"Host": hostname, **headers}
+                if body is not None:
+                    headers["Content-Type"] = "application/json"
+                connection.request(method, path, body=body, headers=headers)
+                response = connection.getresponse()
+                return _PublicHttpsResponse(response.status, response.read(16_384))
+            finally:
+                connection.close()
+
+
+def _public_ingress_address(hostname: str) -> str:
+    try:
+        return socket.gethostbyname(hostname)
+    except OSError:
+        pass
+    query = (
+        f"/dns-query?name={hostname}&type=A"
+    )
+    response = _https_request_to_address(
+        "1.1.1.1",
+        hostname="cloudflare-dns.com",
+        method="GET",
+        path=query,
+        body=None,
+        headers={"Accept": "application/dns-json"},
+        timeout=5,
+    )
+    payload = json.loads(response.body.decode("utf-8"))
+    answers = payload.get("Answer")
+    if not isinstance(answers, list):
+        raise RuntimeError(f"public DNS did not expose A records for {hostname}")
+    for answer in answers:
+        if not isinstance(answer, dict):
+            continue
+        data = answer.get("data")
+        if isinstance(data, str) and _is_ipv4_address(data):
+            return data
+    raise RuntimeError(f"public DNS did not expose usable A records for {hostname}")
+
+
+def _is_ipv4_address(value: str) -> bool:
+    parts = value.split(".")
+    if len(parts) != 4:
+        return False
+    try:
+        return all(0 <= int(part) <= 255 for part in parts)
+    except ValueError:
+        return False
 
 
 def _retained_data_volumes(workspace_id: str, node_id: str) -> list[str]:
