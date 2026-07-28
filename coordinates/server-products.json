@@ -78,6 +78,18 @@
       }
     },
     {
+      "product_id": "cloudflared-connector",
+      "owner_directory": "products/cloudflared_connector",
+      "descriptor_path": "products/cloudflared_connector/product.cpk.json",
+      "source_commit": "17a747426f5bbcb927502b728a397df60984625d",
+      "image": {
+        "registry": "docker.io",
+        "repository": "cloudflare/cloudflared",
+        "tag": "2026.6.1",
+        "digest": "sha256:6d91c121b803126f7a5344005d17a9324788fc09d305b6e2560ec6040a7ae283"
+      }
+    },
+    {
       "product_id": "postgres-server",
       "owner_directory": "products/postgres_server",
       "descriptor_path": "products/postgres_server/product.cpk.json",

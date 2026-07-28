@@ -1,6 +1,16 @@
 {
   "products": [
     {
+      "descriptor_path": "products/cloudflared_connector/product.cpk.json",
+      "descriptor_sha256": "80588ffa259245deabbb23fac713f8f049d49551c070fcf0a359c0c24582bfb0",
+      "image_digest": "sha256:6d91c121b803126f7a5344005d17a9324788fc09d305b6e2560ec6040a7ae283",
+      "image_ref": "docker.io/cloudflare/cloudflared:2026.6.1",
+      "owner_directory": "products/cloudflared_connector",
+      "product_id": "cloudflared-connector",
+      "source_commit": "17a747426f5bbcb927502b728a397df60984625d",
+      "status": "completed"
+    },
+    {
       "descriptor_path": "products/cpk_local_gateway/product.cpk.json",
       "descriptor_sha256": "33f42082f67530aea2334b6c4cc382918fae07a447015adf77279225675d9636",
       "image_digest": "sha256:77637c12d734768ae8a53afd6ea8b7a8e7fe4a62b485a9899e9b080779e275e4",

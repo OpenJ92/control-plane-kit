@@ -32,6 +32,7 @@ class DockerHarnessTests(unittest.TestCase):
         self.assertIn("products/http_active_router/tests", runner)
         self.assertIn("products/http_multiplexer/tests", runner)
         self.assertIn("products/cpk_local_gateway/tests", runner)
+        self.assertIn("products/cloudflared_connector/tests", runner)
         self.assertIn("products/postgres_server/tests", runner)
         self.assertIn("product_image_lane.py", runner)
 
@@ -59,6 +60,7 @@ class DockerHarnessTests(unittest.TestCase):
                 "http-active-router",
                 "http-multiplexer",
                 "cpk-local-gateway",
+                "cloudflared-connector",
                 "postgres-server",
             ],
         )
@@ -100,6 +102,12 @@ class DockerHarnessTests(unittest.TestCase):
                     "image_source": "local-dockerfile",
                     "dockerfile": "products/cpk_local_gateway/Dockerfile",
                     "status": "image-definition-present",
+                },
+                {
+                    "product_id": "cloudflared-connector",
+                    "image_source": "external-oci",
+                    "external_image": "docker.io/cloudflare/cloudflared@sha256:6d91c121b803126f7a5344005d17a9324788fc09d305b6e2560ec6040a7ae283",
+                    "status": "external-oci-pinned",
                 },
                 {
                     "product_id": "postgres-server",

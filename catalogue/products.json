@@ -62,6 +62,16 @@
       "status": "completed"
     },
     {
+      "product_id": "cloudflared-connector",
+      "owner_directory": "products/cloudflared_connector",
+      "descriptor_path": "products/cloudflared_connector/product.cpk.json",
+      "descriptor_sha256": "80588ffa259245deabbb23fac713f8f049d49551c070fcf0a359c0c24582bfb0",
+      "source_commit": "17a747426f5bbcb927502b728a397df60984625d",
+      "image_ref": "docker.io/cloudflare/cloudflared:2026.6.1",
+      "image_digest": "sha256:6d91c121b803126f7a5344005d17a9324788fc09d305b6e2560ec6040a7ae283",
+      "status": "completed"
+    },
+    {
       "product_id": "postgres-server",
       "owner_directory": "products/postgres_server",
       "descriptor_path": "products/postgres_server/product.cpk.json",

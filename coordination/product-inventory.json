@@ -59,6 +59,17 @@
       "role": "local runtime-island gateway for closed semantic probes"
     },
     {
+      "product_id": "cloudflared-connector",
+      "target_directory": "products/cloudflared_connector",
+      "image_source": "external-oci",
+      "external_image": "docker.io/cloudflare/cloudflared@sha256:6d91c121b803126f7a5344005d17a9324788fc09d305b6e2560ec6040a7ae283",
+      "implementation_issue": "OpenJ92/control-plane-kit#1015",
+      "image_issue": "OpenJ92/control-plane-kit#1015",
+      "descriptor_issue": "OpenJ92/control-plane-kit#1015",
+      "status": "descriptor-published",
+      "role": "runtime-island Cloudflare named tunnel connector; not a gateway and not a Cloudflare API interpreter"
+    },
+    {
       "product_id": "postgres-server",
       "target_directory": "products/postgres_server",
       "image_source": "external-oci",
@@ -84,6 +95,6 @@
     "One product implementation lane owns one directory; descriptor variants remain explicit catalogue entries.",
     "Catalogue imports values, not applications or stores.",
     "Core dependency points inward; core never imports servers.",
-    "cpk-server, Hello, active-router, multiplexer, cpk-local-gateway, and Postgres have different roles and none substitutes for the other."
+    "cpk-server, Hello, active-router, multiplexer, cpk-local-gateway, cloudflared connector, and Postgres have different roles and none substitutes for the other."
   ]
 }

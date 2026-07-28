@@ -181,6 +181,7 @@ class CpkServerProductDescriptorTests(unittest.TestCase):
         self.assertEqual(
             sorted(declarations),
             [
+                "cloudflared-connector",
                 "cpk-local-gateway",
                 "cpk-server",
                 "cpk-server-docker",
