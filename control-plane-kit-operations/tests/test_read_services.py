@@ -11,6 +11,8 @@ from control_plane_kit_core.algebra import (
     DeploymentTopology,
     DockerRuntime,
     ProviderSocket,
+    RequirementSocket,
+    SocketConnection,
 )
 from control_plane_kit_core.operations.commands import OperatorCommandKind
 from control_plane_kit_core.planning import ActivityPlan, RiskLevel
@@ -29,8 +31,13 @@ from control_plane_kit_core.products import (
     ProductRuntimeContract,
     instantiate_product,
 )
+from control_plane_kit_core.public_ingress import (
+    IngressAuthorityReference,
+    NamedPublicIngress,
+    PublicIngressTarget,
+)
 from control_plane_kit_core.topology import DeploymentGraph, compile_topology
-from control_plane_kit_core.types import Protocol, WorkspaceLifecycle
+from control_plane_kit_core.types import Protocol, SocketBinding, WorkspaceLifecycle
 from control_plane_kit_operations import (
     ActivityPlanRecord,
     ActivityPlanStatus,
@@ -160,6 +167,22 @@ class InstanceReadServiceTests(unittest.TestCase):
         self.assertEqual(plan["payload"]["schema"], "control-plane-kit.activity-plan")
         self.assertEqual(plan["risk_summary"]["ready_for_execution"], True)
         self.assertEqual(plan["recovery"]["mode"], "reverse-transition")
+
+    def test_approval_detail_handles_public_ingress_graph_truth(self) -> None:
+        self.seed_activity_with_public_ingress()
+        detail = self.service().approval_detail(
+            "workspace-a",
+            "approval-public-ingress",
+        ).descriptor()
+
+        plan = detail["plan"]
+        self.assertEqual(plan["plan_id"], "plan-public-ingress")
+        self.assertEqual(plan["recovery"]["mode"], "reverse-transition")
+        self.assertEqual(
+            plan["recovery"]["source_graph_name"],
+            "public-ingress-desired",
+        )
+        self.assertEqual(plan["recovery"]["target_graph_name"], "public-ingress-base")
 
     def test_observed_state_is_latest_per_subject_and_does_not_rewrite_graph_truth(self) -> None:
         self.seed_graphs()
@@ -330,6 +353,80 @@ class InstanceReadServiceTests(unittest.TestCase):
             )
             unit_of_work.commit()
 
+    def seed_activity_with_public_ingress(self) -> None:
+        base = DeploymentGraph("public-ingress-base")
+        desired = public_ingress_graph("public-ingress-desired")
+        with self.unit_of_work() as unit_of_work:
+            unit_of_work.stores.workspaces.create(
+                WorkspaceRecord(
+                    workspace_id="workspace-a",
+                    name="Public ingress demo",
+                    lifecycle=WorkspaceLifecycle.RUNNING,
+                )
+            )
+            unit_of_work.stores.graphs.save(
+                GraphVersionRecord.from_graph(
+                    graph_id="graph-public-base",
+                    workspace_id="workspace-a",
+                    version=1,
+                    graph=base,
+                    created_by="operator-a",
+                    created_at="2026-07-22T10:00:00Z",
+                )
+            )
+            unit_of_work.stores.graphs.save(
+                GraphVersionRecord.from_graph(
+                    graph_id="graph-public-desired",
+                    workspace_id="workspace-a",
+                    version=2,
+                    graph=desired,
+                    created_by="operator-a",
+                    created_at="2026-07-22T10:01:00Z",
+                )
+            )
+            unit_of_work.stores.workspaces.set_current_graph(
+                "workspace-a",
+                "graph-public-base",
+            )
+            unit_of_work.stores.workspaces.set_desired_graph(
+                "workspace-a",
+                "graph-public-desired",
+            )
+            unit_of_work.stores.activity_history.add_session(
+                OperationSessionRecord(
+                    session_id="session-public-ingress",
+                    workspace_id="workspace-a",
+                    actor_id="operator-a",
+                    title="Public ingress deploy",
+                    status=OperationSessionStatus.OPEN,
+                    created_at="2026-07-22T11:00:00Z",
+                )
+            )
+            unit_of_work.stores.activity_history.add_plan(
+                ActivityPlanRecord(
+                    plan_id="plan-public-ingress",
+                    session_id="session-public-ingress",
+                    base_graph_id="graph-public-base",
+                    desired_graph_id="graph-public-desired",
+                    status=ActivityPlanStatus.PLANNED,
+                    created_at="2026-07-22T11:02:00Z",
+                    plan=ActivityPlan(()),
+                )
+            )
+            unit_of_work.stores.activity_history.add_approval_request(
+                ApprovalRequestRecord(
+                    request_id="approval-public-ingress",
+                    session_id="session-public-ingress",
+                    plan_id="plan-public-ingress",
+                    requested_by="operator-a",
+                    requested_at="2026-07-22T11:03:00Z",
+                    required_scope=PolicyScope.PLAN_APPROVE,
+                    max_risk=RiskLevel.INFORMATIONAL,
+                    destructive=False,
+                )
+            )
+            unit_of_work.commit()
+
 
 def product_graph(name: str) -> object:
     product = ContainerServerProduct(
@@ -353,6 +450,97 @@ def product_graph(name: str) -> object:
         ProductInstanceConfiguration(),
     )
     return compile_topology(DeploymentTopology(name, DockerRuntime(children=(block,))))
+
+
+def public_ingress_graph(name: str) -> object:
+    product = ContainerServerProduct(
+        identity=ProductIdentity("cpk-servers", "hello-server", 1),
+        image=OciImageReference(
+            "ghcr.io",
+            "openj92/control-plane-kit-servers/hello-server",
+            "sha256:" + "a" * 64,
+            tag="v1",
+        ),
+        runtime_contract=ProductRuntimeContract(
+            sockets=BlockSockets(providers=(ProviderSocket("internal", Protocol.HTTP),))
+        ),
+        display_name="Hello server",
+        description="Server product used for public ingress read projection tests.",
+    )
+    gateway = ContainerServerProduct(
+        identity=ProductIdentity("cpk-servers", "cpk-local-gateway", 1),
+        image=OciImageReference(
+            "ghcr.io",
+            "openj92/control-plane-kit-servers/cpk-local-gateway",
+            "sha256:" + "b" * 64,
+            tag="v1",
+        ),
+        runtime_contract=ProductRuntimeContract(
+            sockets=BlockSockets(
+                requirements=(
+                    RequirementSocket(
+                        "target-http",
+                        Protocol.HTTP,
+                        (),
+                        required=False,
+                        binding=SocketBinding.RUNTIME_CONTROL,
+                    ),
+                ),
+                providers=(ProviderSocket("control", Protocol.HTTP),),
+            )
+        ),
+        display_name="Gateway",
+        description="Gateway product used for public ingress read projection tests.",
+    )
+    connector = ContainerServerProduct(
+        identity=ProductIdentity("cpk-servers", "cloudflared-connector", 1),
+        image=OciImageReference(
+            "docker.io",
+            "cloudflare/cloudflared",
+            "sha256:" + "c" * 64,
+            tag="2026.6.1",
+        ),
+        runtime_contract=ProductRuntimeContract(),
+        display_name="cloudflared-connector",
+        description="Connector product used for public ingress read projection tests.",
+    )
+    hello = instantiate_product(
+        ProductDescriptorCodec().encode_document(product).product,
+        "hello",
+        ProductInstanceConfiguration(),
+    )
+    gateway_node = instantiate_product(
+        ProductDescriptorCodec().encode_document(gateway).product,
+        "gateway",
+        ProductInstanceConfiguration(),
+    )
+    cloudflared = instantiate_product(
+        ProductDescriptorCodec().encode_document(connector).product,
+        "cloudflared-gateway",
+        ProductInstanceConfiguration(),
+    )
+    return compile_topology(
+        DeploymentTopology(
+            name,
+            DockerRuntime(
+                children=(
+                    hello,
+                    gateway_node,
+                    cloudflared,
+                    SocketConnection("hello", "internal", "gateway", "target-http"),
+                )
+            ),
+            public_ingresses=(
+                NamedPublicIngress(
+                    ingress_id="gateway-public",
+                    authority_ref=IngressAuthorityReference("openj92-cloudflare"),
+                    target=PublicIngressTarget("gateway", "control"),
+                    connector_node_id="cloudflared-gateway",
+                    hostname="cpk-gateway-001.openj92.dev",
+                ),
+            ),
+        )
+    )
 
 
 def observation(

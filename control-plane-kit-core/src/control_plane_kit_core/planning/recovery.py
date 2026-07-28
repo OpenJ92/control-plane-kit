@@ -14,12 +14,14 @@ from typing import TYPE_CHECKING
 from control_plane_kit_core.planning.activity_plan import (
     ActivityImpact,
     ActivityPlan,
+    AllocatePublicIngress,
     AddSocketConnection,
     DestroyDataResource,
     PlannedActivity,
     ReconcileNode,
     ReconcileRuntime,
     RemoveNodeResource,
+    RemovePublicIngress,
     RemoveRuntimeResource,
     RemoveSocketConnection,
     ReviewChange,
@@ -309,7 +311,9 @@ def _assess(activity: PlannedActivity) -> RecoveryActivityAssessment:
             )
         case (
             AddSocketConnection()
+            | AllocatePublicIngress()
             | SwitchSocketConnection()
+            | RemovePublicIngress()
             | RemoveSocketConnection()
             | WaitForHealthy()
         ):

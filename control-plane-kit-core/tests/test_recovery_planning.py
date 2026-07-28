@@ -12,7 +12,14 @@ from control_plane_kit_core.algebra import (
     ProviderSocket,
 )
 from control_plane_kit_core.lifecycle import OWNED_EPHEMERAL
-from control_plane_kit_core.planning import StartNode, StartRuntime, StopNode, StopRuntime
+from control_plane_kit_core.planning import (
+    AllocatePublicIngress,
+    RemovePublicIngress,
+    StartNode,
+    StartRuntime,
+    StopNode,
+    StopRuntime,
+)
 from control_plane_kit_core.planning.recovery import (
     RECOVERY_CANDIDATE_SCHEMA,
     RECOVERY_CANDIDATE_VERSION,
@@ -21,6 +28,11 @@ from control_plane_kit_core.planning.recovery import (
     RecoveryMode,
     plan_reconstruction,
     plan_recovery_transition,
+)
+from control_plane_kit_core.public_ingress import (
+    IngressAuthorityReference,
+    NamedPublicIngress,
+    PublicIngressTarget,
 )
 from control_plane_kit_core.topology import DeploymentGraph, compile_topology, validate_graph
 from control_plane_kit_core.topology.graph import Endpoint, LiteralAddress
@@ -57,6 +69,24 @@ class PureImplementation:
         )
 
 
+@dataclass(frozen=True)
+class MultiSocketImplementation:
+    kind: str
+
+    def materialize(self, block_id: str, sockets: BlockSockets, runtime: object) -> MaterializedBlock:
+        return MaterializedBlock(
+            kind=self.kind,
+            endpoints={
+                provider.name: Endpoint(
+                    LiteralAddress(f"http://{block_id}:{provider.name}"),
+                    provider.protocol,
+                )
+                for provider in sockets.providers
+            },
+            metadata={"image": f"example/{block_id}:latest"},
+        )
+
+
 def topology(active_name: str = "api-v1") -> DeploymentTopology:
     api = ApplicationBlock(
         BlockSpec(active_name),
@@ -66,6 +96,32 @@ def topology(active_name: str = "api-v1") -> DeploymentTopology:
     return DeploymentTopology(
         "router-recovery",
         DockerRuntime(children=(api,)),
+    )
+
+
+def public_ingress_topology() -> DeploymentTopology:
+    gateway = ApplicationBlock(
+        BlockSpec("gateway"),
+        MultiSocketImplementation("gateway"),
+        BlockSockets(providers=(ProviderSocket("control", Protocol.HTTP),)),
+    )
+    cloudflared = ApplicationBlock(
+        BlockSpec("cloudflared-gateway"),
+        MultiSocketImplementation("cloudflared"),
+        BlockSockets(),
+    )
+    return DeploymentTopology(
+        "public-ingress-recovery",
+        DockerRuntime(children=(gateway, cloudflared)),
+        public_ingresses=(
+            NamedPublicIngress(
+                ingress_id="gateway-public",
+                authority_ref=IngressAuthorityReference("openj92-cloudflare"),
+                target=PublicIngressTarget("gateway", "control"),
+                connector_node_id="cloudflared-gateway",
+                hostname="cpk-gateway-001.openj92.dev",
+            ),
+        ),
     )
 
 
@@ -137,6 +193,34 @@ class RecoveryPlanningSuccessorTests(unittest.TestCase):
             "control_plane_kit_core.planning.activity_plan",
         )
         self.assertNotIn("rollback", str(first.descriptor()).lower())
+
+    def test_public_ingress_recovery_is_assessed_as_topology_candidate(self) -> None:
+        populated = validate_graph(compile_topology(public_ingress_topology()))
+        empty = validate_graph(DeploymentGraph(populated.graph.name))
+
+        teardown = plan_recovery_transition(populated, empty)
+        reconstruction = plan_recovery_transition(empty, populated)
+
+        self.assertTrue(
+            any(
+                isinstance(activity.operation, RemovePublicIngress)
+                for activity in teardown.plan.activities
+            )
+        )
+        self.assertTrue(
+            any(
+                isinstance(activity.operation, AllocatePublicIngress)
+                for activity in reconstruction.plan.activities
+            )
+        )
+        self.assertIn(
+            RecoveryDisposition.TOPOLOGY_CANDIDATE,
+            {assessment.disposition for assessment in teardown.assessments},
+        )
+        self.assertIn(
+            RecoveryDisposition.TOPOLOGY_CANDIDATE,
+            {assessment.disposition for assessment in reconstruction.assessments},
+        )
 
     def test_invalid_inputs_fail_before_planning(self) -> None:
         with self.assertRaises(TypeError):
