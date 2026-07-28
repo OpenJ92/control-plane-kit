@@ -45,6 +45,8 @@ AUTHORIZATION = "Bearer present"
 LOCAL_DOCKER_AUTHORITY_REF = "local-docker"
 OPENJ92_INGRESS_AUTHORITY_REF = "openj92-cloudflare"
 PUBLIC_GATEWAY_HOSTNAME = "cpk-gateway-001.openj92.dev"
+PUBLIC_GATEWAY_READY_ATTEMPTS = 60
+PUBLIC_GATEWAY_READY_RETRY_SECONDS = 2
 
 
 @dataclass(frozen=True)
@@ -1572,7 +1574,7 @@ print(json.dumps(decoded, sort_keys=True))
 
 def _wait_public_gateway_ready(hostname: str) -> None:
     last_error = "not attempted"
-    for _ in range(60):
+    for attempt in range(PUBLIC_GATEWAY_READY_ATTEMPTS):
         try:
             response = _public_https_json(
                 hostname,
@@ -1589,7 +1591,8 @@ def _wait_public_gateway_ready(hostname: str) -> None:
                 last_error = f"status={response.status} body={response.body[:256]!r}"
         except Exception as error:
             last_error = f"{type(error).__name__}: {error}"
-            time.sleep(2)
+        if attempt < PUBLIC_GATEWAY_READY_ATTEMPTS - 1:
+            time.sleep(PUBLIC_GATEWAY_READY_RETRY_SECONDS)
     raise RuntimeError(
         f"public gateway did not become ready: {hostname}; last_error={last_error}"
     )
