@@ -10,9 +10,13 @@ from control_plane_kit_core.public_ingress import (
     IngressAuthorityReference,
     PublicIngressLifecycle,
 )
+from control_plane_kit_core.secrets import SecretReference
 from control_plane_kit_operations.ingress_authorities import (
     CloudflareOwnedIngressResource,
     CloudflareZoneIngressAuthorityCodec,
+    GeneratedIngressSecretReference,
+    GeneratedSecretPurpose,
+    GeneratedSecretRecordingConflict,
     IngressAuthority,
     IngressAuthorityNotFound,
     IngressAuthorityProviderKind,
@@ -339,6 +343,139 @@ class IngressResourceStore:
         return _row_to_cloudflare_resource(row)
 
 
+class GeneratedIngressSecretReferenceStore:
+    """Persist reference-only evidence for generated ingress secrets."""
+
+    def __init__(self, connection: PostgresConnection) -> None:
+        self._connection = connection
+
+    def record(
+        self,
+        evidence: GeneratedIngressSecretReference,
+    ) -> GeneratedIngressSecretReference:
+        if not isinstance(evidence, GeneratedIngressSecretReference):
+            raise TypeError("record requires GeneratedIngressSecretReference")
+        existing = self._get_by_source(
+            workspace_id=evidence.workspace_id,
+            purpose=evidence.purpose,
+            source_run_id=evidence.source_run_id,
+            source_activity_id=evidence.source_activity_id,
+            source_event_id=evidence.source_event_id,
+        )
+        if existing is not None:
+            if existing == evidence:
+                return existing
+            raise GeneratedSecretRecordingConflict(
+                "generated secret reference replacement requires explicit policy"
+            )
+        self._connection.execute(
+            """
+            INSERT INTO cpk_generated_ingress_secret_references (
+              workspace_id,
+              purpose,
+              secret_ref,
+              recorded_at,
+              source_run_id,
+              source_activity_id,
+              source_event_id
+            )
+            VALUES (%s, %s, %s, %s, %s, %s, %s)
+            """,
+            (
+                evidence.workspace_id,
+                evidence.purpose.value,
+                evidence.secret_ref.reference_id,
+                evidence.recorded_at,
+                evidence.source_run_id,
+                evidence.source_activity_id,
+                evidence.source_event_id,
+            ),
+        )
+        return evidence
+
+    def get_by_source(
+        self,
+        *,
+        workspace_id: str,
+        purpose: GeneratedSecretPurpose,
+        source_run_id: str,
+        source_activity_id: str,
+        source_event_id: str,
+    ) -> GeneratedIngressSecretReference:
+        evidence = self._get_by_source(
+            workspace_id=workspace_id,
+            purpose=purpose,
+            source_run_id=source_run_id,
+            source_activity_id=source_activity_id,
+            source_event_id=source_event_id,
+        )
+        if evidence is None:
+            raise IngressAuthorityNotFound(
+                "generated ingress secret reference was not found"
+            )
+        return evidence
+
+    def list_for_workspace(
+        self,
+        workspace_id: str,
+    ) -> tuple[GeneratedIngressSecretReference, ...]:
+        rows = self._connection.execute(
+            """
+            SELECT
+              workspace_id,
+              purpose,
+              secret_ref,
+              recorded_at,
+              source_run_id,
+              source_activity_id,
+              source_event_id
+            FROM cpk_generated_ingress_secret_references
+            WHERE workspace_id = %s
+            ORDER BY recorded_at DESC, purpose, source_event_id
+            """,
+            (workspace_id,),
+        ).fetchall()
+        return tuple(_row_to_generated_ingress_secret_reference(row) for row in rows)
+
+    def _get_by_source(
+        self,
+        *,
+        workspace_id: str,
+        purpose: GeneratedSecretPurpose,
+        source_run_id: str,
+        source_activity_id: str,
+        source_event_id: str,
+    ) -> GeneratedIngressSecretReference | None:
+        row = self._connection.execute(
+            """
+            SELECT
+              workspace_id,
+              purpose,
+              secret_ref,
+              recorded_at,
+              source_run_id,
+              source_activity_id,
+              source_event_id
+            FROM cpk_generated_ingress_secret_references
+            WHERE workspace_id = %s
+              AND purpose = %s
+              AND source_run_id = %s
+              AND source_activity_id = %s
+              AND source_event_id = %s
+            """,
+            (
+                workspace_id,
+                purpose.value,
+                source_run_id,
+                source_activity_id,
+                source_event_id,
+            ),
+        ).fetchone()
+        if row is None:
+            return None
+        return _row_to_generated_ingress_secret_reference(row)
+
+
 def _row_to_authority(row: tuple[Any, ...]) -> RegisteredIngressAuthority:
     return RegisteredIngressAuthority(
         registration_id=row[0],
@@ -370,6 +507,20 @@ def _row_to_cloudflare_resource(row: tuple[Any, ...]) -> CloudflareOwnedIngressR
         source_run_id=row[13],
         source_activity_id=row[14],
         source_event_id=row[15],
+    )
+
+
+def _row_to_generated_ingress_secret_reference(
+    row: tuple[Any, ...],
+) -> GeneratedIngressSecretReference:
+    return GeneratedIngressSecretReference(
+        workspace_id=row[0],
+        purpose=GeneratedSecretPurpose(row[1]),
+        secret_ref=SecretReference(row[2]),
+        recorded_at=row[3],
+        source_run_id=row[4],
+        source_activity_id=row[5],
+        source_event_id=row[6],
     )
 
 

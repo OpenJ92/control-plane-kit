@@ -17,6 +17,7 @@ from control_plane_kit_operations.postgres.image_pull_authority_store import (
     ImagePullAuthorityStore,
 )
 from control_plane_kit_operations.postgres.ingress_authority_store import (
+    GeneratedIngressSecretReferenceStore,
     IngressAuthorityStore,
     IngressResourceStore,
 )
@@ -42,6 +43,7 @@ __all__ = [
     "PostgresExecutionStore",
     "PostgresGraphTopologyStore",
     "ImagePullAuthorityStore",
+    "GeneratedIngressSecretReferenceStore",
     "IngressAuthorityStore",
     "IngressResourceStore",
     "PostgresObservedStateStore",

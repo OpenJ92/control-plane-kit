@@ -6,14 +6,18 @@ from dataclasses import dataclass, field
 from enum import StrEnum
 from hashlib import sha256
 import re
-from typing import Any, Mapping
+from typing import Any, Mapping, Protocol
 
 from control_plane_kit_core.policies import PolicyScope
 from control_plane_kit_core.public_ingress import (
     IngressAuthorityReference,
     PublicIngressLifecycle,
 )
-from control_plane_kit_core.secrets import SecretEnvironmentDelivery, SecretReference
+from control_plane_kit_core.secrets import (
+    SecretEnvironmentDelivery,
+    SecretReference,
+    SecretValue,
+)
 
 
 _IDENTIFIER = re.compile(r"^[a-z][a-z0-9._-]{0,127}$")
@@ -41,6 +45,10 @@ class IngressAuthorityRegistrationConflict(IngressAuthorityRegistrationError):
 
 class OwnedIngressResourceConflict(IngressAuthorityRegistrationError):
     """Raised when owned ingress evidence conflicts with existing truth."""
+
+
+class GeneratedSecretRecordingConflict(IngressAuthorityRegistrationError):
+    """Raised when generated secret evidence conflicts with existing truth."""
 
 
 class IngressAuthorityAuthorizationDenied(IngressAuthorityRegistrationError):
@@ -78,6 +86,27 @@ class CloudflareTunnelTokenDeliveryStep(StrEnum):
     ALLOCATE_NAMED_INGRESS = "allocate-named-ingress"
     RECORD_TUNNEL_TOKEN_SECRET = "record-tunnel-token-secret"
     START_CLOUDFLARED_CONNECTOR = "start-cloudflared-connector"
+
+
+class GeneratedSecretPurpose(StrEnum):
+    """Closed purposes for generated runtime secrets recorded by operations."""
+
+    CLOUDFLARED_TUNNEL_TOKEN = "cloudflared-tunnel-token"
+
+
+class GeneratedSecretRecorder(Protocol):
+    """Boundary that accepts raw generated secrets and returns safe references."""
+
+    def record_generated_secret(
+        self,
+        *,
+        workspace_id: str,
+        purpose: GeneratedSecretPurpose,
+        source_run_id: str,
+        source_activity_id: str,
+        source_event_id: str,
+        secret_value: SecretValue,
+    ) -> SecretReference: ...
 
 
 @dataclass(frozen=True)
@@ -277,6 +306,134 @@ class CloudflareTunnelTokenDeliveryPlan:
             "secret_delivery": self.secret_delivery.descriptor(),
             "ordering": [step.value for step in self.ordering],
         }
+
+
+@dataclass(frozen=True)
+class GeneratedIngressSecretReference:
+    """Durable secret-reference evidence for a provider-generated ingress secret."""
+
+    workspace_id: str
+    purpose: GeneratedSecretPurpose
+    secret_ref: SecretReference
+    recorded_at: str
+    source_run_id: str
+    source_activity_id: str
+    source_event_id: str
+
+    def __post_init__(self) -> None:
+        _validate_identifier(self.workspace_id, "workspace_id")
+        if not isinstance(self.purpose, GeneratedSecretPurpose):
+            raise IngressAuthorityRegistrationError(
+                "generated secret purpose must be closed"
+            )
+        _require_secret_reference(self.secret_ref, "secret_ref")
+        _validate_identifier(self.recorded_at, "recorded_at")
+        _validate_identifier(self.source_run_id, "source_run_id")
+        _validate_identifier(self.source_activity_id, "source_activity_id")
+        _validate_identifier(self.source_event_id, "source_event_id")
+
+    def descriptor(self) -> dict[str, object]:
+        return {
+            "workspace_id": self.workspace_id,
+            "purpose": self.purpose.value,
+            "secret_ref": self.secret_ref.reference_id,
+            "recorded_at": self.recorded_at,
+            "source_run_id": self.source_run_id,
+            "source_activity_id": self.source_activity_id,
+            "source_event_id": self.source_event_id,
+        }
+
+
+class InMemoryGeneratedSecretRecorder:
+    """Development recorder until generated secrets move to a dedicated product."""
+
+    def __init__(self, reference_root: str = "secret://generated/ingress") -> None:
+        root = SecretReference(f"{reference_root}/root")
+        self._reference_root = "/".join((root.reference_id.rsplit("/", 1)[0],))
+        self._values: dict[SecretReference, SecretValue] = {}
+
+    def record_generated_secret(
+        self,
+        *,
+        workspace_id: str,
+        purpose: GeneratedSecretPurpose,
+        source_run_id: str,
+        source_activity_id: str,
+        source_event_id: str,
+        secret_value: SecretValue,
+    ) -> SecretReference:
+        _validate_identifier(workspace_id, "workspace_id")
+        if not isinstance(purpose, GeneratedSecretPurpose):
+            raise IngressAuthorityRegistrationError(
+                "generated secret purpose must be closed"
+            )
+        _validate_identifier(source_run_id, "source_run_id")
+        _validate_identifier(source_activity_id, "source_activity_id")
+        _validate_identifier(source_event_id, "source_event_id")
+        if not isinstance(secret_value, SecretValue):
+            raise IngressAuthorityRegistrationError(
+                "generated secret recorder requires SecretValue"
+            )
+        reference = SecretReference(
+            "/".join(
+                (
+                    self._reference_root,
+                    workspace_id,
+                    purpose.value,
+                    source_run_id,
+                    source_activity_id,
+                    source_event_id,
+                )
+            )
+        )
+        existing = self._values.get(reference)
+        if existing is not None and existing.reveal() != secret_value.reveal():
+            raise GeneratedSecretRecordingConflict(
+                "generated secret replacement requires explicit policy"
+            )
+        self._values[reference] = secret_value
+        return reference
+
+    def resolve_generated_secret(self, reference: SecretReference) -> SecretValue:
+        _require_secret_reference(reference, "reference")
+        try:
+            return self._values[reference]
+        except KeyError as error:
+            raise IngressAuthorityRegistrationError(
+                "generated secret reference was not found"
+            ) from error
+
+
+def record_generated_ingress_secret(
+    *,
+    recorder: GeneratedSecretRecorder,
+    workspace_id: str,
+    purpose: GeneratedSecretPurpose,
+    source_run_id: str,
+    source_activity_id: str,
+    source_event_id: str,
+    recorded_at: str,
+    secret_value: SecretValue,
+) -> GeneratedIngressSecretReference:
+    """Record a raw provider result and return durable reference-only evidence."""
+
+    secret_ref = recorder.record_generated_secret(
+        workspace_id=workspace_id,
+        purpose=purpose,
+        source_run_id=source_run_id,
+        source_activity_id=source_activity_id,
+        source_event_id=source_event_id,
+        secret_value=secret_value,
+    )
+    return GeneratedIngressSecretReference(
+        workspace_id=workspace_id,
+        purpose=purpose,
+        secret_ref=secret_ref,
+        recorded_at=recorded_at,
+        source_run_id=source_run_id,
+        source_activity_id=source_activity_id,
+        source_event_id=source_event_id,
+    )
 
 
 def cloudflare_ingress_teardown_plan(

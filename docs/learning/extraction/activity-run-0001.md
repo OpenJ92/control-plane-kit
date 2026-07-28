@@ -4547,3 +4547,56 @@ Handoff:
 - #1056 must deliver the generated token reference to the connector startup path
   without inferring behavior from product identity or
   `CPK_RUNTIME_INTERPRETERS`.
+
+## #1054 Generated Ingress Token Secret Recording
+
+#1054 defines the operations-owned boundary for provider-generated tunnel
+tokens. The Cloudflare interpreter may receive a raw token from provider IO, but
+operations must immediately convert that value into reference-only evidence:
+
+```text
+Cloudflare API effect result
+  -> SecretValue(<redacted>)
+    -> GeneratedSecretRecorder
+      -> SecretReference
+        -> GeneratedIngressSecretReference
+```
+
+The durable Postgres surface records only lineage and the opaque reference:
+
+```text
+cpk_generated_ingress_secret_references
+  workspace_id
+  purpose = cloudflared-tunnel-token
+  secret_ref
+  recorded_at
+  source_run_id / source_activity_id / source_event_id
+```
+
+This intentionally stays separate from `cpk_cloudflare_ingress_resources`.
+Cloudflare resource evidence answers “what public resource do we own and may
+delete?” Generated secret evidence answers “which secret reference was produced
+for this activity?” Keeping those records separate avoids making cleanup depend
+on secret delivery and avoids leaking secret-shaped state through resource read
+models.
+
+The current `InMemoryGeneratedSecretRecorder` is a development boundary, not a
+durable secret product. It accepts raw `SecretValue` instances and returns
+deterministic `secret://generated/...` references. The raw value never enters
+descriptors, graph data, runtime request descriptors, events, observations, read
+models, route responses, logs, or errors.
+
+Validation evidence:
+
+- `git diff --check` passed.
+- `./control-plane-kit-operations/test.sh` passed 182 tests, compileall, and
+  import.
+
+Handoff:
+
+- #1055 should use `GeneratedSecretRecorder` after Cloudflare allocation returns
+  a token and before connector startup is planned.
+- #1055/#1056 should persist `GeneratedIngressSecretReference` in the same short
+  operation transaction that records bounded allocation/delivery evidence.
+- A future secret-service product should replace the in-memory recorder without
+  changing the durable `SecretReference` evidence shape.
