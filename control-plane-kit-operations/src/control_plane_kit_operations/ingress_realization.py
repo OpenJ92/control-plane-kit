@@ -207,10 +207,13 @@ class IngressRealizationAdapter:
                 {
                     "provider_kind": authority.provider_kind.value,
                     "ingress_id": ingress.ingress_id,
+                    "runtime_id": resource.runtime_id,
                     "hostname": allocation.hostname,
                     "endpoint_url": allocation.endpoint_url,
+                    "tunnel_name": allocation.tunnel_name,
                     "tunnel_id": allocation.tunnel_id,
                     "dns_record_id": allocation.dns_record_id,
+                    "lifecycle": ingress.lifecycle.value,
                     "connector_material_recorded": True,
                 }
             )
