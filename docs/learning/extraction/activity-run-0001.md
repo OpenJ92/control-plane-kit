@@ -4893,3 +4893,49 @@ Handoff:
 - #1076 should update server-products coordinates to the merged #1075
   operations commit, republish the cpk-server variants if needed, and retry the
   `public-gateway-toggle` smoke through the real cpk-server workflow.
+
+## #1078 Cloudflare Allocation Postcondition Evidence
+
+#1078 tightened the public-ingress allocation postcondition without changing the
+provider behavior. Allocation success evidence now carries the same nonsecret
+identity fields as the durable owned-resource row:
+
+```text
+runtime_id
+tunnel_name
+tunnel_id
+dns_record_id
+hostname
+lifecycle
+```
+
+This gives later gateway-readiness and toggle acceptance code a bounded way to
+reason about the exact active Cloudflare epoch that was created, without
+reading secret material or relying on ad hoc log text.
+
+The boundary remains:
+
+```text
+operations:
+  records durable owned-resource truth and nonsecret postcondition evidence
+
+Cloudflare interpreter:
+  creates tunnel, DNS, and connector token at the IO boundary
+
+secret material:
+  remains referenced, not exposed in evidence/readback/logs
+```
+
+Validation evidence:
+
+- `git diff --check` passed.
+- `./control-plane-kit-operations/test.sh` passed 195 tests, compileall, and
+  import.
+
+Handoff:
+
+- #1079 should improve connector/public-readiness observation pacing so fast
+  non-ready HTTP responses do not exhaust the bounded wait loop before
+  Cloudflare has attached the connector.
+- #1080 should retry `public-gateway-toggle` after the #1078/#1079 fixes are
+  available in the published cpk-server image used by the smoke.

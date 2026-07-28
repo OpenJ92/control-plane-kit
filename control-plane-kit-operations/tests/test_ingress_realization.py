@@ -24,6 +24,7 @@ from control_plane_kit_core.planning import (
 from control_plane_kit_core.public_ingress import (
     IngressAuthorityReference,
     NamedPublicIngress,
+    PublicIngressLifecycle,
     PublicIngressTarget,
 )
 from control_plane_kit_core.secrets import SecretReference, SecretValue
@@ -228,6 +229,7 @@ class IngressRealizationAdapterTests(unittest.TestCase):
         descriptor = outcome.evidence.descriptor()
         self.assertEqual(descriptor["provider_kind"], "cloudflare")
         self.assertEqual(descriptor["ingress_id"], "gateway-001")
+        self.assertEqual(descriptor["runtime_id"], "docker-a")
         self.assertIs(descriptor["connector_material_recorded"], True)
         self.assertNotIn("secret://", repr(descriptor).lower())
         self.assertNotIn("eyj-cloudflare", repr(descriptor).lower())
@@ -249,6 +251,13 @@ class IngressRealizationAdapterTests(unittest.TestCase):
         self.assertEqual(resource.tunnel_id, "tunnel-001")
         self.assertEqual(resource.tunnel_name, "cpk-gateway-001-c0303ba7369e")
         self.assertEqual(resource.dns_record_id, "dns-001")
+        self.assertEqual(resource.hostname, "cpk-gateway-001.openj92.dev")
+        self.assertEqual(resource.lifecycle, PublicIngressLifecycle.EPHEMERAL)
+        self.assertEqual(descriptor["tunnel_id"], resource.tunnel_id)
+        self.assertEqual(descriptor["tunnel_name"], resource.tunnel_name)
+        self.assertEqual(descriptor["dns_record_id"], resource.dns_record_id)
+        self.assertEqual(descriptor["hostname"], resource.hostname)
+        self.assertEqual(descriptor["lifecycle"], resource.lifecycle.value)
         self.assertEqual(
             generated.secret_ref.reference_id,
             (
