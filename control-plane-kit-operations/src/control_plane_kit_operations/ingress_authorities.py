@@ -13,7 +13,7 @@ from control_plane_kit_core.public_ingress import (
     IngressAuthorityReference,
     PublicIngressLifecycle,
 )
-from control_plane_kit_core.secrets import SecretReference
+from control_plane_kit_core.secrets import SecretEnvironmentDelivery, SecretReference
 
 
 _IDENTIFIER = re.compile(r"^[a-z][a-z0-9._-]{0,127}$")
@@ -66,6 +66,14 @@ class CloudflareIngressTeardownActionKind(StrEnum):
     DELETE_DNS_RECORD = "delete-dns-record"
     DELETE_TUNNEL = "delete-tunnel"
     SKIP_RETAINED_OR_EXTERNAL = "skip-retained-or-external"
+
+
+class CloudflareTunnelTokenDeliveryStep(StrEnum):
+    """Closed ordering steps for generated tunnel-token delivery."""
+
+    ALLOCATE_NAMED_INGRESS = "allocate-named-ingress"
+    RECORD_TUNNEL_TOKEN_SECRET = "record-tunnel-token-secret"
+    START_CLOUDFLARED_CONNECTOR = "start-cloudflared-connector"
 
 
 @dataclass(frozen=True)
@@ -208,6 +216,44 @@ class CloudflareIngressTeardownPlan:
         }
 
 
+@dataclass(frozen=True)
+class CloudflareTunnelTokenDeliveryPlan:
+    """Secret-reference delivery plan for a generated cloudflared tunnel token."""
+
+    resource: CloudflareOwnedIngressResource
+    connector_node_id: str
+    secret_delivery: SecretEnvironmentDelivery
+    ordering: tuple[CloudflareTunnelTokenDeliveryStep, ...] = (
+        CloudflareTunnelTokenDeliveryStep.ALLOCATE_NAMED_INGRESS,
+        CloudflareTunnelTokenDeliveryStep.RECORD_TUNNEL_TOKEN_SECRET,
+        CloudflareTunnelTokenDeliveryStep.START_CLOUDFLARED_CONNECTOR,
+    )
+
+    def __post_init__(self) -> None:
+        _validate_identifier(self.connector_node_id, "connector_node_id")
+        if not isinstance(self.resource, CloudflareOwnedIngressResource):
+            raise IngressAuthorityRegistrationError(
+                "Cloudflare tunnel token delivery requires owned resource evidence"
+            )
+        _validate_tunnel_token_delivery(self.secret_delivery)
+        if self.ordering != (
+            CloudflareTunnelTokenDeliveryStep.ALLOCATE_NAMED_INGRESS,
+            CloudflareTunnelTokenDeliveryStep.RECORD_TUNNEL_TOKEN_SECRET,
+            CloudflareTunnelTokenDeliveryStep.START_CLOUDFLARED_CONNECTOR,
+        ):
+            raise IngressAuthorityRegistrationError(
+                "Cloudflare tunnel token delivery ordering is unsupported"
+            )
+
+    def descriptor(self) -> dict[str, object]:
+        return {
+            "resource": self.resource.descriptor(),
+            "connector_node_id": self.connector_node_id,
+            "secret_delivery": self.secret_delivery.descriptor(),
+            "ordering": [step.value for step in self.ordering],
+        }
+
+
 def cloudflare_ingress_teardown_plan(
     *,
     authority: CloudflareZoneIngressAuthority,
@@ -219,14 +265,7 @@ def cloudflare_ingress_teardown_plan(
         raise IngressAuthorityRegistrationError(
             "Cloudflare ingress teardown requires ownership evidence"
         )
-    if resource.zone_id != authority.zone_id:
-        raise IngressAuthorityRegistrationError(
-            "Cloudflare ingress ownership zone does not match authority"
-        )
-    if not authority.allows_hostname(resource.hostname):
-        raise IngressAuthorityRegistrationError(
-            "Cloudflare ingress ownership hostname is outside authority policy"
-        )
+    _validate_ingress_resource_against_authority(authority=authority, resource=resource)
     if not resource.tunnel_name.startswith("cpk-"):
         raise IngressAuthorityRegistrationError(
             "Cloudflare ingress tunnel ownership is ambiguous"
@@ -256,6 +295,81 @@ def cloudflare_ingress_teardown_plan(
             ),
         ),
     )
+
+
+def cloudflare_tunnel_token_delivery_plan(
+    *,
+    authority: CloudflareZoneIngressAuthority,
+    resource: CloudflareOwnedIngressResource,
+    connector_node_id: str,
+    tunnel_token_ref: SecretReference,
+) -> CloudflareTunnelTokenDeliveryPlan:
+    """Plan explicit delivery of a generated tunnel token to cloudflared."""
+
+    _validate_ingress_resource_against_authority(authority=authority, resource=resource)
+    return CloudflareTunnelTokenDeliveryPlan(
+        resource=resource,
+        connector_node_id=connector_node_id,
+        secret_delivery=SecretEnvironmentDelivery("TUNNEL_TOKEN", tunnel_token_ref),
+    )
+
+
+def require_cloudflared_tunnel_token_delivery(
+    deliveries: tuple[SecretEnvironmentDelivery, ...],
+) -> SecretEnvironmentDelivery:
+    """Return the explicit tunnel-token delivery or fail before connector start."""
+
+    if not isinstance(deliveries, tuple):
+        raise IngressAuthorityRegistrationError(
+            "cloudflared connector secret deliveries must be a tuple"
+        )
+    matches = tuple(
+        delivery
+        for delivery in deliveries
+        if isinstance(delivery, SecretEnvironmentDelivery)
+        and delivery.environment_name == "TUNNEL_TOKEN"
+    )
+    if len(matches) != 1:
+        raise IngressAuthorityRegistrationError(
+            "cloudflared connector requires exactly one TUNNEL_TOKEN delivery"
+        )
+    _validate_tunnel_token_delivery(matches[0])
+    return matches[0]
+
+
+def _validate_ingress_resource_against_authority(
+    *,
+    authority: CloudflareZoneIngressAuthority,
+    resource: CloudflareOwnedIngressResource,
+) -> None:
+    if not isinstance(authority, CloudflareZoneIngressAuthority):
+        raise IngressAuthorityRegistrationError(
+            "Cloudflare ingress authority is required"
+        )
+    if not isinstance(resource, CloudflareOwnedIngressResource):
+        raise IngressAuthorityRegistrationError(
+            "Cloudflare ingress owned resource evidence is required"
+        )
+    if resource.zone_id != authority.zone_id:
+        raise IngressAuthorityRegistrationError(
+            "Cloudflare ingress ownership zone does not match authority"
+        )
+    if not authority.allows_hostname(resource.hostname):
+        raise IngressAuthorityRegistrationError(
+            "Cloudflare ingress ownership hostname is outside authority policy"
+        )
+
+
+def _validate_tunnel_token_delivery(delivery: object) -> None:
+    if not isinstance(delivery, SecretEnvironmentDelivery):
+        raise IngressAuthorityRegistrationError(
+            "cloudflared tunnel token delivery must use SecretEnvironmentDelivery"
+        )
+    if delivery.environment_name != "TUNNEL_TOKEN":
+        raise IngressAuthorityRegistrationError(
+            "cloudflared tunnel token delivery must target TUNNEL_TOKEN"
+        )
+    _require_secret_reference(delivery.reference, "tunnel_token_ref")
 
 
 class CloudflareZoneIngressAuthorityCodec:

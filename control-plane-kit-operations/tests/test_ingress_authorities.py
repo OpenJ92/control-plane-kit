@@ -14,6 +14,7 @@ from control_plane_kit_core.secrets import SecretReference
 from control_plane_kit_operations.ingress_authorities import (
     CloudflareIngressTeardownActionKind,
     CloudflareOwnedIngressResource,
+    CloudflareTunnelTokenDeliveryStep,
     CloudflareZoneIngressAuthority,
     IngressAuthorityAuthorizationDenied,
     IngressAuthorityNotFound,
@@ -24,6 +25,8 @@ from control_plane_kit_operations.ingress_authorities import (
     RegisteredIngressAuthorityStatus,
     RevokeIngressAuthorityCommand,
     cloudflare_ingress_teardown_plan,
+    cloudflare_tunnel_token_delivery_plan,
+    require_cloudflared_tunnel_token_delivery,
 )
 from control_plane_kit_operations.postgres import (
     PostgresStoreBundle,
@@ -152,6 +155,88 @@ class IngressAuthorityValueTests(unittest.TestCase):
             cloudflare_ingress_teardown_plan(
                 authority=authority,
                 resource=self.cloudflare_resource(tunnel_name="auth-potteryfactory"),
+            )
+
+    def test_cloudflare_tunnel_token_delivery_is_secret_reference_only(self) -> None:
+        plan = cloudflare_tunnel_token_delivery_plan(
+            authority=self.cloudflare_authority(),
+            resource=self.cloudflare_resource(),
+            connector_node_id="cloudflared-001",
+            tunnel_token_ref=SecretReference(
+                "secret://cloudflare/openj92/cpk-gateway-001-tunnel-token"
+            ),
+        )
+
+        descriptor = plan.descriptor()
+
+        self.assertEqual(descriptor["connector_node_id"], "cloudflared-001")
+        self.assertEqual(
+            descriptor["secret_delivery"],
+            {
+                "kind": "environment",
+                "environment_name": "TUNNEL_TOKEN",
+                "reference_id": (
+                    "secret://cloudflare/openj92/cpk-gateway-001-tunnel-token"
+                ),
+            },
+        )
+        self.assertEqual(
+            tuple(plan.ordering),
+            (
+                CloudflareTunnelTokenDeliveryStep.ALLOCATE_NAMED_INGRESS,
+                CloudflareTunnelTokenDeliveryStep.RECORD_TUNNEL_TOKEN_SECRET,
+                CloudflareTunnelTokenDeliveryStep.START_CLOUDFLARED_CONNECTOR,
+            ),
+        )
+        self.assertNotIn("eyj", repr(plan).lower())
+        self.assertNotIn("bearer", repr(plan).lower())
+        self.assertNotIn("cf_api_token", repr(plan).lower())
+
+    def test_cloudflared_connector_requires_explicit_tunnel_token_delivery(
+        self,
+    ) -> None:
+        plan = cloudflare_tunnel_token_delivery_plan(
+            authority=self.cloudflare_authority(),
+            resource=self.cloudflare_resource(),
+            connector_node_id="cloudflared-001",
+            tunnel_token_ref=SecretReference(
+                "secret://cloudflare/openj92/cpk-gateway-001-tunnel-token"
+            ),
+        )
+
+        self.assertEqual(
+            require_cloudflared_tunnel_token_delivery((plan.secret_delivery,)),
+            plan.secret_delivery,
+        )
+        with self.assertRaisesRegex(ValueError, "requires exactly one"):
+            require_cloudflared_tunnel_token_delivery(())
+        with self.assertRaisesRegex(ValueError, "requires exactly one"):
+            require_cloudflared_tunnel_token_delivery(
+                (plan.secret_delivery, plan.secret_delivery)
+            )
+
+    def test_cloudflare_tunnel_token_delivery_fails_closed_on_wrong_authority(
+        self,
+    ) -> None:
+        authority = self.cloudflare_authority()
+
+        with self.assertRaisesRegex(ValueError, "zone"):
+            cloudflare_tunnel_token_delivery_plan(
+                authority=authority,
+                resource=self.cloudflare_resource(zone_id="zone-other"),
+                connector_node_id="cloudflared-001",
+                tunnel_token_ref=SecretReference(
+                    "secret://cloudflare/openj92/cpk-gateway-001-tunnel-token"
+                ),
+            )
+        with self.assertRaisesRegex(ValueError, "hostname"):
+            cloudflare_tunnel_token_delivery_plan(
+                authority=authority,
+                resource=self.cloudflare_resource(hostname="gateway-001.cpk.openj92.dev"),
+                connector_node_id="cloudflared-001",
+                tunnel_token_ref=SecretReference(
+                    "secret://cloudflare/openj92/cpk-gateway-001-tunnel-token"
+                ),
             )
 
     def cloudflare_authority(self) -> CloudflareZoneIngressAuthority:
