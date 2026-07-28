@@ -217,8 +217,9 @@ class IngressAuthorityValueTests(unittest.TestCase):
         self.assertEqual(
             evidence.secret_ref.reference_id,
             (
-                "secret://generated/ingress/workspace-a/"
-                "cloudflared-tunnel-token/run-001/activity-001/event-001"
+                "secret://generated/ingress/b64-d29ya3NwYWNlLWE/"
+                "b64-Y2xvdWRmbGFyZWQtdHVubmVsLXRva2Vu/b64-cnVuLTAwMQ/"
+                "b64-YWN0aXZpdHktMDAx/b64-ZXZlbnQtMDAx"
             ),
         )
         self.assertEqual(
@@ -622,13 +623,48 @@ class IngressAuthorityStoreTests(unittest.TestCase):
         self.assertEqual(
             descriptor["secret_ref"],
             (
-                "secret://generated/ingress/workspace-a/"
-                "cloudflared-tunnel-token/run-001/activity-001/event-001"
+                "secret://generated/ingress/b64-d29ya3NwYWNlLWE/"
+                "b64-Y2xvdWRmbGFyZWQtdHVubmVsLXRva2Vu/b64-cnVuLTAwMQ/"
+                "b64-YWN0aXZpdHktMDAx/b64-ZXZlbnQtMDAx"
             ),
         )
         self.assertNotIn("eyj-cloudflare", repr(descriptor).lower())
         self.assertNotIn("bearer-value", repr(descriptor).lower())
-        self.assertNotIn("cf_api_token", repr(descriptor).lower())
+
+    def test_generated_ingress_secret_reference_encodes_activity_ids(
+        self,
+    ) -> None:
+        recorder = InMemoryGeneratedSecretRecorder()
+
+        evidence = record_generated_ingress_secret(
+            recorder=recorder,
+            workspace_id="workspace-a",
+            purpose=GeneratedSecretPurpose.CLOUDFLARED_TUNNEL_TOKEN,
+            source_run_id="run-001",
+            source_activity_id="allocate-public-ingress:9800f8498edba0a5",
+            source_event_id="event-001",
+            recorded_at="2026-07-28T07:00:00Z",
+            secret_value=SecretValue("eyJ-cloudflare-tunnel-token-bearer-value"),
+        )
+
+        self.assertEqual(
+            evidence.secret_ref.reference_id,
+            (
+                "secret://generated/ingress/b64-d29ya3NwYWNlLWE/"
+                "b64-Y2xvdWRmbGFyZWQtdHVubmVsLXRva2Vu/b64-cnVuLTAwMQ/"
+                "b64-YWxsb2NhdGUtcHVibGljLWluZ3Jlc3M6OTgwMGY4NDk4ZWRiYTBhNQ/"
+                "b64-ZXZlbnQtMDAx"
+            ),
+        )
+        self.assertEqual(
+            evidence.descriptor()["source_activity_id"],
+            "allocate-public-ingress:9800f8498edba0a5",
+        )
+        self.assertEqual(
+            recorder.resolve_generated_secret(evidence.secret_ref).reveal(),
+            "eyJ-cloudflare-tunnel-token-bearer-value",
+        )
+        self.assertNotIn("cf_api_token", repr(evidence.descriptor()).lower())
 
     def read_service(self) -> InstanceReadService:
         stores = PostgresStoreBundle(self.connection)
