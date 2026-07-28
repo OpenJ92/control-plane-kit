@@ -76,6 +76,22 @@ class ReadProjectionContractTests(unittest.TestCase):
                     False,
                 ),
                 (
+                    "read.ingress-authorities",
+                    ReadProjectionKind.INGRESS_AUTHORITIES,
+                    "IngressAuthorityCollectionReadResponse",
+                    ReadProjectionPolicy.REDACTED_INGRESS_AUTHORITY,
+                    True,
+                    False,
+                ),
+                (
+                    "read.ingress-authority-detail",
+                    ReadProjectionKind.INGRESS_AUTHORITY_DETAIL,
+                    "IngressAuthorityDetailReadResponse",
+                    ReadProjectionPolicy.REDACTED_INGRESS_AUTHORITY,
+                    True,
+                    False,
+                ),
+                (
                     "read.observed-state",
                     ReadProjectionKind.OBSERVED_STATE,
                     "ObservedStateReadResponse",

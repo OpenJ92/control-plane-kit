@@ -26,6 +26,10 @@ from control_plane_kit_core.probe_intents import (
 from control_plane_kit_core.types import RuntimeKind
 from control_plane_kit_core.types import WorkspaceLifecycle
 from control_plane_kit_operations.records import ObservationFreshness, ObservationStatus
+from control_plane_kit_operations.ingress_authorities import (
+    IngressAuthorityProviderKind,
+    RegisteredIngressAuthorityStatus,
+)
 from control_plane_kit_operations.runtime_authorities import (
     RegisteredRuntimeAuthorityDeliveryStatus,
     RegisteredRuntimeAuthorityStatus,
@@ -210,6 +214,34 @@ CREATE TABLE IF NOT EXISTS cpk_runtime_authority_deliveries (
 
 CREATE UNIQUE INDEX IF NOT EXISTS cpk_runtime_authority_deliveries_active_ref
   ON cpk_runtime_authority_deliveries (workspace_id, authority_ref)
+  WHERE status = 'active';
+
+CREATE TABLE IF NOT EXISTS cpk_ingress_authorities (
+  registration_id text PRIMARY KEY,
+  workspace_id text NOT NULL REFERENCES cpk_workspaces(workspace_id),
+  authority_ref text NOT NULL,
+  provider_kind text NOT NULL,
+  authority jsonb NOT NULL,
+  credential_references jsonb NOT NULL DEFAULT '{}'::jsonb,
+  allowed_hostname_pattern text NOT NULL,
+  admitted_by text NOT NULL,
+  admitted_at text NOT NULL,
+  status text NOT NULL,
+  metadata jsonb NOT NULL DEFAULT '{}'::jsonb,
+  CONSTRAINT cpk_ingress_authorities_status_check
+    CHECK (status IN ({{ registered_ingress_authority_statuses | sql_values }})),
+  CONSTRAINT cpk_ingress_authorities_provider_kind_check
+    CHECK (provider_kind IN ({{ ingress_authority_provider_kinds | sql_values }})),
+  CONSTRAINT cpk_ingress_authorities_reference_check
+    CHECK (authority_ref ~ '^[a-z][a-z0-9._-]{0,127}$'),
+  CONSTRAINT cpk_ingress_authorities_authority_shape_check
+    CHECK (jsonb_typeof(authority) = 'object'),
+  CONSTRAINT cpk_ingress_authorities_credential_shape_check
+    CHECK (jsonb_typeof(credential_references) = 'object')
+);
+
+CREATE UNIQUE INDEX IF NOT EXISTS cpk_ingress_authorities_active_ref
+  ON cpk_ingress_authorities (workspace_id, authority_ref)
   WHERE status = 'active';
 
 CREATE TABLE IF NOT EXISTS cpk_operation_sessions (
@@ -518,6 +550,8 @@ POSTGRES_SCHEMA = _SQL_ENVIRONMENT.from_string(_POSTGRES_SCHEMA_TEMPLATE).render
     registered_runtime_authority_delivery_statuses=tuple(
         RegisteredRuntimeAuthorityDeliveryStatus
     ),
+    registered_ingress_authority_statuses=tuple(RegisteredIngressAuthorityStatus),
+    ingress_authority_provider_kinds=tuple(IngressAuthorityProviderKind),
     risk_levels=tuple(RiskLevel),
     runtime_authority_kinds=tuple(RuntimeAuthorityKind),
     runtime_kinds=tuple(RuntimeKind),

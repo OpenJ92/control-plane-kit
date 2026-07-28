@@ -8,6 +8,7 @@ from typing import Any, Callable, Mapping, Protocol
 from control_plane_kit_core.operations import ControlPlaneServiceRole
 from control_plane_kit_core.operations.commands import OperatorCommandKind
 from control_plane_kit_core.policies import PolicyScope
+from control_plane_kit_core.public_ingress import IngressAuthorityReference
 from control_plane_kit_core.runtime_authority import (
     RuntimeAuthorityAccessDeliveryCodec,
     RuntimeAuthorityReference,
@@ -33,6 +34,15 @@ from control_plane_kit_operations.approvals import (
     RequestApproval,
 )
 from control_plane_kit_operations.coordinator import ExecuteActivityRun, ExecutionCoordinator
+from control_plane_kit_operations.ingress_authorities import (
+    CloudflareZoneIngressAuthority,
+    IngressAuthorityAuthorizationDenied,
+    IngressAuthorityRegistrationError,
+    IngressAuthorityRegistrationService,
+    RegisterIngressAuthorityCommand,
+    RegisteredIngressAuthority,
+    RevokeIngressAuthorityCommand,
+)
 from control_plane_kit_operations.lifecycle import (
     ClaimAndOpenActivityRun,
     ExecutionWorkerAuthority,
@@ -165,6 +175,7 @@ class CpkServerReadService:
                 "runtime_authority_delivery_store": (
                     stores.runtime_authority_deliveries
                 ),
+                "ingress_authority_store": stores.ingress_authorities,
             }
             if self._clock is not None:
                 kwargs["clock"] = self._clock
@@ -186,6 +197,7 @@ class CpkServerPlanningService:
         products: ProductRegistrationService | None = None,
         image_pull_authorities: ImagePullAuthorityRegistrationService | None = None,
         runtime_authorities: RuntimeAuthorityRegistrationService | None = None,
+        ingress_authorities: IngressAuthorityRegistrationService | None = None,
         desired_graphs: DesiredGraphCommandService | None = None,
     ) -> None:
         self._service = service
@@ -193,6 +205,7 @@ class CpkServerPlanningService:
         self._products = products
         self._image_pull_authorities = image_pull_authorities
         self._runtime_authorities = runtime_authorities
+        self._ingress_authorities = ingress_authorities
         self._desired_graphs = desired_graphs
 
     def handle(self, request: CpkServerRouteRequest) -> Mapping[str, object]:
@@ -345,6 +358,49 @@ class CpkServerPlanningService:
             except (ValueError, RuntimeAuthorityRegistrationError) as error:
                 raise CpkServerApplicationError(400, str(error)) from error
             return _registered_runtime_authority_delivery_descriptor(result)
+        if request.route_id == "command.ingress-authority.register":
+            if self._ingress_authorities is None:
+                raise _service_not_configured(request)
+            payload = _arguments(request)
+            _text(payload, "idempotency_key")
+            try:
+                result = self._ingress_authorities.register(
+                    RegisterIngressAuthorityCommand(
+                        workspace_id=_workspace_id(payload),
+                        authority_ref=IngressAuthorityReference(
+                            _text(payload, "authority_ref")
+                        ),
+                        authority=_ingress_authority(payload),
+                        admitted_by=_text(payload, "actor_id"),
+                        admitted_at=_text(payload, "admitted_at"),
+                        actor_scopes=_scopes(payload),
+                    )
+                )
+            except IngressAuthorityAuthorizationDenied as error:
+                raise CpkServerApplicationError(403, str(error)) from error
+            except (ValueError, IngressAuthorityRegistrationError) as error:
+                raise CpkServerApplicationError(400, str(error)) from error
+            return _registered_ingress_authority_descriptor(result)
+        if request.route_id == "command.ingress-authority.revoke":
+            if self._ingress_authorities is None:
+                raise _service_not_configured(request)
+            payload = _arguments(request)
+            _text(payload, "idempotency_key")
+            try:
+                result = self._ingress_authorities.revoke(
+                    RevokeIngressAuthorityCommand(
+                        workspace_id=_workspace_id(payload),
+                        authority_ref=IngressAuthorityReference(
+                            _path_or_payload(payload, "authority_ref", "authority_ref")
+                        ),
+                        actor_scopes=_scopes(payload),
+                    )
+                )
+            except IngressAuthorityAuthorizationDenied as error:
+                raise CpkServerApplicationError(403, str(error)) from error
+            except (ValueError, IngressAuthorityRegistrationError) as error:
+                raise CpkServerApplicationError(400, str(error)) from error
+            return _registered_ingress_authority_descriptor(result)
         if request.route_id == "command.desired-graph.set":
             if self._desired_graphs is None:
                 raise _service_not_configured(request)
@@ -605,6 +661,7 @@ def cpk_server_services(
     products: ProductRegistrationService | None = None,
     image_pull_authorities: ImagePullAuthorityRegistrationService | None = None,
     runtime_authorities: RuntimeAuthorityRegistrationService | None = None,
+    ingress_authorities: IngressAuthorityRegistrationService | None = None,
     desired_graphs: DesiredGraphCommandService | None = None,
     operations: OperationCommandService | None = None,
     advancement: CurrentGraphAdvancementCommandService | None = None,
@@ -627,6 +684,7 @@ def cpk_server_services(
             products=products,
             image_pull_authorities=image_pull_authorities,
             runtime_authorities=runtime_authorities,
+            ingress_authorities=ingress_authorities,
             desired_graphs=desired_graphs,
         ),
         ControlPlaneServiceRole.APPROVAL: CpkServerApprovalService(approval),
@@ -723,6 +781,17 @@ def _read_model(service: InstanceReadService, request: CpkServerRouteRequest) ->
         return service.runtime_authority_delivery_detail(
             _workspace_id(args),
             RuntimeAuthorityReference(
+                _path_or_payload(args, "authority_ref", "authority_ref")
+            ),
+        )
+    if route_id == "read.ingress-authorities":
+        _require_scope(args, PolicyScope.INGRESS_AUTHORITY_READ)
+        return service.ingress_authorities(_workspace_id(args))
+    if route_id == "read.ingress-authority-detail":
+        _require_scope(args, PolicyScope.INGRESS_AUTHORITY_READ)
+        return service.ingress_authority_detail(
+            _workspace_id(args),
+            IngressAuthorityReference(
                 _path_or_payload(args, "authority_ref", "authority_ref")
             ),
         )
@@ -842,6 +911,23 @@ def _runtime_authority(values: Mapping[str, object]) -> object:
     raise CpkServerApplicationError(400, "unsupported runtime authority")
 
 
+def _ingress_authority(values: Mapping[str, object]) -> object:
+    raw = _mapping(values, "authority")
+    provider_kind = _text(raw, "provider_kind")
+    if provider_kind == "cloudflare":
+        try:
+            return CloudflareZoneIngressAuthority(
+                account_id=_text(raw, "account_id"),
+                zone_id=_text(raw, "zone_id"),
+                zone_name=_text(raw, "zone_name"),
+                api_token_ref=SecretReference(_text(raw, "api_token_ref")),
+                allowed_hostname_pattern=_text(raw, "allowed_hostname_pattern"),
+            )
+        except (TypeError, ValueError) as error:
+            raise CpkServerApplicationError(400, str(error)) from error
+    raise CpkServerApplicationError(400, "unsupported ingress authority provider")
+
+
 def _worker_authority(values: Mapping[str, object]) -> ExecutionWorkerAuthority:
     return ExecutionWorkerAuthority(
         worker_id=_text(values, "worker_id"),
@@ -901,6 +987,12 @@ def _registered_runtime_authority_delivery_descriptor(
     return value.descriptor()
 
 
+def _registered_ingress_authority_descriptor(
+    value: RegisteredIngressAuthority,
+) -> dict[str, object]:
+    return value.descriptor()
+
+
 def _registered_product_descriptor(value: Any) -> dict[str, object]:
     return {
         "registration_id": value.registration_id,
@@ -923,6 +1015,7 @@ def _read_error_status(error: ReadModelError) -> int:
             "missing plan",
             "missing runtime authority",
             "missing runtime authority delivery",
+            "missing ingress authority",
         )
     ):
         return 404

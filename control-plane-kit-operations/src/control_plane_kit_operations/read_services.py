@@ -13,6 +13,7 @@ from control_plane_kit_core.planning import (
     RiskLevel,
     plan_recovery_transition,
 )
+from control_plane_kit_core.public_ingress import IngressAuthorityReference
 from control_plane_kit_core.runtime_authority import RuntimeAuthorityReference
 from control_plane_kit_core.topology import (
     DEFAULT_GRAPH_CODEC,
@@ -36,6 +37,7 @@ from control_plane_kit_operations.records import (
     WorkspaceRecord,
 )
 from control_plane_kit_operations.runtime_authorities import RuntimeAuthorityNotFound
+from control_plane_kit_operations.ingress_authorities import IngressAuthorityNotFound
 
 _REDACTED = "<redacted>"
 _SECRET_MARKERS = ("secret", "token", "password", "private_key", "credential", "api_key")
@@ -82,6 +84,11 @@ class RuntimeAuthorityStore(Protocol):
 
 class RuntimeAuthorityDeliveryStore(Protocol):
     def get(self, workspace_id: str, authority_ref: RuntimeAuthorityReference) -> object: ...
+    def list_active(self, workspace_id: str) -> tuple[object, ...]: ...
+
+
+class IngressAuthorityStore(Protocol):
+    def get(self, workspace_id: str, authority_ref: IngressAuthorityReference) -> object: ...
     def list_active(self, workspace_id: str) -> tuple[object, ...]: ...
 
 
@@ -222,6 +229,18 @@ class RuntimeAuthorityCollectionReadModel:
 
 
 @dataclass(frozen=True)
+class IngressAuthorityCollectionReadModel:
+    workspace_id: str
+    items: tuple[Mapping[str, object], ...]
+
+    def descriptor(self) -> dict[str, object]:
+        return {
+            "workspace_id": self.workspace_id,
+            "items": [dict(item) for item in self.items],
+        }
+
+
+@dataclass(frozen=True)
 class ControlSurfaceReadModel:
     workspace_id: str
     pointer: str
@@ -274,6 +293,7 @@ class InstanceReadService:
         observed_state_store: ObservedStateStore | None = None,
         runtime_authority_store: RuntimeAuthorityStore | None = None,
         runtime_authority_delivery_store: RuntimeAuthorityDeliveryStore | None = None,
+        ingress_authority_store: IngressAuthorityStore | None = None,
         graph_codec: GraphDescriptorCodec = DEFAULT_GRAPH_CODEC,
         clock=lambda: datetime.now(timezone.utc),
         observation_freshness: ObservationFreshnessPolicy = ObservationFreshnessPolicy(),
@@ -285,6 +305,7 @@ class InstanceReadService:
         self._observed_state_store = observed_state_store
         self._runtime_authority_store = runtime_authority_store
         self._runtime_authority_delivery_store = runtime_authority_delivery_store
+        self._ingress_authority_store = ingress_authority_store
         self._graph_codec = graph_codec
         self._clock = clock
         self._observation_freshness = observation_freshness
@@ -575,6 +596,41 @@ class InstanceReadService:
             },
         )
 
+    def ingress_authorities(
+        self,
+        workspace_id: str,
+    ) -> IngressAuthorityCollectionReadModel:
+        self._workspace(workspace_id)
+        if self._ingress_authority_store is None:
+            raise ReadModelError("ingress authority store is not configured")
+        return IngressAuthorityCollectionReadModel(
+            workspace_id=workspace_id,
+            items=tuple(
+                _redacted_ingress_authority(value)
+                for value in self._ingress_authority_store.list_active(workspace_id)
+            ),
+        )
+
+    def ingress_authority_detail(
+        self,
+        workspace_id: str,
+        authority_ref: IngressAuthorityReference,
+    ) -> FocusedDetailReadModel:
+        self._workspace(workspace_id)
+        if self._ingress_authority_store is None:
+            raise ReadModelError("ingress authority store is not configured")
+        try:
+            authority = self._ingress_authority_store.get(workspace_id, authority_ref)
+        except (KeyError, IngressAuthorityNotFound) as exc:
+            raise ReadModelError(
+                f"missing ingress authority {authority_ref.reference_id!r}"
+            ) from exc
+        return FocusedDetailReadModel(
+            workspace_id=workspace_id,
+            kind="ingress-authority-detail",
+            payload={"ingress_authority": _redacted_ingress_authority(authority)},
+        )
+
     def control_surface(
         self,
         workspace_id: str,
@@ -857,6 +913,14 @@ def _redacted_runtime_authority(value: object) -> Mapping[str, object]:
         raise ReadModelError("runtime authority record cannot be projected")
     descriptor = _mapping(descriptor_method())
     return _redact_descriptor_value("runtime_authority", descriptor)
+
+
+def _redacted_ingress_authority(value: object) -> Mapping[str, object]:
+    descriptor_method = getattr(value, "descriptor", None)
+    if not callable(descriptor_method):
+        raise ReadModelError("ingress authority record cannot be projected")
+    descriptor = _mapping(descriptor_method())
+    return _redact_descriptor_value("ingress_authority", descriptor)
 
 
 def _redacted_runtime_authority_delivery(value: object) -> Mapping[str, object]:

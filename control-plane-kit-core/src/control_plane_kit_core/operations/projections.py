@@ -33,6 +33,8 @@ class ReadProjectionKind(StrEnum):
     RUNTIME_AUTHORITY_DETAIL = "runtime-authority-detail"
     RUNTIME_AUTHORITY_DELIVERIES = "runtime-authority-deliveries"
     RUNTIME_AUTHORITY_DELIVERY_DETAIL = "runtime-authority-delivery-detail"
+    INGRESS_AUTHORITIES = "ingress-authorities"
+    INGRESS_AUTHORITY_DETAIL = "ingress-authority-detail"
 
 
 class ReadProjectionPolicy(StrEnum):
@@ -46,6 +48,7 @@ class ReadProjectionPolicy(StrEnum):
     OBSERVED_STATE_EVIDENCE = "observed-state-evidence"
     REDACTED_RUNTIME_AUTHORITY = "redacted-runtime-authority"
     REDACTED_RUNTIME_AUTHORITY_DELIVERY = "redacted-runtime-authority-delivery"
+    REDACTED_INGRESS_AUTHORITY = "redacted-ingress-authority"
 
 
 @dataclass(frozen=True)
@@ -298,6 +301,18 @@ _CANONICAL_PROJECTIONS = (
         ReadProjectionKind.DESIRED_GRAPH,
         "GraphReadResponse",
         ReadProjectionPolicy.REDACTED_GRAPH_DESCRIPTOR,
+    ),
+    _ProjectionDefinition(
+        "read.ingress-authorities",
+        ReadProjectionKind.INGRESS_AUTHORITIES,
+        "IngressAuthorityCollectionReadResponse",
+        ReadProjectionPolicy.REDACTED_INGRESS_AUTHORITY,
+    ),
+    _ProjectionDefinition(
+        "read.ingress-authority-detail",
+        ReadProjectionKind.INGRESS_AUTHORITY_DETAIL,
+        "IngressAuthorityDetailReadResponse",
+        ReadProjectionPolicy.REDACTED_INGRESS_AUTHORITY,
     ),
     _ProjectionDefinition(
         "read.observed-state",

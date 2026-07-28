@@ -11,6 +11,7 @@ import psycopg
 from control_plane_kit_core.operations import ControlPlaneServiceRole
 from control_plane_kit_core.planning import ActivityPlan
 from control_plane_kit_core.policies import PolicyScope
+from control_plane_kit_core.public_ingress import IngressAuthorityReference
 from control_plane_kit_core.algebra import (
     BlockSockets,
     DeploymentTopology,
@@ -47,6 +48,9 @@ from control_plane_kit_operations.coordinator import (
     ExecutionCoordinator,
 )
 from control_plane_kit_operations.lifecycle import RunLifecycleCommandService
+from control_plane_kit_operations.ingress_authorities import (
+    IngressAuthorityRegistrationService,
+)
 from control_plane_kit_operations.planning import (
     ActivityPlanningCommandService,
     DesiredGraphCommandService,
@@ -393,6 +397,142 @@ class CpkServerOperationsAdapterTests(unittest.TestCase):
                 unit_of_work.stores.activity_history.get_session("session-a").workspace_id,
                 "workspace-a",
             )
+
+    def test_ingress_authority_routes_share_operations_boundary_and_scopes(self) -> None:
+        self.seed_workspace()
+        planning = CpkServerPlanningService(
+            RecordingService(),
+            ingress_authorities=IngressAuthorityRegistrationService(self.unit_of_work),
+        )
+        reads = CpkServerReadService(self.unit_of_work)
+        authority_payload = {
+            "authority_ref": "openj92-public-ingress",
+            "authority": {
+                "provider_kind": "cloudflare",
+                "account_id": "account-openj92",
+                "zone_id": "zone-openj92",
+                "zone_name": "openj92.dev",
+                "api_token_ref": "secret://cloudflare/openj92/api-token",
+                "allowed_hostname_pattern": "cpk-gateway-*.openj92.dev",
+            },
+            "actor_id": "operator-a",
+            "admitted_at": "2026-07-27T22:50:00Z",
+            "idempotency_key": "ingress-authority-a",
+            "actor_scopes": [PolicyScope.PLAN_EXECUTE.value],
+        }
+
+        with self.assertRaises(CpkServerApplicationError) as denied:
+            planning.handle(
+                RouteRequest(
+                    surface="http",
+                    route_id="command.ingress-authority.register",
+                    service_role=ControlPlaneServiceRole.PLANNING,
+                    path_parameters={"workspace_id": "workspace-a"},
+                    payload=authority_payload,
+                )
+            )
+        self.assertEqual(denied.exception.status, 403)
+
+        registered = planning.handle(
+            RouteRequest(
+                surface="mcp",
+                route_id="command.ingress-authority.register",
+                service_role=ControlPlaneServiceRole.PLANNING,
+                path_parameters={"workspace_id": "workspace-a"},
+                payload={
+                    **authority_payload,
+                    "actor_scopes": [PolicyScope.INGRESS_AUTHORITY_REGISTER.value],
+                },
+            )
+        )
+        self.assertEqual(registered["authority_ref"], "openj92-public-ingress")
+        self.assertEqual(registered["provider_kind"], "cloudflare")
+        self.assertNotIn("cf_api_token", repr(registered).lower())
+        self.assertNotIn("bearer", repr(registered).lower())
+
+        with self.assertRaises(CpkServerApplicationError) as read_denied:
+            reads.handle(
+                RouteRequest(
+                    surface="http",
+                    route_id="read.ingress-authorities",
+                    service_role=ControlPlaneServiceRole.READS,
+                    path_parameters={"workspace_id": "workspace-a"},
+                    payload={"actor_scopes": [PolicyScope.PLAN_EXECUTE.value]},
+                )
+            )
+        self.assertEqual(read_denied.exception.status, 403)
+
+        listed = reads.handle(
+            RouteRequest(
+                surface="http",
+                route_id="read.ingress-authorities",
+                service_role=ControlPlaneServiceRole.READS,
+                path_parameters={"workspace_id": "workspace-a"},
+                payload={"actor_scopes": [PolicyScope.INGRESS_AUTHORITY_READ.value]},
+            )
+        )
+        detail = reads.handle(
+            RouteRequest(
+                surface="mcp",
+                route_id="read.ingress-authority-detail",
+                service_role=ControlPlaneServiceRole.READS,
+                path_parameters={},
+                payload={
+                    "workspace_id": "workspace-a",
+                    "authority_ref": "openj92-public-ingress",
+                    "actor_scopes": [PolicyScope.INGRESS_AUTHORITY_READ.value],
+                },
+            )
+        )
+
+        self.assertEqual(listed["items"][0]["authority_ref"], "openj92-public-ingress")
+        self.assertEqual(
+            detail["ingress_authority"]["registration_id"],
+            registered["registration_id"],
+        )
+
+        with self.unit_of_work() as unit_of_work:
+            selected = unit_of_work.stores.ingress_authorities.require_active_for_hostname(
+                "workspace-a",
+                IngressAuthorityReference("openj92-public-ingress"),
+                "cpk-gateway-001.openj92.dev",
+            )
+            self.assertEqual(selected.registration_id, registered["registration_id"])
+
+        with self.assertRaises(CpkServerApplicationError) as revoke_denied:
+            planning.handle(
+                RouteRequest(
+                    surface="http",
+                    route_id="command.ingress-authority.revoke",
+                    service_role=ControlPlaneServiceRole.PLANNING,
+                    path_parameters={
+                        "workspace_id": "workspace-a",
+                        "authority_ref": "openj92-public-ingress",
+                    },
+                    payload={
+                        "idempotency_key": "revoke-ingress-a",
+                        "actor_scopes": [PolicyScope.PLAN_EXECUTE.value],
+                    },
+                )
+            )
+        self.assertEqual(revoke_denied.exception.status, 403)
+
+        revoked = planning.handle(
+            RouteRequest(
+                surface="mcp",
+                route_id="command.ingress-authority.revoke",
+                service_role=ControlPlaneServiceRole.PLANNING,
+                path_parameters={
+                    "workspace_id": "workspace-a",
+                    "authority_ref": "openj92-public-ingress",
+                },
+                payload={
+                    "idempotency_key": "revoke-ingress-a",
+                    "actor_scopes": [PolicyScope.INGRESS_AUTHORITY_REVOKE.value],
+                },
+            )
+        )
+        self.assertEqual(revoked["status"], "revoked")
 
     def test_command_route_translates_payload_to_existing_planning_command(self) -> None:
         recording = RecordingService()

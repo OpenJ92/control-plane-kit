@@ -59,6 +59,18 @@ class AdapterParityContractTests(unittest.TestCase):
                     "GraphReadResponse",
                 ),
                 (
+                    "read.ingress-authorities",
+                    "read.ingress-authorities",
+                    "list_ingress_authorities",
+                    "IngressAuthorityCollectionReadResponse",
+                ),
+                (
+                    "read.ingress-authority-detail",
+                    "read.ingress-authority-detail",
+                    "get_ingress_authority_detail",
+                    "IngressAuthorityDetailReadResponse",
+                ),
+                (
                     "read.observed-state",
                     "read.observed-state",
                     "get_observed_state",

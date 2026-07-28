@@ -82,7 +82,7 @@ class AuthorizationHistoryParityTests(unittest.TestCase):
     def test_security_parity_covers_read_and_command_operations(self) -> None:
         parity = _security_parity()
 
-        self.assertEqual(len(parity.operations), 37)
+        self.assertEqual(len(parity.operations), 41)
         command = parity.operation("deployment.execute")
         self.assertEqual(command.auth_scope, HttpAuthScope.EXECUTION_RUN)
         self.assertEqual(command.safety, HttpOperationSafety.DESTRUCTIVE)
@@ -150,6 +150,22 @@ class AuthorizationHistoryParityTests(unittest.TestCase):
         self.assertEqual(authority_read.safety, HttpOperationSafety.READ_ONLY)
         self.assertEqual(
             authority_read.activity_history,
+            ActivityHistoryPolicy.NOT_RECORDED,
+        )
+
+        ingress_register = parity.operation("ingress-authority.register")
+        self.assertEqual(ingress_register.auth_scope, HttpAuthScope.ADMIN)
+        self.assertEqual(ingress_register.safety, HttpOperationSafety.COMMAND)
+        self.assertEqual(
+            ingress_register.activity_history,
+            ActivityHistoryPolicy.RECORD_ACCEPTED_AND_REJECTED_COMMANDS,
+        )
+
+        ingress_read = parity.operation("read.ingress-authorities")
+        self.assertEqual(ingress_read.auth_scope, HttpAuthScope.READ)
+        self.assertEqual(ingress_read.safety, HttpOperationSafety.READ_ONLY)
+        self.assertEqual(
+            ingress_read.activity_history,
             ActivityHistoryPolicy.NOT_RECORDED,
         )
 

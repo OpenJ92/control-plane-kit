@@ -147,6 +147,22 @@ class CommandParityContractTests(unittest.TestCase):
                     ApprovalPolicy.NOT_REQUIRED,
                 ),
                 (
+                    "ingress-authority.register",
+                    "command.ingress-authority.register",
+                    "register_ingress_authority",
+                    ControlPlaneServiceRole.PLANNING,
+                    CommandIdempotencyPolicy.REQUIRED,
+                    ApprovalPolicy.NOT_REQUIRED,
+                ),
+                (
+                    "ingress-authority.revoke",
+                    "command.ingress-authority.revoke",
+                    "revoke_ingress_authority",
+                    ControlPlaneServiceRole.PLANNING,
+                    CommandIdempotencyPolicy.REQUIRED,
+                    ApprovalPolicy.NOT_REQUIRED,
+                ),
+                (
                     "operation-session.cancel",
                     "command.operation-session.cancel",
                     "cancel_operation_session",

@@ -842,6 +842,18 @@ _OPERATOR_READ_PROJECTIONS = (
         "GraphReadResponse",
     ),
     (
+        "read.ingress-authorities",
+        "read.ingress-authorities",
+        "list_ingress_authorities",
+        "IngressAuthorityCollectionReadResponse",
+    ),
+    (
+        "read.ingress-authority-detail",
+        "read.ingress-authority-detail",
+        "get_ingress_authority_detail",
+        "IngressAuthorityDetailReadResponse",
+    ),
+    (
         "read.operator-graph",
         "read.operator-graph",
         "get_operator_graph",
@@ -978,6 +990,24 @@ _OPERATOR_COMMANDS = (
         ControlPlaneServiceRole.PLANNING,
         "RevokeRuntimeAuthorityDeliveryRequest",
         "RegisteredRuntimeAuthorityDeliveryResponse",
+        ApprovalPolicy.NOT_REQUIRED,
+    ),
+    (
+        "ingress-authority.register",
+        "command.ingress-authority.register",
+        "register_ingress_authority",
+        ControlPlaneServiceRole.PLANNING,
+        "RegisterIngressAuthorityRequest",
+        "RegisteredIngressAuthorityResponse",
+        ApprovalPolicy.NOT_REQUIRED,
+    ),
+    (
+        "ingress-authority.revoke",
+        "command.ingress-authority.revoke",
+        "revoke_ingress_authority",
+        ControlPlaneServiceRole.PLANNING,
+        "RevokeIngressAuthorityRequest",
+        "RegisteredIngressAuthorityResponse",
         ApprovalPolicy.NOT_REQUIRED,
     ),
     (
