@@ -174,7 +174,7 @@ class ActivityPlanCompilerTests(unittest.TestCase):
             {dependency.predecessor for dependency in connector_start.dependencies},
         )
 
-    def test_public_ingress_removal_precedes_connector_and_target_stop(self) -> None:
+    def test_public_ingress_teardown_stops_connector_before_removal(self) -> None:
         populated = validate_graph(public_ingress_graph())
         empty = validate_graph(DeploymentGraph(populated.graph.name))
 
@@ -204,8 +204,8 @@ class ActivityPlanCompilerTests(unittest.TestCase):
             {dependency.predecessor for dependency in gateway_stop.dependencies},
         )
         self.assertIn(
-            removal.activity_id,
-            {dependency.predecessor for dependency in connector_stop.dependencies},
+            connector_stop.activity_id,
+            {dependency.predecessor for dependency in removal.dependencies},
         )
 
     def test_teardown_dependencies_remove_connections_before_nodes_and_runtime(self) -> None:

@@ -489,7 +489,10 @@ def _add_dependencies(
                 if node_id not in (ingress.target.node_id, ingress.connector_node_id):
                     continue
                 if remove := remove_ingress.get(ingress_id):
-                    stop_node[node_id].dependencies.add(remove.activity_id)
+                    if node_id == ingress.connector_node_id:
+                        remove.dependencies.add(stop_node[node_id].activity_id)
+                    else:
+                        stop_node[node_id].dependencies.add(remove.activity_id)
             for remove, edge_value in removed_edges.values():
                 edge = edge_value.edge
                 if node_id in (edge.provider_role, edge.consumer_role):
