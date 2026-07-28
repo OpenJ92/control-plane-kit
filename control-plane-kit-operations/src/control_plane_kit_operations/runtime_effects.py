@@ -53,6 +53,7 @@ from control_plane_kit_operations.ingress_authorities import (
     CloudflareOwnedIngressResource,
     GeneratedIngressSecretReference,
     GeneratedSecretPurpose,
+    OwnedIngressResourceStatus,
     RegisteredIngressAuthority,
     cloudflare_tunnel_token_delivery_plan,
 )
@@ -296,7 +297,10 @@ def _ingress_resource_for(
     ingress_id: str,
 ) -> CloudflareOwnedIngressResource:
     matches = tuple(
-        resource for resource in resources if resource.ingress_id == ingress_id
+        resource
+        for resource in resources
+        if resource.ingress_id == ingress_id
+        and resource.status is OwnedIngressResourceStatus.ACTIVE
     )
     if len(matches) != 1:
         raise InvalidOperationCommand(

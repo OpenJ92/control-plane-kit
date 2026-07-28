@@ -4859,3 +4859,37 @@ Handoff:
 - If cpk-server image acceptance uses these operations changes, server-products
   coordinates must be updated and cpk-server variants republished before the
   final published-image smoke.
+
+## #1075 Fresh Coordinator Evidence Between Activity Steps
+
+#1075 tightened the evidence boundary exposed by the public ingress toggle
+smoke. Cloudflare owned-resource rows are durable epoch history, so runtime
+translation must treat only `active` ingress resources as connector-token
+evidence. Removed epochs remain visible for audit and cleanup history, but they
+cannot authorize a new cloudflared connector start.
+
+The coordinator contract is:
+
+```text
+activity N writes owned-resource/generated-secret evidence
+  -> transaction commits
+    -> activity N+1 loads a fresh realization context
+      -> no re-plan, no transaction across provider/Docker/network IO
+```
+
+Focused coverage now proves both halves: the coordinator passes side evidence
+written by one adapter call to the next activity in the same pinned run, and
+runtime-effect translation selects the active ingress epoch when a removed epoch
+with the same ingress id remains in history.
+
+Validation evidence:
+
+- `git diff --check` passed.
+- `./control-plane-kit-operations/test.sh` passed 195 tests, compileall, and
+  import.
+
+Handoff:
+
+- #1076 should update server-products coordinates to the merged #1075
+  operations commit, republish the cpk-server variants if needed, and retry the
+  `public-gateway-toggle` smoke through the real cpk-server workflow.
