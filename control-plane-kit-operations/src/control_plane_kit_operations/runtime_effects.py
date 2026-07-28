@@ -41,10 +41,21 @@ from control_plane_kit_core.runtime_effects import (
     RuntimeEffectSource,
     RuntimeProductMaterial,
 )
-from control_plane_kit_core.secrets import SecretEnvironmentDelivery
+from control_plane_kit_core.secrets import (
+    SecretDelivery,
+    SecretEnvironmentDelivery,
+    secret_delivery_sort_key,
+)
 from control_plane_kit_core.topology import DEFAULT_GRAPH_CODEC, DeploymentGraph, Node
 from control_plane_kit_core.types import Protocol, RuntimeKind
 from control_plane_kit_operations.coordinator import ActivityRealizationContext
+from control_plane_kit_operations.ingress_authorities import (
+    CloudflareOwnedIngressResource,
+    GeneratedIngressSecretReference,
+    GeneratedSecretPurpose,
+    RegisteredIngressAuthority,
+    cloudflare_tunnel_token_delivery_plan,
+)
 from control_plane_kit_operations.products import (
     RegisteredImagePullAuthority,
     RegisteredProduct,
@@ -186,7 +197,7 @@ def _products_for_context(
             node_id=node_id,
             runtime_id=runtime_id,
             reference=product.reference,
-            product=_product_material_for_node(product, node),
+            product=_product_material_for_node(context, graph, product, node),
             public_environment=public_environment,
             socket_environment=node.socket_environment,
             pull_authority=_pull_authority_for_product(
@@ -198,17 +209,135 @@ def _products_for_context(
 
 
 def _product_material_for_node(
+    context: ActivityRealizationContext,
+    graph: DeploymentGraph,
     product: RegisteredProduct,
     node: Node,
 ):
     descriptor_product = product.descriptor_document.product
+    runtime_contract = descriptor_product.runtime_contract
     return replace(
         descriptor_product,
         runtime_contract=replace(
-            descriptor_product.runtime_contract,
+            runtime_contract,
             verification=node.block_spec.verification,
+            secret_deliveries=_secret_deliveries_for_node(
+                context=context,
+                graph=graph,
+                node=node,
+                descriptor_deliveries=runtime_contract.secret_deliveries,
+            ),
         ),
     )
+
+
+def _secret_deliveries_for_node(
+    *,
+    context: ActivityRealizationContext,
+    graph: DeploymentGraph,
+    node: Node,
+    descriptor_deliveries: tuple[SecretDelivery, ...],
+) -> tuple[SecretDelivery, ...]:
+    deliveries = tuple(descriptor_deliveries) + tuple(node.secret_deliveries)
+    if _has_tunnel_token_delivery(deliveries):
+        return tuple(sorted(deliveries, key=secret_delivery_sort_key))
+    ingress = _connector_ingress_for_node(graph, node.node_id)
+    if ingress is None:
+        return tuple(sorted(deliveries, key=secret_delivery_sort_key))
+    resource = _ingress_resource_for(context.ingress_resources, ingress.ingress_id)
+    generated = _generated_ingress_secret_for(
+        context.generated_ingress_secrets,
+        resource,
+    )
+    authority = _ingress_authority_for(
+        context.ingress_authorities,
+        resource,
+    )
+    plan = cloudflare_tunnel_token_delivery_plan(
+        authority=authority.authority,
+        resource=resource,
+        connector_node_id=node.node_id,
+        tunnel_token_ref=generated.secret_ref,
+    )
+    return tuple(
+        sorted(
+            deliveries + (plan.secret_delivery,),
+            key=secret_delivery_sort_key,
+        )
+    )
+
+
+def _has_tunnel_token_delivery(deliveries: tuple[SecretDelivery, ...]) -> bool:
+    return any(
+        isinstance(delivery, SecretEnvironmentDelivery)
+        and delivery.environment_name == "TUNNEL_TOKEN"
+        for delivery in deliveries
+    )
+
+
+def _connector_ingress_for_node(
+    graph: DeploymentGraph,
+    node_id: str,
+):
+    matches = tuple(
+        ingress
+        for ingress in graph.public_ingresses
+        if ingress.connector_node_id == node_id
+    )
+    if len(matches) > 1:
+        raise InvalidOperationCommand(
+            "public ingress connector token delivery is ambiguous"
+        )
+    return None if not matches else matches[0]
+
+
+def _ingress_resource_for(
+    resources: tuple[CloudflareOwnedIngressResource, ...],
+    ingress_id: str,
+) -> CloudflareOwnedIngressResource:
+    matches = tuple(
+        resource for resource in resources if resource.ingress_id == ingress_id
+    )
+    if len(matches) != 1:
+        raise InvalidOperationCommand(
+            "public ingress connector token delivery requires owned resource evidence"
+        )
+    return matches[0]
+
+
+def _generated_ingress_secret_for(
+    secrets: tuple[GeneratedIngressSecretReference, ...],
+    resource: CloudflareOwnedIngressResource,
+) -> GeneratedIngressSecretReference:
+    matches = tuple(
+        secret
+        for secret in secrets
+        if secret.purpose is GeneratedSecretPurpose.CLOUDFLARED_TUNNEL_TOKEN
+        and secret.source_run_id == resource.source_run_id
+        and secret.source_activity_id == resource.source_activity_id
+        and secret.source_event_id == resource.source_event_id
+    )
+    if len(matches) != 1:
+        raise InvalidOperationCommand(
+            "public ingress connector token delivery requires generated token evidence"
+        )
+    return matches[0]
+
+
+def _ingress_authority_for(
+    authorities: tuple[RegisteredIngressAuthority, ...],
+    resource: CloudflareOwnedIngressResource,
+) -> RegisteredIngressAuthority:
+    matches = tuple(
+        authority
+        for authority in authorities
+        if authority.authority_ref == resource.authority_ref
+    )
+    if len(matches) != 1:
+        raise InvalidOperationCommand(
+            "public ingress connector token delivery requires active authority evidence"
+        )
+    return matches[0]
 
 
 def _public_environment_for_node(

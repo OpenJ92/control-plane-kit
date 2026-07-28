@@ -4635,6 +4635,7 @@ Validation evidence:
 - `git diff --check` passed.
 - `./control-plane-kit-operations/test.sh` passed 183 tests, compileall, and
   import.
+- `./test.sh` passed 1232 tests.
 
 Handoff:
 
@@ -4644,3 +4645,55 @@ Handoff:
 - The cpk-server composition pass must adapt the concrete Cloudflare interpreter
   into the operations `IngressProviderInterpreter` protocol; cpk-server should
   compose this dependency but not own provider semantics.
+
+## #1056 Ingress Connector Token Delivery
+
+#1056 threads generated Cloudflare tunnel material into connector startup through
+the existing secret-delivery language instead of adding a new runtime secret
+lane:
+
+```text
+NamedPublicIngress(connector_node_id=cloudflared)
+  -> Cloudflare allocation records owned resource evidence
+  -> GeneratedIngressSecretReference records SecretReference lineage
+  -> StartNode(cloudflared)
+    -> RuntimeProductMaterial.product.runtime_contract.secret_deliveries
+      includes SecretEnvironmentDelivery("TUNNEL_TOKEN", secret://...)
+        -> Docker interpreter resolves the value at IO only
+```
+
+The important split is now explicit:
+
+```text
+core/runtime request:
+  carries SecretReference and SecretEnvironmentDelivery values
+
+operations:
+  decides which reference belongs to this node/activity from durable ingress
+  authority, owned-resource, and generated-secret evidence
+
+interpreter:
+  resolves SecretReference -> SecretValue only while materializing the process
+```
+
+The delivery is not inferred from product identity or from an environment-name
+convention. It happens only when the desired graph contains a
+`NamedPublicIngress` whose `connector_node_id` is the node being started. If an
+operator supplies an explicit `TUNNEL_TOKEN` delivery on the node, that supports
+external/existing tunnel mode without requiring CPK-created Cloudflare resource
+evidence.
+
+Validation evidence:
+
+- `git diff --check` passed.
+- `./control-plane-kit-operations/test.sh` passed 183 tests, compileall, and
+  import.
+
+Handoff:
+
+- The cpk-server hosted/stress path can now start a connector after an ingress
+  allocation because runtime-effect translation has a concrete place to carry
+  the generated `TUNNEL_TOKEN` reference.
+- A later cleanup/hardening pass can refactor more product-specific startup
+  magic into `SecretEnvironmentDelivery` and eventually replace the in-memory
+  generated-secret recorder with a dedicated secret-service product.
