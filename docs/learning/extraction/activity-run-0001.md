@@ -5237,3 +5237,69 @@ Handoff:
   attempt evidence.
 - #1143 must prove the same service through a real cpk-server process and real
   private HTTP and Postgres targets.
+
+## #1143 Delegated Gateway Verification And Source-Live Gate
+
+#1143 completed the first executable gateway security path:
+
+```text
+operator -> cpk-server
+  -> operations gateway-probe service
+    -> signed delegated capability
+      -> cpk-local-gateway verification
+        -> private Hello/Postgres probe
+          -> bounded observation/readback
+```
+
+The run exposed a useful split: runtime authority is the power to realize or
+change a runtime island, while a gateway delegated capability is permission for
+the gateway to touch a specific private target. The live harness now uses
+separate operator and worker static-development principals, because lifecycle
+commands are not the same authority as operator planning/approval commands.
+
+Published evidence from this run:
+
+```text
+cpk-local-gateway:
+  ghcr.io/openj92/control-plane-kit-servers/cpk-local-gateway@sha256:5698c1ee9e8b933920177d260bf44963e2ebbdfc58f791fc98bf6efd21156aa8
+
+cpk-server:
+  ghcr.io/openj92/control-plane-kit-servers/cpk-server@sha256:db0de3e0e34dbfe90945af46419576da799a484a7bc45b985767f1cf0131a92d
+
+catalogue checksum:
+  0c466216304ae1d4cc9bb5586134865196f283f819f6648fe46c78289c8c929b
+```
+
+Validation included focused gateway/cpk-server tests, source-live
+`authenticated-gateway-private`, digest-pulled cpk-server image smoke, full
+`./test.sh`, and Docker residue audit.
+
+## #1113 Durable Secrets Threat Model
+
+#1144 is intentionally blocked until durable secret custody exists. The
+development path can sign gateway grants from a source-live `SecretReference`,
+but production must not depend on process-local maps for signing keys,
+Cloudflare tunnel tokens, Docker TLS certificates, private OCI credentials, or
+Postgres passwords.
+
+#1113 accepts the package direction:
+
+```text
+core:
+  SecretReference and delivery language
+
+operations:
+  RegisteredSecretProvider, authorization, metadata, audit correlation
+
+control-plane-kit-secrets:
+  encrypted durable custody and authenticated scoped resolution
+
+interpreters:
+  resolve SecretReference -> SecretValue at IO boundary only
+```
+
+The first-flight secrets provider should be a sibling repository/distribution:
+`OpenJ92/control-plane-kit-secrets`. Its master key should be supplied outside
+its own database, preferably by a mounted file, so the provider does not depend
+on itself to boot. The full threat model is recorded in
+`docs/design/0005-durable-secret-provider-threat-model.md`.
