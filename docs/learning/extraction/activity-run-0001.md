@@ -5161,3 +5161,37 @@ of redundant command-level actor/scope fields. #1103 owns published cpk-server
 and hosted-controller adoption. #1139 must derive bounded gateway delegation
 only after this operations authorization step and must never forward the
 inbound bearer credential.
+
+## #1140 Delegated Gateway Probe Language
+
+#1140 defined the pure capability that bridges trusted cpk-server authorization
+to a private runtime-island gateway without forwarding the operator credential:
+
+```text
+GatewayProbeRequest
+  -> canonical request digest
+    -> unsigned DelegatedGatewayProbeGrant
+      -> outer signing and dispatch in later issues
+```
+
+The request vocabulary is closed to HTTP status and Postgres select-one. It
+reuses `GatewayTargetId`; no second gateway target identity was introduced.
+HTTP paths participate in the canonical digest, so kind, target, and path
+substitution all change the bound request.
+
+The grant binds issuer and key id, runtime-island audience, workspace,
+originating operation/request, exact gateway node, kind, target, digest,
+five-minute maximum lifetime, and `jti`. It contains no compact token,
+signature, key material, provider name, transport header, or caller-selected
+URL.
+
+The threat model is recorded in
+`docs/design/0004-delegated-gateway-probe-threat-model.md`. It explicitly limits
+the first replay guarantee to bounded in-process evidence for idempotent
+read-only probes. Gateway restart does not preserve replay history. Mutating
+controls require a separate durable design.
+
+Health disclosure is also explicit: minimal liveness may remain public, while
+readiness and target metadata require delegated authority. #1141 must now
+derive grants only after trusted operations authorization and must preserve the
+short-transaction/external-effect/short-transaction boundary.
