@@ -8,6 +8,7 @@ from typing import Any, Protocol
 from jinja2 import Environment, StrictUndefined
 
 from control_plane_kit_core.operations.commands import OperatorCommandKind
+from control_plane_kit_core.gateway_delegation import GatewayProbeCommandKind
 from control_plane_kit_core.operations.lifecycle import (
     ActivityEventKind,
     ActivityEventScope,
@@ -27,6 +28,7 @@ from control_plane_kit_core.probe_intents import (
 from control_plane_kit_core.types import RuntimeKind
 from control_plane_kit_core.types import WorkspaceLifecycle
 from control_plane_kit_operations.records import ObservationFreshness, ObservationStatus
+from control_plane_kit_operations.gateway_probes import GatewayProbeAttemptStatus
 from control_plane_kit_operations.ingress_authorities import (
     GeneratedSecretPurpose,
     IngressAuthorityProviderKind,
@@ -142,6 +144,58 @@ CREATE TABLE IF NOT EXISTS cpk_registered_products (
     CHECK (descriptor_sha256 ~ '^[0-9a-f]{64}$'),
   UNIQUE (workspace_id, descriptor_sha256)
 );
+
+CREATE TABLE IF NOT EXISTS cpk_gateway_probe_attempts (
+  probe_id text PRIMARY KEY,
+  workspace_id text NOT NULL REFERENCES cpk_workspaces(workspace_id),
+  request_id text NOT NULL,
+  actor_id text NOT NULL,
+  current_graph_id text NOT NULL REFERENCES cpk_graph_versions(graph_id),
+  gateway_node_id text NOT NULL,
+  gateway_runtime_id text NOT NULL,
+  probe_kind text NOT NULL,
+  target_id text NOT NULL,
+  request_digest text NOT NULL,
+  issuer text NOT NULL,
+  key_id text NOT NULL,
+  audience text NOT NULL,
+  grant_jti text NOT NULL UNIQUE,
+  issued_at bigint NOT NULL,
+  expires_at bigint NOT NULL,
+  status text NOT NULL,
+  requested_at text NOT NULL,
+  intent_fingerprint text NOT NULL,
+  completed_at text,
+  result_code text,
+  evidence jsonb NOT NULL DEFAULT '{}'::jsonb,
+  CONSTRAINT cpk_gateway_probe_request_identity
+    UNIQUE (workspace_id, request_id),
+  CONSTRAINT cpk_gateway_probe_status_check
+    CHECK (status IN ({{ gateway_probe_attempt_statuses | sql_values }})),
+  CONSTRAINT cpk_gateway_probe_kind_check
+    CHECK (probe_kind IN ({{ gateway_probe_command_kinds | sql_values }})),
+  CONSTRAINT cpk_gateway_probe_digest_check
+    CHECK (request_digest ~ '^[0-9a-f]{64}$'),
+  CONSTRAINT cpk_gateway_probe_time_check
+    CHECK (issued_at >= 0 AND expires_at > issued_at),
+  CONSTRAINT cpk_gateway_probe_completion_check
+    CHECK (
+      (
+        status = 'intended'
+        AND completed_at IS NULL
+        AND result_code IS NULL
+      )
+      OR
+      (
+        status <> 'intended'
+        AND completed_at IS NOT NULL
+        AND result_code IS NOT NULL
+      )
+    )
+);
+
+CREATE INDEX IF NOT EXISTS cpk_gateway_probe_workspace_timeline
+  ON cpk_gateway_probe_attempts (workspace_id, issued_at DESC, probe_id DESC);
 
 ALTER TABLE cpk_registered_products
   ADD COLUMN IF NOT EXISTS descriptor_content text;
@@ -634,6 +688,8 @@ POSTGRES_SCHEMA = _SQL_ENVIRONMENT.from_string(_POSTGRES_SCHEMA_TEMPLATE).render
     registered_ingress_authority_statuses=tuple(RegisteredIngressAuthorityStatus),
     generated_secret_purposes=tuple(GeneratedSecretPurpose),
     ingress_authority_provider_kinds=tuple(IngressAuthorityProviderKind),
+    gateway_probe_attempt_statuses=tuple(GatewayProbeAttemptStatus),
+    gateway_probe_command_kinds=tuple(GatewayProbeCommandKind),
     risk_levels=tuple(RiskLevel),
     runtime_authority_kinds=tuple(RuntimeAuthorityKind),
     runtime_kinds=tuple(RuntimeKind),

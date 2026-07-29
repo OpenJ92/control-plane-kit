@@ -76,6 +76,16 @@ class CommandWorkflowContractTests(unittest.TestCase):
                     ActivityHistoryPolicy.RECORD_ACCEPTED_AND_REJECTED_COMMANDS,
                 ),
                 (
+                    "gateway-probe.request",
+                    OperatorCommandKind.REQUEST_GATEWAY_PROBE,
+                    OperatorCommandFamily.GATEWAY_PROBE,
+                    DeploymentProgramStage.EXECUTE,
+                    ControlPlaneServiceRole.OBSERVATION,
+                    CommandIdempotencyPolicy.REQUIRED,
+                    ApprovalPolicy.NOT_REQUIRED,
+                    ActivityHistoryPolicy.RECORD_ACCEPTED_AND_REJECTED_COMMANDS,
+                ),
+                (
                     "image-pull-authority.register",
                     OperatorCommandKind.REGISTER_IMAGE_PULL_AUTHORITY,
                     OperatorCommandFamily.PRODUCT_REGISTRATION,

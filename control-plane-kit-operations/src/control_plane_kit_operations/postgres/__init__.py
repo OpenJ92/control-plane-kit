@@ -13,6 +13,7 @@ from control_plane_kit_operations.postgres.graph_store import (
     PostgresGraphTopologyStore,
     PostgresWorkspaceStore,
 )
+from control_plane_kit_operations.postgres.gateway_probe_store import GatewayProbeStore
 from control_plane_kit_operations.postgres.image_pull_authority_store import (
     ImagePullAuthorityStore,
 )
@@ -42,6 +43,7 @@ __all__ = [
     "PostgresActivityHistoryStore",
     "PostgresExecutionStore",
     "PostgresGraphTopologyStore",
+    "GatewayProbeStore",
     "ImagePullAuthorityStore",
     "GeneratedIngressSecretReferenceStore",
     "IngressAuthorityStore",

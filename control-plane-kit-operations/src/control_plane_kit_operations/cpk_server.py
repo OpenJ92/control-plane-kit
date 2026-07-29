@@ -11,6 +11,11 @@ from control_plane_kit_core.identity import (
     PrincipalKind,
     TrustedCommandContext,
 )
+from control_plane_kit_core.gateway_delegation import (
+    GatewayProbeCommandKind,
+    GatewayProbeRequest,
+)
+from control_plane_kit_core.runtime_effects import GatewayTargetId
 from control_plane_kit_core.operations import ControlPlaneServiceRole
 from control_plane_kit_core.operations.commands import OperatorCommandKind
 from control_plane_kit_core.policies import PolicyScope
@@ -48,6 +53,14 @@ from control_plane_kit_operations.ingress_authorities import (
     RegisterIngressAuthorityCommand,
     RegisteredIngressAuthority,
     RevokeIngressAuthorityCommand,
+)
+from control_plane_kit_operations.gateway_probes import (
+    GatewayProbeAuthorizationDenied,
+    GatewayProbeCommandService,
+    GatewayProbeConflict,
+    GatewayProbeError,
+    GatewayProbeNotFound,
+    RequestGatewayProbe,
 )
 from control_plane_kit_operations.lifecycle import (
     ClaimAndOpenActivityRun,
@@ -205,6 +218,8 @@ _ROUTE_AUTHORIZATION_POLICIES: dict[str, RouteAuthorizationPolicy] = {
     "read.ingress-authority-detail": RouteAuthorizationPolicy(
         required_scopes=(PolicyScope.INGRESS_AUTHORITY_READ,)
     ),
+    "read.gateway-probe-timeline": _WORKSPACE_READ,
+    "read.gateway-probe-detail": _WORKSPACE_READ,
     "command.workspace.create": RouteAuthorizationPolicy(
         required_scopes=(PolicyScope.HUB_INSTANCE_CREATE,)
     ),
@@ -227,6 +242,9 @@ _ROUTE_AUTHORIZATION_POLICIES: dict[str, RouteAuthorizationPolicy] = {
     ),
     "command.ingress-authority.revoke": RouteAuthorizationPolicy(
         required_scopes=(PolicyScope.INGRESS_AUTHORITY_REVOKE,)
+    ),
+    "command.gateway-probe.request": RouteAuthorizationPolicy(
+        required_scopes=(PolicyScope.GATEWAY_PROBE_USE,)
     ),
     "command.operation-session.start": _WORKSPACE_EDIT,
     "command.operation-session.close": _WORKSPACE_EDIT,
@@ -306,6 +324,7 @@ class CpkServerReadService:
                     stores.runtime_authority_deliveries
                 ),
                 "ingress_authority_store": stores.ingress_authorities,
+                "gateway_probe_store": stores.gateway_probes,
             }
             if self._clock is not None:
                 kwargs["clock"] = self._clock
@@ -771,6 +790,51 @@ class CpkServerExecutionService:
         return result.descriptor()
 
 
+class CpkServerGatewayProbeService:
+    """Public route adapter for operations-owned delegated gateway probes."""
+
+    def __init__(self, service: GatewayProbeCommandService) -> None:
+        self._service = service
+
+    def handle(self, request: CpkServerRouteRequest) -> Mapping[str, object]:
+        if request.route_id != "command.gateway-probe.request":
+            raise _unsupported_route(request)
+        context = _trusted_context(request)
+        payload = _arguments(request)
+        raw_kind = _text(payload, "kind")
+        try:
+            kind = GatewayProbeCommandKind(raw_kind)
+            result = self._service.execute(
+                RequestGatewayProbe(
+                    context=context,
+                    request_id=_text(payload, "request_id"),
+                    expected_current_graph_id=_text(
+                        payload,
+                        "expected_current_graph_id",
+                    ),
+                    gateway_node_id=_path_or_payload(
+                        payload,
+                        "gateway_node_id",
+                        "gateway_node_id",
+                    ),
+                    request=GatewayProbeRequest(
+                        kind=kind,
+                        target_id=GatewayTargetId(_text(payload, "target_id")),
+                        path=_optional_text(payload, "path"),
+                    ),
+                )
+            )
+        except GatewayProbeAuthorizationDenied as error:
+            raise CpkServerApplicationError(403, str(error)) from error
+        except GatewayProbeNotFound as error:
+            raise CpkServerApplicationError(404, str(error)) from error
+        except GatewayProbeConflict as error:
+            raise CpkServerApplicationError(409, str(error)) from error
+        except (GatewayProbeError, TypeError, ValueError) as error:
+            raise CpkServerApplicationError(400, str(error)) from error
+        return result.descriptor()
+
+
 class CpkServerUnsupportedService:
     """Explicit placeholder for service roles not extracted into operations yet."""
 
@@ -801,6 +865,7 @@ def cpk_server_services(
     desired_graphs: DesiredGraphCommandService | None = None,
     operations: OperationCommandService | None = None,
     advancement: CurrentGraphAdvancementCommandService | None = None,
+    gateway_probes: GatewayProbeCommandService | None = None,
     clock: Callable[[], object] | None = None,
 ) -> Mapping[ControlPlaneServiceRole, CpkServerApplicationService]:
     """Return the complete service map required by cpk-server composition."""
@@ -809,7 +874,6 @@ def cpk_server_services(
         role: CpkServerUnsupportedService(role)
         for role in (
             ControlPlaneServiceRole.RECOVERY,
-            ControlPlaneServiceRole.OBSERVATION,
             ControlPlaneServiceRole.AUTHORIZATION,
         )
     }
@@ -837,6 +901,11 @@ def cpk_server_services(
         ControlPlaneServiceRole.READS: CpkServerReadService(
             unit_of_work_factory,
             clock=clock,
+        ),
+        ControlPlaneServiceRole.OBSERVATION: (
+            CpkServerUnsupportedService(ControlPlaneServiceRole.OBSERVATION)
+            if gateway_probes is None
+            else CpkServerGatewayProbeService(gateway_probes)
         ),
         **unsupported,
     }
@@ -924,6 +993,17 @@ def _read_model(service: InstanceReadService, request: CpkServerRouteRequest) ->
             IngressAuthorityReference(
                 _path_or_payload(args, "authority_ref", "authority_ref")
             ),
+        )
+    if route_id == "read.gateway-probe-timeline":
+        return service.gateway_probe_timeline(
+            _workspace_id(args),
+            limit=_positive_int(args, "limit", default=50),
+            offset=_non_negative_int(args, "offset", default=0),
+        )
+    if route_id == "read.gateway-probe-detail":
+        return service.gateway_probe_detail(
+            _workspace_id(args),
+            _text(args, "probe_id"),
         )
     raise _unsupported_route(request)
 

@@ -92,6 +92,18 @@ class IngressAuthorityStore(Protocol):
     def list_active(self, workspace_id: str) -> tuple[object, ...]: ...
 
 
+class GatewayProbeStore(Protocol):
+    def get(self, probe_id: str) -> object: ...
+    def list_for_workspace(
+        self,
+        workspace_id: str,
+        *,
+        limit: int,
+        offset: int,
+    ) -> tuple[object, ...]: ...
+    def count_for_workspace(self, workspace_id: str) -> int: ...
+
+
 @dataclass(frozen=True)
 class WorkspaceSummary:
     """Small workspace identity and lifecycle summary."""
@@ -294,6 +306,7 @@ class InstanceReadService:
         runtime_authority_store: RuntimeAuthorityStore | None = None,
         runtime_authority_delivery_store: RuntimeAuthorityDeliveryStore | None = None,
         ingress_authority_store: IngressAuthorityStore | None = None,
+        gateway_probe_store: GatewayProbeStore | None = None,
         graph_codec: GraphDescriptorCodec = DEFAULT_GRAPH_CODEC,
         clock=lambda: datetime.now(timezone.utc),
         observation_freshness: ObservationFreshnessPolicy = ObservationFreshnessPolicy(),
@@ -306,6 +319,7 @@ class InstanceReadService:
         self._runtime_authority_store = runtime_authority_store
         self._runtime_authority_delivery_store = runtime_authority_delivery_store
         self._ingress_authority_store = ingress_authority_store
+        self._gateway_probe_store = gateway_probe_store
         self._graph_codec = graph_codec
         self._clock = clock
         self._observation_freshness = observation_freshness
@@ -629,6 +643,51 @@ class InstanceReadService:
             workspace_id=workspace_id,
             kind="ingress-authority-detail",
             payload={"ingress_authority": _redacted_ingress_authority(authority)},
+        )
+
+    def gateway_probe_timeline(
+        self,
+        workspace_id: str,
+        *,
+        limit: int = 50,
+        offset: int = 0,
+    ) -> FocusedCollectionReadModel:
+        limit, offset = _page(limit, offset)
+        self._workspace(workspace_id)
+        if self._gateway_probe_store is None:
+            raise ReadModelError("gateway probe store is not configured")
+        attempts = self._gateway_probe_store.list_for_workspace(
+            workspace_id,
+            limit=limit,
+            offset=offset,
+        )
+        return FocusedCollectionReadModel(
+            workspace_id=workspace_id,
+            kind="gateway-probe-timeline",
+            limit=limit,
+            offset=offset,
+            total=self._gateway_probe_store.count_for_workspace(workspace_id),
+            items=tuple(value.descriptor() for value in attempts),
+        )
+
+    def gateway_probe_detail(
+        self,
+        workspace_id: str,
+        probe_id: str,
+    ) -> FocusedDetailReadModel:
+        self._workspace(workspace_id)
+        if self._gateway_probe_store is None:
+            raise ReadModelError("gateway probe store is not configured")
+        try:
+            attempt = self._gateway_probe_store.get(probe_id)
+        except KeyError as error:
+            raise ReadModelError(f"missing gateway probe {probe_id!r}") from error
+        if attempt.workspace_id != workspace_id:
+            raise ReadModelError(f"missing gateway probe {probe_id!r}")
+        return FocusedDetailReadModel(
+            workspace_id=workspace_id,
+            kind="gateway-probe-detail",
+            payload={"gateway_probe": attempt.descriptor()},
         )
 
     def control_surface(
