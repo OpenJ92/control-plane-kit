@@ -15,6 +15,7 @@ EXPECTED_MODULES = {
     "control_contracts",
     "control_routes",
     "environment",
+    "gateway_delegation",
     "identity",
     "lifecycle",
     "operations.__init__",

@@ -636,6 +636,58 @@ laws:
   provider data and interpreter implementation, not as the name of the core
   graph language.
 
+### GatewayProbeRequest / DelegatedGatewayProbeGrant
+
+meaning:
+  Provider-neutral language for delegating one exact, read-only private target
+  probe from an authorized cpk-server operation to a local runtime-island
+  gateway:
+
+```text
+GatewayProbeRequest
+  = GatewayProbeCommandKind
+  x GatewayTargetId
+  x bounded HTTP path?
+
+DelegatedGatewayProbeGrant
+  = issuer
+  x key_id
+  x runtime-island audience
+  x workspace / operation / request correlation
+  x exact gateway node
+  x exact probe kind / target
+  x canonical request digest
+  x issued_at / expires_at
+  x jti
+```
+
+owned by:
+  `control-plane-kit-core` owns the unsigned request, grant, strict codecs,
+  health-disclosure policy, and bounded verification result. Operations owns
+  authorization and durable intent/result evidence. Outer interpreters own
+  signing, dispatch, verification-key materialization, and transport.
+
+durable:
+  The unsigned grant is pure command material. Operations may retain bounded
+  issuer, key id, correlation, digest, and `jti` evidence. Compact signed
+  envelopes and key material are never durable control-plane truth.
+
+may contain secrets:
+  No.
+
+interpreted by:
+  An injected signer/dispatcher and the cpk-local-gateway verifier. Core does
+  not define a token format, signing algorithm, HTTP header, transport, or key
+  store.
+
+laws:
+  The operator credential is never forwarded. The grant binds the exact
+  gateway, runtime island, workspace, kind, target, and complete request
+  including HTTP path. Only HTTP status and Postgres select-one are currently
+  delegable. Minimal liveness may be public; readiness and target metadata
+  require delegated authority. Replay evidence is bounded and process-local,
+  so no cross-restart replay guarantee is claimed.
+
 ## Planning Language
 
 ### DeploymentTransition
