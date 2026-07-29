@@ -773,7 +773,11 @@ interpreted by:
 laws:
   Its workspace must be present in the principal's grants and its scopes must
   exactly equal that workspace grant. A command body supplies intent, never
-  identity or authority.
+  identity or authority. Public operations routes derive actor provenance,
+  scopes, and worker identity only from this context before store access.
+  Operator principals cannot perform worker lifecycle commands. Runtime and
+  ingress authority registration, reading, use, and revocation remain distinct
+  permissions.
 
 ### Workspace
 

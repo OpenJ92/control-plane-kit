@@ -5,6 +5,12 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import Any, Callable, Mapping, Protocol
 
+from control_plane_kit_core.identity import (
+    AuthenticatedPrincipal,
+    IdentityContractError,
+    PrincipalKind,
+    TrustedCommandContext,
+)
 from control_plane_kit_core.operations import ControlPlaneServiceRole
 from control_plane_kit_core.operations.commands import OperatorCommandKind
 from control_plane_kit_core.policies import PolicyScope
@@ -97,6 +103,7 @@ class CpkServerRouteRequest(Protocol):
     service_role: ControlPlaneServiceRole
     path_parameters: Mapping[str, str]
     payload: Mapping[str, object]
+    principal: AuthenticatedPrincipal
 
 
 class CpkServerApplicationService(Protocol):
@@ -125,6 +132,128 @@ class CpkServerApplicationError(RuntimeError):
                 "message": self.message,
             }
         }
+
+
+@dataclass(frozen=True)
+class RouteAuthorizationPolicy:
+    """Closed public-route permission and principal-kind requirements."""
+
+    required_scopes: tuple[PolicyScope, ...] = ()
+    any_scopes: tuple[PolicyScope, ...] = ()
+    principal_kinds: tuple[PrincipalKind, ...] = (PrincipalKind.OPERATOR,)
+
+    def authorize(self, context: TrustedCommandContext) -> None:
+        if context.principal.identity.kind not in self.principal_kinds:
+            raise CpkServerApplicationError(403, "principal kind is not authorized")
+        missing = tuple(
+            scope for scope in self.required_scopes if scope not in context.granted_scopes
+        )
+        if missing:
+            raise CpkServerApplicationError(
+                403,
+                f"missing required scope {missing[0].value!r}",
+            )
+        if self.any_scopes and not any(
+            scope in context.granted_scopes for scope in self.any_scopes
+        ):
+            names = ", ".join(scope.value for scope in self.any_scopes)
+            raise CpkServerApplicationError(
+                403,
+                f"missing one required scope from {names}",
+            )
+
+
+_WORKSPACE_READ = RouteAuthorizationPolicy(
+    required_scopes=(PolicyScope.INSTANCE_WORKSPACE_READ,)
+)
+_WORKSPACE_EDIT = RouteAuthorizationPolicy(
+    required_scopes=(PolicyScope.INSTANCE_WORKSPACE_EDIT,)
+)
+_WORKER_OPERATION = RouteAuthorizationPolicy(
+    required_scopes=(PolicyScope.EXECUTION_OPERATE,),
+    principal_kinds=(PrincipalKind.WORKER, PrincipalKind.SERVICE),
+)
+
+_ROUTE_AUTHORIZATION_POLICIES: dict[str, RouteAuthorizationPolicy] = {
+    "read.workspace": _WORKSPACE_READ,
+    "read.current-graph": _WORKSPACE_READ,
+    "read.desired-graph": _WORKSPACE_READ,
+    "read.operator-graph": _WORKSPACE_READ,
+    "read.activity": _WORKSPACE_READ,
+    "read.sessions": _WORKSPACE_READ,
+    "read.session-detail": _WORKSPACE_READ,
+    "read.plan-detail": _WORKSPACE_READ,
+    "read.approval-detail": _WORKSPACE_READ,
+    "read.pending-approvals": _WORKSPACE_READ,
+    "read.observed-state": _WORKSPACE_READ,
+    "read.control-surface": _WORKSPACE_READ,
+    "read.runtime-authorities": RouteAuthorizationPolicy(
+        required_scopes=(PolicyScope.RUNTIME_AUTHORITY_READ,)
+    ),
+    "read.runtime-authority-detail": RouteAuthorizationPolicy(
+        required_scopes=(PolicyScope.RUNTIME_AUTHORITY_READ,)
+    ),
+    "read.runtime-authority-deliveries": RouteAuthorizationPolicy(
+        required_scopes=(PolicyScope.RUNTIME_AUTHORITY_DELIVERY_READ,)
+    ),
+    "read.runtime-authority-delivery-detail": RouteAuthorizationPolicy(
+        required_scopes=(PolicyScope.RUNTIME_AUTHORITY_DELIVERY_READ,)
+    ),
+    "read.ingress-authorities": RouteAuthorizationPolicy(
+        required_scopes=(PolicyScope.INGRESS_AUTHORITY_READ,)
+    ),
+    "read.ingress-authority-detail": RouteAuthorizationPolicy(
+        required_scopes=(PolicyScope.INGRESS_AUTHORITY_READ,)
+    ),
+    "command.workspace.create": RouteAuthorizationPolicy(
+        required_scopes=(PolicyScope.HUB_INSTANCE_CREATE,)
+    ),
+    "command.product.import": _WORKSPACE_EDIT,
+    "command.image-pull-authority.register": _WORKSPACE_EDIT,
+    "command.runtime-authority.register": RouteAuthorizationPolicy(
+        required_scopes=(PolicyScope.RUNTIME_AUTHORITY_REGISTER,)
+    ),
+    "command.runtime-authority.revoke": RouteAuthorizationPolicy(
+        required_scopes=(PolicyScope.RUNTIME_AUTHORITY_REVOKE,)
+    ),
+    "command.runtime-authority-delivery.register": RouteAuthorizationPolicy(
+        required_scopes=(PolicyScope.RUNTIME_AUTHORITY_DELIVERY_REGISTER,)
+    ),
+    "command.runtime-authority-delivery.revoke": RouteAuthorizationPolicy(
+        required_scopes=(PolicyScope.RUNTIME_AUTHORITY_DELIVERY_REVOKE,)
+    ),
+    "command.ingress-authority.register": RouteAuthorizationPolicy(
+        required_scopes=(PolicyScope.INGRESS_AUTHORITY_REGISTER,)
+    ),
+    "command.ingress-authority.revoke": RouteAuthorizationPolicy(
+        required_scopes=(PolicyScope.INGRESS_AUTHORITY_REVOKE,)
+    ),
+    "command.operation-session.start": _WORKSPACE_EDIT,
+    "command.operation-session.close": _WORKSPACE_EDIT,
+    "command.operation-session.cancel": _WORKSPACE_EDIT,
+    "command.operation-session.record-action": _WORKSPACE_EDIT,
+    "command.desired-graph.set": _WORKSPACE_EDIT,
+    "command.deployment.plan": RouteAuthorizationPolicy(
+        required_scopes=(PolicyScope.PLAN_REQUEST,)
+    ),
+    "command.approval.request": RouteAuthorizationPolicy(
+        required_scopes=(PolicyScope.PLAN_REQUEST,)
+    ),
+    "command.approval.decide": RouteAuthorizationPolicy(
+        any_scopes=(
+            PolicyScope.PLAN_APPROVE,
+            PolicyScope.PLAN_APPROVE_DESTRUCTIVE,
+        )
+    ),
+    "command.deployment.admit": RouteAuthorizationPolicy(
+        required_scopes=(PolicyScope.PLAN_EXECUTE,)
+    ),
+    "command.run.claim": _WORKER_OPERATION,
+    "command.run.start": _WORKER_OPERATION,
+    "command.deployment.execute": _WORKER_OPERATION,
+    "command.graph.advance-current": _WORKER_OPERATION,
+    "command.recovery.decide": _WORKER_OPERATION,
+}
 
 
 @dataclass(frozen=True)
@@ -163,6 +292,7 @@ class CpkServerReadService:
         self._clock = clock
 
     def handle(self, request: CpkServerRouteRequest) -> Mapping[str, object]:
+        _trusted_context(request)
         with self._unit_of_work_factory() as unit_of_work:
             stores = unit_of_work.stores
             kwargs: dict[str, object] = {
@@ -209,6 +339,7 @@ class CpkServerPlanningService:
         self._desired_graphs = desired_graphs
 
     def handle(self, request: CpkServerRouteRequest) -> Mapping[str, object]:
+        context = _trusted_context(request)
         if request.route_id == "command.workspace.create":
             if self._workspaces is None:
                 raise _service_not_configured(request)
@@ -217,7 +348,7 @@ class CpkServerPlanningService:
                 CreateWorkspace(
                     workspace_id=_text(payload, "workspace_id"),
                     name=_text(payload, "name"),
-                    actor_id=_text(payload, "actor_id"),
+                    actor_id=context.actor_id,
                     idempotency_key=IdempotencyKey(_text(payload, "idempotency_key")),
                     metadata=_string_mapping(payload, "metadata", default={}),
                 )
@@ -245,7 +376,7 @@ class CpkServerPlanningService:
                     workspace_id=_workspace_id(payload),
                     descriptor_document=document,
                     source=source,
-                    imported_by=_text(payload, "actor_id"),
+                    imported_by=context.actor_id,
                     imported_at=_text(payload, "imported_at"),
                 )
             )
@@ -267,7 +398,7 @@ class CpkServerPlanningService:
                 RegisterImagePullAuthorityCommand(
                     workspace_id=_workspace_id(payload),
                     authority=authority,
-                    admitted_by=_text(payload, "actor_id"),
+                    admitted_by=context.actor_id,
                     admitted_at=_text(payload, "admitted_at"),
                 )
             )
@@ -286,9 +417,9 @@ class CpkServerPlanningService:
                         ),
                         runtime_kind=RuntimeKind(_text(payload, "runtime_kind")),
                         authority=_runtime_authority(payload),
-                        admitted_by=_text(payload, "actor_id"),
+                        admitted_by=context.actor_id,
                         admitted_at=_text(payload, "admitted_at"),
-                        actor_scopes=_scopes(payload),
+                        actor_scopes=context.granted_scopes,
                     )
                 )
             except RuntimeAuthorityAuthorizationDenied as error:
@@ -308,7 +439,7 @@ class CpkServerPlanningService:
                         authority_ref=RuntimeAuthorityReference(
                             _path_or_payload(payload, "authority_ref", "authority_ref")
                         ),
-                        actor_scopes=_scopes(payload),
+                        actor_scopes=context.granted_scopes,
                     )
                 )
             except RuntimeAuthorityAuthorizationDenied as error:
@@ -328,9 +459,9 @@ class CpkServerPlanningService:
                         delivery=RuntimeAuthorityAccessDeliveryCodec().decode(
                             _mapping(payload, "delivery")
                         ),
-                        admitted_by=_text(payload, "actor_id"),
+                        admitted_by=context.actor_id,
                         admitted_at=_text(payload, "admitted_at"),
-                        actor_scopes=_scopes(payload),
+                        actor_scopes=context.granted_scopes,
                     )
                 )
             except RuntimeAuthorityAuthorizationDenied as error:
@@ -350,7 +481,7 @@ class CpkServerPlanningService:
                         authority_ref=RuntimeAuthorityReference(
                             _path_or_payload(payload, "authority_ref", "authority_ref")
                         ),
-                        actor_scopes=_scopes(payload),
+                        actor_scopes=context.granted_scopes,
                     )
                 )
             except RuntimeAuthorityAuthorizationDenied as error:
@@ -371,9 +502,9 @@ class CpkServerPlanningService:
                             _text(payload, "authority_ref")
                         ),
                         authority=_ingress_authority(payload),
-                        admitted_by=_text(payload, "actor_id"),
+                        admitted_by=context.actor_id,
                         admitted_at=_text(payload, "admitted_at"),
-                        actor_scopes=_scopes(payload),
+                        actor_scopes=context.granted_scopes,
                     )
                 )
             except IngressAuthorityAuthorizationDenied as error:
@@ -393,7 +524,7 @@ class CpkServerPlanningService:
                         authority_ref=IngressAuthorityReference(
                             _path_or_payload(payload, "authority_ref", "authority_ref")
                         ),
-                        actor_scopes=_scopes(payload),
+                        actor_scopes=context.granted_scopes,
                     )
                 )
             except IngressAuthorityAuthorizationDenied as error:
@@ -413,7 +544,7 @@ class CpkServerPlanningService:
                 SetDesiredGraph(
                     session_id=_text(payload, "session_id"),
                     workspace_id=_workspace_id(payload),
-                    actor_id=_text(payload, "actor_id"),
+                    actor_id=context.actor_id,
                     graph=graph,
                     expected_desired_graph_id=_optional_text(
                         payload,
@@ -430,7 +561,7 @@ class CpkServerPlanningService:
             RequestActivityPlan(
                 session_id=_text(payload, "session_id"),
                 workspace_id=_workspace_id(payload),
-                actor_id=_text(payload, "actor_id"),
+                actor_id=context.actor_id,
                 expected_current_graph_id=_text(payload, "expected_current_graph_id"),
                 expected_desired_graph_id=_text(payload, "expected_desired_graph_id"),
                 idempotency_key=IdempotencyKey(_text(payload, "idempotency_key")),
@@ -444,14 +575,15 @@ class CpkServerApprovalService:
         self._service = service
 
     def handle(self, request: CpkServerRouteRequest) -> Mapping[str, object]:
+        context = _trusted_context(request)
         if request.route_id == "command.approval.request":
             payload = _arguments(request)
             result = self._service.execute(
                 RequestApproval(
                     session_id=_text(payload, "session_id"),
                     plan_id=_path_or_payload(payload, "plan_id", "plan_id"),
-                    actor_id=_text(payload, "actor_id"),
-                    actor_scopes=_scopes(payload),
+                    actor_id=context.actor_id,
+                    actor_scopes=context.granted_scopes,
                     idempotency_key=IdempotencyKey(_text(payload, "idempotency_key")),
                     comment=_optional_text(payload, "comment"),
                 )
@@ -464,8 +596,8 @@ class CpkServerApprovalService:
             DecideApproval(
                 session_id=_text(payload, "session_id"),
                 request_id=_path_or_payload(payload, "approval_id", "request_id"),
-                actor_id=_text(payload, "actor_id"),
-                actor_scopes=_scopes(payload),
+                actor_id=context.actor_id,
+                actor_scopes=context.granted_scopes,
                 decision=ApprovalDecisionKind(_text(payload, "decision")),
                 idempotency_key=IdempotencyKey(_text(payload, "idempotency_key")),
                 comment=_optional_text(payload, "comment"),
@@ -479,6 +611,7 @@ class CpkServerAdmissionService:
         self._service = service
 
     def handle(self, request: CpkServerRouteRequest) -> Mapping[str, object]:
+        context = _trusted_context(request)
         if request.route_id != "command.deployment.admit":
             raise _unsupported_route(request)
         payload = _arguments(request)
@@ -488,8 +621,8 @@ class CpkServerAdmissionService:
                 session_id=_text(payload, "session_id"),
                 plan_id=_path_or_payload(payload, "plan_id", "plan_id"),
                 approval_request_id=_text(payload, "approval_request_id"),
-                actor_id=_text(payload, "actor_id"),
-                actor_scopes=_scopes(payload),
+                actor_id=context.actor_id,
+                actor_scopes=context.granted_scopes,
                 idempotency_key=IdempotencyKey(_text(payload, "idempotency_key")),
                 readiness=_readiness(payload),
             )
@@ -510,6 +643,7 @@ class CpkServerLifecycleService:
         self._advancement = advancement
 
     def handle(self, request: CpkServerRouteRequest) -> Mapping[str, object]:
+        context = _trusted_context(request)
         if request.route_id.startswith("command.operation-session."):
             if self._operations is None:
                 raise _service_not_configured(request)
@@ -518,7 +652,7 @@ class CpkServerLifecycleService:
                 result = self._operations.execute(
                     StartOperationSession(
                         workspace_id=_workspace_id(payload),
-                        actor_id=_text(payload, "actor_id"),
+                        actor_id=context.actor_id,
                         title=_text(payload, "title"),
                         idempotency_key=IdempotencyKey(
                             _text(payload, "idempotency_key")
@@ -531,7 +665,7 @@ class CpkServerLifecycleService:
                 result = self._operations.execute(
                     CloseOperationSession(
                         session_id=_path_or_payload(payload, "session_id", "session_id"),
-                        actor_id=_text(payload, "actor_id"),
+                        actor_id=context.actor_id,
                         idempotency_key=IdempotencyKey(
                             _text(payload, "idempotency_key")
                         ),
@@ -542,7 +676,7 @@ class CpkServerLifecycleService:
                 result = self._operations.execute(
                     CancelOperationSession(
                         session_id=_path_or_payload(payload, "session_id", "session_id"),
-                        actor_id=_text(payload, "actor_id"),
+                        actor_id=context.actor_id,
                         idempotency_key=IdempotencyKey(
                             _text(payload, "idempotency_key")
                         ),
@@ -557,7 +691,7 @@ class CpkServerLifecycleService:
                 result = self._operations.execute(
                     RecordOperationAction(
                         session_id=_path_or_payload(payload, "session_id", "session_id"),
-                        actor_id=_text(payload, "actor_id"),
+                        actor_id=context.actor_id,
                         action_type=action_type,
                         idempotency_key=IdempotencyKey(
                             _text(payload, "idempotency_key")
@@ -580,7 +714,7 @@ class CpkServerLifecycleService:
                         "expected_current_graph_id",
                     ),
                     desired_graph_id=_text(payload, "desired_graph_id"),
-                    authority=_worker_authority(payload),
+                    authority=_worker_authority(context),
                     idempotency_key=IdempotencyKey(_text(payload, "idempotency_key")),
                 )
             )
@@ -591,7 +725,7 @@ class CpkServerLifecycleService:
         result = self._service.execute(
             ClaimAndOpenActivityRun(
                 request_id=_path_or_payload(payload, "run_id", "request_id"),
-                authority=_worker_authority(payload),
+                authority=_worker_authority(context),
                 lease_expires_at=_text(payload, "lease_expires_at"),
                 idempotency_key=IdempotencyKey(_text(payload, "idempotency_key")),
             )
@@ -610,6 +744,7 @@ class CpkServerExecutionService:
         self._lifecycle = lifecycle
 
     def handle(self, request: CpkServerRouteRequest) -> Mapping[str, object]:
+        context = _trusted_context(request)
         if request.route_id == "command.run.start":
             if self._lifecycle is None:
                 raise _service_not_configured(request)
@@ -617,7 +752,7 @@ class CpkServerExecutionService:
             result = self._lifecycle.execute(
                 StartActivityRun(
                     run_id=_path_or_payload(payload, "run_id", "run_id"),
-                    authority=_worker_authority(payload),
+                    authority=_worker_authority(context),
                     idempotency_key=IdempotencyKey(_text(payload, "idempotency_key")),
                 )
             )
@@ -628,7 +763,7 @@ class CpkServerExecutionService:
         result = self._service.execute(
             ExecuteActivityRun(
                 run_id=_path_or_payload(payload, "run_id", "run_id"),
-                authority=_worker_authority(payload),
+                authority=_worker_authority(context),
                 idempotency_key=IdempotencyKey(_text(payload, "idempotency_key")),
                 max_effects=_positive_int(payload, "max_effects", default=1),
             )
@@ -643,6 +778,7 @@ class CpkServerUnsupportedService:
         self._role = role
 
     def handle(self, request: CpkServerRouteRequest) -> Mapping[str, object]:
+        _trusted_context(request)
         raise CpkServerApplicationError(
             501,
             f"{self._role.value} service is not implemented in operations yet",
@@ -763,10 +899,8 @@ def _read_model(service: InstanceReadService, request: CpkServerRouteRequest) ->
             pointer=_optional_text(args, "pointer") or "current",
         )
     if route_id == "read.runtime-authorities":
-        _require_scope(args, PolicyScope.RUNTIME_AUTHORITY_READ)
         return service.runtime_authorities(_workspace_id(args))
     if route_id == "read.runtime-authority-detail":
-        _require_scope(args, PolicyScope.RUNTIME_AUTHORITY_READ)
         return service.runtime_authority_detail(
             _workspace_id(args),
             RuntimeAuthorityReference(
@@ -774,10 +908,8 @@ def _read_model(service: InstanceReadService, request: CpkServerRouteRequest) ->
             ),
         )
     if route_id == "read.runtime-authority-deliveries":
-        _require_scope(args, PolicyScope.RUNTIME_AUTHORITY_DELIVERY_READ)
         return service.runtime_authority_deliveries(_workspace_id(args))
     if route_id == "read.runtime-authority-delivery-detail":
-        _require_scope(args, PolicyScope.RUNTIME_AUTHORITY_DELIVERY_READ)
         return service.runtime_authority_delivery_detail(
             _workspace_id(args),
             RuntimeAuthorityReference(
@@ -785,10 +917,8 @@ def _read_model(service: InstanceReadService, request: CpkServerRouteRequest) ->
             ),
         )
     if route_id == "read.ingress-authorities":
-        _require_scope(args, PolicyScope.INGRESS_AUTHORITY_READ)
         return service.ingress_authorities(_workspace_id(args))
     if route_id == "read.ingress-authority-detail":
-        _require_scope(args, PolicyScope.INGRESS_AUTHORITY_READ)
         return service.ingress_authority_detail(
             _workspace_id(args),
             IngressAuthorityReference(
@@ -803,6 +933,24 @@ def _arguments(request: CpkServerRouteRequest) -> dict[str, object]:
         **dict(request.payload),
         **dict(request.path_parameters),
     }
+
+
+def _trusted_context(request: CpkServerRouteRequest) -> TrustedCommandContext:
+    values = _arguments(request)
+    workspace_id = _workspace_id(values)
+    principal = getattr(request, "principal", None)
+    if not isinstance(principal, AuthenticatedPrincipal):
+        raise CpkServerApplicationError(403, "authenticated principal is required")
+    try:
+        context = principal.command_context(workspace_id)
+    except IdentityContractError as error:
+        raise CpkServerApplicationError(403, "workspace access is denied") from error
+    try:
+        policy = _ROUTE_AUTHORIZATION_POLICIES[request.route_id]
+    except KeyError as error:
+        raise CpkServerApplicationError(404, f"unknown route {request.route_id!r}") from error
+    policy.authorize(context)
+    return context
 
 
 def _workspace_id(values: Mapping[str, object]) -> str:
@@ -876,23 +1024,6 @@ def _non_negative_int(values: Mapping[str, object], name: str, *, default: int) 
     return value
 
 
-def _scopes(values: Mapping[str, object]) -> tuple[PolicyScope, ...]:
-    raw = values.get("actor_scopes", ())
-    if not isinstance(raw, list):
-        raise CpkServerApplicationError(400, "actor_scopes must be a list")
-    if not all(isinstance(item, str) for item in raw):
-        raise CpkServerApplicationError(400, "actor_scopes entries must be text")
-    try:
-        return tuple(PolicyScope(item) for item in raw)
-    except ValueError as error:
-        raise CpkServerApplicationError(400, "actor_scopes contains an unknown scope") from error
-
-
-def _require_scope(values: Mapping[str, object], scope: PolicyScope) -> None:
-    if scope not in _scopes(values):
-        raise CpkServerApplicationError(403, f"missing required scope {scope.value!r}")
-
-
 def _runtime_authority(values: Mapping[str, object]) -> object:
     raw = _mapping(values, "authority")
     kind = _text(raw, "kind")
@@ -928,10 +1059,10 @@ def _ingress_authority(values: Mapping[str, object]) -> object:
     raise CpkServerApplicationError(400, "unsupported ingress authority provider")
 
 
-def _worker_authority(values: Mapping[str, object]) -> ExecutionWorkerAuthority:
+def _worker_authority(context: TrustedCommandContext) -> ExecutionWorkerAuthority:
     return ExecutionWorkerAuthority(
-        worker_id=_text(values, "worker_id"),
-        scopes=_scopes(values),
+        worker_id=context.actor_id,
+        scopes=context.granted_scopes,
     )
 
 
