@@ -7,16 +7,24 @@ import base64
 from datetime import datetime, timezone
 import json
 import os
+import time
 from typing import Mapping
+from urllib.parse import urlsplit
 from uuid import uuid4
 
 from fastapi import FastAPI, Request
 from fastapi.responses import JSONResponse
 import psycopg
 import uvicorn
-from control_plane_kit_core.identity import CredentialVerifier
+from control_plane_kit_core.identity import CredentialVerifier, WorkspaceGrant
 from control_plane_kit_core.operations.execution import EffectResultKind
 from control_plane_kit_core.operations.lifecycle import FailureCategory
+from control_plane_kit_core.policies import PolicyScope
+from control_plane_kit_core.probe_intents import (
+    EndpointContext,
+    LiteralEndpointMaterial,
+)
+from control_plane_kit_core.secrets import SecretReference, SecretResolutionError
 from control_plane_kit_core.types import RuntimeKind
 from control_plane_kit_operations import (
     ActivityExecutionOutcome,
@@ -33,6 +41,11 @@ from control_plane_kit_operations import (
     ExecutionAdmissionCommandService,
     ExecutionCoordinator,
     FailureEvidence,
+    GatewayProbeAttemptStatus,
+    GatewayProbeCommandService,
+    GatewayProbeDispatch,
+    GatewayProbeDispatchError,
+    GatewayProbeDispatchResult,
     ImagePullAuthorityRegistrationService,
     InMemoryGeneratedSecretRecorder,
     IngressAuthorityProviderKind,
@@ -140,6 +153,11 @@ class CpkServerBootstrapConfiguration:
     docker_config_path: str | None
     docker_config_json: str | None = field(repr=False)
     store_endpoints: Mapping[str, str]
+    gateway_probe_signer: str = "none"
+    gateway_probe_signing_key_reference: SecretReference | None = None
+    gateway_probe_issuer: str | None = None
+    gateway_probe_key_id: str | None = None
+    control_auth_static_workspace_grants: tuple[WorkspaceGrant, ...] = ()
 
     @classmethod
     def from_environment(
@@ -151,6 +169,9 @@ class CpkServerBootstrapConfiguration:
         control_auth_verifier = values.get("CPK_CONTROL_AUTH_VERIFIER", "none")
         control_auth_static_credential_text = values.get(
             "CPK_CONTROL_AUTH_STATIC_CREDENTIAL"
+        )
+        control_auth_static_workspace_grants_text = values.get(
+            "CPK_CONTROL_AUTH_STATIC_WORKSPACE_GRANTS_JSON"
         )
         port_text = _required(values, "CPK_PORT")
         try:
@@ -170,6 +191,12 @@ class CpkServerBootstrapConfiguration:
         product_secret_values_json = values.get("CPK_PRODUCT_SECRET_VALUES_JSON")
         docker_config_path = _docker_config_path(values)
         docker_config_json = values.get("CPK_DOCKER_AUTH_CONFIG_JSON")
+        gateway_probe_signer = values.get("CPK_GATEWAY_PROBE_SIGNER", "none")
+        gateway_probe_signing_key_text = values.get(
+            "CPK_GATEWAY_PROBE_SIGNING_KEY_REF"
+        )
+        gateway_probe_issuer = values.get("CPK_GATEWAY_PROBE_ISSUER")
+        gateway_probe_key_id = values.get("CPK_GATEWAY_PROBE_KEY_ID")
         store_endpoints = {
             name: _required(values, name)
             for name in (
@@ -186,6 +213,7 @@ class CpkServerBootstrapConfiguration:
                 "CPK_CONTROL_AUTH_VERIFIER must be one of: none, static-development"
             )
         control_auth_static_credential = None
+        control_auth_static_workspace_grants: tuple[WorkspaceGrant, ...] = ()
         if control_auth_verifier == "static-development":
             if not control_auth_static_credential_text:
                 raise BootstrapConfigurationError(
@@ -206,9 +234,22 @@ class CpkServerBootstrapConfiguration:
                 raise BootstrapConfigurationError(
                     "CPK_CONTROL_AUTH_STATIC_CREDENTIAL must be bounded and nonempty"
                 ) from error
+            if not control_auth_static_workspace_grants_text:
+                raise BootstrapConfigurationError(
+                    "CPK_CONTROL_AUTH_VERIFIER=static-development requires "
+                    "CPK_CONTROL_AUTH_STATIC_WORKSPACE_GRANTS_JSON"
+                )
+            control_auth_static_workspace_grants = _static_workspace_grants(
+                control_auth_static_workspace_grants_text
+            )
         elif control_auth_static_credential_text is not None:
             raise BootstrapConfigurationError(
                 "CPK_CONTROL_AUTH_STATIC_CREDENTIAL requires "
+                "CPK_CONTROL_AUTH_VERIFIER=static-development"
+            )
+        elif control_auth_static_workspace_grants_text is not None:
+            raise BootstrapConfigurationError(
+                "CPK_CONTROL_AUTH_STATIC_WORKSPACE_GRANTS_JSON requires "
                 "CPK_CONTROL_AUTH_VERIFIER=static-development"
             )
         try:
@@ -224,6 +265,50 @@ class CpkServerBootstrapConfiguration:
         if product_secret_resolver not in {"none", "local-development"}:
             raise BootstrapConfigurationError(
                 "CPK_PRODUCT_SECRET_RESOLVER must be one of: none, local-development"
+            )
+        if gateway_probe_signer not in {"none", "ed25519"}:
+            raise BootstrapConfigurationError(
+                "CPK_GATEWAY_PROBE_SIGNER must be one of: none, ed25519"
+            )
+        gateway_probe_signing_key_reference = None
+        gateway_probe_fields = (
+            gateway_probe_signing_key_text,
+            gateway_probe_issuer,
+            gateway_probe_key_id,
+        )
+        if gateway_probe_signer == "none" and any(
+            value is not None for value in gateway_probe_fields
+        ):
+            raise BootstrapConfigurationError(
+                "gateway probe signing authority requires "
+                "CPK_GATEWAY_PROBE_SIGNER=ed25519"
+            )
+        if gateway_probe_signer == "ed25519":
+            if not all(gateway_probe_fields):
+                raise BootstrapConfigurationError(
+                    "CPK_GATEWAY_PROBE_SIGNER=ed25519 requires signing key "
+                    "reference, issuer, and key id"
+                )
+            if product_secret_resolver == "none":
+                raise BootstrapConfigurationError(
+                    "CPK_GATEWAY_PROBE_SIGNER=ed25519 requires "
+                    "CPK_PRODUCT_SECRET_RESOLVER"
+                )
+            try:
+                gateway_probe_signing_key_reference = SecretReference(
+                    gateway_probe_signing_key_text
+                )
+            except SecretResolutionError as error:
+                raise BootstrapConfigurationError(
+                    "CPK_GATEWAY_PROBE_SIGNING_KEY_REF must be a secret reference"
+                ) from error
+            gateway_probe_issuer = _bounded_ascii(
+                gateway_probe_issuer,
+                "CPK_GATEWAY_PROBE_ISSUER",
+            )
+            gateway_probe_key_id = _bounded_ascii(
+                gateway_probe_key_id,
+                "CPK_GATEWAY_PROBE_KEY_ID",
             )
         if (
             image_pull_credential_resolver == "docker-config"
@@ -247,10 +332,12 @@ class CpkServerBootstrapConfiguration:
             and RuntimeKind.DOCKER not in runtime_dispatcher.runtime_kinds
             and IngressAuthorityProviderKind.CLOUDFLARE
             not in ingress_interpreters.provider_kinds
+            and gateway_probe_signer == "none"
         ):
             raise BootstrapConfigurationError(
                 "CPK_PRODUCT_SECRET_RESOLVER=local-development requires "
-                "a Docker runtime interpreter or Cloudflare ingress interpreter"
+                "a Docker runtime interpreter, Cloudflare ingress interpreter, "
+                "or gateway probe signer"
             )
         if product_secret_resolver == "local-development":
             if product_secret_values_json is None or product_secret_values_json == "":
@@ -280,6 +367,15 @@ class CpkServerBootstrapConfiguration:
             docker_config_path=docker_config_path,
             docker_config_json=docker_config_json,
             store_endpoints=store_endpoints,
+            gateway_probe_signer=gateway_probe_signer,
+            gateway_probe_signing_key_reference=(
+                gateway_probe_signing_key_reference
+            ),
+            gateway_probe_issuer=gateway_probe_issuer,
+            gateway_probe_key_id=gateway_probe_key_id,
+            control_auth_static_workspace_grants=(
+                control_auth_static_workspace_grants
+            ),
         )
 
     def process_configuration(self) -> CpkServerProcessConfiguration:
@@ -388,7 +484,8 @@ def _credential_verifier(
     if config.control_auth_verifier == "static-development":
         assert config.control_auth_static_credential is not None
         return StaticDevelopmentCredentialVerifier(
-            config.control_auth_static_credential
+            config.control_auth_static_credential,
+            config.control_auth_static_workspace_grants,
         )
     raise BootstrapConfigurationError(
         "no credential verifier is configured for cpk-server"
@@ -410,6 +507,66 @@ def _required(values: Mapping[str, str], name: str) -> str:
     if value is None or value == "":
         raise BootstrapConfigurationError(f"{name} is required")
     return value
+
+
+def _bounded_ascii(value: str | None, name: str, *, maximum: int = 256) -> str:
+    if value is None or not 1 <= len(value) <= maximum:
+        raise BootstrapConfigurationError(f"{name} must be bounded ASCII")
+    try:
+        encoded = value.encode("ascii")
+    except UnicodeEncodeError as error:
+        raise BootstrapConfigurationError(f"{name} must be bounded ASCII") from error
+    if any(byte < 0x21 or byte > 0x7E for byte in encoded):
+        raise BootstrapConfigurationError(f"{name} must be bounded ASCII")
+    return value
+
+
+def _static_workspace_grants(value: str) -> tuple[WorkspaceGrant, ...]:
+    if not isinstance(value, str) or not 1 <= len(value) <= 65_536:
+        raise BootstrapConfigurationError(
+            "CPK_CONTROL_AUTH_STATIC_WORKSPACE_GRANTS_JSON must be bounded JSON"
+        )
+    try:
+        value.encode("ascii")
+        raw = json.loads(value)
+    except (UnicodeEncodeError, json.JSONDecodeError) as error:
+        raise BootstrapConfigurationError(
+            "CPK_CONTROL_AUTH_STATIC_WORKSPACE_GRANTS_JSON must be bounded JSON"
+        ) from error
+    if not isinstance(raw, Mapping) or not raw or len(raw) > 64:
+        raise BootstrapConfigurationError(
+            "CPK_CONTROL_AUTH_STATIC_WORKSPACE_GRANTS_JSON must map exact "
+            "workspace ids to scopes"
+        )
+    grants: list[WorkspaceGrant] = []
+    for workspace_id, raw_scopes in raw.items():
+        if workspace_id == "*":
+            raise BootstrapConfigurationError(
+                "wildcard workspace grants are forbidden"
+            )
+        workspace_id = _bounded_ascii(
+            workspace_id if isinstance(workspace_id, str) else None,
+            "static workspace grant id",
+            maximum=128,
+        )
+        if (
+            not isinstance(raw_scopes, list)
+            or not raw_scopes
+            or len(raw_scopes) > len(PolicyScope)
+            or not all(isinstance(scope, str) for scope in raw_scopes)
+            or len(set(raw_scopes)) != len(raw_scopes)
+        ):
+            raise BootstrapConfigurationError(
+                "static workspace grant scopes must be unique closed scope names"
+            )
+        try:
+            scopes = tuple(PolicyScope(scope) for scope in raw_scopes)
+        except ValueError as error:
+            raise BootstrapConfigurationError(
+                "static workspace grant includes an unknown policy scope"
+            ) from error
+        grants.append(WorkspaceGrant(workspace_id, scopes))
+    return tuple(sorted(grants, key=lambda grant: grant.workspace_id))
 
 
 def _operations_application(
@@ -478,8 +635,126 @@ def _operations_application(
                 clock=_clock,
                 id_factory=_id,
             ),
+            gateway_probes=_gateway_probe_service(config, unit_of_work),
             clock=lambda: datetime.now(timezone.utc),
         )
+    )
+
+
+def _gateway_probe_service(config: CpkServerBootstrapConfiguration, unit_of_work):
+    if config.gateway_probe_signer == "none":
+        return None
+    if config.gateway_probe_issuer is None or config.gateway_probe_key_id is None:
+        raise AssertionError("gateway probe signer fields validated at bootstrap")
+    return GatewayProbeCommandService(
+        unit_of_work,
+        dispatcher=_gateway_probe_dispatcher(config),
+        issuer=config.gateway_probe_issuer,
+        key_id=config.gateway_probe_key_id,
+        epoch_clock=lambda: int(time.time()),
+        clock=_clock,
+        id_factory=_id,
+    )
+
+
+@dataclass(frozen=True, repr=False)
+class _SignedGatewayProbeDispatcher:
+    client_factory: object = field(repr=False)
+    bounded_error_types: tuple[type[Exception], ...] = field(repr=False)
+    succeeded_code: object = field(repr=False)
+    rejected_code: object = field(repr=False)
+
+    def dispatch(self, request: GatewayProbeDispatch) -> GatewayProbeDispatchResult:
+        endpoint = request.gateway_endpoint
+        if (
+            endpoint.context is not EndpointContext.RUNTIME_PRIVATE
+            or not isinstance(endpoint.address, LiteralEndpointMaterial)
+        ):
+            raise GatewayProbeDispatchError(
+                "gateway endpoint is not an admitted private runtime address"
+            )
+        parsed = urlsplit(endpoint.address.value)
+        if not parsed.scheme or not parsed.netloc:
+            raise GatewayProbeDispatchError("gateway endpoint is malformed")
+        try:
+            client = self.client_factory(f"{parsed.scheme}://{parsed.netloc}")
+            result = client.dispatch(
+                request.grant,
+                request.request,
+                endpoint,
+            )
+        except self.bounded_error_types:
+            raise GatewayProbeDispatchError(
+                "gateway probe dispatch was rejected"
+            ) from None
+        if result.code is self.succeeded_code:
+            status = GatewayProbeAttemptStatus.SUCCEEDED
+        elif result.code is self.rejected_code:
+            status = GatewayProbeAttemptStatus.REJECTED
+        else:
+            status = GatewayProbeAttemptStatus.FAILED
+        return GatewayProbeDispatchResult(
+            status=status,
+            code=result.code.value,
+            evidence=BoundedEvidence.from_mapping(result.evidence),
+        )
+
+    def __repr__(self) -> str:
+        return "_SignedGatewayProbeDispatcher(<redacted>)"
+
+
+def _gateway_probe_dispatcher(
+    config: CpkServerBootstrapConfiguration,
+    *,
+    transport=None,
+):
+    if config.gateway_probe_signer != "ed25519":
+        raise BootstrapConfigurationError("gateway probe signer is disabled")
+    if config.gateway_probe_signing_key_reference is None:
+        raise AssertionError("gateway probe signing key validated at bootstrap")
+    secret_resolver = _product_secret_resolver(config)
+    if secret_resolver is None:
+        raise BootstrapConfigurationError(
+            "gateway probe signer requires a product secret resolver"
+        )
+    try:
+        from control_plane_kit_interpreters.probes import (
+            Ed25519GatewayProbeSigner,
+            GatewayProbeClientCode,
+            GatewayProbeClientError,
+            ProbeAddressPolicy,
+            ProbeSecurityError,
+            SignedGatewayProbeClient,
+        )
+    except ModuleNotFoundError as error:
+        raise BootstrapConfigurationError(
+            "CPK_GATEWAY_PROBE_SIGNER=ed25519 requires "
+            "control-plane-kit-interpreters[gateway]"
+        ) from error
+    signer = Ed25519GatewayProbeSigner(
+        config.gateway_probe_signing_key_reference,
+        secret_resolver,
+    )
+
+    def client_factory(runtime_private_authority: str):
+        return SignedGatewayProbeClient(
+            signer=signer,
+            address_policy=ProbeAddressPolicy(
+                runtime_private_authorities=frozenset(
+                    {runtime_private_authority}
+                )
+            ),
+            transport=transport,
+        )
+
+    return _SignedGatewayProbeDispatcher(
+        client_factory=client_factory,
+        bounded_error_types=(
+            GatewayProbeClientError,
+            ProbeSecurityError,
+        ),
+        succeeded_code=GatewayProbeClientCode.SUCCEEDED,
+        rejected_code=GatewayProbeClientCode.REJECTED,
     )
 
 

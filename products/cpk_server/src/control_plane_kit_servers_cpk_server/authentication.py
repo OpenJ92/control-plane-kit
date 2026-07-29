@@ -11,6 +11,7 @@ from control_plane_kit_core.identity import (
     CredentialVerifier,
     PrincipalIdentity,
     PrincipalKind,
+    WorkspaceGrant,
 )
 
 
@@ -71,6 +72,7 @@ class StaticDevelopmentCredentialVerifier:
     """Explicit local-development verifier; never an accept-all default."""
 
     expected_credential: bytes = field(repr=False, compare=False, hash=False)
+    workspace_grants: tuple[WorkspaceGrant, ...] = ()
 
     def __post_init__(self) -> None:
         credential_text = None
@@ -87,6 +89,13 @@ class StaticDevelopmentCredentialVerifier:
             or any(character.isspace() for character in credential_text)
         ):
             raise CredentialAuthenticationError()
+        if not isinstance(self.workspace_grants, tuple) or not all(
+            isinstance(grant, WorkspaceGrant) for grant in self.workspace_grants
+        ):
+            raise CredentialAuthenticationError()
+        workspace_ids = tuple(grant.workspace_id for grant in self.workspace_grants)
+        if len(set(workspace_ids)) != len(workspace_ids):
+            raise CredentialAuthenticationError()
 
     def authenticate(self, credential: bytes) -> AuthenticatedPrincipal:
         if not hmac.compare_digest(credential, self.expected_credential):
@@ -96,5 +105,6 @@ class StaticDevelopmentCredentialVerifier:
                 issuer="urn:control-plane-kit:static-development",
                 subject_id="local-development-operator",
                 kind=PrincipalKind.OPERATOR,
-            )
+            ),
+            self.workspace_grants,
         )

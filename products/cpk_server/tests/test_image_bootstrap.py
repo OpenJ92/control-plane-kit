@@ -5,7 +5,13 @@ import json
 from pathlib import Path
 import tempfile
 import sys
+import time
 import unittest
+
+from cryptography.hazmat.primitives import serialization
+from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PrivateKey
+import httpx
+import jwt
 
 
 ROOT = Path(__file__).resolve().parents[3]
@@ -36,6 +42,7 @@ CONCRETE_PROVIDER_IMPORT_ROOTS = {
 APPROVED_PROVIDER_FUNCTIONS = {
     "_cloudflare_ingress_interpreter",
     "_docker_runtime_interpreter",
+    "_gateway_probe_dispatcher",
     "_image_pull_credential_resolver",
     "_product_secret_resolver",
 }
@@ -60,7 +67,7 @@ class CpkServerImageBootstrapTests(unittest.TestCase):
             dockerfile,
         )
         self.assertIn(
-            "control-plane-kit-interpreters[cloudflare,docker] @ "
+            "control-plane-kit-interpreters[cloudflare,docker,gateway] @ "
             "https://github.com/OpenJ92/control-plane-kit-interpreters/archive/"
             f"{INTERPRETERS_PIN}.zip",
             dockerfile,
@@ -86,9 +93,14 @@ class CpkServerImageBootstrapTests(unittest.TestCase):
                 "CPK_SERVER_MODE",
                 "CPK_CONTROL_AUTH_VERIFIER",
                 "CPK_CONTROL_AUTH_STATIC_CREDENTIAL",
+                "CPK_CONTROL_AUTH_STATIC_WORKSPACE_GRANTS_JSON",
                 "CPK_PORT",
                 "CPK_RUNTIME_INTERPRETERS",
                 "CPK_INGRESS_INTERPRETERS",
+                "CPK_GATEWAY_PROBE_SIGNER",
+                "CPK_GATEWAY_PROBE_SIGNING_KEY_REF",
+                "CPK_GATEWAY_PROBE_ISSUER",
+                "CPK_GATEWAY_PROBE_KEY_ID",
                 "CPK_IMAGE_PULL_CREDENTIAL_RESOLVER",
                 "CPK_PRODUCT_SECRET_RESOLVER",
                 "CPK_PRODUCT_SECRET_VALUES_JSON",
@@ -199,11 +211,35 @@ class CpkServerImageBootstrapTests(unittest.TestCase):
                     }
                 )
 
+            with self.assertRaisesRegex(
+                server_module.BootstrapConfigurationError,
+                "requires CPK_CONTROL_AUTH_STATIC_WORKSPACE_GRANTS_JSON",
+            ):
+                server_module.CpkServerBootstrapConfiguration.from_environment(
+                    {
+                        **environ,
+                        "CPK_CONTROL_AUTH_VERIFIER": "static-development",
+                        "CPK_CONTROL_AUTH_STATIC_CREDENTIAL": (
+                            "credential-not-for-output"
+                        ),
+                    }
+                )
+            grants_json = json.dumps(
+                {
+                    "workspace-a": [
+                        "hub:instance:create",
+                        "instance:workspace:read",
+                        "instance:workspace:edit",
+                        "plan:request",
+                    ]
+                }
+            )
             configured = server_module.CpkServerBootstrapConfiguration.from_environment(
                 {
                     **environ,
                     "CPK_CONTROL_AUTH_VERIFIER": "static-development",
                     "CPK_CONTROL_AUTH_STATIC_CREDENTIAL": "credential-not-for-output",
+                    "CPK_CONTROL_AUTH_STATIC_WORKSPACE_GRANTS_JSON": grants_json,
                 }
             )
             verifier = server_module._credential_verifier(configured)
@@ -216,6 +252,7 @@ class CpkServerImageBootstrapTests(unittest.TestCase):
                         "CPK_CONTROL_AUTH_STATIC_CREDENTIAL": (
                             "different-credential-not-for-output"
                         ),
+                        "CPK_CONTROL_AUTH_STATIC_WORKSPACE_GRANTS_JSON": grants_json,
                     }
                 )
             )
@@ -225,6 +262,52 @@ class CpkServerImageBootstrapTests(unittest.TestCase):
                 principal.identity.subject_id,
                 "local-development-operator",
             )
+            self.assertEqual(
+                tuple(grant.descriptor() for grant in principal.workspace_grants),
+                (
+                    {
+                        "workspace_id": "workspace-a",
+                        "scopes": (
+                            "hub:instance:create",
+                            "instance:workspace:edit",
+                            "instance:workspace:read",
+                            "plan:request",
+                        ),
+                    },
+                ),
+            )
+            with self.assertRaisesRegex(
+                server_module.BootstrapConfigurationError,
+                "wildcard workspace grants are forbidden",
+            ):
+                server_module.CpkServerBootstrapConfiguration.from_environment(
+                    {
+                        **environ,
+                        "CPK_CONTROL_AUTH_VERIFIER": "static-development",
+                        "CPK_CONTROL_AUTH_STATIC_CREDENTIAL": (
+                            "credential-not-for-output"
+                        ),
+                        "CPK_CONTROL_AUTH_STATIC_WORKSPACE_GRANTS_JSON": (
+                            '{"*":["instance:workspace:read"]}'
+                        ),
+                    }
+                )
+            with self.assertRaisesRegex(
+                server_module.BootstrapConfigurationError,
+                "unknown policy scope",
+            ):
+                server_module.CpkServerBootstrapConfiguration.from_environment(
+                    {
+                        **environ,
+                        "CPK_CONTROL_AUTH_VERIFIER": "static-development",
+                        "CPK_CONTROL_AUTH_STATIC_CREDENTIAL": (
+                            "credential-not-for-output"
+                        ),
+                        "CPK_CONTROL_AUTH_STATIC_WORKSPACE_GRANTS_JSON": (
+                            '{"workspace-a":["admin:*"]}'
+                        ),
+                    }
+                )
             self.assertEqual(configured, other_config)
             self.assertNotEqual(verifier, other_verifier)
             self.assertNotIn("credential-not-for-output", repr(configured))
@@ -390,6 +473,209 @@ class CpkServerImageBootstrapTests(unittest.TestCase):
                 "CPK_PRODUCT_SECRET_RESOLVER must be one of",
             ):
                 server_module.CpkServerBootstrapConfiguration.from_environment(environ)
+        finally:
+            sys.path.remove(str(PRODUCT_SRC))
+            for name in list(sys.modules):
+                if name == "control_plane_kit_servers_cpk_server" or name.startswith(
+                    "control_plane_kit_servers_cpk_server."
+                ):
+                    sys.modules.pop(name, None)
+
+    def test_gateway_probe_signer_bootstrap_composes_real_bounded_dispatch(
+        self,
+    ) -> None:
+        sys.path.insert(0, str(PRODUCT_SRC))
+        try:
+            server_module = importlib.import_module(
+                "control_plane_kit_servers_cpk_server.server"
+            )
+            from control_plane_kit_core.gateway_delegation import (
+                DelegatedGatewayProbeGrant,
+                GatewayProbeCommandKind,
+                GatewayProbeRequest,
+            )
+            from control_plane_kit_core.probe_intents import (
+                EndpointContext,
+                LiteralEndpointMaterial,
+                RuntimeEndpointObservation,
+            )
+            from control_plane_kit_core.runtime_effects import GatewayTargetId
+            from control_plane_kit_core.types import Protocol
+            from control_plane_kit_operations import (
+                GatewayProbeAttemptStatus,
+                GatewayProbeDispatch,
+            )
+
+            private_key = Ed25519PrivateKey.generate()
+            private_pem = private_key.private_bytes(
+                encoding=serialization.Encoding.PEM,
+                format=serialization.PrivateFormat.PKCS8,
+                encryption_algorithm=serialization.NoEncryption(),
+            ).decode("ascii")
+            public_pem = private_key.public_key().public_bytes(
+                encoding=serialization.Encoding.PEM,
+                format=serialization.PublicFormat.SubjectPublicKeyInfo,
+            ).decode("ascii")
+            key_reference = "secret://control-plane-kit/gateway/signing-key"
+            config = server_module.CpkServerBootstrapConfiguration.from_environment(
+                {
+                    "CPK_SERVER_MODE": "execution-capable",
+                    "CPK_CONTROL_AUTH_CONFIGURED": "true",
+                    "CPK_PORT": "8080",
+                    "CPK_RUNTIME_INTERPRETERS": "none",
+                    "CPK_GATEWAY_PROBE_SIGNER": "ed25519",
+                    "CPK_GATEWAY_PROBE_SIGNING_KEY_REF": key_reference,
+                    "CPK_GATEWAY_PROBE_ISSUER": "urn:cpk:test",
+                    "CPK_GATEWAY_PROBE_KEY_ID": "gateway-key-a",
+                    "CPK_PRODUCT_SECRET_RESOLVER": "local-development",
+                    "CPK_PRODUCT_SECRET_VALUES_JSON": json.dumps(
+                        {key_reference: private_pem}
+                    ),
+                    "CPK_WORKPLACE_DATABASE_URL": "postgres://user:pass@db/cpk",
+                    "CPK_ACTIVITY_HISTORY_DATABASE_URL": "postgres://user:pass@db/cpk",
+                    "CPK_OBSERVER_STATE_DATABASE_URL": "postgres://user:pass@db/cpk",
+                    "CPK_GRAPH_TOPOLOGY_DATABASE_URL": "postgres://user:pass@db/cpk",
+                }
+            )
+            observed: dict[str, object] = {}
+
+            def handler(inbound: httpx.Request) -> httpx.Response:
+                scheme, token = inbound.headers["authorization"].split(
+                    " ",
+                    maxsplit=1,
+                )
+                observed["scheme"] = scheme
+                observed["claims"] = jwt.decode(
+                    token,
+                    public_pem,
+                    algorithms=["EdDSA"],
+                    audience="gateway:workspace-a:gateway-a",
+                    issuer="urn:cpk:test",
+                )
+                return httpx.Response(
+                    200,
+                    json={
+                        "outcome": "passed",
+                        "target_id": "hello.http",
+                        "probe": "http-status",
+                        "status": 200,
+                        "body_size": 4,
+                    },
+                )
+
+            request = GatewayProbeRequest(
+                GatewayProbeCommandKind.HTTP_STATUS,
+                GatewayTargetId("hello.http"),
+                "/health/ready",
+            )
+            issued_at = int(time.time()) - 1
+            grant = DelegatedGatewayProbeGrant(
+                issuer="urn:cpk:test",
+                key_id="gateway-key-a",
+                audience="gateway:workspace-a:gateway-a",
+                workspace_id="workspace-a",
+                operation_id="probe-a",
+                request_id="request-a",
+                gateway_node_id="gateway-a",
+                probe_kind=request.kind,
+                target_id=request.target_id,
+                request_digest=request.canonical_digest(),
+                issued_at=issued_at,
+                expires_at=issued_at + 60,
+                jti="jti-a",
+            )
+            dispatch = server_module._gateway_probe_dispatcher(
+                config,
+                transport=httpx.MockTransport(handler),
+            )
+            result = dispatch.dispatch(
+                GatewayProbeDispatch(
+                    grant,
+                    request,
+                    RuntimeEndpointObservation(
+                        "gateway-a",
+                        "control",
+                        "graph-a",
+                        Protocol.HTTP,
+                        EndpointContext.RUNTIME_PRIVATE,
+                        LiteralEndpointMaterial("http://gateway-a:8000"),
+                    ),
+                )
+            )
+
+            self.assertEqual(config.gateway_probe_signer, "ed25519")
+            self.assertEqual(
+                config.gateway_probe_signing_key_reference.reference_id,
+                key_reference,
+            )
+            self.assertEqual(observed["scheme"], "CPK-Gateway")
+            self.assertEqual(
+                observed["claims"]["gateway_probe"],
+                grant.descriptor(),
+            )
+            self.assertIs(result.status, GatewayProbeAttemptStatus.SUCCEEDED)
+            self.assertEqual(result.code, "probe-succeeded")
+            self.assertEqual(
+                result.evidence.descriptor(),
+                {
+                    "body_size": 4,
+                    "http_status": 200,
+                    "outcome": "passed",
+                    "probe": "http-status",
+                    "target_id": "hello.http",
+                },
+            )
+            self.assertNotIn(private_pem, repr(config))
+            self.assertNotIn(private_pem, repr(dispatch))
+            self.assertNotIn(private_pem, repr(result))
+        finally:
+            sys.path.remove(str(PRODUCT_SRC))
+            for name in list(sys.modules):
+                if name == "control_plane_kit_servers_cpk_server" or name.startswith(
+                    "control_plane_kit_servers_cpk_server."
+                ):
+                    sys.modules.pop(name, None)
+
+    def test_gateway_probe_signer_bootstrap_fails_closed_without_authority(
+        self,
+    ) -> None:
+        sys.path.insert(0, str(PRODUCT_SRC))
+        try:
+            server_module = importlib.import_module(
+                "control_plane_kit_servers_cpk_server.server"
+            )
+            base = {
+                "CPK_SERVER_MODE": "execution-capable",
+                "CPK_CONTROL_AUTH_CONFIGURED": "true",
+                "CPK_PORT": "8080",
+                "CPK_RUNTIME_INTERPRETERS": "none",
+                "CPK_GATEWAY_PROBE_SIGNER": "ed25519",
+                "CPK_GATEWAY_PROBE_SIGNING_KEY_REF": (
+                    "secret://control-plane-kit/gateway/signing-key"
+                ),
+                "CPK_GATEWAY_PROBE_ISSUER": "urn:cpk:test",
+                "CPK_GATEWAY_PROBE_KEY_ID": "gateway-key-a",
+                "CPK_WORKPLACE_DATABASE_URL": "postgres://user:pass@db/cpk",
+                "CPK_ACTIVITY_HISTORY_DATABASE_URL": "postgres://user:pass@db/cpk",
+                "CPK_OBSERVER_STATE_DATABASE_URL": "postgres://user:pass@db/cpk",
+                "CPK_GRAPH_TOPOLOGY_DATABASE_URL": "postgres://user:pass@db/cpk",
+            }
+
+            with self.assertRaisesRegex(
+                server_module.BootstrapConfigurationError,
+                "requires CPK_PRODUCT_SECRET_RESOLVER",
+            ):
+                server_module.CpkServerBootstrapConfiguration.from_environment(base)
+            with self.assertRaisesRegex(
+                server_module.BootstrapConfigurationError,
+                "must be one of: none, ed25519",
+            ):
+                server_module.CpkServerBootstrapConfiguration.from_environment(
+                    {
+                        **base,
+                        "CPK_GATEWAY_PROBE_SIGNER": "home-grown",
+                    }
+                )
         finally:
             sys.path.remove(str(PRODUCT_SRC))
             for name in list(sys.modules):
@@ -738,8 +1024,11 @@ class CpkServerImageBootstrapTests(unittest.TestCase):
         self.assertIn("RuntimeInterpreterDispatcher", source)
         self.assertIn("IngressRealizationAdapter", source)
         self.assertIn("IngressAuthorityRegistrationService", source)
+        self.assertIn("GatewayProbeCommandService", source)
+        self.assertIn("gateway_probes=_gateway_probe_service", source)
         self.assertIn("control_plane_kit_interpreters.docker", source)
         self.assertIn("control_plane_kit_interpreters.cloudflare", source)
+        self.assertIn("control_plane_kit_interpreters.probes", source)
         self.assertIn("allocation_name=allocation_name", source)
         self.assertIn("CPK_RUNTIME_INTERPRETERS", source)
         self.assertIn("CPK_INGRESS_INTERPRETERS", source)
