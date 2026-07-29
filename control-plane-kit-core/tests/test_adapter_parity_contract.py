@@ -59,6 +59,18 @@ class AdapterParityContractTests(unittest.TestCase):
                     "GraphReadResponse",
                 ),
                 (
+                    "read.gateway-probe-detail",
+                    "read.gateway-probe-detail",
+                    "get_gateway_probe_detail",
+                    "GatewayProbeDetailReadResponse",
+                ),
+                (
+                    "read.gateway-probe-timeline",
+                    "read.gateway-probe-timeline",
+                    "list_gateway_probes",
+                    "GatewayProbeTimelineReadResponse",
+                ),
+                (
                     "read.ingress-authorities",
                     "read.ingress-authorities",
                     "list_ingress_authorities",

@@ -76,6 +76,22 @@ class ReadProjectionContractTests(unittest.TestCase):
                     False,
                 ),
                 (
+                    "read.gateway-probe-detail",
+                    ReadProjectionKind.GATEWAY_PROBE_DETAIL,
+                    "GatewayProbeDetailReadResponse",
+                    ReadProjectionPolicy.DELEGATED_GATEWAY_PROBE_EVIDENCE,
+                    True,
+                    False,
+                ),
+                (
+                    "read.gateway-probe-timeline",
+                    ReadProjectionKind.GATEWAY_PROBE_TIMELINE,
+                    "GatewayProbeTimelineReadResponse",
+                    ReadProjectionPolicy.DELEGATED_GATEWAY_PROBE_EVIDENCE,
+                    True,
+                    True,
+                ),
+                (
                     "read.ingress-authorities",
                     ReadProjectionKind.INGRESS_AUTHORITIES,
                     "IngressAuthorityCollectionReadResponse",

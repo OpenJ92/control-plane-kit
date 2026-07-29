@@ -42,6 +42,7 @@ class PolicyScope(StrEnum):
     INGRESS_AUTHORITY_READ = "ingress-authority:read"
     INGRESS_AUTHORITY_REVOKE = "ingress-authority:revoke"
     INGRESS_AUTHORITY_USE = "ingress-authority:use"
+    GATEWAY_PROBE_USE = "gateway-probe:use"
 
 
 @dataclass(frozen=True, order=True)

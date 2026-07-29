@@ -688,6 +688,39 @@ laws:
   require delegated authority. Replay evidence is bounded and process-local,
   so no cross-restart replay guarantee is claimed.
 
+### GatewayProbeAttempt
+
+meaning:
+  Durable operations evidence for one authorized request to delegate an exact
+  probe to a graph-declared runtime-island gateway.
+
+owned by:
+  `control-plane-kit-operations`.
+
+durable:
+  Operations records authorized intent before dispatch, including workspace,
+  current graph, gateway, runtime, target, probe kind, canonical request
+  digest, issuer, key id, `jti`, and bounded validity times. After the external
+  dispatch it records only a closed terminal status and bounded result or error
+  evidence.
+
+may contain secrets:
+  No. The signed capability, signature, verification key, private gateway
+  endpoint, operator credential, and target credentials remain transient at
+  the outer IO boundary.
+
+interpreted by:
+  `GatewayProbeCommandService` derives the request from current graph truth and
+  calls an injected `GatewayProbeDispatcher` after the intent transaction
+  commits. HTTP and MCP adapters call the same service.
+
+laws:
+  Authorization requires `gateway-probe:use`. The target must be present in the
+  graph-derived gateway target map and support the requested closed probe kind.
+  One workspace/request id identifies one immutable intent; exact retries
+  return existing evidence without redispatch, while changed intent conflicts.
+  No Postgres transaction spans signing, gateway transport, or target IO.
+
 ## Planning Language
 
 ### DeploymentTransition

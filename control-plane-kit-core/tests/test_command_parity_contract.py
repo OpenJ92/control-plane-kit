@@ -131,6 +131,14 @@ class CommandParityContractTests(unittest.TestCase):
                     ApprovalPolicy.SUBMITS_FOR_APPROVAL,
                 ),
                 (
+                    "gateway-probe.request",
+                    "command.gateway-probe.request",
+                    "request_gateway_probe",
+                    ControlPlaneServiceRole.OBSERVATION,
+                    CommandIdempotencyPolicy.REQUIRED,
+                    ApprovalPolicy.NOT_REQUIRED,
+                ),
+                (
                     "graph.advance-current",
                     "command.graph.advance-current",
                     "advance_current_graph",

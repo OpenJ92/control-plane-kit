@@ -369,6 +369,16 @@ def operator_read_http_routes() -> tuple[HttpApiRouteContract, ...]:
                 "IngressAuthorityDetailReadResponse",
             ),
             (
+                "read.gateway-probe-timeline",
+                "/workspaces/{workspace_id}/gateway-probes",
+                "GatewayProbeTimelineReadResponse",
+            ),
+            (
+                "read.gateway-probe-detail",
+                "/workspaces/{workspace_id}/gateway-probes/{probe_id}",
+                "GatewayProbeDetailReadResponse",
+            ),
+            (
                 "read.control-surface",
                 "/workspaces/{workspace_id}/control-surface",
                 "ControlSurfaceReadResponse",
@@ -419,6 +429,15 @@ def operator_command_http_routes() -> tuple[HttpApiRouteContract, ...]:
             request_schema,
             response_schema,
         ) in (
+            (
+                "command.gateway-probe.request",
+                "/workspaces/{workspace_id}/gateways/{gateway_node_id}/probes",
+                ControlPlaneServiceRole.OBSERVATION,
+                HttpAuthScope.EXECUTION_RUN,
+                HttpOperationSafety.COMMAND,
+                "GatewayProbeCommandRequest",
+                "GatewayProbeCommandResponse",
+            ),
             (
                 "command.workspace.create",
                 "/workspaces",

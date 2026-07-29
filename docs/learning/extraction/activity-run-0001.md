@@ -5195,3 +5195,45 @@ Health disclosure is also explicit: minimal liveness may remain public, while
 readiness and target metadata require delegated authority. #1141 must now
 derive grants only after trusted operations authorization and must preserve the
 short-transaction/external-effect/short-transaction boundary.
+
+## #1141 Authorized Durable Gateway Probe Operations
+
+#1141 added the operations-owned execution boundary for delegated gateway
+probes:
+
+```text
+TrustedCommandContext(gateway-probe:use)
+  -> lock request id and load exact current graph
+    -> derive declared gateway target and private control endpoint
+      -> commit durable intended attempt
+        -> injected GatewayProbeDispatcher outside the transaction
+          -> commit bounded terminal evidence
+```
+
+The command cannot accept caller-authored target URLs, runtime ids, issuer
+identity, scopes, or signed capability material. Operations derives those facts
+from authenticated context, current graph truth, registered products, and
+configured delegation policy. HTTP and MCP-shaped adapters call the same
+`GatewayProbeCommandService`.
+
+The durable `GatewayProbeAttempt` records correlation, graph/gateway/runtime
+identity, exact request digest, issuer/key id, `jti`, bounded validity, status,
+and bounded result evidence. It deliberately excludes the compact signed
+capability, signature, key material, private gateway endpoint, inbound bearer
+credential, and target credentials. Duplicate request ids with identical
+intent return the existing attempt without redispatch; changed intent fails
+closed.
+
+Docker/Postgres integration tests proved that the dispatcher sees zero active
+transactions. They also proved missing scope, stale current graph, undeclared
+targets, and incompatible probe kinds reject before dispatch, and that durable
+readback remains bounded and secret-free.
+
+Handoff:
+
+- #1142 must implement the real signer, transport, and gateway verification
+  path behind `GatewayProbeDispatcher`.
+- Signed capabilities remain transient and must never be folded into durable
+  attempt evidence.
+- #1143 must prove the same service through a real cpk-server process and real
+  private HTTP and Postgres targets.

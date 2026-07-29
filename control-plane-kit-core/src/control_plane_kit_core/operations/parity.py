@@ -818,6 +818,18 @@ def operator_command_parity(
 
 _OPERATOR_READ_PROJECTIONS = (
     (
+        "read.gateway-probe-detail",
+        "read.gateway-probe-detail",
+        "get_gateway_probe_detail",
+        "GatewayProbeDetailReadResponse",
+    ),
+    (
+        "read.gateway-probe-timeline",
+        "read.gateway-probe-timeline",
+        "list_gateway_probes",
+        "GatewayProbeTimelineReadResponse",
+    ),
+    (
         "read.approval-detail",
         "read.approval-detail",
         "get_approval_detail",
@@ -929,6 +941,15 @@ _OPERATOR_READ_PROJECTIONS = (
 
 
 _OPERATOR_COMMANDS = (
+    (
+        "gateway-probe.request",
+        "command.gateway-probe.request",
+        "request_gateway_probe",
+        ControlPlaneServiceRole.OBSERVATION,
+        "GatewayProbeCommandRequest",
+        "GatewayProbeCommandResponse",
+        ApprovalPolicy.NOT_REQUIRED,
+    ),
     (
         "workspace.create",
         "command.workspace.create",

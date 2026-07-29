@@ -35,6 +35,8 @@ class ReadProjectionKind(StrEnum):
     RUNTIME_AUTHORITY_DELIVERY_DETAIL = "runtime-authority-delivery-detail"
     INGRESS_AUTHORITIES = "ingress-authorities"
     INGRESS_AUTHORITY_DETAIL = "ingress-authority-detail"
+    GATEWAY_PROBE_DETAIL = "gateway-probe-detail"
+    GATEWAY_PROBE_TIMELINE = "gateway-probe-timeline"
 
 
 class ReadProjectionPolicy(StrEnum):
@@ -49,6 +51,7 @@ class ReadProjectionPolicy(StrEnum):
     REDACTED_RUNTIME_AUTHORITY = "redacted-runtime-authority"
     REDACTED_RUNTIME_AUTHORITY_DELIVERY = "redacted-runtime-authority-delivery"
     REDACTED_INGRESS_AUTHORITY = "redacted-ingress-authority"
+    DELEGATED_GATEWAY_PROBE_EVIDENCE = "delegated-gateway-probe-evidence"
 
 
 @dataclass(frozen=True)
@@ -270,6 +273,20 @@ class _ProjectionDefinition:
 
 
 _CANONICAL_PROJECTIONS = (
+    _ProjectionDefinition(
+        "read.gateway-probe-detail",
+        ReadProjectionKind.GATEWAY_PROBE_DETAIL,
+        "GatewayProbeDetailReadResponse",
+        ReadProjectionPolicy.DELEGATED_GATEWAY_PROBE_EVIDENCE,
+    ),
+    _ProjectionDefinition(
+        "read.gateway-probe-timeline",
+        ReadProjectionKind.GATEWAY_PROBE_TIMELINE,
+        "GatewayProbeTimelineReadResponse",
+        ReadProjectionPolicy.DELEGATED_GATEWAY_PROBE_EVIDENCE,
+        paged=True,
+        max_page_size=200,
+    ),
     _ProjectionDefinition(
         "read.approval-detail",
         ReadProjectionKind.APPROVAL_DETAIL,

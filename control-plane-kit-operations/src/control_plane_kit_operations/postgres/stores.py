@@ -12,6 +12,7 @@ from control_plane_kit_operations.postgres.graph_store import (
     PostgresGraphTopologyStore,
     PostgresWorkspaceStore,
 )
+from control_plane_kit_operations.postgres.gateway_probe_store import GatewayProbeStore
 from control_plane_kit_operations.postgres.image_pull_authority_store import (
     ImagePullAuthorityStore,
 )
@@ -53,6 +54,7 @@ class PostgresStoreBundle:
     activity_history: PostgresActivityHistoryStore = field(init=False)
     execution: PostgresExecutionStore = field(init=False)
     observed_state: PostgresObservedStateStore = field(init=False)
+    gateway_probes: GatewayProbeStore = field(init=False)
 
     def __post_init__(self) -> None:
         object.__setattr__(
@@ -114,4 +116,9 @@ class PostgresStoreBundle:
             self,
             "observed_state",
             PostgresObservedStateStore(self.connection),
+        )
+        object.__setattr__(
+            self,
+            "gateway_probes",
+            GatewayProbeStore(self.connection),
         )

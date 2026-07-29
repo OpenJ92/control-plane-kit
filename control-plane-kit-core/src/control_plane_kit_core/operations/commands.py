@@ -32,6 +32,7 @@ class OperatorCommandFamily(StrEnum):
     APPROVAL = "approval"
     RUNTIME_AUTHORITY = "runtime-authority"
     INGRESS_AUTHORITY = "ingress-authority"
+    GATEWAY_PROBE = "gateway-probe"
 
 
 class OperatorCommandKind(StrEnum):
@@ -54,6 +55,7 @@ class OperatorCommandKind(StrEnum):
     REQUEST_ACTIVITY_PLAN = "request-activity-plan"
     REQUEST_APPROVAL = "request-approval"
     DECIDE_APPROVAL = "decide-approval"
+    REQUEST_GATEWAY_PROBE = "request-gateway-probe"
 
 
 class CommandPayloadPolicy(StrEnum):
@@ -68,6 +70,7 @@ class CommandPayloadPolicy(StrEnum):
     RUNTIME_AUTHORITY_REFERENCE = "runtime-authority-reference"
     RUNTIME_AUTHORITY_DELIVERY_REFERENCE = "runtime-authority-delivery-reference"
     INGRESS_AUTHORITY_REFERENCE = "ingress-authority-reference"
+    GATEWAY_PROBE_REFERENCE = "gateway-probe-reference"
 
 
 _KIND_FAMILY = {
@@ -102,6 +105,7 @@ _KIND_FAMILY = {
     OperatorCommandKind.REQUEST_ACTIVITY_PLAN: OperatorCommandFamily.ACTIVITY_PLANNING,
     OperatorCommandKind.REQUEST_APPROVAL: OperatorCommandFamily.APPROVAL,
     OperatorCommandKind.DECIDE_APPROVAL: OperatorCommandFamily.APPROVAL,
+    OperatorCommandKind.REQUEST_GATEWAY_PROBE: OperatorCommandFamily.GATEWAY_PROBE,
 }
 
 
@@ -387,6 +391,18 @@ class _CommandDefinition:
 
 
 _CANONICAL_COMMANDS = (
+    _CommandDefinition(
+        "gateway-probe.request",
+        OperatorCommandKind.REQUEST_GATEWAY_PROBE,
+        OperatorCommandFamily.GATEWAY_PROBE,
+        DeploymentProgramStage.EXECUTE,
+        ControlPlaneServiceRole.OBSERVATION,
+        "GatewayProbeCommandRequest",
+        "GatewayProbeCommandResponse",
+        ApprovalPolicy.NOT_REQUIRED,
+        CommandPayloadPolicy.GATEWAY_PROBE_REFERENCE,
+        requires_open_session=False,
+    ),
     _CommandDefinition(
         "product-descriptor.import",
         OperatorCommandKind.IMPORT_PRODUCT_DESCRIPTOR,

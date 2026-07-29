@@ -356,7 +356,7 @@ def _public_environment_for_node(
     public_environment = tuple(node.public_environment)
     if not any(binding.name == _GATEWAY_TARGETS_ENVIRONMENT for binding in public_environment):
         return public_environment
-    target_map = _gateway_target_map_for_node(
+    target_map = gateway_target_map_for_node(
         graph,
         node_id=node_id,
         registered_products=registered_products,
@@ -375,7 +375,7 @@ def _public_environment_for_node(
     )
 
 
-def _gateway_target_map_for_node(
+def gateway_target_map_for_node(
     graph: DeploymentGraph,
     *,
     node_id: str,
@@ -436,6 +436,36 @@ def _gateway_target_map_for_node(
             for target in targets.values()
         )
     )
+
+
+def gateway_control_endpoint_for_node(
+    graph: DeploymentGraph,
+    *,
+    node_id: str,
+    registered_products: tuple[RegisteredProduct, ...],
+) -> str:
+    """Return the graph-derived private control endpoint for one gateway node."""
+
+    try:
+        gateway_node = graph.nodes[node_id]
+    except KeyError as error:
+        raise InvalidOperationCommand("gateway control node is missing") from error
+    try:
+        provider = gateway_node.provider_socket("control")
+    except KeyError as error:
+        raise InvalidOperationCommand(
+            "gateway node must declare an HTTP control provider socket"
+        ) from error
+    if provider.protocol != Protocol.HTTP:
+        raise InvalidOperationCommand(
+            "gateway node must declare an HTTP control provider socket"
+        )
+    product = _registered_product_for_node(
+        registered_products,
+        gateway_node.metadata,
+    )
+    port = _provider_port_for_socket(product, "control")
+    return f"http://{node_id}:{port}"
 
 
 def _with_source_edges(
