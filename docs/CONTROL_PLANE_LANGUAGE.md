@@ -726,6 +726,55 @@ laws:
 
 ## Operations Language
 
+### AuthenticatedPrincipal
+
+meaning:
+  Credential-free identity and workspace grants produced after successful
+  authentication.
+
+owned by:
+  `control-plane-kit-core` for the pure value. cpk-server owns credential
+  verification; operations owns authorization.
+
+durable:
+  No. Durable history may retain the authenticated subject id as actor
+  provenance, never the credential.
+
+may contain secrets:
+  No.
+
+interpreted by:
+  cpk-server authentication composition and operations authorization.
+
+laws:
+  Request payloads cannot construct authority. Workspace grants contain only
+  closed `PolicyScope` values. Operator, service, and worker identities remain
+  distinct. Raw credentials are absent from equality, hashing, descriptors,
+  representations, logs, errors, and durable evidence.
+
+### TrustedCommandContext
+
+meaning:
+  One authenticated principal's exact authority for one workspace command.
+
+owned by:
+  `control-plane-kit-core` for the pure value and
+  `control-plane-kit-operations` for authorization/derivation.
+
+durable:
+  No. Its actor identity may be copied into durable history.
+
+may contain secrets:
+  No.
+
+interpreted by:
+  Operations adapters and command services.
+
+laws:
+  Its workspace must be present in the principal's grants and its scopes must
+  exactly equal that workspace grant. A command body supplies intent, never
+  identity or authority.
+
 ### Workspace
 
 meaning:

@@ -5064,3 +5064,45 @@ Handoff:
 - Pottery Factory application topology work should reuse this shape: saved
   desired graphs, runtime authority for realization, and gateway/public ingress
   as a removable access overlay.
+
+## #1100 Trusted Identity Foundation
+
+The authentication dry run confirmed a root trust defect in the live public
+boundary:
+
+```text
+Bearer prefix presence
+  -> payload actor_id + actor_scopes
+    -> operations policy checks
+```
+
+The replacement language is provider-neutral and credential-free:
+
+```text
+CredentialVerifier
+  -> AuthenticatedPrincipal
+    -> PrincipalAuthorizer
+      -> TrustedCommandContext
+```
+
+`AuthenticatedPrincipal` carries issuer, subject, a closed principal kind, and
+workspace grants made only of `PolicyScope` values. `TrustedCommandContext`
+proves that one command's workspace and scopes are exactly one of those grants;
+it cannot amplify authority. Operator, service, and worker identities remain
+distinct.
+
+The migration inventory is recorded in
+`docs/architecture/TRUSTED_IDENTITY_BOUNDARY.md`. The key decisions are:
+
+- cpk-server validates opaque credentials and discards them before dispatch;
+- operations derives command authority from the authenticated principal;
+- request bodies keep workspace intent but lose authoritative actor/scopes;
+- durable history keeps authenticated subject provenance, never credentials;
+- gateway delegation remains a separate bounded capability under #1139.
+
+Handoff:
+
+- #1101 must implement one strict verifier path for HTTP and MCP and fail
+  before operations dispatch.
+- #1102 must remove caller-authored `actor_scopes` and actor provenance from
+  public adapters while preserving existing pure policy checks.
