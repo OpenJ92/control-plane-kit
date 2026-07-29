@@ -501,6 +501,8 @@ def main() -> int:
             ),
             servers_repo,
         )
+    elif scenario == "seeded-stress-public-ingress":
+        _run_seeded_stress_public_ingress(base_url, server_container, servers_repo)
     elif scenario == "multi-workspace-foundation":
         _run_multi_workspace_foundation(base_url, server_container, servers_repo)
     elif scenario == "public-gateway-ingress":
@@ -659,6 +661,45 @@ def _run_multi_workspace_foundation(
         )
 
 
+def _run_seeded_stress_public_ingress(
+    base_url: str,
+    server_container: str,
+    servers_repo: Path,
+) -> None:
+    _run_router_transition(
+        _workflow_for(
+            base_url,
+            server_container=server_container,
+            workspace_id="workspace-a-router",
+        ),
+        servers_repo,
+    )
+    _run_multiplexer_observer(
+        _workflow_for(
+            base_url,
+            server_container=server_container,
+            workspace_id="workspace-b-multiplexer",
+        ),
+        servers_repo,
+    )
+    _run_postgres_retained_data(
+        _workflow_for(
+            base_url,
+            server_container=server_container,
+            workspace_id="workspace-c-postgres",
+        ),
+        servers_repo,
+    )
+    _run_negative_cleanup(
+        _workflow_for(
+            base_url,
+            server_container=server_container,
+            workspace_id="workspace-d-negative-cleanup",
+        ),
+        servers_repo,
+    )
+
+
 def _run_multiplexer_observer(workflow: HostedWorkflow, servers_repo: Path) -> None:
     hello_document = _product_document(servers_repo, "hello_server")
     multiplexer_document = _product_document(servers_repo, "http_multiplexer")
@@ -768,6 +809,58 @@ def _run_postgres_retained_data(workflow: HostedWorkflow, servers_repo: Path) ->
     _assert_secret_absent_from_activity(
         workflow,
         "cpk-postgres-smoke-password",
+    )
+
+
+def _run_negative_cleanup(workflow: HostedWorkflow, servers_repo: Path) -> None:
+    gateway_document = _product_document(servers_repo, "cpk_local_gateway")
+    hello_document = _product_document(servers_repo, "hello_server")
+    cloudflared_document = _product_document(servers_repo, "cloudflared_connector")
+    graph = _public_gateway_ingress_graph(
+        gateway_document,
+        hello_document,
+        cloudflared_document,
+        workspace_id=workflow.workspace_id,
+        authority_ref=RuntimeAuthorityReference(LOCAL_DOCKER_AUTHORITY_REF),
+    )
+
+    current_graph_id = _bootstrap_workspace(
+        workflow,
+        name="Hosted negative cleanup",
+        product_documents={
+            "gateway": gateway_document,
+            "hello": hello_document,
+            "cloudflared": cloudflared_document,
+        },
+        register_runtime_authority=True,
+        register_runtime_delivery=True,
+    )
+    workflow.register_cloudflare_ingress_authority()
+    deployed = workflow.run_approved_transition(
+        title="Hosted negative cleanup deploy",
+        graph=graph,
+        current_graph_id=current_graph_id,
+        sync_runtime_networks=False,
+    )
+    _assert_activity_mentions(workflow, deployed.run_id, "gateway")
+    _assert_activity_mentions(workflow, deployed.run_id, "hello")
+    _assert_activity_mentions(workflow, deployed.run_id, "cloudflared-gateway")
+    _wait_public_gateway_ready(PUBLIC_GATEWAY_HOSTNAME)
+    _assert_public_gateway_private_probe(PUBLIC_GATEWAY_HOSTNAME)
+
+    removed = workflow.run_approved_transition(
+        title="Hosted negative cleanup teardown",
+        graph=DeploymentGraph(workflow.workspace_id),
+        current_graph_id=deployed.current_graph_id,
+        expected_desired_graph_id=deployed.desired_graph_id,
+        sync_runtime_networks=False,
+    )
+    _assert_activity_mentions(workflow, removed.run_id, "cloudflared-gateway")
+    _assert_public_gateway_unreachable(PUBLIC_GATEWAY_HOSTNAME)
+    _assert_no_runtime_networks(workflow.workspace_id)
+    _assert_secret_absent_from_activity(
+        workflow,
+        _required_env("OPENJ92_CLOUDFLARE_API_TOKEN"),
     )
 
 

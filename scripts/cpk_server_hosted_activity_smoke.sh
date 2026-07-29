@@ -38,7 +38,8 @@ PRODUCT_SECRET_VALUES_JSON='{"secret://control-plane-kit/postgres/password":"cpk
 
 case "$SCENARIO" in
   public-gateway-ingress|public-gateway-toggle|workspace-a-router-transition|\
-workspace-b-multiplexer-observer|workspace-c-postgres-retained-data)
+workspace-b-multiplexer-observer|workspace-c-postgres-retained-data|\
+seeded-stress-public-ingress)
     NEEDS_INGRESS=1
     ;;
   *)

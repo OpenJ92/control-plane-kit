@@ -732,7 +732,11 @@ class CpkServerImageBootstrapTests(unittest.TestCase):
         self.assertIn("public-gateway-ingress|public-gateway-toggle|", smoke)
         self.assertIn("workspace-a-router-transition|", smoke)
         self.assertIn(
-            "workspace-b-multiplexer-observer|workspace-c-postgres-retained-data)",
+            "workspace-b-multiplexer-observer|workspace-c-postgres-retained-data|",
+            smoke,
+        )
+        self.assertIn(
+            "seeded-stress-public-ingress)",
             smoke,
         )
         self.assertIn("CPK_CLOUDFLARE_ENV_FILE", smoke)
@@ -867,6 +871,9 @@ class CpkServerImageBootstrapTests(unittest.TestCase):
         self.assertIn('"workspace-c-postgres"', controller)
         self.assertIn('"workspace-d-negative-cleanup"', controller)
         self.assertIn('"multi-workspace-foundation"', controller)
+        self.assertIn('"seeded-stress-public-ingress"', controller)
+        self.assertIn("def _run_seeded_stress_public_ingress", controller)
+        self.assertIn("def _run_negative_cleanup", controller)
         self.assertIn("def _workflow_for", controller)
         self.assertIn("def _bootstrap_workspace", controller)
         self.assertIn("def register_local_docker_authority", controller)
@@ -889,6 +896,37 @@ class CpkServerImageBootstrapTests(unittest.TestCase):
         self.assertNotIn("CpkServerOperationsApplication", controller)
         self.assertNotIn("PostgresUnitOfWork", controller)
         self.assertNotIn("DockerRuntimeInterpreter", controller)
+
+    def test_hosted_activity_controller_proves_seeded_stress_public_ingress(
+        self,
+    ) -> None:
+        controller = (ROOT / "scripts" / "cpk_server_hosted_activity.py").read_text(
+            encoding="utf-8"
+        )
+
+        self.assertIn('"seeded-stress-public-ingress"', controller)
+        self.assertIn("def _run_seeded_stress_public_ingress", controller)
+        self.assertIn("workspace_id=\"workspace-a-router\"", controller)
+        self.assertIn("workspace_id=\"workspace-b-multiplexer\"", controller)
+        self.assertIn("workspace_id=\"workspace-c-postgres\"", controller)
+        self.assertIn("workspace_id=\"workspace-d-negative-cleanup\"", controller)
+        self.assertIn("_run_router_transition(", controller)
+        self.assertIn("_run_multiplexer_observer(", controller)
+        self.assertIn("_run_postgres_retained_data(", controller)
+        self.assertIn("_run_negative_cleanup(", controller)
+        self.assertIn("Hosted negative cleanup deploy", controller)
+        self.assertIn("Hosted negative cleanup teardown", controller)
+        self.assertIn("_assert_public_gateway_private_probe(PUBLIC_GATEWAY_HOSTNAME)", controller)
+        self.assertIn("_assert_public_gateway_unreachable(PUBLIC_GATEWAY_HOSTNAME)", controller)
+        self.assertIn("_assert_no_runtime_networks(workflow.workspace_id)", controller)
+        self.assertIn("_required_env(\"OPENJ92_CLOUDFLARE_API_TOKEN\")", controller)
+        self.assertNotIn("DockerRuntimeInterpreter", controller)
+
+        smoke = (
+            ROOT / "scripts" / "cpk_server_seeded_stress_public_ingress_smoke.sh"
+        ).read_text(encoding="utf-8")
+        self.assertIn("CPK_HOSTED_ACTIVITY_SCENARIO=seeded-stress-public-ingress", smoke)
+        self.assertIn("scripts/cpk_server_hosted_activity_smoke.sh", smoke)
 
     def test_hosted_activity_controller_proves_workspace_a_router_transition(
         self,
