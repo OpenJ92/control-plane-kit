@@ -24,6 +24,13 @@
       ]
     },
     {
+      "name": "CPK_CONTROL_AUTH_STATIC_WORKSPACE_GRANTS_JSON",
+      "required": false,
+      "allowed_values": [
+        "trusted-exact-workspace-to-closed-scope-map"
+      ]
+    },
+    {
       "name": "CPK_PORT",
       "required": true,
       "allowed_values": [
@@ -44,6 +51,35 @@
       "allowed_values": [
         "none",
         "cloudflare"
+      ]
+    },
+    {
+      "name": "CPK_GATEWAY_PROBE_SIGNER",
+      "required": false,
+      "allowed_values": [
+        "none",
+        "ed25519"
+      ]
+    },
+    {
+      "name": "CPK_GATEWAY_PROBE_SIGNING_KEY_REF",
+      "required": false,
+      "allowed_values": [
+        "runtime-secret-reference"
+      ]
+    },
+    {
+      "name": "CPK_GATEWAY_PROBE_ISSUER",
+      "required": false,
+      "allowed_values": [
+        "bounded-issuer-identity"
+      ]
+    },
+    {
+      "name": "CPK_GATEWAY_PROBE_KEY_ID",
+      "required": false,
+      "allowed_values": [
+        "bounded-public-key-identity"
       ]
     },
     {
@@ -114,8 +150,10 @@
   ],
   "runtime_inputs": [
     "authorization credential and static-development verifier credential are runtime-supplied and never echoed",
+    "static-development workspace grants are explicit exact-workspace authority and never inferred from request payloads",
     "runtime interpreter authority is selected explicitly and never inferred",
     "ingress interpreter authority is selected explicitly and never inferred",
+    "gateway probe signing authority is selected explicitly and resolves only its secret reference at dispatch",
     "store endpoints are runtime-supplied and never echoed by readiness",
     "image pull credential authority is selected explicitly and resolved only at runtime interpreter dispatch",
     "product secret authority is selected explicitly and resolved only at runtime interpreter dispatch"
