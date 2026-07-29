@@ -73,10 +73,18 @@ class StaticDevelopmentCredentialVerifier:
     expected_credential: bytes = field(repr=False, compare=False, hash=False)
 
     def __post_init__(self) -> None:
+        credential_text = None
+        if isinstance(self.expected_credential, bytes):
+            try:
+                credential_text = self.expected_credential.decode("ascii")
+            except UnicodeDecodeError:
+                credential_text = None
         if (
             not isinstance(self.expected_credential, bytes)
             or not self.expected_credential
             or len(self.expected_credential) > MAXIMUM_BEARER_CREDENTIAL_BYTES
+            or credential_text is None
+            or any(character.isspace() for character in credential_text)
         ):
             raise CredentialAuthenticationError()
 

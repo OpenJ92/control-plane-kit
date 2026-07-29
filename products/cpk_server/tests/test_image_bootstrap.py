@@ -175,6 +175,29 @@ class CpkServerImageBootstrapTests(unittest.TestCase):
                 "no credential verifier is configured",
             ):
                 server_module._credential_verifier(unconfigured)
+            with self.assertRaisesRegex(
+                server_module.BootstrapConfigurationError,
+                "requires CPK_CONTROL_AUTH_VERIFIER=static-development",
+            ):
+                server_module.CpkServerBootstrapConfiguration.from_environment(
+                    {
+                        **environ,
+                        "CPK_CONTROL_AUTH_STATIC_CREDENTIAL": (
+                            "orphaned-credential-not-for-output"
+                        ),
+                    }
+                )
+            with self.assertRaisesRegex(
+                server_module.BootstrapConfigurationError,
+                "bounded and nonempty",
+            ):
+                server_module.CpkServerBootstrapConfiguration.from_environment(
+                    {
+                        **environ,
+                        "CPK_CONTROL_AUTH_VERIFIER": "static-development",
+                        "CPK_CONTROL_AUTH_STATIC_CREDENTIAL": "credential with spaces",
+                    }
+                )
 
             configured = server_module.CpkServerBootstrapConfiguration.from_environment(
                 {

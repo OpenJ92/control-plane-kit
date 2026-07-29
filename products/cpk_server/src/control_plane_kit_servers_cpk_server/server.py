@@ -206,6 +206,11 @@ class CpkServerBootstrapConfiguration:
                 raise BootstrapConfigurationError(
                     "CPK_CONTROL_AUTH_STATIC_CREDENTIAL must be bounded and nonempty"
                 ) from error
+        elif control_auth_static_credential_text is not None:
+            raise BootstrapConfigurationError(
+                "CPK_CONTROL_AUTH_STATIC_CREDENTIAL requires "
+                "CPK_CONTROL_AUTH_VERIFIER=static-development"
+            )
         try:
             port = int(port_text)
         except ValueError as error:
