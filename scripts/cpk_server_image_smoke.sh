@@ -65,7 +65,8 @@ CONTAINER="$(docker run -d \
   --network "$NETWORK" \
   -p 127.0.0.1::8080 \
   -e CPK_SERVER_MODE=execution-capable \
-  -e CPK_CONTROL_AUTH_CONFIGURED=true \
+  -e CPK_CONTROL_AUTH_VERIFIER=static-development \
+  -e CPK_CONTROL_AUTH_STATIC_CREDENTIAL=valid-token \
   -e CPK_PORT=8080 \
   -e CPK_RUNTIME_INTERPRETERS="$RUNTIME_INTERPRETERS" \
   -e CPK_WORKPLACE_DATABASE_URL="$WORKPLACE_DATABASE_URL" \
@@ -108,7 +109,7 @@ mcp_unauthorized_status="$(curl -sS -o /tmp/cpk-server-mcp-unauthorized.json -w 
 [ "$mcp_unauthorized_status" = "401" ]
 
 authorized_read="$(curl -sS \
-  -H 'Authorization: Bearer present' \
+  -H 'Authorization: Bearer valid-token' \
   "$BASE/workspaces/workspace-a")"
 printf '%s' "$authorized_read" | grep -q 'missing workspace'
 if printf '%s' "$authorized_read" | grep -q '"service"'; then
@@ -117,7 +118,7 @@ if printf '%s' "$authorized_read" | grep -q '"service"'; then
 fi
 
 workspace_response="$(curl -fsS \
-  -H 'Authorization: Bearer present' \
+  -H 'Authorization: Bearer valid-token' \
   -H 'Content-Type: application/json' \
   -d '{"workspace_id":"workspace-a","name":"Workspace A","actor_id":"operator-a","idempotency_key":"workspace-a"}' \
   "$BASE/workspaces")"
@@ -129,7 +130,7 @@ IMPORT_BODY="/tmp/cpk-server-import-product-$$.json"
 printf '{"descriptor_document":%s,"actor_id":"operator-a","imported_at":"2026-07-22T10:02:00Z","idempotency_key":"import-hello"}' \
   "$PRODUCT_DESCRIPTOR" >"$IMPORT_BODY"
 product_response="$(curl -fsS \
-  -H 'Authorization: Bearer present' \
+  -H 'Authorization: Bearer valid-token' \
   -H 'Content-Type: application/json' \
   --data-binary "@$IMPORT_BODY" \
   "$BASE/workspaces/workspace-a/products/import")"
@@ -138,7 +139,7 @@ printf '%s' "$product_response" | grep -q '"status":"active"'
 rm -f "$IMPORT_BODY"
 
 session_response="$(curl -fsS \
-  -H 'Authorization: Bearer present' \
+  -H 'Authorization: Bearer valid-token' \
   -H 'Content-Type: application/json' \
   -d '{"actor_id":"operator-a","title":"Initial deployment","idempotency_key":"session-a"}' \
   "$BASE/workspaces/workspace-a/sessions")"
@@ -150,20 +151,20 @@ if [ -z "$SESSION_ID" ]; then
 fi
 
 desired_response="$(curl -fsS \
-  -H 'Authorization: Bearer present' \
+  -H 'Authorization: Bearer valid-token' \
   -H 'Content-Type: application/json' \
   -d '{"session_id":"'"$SESSION_ID"'","actor_id":"operator-a","graph":{"name":"desired","runtimes":{},"nodes":{},"edges":{},"public_ingresses":[]},"expected_desired_graph_id":null,"idempotency_key":"desired-a"}' \
   "$BASE/workspaces/workspace-a/graphs/desired")"
 printf '%s' "$desired_response" | grep -q '"desired_graph_id"'
 
 workspace_after_setup="$(curl -fsS \
-  -H 'Authorization: Bearer present' \
+  -H 'Authorization: Bearer valid-token' \
   "$BASE/workspaces/workspace-a")"
 printf '%s' "$workspace_after_setup" | grep -q '"workspace_id":"workspace-a"'
 printf '%s' "$workspace_after_setup" | grep -q '"desired_graph"'
 
 mcp_response="$(curl -sS \
-  -H 'Authorization: Bearer present' \
+  -H 'Authorization: Bearer valid-token' \
   -H 'Accept: application/json' \
   -H 'MCP-Protocol-Version: 2025-06-18' \
   -H 'Mcp-Method: tools/call' \
@@ -177,7 +178,7 @@ if printf '%s' "$mcp_response" | grep -q '"service"'; then
 fi
 
 mcp_read_response="$(curl -sS \
-  -H 'Authorization: Bearer present' \
+  -H 'Authorization: Bearer valid-token' \
   -H 'Accept: application/json' \
   -H 'MCP-Protocol-Version: 2025-06-18' \
   -H 'Mcp-Method: resources/read' \

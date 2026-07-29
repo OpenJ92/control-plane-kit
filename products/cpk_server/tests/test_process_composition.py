@@ -57,7 +57,9 @@ class CpkServerProcessCompositionTests(unittest.TestCase):
         )
 
         composition = create_cpk_server_composition(
-            CpkServerProcessConfiguration.execution_capable(token_configured=True)
+            CpkServerProcessConfiguration.execution_capable(
+                authentication_required=True
+            )
         )
 
         self.assertIsInstance(composition.handoff, CpkServerEntrypointHandoffContract)
@@ -85,9 +87,11 @@ class CpkServerProcessCompositionTests(unittest.TestCase):
             create_cpk_server_composition,
         )
 
-        with self.assertRaisesRegex(CpkServerCompositionError, "auth configuration"):
+        with self.assertRaisesRegex(CpkServerCompositionError, "requires authentication"):
             create_cpk_server_composition(
-                CpkServerProcessConfiguration.execution_capable(token_configured=False)
+                CpkServerProcessConfiguration.execution_capable(
+                    authentication_required=False
+                )
             )
 
         local = create_cpk_server_composition(CpkServerProcessConfiguration.local_read_only())

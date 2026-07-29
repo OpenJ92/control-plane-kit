@@ -7,6 +7,10 @@ import json
 import re
 from typing import Any, Mapping, Protocol
 
+from control_plane_kit_core.identity import (
+    AuthenticatedPrincipal,
+    CredentialVerifier,
+)
 from control_plane_kit_core.operations import ControlPlaneServiceRole
 from control_plane_kit_core.operations.http import (
     HttpApiRouteContract,
@@ -16,6 +20,10 @@ from control_plane_kit_core.operations.http import (
 from control_plane_kit_operations import CpkServerApplicationError
 
 from .composition import CpkServerComposition, CpkServerCompositionError
+from .authentication import (
+    CredentialAuthenticationError,
+    authenticate_bearer_credential,
+)
 
 
 class CpkServerService(Protocol):
@@ -32,6 +40,7 @@ class CpkServerServiceRequest:
     service_role: ControlPlaneServiceRole
     path_parameters: dict[str, str]
     payload: Mapping[str, object]
+    principal: AuthenticatedPrincipal
 
 
 @dataclass(frozen=True, slots=True)
@@ -45,12 +54,25 @@ class CpkServerBoundaryResponse:
 class CpkServerApplicationBoundary:
     """Shared service boundary used by HTTP and MCP process surfaces."""
 
-    def __init__(self, services: Mapping[ControlPlaneServiceRole, CpkServerService]) -> None:
+    def __init__(
+        self,
+        services: Mapping[ControlPlaneServiceRole, CpkServerService],
+        credential_verifier: CredentialVerifier,
+    ) -> None:
         missing = tuple(role for role in ControlPlaneServiceRole if role not in services)
         if missing:
             missing_names = ", ".join(role.value for role in missing)
             raise CpkServerCompositionError(f"missing services: {missing_names}")
+        if not callable(getattr(credential_verifier, "authenticate", None)):
+            raise CpkServerCompositionError("credential verifier is required")
         self._services = dict(services)
+        self._credential_verifier = credential_verifier
+
+    def authenticate(
+        self,
+        headers: Mapping[str, str],
+    ) -> AuthenticatedPrincipal:
+        return authenticate_bearer_credential(headers, self._credential_verifier)
 
     def dispatch(self, request: CpkServerServiceRequest) -> Mapping[str, object]:
         return self._services[request.service_role].handle(request)
@@ -79,8 +101,10 @@ class CpkServerHttpProcessBoundary:
         if route_match is None:
             return _error(404, "unknown route")
         route, path_parameters = route_match
-        if _requires_authorization(route) and not _has_authorization(headers):
-            return _error(401, "authorization required")
+        try:
+            principal = self.application.authenticate(headers)
+        except CredentialAuthenticationError:
+            return _error(401, "invalid credential")
         if len(body) > route.request_schema.max_bytes:
             return _error(413, "request body too large")
         payload = _decode_http_payload(route, body)
@@ -92,6 +116,7 @@ class CpkServerHttpProcessBoundary:
             service_role=route.service_role,
             path_parameters=path_parameters,
             payload=payload,
+            principal=principal,
         )
         response = _dispatch_application(self.application, request)
         if isinstance(response, CpkServerBoundaryResponse):
@@ -120,15 +145,17 @@ class CpkServerMcpProcessBoundary:
         header_error = _validate_mcp_headers(headers)
         if header_error is not None:
             return header_error
-        if not _has_authorization(headers):
-            return _error(401, "authorization required")
+        try:
+            principal = self.application.authenticate(headers)
+        except CredentialAuthenticationError:
+            return _error(401, "invalid credential")
         method_header = next(
             (value for key, value in headers.items() if key.lower() == "mcp-method"),
             None,
         )
         if method_header != message.get("method"):
             return _error(400, "MCP method header does not match message")
-        request = _decode_mcp_message(self.composition, message)
+        request = _decode_mcp_message(self.composition, message, principal)
         if isinstance(request, CpkServerBoundaryResponse):
             return request
         response = _dispatch_application(self.application, request)
@@ -172,17 +199,6 @@ def _match_path_template(template: str, path: str) -> dict[str, str] | None:
     return dict(zip(names, match.groups(), strict=True))
 
 
-def _requires_authorization(route: HttpApiRouteContract) -> bool:
-    return True
-
-
-def _has_authorization(headers: Mapping[str, str]) -> bool:
-    for key, value in headers.items():
-        if key.lower() == "authorization" and value.startswith("Bearer "):
-            return True
-    return False
-
-
 def _decode_http_payload(
     route: HttpApiRouteContract,
     body: bytes,
@@ -216,6 +232,7 @@ def _validate_mcp_headers(headers: Mapping[str, str]) -> CpkServerBoundaryRespon
 def _decode_mcp_message(
     composition: CpkServerComposition,
     message: Mapping[str, object],
+    principal: AuthenticatedPrincipal,
 ) -> CpkServerServiceRequest | CpkServerBoundaryResponse:
     if not isinstance(message, Mapping):
         return _error(400, "MCP message must be an object")
@@ -247,6 +264,7 @@ def _decode_mcp_message(
         service_role=route.service_role,
         path_parameters={},
         payload=dict(arguments),
+        principal=principal,
     )
 
 

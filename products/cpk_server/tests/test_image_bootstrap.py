@@ -84,7 +84,8 @@ class CpkServerImageBootstrapTests(unittest.TestCase):
             [item["name"] for item in contract["environment"]],
             [
                 "CPK_SERVER_MODE",
-                "CPK_CONTROL_AUTH_CONFIGURED",
+                "CPK_CONTROL_AUTH_VERIFIER",
+                "CPK_CONTROL_AUTH_STATIC_CREDENTIAL",
                 "CPK_PORT",
                 "CPK_RUNTIME_INTERPRETERS",
                 "CPK_INGRESS_INTERPRETERS",
@@ -140,6 +141,94 @@ class CpkServerImageBootstrapTests(unittest.TestCase):
             self.assertEqual(config.image_pull_credential_resolver, "none")
             self.assertEqual(config.product_secret_resolver, "none")
             self.assertNotIn("postgres://", repr(config.process_configuration()))
+        finally:
+            sys.path.remove(str(PRODUCT_SRC))
+            for name in list(sys.modules):
+                if name == "control_plane_kit_servers_cpk_server" or name.startswith(
+                    "control_plane_kit_servers_cpk_server."
+                ):
+                    sys.modules.pop(name, None)
+
+    def test_authentication_bootstrap_fails_closed_and_redacts_static_credential(
+        self,
+    ) -> None:
+        sys.path.insert(0, str(PRODUCT_SRC))
+        try:
+            server_module = importlib.import_module(
+                "control_plane_kit_servers_cpk_server.server"
+            )
+            environ = {
+                "CPK_SERVER_MODE": "execution-capable",
+                "CPK_CONTROL_AUTH_CONFIGURED": "true",
+                "CPK_PORT": "8080",
+                "CPK_RUNTIME_INTERPRETERS": "none",
+                "CPK_WORKPLACE_DATABASE_URL": "postgres://user:pass@db/cpk",
+                "CPK_ACTIVITY_HISTORY_DATABASE_URL": "postgres://user:pass@db/cpk",
+                "CPK_OBSERVER_STATE_DATABASE_URL": "postgres://user:pass@db/cpk",
+                "CPK_GRAPH_TOPOLOGY_DATABASE_URL": "postgres://user:pass@db/cpk",
+            }
+            unconfigured = (
+                server_module.CpkServerBootstrapConfiguration.from_environment(environ)
+            )
+            with self.assertRaisesRegex(
+                server_module.BootstrapConfigurationError,
+                "no credential verifier is configured",
+            ):
+                server_module._credential_verifier(unconfigured)
+            with self.assertRaisesRegex(
+                server_module.BootstrapConfigurationError,
+                "requires CPK_CONTROL_AUTH_VERIFIER=static-development",
+            ):
+                server_module.CpkServerBootstrapConfiguration.from_environment(
+                    {
+                        **environ,
+                        "CPK_CONTROL_AUTH_STATIC_CREDENTIAL": (
+                            "orphaned-credential-not-for-output"
+                        ),
+                    }
+                )
+            with self.assertRaisesRegex(
+                server_module.BootstrapConfigurationError,
+                "bounded and nonempty",
+            ):
+                server_module.CpkServerBootstrapConfiguration.from_environment(
+                    {
+                        **environ,
+                        "CPK_CONTROL_AUTH_VERIFIER": "static-development",
+                        "CPK_CONTROL_AUTH_STATIC_CREDENTIAL": "credential with spaces",
+                    }
+                )
+
+            configured = server_module.CpkServerBootstrapConfiguration.from_environment(
+                {
+                    **environ,
+                    "CPK_CONTROL_AUTH_VERIFIER": "static-development",
+                    "CPK_CONTROL_AUTH_STATIC_CREDENTIAL": "credential-not-for-output",
+                }
+            )
+            verifier = server_module._credential_verifier(configured)
+            principal = verifier.authenticate(b"credential-not-for-output")
+            other_config = (
+                server_module.CpkServerBootstrapConfiguration.from_environment(
+                    {
+                        **environ,
+                        "CPK_CONTROL_AUTH_VERIFIER": "static-development",
+                        "CPK_CONTROL_AUTH_STATIC_CREDENTIAL": (
+                            "different-credential-not-for-output"
+                        ),
+                    }
+                )
+            )
+            other_verifier = server_module._credential_verifier(other_config)
+
+            self.assertEqual(
+                principal.identity.subject_id,
+                "local-development-operator",
+            )
+            self.assertEqual(configured, other_config)
+            self.assertNotEqual(verifier, other_verifier)
+            self.assertNotIn("credential-not-for-output", repr(configured))
+            self.assertNotIn("credential-not-for-output", repr(verifier))
         finally:
             sys.path.remove(str(PRODUCT_SRC))
             for name in list(sys.modules):

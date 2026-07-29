@@ -9,10 +9,18 @@
       ]
     },
     {
-      "name": "CPK_CONTROL_AUTH_CONFIGURED",
-      "required": true,
+      "name": "CPK_CONTROL_AUTH_VERIFIER",
+      "required": false,
       "allowed_values": [
-        "true"
+        "none",
+        "static-development"
+      ]
+    },
+    {
+      "name": "CPK_CONTROL_AUTH_STATIC_CREDENTIAL",
+      "required": false,
+      "allowed_values": [
+        "runtime-secret-delivered-development-credential"
       ]
     },
     {
@@ -105,7 +113,7 @@
     }
   ],
   "runtime_inputs": [
-    "authorization header is runtime-supplied",
+    "authorization credential and static-development verifier credential are runtime-supplied and never echoed",
     "runtime interpreter authority is selected explicitly and never inferred",
     "ingress interpreter authority is selected explicitly and never inferred",
     "store endpoints are runtime-supplied and never echoed by readiness",
