@@ -15,6 +15,7 @@ from control_plane_kit_core.gateway_delegation import (
 )
 from control_plane_kit_core.identity import TrustedCommandContext
 from control_plane_kit_core.policies import PolicyScope
+from control_plane_kit_core.probe_intents import RuntimeEndpointObservation
 from control_plane_kit_core.runtime_effects import (
     GatewayHttpTarget,
     GatewayPostgresTarget,
@@ -82,18 +83,17 @@ class GatewayProbeDispatch:
 
     grant: DelegatedGatewayProbeGrant
     request: GatewayProbeRequest
-    gateway_endpoint: str
+    gateway_endpoint: RuntimeEndpointObservation
 
     def __post_init__(self) -> None:
         if not isinstance(self.grant, DelegatedGatewayProbeGrant):
             raise GatewayProbeError("dispatch grant is malformed")
         if not isinstance(self.request, GatewayProbeRequest):
             raise GatewayProbeError("dispatch request is malformed")
-        if (
-            not isinstance(self.gateway_endpoint, str)
-            or not self.gateway_endpoint.startswith("http://")
-        ):
-            raise GatewayProbeError("gateway endpoint must be a private HTTP URL")
+        if not isinstance(self.gateway_endpoint, RuntimeEndpointObservation):
+            raise GatewayProbeError(
+                "gateway endpoint must be a typed runtime observation"
+            )
 
 
 class GatewayProbeDispatcher(Protocol):
@@ -316,6 +316,7 @@ class GatewayProbeCommandService:
             _require_matching_probe_kind(command.request.kind, target)
             endpoint = gateway_control_endpoint_for_node(
                 graph,
+                graph_id=graph_record.graph_id,
                 node_id=command.gateway_node_id,
                 registered_products=products,
             )

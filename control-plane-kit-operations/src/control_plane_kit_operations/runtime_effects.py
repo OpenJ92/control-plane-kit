@@ -25,6 +25,11 @@ from control_plane_kit_core.products import (
     ProductIdentity,
     ProductReference,
 )
+from control_plane_kit_core.probe_intents import (
+    EndpointContext,
+    LiteralEndpointMaterial,
+    RuntimeEndpointObservation,
+)
 from control_plane_kit_core.runtime_authority import (
     RuntimeAuthorityAccessDelivery,
     RuntimeAuthorityReference,
@@ -441,11 +446,14 @@ def gateway_target_map_for_node(
 def gateway_control_endpoint_for_node(
     graph: DeploymentGraph,
     *,
+    graph_id: str,
     node_id: str,
     registered_products: tuple[RegisteredProduct, ...],
-) -> str:
+) -> RuntimeEndpointObservation:
     """Return the graph-derived private control endpoint for one gateway node."""
 
+    if not isinstance(graph_id, str) or not graph_id.strip():
+        raise InvalidOperationCommand("gateway endpoint graph identity is missing")
     try:
         gateway_node = graph.nodes[node_id]
     except KeyError as error:
@@ -465,7 +473,14 @@ def gateway_control_endpoint_for_node(
         gateway_node.metadata,
     )
     port = _provider_port_for_socket(product, "control")
-    return f"http://{node_id}:{port}"
+    return RuntimeEndpointObservation(
+        subject_id=node_id,
+        socket_name="control",
+        graph_id=graph_id,
+        protocol=Protocol.HTTP,
+        context=EndpointContext.RUNTIME_PRIVATE,
+        address=LiteralEndpointMaterial(f"http://{node_id}:{port}"),
+    )
 
 
 def _with_source_edges(
