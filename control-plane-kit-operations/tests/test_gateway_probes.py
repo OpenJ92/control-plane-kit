@@ -24,6 +24,11 @@ from control_plane_kit_core.identity import (
 )
 from control_plane_kit_core.operations import ControlPlaneServiceRole
 from control_plane_kit_core.policies import PolicyScope
+from control_plane_kit_core.probe_intents import (
+    EndpointContext,
+    LiteralEndpointMaterial,
+    RuntimeEndpointObservation,
+)
 from control_plane_kit_core.products import (
     ContainerServerProduct,
     OciImageReference,
@@ -176,6 +181,17 @@ class GatewayProbeCommandServiceTests(unittest.TestCase):
         self.assertEqual(result.attempt.gateway_runtime_id, "docker-a")
         self.assertEqual(result.attempt.result_code, "probe-succeeded")
         self.assertFalse(result.replayed)
+        endpoint = self.dispatcher.requests[0].gateway_endpoint
+        self.assertIsInstance(endpoint, RuntimeEndpointObservation)
+        self.assertEqual(endpoint.subject_id, "gateway")
+        self.assertEqual(endpoint.socket_name, "control")
+        self.assertEqual(endpoint.graph_id, "graph-current")
+        self.assertEqual(endpoint.protocol, Protocol.HTTP)
+        self.assertEqual(endpoint.context, EndpointContext.RUNTIME_PRIVATE)
+        self.assertEqual(
+            endpoint.address,
+            LiteralEndpointMaterial("http://gateway:8000"),
+        )
         descriptor = result.descriptor()
         self.assertNotIn("signature", repr(descriptor).lower())
         self.assertNotIn("compact", repr(descriptor).lower())
