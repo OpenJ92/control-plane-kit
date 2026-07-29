@@ -34,7 +34,65 @@ AUTH_CONFIG_SOURCE="${CPK_DOCKER_AUTH_CONFIG:-$HOME/.docker/config.json}"
 AUTH_CONFIG_DIR=""
 IMAGE_PULL_RESOLVER="none"
 INGRESS_INTERPRETERS="none"
+PULL_SERVER_IMAGE=1
 PRODUCT_SECRET_VALUES_JSON='{"secret://control-plane-kit/postgres/password":"cpk-postgres-smoke-password"}'
+GATEWAY_PROBE_SIGNING_KEY_REF="secret://control-plane-kit/gateway/source-live-signing-key"
+GATEWAY_PROBE_ISSUER="urn:control-plane-kit:source-live"
+GATEWAY_PROBE_KEY_ID="source-live-gateway-key"
+CPK_GATEWAY_PROBE_PRIVATE_KEY_PEM=""
+CPK_GATEWAY_PROBE_PUBLIC_KEYS_JSON=""
+CPK_CONTROL_AUTH_STATIC_PRINCIPALS_JSON="$(python3 - <<'PY'
+import json
+
+operator_scopes = [
+    "hub:instance:create",
+    "hub:instance:read",
+    "instance:workspace:read",
+    "instance:workspace:edit",
+    "plan:request",
+    "plan:approve",
+    "plan:approve-destructive",
+    "plan:execute",
+    "execution:operate",
+    "runtime-authority:register",
+    "runtime-authority:read",
+    "runtime-authority:revoke",
+    "runtime-authority:use",
+    "runtime-authority-delivery:register",
+    "runtime-authority-delivery:read",
+    "runtime-authority-delivery:revoke",
+    "ingress-authority:register",
+    "ingress-authority:read",
+    "ingress-authority:revoke",
+    "ingress-authority:use",
+    "gateway-probe:use",
+]
+worker_scopes = ["execution:operate"]
+workspaces = [
+    "cpk-hosted-activity-basic",
+    "workspace-a-router",
+    "workspace-b-multiplexer",
+    "workspace-c-postgres",
+    "workspace-d-negative-cleanup",
+]
+operator_grants = {workspace: operator_scopes for workspace in workspaces}
+worker_grants = {workspace: worker_scopes for workspace in workspaces}
+print(json.dumps([
+    {
+        "credential": "present",
+        "subject_id": "hosted-operator",
+        "kind": "operator",
+        "workspace_grants": operator_grants,
+    },
+    {
+        "credential": "worker-present",
+        "subject_id": "hosted-worker",
+        "kind": "worker",
+        "workspace_grants": worker_grants,
+    },
+], separators=(",", ":"), sort_keys=True))
+PY
+)"
 
 case "$SCENARIO" in
   public-gateway-ingress|public-gateway-toggle|workspace-a-router-transition|\
@@ -129,7 +187,44 @@ if [ "$BUILD_CONTROLLER" = "1" ]; then
   docker build -f Dockerfile.test -t "$CONTROLLER_IMAGE" .
 fi
 
-docker pull "$IMAGE"
+GATEWAY_KEYPAIR_JSON="$(docker run --rm "$CONTROLLER_IMAGE" python -c '
+import json
+from cryptography.hazmat.primitives import serialization
+from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PrivateKey
+
+private = Ed25519PrivateKey.generate()
+private_pem = private.private_bytes(
+    encoding=serialization.Encoding.PEM,
+    format=serialization.PrivateFormat.PKCS8,
+    encryption_algorithm=serialization.NoEncryption(),
+).decode("ascii")
+public_pem = private.public_key().public_bytes(
+    encoding=serialization.Encoding.PEM,
+    format=serialization.PublicFormat.SubjectPublicKeyInfo,
+).decode("ascii")
+print(json.dumps({"private_pem": private_pem, "public_keys": {"source-live-gateway-key": public_pem}}, separators=(",", ":"), sort_keys=True))
+')"
+export GATEWAY_KEYPAIR_JSON PRODUCT_SECRET_VALUES_JSON GATEWAY_PROBE_SIGNING_KEY_REF
+CPK_GATEWAY_PROBE_PRIVATE_KEY_PEM="$(python3 -c 'import json, os; print(json.loads(os.environ["GATEWAY_KEYPAIR_JSON"])["private_pem"], end="")')"
+CPK_GATEWAY_PROBE_PUBLIC_KEYS_JSON="$(python3 -c 'import json, os; print(json.dumps(json.loads(os.environ["GATEWAY_KEYPAIR_JSON"])["public_keys"], separators=(",", ":"), sort_keys=True), end="")')"
+PRODUCT_SECRET_VALUES_JSON="$(python3 -c '
+import json
+import os
+
+values = json.loads(os.environ["PRODUCT_SECRET_VALUES_JSON"])
+values[os.environ["GATEWAY_PROBE_SIGNING_KEY_REF"]] = json.loads(os.environ["GATEWAY_KEYPAIR_JSON"])["private_pem"]
+print(json.dumps(values, separators=(",", ":"), sort_keys=True), end="")
+')"
+
+if [ "$SCENARIO" = "authenticated-gateway-private" ]; then
+  IMAGE="control-plane-kit-servers/cpk-server:source-1143"
+  docker build -f products/cpk_server/Dockerfile -t "$IMAGE" .
+  PULL_SERVER_IMAGE=0
+fi
+
+if [ "$PULL_SERVER_IMAGE" = "1" ]; then
+  docker pull "$IMAGE"
+fi
 docker network create "$NETWORK" >/dev/null
 
 POSTGRES_CONTAINER="$(docker run -d \
@@ -180,13 +275,18 @@ if [ -n "$AUTH_CONFIG_DIR" ]; then
     -v "$AUTH_CONFIG_DIR:/tmp/cpk-docker-config:ro" \
     -e DOCKER_CONFIG=/tmp/cpk-docker-config \
     -e CPK_SERVER_MODE=execution-capable \
-    -e CPK_CONTROL_AUTH_CONFIGURED=true \
+    -e CPK_CONTROL_AUTH_VERIFIER=static-development \
+    -e CPK_CONTROL_AUTH_STATIC_PRINCIPALS_JSON="$CPK_CONTROL_AUTH_STATIC_PRINCIPALS_JSON" \
     -e CPK_PORT=8080 \
     -e CPK_RUNTIME_INTERPRETERS=docker \
     -e CPK_INGRESS_INTERPRETERS="$INGRESS_INTERPRETERS" \
     -e CPK_IMAGE_PULL_CREDENTIAL_RESOLVER="$IMAGE_PULL_RESOLVER" \
     -e CPK_PRODUCT_SECRET_RESOLVER=local-development \
     -e CPK_PRODUCT_SECRET_VALUES_JSON="$PRODUCT_SECRET_VALUES_JSON" \
+    -e CPK_GATEWAY_PROBE_SIGNER=ed25519 \
+    -e CPK_GATEWAY_PROBE_SIGNING_KEY_REF="$GATEWAY_PROBE_SIGNING_KEY_REF" \
+    -e CPK_GATEWAY_PROBE_ISSUER="$GATEWAY_PROBE_ISSUER" \
+    -e CPK_GATEWAY_PROBE_KEY_ID="$GATEWAY_PROBE_KEY_ID" \
     -e CPK_WORKPLACE_DATABASE_URL=postgresql://cpk:cpk@cpk-postgres:5432/cpk \
     -e CPK_ACTIVITY_HISTORY_DATABASE_URL=postgresql://cpk:cpk@cpk-postgres:5432/cpk \
     -e CPK_OBSERVER_STATE_DATABASE_URL=postgresql://cpk:cpk@cpk-postgres:5432/cpk \
@@ -200,12 +300,17 @@ else
     --group-add "$DOCKER_SOCKET_GROUP" \
     -v /var/run/docker.sock:/var/run/docker.sock \
     -e CPK_SERVER_MODE=execution-capable \
-    -e CPK_CONTROL_AUTH_CONFIGURED=true \
+    -e CPK_CONTROL_AUTH_VERIFIER=static-development \
+    -e CPK_CONTROL_AUTH_STATIC_PRINCIPALS_JSON="$CPK_CONTROL_AUTH_STATIC_PRINCIPALS_JSON" \
     -e CPK_PORT=8080 \
     -e CPK_RUNTIME_INTERPRETERS=docker \
     -e CPK_INGRESS_INTERPRETERS="$INGRESS_INTERPRETERS" \
     -e CPK_PRODUCT_SECRET_RESOLVER=local-development \
     -e CPK_PRODUCT_SECRET_VALUES_JSON="$PRODUCT_SECRET_VALUES_JSON" \
+    -e CPK_GATEWAY_PROBE_SIGNER=ed25519 \
+    -e CPK_GATEWAY_PROBE_SIGNING_KEY_REF="$GATEWAY_PROBE_SIGNING_KEY_REF" \
+    -e CPK_GATEWAY_PROBE_ISSUER="$GATEWAY_PROBE_ISSUER" \
+    -e CPK_GATEWAY_PROBE_KEY_ID="$GATEWAY_PROBE_KEY_ID" \
     -e CPK_WORKPLACE_DATABASE_URL=postgresql://cpk:cpk@cpk-postgres:5432/cpk \
     -e CPK_ACTIVITY_HISTORY_DATABASE_URL=postgresql://cpk:cpk@cpk-postgres:5432/cpk \
     -e CPK_OBSERVER_STATE_DATABASE_URL=postgresql://cpk:cpk@cpk-postgres:5432/cpk \
@@ -226,6 +331,8 @@ if ! docker run --rm \
   -e OPENJ92_CLOUDFLARE_ZONE_ID="${OPENJ92_CLOUDFLARE_ZONE_ID:-}" \
   -e OPENJ92_CLOUDFLARE_ZONE="${OPENJ92_CLOUDFLARE_ZONE:-}" \
   -e OPENJ92_CLOUDFLARE_API_TOKEN="${OPENJ92_CLOUDFLARE_API_TOKEN:-}" \
+  -e CPK_GATEWAY_PROBE_PRIVATE_KEY_PEM="$CPK_GATEWAY_PROBE_PRIVATE_KEY_PEM" \
+  -e CPK_GATEWAY_PROBE_PUBLIC_KEYS_JSON="$CPK_GATEWAY_PROBE_PUBLIC_KEYS_JSON" \
   "$CONTROLLER_IMAGE" \
   python scripts/cpk_server_hosted_activity.py; then
   docker logs "$SERVER_CONTAINER" 2>&1 | tail -n 100 >&2 || true

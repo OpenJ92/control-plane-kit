@@ -16,6 +16,9 @@ ROOT = Path(__file__).resolve().parents[1]
 COORDINATES = ROOT / "coordinates" / "server-products.json"
 PYPROJECT = ROOT / "pyproject.toml"
 CPK_SERVER_DOCKERFILE = ROOT / "products" / "cpk_server" / "Dockerfile"
+CPK_LOCAL_GATEWAY_DOCKERFILE = (
+    ROOT / "products" / "cpk_local_gateway" / "Dockerfile"
+)
 CATALOGUE = ROOT / "catalogue" / "products.json"
 PACKAGED_CATALOGUE = ROOT / "src" / "control_plane_kit_servers" / "catalogue.json"
 
@@ -102,6 +105,11 @@ def generate_updates(coordinates: Mapping[str, Any]) -> dict[Path, bytes]:
     ).encode("utf-8")
     updates[CPK_SERVER_DOCKERFILE] = _replace_dependency_pins(
         CPK_SERVER_DOCKERFILE.read_text(encoding="utf-8"),
+        cpk_commit=cpk_commit,
+        interpreters_commit=interpreters_commit,
+    ).encode("utf-8")
+    updates[CPK_LOCAL_GATEWAY_DOCKERFILE] = _replace_dependency_pins(
+        CPK_LOCAL_GATEWAY_DOCKERFILE.read_text(encoding="utf-8"),
         cpk_commit=cpk_commit,
         interpreters_commit=interpreters_commit,
     ).encode("utf-8")

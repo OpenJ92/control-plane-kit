@@ -16,7 +16,11 @@ from fastapi import FastAPI, Request
 from fastapi.responses import JSONResponse
 import psycopg
 import uvicorn
-from control_plane_kit_core.identity import CredentialVerifier, WorkspaceGrant
+from control_plane_kit_core.identity import (
+    CredentialVerifier,
+    PrincipalKind,
+    WorkspaceGrant,
+)
 from control_plane_kit_core.operations.execution import EffectResultKind
 from control_plane_kit_core.operations.lifecycle import FailureCategory
 from control_plane_kit_core.policies import PolicyScope
@@ -68,7 +72,12 @@ from .boundary import (
     CpkServerHttpProcessBoundary,
     CpkServerMcpProcessBoundary,
 )
-from .authentication import StaticDevelopmentCredentialVerifier
+from .authentication import (
+    StaticDevelopmentCredentialVerifier,
+    StaticDevelopmentMultiCredentialVerifier,
+    StaticDevelopmentPrincipalCredential,
+    static_development_principal,
+)
 from .composition import (
     CpkServerCompositionError,
     CpkServerProcessConfiguration,
@@ -158,6 +167,9 @@ class CpkServerBootstrapConfiguration:
     gateway_probe_issuer: str | None = None
     gateway_probe_key_id: str | None = None
     control_auth_static_workspace_grants: tuple[WorkspaceGrant, ...] = ()
+    control_auth_static_principals: tuple[
+        StaticDevelopmentPrincipalCredential, ...
+    ] = field(default=(), repr=False, compare=False, hash=False)
 
     @classmethod
     def from_environment(
@@ -172,6 +184,9 @@ class CpkServerBootstrapConfiguration:
         )
         control_auth_static_workspace_grants_text = values.get(
             "CPK_CONTROL_AUTH_STATIC_WORKSPACE_GRANTS_JSON"
+        )
+        control_auth_static_principals_text = values.get(
+            "CPK_CONTROL_AUTH_STATIC_PRINCIPALS_JSON"
         )
         port_text = _required(values, "CPK_PORT")
         try:
@@ -214,34 +229,50 @@ class CpkServerBootstrapConfiguration:
             )
         control_auth_static_credential = None
         control_auth_static_workspace_grants: tuple[WorkspaceGrant, ...] = ()
+        control_auth_static_principals: tuple[
+            StaticDevelopmentPrincipalCredential, ...
+        ] = ()
         if control_auth_verifier == "static-development":
-            if not control_auth_static_credential_text:
+            if control_auth_static_principals_text is not None:
+                if (
+                    control_auth_static_credential_text is not None
+                    or control_auth_static_workspace_grants_text is not None
+                ):
+                    raise BootstrapConfigurationError(
+                        "CPK_CONTROL_AUTH_STATIC_PRINCIPALS_JSON must not be mixed "
+                        "with single static credential configuration"
+                    )
+                control_auth_static_principals = _static_principals(
+                    control_auth_static_principals_text
+                )
+            elif not control_auth_static_credential_text:
                 raise BootstrapConfigurationError(
                     "CPK_CONTROL_AUTH_VERIFIER=static-development requires "
                     "CPK_CONTROL_AUTH_STATIC_CREDENTIAL"
                 )
-            try:
-                control_auth_static_credential = (
-                    control_auth_static_credential_text.encode("ascii")
+            else:
+                try:
+                    control_auth_static_credential = (
+                        control_auth_static_credential_text.encode("ascii")
+                    )
+                except UnicodeEncodeError as error:
+                    raise BootstrapConfigurationError(
+                        "CPK_CONTROL_AUTH_STATIC_CREDENTIAL must be bounded ASCII"
+                    ) from error
+                try:
+                    StaticDevelopmentCredentialVerifier(control_auth_static_credential)
+                except ValueError as error:
+                    raise BootstrapConfigurationError(
+                        "CPK_CONTROL_AUTH_STATIC_CREDENTIAL must be bounded and nonempty"
+                    ) from error
+                if not control_auth_static_workspace_grants_text:
+                    raise BootstrapConfigurationError(
+                        "CPK_CONTROL_AUTH_VERIFIER=static-development requires "
+                        "CPK_CONTROL_AUTH_STATIC_WORKSPACE_GRANTS_JSON"
+                    )
+                control_auth_static_workspace_grants = _static_workspace_grants(
+                    control_auth_static_workspace_grants_text
                 )
-            except UnicodeEncodeError as error:
-                raise BootstrapConfigurationError(
-                    "CPK_CONTROL_AUTH_STATIC_CREDENTIAL must be bounded ASCII"
-                ) from error
-            try:
-                StaticDevelopmentCredentialVerifier(control_auth_static_credential)
-            except ValueError as error:
-                raise BootstrapConfigurationError(
-                    "CPK_CONTROL_AUTH_STATIC_CREDENTIAL must be bounded and nonempty"
-                ) from error
-            if not control_auth_static_workspace_grants_text:
-                raise BootstrapConfigurationError(
-                    "CPK_CONTROL_AUTH_VERIFIER=static-development requires "
-                    "CPK_CONTROL_AUTH_STATIC_WORKSPACE_GRANTS_JSON"
-                )
-            control_auth_static_workspace_grants = _static_workspace_grants(
-                control_auth_static_workspace_grants_text
-            )
         elif control_auth_static_credential_text is not None:
             raise BootstrapConfigurationError(
                 "CPK_CONTROL_AUTH_STATIC_CREDENTIAL requires "
@@ -250,6 +281,11 @@ class CpkServerBootstrapConfiguration:
         elif control_auth_static_workspace_grants_text is not None:
             raise BootstrapConfigurationError(
                 "CPK_CONTROL_AUTH_STATIC_WORKSPACE_GRANTS_JSON requires "
+                "CPK_CONTROL_AUTH_VERIFIER=static-development"
+            )
+        elif control_auth_static_principals_text is not None:
+            raise BootstrapConfigurationError(
+                "CPK_CONTROL_AUTH_STATIC_PRINCIPALS_JSON requires "
                 "CPK_CONTROL_AUTH_VERIFIER=static-development"
             )
         try:
@@ -358,6 +394,7 @@ class CpkServerBootstrapConfiguration:
             mode=mode,
             control_auth_verifier=control_auth_verifier,
             control_auth_static_credential=control_auth_static_credential,
+            control_auth_static_principals=control_auth_static_principals,
             port=port,
             runtime_dispatcher=runtime_dispatcher,
             ingress_interpreters=ingress_interpreters,
@@ -482,6 +519,10 @@ def _credential_verifier(
     config: CpkServerBootstrapConfiguration,
 ) -> CredentialVerifier:
     if config.control_auth_verifier == "static-development":
+        if config.control_auth_static_principals:
+            return StaticDevelopmentMultiCredentialVerifier(
+                config.control_auth_static_principals
+            )
         assert config.control_auth_static_credential is not None
         return StaticDevelopmentCredentialVerifier(
             config.control_auth_static_credential,
@@ -533,10 +574,13 @@ def _static_workspace_grants(value: str) -> tuple[WorkspaceGrant, ...]:
         raise BootstrapConfigurationError(
             "CPK_CONTROL_AUTH_STATIC_WORKSPACE_GRANTS_JSON must be bounded JSON"
         ) from error
+    return _static_workspace_grants_from_mapping(raw)
+
+
+def _static_workspace_grants_from_mapping(raw: object) -> tuple[WorkspaceGrant, ...]:
     if not isinstance(raw, Mapping) or not raw or len(raw) > 64:
         raise BootstrapConfigurationError(
-            "CPK_CONTROL_AUTH_STATIC_WORKSPACE_GRANTS_JSON must map exact "
-            "workspace ids to scopes"
+            "static workspace grants must map exact workspace ids to scopes"
         )
     grants: list[WorkspaceGrant] = []
     for workspace_id, raw_scopes in raw.items():
@@ -567,6 +611,68 @@ def _static_workspace_grants(value: str) -> tuple[WorkspaceGrant, ...]:
             ) from error
         grants.append(WorkspaceGrant(workspace_id, scopes))
     return tuple(sorted(grants, key=lambda grant: grant.workspace_id))
+
+
+def _static_principals(
+    value: str,
+) -> tuple[StaticDevelopmentPrincipalCredential, ...]:
+    if not isinstance(value, str) or not 1 <= len(value) <= 131_072:
+        raise BootstrapConfigurationError(
+            "CPK_CONTROL_AUTH_STATIC_PRINCIPALS_JSON must be bounded JSON"
+        )
+    try:
+        value.encode("ascii")
+        raw = json.loads(value)
+    except (UnicodeEncodeError, json.JSONDecodeError) as error:
+        raise BootstrapConfigurationError(
+            "CPK_CONTROL_AUTH_STATIC_PRINCIPALS_JSON must be bounded JSON"
+        ) from error
+    if not isinstance(raw, list) or not raw or len(raw) > 16:
+        raise BootstrapConfigurationError(
+            "CPK_CONTROL_AUTH_STATIC_PRINCIPALS_JSON must list principals"
+        )
+    principals: list[StaticDevelopmentPrincipalCredential] = []
+    for index, item in enumerate(raw):
+        if not isinstance(item, Mapping):
+            raise BootstrapConfigurationError("static principal must be an object")
+        credential_text = _bounded_ascii(
+            item.get("credential") if isinstance(item.get("credential"), str) else None,
+            f"static principal {index} credential",
+            maximum=4096,
+        )
+        subject_id = _bounded_ascii(
+            item.get("subject_id") if isinstance(item.get("subject_id"), str) else None,
+            f"static principal {index} subject_id",
+            maximum=128,
+        )
+        try:
+            kind = PrincipalKind(item.get("kind"))
+        except ValueError as error:
+            raise BootstrapConfigurationError(
+                "static principal kind must be operator, service, or worker"
+            ) from error
+        grants = _static_workspace_grants_from_mapping(item.get("workspace_grants"))
+        try:
+            principals.append(
+                StaticDevelopmentPrincipalCredential(
+                    credential_text.encode("ascii"),
+                    static_development_principal(
+                        subject_id=subject_id,
+                        kind=kind,
+                        workspace_grants=grants,
+                    ),
+                )
+            )
+        except ValueError as error:
+            raise BootstrapConfigurationError(
+                "static principal must contain valid credential and grants"
+            ) from error
+    credentials = tuple(principal.credential for principal in principals)
+    if len(set(credentials)) != len(credentials):
+        raise BootstrapConfigurationError(
+            "static principal credentials must be unique"
+        )
+    return tuple(principals)
 
 
 def _operations_application(

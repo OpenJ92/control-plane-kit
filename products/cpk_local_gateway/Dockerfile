@@ -9,7 +9,9 @@ ENV PIP_DEFAULT_TIMEOUT=120 \
 WORKDIR /app
 
 RUN python -m pip install --no-cache-dir \
+    "control-plane-kit-core @ https://github.com/OpenJ92/control-plane-kit/archive/8c8b51de02f2b8553668cdffdef576a1c79cc2fc.zip#subdirectory=control-plane-kit-core" \
     "fastapi>=0.115" \
+    "PyJWT[crypto]>=2.10" \
     "uvicorn>=0.30" \
     "psycopg[binary]>=3.2"
 

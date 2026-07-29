@@ -68,6 +68,60 @@ def _extract_bearer_credential(headers: Mapping[str, str]) -> bytes:
 
 
 @dataclass(frozen=True, slots=True, eq=False)
+class StaticDevelopmentPrincipalCredential:
+    """One explicit local-development credential and its trusted principal."""
+
+    credential: bytes = field(repr=False, compare=False, hash=False)
+    principal: AuthenticatedPrincipal
+
+    def __post_init__(self) -> None:
+        credential_text = None
+        if isinstance(self.credential, bytes):
+            try:
+                credential_text = self.credential.decode("ascii")
+            except UnicodeDecodeError:
+                credential_text = None
+        if (
+            not isinstance(self.credential, bytes)
+            or not self.credential
+            or len(self.credential) > MAXIMUM_BEARER_CREDENTIAL_BYTES
+            or credential_text is None
+            or any(character.isspace() for character in credential_text)
+        ):
+            raise CredentialAuthenticationError()
+        if not isinstance(self.principal, AuthenticatedPrincipal):
+            raise CredentialAuthenticationError()
+
+
+@dataclass(frozen=True, slots=True, eq=False)
+class StaticDevelopmentMultiCredentialVerifier:
+    """Explicit local-development verifier for several known principals."""
+
+    credentials: tuple[StaticDevelopmentPrincipalCredential, ...]
+
+    def __post_init__(self) -> None:
+        if (
+            not isinstance(self.credentials, tuple)
+            or not self.credentials
+            or len(self.credentials) > 16
+            or not all(
+                isinstance(credential, StaticDevelopmentPrincipalCredential)
+                for credential in self.credentials
+            )
+        ):
+            raise CredentialAuthenticationError()
+        raw_credentials = tuple(credential.credential for credential in self.credentials)
+        if len(set(raw_credentials)) != len(raw_credentials):
+            raise CredentialAuthenticationError()
+
+    def authenticate(self, credential: bytes) -> AuthenticatedPrincipal:
+        for candidate in self.credentials:
+            if hmac.compare_digest(credential, candidate.credential):
+                return candidate.principal
+        raise CredentialAuthenticationError()
+
+
+@dataclass(frozen=True, slots=True, eq=False)
 class StaticDevelopmentCredentialVerifier:
     """Explicit local-development verifier; never an accept-all default."""
 
@@ -75,36 +129,44 @@ class StaticDevelopmentCredentialVerifier:
     workspace_grants: tuple[WorkspaceGrant, ...] = ()
 
     def __post_init__(self) -> None:
-        credential_text = None
-        if isinstance(self.expected_credential, bytes):
-            try:
-                credential_text = self.expected_credential.decode("ascii")
-            except UnicodeDecodeError:
-                credential_text = None
-        if (
-            not isinstance(self.expected_credential, bytes)
-            or not self.expected_credential
-            or len(self.expected_credential) > MAXIMUM_BEARER_CREDENTIAL_BYTES
-            or credential_text is None
-            or any(character.isspace() for character in credential_text)
-        ):
-            raise CredentialAuthenticationError()
-        if not isinstance(self.workspace_grants, tuple) or not all(
-            isinstance(grant, WorkspaceGrant) for grant in self.workspace_grants
-        ):
-            raise CredentialAuthenticationError()
-        workspace_ids = tuple(grant.workspace_id for grant in self.workspace_grants)
-        if len(set(workspace_ids)) != len(workspace_ids):
-            raise CredentialAuthenticationError()
+        self._multi()
 
     def authenticate(self, credential: bytes) -> AuthenticatedPrincipal:
-        if not hmac.compare_digest(credential, self.expected_credential):
-            raise CredentialAuthenticationError()
-        return AuthenticatedPrincipal(
-            PrincipalIdentity(
-                issuer="urn:control-plane-kit:static-development",
-                subject_id="local-development-operator",
-                kind=PrincipalKind.OPERATOR,
-            ),
-            self.workspace_grants,
+        return self._multi().authenticate(credential)
+
+    def _multi(self) -> StaticDevelopmentMultiCredentialVerifier:
+        return StaticDevelopmentMultiCredentialVerifier(
+            (
+                StaticDevelopmentPrincipalCredential(
+                    self.expected_credential,
+                    AuthenticatedPrincipal(
+                        _static_operator_identity(),
+                        self.workspace_grants,
+                    ),
+                ),
+            )
         )
+
+
+def _static_operator_identity() -> PrincipalIdentity:
+    return PrincipalIdentity(
+        issuer="urn:control-plane-kit:static-development",
+        subject_id="local-development-operator",
+        kind=PrincipalKind.OPERATOR,
+    )
+
+
+def static_development_principal(
+    *,
+    subject_id: str,
+    kind: PrincipalKind,
+    workspace_grants: tuple[WorkspaceGrant, ...],
+) -> AuthenticatedPrincipal:
+    return AuthenticatedPrincipal(
+        PrincipalIdentity(
+            issuer="urn:control-plane-kit:static-development",
+            subject_id=subject_id,
+            kind=kind,
+        ),
+        workspace_grants,
+    )

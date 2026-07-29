@@ -10,9 +10,17 @@ import sys
 from typing import Mapping
 from urllib import error, parse, request
 
+from control_plane_kit_core.gateway_delegation import GatewayProbeRequestCodec
 from fastapi import FastAPI, Request
 from fastapi.responses import JSONResponse
 import uvicorn
+
+from .verification import (
+    Ed25519GatewayProbeVerifier,
+    GatewayProbeReplayCache,
+    GatewayProbeVerificationError,
+    GatewayProbeVerifier,
+)
 
 
 _TARGET_ID = re.compile(r"[a-z][a-z0-9_.-]{0,127}\Z")
@@ -129,8 +137,13 @@ class NoRedirects(request.HTTPRedirectHandler):
         raise error.HTTPError(req.full_url, code, "redirects are disabled", headers, fp)
 
 
-def create_app(configuration: GatewayConfiguration | None = None) -> FastAPI:
+def create_app(
+    configuration: GatewayConfiguration | None = None,
+    *,
+    verifier: GatewayProbeVerifier | None = None,
+) -> FastAPI:
     gateway = configuration or GatewayConfiguration.from_environment()
+    probe_verifier = verifier or _verifier_from_environment()
     app = FastAPI(title="cpk-local-gateway")
 
     @app.get("/health/live")
@@ -138,14 +151,29 @@ def create_app(configuration: GatewayConfiguration | None = None) -> FastAPI:
         return {"status": "live"}
 
     @app.get("/health/ready")
-    def ready() -> dict[str, object]:
-        return {"status": "ready", "targets": len(gateway.targets)}
+    def ready() -> dict[str, str]:
+        return {"status": "ready"}
 
     @app.post("/cpk/probes")
     async def probe(inbound: Request) -> JSONResponse:
         try:
-            payload = await inbound.json()
-            result = execute_probe(gateway, payload)
+            body = await inbound.body()
+            gateway_request = probe_verifier.verify(
+                inbound.headers.get("Authorization"),
+                body,
+            )
+            result = execute_probe(
+                gateway,
+                GatewayProbeRequestCodec().encode(gateway_request),
+            )
+        except GatewayProbeVerificationError as exc:
+            return JSONResponse(
+                status_code=exc.status_code,
+                content={
+                    "outcome": "failed",
+                    "code": "gateway.capability-rejected",
+                },
+            )
         except GatewayConfigurationError as exc:
             return JSONResponse(
                 status_code=400,
@@ -181,10 +209,18 @@ def execute_probe(
 def main() -> int:
     try:
         configuration = GatewayConfiguration.from_environment()
+        verifier = _verifier_from_environment()
     except GatewayConfigurationError as exc:
         print(str(exc), file=sys.stderr)
         return 2
-    uvicorn.run(create_app(configuration), host="0.0.0.0", port=configuration.port)
+    except ValueError as exc:
+        print(str(exc), file=sys.stderr)
+        return 2
+    uvicorn.run(
+        create_app(configuration, verifier=verifier),
+        host="0.0.0.0",
+        port=configuration.port,
+    )
     return 0
 
 
@@ -259,6 +295,38 @@ def _postgres_select_one(target: GatewayTarget) -> None:
         raise GatewayConfigurationError(
             f"Postgres probe failed: {type(exc).__name__}"
         ) from exc
+
+
+def _verifier_from_environment(
+    environment: Mapping[str, str] | None = None,
+) -> Ed25519GatewayProbeVerifier:
+    values = environment or os.environ
+    verifier_kind = values.get("CPK_GATEWAY_PROBE_VERIFIER")
+    if verifier_kind != "ed25519":
+        raise ValueError("CPK_GATEWAY_PROBE_VERIFIER must be ed25519")
+    raw_keys = values.get("CPK_GATEWAY_PROBE_VERIFICATION_KEYS_JSON")
+    if raw_keys is None:
+        raise ValueError("CPK_GATEWAY_PROBE_VERIFICATION_KEYS_JSON is required")
+    try:
+        keys = json.loads(raw_keys)
+    except json.JSONDecodeError as exc:
+        raise ValueError("CPK_GATEWAY_PROBE_VERIFICATION_KEYS_JSON is invalid") from exc
+    if not isinstance(keys, Mapping):
+        raise ValueError("CPK_GATEWAY_PROBE_VERIFICATION_KEYS_JSON must be an object")
+    return Ed25519GatewayProbeVerifier(
+        issuer=_required_environment(values, "CPK_GATEWAY_PROBE_ISSUER"),
+        audience=_required_environment(values, "CPK_GATEWAY_PROBE_AUDIENCE"),
+        gateway_node_id=_required_environment(values, "CPK_GATEWAY_PROBE_NODE_ID"),
+        public_keys={str(key): str(value) for key, value in keys.items()},
+        replay_cache=GatewayProbeReplayCache(),
+    )
+
+
+def _required_environment(values: Mapping[str, str], name: str) -> str:
+    value = values.get(name)
+    if not isinstance(value, str) or not value:
+        raise ValueError(f"{name} is required")
+    return value
 
 
 def _required_text(value: Mapping[str, object], key: str) -> str:

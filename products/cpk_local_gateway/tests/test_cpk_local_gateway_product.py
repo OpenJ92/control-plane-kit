@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from concurrent.futures import ThreadPoolExecutor
 import hashlib
 import json
 from pathlib import Path
@@ -7,6 +8,17 @@ import sys
 import unittest
 from unittest.mock import patch
 
+from cryptography.hazmat.primitives import serialization
+from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PrivateKey
+from fastapi.testclient import TestClient
+import jwt
+
+from control_plane_kit_core.gateway_delegation import (
+    DelegatedGatewayProbeGrant,
+    DelegatedGatewayProbeVerificationCode,
+    GatewayProbeCommandKind,
+    GatewayProbeRequest,
+)
 from control_plane_kit_core.environment import PublicStaticEnvironmentBinding
 from control_plane_kit_core.products import (
     ProductDescriptorCodec,
@@ -15,6 +27,7 @@ from control_plane_kit_core.products import (
     ProductInstanceConfiguration,
     instantiate_product,
 )
+from control_plane_kit_core.runtime_effects import GatewayTargetId
 from control_plane_kit_core.secrets import SecretEnvironmentDelivery, SecretReference
 from control_plane_kit_core.types import Protocol, SocketBinding
 
@@ -23,6 +36,10 @@ ROOT = Path(__file__).resolve().parents[3]
 PRODUCT = ROOT / "products" / "cpk_local_gateway"
 PRODUCT_SRC = PRODUCT / "src"
 DESCRIPTOR = PRODUCT / "product.cpk.json"
+ISSUER = "urn:control-plane-kit:test-gateway"
+AUDIENCE = "gateway:workspace-auth-private:gateway"
+GATEWAY_NODE_ID = "gateway"
+KEY_ID = "gateway-test-key"
 
 
 class CpkLocalGatewayProductTests(unittest.TestCase):
@@ -100,6 +117,20 @@ class CpkLocalGatewayProductTests(unittest.TestCase):
         self.assertEqual(
             product.runtime_contract.public_environment,
             (
+                PublicStaticEnvironmentBinding("CPK_GATEWAY_PROBE_AUDIENCE", "gateway"),
+                PublicStaticEnvironmentBinding("CPK_GATEWAY_PROBE_ISSUER", "cpk"),
+                PublicStaticEnvironmentBinding(
+                    "CPK_GATEWAY_PROBE_NODE_ID",
+                    "gateway",
+                ),
+                PublicStaticEnvironmentBinding(
+                    "CPK_GATEWAY_PROBE_VERIFICATION_KEYS_JSON",
+                    "{}",
+                ),
+                PublicStaticEnvironmentBinding(
+                    "CPK_GATEWAY_PROBE_VERIFIER",
+                    "ed25519",
+                ),
                 PublicStaticEnvironmentBinding("CPK_GATEWAY_TARGETS_JSON", "{}"),
             ),
         )
@@ -151,6 +182,295 @@ class CpkLocalGatewayProductTests(unittest.TestCase):
             execute_probe(gateway, {"kind": "tcp-open", "target_id": "hello.internal"})
         with self.assertRaisesRegex(GatewayConfigurationError, "unknown target"):
             execute_probe(gateway, {"kind": "http-status", "target_id": "db.postgres"})
+
+    def test_gateway_route_rejects_missing_and_forged_capabilities_before_target_io(
+        self,
+    ) -> None:
+        from control_plane_kit_servers_cpk_local_gateway import (
+            Ed25519GatewayProbeVerifier,
+            GatewayConfiguration,
+            GatewayProbeReplayCache,
+            create_app,
+        )
+
+        private_key, public_key = _ed25519_keys()
+        now = 1_750_000_000
+        verifier = Ed25519GatewayProbeVerifier(
+            issuer=ISSUER,
+            audience=AUDIENCE,
+            gateway_node_id=GATEWAY_NODE_ID,
+            public_keys={KEY_ID: public_key},
+            replay_cache=GatewayProbeReplayCache(clock=lambda: now),
+            clock=lambda: now,
+        )
+        gateway = GatewayConfiguration.from_target_map(
+            {
+                "hello.internal": {
+                    "protocol": "http",
+                    "url": "http://hello:8000",
+                }
+            }
+        )
+        request = GatewayProbeRequest(
+            GatewayProbeCommandKind.HTTP_STATUS,
+            GatewayTargetId("hello.internal"),
+            "/",
+        )
+        body = _request_body(request)
+        forged = _signed_capability(
+            Ed25519PrivateKey.generate(),
+            _grant(request, now=now),
+        )
+
+        with patch(
+            "control_plane_kit_servers_cpk_local_gateway.server.execute_probe"
+        ) as execute:
+            client = TestClient(create_app(gateway, verifier=verifier))
+            missing = client.post(
+                "/cpk/probes",
+                content=body,
+                headers={"Content-Type": "application/json"},
+            )
+            invalid = client.post(
+                "/cpk/probes",
+                content=body,
+                headers={
+                    "Authorization": f"CPK-Gateway {forged}",
+                    "Content-Type": "application/json",
+                },
+            )
+
+        self.assertEqual(missing.status_code, 401)
+        self.assertEqual(invalid.status_code, 401)
+        self.assertEqual(
+            missing.json(),
+            {
+                "outcome": "failed",
+                "code": "gateway.capability-rejected",
+            },
+        )
+        self.assertNotIn(forged, invalid.text)
+        execute.assert_not_called()
+        self.assertEqual(repr(verifier), "Ed25519GatewayProbeVerifier(<redacted>)")
+
+    def test_gateway_verifier_binds_exact_request_authority_and_time(self) -> None:
+        from control_plane_kit_servers_cpk_local_gateway import (
+            Ed25519GatewayProbeVerifier,
+            GatewayProbeReplayCache,
+            GatewayProbeVerificationError,
+        )
+
+        private_key, public_key = _ed25519_keys()
+        now = 1_750_000_000
+        request = GatewayProbeRequest(
+            GatewayProbeCommandKind.HTTP_STATUS,
+            GatewayTargetId("hello.internal"),
+            "/",
+        )
+
+        def verifier() -> Ed25519GatewayProbeVerifier:
+            return Ed25519GatewayProbeVerifier(
+                issuer=ISSUER,
+                audience=AUDIENCE,
+                gateway_node_id=GATEWAY_NODE_ID,
+                public_keys={KEY_ID: public_key},
+                replay_cache=GatewayProbeReplayCache(clock=lambda: now),
+                clock=lambda: now,
+            )
+
+        accepted = verifier().verify(
+            f"CPK-Gateway {_signed_capability(private_key, _grant(request, now=now))}",
+            _request_body(request),
+        )
+        self.assertEqual(accepted, request)
+
+        cases = (
+            (
+                replace_grant(_grant(request, now=now), audience="gateway:other:gateway"),
+                request,
+                DelegatedGatewayProbeVerificationCode.AUDIENCE_MISMATCH,
+            ),
+            (
+                replace_grant(_grant(request, now=now), gateway_node_id="other-gateway"),
+                request,
+                DelegatedGatewayProbeVerificationCode.AUDIENCE_MISMATCH,
+            ),
+            (
+                replace_grant(
+                    _grant(request, now=now),
+                    issued_at=now + 20,
+                    expires_at=now + 80,
+                ),
+                request,
+                DelegatedGatewayProbeVerificationCode.TEMPORALLY_INVALID,
+            ),
+            (
+                replace_grant(
+                    _grant(request, now=now),
+                    issued_at=now - 80,
+                    expires_at=now - 20,
+                ),
+                request,
+                DelegatedGatewayProbeVerificationCode.TEMPORALLY_INVALID,
+            ),
+            (
+                _grant(request, now=now),
+                GatewayProbeRequest(
+                    GatewayProbeCommandKind.HTTP_STATUS,
+                    GatewayTargetId("hello.internal"),
+                    "/health/ready",
+                ),
+                DelegatedGatewayProbeVerificationCode.REQUEST_MISMATCH,
+            ),
+        )
+        for grant, inbound_request, expected_code in cases:
+            with self.subTest(code=expected_code):
+                with self.assertRaises(GatewayProbeVerificationError) as raised:
+                    verifier().verify(
+                        f"CPK-Gateway {_signed_capability(private_key, grant)}",
+                        _request_body(inbound_request),
+                    )
+                self.assertIs(raised.exception.code, expected_code)
+
+    def test_gateway_replay_cache_allows_exactly_one_concurrent_request(self) -> None:
+        from control_plane_kit_servers_cpk_local_gateway import (
+            Ed25519GatewayProbeVerifier,
+            GatewayProbeReplayCache,
+            GatewayProbeVerificationError,
+        )
+
+        private_key, public_key = _ed25519_keys()
+        now = 1_750_000_000
+        request = GatewayProbeRequest(
+            GatewayProbeCommandKind.POSTGRES_SELECT_ONE,
+            GatewayTargetId("postgres.postgres"),
+        )
+        token = _signed_capability(private_key, _grant(request, now=now))
+        verifier = Ed25519GatewayProbeVerifier(
+            issuer=ISSUER,
+            audience=AUDIENCE,
+            gateway_node_id=GATEWAY_NODE_ID,
+            public_keys={KEY_ID: public_key},
+            replay_cache=GatewayProbeReplayCache(clock=lambda: now),
+            clock=lambda: now,
+        )
+
+        def verify_once() -> str:
+            try:
+                verifier.verify(
+                    f"CPK-Gateway {token}",
+                    _request_body(request),
+                )
+            except GatewayProbeVerificationError as error:
+                return error.code.value
+            return "accepted"
+
+        with ThreadPoolExecutor(max_workers=8) as executor:
+            results = tuple(executor.map(lambda _: verify_once(), range(8)))
+
+        self.assertEqual(results.count("accepted"), 1)
+        self.assertEqual(
+            results.count(DelegatedGatewayProbeVerificationCode.REPLAYED.value),
+            7,
+        )
+
+        restarted = Ed25519GatewayProbeVerifier(
+            issuer=ISSUER,
+            audience=AUDIENCE,
+            gateway_node_id=GATEWAY_NODE_ID,
+            public_keys={KEY_ID: public_key},
+            replay_cache=GatewayProbeReplayCache(clock=lambda: now),
+            clock=lambda: now,
+        )
+        self.assertEqual(
+            restarted.verify(f"CPK-Gateway {token}", _request_body(request)),
+            request,
+        )
+
+    def test_valid_capability_still_cannot_reach_an_undeclared_target(self) -> None:
+        from control_plane_kit_servers_cpk_local_gateway import (
+            Ed25519GatewayProbeVerifier,
+            GatewayConfiguration,
+            GatewayProbeReplayCache,
+            create_app,
+        )
+
+        private_key, public_key = _ed25519_keys()
+        now = 1_750_000_000
+        request = GatewayProbeRequest(
+            GatewayProbeCommandKind.HTTP_STATUS,
+            GatewayTargetId("missing.internal"),
+            "/",
+        )
+        verifier = Ed25519GatewayProbeVerifier(
+            issuer=ISSUER,
+            audience=AUDIENCE,
+            gateway_node_id=GATEWAY_NODE_ID,
+            public_keys={KEY_ID: public_key},
+            replay_cache=GatewayProbeReplayCache(clock=lambda: now),
+            clock=lambda: now,
+        )
+        client = TestClient(
+            create_app(
+                GatewayConfiguration.from_target_map({}),
+                verifier=verifier,
+            )
+        )
+
+        with patch(
+            "control_plane_kit_servers_cpk_local_gateway.server._http_status"
+        ) as transport:
+            response = client.post(
+                "/cpk/probes",
+                content=_request_body(request),
+                headers={
+                    "Authorization": (
+                        "CPK-Gateway "
+                        + _signed_capability(private_key, _grant(request, now=now))
+                    ),
+                    "Content-Type": "application/json",
+                },
+            )
+
+        self.assertEqual(response.status_code, 400)
+        self.assertEqual(response.json()["code"], "gateway.probe-rejected")
+        transport.assert_not_called()
+
+    def test_health_is_public_minimal_and_discloses_no_target_count(self) -> None:
+        from control_plane_kit_servers_cpk_local_gateway import (
+            Ed25519GatewayProbeVerifier,
+            GatewayConfiguration,
+            GatewayProbeReplayCache,
+            create_app,
+        )
+
+        _, public_key = _ed25519_keys()
+        now = 1_750_000_000
+        verifier = Ed25519GatewayProbeVerifier(
+            issuer=ISSUER,
+            audience=AUDIENCE,
+            gateway_node_id=GATEWAY_NODE_ID,
+            public_keys={KEY_ID: public_key},
+            replay_cache=GatewayProbeReplayCache(clock=lambda: now),
+            clock=lambda: now,
+        )
+        client = TestClient(
+            create_app(
+                GatewayConfiguration.from_target_map(
+                    {
+                        "hello.internal": {
+                            "protocol": "http",
+                            "url": "http://hello:8000",
+                        }
+                    }
+                ),
+                verifier=verifier,
+            )
+        )
+
+        self.assertEqual(client.get("/health/live").json(), {"status": "live"})
+        self.assertEqual(client.get("/health/ready").json(), {"status": "ready"})
+        self.assertNotIn("targets", client.get("/health/ready").json())
 
     def test_http_probe_uses_declared_target_without_forwarding_arbitrary_url(self) -> None:
         from control_plane_kit_servers_cpk_local_gateway import (
@@ -258,6 +578,95 @@ class CpkLocalGatewayProductTests(unittest.TestCase):
         self.assertNotIn("sync_runtime_networks", smoke)
         self.assertNotIn("-p 5432", smoke)
         self.assertNotIn("docker system prune", smoke)
+
+def _ed25519_keys() -> tuple[Ed25519PrivateKey, str]:
+    private_key = Ed25519PrivateKey.generate()
+    public_key = private_key.public_key().public_bytes(
+        encoding=serialization.Encoding.PEM,
+        format=serialization.PublicFormat.SubjectPublicKeyInfo,
+    ).decode("ascii")
+    return private_key, public_key
+
+
+def _grant(
+    request: GatewayProbeRequest,
+    *,
+    now: int,
+) -> DelegatedGatewayProbeGrant:
+    return DelegatedGatewayProbeGrant(
+        issuer=ISSUER,
+        key_id=KEY_ID,
+        audience=AUDIENCE,
+        workspace_id="workspace-auth-private",
+        operation_id="probe-operation",
+        request_id="probe-request",
+        gateway_node_id=GATEWAY_NODE_ID,
+        probe_kind=request.kind,
+        target_id=request.target_id,
+        request_digest=request.canonical_digest(),
+        issued_at=now - 1,
+        expires_at=now + 60,
+        jti="probe-jti",
+    )
+
+
+def replace_grant(
+    grant: DelegatedGatewayProbeGrant,
+    **changes: object,
+) -> DelegatedGatewayProbeGrant:
+    descriptor = grant.descriptor()
+    descriptor.update(changes)
+    return DelegatedGatewayProbeGrant(
+        issuer=str(descriptor["issuer"]),
+        key_id=str(descriptor["key_id"]),
+        audience=str(descriptor["audience"]),
+        workspace_id=str(descriptor["workspace_id"]),
+        operation_id=str(descriptor["operation_id"]),
+        request_id=str(descriptor["request_id"]),
+        gateway_node_id=str(descriptor["gateway_node_id"]),
+        probe_kind=GatewayProbeCommandKind(str(descriptor["probe_kind"])),
+        target_id=GatewayTargetId(str(descriptor["target_id"])),
+        request_digest=grant.request_digest,
+        issued_at=int(descriptor["issued_at"]),
+        expires_at=int(descriptor["expires_at"]),
+        jti=str(descriptor["jti"]),
+    )
+
+
+def _signed_capability(
+    private_key: Ed25519PrivateKey,
+    grant: DelegatedGatewayProbeGrant,
+) -> str:
+    private_pem = private_key.private_bytes(
+        encoding=serialization.Encoding.PEM,
+        format=serialization.PrivateFormat.PKCS8,
+        encryption_algorithm=serialization.NoEncryption(),
+    )
+    return jwt.encode(
+        {
+            "iss": grant.issuer,
+            "aud": grant.audience,
+            "iat": grant.issued_at,
+            "exp": grant.expires_at,
+            "jti": grant.jti,
+            "gateway_probe": grant.descriptor(),
+        },
+        private_pem,
+        algorithm="EdDSA",
+        headers={
+            "kid": grant.key_id,
+            "typ": "CPK-GATEWAY-PROBE+JWT",
+        },
+    )
+
+
+def _request_body(request: GatewayProbeRequest) -> bytes:
+    return json.dumps(
+        request.descriptor(),
+        sort_keys=True,
+        separators=(",", ":"),
+        ensure_ascii=True,
+    ).encode("ascii")
 
 
 if __name__ == "__main__":

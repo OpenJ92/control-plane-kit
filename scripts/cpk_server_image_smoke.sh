@@ -17,6 +17,7 @@ OBSERVER_STATE_DATABASE_URL="${CPK_OBSERVER_STATE_DATABASE_URL:-$DATABASE_URL}"
 GRAPH_TOPOLOGY_DATABASE_URL="${CPK_GRAPH_TOPOLOGY_DATABASE_URL:-$DATABASE_URL}"
 RUNTIME_INTERPRETERS="${CPK_RUNTIME_INTERPRETERS:-none}"
 STATIC_WORKSPACE_GRANTS_JSON="${CPK_CONTROL_AUTH_STATIC_WORKSPACE_GRANTS_JSON:-{\"workspace-a\":[\"hub:instance:create\",\"instance:workspace:read\",\"instance:workspace:edit\",\"plan:request\"]}}"
+HEALTH_ATTEMPTS="${CPK_SERVER_HEALTH_ATTEMPTS:-30}"
 
 cleanup() {
   rm -f "$MISSING_CONFIG_OUTPUT" "$IMPORT_BODY"
@@ -50,6 +51,21 @@ finish() {
 phase() {
   PHASE="$1"
   echo "cpk-server image smoke: $PHASE"
+}
+
+curl_with_retry() {
+  url="$1"
+  output=""
+  attempt=1
+  while [ "$attempt" -le "$HEALTH_ATTEMPTS" ]; do
+    if output="$(curl -fsS "$url" 2>/dev/null)"; then
+      printf '%s' "$output"
+      return 0
+    fi
+    sleep 1
+    attempt=$((attempt + 1))
+  done
+  return 1
 }
 
 trap finish EXIT
@@ -118,16 +134,17 @@ PORT="$(docker port "$CONTAINER" 8080/tcp | sed 's/.*://')"
 BASE="http://127.0.0.1:$PORT"
 
 phase "wait for cpk-server liveness"
-for _ in 1 2 3 4 5 6 7 8 9 10; do
-  if curl -fsS "$BASE/health/live" >/tmp/cpk-server-live.json 2>/dev/null; then
-    break
-  fi
-  sleep 1
-done
+if ! live="$(curl_with_retry "$BASE/health/live")"; then
+  echo "cpk-server did not become live" >&2
+  exit 1
+fi
 
 phase "verify cpk-server readiness"
-curl -fsS "$BASE/health/live" | grep -q '"live"'
-ready="$(curl -fsS "$BASE/health/ready")"
+printf '%s' "$live" | grep -q '"live"'
+if ! ready="$(curl_with_retry "$BASE/health/ready")"; then
+  echo "cpk-server did not become ready" >&2
+  exit 1
+fi
 printf '%s' "$ready" | grep -q '"ready"'
 printf '%s' "$ready" | grep -q '"stores"'
 printf '%s' "$ready" | grep -q '"configured"'

@@ -312,6 +312,66 @@ class CpkServerImageBootstrapTests(unittest.TestCase):
             self.assertNotEqual(verifier, other_verifier)
             self.assertNotIn("credential-not-for-output", repr(configured))
             self.assertNotIn("credential-not-for-output", repr(verifier))
+
+            principals_json = json.dumps(
+                [
+                    {
+                        "credential": "operator-token-not-for-output",
+                        "subject_id": "operator-a",
+                        "kind": "operator",
+                        "workspace_grants": {
+                            "workspace-a": [
+                                "instance:workspace:read",
+                                "plan:request",
+                            ]
+                        },
+                    },
+                    {
+                        "credential": "worker-token-not-for-output",
+                        "subject_id": "worker-a",
+                        "kind": "worker",
+                        "workspace_grants": {
+                            "workspace-a": [
+                                "execution:operate",
+                            ]
+                        },
+                    },
+                ]
+            )
+            multi_config = (
+                server_module.CpkServerBootstrapConfiguration.from_environment(
+                    {
+                        **environ,
+                        "CPK_CONTROL_AUTH_VERIFIER": "static-development",
+                        "CPK_CONTROL_AUTH_STATIC_PRINCIPALS_JSON": principals_json,
+                    }
+                )
+            )
+            multi_verifier = server_module._credential_verifier(multi_config)
+            operator = multi_verifier.authenticate(b"operator-token-not-for-output")
+            worker = multi_verifier.authenticate(b"worker-token-not-for-output")
+
+            self.assertEqual(operator.identity.kind.value, "operator")
+            self.assertEqual(operator.identity.subject_id, "operator-a")
+            self.assertEqual(worker.identity.kind.value, "worker")
+            self.assertEqual(worker.identity.subject_id, "worker-a")
+            self.assertNotIn("operator-token-not-for-output", repr(multi_config))
+            self.assertNotIn("worker-token-not-for-output", repr(multi_config))
+
+            with self.assertRaisesRegex(
+                server_module.BootstrapConfigurationError,
+                "must not be mixed",
+            ):
+                server_module.CpkServerBootstrapConfiguration.from_environment(
+                    {
+                        **environ,
+                        "CPK_CONTROL_AUTH_VERIFIER": "static-development",
+                        "CPK_CONTROL_AUTH_STATIC_CREDENTIAL": (
+                            "credential-not-for-output"
+                        ),
+                        "CPK_CONTROL_AUTH_STATIC_PRINCIPALS_JSON": principals_json,
+                    }
+                )
         finally:
             sys.path.remove(str(PRODUCT_SRC))
             for name in list(sys.modules):

@@ -9,36 +9,36 @@
       "product_id": "cpk-server",
       "owner_directory": "products/cpk_server",
       "descriptor_path": "products/cpk_server/product.cpk.json",
-      "source_commit": "9bd63b68d4817ac9925e303e7071b144ddf700ff",
+      "source_commit": "e40e0f6e95bcc92a55bb8ebfe2cff10f002e2e6c",
       "image": {
         "registry": "ghcr.io",
         "repository": "openj92/control-plane-kit-servers/cpk-server",
-        "tag": "seeded-ingress-1080-cpk-server",
-        "digest": "sha256:f67c5f75e7ffc1d6e0932a3042eb22b3bf5f0e0d5fafb83f57e435eeb0c68f8a"
+        "tag": "auth-gateway-1143-cpk-server",
+        "digest": "sha256:db0de3e0e34dbfe90945af46419576da799a484a7bc45b985767f1cf0131a92d"
       }
     },
     {
       "product_id": "cpk-server-docker",
       "owner_directory": "products/cpk_server",
       "descriptor_path": "products/cpk_server/product.docker.cpk.json",
-      "source_commit": "9bd63b68d4817ac9925e303e7071b144ddf700ff",
+      "source_commit": "e40e0f6e95bcc92a55bb8ebfe2cff10f002e2e6c",
       "image": {
         "registry": "ghcr.io",
         "repository": "openj92/control-plane-kit-servers/cpk-server",
-        "tag": "seeded-ingress-1080-cpk-server",
-        "digest": "sha256:f67c5f75e7ffc1d6e0932a3042eb22b3bf5f0e0d5fafb83f57e435eeb0c68f8a"
+        "tag": "auth-gateway-1143-cpk-server",
+        "digest": "sha256:db0de3e0e34dbfe90945af46419576da799a484a7bc45b985767f1cf0131a92d"
       }
     },
     {
       "product_id": "cpk-server-docker-cloudflare",
       "owner_directory": "products/cpk_server",
       "descriptor_path": "products/cpk_server/product.docker-cloudflare.cpk.json",
-      "source_commit": "9bd63b68d4817ac9925e303e7071b144ddf700ff",
+      "source_commit": "e40e0f6e95bcc92a55bb8ebfe2cff10f002e2e6c",
       "image": {
         "registry": "ghcr.io",
         "repository": "openj92/control-plane-kit-servers/cpk-server",
-        "tag": "seeded-ingress-1080-cpk-server",
-        "digest": "sha256:f67c5f75e7ffc1d6e0932a3042eb22b3bf5f0e0d5fafb83f57e435eeb0c68f8a"
+        "tag": "auth-gateway-1143-cpk-server",
+        "digest": "sha256:db0de3e0e34dbfe90945af46419576da799a484a7bc45b985767f1cf0131a92d"
       }
     },
     {
@@ -81,12 +81,12 @@
       "product_id": "cpk-local-gateway",
       "owner_directory": "products/cpk_local_gateway",
       "descriptor_path": "products/cpk_local_gateway/product.cpk.json",
-      "source_commit": "00bcb69f77d386f5ab280dfa61a0b7d1fd84f4c1",
+      "source_commit": "02120b7f9853583804b545bfee262103835b3eea",
       "image": {
         "registry": "ghcr.io",
         "repository": "openj92/control-plane-kit-servers/cpk-local-gateway",
-        "tag": "local-gateway-1023",
-        "digest": "sha256:77637c12d734768ae8a53afd6ea8b7a8e7fe4a62b485a9899e9b080779e275e4"
+        "tag": "auth-gateway-1143",
+        "digest": "sha256:5698c1ee9e8b933920177d260bf44963e2ebbdfc58f791fc98bf6efd21156aa8"
       }
     },
     {
