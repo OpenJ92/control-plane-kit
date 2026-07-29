@@ -5004,3 +5004,63 @@ Handoff:
 - Future lifecycle generalization should preserve this graph-transition shape
   for servers, runtimes, ingress, and cleanup rather than treating public
   access teardown as provider scripting outside the deploy program.
+
+## #1049 Seeded Stress Public Ingress Rebase
+
+#1049 rebased seeded stress acceptance onto public gateway ingress instead of
+direct private-network reachability. The aggregate hosted scenario runs four
+workspaces from one published cpk-server process:
+
+```text
+workspace-a-router
+  router transition through public gateway ingress
+
+workspace-b-multiplexer
+  multiplexer observer scenario through public gateway ingress
+
+workspace-c-postgres
+  retained Postgres data-service scenario through public gateway ingress
+
+workspace-d-negative-cleanup
+  deploy workload + gateway + cloudflared + NamedPublicIngress
+    -> public gateway probe succeeds
+  deploy empty graph
+    -> public gateway becomes unreachable
+    -> Docker runtime networks are removed
+```
+
+The important proof is that public gateway ingress is now the observation path
+for seeded stress, while runtime authority remains the control path for
+realizing and cleaning the Docker island.
+
+The aggregate smoke intentionally uses the published cpk-server image digest:
+
+```text
+ghcr.io/openj92/control-plane-kit-servers/cpk-server
+  @sha256:f67c5f75e7ffc1d6e0932a3042eb22b3bf5f0e0d5fafb83f57e435eeb0c68f8a
+```
+
+No cpk-server image republish was needed for #1049 because the change was in
+hosted acceptance scripts and static tests, not the cpk-server product runtime
+or generated catalogue coordinates.
+
+Validation evidence:
+
+- `git diff --check` passed in `control-plane-kit-servers`.
+- `python3 -m compileall scripts/cpk_server_hosted_activity.py` passed.
+- Docker unittest slice
+  `python -m unittest products.cpk_server.tests.test_image_bootstrap` passed
+  32 tests.
+- Full `./test.sh` passed in `control-plane-kit-servers`, including cpk-server
+  image smoke and Docker residue audit.
+- `CPK_HOSTED_ACTIVITY_SCENARIO=seeded-stress-public-ingress
+  CPK_HOSTED_ACTIVITY_BUILD_CONTROLLER=1
+  scripts/cpk_server_hosted_activity_smoke.sh` passed.
+
+Handoff:
+
+- #1050 can close seeded stress by treating the aggregate scenario as the
+  current public-ingress acceptance spine.
+- Pottery Factory application topology work should reuse this shape: saved
+  desired graphs, runtime authority for realization, and gateway/public ingress
+  as a removable access overlay.
