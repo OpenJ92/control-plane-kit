@@ -14,6 +14,7 @@ from fastapi import FastAPI, Request
 from fastapi.responses import JSONResponse
 import psycopg
 import uvicorn
+from control_plane_kit_core.identity import CredentialVerifier
 from control_plane_kit_core.operations.execution import EffectResultKind
 from control_plane_kit_core.operations.lifecycle import FailureCategory
 from control_plane_kit_core.types import RuntimeKind
@@ -54,6 +55,7 @@ from .boundary import (
     CpkServerHttpProcessBoundary,
     CpkServerMcpProcessBoundary,
 )
+from .authentication import StaticDevelopmentCredentialVerifier
 from .composition import (
     CpkServerCompositionError,
     CpkServerProcessConfiguration,
@@ -123,7 +125,12 @@ class IngressInterpreterBootstrapConfiguration:
 @dataclass(frozen=True, slots=True)
 class CpkServerBootstrapConfiguration:
     mode: str
-    control_auth_configured: bool
+    control_auth_verifier: str
+    control_auth_static_credential: bytes | None = field(
+        repr=False,
+        compare=False,
+        hash=False,
+    )
     port: int
     runtime_dispatcher: RuntimeDispatcherBootstrapConfiguration
     ingress_interpreters: IngressInterpreterBootstrapConfiguration
@@ -141,7 +148,10 @@ class CpkServerBootstrapConfiguration:
     ) -> "CpkServerBootstrapConfiguration":
         values = dict(os.environ if environ is None else environ)
         mode = _required(values, "CPK_SERVER_MODE")
-        auth = _required(values, "CPK_CONTROL_AUTH_CONFIGURED")
+        control_auth_verifier = values.get("CPK_CONTROL_AUTH_VERIFIER", "none")
+        control_auth_static_credential_text = values.get(
+            "CPK_CONTROL_AUTH_STATIC_CREDENTIAL"
+        )
         port_text = _required(values, "CPK_PORT")
         try:
             runtime_dispatcher = RuntimeDispatcherBootstrapConfiguration.from_process_value(
@@ -171,10 +181,31 @@ class CpkServerBootstrapConfiguration:
         }
         if mode != "execution-capable":
             raise BootstrapConfigurationError("CPK_SERVER_MODE must be execution-capable")
-        if auth.lower() not in {"true", "1", "yes"}:
+        if control_auth_verifier not in {"none", "static-development"}:
             raise BootstrapConfigurationError(
-                "CPK_CONTROL_AUTH_CONFIGURED must be true for hosted cpk-server"
+                "CPK_CONTROL_AUTH_VERIFIER must be one of: none, static-development"
             )
+        control_auth_static_credential = None
+        if control_auth_verifier == "static-development":
+            if not control_auth_static_credential_text:
+                raise BootstrapConfigurationError(
+                    "CPK_CONTROL_AUTH_VERIFIER=static-development requires "
+                    "CPK_CONTROL_AUTH_STATIC_CREDENTIAL"
+                )
+            try:
+                control_auth_static_credential = (
+                    control_auth_static_credential_text.encode("ascii")
+                )
+            except UnicodeEncodeError as error:
+                raise BootstrapConfigurationError(
+                    "CPK_CONTROL_AUTH_STATIC_CREDENTIAL must be bounded ASCII"
+                ) from error
+            try:
+                StaticDevelopmentCredentialVerifier(control_auth_static_credential)
+            except ValueError as error:
+                raise BootstrapConfigurationError(
+                    "CPK_CONTROL_AUTH_STATIC_CREDENTIAL must be bounded and nonempty"
+                ) from error
         try:
             port = int(port_text)
         except ValueError as error:
@@ -233,7 +264,8 @@ class CpkServerBootstrapConfiguration:
             )
         return cls(
             mode=mode,
-            control_auth_configured=True,
+            control_auth_verifier=control_auth_verifier,
+            control_auth_static_credential=control_auth_static_credential,
             port=port,
             runtime_dispatcher=runtime_dispatcher,
             ingress_interpreters=ingress_interpreters,
@@ -246,7 +278,9 @@ class CpkServerBootstrapConfiguration:
         )
 
     def process_configuration(self) -> CpkServerProcessConfiguration:
-        return CpkServerProcessConfiguration.execution_capable(token_configured=True)
+        return CpkServerProcessConfiguration.execution_capable(
+            authentication_required=True
+        )
 
     def operations_database_url(self) -> str:
         urls = set(self.store_endpoints.values())
@@ -258,11 +292,17 @@ class CpkServerBootstrapConfiguration:
         return next(iter(urls))
 
 
-def create_app(config: CpkServerBootstrapConfiguration) -> FastAPI:
+def create_app(
+    config: CpkServerBootstrapConfiguration,
+    credential_verifier: CredentialVerifier,
+) -> FastAPI:
     """Create the hosted cpk-server FastAPI application."""
 
     composition = create_cpk_server_composition(config.process_configuration())
-    application = CpkServerApplicationBoundary(_operations_application(config).services)
+    application = CpkServerApplicationBoundary(
+        _operations_application(config).services,
+        credential_verifier,
+    )
     http_boundary = CpkServerHttpProcessBoundary(composition, application)
     mcp_boundary = CpkServerMcpProcessBoundary(composition, application)
     app = FastAPI(
@@ -302,7 +342,7 @@ def create_app(config: CpkServerBootstrapConfiguration) -> FastAPI:
                 {"error": {"status": 400, "message": "invalid JSON request body"}},
             )
         response = mcp_boundary.handle(
-            headers=dict(request.headers),
+            headers=request.headers,
             message=message,
         )
         return _json_response(response.status, response.body)
@@ -312,7 +352,7 @@ def create_app(config: CpkServerBootstrapConfiguration) -> FastAPI:
         response = http_boundary.handle(
             method=request.method,
             path=request.url.path,
-            headers=dict(request.headers),
+            headers=request.headers,
             body=await request.body(),
         )
         return _json_response(response.status, response.body)
@@ -323,17 +363,31 @@ def create_app(config: CpkServerBootstrapConfiguration) -> FastAPI:
 def main() -> int:
     try:
         config = CpkServerBootstrapConfiguration.from_environment()
+        credential_verifier = _credential_verifier(config)
     except (BootstrapConfigurationError, CpkServerCompositionError) as error:
         print(f"cpk-server bootstrap error: {error}", flush=True)
         return 2
     print(f"cpk-server listening on 0.0.0.0:{config.port}", flush=True)
     uvicorn.run(
-        create_app(config),
+        create_app(config, credential_verifier),
         host="0.0.0.0",
         port=config.port,
         access_log=False,
     )
     return 0
+
+
+def _credential_verifier(
+    config: CpkServerBootstrapConfiguration,
+) -> CredentialVerifier:
+    if config.control_auth_verifier == "static-development":
+        assert config.control_auth_static_credential is not None
+        return StaticDevelopmentCredentialVerifier(
+            config.control_auth_static_credential
+        )
+    raise BootstrapConfigurationError(
+        "no credential verifier is configured for cpk-server"
+    )
 
 
 def _docker_config_path(values: Mapping[str, str]) -> str | None:

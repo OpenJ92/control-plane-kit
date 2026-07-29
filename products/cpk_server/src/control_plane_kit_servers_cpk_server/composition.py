@@ -44,26 +44,30 @@ class CpkServerProcessConfiguration:
     """Process-local bootstrap mode for the cpk-server wrapper."""
 
     execution_enabled: bool
-    control_token_configured: bool
+    authentication_required: bool
     mode: str
 
     def __post_init__(self) -> None:
         if type(self.execution_enabled) is not bool:
             raise CpkServerCompositionError("execution_enabled must be bool")
-        if type(self.control_token_configured) is not bool:
-            raise CpkServerCompositionError("control_token_configured must be bool")
+        if type(self.authentication_required) is not bool:
+            raise CpkServerCompositionError("authentication_required must be bool")
         if self.mode not in {"execution-capable", "local-read-only"}:
             raise CpkServerCompositionError("unknown cpk-server mode")
-        if self.execution_enabled and not self.control_token_configured:
+        if self.execution_enabled and not self.authentication_required:
             raise CpkServerCompositionError(
-                "execution-capable composition requires auth configuration"
+                "execution-capable composition requires authentication"
             )
 
     @classmethod
-    def execution_capable(cls, *, token_configured: bool) -> "CpkServerProcessConfiguration":
+    def execution_capable(
+        cls,
+        *,
+        authentication_required: bool,
+    ) -> "CpkServerProcessConfiguration":
         return cls(
             execution_enabled=True,
-            control_token_configured=token_configured,
+            authentication_required=authentication_required,
             mode="execution-capable",
         )
 
@@ -71,7 +75,7 @@ class CpkServerProcessConfiguration:
     def local_read_only(cls) -> "CpkServerProcessConfiguration":
         return cls(
             execution_enabled=False,
-            control_token_configured=False,
+            authentication_required=False,
             mode="local-read-only",
         )
 
@@ -79,7 +83,7 @@ class CpkServerProcessConfiguration:
         return {
             "mode": self.mode,
             "execution_enabled": self.execution_enabled,
-            "control_token_configured": self.control_token_configured,
+            "authentication_required": self.authentication_required,
         }
 
 
@@ -225,7 +229,7 @@ def create_cpk_server_composition(
     """Create the first product-local process composition over core contracts."""
 
     config = configuration or CpkServerProcessConfiguration.execution_capable(
-        token_configured=True
+        authentication_required=True
     )
     return CpkServerComposition(
         configuration=config,

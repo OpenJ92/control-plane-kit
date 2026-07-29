@@ -2,7 +2,13 @@ from pathlib import Path
 import sys
 import unittest
 
+from starlette.datastructures import Headers
 from control_plane_kit_core.operations import ControlPlaneServiceRole
+from control_plane_kit_core.identity import (
+    AuthenticatedPrincipal,
+    PrincipalIdentity,
+    PrincipalKind,
+)
 
 
 ROOT = Path(__file__).resolve().parents[3]
@@ -22,7 +28,27 @@ class RecordingService:
             "surface": request.surface,
             "path_parameters": request.path_parameters,
             "payload": request.payload,
+            "principal": request.principal.descriptor(),
         }
+
+
+class CredentialRejected(ValueError):
+    pass
+
+
+class DeterministicVerifier:
+    def __init__(self) -> None:
+        self.credentials = []
+
+    def authenticate(self, credential: bytes) -> AuthenticatedPrincipal:
+        self.credentials.append(credential)
+        if credential == b"valid-token":
+            return _principal()
+        if credential == b"expired-token":
+            raise CredentialRejected("credential expired: expired-token")
+        if credential == b"wrong-audience-token":
+            raise CredentialRejected("wrong audience: wrong-audience-token")
+        raise CredentialRejected(f"invalid credential: {credential!r}")
 
 
 class CpkServerHttpMcpBoundaryTests(unittest.TestCase):
@@ -45,13 +71,16 @@ class CpkServerHttpMcpBoundaryTests(unittest.TestCase):
         )
 
         composition = create_cpk_server_composition(
-            CpkServerProcessConfiguration.execution_capable(token_configured=True)
+            CpkServerProcessConfiguration.execution_capable(
+                authentication_required=True
+            )
         )
         services = {
             role: RecordingService(role.value)
             for role in ControlPlaneServiceRole
         }
-        return composition, services, CpkServerApplicationBoundary(services)
+        verifier = DeterministicVerifier()
+        return composition, services, CpkServerApplicationBoundary(services, verifier), verifier
 
 
     def test_product_local_law_cards_assign_814_owned_laws(self) -> None:
@@ -82,13 +111,13 @@ class CpkServerHttpMcpBoundaryTests(unittest.TestCase):
     def test_http_read_route_delegates_to_shared_reads_service(self) -> None:
         from control_plane_kit_servers_cpk_server import CpkServerHttpProcessBoundary
 
-        composition, services, application = self._application()
+        composition, services, application, verifier = self._application()
         http = CpkServerHttpProcessBoundary(composition, application)
 
         response = http.handle(
             method="GET",
             path="/workspaces/workspace-a/graphs/current",
-            headers={"Authorization": "Bearer present"},
+            headers={"Authorization": "Bearer valid-token"},
             body=b"",
         )
 
@@ -97,12 +126,14 @@ class CpkServerHttpMcpBoundaryTests(unittest.TestCase):
         self.assertEqual(response.body["route_id"], "read.current-graph")
         self.assertEqual(response.body["surface"], "http")
         self.assertEqual(response.body["path_parameters"], {"workspace_id": "workspace-a"})
+        self.assertEqual(response.body["principal"], _principal().descriptor())
+        self.assertEqual(verifier.credentials, [b"valid-token"])
         self.assertEqual(len(services[ControlPlaneServiceRole.READS].requests), 1)
 
     def test_http_command_route_requires_auth_and_delegates_to_planning(self) -> None:
         from control_plane_kit_servers_cpk_server import CpkServerHttpProcessBoundary
 
-        composition, services, application = self._application()
+        composition, services, application, _ = self._application()
         http = CpkServerHttpProcessBoundary(composition, application)
 
         rejected = http.handle(
@@ -120,27 +151,101 @@ class CpkServerHttpMcpBoundaryTests(unittest.TestCase):
 
         self.assertEqual(rejected.status, 401)
         self.assertNotIn("Bearer present", repr(rejected.body))
-        self.assertEqual(accepted.status, 200)
-        self.assertEqual(accepted.body["service"], "planning")
-        self.assertEqual(accepted.body["payload"], {"change": "blue-to-green"})
-        self.assertEqual(len(services[ControlPlaneServiceRole.PLANNING].requests), 1)
+        self.assertEqual(accepted.status, 401)
+        self.assertNotIn("Bearer present", repr(accepted.body))
+        self.assertEqual(len(services[ControlPlaneServiceRole.PLANNING].requests), 0)
+
+    def test_invalid_credentials_fail_before_dispatch_and_are_redacted(self) -> None:
+        from control_plane_kit_servers_cpk_server import CpkServerHttpProcessBoundary
+
+        composition, services, application, verifier = self._application()
+        http = CpkServerHttpProcessBoundary(composition, application)
+
+        cases = (
+            {},
+            {"Authorization": "Bearer"},
+            {"Authorization": "Bearer "},
+            {"Authorization": "Basic valid-token"},
+            {"Authorization": "Bearer expired-token"},
+            {"Authorization": "Bearer wrong-audience-token"},
+            {"Authorization": "Bearer invalid-token"},
+            {"Authorization": "Bearer valid-token", "authorization": "Bearer valid-token"},
+            Headers(
+                raw=[
+                    (b"authorization", b"Bearer valid-token"),
+                    (b"authorization", b"Bearer valid-token"),
+                ]
+            ),
+            {"Authorization": "Bearer " + ("x" * 4097)},
+        )
+        for headers in cases:
+            with self.subTest(headers=tuple(headers)):
+                response = http.handle(
+                    method="POST",
+                    path="/workspaces/workspace-a/plans",
+                    headers=headers,
+                    body=b'{"credential":"must-not-be-decoded"}',
+                )
+                self.assertEqual(response.status, 401)
+                self.assertEqual(response.body["error"]["message"], "invalid credential")
+                self.assertNotIn("token", repr(response.body))
+
+        self.assertEqual(services[ControlPlaneServiceRole.PLANNING].requests, [])
+        self.assertEqual(
+            verifier.credentials,
+            [b"expired-token", b"wrong-audience-token", b"invalid-token"],
+        )
+
+    def test_bearer_scheme_and_header_name_are_case_insensitive_by_contract(self) -> None:
+        from control_plane_kit_servers_cpk_server import CpkServerHttpProcessBoundary
+
+        composition, services, application, verifier = self._application()
+        http = CpkServerHttpProcessBoundary(composition, application)
+
+        response = http.handle(
+            method="GET",
+            path="/workspaces/workspace-a/graphs/current",
+            headers={"authorization": "bEaReR valid-token"},
+            body=b"",
+        )
+
+        self.assertEqual(response.status, 200)
+        self.assertEqual(verifier.credentials, [b"valid-token"])
+        self.assertEqual(len(services[ControlPlaneServiceRole.READS].requests), 1)
+
+    def test_verifier_exception_is_not_retained_by_bounded_error(self) -> None:
+        from control_plane_kit_servers_cpk_server import (
+            CredentialAuthenticationError,
+            authenticate_bearer_credential,
+        )
+
+        verifier = DeterministicVerifier()
+        with self.assertRaises(CredentialAuthenticationError) as raised:
+            authenticate_bearer_credential(
+                {"Authorization": "Bearer invalid-token"},
+                verifier,
+            )
+
+        self.assertIsNone(raised.exception.__cause__)
+        self.assertIsNone(raised.exception.__context__)
+        self.assertNotIn("invalid-token", repr(raised.exception))
 
     def test_http_malformed_and_oversized_payloads_fail_before_services(self) -> None:
         from control_plane_kit_servers_cpk_server import CpkServerHttpProcessBoundary
 
-        composition, services, application = self._application()
+        composition, services, application, _ = self._application()
         http = CpkServerHttpProcessBoundary(composition, application)
 
         malformed = http.handle(
             method="POST",
             path="/workspaces/workspace-a/plans",
-            headers={"Authorization": "Bearer present"},
+            headers={"Authorization": "Bearer valid-token"},
             body=b'{',
         )
         oversized = http.handle(
             method="POST",
             path="/workspaces/workspace-a/plans",
-            headers={"Authorization": "Bearer present"},
+            headers={"Authorization": "Bearer valid-token"},
             body=b'{"x":"' + (b"a" * 70000) + b'"}',
         )
 
@@ -154,7 +259,7 @@ class CpkServerHttpMcpBoundaryTests(unittest.TestCase):
             CpkServerMcpProcessBoundary,
         )
 
-        composition, services, application = self._application()
+        composition, services, application, verifier = self._application()
         http = CpkServerHttpProcessBoundary(composition, application)
         mcp = CpkServerMcpProcessBoundary(composition, application)
 
@@ -165,7 +270,7 @@ class CpkServerHttpMcpBoundaryTests(unittest.TestCase):
                 "Accept": "application/json, text/event-stream",
                 "MCP-Protocol-Version": "2025-06-18",
                 "Mcp-Method": "tools/call",
-                "Authorization": "Bearer present",
+                "Authorization": "Bearer valid-token",
             },
             message={
                 "jsonrpc": "2.0",
@@ -181,12 +286,14 @@ class CpkServerHttpMcpBoundaryTests(unittest.TestCase):
         self.assertEqual(result.status, 200)
         self.assertEqual(result.body["result"]["service"], "planning")
         self.assertEqual(result.body["result"]["surface"], "mcp")
+        self.assertEqual(result.body["result"]["principal"], _principal().descriptor())
+        self.assertEqual(verifier.credentials, [b"valid-token"])
         self.assertEqual(len(services[ControlPlaneServiceRole.PLANNING].requests), 1)
 
     def test_mcp_resources_read_uses_read_service_and_auth_failures_are_bounded(self) -> None:
         from control_plane_kit_servers_cpk_server import CpkServerMcpProcessBoundary
 
-        composition, services, application = self._application()
+        composition, services, application, _ = self._application()
         mcp = CpkServerMcpProcessBoundary(composition, application)
 
         missing_auth = mcp.handle(
@@ -207,7 +314,7 @@ class CpkServerHttpMcpBoundaryTests(unittest.TestCase):
                 "Accept": "application/json",
                 "MCP-Protocol-Version": "2025-06-18",
                 "Mcp-Method": "resources/read",
-                "Authorization": "Bearer present",
+                "Authorization": "Bearer valid-token",
             },
             message={
                 "jsonrpc": "2.0",
@@ -228,14 +335,14 @@ class CpkServerHttpMcpBoundaryTests(unittest.TestCase):
             CpkServerMcpProcessBoundary,
         )
 
-        composition, services, application = self._application()
+        composition, services, application, _ = self._application()
         http = CpkServerHttpProcessBoundary(composition, application)
         mcp = CpkServerMcpProcessBoundary(composition, application)
 
         http_response = http.handle(
             method="GET",
             path="/workspaces/workspace-a/not-real",
-            headers={"Authorization": "Bearer present"},
+            headers={"Authorization": "Bearer valid-token"},
             body=b"",
         )
         mcp_response = mcp.handle(
@@ -243,7 +350,7 @@ class CpkServerHttpMcpBoundaryTests(unittest.TestCase):
                 "Accept": "application/json",
                 "MCP-Protocol-Version": "2025-06-18",
                 "Mcp-Method": "tools/call",
-                "Authorization": "Bearer present",
+                "Authorization": "Bearer valid-token",
             },
             message={
                 "jsonrpc": "2.0",
@@ -265,20 +372,30 @@ class CpkServerHttpMcpBoundaryTests(unittest.TestCase):
             def handle(self, request):
                 raise CpkServerApplicationError(503, "store unavailable")
 
-        composition, services, application = self._application()
+        composition, services, application, verifier = self._application()
         services[ControlPlaneServiceRole.READS] = FailingService()
-        application = type(application)(services)
+        application = type(application)(services, verifier)
         http = CpkServerHttpProcessBoundary(composition, application)
 
         response = http.handle(
             method="GET",
             path="/workspaces/workspace-a/graphs/current",
-            headers={"Authorization": "Bearer present"},
+            headers={"Authorization": "Bearer valid-token"},
             body=b"",
         )
 
         self.assertEqual(response.status, 503)
         self.assertEqual(response.body["error"]["message"], "store unavailable")
+
+
+def _principal() -> AuthenticatedPrincipal:
+    return AuthenticatedPrincipal(
+        PrincipalIdentity(
+            issuer="https://identity.openj92.dev",
+            subject_id="operator-jacob",
+            kind=PrincipalKind.OPERATOR,
+        )
+    )
 
 
 if __name__ == "__main__":
