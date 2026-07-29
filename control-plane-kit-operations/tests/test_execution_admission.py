@@ -33,6 +33,11 @@ from control_plane_kit_core.planning import (
 )
 from control_plane_kit_core.planning.scenarios import switch_database_endpoint
 from control_plane_kit_core.policies import ApprovalPolicy, PolicyScope
+from control_plane_kit_core.public_ingress import (
+    IngressAuthorityReference,
+    NamedPublicIngress,
+    PublicIngressTarget,
+)
 from control_plane_kit_core.products import (
     ContainerServerProduct,
     OciImageReference,
@@ -51,8 +56,10 @@ from control_plane_kit_core.topology import (
     diff_graphs,
     validate_graph,
 )
+from control_plane_kit_core.runtime_authority import RuntimeAuthorityReference
 from control_plane_kit_core.types import Protocol
 from control_plane_kit_operations.admission import (
+    _require_authority_use_scopes,
     ExecutionAdmissionCommandService,
     ExecutionAdmissionConflict,
     ExecutionAdmissionDenied,
@@ -266,6 +273,64 @@ class ExecutionAdmissionTests(unittest.TestCase):
             self.admission_service("unused", "unused").execute(
                 self.command(scopes=())
             )
+
+    def test_runtime_and_ingress_use_permissions_are_independent_from_registration(
+        self,
+    ) -> None:
+        runtime_graph = compile_topology(
+            DeploymentTopology(
+                "runtime-authority",
+                DockerRuntime(
+                    authority_ref=RuntimeAuthorityReference("docker-local"),
+                ),
+            )
+        )
+        ingress_graph = DeploymentGraph(
+            "ingress-authority",
+            public_ingresses=(
+                NamedPublicIngress(
+                    ingress_id="gateway-public",
+                    authority_ref=IngressAuthorityReference("cloudflare-openj92"),
+                    target=PublicIngressTarget("gateway", "control"),
+                    connector_node_id="cloudflared",
+                    hostname="cpk-gateway-001.openj92.dev",
+                ),
+            ),
+        )
+
+        with self.assertRaisesRegex(
+            ExecutionAdmissionDenied,
+            "runtime-authority:use",
+        ):
+            _require_authority_use_scopes(
+                (
+                    PolicyScope.PLAN_EXECUTE,
+                    PolicyScope.RUNTIME_AUTHORITY_REGISTER,
+                ),
+                self.empty_graph("current"),
+                runtime_graph,
+            )
+        with self.assertRaisesRegex(
+            ExecutionAdmissionDenied,
+            "ingress-authority:use",
+        ):
+            _require_authority_use_scopes(
+                (
+                    PolicyScope.PLAN_EXECUTE,
+                    PolicyScope.INGRESS_AUTHORITY_REGISTER,
+                ),
+                self.empty_graph("current"),
+                ingress_graph,
+            )
+
+        _require_authority_use_scopes(
+            (
+                PolicyScope.RUNTIME_AUTHORITY_USE,
+                PolicyScope.INGRESS_AUTHORITY_USE,
+            ),
+            runtime_graph,
+            ingress_graph,
+        )
 
         self.seed_plan_truth(
             plan_id="plan-rejected",

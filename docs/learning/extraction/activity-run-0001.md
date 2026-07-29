@@ -5106,3 +5106,58 @@ Handoff:
   before operations dispatch.
 - #1102 must remove caller-authored `actor_scopes` and actor provenance from
   public adapters while preserving existing pure policy checks.
+
+## #1101 Strict Credential Validation
+
+#1101 replaced bearer-prefix presence with one injected `CredentialVerifier`
+used by both HTTP and MCP. The public process boundary extracts one bounded
+ASCII bearer credential, validates it, attaches one credential-free
+`AuthenticatedPrincipal`, and discards the credential before operations
+dispatch.
+
+The built-in static verifier is explicitly development-only. Production
+configuration fails closed when no verifier is configured, when static
+credential material is present with verification disabled, or when a static
+credential is malformed. The verifier never returns credential bytes and
+authentication failures remain bounded and secret-free.
+
+HTTP and MCP now traverse the same authentication function and receive the same
+principal for the same credential. Publishing the cpk-server OCI with this
+merged dependency and supplying credential material through explicit secret
+delivery remains #1103.
+
+## #1102 Trusted Operations Command Context
+
+#1102 removed caller-authored authority from the operations public adapters:
+
+```text
+authenticated request principal
+  -> exact workspace grant
+    -> TrustedCommandContext
+      -> explicit route policy
+        -> existing typed domain command
+```
+
+Every published command and read route has a closed authorization policy.
+Workspace grants are checked before UnitOfWork/store access. Durable actor,
+approval, registration, and worker provenance comes from the authenticated
+subject, while request `actor_id`, `actor_scopes`, and `worker_id` fields are
+temporarily accepted only as inert compatibility input.
+
+The migration preserves permission separation:
+
+- runtime and ingress authority register/read/use/revoke are independent;
+- plan request, approval, destructive approval, and execution remain
+  independent;
+- worker lifecycle routes require a worker or service principal with
+  `execution:operate`;
+- operator principals cannot impersonate workers through request fields;
+- admission requires authority-use permission when the transition contains a
+  runtime authority or named public ingress.
+
+No credential material enters operations, idempotency fingerprints, durable
+history, runtime effects, logs, errors, or read models. #985 owns later removal
+of redundant command-level actor/scope fields. #1103 owns published cpk-server
+and hosted-controller adoption. #1139 must derive bounded gateway delegation
+only after this operations authorization step and must never forward the
+inbound bearer credential.

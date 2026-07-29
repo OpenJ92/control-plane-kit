@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from datetime import datetime, timezone
 import json
 import os
@@ -8,7 +8,17 @@ import unittest
 
 import psycopg
 
-from control_plane_kit_core.operations import ControlPlaneServiceRole
+from control_plane_kit_core.operations import (
+    ControlPlaneServiceRole,
+    operator_command_http_routes,
+    operator_read_http_routes,
+)
+from control_plane_kit_core.identity import (
+    AuthenticatedPrincipal,
+    PrincipalIdentity,
+    PrincipalKind,
+    WorkspaceGrant,
+)
 from control_plane_kit_core.planning import ActivityPlan
 from control_plane_kit_core.policies import PolicyScope
 from control_plane_kit_core.public_ingress import IngressAuthorityReference
@@ -31,6 +41,8 @@ from control_plane_kit_core.products import (
 from control_plane_kit_core.topology import DEFAULT_GRAPH_CODEC, DeploymentGraph, compile_topology
 from control_plane_kit_core.types import Protocol
 from control_plane_kit_operations.cpk_server import (
+    _ROUTE_AUTHORIZATION_POLICIES,
+    CpkServerAdmissionService,
     CpkServerApplicationError,
     CpkServerApprovalService,
     CpkServerLifecycleService,
@@ -77,6 +89,37 @@ from control_plane_kit_operations.workflows import OperationCommandService
 from control_plane_kit_operations.workspaces import WorkspaceCommandService
 
 
+def operator_principal(
+    *,
+    subject_id: str = "operator-a",
+    workspace_ids: tuple[str, ...] = ("workspace-a", "missing"),
+    scopes: tuple[PolicyScope, ...] = tuple(PolicyScope),
+) -> AuthenticatedPrincipal:
+    return AuthenticatedPrincipal(
+        PrincipalIdentity(
+            issuer="urn:test:cpk-server-adapters",
+            subject_id=subject_id,
+            kind=PrincipalKind.OPERATOR,
+        ),
+        tuple(WorkspaceGrant(workspace_id, scopes) for workspace_id in workspace_ids),
+    )
+
+
+def worker_principal(
+    *,
+    subject_id: str = "worker-a",
+    scopes: tuple[PolicyScope, ...] = (PolicyScope.EXECUTION_OPERATE,),
+) -> AuthenticatedPrincipal:
+    return AuthenticatedPrincipal(
+        PrincipalIdentity(
+            issuer="urn:test:cpk-server-adapters",
+            subject_id=subject_id,
+            kind=PrincipalKind.WORKER,
+        ),
+        (WorkspaceGrant("workspace-a", scopes),),
+    )
+
+
 @dataclass(frozen=True)
 class RouteRequest:
     surface: str
@@ -84,6 +127,7 @@ class RouteRequest:
     service_role: ControlPlaneServiceRole
     path_parameters: dict[str, str]
     payload: dict[str, object]
+    principal: AuthenticatedPrincipal = field(default_factory=operator_principal)
 
 
 class RecordingService:
@@ -204,6 +248,158 @@ class CpkServerOperationsAdapterTests(unittest.TestCase):
                 )
             )
             unit_of_work.commit()
+
+    def test_every_public_route_has_an_explicit_authorization_policy(self) -> None:
+        route_ids = {
+            route.route_id
+            for route in operator_read_http_routes() + operator_command_http_routes()
+        }
+
+        self.assertEqual(set(_ROUTE_AUTHORIZATION_POLICIES), route_ids)
+
+    def test_forged_payload_scopes_do_not_authorize_an_ungranted_principal(self) -> None:
+        recording = RecordingService()
+        service = CpkServerApprovalService(recording)
+
+        with self.assertRaises(CpkServerApplicationError) as raised:
+            service.handle(
+                RouteRequest(
+                    surface="http",
+                    route_id="command.approval.request",
+                    service_role=ControlPlaneServiceRole.APPROVAL,
+                    path_parameters={"workspace_id": "workspace-a"},
+                    payload={
+                        "session_id": "session-a",
+                        "plan_id": "plan-a",
+                        "actor_id": "forged-operator",
+                        "actor_scopes": [scope.value for scope in PolicyScope],
+                        "idempotency_key": "approval-a",
+                    },
+                    principal=AuthenticatedPrincipal(
+                        PrincipalIdentity(
+                            issuer="urn:test:cpk-server-adapters",
+                            subject_id="ungranted-operator",
+                            kind=PrincipalKind.OPERATOR,
+                        )
+                    ),
+                )
+            )
+
+        self.assertEqual(raised.exception.status, 403)
+        self.assertEqual(recording.commands, [])
+
+    def test_principal_for_another_workspace_is_denied_before_store_access(self) -> None:
+        store_accessed = False
+
+        def forbidden_unit_of_work():
+            nonlocal store_accessed
+            store_accessed = True
+            raise AssertionError("authorization must precede store access")
+
+        service = CpkServerReadService(forbidden_unit_of_work)
+
+        with self.assertRaises(CpkServerApplicationError) as raised:
+            service.handle(
+                RouteRequest(
+                    surface="http",
+                    route_id="read.workspace",
+                    service_role=ControlPlaneServiceRole.READS,
+                    path_parameters={"workspace_id": "workspace-a"},
+                    payload={},
+                    principal=operator_principal(workspace_ids=("workspace-b",)),
+                )
+            )
+
+        self.assertEqual(raised.exception.status, 403)
+        self.assertFalse(store_accessed)
+
+    def test_command_provenance_and_scopes_come_from_trusted_principal(self) -> None:
+        recording = RecordingService()
+        service = CpkServerApprovalService(recording)
+        principal = operator_principal(
+            subject_id="trusted-operator",
+            scopes=(PolicyScope.PLAN_REQUEST,),
+        )
+
+        service.handle(
+            RouteRequest(
+                surface="http",
+                route_id="command.approval.request",
+                service_role=ControlPlaneServiceRole.APPROVAL,
+                path_parameters={"workspace_id": "workspace-a"},
+                payload={
+                    "session_id": "session-a",
+                    "plan_id": "plan-a",
+                    "actor_id": "forged-operator",
+                    "actor_scopes": [PolicyScope.PLAN_APPROVE.value],
+                    "idempotency_key": "approval-a",
+                },
+                principal=principal,
+            )
+        )
+
+        command = recording.commands[0]
+        self.assertEqual(command.actor_id, "trusted-operator")
+        self.assertEqual(command.actor_scopes, (PolicyScope.PLAN_REQUEST,))
+
+    def test_use_and_read_permissions_do_not_imply_execution_or_mutation(self) -> None:
+        admission_recording = RecordingService()
+        admission = CpkServerAdmissionService(admission_recording)
+
+        with self.assertRaises(CpkServerApplicationError) as use_only:
+            admission.handle(
+                RouteRequest(
+                    surface="http",
+                    route_id="command.deployment.admit",
+                    service_role=ControlPlaneServiceRole.ADMISSION,
+                    path_parameters={
+                        "workspace_id": "workspace-a",
+                        "plan_id": "plan-a",
+                    },
+                    payload={
+                        "session_id": "session-a",
+                        "approval_request_id": "approval-a",
+                        "actor_scopes": [PolicyScope.PLAN_EXECUTE.value],
+                        "idempotency_key": "admit-a",
+                    },
+                    principal=operator_principal(
+                        scopes=(PolicyScope.RUNTIME_AUTHORITY_USE,)
+                    ),
+                )
+            )
+
+        self.assertEqual(use_only.exception.status, 403)
+        self.assertEqual(admission_recording.commands, [])
+
+        planning_recording = RecordingService()
+        desired_recording = RecordingService()
+        planning = CpkServerPlanningService(
+            planning_recording,
+            desired_graphs=desired_recording,
+        )
+        with self.assertRaises(CpkServerApplicationError) as read_only:
+            planning.handle(
+                RouteRequest(
+                    surface="http",
+                    route_id="command.desired-graph.set",
+                    service_role=ControlPlaneServiceRole.PLANNING,
+                    path_parameters={"workspace_id": "workspace-a"},
+                    payload={
+                        "session_id": "session-a",
+                        "graph": DEFAULT_GRAPH_CODEC.encode(
+                            DeploymentGraph("desired")
+                        ),
+                        "idempotency_key": "desired-a",
+                    },
+                    principal=operator_principal(
+                        scopes=(PolicyScope.INSTANCE_WORKSPACE_READ,)
+                    ),
+                )
+            )
+
+        self.assertEqual(read_only.exception.status, 403)
+        self.assertEqual(planning_recording.commands, [])
+        self.assertEqual(desired_recording.commands, [])
 
     def test_http_read_route_uses_operations_read_projection_not_demo_echo(self) -> None:
         self.seed_workspace()
@@ -429,6 +625,9 @@ class CpkServerOperationsAdapterTests(unittest.TestCase):
                     service_role=ControlPlaneServiceRole.PLANNING,
                     path_parameters={"workspace_id": "workspace-a"},
                     payload=authority_payload,
+                    principal=operator_principal(
+                        scopes=(PolicyScope.PLAN_EXECUTE,)
+                    ),
                 )
             )
         self.assertEqual(denied.exception.status, 403)
@@ -458,6 +657,9 @@ class CpkServerOperationsAdapterTests(unittest.TestCase):
                     service_role=ControlPlaneServiceRole.READS,
                     path_parameters={"workspace_id": "workspace-a"},
                     payload={"actor_scopes": [PolicyScope.PLAN_EXECUTE.value]},
+                    principal=operator_principal(
+                        scopes=(PolicyScope.PLAN_EXECUTE,)
+                    ),
                 )
             )
         self.assertEqual(read_denied.exception.status, 403)
@@ -513,6 +715,9 @@ class CpkServerOperationsAdapterTests(unittest.TestCase):
                         "idempotency_key": "revoke-ingress-a",
                         "actor_scopes": [PolicyScope.PLAN_EXECUTE.value],
                     },
+                    principal=operator_principal(
+                        scopes=(PolicyScope.PLAN_EXECUTE,)
+                    ),
                 )
             )
         self.assertEqual(revoke_denied.exception.status, 403)
@@ -579,6 +784,7 @@ class CpkServerOperationsAdapterTests(unittest.TestCase):
                     "idempotency_key": "request-approval-a",
                     "comment": "Please review the deployment.",
                 },
+                principal=operator_principal(scopes=(PolicyScope.PLAN_REQUEST,)),
             )
         )
 
@@ -662,7 +868,10 @@ class CpkServerOperationsAdapterTests(unittest.TestCase):
                 surface="http",
                 route_id="command.approval.decide",
                 service_role=ControlPlaneServiceRole.APPROVAL,
-                path_parameters={"approval_id": "approval-a"},
+                path_parameters={
+                    "workspace_id": "workspace-a",
+                    "approval_id": "approval-a",
+                },
                 payload={
                     "session_id": "session-a",
                     "actor_id": "manager-a",
@@ -671,6 +880,10 @@ class CpkServerOperationsAdapterTests(unittest.TestCase):
                     "idempotency_key": "decide-approval-a",
                     "comment": "Approved.",
                 },
+                principal=operator_principal(
+                    subject_id="manager-a",
+                    scopes=(PolicyScope.PLAN_APPROVE,),
+                ),
             )
         )
         self.assertEqual(decided["state"], "approved")
@@ -867,6 +1080,7 @@ class CpkServerOperationsAdapterTests(unittest.TestCase):
                 service_role=ControlPlaneServiceRole.APPROVAL,
                 path_parameters={},
                 payload={
+                    "workspace_id": "workspace-a",
                     "session_id": session_id,
                     "request_id": approval_request_id,
                     "actor_id": "manager-a",
@@ -874,6 +1088,10 @@ class CpkServerOperationsAdapterTests(unittest.TestCase):
                     "decision": "approved",
                     "idempotency_key": "approval-decision-a",
                 },
+                principal=operator_principal(
+                    subject_id="manager-a",
+                    scopes=(PolicyScope.PLAN_APPROVE,),
+                ),
             )
         )
 
@@ -907,6 +1125,7 @@ class CpkServerOperationsAdapterTests(unittest.TestCase):
                     "lease_expires_at": "2026-07-22T10:30:00Z",
                     "idempotency_key": "claim-a",
                 },
+                principal=worker_principal(),
             )
         )
         run_id = str(claimed["run_id"])
@@ -922,6 +1141,7 @@ class CpkServerOperationsAdapterTests(unittest.TestCase):
                     "actor_scopes": [PolicyScope.EXECUTION_OPERATE.value],
                     "idempotency_key": "start-a",
                 },
+                principal=worker_principal(),
             )
         )
 
@@ -932,12 +1152,14 @@ class CpkServerOperationsAdapterTests(unittest.TestCase):
                 service_role=ControlPlaneServiceRole.EXECUTION,
                 path_parameters={},
                 payload={
+                    "workspace_id": "workspace-a",
                     "run_id": run_id,
                     "worker_id": "worker-a",
                     "actor_scopes": [PolicyScope.EXECUTION_OPERATE.value],
                     "idempotency_key": "execute-a",
                     "max_effects": 10,
                 },
+                principal=worker_principal(),
             )
         )
         self.assertEqual(executed["coordinator_status"], "completed")
@@ -961,6 +1183,7 @@ class CpkServerOperationsAdapterTests(unittest.TestCase):
                     "actor_scopes": [PolicyScope.EXECUTION_OPERATE.value],
                     "idempotency_key": "advance-a",
                 },
+                principal=worker_principal(),
             )
         )
         self.assertEqual(advanced["from_graph_id"], current_graph_id)
@@ -988,6 +1211,7 @@ class CpkServerOperationsAdapterTests(unittest.TestCase):
                     service_role=ControlPlaneServiceRole.RECOVERY,
                     path_parameters={"workspace_id": "workspace-a", "run_id": "run-a"},
                     payload={"actor_scopes": [PolicyScope.EXECUTION_OPERATE.value]},
+                    principal=worker_principal(),
                 )
             )
 
@@ -1069,6 +1293,9 @@ class CpkServerOperationsAdapterTests(unittest.TestCase):
                         "admitted_at": "2026-07-22T10:01:30Z",
                         "idempotency_key": "runtime-authority-a",
                     },
+                    principal=operator_principal(
+                        scopes=(PolicyScope.PLAN_EXECUTE,)
+                    ),
                 )
             )
         self.assertEqual(missing_register_scope.exception.status, 403)
@@ -1113,6 +1340,9 @@ class CpkServerOperationsAdapterTests(unittest.TestCase):
                     service_role=ControlPlaneServiceRole.READS,
                     path_parameters={"workspace_id": "workspace-a"},
                     payload={"actor_scopes": [PolicyScope.PLAN_EXECUTE.value]},
+                    principal=operator_principal(
+                        scopes=(PolicyScope.PLAN_EXECUTE,)
+                    ),
                 )
             )
         self.assertEqual(missing_read_scope.exception.status, 403)
@@ -1181,6 +1411,9 @@ class CpkServerOperationsAdapterTests(unittest.TestCase):
                         "admitted_at": "2026-07-22T10:02:00Z",
                         "idempotency_key": "runtime-authority-delivery-a",
                     },
+                    principal=operator_principal(
+                        scopes=(PolicyScope.RUNTIME_AUTHORITY_REGISTER,)
+                    ),
                 )
             )
         self.assertEqual(missing_delivery_scope.exception.status, 403)
@@ -1268,6 +1501,9 @@ class CpkServerOperationsAdapterTests(unittest.TestCase):
                         ],
                         "idempotency_key": "revoke-runtime-authority-delivery-a",
                     },
+                    principal=operator_principal(
+                        scopes=(PolicyScope.RUNTIME_AUTHORITY_DELIVERY_REGISTER,)
+                    ),
                 )
             )
         self.assertEqual(missing_delivery_revoke.exception.status, 403)
@@ -1309,6 +1545,9 @@ class CpkServerOperationsAdapterTests(unittest.TestCase):
                         "actor_scopes": [PolicyScope.RUNTIME_AUTHORITY_REGISTER.value],
                         "idempotency_key": "revoke-runtime-authority-a",
                     },
+                    principal=operator_principal(
+                        scopes=(PolicyScope.RUNTIME_AUTHORITY_REGISTER,)
+                    ),
                 )
             )
         self.assertEqual(missing_revoke_scope.exception.status, 403)
@@ -1397,30 +1636,36 @@ class CpkServerOperationsAdapterTests(unittest.TestCase):
             DeploymentTopology("desired", DockerRuntime(children=(block,)))
         )
 
-    def test_command_scopes_reject_non_text_entries(self) -> None:
+    def test_payload_actor_fields_cannot_change_trusted_command_authority(self) -> None:
         recording = RecordingService()
         service = CpkServerApprovalService(recording)
 
-        with self.assertRaises(CpkServerApplicationError) as raised:
-            service.handle(
-                RouteRequest(
-                    surface="http",
-                    route_id="command.approval.decide",
-                    service_role=ControlPlaneServiceRole.APPROVAL,
-                    path_parameters={"approval_id": "approval-a"},
-                    payload={
-                        "session_id": "session-a",
-                        "actor_id": "operator-a",
-                        "actor_scopes": [PolicyScope.INSTANCE_WORKSPACE_READ.value, 17],
-                        "decision": "approved",
-                        "idempotency_key": "approval-a",
-                    },
-                )
+        service.handle(
+            RouteRequest(
+                surface="http",
+                route_id="command.approval.decide",
+                service_role=ControlPlaneServiceRole.APPROVAL,
+                path_parameters={
+                    "workspace_id": "workspace-a",
+                    "approval_id": "approval-a",
+                },
+                payload={
+                    "session_id": "session-a",
+                    "actor_id": "forged-operator",
+                    "actor_scopes": [PolicyScope.INSTANCE_WORKSPACE_READ.value, 17],
+                    "decision": "approved",
+                    "idempotency_key": "approval-a",
+                },
+                principal=operator_principal(
+                    subject_id="trusted-manager",
+                    scopes=(PolicyScope.PLAN_APPROVE,),
+                ),
             )
+        )
 
-        self.assertEqual(raised.exception.status, 400)
-        self.assertIn("actor_scopes entries must be text", raised.exception.message)
-        self.assertEqual(recording.commands, [])
+        command = recording.commands[0]
+        self.assertEqual(command.actor_id, "trusted-manager")
+        self.assertEqual(command.actor_scopes, (PolicyScope.PLAN_APPROVE,))
 
     def test_application_boundary_requires_one_service_for_every_role(self) -> None:
         services = {
@@ -1434,7 +1679,7 @@ class CpkServerOperationsAdapterTests(unittest.TestCase):
                     surface="http",
                     route_id="read.workspace",
                     service_role=ControlPlaneServiceRole.READS,
-                    path_parameters={},
+                    path_parameters={"workspace_id": "workspace-a"},
                     payload={},
                 )
             )

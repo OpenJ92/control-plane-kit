@@ -272,6 +272,7 @@ class ExecutionAdmissionCommandService:
 
             current = _graph(stores.graphs, plan.base_graph_id, command.workspace_id)
             desired = _graph(stores.graphs, plan.desired_graph_id, command.workspace_id)
+            _require_authority_use_scopes(command.actor_scopes, current, desired)
             required = _readiness_required(plan.plan.activities, current, desired)
             supplied = {item.activity_id for item in command.readiness}
             unexpected = supplied - required
@@ -331,6 +332,24 @@ class ExecutionAdmissionCommandService:
             )
             unit_of_work.commit()
             return ExecutionAdmissionResult(request, action)
+
+
+def _require_authority_use_scopes(
+    actor_scopes: tuple[PolicyScope, ...],
+    current: DeploymentGraph,
+    desired: DeploymentGraph,
+) -> None:
+    runtimes = (*current.runtimes.values(), *desired.runtimes.values())
+    if (
+        any(runtime.authority_ref is not None for runtime in runtimes)
+        and PolicyScope.RUNTIME_AUTHORITY_USE not in actor_scopes
+    ):
+        raise ExecutionAdmissionDenied("scope runtime-authority:use is missing")
+    if (
+        (current.public_ingresses or desired.public_ingresses)
+        and PolicyScope.INGRESS_AUTHORITY_USE not in actor_scopes
+    ):
+        raise ExecutionAdmissionDenied("scope ingress-authority:use is missing")
 
 
 def _graph(store: Any, graph_id: str, workspace_id: str) -> DeploymentGraph:

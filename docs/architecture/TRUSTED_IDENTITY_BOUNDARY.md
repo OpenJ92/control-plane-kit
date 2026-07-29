@@ -1,6 +1,6 @@
 # Trusted Identity Boundary
 
-Status: HARDEN.AUTH.0 contract and migration map
+Status: HARDEN.AUTH.0 through HARDEN.AUTH.2 implemented foundation
 
 ## Threat Model
 
@@ -61,6 +61,13 @@ target, one command kind, and a short lifetime.
 | read/use/revoke/execute scopes | Public adapter checks | Closed workspace grant | Keep permissions distinct; do not introduce an admin wildcard. |
 | bearer/token material | HTTP/MCP authentication | cpk-server verifier only | #1101 validates and discards raw credentials before operations dispatch. |
 
+The #1102 adapter migration leaves some legacy `actor_id`, `actor_scopes`, and
+`worker_id` fields in transport payload schemas temporarily for compatibility.
+They are inert: operations never parses them as identity or authority. All
+durable actor and worker provenance is copied from `TrustedCommandContext`.
+Removing those redundant transport fields and consolidating command context
+shapes remains a compatibility task for #985.
+
 ## Permission Families
 
 The existing closed `PolicyScope` vocabulary remains authoritative. The AUTH
@@ -85,10 +92,22 @@ trusted provenance for the existing scopes rather than redesigning them.
   representations because they are not fields of the principal.
 - Authentication failures are bounded and credential-free.
 - HTTP and MCP must receive the same principal for the same credential.
+- Every public route has one explicit closed authorization policy.
+- Workspace authorization happens before store access or external effects.
+- Workspace creation requires an authenticated grant for the requested
+  workspace plus `hub:instance-create`; a request body cannot bootstrap its own
+  grant.
+- Worker lifecycle routes require a `worker` or `service` principal and
+  `execution:operate`; an operator principal is not interchangeable.
+- Admission requires `runtime-authority:use` when either transition graph
+  references a runtime authority and `ingress-authority:use` when either graph
+  contains public ingress.
 
 ## Handoff
 
 #1101 implements strict credential extraction and one injected verifier for
-HTTP and MCP. #1102 removes caller-authored authority from operations adapters
-and enforces workspace grants. #1139 consumes the trusted command context to
-issue bounded gateway capabilities; it must not forward inbound bearer tokens.
+HTTP and MCP. #1102 removes caller-authored authority from operations adapters,
+enforces workspace grants before store access, and preserves distinct route
+permissions. #1103 owns published-image/harness adoption of this foundation.
+#1139 consumes the trusted command context to issue bounded gateway
+capabilities; it must not forward inbound bearer tokens.

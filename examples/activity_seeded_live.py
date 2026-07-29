@@ -13,6 +13,12 @@ from urllib.request import urlopen
 import psycopg
 
 from control_plane_kit_core.algebra import DeploymentTopology, DockerRuntime, SocketConnection
+from control_plane_kit_core.identity import (
+    AuthenticatedPrincipal,
+    PrincipalIdentity,
+    PrincipalKind,
+    WorkspaceGrant,
+)
 from control_plane_kit_core.planning import ActivityPlan
 from control_plane_kit_core.policies import PolicyScope
 from control_plane_kit_core.products import (
@@ -47,6 +53,7 @@ class RouteRequest:
     service_role: object
     path_parameters: dict[str, str]
     payload: dict[str, object]
+    principal: AuthenticatedPrincipal
 
 
 class GeneratedIds:
@@ -443,8 +450,47 @@ def _disconnect_controller_from_network(controller: str, network: str) -> None:
 def _handle(app, surface: str, role: str, route_id: str, path: dict[str, str], payload: dict[str, object]):  # noqa: ANN001
     from control_plane_kit_core.operations import ControlPlaneServiceRole
 
+    values = {**payload, **path}
+    workspace_id = values.get("workspace_id")
+    if not isinstance(workspace_id, str) or not workspace_id:
+        raise RuntimeError("public operation requires workspace_id")
+    worker_route = route_id in {
+        "command.run.claim",
+        "command.run.start",
+        "command.deployment.execute",
+        "command.graph.advance-current",
+    }
+    approval_route = route_id == "command.approval.decide"
+    principal = AuthenticatedPrincipal(
+        PrincipalIdentity(
+            issuer="urn:control-plane-kit:activity-seeded-live",
+            subject_id=(
+                WORKER
+                if worker_route
+                else "manager-a" if approval_route else "operator-a"
+            ),
+            kind=PrincipalKind.WORKER if worker_route else PrincipalKind.OPERATOR,
+        ),
+        (
+            WorkspaceGrant(
+                workspace_id,
+                (
+                    (PolicyScope.EXECUTION_OPERATE,)
+                    if worker_route
+                    else tuple(PolicyScope)
+                ),
+            ),
+        ),
+    )
     return app.handle(
-        RouteRequest(surface, route_id, ControlPlaneServiceRole(role), path, payload)
+        RouteRequest(
+            surface,
+            route_id,
+            ControlPlaneServiceRole(role),
+            path,
+            payload,
+            principal,
+        )
     )
 
 
