@@ -190,6 +190,17 @@ cpk-server:
   process wrapper, routes into operations
 ```
 
+The durable secrets direction adds one more ring:
+
+```text
+control-plane-kit-secrets:
+  encrypted custody, scoped resolution, audit
+```
+
+Study it as a custody service, not a new graph language. Core still carries
+`SecretReference`; operations admits and authorizes use; interpreters resolve at
+the IO edge.
+
 ### Fourth Pass: Examples
 
 Draw these concrete flows:

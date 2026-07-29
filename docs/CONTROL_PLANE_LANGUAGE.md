@@ -525,6 +525,62 @@ laws:
   Raw secrets never enter product descriptors, graphs, plans, runtime requests,
   activity events, observations, logs, route responses, or issue evidence.
 
+### RegisteredSecretProvider
+
+meaning:
+  Operations-owned admission that says a workspace may use a named secret
+  provider for specific reference prefixes and intents. It is not the secret
+  value and it is not the provider implementation.
+
+owned by:
+  `control-plane-kit-operations`.
+
+durable:
+  Yes. The admission record, provider id, endpoint identity, allowed prefixes,
+  use intents, revocation state, and bounded metadata are durable operational
+  truth.
+
+may contain secrets:
+  No.
+
+interpreted by:
+  Operations authorization, cpk-server provider-client composition, and
+  interpreter-side secret resolvers.
+
+laws:
+  Provider authentication is distinct from secret-use authorization. Registering
+  a provider does not grant every runtime or ingress authority permission to use
+  every secret. Raw plaintext and ciphertext do not belong in operations stores.
+
+### control-plane-kit-secrets
+
+meaning:
+  Future sibling distribution/product that owns encrypted durable secret
+  custody, authenticated resolve/write/revoke APIs, provider-local audit, and
+  secret version metadata.
+
+owned by:
+  A future `OpenJ92/control-plane-kit-secrets` repository/distribution.
+
+durable:
+  Yes. It owns encrypted secret material and provider-local audit. It does not
+  own deployment graphs, runtime effects, operations approvals, or cpk-server
+  routes.
+
+may contain secrets:
+  Internally yes, as encrypted persistence and process-memory plaintext at the
+  moment of authorized resolution. Public descriptors, logs, errors, and read
+  models must not expose raw material.
+
+interpreted by:
+  Provider clients/resolvers composed by cpk-server and concrete interpreters.
+
+laws:
+  The provider is not a public raw-secret read API. It resolves only through
+  authenticated provider access plus authorized `SecretUseIntent` context. The
+  first implementation uses a master key supplied outside the provider database,
+  preferably by mounted file, to avoid circular bootstrapping.
+
 ### ImagePullAuthority
 
 meaning:
