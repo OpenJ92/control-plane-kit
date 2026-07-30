@@ -5762,3 +5762,61 @@ are authoritative.
 prove restart and denial behavior, and label the evidence source-built rather
 than published-image acceptance. cpk-server OCI republication remains required
 after that source-live gate and belongs to the later publication topology.
+
+## #1187 Source-Live Durable Provider Acceptance
+
+#1187 proves the production provider composition through real source-built
+processes:
+
+```text
+operator -> cpk-server HTTP/MCP-shaped workflow
+  -> Postgres operations admission and use truth
+    -> committed SecretResolutionGrant
+      -> control-plane-kit-secrets HTTP process
+        -> provider audit with the same correlation
+          -> DockerRuntimeInterpreter
+            -> Postgres receives the resolved password in memory
+              -> semantic SELECT 1 succeeds
+```
+
+The controller registers provider and reference metadata through cpk-server,
+reads the bounded metadata through MCP, and then restarts the provider before
+the first use. The provider retains encrypted custody in SQLite while operations
+retains only provider/reference/use metadata. A successful provider audit
+correlation must be present in the committed
+`cpk_secret_use_authorizations` rows before the live proof is accepted.
+
+The denial matrix covers missing `secret-provider:use`, wrong workspace,
+unsupported intent, revoked provider, revoked reference, missing secret, wrong
+provider credential, and unavailable provider. Cases rejected by operations
+prove that provider audit counts do not change. Every denied case proves that no
+Postgres workload container was created.
+
+The source-live harness contains no process-local secret-value map, development
+resolver, or obsolete Docker-config resolver. Bootstrap provider credentials
+are mounted as read-only files and selected through opaque references. Generated
+test values are scanned against cpk-server logs, provider logs, the operations
+database dump, and the provider database; no plaintext was found. Activity and
+provider/reference readback remain bounded and secret-free.
+
+Two integration details were exposed by the live run:
+
+1. operations correlation evidence uses the current `use_intent` schema column;
+   acceptance must query current durable truth rather than preserve stale
+   harness vocabulary;
+2. cpk-server and the controller must detach from the realized runtime network
+   before `Deploy(current, empty)` can remove that network. This is a harness
+   reachability concern, not a reason to bypass graph-driven teardown.
+
+The complete current server-products suite passed, including its authenticated
+image smoke and Docker residue audit. The focused cpk-server provider/bootstrap
+suite passed 41 tests. The secrets provider suite passed 27 tests, including
+real-process restart, rotation, revocation, tamper resistance, authorization,
+and leak checks. The source-live provider scenario passed its success, denial,
+teardown, and residue gates.
+
+This evidence is intentionally source-built. It does not claim immutable
+published OCI acceptance. #1117 retains cpk-server publication, published-digest
+acceptance, stronger rotation/revocation/concurrency coverage, generated
+Cloudflare-token custody, private OCI credentials, Docker TLS material, and
+broader multi-consumer validation.
