@@ -276,6 +276,66 @@ class RuntimeEffectTranslationTests(unittest.TestCase):
         self.assertNotIn("/var/run/docker.sock", repr(request.descriptor()))
         self.assertNotIn("unix://", repr(request.descriptor()))
 
+    def test_context_translates_only_compiled_socket_bound_secret_deliveries(
+        self,
+    ) -> None:
+        delivery = SecretEnvironmentDelivery(
+            "DATABASE_PASSWORD",
+            SecretReference("secret://workspace-a/database/password"),
+            SecretUseIntent.POSTGRES_PASSWORD,
+        )
+        requirement = RequirementSocket(
+            "database",
+            Protocol.POSTGRES,
+            ("DATABASE_URL",),
+            required=False,
+            secret_deliveries=(delivery,),
+        )
+        registered = _registered_product(
+            name="database-client",
+            public_environment=(),
+            requirements=(requirement,),
+        )
+        reference = registered.reference
+
+        for active_deliveries in ((), (delivery,)):
+            with self.subTest(active=bool(active_deliveries)):
+                graph = _graph()
+                graph = graph.update_node(
+                    replace(
+                        graph.node("api"),
+                        sockets=BlockSockets(
+                            requirements=(requirement,),
+                            providers=(ProviderSocket("http", Protocol.HTTP),),
+                        ),
+                        metadata={
+                            "product_identity": reference.identity.key,
+                            "product_descriptor_digest": (
+                                reference.descriptor_sha256.value
+                            ),
+                        },
+                        secret_deliveries=active_deliveries,
+                    )
+                )
+
+                request = runtime_effect_request_for_context(
+                    _context(
+                        desired_graph=graph,
+                        registered_products=(registered,),
+                    )
+                )
+
+                self.assertEqual(
+                    request.products[0].product.runtime_contract.secret_deliveries,
+                    active_deliveries,
+                )
+                self.assertEqual(
+                    request.products[0]
+                    .product.runtime_contract.sockets.requirement("database")
+                    .secret_deliveries,
+                    (delivery,),
+                )
+
     def test_context_does_not_carry_unrelated_authority_delivery(self) -> None:
         delivery = RegisteredRuntimeAuthorityDelivery.from_delivery(
             workspace_id="workspace-a",
@@ -845,6 +905,7 @@ def _registered_product(
     port: int = 8000,
     public_environment: tuple[PublicStaticEnvironmentBinding, ...] | None = None,
     verification: VerificationContract | None = None,
+    requirements: tuple[RequirementSocket, ...] = (),
 ) -> RegisteredProduct:
     runtime_verification = VerificationContract() if verification is None else verification
     product = ContainerServerProduct(
@@ -859,6 +920,7 @@ def _registered_product(
                     ),
                     runtime_contract=ProductRuntimeContract(
                         sockets=BlockSockets(
+                            requirements=requirements,
                             providers=(ProviderSocket(provider_socket, protocol),)
                         ),
                         provider_ports=(ProviderRuntimePort(provider_socket, port),),
@@ -883,7 +945,10 @@ def _registered_product(
             digest="sha256:" + "a" * 64,
         ),
         runtime_contract=ProductRuntimeContract(
-            sockets=BlockSockets(providers=(ProviderSocket(provider_socket, protocol),)),
+            sockets=BlockSockets(
+                requirements=requirements,
+                providers=(ProviderSocket(provider_socket, protocol),),
+            ),
             provider_ports=(ProviderRuntimePort(provider_socket, port),),
             public_environment=(
                 (

@@ -5934,3 +5934,36 @@ language.
 #1213 owns edge-driven activation. Until then, configured requirement
 deliveries remain present in the requirement contract but absent from active
 `Node.secret_deliveries`.
+
+## #1213 Edge-Activated Secret Delivery
+
+Socket-bound delivery activation now occurs at the pure connection compiler
+boundary:
+
+```text
+RequirementSocket.secret_deliveries
+  + matching SocketConnection
+    -> Node.secret_deliveries
+```
+
+The same compiler step applies the connection's public socket environment and
+its configured secret deliveries atomically. Existing node invariants reject
+duplicate deliveries and collisions between public, socket-derived, and secret
+environment destinations before a graph can reach planning or runtime
+translation.
+
+An optional requirement without an edge retains its configured delivery
+contract but contributes no active node delivery. Compiling a new graph after
+removing the edge therefore removes the active delivery and produces an
+explicit `secret-deliveries` structural change.
+
+Operations required no production change. Runtime-effect translation continues
+to consume only compiled `Node.secret_deliveries`; it does not inspect graph
+edges, product identities, protocols, or destination names to infer secret
+authority. This preserves the intended boundary:
+
+```text
+core compiles authority
+  -> operations translates compiled material
+    -> interpreter resolves plaintext only at IO
+```
