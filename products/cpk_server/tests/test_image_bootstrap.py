@@ -1084,6 +1084,11 @@ class CpkServerImageBootstrapTests(unittest.TestCase):
         self.assertIn("RuntimeInterpreterDispatcher", source)
         self.assertIn("IngressRealizationAdapter", source)
         self.assertIn("IngressAuthorityRegistrationService", source)
+        self.assertIn("SecretProviderRegistrationService", source)
+        self.assertIn(
+            "secret_providers=SecretProviderRegistrationService",
+            source,
+        )
         self.assertIn("GatewayProbeCommandService", source)
         self.assertIn("gateway_probes=_gateway_probe_service", source)
         self.assertIn("control_plane_kit_interpreters.docker", source)

@@ -62,6 +62,7 @@ from control_plane_kit_operations import (
     RuntimeDispatcherBootstrapError,
     RuntimeInterpreterDispatcher,
     RunLifecycleCommandService,
+    SecretProviderRegistrationService,
     WorkspaceCommandService,
     cpk_server_services,
 )
@@ -714,6 +715,7 @@ def _operations_application(
             image_pull_authorities=ImagePullAuthorityRegistrationService(unit_of_work),
             runtime_authorities=RuntimeAuthorityRegistrationService(unit_of_work),
             ingress_authorities=IngressAuthorityRegistrationService(unit_of_work),
+            secret_providers=SecretProviderRegistrationService(unit_of_work),
             desired_graphs=DesiredGraphCommandService(
                 unit_of_work,
                 clock=_clock,
