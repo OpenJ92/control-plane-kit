@@ -5900,3 +5900,37 @@ interpreter IO boundaries.
 This remains source-built acceptance. It does not claim immutable published OCI
 acceptance. #1203 next proves generated Cloudflare tunnel-token custody through
 the same admitted provider path.
+
+## #1212 Socket-Bound Secret Configuration
+
+The #1203 HTTP-only gateway acceptance exposed a mismatch between optional
+socket capability and globally mandatory product secret delivery. The gateway
+already declared optional HTTP and Postgres runtime-control requirements, but
+its Postgres password was a global runtime-contract delivery. Exact product
+instantiation correctly refused to omit it.
+
+The pure language now distinguishes:
+
+```text
+unconditional product secret delivery
+  -> active whenever the product node exists
+
+requirement socket secret delivery
+  -> configured reference at product instantiation
+  -> inactive until the matching socket edge exists
+```
+
+`RequirementSocket.secret_deliveries` owns descriptor-safe defaults.
+`ProductInstanceConfiguration.requirement_secret_deliveries` supplies exact
+per-instance references qualified by requirement name. Configuration matching
+keeps delivery kind, destination, intent, file policy, and path binding exact
+while allowing only the opaque reference value to change.
+
+Existing descriptors remain byte-stable when a requirement has no secret
+deliveries. Legacy requirement descriptors remain decodable. Canonical
+descriptors emit `secret_deliveries` only for requirements that use the new
+language.
+
+#1213 owns edge-driven activation. Until then, configured requirement
+deliveries remain present in the requirement contract but absent from active
+`Node.secret_deliveries`.

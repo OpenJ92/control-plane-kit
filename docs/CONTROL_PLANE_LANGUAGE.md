@@ -275,6 +275,10 @@ interpreted by:
 laws:
   Environment-bound requirements require explicit environment binding names.
   Runtime-control requirements must not smuggle environment bindings.
+  A requirement may declare reference-only secret deliveries needed when that
+  socket is connected. Those declarations are configured at product
+  instantiation but remain inactive until the explicit `SocketConnection`
+  exists. An unconnected optional requirement grants no secret use.
 
 ### ProviderSocket
 
@@ -600,6 +604,10 @@ laws:
   never inferred from an environment name, file path, product identity, or
   interpreter kind. A reference-environment delivery exposes only the opaque
   identity and therefore carries no resolving intent and invokes no resolver.
+  A delivery bound to a requirement socket is configured reference material,
+  not an active runtime delivery. Topology compilation activates it only from
+  the exact provider-to-requirement edge. Removing that edge removes the active
+  delivery from the newly compiled desired graph.
 
 ### RegisteredSecretProvider
 
