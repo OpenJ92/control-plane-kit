@@ -43,8 +43,7 @@ APPROVED_PROVIDER_FUNCTIONS = {
     "_cloudflare_ingress_interpreter",
     "_docker_runtime_interpreter",
     "_gateway_probe_dispatcher",
-    "_image_pull_credential_resolver",
-    "_product_secret_resolver",
+    "_secret_provider_composition",
 }
 
 
@@ -101,11 +100,10 @@ class CpkServerImageBootstrapTests(unittest.TestCase):
                 "CPK_GATEWAY_PROBE_SIGNING_KEY_REF",
                 "CPK_GATEWAY_PROBE_ISSUER",
                 "CPK_GATEWAY_PROBE_KEY_ID",
-                "CPK_IMAGE_PULL_CREDENTIAL_RESOLVER",
-                "CPK_PRODUCT_SECRET_RESOLVER",
+                "CPK_PRODUCT_MATERIAL_RESOLVER",
                 "CPK_PRODUCT_SECRET_VALUES_JSON",
-                "DOCKER_CONFIG",
-                "CPK_DOCKER_AUTH_CONFIG_JSON",
+                "CPK_MATERIAL_PROVIDER_ROUTES_JSON",
+                "CPK_MATERIAL_PROVIDER_BOOTSTRAP_FILES_JSON",
                 *STORE_ENVIRONMENT,
             ],
         )
@@ -150,8 +148,9 @@ class CpkServerImageBootstrapTests(unittest.TestCase):
             self.assertEqual(set(config.store_endpoints), set(STORE_ENVIRONMENT))
             self.assertEqual(str(config.runtime_dispatcher), "none")
             self.assertEqual(str(config.ingress_interpreters), "none")
-            self.assertEqual(config.image_pull_credential_resolver, "none")
-            self.assertEqual(config.product_secret_resolver, "none")
+            self.assertEqual(config.product_material_resolver, "none")
+            self.assertIsNone(config.material_provider_routes_json)
+            self.assertIsNone(config.material_provider_bootstrap_files_json)
             self.assertNotIn("postgres://", repr(config.process_configuration()))
         finally:
             sys.path.remove(str(PRODUCT_SRC))
@@ -380,67 +379,29 @@ class CpkServerImageBootstrapTests(unittest.TestCase):
                 ):
                     sys.modules.pop(name, None)
 
-    def test_bootstrap_docker_config_pull_resolver_is_explicit_and_redacted(self) -> None:
+    def test_bootstrap_rejects_legacy_docker_config_secret_resolution(self) -> None:
         sys.path.insert(0, str(PRODUCT_SRC))
         try:
             server_module = importlib.import_module(
                 "control_plane_kit_servers_cpk_server.server"
             )
-            from control_plane_kit_core.runtime_effects import ImagePullAuthority
-            from control_plane_kit_core.secrets import SecretReference
-            from control_plane_kit_interpreters.secrets import (
-                ImagePullCredentialDenied,
-                ImagePullCredentialResolved,
-            )
-
-            with tempfile.TemporaryDirectory() as directory:
-                config_path = Path(directory) / "config.json"
-                encoded = base64.b64encode(
-                    b"OpenJ92:registry-token-not-for-output"
-                ).decode("ascii")
-                config_path.write_text(
-                    json.dumps({"auths": {"ghcr.io": {"auth": encoded}}}),
-                    encoding="utf-8",
-                )
-                config = server_module.CpkServerBootstrapConfiguration.from_environment(
+            with self.assertRaisesRegex(
+                server_module.BootstrapConfigurationError,
+                "legacy Docker credential bootstrap is unavailable",
+            ):
+                server_module.CpkServerBootstrapConfiguration.from_environment(
                     {
                         "CPK_SERVER_MODE": "execution-capable",
                         "CPK_CONTROL_AUTH_CONFIGURED": "true",
                         "CPK_PORT": "8080",
                         "CPK_RUNTIME_INTERPRETERS": "docker",
                         "CPK_IMAGE_PULL_CREDENTIAL_RESOLVER": "docker-config",
-                        "DOCKER_CONFIG": directory,
                         "CPK_WORKPLACE_DATABASE_URL": "postgres://user:pass@db/cpk",
                         "CPK_ACTIVITY_HISTORY_DATABASE_URL": "postgres://user:pass@db/cpk",
                         "CPK_OBSERVER_STATE_DATABASE_URL": "postgres://user:pass@db/cpk",
                         "CPK_GRAPH_TOPOLOGY_DATABASE_URL": "postgres://user:pass@db/cpk",
                     }
                 )
-
-                resolver = server_module._image_pull_credential_resolver(config)
-                resolved = resolver.resolve(
-                    ImagePullAuthority(
-                        "ghcr.io",
-                        "openj92/control-plane-kit-servers",
-                        SecretReference("secret://docker-config/ghcr.io"),
-                    )
-                )
-                denied = resolver.resolve(
-                    ImagePullAuthority(
-                        "ghcr.io",
-                        "openj92/control-plane-kit-servers",
-                        SecretReference("secret://other/ghcr.io"),
-                    )
-                )
-
-                self.assertIsInstance(resolved, ImagePullCredentialResolved)
-                self.assertIsInstance(denied, ImagePullCredentialDenied)
-                self.assertEqual(config.image_pull_credential_resolver, "docker-config")
-                self.assertEqual(config.docker_config_path, str(config_path))
-                self.assertIsNone(config.docker_config_json)
-                self.assertNotIn("registry-token-not-for-output", repr(resolver))
-                self.assertNotIn("registry-token-not-for-output", repr(resolved))
-                self.assertNotIn("registry-token-not-for-output", repr(config))
         finally:
             sys.path.remove(str(PRODUCT_SRC))
             for name in list(sys.modules):
@@ -449,7 +410,7 @@ class CpkServerImageBootstrapTests(unittest.TestCase):
                 ):
                     sys.modules.pop(name, None)
 
-    def test_bootstrap_local_product_secret_resolver_is_explicit_and_redacted(
+    def test_bootstrap_local_product_material_resolver_is_explicit_and_redacted(
         self,
     ) -> None:
         sys.path.insert(0, str(PRODUCT_SRC))
@@ -457,18 +418,13 @@ class CpkServerImageBootstrapTests(unittest.TestCase):
             server_module = importlib.import_module(
                 "control_plane_kit_servers_cpk_server.server"
             )
-            from control_plane_kit_core.secrets import (
-                SecretReference,
-                SecretResolved,
-            )
-
             config = server_module.CpkServerBootstrapConfiguration.from_environment(
                 {
                     "CPK_SERVER_MODE": "execution-capable",
                     "CPK_CONTROL_AUTH_CONFIGURED": "true",
                     "CPK_PORT": "8080",
                     "CPK_RUNTIME_INTERPRETERS": "docker",
-                    "CPK_PRODUCT_SECRET_RESOLVER": "local-development",
+                    "CPK_PRODUCT_MATERIAL_RESOLVER": "local-development",
                     "CPK_PRODUCT_SECRET_VALUES_JSON": json.dumps(
                         {
                             "secret://control-plane-kit/postgres/password": (
@@ -485,23 +441,22 @@ class CpkServerImageBootstrapTests(unittest.TestCase):
                     "CPK_GRAPH_TOPOLOGY_DATABASE_URL": "postgres://user:pass@db/cpk",
                 }
             )
-            resolver = server_module._product_secret_resolver(config)
-            resolved = resolver.resolve(
-                SecretReference("secret://control-plane-kit/postgres/password")
-            )
-            cloudflare_resolved = resolver.resolve(
-                SecretReference("secret://cloudflare/openj92/api-token")
-            )
+            resolver = server_module._secret_provider_composition(
+                config
+            ).authorized_resolver
 
-            self.assertIsInstance(resolved, SecretResolved)
-            self.assertIsInstance(cloudflare_resolved, SecretResolved)
-            self.assertEqual(config.product_secret_resolver, "local-development")
+            self.assertEqual(
+                type(resolver).__name__,
+                "_LocalDevelopmentAuthorizedSecretResolver",
+            )
+            self.assertEqual(
+                config.product_material_resolver,
+                "local-development",
+            )
             self.assertNotIn("postgres-secret-not-for-output", repr(config))
             self.assertNotIn("cloudflare-token-not-for-output", repr(config))
             self.assertNotIn("postgres-secret-not-for-output", repr(resolver))
             self.assertNotIn("cloudflare-token-not-for-output", repr(resolver))
-            self.assertNotIn("postgres-secret-not-for-output", repr(resolved))
-            self.assertNotIn("cloudflare-token-not-for-output", repr(cloudflare_resolved))
         finally:
             sys.path.remove(str(PRODUCT_SRC))
             for name in list(sys.modules):
@@ -510,7 +465,7 @@ class CpkServerImageBootstrapTests(unittest.TestCase):
                 ):
                     sys.modules.pop(name, None)
 
-    def test_bootstrap_product_secret_resolver_selection_is_closed(self) -> None:
+    def test_bootstrap_product_material_resolver_selection_is_closed(self) -> None:
         sys.path.insert(0, str(PRODUCT_SRC))
         try:
             server_module = importlib.import_module(
@@ -521,7 +476,7 @@ class CpkServerImageBootstrapTests(unittest.TestCase):
                 "CPK_CONTROL_AUTH_CONFIGURED": "true",
                 "CPK_PORT": "8080",
                 "CPK_RUNTIME_INTERPRETERS": "docker",
-                "CPK_PRODUCT_SECRET_RESOLVER": "env-file",
+                "CPK_PRODUCT_MATERIAL_RESOLVER": "env-file",
                 "CPK_WORKPLACE_DATABASE_URL": "postgres://user:pass@db/cpk",
                 "CPK_ACTIVITY_HISTORY_DATABASE_URL": "postgres://user:pass@db/cpk",
                 "CPK_OBSERVER_STATE_DATABASE_URL": "postgres://user:pass@db/cpk",
@@ -530,7 +485,7 @@ class CpkServerImageBootstrapTests(unittest.TestCase):
 
             with self.assertRaisesRegex(
                 server_module.BootstrapConfigurationError,
-                "CPK_PRODUCT_SECRET_RESOLVER must be one of",
+                "CPK_PRODUCT_MATERIAL_RESOLVER must be one of",
             ):
                 server_module.CpkServerBootstrapConfiguration.from_environment(environ)
         finally:
@@ -560,6 +515,14 @@ class CpkServerImageBootstrapTests(unittest.TestCase):
                 RuntimeEndpointObservation,
             )
             from control_plane_kit_core.runtime_effects import GatewayTargetId
+            from control_plane_kit_core.secrets import (
+                SecretProviderEndpointReference,
+                SecretReference,
+                SecretResolutionGrant,
+                SecretResolved,
+                SecretUseIntent,
+                SecretValue,
+            )
             from control_plane_kit_core.types import Protocol
             from control_plane_kit_operations import (
                 GatewayProbeAttemptStatus,
@@ -587,9 +550,15 @@ class CpkServerImageBootstrapTests(unittest.TestCase):
                     "CPK_GATEWAY_PROBE_SIGNING_KEY_REF": key_reference,
                     "CPK_GATEWAY_PROBE_ISSUER": "urn:cpk:test",
                     "CPK_GATEWAY_PROBE_KEY_ID": "gateway-key-a",
-                    "CPK_PRODUCT_SECRET_RESOLVER": "local-development",
-                    "CPK_PRODUCT_SECRET_VALUES_JSON": json.dumps(
-                        {key_reference: private_pem}
+                    "CPK_PRODUCT_MATERIAL_RESOLVER": "provider",
+                    "CPK_MATERIAL_PROVIDER_ROUTES_JSON": json.dumps(
+                        {"provider-main": "https://secrets.internal.example"}
+                    ),
+                    "CPK_MATERIAL_PROVIDER_BOOTSTRAP_FILES_JSON": json.dumps(
+                        {
+                            "secret://bootstrap/provider-token":
+                                "/run/secrets/provider-token"
+                        }
                     ),
                     "CPK_WORKPLACE_DATABASE_URL": "postgres://user:pass@db/cpk",
                     "CPK_ACTIVITY_HISTORY_DATABASE_URL": "postgres://user:pass@db/cpk",
@@ -644,8 +613,41 @@ class CpkServerImageBootstrapTests(unittest.TestCase):
                 expires_at=issued_at + 60,
                 jti="jti-a",
             )
+            secret_grant = SecretResolutionGrant(
+                authorization_id="suse_" + "a" * 64,
+                workspace_id="workspace-a",
+                reference_registration_id="sref_" + "b" * 64,
+                provider_registration_id="sprov_" + "c" * 64,
+                endpoint_reference=SecretProviderEndpointReference(
+                    "provider-main"
+                ),
+                credential_reference=SecretReference(
+                    "secret://bootstrap/provider-token"
+                ),
+                reference=SecretReference(key_reference),
+                intent=SecretUseIntent.GATEWAY_PROBE_SIGNING_KEY,
+                actor_subject="operator-a",
+                correlation_id="gateway-probe-a",
+                intent_fingerprint="d" * 64,
+                operation_id="probe-a",
+                probe_id="probe-a",
+            )
+
+            observed_resolution_grants = []
+
+            class AuthorizedResolver:
+                def resolve(self, received):
+                    observed_resolution_grants.append(received)
+                    return SecretResolved(
+                        SecretReference(key_reference),
+                        SecretValue(private_pem),
+                    )
+
             dispatch = server_module._gateway_probe_dispatcher(
                 config,
+                secret_provider=server_module._SecretProviderComposition(
+                    authorized_resolver=AuthorizedResolver()
+                ),
                 transport=httpx.MockTransport(handler),
             )
             result = dispatch.dispatch(
@@ -660,9 +662,11 @@ class CpkServerImageBootstrapTests(unittest.TestCase):
                         EndpointContext.RUNTIME_PRIVATE,
                         LiteralEndpointMaterial("http://gateway-a:8000"),
                     ),
+                    secret_grant,
                 )
             )
 
+            self.assertEqual(observed_resolution_grants, [secret_grant])
             self.assertEqual(config.gateway_probe_signer, "ed25519")
             self.assertEqual(
                 config.gateway_probe_signing_key_reference.reference_id,
@@ -723,7 +727,7 @@ class CpkServerImageBootstrapTests(unittest.TestCase):
 
             with self.assertRaisesRegex(
                 server_module.BootstrapConfigurationError,
-                "requires CPK_PRODUCT_SECRET_RESOLVER",
+                "requires provider-backed secret resolution",
             ):
                 server_module.CpkServerBootstrapConfiguration.from_environment(base)
             with self.assertRaisesRegex(
@@ -825,7 +829,7 @@ class CpkServerImageBootstrapTests(unittest.TestCase):
 
             with self.assertRaisesRegex(
                 server_module.BootstrapConfigurationError,
-                "CPK_INGRESS_INTERPRETERS=cloudflare requires CPK_PRODUCT_SECRET_RESOLVER",
+                "CPK_INGRESS_INTERPRETERS=cloudflare requires provider-backed",
             ):
                 server_module.CpkServerBootstrapConfiguration.from_environment(environ)
         finally:
@@ -851,12 +855,14 @@ class CpkServerImageBootstrapTests(unittest.TestCase):
                     "CPK_PORT": "8080",
                     "CPK_RUNTIME_INTERPRETERS": "docker",
                     "CPK_INGRESS_INTERPRETERS": "cloudflare",
-                    "CPK_PRODUCT_SECRET_RESOLVER": "local-development",
-                    "CPK_PRODUCT_SECRET_VALUES_JSON": json.dumps(
+                    "CPK_PRODUCT_MATERIAL_RESOLVER": "provider",
+                    "CPK_MATERIAL_PROVIDER_ROUTES_JSON": json.dumps(
+                        {"provider-main": "https://secrets.internal.example"}
+                    ),
+                    "CPK_MATERIAL_PROVIDER_BOOTSTRAP_FILES_JSON": json.dumps(
                         {
-                            "secret://cloudflare/openj92/api-token": (
-                                "cloudflare-token-not-for-output"
-                            )
+                            "secret://bootstrap/provider-token":
+                                "/run/secrets/provider-token"
                         }
                     ),
                     "CPK_WORKPLACE_DATABASE_URL": "postgres://user:pass@db/cpk",
@@ -865,17 +871,21 @@ class CpkServerImageBootstrapTests(unittest.TestCase):
                     "CPK_GRAPH_TOPOLOGY_DATABASE_URL": "postgres://user:pass@db/cpk",
                 }
             )
-            from control_plane_kit_operations import InMemoryGeneratedSecretRecorder
+
+            class Authorizer:
+                def authorize_resolution(self, _command):
+                    raise AssertionError("composition test performs no secret use")
 
             adapter = server_module._activity_adapter(
                 config,
                 lambda: None,
-                InMemoryGeneratedSecretRecorder(),
+                Authorizer(),
+                server_module._secret_provider_composition(config),
             )
 
             self.assertEqual(str(config.ingress_interpreters), "cloudflare")
             self.assertEqual(type(adapter).__name__, "_CompositeExecutionAdapter")
-            self.assertNotIn("cloudflare-token-not-for-output", repr(adapter))
+            self.assertNotIn("provider-token", repr(adapter))
         finally:
             sys.path.remove(str(PRODUCT_SRC))
             for name in list(sys.modules):
@@ -1048,6 +1058,8 @@ class CpkServerImageBootstrapTests(unittest.TestCase):
 
         self.assertIn("runtime_interpreters", ready_source)
         self.assertIn("ingress_interpreters", ready_source)
+        self.assertIn("material_provider", ready_source)
+        self.assertIn("development-fixture", ready_source)
         for forbidden in (
             "store_endpoints",
             "docker_config_path",
@@ -1188,7 +1200,7 @@ class CpkServerImageBootstrapTests(unittest.TestCase):
         self.assertIn("OPENJ92_CLOUDFLARE_API_TOKEN", smoke)
         self.assertIn("CPK_DOCKER_SOCKET_GROUP", smoke)
         self.assertIn("CPK_DOCKER_AUTH_CONFIG", smoke)
-        self.assertIn("CPK_PRODUCT_SECRET_RESOLVER=local-development", smoke)
+        self.assertIn("CPK_PRODUCT_MATERIAL_RESOLVER=local-development", smoke)
         self.assertIn("CPK_PRODUCT_SECRET_VALUES_JSON", smoke)
         self.assertIn("secret://control-plane-kit/postgres/password", smoke)
         self.assertIn("gh auth token", smoke)
@@ -1535,7 +1547,7 @@ class CpkServerImageBootstrapTests(unittest.TestCase):
         self.assertIn('CHAIN_DEPTH="${CPK_RECURSIVE_LOCAL_CHAIN_DEPTH:-1}"', smoke)
         self.assertIn('CPK_RECURSIVE_LOCAL_CHAIN_DEPTH="$CHAIN_DEPTH"', smoke)
         self.assertIn("CPK_RUNTIME_INTERPRETERS=docker", smoke)
-        self.assertIn("CPK_PRODUCT_SECRET_RESOLVER=local-development", smoke)
+        self.assertIn("CPK_PRODUCT_MATERIAL_RESOLVER=local-development", smoke)
         self.assertIn("CPK_PRODUCT_SECRET_VALUES_JSON", smoke)
         self.assertIn('python3 - "${AUTH_CONFIG_DIR:-}" "$CHAIN_DEPTH"', smoke)
         self.assertIn("def child_secret_values(remaining_depth: int)", smoke)
@@ -1574,7 +1586,7 @@ class CpkServerImageBootstrapTests(unittest.TestCase):
         self.assertIn("command.runtime-authority.register", controller)
         self.assertIn("command.runtime-authority-delivery.register", controller)
         self.assertIn('"delivery_kind": "local-docker-socket-mount"', controller)
-        self.assertIn("CPK_PRODUCT_SECRET_RESOLVER", controller)
+        self.assertIn("CPK_PRODUCT_MATERIAL_RESOLVER", controller)
         self.assertIn("CPK_PRODUCT_SECRET_VALUES_JSON", controller)
         self.assertIn("secret://control-plane-kit/child/product-secret-resolver", controller)
         self.assertIn("secret://control-plane-kit/child/product-secret-values-json", controller)

@@ -80,7 +80,7 @@ def main() -> int:
         extra_deliveries=(
             {
                 "kind": "environment",
-                "environment_name": "CPK_PRODUCT_SECRET_RESOLVER",
+                "environment_name": "CPK_PRODUCT_MATERIAL_RESOLVER",
                 "reference_id": "secret://control-plane-kit/child/product-secret-resolver",
                 "intent": "application.control-token",
             },

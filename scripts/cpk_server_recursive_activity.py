@@ -638,7 +638,7 @@ def _chain_cpk_document(servers_repo: Path) -> Any:
             intent=SecretUseIntent.OCI_PULL_CREDENTIAL,
         ),
         SecretEnvironmentDelivery(
-            environment_name="CPK_PRODUCT_SECRET_RESOLVER",
+            environment_name="CPK_PRODUCT_MATERIAL_RESOLVER",
             reference=SecretReference(
                 "secret://control-plane-kit/child/product-secret-resolver"
             ),
