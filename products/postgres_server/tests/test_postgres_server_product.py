@@ -13,7 +13,7 @@ from control_plane_kit_core.products import (
     RetainedDataMount,
     instantiate_product,
 )
-from control_plane_kit_core.secrets import SecretEnvironmentDelivery
+from control_plane_kit_core.secrets import SecretEnvironmentDelivery, SecretUseIntent
 from control_plane_kit_core.types import Protocol
 from control_plane_kit_core.verification import (
     PostgresPasswordAuthentication,
@@ -88,6 +88,7 @@ class PostgresServerProductTests(unittest.TestCase):
             delivery.reference.reference_id,
             "secret://control-plane-kit/postgres/password",
         )
+        self.assertIs(delivery.intent, SecretUseIntent.POSTGRES_PASSWORD)
         descriptor = DESCRIPTOR.read_text(encoding="utf-8").lower()
         self.assertIn("postgres_password", descriptor)
         self.assertNotIn("cpk-smoke-password", descriptor)

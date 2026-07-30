@@ -28,7 +28,11 @@ from control_plane_kit_core.products import (
     instantiate_product,
 )
 from control_plane_kit_core.runtime_effects import GatewayTargetId
-from control_plane_kit_core.secrets import SecretEnvironmentDelivery, SecretReference
+from control_plane_kit_core.secrets import (
+    SecretEnvironmentDelivery,
+    SecretReference,
+    SecretUseIntent,
+)
 from control_plane_kit_core.types import Protocol, SocketBinding
 
 
@@ -140,6 +144,7 @@ class CpkLocalGatewayProductTests(unittest.TestCase):
                 SecretEnvironmentDelivery(
                     "POSTGRES_PASSWORD",
                     SecretReference("secret://control-plane-kit/postgres/password"),
+                    SecretUseIntent.POSTGRES_PASSWORD,
                 ),
             ),
         )

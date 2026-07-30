@@ -26,7 +26,11 @@ from control_plane_kit_core.products import (
     instantiate_product,
 )
 from control_plane_kit_core.runtime_authority import RuntimeAuthorityReference
-from control_plane_kit_core.secrets import SecretEnvironmentDelivery, SecretReference
+from control_plane_kit_core.secrets import (
+    SecretEnvironmentDelivery,
+    SecretReference,
+    SecretUseIntent,
+)
 from control_plane_kit_core.topology import DEFAULT_GRAPH_CODEC, DeploymentGraph
 from control_plane_kit_core.topology import compile_topology
 from control_plane_kit_core.policies import PolicyScope
@@ -78,16 +82,19 @@ def main() -> int:
                 "kind": "environment",
                 "environment_name": "CPK_PRODUCT_SECRET_RESOLVER",
                 "reference_id": "secret://control-plane-kit/child/product-secret-resolver",
+                "intent": "application.control-token",
             },
             {
                 "kind": "environment",
                 "environment_name": "CPK_PRODUCT_SECRET_VALUES_JSON",
                 "reference_id": "secret://control-plane-kit/child/product-secret-values-json",
+                "intent": "application.control-token",
             },
             {
                 "kind": "environment",
                 "environment_name": "CPK_DOCKER_AUTH_CONFIG_JSON",
                 "reference_id": "secret://control-plane-kit/child/docker-auth-config-json",
+                "intent": "oci.pull-credential",
             },
             {
                 "kind": "environment",
@@ -96,6 +103,7 @@ def main() -> int:
                     "secret://control-plane-kit/child/"
                     "image-pull-credential-resolver"
                 ),
+                "intent": "oci.pull-credential",
             },
         ),
     )
@@ -418,6 +426,7 @@ def _product_document_with_secret_deliveries(
         SecretEnvironmentDelivery(
             environment_name=delivery["environment_name"],
             reference=SecretReference(delivery["reference_id"]),
+            intent=SecretUseIntent(delivery["intent"]),
         )
         for delivery in extra_deliveries
     )
