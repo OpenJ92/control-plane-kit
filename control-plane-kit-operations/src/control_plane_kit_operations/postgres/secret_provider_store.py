@@ -41,6 +41,13 @@ class SecretProviderStore:
             raise SecretProviderRegistrationConflict(
                 "new provider registration must be active"
             )
+        _lock_transaction_key(
+            self._connection,
+            (
+                "secret-provider:"
+                f"{candidate.workspace_id}:{candidate.provider_id.value}"
+            ),
+        )
         existing_candidate = self._get_by_registration_or_none(
             candidate.workspace_id,
             candidate.registration_id,
@@ -315,6 +322,13 @@ class SecretReferenceStore:
             raise SecretProviderRegistrationConflict(
                 "new secret reference registration must be active"
             )
+        _lock_transaction_key(
+            self._connection,
+            (
+                "secret-reference:"
+                f"{candidate.workspace_id}:{candidate.reference.reference_id}"
+            ),
+        )
         existing_candidate = self._get_by_registration_or_none(
             candidate.workspace_id,
             candidate.registration_id,
@@ -549,9 +563,9 @@ class SecretUseAuthorizationStore:
         self._connection = connection
 
     def lock_correlation(self, workspace_id: str, correlation_id: str) -> None:
-        self._connection.execute(
-            "SELECT pg_advisory_xact_lock(hashtext(%s))",
-            (f"secret-use:{workspace_id}:{correlation_id}",),
+        _lock_transaction_key(
+            self._connection,
+            f"secret-use:{workspace_id}:{correlation_id}",
         )
 
     def add(self, authorized: AuthorizedSecretUse) -> None:
@@ -695,6 +709,16 @@ SELECT
   probe_id
 FROM cpk_secret_use_authorizations
 """
+
+
+def _lock_transaction_key(
+    connection: PostgresConnection,
+    key: str,
+) -> None:
+    connection.execute(
+        "SELECT pg_advisory_xact_lock(hashtextextended(%s, 0))",
+        (key,),
+    )
 
 
 def _row_to_provider(row: tuple[Any, ...]) -> RegisteredSecretProvider:

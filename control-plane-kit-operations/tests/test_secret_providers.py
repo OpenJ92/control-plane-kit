@@ -1,6 +1,8 @@
 from __future__ import annotations
 
+import concurrent.futures
 import os
+import time
 import unittest
 
 import psycopg
@@ -65,6 +67,36 @@ class SecretProviderStoreTests(unittest.TestCase):
 
     def authorization_service(self) -> SecretUseAuthorizationService:
         return SecretUseAuthorizationService(self.unit_of_work)
+
+    def concurrent_service(
+        self,
+        application_name: str,
+    ) -> SecretProviderRegistrationService:
+        return SecretProviderRegistrationService(
+            lambda: PostgresUnitOfWork(
+                lambda: psycopg.connect(
+                    self.database_url,
+                    application_name=application_name,
+                )
+            )
+        )
+
+    def wait_for_database_lock(self, application_name: str) -> None:
+        deadline = time.monotonic() + 5.0
+        while time.monotonic() < deadline:
+            row = self.connection.execute(
+                """
+                SELECT wait_event_type
+                FROM pg_stat_activity
+                WHERE application_name = %s
+                  AND pid <> pg_backend_pid()
+                """,
+                (application_name,),
+            ).fetchone()
+            if row is not None and row[0] == "Lock":
+                return
+            time.sleep(0.01)
+        self.fail(f"{application_name} did not wait on the admission lock")
 
     def test_provider_registration_is_workspace_scoped_idempotent_and_secret_free(
         self,
@@ -155,6 +187,35 @@ class SecretProviderStoreTests(unittest.TestCase):
                 RegisteredSecretProviderStatus.SUPERSEDED,
             },
         )
+
+    def test_concurrent_identical_provider_registration_converges(self) -> None:
+        command = self.provider_command()
+        application_name = "cpk-secret-provider-registration-race"
+
+        with concurrent.futures.ThreadPoolExecutor(max_workers=1) as executor:
+            with self.unit_of_work() as first_unit_of_work:
+                first = first_unit_of_work.stores.secret_providers.register(
+                    command.candidate()
+                )
+                competing = executor.submit(
+                    self.concurrent_service(application_name).register_provider,
+                    command,
+                )
+                self.wait_for_database_lock(application_name)
+                first_unit_of_work.commit()
+            second = competing.result(timeout=5)
+
+        self.assertEqual(second, first)
+        row = self.connection.execute(
+            """
+            SELECT count(*)
+            FROM cpk_secret_providers
+            WHERE workspace_id = %s
+              AND provider_id = %s
+            """,
+            ("workspace-a", "workspace-secrets"),
+        ).fetchone()
+        self.assertEqual(row, (1,))
 
     def test_provider_revocation_removes_active_selection_and_preserves_detail(
         self,
@@ -315,6 +376,36 @@ class SecretProviderStoreTests(unittest.TestCase):
                 unit_of_work.stores.secret_providers.list_active("workspace-b"),
                 (),
             )
+
+    def test_concurrent_identical_reference_registration_converges(self) -> None:
+        provider = self.service().register_provider(self.provider_command())
+        command = self.reference_command(provider.registration_id)
+        application_name = "cpk-secret-reference-registration-race"
+
+        with concurrent.futures.ThreadPoolExecutor(max_workers=1) as executor:
+            with self.unit_of_work() as first_unit_of_work:
+                first = first_unit_of_work.stores.secret_references.register(
+                    command.candidate()
+                )
+                competing = executor.submit(
+                    self.concurrent_service(application_name).register_reference,
+                    command,
+                )
+                self.wait_for_database_lock(application_name)
+                first_unit_of_work.commit()
+            second = competing.result(timeout=5)
+
+        self.assertEqual(second, first)
+        row = self.connection.execute(
+            """
+            SELECT count(*)
+            FROM cpk_secret_references
+            WHERE workspace_id = %s
+              AND secret_reference = %s
+            """,
+            ("workspace-a", command.reference.reference_id),
+        ).fetchone()
+        self.assertEqual(row, (1,))
 
     def test_service_requires_focused_permissions_and_schema_is_idempotent(self) -> None:
         service = self.service()

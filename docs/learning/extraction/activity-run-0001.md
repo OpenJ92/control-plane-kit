@@ -5396,3 +5396,85 @@ does not present its source-built image as published acceptance. #1174 now owns
 the aggregate security, authorization, data-engineering, migration,
 transaction, secret-leak, HTTP/MCP parity, and test-integrity closeout before
 #1116 replaces process-local resolvers with admitted provider clients.
+
+## #1174 Secret-Provider Admission Closeout
+
+The aggregate review found one durability defect in the otherwise coherent
+admission boundary. Serial retries were idempotent, but two simultaneous
+first-time registrations for the same provider or pre-existing secret reference
+could both observe absence. The losing transaction then exposed a raw Postgres
+unique-constraint failure instead of converging on the admitted fact.
+
+The stores now take a 64-bit transaction-scoped advisory lock before reading or
+creating one semantic admission identity:
+
+```text
+secret-provider:{workspace_id}:{provider_id}
+secret-reference:{workspace_id}:{secret_reference}
+secret-use:{workspace_id}:{correlation_id}
+```
+
+The lock does not commit, resolve a secret, or extend the UnitOfWork across IO.
+It only serializes competing decisions for the same workspace identity. New
+Docker/Postgres integration tests hold the first transaction open, prove the
+second transaction is waiting on the admission lock, release the first
+transaction, and verify both callers converge on one durable row. Before the
+fix, both tests failed with raw `UniqueViolation`; after the fix, all 223
+operations tests pass.
+
+The security and architecture review confirmed:
+
+- operations stores provider and pre-existing-handle metadata only;
+- endpoint and credential coordinates remain opaque references;
+- plaintext, ciphertext, provider tokens, and resolved values are absent from
+  operations schema, events, observations, read models, logs, and public
+  responses;
+- provider register, read, revoke, and use permissions remain independent;
+- HTTP and MCP-shaped adapters derive actor and grants from the same trusted
+  context and invoke the same operations services;
+- stores never commit, application services own commit/rollback, and no
+  provider, Docker, filesystem, Cloudflare, or HTTP call occurs inside these
+  transactions;
+- provider and handle history is additive and explicitly superseded or revoked;
+- schema installation remains idempotent and non-destructive.
+
+`control-plane-kit-secrets` already exposes the provider-side contract #1116
+must consume:
+
+```text
+POST /v1/workspaces/{workspace_id}/secrets/{secret_id}/resolve
+
+input:
+  closed intent
+  caller subject
+  correlation id
+  optional version id
+
+provider audit:
+  provider/workspace/secret/version
+  intent/caller/correlation
+  bounded outcome/code
+```
+
+#1116 must add an IO-boundary provider client/resolver that selects the exact
+active `RegisteredSecretProvider` and `RegisteredSecretReference`, commits
+`AuthorizedSecretUse`, then performs provider IO using the same correlation id.
+Resolved material may flow only from the provider client into the consuming
+interpreter or signer. It must never return through operations or enter durable
+operations evidence.
+
+Validation passed `git diff --check`, all 443 core tests, all 223 operations
+tests, compile/import checks, and the full live-code root Docker gate with 1,232
+tests. The full gate exercised the current package, Postgres integration,
+architecture policies, runtime/interpreter contracts, server blocks, and
+workflow scenarios; it did not use the frozen implementation as success
+evidence.
+
+Residual hardening remains explicit. Public command envelopes carry an
+idempotency key while provider/reference semantic identities currently provide
+the actual convergence rule; generalized command-ledger enforcement belongs to
+the broader idempotency hardening track. The additive `CREATE TABLE IF NOT
+EXISTS` installer is safe for this first schema, but versioned migration policy
+remains broader data-engineering work. Finally, the cpk-server source changes
+from #1173 still require immutable OCI publication before published-live
+secrets acceptance; source-built validation is not that evidence.
