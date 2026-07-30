@@ -154,7 +154,12 @@ def _apply_connection(graph: DeploymentGraph, connection: SocketConnection) -> D
         SocketDerivedEnvironmentBinding(name, value, edge_id)
         for name, value in sorted(assignments.items())
     )
-    return graph.update_node(consumer.with_socket_environment(bindings)).add_edge(edge)
+    return graph.update_node(
+        consumer.with_connection_material(
+            bindings,
+            requirement_socket.secret_deliveries,
+        )
+    ).add_edge(edge)
 
 
 def _edge_id(connection: SocketConnection) -> str:

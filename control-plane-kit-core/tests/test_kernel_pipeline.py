@@ -17,6 +17,11 @@ from control_plane_kit_core.algebra import (
 )
 from control_plane_kit_core.environment import PublicStaticEnvironmentBinding
 from control_plane_kit_core.lifecycle import OWNED_EPHEMERAL
+from control_plane_kit_core.secrets import (
+    SecretEnvironmentDelivery,
+    SecretReference,
+    SecretUseIntent,
+)
 from control_plane_kit_core.planning import (
     AddSocketConnection,
     ReconcileNode,
@@ -28,12 +33,14 @@ from control_plane_kit_core.planning import (
 from control_plane_kit_core.topology import (
     DeploymentGraph,
     EdgeSubject,
+    FieldSubject,
     GraphDescriptorCodec,
     GraphDiff,
     GraphValidationError,
     LiteralAddress,
     LossyGraphDescriptor,
     ModifiedChange,
+    StructuralField,
     UnknownGraphVariant,
     ValidationCode,
     compile_recipe,
@@ -144,6 +151,84 @@ def split_service_topology() -> DeploymentTopology:
     )
 
 
+def socket_bound_secret_topology(
+    *,
+    connected: bool,
+    duplicate_destination: bool = False,
+) -> DeploymentTopology:
+    delivery = SecretEnvironmentDelivery(
+        "DATABASE_PASSWORD",
+        SecretReference("secret://workspace-a/database/password"),
+        SecretUseIntent.POSTGRES_PASSWORD,
+    )
+    requirements = (
+        RequirementSocket(
+            "database",
+            Protocol.POSTGRES,
+            ("DATABASE_URL",),
+            required=False,
+            secret_deliveries=(delivery,),
+        ),
+    )
+    providers: tuple[object, ...] = (
+        DataBlock(
+            BlockSpec("postgres"),
+            PureImplementation(
+                "data",
+                {"postgres": "postgresql://postgres:5432/app"},
+            ),
+            BlockSockets(
+                providers=(ProviderSocket("postgres", Protocol.POSTGRES),)
+            ),
+        ),
+    )
+    connections: tuple[object, ...] = (
+        SocketConnection("postgres", "postgres", "api", "database"),
+    ) if connected else ()
+    if duplicate_destination:
+        requirements += (
+            RequirementSocket(
+                "audit-database",
+                Protocol.POSTGRES,
+                ("AUDIT_DATABASE_URL",),
+                required=False,
+                secret_deliveries=(delivery,),
+            ),
+        )
+        providers += (
+            DataBlock(
+                BlockSpec("audit-postgres"),
+                PureImplementation(
+                    "data",
+                    {"postgres": "postgresql://audit-postgres:5432/app"},
+                ),
+                BlockSockets(
+                    providers=(ProviderSocket("postgres", Protocol.POSTGRES),)
+                ),
+            ),
+        )
+        connections += (
+            SocketConnection(
+                "audit-postgres",
+                "postgres",
+                "api",
+                "audit-database",
+            ),
+        )
+    api = ApplicationBlock(
+        BlockSpec("api"),
+        PureImplementation("application", {"internal": "http://api"}),
+        BlockSockets(
+            requirements=requirements,
+            providers=(ProviderSocket("internal", Protocol.HTTP),),
+        ),
+    )
+    return DeploymentTopology(
+        "socket-bound-secret",
+        DockerRuntime(children=(api, *providers, *connections)),
+    )
+
+
 class PureKernelPipelineTests(unittest.TestCase):
     def test_socket_names_are_accessible_and_binding_laws_are_structural(self) -> None:
         sockets = BlockSockets(
@@ -229,6 +314,45 @@ class PureKernelPipelineTests(unittest.TestCase):
             graph.edges["postgres.internal-to-inventory-service.database"].protocol,
             Protocol.POSTGRES,
         )
+
+    def test_connected_requirement_activates_socket_bound_secret_delivery(self) -> None:
+        graph = compile_topology(socket_bound_secret_topology(connected=True))
+
+        self.assertEqual(
+            graph.node("api").secret_deliveries,
+            graph.node("api").requirement_socket("database").secret_deliveries,
+        )
+
+    def test_absent_or_removed_edge_leaves_socket_bound_secret_inactive(self) -> None:
+        connected = validate_graph(
+            compile_topology(socket_bound_secret_topology(connected=True))
+        )
+        disconnected = validate_graph(
+            compile_topology(socket_bound_secret_topology(connected=False))
+        )
+
+        self.assertEqual(disconnected.graph.node("api").secret_deliveries, ())
+        diff = diff_graphs(connected, disconnected)
+        self.assertTrue(
+            any(
+                isinstance(change, ModifiedChange)
+                and isinstance(change.subject, FieldSubject)
+                and change.subject.field is StructuralField.SECRET_DELIVERIES
+                for change in diff.changes
+            )
+        )
+
+    def test_duplicate_socket_bound_secret_destination_fails_closed(self) -> None:
+        with self.assertRaisesRegex(
+            ValueError,
+            "node secret deliveries must be unique",
+        ):
+            compile_topology(
+                socket_bound_secret_topology(
+                    connected=True,
+                    duplicate_destination=True,
+                )
+            )
 
     def test_graph_descriptor_round_trip_preserves_typed_identity(self) -> None:
         graph = compile_topology(app_with_database_topology())

@@ -180,11 +180,16 @@ class Node:
             available = ", ".join(sorted(self.endpoints)) or "<none>"
             raise KeyError(f"node {self.node_id!r} has no endpoint {name!r}; available: {available}") from exc
 
-    def with_socket_environment(
+    def with_connection_material(
         self,
-        values: tuple[SocketDerivedEnvironmentBinding, ...],
+        environment: tuple[SocketDerivedEnvironmentBinding, ...],
+        secret_deliveries: tuple[SecretDelivery, ...],
     ) -> Node:
-        return replace(self, socket_environment=self.socket_environment + values)
+        return replace(
+            self,
+            socket_environment=self.socket_environment + environment,
+            secret_deliveries=self.secret_deliveries + secret_deliveries,
+        )
 
     def non_secret_environment(self) -> dict[str, str]:
         """Interpret public and socket-derived bindings as process literals."""
