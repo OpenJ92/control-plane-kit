@@ -26,7 +26,16 @@ cleanup_workspace_resources() {
         if [ -n "$resource" ]; then
           workspace="$(docker inspect -f "{{ index .Config.Labels \"$WORKSPACE_LABEL_KEY\" }}" "$resource" 2>/dev/null || true)"
           case "$workspace" in
-            workspace-secret-*)
+            workspace-secret-provider-live|\
+            workspace-secret-denied-scope|\
+            workspace-secret-wrong-source|\
+            workspace-secret-wrong-target|\
+            workspace-secret-wrong-intent|\
+            workspace-secret-revoked-provider|\
+            workspace-secret-revoked-reference|\
+            workspace-secret-missing|\
+            workspace-secret-wrong-credential|\
+            workspace-secret-unavailable)
               docker rm -f "$resource" >/dev/null 2>&1 || true
               ;;
           esac
@@ -37,7 +46,16 @@ cleanup_workspace_resources() {
         if [ -n "$resource" ]; then
           workspace="$(docker volume inspect -f "{{ index .Labels \"$WORKSPACE_LABEL_KEY\" }}" "$resource" 2>/dev/null || true)"
           case "$workspace" in
-            workspace-secret-*)
+            workspace-secret-provider-live|\
+            workspace-secret-denied-scope|\
+            workspace-secret-wrong-source|\
+            workspace-secret-wrong-target|\
+            workspace-secret-wrong-intent|\
+            workspace-secret-revoked-provider|\
+            workspace-secret-revoked-reference|\
+            workspace-secret-missing|\
+            workspace-secret-wrong-credential|\
+            workspace-secret-unavailable)
               docker volume rm "$resource" >/dev/null 2>&1 || true
               ;;
           esac
@@ -48,7 +66,16 @@ cleanup_workspace_resources() {
         if [ -n "$resource" ]; then
           workspace="$(docker network inspect -f "{{ index .Labels \"$WORKSPACE_LABEL_KEY\" }}" "$resource" 2>/dev/null || true)"
           case "$workspace" in
-            workspace-secret-*)
+            workspace-secret-provider-live|\
+            workspace-secret-denied-scope|\
+            workspace-secret-wrong-source|\
+            workspace-secret-wrong-target|\
+            workspace-secret-wrong-intent|\
+            workspace-secret-revoked-provider|\
+            workspace-secret-revoked-reference|\
+            workspace-secret-missing|\
+            workspace-secret-wrong-credential|\
+            workspace-secret-unavailable)
               docker network rm "$resource" >/dev/null 2>&1 || true
               ;;
           esac
