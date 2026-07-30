@@ -5478,3 +5478,33 @@ EXISTS` installer is safe for this first schema, but versioned migration policy
 remains broader data-engineering work. Finally, the cpk-server source changes
 from #1173 still require immutable OCI publication before published-live
 secrets acceptance; source-built validation is not that evidence.
+
+## #1181 Explicit Secret-Use Intent
+
+The #1116 dry run found that value-resolving delivery language named a
+destination and `SecretReference`, but not the purpose for which the value could
+be resolved. Leaving purpose implicit would force operations or an interpreter
+to infer policy from an environment name, file path, product identity, or
+runtime kind.
+
+The closed delivery language now makes purpose explicit:
+
+```text
+SecretEnvironmentDelivery
+  = environment_name x SecretReference x SecretUseIntent
+
+SecretFileDelivery
+  = target_path x SecretReference x SecretUseIntent x file policy
+```
+
+The intent is required in constructors and strict descriptors; there is no
+compatibility default. `SecretReferenceEnvironmentDelivery` remains unchanged
+because it exposes only an opaque reference and performs no resolution. Intent
+also participates in deterministic delivery ordering.
+
+The first production constructor migrated here is the generated Cloudflare
+tunnel-token delivery, which now states
+`SecretUseIntent.CLOUDFLARE_TUNNEL_TOKEN`. Core graph/product/handoff fixtures
+state their exact purposes as well. This gives later #1183 authorization
+composition a pure, unambiguous `(reference, intent)` inventory before any
+provider or downstream IO occurs.

@@ -38,6 +38,7 @@ from control_plane_kit_core.products import OciImageReference, OciPlatform, Prod
 from control_plane_kit_core.secrets import (
     SecretEnvironmentDelivery,
     SecretReference,
+    SecretUseIntent,
 )
 
 
@@ -130,10 +131,12 @@ def _material_handoff() -> CpkServerMaterialHandoffContract:
             SecretEnvironmentDelivery(
                 "CPK_DATABASE_URL",
                 SecretReference("secret://runtime/cpk/database-url"),
+                SecretUseIntent.POSTGRES_PASSWORD,
             ),
             SecretEnvironmentDelivery(
                 "CPK_RUNTIME_AUTH_TOKEN",
                 SecretReference("secret://runtime/cpk/runtime-auth"),
+                SecretUseIntent.APPLICATION_CONTROL_TOKEN,
             ),
         ),
         required_secret_environment_names=(

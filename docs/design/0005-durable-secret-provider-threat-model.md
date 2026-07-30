@@ -188,11 +188,17 @@ Preserve as development/test-only fixtures:
 Preserve as core language:
 
 - `SecretReference`;
-- `SecretEnvironmentDelivery`;
+- `SecretEnvironmentDelivery(reference, intent)`;
 - `SecretReferenceEnvironmentDelivery`;
-- `SecretFileDelivery`;
+- `SecretFileDelivery(reference, intent)`;
 - `SecretProviderAuthority`;
 - `SecretValue(<redacted>)`.
+
+Value-resolving delivery intent is explicit language. It must not be inferred
+from an environment variable name, file path, product identity, or interpreter
+kind. `SecretReferenceEnvironmentDelivery` is the non-resolving exception: it
+delivers only the opaque reference identity and does not authorize or perform
+secret resolution.
 
 ## Storage And Encryption Requirements
 

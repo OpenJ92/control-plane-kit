@@ -26,7 +26,11 @@ from control_plane_kit_core.environment import (
 )
 from control_plane_kit_core.lifecycle import OWNED_EPHEMERAL
 from control_plane_kit_core.runtime_authority import RuntimeAuthorityReference
-from control_plane_kit_core.secrets import SecretEnvironmentDelivery, SecretReference
+from control_plane_kit_core.secrets import (
+    SecretEnvironmentDelivery,
+    SecretReference,
+    SecretUseIntent,
+)
 from control_plane_kit_core.topology import (
     AddedChange,
     AmbiguityReason,
@@ -379,6 +383,7 @@ class GraphDiffTests(unittest.TestCase):
                     SecretEnvironmentDelivery(
                         "API_TOKEN",
                         SecretReference("secret://workspace/api-token"),
+                        SecretUseIntent.APPLICATION_CONTROL_TOKEN,
                     ),
                 ),
             )
