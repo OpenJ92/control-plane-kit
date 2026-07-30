@@ -86,6 +86,7 @@ class HelloServerProductTests(unittest.TestCase):
         self.assertEqual(product.runtime_contract.secret_deliveries, ())
         for check in product.runtime_contract.verification.checks:
             self.assertEqual(check.policy.maximum_attempts, 5)
+            self.assertEqual(check.policy.interval_seconds, 1.0)
         self.assertIn(
             "dynamic per-instance dependency sockets",
             product.description.lower(),

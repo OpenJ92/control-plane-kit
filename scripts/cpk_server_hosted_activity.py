@@ -39,7 +39,7 @@ from control_plane_kit_core.runtime_effects import GatewayTargetId
 from control_plane_kit_core.runtime_authority import RuntimeAuthorityReference
 from control_plane_kit_core.topology import DEFAULT_GRAPH_CODEC, DeploymentGraph, compile_topology
 from control_plane_kit_core.policies import PolicyScope
-from control_plane_kit_core.verification import VerificationContract
+from control_plane_kit_core.verification import VerificationContract, VerificationPolicy
 
 
 DEFAULT_WORKSPACE_ID = "cpk-hosted-activity-basic"
@@ -89,8 +89,8 @@ class HostedWorkflow:
         self.server_container = server_container
         self.worker_authorization = worker_authorization
 
-    def wait_ready(self) -> None:
-        _wait_ready(self.base_url)
+    def wait_ready(self, *, policy: VerificationPolicy | None = None) -> None:
+        _wait_ready(self.base_url, policy=policy)
 
     def create_workspace(self, *, name: str, actor_id: str = "operator-a") -> str:
         workspace = _http(
@@ -1218,6 +1218,24 @@ def _assert_activity_mentions(
     raise RuntimeError(f"activity timeline did not record successful step for {node_id}")
 
 
+def _assert_runtime_activity_mentions(
+    workflow: HostedWorkflow,
+    run_id: str,
+    runtime_id: str,
+) -> None:
+    events = _events_for_run(workflow.read_activity(limit=200), run_id)
+    for event in events:
+        payload = event.get("payload", {})
+        if (
+            payload.get("runtime_id") == runtime_id
+            and event.get("event_type") == "step_succeeded"
+        ):
+            return
+    raise RuntimeError(
+        f"activity timeline did not record successful runtime step for {runtime_id}"
+    )
+
+
 def _events_for_run(timeline: dict[str, Any], run_id: str) -> list[dict[str, Any]]:
     for session in timeline.get("sessions", []):
         for plan in session.get("plans", []):
@@ -1417,18 +1435,31 @@ def _disconnect_runtime_networks(
                 continue
 
 
-def _wait_ready(base_url: str) -> None:
-    for _ in range(30):
+def _wait_ready(
+    base_url: str,
+    *,
+    policy: VerificationPolicy | None = None,
+) -> None:
+    maximum_attempts = 30 if policy is None else policy.maximum_attempts
+    request_timeout = 30 if policy is None else policy.timeout_seconds
+    interval_seconds = 1.0 if policy is None else policy.interval_seconds
+    for attempt in range(1, maximum_attempts + 1):
+        if attempt > 1:
+            time.sleep(interval_seconds)
         try:
-            ready = _http(base_url, "GET", "/health/ready", authorize=False)
+            ready = _http(
+                base_url,
+                "GET",
+                "/health/ready",
+                authorize=False,
+                timeout=request_timeout,
+            )
         except Exception:
-            time.sleep(1)
             continue
         if ready.get("status") == "ready":
             if ready.get("runtime_interpreters") != "docker":
                 raise RuntimeError(f"cpk-server did not boot with Docker runtime: {ready}")
             return
-        time.sleep(1)
     raise RuntimeError("cpk-server did not become ready")
 
 

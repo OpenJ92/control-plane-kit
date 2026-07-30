@@ -4,8 +4,8 @@ set -eu
 SERVERS_REPO="$(CDPATH= cd -- "$(dirname "$0")/.." && pwd)"
 SECRETS_REPO="${CPK_SECRETS_REPO:-$(CDPATH= cd -- "$SERVERS_REPO/../control-plane-kit-secrets" && pwd)}"
 CONTROLLER_IMAGE="${CPK_SERVERS_TEST_IMAGE:-control-plane-kit-servers-test:local}"
-SERVER_IMAGE="${CPK_SECRET_PROVIDER_SERVER_IMAGE:-control-plane-kit-servers/cpk-server:source-1187}"
-SECRETS_IMAGE="${CPK_SECRETS_TEST_IMAGE:-control-plane-kit-secrets:source-1187}"
+SERVER_IMAGE="${CPK_SECRET_PROVIDER_SERVER_IMAGE:-control-plane-kit-servers/cpk-server:source-1202}"
+SECRETS_IMAGE="${CPK_SECRETS_TEST_IMAGE:-control-plane-kit-secrets:source-1202}"
 BUILD_IMAGES="${CPK_SECRET_PROVIDER_BUILD_IMAGES:-1}"
 NETWORK="cpk-secret-provider-source-live-$$"
 LABEL="org.openj92.project=control-plane-kit-servers"
@@ -35,7 +35,11 @@ cleanup_workspace_resources() {
             workspace-secret-revoked-reference|\
             workspace-secret-missing|\
             workspace-secret-wrong-credential|\
-            workspace-secret-unavailable)
+            workspace-secret-unavailable|\
+            workspace-secret-revoked-before-use|\
+            workspace-secret-concurrent-a|\
+            workspace-secret-concurrent-b|\
+            workspace-secret-concurrent-c)
               docker rm -f "$resource" >/dev/null 2>&1 || true
               ;;
           esac
@@ -52,10 +56,14 @@ cleanup_workspace_resources() {
             workspace-secret-wrong-target|\
             workspace-secret-wrong-intent|\
             workspace-secret-revoked-provider|\
-            workspace-secret-revoked-reference|\
-            workspace-secret-missing|\
-            workspace-secret-wrong-credential|\
-            workspace-secret-unavailable)
+              workspace-secret-revoked-reference|\
+              workspace-secret-missing|\
+              workspace-secret-wrong-credential|\
+              workspace-secret-unavailable|\
+              workspace-secret-revoked-before-use|\
+              workspace-secret-concurrent-a|\
+              workspace-secret-concurrent-b|\
+              workspace-secret-concurrent-c)
               docker volume rm "$resource" >/dev/null 2>&1 || true
               ;;
           esac
@@ -72,10 +80,14 @@ cleanup_workspace_resources() {
             workspace-secret-wrong-target|\
             workspace-secret-wrong-intent|\
             workspace-secret-revoked-provider|\
-            workspace-secret-revoked-reference|\
-            workspace-secret-missing|\
-            workspace-secret-wrong-credential|\
-            workspace-secret-unavailable)
+              workspace-secret-revoked-reference|\
+              workspace-secret-missing|\
+              workspace-secret-wrong-credential|\
+              workspace-secret-unavailable|\
+              workspace-secret-revoked-before-use|\
+              workspace-secret-concurrent-a|\
+              workspace-secret-concurrent-b|\
+              workspace-secret-concurrent-c)
               docker network rm "$resource" >/dev/null 2>&1 || true
               ;;
           esac
@@ -131,20 +143,35 @@ base.joinpath("postgres-password").write_text(
     secrets.token_urlsafe(40),
     encoding="utf-8",
 )
+base.joinpath("postgres-password-v2").write_text(
+    secrets.token_urlsafe(40),
+    encoding="utf-8",
+)
+base.joinpath("postgres-revoked").write_text(
+    secrets.token_urlsafe(40),
+    encoding="utf-8",
+)
+for index in range(1, 4):
+    base.joinpath(f"postgres-concurrent-{index}").write_text(
+        secrets.token_urlsafe(40),
+        encoding="utf-8",
+    )
 '
 chmod 0400 "$BOOTSTRAP_DIR/master.key"
 chmod 0400 "$BOOTSTRAP_DIR/client-token"
 chmod 0400 "$BOOTSTRAP_DIR/wrong-token"
 chmod 0400 "$BOOTSTRAP_DIR/postgres-password"
+chmod 0400 "$BOOTSTRAP_DIR/postgres-password-v2"
+chmod 0400 "$BOOTSTRAP_DIR/postgres-revoked"
+chmod 0400 "$BOOTSTRAP_DIR"/postgres-concurrent-*
 
-PROVIDER_CREDENTIALS_JSON="$(
-  BOOTSTRAP_DIR="$BOOTSTRAP_DIR" python3 -c '
+BOOTSTRAP_DIR="$BOOTSTRAP_DIR" python3 -c '
 import json
 import os
 from pathlib import Path
 
 token = Path(os.environ["BOOTSTRAP_DIR"], "client-token").read_text(encoding="utf-8")
-print(json.dumps([{
+credentials = [{
     "subject": "cpk-server-source-live",
     "token": token,
     "grants": [
@@ -159,13 +186,25 @@ print(json.dumps([{
             "intents": ["postgres.password"],
         },
         {
+            "action": "secret.rotate",
+            "workspace_id": "*",
+        },
+        {
+            "action": "secret.revoke",
+            "workspace_id": "*",
+        },
+        {
             "action": "secret.metadata",
             "workspace_id": "*",
         },
     ],
-}], separators=(",", ":"), sort_keys=True))
+}]
+Path(os.environ["BOOTSTRAP_DIR"], "credentials.json").write_text(
+    json.dumps(credentials, separators=(",", ":"), sort_keys=True),
+    encoding="utf-8",
+)
 '
-)"
+chmod 0400 "$BOOTSTRAP_DIR/credentials.json"
 
 WORKSPACES='[
   "workspace-secret-provider-live",
@@ -177,7 +216,11 @@ WORKSPACES='[
   "workspace-secret-revoked-reference",
   "workspace-secret-missing",
   "workspace-secret-wrong-credential",
-  "workspace-secret-unavailable"
+  "workspace-secret-unavailable",
+  "workspace-secret-revoked-before-use",
+  "workspace-secret-concurrent-a",
+  "workspace-secret-concurrent-b",
+  "workspace-secret-concurrent-c"
 ]'
 CPK_CONTROL_AUTH_STATIC_PRINCIPALS_JSON="$(
   WORKSPACES="$WORKSPACES" python3 -c '
@@ -263,10 +306,11 @@ SECRETS_CONTAINER="$(docker run -d \
   --network-alias cpk-secrets \
   -v "$PROVIDER_DATA_DIR:/var/lib/cpk-secrets" \
   -v "$BOOTSTRAP_DIR/master.key:/run/secrets/cpk-secrets/master-key:ro" \
+  -v "$BOOTSTRAP_DIR/credentials.json:/run/secrets/cpk-secrets/credentials.json:ro" \
   -e CPK_SECRETS_DATABASE_PATH=/var/lib/cpk-secrets/secrets.sqlite3 \
   -e CPK_SECRETS_MASTER_KEY_FILE=/run/secrets/cpk-secrets/master-key \
+  -e CPK_SECRETS_CREDENTIALS_FILE=/run/secrets/cpk-secrets/credentials.json \
   -e CPK_SECRETS_PROVIDER_ID=control-plane-kit \
-  -e CPK_SECRETS_DEVELOPMENT_CREDENTIALS_JSON="$PROVIDER_CREDENTIALS_JSON" \
   "$SECRETS_IMAGE" \
   python -m uvicorn control_plane_kit_secrets.server:app \
     --host 0.0.0.0 --port 8081 --log-level warning)"
@@ -290,43 +334,6 @@ if [ "$SECRETS_READY" != "1" ]; then
   echo "secrets provider did not become ready" >&2
   exit 1
 fi
-
-docker run --rm \
-  --network "$NETWORK" \
-  -v "$BOOTSTRAP_DIR:/bootstrap:ro" \
-  "$SECRETS_IMAGE" \
-  python -c '
-import base64
-import json
-from pathlib import Path
-from urllib.request import Request, urlopen
-
-reference = "secret://control-plane-kit/postgres/password"
-secret_id = "cpk1_" + base64.urlsafe_b64encode(
-    reference.encode("utf-8")
-).rstrip(b"=").decode("ascii")
-token = Path("/bootstrap/client-token").read_text(encoding="utf-8")
-value = Path("/bootstrap/postgres-password").read_bytes()
-request = Request(
-    "http://cpk-secrets:8081/v1/workspaces/"
-    "workspace-secret-provider-live/secrets/" + secret_id,
-    method="POST",
-    headers={
-        "Authorization": "Bearer " + token,
-        "Content-Type": "application/json",
-    },
-    data=json.dumps({
-        "value_base64": base64.b64encode(value).decode("ascii"),
-        "labels": {"intent": "postgres.password"},
-        "caller_subject": "source-live-bootstrap",
-        "correlation_id": "source-live-bootstrap-write",
-    }).encode("utf-8"),
-)
-with urlopen(request, timeout=10) as response:
-    payload = json.loads(response.read())
-    if response.status != 200 or payload.get("outcome") != "stored":
-        raise SystemExit("provider bootstrap write failed")
-'
 
 SERVER_CONTAINER="$(docker run -d \
   --label "$LABEL" \
@@ -355,9 +362,12 @@ if ! docker run --rm \
   --label "$LABEL" \
   --network "$NETWORK" \
   -v /var/run/docker.sock:/var/run/docker.sock \
+  -v "$BOOTSTRAP_DIR:/run/secrets/cpk-source-live:ro" \
   -e CPK_HOSTED_ACTIVITY_BASE_URL=http://cpk-server:8080 \
   -e CPK_HOSTED_ACTIVITY_SERVER_CONTAINER="$SERVER_CONTAINER" \
   -e CPK_SECRET_PROVIDER_CONTAINER="$SECRETS_CONTAINER" \
+  -e CPK_SECRET_PROVIDER_TOKEN_FILE=/run/secrets/cpk-source-live/client-token \
+  -e CPK_SECRET_PROVIDER_BOOTSTRAP_DIR=/run/secrets/cpk-source-live \
   -e CPK_HOSTED_ACTIVITY_SERVERS_REPO=/app \
   -e CPK_OPERATIONS_DATABASE_URL=postgresql://cpk:cpk@cpk-postgres:5432/cpk \
   "$CONTROLLER_IMAGE" \
@@ -368,7 +378,16 @@ if ! docker run --rm \
 fi
 
 docker exec "$POSTGRES_CONTAINER" pg_dump -U cpk -d cpk >"$OPERATIONS_DUMP"
-for secret_file in client-token wrong-token postgres-password; do
+for secret_file in \
+  client-token \
+  wrong-token \
+  postgres-password \
+  postgres-password-v2 \
+  postgres-revoked \
+  postgres-concurrent-1 \
+  postgres-concurrent-2 \
+  postgres-concurrent-3
+do
   if docker logs "$SERVER_CONTAINER" 2>&1 \
     | grep -F -f "$BOOTSTRAP_DIR/$secret_file" >/dev/null 2>&1; then
     echo "cpk-server logs contain forbidden source-live material" >&2
@@ -383,12 +402,12 @@ for secret_file in client-token wrong-token postgres-password; do
     echo "operations database contains forbidden source-live material" >&2
     exit 1
   fi
+  if grep -aF -f "$BOOTSTRAP_DIR/$secret_file" \
+    "$PROVIDER_DATA_DIR/secrets.sqlite3" >/dev/null 2>&1; then
+    echo "provider database contains plaintext source-live secret" >&2
+    exit 1
+  fi
 done
-if grep -aF -f "$BOOTSTRAP_DIR/postgres-password" \
-  "$PROVIDER_DATA_DIR/secrets.sqlite3" >/dev/null 2>&1; then
-  echo "provider database contains plaintext source-live secret" >&2
-  exit 1
-fi
 
 cleanup
 SERVER_CONTAINER=""

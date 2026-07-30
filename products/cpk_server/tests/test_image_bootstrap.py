@@ -1544,12 +1544,14 @@ class CpkServerImageBootstrapTests(unittest.TestCase):
             ROOT / "scripts" / "cpk_server_secret_provider_source_live.py"
         ).read_text(encoding="utf-8")
 
-        self.assertIn("control-plane-kit-secrets:source-1187", smoke)
+        self.assertIn("control-plane-kit-secrets:source-1202", smoke)
         self.assertIn("control_plane_kit_secrets.server:app", smoke)
         self.assertIn("CPK_PRODUCT_MATERIAL_RESOLVER=provider", smoke)
         self.assertIn("CPK_MATERIAL_PROVIDER_ROUTES_JSON", smoke)
         self.assertIn("CPK_MATERIAL_PROVIDER_BOOTSTRAP_FILES_JSON", smoke)
         self.assertIn("CPK_SECRETS_MASTER_KEY_FILE", smoke)
+        self.assertIn("CPK_SECRETS_CREDENTIALS_FILE", smoke)
+        self.assertNotIn("CPK_SECRETS_DEVELOPMENT_CREDENTIALS_JSON", smoke)
         self.assertIn("provider-data", smoke)
         self.assertIn("docker_residue_audit.sh", smoke)
         self.assertNotIn("CPK_PRODUCT_SECRET_VALUES_JSON", smoke)
