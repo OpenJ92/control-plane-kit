@@ -39,6 +39,11 @@ from control_plane_kit_core.products import (
     ProviderRuntimePort,
 )
 from control_plane_kit_core.runtime_effects import GatewayTargetId
+from control_plane_kit_core.secrets import (
+    SecretProviderEndpointReference,
+    SecretReference,
+    SecretResolutionGrant,
+)
 from control_plane_kit_core.topology import (
     DeploymentGraph,
     Edge,
@@ -59,6 +64,10 @@ from control_plane_kit_operations.gateway_probes import (
 from control_plane_kit_operations.postgres import PostgresUnitOfWork, install_schema
 from control_plane_kit_operations.products import InlineDescriptorSource
 from control_plane_kit_operations.records import BoundedEvidence, GraphVersionRecord, WorkspaceRecord
+from control_plane_kit_operations.secret_providers import (
+    AuthorizeSecretUse,
+    SecretProviderAuthorizationDenied,
+)
 
 
 class TrackingUnitOfWorkFactory:
@@ -124,6 +133,41 @@ class RecordingDispatcher:
         )
 
 
+class RecordingSecretUseAuthorizer:
+    def __init__(self) -> None:
+        self.commands: list[AuthorizeSecretUse] = []
+        self.denied = False
+
+    def authorize_resolution(
+        self,
+        command: AuthorizeSecretUse,
+    ) -> SecretResolutionGrant:
+        self.commands.append(command)
+        if self.denied:
+            raise SecretProviderAuthorizationDenied("denied")
+        return SecretResolutionGrant(
+            authorization_id="suse_" + "a" * 64,
+            workspace_id=command.workspace_id,
+            reference_registration_id="sref_" + "b" * 64,
+            provider_registration_id="sprov_" + "c" * 64,
+            endpoint_reference=SecretProviderEndpointReference("provider-a"),
+            credential_reference=SecretReference(
+                "secret://bootstrap/provider-a-token"
+            ),
+            reference=command.reference,
+            intent=command.intent,
+            actor_subject=command.actor_subject,
+            correlation_id=command.correlation_id,
+            intent_fingerprint="d" * 64,
+            operation_id=command.operation_id,
+            session_id=command.session_id,
+            run_id=command.run_id,
+            activity_id=command.activity_id,
+            effect_id=command.effect_id,
+            probe_id=command.probe_id,
+        )
+
+
 @dataclass(frozen=True)
 class RouteRequest:
     surface: str
@@ -157,11 +201,17 @@ class GatewayProbeCommandServiceTests(unittest.TestCase):
         self.connection.execute("TRUNCATE TABLE cpk_workspaces CASCADE")
         self.tracker = TrackingUnitOfWorkFactory(database_url)
         self.dispatcher = RecordingDispatcher(self.tracker)
+        self.secret_use_authorizer = RecordingSecretUseAuthorizer()
+        self.signing_key_reference = SecretReference(
+            "secret://gateway/probe/signing-key"
+        )
         self.service = GatewayProbeCommandService(
             self.tracker,
             dispatcher=self.dispatcher,
             issuer="urn:cpk:test",
             key_id="gateway-test-key",
+            signing_key_reference=self.signing_key_reference,
+            secret_use_authorizer=self.secret_use_authorizer,
             epoch_clock=lambda: 1_800_000_000,
             clock=lambda: "2027-01-15T08:00:00Z",
             id_factory=GeneratedIds(),
@@ -192,6 +242,16 @@ class GatewayProbeCommandServiceTests(unittest.TestCase):
             endpoint.address,
             LiteralEndpointMaterial("http://gateway:8000"),
         )
+        self.assertEqual(len(self.secret_use_authorizer.commands), 1)
+        authorization = self.secret_use_authorizer.commands[0]
+        self.assertEqual(authorization.reference, self.signing_key_reference)
+        self.assertEqual(authorization.probe_id, result.attempt.probe_id)
+        self.assertTrue(
+            self.dispatcher.requests[0].secret_resolution_grant.permits(
+                self.signing_key_reference,
+                authorization.intent,
+            )
+        )
         descriptor = result.descriptor()
         self.assertNotIn("signature", repr(descriptor).lower())
         self.assertNotIn("compact", repr(descriptor).lower())
@@ -204,6 +264,7 @@ class GatewayProbeCommandServiceTests(unittest.TestCase):
         self.assertEqual(first.attempt, replay.attempt)
         self.assertTrue(replay.replayed)
         self.assertEqual(len(self.dispatcher.requests), 1)
+        self.assertEqual(len(self.secret_use_authorizer.commands), 1)
 
         with self.assertRaises(GatewayProbeConflict):
             self.service.execute(
@@ -241,12 +302,25 @@ class GatewayProbeCommandServiceTests(unittest.TestCase):
             )
         self.assertEqual(self.dispatcher.requests, [])
 
+    def test_signing_secret_denial_is_folded_without_gateway_io(self) -> None:
+        self.secret_use_authorizer.denied = True
+
+        result = self.service.execute(self.command())
+
+        self.assertEqual(result.attempt.status, GatewayProbeAttemptStatus.REJECTED)
+        self.assertEqual(
+            result.attempt.result_code,
+            "gateway-signing-secret-not-authorized",
+        )
+        self.assertEqual(self.dispatcher.requests, [])
+
     def test_http_and_mcp_shaped_routes_use_the_same_operations_service(self) -> None:
         adapter = CpkServerGatewayProbeService(self.service)
         principal = self.principal(
             scopes=(
                 PolicyScope.GATEWAY_PROBE_USE,
                 PolicyScope.INSTANCE_WORKSPACE_READ,
+                PolicyScope.SECRET_PROVIDER_USE,
             )
         )
         http = adapter.handle(self.route_request("http", "request-http", principal))
@@ -306,7 +380,10 @@ class GatewayProbeCommandServiceTests(unittest.TestCase):
     def context(
         self,
         *,
-        scopes: tuple[PolicyScope, ...] = (PolicyScope.GATEWAY_PROBE_USE,),
+        scopes: tuple[PolicyScope, ...] = (
+            PolicyScope.GATEWAY_PROBE_USE,
+            PolicyScope.SECRET_PROVIDER_USE,
+        ),
     ):
         return self.principal(scopes=scopes).command_context("workspace-a")
 

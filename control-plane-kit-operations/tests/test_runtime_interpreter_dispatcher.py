@@ -43,6 +43,13 @@ from control_plane_kit_core.runtime_effects import (
     RuntimeEffectRequest,
     RuntimeEffectResult,
 )
+from control_plane_kit_core.secrets import (
+    SecretEnvironmentDelivery,
+    SecretProviderEndpointReference,
+    SecretReference,
+    SecretResolutionGrant,
+    SecretUseIntent,
+)
 from control_plane_kit_core.topology import DeploymentGraph, Node, RuntimeRecord
 from control_plane_kit_core.types import BlockFamily, Protocol, RuntimeKind
 from control_plane_kit_operations.coordinator import (
@@ -54,6 +61,10 @@ from control_plane_kit_operations.products import InlineDescriptorSource, Regist
 from control_plane_kit_operations.runtime_authorities import (
     LocalDockerSocketAuthority,
     RegisteredRuntimeAuthority,
+)
+from control_plane_kit_operations.secret_providers import (
+    AuthorizeSecretUse,
+    SecretProviderAuthorizationDenied,
 )
 from control_plane_kit_operations.records import (
     ActivityEventRecord,
@@ -102,6 +113,41 @@ class AuthorityAwareRecordingInterpreter(RecordingInterpreter):
         return self.result or RuntimeEffectResult.succeeded(
             request.effect_id,
             evidence={"authority_ref": authority.authority_ref.reference_id},
+        )
+
+
+class RecordingSecretUseAuthorizer:
+    def __init__(self, *, denied: bool = False) -> None:
+        self.denied = denied
+        self.commands: list[AuthorizeSecretUse] = []
+
+    def authorize_resolution(
+        self,
+        command: AuthorizeSecretUse,
+    ) -> SecretResolutionGrant:
+        self.commands.append(command)
+        if self.denied:
+            raise SecretProviderAuthorizationDenied("denied")
+        return SecretResolutionGrant(
+            authorization_id="suse_" + "a" * 64,
+            workspace_id=command.workspace_id,
+            reference_registration_id="sref_" + "b" * 64,
+            provider_registration_id="sprov_" + "c" * 64,
+            endpoint_reference=SecretProviderEndpointReference("provider-a"),
+            credential_reference=SecretReference(
+                "secret://bootstrap/provider-a-token"
+            ),
+            reference=command.reference,
+            intent=command.intent,
+            actor_subject=command.actor_subject,
+            correlation_id=command.correlation_id,
+            intent_fingerprint="d" * 64,
+            operation_id=command.operation_id,
+            session_id=command.session_id,
+            run_id=command.run_id,
+            activity_id=command.activity_id,
+            effect_id=command.effect_id,
+            probe_id=command.probe_id,
         )
 
 
@@ -358,6 +404,122 @@ class RuntimeInterpreterDispatcherTests(unittest.TestCase):
         self.assertEqual(observation.endpoint_context, EndpointContext.RUNTIME_PRIVATE)
         self.assertEqual(observation.evidence.descriptor()["runtime_endpoint"]["subject_id"], "api")
 
+    def test_secret_use_is_authorized_before_runtime_interpreter_io(self) -> None:
+        interpreter = RecordingInterpreter("docker")
+        authorizer = RecordingSecretUseAuthorizer()
+        dispatcher = RuntimeInterpreterDispatcher(
+            {RuntimeKind.DOCKER: interpreter},
+            secret_use_authorizer=authorizer,
+        )
+
+        outcome = dispatcher.execute(
+            context_for(
+                StartNode(NodeTarget("api")),
+                secret_delivery=True,
+                worker_scopes=(
+                    PolicyScope.EXECUTION_OPERATE,
+                    PolicyScope.SECRET_PROVIDER_USE,
+                ),
+            )
+        )
+
+        self.assertEqual(outcome.kind.name, "SUCCEEDED")
+        self.assertEqual(len(authorizer.commands), 1)
+        command = authorizer.commands[0]
+        self.assertEqual(
+            command.reference,
+            SecretReference("secret://provider-a/application/token"),
+        )
+        self.assertEqual(command.intent, SecretUseIntent.APPLICATION_CONTROL_TOKEN)
+        self.assertEqual(command.actor_subject, "worker-a")
+        self.assertEqual(command.effect_id, "event-intent")
+        self.assertEqual(len(interpreter.requests), 1)
+        self.assertEqual(
+            interpreter.requests[0].secret_resolution_grants,
+            (
+                SecretResolutionGrant(
+                    authorization_id="suse_" + "a" * 64,
+                    workspace_id="workspace-a",
+                    reference_registration_id="sref_" + "b" * 64,
+                    provider_registration_id="sprov_" + "c" * 64,
+                    endpoint_reference=SecretProviderEndpointReference("provider-a"),
+                    credential_reference=SecretReference(
+                        "secret://bootstrap/provider-a-token"
+                    ),
+                    reference=SecretReference(
+                        "secret://provider-a/application/token"
+                    ),
+                    intent=SecretUseIntent.APPLICATION_CONTROL_TOKEN,
+                    actor_subject="worker-a",
+                    correlation_id=command.correlation_id,
+                    intent_fingerprint="d" * 64,
+                    operation_id="request-a",
+                    session_id="session-a",
+                    run_id="run-a",
+                    activity_id="activity-a",
+                    effect_id="event-intent",
+                ),
+            ),
+        )
+
+    def test_missing_secret_authorizer_fails_before_runtime_io(self) -> None:
+        interpreter = RecordingInterpreter("docker")
+        dispatcher = RuntimeInterpreterDispatcher({RuntimeKind.DOCKER: interpreter})
+
+        outcome = dispatcher.execute(
+            context_for(StartNode(NodeTarget("api")), secret_delivery=True)
+        )
+
+        self.assertEqual(outcome.kind.name, "UNSUPPORTED")
+        assert outcome.failure is not None
+        self.assertEqual(
+            outcome.failure.code,
+            "secret.resolution-authorizer-invalid",
+        )
+        self.assertEqual(interpreter.requests, [])
+
+    def test_denied_secret_use_fails_before_runtime_io(self) -> None:
+        interpreter = RecordingInterpreter("docker")
+        authorizer = RecordingSecretUseAuthorizer(denied=True)
+        dispatcher = RuntimeInterpreterDispatcher(
+            {RuntimeKind.DOCKER: interpreter},
+            secret_use_authorizer=authorizer,
+        )
+
+        outcome = dispatcher.execute(
+            context_for(StartNode(NodeTarget("api")), secret_delivery=True)
+        )
+
+        self.assertEqual(outcome.kind.name, "UNSUPPORTED")
+        assert outcome.failure is not None
+        self.assertEqual(outcome.failure.code, "secret.use-not-authorized")
+        self.assertEqual(interpreter.requests, [])
+
+    def test_secret_use_retry_correlation_is_deterministic(self) -> None:
+        interpreter = RecordingInterpreter("docker")
+        authorizer = RecordingSecretUseAuthorizer()
+        dispatcher = RuntimeInterpreterDispatcher(
+            {RuntimeKind.DOCKER: interpreter},
+            secret_use_authorizer=authorizer,
+        )
+        context = context_for(
+            StartNode(NodeTarget("api")),
+            secret_delivery=True,
+            worker_scopes=(
+                PolicyScope.EXECUTION_OPERATE,
+                PolicyScope.SECRET_PROVIDER_USE,
+            ),
+        )
+
+        dispatcher.execute(context)
+        dispatcher.execute(context)
+
+        self.assertEqual(len(authorizer.commands), 2)
+        self.assertEqual(
+            authorizer.commands[0].correlation_id,
+            authorizer.commands[1].correlation_id,
+        )
+
 
 def context_for(
     operation,
@@ -367,9 +529,12 @@ def context_for(
     base_graph: DeploymentGraph | None = None,
     authority_ref: RuntimeAuthorityReference | None = None,
     runtime_authorities: tuple[RegisteredRuntimeAuthority, ...] = (),
+    secret_delivery: bool = False,
+    worker_scopes: tuple[PolicyScope, ...] = (PolicyScope.EXECUTION_OPERATE,),
 ) -> ActivityRealizationContext:
     activity = PlannedActivity(ActivityId("activity-a"), operation)
     plan = ActivityPlan((activity,))
+    registered_product = _registered_product(secret_delivery=secret_delivery)
     return ActivityRealizationContext(
         activity=activity,
         request=ExecutionRequestRecord(
@@ -402,17 +567,26 @@ def context_for(
         ),
         base_graph=graph_version_record_from_graph(
             "graph-current",
-            base_graph if base_graph is not None else graph_with_node(base_kind),
+            base_graph
+            if base_graph is not None
+            else graph_with_node(
+                base_kind,
+                registered_product=registered_product,
+            ),
         ),
         desired_graph=graph_version_record_from_graph(
             "graph-desired",
-            graph_with_node(desired_kind, authority_ref=authority_ref),
+            graph_with_node(
+                desired_kind,
+                authority_ref=authority_ref,
+                registered_product=registered_product,
+            ),
             version=2,
         ),
-        registered_products=(_registered_product(),),
+        registered_products=(registered_product,),
         authority=ExecutionWorkerAuthority(
             "worker-a",
-            (PolicyScope.EXECUTION_OPERATE,),
+            worker_scopes,
         ),
         runtime_authorities=runtime_authorities,
         intent_event=ActivityEventRecord(
@@ -446,8 +620,10 @@ def graph_with_node(
     kind: RuntimeKind,
     *,
     authority_ref: RuntimeAuthorityReference | None = None,
+    registered_product: RegisteredProduct | None = None,
 ) -> DeploymentGraph:
-    reference = ProductReference.from_document(_registered_product().descriptor_document)
+    product = registered_product or _registered_product()
+    reference = ProductReference.from_document(product.descriptor_document)
     return DeploymentGraph(
         "graph",
         nodes={
@@ -498,7 +674,16 @@ def _registered_runtime_authority() -> RegisteredRuntimeAuthority:
     )
 
 
-def _registered_product() -> RegisteredProduct:
+def _registered_product(*, secret_delivery: bool = False) -> RegisteredProduct:
+    secret_deliveries = ()
+    if secret_delivery:
+        secret_deliveries = (
+            SecretEnvironmentDelivery(
+                "APPLICATION_CONTROL_TOKEN",
+                SecretReference("secret://provider-a/application/token"),
+                SecretUseIntent.APPLICATION_CONTROL_TOKEN,
+            ),
+        )
     product = ContainerServerProduct(
         identity=ProductIdentity("openj92", "hello-server", 1),
         image=OciImageReference(
@@ -509,6 +694,7 @@ def _registered_product() -> RegisteredProduct:
         runtime_contract=ProductRuntimeContract(
             sockets=BlockSockets(providers=(ProviderSocket("http", Protocol.HTTP),)),
             provider_ports=(ProviderRuntimePort("http", 8000),),
+            secret_deliveries=secret_deliveries,
         ),
     )
     return RegisteredProduct.from_document(

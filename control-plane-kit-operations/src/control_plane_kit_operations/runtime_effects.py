@@ -49,10 +49,14 @@ from control_plane_kit_core.runtime_effects import (
 from control_plane_kit_core.secrets import (
     SecretDelivery,
     SecretEnvironmentDelivery,
+    SecretFileDelivery,
+    SecretReference,
+    SecretUseIntent,
     secret_delivery_sort_key,
 )
 from control_plane_kit_core.topology import DEFAULT_GRAPH_CODEC, DeploymentGraph, Node
 from control_plane_kit_core.types import Protocol, RuntimeKind
+from control_plane_kit_core.verification import PostgresQueryCheck
 from control_plane_kit_operations.coordinator import ActivityRealizationContext
 from control_plane_kit_operations.ingress_authorities import (
     CloudflareOwnedIngressResource,
@@ -67,7 +71,9 @@ from control_plane_kit_operations.products import (
     RegisteredProduct,
 )
 from control_plane_kit_operations.runtime_authorities import (
+    RegisteredRuntimeAuthority,
     RegisteredRuntimeAuthorityDelivery,
+    RemoteDockerTlsAuthority,
 )
 from control_plane_kit_operations.workflows import InvalidOperationCommand
 
@@ -107,6 +113,71 @@ def runtime_effect_request_for_context(
         activity_id=context.activity.activity_id,
         operation=context.activity.operation,
         products=_products_for_context(context, graph, runtime_id),
+    )
+
+
+def required_secret_uses_for_runtime_effect(
+    request: RuntimeEffectRequest,
+    authority: RegisteredRuntimeAuthority | None,
+) -> tuple[tuple[SecretReference, SecretUseIntent], ...]:
+    """Enumerate every exact reference/intent pair an interpreter may resolve."""
+
+    if not isinstance(request, RuntimeEffectRequest):
+        raise InvalidOperationCommand(
+            "secret-use enumeration requires RuntimeEffectRequest"
+        )
+    uses: set[tuple[SecretReference, SecretUseIntent]] = set()
+    for material in request.products:
+        contract = material.product.runtime_contract
+        for delivery in contract.secret_deliveries:
+            if isinstance(
+                delivery,
+                (SecretEnvironmentDelivery, SecretFileDelivery),
+            ):
+                uses.add((delivery.reference, delivery.intent))
+        if material.pull_authority is not None:
+            uses.add(
+                (
+                    material.pull_authority.credential_reference,
+                    SecretUseIntent.OCI_PULL_CREDENTIAL,
+                )
+            )
+        for check in contract.verification.checks:
+            if (
+                isinstance(check, PostgresQueryCheck)
+                and check.authentication is not None
+            ):
+                uses.add(
+                    (
+                        check.authentication.password_reference,
+                        SecretUseIntent.POSTGRES_PASSWORD,
+                    )
+                )
+    if authority is not None and isinstance(
+        authority.authority,
+        RemoteDockerTlsAuthority,
+    ):
+        uses.update(
+            (
+                (
+                    authority.authority.ca_certificate,
+                    SecretUseIntent.DOCKER_REMOTE_TLS_CA_CERTIFICATE,
+                ),
+                (
+                    authority.authority.client_certificate,
+                    SecretUseIntent.DOCKER_REMOTE_TLS_CLIENT_CERTIFICATE,
+                ),
+                (
+                    authority.authority.client_key,
+                    SecretUseIntent.DOCKER_REMOTE_TLS_CLIENT_KEY,
+                ),
+            )
+        )
+    return tuple(
+        sorted(
+            uses,
+            key=lambda value: (value[0].reference_id, value[1].value),
+        )
     )
 
 

@@ -27,7 +27,13 @@ from control_plane_kit_core.public_ingress import (
     PublicIngressLifecycle,
     PublicIngressTarget,
 )
-from control_plane_kit_core.secrets import SecretReference, SecretValue
+from control_plane_kit_core.secrets import (
+    SecretProviderEndpointReference,
+    SecretReference,
+    SecretResolutionGrant,
+    SecretUseIntent,
+    SecretValue,
+)
 from control_plane_kit_core.topology import (
     DeploymentGraph,
     Endpoint,
@@ -61,6 +67,7 @@ from control_plane_kit_operations.records import (
     GraphVersionRecord,
     RetryIdentity,
 )
+from control_plane_kit_operations.secret_providers import AuthorizeSecretUse
 
 
 class TrackingUnitOfWorkFactory:
@@ -124,8 +131,10 @@ class RecordingIngressInterpreter:
         self.create_allocation_names: list[str] = []
         self.create_origins: list[str] = []
         self.create_authorities: list[CloudflareZoneIngressAuthority] = []
+        self.create_grants: list[SecretResolutionGrant] = []
         self.teardown_active_counts: list[int] = []
         self.teardown_resources: list[CloudflareOwnedIngressResource] = []
+        self.teardown_grants: list[SecretResolutionGrant] = []
         self.fail_teardown = False
 
     def create(
@@ -135,11 +144,13 @@ class RecordingIngressInterpreter:
         authority: CloudflareZoneIngressAuthority,
         allocation_name: str,
         origin_service_url: str,
+        secret_resolution_grant: SecretResolutionGrant,
     ) -> FakeIngressAllocation:
         self.create_active_counts.append(self.tracker.active)
         self.create_allocation_names.append(allocation_name)
         self.create_origins.append(origin_service_url)
         self.create_authorities.append(authority)
+        self.create_grants.append(secret_resolution_grant)
         return FakeIngressAllocation(
             tunnel_name=allocation_name,
             hostname=ingress.hostname,
@@ -150,12 +161,46 @@ class RecordingIngressInterpreter:
         *,
         authority: CloudflareZoneIngressAuthority,
         resources: CloudflareOwnedIngressResource,
+        secret_resolution_grant: SecretResolutionGrant,
     ) -> None:
         del authority
         self.teardown_active_counts.append(self.tracker.active)
         self.teardown_resources.append(resources)
+        self.teardown_grants.append(secret_resolution_grant)
         if self.fail_teardown:
             raise RuntimeError("provider teardown failed")
+
+
+class RecordingSecretUseAuthorizer:
+    def __init__(self) -> None:
+        self.commands: list[AuthorizeSecretUse] = []
+
+    def authorize_resolution(
+        self,
+        command: AuthorizeSecretUse,
+    ) -> SecretResolutionGrant:
+        self.commands.append(command)
+        return SecretResolutionGrant(
+            authorization_id="suse_" + "a" * 64,
+            workspace_id=command.workspace_id,
+            reference_registration_id="sref_" + "b" * 64,
+            provider_registration_id="sprov_" + "c" * 64,
+            endpoint_reference=SecretProviderEndpointReference("provider-a"),
+            credential_reference=SecretReference(
+                "secret://bootstrap/provider-a-token"
+            ),
+            reference=command.reference,
+            intent=command.intent,
+            actor_subject=command.actor_subject,
+            correlation_id=command.correlation_id,
+            intent_fingerprint="d" * 64,
+            operation_id=command.operation_id,
+            session_id=command.session_id,
+            run_id=command.run_id,
+            activity_id=command.activity_id,
+            effect_id=command.effect_id,
+            probe_id=command.probe_id,
+        )
 
 
 class IngressRealizationAdapterTests(unittest.TestCase):
@@ -177,6 +222,7 @@ class IngressRealizationAdapterTests(unittest.TestCase):
             """
         )
         self.tracker = TrackingUnitOfWorkFactory(database_url)
+        self.authorizer = RecordingSecretUseAuthorizer()
         with self.unit_of_work() as unit_of_work:
             unit_of_work.stores.ingress_authorities.register(
                 workspace_id="workspace-a",
@@ -211,6 +257,7 @@ class IngressRealizationAdapterTests(unittest.TestCase):
             interpreters={IngressAuthorityProviderKind.CLOUDFLARE: interpreter},
             generated_secret_recorder=recorder,
             clock=lambda: "2026-07-28T08:01:00Z",
+            secret_use_authorizer=self.authorizer,
         )
 
         outcome = adapter.execute(self.context())
@@ -221,6 +268,15 @@ class IngressRealizationAdapterTests(unittest.TestCase):
             interpreter.create_authorities[0].api_token_ref.reference_id,
             "secret://cloudflare/openj92/api-token",
         )
+        self.assertEqual(len(interpreter.create_grants), 1)
+        self.assertTrue(
+            interpreter.create_grants[0].permits(
+                SecretReference("secret://cloudflare/openj92/api-token"),
+                SecretUseIntent.CLOUDFLARE_API_TOKEN,
+            )
+        )
+        self.assertEqual(self.authorizer.commands[0].actor_subject, "worker-a")
+        self.assertEqual(self.authorizer.commands[0].effect_id, "event-001")
         self.assertEqual(outcome.kind.name, "SUCCEEDED")
         self.assertEqual(
             interpreter.create_allocation_names,
@@ -280,6 +336,7 @@ class IngressRealizationAdapterTests(unittest.TestCase):
             interpreters={IngressAuthorityProviderKind.CLOUDFLARE: interpreter},
             generated_secret_recorder=InMemoryGeneratedSecretRecorder(),
             clock=lambda: "2026-07-28T08:01:00Z",
+            secret_use_authorizer=self.authorizer,
         )
 
         first = adapter.execute(self.context())
@@ -314,6 +371,7 @@ class IngressRealizationAdapterTests(unittest.TestCase):
             interpreters={IngressAuthorityProviderKind.CLOUDFLARE: interpreter},
             generated_secret_recorder=InMemoryGeneratedSecretRecorder(),
             clock=lambda: "2026-07-28T08:02:00Z",
+            secret_use_authorizer=self.authorizer,
         )
         with self.unit_of_work() as unit_of_work:
             unit_of_work.stores.ingress_resources.record_cloudflare(
@@ -332,6 +390,13 @@ class IngressRealizationAdapterTests(unittest.TestCase):
 
         self.assertEqual(outcome.kind.name, "SUCCEEDED")
         self.assertEqual(interpreter.teardown_active_counts, [0])
+        self.assertEqual(len(interpreter.teardown_grants), 1)
+        self.assertTrue(
+            interpreter.teardown_grants[0].permits(
+                SecretReference("secret://cloudflare/openj92/api-token"),
+                SecretUseIntent.CLOUDFLARE_API_TOKEN,
+            )
+        )
         self.assertEqual(interpreter.teardown_resources[0].status.name, "REMOVING")
         with self.unit_of_work() as unit_of_work:
             history = unit_of_work.stores.ingress_resources.list_cloudflare(
@@ -351,6 +416,7 @@ class IngressRealizationAdapterTests(unittest.TestCase):
             interpreters={IngressAuthorityProviderKind.CLOUDFLARE: interpreter},
             generated_secret_recorder=InMemoryGeneratedSecretRecorder(),
             clock=lambda: "2026-07-28T08:02:00Z",
+            secret_use_authorizer=self.authorizer,
         )
         with self.unit_of_work() as unit_of_work:
             unit_of_work.stores.ingress_resources.record_cloudflare(
@@ -519,7 +585,10 @@ class IngressRealizationAdapterTests(unittest.TestCase):
             registered_products=(),
             authority=ExecutionWorkerAuthority(
                 "worker-a",
-                (PolicyScope.EXECUTION_OPERATE,),
+                (
+                    PolicyScope.EXECUTION_OPERATE,
+                    PolicyScope.SECRET_PROVIDER_USE,
+                ),
             ),
             intent_event=ActivityEventRecord(
                 intent_event_id,

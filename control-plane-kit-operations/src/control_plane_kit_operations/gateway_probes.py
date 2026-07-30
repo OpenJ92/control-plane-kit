@@ -20,11 +20,22 @@ from control_plane_kit_core.runtime_effects import (
     GatewayHttpTarget,
     GatewayPostgresTarget,
 )
+from control_plane_kit_core.secrets import (
+    SecretReference,
+    SecretResolutionGrant,
+    SecretUseIntent,
+)
 from control_plane_kit_core.topology import DEFAULT_GRAPH_CODEC
 from control_plane_kit_operations.records import BoundedEvidence
 from control_plane_kit_operations.runtime_effects import (
     gateway_control_endpoint_for_node,
     gateway_target_map_for_node,
+)
+from control_plane_kit_operations.secret_providers import (
+    AuthorizeSecretUse,
+    SecretProviderRegistrationError,
+    SecretUseResolutionAuthorizer,
+    secret_use_correlation_for,
 )
 
 
@@ -84,6 +95,7 @@ class GatewayProbeDispatch:
     grant: DelegatedGatewayProbeGrant
     request: GatewayProbeRequest
     gateway_endpoint: RuntimeEndpointObservation
+    secret_resolution_grant: SecretResolutionGrant
 
     def __post_init__(self) -> None:
         if not isinstance(self.grant, DelegatedGatewayProbeGrant):
@@ -93,6 +105,10 @@ class GatewayProbeDispatch:
         if not isinstance(self.gateway_endpoint, RuntimeEndpointObservation):
             raise GatewayProbeError(
                 "gateway endpoint must be a typed runtime observation"
+            )
+        if not isinstance(self.secret_resolution_grant, SecretResolutionGrant):
+            raise GatewayProbeError(
+                "gateway signing requires a secret resolution grant"
             )
 
 
@@ -234,6 +250,8 @@ class GatewayProbeCommandService:
         dispatcher: GatewayProbeDispatcher,
         issuer: str,
         key_id: str,
+        signing_key_reference: SecretReference,
+        secret_use_authorizer: SecretUseResolutionAuthorizer,
         epoch_clock: Callable[[], int],
         clock: Callable[[], str],
         id_factory: Callable[[], str],
@@ -243,6 +261,16 @@ class GatewayProbeCommandService:
         self._dispatcher = dispatcher
         self._issuer = issuer
         self._key_id = key_id
+        if not isinstance(signing_key_reference, SecretReference):
+            raise GatewayProbeError(
+                "gateway signing key reference must be SecretReference"
+            )
+        if not hasattr(secret_use_authorizer, "authorize_resolution"):
+            raise GatewayProbeError(
+                "gateway secret use authorizer must expose authorize_resolution"
+            )
+        self._signing_key_reference = signing_key_reference
+        self._secret_use_authorizer = secret_use_authorizer
         self._epoch_clock = epoch_clock
         self._clock = clock
         self._id_factory = id_factory
@@ -366,17 +394,35 @@ class GatewayProbeCommandService:
             unit_of_work.commit()
 
         try:
-            dispatch_result = self._dispatcher.dispatch(
-                GatewayProbeDispatch(grant, command.request, endpoint)
-            )
-        except GatewayProbeDispatchError as error:
+            resolution_grant = self._authorize_signing_key(command, attempt)
+        except SecretProviderRegistrationError:
             dispatch_result = GatewayProbeDispatchResult(
-                status=GatewayProbeAttemptStatus.FAILED,
-                code="gateway-dispatch-failed",
-                evidence=BoundedEvidence.from_mapping(
-                    {"error_type": type(error).__name__}
-                ),
+                status=GatewayProbeAttemptStatus.REJECTED,
+                code="gateway-signing-secret-not-authorized",
             )
+        except GatewayProbeError:
+            dispatch_result = GatewayProbeDispatchResult(
+                status=GatewayProbeAttemptStatus.REJECTED,
+                code="gateway-signing-secret-grant-invalid",
+            )
+        else:
+            try:
+                dispatch_result = self._dispatcher.dispatch(
+                    GatewayProbeDispatch(
+                        grant,
+                        command.request,
+                        endpoint,
+                        resolution_grant,
+                    )
+                )
+            except GatewayProbeDispatchError as error:
+                dispatch_result = GatewayProbeDispatchResult(
+                    status=GatewayProbeAttemptStatus.FAILED,
+                    code="gateway-dispatch-failed",
+                    evidence=BoundedEvidence.from_mapping(
+                        {"error_type": type(error).__name__}
+                    ),
+                )
 
         with self._unit_of_work_factory() as unit_of_work:
             completed = unit_of_work.stores.gateway_probes.complete(
@@ -388,6 +434,46 @@ class GatewayProbeCommandService:
             )
             unit_of_work.commit()
         return GatewayProbeCommandResult(completed)
+
+    def _authorize_signing_key(
+        self,
+        command: RequestGatewayProbe,
+        attempt: GatewayProbeAttempt,
+    ) -> SecretResolutionGrant:
+        intent = SecretUseIntent.GATEWAY_PROBE_SIGNING_KEY
+        resolution_grant = self._secret_use_authorizer.authorize_resolution(
+            AuthorizeSecretUse(
+                workspace_id=command.context.workspace_id,
+                reference=self._signing_key_reference,
+                intent=intent,
+                actor_subject=command.context.actor_id,
+                correlation_id=secret_use_correlation_for(
+                    workspace_id=command.context.workspace_id,
+                    reference=self._signing_key_reference,
+                    intent=intent,
+                    actor_subject=command.context.actor_id,
+                    operation_id=attempt.probe_id,
+                    probe_id=attempt.probe_id,
+                ),
+                requested_at=attempt.requested_at,
+                actor_scopes=command.context.granted_scopes,
+                operation_id=attempt.probe_id,
+                probe_id=attempt.probe_id,
+            )
+        )
+        if (
+            not isinstance(resolution_grant, SecretResolutionGrant)
+            or resolution_grant.workspace_id != command.context.workspace_id
+            or resolution_grant.probe_id != attempt.probe_id
+            or not resolution_grant.permits(
+                self._signing_key_reference,
+                intent,
+            )
+        ):
+            raise GatewayProbeError(
+                "secret use authorizer returned an invalid gateway grant"
+            )
+        return resolution_grant
 
 
 def _require_matching_probe_kind(kind: GatewayProbeCommandKind, target: object) -> None:

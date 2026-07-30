@@ -39,7 +39,11 @@ from control_plane_kit_core.runtime_authority import (
     RuntimeAuthorityReferenceCodec,
     RuntimeEffectContractError,
 )
-from control_plane_kit_core.secrets import CredentialReference, SecretResolutionError
+from control_plane_kit_core.secrets import (
+    CredentialReference,
+    SecretResolutionError,
+    SecretResolutionGrant,
+)
 from control_plane_kit_core.types import Protocol, RuntimeKind
 
 
@@ -447,10 +451,13 @@ class RuntimeEffectRequest:
     operation: ActivityOperation
     authority_ref: RuntimeAuthorityReference | None = None
     authority_deliveries: tuple[RuntimeAuthorityAccessDelivery, ...] = ()
+    secret_resolution_grants: tuple[SecretResolutionGrant, ...] = ()
     products: tuple[RuntimeProductMaterial, ...] = ()
 
     def __post_init__(self) -> None:
         _required_text(self.effect_id, "effect_id")
+        if not isinstance(self.source, RuntimeEffectSource):
+            raise RuntimeEffectContractError("runtime effect source is malformed")
         if not isinstance(self.kind, RuntimeEffectKind):
             raise RuntimeEffectContractError("runtime effect kind must be closed")
         if not isinstance(self.runtime_kind, RuntimeKind):
@@ -488,8 +495,45 @@ class RuntimeEffectRequest:
                         "runtime authority delivery reference must match request authority"
                     )
         object.__setattr__(self, "authority_deliveries", authority_deliveries)
-        if not isinstance(self.source, RuntimeEffectSource):
-            raise RuntimeEffectContractError("runtime effect source is malformed")
+        secret_resolution_grants = tuple(
+            sorted(
+                self.secret_resolution_grants,
+                key=lambda value: (
+                    value.reference.reference_id,
+                    value.intent.value,
+                    value.authorization_id,
+                ),
+            )
+        )
+        if not all(
+            isinstance(value, SecretResolutionGrant)
+            for value in secret_resolution_grants
+        ):
+            raise RuntimeEffectContractError(
+                "runtime secret resolution grants must be SecretResolutionGrant"
+            )
+        grant_uses = tuple(
+            (value.reference, value.intent)
+            for value in secret_resolution_grants
+        )
+        if len(set(grant_uses)) != len(grant_uses):
+            raise RuntimeEffectContractError(
+                "runtime secret resolution grants must be unique by reference and intent"
+            )
+        for grant in secret_resolution_grants:
+            if grant.workspace_id != self.source.workspace_id:
+                raise RuntimeEffectContractError(
+                    "runtime secret resolution grant workspace must match request"
+                )
+            if grant.effect_id is not None and grant.effect_id != self.effect_id:
+                raise RuntimeEffectContractError(
+                    "runtime secret resolution grant effect must match request"
+                )
+        object.__setattr__(
+            self,
+            "secret_resolution_grants",
+            secret_resolution_grants,
+        )
         if not isinstance(self.activity_id, ActivityId):
             raise RuntimeEffectContractError("activity_id must be ActivityId")
         try:
@@ -516,6 +560,9 @@ class RuntimeEffectRequest:
             else self.authority_ref.descriptor(),
             "authority_deliveries": [
                 value.descriptor() for value in self.authority_deliveries
+            ],
+            "secret_resolution_grants": [
+                value.descriptor() for value in self.secret_resolution_grants
             ],
             "source": self.source.descriptor(),
             "activity_id": self.activity_id.value,

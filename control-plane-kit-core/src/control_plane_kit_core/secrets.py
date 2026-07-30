@@ -15,6 +15,8 @@ _PROVIDER_ID = re.compile(r"[a-z][a-z0-9-]{0,62}\Z")
 _REFERENCE_SEGMENT = re.compile(r"[A-Za-z0-9._-]{1,128}\Z")
 _ENDPOINT_REFERENCE = re.compile(r"[a-z][a-z0-9._-]{0,127}\Z")
 _ENDPOINT_REFERENCE_KEYS = frozenset({"reference_id"})
+_GRANT_IDENTIFIER = re.compile(r"[A-Za-z0-9][A-Za-z0-9._:-]{0,199}\Z")
+_SHA256 = re.compile(r"[0-9a-f]{64}\Z")
 
 
 class SecretResolutionCode(StrEnum):
@@ -165,6 +167,104 @@ class SecretReference:
 
 
 CredentialReference = SecretReference
+
+
+@dataclass(frozen=True)
+class SecretResolutionGrant:
+    """Committed, reference-only authority for one exact provider resolution."""
+
+    authorization_id: str
+    workspace_id: str
+    reference_registration_id: str
+    provider_registration_id: str
+    endpoint_reference: SecretProviderEndpointReference
+    credential_reference: CredentialReference
+    reference: SecretReference
+    intent: SecretUseIntent
+    actor_subject: str
+    correlation_id: str
+    intent_fingerprint: str
+    operation_id: str | None = None
+    session_id: str | None = None
+    run_id: str | None = None
+    activity_id: str | None = None
+    effect_id: str | None = None
+    probe_id: str | None = None
+
+    def __post_init__(self) -> None:
+        for value, label in (
+            (self.authorization_id, "authorization_id"),
+            (self.workspace_id, "workspace_id"),
+            (self.reference_registration_id, "reference_registration_id"),
+            (self.provider_registration_id, "provider_registration_id"),
+            (self.actor_subject, "actor_subject"),
+            (self.correlation_id, "correlation_id"),
+        ):
+            _validate_grant_identifier(value, label)
+        if not isinstance(
+            self.endpoint_reference,
+            SecretProviderEndpointReference,
+        ):
+            raise SecretProviderContractError(
+                "secret resolution grant endpoint reference is malformed"
+            )
+        if not isinstance(self.credential_reference, SecretReference):
+            raise SecretProviderContractError(
+                "secret resolution grant credential reference is malformed"
+            )
+        if not isinstance(self.reference, SecretReference):
+            raise SecretProviderContractError(
+                "secret resolution grant reference is malformed"
+            )
+        if not isinstance(self.intent, SecretUseIntent):
+            raise SecretProviderContractError(
+                "secret resolution grant intent is malformed"
+            )
+        if (
+            not isinstance(self.intent_fingerprint, str)
+            or not _SHA256.fullmatch(self.intent_fingerprint)
+        ):
+            raise SecretProviderContractError(
+                "secret resolution grant fingerprint is malformed"
+            )
+        for value, label in (
+            (self.operation_id, "operation_id"),
+            (self.session_id, "session_id"),
+            (self.run_id, "run_id"),
+            (self.activity_id, "activity_id"),
+            (self.effect_id, "effect_id"),
+            (self.probe_id, "probe_id"),
+        ):
+            if value is not None:
+                _validate_grant_identifier(value, label)
+
+    def permits(
+        self,
+        reference: SecretReference,
+        intent: SecretUseIntent,
+    ) -> bool:
+        return self.reference == reference and self.intent is intent
+
+    def descriptor(self) -> dict[str, object]:
+        return {
+            "authorization_id": self.authorization_id,
+            "workspace_id": self.workspace_id,
+            "reference_registration_id": self.reference_registration_id,
+            "provider_registration_id": self.provider_registration_id,
+            "endpoint_reference": self.endpoint_reference.reference_id,
+            "credential_reference": self.credential_reference.reference_id,
+            "reference_id": self.reference.reference_id,
+            "intent": self.intent.value,
+            "actor_subject": self.actor_subject,
+            "correlation_id": self.correlation_id,
+            "intent_fingerprint": self.intent_fingerprint,
+            "operation_id": self.operation_id,
+            "session_id": self.session_id,
+            "run_id": self.run_id,
+            "activity_id": self.activity_id,
+            "effect_id": self.effect_id,
+            "probe_id": self.probe_id,
+        }
 
 
 @dataclass(frozen=True, order=True)
@@ -467,6 +567,12 @@ class SecretResolver(Protocol):
     def resolve(self, reference: SecretReference) -> SecretResolution: ...
 
 
+class AuthorizedSecretResolver(Protocol):
+    """IO authority that resolves only a committed, exact operations grant."""
+
+    def resolve(self, grant: SecretResolutionGrant) -> SecretResolution: ...
+
+
 @dataclass(frozen=True, repr=False)
 class LocalDevelopmentSecretResolver:
     """Explicit process-memory resolver for local development and tests."""
@@ -532,3 +638,44 @@ def require_resolved_secret(
                 SecretResolutionCode.INVALID_RESOLVER_RESULT,
                 "secret resolver returned an invalid result",
             )
+
+
+def require_authorized_secret(
+    resolver: AuthorizedSecretResolver,
+    grant: SecretResolutionGrant,
+) -> SecretValue:
+    """Interpret one grant-bound resolution without exposing secret material."""
+
+    if not isinstance(grant, SecretResolutionGrant):
+        raise SecretResolutionError(
+            SecretResolutionCode.DENIED,
+            "secret resolution requires committed authorization",
+        )
+    result = resolver.resolve(grant)
+    match result:
+        case SecretResolved(reference=resolved_reference, value=value) if (
+            resolved_reference == grant.reference
+        ):
+            return value
+        case SecretMissing():
+            raise SecretResolutionError(
+                SecretResolutionCode.MISSING,
+                "secret reference could not be resolved",
+            )
+        case SecretDenied():
+            raise SecretResolutionError(
+                SecretResolutionCode.DENIED,
+                "secret resolution grant was denied",
+            )
+        case _:
+            raise SecretResolutionError(
+                SecretResolutionCode.INVALID_RESOLVER_RESULT,
+                "authorized secret resolver returned an invalid result",
+            )
+
+
+def _validate_grant_identifier(value: object, label: str) -> None:
+    if not isinstance(value, str) or not _GRANT_IDENTIFIER.fullmatch(value):
+        raise SecretProviderContractError(
+            f"secret resolution grant {label} is malformed"
+        )
