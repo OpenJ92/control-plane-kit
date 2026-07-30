@@ -1346,6 +1346,13 @@ def _ingress_authority(values: Mapping[str, object]) -> object:
                 zone_name=_text(raw, "zone_name"),
                 api_token_ref=SecretReference(_text(raw, "api_token_ref")),
                 allowed_hostname_pattern=_text(raw, "allowed_hostname_pattern"),
+                generated_secret_provider_registration_id=_text(
+                    raw,
+                    "generated_secret_provider_registration_id",
+                ),
+                generated_secret_reference_prefix=SecretReference(
+                    _text(raw, "generated_secret_reference_prefix")
+                ),
             )
         except (TypeError, ValueError) as error:
             raise CpkServerApplicationError(400, str(error)) from error

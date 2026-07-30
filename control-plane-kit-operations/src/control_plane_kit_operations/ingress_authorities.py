@@ -2,12 +2,11 @@
 
 from __future__ import annotations
 
-import base64
 from dataclasses import dataclass, field
 from enum import StrEnum
 from hashlib import sha256
 import re
-from typing import Any, Mapping, Protocol
+from typing import Any, Mapping
 
 from control_plane_kit_core.policies import PolicyScope
 from control_plane_kit_core.public_ingress import (
@@ -15,10 +14,10 @@ from control_plane_kit_core.public_ingress import (
     PublicIngressLifecycle,
 )
 from control_plane_kit_core.secrets import (
+    SecretCustodyReceipt,
     SecretEnvironmentDelivery,
     SecretReference,
     SecretUseIntent,
-    SecretValue,
 )
 
 
@@ -107,21 +106,6 @@ class GeneratedSecretPurpose(StrEnum):
     CLOUDFLARED_TUNNEL_TOKEN = "cloudflared-tunnel-token"
 
 
-class GeneratedSecretRecorder(Protocol):
-    """Boundary that accepts raw generated secrets and returns safe references."""
-
-    def record_generated_secret(
-        self,
-        *,
-        workspace_id: str,
-        purpose: GeneratedSecretPurpose,
-        source_run_id: str,
-        source_activity_id: str,
-        source_event_id: str,
-        secret_value: SecretValue,
-    ) -> SecretReference: ...
-
-
 @dataclass(frozen=True)
 class CloudflareZoneIngressAuthority:
     """Authority to allocate named public ingress inside one Cloudflare zone."""
@@ -131,12 +115,22 @@ class CloudflareZoneIngressAuthority:
     zone_name: str
     api_token_ref: SecretReference = field(repr=False)
     allowed_hostname_pattern: str
+    generated_secret_provider_registration_id: str
+    generated_secret_reference_prefix: SecretReference
 
     def __post_init__(self) -> None:
         _validate_identifier(self.account_id, "Cloudflare account_id")
         _validate_identifier(self.zone_id, "Cloudflare zone_id")
         _validate_zone_name(self.zone_name)
         _require_secret_reference(self.api_token_ref, "api_token_ref")
+        _validate_identifier(
+            self.generated_secret_provider_registration_id,
+            "generated_secret_provider_registration_id",
+        )
+        _require_secret_reference(
+            self.generated_secret_reference_prefix,
+            "generated_secret_reference_prefix",
+        )
         _validate_hostname_pattern(
             self.allowed_hostname_pattern,
             zone_name=self.zone_name,
@@ -150,6 +144,12 @@ class CloudflareZoneIngressAuthority:
             "zone_name": self.zone_name,
             "api_token_ref": self.api_token_ref.reference_id,
             "allowed_hostname_pattern": self.allowed_hostname_pattern,
+            "generated_secret_provider_registration_id": (
+                self.generated_secret_provider_registration_id
+            ),
+            "generated_secret_reference_prefix": (
+                self.generated_secret_reference_prefix.reference_id
+            ),
         }
 
     def storage_descriptor(self) -> dict[str, object]:
@@ -357,6 +357,11 @@ class GeneratedIngressSecretReference:
     workspace_id: str
     purpose: GeneratedSecretPurpose
     secret_ref: SecretReference
+    provider_registration_id: str
+    reference_registration_id: str
+    custody_id: str
+    provider_version_id: str
+    provider_version_number: int
     recorded_at: str
     source_run_id: str
     source_activity_id: str
@@ -369,6 +374,23 @@ class GeneratedIngressSecretReference:
                 "generated secret purpose must be closed"
             )
         _require_secret_reference(self.secret_ref, "secret_ref")
+        _validate_identifier(
+            self.provider_registration_id,
+            "provider_registration_id",
+        )
+        _validate_identifier(
+            self.reference_registration_id,
+            "reference_registration_id",
+        )
+        _validate_identifier(self.custody_id, "custody_id")
+        _validate_identifier(self.provider_version_id, "provider_version_id")
+        if (
+            type(self.provider_version_number) is not int
+            or self.provider_version_number < 1
+        ):
+            raise IngressAuthorityRegistrationError(
+                "provider_version_number must be a positive integer"
+            )
         _validate_identifier(self.recorded_at, "recorded_at")
         _validate_identifier(self.source_run_id, "source_run_id")
         _validate_identifier(self.source_activity_id, "source_activity_id")
@@ -379,6 +401,11 @@ class GeneratedIngressSecretReference:
             "workspace_id": self.workspace_id,
             "purpose": self.purpose.value,
             "secret_ref": self.secret_ref.reference_id,
+            "provider_registration_id": self.provider_registration_id,
+            "reference_registration_id": self.reference_registration_id,
+            "custody_id": self.custody_id,
+            "provider_version_id": self.provider_version_id,
+            "provider_version_number": self.provider_version_number,
             "recorded_at": self.recorded_at,
             "source_run_id": self.source_run_id,
             "source_activity_id": self.source_activity_id,
@@ -386,101 +413,37 @@ class GeneratedIngressSecretReference:
         }
 
 
-class InMemoryGeneratedSecretRecorder:
-    """Development recorder until generated secrets move to a dedicated product."""
-
-    def __init__(self, reference_root: str = "secret://generated/ingress") -> None:
-        root = SecretReference(f"{reference_root}/root")
-        self._reference_root = "/".join((root.reference_id.rsplit("/", 1)[0],))
-        self._values: dict[SecretReference, SecretValue] = {}
-
-    def record_generated_secret(
-        self,
-        *,
-        workspace_id: str,
-        purpose: GeneratedSecretPurpose,
-        source_run_id: str,
-        source_activity_id: str,
-        source_event_id: str,
-        secret_value: SecretValue,
-    ) -> SecretReference:
-        _validate_identifier(workspace_id, "workspace_id")
-        if not isinstance(purpose, GeneratedSecretPurpose):
-            raise IngressAuthorityRegistrationError(
-                "generated secret purpose must be closed"
-            )
-        _validate_identifier(source_run_id, "source_run_id")
-        _validate_identifier(source_activity_id, "source_activity_id")
-        _validate_identifier(source_event_id, "source_event_id")
-        if not isinstance(secret_value, SecretValue):
-            raise IngressAuthorityRegistrationError(
-                "generated secret recorder requires SecretValue"
-            )
-        reference = SecretReference(
-            "/".join(
-                (
-                    self._reference_root,
-                    _secret_reference_segment(workspace_id),
-                    _secret_reference_segment(purpose.value),
-                    _secret_reference_segment(source_run_id),
-                    _secret_reference_segment(source_activity_id),
-                    _secret_reference_segment(source_event_id),
-                )
-            )
-        )
-        existing = self._values.get(reference)
-        if existing is not None and existing.reveal() != secret_value.reveal():
-            raise GeneratedSecretRecordingConflict(
-                "generated secret replacement requires explicit policy"
-            )
-        self._values[reference] = secret_value
-        return reference
-
-    def resolve_generated_secret(self, reference: SecretReference) -> SecretValue:
-        _require_secret_reference(reference, "reference")
-        try:
-            return self._values[reference]
-        except KeyError as error:
-            raise IngressAuthorityRegistrationError(
-                "generated secret reference was not found"
-            ) from error
-
-
 def record_generated_ingress_secret(
     *,
-    recorder: GeneratedSecretRecorder,
     workspace_id: str,
     purpose: GeneratedSecretPurpose,
+    receipt: SecretCustodyReceipt,
+    reference_registration_id: str,
     source_run_id: str,
     source_activity_id: str,
     source_event_id: str,
     recorded_at: str,
-    secret_value: SecretValue,
 ) -> GeneratedIngressSecretReference:
-    """Record a raw provider result and return durable reference-only evidence."""
+    """Project a provider custody receipt into durable ingress evidence."""
 
-    secret_ref = recorder.record_generated_secret(
-        workspace_id=workspace_id,
-        purpose=purpose,
-        source_run_id=source_run_id,
-        source_activity_id=source_activity_id,
-        source_event_id=source_event_id,
-        secret_value=secret_value,
-    )
+    if not isinstance(receipt, SecretCustodyReceipt):
+        raise IngressAuthorityRegistrationError(
+            "generated ingress secret requires SecretCustodyReceipt"
+        )
     return GeneratedIngressSecretReference(
         workspace_id=workspace_id,
         purpose=purpose,
-        secret_ref=secret_ref,
+        secret_ref=receipt.reference,
+        provider_registration_id=receipt.provider_registration_id,
+        reference_registration_id=reference_registration_id,
+        custody_id=receipt.custody_id,
+        provider_version_id=receipt.version_id,
+        provider_version_number=receipt.version_number,
         recorded_at=recorded_at,
         source_run_id=source_run_id,
         source_activity_id=source_activity_id,
         source_event_id=source_event_id,
     )
-
-
-def _secret_reference_segment(value: str) -> str:
-    encoded = base64.urlsafe_b64encode(value.encode("utf-8")).decode("ascii")
-    return "b64-" + encoded.rstrip("=")
 
 
 def cloudflare_ingress_teardown_plan(
@@ -625,6 +588,8 @@ class CloudflareZoneIngressAuthorityCodec:
                     "zone_name",
                     "api_token_ref",
                     "allowed_hostname_pattern",
+                    "generated_secret_provider_registration_id",
+                    "generated_secret_reference_prefix",
                 }
             ),
             "Cloudflare ingress authority",
@@ -640,6 +605,13 @@ class CloudflareZoneIngressAuthorityCodec:
             zone_name=_text(mapping, "zone_name"),
             api_token_ref=SecretReference(_text(mapping, "api_token_ref")),
             allowed_hostname_pattern=_text(mapping, "allowed_hostname_pattern"),
+            generated_secret_provider_registration_id=_text(
+                mapping,
+                "generated_secret_provider_registration_id",
+            ),
+            generated_secret_reference_prefix=SecretReference(
+                _text(mapping, "generated_secret_reference_prefix")
+            ),
         )
 
 

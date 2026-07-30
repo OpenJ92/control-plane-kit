@@ -5555,6 +5555,73 @@ short result transaction -> commit
 ```
 
 Operations never imports a provider HTTP client and never receives
-`SecretValue`. The remaining #1183 interpreter pass must consume these grants
+`SecretValue`. The later #1185 interpreter pass must consume these grants
 through the bounded provider client from #1182 and remove silent production use
 of process-local reference resolvers.
+
+## #1184 Generated Cloudflare Token Custody
+
+#1184 removes the last raw generated Cloudflare tunnel token from the operations
+boundary. An admitted Cloudflare ingress authority now explicitly selects both
+the workspace secret-provider registration and the allowed generated-reference
+prefix. Provider choice is never inferred from product identity, provider count,
+or a hard-coded `secret://generated` convention.
+
+The allocation path is now:
+
+```text
+operations selects admitted provider and deterministic SecretReference
+  -> operations emits reference-only SecretCustodyGrant
+    -> Cloudflare interpreter creates tunnel, configuration, and DNS
+      -> Cloudflare interpreter obtains the generated tunnel token
+        -> concrete SecretCustodian writes it directly to provider custody
+          -> interpreter returns SecretCustodyReceipt plus exact Cloudflare IDs
+            -> operations validates the receipt
+              -> one UnitOfWork records reference admission and ownership evidence
+```
+
+`SecretCustodyGrant` pins workspace, provider registration, opaque provider
+endpoint and credential references, exact generated reference, intent, trusted
+actor, correlation, and workflow identities. `SecretCustodyReceipt` returns only
+provider/reference/version identity and status. Neither type contains plaintext
+or ciphertext. The former in-memory generated-secret recorder and raw-token
+allocation result have been removed.
+
+The external-effect transaction law remains intact:
+
+```text
+short transactions select and authorize reference-only custody
+  -> commit
+    -> Cloudflare and secret-provider IO
+      -> one short transaction atomically folds reference and ownership evidence
+```
+
+The Cloudflare interpreter treats allocation as a typed in-activity mini-saga:
+
+```text
+create tunnel
+  -> configure tunnel
+    -> upsert DNS
+      -> fetch tunnel token
+        -> write provider custody
+```
+
+Failure compensates completed steps in reverse order. Any attempted provider
+write triggers exact revocation, including ambiguous writes that return no
+receipt; an already-absent reference is an idempotent clean result. A mismatched
+receipt is rejected, compensated, and cannot admit a secret reference or
+Cloudflare resource. Compensation never broad-lists or deletes unrelated
+Cloudflare resources.
+
+This does not yet make provider substeps restart-durable. If compensation itself
+is uncertain, the activity reports uncertainty without claiming clean absence.
+#1095 owns durable staged external-resource evidence, reverse compensation,
+orphan persistence, and reconciliation. #1092 owns attempts, leases, fencing,
+and interrupted-effect recovery. #1096 may later compose the generic saga
+language into the executable DeploymentProgram only after those guarantees
+exist.
+
+Validation passed all 447 core tests, 229 operations tests, and 105 interpreter
+tests, including real Postgres rollback, exact receipt matching, provider-write
+failure compensation, idempotent revocation, package-boundary checks, compile,
+and import validation. No live Cloudflare resources were mutated in #1184.

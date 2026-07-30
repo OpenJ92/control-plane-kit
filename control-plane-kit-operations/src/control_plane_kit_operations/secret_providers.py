@@ -13,6 +13,8 @@ from typing import Any, Mapping, Protocol
 
 from control_plane_kit_core.policies import PolicyScope
 from control_plane_kit_core.secrets import (
+    SecretCustodyGrant,
+    SecretCustodyReceipt,
     SecretProviderEndpointReference,
     SecretProviderId,
     SecretReference,
@@ -762,6 +764,168 @@ def secret_resolution_grant_for(
         effect_id=authorized.effect_id,
         probe_id=authorized.probe_id,
     )
+
+
+def secret_custody_grant_for(
+    *,
+    provider: RegisteredSecretProvider,
+    workspace_id: str,
+    reference: SecretReference,
+    intent: SecretUseIntent,
+    actor_subject: str,
+    actor_scopes: tuple[PolicyScope, ...],
+    correlation_id: str,
+    operation_id: str | None = None,
+    session_id: str | None = None,
+    run_id: str | None = None,
+    activity_id: str | None = None,
+    effect_id: str | None = None,
+) -> SecretCustodyGrant:
+    """Authorize one deterministic generated reference under admitted provider truth."""
+
+    if not isinstance(provider, RegisteredSecretProvider):
+        raise SecretProviderRegistrationError(
+            "secret custody requires RegisteredSecretProvider"
+        )
+    _require_scope(actor_scopes, PolicyScope.SECRET_PROVIDER_USE)
+    _require_identifier(workspace_id, "workspace_id")
+    _require_secret_reference(reference, "reference")
+    if not isinstance(intent, SecretUseIntent):
+        raise SecretProviderRegistrationError(
+            "secret custody requires SecretUseIntent"
+        )
+    _require_identifier(actor_subject, "actor_subject")
+    _require_correlation_identifier(correlation_id, "correlation_id")
+    if provider.workspace_id != workspace_id:
+        raise SecretProviderRegistrationError(
+            "secret custody provider belongs to a different workspace"
+        )
+    candidate = RegisteredSecretReference(
+        registration_id="sref_candidate",
+        workspace_id=workspace_id,
+        reference=reference,
+        provider_registration_id=provider.registration_id,
+        allowed_intents=(intent,),
+        admitted_by=actor_subject,
+        admitted_at="candidate",
+    )
+    _validate_reference_admission(candidate, provider)
+    semantics = {
+        "workspace_id": workspace_id,
+        "provider_registration_id": provider.registration_id,
+        "reference_id": reference.reference_id,
+        "intent": intent.value,
+        "actor_subject": actor_subject,
+        "correlation_id": correlation_id,
+        "operation_id": operation_id,
+        "session_id": session_id,
+        "run_id": run_id,
+        "activity_id": activity_id,
+        "effect_id": effect_id,
+    }
+    fingerprint = _digest(semantics)
+    custody_identity = _digest(
+        {
+            "workspace_id": workspace_id,
+            "provider_registration_id": provider.registration_id,
+            "reference_id": reference.reference_id,
+            "intent": intent.value,
+        }
+    )
+    return SecretCustodyGrant(
+        custody_id=f"scust_{custody_identity}",
+        workspace_id=workspace_id,
+        provider_registration_id=provider.registration_id,
+        endpoint_reference=provider.endpoint_reference,
+        credential_reference=provider.credential_reference,
+        reference=reference,
+        intent=intent,
+        actor_subject=actor_subject,
+        correlation_id=correlation_id,
+        custody_fingerprint=fingerprint,
+        operation_id=operation_id,
+        session_id=session_id,
+        run_id=run_id,
+        activity_id=activity_id,
+        effect_id=effect_id,
+    )
+
+
+def generated_secret_reference_candidate(
+    *,
+    grant: SecretCustodyGrant,
+    receipt: SecretCustodyReceipt,
+    admitted_at: str,
+) -> RegisteredSecretReference:
+    """Build operations admission from an exact provider custody receipt."""
+
+    if not isinstance(grant, SecretCustodyGrant) or not isinstance(
+        receipt,
+        SecretCustodyReceipt,
+    ):
+        raise SecretProviderRegistrationError(
+            "generated secret admission requires custody grant and receipt"
+        )
+    if not receipt.matches(grant):
+        raise SecretProviderRegistrationError(
+            "secret custody receipt does not match its grant"
+        )
+    metadata = {
+        "custody_id": receipt.custody_id,
+        "provider_version_id": receipt.version_id,
+        "provider_version_number": receipt.version_number,
+    }
+    return RegisterSecretReferenceCommand(
+        workspace_id=grant.workspace_id,
+        reference=grant.reference,
+        provider_registration_id=grant.provider_registration_id,
+        allowed_intents=(grant.intent,),
+        admitted_by=grant.actor_subject,
+        admitted_at=admitted_at,
+        actor_scopes=(PolicyScope.SECRET_PROVIDER_REGISTER,),
+        metadata=metadata,
+    ).candidate()
+
+
+def secret_custody_correlation_for(
+    *,
+    workspace_id: str,
+    provider_registration_id: str,
+    reference: SecretReference,
+    intent: SecretUseIntent,
+    actor_subject: str,
+    operation_id: str | None = None,
+    session_id: str | None = None,
+    run_id: str | None = None,
+    activity_id: str | None = None,
+    effect_id: str | None = None,
+) -> str:
+    """Derive retry-stable correlation for one generated-secret custody write."""
+
+    _require_identifier(workspace_id, "workspace_id")
+    _require_identifier(
+        provider_registration_id,
+        "provider_registration_id",
+    )
+    _require_secret_reference(reference, "reference")
+    if not isinstance(intent, SecretUseIntent):
+        raise SecretProviderRegistrationError(
+            "secret custody correlation requires SecretUseIntent"
+        )
+    _require_identifier(actor_subject, "actor_subject")
+    semantics = {
+        "workspace_id": workspace_id,
+        "provider_registration_id": provider_registration_id,
+        "reference_id": reference.reference_id,
+        "intent": intent.value,
+        "actor_subject": actor_subject,
+        "operation_id": operation_id,
+        "session_id": session_id,
+        "run_id": run_id,
+        "activity_id": activity_id,
+        "effect_id": effect_id,
+    }
+    return f"secret-custody:{_digest(semantics)}"
 
 
 def secret_use_correlation_for(

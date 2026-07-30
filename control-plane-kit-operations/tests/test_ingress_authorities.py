@@ -10,7 +10,7 @@ from control_plane_kit_core.public_ingress import (
     IngressAuthorityReference,
     PublicIngressLifecycle,
 )
-from control_plane_kit_core.secrets import SecretReference, SecretValue
+from control_plane_kit_core.secrets import SecretCustodyReceipt, SecretReference
 from control_plane_kit_operations.ingress_authorities import (
     CloudflareIngressTeardownActionKind,
     CloudflareOwnedIngressResource,
@@ -18,7 +18,6 @@ from control_plane_kit_operations.ingress_authorities import (
     CloudflareZoneIngressAuthority,
     GeneratedSecretPurpose,
     GeneratedSecretRecordingConflict,
-    InMemoryGeneratedSecretRecorder,
     IngressAuthorityAuthorizationDenied,
     IngressAuthorityNotFound,
     IngressAuthorityProviderKind,
@@ -51,6 +50,10 @@ class IngressAuthorityValueTests(unittest.TestCase):
             zone_name="openj92.dev",
             api_token_ref=SecretReference("secret://cloudflare/openj92/api-token"),
             allowed_hostname_pattern="cpk-gateway-*.openj92.dev",
+
+            generated_secret_provider_registration_id="sprov-generated-ingress",
+
+            generated_secret_reference_prefix=SecretReference("secret://generated/ingress"),
         )
 
         descriptor = authority.descriptor()
@@ -74,6 +77,10 @@ class IngressAuthorityValueTests(unittest.TestCase):
                 zone_name="openj92.dev",
                 api_token_ref="cf_api_token_raw",  # type: ignore[arg-type]
                 allowed_hostname_pattern="cpk-gateway-*.openj92.dev",
+
+                generated_secret_provider_registration_id="sprov-generated-ingress",
+
+                generated_secret_reference_prefix=SecretReference("secret://generated/ingress"),
             )
         with self.assertRaisesRegex(ValueError, "zone"):
             CloudflareZoneIngressAuthority(
@@ -82,6 +89,10 @@ class IngressAuthorityValueTests(unittest.TestCase):
                 zone_name="openj92.dev",
                 api_token_ref=SecretReference("secret://cloudflare/openj92/api-token"),
                 allowed_hostname_pattern="*.example.com",
+
+                generated_secret_provider_registration_id="sprov-generated-ingress",
+
+                generated_secret_reference_prefix=SecretReference("secret://generated/ingress"),
             )
         with self.assertRaisesRegex(ValueError, "secret"):
             CloudflareZoneIngressAuthority(
@@ -90,6 +101,10 @@ class IngressAuthorityValueTests(unittest.TestCase):
                 zone_name="openj92.dev",
                 api_token_ref=SecretReference("secret://cloudflare/openj92/api-token"),
                 allowed_hostname_pattern="cpk-token-*.openj92.dev",
+
+                generated_secret_provider_registration_id="sprov-generated-ingress",
+
+                generated_secret_reference_prefix=SecretReference("secret://generated/ingress"),
             )
 
     def test_cloudflare_owned_resource_evidence_is_bounded_and_secret_free(self) -> None:
@@ -238,35 +253,36 @@ class IngressAuthorityValueTests(unittest.TestCase):
         self.assertNotIn("bearer", repr(plan).lower())
         self.assertNotIn("cf_api_token", repr(plan).lower())
 
-    def test_generated_tunnel_token_recording_returns_secret_reference_evidence(
+    def test_generated_tunnel_token_receipt_returns_reference_only_evidence(
         self,
     ) -> None:
-        recorder = InMemoryGeneratedSecretRecorder()
+        reference = SecretReference(
+            "secret://generated/ingress/cloudflared-tunnel-token/token-001"
+        )
 
         evidence = record_generated_ingress_secret(
-            recorder=recorder,
             workspace_id="workspace-a",
             purpose=GeneratedSecretPurpose.CLOUDFLARED_TUNNEL_TOKEN,
+            receipt=SecretCustodyReceipt(
+                custody_id="scust-generated-ingress",
+                provider_registration_id="sprov-generated-ingress",
+                reference=reference,
+                version_id="version-generated-ingress",
+                version_number=1,
+            ),
+            reference_registration_id="sref-generated-ingress",
             source_run_id="run-001",
             source_activity_id="activity-001",
             source_event_id="event-001",
             recorded_at="2026-07-28T07:00:00Z",
-            secret_value=SecretValue("eyJ-cloudflare-tunnel-token-bearer-value"),
         )
         descriptor = evidence.descriptor()
 
         self.assertEqual(
-            evidence.secret_ref.reference_id,
-            (
-                "secret://generated/ingress/b64-d29ya3NwYWNlLWE/"
-                "b64-Y2xvdWRmbGFyZWQtdHVubmVsLXRva2Vu/b64-cnVuLTAwMQ/"
-                "b64-YWN0aXZpdHktMDAx/b64-ZXZlbnQtMDAx"
-            ),
+            evidence.secret_ref,
+            reference,
         )
-        self.assertEqual(
-            recorder.resolve_generated_secret(evidence.secret_ref).reveal(),
-            "eyJ-cloudflare-tunnel-token-bearer-value",
-        )
+        self.assertEqual(evidence.provider_version_id, "version-generated-ingress")
         self.assertEqual(descriptor["purpose"], "cloudflared-tunnel-token")
         self.assertEqual(descriptor["source_event_id"], "event-001")
         self.assertNotIn("eyj-cloudflare", repr(descriptor).lower())
@@ -326,6 +342,10 @@ class IngressAuthorityValueTests(unittest.TestCase):
             zone_name="openj92.dev",
             api_token_ref=SecretReference("secret://cloudflare/openj92/api-token"),
             allowed_hostname_pattern="cpk-gateway-*.openj92.dev",
+
+            generated_secret_provider_registration_id="sprov-generated-ingress",
+
+            generated_secret_reference_prefix=SecretReference("secret://generated/ingress"),
         )
 
     def cloudflare_resource(
@@ -715,16 +735,24 @@ class IngressAuthorityStoreTests(unittest.TestCase):
     def test_generated_ingress_secret_reference_is_durable_and_secret_free(
         self,
     ) -> None:
-        recorder = InMemoryGeneratedSecretRecorder()
+        reference = SecretReference(
+            "secret://generated/ingress/cloudflared-tunnel-token/token-001"
+        )
         evidence = record_generated_ingress_secret(
-            recorder=recorder,
             workspace_id="workspace-a",
             purpose=GeneratedSecretPurpose.CLOUDFLARED_TUNNEL_TOKEN,
+            receipt=SecretCustodyReceipt(
+                custody_id="scust-generated-ingress",
+                provider_registration_id="sprov-generated-ingress",
+                reference=reference,
+                version_id="version-generated-ingress",
+                version_number=1,
+            ),
+            reference_registration_id="sref-generated-ingress",
             source_run_id="run-001",
             source_activity_id="activity-001",
             source_event_id="event-001",
             recorded_at="2026-07-28T07:00:00Z",
-            secret_value=SecretValue("eyJ-cloudflare-tunnel-token-bearer-value"),
         )
 
         with self.unit_of_work() as unit_of_work:
@@ -761,29 +789,29 @@ class IngressAuthorityStoreTests(unittest.TestCase):
             with self.assertRaisesRegex(GeneratedSecretRecordingConflict, "replacement"):
                 unit_of_work.stores.generated_ingress_secrets.record(
                     record_generated_ingress_secret(
-                        recorder=InMemoryGeneratedSecretRecorder(
-                            "secret://generated/alternate"
-                        ),
                         workspace_id="workspace-a",
                         purpose=GeneratedSecretPurpose.CLOUDFLARED_TUNNEL_TOKEN,
+                        receipt=SecretCustodyReceipt(
+                            custody_id="scust-generated-alternate",
+                            provider_registration_id="sprov-generated-ingress",
+                            reference=SecretReference(
+                                "secret://generated/ingress/alternate/token-001"
+                            ),
+                            version_id="version-generated-alternate",
+                            version_number=1,
+                        ),
+                        reference_registration_id="sref-generated-alternate",
                         source_run_id="run-001",
                         source_activity_id="activity-001",
                         source_event_id="event-001",
                         recorded_at="2026-07-28T07:00:00Z",
-                        secret_value=SecretValue(
-                            "eyJ-cloudflare-tunnel-token-bearer-value"
-                        ),
                     )
                 )
 
         descriptor = recorded.descriptor()
         self.assertEqual(
             descriptor["secret_ref"],
-            (
-                "secret://generated/ingress/b64-d29ya3NwYWNlLWE/"
-                "b64-Y2xvdWRmbGFyZWQtdHVubmVsLXRva2Vu/b64-cnVuLTAwMQ/"
-                "b64-YWN0aXZpdHktMDAx/b64-ZXZlbnQtMDAx"
-            ),
+            reference.reference_id,
         )
         self.assertNotIn("eyj-cloudflare", repr(descriptor).lower())
         self.assertNotIn("bearer-value", repr(descriptor).lower())
@@ -791,35 +819,35 @@ class IngressAuthorityStoreTests(unittest.TestCase):
     def test_generated_ingress_secret_reference_encodes_activity_ids(
         self,
     ) -> None:
-        recorder = InMemoryGeneratedSecretRecorder()
+        reference = SecretReference(
+            "secret://generated/ingress/cloudflared-tunnel-token/token-activity"
+        )
 
         evidence = record_generated_ingress_secret(
-            recorder=recorder,
             workspace_id="workspace-a",
             purpose=GeneratedSecretPurpose.CLOUDFLARED_TUNNEL_TOKEN,
+            receipt=SecretCustodyReceipt(
+                custody_id="scust-generated-ingress",
+                provider_registration_id="sprov-generated-ingress",
+                reference=reference,
+                version_id="version-generated-ingress",
+                version_number=1,
+            ),
+            reference_registration_id="sref-generated-ingress",
             source_run_id="run-001",
             source_activity_id="allocate-public-ingress:9800f8498edba0a5",
             source_event_id="event-001",
             recorded_at="2026-07-28T07:00:00Z",
-            secret_value=SecretValue("eyJ-cloudflare-tunnel-token-bearer-value"),
         )
 
+        self.assertEqual(evidence.secret_ref, reference)
         self.assertEqual(
-            evidence.secret_ref.reference_id,
-            (
-                "secret://generated/ingress/b64-d29ya3NwYWNlLWE/"
-                "b64-Y2xvdWRmbGFyZWQtdHVubmVsLXRva2Vu/b64-cnVuLTAwMQ/"
-                "b64-YWxsb2NhdGUtcHVibGljLWluZ3Jlc3M6OTgwMGY4NDk4ZWRiYTBhNQ/"
-                "b64-ZXZlbnQtMDAx"
-            ),
+            evidence.source_activity_id,
+            "allocate-public-ingress:9800f8498edba0a5",
         )
         self.assertEqual(
             evidence.descriptor()["source_activity_id"],
             "allocate-public-ingress:9800f8498edba0a5",
-        )
-        self.assertEqual(
-            recorder.resolve_generated_secret(evidence.secret_ref).reveal(),
-            "eyJ-cloudflare-tunnel-token-bearer-value",
         )
         self.assertNotIn("cf_api_token", repr(evidence.descriptor()).lower())
 
@@ -842,6 +870,10 @@ class IngressAuthorityStoreTests(unittest.TestCase):
             zone_name="openj92.dev",
             api_token_ref=SecretReference("secret://cloudflare/openj92/api-token"),
             allowed_hostname_pattern="cpk-gateway-*.openj92.dev",
+
+            generated_secret_provider_registration_id="sprov-generated-ingress",
+
+            generated_secret_reference_prefix=SecretReference("secret://generated/ingress"),
         )
 
 

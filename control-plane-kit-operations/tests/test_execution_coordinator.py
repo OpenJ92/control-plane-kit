@@ -182,6 +182,11 @@ class SideEvidenceWritingAdapter:
                     secret_ref=SecretReference(
                         "secret://generated/ingress/workspace-a/token"
                     ),
+                    provider_registration_id="sprov-generated-ingress",
+                    reference_registration_id="sref-generated-ingress",
+                    custody_id="scust-generated-ingress",
+                    provider_version_id="version-generated-ingress",
+                    provider_version_number=1,
                     recorded_at="2026-07-22T13:01:10Z",
                     source_run_id=context.run.run_id,
                     source_activity_id=context.activity.activity_id.value,

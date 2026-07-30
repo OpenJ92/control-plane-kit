@@ -8,6 +8,9 @@ from control_plane_kit_core.operations import (
 )
 from control_plane_kit_core.policies import PolicyScope
 from control_plane_kit_core.secrets import (
+    SecretCustodyGrant,
+    SecretCustodyReceipt,
+    SecretCustodyStatus,
     SecretProviderContractError,
     SecretProviderEndpointReference,
     SecretProviderEndpointReferenceCodec,
@@ -90,6 +93,47 @@ class SecretProviderContractTests(unittest.TestCase):
         )
         self.assertNotIn("secret_value", descriptor)
         self.assertNotIn("plaintext", repr(descriptor).lower())
+
+    def test_generated_secret_custody_is_reference_only_and_exact(self) -> None:
+        reference = SecretReference(
+            "secret://provider-a/generated/cloudflare/tunnel-a"
+        )
+        grant = SecretCustodyGrant(
+            custody_id="scust_" + "a" * 64,
+            workspace_id="workspace-a",
+            provider_registration_id="sprov_" + "b" * 64,
+            endpoint_reference=SecretProviderEndpointReference("provider-a"),
+            credential_reference=SecretReference(
+                "secret://bootstrap/provider-a-token"
+            ),
+            reference=reference,
+            intent=SecretUseIntent.CLOUDFLARE_TUNNEL_TOKEN,
+            actor_subject="worker-a",
+            correlation_id="secret-custody-" + "c" * 64,
+            custody_fingerprint="d" * 64,
+            run_id="run-a",
+            activity_id="activity-a",
+            effect_id="effect-a",
+        )
+        receipt = SecretCustodyReceipt(
+            custody_id=grant.custody_id,
+            provider_registration_id=grant.provider_registration_id,
+            reference=reference,
+            version_id="version-a",
+            version_number=1,
+        )
+
+        self.assertTrue(
+            grant.permits(
+                reference,
+                SecretUseIntent.CLOUDFLARE_TUNNEL_TOKEN,
+            )
+        )
+        self.assertTrue(receipt.matches(grant))
+        self.assertEqual(receipt.status, SecretCustodyStatus.ACTIVE)
+        self.assertNotIn("secret_value", grant.descriptor())
+        self.assertNotIn("plaintext", repr(grant.descriptor()).lower())
+        self.assertNotIn("plaintext", repr(receipt.descriptor()).lower())
 
     def test_provider_permissions_are_independent(self) -> None:
         self.assertEqual(
