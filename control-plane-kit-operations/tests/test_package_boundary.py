@@ -125,6 +125,20 @@ class OperationsPackageBoundaryTests(unittest.TestCase):
         ):
             self.assertNotIn(forbidden, rendered)
 
+    def test_secret_provider_public_types_are_exported(self) -> None:
+        import control_plane_kit_operations
+
+        self.assertTrue(
+            {
+                "AuthorizeSecretUse",
+                "AuthorizedSecretUse",
+                "SecretMetadataCollectionReadModel",
+                "SecretProviderRegistrationService",
+                "SecretUseAuthorizationConflict",
+                "SecretUseAuthorizationService",
+            }.issubset(control_plane_kit_operations.__all__)
+        )
+
 
 if __name__ == "__main__":
     unittest.main()
