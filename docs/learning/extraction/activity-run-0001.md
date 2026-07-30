@@ -5688,3 +5688,77 @@ transaction, and test-integrity checks. Focused live Docker materialization
 also proved a real read-only secret-file mount with bounded digest evidence and
 self-cleanup. No Cloudflare resource was mutated and no cpk-server source-live
 claim is made before #1186/#1187.
+
+## #1186 Production Secret-Provider Composition
+
+#1186 replaces cpk-server's collection of independent secret mechanisms with
+one explicit composition root:
+
+```text
+cpk-server bootstrap
+  -> bounded material-provider routes and protected bootstrap files
+    -> one SecretProviderBootstrapRegistry
+      -> one ControlPlaneKitSecretsResolver
+      -> one ControlPlaneKitSecretsCustodian
+        -> operations commits exact grants
+          -> Docker, Cloudflare, and gateway consumers perform immediate IO
+```
+
+`SecretUseAuthorizationService` remains operations-owned. cpk-server constructs
+it once and passes it to runtime dispatch, named-ingress realization, and
+gateway probing. The adapters now preserve `SecretResolutionGrant` and
+`SecretCustodyGrant` instead of reducing them to bare references. cpk-server
+does not receive provider plaintext or ciphertext.
+
+The production path no longer composes:
+
+- process-local generated-secret custody;
+- first-success composite resolution;
+- Docker-config credential discovery;
+- reference-only gateway signing;
+- a second compatibility resolver entrance.
+
+The only process-local value map is explicitly selected by
+`CPK_PRODUCT_MATERIAL_RESOLVER=local-development`. Production Docker and
+Docker-plus-Cloudflare descriptor variants select `provider`; no production
+descriptor embeds provider routes, protected-file paths, secret references, or
+secret values.
+
+Core's public-environment guard exposed an important naming law during the
+implementation. A mode selector named `CPK_PRODUCT_SECRET_RESOLVER` was rejected
+because secret-shaped environment names belong to `SecretEnvironmentDelivery`.
+The selector carries no secret, so the final closed bootstrap vocabulary is:
+
+```text
+CPK_PRODUCT_MATERIAL_RESOLVER
+CPK_MATERIAL_PROVIDER_ROUTES_JSON
+CPK_MATERIAL_PROVIDER_BOOTSTRAP_FILES_JSON
+```
+
+The route map contains opaque endpoint-reference to bounded base-URL entries.
+The bootstrap-file map contains credential-reference to protected mounted-file
+paths. Actual credential contents remain outside both maps. These names keep
+non-secret bootstrap routing eligible for future graph instance configuration
+without weakening secret-delivery validation.
+
+Readiness exposes only bounded composition status:
+`material_provider=disabled|configured|development-fixture`. It does not expose
+provider URLs, references, file paths, credentials, tokens, or store endpoints.
+Bootstrap parsing rejects duplicate keys, oversized maps, missing pair members,
+inline values in provider mode, and all former Docker credential environment
+fallbacks.
+
+Focused tests prove deterministic grant routing when multiple provider routes
+and bootstrap files exist: the grant's endpoint and credential references select
+exactly one provider. The complete current server-products suite passed,
+including 68 cpk-server tests and all product suites. A freshly rebuilt
+cpk-server source image passed its HTTP/MCP smoke, and the Docker residue audit
+was clean. Frozen/reference suites are no longer release gates after extraction;
+current package, architecture, security, coordinate, image, and live acceptance
+are authoritative.
+
+#1187 must replace source-live harness fixtures with a real
+`control-plane-kit-secrets` process, exercise the public cpk-server workflow,
+prove restart and denial behavior, and label the evidence source-built rather
+than published-image acceptance. cpk-server OCI republication remains required
+after that source-live gate and belongs to the later publication topology.
