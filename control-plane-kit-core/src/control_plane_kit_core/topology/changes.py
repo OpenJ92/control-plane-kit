@@ -198,6 +198,16 @@ class SocketContractValue:
                     "binding": socket.binding.value,
                     "env_bindings": list(socket.env_bindings),
                     "required": socket.required,
+                    **(
+                        {
+                            "secret_deliveries": [
+                                value.descriptor()
+                                for value in socket.secret_deliveries
+                            ]
+                        }
+                        if socket.secret_deliveries
+                        else {}
+                    ),
                 }
                 for socket in sorted(
                     self.sockets.requirements,

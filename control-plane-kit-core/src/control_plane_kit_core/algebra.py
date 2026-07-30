@@ -10,6 +10,13 @@ from control_plane_kit_core.capabilities import CapabilityName
 from control_plane_kit_core.lifecycle import EXTERNAL_RETAINED, OWNED_EPHEMERAL, ResourceLifecycle
 from control_plane_kit_core.public_ingress import NamedPublicIngress
 from control_plane_kit_core.runtime_authority import RuntimeAuthorityReference
+from control_plane_kit_core.secrets import (
+    SecretDelivery,
+    SecretEnvironmentDelivery,
+    SecretFileDelivery,
+    SecretReferenceEnvironmentDelivery,
+    secret_delivery_sort_key,
+)
 from control_plane_kit_core.types import Protocol, RuntimeKind, SocketBinding
 from control_plane_kit_core.verification import VerificationContract
 
@@ -23,6 +30,7 @@ class RequirementSocket:
     env_bindings: tuple[str, ...]
     required: bool = True
     binding: SocketBinding = SocketBinding.ENVIRONMENT
+    secret_deliveries: tuple[SecretDelivery, ...] = ()
 
     def __post_init__(self) -> None:
         if self.binding is SocketBinding.ENVIRONMENT and not self.env_bindings:
@@ -31,6 +39,59 @@ class RequirementSocket:
             raise ValueError(
                 f"runtime-controlled requirement socket {self.name!r} cannot declare env bindings"
             )
+        deliveries = tuple(
+            sorted(self.secret_deliveries, key=secret_delivery_sort_key)
+        )
+        if not all(
+            isinstance(
+                value,
+                (
+                    SecretEnvironmentDelivery,
+                    SecretReferenceEnvironmentDelivery,
+                    SecretFileDelivery,
+                ),
+            )
+            for value in deliveries
+        ):
+            raise TypeError(
+                f"requirement socket {self.name!r} secret deliveries must be typed"
+            )
+        if len(set(deliveries)) != len(deliveries):
+            raise ValueError(
+                f"requirement socket {self.name!r} secret deliveries must be unique"
+            )
+        secret_environment_names: list[str] = []
+        secret_file_paths: list[str] = []
+        for delivery in deliveries:
+            match delivery:
+                case SecretEnvironmentDelivery(environment_name=name):
+                    secret_environment_names.append(name)
+                case SecretReferenceEnvironmentDelivery(environment_name=name):
+                    secret_environment_names.append(name)
+                case SecretFileDelivery(
+                    target_path=target_path,
+                    path_binding=path_binding,
+                ):
+                    secret_file_paths.append(target_path)
+                    if path_binding is not None:
+                        secret_environment_names.append(
+                            path_binding.environment_name
+                        )
+        if len(set(secret_environment_names)) != len(secret_environment_names):
+            raise ValueError(
+                f"requirement socket {self.name!r} secret environment targets "
+                "must be unique"
+            )
+        if set(self.env_bindings) & set(secret_environment_names):
+            raise ValueError(
+                f"requirement socket {self.name!r} public and secret environment "
+                "targets must be distinct"
+            )
+        if len(set(secret_file_paths)) != len(secret_file_paths):
+            raise ValueError(
+                f"requirement socket {self.name!r} secret file targets must be unique"
+            )
+        object.__setattr__(self, "secret_deliveries", deliveries)
 
 
 @dataclass(frozen=True)

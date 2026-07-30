@@ -80,8 +80,11 @@ _PRODUCT_DOCUMENT_MEDIA_TYPE = "application/vnd.cpk.product+json"
 _PRODUCT_DOCUMENT_FILENAME = "product.cpk.json"
 _MAX_PRODUCT_DOCUMENT_BYTES = 262_144
 _SOCKETS_DESCRIPTOR_KEYS = frozenset({"requirements", "providers"})
-_REQUIREMENT_DESCRIPTOR_KEYS = frozenset(
+_LEGACY_REQUIREMENT_DESCRIPTOR_KEYS = frozenset(
     {"protocol", "env_bindings", "required", "binding"}
+)
+_REQUIREMENT_DESCRIPTOR_KEYS = frozenset(
+    {*_LEGACY_REQUIREMENT_DESCRIPTOR_KEYS, "secret_deliveries"}
 )
 _PROVIDER_DESCRIPTOR_KEYS = frozenset({"protocol"})
 _PROVIDER_RUNTIME_PORT_DESCRIPTOR_KEYS = frozenset(
@@ -964,12 +967,34 @@ class ProductCatalog:
 
 
 @dataclass(frozen=True)
+class RequirementSecretDelivery:
+    """Per-instance secret reference configured for one requirement socket."""
+
+    requirement_socket: str
+    delivery: SecretDelivery
+
+    def __post_init__(self) -> None:
+        if (
+            not isinstance(self.requirement_socket, str)
+            or not self.requirement_socket.strip()
+        ):
+            raise ProductInstantiationError(
+                "requirement secret delivery socket must be nonempty text"
+            )
+        if not isinstance(self.delivery, SecretDelivery):
+            raise ProductInstantiationError(
+                "requirement secret delivery must contain SecretDelivery"
+            )
+
+
+@dataclass(frozen=True)
 class ProductInstanceConfiguration:
     """Per-role product material selected before pure topology compilation."""
 
     public_environment: tuple[PublicStaticEnvironmentBinding, ...] = ()
     configuration_artifacts: tuple[ConfigurationArtifact, ...] = ()
     secret_deliveries: tuple[SecretDelivery, ...] = ()
+    requirement_secret_deliveries: tuple[RequirementSecretDelivery, ...] = ()
 
     def __post_init__(self) -> None:
         public_environment = tuple(self.public_environment)
@@ -995,9 +1020,35 @@ class ProductInstanceConfiguration:
             raise ProductInstantiationError(
                 "configuration secret deliveries must use SecretDelivery"
             )
+        requirement_secret_deliveries = tuple(
+            sorted(
+                self.requirement_secret_deliveries,
+                key=_requirement_secret_delivery_sort_key,
+            )
+        )
+        if not all(
+            isinstance(value, RequirementSecretDelivery)
+            for value in requirement_secret_deliveries
+        ):
+            raise ProductInstantiationError(
+                "configuration requirement secret deliveries must use "
+                "RequirementSecretDelivery"
+            )
+        requirement_keys = _requirement_secret_delivery_keys(
+            requirement_secret_deliveries
+        )
+        if len(requirement_keys) != len(set(requirement_keys)):
+            raise ProductInstantiationError(
+                "configuration requirement secret deliveries must be unique"
+            )
         object.__setattr__(self, "public_environment", tuple(sorted(public_environment)))
         object.__setattr__(self, "configuration_artifacts", configuration_artifacts)
         object.__setattr__(self, "secret_deliveries", secret_deliveries)
+        object.__setattr__(
+            self,
+            "requirement_secret_deliveries",
+            requirement_secret_deliveries,
+        )
 
     @classmethod
     def from_contract(
@@ -1010,6 +1061,11 @@ class ProductInstanceConfiguration:
             public_environment=contract.public_environment,
             configuration_artifacts=contract.configuration_artifacts,
             secret_deliveries=contract.secret_deliveries,
+            requirement_secret_deliveries=tuple(
+                RequirementSecretDelivery(requirement.name, delivery)
+                for requirement in contract.sockets.requirements
+                for delivery in requirement.secret_deliveries
+            ),
         )
 
 
@@ -1112,6 +1168,10 @@ def _instantiate_document(
         raise ProductInstantiationError("configuration must be ProductInstanceConfiguration")
     product = document.product
     _validate_instance_configuration(product.runtime_contract, configuration)
+    configured_sockets = _configured_sockets(
+        product.runtime_contract.sockets,
+        configuration.requirement_secret_deliveries,
+    )
     return ApplicationBlock(
         spec=BlockSpec(
             role_id=role_id,
@@ -1120,7 +1180,7 @@ def _instantiate_document(
             verification=product.runtime_contract.verification,
         ),
         implementation=OciContainerProductImplementation(document, configuration),
-        sockets=product.runtime_contract.sockets,
+        sockets=configured_sockets,
     )
 
 
@@ -1372,12 +1432,7 @@ def _require_unique(values: tuple[str, ...], label: str) -> None:
 def _sockets_descriptor(sockets: BlockSockets) -> dict[str, object]:
     return {
         "requirements": {
-            socket.name: {
-                "protocol": socket.protocol.descriptor(),
-                "env_bindings": list(socket.env_bindings),
-                "required": socket.required,
-                "binding": socket.binding.value,
-            }
+            socket.name: _requirement_socket_descriptor(socket)
             for socket in sorted(sockets.requirements, key=lambda value: value.name)
         },
         "providers": {
@@ -1385,6 +1440,22 @@ def _sockets_descriptor(sockets: BlockSockets) -> dict[str, object]:
             for socket in sorted(sockets.providers, key=lambda value: value.name)
         },
     }
+
+
+def _requirement_socket_descriptor(
+    socket: RequirementSocket,
+) -> dict[str, object]:
+    descriptor: dict[str, object] = {
+        "protocol": socket.protocol.descriptor(),
+        "env_bindings": list(socket.env_bindings),
+        "required": socket.required,
+        "binding": socket.binding.value,
+    }
+    if socket.secret_deliveries:
+        descriptor["secret_deliveries"] = [
+            delivery.descriptor() for delivery in socket.secret_deliveries
+        ]
+    return descriptor
 
 
 def _sockets_from_descriptor(value: object) -> BlockSockets:
@@ -1397,11 +1468,13 @@ def _sockets_from_descriptor(value: object) -> BlockSockets:
         if not isinstance(name, str):
             raise ProductRuntimeContractError("requirement socket names must be strings")
         requirement = _product_mapping(item, "requirement")
-        _require_product_keys(
-            requirement,
+        if set(requirement) not in (
+            _LEGACY_REQUIREMENT_DESCRIPTOR_KEYS,
             _REQUIREMENT_DESCRIPTOR_KEYS,
-            "requirement",
-        )
+        ):
+            raise ProductRuntimeContractError(
+                "requirement descriptor fields are invalid"
+            )
         requirements.append(
             RequirementSocket(
                 name=name,
@@ -1412,6 +1485,14 @@ def _sockets_from_descriptor(value: object) -> BlockSockets:
                 ),
                 required=_product_bool(requirement, "required"),
                 binding=SocketBinding(_product_text(requirement, "binding")),
+                secret_deliveries=tuple(
+                    secret_delivery_from_descriptor(
+                        _product_mapping(item, "requirement secret delivery")
+                    )
+                    for item in _product_list(requirement, "secret_deliveries")
+                )
+                if "secret_deliveries" in requirement
+                else (),
             )
         )
     providers: list[ProviderSocket] = []
@@ -1681,6 +1762,19 @@ def _validate_instance_configuration(
         _secret_delivery_keys(configuration.secret_deliveries),
         "secret deliveries",
     )
+    _require_same_keys(
+        _requirement_secret_delivery_keys(
+            tuple(
+                RequirementSecretDelivery(requirement.name, delivery)
+                for requirement in contract.sockets.requirements
+                for delivery in requirement.secret_deliveries
+            )
+        ),
+        _requirement_secret_delivery_keys(
+            configuration.requirement_secret_deliveries
+        ),
+        "requirement secret deliveries",
+    )
 
 
 def _public_environment_keys(
@@ -1708,7 +1802,68 @@ def _configuration_artifact_keys(
 def _secret_delivery_keys(
     values: tuple[SecretDelivery, ...],
 ) -> tuple[tuple[str, str, str, str, str], ...]:
-    return tuple(sorted(secret_delivery_sort_key(value) for value in values))
+    return tuple(sorted(_secret_delivery_contract_key(value) for value in values))
+
+
+def _secret_delivery_contract_key(
+    value: SecretDelivery,
+) -> tuple[str, str, str, str, str]:
+    kind, target, _reference, intent, policy, binding = secret_delivery_sort_key(
+        value
+    )
+    return (kind, target, intent, policy, binding)
+
+
+def _requirement_secret_delivery_sort_key(
+    value: RequirementSecretDelivery,
+) -> tuple[str, str, str, str, str, str, str]:
+    return (
+        value.requirement_socket,
+        *secret_delivery_sort_key(value.delivery),
+    )
+
+
+def _requirement_secret_delivery_keys(
+    values: tuple[RequirementSecretDelivery, ...],
+) -> tuple[tuple[str, str, str, str, str, str], ...]:
+    return tuple(
+        sorted(
+            (value.requirement_socket, *_secret_delivery_contract_key(value.delivery))
+            for value in values
+        )
+    )
+
+
+def _configured_sockets(
+    sockets: BlockSockets,
+    configured: tuple[RequirementSecretDelivery, ...],
+) -> BlockSockets:
+    deliveries_by_requirement: dict[str, list[SecretDelivery]] = {
+        requirement.name: [] for requirement in sockets.requirements
+    }
+    for value in configured:
+        try:
+            deliveries_by_requirement[value.requirement_socket].append(value.delivery)
+        except KeyError as error:
+            raise ProductInstantiationError(
+                "configuration requirement secret delivery references unknown socket"
+            ) from error
+    return BlockSockets(
+        requirements=tuple(
+            RequirementSocket(
+                name=requirement.name,
+                protocol=requirement.protocol,
+                env_bindings=requirement.env_bindings,
+                required=requirement.required,
+                binding=requirement.binding,
+                secret_deliveries=tuple(
+                    deliveries_by_requirement[requirement.name]
+                ),
+            )
+            for requirement in sockets.requirements
+        ),
+        providers=sockets.providers,
+    )
 
 
 def _require_same_keys(

@@ -7,7 +7,7 @@ from enum import StrEnum
 from typing import Mapping
 from urllib.parse import urlsplit
 
-from control_plane_kit_core.algebra import BlockSockets, BlockSpec
+from control_plane_kit_core.algebra import BlockSockets, BlockSpec, RequirementSocket
 from control_plane_kit_core.configuration import ConfigurationArtifact
 from control_plane_kit_core.environment import (
     PublicStaticEnvironmentBinding,
@@ -218,12 +218,7 @@ class Node:
                 )
             ],
             "requirements": {
-                socket.name: {
-                    "protocol": socket.protocol.descriptor(),
-                    "binding": socket.binding.value,
-                    "env_bindings": list(socket.env_bindings),
-                    "required": socket.required,
-                }
+                socket.name: _requirement_socket_descriptor(socket)
                 for socket in self.sockets.requirements
             },
             "providers": {
@@ -243,6 +238,22 @@ class Node:
                 )
             ],
         }
+
+
+def _requirement_socket_descriptor(
+    socket: RequirementSocket,
+) -> dict[str, object]:
+    descriptor: dict[str, object] = {
+        "protocol": socket.protocol.descriptor(),
+        "binding": socket.binding.value,
+        "env_bindings": list(socket.env_bindings),
+        "required": socket.required,
+    }
+    if socket.secret_deliveries:
+        descriptor["secret_deliveries"] = [
+            value.descriptor() for value in socket.secret_deliveries
+        ]
+    return descriptor
 
 
 @dataclass(frozen=True)

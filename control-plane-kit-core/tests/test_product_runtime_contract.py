@@ -25,7 +25,7 @@ from control_plane_kit_core.secrets import (
     SecretReference,
     SecretUseIntent,
 )
-from control_plane_kit_core.types import Protocol
+from control_plane_kit_core.types import Protocol, SocketBinding
 from control_plane_kit_core.verification import HttpCheck, VerificationContract
 
 
@@ -106,6 +106,77 @@ class ProductRuntimeContractTests(unittest.TestCase):
 
         self.assertEqual(restored, contract)
         self.assertEqual(codec.encode(restored), descriptor)
+
+    def test_requirement_socket_declares_reference_only_secret_deliveries(self) -> None:
+        delivery = SecretEnvironmentDelivery(
+            "DATABASE_PASSWORD",
+            SecretReference("secret://local/database/password"),
+            SecretUseIntent.POSTGRES_PASSWORD,
+        )
+        contract = ProductRuntimeContract(
+            sockets=BlockSockets(
+                requirements=(
+                    RequirementSocket(
+                        "database",
+                        Protocol.POSTGRES,
+                        (),
+                        required=False,
+                        binding=SocketBinding.RUNTIME_CONTROL,
+                        secret_deliveries=(delivery,),
+                    ),
+                ),
+            ),
+        )
+        codec = ProductRuntimeContractCodec()
+
+        descriptor = codec.encode(contract)
+
+        self.assertEqual(
+            descriptor["sockets"]["requirements"]["database"]["secret_deliveries"],
+            [delivery.descriptor()],
+        )
+        self.assertEqual(codec.decode(descriptor), contract)
+        self.assertNotIn("do-not-disclose", repr(descriptor))
+
+    def test_empty_requirement_secret_deliveries_preserve_existing_descriptor_shape(
+        self,
+    ) -> None:
+        contract = ProductRuntimeContract(
+            sockets=BlockSockets(
+                requirements=(
+                    RequirementSocket("database", Protocol.POSTGRES, ("DATABASE_URL",)),
+                ),
+            ),
+        )
+
+        descriptor = ProductRuntimeContractCodec().encode(contract)
+
+        self.assertNotIn(
+            "secret_deliveries",
+            descriptor["sockets"]["requirements"]["database"],
+        )
+
+    def test_requirement_socket_rejects_conflicting_secret_targets(self) -> None:
+        with self.assertRaisesRegex(ValueError, "secret environment targets"):
+            RequirementSocket(
+                "database",
+                Protocol.POSTGRES,
+                (),
+                required=False,
+                binding=SocketBinding.RUNTIME_CONTROL,
+                secret_deliveries=(
+                    SecretEnvironmentDelivery(
+                        "DATABASE_PASSWORD",
+                        SecretReference("secret://local/database/first"),
+                        SecretUseIntent.POSTGRES_PASSWORD,
+                    ),
+                    SecretEnvironmentDelivery(
+                        "DATABASE_PASSWORD",
+                        SecretReference("secret://local/database/second"),
+                        SecretUseIntent.POSTGRES_PASSWORD,
+                    ),
+                ),
+            )
 
     def test_provider_runtime_ports_are_closed_descriptor_material(self) -> None:
         contract = ProductRuntimeContract(

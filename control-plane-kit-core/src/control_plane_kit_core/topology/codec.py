@@ -256,6 +256,17 @@ class GraphDescriptorCodec:
                 ),
                 required=_boolean(_mapping(value, "requirement"), "required", default=True),
                 binding=_socket_binding(value),
+                secret_deliveries=tuple(
+                    secret_delivery_from_descriptor(
+                        _mapping(item, "requirement secret delivery")
+                    )
+                    for item in _list(
+                        _mapping(value, "requirement").get(
+                            "secret_deliveries",
+                            [],
+                        )
+                    )
+                ),
             )
             for name, value in sorted(
                 _mapping(descriptor.get("requirements", {}), "requirements").items()
