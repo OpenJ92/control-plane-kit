@@ -12,7 +12,7 @@
     },
     {
       "descriptor_path": "products/cpk_local_gateway/product.cpk.json",
-      "descriptor_sha256": "4da4b70cb014af7344045fdd55314219814573f3eeb941a5a409e0dfddfc7e3e",
+      "descriptor_sha256": "c19e5d1771f440c73559c94a1384e9ca3d23b1faa3010241cad4b941b7445d11",
       "image_digest": "sha256:5698c1ee9e8b933920177d260bf44963e2ebbdfc58f791fc98bf6efd21156aa8",
       "image_ref": "ghcr.io/openj92/control-plane-kit-servers/cpk-local-gateway:auth-gateway-1143",
       "owner_directory": "products/cpk_local_gateway",
@@ -22,7 +22,7 @@
     },
     {
       "descriptor_path": "products/cpk_server/product.cpk.json",
-      "descriptor_sha256": "85d3255bef44b2d99291c2ee2ddb7db05dc7a445285631dcd94bda8f528d762f",
+      "descriptor_sha256": "d5a616cf297a255703e2c08caad1ad30fcb3c72eb2193c2ad08f93f70fe29f38",
       "image_digest": "sha256:db0de3e0e34dbfe90945af46419576da799a484a7bc45b985767f1cf0131a92d",
       "image_ref": "ghcr.io/openj92/control-plane-kit-servers/cpk-server:auth-gateway-1143-cpk-server",
       "owner_directory": "products/cpk_server",
@@ -32,7 +32,7 @@
     },
     {
       "descriptor_path": "products/cpk_server/product.docker.cpk.json",
-      "descriptor_sha256": "bb0f306b5b030419ea5b128b81baa7c7db9e5e8d846ad53c3949c4bdac1fe821",
+      "descriptor_sha256": "ca9a93d16a0ce52d1aa56a417821bf1fb122cd39506f740327856a930ab7b4ec",
       "image_digest": "sha256:db0de3e0e34dbfe90945af46419576da799a484a7bc45b985767f1cf0131a92d",
       "image_ref": "ghcr.io/openj92/control-plane-kit-servers/cpk-server:auth-gateway-1143-cpk-server",
       "owner_directory": "products/cpk_server",
@@ -42,7 +42,7 @@
     },
     {
       "descriptor_path": "products/cpk_server/product.docker-cloudflare.cpk.json",
-      "descriptor_sha256": "16f472da9560b1375dd0ed5377db8676593884fe6c0556f02776700b593e5c7d",
+      "descriptor_sha256": "33f7bfc2f2d2cff2ed1f84ea6c07aa430d94adc13a1a31b4685d37dff03c2aeb",
       "image_digest": "sha256:db0de3e0e34dbfe90945af46419576da799a484a7bc45b985767f1cf0131a92d",
       "image_ref": "ghcr.io/openj92/control-plane-kit-servers/cpk-server:auth-gateway-1143-cpk-server",
       "owner_directory": "products/cpk_server",
@@ -82,7 +82,7 @@
     },
     {
       "descriptor_path": "products/postgres_server/product.cpk.json",
-      "descriptor_sha256": "96307788eb5a6603f3617e1d4b5fd02420997175b969e72304f8e5609acc5f40",
+      "descriptor_sha256": "09b42af31f7f7eab1bc65412deeb2c8f0a8964bf66e87e7e9a7e01b42fb20159",
       "image_digest": "sha256:57c72fd2a128e416c7fcc499958864df5301e940bca0a56f58fddf30ffc07777",
       "image_ref": "docker.io/library/postgres:16-alpine",
       "owner_directory": "products/postgres_server",

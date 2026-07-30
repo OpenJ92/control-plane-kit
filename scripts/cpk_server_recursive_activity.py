@@ -26,7 +26,11 @@ from control_plane_kit_core.products import (
     instantiate_product,
 )
 from control_plane_kit_core.runtime_authority import RuntimeAuthorityReference
-from control_plane_kit_core.secrets import SecretEnvironmentDelivery, SecretReference
+from control_plane_kit_core.secrets import (
+    SecretEnvironmentDelivery,
+    SecretReference,
+    SecretUseIntent,
+)
 from control_plane_kit_core.topology import DEFAULT_GRAPH_CODEC, DeploymentGraph, compile_topology
 from control_plane_kit_core.policies import PolicyScope
 
@@ -624,24 +628,28 @@ def _chain_cpk_document(servers_repo: Path) -> Any:
             reference=SecretReference(
                 "secret://control-plane-kit/child/docker-auth-config-json"
             ),
+            intent=SecretUseIntent.OCI_PULL_CREDENTIAL,
         ),
         SecretEnvironmentDelivery(
             environment_name="CPK_IMAGE_PULL_CREDENTIAL_RESOLVER",
             reference=SecretReference(
                 "secret://control-plane-kit/child/image-pull-credential-resolver"
             ),
+            intent=SecretUseIntent.OCI_PULL_CREDENTIAL,
         ),
         SecretEnvironmentDelivery(
             environment_name="CPK_PRODUCT_SECRET_RESOLVER",
             reference=SecretReference(
                 "secret://control-plane-kit/child/product-secret-resolver"
             ),
+            intent=SecretUseIntent.APPLICATION_CONTROL_TOKEN,
         ),
         SecretEnvironmentDelivery(
             environment_name="CPK_PRODUCT_SECRET_VALUES_JSON",
             reference=SecretReference(
                 "secret://control-plane-kit/child/product-secret-values-json"
             ),
+            intent=SecretUseIntent.APPLICATION_CONTROL_TOKEN,
         ),
     )
     contract = replace(

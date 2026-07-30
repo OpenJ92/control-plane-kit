@@ -157,6 +157,7 @@ class CpkServerProductDescriptorTests(unittest.TestCase):
                     "kind": "environment",
                     "environment_name": "PGPASSWORD",
                     "reference_id": "secret://control-plane-kit/postgres/password",
+                    "intent": "postgres.password",
                 }
             ],
         )
