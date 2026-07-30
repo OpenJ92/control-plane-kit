@@ -918,6 +918,10 @@ def _registered_ingress_authority() -> RegisteredIngressAuthority:
             zone_name="openj92.dev",
             api_token_ref=SecretReference("secret://cloudflare/openj92/api-token"),
             allowed_hostname_pattern="cpk-gateway-*.openj92.dev",
+
+            generated_secret_provider_registration_id="sprov-generated-ingress",
+
+            generated_secret_reference_prefix=SecretReference("secret://generated/ingress"),
         ),
         admitted_by="operator-a",
         admitted_at="2026-07-28T08:00:00Z",
@@ -953,6 +957,11 @@ def _generated_ingress_secret() -> GeneratedIngressSecretReference:
             "secret://generated/ingress/workspace-a/"
             "cloudflared-tunnel-token/run-alloc/allocate-ingress/event-alloc"
         ),
+        provider_registration_id="sprov-generated-ingress",
+        reference_registration_id="sref-generated-ingress",
+        custody_id="scust-generated-ingress",
+        provider_version_id="version-generated-ingress",
+        provider_version_number=1,
         recorded_at="2026-07-28T08:01:02Z",
         source_run_id="run-alloc",
         source_activity_id="allocate-ingress",

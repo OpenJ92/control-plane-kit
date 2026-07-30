@@ -613,6 +613,12 @@ class CpkServerOperationsAdapterTests(unittest.TestCase):
                 "zone_name": "openj92.dev",
                 "api_token_ref": "secret://cloudflare/openj92/api-token",
                 "allowed_hostname_pattern": "cpk-gateway-*.openj92.dev",
+                "generated_secret_provider_registration_id": (
+                    "sprov-generated-ingress"
+                ),
+                "generated_secret_reference_prefix": (
+                    "secret://generated/ingress"
+                ),
             },
             "actor_id": "operator-a",
             "admitted_at": "2026-07-27T22:50:00Z",

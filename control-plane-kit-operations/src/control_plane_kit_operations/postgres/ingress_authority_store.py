@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from dataclasses import replace
-from typing import Any
+from typing import Any, Mapping
 
 from psycopg.types.json import Jsonb
 
@@ -551,9 +551,10 @@ class GeneratedIngressSecretReferenceStore:
               recorded_at,
               source_run_id,
               source_activity_id,
-              source_event_id
+              source_event_id,
+              metadata
             )
-            VALUES (%s, %s, %s, %s, %s, %s, %s)
+            VALUES (%s, %s, %s, %s, %s, %s, %s, %s)
             """,
             (
                 evidence.workspace_id,
@@ -563,6 +564,21 @@ class GeneratedIngressSecretReferenceStore:
                 evidence.source_run_id,
                 evidence.source_activity_id,
                 evidence.source_event_id,
+                Jsonb(
+                    {
+                        "provider_registration_id": (
+                            evidence.provider_registration_id
+                        ),
+                        "reference_registration_id": (
+                            evidence.reference_registration_id
+                        ),
+                        "custody_id": evidence.custody_id,
+                        "provider_version_id": evidence.provider_version_id,
+                        "provider_version_number": (
+                            evidence.provider_version_number
+                        ),
+                    }
+                ),
             ),
         )
         return evidence
@@ -602,7 +618,8 @@ class GeneratedIngressSecretReferenceStore:
               recorded_at,
               source_run_id,
               source_activity_id,
-              source_event_id
+              source_event_id,
+              metadata
             FROM cpk_generated_ingress_secret_references
             WHERE workspace_id = %s
             ORDER BY recorded_at DESC, purpose, source_event_id
@@ -629,7 +646,8 @@ class GeneratedIngressSecretReferenceStore:
               recorded_at,
               source_run_id,
               source_activity_id,
-              source_event_id
+              source_event_id,
+              metadata
             FROM cpk_generated_ingress_secret_references
             WHERE workspace_id = %s
               AND purpose = %s
@@ -691,15 +709,52 @@ def _row_to_cloudflare_resource(row: tuple[Any, ...]) -> CloudflareOwnedIngressR
 def _row_to_generated_ingress_secret_reference(
     row: tuple[Any, ...],
 ) -> GeneratedIngressSecretReference:
+    metadata = row[7]
+    if not isinstance(metadata, Mapping):
+        raise IngressAuthorityRegistrationError(
+            "generated ingress secret custody metadata is malformed"
+        )
     return GeneratedIngressSecretReference(
         workspace_id=row[0],
         purpose=GeneratedSecretPurpose(row[1]),
         secret_ref=SecretReference(row[2]),
+        provider_registration_id=_metadata_text(
+            metadata,
+            "provider_registration_id",
+        ),
+        reference_registration_id=_metadata_text(
+            metadata,
+            "reference_registration_id",
+        ),
+        custody_id=_metadata_text(metadata, "custody_id"),
+        provider_version_id=_metadata_text(metadata, "provider_version_id"),
+        provider_version_number=_metadata_positive_int(
+            metadata,
+            "provider_version_number",
+        ),
         recorded_at=row[3],
         source_run_id=row[4],
         source_activity_id=row[5],
         source_event_id=row[6],
     )
+
+
+def _metadata_text(metadata: Mapping[str, object], name: str) -> str:
+    value = metadata.get(name)
+    if not isinstance(value, str):
+        raise IngressAuthorityRegistrationError(
+            "generated ingress secret custody metadata is incomplete"
+        )
+    return value
+
+
+def _metadata_positive_int(metadata: Mapping[str, object], name: str) -> int:
+    value = metadata.get(name)
+    if type(value) is not int or value < 1:
+        raise IngressAuthorityRegistrationError(
+            "generated ingress secret custody metadata is incomplete"
+        )
+    return value
 
 
 def _credential_references(authority: RegisteredIngressAuthority) -> dict[str, object]:

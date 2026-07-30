@@ -57,6 +57,13 @@ class SecretUseIntent(StrEnum):
     POSTGRES_PASSWORD = "postgres.password"
 
 
+class SecretCustodyStatus(StrEnum):
+    """Closed provider result states safe to return across the IO boundary."""
+
+    ACTIVE = "active"
+    REVOKED = "revoked"
+
+
 @dataclass(frozen=True, order=True)
 class SecretProviderEndpointReference:
     """Opaque composition identity for a configured provider endpoint."""
@@ -264,6 +271,148 @@ class SecretResolutionGrant:
             "activity_id": self.activity_id,
             "effect_id": self.effect_id,
             "probe_id": self.probe_id,
+        }
+
+
+@dataclass(frozen=True)
+class SecretCustodyGrant:
+    """Reference-only authority to write one generated value into one provider."""
+
+    custody_id: str
+    workspace_id: str
+    provider_registration_id: str
+    endpoint_reference: SecretProviderEndpointReference
+    credential_reference: CredentialReference
+    reference: SecretReference
+    intent: SecretUseIntent
+    actor_subject: str
+    correlation_id: str
+    custody_fingerprint: str
+    operation_id: str | None = None
+    session_id: str | None = None
+    run_id: str | None = None
+    activity_id: str | None = None
+    effect_id: str | None = None
+
+    def __post_init__(self) -> None:
+        for value, label in (
+            (self.custody_id, "custody_id"),
+            (self.workspace_id, "workspace_id"),
+            (self.provider_registration_id, "provider_registration_id"),
+            (self.actor_subject, "actor_subject"),
+            (self.correlation_id, "correlation_id"),
+        ):
+            _validate_grant_identifier(value, label)
+        if not isinstance(
+            self.endpoint_reference,
+            SecretProviderEndpointReference,
+        ):
+            raise SecretProviderContractError(
+                "secret custody grant endpoint reference is malformed"
+            )
+        if not isinstance(self.credential_reference, SecretReference):
+            raise SecretProviderContractError(
+                "secret custody grant credential reference is malformed"
+            )
+        if not isinstance(self.reference, SecretReference):
+            raise SecretProviderContractError(
+                "secret custody grant reference is malformed"
+            )
+        if not isinstance(self.intent, SecretUseIntent):
+            raise SecretProviderContractError(
+                "secret custody grant intent is malformed"
+            )
+        if (
+            not isinstance(self.custody_fingerprint, str)
+            or not _SHA256.fullmatch(self.custody_fingerprint)
+        ):
+            raise SecretProviderContractError(
+                "secret custody grant fingerprint is malformed"
+            )
+        for value, label in (
+            (self.operation_id, "operation_id"),
+            (self.session_id, "session_id"),
+            (self.run_id, "run_id"),
+            (self.activity_id, "activity_id"),
+            (self.effect_id, "effect_id"),
+        ):
+            if value is not None:
+                _validate_grant_identifier(value, label)
+
+    def permits(
+        self,
+        reference: SecretReference,
+        intent: SecretUseIntent,
+    ) -> bool:
+        return self.reference == reference and self.intent is intent
+
+    def descriptor(self) -> dict[str, object]:
+        return {
+            "custody_id": self.custody_id,
+            "workspace_id": self.workspace_id,
+            "provider_registration_id": self.provider_registration_id,
+            "endpoint_reference": self.endpoint_reference.reference_id,
+            "credential_reference": self.credential_reference.reference_id,
+            "reference_id": self.reference.reference_id,
+            "intent": self.intent.value,
+            "actor_subject": self.actor_subject,
+            "correlation_id": self.correlation_id,
+            "custody_fingerprint": self.custody_fingerprint,
+            "operation_id": self.operation_id,
+            "session_id": self.session_id,
+            "run_id": self.run_id,
+            "activity_id": self.activity_id,
+            "effect_id": self.effect_id,
+        }
+
+
+@dataclass(frozen=True)
+class SecretCustodyReceipt:
+    """Secret-free identity returned after one provider custody mutation."""
+
+    custody_id: str
+    provider_registration_id: str
+    reference: SecretReference
+    version_id: str
+    version_number: int
+    status: SecretCustodyStatus = SecretCustodyStatus.ACTIVE
+
+    def __post_init__(self) -> None:
+        for value, label in (
+            (self.custody_id, "custody_id"),
+            (self.provider_registration_id, "provider_registration_id"),
+            (self.version_id, "version_id"),
+        ):
+            _validate_grant_identifier(value, label)
+        if not isinstance(self.reference, SecretReference):
+            raise SecretProviderContractError(
+                "secret custody receipt reference is malformed"
+            )
+        if type(self.version_number) is not int or self.version_number < 1:
+            raise SecretProviderContractError(
+                "secret custody receipt version number is malformed"
+            )
+        if not isinstance(self.status, SecretCustodyStatus):
+            raise SecretProviderContractError(
+                "secret custody receipt status is malformed"
+            )
+
+    def matches(self, grant: SecretCustodyGrant) -> bool:
+        return (
+            isinstance(grant, SecretCustodyGrant)
+            and self.custody_id == grant.custody_id
+            and self.provider_registration_id == grant.provider_registration_id
+            and self.reference == grant.reference
+        )
+
+    def descriptor(self) -> dict[str, object]:
+        return {
+            "custody_id": self.custody_id,
+            "provider_registration_id": self.provider_registration_id,
+            "reference_id": self.reference.reference_id,
+            "version_id": self.version_id,
+            "version_number": self.version_number,
+            "status": self.status.value,
         }
 
 
@@ -571,6 +720,18 @@ class AuthorizedSecretResolver(Protocol):
     """IO authority that resolves only a committed, exact operations grant."""
 
     def resolve(self, grant: SecretResolutionGrant) -> SecretResolution: ...
+
+
+class SecretCustodian(Protocol):
+    """IO-boundary protocol for generated secret custody and exact revocation."""
+
+    def store(
+        self,
+        grant: SecretCustodyGrant,
+        value: SecretValue,
+    ) -> SecretCustodyReceipt: ...
+
+    def revoke(self, grant: SecretCustodyGrant) -> None: ...
 
 
 @dataclass(frozen=True, repr=False)

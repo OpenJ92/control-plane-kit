@@ -14,9 +14,11 @@ from control_plane_kit_core.public_ingress import (
     PublicIngressLifecycle,
 )
 from control_plane_kit_core.secrets import (
+    SecretCustodyGrant,
+    SecretCustodyReceipt,
+    SecretReference,
     SecretResolutionGrant,
     SecretUseIntent,
-    SecretValue,
 )
 from control_plane_kit_core.topology import DEFAULT_GRAPH_CODEC, DeploymentGraph
 from control_plane_kit_core.types import Protocol as SocketProtocol
@@ -29,7 +31,6 @@ from control_plane_kit_operations.ingress_authorities import (
     CloudflareOwnedIngressResource,
     CloudflareZoneIngressAuthority,
     GeneratedSecretPurpose,
-    GeneratedSecretRecorder,
     IngressAuthorityNotFound,
     IngressAuthorityProviderKind,
     IngressAuthorityRegistrationError,
@@ -41,6 +42,9 @@ from control_plane_kit_operations.secret_providers import (
     AuthorizeSecretUse,
     SecretProviderRegistrationError,
     SecretUseResolutionAuthorizer,
+    generated_secret_reference_candidate,
+    secret_custody_correlation_for,
+    secret_custody_grant_for,
     secret_use_correlation_for,
 )
 from control_plane_kit_operations.workflows import InvalidOperationCommand
@@ -49,7 +53,7 @@ from control_plane_kit_operations.workflows import InvalidOperationCommand
 class IngressAllocationResult(Protocol):
     tunnel_id: str
     tunnel_name: str
-    tunnel_token: SecretValue
+    secret_custody_receipt: SecretCustodyReceipt
     dns_record_id: str
     hostname: str
     endpoint_url: str
@@ -66,6 +70,7 @@ class IngressProviderInterpreter(Protocol):
         allocation_name: str,
         origin_service_url: str,
         secret_resolution_grant: SecretResolutionGrant,
+        secret_custody_grant: SecretCustodyGrant,
     ) -> IngressAllocationResult: ...
 
     def teardown(
@@ -74,6 +79,7 @@ class IngressProviderInterpreter(Protocol):
         authority: CloudflareZoneIngressAuthority,
         resources: CloudflareOwnedIngressResource,
         secret_resolution_grant: SecretResolutionGrant,
+        secret_custody_grant: SecretCustodyGrant,
     ) -> None: ...
 
 
@@ -83,7 +89,6 @@ class IngressRealizationAdapter:
 
     unit_of_work_factory: Any
     interpreters: Mapping[IngressAuthorityProviderKind, IngressProviderInterpreter]
-    generated_secret_recorder: GeneratedSecretRecorder
     clock: Any
     secret_use_authorizer: SecretUseResolutionAuthorizer | None = None
 
@@ -105,10 +110,6 @@ class IngressRealizationAdapter:
                 )
             normalized[key] = interpreter
         object.__setattr__(self, "interpreters", normalized)
-        if not hasattr(self.generated_secret_recorder, "record_generated_secret"):
-            raise InvalidOperationCommand(
-                "generated secret recorder must expose record_generated_secret"
-            )
         if not callable(self.clock):
             raise InvalidOperationCommand("ingress clock must be callable")
         if (
@@ -173,12 +174,17 @@ class IngressRealizationAdapter:
         resource: CloudflareOwnedIngressResource | None = None
         try:
             grant = self._authorize_api_token(context, authority.authority)
+            custody_grant = self._generated_secret_custody_grant(
+                context,
+                authority.authority,
+            )
             allocation = interpreter.create(
                 ingress,
                 authority=authority.authority,
                 allocation_name=_allocation_name(context, ingress),
                 origin_service_url=origin_service_url,
                 secret_resolution_grant=grant,
+                secret_custody_grant=custody_grant,
             )
         except SecretProviderRegistrationError:
             return _unsupported(
@@ -214,17 +220,42 @@ class IngressRealizationAdapter:
                 source_activity_id=context.activity.activity_id.value,
                 source_event_id=context.intent_event.event_id,
             )
+            receipt = allocation.secret_custody_receipt
+            if not isinstance(receipt, SecretCustodyReceipt) or not receipt.matches(
+                custody_grant
+            ):
+                raise InvalidOperationCommand(
+                    "ingress provider returned mismatched secret custody evidence"
+                )
+            reference_candidate = generated_secret_reference_candidate(
+                grant=custody_grant,
+                receipt=receipt,
+                admitted_at=self.clock(),
+            )
             secret_evidence = record_generated_ingress_secret(
-                recorder=self.generated_secret_recorder,
                 workspace_id=context.request.identity.workspace_id,
                 purpose=GeneratedSecretPurpose.CLOUDFLARED_TUNNEL_TOKEN,
+                receipt=receipt,
+                reference_registration_id=reference_candidate.registration_id,
                 source_run_id=context.run.run_id,
                 source_activity_id=context.activity.activity_id.value,
                 source_event_id=context.intent_event.event_id,
                 recorded_at=self.clock(),
-                secret_value=allocation.tunnel_token,
             )
             with self.unit_of_work_factory() as unit_of_work:
+                provider = unit_of_work.stores.secret_providers.require_active_registration(
+                    custody_grant.workspace_id,
+                    custody_grant.provider_registration_id,
+                )
+                if (
+                    provider.endpoint_reference != custody_grant.endpoint_reference
+                    or provider.credential_reference
+                    != custody_grant.credential_reference
+                ):
+                    raise InvalidOperationCommand(
+                        "secret custody provider changed before durable fold"
+                    )
+                unit_of_work.stores.secret_references.register(reference_candidate)
                 unit_of_work.stores.ingress_resources.record_cloudflare(resource)
                 unit_of_work.stores.generated_ingress_secrets.record(secret_evidence)
                 unit_of_work.commit()
@@ -235,6 +266,7 @@ class IngressRealizationAdapter:
                         authority=authority.authority,
                         resources=resource,
                         secret_resolution_grant=grant,
+                        secret_custody_grant=custody_grant,
                     )
                 except Exception:  # noqa: BLE001 - compensation failure is bounded.
                     pass
@@ -277,6 +309,21 @@ class IngressRealizationAdapter:
             )
             interpreter = self._interpreter(authority.provider_kind)
             grant = self._authorize_api_token(context, authority.authority)
+            with self.unit_of_work_factory() as unit_of_work:
+                generated_secret = (
+                    unit_of_work.stores.generated_ingress_secrets.get_by_source(
+                        workspace_id=context.request.identity.workspace_id,
+                        purpose=GeneratedSecretPurpose.CLOUDFLARED_TUNNEL_TOKEN,
+                        source_run_id=resource.source_run_id,
+                        source_activity_id=resource.source_activity_id,
+                        source_event_id=resource.source_event_id,
+                    )
+                )
+            custody_grant = self._secret_custody_grant(
+                context,
+                authority.authority,
+                generated_secret.secret_ref,
+            )
         except SecretProviderRegistrationError:
             return _unsupported(
                 context,
@@ -304,6 +351,7 @@ class IngressRealizationAdapter:
                 authority=authority.authority,
                 resources=resource,
                 secret_resolution_grant=grant,
+                secret_custody_grant=custody_grant,
             )
         except Exception as error:  # noqa: BLE001 - provider failures are bounded.
             with self.unit_of_work_factory() as unit_of_work:
@@ -398,6 +446,55 @@ class IngressRealizationAdapter:
             )
         return grant
 
+    def _generated_secret_custody_grant(
+        self,
+        context: ActivityRealizationContext,
+        authority: CloudflareZoneIngressAuthority,
+    ) -> SecretCustodyGrant:
+        return self._secret_custody_grant(
+            context,
+            authority,
+            _generated_secret_reference(context, authority),
+        )
+
+    def _secret_custody_grant(
+        self,
+        context: ActivityRealizationContext,
+        authority: CloudflareZoneIngressAuthority,
+        reference: SecretReference,
+    ) -> SecretCustodyGrant:
+        with self.unit_of_work_factory() as unit_of_work:
+            provider = unit_of_work.stores.secret_providers.require_active_registration(
+                context.request.identity.workspace_id,
+                authority.generated_secret_provider_registration_id,
+            )
+        correlation_id = secret_custody_correlation_for(
+            workspace_id=context.request.identity.workspace_id,
+            provider_registration_id=provider.registration_id,
+            reference=reference,
+            intent=SecretUseIntent.CLOUDFLARE_TUNNEL_TOKEN,
+            actor_subject=context.authority.worker_id,
+            operation_id=context.request.identity.request_id,
+            session_id=context.plan_record.session_id,
+            run_id=context.run.run_id,
+            activity_id=context.activity.activity_id.value,
+            effect_id=context.intent_event.event_id,
+        )
+        return secret_custody_grant_for(
+            provider=provider,
+            workspace_id=context.request.identity.workspace_id,
+            reference=reference,
+            intent=SecretUseIntent.CLOUDFLARE_TUNNEL_TOKEN,
+            actor_subject=context.authority.worker_id,
+            actor_scopes=context.authority.scopes,
+            correlation_id=correlation_id,
+            operation_id=context.request.identity.request_id,
+            session_id=context.plan_record.session_id,
+            run_id=context.run.run_id,
+            activity_id=context.activity.activity_id.value,
+            effect_id=context.intent_event.event_id,
+        )
+
 
 def _ingress_by_id(graph: DeploymentGraph, ingress_id: str) -> NamedPublicIngress:
     for ingress in graph.public_ingresses:
@@ -443,6 +540,32 @@ def _allocation_name(
     prefix = f"cpk-{ingress_part}"
     max_prefix_length = 128 - 1 - len(digest)
     return f"{prefix[:max_prefix_length]}-{digest}"
+
+
+def _generated_secret_reference(
+    context: ActivityRealizationContext,
+    authority: CloudflareZoneIngressAuthority,
+) -> SecretReference:
+    digest = hashlib.sha256(
+        "|".join(
+            (
+                context.request.identity.workspace_id,
+                GeneratedSecretPurpose.CLOUDFLARED_TUNNEL_TOKEN.value,
+                context.run.run_id,
+                context.activity.activity_id.value,
+                context.intent_event.event_id,
+            )
+        ).encode("utf-8")
+    ).hexdigest()
+    return SecretReference(
+        "/".join(
+            (
+                authority.generated_secret_reference_prefix.reference_id.rstrip("/"),
+                GeneratedSecretPurpose.CLOUDFLARED_TUNNEL_TOKEN.value,
+                digest,
+            )
+        )
+    )
 
 
 def _unsupported(
