@@ -157,12 +157,16 @@ class SecretProviderStoreTests(unittest.TestCase):
             RevokeSecretProviderCommand(
                 workspace_id="workspace-a",
                 provider_id=SecretProviderId("workspace-secrets"),
+                revoked_by="operator-a",
+                revoked_at="2026-07-30T12:10:00Z",
                 actor_scopes=(PolicyScope.SECRET_PROVIDER_REVOKE,),
             )
         )
 
         self.assertEqual(revoked.registration_id, registered.registration_id)
         self.assertEqual(revoked.status, RegisteredSecretProviderStatus.REVOKED)
+        self.assertEqual(revoked.revoked_by, "operator-a")
+        self.assertEqual(revoked.revoked_at, "2026-07-30T12:10:00Z")
         with self.unit_of_work() as unit_of_work:
             self.assertEqual(
                 unit_of_work.stores.secret_providers.list_active("workspace-a"),
@@ -273,11 +277,15 @@ class SecretProviderStoreTests(unittest.TestCase):
             RevokeSecretReferenceCommand(
                 workspace_id="workspace-a",
                 registration_id=successor.registration_id,
+                revoked_by="operator-a",
+                revoked_at="2026-07-30T12:10:00Z",
                 actor_scopes=(PolicyScope.SECRET_PROVIDER_REVOKE,),
             )
         )
 
         self.assertEqual(revoked.status, RegisteredSecretReferenceStatus.REVOKED)
+        self.assertEqual(revoked.revoked_by, "operator-a")
+        self.assertEqual(revoked.revoked_at, "2026-07-30T12:10:00Z")
         with self.unit_of_work() as unit_of_work:
             history = unit_of_work.stores.secret_references.list_history(
                 "workspace-a",

@@ -85,10 +85,13 @@ class SecretProviderStore:
               admitted_at,
               status,
               supersedes_registration_id,
+              revoked_by,
+              revoked_at,
               metadata
             )
             VALUES (
-              %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s
+              %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s,
+              NULL, NULL, %s
             )
             """,
             (
@@ -195,6 +198,9 @@ class SecretProviderStore:
         self,
         workspace_id: str,
         provider_id: SecretProviderId,
+        *,
+        revoked_by: str,
+        revoked_at: str,
     ) -> RegisteredSecretProvider:
         active = self._get_active_or_none(
             workspace_id,
@@ -211,12 +217,14 @@ class SecretProviderStore:
         self._connection.execute(
             """
             UPDATE cpk_secret_providers
-            SET status = 'revoked'
+            SET status = 'revoked',
+                revoked_by = %s,
+                revoked_at = %s
             WHERE workspace_id = %s
               AND registration_id = %s
               AND status = 'active'
             """,
-            (workspace_id, active.registration_id),
+            (revoked_by, revoked_at, workspace_id, active.registration_id),
         )
         return self.get_by_registration(workspace_id, active.registration_id)
 
@@ -347,9 +355,11 @@ class SecretReferenceStore:
               admitted_at,
               status,
               supersedes_registration_id,
+              revoked_by,
+              revoked_at,
               metadata
             )
-            VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+            VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, NULL, NULL, %s)
             """,
             (
                 candidate.registration_id,
@@ -428,6 +438,9 @@ class SecretReferenceStore:
         self,
         workspace_id: str,
         registration_id: str,
+        *,
+        revoked_by: str,
+        revoked_at: str,
     ) -> RegisteredSecretReference:
         current = self._get_by_registration_or_none(
             workspace_id,
@@ -447,12 +460,14 @@ class SecretReferenceStore:
         self._connection.execute(
             """
             UPDATE cpk_secret_references
-            SET status = 'revoked'
+            SET status = 'revoked',
+                revoked_by = %s,
+                revoked_at = %s
             WHERE workspace_id = %s
               AND registration_id = %s
               AND status = 'active'
             """,
-            (workspace_id, registration_id),
+            (revoked_by, revoked_at, workspace_id, registration_id),
         )
         return self.get_by_registration(workspace_id, registration_id)
 
@@ -541,6 +556,8 @@ SELECT
   admitted_at,
   status,
   supersedes_registration_id,
+  revoked_by,
+  revoked_at,
   metadata
 FROM cpk_secret_providers
 """
@@ -556,6 +573,8 @@ SELECT
   admitted_at,
   status,
   supersedes_registration_id,
+  revoked_by,
+  revoked_at,
   metadata
 FROM cpk_secret_references
 """
@@ -578,7 +597,9 @@ def _row_to_provider(row: tuple[Any, ...]) -> RegisteredSecretProvider:
         admitted_at=row[10],
         status=RegisteredSecretProviderStatus(row[11]),
         supersedes_registration_id=row[12],
-        metadata=row[13],
+        revoked_by=row[13],
+        revoked_at=row[14],
+        metadata=row[15],
     )
 
 
@@ -593,5 +614,7 @@ def _row_to_reference(row: tuple[Any, ...]) -> RegisteredSecretReference:
         admitted_at=row[6],
         status=RegisteredSecretReferenceStatus(row[7]),
         supersedes_registration_id=row[8],
-        metadata=row[9],
+        revoked_by=row[9],
+        revoked_at=row[10],
+        metadata=row[11],
     )

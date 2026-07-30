@@ -105,6 +105,8 @@ class RegisteredSecretProvider:
     admitted_at: str
     status: RegisteredSecretProviderStatus = RegisteredSecretProviderStatus.ACTIVE
     supersedes_registration_id: str | None = None
+    revoked_by: str | None = None
+    revoked_at: str | None = None
     metadata: Mapping[str, object] = field(default_factory=dict)
 
     def __post_init__(self) -> None:
@@ -150,6 +152,11 @@ class RegisteredSecretProvider:
                 raise SecretProviderRegistrationError(
                     "provider registration cannot supersede itself"
                 )
+        _validate_revocation_evidence(
+            self.status is RegisteredSecretProviderStatus.REVOKED,
+            self.revoked_by,
+            self.revoked_at,
+        )
         metadata = _metadata(self.metadata)
         object.__setattr__(self, "allowed_reference_prefixes", prefixes)
         object.__setattr__(self, "allowed_intents", intents)
@@ -173,6 +180,8 @@ class RegisteredSecretProvider:
             "admitted_at": self.admitted_at,
             "status": self.status.value,
             "supersedes_registration_id": self.supersedes_registration_id,
+            "revoked_by": self.revoked_by,
+            "revoked_at": self.revoked_at,
             "metadata": dict(self.metadata),
         }
 
@@ -193,6 +202,8 @@ class RegisteredSecretReference:
     admitted_at: str
     status: RegisteredSecretReferenceStatus = RegisteredSecretReferenceStatus.ACTIVE
     supersedes_registration_id: str | None = None
+    revoked_by: str | None = None
+    revoked_at: str | None = None
     metadata: Mapping[str, object] = field(default_factory=dict)
 
     def __post_init__(self) -> None:
@@ -219,6 +230,11 @@ class RegisteredSecretReference:
                 raise SecretProviderRegistrationError(
                     "secret reference registration cannot supersede itself"
                 )
+        _validate_revocation_evidence(
+            self.status is RegisteredSecretReferenceStatus.REVOKED,
+            self.revoked_by,
+            self.revoked_at,
+        )
         metadata = _metadata(self.metadata)
         object.__setattr__(self, "allowed_intents", intents)
         object.__setattr__(self, "metadata", MappingProxyType(metadata))
@@ -234,6 +250,8 @@ class RegisteredSecretReference:
             "admitted_at": self.admitted_at,
             "status": self.status.value,
             "supersedes_registration_id": self.supersedes_registration_id,
+            "revoked_by": self.revoked_by,
+            "revoked_at": self.revoked_at,
             "metadata": dict(self.metadata),
         }
 
@@ -333,6 +351,8 @@ class RegisterSecretReferenceCommand:
 class RevokeSecretProviderCommand:
     workspace_id: str
     provider_id: SecretProviderId
+    revoked_by: str
+    revoked_at: str
     actor_scopes: tuple[PolicyScope, ...]
 
     def __post_init__(self) -> None:
@@ -341,6 +361,8 @@ class RevokeSecretProviderCommand:
             raise SecretProviderRegistrationError(
                 "provider revocation requires SecretProviderId"
             )
+        _require_identifier(self.revoked_by, "revoked_by")
+        _require_bounded_text(self.revoked_at, "revoked_at", maximum=128)
         object.__setattr__(self, "actor_scopes", _scopes(self.actor_scopes))
 
 
@@ -348,11 +370,15 @@ class RevokeSecretProviderCommand:
 class RevokeSecretReferenceCommand:
     workspace_id: str
     registration_id: str
+    revoked_by: str
+    revoked_at: str
     actor_scopes: tuple[PolicyScope, ...]
 
     def __post_init__(self) -> None:
         _require_identifier(self.workspace_id, "workspace_id")
         _require_identifier(self.registration_id, "registration_id")
+        _require_identifier(self.revoked_by, "revoked_by")
+        _require_bounded_text(self.revoked_at, "revoked_at", maximum=128)
         object.__setattr__(self, "actor_scopes", _scopes(self.actor_scopes))
 
 
@@ -385,6 +411,8 @@ class SecretProviderRegistrationService:
             revoked = unit_of_work.stores.secret_providers.revoke_active(
                 command.workspace_id,
                 command.provider_id,
+                revoked_by=command.revoked_by,
+                revoked_at=command.revoked_at,
             )
             unit_of_work.commit()
             return revoked
@@ -416,6 +444,8 @@ class SecretProviderRegistrationService:
             revoked = unit_of_work.stores.secret_references.revoke(
                 command.workspace_id,
                 command.registration_id,
+                revoked_by=command.revoked_by,
+                revoked_at=command.revoked_at,
             )
             unit_of_work.commit()
             return revoked
@@ -686,4 +716,19 @@ def _require_public_text(
     if any(marker in lowered for marker in _SECRET_VALUE_MARKERS):
         raise SecretProviderRegistrationError(
             f"{field_name} must not contain endpoint or secret material"
+        )
+
+
+def _validate_revocation_evidence(
+    revoked: bool,
+    revoked_by: str | None,
+    revoked_at: str | None,
+) -> None:
+    if revoked:
+        _require_identifier(revoked_by, "revoked_by")
+        _require_bounded_text(revoked_at, "revoked_at", maximum=128)
+        return
+    if revoked_by is not None or revoked_at is not None:
+        raise SecretProviderRegistrationError(
+            "revocation evidence requires revoked status"
         )

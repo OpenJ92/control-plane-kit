@@ -320,6 +320,8 @@ CREATE TABLE IF NOT EXISTS cpk_secret_providers (
   admitted_at text NOT NULL,
   status text NOT NULL,
   supersedes_registration_id text,
+  revoked_by text,
+  revoked_at text,
   metadata jsonb NOT NULL DEFAULT '{}'::jsonb,
   UNIQUE (registration_id, workspace_id),
   CONSTRAINT cpk_secret_providers_status_check
@@ -338,6 +340,11 @@ CREATE TABLE IF NOT EXISTS cpk_secret_providers (
     CHECK (jsonb_typeof(allowed_intents) = 'array'),
   CONSTRAINT cpk_secret_providers_metadata_shape_check
     CHECK (jsonb_typeof(metadata) = 'object'),
+  CONSTRAINT cpk_secret_providers_revocation_evidence_check
+    CHECK (
+      (status = 'revoked' AND revoked_by IS NOT NULL AND revoked_at IS NOT NULL)
+      OR (status <> 'revoked' AND revoked_by IS NULL AND revoked_at IS NULL)
+    ),
   CONSTRAINT cpk_secret_providers_supersedes_fk
     FOREIGN KEY (supersedes_registration_id, workspace_id)
     REFERENCES cpk_secret_providers (registration_id, workspace_id)
@@ -360,6 +367,8 @@ CREATE TABLE IF NOT EXISTS cpk_secret_references (
   admitted_at text NOT NULL,
   status text NOT NULL,
   supersedes_registration_id text,
+  revoked_by text,
+  revoked_at text,
   metadata jsonb NOT NULL DEFAULT '{}'::jsonb,
   UNIQUE (registration_id, workspace_id),
   CONSTRAINT cpk_secret_references_status_check
@@ -370,6 +379,11 @@ CREATE TABLE IF NOT EXISTS cpk_secret_references (
     CHECK (jsonb_typeof(allowed_intents) = 'array'),
   CONSTRAINT cpk_secret_references_metadata_shape_check
     CHECK (jsonb_typeof(metadata) = 'object'),
+  CONSTRAINT cpk_secret_references_revocation_evidence_check
+    CHECK (
+      (status = 'revoked' AND revoked_by IS NOT NULL AND revoked_at IS NOT NULL)
+      OR (status <> 'revoked' AND revoked_by IS NULL AND revoked_at IS NULL)
+    ),
   CONSTRAINT cpk_secret_references_provider_fk
     FOREIGN KEY (provider_registration_id, workspace_id)
     REFERENCES cpk_secret_providers (registration_id, workspace_id),
