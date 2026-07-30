@@ -1,8 +1,8 @@
 {
   "schema": "cpk-servers.coordinates",
   "upstreams": {
-    "control_plane_kit_commit": "30d0b56286ffdb1615e749a76f31b85f39f31876",
-    "control_plane_kit_interpreters_commit": "46570ff77256c24efa76eb9d360f2456f672c9ed",
+    "control_plane_kit_commit": "ba38616580dda5ae30376bc1751d2c93616ea24a",
+    "control_plane_kit_interpreters_commit": "d2f507488a07b4dcec628307a161a0c732543657",
     "control_plane_kit_secrets_commit": "d1c923ca476a87f74af628b7e2fb9b7c0712debe"
   },
   "products": [

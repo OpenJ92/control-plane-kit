@@ -1913,6 +1913,9 @@ def _with_public_environment(
         public_environment=tuple(bindings.values()),
         configuration_artifacts=configuration.configuration_artifacts,
         secret_deliveries=configuration.secret_deliveries,
+        requirement_secret_deliveries=(
+            configuration.requirement_secret_deliveries
+        ),
     )
 
 

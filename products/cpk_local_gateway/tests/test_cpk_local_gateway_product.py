@@ -19,6 +19,11 @@ from control_plane_kit_core.gateway_delegation import (
     GatewayProbeCommandKind,
     GatewayProbeRequest,
 )
+from control_plane_kit_core.algebra import (
+    DeploymentTopology,
+    DockerRuntime,
+    SocketConnection,
+)
 from control_plane_kit_core.environment import PublicStaticEnvironmentBinding
 from control_plane_kit_core.products import (
     ProductDescriptorCodec,
@@ -34,6 +39,7 @@ from control_plane_kit_core.secrets import (
     SecretUseIntent,
 )
 from control_plane_kit_core.types import Protocol, SocketBinding
+from control_plane_kit_core.topology import compile_topology
 
 
 ROOT = Path(__file__).resolve().parents[3]
@@ -118,6 +124,17 @@ class CpkLocalGatewayProductTests(unittest.TestCase):
             sockets.requirement("target-postgres").binding,
             SocketBinding.RUNTIME_CONTROL,
         )
+        self.assertEqual(sockets.requirement("target-http").secret_deliveries, ())
+        self.assertEqual(
+            sockets.requirement("target-postgres").secret_deliveries,
+            (
+                SecretEnvironmentDelivery(
+                    "POSTGRES_PASSWORD",
+                    SecretReference("secret://control-plane-kit/postgres/password"),
+                    SecretUseIntent.POSTGRES_PASSWORD,
+                ),
+            ),
+        )
         self.assertEqual(
             product.runtime_contract.public_environment,
             (
@@ -138,18 +155,90 @@ class CpkLocalGatewayProductTests(unittest.TestCase):
                 PublicStaticEnvironmentBinding("CPK_GATEWAY_TARGETS_JSON", "{}"),
             ),
         )
-        self.assertEqual(
-            product.runtime_contract.secret_deliveries,
-            (
-                SecretEnvironmentDelivery(
-                    "POSTGRES_PASSWORD",
-                    SecretReference("secret://control-plane-kit/postgres/password"),
-                    SecretUseIntent.POSTGRES_PASSWORD,
-                ),
-            ),
-        )
+        self.assertEqual(product.runtime_contract.secret_deliveries, ())
         self.assertEqual(product.runtime_contract.retained_data_mounts, ())
         self.assertIn("closed semantic probe", product.description.lower())
+
+    def test_postgres_edge_activates_and_removal_revokes_password_delivery(
+        self,
+    ) -> None:
+        gateway_product = self.decode().product
+        postgres_product = ProductDescriptorCodec().decode_document(
+            (ROOT / "products" / "postgres_server" / "product.cpk.json").read_bytes()
+        ).product
+        hello_product = ProductDescriptorCodec().decode_document(
+            (ROOT / "products" / "hello_server" / "product.cpk.json").read_bytes()
+        ).product
+        gateway = instantiate_product(
+            gateway_product,
+            "gateway",
+            ProductInstanceConfiguration.from_contract(
+                gateway_product.runtime_contract
+            ),
+        )
+        postgres = instantiate_product(
+            postgres_product,
+            "postgres",
+            ProductInstanceConfiguration.from_contract(
+                postgres_product.runtime_contract
+            ),
+        )
+        hello = instantiate_product(
+            hello_product,
+            "hello",
+            ProductInstanceConfiguration.from_contract(
+                hello_product.runtime_contract
+            ),
+        )
+
+        disconnected = compile_topology(
+            DeploymentTopology(
+                "gateway-disconnected",
+                DockerRuntime(children=(gateway,)),
+            )
+        )
+        connected = compile_topology(
+            DeploymentTopology(
+                "gateway-connected",
+                DockerRuntime(
+                    children=(
+                        gateway,
+                        postgres,
+                        SocketConnection(
+                            "postgres",
+                            "postgres",
+                            "gateway",
+                            "target-postgres",
+                        ),
+                    )
+                ),
+            )
+        )
+        http_only = compile_topology(
+            DeploymentTopology(
+                "gateway-http-only",
+                DockerRuntime(
+                    children=(
+                        gateway,
+                        hello,
+                        SocketConnection(
+                            "hello",
+                            "internal",
+                            "gateway",
+                            "target-http",
+                        ),
+                    )
+                ),
+            )
+        )
+
+        self.assertEqual(disconnected.node("gateway").secret_deliveries, ())
+        self.assertFalse(disconnected.edges)
+        self.assertEqual(http_only.node("gateway").secret_deliveries, ())
+        self.assertEqual(
+            connected.node("gateway").secret_deliveries,
+            gateway.sockets.requirement("target-postgres").secret_deliveries,
+        )
 
     def test_descriptor_instantiates_without_importing_process_code(self) -> None:
         product = self.decode().product
