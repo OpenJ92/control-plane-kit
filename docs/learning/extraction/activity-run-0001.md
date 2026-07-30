@@ -5337,3 +5337,62 @@ proof that provider IO occurred. The provider's resolve audit remains
 authoritative for actual material access. #1173 must derive the actor and use
 scope from trusted cpk-server context, expose only bounded metadata, and must
 not make this evidence a caller-controlled authorization token.
+
+## #1173 Secret-Provider Public Metadata Boundary
+
+#1173 exposed operations-owned provider and pre-existing-handle metadata through
+cpk-server without turning the process wrapper into secret custody:
+
+```text
+authenticated HTTP or MCP request
+  -> TrustedCommandContext
+    -> focused provider/reference register, read, or revoke policy
+      -> SecretProviderRegistrationService / secret-provider read projection
+        -> one Postgres UnitOfWork
+```
+
+HTTP and MCP-shaped adapters traverse the same operations services. Caller
+payload actor and scope fields remain inert; durable provenance comes from the
+trusted principal. Public projection is purpose-built and returns only bounded
+provider/reference metadata, including opaque endpoint and credential
+`SecretReference` identities. It never returns provider credentials, endpoint
+values, plaintext, ciphertext, or authorized-use evidence. The internal
+`secret-provider:use` scope remains separate from metadata registration, read,
+and revocation.
+
+The server composition pass exposed a useful immutable-dependency law. A new
+cpk-server image cannot directly pin core/operations from one commit while its
+interpreter dependency pins the same `control-plane-kit-core==0.1.0` name from
+another direct URL. Pip correctly rejected the contradictory candidates before
+tests ran. The fix was not a local resolver override:
+
+```text
+merge operations/core boundary
+  -> align and validate interpreters core coordinate
+    -> merge interpreters
+      -> update server coordinate manifest
+        -> regenerate every dependency surface
+          -> rebuild and validate cpk-server
+```
+
+Merged evidence:
+
+- control-plane-kit PR #1178:
+  `ffdbea260fd5f2679ecf5371251f92556a42c300`;
+- control-plane-kit-interpreters PR #42:
+  `6c6cb100b5861a08618bc4195d7c857b5b76a0c7`;
+- control-plane-kit-servers PR #53:
+  `24f563c15bdeda8b85cbabcaebc01347a61af30f`.
+
+Validation passed 221 operations tests, 91 interpreter tests, and 139
+server-product tests. The server gate also rebuilt the cpk-server image,
+exercised authenticated HTTP and MCP against a real Postgres dependency,
+verified non-root execution, cleaned owned resources, and passed the Docker
+residue audit. GitHub's independent server Docker job passed.
+
+Because cpk-server process composition changed, its published OCI must be
+rebuilt before the later published-live acceptance gate. #1173 deliberately
+does not present its source-built image as published acceptance. #1174 now owns
+the aggregate security, authorization, data-engineering, migration,
+transaction, secret-leak, HTTP/MCP parity, and test-integrity closeout before
+#1116 replaces process-local resolvers with admitted provider clients.
