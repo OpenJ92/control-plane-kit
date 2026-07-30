@@ -5967,3 +5967,54 @@ core compiles authority
   -> operations translates compiled material
     -> interpreter resolves plaintext only at IO
 ```
+
+## #1214 Gateway Socket-Bound Postgres Credential
+
+The single `cpk-local-gateway` product now adopts the socket-bound delivery
+language without introducing an HTTP/Postgres product variant:
+
+```text
+target-http:
+  optional runtime-controlled HTTP requirement
+  no secret delivery
+
+target-postgres:
+  optional runtime-controlled Postgres requirement
+  POSTGRES_PASSWORD SecretEnvironmentDelivery
+```
+
+An HTTP-only gateway graph activates no Postgres credential. The explicit
+`postgres.postgres -> gateway.target-postgres` edge activates the configured
+password reference, and compiling the gateway without that edge leaves both
+the edge and active delivery absent. The temporary hosted-controller boolean
+that attempted to omit a globally mandatory password is gone. Generic
+configuration reconstruction now preserves requirement-scoped delivery
+configuration.
+
+The adoption required a dependency-coordinate cascade because Python direct
+URL requirements treat distinct commits of the same package as conflicting
+identities. Interpreters was first aligned to core merge
+`ba38616580dda5ae30376bc1751d2c93616ea24a`, then server-products was aligned
+to interpreters merge `d2f507488a07b4dcec628307a161a0c732543657`.
+
+No gateway process source, image dependency, or Dockerfile behavior changed,
+so the existing OCI remains:
+
+```text
+ghcr.io/openj92/control-plane-kit-servers/cpk-local-gateway
+  @sha256:5698c1ee9e8b933920177d260bf44963e2ebbdfc58f791fc98bf6efd21156aa8
+```
+
+Only descriptor/catalogue truth changed:
+
+```text
+gateway descriptor sha256:
+  01379af8e631644a18210bac61a8f04ec05dc8c6847e3e6e2cdf93b178adc242
+
+packaged catalogue sha256:
+  667744ef1a6003bc689ff79b970108b3d555ed982bb796701ed5ea2e4fdf16a1
+```
+
+Exact-commit server-products validation passed all current package/product
+tests, cpk-server image build, authenticated HTTP/MCP smoke, semantic Postgres
+readiness, and Docker residue audit. No Cloudflare resource was mutated.
