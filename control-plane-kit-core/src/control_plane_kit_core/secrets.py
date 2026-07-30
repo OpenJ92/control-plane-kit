@@ -169,21 +169,25 @@ CredentialReference = SecretReference
 
 @dataclass(frozen=True, order=True)
 class SecretEnvironmentDelivery:
-    """Inject one opaque reference into a named process environment slot."""
+    """Resolve one reference for one explicit use and inject it into an environment."""
 
     environment_name: str
     reference: SecretReference
+    intent: SecretUseIntent
 
     def __post_init__(self) -> None:
         _validate_environment_name(self.environment_name)
         if not isinstance(self.reference, SecretReference):
             raise TypeError("secret environment delivery requires SecretReference")
+        if not isinstance(self.intent, SecretUseIntent):
+            raise TypeError("secret environment delivery requires SecretUseIntent")
 
     def descriptor(self) -> dict[str, str]:
         return {
             "kind": "environment",
             "environment_name": self.environment_name,
             "reference_id": self.reference.reference_id,
+            "intent": self.intent.value,
         }
 
 
@@ -211,16 +215,19 @@ class SecretReferenceEnvironmentDelivery:
 
 @dataclass(frozen=True, order=True)
 class SecretFileDelivery:
-    """Mount one opaque reference as a protected runtime-only file."""
+    """Resolve one reference for one explicit use and mount it as a protected file."""
 
     target_path: str
     reference: SecretReference
+    intent: SecretUseIntent
     file_mode: SecretFileMode = SecretFileMode.OWNER_READ_ONLY
     path_binding: SecretFilePathBinding | None = None
 
     def __post_init__(self) -> None:
         if not isinstance(self.reference, SecretReference):
             raise TypeError("secret file delivery requires SecretReference")
+        if not isinstance(self.intent, SecretUseIntent):
+            raise TypeError("secret file delivery requires SecretUseIntent")
         if not isinstance(self.file_mode, SecretFileMode):
             raise TypeError("secret file mode must be SecretFileMode")
         if self.path_binding is not None and not isinstance(
@@ -234,6 +241,7 @@ class SecretFileDelivery:
             "kind": "file",
             "target_path": self.target_path,
             "reference_id": self.reference.reference_id,
+            "intent": self.intent.value,
             "file_mode": self.file_mode.value,
             "path_binding": (
                 None if self.path_binding is None else self.path_binding.descriptor()
@@ -248,20 +256,27 @@ SecretDelivery: TypeAlias = (
 )
 
 
-def secret_delivery_sort_key(value: SecretDelivery) -> tuple[str, str, str, str, str]:
+def secret_delivery_sort_key(
+    value: SecretDelivery,
+) -> tuple[str, str, str, str, str, str]:
     """Interpret every delivery constructor into one deterministic order."""
 
     match value:
-        case SecretEnvironmentDelivery(environment_name=name, reference=reference):
-            return ("environment", name, reference.reference_id, "", "")
+        case SecretEnvironmentDelivery(
+            environment_name=name,
+            reference=reference,
+            intent=intent,
+        ):
+            return ("environment", name, reference.reference_id, intent.value, "", "")
         case SecretReferenceEnvironmentDelivery(
             environment_name=name,
             reference=reference,
         ):
-            return ("environment-reference", name, reference.reference_id, "", "")
+            return ("environment-reference", name, reference.reference_id, "", "", "")
         case SecretFileDelivery(
             target_path=path,
             reference=reference,
+            intent=intent,
             file_mode=file_mode,
             path_binding=path_binding,
         ):
@@ -269,6 +284,7 @@ def secret_delivery_sort_key(value: SecretDelivery) -> tuple[str, str, str, str,
                 "file",
                 path,
                 reference.reference_id,
+                intent.value,
                 file_mode.value,
                 "" if path_binding is None else path_binding.environment_name,
             )
@@ -282,10 +298,12 @@ def secret_delivery_from_descriptor(value: Mapping[str, object]) -> SecretDelive
                 "kind",
                 "environment_name",
                 "reference_id",
+                "intent",
             }:
                 return SecretEnvironmentDelivery(
                     _descriptor_text(value, "environment_name"),
                     SecretReference(_descriptor_text(value, "reference_id")),
+                    SecretUseIntent(_descriptor_text(value, "intent")),
                 )
             case "environment-reference" if set(value) == {
                 "kind",
@@ -300,12 +318,14 @@ def secret_delivery_from_descriptor(value: Mapping[str, object]) -> SecretDelive
                 "kind",
                 "target_path",
                 "reference_id",
+                "intent",
                 "file_mode",
                 "path_binding",
             }:
                 return SecretFileDelivery(
                     _descriptor_text(value, "target_path"),
                     SecretReference(_descriptor_text(value, "reference_id")),
+                    SecretUseIntent(_descriptor_text(value, "intent")),
                     SecretFileMode(_descriptor_text(value, "file_mode")),
                     _path_binding_from_descriptor(value.get("path_binding")),
                 )

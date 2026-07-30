@@ -32,6 +32,7 @@ from control_plane_kit_core.secrets import (
     SecretResolutionCode,
     SecretResolutionError,
     SecretResolved,
+    SecretUseIntent,
     require_resolved_secret,
     secret_delivery_from_descriptor,
 )
@@ -175,7 +176,11 @@ class EnvironmentBindingTests(unittest.TestCase):
                     PublicStaticEnvironmentBinding("DATABASE_URL", "public"),
                 ),
                 secret_deliveries=(
-                    SecretEnvironmentDelivery("DATABASE_URL", reference),
+                    SecretEnvironmentDelivery(
+                        "DATABASE_URL",
+                        reference,
+                        SecretUseIntent.POSTGRES_PASSWORD,
+                    ),
                 ),
             )
         with self.assertRaisesRegex(ValueError, "unique across sources"):
@@ -192,6 +197,7 @@ class EnvironmentBindingTests(unittest.TestCase):
                     SecretFileDelivery(
                         "/run/secrets/database-password",
                         reference,
+                        SecretUseIntent.POSTGRES_PASSWORD,
                         path_binding=SecretFilePathBinding("POSTGRES_PASSWORD_FILE"),
                     ),
                 ),
@@ -279,6 +285,7 @@ class SecretContractTests(unittest.TestCase):
             SecretEnvironmentDelivery(
                 "DATABASE_URL",
                 SecretReference("secret://local/workspace-a/database"),
+                SecretUseIntent.POSTGRES_PASSWORD,
             ),
             SecretReferenceEnvironmentDelivery(
                 "DATABASE_REFERENCE",
@@ -287,6 +294,7 @@ class SecretContractTests(unittest.TestCase):
             SecretFileDelivery(
                 "/run/secrets/database-password",
                 SecretReference("secret://local/workspace-a/database-password"),
+                SecretUseIntent.POSTGRES_PASSWORD,
                 SecretFileMode.OWNER_READ_ONLY,
                 SecretFilePathBinding("POSTGRES_PASSWORD_FILE"),
             ),
@@ -308,7 +316,24 @@ class SecretContractTests(unittest.TestCase):
                 SecretFileDelivery(
                     target,
                     SecretReference("secret://local/workspace-a/password"),
+                    SecretUseIntent.POSTGRES_PASSWORD,
                 )
+
+    def test_value_resolving_deliveries_require_closed_intent(self) -> None:
+        reference = SecretReference("secret://local/workspace-a/key")
+
+        with self.assertRaisesRegex(TypeError, "SecretUseIntent"):
+            SecretEnvironmentDelivery(
+                "TOKEN",
+                reference,
+                "application.control-token",  # type: ignore[arg-type]
+            )
+        with self.assertRaisesRegex(TypeError, "SecretUseIntent"):
+            SecretFileDelivery(
+                "/run/secrets/key",
+                reference,
+                "application.control-token",  # type: ignore[arg-type]
+            )
 
     def test_unknown_or_extra_delivery_fields_fail_closed(self) -> None:
         malformed = (
@@ -317,12 +342,25 @@ class SecretContractTests(unittest.TestCase):
                 "kind": "environment",
                 "environment_name": "TOKEN",
                 "reference_id": "secret://local/workspace-a/key",
+                "intent": "application.control-token",
                 "value": "must-not-enter",
+            },
+            {
+                "kind": "environment",
+                "environment_name": "TOKEN",
+                "reference_id": "secret://local/workspace-a/key",
+            },
+            {
+                "kind": "environment",
+                "environment_name": "TOKEN",
+                "reference_id": "secret://local/workspace-a/key",
+                "intent": "future.unbounded-intent",
             },
             {
                 "kind": "file",
                 "target_path": "/run/secrets/password",
                 "reference_id": "secret://local/workspace-a/key",
+                "intent": "postgres.password",
                 "file_mode": "0400",
                 "path_binding": {"environment_name": "PASSWORD_FILE", "extra": True},
             },
@@ -427,11 +465,16 @@ def secret_graph(reference_name: str) -> object:
         BlockSpec("service"),
         EnvironmentImplementation(
             secret_deliveries=(
-                SecretEnvironmentDelivery("DATABASE_URL", reference),
+                SecretEnvironmentDelivery(
+                    "DATABASE_URL",
+                    reference,
+                    SecretUseIntent.POSTGRES_PASSWORD,
+                ),
                 SecretReferenceEnvironmentDelivery("DATABASE_REFERENCE", reference),
                 SecretFileDelivery(
                     "/run/secrets/database-password",
                     reference,
+                    SecretUseIntent.POSTGRES_PASSWORD,
                     path_binding=SecretFilePathBinding("POSTGRES_PASSWORD_FILE"),
                 ),
             ),

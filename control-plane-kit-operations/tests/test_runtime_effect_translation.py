@@ -49,7 +49,11 @@ from control_plane_kit_core.runtime_authority import (
     RuntimeAuthorityReference,
 )
 from control_plane_kit_core.runtime_effects import ImagePullAuthority
-from control_plane_kit_core.secrets import SecretEnvironmentDelivery, SecretReference
+from control_plane_kit_core.secrets import (
+    SecretEnvironmentDelivery,
+    SecretReference,
+    SecretUseIntent,
+)
 from control_plane_kit_core.topology import DeploymentGraph, Edge, Node, RuntimeRecord
 from control_plane_kit_core.types import BlockFamily, Protocol, RuntimeKind, SocketBinding
 from control_plane_kit_core.verification import HttpCheck, VerificationContract
@@ -783,6 +787,7 @@ def _gateway_graph(
                     SecretEnvironmentDelivery(
                         "POSTGRES_PASSWORD",
                         SecretReference("secret://control-plane-kit/postgres/password"),
+                        SecretUseIntent.POSTGRES_PASSWORD,
                     ),
                 ),
             ),

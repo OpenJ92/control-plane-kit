@@ -43,7 +43,8 @@
           {
             "kind": "environment",
             "environment_name": "POSTGRES_PASSWORD",
-            "reference_id": "secret://control-plane-kit/postgres/password"
+            "reference_id": "secret://control-plane-kit/postgres/password",
+            "intent": "postgres.password"
           }
         ],
         "retained_data_mounts": [

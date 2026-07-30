@@ -525,6 +525,50 @@ laws:
   Raw secrets never enter product descriptors, graphs, plans, runtime requests,
   activity events, observations, logs, route responses, or issue evidence.
 
+### SecretDelivery
+
+meaning:
+  Closed instructions for making secret material or a secret identity available
+  to one runtime process:
+
+```text
+SecretEnvironmentDelivery
+  = environment_name
+  x SecretReference
+  x SecretUseIntent
+
+SecretFileDelivery
+  = target_path
+  x SecretReference
+  x SecretUseIntent
+  x file_mode
+  x optional path_binding
+
+SecretReferenceEnvironmentDelivery
+  = environment_name
+  x SecretReference
+```
+
+owned by:
+  `control-plane-kit-core`.
+
+durable:
+  Delivery instructions and opaque references may be durable graph/product
+  language. Resolved values are runtime-only.
+
+may contain secrets:
+  No.
+
+interpreted by:
+  Concrete runtime interpreters after operations has authorized the exact
+  reference and use intent.
+
+laws:
+  Every value-resolving delivery states a closed `SecretUseIntent`. Intent is
+  never inferred from an environment name, file path, product identity, or
+  interpreter kind. A reference-environment delivery exposes only the opaque
+  identity and therefore carries no resolving intent and invokes no resolver.
+
 ### RegisteredSecretProvider
 
 meaning:
@@ -555,12 +599,12 @@ laws:
 ### control-plane-kit-secrets
 
 meaning:
-  Future sibling distribution/product that owns encrypted durable secret
+  Sibling distribution/product that owns encrypted durable secret
   custody, authenticated resolve/write/revoke APIs, provider-local audit, and
   secret version metadata.
 
 owned by:
-  A future `OpenJ92/control-plane-kit-secrets` repository/distribution.
+  `OpenJ92/control-plane-kit-secrets`.
 
 durable:
   Yes. It owns encrypted secret material and provider-local audit. It does not

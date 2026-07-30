@@ -20,7 +20,11 @@ from control_plane_kit_core.products import (
     ProductRuntimeContractError,
     RetainedDataMount,
 )
-from control_plane_kit_core.secrets import SecretEnvironmentDelivery, SecretReference
+from control_plane_kit_core.secrets import (
+    SecretEnvironmentDelivery,
+    SecretReference,
+    SecretUseIntent,
+)
 from control_plane_kit_core.types import Protocol
 from control_plane_kit_core.verification import HttpCheck, VerificationContract
 
@@ -43,7 +47,11 @@ class ProductRuntimeContractTests(unittest.TestCase):
                 ),
             ),
             secret_deliveries=(
-                SecretEnvironmentDelivery("API_TOKEN", SecretReference("secret://local/api/token")),
+                SecretEnvironmentDelivery(
+                    "API_TOKEN",
+                    SecretReference("secret://local/api/token"),
+                    SecretUseIntent.APPLICATION_CONTROL_TOKEN,
+                ),
             ),
             retained_data_mounts=(RetainedDataMount("orders-db", "/var/lib/postgresql/data"),),
             capabilities=(CapabilityName.HEALTH_CHECKABLE,),
@@ -79,6 +87,7 @@ class ProductRuntimeContractTests(unittest.TestCase):
                 "kind": "environment",
                 "environment_name": "API_TOKEN",
                 "reference_id": "secret://local/api/token",
+                "intent": "application.control-token",
             },
         )
 

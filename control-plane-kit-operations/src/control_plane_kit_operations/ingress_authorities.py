@@ -17,6 +17,7 @@ from control_plane_kit_core.public_ingress import (
 from control_plane_kit_core.secrets import (
     SecretEnvironmentDelivery,
     SecretReference,
+    SecretUseIntent,
     SecretValue,
 )
 
@@ -538,7 +539,11 @@ def cloudflare_tunnel_token_delivery_plan(
     return CloudflareTunnelTokenDeliveryPlan(
         resource=resource,
         connector_node_id=connector_node_id,
-        secret_delivery=SecretEnvironmentDelivery("TUNNEL_TOKEN", tunnel_token_ref),
+        secret_delivery=SecretEnvironmentDelivery(
+            "TUNNEL_TOKEN",
+            tunnel_token_ref,
+            SecretUseIntent.CLOUDFLARE_TUNNEL_TOKEN,
+        ),
     )
 
 

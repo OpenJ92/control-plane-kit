@@ -223,6 +223,7 @@ class IngressAuthorityValueTests(unittest.TestCase):
                 "reference_id": (
                     "secret://cloudflare/openj92/cpk-gateway-001-tunnel-token"
                 ),
+                "intent": "cloudflare.tunnel-token",
             },
         )
         self.assertEqual(
