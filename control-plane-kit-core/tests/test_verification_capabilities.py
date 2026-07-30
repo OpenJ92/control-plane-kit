@@ -105,6 +105,7 @@ class VerificationImplementation:
 def complete_contract() -> VerificationContract:
     policy = VerificationPolicy(
         timeout_seconds=3.5,
+        interval_seconds=1.25,
         maximum_attempts=2,
         maximum_evidence_bytes=2048,
     )
@@ -418,10 +419,49 @@ class VerificationContractTests(unittest.TestCase):
     def test_policy_and_evidence_are_bounded(self) -> None:
         with self.assertRaises(VerificationContractError):
             VerificationPolicy(timeout_seconds=61)
+        for interval in (False, 0, -1, 61):
+            with self.subTest(interval=interval), self.assertRaises(
+                VerificationContractError
+            ):
+                VerificationPolicy(interval_seconds=interval)
         with self.assertRaises(VerificationContractError):
             VerificationPolicy(maximum_attempts=11)
         with self.assertRaises(VerificationContractError):
             VerificationPolicy(maximum_evidence_bytes=65_537)
+
+    def test_policy_cadence_is_canonical_and_legacy_descriptors_remain_readable(
+        self,
+    ) -> None:
+        policy = VerificationPolicy(
+            timeout_seconds=3.5,
+            interval_seconds=1.25,
+            maximum_attempts=2,
+            maximum_evidence_bytes=2048,
+        )
+        descriptor = {
+            "timeout_seconds": 3.5,
+            "interval_seconds": 1.25,
+            "maximum_attempts": 2,
+            "maximum_evidence_bytes": 2048,
+        }
+
+        self.assertEqual(policy.descriptor(), descriptor)
+        self.assertEqual(VerificationPolicy.from_descriptor(descriptor), policy)
+
+        legacy = {
+            key: value
+            for key, value in descriptor.items()
+            if key != "interval_seconds"
+        }
+        restored = VerificationPolicy.from_descriptor(legacy)
+        self.assertEqual(restored.interval_seconds, 1.0)
+        self.assertEqual(
+            restored.descriptor(),
+            {**legacy, "interval_seconds": 1.0},
+        )
+
+        with self.assertRaises(VerificationContractError):
+            VerificationPolicy.from_descriptor({**descriptor, "future": True})
 
     def test_contract_requires_unique_closed_checks(self) -> None:
         check = complete_contract().checks[0]

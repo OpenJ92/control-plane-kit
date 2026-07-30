@@ -104,6 +104,7 @@ class VerificationPolicy:
     """Finite execution and evidence bounds shared by semantic checks."""
 
     timeout_seconds: float = 5.0
+    interval_seconds: float = 1.0
     maximum_attempts: int = 1
     maximum_evidence_bytes: int = 16_384
 
@@ -116,6 +117,15 @@ class VerificationPolicy:
         ):
             raise VerificationContractError(
                 "verification timeout must be greater than zero and at most 60 seconds"
+            )
+        if (
+            not isinstance(self.interval_seconds, (int, float))
+            or isinstance(self.interval_seconds, bool)
+            or self.interval_seconds <= 0
+            or self.interval_seconds > 60
+        ):
+            raise VerificationContractError(
+                "verification interval must be greater than zero and at most 60 seconds"
             )
         if type(self.maximum_attempts) is not int or not 1 <= self.maximum_attempts <= 10:
             raise VerificationContractError(
@@ -132,6 +142,7 @@ class VerificationPolicy:
     def descriptor(self) -> dict[str, object]:
         return {
             "timeout_seconds": float(self.timeout_seconds),
+            "interval_seconds": float(self.interval_seconds),
             "maximum_attempts": self.maximum_attempts,
             "maximum_evidence_bytes": self.maximum_evidence_bytes,
         }
@@ -139,14 +150,24 @@ class VerificationPolicy:
     @classmethod
     def from_descriptor(cls, value: object) -> "VerificationPolicy":
         descriptor = _mapping(value, "verification policy")
-        _require_keys(
-            descriptor,
-            {"timeout_seconds", "maximum_attempts", "maximum_evidence_bytes"},
-            "verification policy",
-        )
+        legacy_fields = {
+            "timeout_seconds",
+            "maximum_attempts",
+            "maximum_evidence_bytes",
+        }
+        canonical_fields = legacy_fields | {"interval_seconds"}
+        if set(descriptor) not in (legacy_fields, canonical_fields):
+            raise VerificationContractError(
+                "verification policy descriptor has unknown or missing fields"
+            )
         try:
             return cls(
                 timeout_seconds=_number(descriptor, "timeout_seconds"),
+                interval_seconds=(
+                    _number(descriptor, "interval_seconds")
+                    if "interval_seconds" in descriptor
+                    else 1.0
+                ),
                 maximum_attempts=_integer(descriptor, "maximum_attempts"),
                 maximum_evidence_bytes=_integer(
                     descriptor, "maximum_evidence_bytes"

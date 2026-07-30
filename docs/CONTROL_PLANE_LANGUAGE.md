@@ -374,6 +374,38 @@ laws:
   new digest. Host paths, raw credentials, tokens, and password values are not
   descriptor language.
 
+### VerificationPolicy
+
+meaning:
+  Finite execution, retry-cadence, and evidence bounds for one semantic product
+  verification check:
+
+```text
+VerificationPolicy
+  = timeout_seconds
+  x interval_seconds
+  x maximum_attempts
+  x maximum_evidence_bytes
+```
+
+owned by:
+  `control-plane-kit-core`.
+
+durable:
+  Pure product descriptor language.
+
+may contain secrets:
+  No.
+
+interpreted by:
+  Concrete verification interpreters and bounded live acceptance drivers.
+
+laws:
+  `timeout_seconds` bounds one attempt. `interval_seconds` is the delay between
+  completed failed attempts; it does not delay the first attempt or follow the
+  final attempt. `maximum_attempts` is exact and finite. A container or process
+  lifecycle state is not semantic readiness.
+
 ### ProductReference
 
 meaning:
