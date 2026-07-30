@@ -1,5 +1,6 @@
 import unittest
 
+from contract_security_assertions import assert_descriptor_excludes_secret_material
 from control_plane_kit_core.operations import (
     ActivityHistoryPolicy,
     AdapterOperationSecurityBinding,
@@ -82,7 +83,7 @@ class AuthorizationHistoryParityTests(unittest.TestCase):
     def test_security_parity_covers_read_and_command_operations(self) -> None:
         parity = _security_parity()
 
-        self.assertEqual(len(parity.operations), 44)
+        self.assertEqual(len(parity.operations), 52)
         command = parity.operation("deployment.execute")
         self.assertEqual(command.auth_scope, HttpAuthScope.EXECUTION_RUN)
         self.assertEqual(command.safety, HttpOperationSafety.DESTRUCTIVE)
@@ -180,8 +181,9 @@ class AuthorizationHistoryParityTests(unittest.TestCase):
         )
 
         rendered = repr(descriptor).lower()
-        for forbidden in ("token", "secret", "password", "private_url"):
+        for forbidden in ("token", "password", "private_url"):
             self.assertNotIn(forbidden, rendered)
+        assert_descriptor_excludes_secret_material(self, descriptor)
 
         with self.assertRaises(InvalidAdapterParityContract):
             AdapterOperationSecurityParityContract.from_descriptor(

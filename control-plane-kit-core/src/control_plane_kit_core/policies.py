@@ -42,6 +42,10 @@ class PolicyScope(StrEnum):
     INGRESS_AUTHORITY_READ = "ingress-authority:read"
     INGRESS_AUTHORITY_REVOKE = "ingress-authority:revoke"
     INGRESS_AUTHORITY_USE = "ingress-authority:use"
+    SECRET_PROVIDER_REGISTER = "secret-provider:register"
+    SECRET_PROVIDER_READ = "secret-provider:read"
+    SECRET_PROVIDER_USE = "secret-provider:use"
+    SECRET_PROVIDER_REVOKE = "secret-provider:revoke"
     GATEWAY_PROBE_USE = "gateway-probe:use"
 
 

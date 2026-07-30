@@ -6,7 +6,7 @@ import unittest
 
 PACKAGE_ROOT = Path(__file__).resolve().parents[1]
 PYPROJECT = PACKAGE_ROOT / "pyproject.toml"
-INIT = PACKAGE_ROOT / "src" / "control_plane_kit_core" / "__init__.py"
+SOURCE_ROOT = PACKAGE_ROOT / "src" / "control_plane_kit_core"
 
 
 class PackageBoundaryTests(unittest.TestCase):
@@ -19,24 +19,28 @@ class PackageBoundaryTests(unittest.TestCase):
         self.assertNotIn("optional-dependencies", project)
         self.assertNotIn("scripts", project)
 
-    def test_root_import_stays_inside_pure_core(self) -> None:
-        tree = ast.parse(INIT.read_text(encoding="utf-8"))
+    def test_all_package_imports_stay_inside_pure_core(self) -> None:
         forbidden = {
+            "boto3",
+            "cloudflare",
             "control_plane_kit",
             "docker",
             "fastapi",
             "httpx",
             "mcp",
             "psycopg",
+            "requests",
             "uvicorn",
         }
 
         imports: set[str] = set()
-        for node in ast.walk(tree):
-            if isinstance(node, ast.Import):
-                imports.update(alias.name.split(".", 1)[0] for alias in node.names)
-            elif isinstance(node, ast.ImportFrom) and node.module:
-                imports.add(node.module.split(".", 1)[0])
+        for path in SOURCE_ROOT.rglob("*.py"):
+            tree = ast.parse(path.read_text(encoding="utf-8"))
+            for node in ast.walk(tree):
+                if isinstance(node, ast.Import):
+                    imports.update(alias.name.split(".", 1)[0] for alias in node.names)
+                elif isinstance(node, ast.ImportFrom) and node.module:
+                    imports.add(node.module.split(".", 1)[0])
 
         self.assertFalse(imports & forbidden)
 
@@ -53,7 +57,7 @@ class PackageBoundaryTests(unittest.TestCase):
         )
         source = "\n".join(
             path.read_text(encoding="utf-8")
-            for path in (PACKAGE_ROOT / "src" / "control_plane_kit_core").rglob("*.py")
+            for path in SOURCE_ROOT.rglob("*.py")
         )
 
         for value in forbidden:

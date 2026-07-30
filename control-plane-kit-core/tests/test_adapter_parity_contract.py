@@ -1,5 +1,6 @@
 import unittest
 
+from contract_security_assertions import assert_descriptor_excludes_secret_material
 from control_plane_kit_core.operations import (
     AdapterParityContract,
     AdapterProjectionBinding,
@@ -137,6 +138,30 @@ class AdapterParityContractTests(unittest.TestCase):
                     "RuntimeAuthorityDetailReadResponse",
                 ),
                 (
+                    "read.secret-provider-detail",
+                    "read.secret-provider-detail",
+                    "get_secret_provider_detail",
+                    "SecretProviderDetailReadResponse",
+                ),
+                (
+                    "read.secret-providers",
+                    "read.secret-providers",
+                    "list_secret_providers",
+                    "SecretProviderCollectionReadResponse",
+                ),
+                (
+                    "read.secret-reference-detail",
+                    "read.secret-reference-detail",
+                    "get_secret_reference_detail",
+                    "SecretReferenceDetailReadResponse",
+                ),
+                (
+                    "read.secret-references",
+                    "read.secret-references",
+                    "list_secret_references",
+                    "SecretReferenceCollectionReadResponse",
+                ),
+                (
                     "read.session-detail",
                     "read.session-detail",
                     "get_session_detail",
@@ -236,6 +261,7 @@ class AdapterParityContractTests(unittest.TestCase):
         self.assertNotIn("uvicorn", rendered)
         self.assertNotIn("dockerfile", rendered)
         self.assertNotIn("private_projection", rendered)
+        assert_descriptor_excludes_secret_material(self, parity.descriptor())
 
 
 if __name__ == "__main__":

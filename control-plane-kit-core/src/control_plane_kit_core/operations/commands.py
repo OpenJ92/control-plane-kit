@@ -32,6 +32,7 @@ class OperatorCommandFamily(StrEnum):
     APPROVAL = "approval"
     RUNTIME_AUTHORITY = "runtime-authority"
     INGRESS_AUTHORITY = "ingress-authority"
+    SECRET_PROVIDER = "secret-provider"
     GATEWAY_PROBE = "gateway-probe"
 
 
@@ -47,6 +48,10 @@ class OperatorCommandKind(StrEnum):
     REVOKE_RUNTIME_AUTHORITY_DELIVERY = "revoke-runtime-authority-delivery"
     REGISTER_INGRESS_AUTHORITY = "register-ingress-authority"
     REVOKE_INGRESS_AUTHORITY = "revoke-ingress-authority"
+    REGISTER_SECRET_PROVIDER = "register-secret-provider"
+    REVOKE_SECRET_PROVIDER = "revoke-secret-provider"
+    REGISTER_SECRET_REFERENCE = "register-secret-reference"
+    REVOKE_SECRET_REFERENCE = "revoke-secret-reference"
     START_OPERATION_SESSION = "start-operation-session"
     CLOSE_OPERATION_SESSION = "close-operation-session"
     CANCEL_OPERATION_SESSION = "cancel-operation-session"
@@ -70,6 +75,8 @@ class CommandPayloadPolicy(StrEnum):
     RUNTIME_AUTHORITY_REFERENCE = "runtime-authority-reference"
     RUNTIME_AUTHORITY_DELIVERY_REFERENCE = "runtime-authority-delivery-reference"
     INGRESS_AUTHORITY_REFERENCE = "ingress-authority-reference"
+    SECRET_PROVIDER_REFERENCE = "secret-provider-reference"
+    SECRET_REFERENCE = "secret-reference"
     GATEWAY_PROBE_REFERENCE = "gateway-probe-reference"
 
 
@@ -96,6 +103,18 @@ _KIND_FAMILY = {
     ),
     OperatorCommandKind.REVOKE_INGRESS_AUTHORITY: (
         OperatorCommandFamily.INGRESS_AUTHORITY
+    ),
+    OperatorCommandKind.REGISTER_SECRET_PROVIDER: (
+        OperatorCommandFamily.SECRET_PROVIDER
+    ),
+    OperatorCommandKind.REVOKE_SECRET_PROVIDER: (
+        OperatorCommandFamily.SECRET_PROVIDER
+    ),
+    OperatorCommandKind.REGISTER_SECRET_REFERENCE: (
+        OperatorCommandFamily.SECRET_PROVIDER
+    ),
+    OperatorCommandKind.REVOKE_SECRET_REFERENCE: (
+        OperatorCommandFamily.SECRET_PROVIDER
     ),
     OperatorCommandKind.START_OPERATION_SESSION: OperatorCommandFamily.OPERATION_SESSION,
     OperatorCommandKind.CLOSE_OPERATION_SESSION: OperatorCommandFamily.OPERATION_SESSION,
@@ -497,6 +516,54 @@ _CANONICAL_COMMANDS = (
         "RegisteredIngressAuthorityResponse",
         ApprovalPolicy.NOT_REQUIRED,
         CommandPayloadPolicy.INGRESS_AUTHORITY_REFERENCE,
+        requires_open_session=False,
+    ),
+    _CommandDefinition(
+        "secret-provider.register",
+        OperatorCommandKind.REGISTER_SECRET_PROVIDER,
+        OperatorCommandFamily.SECRET_PROVIDER,
+        DeploymentProgramStage.PLAN,
+        ControlPlaneServiceRole.PLANNING,
+        "RegisterSecretProvider",
+        "RegisteredSecretProviderResponse",
+        ApprovalPolicy.NOT_REQUIRED,
+        CommandPayloadPolicy.SECRET_PROVIDER_REFERENCE,
+        requires_open_session=False,
+    ),
+    _CommandDefinition(
+        "secret-provider.revoke",
+        OperatorCommandKind.REVOKE_SECRET_PROVIDER,
+        OperatorCommandFamily.SECRET_PROVIDER,
+        DeploymentProgramStage.PLAN,
+        ControlPlaneServiceRole.PLANNING,
+        "RevokeSecretProvider",
+        "RegisteredSecretProviderResponse",
+        ApprovalPolicy.NOT_REQUIRED,
+        CommandPayloadPolicy.SECRET_PROVIDER_REFERENCE,
+        requires_open_session=False,
+    ),
+    _CommandDefinition(
+        "secret-reference.register",
+        OperatorCommandKind.REGISTER_SECRET_REFERENCE,
+        OperatorCommandFamily.SECRET_PROVIDER,
+        DeploymentProgramStage.PLAN,
+        ControlPlaneServiceRole.PLANNING,
+        "RegisterSecretReference",
+        "RegisteredSecretReferenceResponse",
+        ApprovalPolicy.NOT_REQUIRED,
+        CommandPayloadPolicy.SECRET_REFERENCE,
+        requires_open_session=False,
+    ),
+    _CommandDefinition(
+        "secret-reference.revoke",
+        OperatorCommandKind.REVOKE_SECRET_REFERENCE,
+        OperatorCommandFamily.SECRET_PROVIDER,
+        DeploymentProgramStage.PLAN,
+        ControlPlaneServiceRole.PLANNING,
+        "RevokeSecretReference",
+        "RegisteredSecretReferenceResponse",
+        ApprovalPolicy.NOT_REQUIRED,
+        CommandPayloadPolicy.SECRET_REFERENCE,
         requires_open_session=False,
     ),
     _CommandDefinition(

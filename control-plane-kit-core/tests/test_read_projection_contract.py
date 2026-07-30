@@ -1,5 +1,6 @@
 import unittest
 
+from contract_security_assertions import assert_descriptor_excludes_secret_material
 from control_plane_kit_core.operations import (
     AdapterParityContract,
     ControlPlaneServiceRole,
@@ -180,6 +181,38 @@ class ReadProjectionContractTests(unittest.TestCase):
                     False,
                 ),
                 (
+                    "read.secret-provider-detail",
+                    ReadProjectionKind.SECRET_PROVIDER_DETAIL,
+                    "SecretProviderDetailReadResponse",
+                    ReadProjectionPolicy.REDACTED_SECRET_PROVIDER,
+                    True,
+                    False,
+                ),
+                (
+                    "read.secret-providers",
+                    ReadProjectionKind.SECRET_PROVIDERS,
+                    "SecretProviderCollectionReadResponse",
+                    ReadProjectionPolicy.REDACTED_SECRET_PROVIDER,
+                    True,
+                    False,
+                ),
+                (
+                    "read.secret-reference-detail",
+                    ReadProjectionKind.SECRET_REFERENCE_DETAIL,
+                    "SecretReferenceDetailReadResponse",
+                    ReadProjectionPolicy.REDACTED_SECRET_REFERENCE,
+                    True,
+                    False,
+                ),
+                (
+                    "read.secret-references",
+                    ReadProjectionKind.SECRET_REFERENCES,
+                    "SecretReferenceCollectionReadResponse",
+                    ReadProjectionPolicy.REDACTED_SECRET_REFERENCE,
+                    True,
+                    False,
+                ),
+                (
                     "read.session-detail",
                     ReadProjectionKind.SESSION_DETAIL,
                     "SessionDetailReadResponse",
@@ -227,7 +260,7 @@ class ReadProjectionContractTests(unittest.TestCase):
         self.assertNotIn("postgres", repr(descriptor).lower())
         self.assertNotIn("store", repr(descriptor).lower())
         self.assertNotIn("token", repr(descriptor).lower())
-        self.assertNotIn("secret", repr(descriptor).lower())
+        assert_descriptor_excludes_secret_material(self, descriptor)
 
         with self.assertRaises(InvalidReadProjectionContract):
             ReadProjectionSet.from_descriptor({**descriptor, "extra": True})

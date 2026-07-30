@@ -1,5 +1,6 @@
 import unittest
 
+from contract_security_assertions import assert_descriptor_excludes_secret_material
 from control_plane_kit_core.operations import (
     ControlPlaneProcessContract,
     DependencyReadinessKind,
@@ -118,8 +119,8 @@ class ProcessOperationalContractTests(unittest.TestCase):
         self.assertNotIn("uvicorn", rendered)
         self.assertNotIn("dockerfile", rendered)
         self.assertNotIn("token", rendered)
-        self.assertNotIn("secret", rendered)
         self.assertNotIn("password", rendered)
+        assert_descriptor_excludes_secret_material(self, descriptor)
 
 
 def _contract() -> ControlPlaneProcessContract:

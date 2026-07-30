@@ -13,6 +13,8 @@ from urllib.parse import urlsplit
 
 _PROVIDER_ID = re.compile(r"[a-z][a-z0-9-]{0,62}\Z")
 _REFERENCE_SEGMENT = re.compile(r"[A-Za-z0-9._-]{1,128}\Z")
+_ENDPOINT_REFERENCE = re.compile(r"[a-z][a-z0-9._-]{0,127}\Z")
+_ENDPOINT_REFERENCE_KEYS = frozenset({"reference_id"})
 
 
 class SecretResolutionCode(StrEnum):
@@ -32,6 +34,75 @@ class SecretResolutionError(ValueError):
 
 class SecretFileMode(StrEnum):
     OWNER_READ_ONLY = "0400"
+
+
+class SecretProviderContractError(ValueError):
+    """Raised when provider-neutral secret admission material is malformed."""
+
+
+class SecretUseIntent(StrEnum):
+    """Closed reason why one admitted secret may be resolved."""
+
+    APPLICATION_CONTROL_TOKEN = "application.control-token"
+    CLOUDFLARE_API_TOKEN = "cloudflare.api-token"
+    CLOUDFLARE_TUNNEL_TOKEN = "cloudflare.tunnel-token"
+    DOCKER_LOCAL_SOCKET_ACCESS_MARKER = "docker.local-socket-access-marker"
+    DOCKER_REMOTE_TLS_CA_CERTIFICATE = "docker.remote-tls.ca-certificate"
+    DOCKER_REMOTE_TLS_CLIENT_CERTIFICATE = "docker.remote-tls.client-certificate"
+    DOCKER_REMOTE_TLS_CLIENT_KEY = "docker.remote-tls.client-key"
+    GATEWAY_PROBE_SIGNING_KEY = "gateway.probe-signing-key"
+    OCI_PULL_CREDENTIAL = "oci.pull-credential"
+    POSTGRES_PASSWORD = "postgres.password"
+
+
+@dataclass(frozen=True, order=True)
+class SecretProviderEndpointReference:
+    """Opaque composition identity for a configured provider endpoint."""
+
+    reference_id: str
+
+    def __post_init__(self) -> None:
+        if (
+            not isinstance(self.reference_id, str)
+            or not _ENDPOINT_REFERENCE.fullmatch(self.reference_id)
+        ):
+            raise SecretProviderContractError(
+                "secret provider endpoint reference is malformed"
+            )
+
+    def descriptor(self) -> dict[str, str]:
+        return {"reference_id": self.reference_id}
+
+
+class SecretProviderEndpointReferenceCodec:
+    """Strict codec for configured provider endpoint identities."""
+
+    def encode(
+        self,
+        reference: SecretProviderEndpointReference,
+    ) -> dict[str, str]:
+        if not isinstance(reference, SecretProviderEndpointReference):
+            raise SecretProviderContractError(
+                "encode requires SecretProviderEndpointReference"
+            )
+        return reference.descriptor()
+
+    def decode(
+        self,
+        descriptor: Mapping[str, object],
+    ) -> SecretProviderEndpointReference:
+        if not isinstance(descriptor, Mapping):
+            raise SecretProviderContractError(
+                "secret provider endpoint reference must be a mapping"
+            )
+        if set(descriptor) != _ENDPOINT_REFERENCE_KEYS:
+            raise SecretProviderContractError(
+                "secret provider endpoint reference fields are invalid"
+            )
+        reference_id = descriptor.get("reference_id")
+        if not isinstance(reference_id, str):
+            raise SecretProviderContractError("reference_id must be text")
+        return SecretProviderEndpointReference(reference_id)
 
 
 @dataclass(frozen=True, order=True)

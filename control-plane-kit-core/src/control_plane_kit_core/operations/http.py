@@ -403,6 +403,26 @@ def operator_read_http_routes() -> tuple[HttpApiRouteContract, ...]:
                 "/workspaces/{workspace_id}/runtime-authority-deliveries/{authority_ref}",
                 "RuntimeAuthorityDeliveryDetailReadResponse",
             ),
+            (
+                "read.secret-providers",
+                "/workspaces/{workspace_id}/secret-providers",
+                "SecretProviderCollectionReadResponse",
+            ),
+            (
+                "read.secret-provider-detail",
+                "/workspaces/{workspace_id}/secret-providers/{provider_id}",
+                "SecretProviderDetailReadResponse",
+            ),
+            (
+                "read.secret-references",
+                "/workspaces/{workspace_id}/secret-references",
+                "SecretReferenceCollectionReadResponse",
+            ),
+            (
+                "read.secret-reference-detail",
+                "/workspaces/{workspace_id}/secret-references/{registration_id}",
+                "SecretReferenceDetailReadResponse",
+            ),
         )
     )
 
@@ -518,6 +538,42 @@ def operator_command_http_routes() -> tuple[HttpApiRouteContract, ...]:
                 HttpOperationSafety.COMMAND,
                 "RevokeIngressAuthorityRequest",
                 "RegisteredIngressAuthorityResponse",
+            ),
+            (
+                "command.secret-provider.register",
+                "/workspaces/{workspace_id}/secret-providers",
+                ControlPlaneServiceRole.PLANNING,
+                HttpAuthScope.ADMIN,
+                HttpOperationSafety.COMMAND,
+                "RegisterSecretProviderRequest",
+                "RegisteredSecretProviderResponse",
+            ),
+            (
+                "command.secret-provider.revoke",
+                "/workspaces/{workspace_id}/secret-providers/{provider_id}/revoke",
+                ControlPlaneServiceRole.PLANNING,
+                HttpAuthScope.ADMIN,
+                HttpOperationSafety.COMMAND,
+                "RevokeSecretProviderRequest",
+                "RegisteredSecretProviderResponse",
+            ),
+            (
+                "command.secret-reference.register",
+                "/workspaces/{workspace_id}/secret-references",
+                ControlPlaneServiceRole.PLANNING,
+                HttpAuthScope.ADMIN,
+                HttpOperationSafety.COMMAND,
+                "RegisterSecretReferenceRequest",
+                "RegisteredSecretReferenceResponse",
+            ),
+            (
+                "command.secret-reference.revoke",
+                "/workspaces/{workspace_id}/secret-references/{registration_id}/revoke",
+                ControlPlaneServiceRole.PLANNING,
+                HttpAuthScope.ADMIN,
+                HttpOperationSafety.COMMAND,
+                "RevokeSecretReferenceRequest",
+                "RegisteredSecretReferenceResponse",
             ),
             (
                 "command.operation-session.start",

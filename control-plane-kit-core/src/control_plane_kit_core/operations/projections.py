@@ -35,6 +35,10 @@ class ReadProjectionKind(StrEnum):
     RUNTIME_AUTHORITY_DELIVERY_DETAIL = "runtime-authority-delivery-detail"
     INGRESS_AUTHORITIES = "ingress-authorities"
     INGRESS_AUTHORITY_DETAIL = "ingress-authority-detail"
+    SECRET_PROVIDERS = "secret-providers"
+    SECRET_PROVIDER_DETAIL = "secret-provider-detail"
+    SECRET_REFERENCES = "secret-references"
+    SECRET_REFERENCE_DETAIL = "secret-reference-detail"
     GATEWAY_PROBE_DETAIL = "gateway-probe-detail"
     GATEWAY_PROBE_TIMELINE = "gateway-probe-timeline"
 
@@ -51,6 +55,8 @@ class ReadProjectionPolicy(StrEnum):
     REDACTED_RUNTIME_AUTHORITY = "redacted-runtime-authority"
     REDACTED_RUNTIME_AUTHORITY_DELIVERY = "redacted-runtime-authority-delivery"
     REDACTED_INGRESS_AUTHORITY = "redacted-ingress-authority"
+    REDACTED_SECRET_PROVIDER = "redacted-secret-provider"
+    REDACTED_SECRET_REFERENCE = "redacted-secret-reference"
     DELEGATED_GATEWAY_PROBE_EVIDENCE = "delegated-gateway-probe-evidence"
 
 
@@ -360,6 +366,30 @@ _CANONICAL_PROJECTIONS = (
         ReadProjectionKind.RUNTIME_AUTHORITY_DELIVERY_DETAIL,
         "RuntimeAuthorityDeliveryDetailReadResponse",
         ReadProjectionPolicy.REDACTED_RUNTIME_AUTHORITY_DELIVERY,
+    ),
+    _ProjectionDefinition(
+        "read.secret-providers",
+        ReadProjectionKind.SECRET_PROVIDERS,
+        "SecretProviderCollectionReadResponse",
+        ReadProjectionPolicy.REDACTED_SECRET_PROVIDER,
+    ),
+    _ProjectionDefinition(
+        "read.secret-provider-detail",
+        ReadProjectionKind.SECRET_PROVIDER_DETAIL,
+        "SecretProviderDetailReadResponse",
+        ReadProjectionPolicy.REDACTED_SECRET_PROVIDER,
+    ),
+    _ProjectionDefinition(
+        "read.secret-references",
+        ReadProjectionKind.SECRET_REFERENCES,
+        "SecretReferenceCollectionReadResponse",
+        ReadProjectionPolicy.REDACTED_SECRET_REFERENCE,
+    ),
+    _ProjectionDefinition(
+        "read.secret-reference-detail",
+        ReadProjectionKind.SECRET_REFERENCE_DETAIL,
+        "SecretReferenceDetailReadResponse",
+        ReadProjectionPolicy.REDACTED_SECRET_REFERENCE,
     ),
     _ProjectionDefinition(
         "read.open-sessions",

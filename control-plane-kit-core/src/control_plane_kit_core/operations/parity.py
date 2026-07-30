@@ -937,6 +937,30 @@ _OPERATOR_READ_PROJECTIONS = (
         "get_runtime_authority_delivery_detail",
         "RuntimeAuthorityDeliveryDetailReadResponse",
     ),
+    (
+        "read.secret-providers",
+        "read.secret-providers",
+        "list_secret_providers",
+        "SecretProviderCollectionReadResponse",
+    ),
+    (
+        "read.secret-provider-detail",
+        "read.secret-provider-detail",
+        "get_secret_provider_detail",
+        "SecretProviderDetailReadResponse",
+    ),
+    (
+        "read.secret-references",
+        "read.secret-references",
+        "list_secret_references",
+        "SecretReferenceCollectionReadResponse",
+    ),
+    (
+        "read.secret-reference-detail",
+        "read.secret-reference-detail",
+        "get_secret_reference_detail",
+        "SecretReferenceDetailReadResponse",
+    ),
 )
 
 
@@ -1029,6 +1053,42 @@ _OPERATOR_COMMANDS = (
         ControlPlaneServiceRole.PLANNING,
         "RevokeIngressAuthorityRequest",
         "RegisteredIngressAuthorityResponse",
+        ApprovalPolicy.NOT_REQUIRED,
+    ),
+    (
+        "secret-provider.register",
+        "command.secret-provider.register",
+        "register_secret_provider",
+        ControlPlaneServiceRole.PLANNING,
+        "RegisterSecretProviderRequest",
+        "RegisteredSecretProviderResponse",
+        ApprovalPolicy.NOT_REQUIRED,
+    ),
+    (
+        "secret-provider.revoke",
+        "command.secret-provider.revoke",
+        "revoke_secret_provider",
+        ControlPlaneServiceRole.PLANNING,
+        "RevokeSecretProviderRequest",
+        "RegisteredSecretProviderResponse",
+        ApprovalPolicy.NOT_REQUIRED,
+    ),
+    (
+        "secret-reference.register",
+        "command.secret-reference.register",
+        "register_secret_reference",
+        ControlPlaneServiceRole.PLANNING,
+        "RegisterSecretReferenceRequest",
+        "RegisteredSecretReferenceResponse",
+        ApprovalPolicy.NOT_REQUIRED,
+    ),
+    (
+        "secret-reference.revoke",
+        "command.secret-reference.revoke",
+        "revoke_secret_reference",
+        ControlPlaneServiceRole.PLANNING,
+        "RevokeSecretReferenceRequest",
+        "RegisteredSecretReferenceResponse",
         ApprovalPolicy.NOT_REQUIRED,
     ),
     (
