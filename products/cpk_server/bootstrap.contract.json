@@ -83,18 +83,11 @@
       ]
     },
     {
-      "name": "CPK_IMAGE_PULL_CREDENTIAL_RESOLVER",
+      "name": "CPK_PRODUCT_MATERIAL_RESOLVER",
       "required": false,
       "allowed_values": [
         "none",
-        "docker-config"
-      ]
-    },
-    {
-      "name": "CPK_PRODUCT_SECRET_RESOLVER",
-      "required": false,
-      "allowed_values": [
-        "none",
+        "provider",
         "local-development"
       ]
     },
@@ -106,17 +99,17 @@
       ]
     },
     {
-      "name": "DOCKER_CONFIG",
+      "name": "CPK_MATERIAL_PROVIDER_ROUTES_JSON",
       "required": false,
       "allowed_values": [
-        "container-local-docker-config-directory"
+        "opaque-endpoint-reference-to-base-url-map"
       ]
     },
     {
-      "name": "CPK_DOCKER_AUTH_CONFIG_JSON",
+      "name": "CPK_MATERIAL_PROVIDER_BOOTSTRAP_FILES_JSON",
       "required": false,
       "allowed_values": [
-        "runtime-secret-delivered-docker-config-json"
+        "bootstrap-credential-reference-to-mounted-file-map"
       ]
     },
     {
@@ -155,7 +148,9 @@
     "ingress interpreter authority is selected explicitly and never inferred",
     "gateway probe signing authority is selected explicitly and resolves only its secret reference at dispatch",
     "store endpoints are runtime-supplied and never echoed by readiness",
-    "image pull credential authority is selected explicitly and resolved only at runtime interpreter dispatch",
-    "product secret authority is selected explicitly and resolved only at runtime interpreter dispatch"
+    "provider endpoint references map to bounded process-local routes and are never echoed",
+    "provider bootstrap credentials are mounted files read only by the provider client and are never recursively resolved through operations",
+    "product secret authority is admitted by operations and resolved only at interpreter dispatch",
+    "local-development secret maps are explicit fixtures and are not selected by production descriptors"
   ]
 }

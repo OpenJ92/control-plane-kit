@@ -216,7 +216,7 @@ if [ -n "$AUTH_CONFIG_DIR" ]; then
     -e CPK_PORT=8080 \
     -e CPK_RUNTIME_INTERPRETERS=docker \
     -e CPK_IMAGE_PULL_CREDENTIAL_RESOLVER="$IMAGE_PULL_RESOLVER" \
-    -e CPK_PRODUCT_SECRET_RESOLVER=local-development \
+    -e CPK_PRODUCT_MATERIAL_RESOLVER=local-development \
     -e CPK_PRODUCT_SECRET_VALUES_JSON="$PRODUCT_SECRET_VALUES_JSON" \
     -e CPK_WORKPLACE_DATABASE_URL=postgresql://cpk:cpk@cpk-postgres:5432/cpk \
     -e CPK_ACTIVITY_HISTORY_DATABASE_URL=postgresql://cpk:cpk@cpk-postgres:5432/cpk \
@@ -234,7 +234,7 @@ else
     -e CPK_CONTROL_AUTH_CONFIGURED=true \
     -e CPK_PORT=8080 \
     -e CPK_RUNTIME_INTERPRETERS=docker \
-    -e CPK_PRODUCT_SECRET_RESOLVER=local-development \
+    -e CPK_PRODUCT_MATERIAL_RESOLVER=local-development \
     -e CPK_PRODUCT_SECRET_VALUES_JSON="$PRODUCT_SECRET_VALUES_JSON" \
     -e CPK_WORKPLACE_DATABASE_URL=postgresql://cpk:cpk@cpk-postgres:5432/cpk \
     -e CPK_ACTIVITY_HISTORY_DATABASE_URL=postgresql://cpk:cpk@cpk-postgres:5432/cpk \

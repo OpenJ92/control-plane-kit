@@ -3,10 +3,10 @@
 from __future__ import annotations
 
 from dataclasses import dataclass, field
-import base64
 from datetime import datetime, timezone
 import json
 import os
+from pathlib import Path
 import time
 from typing import Mapping
 from urllib.parse import urlsplit
@@ -51,7 +51,6 @@ from control_plane_kit_operations import (
     GatewayProbeDispatchError,
     GatewayProbeDispatchResult,
     ImagePullAuthorityRegistrationService,
-    InMemoryGeneratedSecretRecorder,
     IngressAuthorityProviderKind,
     IngressAuthorityRegistrationService,
     IngressRealizationAdapter,
@@ -63,6 +62,7 @@ from control_plane_kit_operations import (
     RuntimeInterpreterDispatcher,
     RunLifecycleCommandService,
     SecretProviderRegistrationService,
+    SecretUseAuthorizationService,
     WorkspaceCommandService,
     cpk_server_services,
 )
@@ -157,11 +157,10 @@ class CpkServerBootstrapConfiguration:
     port: int
     runtime_dispatcher: RuntimeDispatcherBootstrapConfiguration
     ingress_interpreters: IngressInterpreterBootstrapConfiguration
-    image_pull_credential_resolver: str
-    product_secret_resolver: str
+    product_material_resolver: str
     product_secret_values_json: str | None = field(repr=False)
-    docker_config_path: str | None
-    docker_config_json: str | None = field(repr=False)
+    material_provider_routes_json: str | None = field(repr=False)
+    material_provider_bootstrap_files_json: str | None = field(repr=False)
     store_endpoints: Mapping[str, str]
     gateway_probe_signer: str = "none"
     gateway_probe_signing_key_reference: SecretReference | None = None
@@ -199,14 +198,17 @@ class CpkServerBootstrapConfiguration:
         ingress_interpreters = IngressInterpreterBootstrapConfiguration.from_process_value(
             values.get("CPK_INGRESS_INTERPRETERS", "none")
         )
-        image_pull_credential_resolver = values.get(
-            "CPK_IMAGE_PULL_CREDENTIAL_RESOLVER",
+        product_material_resolver = values.get(
+            "CPK_PRODUCT_MATERIAL_RESOLVER",
             "none",
         )
-        product_secret_resolver = values.get("CPK_PRODUCT_SECRET_RESOLVER", "none")
         product_secret_values_json = values.get("CPK_PRODUCT_SECRET_VALUES_JSON")
-        docker_config_path = _docker_config_path(values)
-        docker_config_json = values.get("CPK_DOCKER_AUTH_CONFIG_JSON")
+        material_provider_routes_json = values.get(
+            "CPK_MATERIAL_PROVIDER_ROUTES_JSON"
+        )
+        material_provider_bootstrap_files_json = values.get(
+            "CPK_MATERIAL_PROVIDER_BOOTSTRAP_FILES_JSON"
+        )
         gateway_probe_signer = values.get("CPK_GATEWAY_PROBE_SIGNER", "none")
         gateway_probe_signing_key_text = values.get(
             "CPK_GATEWAY_PROBE_SIGNING_KEY_REF"
@@ -295,13 +297,26 @@ class CpkServerBootstrapConfiguration:
             raise BootstrapConfigurationError("CPK_PORT must be an integer") from error
         if not 1 <= port <= 65535:
             raise BootstrapConfigurationError("CPK_PORT must be in TCP port range")
-        if image_pull_credential_resolver not in {"none", "docker-config"}:
-            raise BootstrapConfigurationError(
-                "CPK_IMAGE_PULL_CREDENTIAL_RESOLVER must be one of: none, docker-config"
+        if any(
+            name in values
+            for name in (
+                "CPK_IMAGE_PULL_CREDENTIAL_RESOLVER",
+                "DOCKER_CONFIG",
+                "CPK_DOCKER_AUTH_CONFIG",
+                "CPK_DOCKER_AUTH_CONFIG_JSON",
             )
-        if product_secret_resolver not in {"none", "local-development"}:
+        ):
             raise BootstrapConfigurationError(
-                "CPK_PRODUCT_SECRET_RESOLVER must be one of: none, local-development"
+                "legacy Docker credential bootstrap is unavailable"
+            )
+        if product_material_resolver not in {
+            "none",
+            "provider",
+            "local-development",
+        }:
+            raise BootstrapConfigurationError(
+                "CPK_PRODUCT_MATERIAL_RESOLVER must be one of: "
+                "none, provider, local-development"
             )
         if gateway_probe_signer not in {"none", "ed25519"}:
             raise BootstrapConfigurationError(
@@ -326,10 +341,10 @@ class CpkServerBootstrapConfiguration:
                     "CPK_GATEWAY_PROBE_SIGNER=ed25519 requires signing key "
                     "reference, issuer, and key id"
                 )
-            if product_secret_resolver == "none":
+            if product_material_resolver != "provider":
                 raise BootstrapConfigurationError(
-                    "CPK_GATEWAY_PROBE_SIGNER=ed25519 requires "
-                    "CPK_PRODUCT_SECRET_RESOLVER"
+                    "CPK_GATEWAY_PROBE_SIGNER=ed25519 requires provider-backed "
+                    "secret resolution"
                 )
             try:
                 gateway_probe_signing_key_reference = SecretReference(
@@ -348,48 +363,64 @@ class CpkServerBootstrapConfiguration:
                 "CPK_GATEWAY_PROBE_KEY_ID",
             )
         if (
-            image_pull_credential_resolver == "docker-config"
-            and RuntimeKind.DOCKER not in runtime_dispatcher.runtime_kinds
-        ):
-            raise BootstrapConfigurationError(
-                "CPK_IMAGE_PULL_CREDENTIAL_RESOLVER=docker-config requires "
-                "a Docker runtime interpreter"
-            )
-        if (
-            image_pull_credential_resolver == "docker-config"
-            and docker_config_path is None
-            and not docker_config_json
-        ):
-            raise BootstrapConfigurationError(
-                "CPK_IMAGE_PULL_CREDENTIAL_RESOLVER=docker-config requires "
-                "DOCKER_CONFIG, CPK_DOCKER_AUTH_CONFIG, or CPK_DOCKER_AUTH_CONFIG_JSON"
-            )
-        if (
-            product_secret_resolver == "local-development"
+            product_material_resolver == "local-development"
             and RuntimeKind.DOCKER not in runtime_dispatcher.runtime_kinds
             and IngressAuthorityProviderKind.CLOUDFLARE
             not in ingress_interpreters.provider_kinds
             and gateway_probe_signer == "none"
         ):
             raise BootstrapConfigurationError(
-                "CPK_PRODUCT_SECRET_RESOLVER=local-development requires "
+                "CPK_PRODUCT_MATERIAL_RESOLVER=local-development requires "
                 "a Docker runtime interpreter, Cloudflare ingress interpreter, "
                 "or gateway probe signer"
             )
-        if product_secret_resolver == "local-development":
+        if product_material_resolver == "local-development":
             if product_secret_values_json is None or product_secret_values_json == "":
                 raise BootstrapConfigurationError(
-                    "CPK_PRODUCT_SECRET_RESOLVER=local-development requires "
+                    "CPK_PRODUCT_MATERIAL_RESOLVER=local-development requires "
                     "CPK_PRODUCT_SECRET_VALUES_JSON"
                 )
+            if (
+                material_provider_routes_json is not None
+                or material_provider_bootstrap_files_json is not None
+            ):
+                raise BootstrapConfigurationError(
+                    "local-development secret resolution cannot use provider bootstrap"
+                )
+        elif product_secret_values_json is not None:
+            raise BootstrapConfigurationError(
+                "CPK_PRODUCT_SECRET_VALUES_JSON requires "
+                "CPK_PRODUCT_MATERIAL_RESOLVER=local-development"
+            )
+        if product_material_resolver == "provider":
+            if (
+                not material_provider_routes_json
+                or not material_provider_bootstrap_files_json
+            ):
+                raise BootstrapConfigurationError(
+                    "provider-backed secret resolution requires endpoint and "
+                    "credential-file registries"
+                )
+            _validated_bootstrap_mapping_json(material_provider_routes_json)
+            _validated_bootstrap_mapping_json(
+                material_provider_bootstrap_files_json
+            )
+        elif (
+            material_provider_routes_json is not None
+            or material_provider_bootstrap_files_json is not None
+        ):
+            raise BootstrapConfigurationError(
+                "secret provider bootstrap requires "
+                "CPK_PRODUCT_MATERIAL_RESOLVER=provider"
+            )
         if (
             IngressAuthorityProviderKind.CLOUDFLARE
             in ingress_interpreters.provider_kinds
-            and product_secret_resolver == "none"
+            and product_material_resolver != "provider"
         ):
             raise BootstrapConfigurationError(
-                "CPK_INGRESS_INTERPRETERS=cloudflare requires "
-                "CPK_PRODUCT_SECRET_RESOLVER"
+                "CPK_INGRESS_INTERPRETERS=cloudflare requires provider-backed "
+                "secret resolution"
             )
         return cls(
             mode=mode,
@@ -399,11 +430,12 @@ class CpkServerBootstrapConfiguration:
             port=port,
             runtime_dispatcher=runtime_dispatcher,
             ingress_interpreters=ingress_interpreters,
-            image_pull_credential_resolver=image_pull_credential_resolver,
-            product_secret_resolver=product_secret_resolver,
+            product_material_resolver=product_material_resolver,
             product_secret_values_json=product_secret_values_json,
-            docker_config_path=docker_config_path,
-            docker_config_json=docker_config_json,
+            material_provider_routes_json=material_provider_routes_json,
+            material_provider_bootstrap_files_json=(
+                material_provider_bootstrap_files_json
+            ),
             store_endpoints=store_endpoints,
             gateway_probe_signer=gateway_probe_signer,
             gateway_probe_signing_key_reference=(
@@ -467,6 +499,11 @@ def create_app(
                 "stores": "configured",
                 "runtime_interpreters": str(config.runtime_dispatcher),
                 "ingress_interpreters": str(config.ingress_interpreters),
+                "material_provider": {
+                    "none": "disabled",
+                    "provider": "configured",
+                    "local-development": "development-fixture",
+                }[config.product_material_resolver],
             },
         )
 
@@ -534,14 +571,43 @@ def _credential_verifier(
     )
 
 
-def _docker_config_path(values: Mapping[str, str]) -> str | None:
-    docker_config = values.get("DOCKER_CONFIG")
-    if docker_config:
-        return os.path.join(docker_config, "config.json")
-    docker_auth_config = values.get("CPK_DOCKER_AUTH_CONFIG")
-    if docker_auth_config:
-        return docker_auth_config
-    return None
+def _validated_bootstrap_mapping_json(value: str) -> dict[str, str]:
+    if not isinstance(value, str) or not 1 <= len(value.encode("utf-8")) <= 65_536:
+        raise BootstrapConfigurationError(
+            "secret provider bootstrap registry is malformed"
+        )
+    try:
+        decoded = json.loads(value, object_pairs_hook=_unique_json_mapping)
+    except (TypeError, ValueError):
+        raise BootstrapConfigurationError(
+            "secret provider bootstrap registry is malformed"
+        ) from None
+    if (
+        not isinstance(decoded, dict)
+        or not 1 <= len(decoded) <= 64
+        or not all(
+            isinstance(key, str)
+            and isinstance(item, str)
+            and key
+            and item
+            and len(key.encode("utf-8")) <= 2_048
+            and len(item.encode("utf-8")) <= 4_096
+            for key, item in decoded.items()
+        )
+    ):
+        raise BootstrapConfigurationError(
+            "secret provider bootstrap registry is malformed"
+        )
+    return decoded
+
+
+def _unique_json_mapping(pairs: list[tuple[str, object]]) -> dict[str, object]:
+    values: dict[str, object] = {}
+    for key, value in pairs:
+        if key in values:
+            raise ValueError("duplicate key")
+        values[key] = value
+    return values
 
 
 def _required(values: Mapping[str, str], name: str) -> str:
@@ -690,11 +756,17 @@ def _operations_application(
         clock=_clock,
         id_factory=_id,
     )
-    generated_secret_recorder = InMemoryGeneratedSecretRecorder()
+    secret_use_authorizer = SecretUseAuthorizationService(unit_of_work)
+    secret_provider = _secret_provider_composition(config)
     execution = ExecutionCoordinator(
         unit_of_work,
         lifecycle=lifecycle,
-        adapter=_activity_adapter(config, unit_of_work, generated_secret_recorder),
+        adapter=_activity_adapter(
+            config,
+            unit_of_work,
+            secret_use_authorizer,
+            secret_provider,
+        ),
         clock=_clock,
         id_factory=_id,
     )
@@ -743,22 +815,41 @@ def _operations_application(
                 clock=_clock,
                 id_factory=_id,
             ),
-            gateway_probes=_gateway_probe_service(config, unit_of_work),
+            gateway_probes=_gateway_probe_service(
+                config,
+                unit_of_work,
+                secret_use_authorizer,
+                secret_provider,
+            ),
             clock=lambda: datetime.now(timezone.utc),
         )
     )
 
 
-def _gateway_probe_service(config: CpkServerBootstrapConfiguration, unit_of_work):
+def _gateway_probe_service(
+    config: CpkServerBootstrapConfiguration,
+    unit_of_work,
+    secret_use_authorizer,
+    secret_provider: "_SecretProviderComposition",
+):
     if config.gateway_probe_signer == "none":
         return None
-    if config.gateway_probe_issuer is None or config.gateway_probe_key_id is None:
+    if (
+        config.gateway_probe_issuer is None
+        or config.gateway_probe_key_id is None
+        or config.gateway_probe_signing_key_reference is None
+    ):
         raise AssertionError("gateway probe signer fields validated at bootstrap")
     return GatewayProbeCommandService(
         unit_of_work,
-        dispatcher=_gateway_probe_dispatcher(config),
+        dispatcher=_gateway_probe_dispatcher(
+            config,
+            secret_provider=secret_provider,
+        ),
         issuer=config.gateway_probe_issuer,
         key_id=config.gateway_probe_key_id,
+        signing_key_reference=config.gateway_probe_signing_key_reference,
+        secret_use_authorizer=secret_use_authorizer,
         epoch_clock=lambda: int(time.time()),
         clock=_clock,
         id_factory=_id,
@@ -790,6 +881,7 @@ class _SignedGatewayProbeDispatcher:
                 request.grant,
                 request.request,
                 endpoint,
+                request.secret_resolution_grant,
             )
         except self.bounded_error_types:
             raise GatewayProbeDispatchError(
@@ -814,16 +906,20 @@ class _SignedGatewayProbeDispatcher:
 def _gateway_probe_dispatcher(
     config: CpkServerBootstrapConfiguration,
     *,
+    secret_provider: "_SecretProviderComposition | None" = None,
     transport=None,
 ):
     if config.gateway_probe_signer != "ed25519":
         raise BootstrapConfigurationError("gateway probe signer is disabled")
     if config.gateway_probe_signing_key_reference is None:
         raise AssertionError("gateway probe signing key validated at bootstrap")
-    secret_resolver = _product_secret_resolver(config)
-    if secret_resolver is None:
+    provider = secret_provider or _secret_provider_composition(
+        config,
+        transport=transport,
+    )
+    if provider.authorized_resolver is None:
         raise BootstrapConfigurationError(
-            "gateway probe signer requires a product secret resolver"
+            "gateway probe signer requires provider-backed secret resolution"
         )
     try:
         from control_plane_kit_interpreters.probes import (
@@ -841,7 +937,7 @@ def _gateway_probe_dispatcher(
         ) from error
     signer = Ed25519GatewayProbeSigner(
         config.gateway_probe_signing_key_reference,
-        secret_resolver,
+        provider.authorized_resolver,
     )
 
     def client_factory(runtime_private_authority: str):
@@ -902,43 +998,54 @@ class _CompositeExecutionAdapter:
 def _activity_adapter(
     config: CpkServerBootstrapConfiguration,
     unit_of_work,
-    generated_secret_recorder: InMemoryGeneratedSecretRecorder,
+    secret_use_authorizer,
+    secret_provider: "_SecretProviderComposition",
 ) -> ActivityExecutionAdapter:
-    runtime = _runtime_adapter(config, generated_secret_recorder)
+    runtime = _runtime_adapter(
+        config,
+        secret_use_authorizer=secret_use_authorizer,
+        secret_provider=secret_provider,
+    )
     if not config.ingress_interpreters.enabled:
         return runtime
     ingress = IngressRealizationAdapter(
         unit_of_work,
-        interpreters=_ingress_interpreters(config),
-        generated_secret_recorder=generated_secret_recorder,
+        interpreters=_ingress_interpreters(config, secret_provider),
         clock=_clock,
+        secret_use_authorizer=secret_use_authorizer,
     )
     return _CompositeExecutionAdapter((ingress, runtime))
 
 
 def _runtime_adapter(
     config: CpkServerBootstrapConfiguration,
-    generated_secret_recorder: InMemoryGeneratedSecretRecorder | None = None,
+    *,
+    secret_use_authorizer=None,
+    secret_provider: "_SecretProviderComposition | None" = None,
 ) -> _UnsupportedExecutionAdapter | RuntimeInterpreterDispatcher:
     if not config.runtime_dispatcher.enabled:
         return _UnsupportedExecutionAdapter()
+    provider = secret_provider or _secret_provider_composition(config)
     interpreters = {}
     for runtime_kind in config.runtime_dispatcher.runtime_kinds:
         if runtime_kind is RuntimeKind.DOCKER:
             interpreters[RuntimeKind.DOCKER] = _docker_runtime_interpreter(
                 config,
-                generated_secret_recorder,
+                provider,
             )
             continue
         raise BootstrapConfigurationError(
             f"no runtime interpreter provider is available for {runtime_kind.value!r}"
         )
-    return RuntimeInterpreterDispatcher(interpreters)
+    return RuntimeInterpreterDispatcher(
+        interpreters,
+        secret_use_authorizer=secret_use_authorizer,
+    )
 
 
 def _docker_runtime_interpreter(
     config: CpkServerBootstrapConfiguration,
-    generated_secret_recorder: InMemoryGeneratedSecretRecorder | None = None,
+    secret_provider: "_SecretProviderComposition | None" = None,
 ):
     try:
         from control_plane_kit_interpreters.docker import (
@@ -951,24 +1058,28 @@ def _docker_runtime_interpreter(
             "CPK_RUNTIME_INTERPRETERS=docker requires "
             "control-plane-kit-interpreters[docker]"
         ) from error
+    provider = secret_provider or _secret_provider_composition(config)
     return DockerRuntimeInterpreter(
         DockerSdkClient.from_authority(
             DockerLocalAmbientClientConfig(),
             connect_on_init=False,
         ),
-        image_pull_credentials=_image_pull_credential_resolver(config),
-        secret_resolver=_combined_product_secret_resolver(
-            config,
-            generated_secret_recorder,
-        ),
+        authorized_secret_resolver=provider.authorized_resolver,
     )
 
 
-def _ingress_interpreters(config: CpkServerBootstrapConfiguration):
+def _ingress_interpreters(
+    config: CpkServerBootstrapConfiguration,
+    secret_provider: "_SecretProviderComposition | None" = None,
+):
+    provider = secret_provider or _secret_provider_composition(config)
     interpreters = {}
     for provider_kind in config.ingress_interpreters.provider_kinds:
         if provider_kind is IngressAuthorityProviderKind.CLOUDFLARE:
-            interpreters[provider_kind] = _cloudflare_ingress_interpreter(config)
+            interpreters[provider_kind] = _cloudflare_ingress_interpreter(
+                config,
+                provider,
+            )
             continue
         raise BootstrapConfigurationError(
             f"no ingress interpreter provider is available for {provider_kind.value!r}"
@@ -976,7 +1087,10 @@ def _ingress_interpreters(config: CpkServerBootstrapConfiguration):
     return interpreters
 
 
-def _cloudflare_ingress_interpreter(config: CpkServerBootstrapConfiguration):
+def _cloudflare_ingress_interpreter(
+    config: CpkServerBootstrapConfiguration,
+    secret_provider: "_SecretProviderComposition | None" = None,
+):
     try:
         from control_plane_kit_interpreters.cloudflare import (
             CloudflareNamedIngressInterpreter,
@@ -989,10 +1103,20 @@ def _cloudflare_ingress_interpreter(config: CpkServerBootstrapConfiguration):
             "control-plane-kit-interpreters[cloudflare]"
         ) from error
 
+    provider = secret_provider or _secret_provider_composition(config)
+    if (
+        provider.authorized_resolver is None
+        or provider.secret_custodian is None
+    ):
+        raise BootstrapConfigurationError(
+            "Cloudflare ingress requires provider-backed secret resolution"
+        )
+
     class CloudflareIngressProvider:
-        def __init__(self, secret_resolver) -> None:
+        def __init__(self) -> None:
             self._inner = CloudflareNamedIngressInterpreter(
-                secret_resolver=secret_resolver,
+                authorized_secret_resolver=provider.authorized_resolver,
+                secret_custodian=provider.secret_custodian,
             )
 
         def create(
@@ -1002,6 +1126,8 @@ def _cloudflare_ingress_interpreter(config: CpkServerBootstrapConfiguration):
             authority: CloudflareZoneIngressAuthority,
             allocation_name: str,
             origin_service_url: str,
+            secret_resolution_grant,
+            secret_custody_grant,
         ):
             return self._inner.create(
                 ingress,
@@ -1014,6 +1140,8 @@ def _cloudflare_ingress_interpreter(config: CpkServerBootstrapConfiguration):
                 ),
                 allocation_name=allocation_name,
                 origin_service_url=origin_service_url,
+                secret_resolution_grant=secret_resolution_grant,
+                secret_custody_grant=secret_custody_grant,
             )
 
         def teardown(
@@ -1021,6 +1149,8 @@ def _cloudflare_ingress_interpreter(config: CpkServerBootstrapConfiguration):
             *,
             authority: CloudflareZoneIngressAuthority,
             resources: CloudflareOwnedIngressResource,
+            secret_resolution_grant,
+            secret_custody_grant,
         ) -> None:
             return self._inner.teardown(
                 authority=CloudflareZoneAuthority(
@@ -1036,247 +1166,133 @@ def _cloudflare_ingress_interpreter(config: CpkServerBootstrapConfiguration):
                     tunnel_name=resources.tunnel_name,
                     hostname=resources.hostname,
                 ),
+                secret_resolution_grant=secret_resolution_grant,
+                secret_custody_grant=secret_custody_grant,
             )
 
         def __repr__(self) -> str:
             return "CloudflareIngressProvider(<redacted>)"
 
-    return CloudflareIngressProvider(_product_secret_resolver(config))
+    return CloudflareIngressProvider()
 
 
-def _image_pull_credential_resolver(config: CpkServerBootstrapConfiguration):
-    if config.image_pull_credential_resolver == "none":
-        return None
-    if config.image_pull_credential_resolver != "docker-config":
-        raise AssertionError("image pull resolver set validated at bootstrap")
-    if config.docker_config_path is None and not config.docker_config_json:
-        raise BootstrapConfigurationError(
-            "CPK_IMAGE_PULL_CREDENTIAL_RESOLVER=docker-config requires "
-            "DOCKER_CONFIG, CPK_DOCKER_AUTH_CONFIG, or CPK_DOCKER_AUTH_CONFIG_JSON"
+@dataclass(frozen=True, repr=False)
+class _SecretProviderComposition:
+    authorized_resolver: object | None = field(default=None, repr=False)
+    secret_custodian: object | None = field(default=None, repr=False)
+
+    def __repr__(self) -> str:
+        return (
+            "SecretProviderComposition("
+            f"configured={self.authorized_resolver is not None})"
         )
-    try:
-        from control_plane_kit_core.secrets import SecretProviderId, SecretValue
-        from control_plane_kit_interpreters.secrets import (
-            ImagePullCredentialDenied,
-            ImagePullCredentialMissing,
-            ImagePullCredentialResolved,
-            ResolvedImagePullCredential,
-        )
-    except ModuleNotFoundError as error:
-        raise BootstrapConfigurationError(
-            "CPK_IMAGE_PULL_CREDENTIAL_RESOLVER=docker-config requires "
-            "control-plane-kit-interpreters[docker]"
-        ) from error
-
-    class DockerConfigImagePullCredentialResolver:
-        def __init__(
-            self,
-            *,
-            config_path: str | None,
-            config_json: str | None,
-        ) -> None:
-            self._config_path = config_path
-            self._config_json = config_json
-
-        def resolve(self, authority):
-            reference = authority.credential_reference
-            if (
-                reference.provider_id != SecretProviderId("docker-config")
-                or reference.path[0] != authority.registry
-            ):
-                return ImagePullCredentialDenied(reference)
-            auths = self._auths()
-            entry = auths.get(authority.registry)
-            if not isinstance(entry, Mapping):
-                return ImagePullCredentialMissing(reference)
-            identitytoken = entry.get("identitytoken")
-            if isinstance(identitytoken, str) and identitytoken:
-                return ImagePullCredentialResolved(
-                    ResolvedImagePullCredential(
-                        identitytoken=SecretValue(identitytoken),
-                    )
-                )
-            username = entry.get("username")
-            password = entry.get("password")
-            if isinstance(username, str) and isinstance(password, str) and password:
-                return ImagePullCredentialResolved(
-                    ResolvedImagePullCredential(
-                        username=username,
-                        password=SecretValue(password),
-                    )
-                )
-            auth = entry.get("auth")
-            if isinstance(auth, str) and auth:
-                try:
-                    decoded = base64.b64decode(auth).decode("utf-8")
-                except Exception:
-                    return ImagePullCredentialMissing(reference)
-                username, separator, password = decoded.partition(":")
-                if separator and username and password:
-                    return ImagePullCredentialResolved(
-                        ResolvedImagePullCredential(
-                            username=username,
-                            password=SecretValue(password),
-                        )
-                    )
-            return ImagePullCredentialMissing(reference)
-
-        def _auths(self) -> Mapping[str, object]:
-            if self._config_json:
-                try:
-                    config_doc = json.loads(self._config_json)
-                except json.JSONDecodeError:
-                    return {}
-            else:
-                try:
-                    with open(str(self._config_path), encoding="utf-8") as file:
-                        config_doc = json.load(file)
-                except OSError:
-                    return {}
-            if not isinstance(config_doc, Mapping):
-                return {}
-            auths = config_doc.get("auths")
-            if not isinstance(auths, Mapping):
-                return {}
-            return auths
-
-        def __repr__(self) -> str:
-            return "DockerConfigImagePullCredentialResolver(<redacted>)"
-
-    return DockerConfigImagePullCredentialResolver(
-        config_path=config.docker_config_path,
-        config_json=config.docker_config_json,
-    )
 
 
-def _product_secret_resolver(config: CpkServerBootstrapConfiguration):
-    if config.product_secret_resolver == "none":
-        return None
-    if config.product_secret_resolver != "local-development":
-        raise AssertionError("product secret resolver set validated at bootstrap")
-    if config.product_secret_values_json is None:
-        raise AssertionError("product secret values set validated at bootstrap")
-    try:
+@dataclass(frozen=True, repr=False)
+class _LocalDevelopmentAuthorizedSecretResolver:
+    values: Mapping[str, str] = field(repr=False)
+
+    def resolve(self, grant):
         from control_plane_kit_core.secrets import (
-            LocalDevelopmentSecretResolver,
-            SecretProviderAuthority,
-            SecretProviderId,
-            SecretReference,
-        )
-    except ModuleNotFoundError as error:
-        raise BootstrapConfigurationError(
-            "CPK_PRODUCT_SECRET_RESOLVER=local-development requires "
-            "control-plane-kit-core"
-        ) from error
-    try:
-        raw_values = json.loads(config.product_secret_values_json)
-    except json.JSONDecodeError as error:
-        raise BootstrapConfigurationError(
-            "CPK_PRODUCT_SECRET_VALUES_JSON must be a JSON object"
-        ) from error
-    if not isinstance(raw_values, Mapping) or not raw_values:
-        raise BootstrapConfigurationError(
-            "CPK_PRODUCT_SECRET_VALUES_JSON must be a non-empty JSON object"
-        )
-    values_by_provider: dict[SecretProviderId, dict[str, str]] = {}
-    prefixes_by_provider: dict[SecretProviderId, set[tuple[str, ...]]] = {}
-    for reference_id, secret_value in raw_values.items():
-        if not isinstance(reference_id, str) or not isinstance(secret_value, str):
-            raise BootstrapConfigurationError(
-                "CPK_PRODUCT_SECRET_VALUES_JSON entries must map strings to strings"
-            )
-        reference = SecretReference(reference_id)
-        prefixes_by_provider.setdefault(reference.provider_id, set()).add(reference.path)
-        values_by_provider.setdefault(reference.provider_id, {})[
-            reference.reference_id
-        ] = secret_value
-    if not values_by_provider:
-        raise BootstrapConfigurationError(
-            "CPK_PRODUCT_SECRET_VALUES_JSON must include at least one secret"
-        )
-    resolvers = tuple(
-        LocalDevelopmentSecretResolver(
-            SecretProviderAuthority(
-                provider_id,
-                tuple(sorted(prefixes_by_provider[provider_id])),
-            ),
-            values,
-        )
-        for provider_id, values in sorted(
-            values_by_provider.items(),
-            key=lambda item: item[0].value,
-        )
-    )
-    if len(resolvers) == 1:
-        return resolvers[0]
-    return _CompositeSecretResolver(resolvers)
-
-
-def _combined_product_secret_resolver(
-    config: CpkServerBootstrapConfiguration,
-    generated_secret_recorder: InMemoryGeneratedSecretRecorder | None,
-):
-    base = _product_secret_resolver(config)
-    if generated_secret_recorder is None:
-        return base
-    if base is None:
-        return _GeneratedSecretResolver(generated_secret_recorder)
-    return _CompositeSecretResolver((base, _GeneratedSecretResolver(generated_secret_recorder)))
-
-
-@dataclass(frozen=True)
-class _GeneratedSecretResolver:
-    generated_secret_recorder: InMemoryGeneratedSecretRecorder
-
-    @property
-    def authority(self):
-        from control_plane_kit_core.secrets import SecretProviderAuthority, SecretProviderId
-
-        return SecretProviderAuthority(SecretProviderId("generated"), (("ingress",),))
-
-    def resolve(self, reference):
-        from control_plane_kit_core.secrets import (
-            SecretDenied,
             SecretMissing,
+            SecretResolutionGrant,
             SecretResolved,
+            SecretValue,
         )
 
-        if not self.authority.permits(reference):
-            return SecretDenied(reference)
+        if not isinstance(grant, SecretResolutionGrant):
+            raise TypeError(
+                "local development secret resolution requires SecretResolutionGrant"
+            )
+        value = self.values.get(grant.reference.reference_id)
+        if value is None:
+            return SecretMissing(grant.reference)
+        return SecretResolved(grant.reference, SecretValue(value))
+
+    def __repr__(self) -> str:
+        return "LocalDevelopmentAuthorizedSecretResolver(<redacted>)"
+
+
+def _secret_provider_composition(
+    config: CpkServerBootstrapConfiguration,
+    *,
+    transport=None,
+) -> _SecretProviderComposition:
+    if config.product_material_resolver == "none":
+        return _SecretProviderComposition()
+    if config.product_material_resolver == "local-development":
+        if config.product_secret_values_json is None:
+            raise AssertionError("local development secret values validated")
+        values = _validated_bootstrap_mapping_json(
+            config.product_secret_values_json
+        )
         try:
-            value = self.generated_secret_recorder.resolve_generated_secret(reference)
-        except Exception:
-            return SecretMissing(reference)
-        return SecretResolved(reference, value)
-
-    def __repr__(self) -> str:
-        return "GeneratedSecretResolver(<redacted>)"
-
-
-@dataclass(frozen=True)
-class _CompositeSecretResolver:
-    resolvers: tuple[object, ...]
-
-    @property
-    def authority(self):
-        return self.resolvers[0].authority
-
-    def resolve(self, reference):
-        from control_plane_kit_core.secrets import SecretDenied, SecretMissing
-
-        denied = None
-        for resolver in self.resolvers:
-            result = resolver.resolve(reference)
-            if not isinstance(result, (SecretDenied, SecretMissing)):
-                return result
-            if isinstance(result, SecretDenied):
-                denied = result
-        if denied is not None:
-            return denied
-        return SecretMissing(reference)
-
-    def __repr__(self) -> str:
-        return "CompositeSecretResolver(<redacted>)"
+            for reference_id in values:
+                SecretReference(reference_id)
+        except SecretResolutionError:
+            raise BootstrapConfigurationError(
+                "local development secret registry is malformed"
+            ) from None
+        return _SecretProviderComposition(
+            authorized_resolver=_LocalDevelopmentAuthorizedSecretResolver(
+                values
+            )
+        )
+    if config.product_material_resolver != "provider":
+        raise AssertionError("product material resolver set validated at bootstrap")
+    if (
+        config.material_provider_routes_json is None
+        or config.material_provider_bootstrap_files_json is None
+    ):
+        raise AssertionError("provider bootstrap registries validated")
+    try:
+        from control_plane_kit_core.secrets import (
+            SecretProviderEndpointReference,
+        )
+        from control_plane_kit_interpreters.secret_provider import (
+            ControlPlaneKitSecretsCustodian,
+            ControlPlaneKitSecretsResolver,
+            SecretProviderBootstrapError,
+            SecretProviderBootstrapRegistry,
+        )
+    except ModuleNotFoundError:
+        raise BootstrapConfigurationError(
+            "secret provider integration is unavailable"
+        ) from None
+    try:
+        registry = SecretProviderBootstrapRegistry(
+            endpoints={
+                SecretProviderEndpointReference(reference_id): endpoint
+                for reference_id, endpoint in _validated_bootstrap_mapping_json(
+                    config.material_provider_routes_json
+                ).items()
+            },
+            credential_files={
+                SecretReference(reference_id): Path(path)
+                for reference_id, path in _validated_bootstrap_mapping_json(
+                    config.material_provider_bootstrap_files_json
+                ).items()
+            },
+        )
+    except (
+        SecretProviderBootstrapError,
+        SecretResolutionError,
+        TypeError,
+        ValueError,
+    ):
+        raise BootstrapConfigurationError(
+            "secret provider bootstrap configuration is unavailable"
+        ) from None
+    return _SecretProviderComposition(
+        authorized_resolver=ControlPlaneKitSecretsResolver(
+            registry,
+            transport=transport,
+        ),
+        secret_custodian=ControlPlaneKitSecretsCustodian(
+            registry,
+            transport=transport,
+        ),
+    )
 
 
 def _install_operations_schema(database_url: str) -> None:
