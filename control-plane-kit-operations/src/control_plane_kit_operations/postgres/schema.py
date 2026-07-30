@@ -40,6 +40,11 @@ from control_plane_kit_operations.runtime_authorities import (
     RegisteredRuntimeAuthorityStatus,
     RuntimeAuthorityKind,
 )
+from control_plane_kit_operations.secret_providers import (
+    RegisteredSecretProviderStatus,
+    RegisteredSecretReferenceStatus,
+    SecretProviderKind,
+)
 
 
 class PostgresConnection(Protocol):
@@ -300,6 +305,104 @@ CREATE TABLE IF NOT EXISTS cpk_ingress_authorities (
 CREATE UNIQUE INDEX IF NOT EXISTS cpk_ingress_authorities_active_ref
   ON cpk_ingress_authorities (workspace_id, authority_ref)
   WHERE status = 'active';
+
+CREATE TABLE IF NOT EXISTS cpk_secret_providers (
+  registration_id text PRIMARY KEY,
+  workspace_id text NOT NULL REFERENCES cpk_workspaces(workspace_id),
+  provider_id text NOT NULL,
+  provider_kind text NOT NULL,
+  display_name text NOT NULL,
+  endpoint_reference text NOT NULL,
+  credential_reference text NOT NULL,
+  allowed_reference_prefixes jsonb NOT NULL,
+  allowed_intents jsonb NOT NULL,
+  admitted_by text NOT NULL,
+  admitted_at text NOT NULL,
+  status text NOT NULL,
+  supersedes_registration_id text,
+  revoked_by text,
+  revoked_at text,
+  metadata jsonb NOT NULL DEFAULT '{}'::jsonb,
+  UNIQUE (registration_id, workspace_id),
+  CONSTRAINT cpk_secret_providers_status_check
+    CHECK (status IN ({{ registered_secret_provider_statuses | sql_values }})),
+  CONSTRAINT cpk_secret_providers_kind_check
+    CHECK (provider_kind IN ({{ secret_provider_kinds | sql_values }})),
+  CONSTRAINT cpk_secret_providers_id_check
+    CHECK (provider_id ~ '^[a-z][a-z0-9-]{0,62}$'),
+  CONSTRAINT cpk_secret_providers_endpoint_reference_check
+    CHECK (endpoint_reference ~ '^[a-z][a-z0-9._-]{0,127}$'),
+  CONSTRAINT cpk_secret_providers_credential_reference_check
+    CHECK (credential_reference ~ '^secret://[a-z][a-z0-9-]{0,62}/[A-Za-z0-9._/-]+$'),
+  CONSTRAINT cpk_secret_providers_prefixes_shape_check
+    CHECK (jsonb_typeof(allowed_reference_prefixes) = 'array'),
+  CONSTRAINT cpk_secret_providers_intents_shape_check
+    CHECK (jsonb_typeof(allowed_intents) = 'array'),
+  CONSTRAINT cpk_secret_providers_metadata_shape_check
+    CHECK (jsonb_typeof(metadata) = 'object'),
+  CONSTRAINT cpk_secret_providers_revocation_evidence_check
+    CHECK (
+      (status = 'revoked' AND revoked_by IS NOT NULL AND revoked_at IS NOT NULL)
+      OR (status <> 'revoked' AND revoked_by IS NULL AND revoked_at IS NULL)
+    ),
+  CONSTRAINT cpk_secret_providers_supersedes_fk
+    FOREIGN KEY (supersedes_registration_id, workspace_id)
+    REFERENCES cpk_secret_providers (registration_id, workspace_id)
+);
+
+CREATE UNIQUE INDEX IF NOT EXISTS cpk_secret_providers_active_identity
+  ON cpk_secret_providers (workspace_id, provider_id)
+  WHERE status = 'active';
+
+CREATE INDEX IF NOT EXISTS cpk_secret_providers_history
+  ON cpk_secret_providers (workspace_id, provider_id, admitted_at, registration_id);
+
+CREATE TABLE IF NOT EXISTS cpk_secret_references (
+  registration_id text PRIMARY KEY,
+  workspace_id text NOT NULL REFERENCES cpk_workspaces(workspace_id),
+  secret_reference text NOT NULL,
+  provider_registration_id text NOT NULL,
+  allowed_intents jsonb NOT NULL,
+  admitted_by text NOT NULL,
+  admitted_at text NOT NULL,
+  status text NOT NULL,
+  supersedes_registration_id text,
+  revoked_by text,
+  revoked_at text,
+  metadata jsonb NOT NULL DEFAULT '{}'::jsonb,
+  UNIQUE (registration_id, workspace_id),
+  CONSTRAINT cpk_secret_references_status_check
+    CHECK (status IN ({{ registered_secret_reference_statuses | sql_values }})),
+  CONSTRAINT cpk_secret_references_reference_check
+    CHECK (secret_reference ~ '^secret://[a-z][a-z0-9-]{0,62}/[A-Za-z0-9._/-]+$'),
+  CONSTRAINT cpk_secret_references_intents_shape_check
+    CHECK (jsonb_typeof(allowed_intents) = 'array'),
+  CONSTRAINT cpk_secret_references_metadata_shape_check
+    CHECK (jsonb_typeof(metadata) = 'object'),
+  CONSTRAINT cpk_secret_references_revocation_evidence_check
+    CHECK (
+      (status = 'revoked' AND revoked_by IS NOT NULL AND revoked_at IS NOT NULL)
+      OR (status <> 'revoked' AND revoked_by IS NULL AND revoked_at IS NULL)
+    ),
+  CONSTRAINT cpk_secret_references_provider_fk
+    FOREIGN KEY (provider_registration_id, workspace_id)
+    REFERENCES cpk_secret_providers (registration_id, workspace_id),
+  CONSTRAINT cpk_secret_references_supersedes_fk
+    FOREIGN KEY (supersedes_registration_id, workspace_id)
+    REFERENCES cpk_secret_references (registration_id, workspace_id)
+);
+
+CREATE UNIQUE INDEX IF NOT EXISTS cpk_secret_references_active_reference
+  ON cpk_secret_references (workspace_id, secret_reference)
+  WHERE status = 'active';
+
+CREATE INDEX IF NOT EXISTS cpk_secret_references_history
+  ON cpk_secret_references (
+    workspace_id,
+    secret_reference,
+    admitted_at,
+    registration_id
+  );
 
 CREATE TABLE IF NOT EXISTS cpk_cloudflare_ingress_resources (
   workspace_id text NOT NULL REFERENCES cpk_workspaces(workspace_id),
@@ -686,8 +789,11 @@ POSTGRES_SCHEMA = _SQL_ENVIRONMENT.from_string(_POSTGRES_SCHEMA_TEMPLATE).render
         RegisteredRuntimeAuthorityDeliveryStatus
     ),
     registered_ingress_authority_statuses=tuple(RegisteredIngressAuthorityStatus),
+    registered_secret_provider_statuses=tuple(RegisteredSecretProviderStatus),
+    registered_secret_reference_statuses=tuple(RegisteredSecretReferenceStatus),
     generated_secret_purposes=tuple(GeneratedSecretPurpose),
     ingress_authority_provider_kinds=tuple(IngressAuthorityProviderKind),
+    secret_provider_kinds=tuple(SecretProviderKind),
     gateway_probe_attempt_statuses=tuple(GatewayProbeAttemptStatus),
     gateway_probe_command_kinds=tuple(GatewayProbeCommandKind),
     risk_levels=tuple(RiskLevel),
