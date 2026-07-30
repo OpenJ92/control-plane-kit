@@ -5625,3 +5625,66 @@ Validation passed all 447 core tests, 229 operations tests, and 105 interpreter
 tests, including real Postgres rollback, exact receipt matching, provider-write
 failure compensation, idempotent revocation, package-boundary checks, compile,
 and import validation. No live Cloudflare resources were mutated in #1184.
+
+## #1185 Provider-Backed Secret Consumers
+
+#1185 completed the interpreter-side migration from reference-only grants to
+provider-backed, immediate secret use:
+
+```text
+operations commits exact SecretResolutionGrant
+  -> interpreter validates workspace, reference, intent, correlation, and use
+    -> AuthorizedSecretResolver contacts the admitted provider
+      -> plaintext enters only the immediate SDK/client/signer call
+        -> only bounded, secret-free evidence returns to operations
+```
+
+The migration landed as four independently reviewed changes:
+
+- #1191, commit `f488b3f4a9923fce4ed88dd989a73a956f755579`,
+  established the provider-backed authorized resolver;
+- #1192, commit `1fffde9df0773a2d46ea128b6832c0e5c97ea804`,
+  migrated generic environment/file delivery, Docker TLS, private OCI pulls,
+  Postgres verification passwords, and application control tokens;
+- #1193, commit `e557f639a73a093fa815adde670b79c8a0a1ff65`,
+  migrated Cloudflare API authentication while keeping generated tunnel-token
+  custody separate;
+- #1194, commit `b0611cb5beb2db47fdbcc0b1f5a9271c3715d9bf`,
+  migrated gateway probe signing and preserved all pre-signing substitution
+  checks.
+
+Exact authorization is now shared across these consumer families. A wrong
+workspace, provider, reference, intent, correlation, or workflow identity fails
+before Docker, Postgres, Cloudflare, gateway, or target IO. When an authorized
+resolver is configured, no compatibility resolver is consulted after denial or
+provider failure.
+
+The remaining legacy resolver occurrences have explicit classifications:
+
+- core `SecretResolver`, `require_resolved_secret`, and
+  `LocalDevelopmentSecretResolver` are compatibility protocol/helper and
+  explicitly named development-fixture surfaces;
+- interpreter compatibility resolver parameters remain reachable only when no
+  authorized production resolver is supplied;
+- generated-secret records in operations are custody/reference metadata, never
+  plaintext or ciphertext;
+- probe endpoint-secret resolution is not production-composed and remains a
+  future authorization/composition decision;
+- local maps, Docker-config discovery, generated-memory custody, composite
+  first-success selection, and grant-discarding wrappers in cpk-server remain
+  production composition liabilities owned by #1186.
+
+#1186 must compose deterministic provider endpoint and bootstrap-credential
+registries, pass exact committed grants through Docker, Cloudflare, and gateway
+wrappers, and remove silent production fallback to local maps, Docker config,
+generated-memory custody, or first-provider selection. Development fixtures may
+remain only behind explicit development configuration. cpk-server must remain a
+composition boundary: it may wire clients and resolvers, but it must not store
+secret values or own secret-use authorization policy.
+
+Validation passed 123 interpreter tests, 229 operations tests, and the complete
+1,232-test coordination Docker suite, including architecture, ownership,
+transaction, and test-integrity checks. Focused live Docker materialization
+also proved a real read-only secret-file mount with bounded digest evidence and
+self-cleanup. No Cloudflare resource was mutated and no cpk-server source-live
+claim is made before #1186/#1187.
