@@ -34,6 +34,7 @@ class DockerHarnessTests(unittest.TestCase):
         self.assertIn("products/cpk_local_gateway/tests", runner)
         self.assertIn("products/cloudflared_connector/tests", runner)
         self.assertIn("products/postgres_server/tests", runner)
+        self.assertIn("products/secrets_server/tests", runner)
         self.assertIn("product_image_lane.py", runner)
 
     def test_product_image_lane_reports_cpk_server_image_definition(self) -> None:
@@ -63,6 +64,7 @@ class DockerHarnessTests(unittest.TestCase):
                 "cpk-local-gateway",
                 "cloudflared-connector",
                 "postgres-server",
+                "secrets-server",
             ],
         )
         self.assertEqual(
@@ -122,6 +124,12 @@ class DockerHarnessTests(unittest.TestCase):
                     "external_image": "docker.io/library/postgres@sha256:57c72fd2a128e416c7fcc499958864df5301e940bca0a56f58fddf30ffc07777",
                     "status": "external-oci-pinned",
                 },
+                {
+                    "product_id": "secrets-server",
+                    "image_source": "local-dockerfile",
+                    "dockerfile": "products/secrets_server/Dockerfile",
+                    "status": "image-definition-present",
+                },
             ],
         )
         self.assertEqual(report["status"], "product-image-definitions-present")
@@ -144,6 +152,7 @@ class DockerHarnessTests(unittest.TestCase):
         self.assertIn("products/http_active_router/Dockerfile", script)
         self.assertIn("products/http_multiplexer/Dockerfile", script)
         self.assertIn("products/cpk_local_gateway/Dockerfile", script)
+        self.assertIn("products/secrets_server/Dockerfile", script)
         self.assertIn("unsupported product id", script)
         self.assertNotIn("docker system prune", script)
         self.assertNotIn("docker volume prune", script)

@@ -39,6 +39,7 @@ class DescriptorCatalogueTests(unittest.TestCase):
                 "http-active-router",
                 "http-multiplexer",
                 "postgres-server",
+                "secrets-server",
             ],
         )
         self.assertTrue(all(item.status == "completed" for item in catalogue))

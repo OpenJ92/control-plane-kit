@@ -73,6 +73,15 @@ def main() -> int:
         "products/postgres_server/tests",
         "-v",
     ])
+    run([
+        sys.executable,
+        "-m",
+        "unittest",
+        "discover",
+        "-s",
+        "products/secrets_server/tests",
+        "-v",
+    ])
     run(
         [
             sys.executable,

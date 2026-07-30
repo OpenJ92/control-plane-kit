@@ -1,0 +1,56 @@
+{
+  "schema": "cpk-secrets.bootstrap-contract",
+  "environment": [
+    {
+      "name": "CPK_SECRETS_DATABASE_PATH",
+      "required": true,
+      "allowed_values": [
+        "absolute path under the retained provider-data mount"
+      ]
+    },
+    {
+      "name": "CPK_SECRETS_MASTER_KEY_FILE",
+      "required": true,
+      "allowed_values": [
+        "absolute owner-readable mounted file"
+      ]
+    },
+    {
+      "name": "CPK_SECRETS_CREDENTIALS_FILE",
+      "required": true,
+      "allowed_values": [
+        "absolute owner-readable mounted file"
+      ]
+    },
+    {
+      "name": "CPK_SECRETS_PROVIDER_ID",
+      "required": true,
+      "allowed_values": [
+        "bounded provider identity"
+      ]
+    }
+  ],
+  "bootstrap_files": [
+    {
+      "purpose": "provider master encryption key",
+      "environment_name": "CPK_SECRETS_MASTER_KEY_FILE",
+      "default_target": "/run/secrets/cpk-secrets/master.key",
+      "maximum_bytes": 4096,
+      "mode": "0400"
+    },
+    {
+      "purpose": "provider API credentials and grants",
+      "environment_name": "CPK_SECRETS_CREDENTIALS_FILE",
+      "default_target": "/run/secrets/cpk-secrets/credentials.json",
+      "maximum_bytes": 65536,
+      "mode": "0400"
+    }
+  ],
+  "runtime_inputs": [
+    "root provider bootstrap files are supplied by trusted preflight infrastructure",
+    "bootstrap files are not product configuration artifacts and never enter the product descriptor",
+    "bootstrap files are not recursively resolved through the provider being started",
+    "a nested provider may later receive equivalent files from an already admitted parent provider",
+    "provider responses, logs, errors, observations, and catalogue metadata never contain bootstrap values"
+  ]
+}

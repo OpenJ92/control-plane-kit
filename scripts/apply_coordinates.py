@@ -19,6 +19,7 @@ CPK_SERVER_DOCKERFILE = ROOT / "products" / "cpk_server" / "Dockerfile"
 CPK_LOCAL_GATEWAY_DOCKERFILE = (
     ROOT / "products" / "cpk_local_gateway" / "Dockerfile"
 )
+SECRETS_SERVER_DOCKERFILE = ROOT / "products" / "secrets_server" / "Dockerfile"
 CATALOGUE = ROOT / "catalogue" / "products.json"
 PACKAGED_CATALOGUE = ROOT / "src" / "control_plane_kit_servers" / "catalogue.json"
 
@@ -68,6 +69,7 @@ def load_coordinates(path: Path) -> Mapping[str, Any]:
         raise CoordinateError("coordinates products must be a list")
     _commit(upstreams, "control_plane_kit_commit")
     _commit(upstreams, "control_plane_kit_interpreters_commit")
+    _commit(upstreams, "control_plane_kit_secrets_commit")
     seen: set[str] = set()
     for product in products:
         if not isinstance(product, Mapping):
@@ -97,21 +99,31 @@ def generate_updates(coordinates: Mapping[str, Any]) -> dict[Path, bytes]:
     updates: dict[Path, bytes] = {}
     cpk_commit = str(upstreams["control_plane_kit_commit"])
     interpreters_commit = str(upstreams["control_plane_kit_interpreters_commit"])
+    secrets_commit = str(upstreams["control_plane_kit_secrets_commit"])
 
     updates[PYPROJECT] = _replace_dependency_pins(
         PYPROJECT.read_text(encoding="utf-8"),
         cpk_commit=cpk_commit,
         interpreters_commit=interpreters_commit,
+        secrets_commit=secrets_commit,
     ).encode("utf-8")
     updates[CPK_SERVER_DOCKERFILE] = _replace_dependency_pins(
         CPK_SERVER_DOCKERFILE.read_text(encoding="utf-8"),
         cpk_commit=cpk_commit,
         interpreters_commit=interpreters_commit,
+        secrets_commit=secrets_commit,
     ).encode("utf-8")
     updates[CPK_LOCAL_GATEWAY_DOCKERFILE] = _replace_dependency_pins(
         CPK_LOCAL_GATEWAY_DOCKERFILE.read_text(encoding="utf-8"),
         cpk_commit=cpk_commit,
         interpreters_commit=interpreters_commit,
+        secrets_commit=secrets_commit,
+    ).encode("utf-8")
+    updates[SECRETS_SERVER_DOCKERFILE] = _replace_dependency_pins(
+        SECRETS_SERVER_DOCKERFILE.read_text(encoding="utf-8"),
+        cpk_commit=cpk_commit,
+        interpreters_commit=interpreters_commit,
+        secrets_commit=secrets_commit,
     ).encode("utf-8")
 
     catalogue_products: list[dict[str, str]] = []
@@ -153,16 +165,23 @@ def _replace_dependency_pins(
     *,
     cpk_commit: str,
     interpreters_commit: str,
+    secrets_commit: str,
 ) -> str:
     text = re.sub(
         r"https://github\.com/OpenJ92/control-plane-kit/archive/[0-9a-f]{40}\.zip",
         f"https://github.com/OpenJ92/control-plane-kit/archive/{cpk_commit}.zip",
         text,
     )
-    return re.sub(
+    text = re.sub(
         r"https://github\.com/OpenJ92/control-plane-kit-interpreters/archive/[0-9a-f]{40}\.zip",
         "https://github.com/OpenJ92/control-plane-kit-interpreters/archive/"
         f"{interpreters_commit}.zip",
+        text,
+    )
+    return re.sub(
+        r"https://github\.com/OpenJ92/control-plane-kit-secrets/archive/[0-9a-f]{40}\.zip",
+        "https://github.com/OpenJ92/control-plane-kit-secrets/archive/"
+        f"{secrets_commit}.zip",
         text,
     )
 

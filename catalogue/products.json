@@ -90,6 +90,16 @@
       "image_ref": "docker.io/library/postgres:16-alpine",
       "image_digest": "sha256:57c72fd2a128e416c7fcc499958864df5301e940bca0a56f58fddf30ffc07777",
       "status": "completed"
+    },
+    {
+      "product_id": "secrets-server",
+      "owner_directory": "products/secrets_server",
+      "descriptor_path": "products/secrets_server/product.cpk.json",
+      "descriptor_sha256": "afd10fbedbcfce2811c81231a77022dc6a73bef7e66126dc123b681ebd9df138",
+      "source_commit": "d1c923ca476a87f74af628b7e2fb9b7c0712debe",
+      "image_ref": "ghcr.io/openj92/control-plane-kit-servers/secrets-server:harden-secrets-1201",
+      "image_digest": "sha256:caed948f005a7bab75c930ba9f4db2ecab33bfc1f9cf10cb2160c7af8db3194c",
+      "status": "completed"
     }
   ]
 }

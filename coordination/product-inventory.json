@@ -88,6 +88,16 @@
       "image_issue": "OpenJ92/control-plane-kit#828",
       "descriptor_issue": "OpenJ92/control-plane-kit#828",
       "status": "descriptor-published"
+    },
+    {
+      "product_id": "secrets-server",
+      "target_directory": "products/secrets_server",
+      "dockerfile": "products/secrets_server/Dockerfile",
+      "implementation_issue": "OpenJ92/control-plane-kit#1201",
+      "image_issue": "OpenJ92/control-plane-kit#1201",
+      "descriptor_issue": "OpenJ92/control-plane-kit#1201",
+      "status": "descriptor-published",
+      "role": "encrypted durable secret provider with retained custody and explicit non-recursive root bootstrap"
     }
   ],
   "bootstrap_reserved_products": [
@@ -105,6 +115,6 @@
     "One product implementation lane owns one directory; descriptor variants remain explicit catalogue entries.",
     "Catalogue imports values, not applications or stores.",
     "Core dependency points inward; core never imports servers.",
-    "cpk-server, cpk-server descriptor variants, Hello, active-router, multiplexer, cpk-local-gateway, cloudflared connector, and Postgres have different roles and none substitutes for the other."
+    "cpk-server, cpk-server descriptor variants, Hello, active-router, multiplexer, cpk-local-gateway, cloudflared connector, Postgres, and secrets-server have different roles and none substitutes for the other."
   ]
 }

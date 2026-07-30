@@ -212,6 +212,7 @@ class CpkServerProductDescriptorTests(unittest.TestCase):
                 "http-active-router",
                 "http-multiplexer",
                 "postgres-server",
+                "secrets-server",
             ],
         )
         for product_id, expected in (
