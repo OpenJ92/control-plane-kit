@@ -1,5 +1,6 @@
 import unittest
 
+from contract_security_assertions import assert_descriptor_excludes_secret_material
 from control_plane_kit_core.operations import (
     ActivityHistoryPolicy,
     ApprovalPolicy,
@@ -206,6 +207,46 @@ class CommandWorkflowContractTests(unittest.TestCase):
                     ActivityHistoryPolicy.RECORD_ACCEPTED_AND_REJECTED_COMMANDS,
                 ),
                 (
+                    "secret-provider.register",
+                    OperatorCommandKind.REGISTER_SECRET_PROVIDER,
+                    OperatorCommandFamily.SECRET_PROVIDER,
+                    DeploymentProgramStage.PLAN,
+                    ControlPlaneServiceRole.PLANNING,
+                    CommandIdempotencyPolicy.REQUIRED,
+                    ApprovalPolicy.NOT_REQUIRED,
+                    ActivityHistoryPolicy.RECORD_ACCEPTED_AND_REJECTED_COMMANDS,
+                ),
+                (
+                    "secret-provider.revoke",
+                    OperatorCommandKind.REVOKE_SECRET_PROVIDER,
+                    OperatorCommandFamily.SECRET_PROVIDER,
+                    DeploymentProgramStage.PLAN,
+                    ControlPlaneServiceRole.PLANNING,
+                    CommandIdempotencyPolicy.REQUIRED,
+                    ApprovalPolicy.NOT_REQUIRED,
+                    ActivityHistoryPolicy.RECORD_ACCEPTED_AND_REJECTED_COMMANDS,
+                ),
+                (
+                    "secret-reference.register",
+                    OperatorCommandKind.REGISTER_SECRET_REFERENCE,
+                    OperatorCommandFamily.SECRET_PROVIDER,
+                    DeploymentProgramStage.PLAN,
+                    ControlPlaneServiceRole.PLANNING,
+                    CommandIdempotencyPolicy.REQUIRED,
+                    ApprovalPolicy.NOT_REQUIRED,
+                    ActivityHistoryPolicy.RECORD_ACCEPTED_AND_REJECTED_COMMANDS,
+                ),
+                (
+                    "secret-reference.revoke",
+                    OperatorCommandKind.REVOKE_SECRET_REFERENCE,
+                    OperatorCommandFamily.SECRET_PROVIDER,
+                    DeploymentProgramStage.PLAN,
+                    ControlPlaneServiceRole.PLANNING,
+                    CommandIdempotencyPolicy.REQUIRED,
+                    ApprovalPolicy.NOT_REQUIRED,
+                    ActivityHistoryPolicy.RECORD_ACCEPTED_AND_REJECTED_COMMANDS,
+                ),
+                (
                     "workspace.create",
                     OperatorCommandKind.CREATE_WORKSPACE,
                     OperatorCommandFamily.WORKSPACE,
@@ -231,7 +272,7 @@ class CommandWorkflowContractTests(unittest.TestCase):
         self.assertNotIn("unit_of_work", repr(descriptor).lower())
         self.assertNotIn("fastapi", repr(descriptor).lower())
         self.assertNotIn("token", repr(descriptor).lower())
-        self.assertNotIn("secret", repr(descriptor).lower())
+        assert_descriptor_excludes_secret_material(self, descriptor)
 
         with self.assertRaises(InvalidCommandWorkflowContract):
             OperatorCommandWorkflowContract.from_descriptor(
