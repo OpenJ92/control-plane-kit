@@ -14,6 +14,7 @@ from control_plane_kit_core.secrets import (
 )
 from control_plane_kit_operations.postgres.schema import PostgresConnection
 from control_plane_kit_operations.secret_providers import (
+    AuthorizedSecretUse,
     RegisteredSecretProvider,
     RegisteredSecretProviderStatus,
     RegisteredSecretReference,
@@ -541,6 +542,101 @@ class SecretReferenceStore:
         return None if row is None else _row_to_reference(row)
 
 
+class SecretUseAuthorizationStore:
+    """Persist immutable secret-use authorization correlation evidence."""
+
+    def __init__(self, connection: PostgresConnection) -> None:
+        self._connection = connection
+
+    def lock_correlation(self, workspace_id: str, correlation_id: str) -> None:
+        self._connection.execute(
+            "SELECT pg_advisory_xact_lock(hashtext(%s))",
+            (f"secret-use:{workspace_id}:{correlation_id}",),
+        )
+
+    def add(self, authorized: AuthorizedSecretUse) -> None:
+        if not isinstance(authorized, AuthorizedSecretUse):
+            raise TypeError("secret use store requires AuthorizedSecretUse")
+        self._connection.execute(
+            """
+            INSERT INTO cpk_secret_use_authorizations (
+              authorization_id,
+              workspace_id,
+              reference_registration_id,
+              provider_registration_id,
+              secret_reference,
+              use_intent,
+              actor_subject,
+              correlation_id,
+              requested_at,
+              intent_fingerprint,
+              operation_id,
+              session_id,
+              run_id,
+              activity_id,
+              effect_id,
+              probe_id
+            )
+            VALUES (
+              %s, %s, %s, %s, %s, %s, %s, %s,
+              %s, %s, %s, %s, %s, %s, %s, %s
+            )
+            """,
+            (
+                authorized.authorization_id,
+                authorized.workspace_id,
+                authorized.reference_registration_id,
+                authorized.provider_registration_id,
+                authorized.reference.reference_id,
+                authorized.intent.value,
+                authorized.actor_subject,
+                authorized.correlation_id,
+                authorized.requested_at,
+                authorized.intent_fingerprint,
+                authorized.operation_id,
+                authorized.session_id,
+                authorized.run_id,
+                authorized.activity_id,
+                authorized.effect_id,
+                authorized.probe_id,
+            ),
+        )
+
+    def get(
+        self,
+        workspace_id: str,
+        authorization_id: str,
+    ) -> AuthorizedSecretUse:
+        row = self._connection.execute(
+            f"""
+            {_SECRET_USE_SELECT}
+            WHERE workspace_id = %s
+              AND authorization_id = %s
+            """,
+            (workspace_id, authorization_id),
+        ).fetchone()
+        if row is None:
+            raise SecretProviderNotFound(
+                "authorized secret use was not found"
+            )
+        return _row_to_authorized_use(row)
+
+    def for_correlation(
+        self,
+        workspace_id: str,
+        correlation_id: str,
+    ) -> AuthorizedSecretUse | None:
+        row = self._connection.execute(
+            f"""
+            {_SECRET_USE_SELECT}
+            WHERE workspace_id = %s
+              AND correlation_id = %s
+            """,
+            (workspace_id, correlation_id),
+        ).fetchone()
+        return None if row is None else _row_to_authorized_use(row)
+
+
 _PROVIDER_SELECT = """
 SELECT
   registration_id,
@@ -577,6 +673,27 @@ SELECT
   revoked_at,
   metadata
 FROM cpk_secret_references
+"""
+
+_SECRET_USE_SELECT = """
+SELECT
+  authorization_id,
+  workspace_id,
+  reference_registration_id,
+  provider_registration_id,
+  secret_reference,
+  use_intent,
+  actor_subject,
+  correlation_id,
+  requested_at,
+  intent_fingerprint,
+  operation_id,
+  session_id,
+  run_id,
+  activity_id,
+  effect_id,
+  probe_id
+FROM cpk_secret_use_authorizations
 """
 
 
@@ -617,4 +734,25 @@ def _row_to_reference(row: tuple[Any, ...]) -> RegisteredSecretReference:
         revoked_by=row[9],
         revoked_at=row[10],
         metadata=row[11],
+    )
+
+
+def _row_to_authorized_use(row: tuple[Any, ...]) -> AuthorizedSecretUse:
+    return AuthorizedSecretUse(
+        authorization_id=row[0],
+        workspace_id=row[1],
+        reference_registration_id=row[2],
+        provider_registration_id=row[3],
+        reference=SecretReference(row[4]),
+        intent=SecretUseIntent(row[5]),
+        actor_subject=row[6],
+        correlation_id=row[7],
+        requested_at=row[8],
+        intent_fingerprint=row[9],
+        operation_id=row[10],
+        session_id=row[11],
+        run_id=row[12],
+        activity_id=row[13],
+        effect_id=row[14],
+        probe_id=row[15],
     )

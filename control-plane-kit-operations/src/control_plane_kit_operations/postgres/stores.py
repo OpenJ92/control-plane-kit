@@ -32,6 +32,7 @@ from control_plane_kit_operations.postgres.runtime_authority_store import (
 from control_plane_kit_operations.postgres.secret_provider_store import (
     SecretProviderStore,
     SecretReferenceStore,
+    SecretUseAuthorizationStore,
 )
 from control_plane_kit_operations.postgres.schema import PostgresConnection
 
@@ -57,6 +58,7 @@ class PostgresStoreBundle:
     runtime_authority_deliveries: RuntimeAuthorityDeliveryStore = field(init=False)
     secret_providers: SecretProviderStore = field(init=False)
     secret_references: SecretReferenceStore = field(init=False)
+    secret_use_authorizations: SecretUseAuthorizationStore = field(init=False)
     activity_history: PostgresActivityHistoryStore = field(init=False)
     execution: PostgresExecutionStore = field(init=False)
     observed_state: PostgresObservedStateStore = field(init=False)
@@ -117,6 +119,11 @@ class PostgresStoreBundle:
             self,
             "secret_references",
             SecretReferenceStore(self.connection),
+        )
+        object.__setattr__(
+            self,
+            "secret_use_authorizations",
+            SecretUseAuthorizationStore(self.connection),
         )
         object.__setattr__(
             self,

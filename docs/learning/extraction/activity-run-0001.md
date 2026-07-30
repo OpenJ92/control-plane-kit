@@ -5303,3 +5303,37 @@ The first-flight secrets provider should be a sibling repository/distribution:
 its own database, preferably by a mounted file, so the provider does not depend
 on itself to boot. The full threat model is recorded in
 `docs/design/0005-durable-secret-provider-threat-model.md`.
+
+## #1172 Durable Secret-Use Authorization Evidence
+
+#1172 added the operations-owned decision immediately before provider or
+interpreter IO:
+
+```text
+AuthorizeSecretUse
+  -> select active workspace handle
+    -> select its exact active provider registration
+      -> validate reference prefix and SecretUseIntent
+        -> append AuthorizedSecretUse
+          -> commit
+            -> provider resolution in a later issue
+```
+
+`(workspace_id, correlation_id)` is the scoped idempotency identity. Exact
+retries return the same immutable evidence, while changed actor, purpose,
+reference, registration, timestamp, or workflow correlation fails explicitly.
+An advisory transaction lock makes concurrent retries obey the same law.
+
+The evidence records the exact provider and handle registration ids,
+`SecretReference`, closed `SecretUseIntent`, trusted actor subject, and bounded
+operation/session/run/activity/effect/probe correlation. It stores no endpoint,
+provider credential, resolved value, plaintext, or ciphertext. Historical
+evidence survives revocation, but every new authorization reselects active
+workspace admission. A provider replacement therefore invalidates handles
+pinned to the superseded registration until they are explicitly readmitted.
+
+`AuthorizedSecretUse` is audit evidence, not a reusable credential and not
+proof that provider IO occurred. The provider's resolve audit remains
+authoritative for actual material access. #1173 must derive the actor and use
+scope from trusted cpk-server context, expose only bounded metadata, and must
+not make this evidence a caller-controlled authorization token.

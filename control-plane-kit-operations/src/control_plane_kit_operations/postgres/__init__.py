@@ -33,6 +33,7 @@ from control_plane_kit_operations.postgres.runtime_authority_store import (
 from control_plane_kit_operations.postgres.secret_provider_store import (
     SecretProviderStore,
     SecretReferenceStore,
+    SecretUseAuthorizationStore,
 )
 from control_plane_kit_operations.postgres.stores import PostgresStoreBundle
 from control_plane_kit_operations.postgres.unit_of_work import (
@@ -63,6 +64,7 @@ __all__ = [
     "RuntimeAuthorityDeliveryStore",
     "SecretProviderStore",
     "SecretReferenceStore",
+    "SecretUseAuthorizationStore",
     "TransactionalPostgresConnection",
     "UnitOfWorkStateError",
     "install_schema",

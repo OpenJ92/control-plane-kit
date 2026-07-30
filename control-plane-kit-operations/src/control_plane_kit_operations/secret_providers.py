@@ -21,6 +21,7 @@ from control_plane_kit_core.secrets import (
 
 
 _IDENTIFIER = re.compile(r"^[a-z][a-z0-9._-]{0,127}$")
+_CORRELATION_IDENTIFIER = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._:-]{0,199}$")
 _SECRET_REFERENCE_PREFIX = re.compile(
     r"^secret://[a-z][a-z0-9-]{0,62}/[A-Za-z0-9._/-]+$"
 )
@@ -64,6 +65,10 @@ class SecretProviderAuthorizationDenied(SecretProviderRegistrationError):
 
 class SecretProviderNotFound(SecretProviderRegistrationError):
     """Raised when provider or reference admission cannot be selected."""
+
+
+class SecretUseAuthorizationConflict(SecretProviderRegistrationConflict):
+    """Raised when one correlation id is reused for different secret use."""
 
 
 class SecretProviderKind(StrEnum):
@@ -382,6 +387,135 @@ class RevokeSecretReferenceCommand:
         object.__setattr__(self, "actor_scopes", _scopes(self.actor_scopes))
 
 
+@dataclass(frozen=True)
+class AuthorizeSecretUse:
+    """Request one exact, workspace-admitted secret use before provider IO."""
+
+    workspace_id: str
+    reference: SecretReference
+    intent: SecretUseIntent
+    actor_subject: str
+    correlation_id: str
+    requested_at: str
+    actor_scopes: tuple[PolicyScope, ...]
+    operation_id: str | None = None
+    session_id: str | None = None
+    run_id: str | None = None
+    activity_id: str | None = None
+    effect_id: str | None = None
+    probe_id: str | None = None
+
+    def __post_init__(self) -> None:
+        _require_identifier(self.workspace_id, "workspace_id")
+        _require_secret_reference(self.reference, "reference")
+        if not isinstance(self.intent, SecretUseIntent):
+            raise SecretProviderRegistrationError(
+                "secret use requires SecretUseIntent"
+            )
+        _require_identifier(self.actor_subject, "actor_subject")
+        _require_correlation_identifier(
+            self.correlation_id,
+            "correlation_id",
+        )
+        _require_bounded_text(self.requested_at, "requested_at", maximum=128)
+        object.__setattr__(self, "actor_scopes", _scopes(self.actor_scopes))
+        for field_name in (
+            "operation_id",
+            "session_id",
+            "run_id",
+            "activity_id",
+            "effect_id",
+            "probe_id",
+        ):
+            _require_optional_correlation_identifier(
+                getattr(self, field_name),
+                field_name,
+            )
+
+
+@dataclass(frozen=True)
+class AuthorizedSecretUse:
+    """Durable operations evidence for one bounded use, never secret material."""
+
+    authorization_id: str
+    workspace_id: str
+    reference_registration_id: str
+    provider_registration_id: str
+    reference: SecretReference
+    intent: SecretUseIntent
+    actor_subject: str
+    correlation_id: str
+    requested_at: str
+    intent_fingerprint: str
+    operation_id: str | None = None
+    session_id: str | None = None
+    run_id: str | None = None
+    activity_id: str | None = None
+    effect_id: str | None = None
+    probe_id: str | None = None
+
+    def __post_init__(self) -> None:
+        _require_identifier(self.authorization_id, "authorization_id")
+        _require_identifier(self.workspace_id, "workspace_id")
+        _require_identifier(
+            self.reference_registration_id,
+            "reference_registration_id",
+        )
+        _require_identifier(
+            self.provider_registration_id,
+            "provider_registration_id",
+        )
+        _require_secret_reference(self.reference, "reference")
+        if not isinstance(self.intent, SecretUseIntent):
+            raise SecretProviderRegistrationError(
+                "authorized use requires SecretUseIntent"
+            )
+        _require_identifier(self.actor_subject, "actor_subject")
+        _require_correlation_identifier(
+            self.correlation_id,
+            "correlation_id",
+        )
+        _require_bounded_text(self.requested_at, "requested_at", maximum=128)
+        if (
+            not isinstance(self.intent_fingerprint, str)
+            or not re.fullmatch(r"[0-9a-f]{64}", self.intent_fingerprint)
+        ):
+            raise SecretProviderRegistrationError(
+                "intent_fingerprint must be sha256"
+            )
+        for field_name in (
+            "operation_id",
+            "session_id",
+            "run_id",
+            "activity_id",
+            "effect_id",
+            "probe_id",
+        ):
+            _require_optional_correlation_identifier(
+                getattr(self, field_name),
+                field_name,
+            )
+
+    def descriptor(self) -> dict[str, object]:
+        return {
+            "authorization_id": self.authorization_id,
+            "workspace_id": self.workspace_id,
+            "reference_registration_id": self.reference_registration_id,
+            "provider_registration_id": self.provider_registration_id,
+            "reference_id": self.reference.reference_id,
+            "intent": self.intent.value,
+            "actor_subject": self.actor_subject,
+            "correlation_id": self.correlation_id,
+            "requested_at": self.requested_at,
+            "operation_id": self.operation_id,
+            "session_id": self.session_id,
+            "run_id": self.run_id,
+            "activity_id": self.activity_id,
+            "effect_id": self.effect_id,
+            "probe_id": self.probe_id,
+        }
+
+
 class SecretProviderRegistrationService:
     """Own provider/reference admission transaction boundaries."""
 
@@ -449,6 +583,102 @@ class SecretProviderRegistrationService:
             )
             unit_of_work.commit()
             return revoked
+
+
+class SecretUseAuthorizationService:
+    """Authorize one admitted use without crossing the provider IO boundary."""
+
+    def __init__(self, unit_of_work_factory: Any) -> None:
+        self._unit_of_work_factory = unit_of_work_factory
+
+    def authorize(self, command: AuthorizeSecretUse) -> AuthorizedSecretUse:
+        _require_command(command, AuthorizeSecretUse)
+        _require_scope(command.actor_scopes, PolicyScope.SECRET_PROVIDER_USE)
+        with self._unit_of_work_factory() as unit_of_work:
+            store = unit_of_work.stores.secret_use_authorizations
+            store.lock_correlation(
+                command.workspace_id,
+                command.correlation_id,
+            )
+            reference = unit_of_work.stores.secret_references.get_active(
+                command.workspace_id,
+                command.reference,
+            )
+            provider = unit_of_work.stores.secret_providers.require_active_registration(
+                command.workspace_id,
+                reference.provider_registration_id,
+            )
+            _validate_reference_admission(reference, provider)
+            if command.intent not in reference.allowed_intents:
+                raise SecretProviderRegistrationError(
+                    "secret use intent is outside reference admission"
+                )
+
+            candidate = authorized_secret_use_for(
+                command,
+                reference=reference,
+                provider=provider,
+            )
+            existing = store.for_correlation(
+                command.workspace_id,
+                command.correlation_id,
+            )
+            if existing is not None:
+                if existing.intent_fingerprint != candidate.intent_fingerprint:
+                    raise SecretUseAuthorizationConflict(
+                        "secret use correlation was reused with different intent"
+                    )
+                return existing
+
+            store.add(candidate)
+            unit_of_work.commit()
+            return candidate
+
+
+def authorized_secret_use_for(
+    command: AuthorizeSecretUse,
+    *,
+    reference: RegisteredSecretReference,
+    provider: RegisteredSecretProvider,
+) -> AuthorizedSecretUse:
+    """Build deterministic evidence from current admitted operational truth."""
+
+    _require_command(command, AuthorizeSecretUse)
+    semantics = {
+        "workspace_id": command.workspace_id,
+        "reference_registration_id": reference.registration_id,
+        "provider_registration_id": provider.registration_id,
+        "reference_id": command.reference.reference_id,
+        "intent": command.intent.value,
+        "actor_subject": command.actor_subject,
+        "correlation_id": command.correlation_id,
+        "requested_at": command.requested_at,
+        "operation_id": command.operation_id,
+        "session_id": command.session_id,
+        "run_id": command.run_id,
+        "activity_id": command.activity_id,
+        "effect_id": command.effect_id,
+        "probe_id": command.probe_id,
+    }
+    fingerprint = _digest(semantics)
+    return AuthorizedSecretUse(
+        authorization_id=f"suse_{fingerprint}",
+        workspace_id=command.workspace_id,
+        reference_registration_id=reference.registration_id,
+        provider_registration_id=provider.registration_id,
+        reference=command.reference,
+        intent=command.intent,
+        actor_subject=command.actor_subject,
+        correlation_id=command.correlation_id,
+        requested_at=command.requested_at,
+        intent_fingerprint=fingerprint,
+        operation_id=command.operation_id,
+        session_id=command.session_id,
+        run_id=command.run_id,
+        activity_id=command.activity_id,
+        effect_id=command.effect_id,
+        probe_id=command.probe_id,
+    )
 
 
 def secret_provider_registration_id_for(
@@ -686,6 +916,19 @@ def _require_secret_reference(value: object, field_name: str) -> None:
 def _require_identifier(value: object, field_name: str) -> None:
     if not isinstance(value, str) or not _IDENTIFIER.fullmatch(value):
         raise SecretProviderRegistrationError(f"{field_name} is malformed")
+
+
+def _require_correlation_identifier(value: object, field_name: str) -> None:
+    if not isinstance(value, str) or not _CORRELATION_IDENTIFIER.fullmatch(value):
+        raise SecretProviderRegistrationError(f"{field_name} is malformed")
+
+
+def _require_optional_correlation_identifier(
+    value: object,
+    field_name: str,
+) -> None:
+    if value is not None:
+        _require_correlation_identifier(value, field_name)
 
 
 def _require_bounded_text(

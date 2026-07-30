@@ -20,6 +20,7 @@ from control_plane_kit_core.operations.lifecycle import (
 from control_plane_kit_core.planning import RiskLevel
 from control_plane_kit_core.policies import PolicyScope
 from control_plane_kit_core.public_ingress import PublicIngressLifecycle
+from control_plane_kit_core.secrets import SecretUseIntent
 from control_plane_kit_core.probe_intents import (
     EndpointContext,
     ProbeKind,
@@ -402,6 +403,65 @@ CREATE INDEX IF NOT EXISTS cpk_secret_references_history
     secret_reference,
     admitted_at,
     registration_id
+  );
+
+CREATE TABLE IF NOT EXISTS cpk_secret_use_authorizations (
+  authorization_id text PRIMARY KEY,
+  workspace_id text NOT NULL REFERENCES cpk_workspaces(workspace_id),
+  reference_registration_id text NOT NULL,
+  provider_registration_id text NOT NULL,
+  secret_reference text NOT NULL,
+  use_intent text NOT NULL,
+  actor_subject text NOT NULL,
+  correlation_id text NOT NULL,
+  requested_at text NOT NULL,
+  intent_fingerprint text NOT NULL,
+  operation_id text,
+  session_id text,
+  run_id text,
+  activity_id text,
+  effect_id text,
+  probe_id text,
+  UNIQUE (authorization_id, workspace_id),
+  UNIQUE (workspace_id, correlation_id),
+  CONSTRAINT cpk_secret_use_authorizations_reference_fk
+    FOREIGN KEY (reference_registration_id, workspace_id)
+    REFERENCES cpk_secret_references (registration_id, workspace_id),
+  CONSTRAINT cpk_secret_use_authorizations_provider_fk
+    FOREIGN KEY (provider_registration_id, workspace_id)
+    REFERENCES cpk_secret_providers (registration_id, workspace_id),
+  CONSTRAINT cpk_secret_use_authorizations_id_check
+    CHECK (authorization_id ~ '^suse_[0-9a-f]{64}$'),
+  CONSTRAINT cpk_secret_use_authorizations_reference_check
+    CHECK (secret_reference ~ '^secret://[a-z][a-z0-9-]{0,62}/[A-Za-z0-9._/-]+$'),
+  CONSTRAINT cpk_secret_use_authorizations_intent_check
+    CHECK (use_intent IN ({{ secret_use_intents | sql_values }})),
+  CONSTRAINT cpk_secret_use_authorizations_actor_check
+    CHECK (actor_subject ~ '^[a-z][a-z0-9._-]{0,127}$'),
+  CONSTRAINT cpk_secret_use_authorizations_correlation_check
+    CHECK (correlation_id ~ '^[A-Za-z0-9][A-Za-z0-9._:-]{0,199}$'),
+  CONSTRAINT cpk_secret_use_authorizations_fingerprint_check
+    CHECK (intent_fingerprint ~ '^[0-9a-f]{64}$'),
+  CONSTRAINT cpk_secret_use_authorizations_operation_check
+    CHECK (operation_id IS NULL OR operation_id ~ '^[A-Za-z0-9][A-Za-z0-9._:-]{0,199}$'),
+  CONSTRAINT cpk_secret_use_authorizations_session_check
+    CHECK (session_id IS NULL OR session_id ~ '^[A-Za-z0-9][A-Za-z0-9._:-]{0,199}$'),
+  CONSTRAINT cpk_secret_use_authorizations_run_check
+    CHECK (run_id IS NULL OR run_id ~ '^[A-Za-z0-9][A-Za-z0-9._:-]{0,199}$'),
+  CONSTRAINT cpk_secret_use_authorizations_activity_check
+    CHECK (activity_id IS NULL OR activity_id ~ '^[A-Za-z0-9][A-Za-z0-9._:-]{0,199}$'),
+  CONSTRAINT cpk_secret_use_authorizations_effect_check
+    CHECK (effect_id IS NULL OR effect_id ~ '^[A-Za-z0-9][A-Za-z0-9._:-]{0,199}$'),
+  CONSTRAINT cpk_secret_use_authorizations_probe_check
+    CHECK (probe_id IS NULL OR probe_id ~ '^[A-Za-z0-9][A-Za-z0-9._:-]{0,199}$')
+);
+
+CREATE INDEX IF NOT EXISTS cpk_secret_use_authorizations_reference_history
+  ON cpk_secret_use_authorizations (
+    workspace_id,
+    reference_registration_id,
+    requested_at,
+    authorization_id
   );
 
 CREATE TABLE IF NOT EXISTS cpk_cloudflare_ingress_resources (
@@ -794,6 +854,7 @@ POSTGRES_SCHEMA = _SQL_ENVIRONMENT.from_string(_POSTGRES_SCHEMA_TEMPLATE).render
     generated_secret_purposes=tuple(GeneratedSecretPurpose),
     ingress_authority_provider_kinds=tuple(IngressAuthorityProviderKind),
     secret_provider_kinds=tuple(SecretProviderKind),
+    secret_use_intents=tuple(SecretUseIntent),
     gateway_probe_attempt_statuses=tuple(GatewayProbeAttemptStatus),
     gateway_probe_command_kinds=tuple(GatewayProbeCommandKind),
     risk_levels=tuple(RiskLevel),

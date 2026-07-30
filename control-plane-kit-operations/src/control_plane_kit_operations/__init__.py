@@ -212,6 +212,8 @@ from .runtime_dispatcher_bootstrap import (
 )
 from .runtime_effects import runtime_effect_request_for_context
 from .secret_providers import (
+    AuthorizeSecretUse,
+    AuthorizedSecretUse,
     RegisterSecretProviderCommand,
     RegisterSecretReferenceCommand,
     RegisteredSecretProvider,
@@ -226,6 +228,9 @@ from .secret_providers import (
     SecretProviderRegistrationConflict,
     SecretProviderRegistrationError,
     SecretProviderRegistrationService,
+    SecretUseAuthorizationConflict,
+    SecretUseAuthorizationService,
+    authorized_secret_use_for,
     secret_provider_registration_id_for,
     secret_reference_registration_id_for,
 )
