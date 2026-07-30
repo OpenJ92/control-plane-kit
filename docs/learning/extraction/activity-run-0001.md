@@ -5820,3 +5820,32 @@ published OCI acceptance. #1117 retains cpk-server publication, published-digest
 acceptance, stronger rotation/revocation/concurrency coverage, generated
 Cloudflare-token custody, private OCI credentials, Docker TLS material, and
 broader multi-consumer validation.
+
+## #1208 Explicit Verification Retry Cadence
+
+The #1202 restart dry run separated three facts that had been conflated:
+container lifecycle, process bootstrap, and semantic readiness. Docker may
+report a replacement container running before its application is listening;
+neither Docker `StartedAt` nor a successful `start()` call proves product
+readiness.
+
+Core verification policy now makes retry cadence explicit:
+
+```text
+VerificationPolicy(
+    timeout_seconds=...,
+    interval_seconds=...,
+    maximum_attempts=...,
+    maximum_evidence_bytes=...,
+)
+```
+
+The interval name follows the existing provider-neutral `TimeoutPolicy`
+vocabulary. It applies only between completed failed attempts. Core remains
+pure and performs no sleeping or clock access.
+
+Legacy three-field verification policy descriptors remain decodable with the
+historical one-second cadence. Canonical encoding always emits the interval,
+so newly generated product descriptors and catalogue digests make the timing
+contract explicit. A separate startup-grace field was rejected for now because
+the live evidence requires bounded cadence, not a second pre-attempt delay.
