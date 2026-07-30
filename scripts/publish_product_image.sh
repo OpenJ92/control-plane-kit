@@ -31,6 +31,10 @@ case "$PRODUCT_ID" in
     DOCKERFILE="products/cloudflared_connector/Dockerfile"
     IMAGE_NAME="cloudflared-connector"
     ;;
+  secrets-server)
+    DOCKERFILE="products/secrets_server/Dockerfile"
+    IMAGE_NAME="secrets-server"
+    ;;
   *)
     echo "unsupported product id: $PRODUCT_ID" >&2
     exit 2

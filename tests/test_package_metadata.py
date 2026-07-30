@@ -65,6 +65,7 @@ class PackageMetadataTests(unittest.TestCase):
                     "http-active-router",
                     "http-multiplexer",
                     "postgres-server",
+                    "secrets-server",
                 ],
             )
             self.assertNotIn("fastapi", sys.modules)
@@ -106,6 +107,7 @@ class PackageMetadataTests(unittest.TestCase):
                     "http-active-router",
                     "http-multiplexer",
                     "postgres-server",
+                    "secrets-server",
                 ],
             )
             self.assertTrue(all(item.status == "completed" for item in catalogue))

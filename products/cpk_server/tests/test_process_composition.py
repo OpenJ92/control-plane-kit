@@ -142,6 +142,7 @@ class CpkServerProcessCompositionTests(unittest.TestCase):
                     "http-active-router",
                     "http-multiplexer",
                     "postgres-server",
+                    "secrets-server",
                 ],
             )
             self.assertNotIn("control_plane_kit_servers_cpk_server", sys.modules)

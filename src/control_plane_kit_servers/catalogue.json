@@ -89,6 +89,16 @@
       "product_id": "postgres-server",
       "source_commit": "9cd7e8b513b82eb4619b000edea1f945e48a6317",
       "status": "completed"
+    },
+    {
+      "descriptor_path": "products/secrets_server/product.cpk.json",
+      "descriptor_sha256": "afd10fbedbcfce2811c81231a77022dc6a73bef7e66126dc123b681ebd9df138",
+      "image_digest": "sha256:caed948f005a7bab75c930ba9f4db2ecab33bfc1f9cf10cb2160c7af8db3194c",
+      "image_ref": "ghcr.io/openj92/control-plane-kit-servers/secrets-server:harden-secrets-1201",
+      "owner_directory": "products/secrets_server",
+      "product_id": "secrets-server",
+      "source_commit": "d1c923ca476a87f74af628b7e2fb9b7c0712debe",
+      "status": "completed"
     }
   ],
   "schema": "cpk-servers.descriptor-catalogue"
