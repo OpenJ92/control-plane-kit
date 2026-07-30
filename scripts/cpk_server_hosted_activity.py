@@ -81,11 +81,13 @@ class HostedWorkflow:
         workspace_id: str,
         worker_id: str,
         server_container: str,
+        worker_authorization: str = WORKER_AUTHORIZATION,
     ) -> None:
         self.base_url = base_url.rstrip("/")
         self.workspace_id = workspace_id
         self.worker_id = worker_id
         self.server_container = server_container
+        self.worker_authorization = worker_authorization
 
     def wait_ready(self) -> None:
         _wait_ready(self.base_url)
@@ -341,7 +343,7 @@ class HostedWorkflow:
                 "lease_expires_at": "2026-07-22T12:00:00Z",
                 "idempotency_key": f"{self.workspace_id}:{title}:claim",
             },
-            extra_headers={"Authorization": WORKER_AUTHORIZATION},
+            extra_headers={"Authorization": self.worker_authorization},
         )
         return str(claimed["run_id"])
 
@@ -355,7 +357,7 @@ class HostedWorkflow:
                 "actor_scopes": [PolicyScope.EXECUTION_OPERATE.value],
                 "idempotency_key": f"{self.workspace_id}:{title}:start",
             },
-            extra_headers={"Authorization": WORKER_AUTHORIZATION},
+            extra_headers={"Authorization": self.worker_authorization},
         )
 
     def execute_to_completion(
@@ -371,6 +373,7 @@ class HostedWorkflow:
             workspace_id=self.workspace_id,
             worker_id=self.worker_id,
             sync_runtime_networks=sync_runtime_networks,
+            worker_authorization=self.worker_authorization,
         )
 
     def advance_current_graph(
@@ -394,7 +397,7 @@ class HostedWorkflow:
                 "actor_scopes": [PolicyScope.EXECUTION_OPERATE.value],
                 "idempotency_key": f"{self.workspace_id}:{title}:advance",
             },
-            extra_headers={"Authorization": WORKER_AUTHORIZATION},
+            extra_headers={"Authorization": self.worker_authorization},
         )
         return str(advanced["to_graph_id"])
 
@@ -1338,6 +1341,7 @@ def _execute_to_completion(
     workspace_id: str = WORKSPACE_ID,
     worker_id: str = WORKER_ID,
     sync_runtime_networks: bool = True,
+    worker_authorization: str = WORKER_AUTHORIZATION,
 ) -> None:
     for attempt in range(80):
         if sync_runtime_networks:
@@ -1354,7 +1358,7 @@ def _execute_to_completion(
                 "max_effects": 1,
             },
             timeout=60,
-            authorization=WORKER_AUTHORIZATION,
+            authorization=worker_authorization,
         )
         if sync_runtime_networks:
             _sync_runtime_networks(server_container, workspace_id=workspace_id)

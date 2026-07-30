@@ -1534,6 +1534,47 @@ class CpkServerImageBootstrapTests(unittest.TestCase):
         self.assertIn("CPK_HOSTED_ACTIVITY_SCENARIO=workspace-c-postgres-retained-data", smoke)
         self.assertIn("scripts/cpk_server_hosted_activity_smoke.sh", smoke)
 
+    def test_secret_provider_source_live_uses_real_provider_and_public_workflow(
+        self,
+    ) -> None:
+        smoke = (
+            ROOT / "scripts" / "cpk_server_secret_provider_source_live_smoke.sh"
+        ).read_text(encoding="utf-8")
+        controller = (
+            ROOT / "scripts" / "cpk_server_secret_provider_source_live.py"
+        ).read_text(encoding="utf-8")
+
+        self.assertIn("control-plane-kit-secrets:source-1187", smoke)
+        self.assertIn("control_plane_kit_secrets.server:app", smoke)
+        self.assertIn("CPK_PRODUCT_MATERIAL_RESOLVER=provider", smoke)
+        self.assertIn("CPK_MATERIAL_PROVIDER_ROUTES_JSON", smoke)
+        self.assertIn("CPK_MATERIAL_PROVIDER_BOOTSTRAP_FILES_JSON", smoke)
+        self.assertIn("CPK_SECRETS_MASTER_KEY_FILE", smoke)
+        self.assertIn("provider-data", smoke)
+        self.assertIn("docker_residue_audit.sh", smoke)
+        self.assertNotIn("CPK_PRODUCT_SECRET_VALUES_JSON", smoke)
+        self.assertNotIn("CPK_PRODUCT_MATERIAL_RESOLVER=local-development", smoke)
+        self.assertNotIn("CPK_IMAGE_PULL_CREDENTIAL_RESOLVER", smoke)
+
+        self.assertIn("/secret-providers", controller)
+        self.assertIn("/secret-references", controller)
+        self.assertIn("read.secret-providers", controller)
+        self.assertIn("read.secret-references", controller)
+        self.assertIn("run_approved_transition", controller)
+        self.assertIn("cpk_secret_use_authorizations", controller)
+        self.assertIn("audit_records", controller)
+        self.assertIn("_restart_provider", controller)
+        self.assertIn("workspace-secret-denied-scope", controller)
+        self.assertIn("workspace-secret-wrong-target", controller)
+        self.assertIn("workspace-secret-wrong-intent", controller)
+        self.assertIn("workspace-secret-revoked-provider", controller)
+        self.assertIn("workspace-secret-revoked-reference", controller)
+        self.assertIn("workspace-secret-missing", controller)
+        self.assertIn("workspace-secret-wrong-credential", controller)
+        self.assertIn("workspace-secret-unavailable", controller)
+        self.assertNotIn("DockerRuntimeInterpreter", controller)
+        self.assertNotIn("ControlPlaneKitSecretsResolver", controller)
+
     def test_recursive_activity_smoke_uses_published_parent_and_secret_authority(
         self,
     ) -> None:
