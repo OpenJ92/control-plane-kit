@@ -26,7 +26,12 @@ from control_plane_kit_core.runtime_authority import (
 )
 from control_plane_kit_core.runtime_effects import ImagePullAuthority
 from control_plane_kit_core.products import ProductDescriptorCodec, ProductDescriptorError
-from control_plane_kit_core.secrets import SecretReference
+from control_plane_kit_core.secrets import (
+    SecretProviderEndpointReference,
+    SecretProviderId,
+    SecretReference,
+    SecretUseIntent,
+)
 from control_plane_kit_core.topology import DEFAULT_GRAPH_CODEC, GraphDescriptorError
 from control_plane_kit_core.types import RuntimeKind
 
@@ -96,6 +101,18 @@ from control_plane_kit_operations.runtime_authorities import (
     RuntimeAuthorityAuthorizationDenied,
     RuntimeAuthorityRegistrationError,
     RuntimeAuthorityRegistrationService,
+)
+from control_plane_kit_operations.secret_providers import (
+    RegisterSecretProviderCommand,
+    RegisterSecretReferenceCommand,
+    RevokeSecretProviderCommand,
+    RevokeSecretReferenceCommand,
+    SecretProviderAuthorizationDenied,
+    SecretProviderKind,
+    SecretProviderNotFound,
+    SecretProviderRegistrationConflict,
+    SecretProviderRegistrationError,
+    SecretProviderRegistrationService,
 )
 from control_plane_kit_operations.workflows import (
     CancelOperationSession,
@@ -348,6 +365,8 @@ class CpkServerReadService:
                     stores.runtime_authority_deliveries
                 ),
                 "ingress_authority_store": stores.ingress_authorities,
+                "secret_provider_store": stores.secret_providers,
+                "secret_reference_store": stores.secret_references,
                 "gateway_probe_store": stores.gateway_probes,
             }
             if self._clock is not None:
@@ -371,6 +390,7 @@ class CpkServerPlanningService:
         image_pull_authorities: ImagePullAuthorityRegistrationService | None = None,
         runtime_authorities: RuntimeAuthorityRegistrationService | None = None,
         ingress_authorities: IngressAuthorityRegistrationService | None = None,
+        secret_providers: SecretProviderRegistrationService | None = None,
         desired_graphs: DesiredGraphCommandService | None = None,
     ) -> None:
         self._service = service
@@ -379,6 +399,7 @@ class CpkServerPlanningService:
         self._image_pull_authorities = image_pull_authorities
         self._runtime_authorities = runtime_authorities
         self._ingress_authorities = ingress_authorities
+        self._secret_providers = secret_providers
         self._desired_graphs = desired_graphs
 
     def handle(self, request: CpkServerRouteRequest) -> Mapping[str, object]:
@@ -575,6 +596,19 @@ class CpkServerPlanningService:
             except (ValueError, IngressAuthorityRegistrationError) as error:
                 raise CpkServerApplicationError(400, str(error)) from error
             return _registered_ingress_authority_descriptor(result)
+        if request.route_id.startswith(
+            (
+                "command.secret-provider.",
+                "command.secret-reference.",
+            )
+        ):
+            if self._secret_providers is None:
+                raise _service_not_configured(request)
+            return _handle_secret_provider_command(
+                self._secret_providers,
+                request,
+                context,
+            )
         if request.route_id == "command.desired-graph.set":
             if self._desired_graphs is None:
                 raise _service_not_configured(request)
@@ -611,6 +645,121 @@ class CpkServerPlanningService:
             )
         )
         return result.descriptor()
+
+
+def _handle_secret_provider_command(
+    service: SecretProviderRegistrationService,
+    request: CpkServerRouteRequest,
+    context: TrustedCommandContext,
+) -> Mapping[str, object]:
+    """Decode secret-free lifecycle metadata into operations commands."""
+
+    payload = _arguments(request)
+    _text(payload, "idempotency_key")
+    try:
+        if request.route_id == "command.secret-provider.register":
+            result = service.register_provider(
+                RegisterSecretProviderCommand(
+                    workspace_id=_workspace_id(payload),
+                    provider_id=SecretProviderId(_text(payload, "provider_id")),
+                    provider_kind=SecretProviderKind(
+                        _text(payload, "provider_kind")
+                    ),
+                    display_name=_text(payload, "display_name"),
+                    endpoint_reference=SecretProviderEndpointReference(
+                        _text(payload, "endpoint_reference")
+                    ),
+                    credential_reference=SecretReference(
+                        _text(payload, "credential_reference")
+                    ),
+                    allowed_reference_prefixes=tuple(
+                        SecretReference(value)
+                        for value in _text_tuple(
+                            payload,
+                            "allowed_reference_prefixes",
+                        )
+                    ),
+                    allowed_intents=tuple(
+                        SecretUseIntent(value)
+                        for value in _text_tuple(payload, "allowed_intents")
+                    ),
+                    admitted_by=context.actor_id,
+                    admitted_at=_text(payload, "admitted_at"),
+                    actor_scopes=context.granted_scopes,
+                    supersedes_registration_id=_optional_text(
+                        payload,
+                        "supersedes_registration_id",
+                    ),
+                    metadata=_mapping(payload, "metadata", default={}),
+                )
+            )
+        elif request.route_id == "command.secret-provider.revoke":
+            result = service.revoke_provider(
+                RevokeSecretProviderCommand(
+                    workspace_id=_workspace_id(payload),
+                    provider_id=SecretProviderId(
+                        _path_or_payload(
+                            payload,
+                            "provider_id",
+                            "provider_id",
+                        )
+                    ),
+                    revoked_by=context.actor_id,
+                    revoked_at=_text(payload, "revoked_at"),
+                    actor_scopes=context.granted_scopes,
+                )
+            )
+        elif request.route_id == "command.secret-reference.register":
+            result = service.register_reference(
+                RegisterSecretReferenceCommand(
+                    workspace_id=_workspace_id(payload),
+                    reference=SecretReference(_text(payload, "reference")),
+                    provider_registration_id=_text(
+                        payload,
+                        "provider_registration_id",
+                    ),
+                    allowed_intents=tuple(
+                        SecretUseIntent(value)
+                        for value in _text_tuple(payload, "allowed_intents")
+                    ),
+                    admitted_by=context.actor_id,
+                    admitted_at=_text(payload, "admitted_at"),
+                    actor_scopes=context.granted_scopes,
+                    supersedes_registration_id=_optional_text(
+                        payload,
+                        "supersedes_registration_id",
+                    ),
+                    metadata=_mapping(payload, "metadata", default={}),
+                )
+            )
+        elif request.route_id == "command.secret-reference.revoke":
+            result = service.revoke_reference(
+                RevokeSecretReferenceCommand(
+                    workspace_id=_workspace_id(payload),
+                    registration_id=_path_or_payload(
+                        payload,
+                        "registration_id",
+                        "registration_id",
+                    ),
+                    revoked_by=context.actor_id,
+                    revoked_at=_text(payload, "revoked_at"),
+                    actor_scopes=context.granted_scopes,
+                )
+            )
+        else:
+            raise _unsupported_route(request)
+    except SecretProviderAuthorizationDenied as error:
+        raise CpkServerApplicationError(403, str(error)) from error
+    except SecretProviderNotFound as error:
+        raise CpkServerApplicationError(
+            404,
+            "secret provider metadata was not found",
+        ) from error
+    except SecretProviderRegistrationConflict as error:
+        raise CpkServerApplicationError(409, str(error)) from error
+    except (SecretProviderRegistrationError, TypeError, ValueError) as error:
+        raise CpkServerApplicationError(400, str(error)) from error
+    return result.descriptor()
 
 
 class CpkServerApprovalService:
@@ -886,6 +1035,7 @@ def cpk_server_services(
     image_pull_authorities: ImagePullAuthorityRegistrationService | None = None,
     runtime_authorities: RuntimeAuthorityRegistrationService | None = None,
     ingress_authorities: IngressAuthorityRegistrationService | None = None,
+    secret_providers: SecretProviderRegistrationService | None = None,
     desired_graphs: DesiredGraphCommandService | None = None,
     operations: OperationCommandService | None = None,
     advancement: CurrentGraphAdvancementCommandService | None = None,
@@ -909,6 +1059,7 @@ def cpk_server_services(
             image_pull_authorities=image_pull_authorities,
             runtime_authorities=runtime_authorities,
             ingress_authorities=ingress_authorities,
+            secret_providers=secret_providers,
             desired_graphs=desired_graphs,
         ),
         ControlPlaneServiceRole.APPROVAL: CpkServerApprovalService(approval),
@@ -1018,6 +1169,26 @@ def _read_model(service: InstanceReadService, request: CpkServerRouteRequest) ->
                 _path_or_payload(args, "authority_ref", "authority_ref")
             ),
         )
+    if route_id == "read.secret-providers":
+        return service.secret_providers(_workspace_id(args))
+    if route_id == "read.secret-provider-detail":
+        return service.secret_provider_detail(
+            _workspace_id(args),
+            SecretProviderId(
+                _path_or_payload(args, "provider_id", "provider_id")
+            ),
+        )
+    if route_id == "read.secret-references":
+        return service.secret_references(_workspace_id(args))
+    if route_id == "read.secret-reference-detail":
+        return service.secret_reference_detail(
+            _workspace_id(args),
+            _path_or_payload(
+                args,
+                "registration_id",
+                "registration_id",
+            ),
+        )
     if route_id == "read.gateway-probe-timeline":
         return service.gateway_probe_timeline(
             _workspace_id(args),
@@ -1112,6 +1283,24 @@ def _optional_text(values: Mapping[str, object], name: str) -> str | None:
     if not isinstance(value, str) or not value.strip():
         raise CpkServerApplicationError(400, f"{name} must be text")
     return value
+
+
+def _text_tuple(
+    values: Mapping[str, object],
+    name: str,
+) -> tuple[str, ...]:
+    value = values.get(name)
+    if (
+        not isinstance(value, (list, tuple))
+        or not value
+        or len(value) > 32
+        or not all(isinstance(item, str) and item.strip() for item in value)
+    ):
+        raise CpkServerApplicationError(
+            400,
+            f"{name} must be a nonempty bounded list of text",
+        )
+    return tuple(value)
 
 
 def _positive_int(values: Mapping[str, object], name: str, *, default: int) -> int:
@@ -1251,6 +1440,8 @@ def _read_error_status(error: ReadModelError) -> int:
             "missing runtime authority",
             "missing runtime authority delivery",
             "missing ingress authority",
+            "missing secret provider",
+            "missing secret reference",
         )
     ):
         return 404

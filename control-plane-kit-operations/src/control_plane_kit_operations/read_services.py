@@ -15,6 +15,7 @@ from control_plane_kit_core.planning import (
 )
 from control_plane_kit_core.public_ingress import IngressAuthorityReference
 from control_plane_kit_core.runtime_authority import RuntimeAuthorityReference
+from control_plane_kit_core.secrets import SecretProviderId
 from control_plane_kit_core.topology import (
     DEFAULT_GRAPH_CODEC,
     GraphDescriptorError,
@@ -38,6 +39,11 @@ from control_plane_kit_operations.records import (
 )
 from control_plane_kit_operations.runtime_authorities import RuntimeAuthorityNotFound
 from control_plane_kit_operations.ingress_authorities import IngressAuthorityNotFound
+from control_plane_kit_operations.secret_providers import (
+    RegisteredSecretProvider,
+    RegisteredSecretReference,
+    SecretProviderNotFound,
+)
 
 _REDACTED = "<redacted>"
 _SECRET_MARKERS = ("secret", "token", "password", "private_key", "credential", "api_key")
@@ -90,6 +96,30 @@ class RuntimeAuthorityDeliveryStore(Protocol):
 class IngressAuthorityStore(Protocol):
     def get(self, workspace_id: str, authority_ref: IngressAuthorityReference) -> object: ...
     def list_active(self, workspace_id: str) -> tuple[object, ...]: ...
+
+
+class SecretProviderStore(Protocol):
+    def get_active(
+        self,
+        workspace_id: str,
+        provider_id: SecretProviderId,
+    ) -> RegisteredSecretProvider: ...
+    def list_active(
+        self,
+        workspace_id: str,
+    ) -> tuple[RegisteredSecretProvider, ...]: ...
+
+
+class SecretReferenceStore(Protocol):
+    def get_by_registration(
+        self,
+        workspace_id: str,
+        registration_id: str,
+    ) -> RegisteredSecretReference: ...
+    def list_active(
+        self,
+        workspace_id: str,
+    ) -> tuple[RegisteredSecretReference, ...]: ...
 
 
 class GatewayProbeStore(Protocol):
@@ -253,6 +283,22 @@ class IngressAuthorityCollectionReadModel:
 
 
 @dataclass(frozen=True)
+class SecretMetadataCollectionReadModel:
+    """Secret-free provider or handle registration metadata."""
+
+    workspace_id: str
+    kind: str
+    items: tuple[Mapping[str, object], ...]
+
+    def descriptor(self) -> dict[str, object]:
+        return {
+            "workspace_id": self.workspace_id,
+            "kind": self.kind,
+            "items": [dict(item) for item in self.items],
+        }
+
+
+@dataclass(frozen=True)
 class ControlSurfaceReadModel:
     workspace_id: str
     pointer: str
@@ -306,6 +352,8 @@ class InstanceReadService:
         runtime_authority_store: RuntimeAuthorityStore | None = None,
         runtime_authority_delivery_store: RuntimeAuthorityDeliveryStore | None = None,
         ingress_authority_store: IngressAuthorityStore | None = None,
+        secret_provider_store: SecretProviderStore | None = None,
+        secret_reference_store: SecretReferenceStore | None = None,
         gateway_probe_store: GatewayProbeStore | None = None,
         graph_codec: GraphDescriptorCodec = DEFAULT_GRAPH_CODEC,
         clock=lambda: datetime.now(timezone.utc),
@@ -319,6 +367,8 @@ class InstanceReadService:
         self._runtime_authority_store = runtime_authority_store
         self._runtime_authority_delivery_store = runtime_authority_delivery_store
         self._ingress_authority_store = ingress_authority_store
+        self._secret_provider_store = secret_provider_store
+        self._secret_reference_store = secret_reference_store
         self._gateway_probe_store = gateway_probe_store
         self._graph_codec = graph_codec
         self._clock = clock
@@ -643,6 +693,80 @@ class InstanceReadService:
             workspace_id=workspace_id,
             kind="ingress-authority-detail",
             payload={"ingress_authority": _redacted_ingress_authority(authority)},
+        )
+
+    def secret_providers(
+        self,
+        workspace_id: str,
+    ) -> SecretMetadataCollectionReadModel:
+        self._workspace(workspace_id)
+        if self._secret_provider_store is None:
+            raise ReadModelError("secret provider store is not configured")
+        return SecretMetadataCollectionReadModel(
+            workspace_id=workspace_id,
+            kind="secret-providers",
+            items=tuple(
+                _public_secret_provider(value)
+                for value in self._secret_provider_store.list_active(workspace_id)
+            ),
+        )
+
+    def secret_provider_detail(
+        self,
+        workspace_id: str,
+        provider_id: SecretProviderId,
+    ) -> FocusedDetailReadModel:
+        self._workspace(workspace_id)
+        if self._secret_provider_store is None:
+            raise ReadModelError("secret provider store is not configured")
+        try:
+            provider = self._secret_provider_store.get_active(
+                workspace_id,
+                provider_id,
+            )
+        except (KeyError, SecretProviderNotFound) as error:
+            raise ReadModelError("missing secret provider") from error
+        return FocusedDetailReadModel(
+            workspace_id=workspace_id,
+            kind="secret-provider-detail",
+            payload={"secret_provider": _public_secret_provider(provider)},
+        )
+
+    def secret_references(
+        self,
+        workspace_id: str,
+    ) -> SecretMetadataCollectionReadModel:
+        self._workspace(workspace_id)
+        if self._secret_reference_store is None:
+            raise ReadModelError("secret reference store is not configured")
+        return SecretMetadataCollectionReadModel(
+            workspace_id=workspace_id,
+            kind="secret-references",
+            items=tuple(
+                _public_secret_reference(value)
+                for value in self._secret_reference_store.list_active(workspace_id)
+            ),
+        )
+
+    def secret_reference_detail(
+        self,
+        workspace_id: str,
+        registration_id: str,
+    ) -> FocusedDetailReadModel:
+        self._workspace(workspace_id)
+        if self._secret_reference_store is None:
+            raise ReadModelError("secret reference store is not configured")
+        try:
+            reference = self._secret_reference_store.get_by_registration(
+                workspace_id,
+                registration_id,
+            )
+        except (KeyError, SecretProviderNotFound) as error:
+            raise ReadModelError("missing secret reference") from error
+        return FocusedDetailReadModel(
+            workspace_id=workspace_id,
+            kind="secret-reference-detail",
+            payload={"secret_reference": _public_secret_reference(reference)},
         )
 
     def gateway_probe_timeline(
@@ -988,6 +1112,22 @@ def _redacted_runtime_authority_delivery(value: object) -> Mapping[str, object]:
         raise ReadModelError("runtime authority delivery record cannot be projected")
     descriptor = _mapping(descriptor_method())
     return _redact_descriptor_value("runtime_authority_delivery", descriptor)
+
+
+def _public_secret_provider(
+    value: RegisteredSecretProvider,
+) -> Mapping[str, object]:
+    if not isinstance(value, RegisteredSecretProvider):
+        raise ReadModelError("secret provider record cannot be projected")
+    return value.descriptor()
+
+
+def _public_secret_reference(
+    value: RegisteredSecretReference,
+) -> Mapping[str, object]:
+    if not isinstance(value, RegisteredSecretReference):
+        raise ReadModelError("secret reference record cannot be projected")
+    return value.descriptor()
 
 
 def _mapping(value: object) -> Mapping[str, object]:

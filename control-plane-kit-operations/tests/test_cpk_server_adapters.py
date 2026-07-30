@@ -85,6 +85,9 @@ from control_plane_kit_operations.records import (
 from control_plane_kit_operations.runtime_authorities import (
     RuntimeAuthorityRegistrationService,
 )
+from control_plane_kit_operations.secret_providers import (
+    SecretProviderRegistrationService,
+)
 from control_plane_kit_operations.workflows import OperationCommandService
 from control_plane_kit_operations.workspaces import WorkspaceCommandService
 
@@ -1569,6 +1572,350 @@ class CpkServerOperationsAdapterTests(unittest.TestCase):
             )
         )
         self.assertEqual(revoked["status"], "revoked")
+
+    def test_secret_provider_routes_use_trusted_context_and_public_references(
+        self,
+    ) -> None:
+        self.seed_workspace()
+        with self.unit_of_work() as unit_of_work:
+            unit_of_work.stores.workspaces.create(
+                WorkspaceRecord("workspace-b", "Workspace B")
+            )
+            unit_of_work.commit()
+        secret_providers = SecretProviderRegistrationService(self.unit_of_work)
+        planning = CpkServerPlanningService(
+            RecordingService(),
+            secret_providers=secret_providers,
+        )
+        reads = CpkServerReadService(self.unit_of_work)
+        provider_payload = {
+            "workspace_id": "workspace-a",
+            "provider_id": "workspace-secrets",
+            "provider_kind": "control-plane-kit-secrets",
+            "display_name": "Workspace secrets",
+            "endpoint_reference": "workspace-secrets",
+            "credential_reference": "secret://bootstrap/provider/client-token",
+            "allowed_reference_prefixes": [
+                "secret://workspace-secrets/workspace-a"
+            ],
+            "allowed_intents": [
+                "application.control-token",
+                "postgres.password",
+            ],
+            "admitted_at": "2026-07-30T12:00:00Z",
+            "idempotency_key": "provider-a",
+            "actor_id": "forged-actor",
+            "actor_scopes": [scope.value for scope in PolicyScope],
+            "metadata": {"environment": "test"},
+        }
+
+        unrelated_scopes = (
+            PolicyScope.SECRET_PROVIDER_READ,
+            PolicyScope.SECRET_PROVIDER_USE,
+            PolicyScope.SECRET_PROVIDER_REVOKE,
+            PolicyScope.RUNTIME_AUTHORITY_REGISTER,
+            PolicyScope.INGRESS_AUTHORITY_REGISTER,
+            PolicyScope.EXECUTION_OPERATE,
+        )
+        for scope in unrelated_scopes:
+            with self.assertRaises(CpkServerApplicationError) as denied:
+                planning.handle(
+                    RouteRequest(
+                        surface="http",
+                        route_id="command.secret-provider.register",
+                        service_role=ControlPlaneServiceRole.PLANNING,
+                        path_parameters={"workspace_id": "workspace-a"},
+                        payload=provider_payload,
+                        principal=operator_principal(scopes=(scope,)),
+                    )
+                )
+            self.assertEqual(denied.exception.status, 403)
+
+        provider = planning.handle(
+            RouteRequest(
+                surface="http",
+                route_id="command.secret-provider.register",
+                service_role=ControlPlaneServiceRole.PLANNING,
+                path_parameters={"workspace_id": "workspace-a"},
+                payload=provider_payload,
+                principal=operator_principal(
+                    subject_id="trusted-operator",
+                    scopes=(PolicyScope.SECRET_PROVIDER_REGISTER,),
+                ),
+            )
+        )
+        self.assertEqual(provider["admitted_by"], "trusted-operator")
+        self.assertEqual(provider["endpoint_reference"], "workspace-secrets")
+        self.assertEqual(
+            provider["credential_reference"],
+            "secret://bootstrap/provider/client-token",
+        )
+        provider_registration_id = str(provider["registration_id"])
+
+        with self.assertRaises(CpkServerApplicationError) as register_cannot_read:
+            reads.handle(
+                RouteRequest(
+                    surface="http",
+                    route_id="read.secret-providers",
+                    service_role=ControlPlaneServiceRole.READS,
+                    path_parameters={"workspace_id": "workspace-a"},
+                    payload={"actor_scopes": [PolicyScope.SECRET_PROVIDER_READ.value]},
+                    principal=operator_principal(
+                        scopes=(PolicyScope.SECRET_PROVIDER_REGISTER,)
+                    ),
+                )
+            )
+        self.assertEqual(register_cannot_read.exception.status, 403)
+
+        listed_providers = reads.handle(
+            RouteRequest(
+                surface="http",
+                route_id="read.secret-providers",
+                service_role=ControlPlaneServiceRole.READS,
+                path_parameters={"workspace_id": "workspace-a"},
+                payload={},
+                principal=operator_principal(
+                    scopes=(PolicyScope.SECRET_PROVIDER_READ,)
+                ),
+            )
+        )
+        self.assertEqual(len(listed_providers["items"]), 1)
+        self.assertEqual(
+            listed_providers["items"][0]["credential_reference"],
+            "secret://bootstrap/provider/client-token",
+        )
+
+        provider_detail = reads.handle(
+            RouteRequest(
+                surface="mcp",
+                route_id="read.secret-provider-detail",
+                service_role=ControlPlaneServiceRole.READS,
+                path_parameters={},
+                payload={
+                    "workspace_id": "workspace-a",
+                    "provider_id": "workspace-secrets",
+                },
+                principal=operator_principal(
+                    scopes=(PolicyScope.SECRET_PROVIDER_READ,)
+                ),
+            )
+        )
+        self.assertEqual(
+            provider_detail["secret_provider"]["registration_id"],
+            provider_registration_id,
+        )
+
+        reference = planning.handle(
+            RouteRequest(
+                surface="mcp",
+                route_id="command.secret-reference.register",
+                service_role=ControlPlaneServiceRole.PLANNING,
+                path_parameters={},
+                payload={
+                    "workspace_id": "workspace-a",
+                    "reference": (
+                        "secret://workspace-secrets/workspace-a/postgres/password"
+                    ),
+                    "provider_registration_id": provider_registration_id,
+                    "allowed_intents": ["postgres.password"],
+                    "admitted_at": "2026-07-30T12:01:00Z",
+                    "idempotency_key": "reference-a",
+                    "actor_id": "forged-actor",
+                    "actor_scopes": [scope.value for scope in PolicyScope],
+                    "metadata": {"purpose": "postgres"},
+                },
+                principal=operator_principal(
+                    subject_id="trusted-operator",
+                    scopes=(PolicyScope.SECRET_PROVIDER_REGISTER,),
+                ),
+            )
+        )
+        self.assertEqual(reference["admitted_by"], "trusted-operator")
+        reference_registration_id = str(reference["registration_id"])
+
+        listed_references = reads.handle(
+            RouteRequest(
+                surface="mcp",
+                route_id="read.secret-references",
+                service_role=ControlPlaneServiceRole.READS,
+                path_parameters={},
+                payload={"workspace_id": "workspace-a"},
+                principal=operator_principal(
+                    scopes=(PolicyScope.SECRET_PROVIDER_READ,)
+                ),
+            )
+        )
+        self.assertEqual(
+            listed_references["items"][0]["reference_id"],
+            "secret://workspace-secrets/workspace-a/postgres/password",
+        )
+        reference_detail = reads.handle(
+            RouteRequest(
+                surface="http",
+                route_id="read.secret-reference-detail",
+                service_role=ControlPlaneServiceRole.READS,
+                path_parameters={
+                    "workspace_id": "workspace-a",
+                    "registration_id": reference_registration_id,
+                },
+                payload={},
+                principal=operator_principal(
+                    scopes=(PolicyScope.SECRET_PROVIDER_READ,)
+                ),
+            )
+        )
+        self.assertEqual(
+            reference_detail["secret_reference"]["provider_registration_id"],
+            provider_registration_id,
+        )
+
+        with self.assertRaises(CpkServerApplicationError) as cross_workspace:
+            reads.handle(
+                RouteRequest(
+                    surface="http",
+                    route_id="read.secret-reference-detail",
+                    service_role=ControlPlaneServiceRole.READS,
+                    path_parameters={
+                        "workspace_id": "workspace-b",
+                        "registration_id": reference_registration_id,
+                    },
+                    payload={},
+                    principal=operator_principal(
+                        workspace_ids=("workspace-b",),
+                        scopes=(PolicyScope.SECRET_PROVIDER_READ,),
+                    ),
+                )
+            )
+        self.assertEqual(cross_workspace.exception.status, 404)
+        self.assertNotIn(reference_registration_id, cross_workspace.exception.message)
+
+        with self.assertRaises(CpkServerApplicationError) as read_cannot_revoke:
+            planning.handle(
+                RouteRequest(
+                    surface="http",
+                    route_id="command.secret-reference.revoke",
+                    service_role=ControlPlaneServiceRole.PLANNING,
+                    path_parameters={
+                        "workspace_id": "workspace-a",
+                        "registration_id": reference_registration_id,
+                    },
+                    payload={
+                        "revoked_at": "2026-07-30T12:02:00Z",
+                        "idempotency_key": "revoke-reference-a",
+                    },
+                    principal=operator_principal(
+                        scopes=(PolicyScope.SECRET_PROVIDER_READ,)
+                    ),
+                )
+            )
+        self.assertEqual(read_cannot_revoke.exception.status, 403)
+
+        revoked_reference = planning.handle(
+            RouteRequest(
+                surface="http",
+                route_id="command.secret-reference.revoke",
+                service_role=ControlPlaneServiceRole.PLANNING,
+                path_parameters={
+                    "workspace_id": "workspace-a",
+                    "registration_id": reference_registration_id,
+                },
+                payload={
+                    "revoked_at": "2026-07-30T12:02:00Z",
+                    "idempotency_key": "revoke-reference-a",
+                },
+                principal=operator_principal(
+                    subject_id="trusted-revoker",
+                    scopes=(PolicyScope.SECRET_PROVIDER_REVOKE,),
+                ),
+            )
+        )
+        self.assertEqual(revoked_reference["revoked_by"], "trusted-revoker")
+
+        revoked_provider = planning.handle(
+            RouteRequest(
+                surface="mcp",
+                route_id="command.secret-provider.revoke",
+                service_role=ControlPlaneServiceRole.PLANNING,
+                path_parameters={},
+                payload={
+                    "workspace_id": "workspace-a",
+                    "provider_id": "workspace-secrets",
+                    "revoked_at": "2026-07-30T12:03:00Z",
+                    "idempotency_key": "revoke-provider-a",
+                },
+                principal=operator_principal(
+                    subject_id="trusted-revoker",
+                    scopes=(PolicyScope.SECRET_PROVIDER_REVOKE,),
+                ),
+            )
+        )
+        self.assertEqual(revoked_provider["status"], "revoked")
+        self.assertEqual(revoked_provider["revoked_by"], "trusted-revoker")
+        leaked = repr(
+            (
+                provider,
+                listed_providers,
+                provider_detail,
+                reference,
+                listed_references,
+                reference_detail,
+                revoked_reference,
+                revoked_provider,
+            )
+        ).lower()
+        for forbidden in (
+            "https://secrets.internal",
+            "raw-provider-token",
+            "plaintext",
+            "ciphertext",
+            "bearer ",
+        ):
+            self.assertNotIn(forbidden, leaked)
+
+    def test_secret_provider_payload_rejects_raw_endpoint_and_secret_material(
+        self,
+    ) -> None:
+        self.seed_workspace()
+        planning = CpkServerPlanningService(
+            RecordingService(),
+            secret_providers=SecretProviderRegistrationService(self.unit_of_work),
+        )
+        base = {
+            "provider_id": "workspace-secrets",
+            "provider_kind": "control-plane-kit-secrets",
+            "display_name": "Workspace secrets",
+            "endpoint_reference": "workspace-secrets",
+            "credential_reference": "secret://bootstrap/provider/client-token",
+            "allowed_reference_prefixes": [
+                "secret://workspace-secrets/workspace-a"
+            ],
+            "allowed_intents": ["postgres.password"],
+            "admitted_at": "2026-07-30T12:00:00Z",
+            "idempotency_key": "provider-a",
+        }
+        for changed in (
+            {"endpoint_reference": "https://secrets.internal"},
+            {"credential_reference": "raw-provider-token"},
+            {"metadata": {"api_token": "raw-provider-token"}},
+            {"metadata": {"note": "Bearer raw-provider-token"}},
+        ):
+            with self.assertRaises(CpkServerApplicationError) as rejected:
+                planning.handle(
+                    RouteRequest(
+                        surface="http",
+                        route_id="command.secret-provider.register",
+                        service_role=ControlPlaneServiceRole.PLANNING,
+                        path_parameters={"workspace_id": "workspace-a"},
+                        payload={**base, **changed},
+                        principal=operator_principal(
+                            scopes=(PolicyScope.SECRET_PROVIDER_REGISTER,)
+                        ),
+                    )
+                )
+            self.assertEqual(rejected.exception.status, 400)
+            rendered = repr(rejected.exception.descriptor()).lower()
+            self.assertNotIn("https://secrets.internal", rendered)
+            self.assertNotIn("raw-provider-token", rendered)
 
     def test_product_import_requires_public_command_idempotency_key(self) -> None:
         product_document = ProductDescriptorCodec().encode_document(
