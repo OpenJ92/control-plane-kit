@@ -14,9 +14,13 @@ from control_plane_kit_core.secrets import (
 )
 from control_plane_kit_operations.postgres import PostgresUnitOfWork, install_schema
 from control_plane_kit_operations.secret_providers import (
+    AuthorizeSecretUse,
+    AuthorizedSecretUse,
     RegisterSecretProviderCommand,
     RegisterSecretReferenceCommand,
+    RegisteredSecretProvider,
     RegisteredSecretProviderStatus,
+    RegisteredSecretReference,
     RegisteredSecretReferenceStatus,
     RevokeSecretProviderCommand,
     RevokeSecretReferenceCommand,
@@ -25,6 +29,8 @@ from control_plane_kit_operations.secret_providers import (
     SecretProviderRegistrationConflict,
     SecretProviderRegistrationError,
     SecretProviderRegistrationService,
+    SecretUseAuthorizationConflict,
+    SecretUseAuthorizationService,
 )
 
 
@@ -56,6 +62,9 @@ class SecretProviderStoreTests(unittest.TestCase):
 
     def service(self) -> SecretProviderRegistrationService:
         return SecretProviderRegistrationService(self.unit_of_work)
+
+    def authorization_service(self) -> SecretUseAuthorizationService:
+        return SecretUseAuthorizationService(self.unit_of_work)
 
     def test_provider_registration_is_workspace_scoped_idempotent_and_secret_free(
         self,
@@ -330,6 +339,207 @@ class SecretProviderStoreTests(unittest.TestCase):
                 (provider,),
             )
 
+    def test_authorized_use_is_workspace_scoped_idempotent_and_secret_free(
+        self,
+    ) -> None:
+        provider, reference = self.admit_reference()
+        command = self.authorize_command(reference.reference)
+
+        authorized = self.authorization_service().authorize(command)
+
+        self.assertIsInstance(authorized, AuthorizedSecretUse)
+        self.assertEqual(
+            self.authorization_service().authorize(command),
+            authorized,
+        )
+        self.assertEqual(
+            authorized.provider_registration_id,
+            provider.registration_id,
+        )
+        self.assertEqual(
+            authorized.reference_registration_id,
+            reference.registration_id,
+        )
+        self.assertEqual(authorized.intent, SecretUseIntent.POSTGRES_PASSWORD)
+        self.assertEqual(authorized.correlation_id, "correlation-a")
+        self.assertEqual(authorized.run_id, "run-a")
+        self.assertEqual(authorized.effect_id, "effect-a")
+        rendered = repr(authorized.descriptor()).lower()
+        for forbidden in (
+            "resolved-value",
+            "raw-provider-credential",
+            "plaintext",
+            "ciphertext",
+            "bearer ",
+        ):
+            self.assertNotIn(forbidden, rendered)
+        row = self.connection.execute(
+            """
+            SELECT secret_reference, use_intent, actor_subject,
+                   correlation_id, intent_fingerprint
+            FROM cpk_secret_use_authorizations
+            WHERE authorization_id = %s
+            """,
+            (authorized.authorization_id,),
+        ).fetchone()
+        self.assertEqual(row[:4], (
+            reference.reference.reference_id,
+            SecretUseIntent.POSTGRES_PASSWORD.value,
+            "operator-a",
+            "correlation-a",
+        ))
+        self.assertNotIn("resolved-value", repr(row).lower())
+
+    def test_use_permission_is_independent_and_conflicting_replay_fails(self) -> None:
+        _, reference = self.admit_reference()
+        service = self.authorization_service()
+
+        for scope in (
+            PolicyScope.SECRET_PROVIDER_REGISTER,
+            PolicyScope.SECRET_PROVIDER_READ,
+            PolicyScope.SECRET_PROVIDER_REVOKE,
+            PolicyScope.EXECUTION_OPERATE,
+        ):
+            with self.assertRaises(SecretProviderAuthorizationDenied):
+                service.authorize(
+                    self.authorize_command(
+                        reference.reference,
+                        actor_scopes=(scope,),
+                    )
+                )
+
+        first = service.authorize(self.authorize_command(reference.reference))
+        with self.assertRaises(SecretUseAuthorizationConflict):
+            service.authorize(
+                self.authorize_command(
+                    reference.reference,
+                    run_id="run-b",
+                )
+            )
+        with self.unit_of_work() as unit_of_work:
+            self.assertEqual(
+                unit_of_work.stores.secret_use_authorizations.get(
+                    "workspace-a",
+                    first.authorization_id,
+                ),
+                first,
+            )
+
+    def test_stale_cross_workspace_and_wrong_intent_fail_before_provider_io(
+        self,
+    ) -> None:
+        provider, reference = self.admit_reference()
+        service = self.authorization_service()
+
+        with self.assertRaises(SecretProviderRegistrationError):
+            service.authorize(
+                self.authorize_command(
+                    reference.reference,
+                    workspace_id="workspace-b",
+                )
+            )
+        with self.assertRaises(SecretProviderRegistrationError):
+            service.authorize(
+                self.authorize_command(
+                    reference.reference,
+                    intent=SecretUseIntent.APPLICATION_CONTROL_TOKEN,
+                )
+            )
+
+        self.service().revoke_reference(
+            RevokeSecretReferenceCommand(
+                workspace_id="workspace-a",
+                registration_id=reference.registration_id,
+                revoked_by="operator-a",
+                revoked_at="2026-07-30T12:10:00Z",
+                actor_scopes=(PolicyScope.SECRET_PROVIDER_REVOKE,),
+            )
+        )
+        with self.assertRaises(SecretProviderRegistrationError):
+            service.authorize(
+                self.authorize_command(
+                    reference.reference,
+                    correlation_id="correlation-after-reference-revoke",
+                )
+            )
+
+        replacement_reference = self.service().register_reference(
+            self.reference_command(
+                provider.registration_id,
+                admitted_at="2026-07-30T12:11:00Z",
+                supersedes_registration_id=reference.registration_id,
+            )
+        )
+        self.service().revoke_provider(
+            RevokeSecretProviderCommand(
+                workspace_id="workspace-a",
+                provider_id=provider.provider_id,
+                revoked_by="operator-a",
+                revoked_at="2026-07-30T12:12:00Z",
+                actor_scopes=(PolicyScope.SECRET_PROVIDER_REVOKE,),
+            )
+        )
+        with self.assertRaises(SecretProviderRegistrationError):
+            service.authorize(
+                self.authorize_command(
+                    replacement_reference.reference,
+                    correlation_id="correlation-after-provider-revoke",
+                )
+            )
+
+    def test_authorized_history_survives_later_revocation(self) -> None:
+        provider, reference = self.admit_reference()
+        authorized = self.authorization_service().authorize(
+            self.authorize_command(reference.reference)
+        )
+
+        self.service().revoke_provider(
+            RevokeSecretProviderCommand(
+                workspace_id="workspace-a",
+                provider_id=provider.provider_id,
+                revoked_by="operator-a",
+                revoked_at="2026-07-30T12:10:00Z",
+                actor_scopes=(PolicyScope.SECRET_PROVIDER_REVOKE,),
+            )
+        )
+
+        with self.unit_of_work() as unit_of_work:
+            stored = unit_of_work.stores.secret_use_authorizations.get(
+                "workspace-a",
+                authorized.authorization_id,
+            )
+        self.assertEqual(stored, authorized)
+
+    def test_provider_supersession_invalidates_handle_pinned_to_old_registration(
+        self,
+    ) -> None:
+        provider, reference = self.admit_reference()
+        self.service().register_provider(
+            self.provider_command(
+                display_name="Replacement secrets",
+                admitted_at="2026-07-30T12:10:00Z",
+                supersedes_registration_id=provider.registration_id,
+            )
+        )
+
+        with self.assertRaises(SecretProviderRegistrationError):
+            self.authorization_service().authorize(
+                self.authorize_command(reference.reference)
+            )
+
+    def test_authorization_correlation_fields_are_bounded(self) -> None:
+        _, reference = self.admit_reference()
+        with self.assertRaises(SecretProviderRegistrationError):
+            self.authorize_command(
+                reference.reference,
+                activity_id="x" * 201,
+            )
+        with self.assertRaises(SecretProviderRegistrationError):
+            self.authorize_command(
+                reference.reference,
+                correlation_id="not/a/correlation",
+            )
+
     def provider_command(
         self,
         *,
@@ -394,6 +604,48 @@ class SecretProviderStoreTests(unittest.TestCase):
             actor_scopes=actor_scopes,
             supersedes_registration_id=supersedes_registration_id,
             metadata={"purpose": "integration-test"},
+        )
+
+    def admit_reference(
+        self,
+    ) -> tuple[RegisteredSecretProvider, RegisteredSecretReference]:
+        provider = self.service().register_provider(self.provider_command())
+        reference = self.service().register_reference(
+            self.reference_command(provider.registration_id)
+        )
+        return provider, reference
+
+    def authorize_command(
+        self,
+        reference: SecretReference,
+        *,
+        workspace_id: str = "workspace-a",
+        intent: SecretUseIntent = SecretUseIntent.POSTGRES_PASSWORD,
+        correlation_id: str = "correlation-a",
+        operation_id: str | None = "operation-a",
+        session_id: str | None = "session-a",
+        run_id: str | None = "run-a",
+        activity_id: str | None = "activity-a",
+        effect_id: str | None = "effect-a",
+        probe_id: str | None = "probe-a",
+        actor_scopes: tuple[PolicyScope, ...] = (
+            PolicyScope.SECRET_PROVIDER_USE,
+        ),
+    ) -> AuthorizeSecretUse:
+        return AuthorizeSecretUse(
+            workspace_id=workspace_id,
+            reference=reference,
+            intent=intent,
+            actor_subject="operator-a",
+            correlation_id=correlation_id,
+            requested_at="2026-07-30T12:02:00Z",
+            actor_scopes=actor_scopes,
+            operation_id=operation_id,
+            session_id=session_id,
+            run_id=run_id,
+            activity_id=activity_id,
+            effect_id=effect_id,
+            probe_id=probe_id,
         )
 
 
