@@ -218,6 +218,18 @@ _ROUTE_AUTHORIZATION_POLICIES: dict[str, RouteAuthorizationPolicy] = {
     "read.ingress-authority-detail": RouteAuthorizationPolicy(
         required_scopes=(PolicyScope.INGRESS_AUTHORITY_READ,)
     ),
+    "read.secret-providers": RouteAuthorizationPolicy(
+        required_scopes=(PolicyScope.SECRET_PROVIDER_READ,)
+    ),
+    "read.secret-provider-detail": RouteAuthorizationPolicy(
+        required_scopes=(PolicyScope.SECRET_PROVIDER_READ,)
+    ),
+    "read.secret-references": RouteAuthorizationPolicy(
+        required_scopes=(PolicyScope.SECRET_PROVIDER_READ,)
+    ),
+    "read.secret-reference-detail": RouteAuthorizationPolicy(
+        required_scopes=(PolicyScope.SECRET_PROVIDER_READ,)
+    ),
     "read.gateway-probe-timeline": _WORKSPACE_READ,
     "read.gateway-probe-detail": _WORKSPACE_READ,
     "command.workspace.create": RouteAuthorizationPolicy(
@@ -242,6 +254,18 @@ _ROUTE_AUTHORIZATION_POLICIES: dict[str, RouteAuthorizationPolicy] = {
     ),
     "command.ingress-authority.revoke": RouteAuthorizationPolicy(
         required_scopes=(PolicyScope.INGRESS_AUTHORITY_REVOKE,)
+    ),
+    "command.secret-provider.register": RouteAuthorizationPolicy(
+        required_scopes=(PolicyScope.SECRET_PROVIDER_REGISTER,)
+    ),
+    "command.secret-provider.revoke": RouteAuthorizationPolicy(
+        required_scopes=(PolicyScope.SECRET_PROVIDER_REVOKE,)
+    ),
+    "command.secret-reference.register": RouteAuthorizationPolicy(
+        required_scopes=(PolicyScope.SECRET_PROVIDER_REGISTER,)
+    ),
+    "command.secret-reference.revoke": RouteAuthorizationPolicy(
+        required_scopes=(PolicyScope.SECRET_PROVIDER_REVOKE,)
     ),
     "command.gateway-probe.request": RouteAuthorizationPolicy(
         required_scopes=(PolicyScope.GATEWAY_PROBE_USE,)
