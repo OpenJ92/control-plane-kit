@@ -9,13 +9,14 @@ import json
 import math
 import re
 from types import MappingProxyType
-from typing import Any, Mapping
+from typing import Any, Mapping, Protocol
 
 from control_plane_kit_core.policies import PolicyScope
 from control_plane_kit_core.secrets import (
     SecretProviderEndpointReference,
     SecretProviderId,
     SecretReference,
+    SecretResolutionGrant,
     SecretUseIntent,
 )
 
@@ -69,6 +70,15 @@ class SecretProviderNotFound(SecretProviderRegistrationError):
 
 class SecretUseAuthorizationConflict(SecretProviderRegistrationConflict):
     """Raised when one correlation id is reused for different secret use."""
+
+
+class SecretUseResolutionAuthorizer(Protocol):
+    """Commit one exact use and return its reference-only interpreter grant."""
+
+    def authorize_resolution(
+        self,
+        command: "AuthorizeSecretUse",
+    ) -> SecretResolutionGrant: ...
 
 
 class SecretProviderKind(StrEnum):
@@ -595,44 +605,75 @@ class SecretUseAuthorizationService:
         _require_command(command, AuthorizeSecretUse)
         _require_scope(command.actor_scopes, PolicyScope.SECRET_PROVIDER_USE)
         with self._unit_of_work_factory() as unit_of_work:
-            store = unit_of_work.stores.secret_use_authorizations
-            store.lock_correlation(
-                command.workspace_id,
-                command.correlation_id,
-            )
-            reference = unit_of_work.stores.secret_references.get_active(
-                command.workspace_id,
-                command.reference,
-            )
-            provider = unit_of_work.stores.secret_providers.require_active_registration(
-                command.workspace_id,
-                reference.provider_registration_id,
-            )
-            _validate_reference_admission(reference, provider)
-            if command.intent not in reference.allowed_intents:
-                raise SecretProviderRegistrationError(
-                    "secret use intent is outside reference admission"
-                )
-
-            candidate = authorized_secret_use_for(
+            authorized, _ = _authorize_secret_use(
+                unit_of_work,
                 command,
-                reference=reference,
+            )
+            unit_of_work.commit()
+            return authorized
+
+    def authorize_resolution(
+        self,
+        command: AuthorizeSecretUse,
+    ) -> SecretResolutionGrant:
+        """Commit one exact use and return only its pinned IO routing references."""
+
+        _require_command(command, AuthorizeSecretUse)
+        _require_scope(command.actor_scopes, PolicyScope.SECRET_PROVIDER_USE)
+        with self._unit_of_work_factory() as unit_of_work:
+            authorized, provider = _authorize_secret_use(
+                unit_of_work,
+                command,
+            )
+            grant = secret_resolution_grant_for(
+                authorized,
                 provider=provider,
             )
-            existing = store.for_correlation(
-                command.workspace_id,
-                command.correlation_id,
-            )
-            if existing is not None:
-                if existing.intent_fingerprint != candidate.intent_fingerprint:
-                    raise SecretUseAuthorizationConflict(
-                        "secret use correlation was reused with different intent"
-                    )
-                return existing
-
-            store.add(candidate)
             unit_of_work.commit()
-            return candidate
+            return grant
+
+
+def _authorize_secret_use(
+    unit_of_work: Any,
+    command: AuthorizeSecretUse,
+) -> tuple[AuthorizedSecretUse, RegisteredSecretProvider]:
+    store = unit_of_work.stores.secret_use_authorizations
+    store.lock_correlation(
+        command.workspace_id,
+        command.correlation_id,
+    )
+    reference = unit_of_work.stores.secret_references.get_active(
+        command.workspace_id,
+        command.reference,
+    )
+    provider = unit_of_work.stores.secret_providers.require_active_registration(
+        command.workspace_id,
+        reference.provider_registration_id,
+    )
+    _validate_reference_admission(reference, provider)
+    if command.intent not in reference.allowed_intents:
+        raise SecretProviderRegistrationError(
+            "secret use intent is outside reference admission"
+        )
+
+    candidate = authorized_secret_use_for(
+        command,
+        reference=reference,
+        provider=provider,
+    )
+    existing = store.for_correlation(
+        command.workspace_id,
+        command.correlation_id,
+    )
+    if existing is not None:
+        if existing.intent_fingerprint != candidate.intent_fingerprint:
+            raise SecretUseAuthorizationConflict(
+                "secret use correlation was reused with different intent"
+            )
+        return existing, provider
+
+    store.add(candidate)
+    return candidate, provider
 
 
 def authorized_secret_use_for(
@@ -652,7 +693,6 @@ def authorized_secret_use_for(
         "intent": command.intent.value,
         "actor_subject": command.actor_subject,
         "correlation_id": command.correlation_id,
-        "requested_at": command.requested_at,
         "operation_id": command.operation_id,
         "session_id": command.session_id,
         "run_id": command.run_id,
@@ -679,6 +719,86 @@ def authorized_secret_use_for(
         effect_id=command.effect_id,
         probe_id=command.probe_id,
     )
+
+
+def secret_resolution_grant_for(
+    authorized: AuthorizedSecretUse,
+    *,
+    provider: RegisteredSecretProvider,
+) -> SecretResolutionGrant:
+    """Project committed operations evidence into the pure interpreter grant."""
+
+    if not isinstance(authorized, AuthorizedSecretUse):
+        raise SecretProviderRegistrationError(
+            "secret resolution grant requires AuthorizedSecretUse"
+        )
+    if not isinstance(provider, RegisteredSecretProvider):
+        raise SecretProviderRegistrationError(
+            "secret resolution grant requires RegisteredSecretProvider"
+        )
+    if (
+        authorized.workspace_id != provider.workspace_id
+        or authorized.provider_registration_id != provider.registration_id
+    ):
+        raise SecretProviderRegistrationError(
+            "secret resolution grant provider identity does not match authorization"
+        )
+    return SecretResolutionGrant(
+        authorization_id=authorized.authorization_id,
+        workspace_id=authorized.workspace_id,
+        reference_registration_id=authorized.reference_registration_id,
+        provider_registration_id=authorized.provider_registration_id,
+        endpoint_reference=provider.endpoint_reference,
+        credential_reference=provider.credential_reference,
+        reference=authorized.reference,
+        intent=authorized.intent,
+        actor_subject=authorized.actor_subject,
+        correlation_id=authorized.correlation_id,
+        intent_fingerprint=authorized.intent_fingerprint,
+        operation_id=authorized.operation_id,
+        session_id=authorized.session_id,
+        run_id=authorized.run_id,
+        activity_id=authorized.activity_id,
+        effect_id=authorized.effect_id,
+        probe_id=authorized.probe_id,
+    )
+
+
+def secret_use_correlation_for(
+    *,
+    workspace_id: str,
+    reference: SecretReference,
+    intent: SecretUseIntent,
+    actor_subject: str,
+    operation_id: str | None = None,
+    session_id: str | None = None,
+    run_id: str | None = None,
+    activity_id: str | None = None,
+    effect_id: str | None = None,
+    probe_id: str | None = None,
+) -> str:
+    """Derive retry-stable correlation for one exact secret use."""
+
+    _require_identifier(workspace_id, "workspace_id")
+    _require_secret_reference(reference, "reference")
+    if not isinstance(intent, SecretUseIntent):
+        raise SecretProviderRegistrationError(
+            "secret use correlation requires SecretUseIntent"
+        )
+    _require_identifier(actor_subject, "actor_subject")
+    semantics = {
+        "workspace_id": workspace_id,
+        "reference_id": reference.reference_id,
+        "intent": intent.value,
+        "actor_subject": actor_subject,
+        "operation_id": operation_id,
+        "session_id": session_id,
+        "run_id": run_id,
+        "activity_id": activity_id,
+        "effect_id": effect_id,
+        "probe_id": probe_id,
+    }
+    return f"secret-use:{_digest(semantics)}"
 
 
 def secret_provider_registration_id_for(

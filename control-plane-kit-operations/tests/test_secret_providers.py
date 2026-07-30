@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import concurrent.futures
+from dataclasses import replace
 import os
 import time
 import unittest
@@ -12,6 +13,7 @@ from control_plane_kit_core.secrets import (
     SecretProviderEndpointReference,
     SecretProviderId,
     SecretReference,
+    SecretResolutionGrant,
     SecretUseIntent,
 )
 from control_plane_kit_operations.postgres import PostgresUnitOfWork, install_schema
@@ -480,6 +482,32 @@ class SecretProviderStoreTests(unittest.TestCase):
             "correlation-a",
         ))
         self.assertNotIn("resolved-value", repr(row).lower())
+
+        replay = self.authorization_service().authorize(
+            replace(command, requested_at="2026-07-30T12:30:00Z")
+        )
+        self.assertEqual(replay, authorized)
+
+        grant = self.authorization_service().authorize_resolution(
+            replace(command, requested_at="2026-07-30T12:31:00Z")
+        )
+        self.assertIsInstance(grant, SecretResolutionGrant)
+        self.assertEqual(grant.authorization_id, authorized.authorization_id)
+        self.assertEqual(
+            grant.endpoint_reference,
+            provider.endpoint_reference,
+        )
+        self.assertEqual(
+            grant.credential_reference,
+            provider.credential_reference,
+        )
+        self.assertTrue(
+            grant.permits(
+                reference.reference,
+                SecretUseIntent.POSTGRES_PASSWORD,
+            )
+        )
+        self.assertNotIn("resolved-value", repr(grant.descriptor()).lower())
 
     def test_use_permission_is_independent_and_conflicting_replay_fails(self) -> None:
         _, reference = self.admit_reference()

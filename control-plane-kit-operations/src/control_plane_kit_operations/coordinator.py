@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 from enum import StrEnum
 from typing import Any, Callable, Mapping, Protocol
 
@@ -37,6 +37,9 @@ from control_plane_kit_core.runtime_effects import (
     RuntimeEffectRequest,
     RuntimeEffectResult,
 )
+from control_plane_kit_core.secrets import (
+    SecretResolutionGrant,
+)
 from control_plane_kit_core.topology import (
     GraphDescriptorError,
 )
@@ -61,6 +64,12 @@ from control_plane_kit_operations.products import (
 from control_plane_kit_operations.runtime_authorities import (
     RegisteredRuntimeAuthority,
     RegisteredRuntimeAuthorityDelivery,
+)
+from control_plane_kit_operations.secret_providers import (
+    AuthorizeSecretUse,
+    SecretProviderRegistrationError,
+    SecretUseResolutionAuthorizer,
+    secret_use_correlation_for,
 )
 from control_plane_kit_operations.records import (
     ActivityEventRecord,
@@ -380,6 +389,7 @@ class RuntimeInterpreterDispatcher:
     """Operations-owned adapter that dispatches pinned work by runtime kind."""
 
     interpreters: Mapping[RuntimeKind, RuntimeEffectInterpreter]
+    secret_use_authorizer: SecretUseResolutionAuthorizer | None = None
 
     def __post_init__(self) -> None:
         if not isinstance(self.interpreters, Mapping):
@@ -392,6 +402,13 @@ class RuntimeInterpreterDispatcher:
                 raise InvalidOperationCommand("runtime interpreter must expose execute")
             normalized[key] = interpreter
         object.__setattr__(self, "interpreters", normalized)
+        if (
+            self.secret_use_authorizer is not None
+            and not hasattr(self.secret_use_authorizer, "authorize_resolution")
+        ):
+            raise InvalidOperationCommand(
+                "secret use authorizer must expose authorize_resolution"
+            )
 
     def execute(
         self,
@@ -432,6 +449,26 @@ class RuntimeInterpreterDispatcher:
                 "runtime authority reference has no active registration",
                 runtime_kind=runtime_kind,
             )
+        try:
+            request = self._authorize_secret_resolutions(
+                context,
+                request,
+                authority=authority,
+            )
+        except SecretProviderRegistrationError:
+            return _unsupported_dispatch(
+                context,
+                "secret.use-not-authorized",
+                "runtime secret use was not authorized",
+                runtime_kind=runtime_kind,
+            )
+        except InvalidOperationCommand:
+            return _unsupported_dispatch(
+                context,
+                "secret.resolution-authorizer-invalid",
+                "runtime secret authorization could not be established",
+                runtime_kind=runtime_kind,
+            )
         if authority is None:
             result = interpreter.execute(request)
         else:
@@ -445,6 +482,67 @@ class RuntimeInterpreterDispatcher:
                 )
             result = execute_with_authority(request, authority)
         return _outcome_from_runtime_result(context, result)
+
+    def _authorize_secret_resolutions(
+        self,
+        context: ActivityRealizationContext,
+        request: RuntimeEffectRequest,
+        *,
+        authority: RegisteredRuntimeAuthority | None,
+    ) -> RuntimeEffectRequest:
+        from control_plane_kit_operations.runtime_effects import (
+            required_secret_uses_for_runtime_effect,
+        )
+
+        required_uses = required_secret_uses_for_runtime_effect(request, authority)
+        if not required_uses:
+            return request
+        if self.secret_use_authorizer is None:
+            raise InvalidOperationCommand(
+                "runtime secret resolution requires an operations authorizer"
+            )
+        grants: list[SecretResolutionGrant] = []
+        for reference, intent in required_uses:
+            grant = self.secret_use_authorizer.authorize_resolution(
+                AuthorizeSecretUse(
+                    workspace_id=request.source.workspace_id,
+                    reference=reference,
+                    intent=intent,
+                    actor_subject=context.authority.worker_id,
+                    correlation_id=secret_use_correlation_for(
+                        workspace_id=request.source.workspace_id,
+                        reference=reference,
+                        intent=intent,
+                        actor_subject=context.authority.worker_id,
+                        operation_id=request.source.request_id,
+                        session_id=context.plan_record.session_id,
+                        run_id=request.source.run_id,
+                        activity_id=request.activity_id.value,
+                        effect_id=request.effect_id,
+                    ),
+                    requested_at=context.intent_event.occurred_at,
+                    actor_scopes=context.authority.scopes,
+                    operation_id=request.source.request_id,
+                    session_id=context.plan_record.session_id,
+                    run_id=request.source.run_id,
+                    activity_id=request.activity_id.value,
+                    effect_id=request.effect_id,
+                )
+            )
+            if (
+                not isinstance(grant, SecretResolutionGrant)
+                or grant.workspace_id != request.source.workspace_id
+                or grant.effect_id != request.effect_id
+                or not grant.permits(reference, intent)
+            ):
+                raise InvalidOperationCommand(
+                    "secret use authorizer returned an invalid resolution grant"
+                )
+            grants.append(grant)
+        return replace(
+            request,
+            secret_resolution_grants=tuple(grants),
+        )
 
 
 def _is_socket_connection_operation(activity: PlannedActivity) -> bool:

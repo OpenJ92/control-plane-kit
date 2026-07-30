@@ -11,6 +11,8 @@ from control_plane_kit_core.secrets import (
     SecretProviderContractError,
     SecretProviderEndpointReference,
     SecretProviderEndpointReferenceCodec,
+    SecretReference,
+    SecretResolutionGrant,
     SecretUseIntent,
 )
 
@@ -46,6 +48,48 @@ class SecretProviderContractTests(unittest.TestCase):
             SecretProviderEndpointReference("token@secrets")
         with self.assertRaises(SecretProviderContractError):
             codec.decode({"reference_id": "workspace-secrets", "url": "https://invalid"})
+
+    def test_resolution_grant_is_reference_only_and_exact(self) -> None:
+        reference = SecretReference("secret://provider-a/postgres/password")
+        grant = SecretResolutionGrant(
+            authorization_id="suse_" + "a" * 64,
+            workspace_id="workspace-a",
+            reference_registration_id="sref_" + "b" * 64,
+            provider_registration_id="sprov_" + "c" * 64,
+            endpoint_reference=SecretProviderEndpointReference("provider-a"),
+            credential_reference=SecretReference(
+                "secret://bootstrap/provider-a-token"
+            ),
+            reference=reference,
+            intent=SecretUseIntent.POSTGRES_PASSWORD,
+            actor_subject="worker-a",
+            correlation_id="secret-use-" + "d" * 64,
+            intent_fingerprint="e" * 64,
+            run_id="run-a",
+            activity_id="activity-a",
+            effect_id="effect-a",
+        )
+
+        self.assertTrue(
+            grant.permits(reference, SecretUseIntent.POSTGRES_PASSWORD)
+        )
+        self.assertFalse(
+            grant.permits(reference, SecretUseIntent.APPLICATION_CONTROL_TOKEN)
+        )
+        self.assertFalse(
+            grant.permits(
+                SecretReference("secret://provider-a/postgres/other"),
+                SecretUseIntent.POSTGRES_PASSWORD,
+            )
+        )
+        descriptor = grant.descriptor()
+        self.assertEqual(descriptor["endpoint_reference"], "provider-a")
+        self.assertEqual(
+            descriptor["credential_reference"],
+            "secret://bootstrap/provider-a-token",
+        )
+        self.assertNotIn("secret_value", descriptor)
+        self.assertNotIn("plaintext", repr(descriptor).lower())
 
     def test_provider_permissions_are_independent(self) -> None:
         self.assertEqual(

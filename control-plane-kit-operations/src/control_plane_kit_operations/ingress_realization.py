@@ -13,7 +13,11 @@ from control_plane_kit_core.public_ingress import (
     NamedPublicIngress,
     PublicIngressLifecycle,
 )
-from control_plane_kit_core.secrets import SecretValue
+from control_plane_kit_core.secrets import (
+    SecretResolutionGrant,
+    SecretUseIntent,
+    SecretValue,
+)
 from control_plane_kit_core.topology import DEFAULT_GRAPH_CODEC, DeploymentGraph
 from control_plane_kit_core.types import Protocol as SocketProtocol
 from control_plane_kit_operations.coordinator import (
@@ -33,6 +37,12 @@ from control_plane_kit_operations.ingress_authorities import (
     record_generated_ingress_secret,
 )
 from control_plane_kit_operations.records import BoundedEvidence, FailureEvidence
+from control_plane_kit_operations.secret_providers import (
+    AuthorizeSecretUse,
+    SecretProviderRegistrationError,
+    SecretUseResolutionAuthorizer,
+    secret_use_correlation_for,
+)
 from control_plane_kit_operations.workflows import InvalidOperationCommand
 
 
@@ -55,6 +65,7 @@ class IngressProviderInterpreter(Protocol):
         authority: CloudflareZoneIngressAuthority,
         allocation_name: str,
         origin_service_url: str,
+        secret_resolution_grant: SecretResolutionGrant,
     ) -> IngressAllocationResult: ...
 
     def teardown(
@@ -62,6 +73,7 @@ class IngressProviderInterpreter(Protocol):
         *,
         authority: CloudflareZoneIngressAuthority,
         resources: CloudflareOwnedIngressResource,
+        secret_resolution_grant: SecretResolutionGrant,
     ) -> None: ...
 
 
@@ -73,6 +85,7 @@ class IngressRealizationAdapter:
     interpreters: Mapping[IngressAuthorityProviderKind, IngressProviderInterpreter]
     generated_secret_recorder: GeneratedSecretRecorder
     clock: Any
+    secret_use_authorizer: SecretUseResolutionAuthorizer | None = None
 
     def __post_init__(self) -> None:
         if not isinstance(self.interpreters, Mapping):
@@ -98,6 +111,13 @@ class IngressRealizationAdapter:
             )
         if not callable(self.clock):
             raise InvalidOperationCommand("ingress clock must be callable")
+        if (
+            self.secret_use_authorizer is not None
+            and not hasattr(self.secret_use_authorizer, "authorize_resolution")
+        ):
+            raise InvalidOperationCommand(
+                "secret use authorizer must expose authorize_resolution"
+            )
 
     def execute(
         self,
@@ -152,11 +172,25 @@ class IngressRealizationAdapter:
 
         resource: CloudflareOwnedIngressResource | None = None
         try:
+            grant = self._authorize_api_token(context, authority.authority)
             allocation = interpreter.create(
                 ingress,
                 authority=authority.authority,
                 allocation_name=_allocation_name(context, ingress),
                 origin_service_url=origin_service_url,
+                secret_resolution_grant=grant,
+            )
+        except SecretProviderRegistrationError:
+            return _unsupported(
+                context,
+                "secret.use-not-authorized",
+                "ingress authority secret use was not authorized",
+            )
+        except InvalidOperationCommand:
+            return _unsupported(
+                context,
+                "secret.resolution-authorizer-invalid",
+                "ingress secret authorization could not be established",
             )
         except Exception as error:  # noqa: BLE001 - provider failures are bounded.
             return _uncertain("ingress.allocate-uncertain", type(error).__name__)
@@ -197,7 +231,11 @@ class IngressRealizationAdapter:
         except Exception as error:  # noqa: BLE001 - incomplete folding is uncertain.
             if resource is not None:
                 try:
-                    interpreter.teardown(authority=authority.authority, resources=resource)
+                    interpreter.teardown(
+                        authority=authority.authority,
+                        resources=resource,
+                        secret_resolution_grant=grant,
+                    )
                 except Exception:  # noqa: BLE001 - compensation failure is bounded.
                     pass
             return _uncertain("ingress.record-uncertain", type(error).__name__)
@@ -238,6 +276,13 @@ class IngressRealizationAdapter:
                 resource=resource,
             )
             interpreter = self._interpreter(authority.provider_kind)
+            grant = self._authorize_api_token(context, authority.authority)
+        except SecretProviderRegistrationError:
+            return _unsupported(
+                context,
+                "secret.use-not-authorized",
+                "ingress authority secret use was not authorized",
+            )
         except (KeyError, ValueError, InvalidOperationCommand) as error:
             return _unsupported(context, "ingress.remove-unsupported", str(error))
 
@@ -255,7 +300,11 @@ class IngressRealizationAdapter:
             )
             unit_of_work.commit()
         try:
-            interpreter.teardown(authority=authority.authority, resources=resource)
+            interpreter.teardown(
+                authority=authority.authority,
+                resources=resource,
+                secret_resolution_grant=grant,
+            )
         except Exception as error:  # noqa: BLE001 - provider failures are bounded.
             with self.unit_of_work_factory() as unit_of_work:
                 unit_of_work.stores.ingress_resources.mark_uncertain(
@@ -299,6 +348,55 @@ class IngressRealizationAdapter:
                 f"no ingress interpreter is configured for {provider_kind.value!r}"
             )
         return interpreter
+
+    def _authorize_api_token(
+        self,
+        context: ActivityRealizationContext,
+        authority: CloudflareZoneIngressAuthority,
+    ) -> SecretResolutionGrant:
+        if self.secret_use_authorizer is None:
+            raise InvalidOperationCommand(
+                "ingress secret resolution requires an operations authorizer"
+            )
+        grant = self.secret_use_authorizer.authorize_resolution(
+            AuthorizeSecretUse(
+                workspace_id=context.request.identity.workspace_id,
+                reference=authority.api_token_ref,
+                intent=SecretUseIntent.CLOUDFLARE_API_TOKEN,
+                actor_subject=context.authority.worker_id,
+                correlation_id=secret_use_correlation_for(
+                    workspace_id=context.request.identity.workspace_id,
+                    reference=authority.api_token_ref,
+                    intent=SecretUseIntent.CLOUDFLARE_API_TOKEN,
+                    actor_subject=context.authority.worker_id,
+                    operation_id=context.request.identity.request_id,
+                    session_id=context.plan_record.session_id,
+                    run_id=context.run.run_id,
+                    activity_id=context.activity.activity_id.value,
+                    effect_id=context.intent_event.event_id,
+                ),
+                requested_at=context.intent_event.occurred_at,
+                actor_scopes=context.authority.scopes,
+                operation_id=context.request.identity.request_id,
+                session_id=context.plan_record.session_id,
+                run_id=context.run.run_id,
+                activity_id=context.activity.activity_id.value,
+                effect_id=context.intent_event.event_id,
+            )
+        )
+        if (
+            not isinstance(grant, SecretResolutionGrant)
+            or grant.workspace_id != context.request.identity.workspace_id
+            or grant.effect_id != context.intent_event.event_id
+            or not grant.permits(
+                authority.api_token_ref,
+                SecretUseIntent.CLOUDFLARE_API_TOKEN,
+            )
+        ):
+            raise InvalidOperationCommand(
+                "secret use authorizer returned an invalid ingress grant"
+            )
+        return grant
 
 
 def _ingress_by_id(graph: DeploymentGraph, ingress_id: str) -> NamedPublicIngress:

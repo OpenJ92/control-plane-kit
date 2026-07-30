@@ -46,6 +46,12 @@ from control_plane_kit_core.runtime_effects import (
     RuntimeEffectSource,
     RuntimeProductMaterial,
 )
+from control_plane_kit_core.secrets import (
+    SecretProviderEndpointReference,
+    SecretReference,
+    SecretResolutionGrant,
+    SecretUseIntent,
+)
 from control_plane_kit_core.types import Protocol, RuntimeKind
 
 
@@ -231,6 +237,7 @@ class RuntimeEffectContractTests(unittest.TestCase):
         self.assertEqual(descriptor["runtime_kind"], "docker")
         self.assertIsNone(descriptor["authority_ref"])
         self.assertEqual(descriptor["authority_deliveries"], [])
+        self.assertEqual(descriptor["secret_resolution_grants"], [])
         self.assertEqual(
             descriptor["source"],
             {
@@ -376,6 +383,50 @@ class RuntimeEffectContractTests(unittest.TestCase):
         self.assertNotIn("tcp://", repr(descriptor))
         self.assertNotIn("docker.sock", repr(descriptor))
         self.assertNotIn("token=", repr(descriptor))
+
+    def test_request_carries_only_matching_committed_secret_grants(self) -> None:
+        grant = SecretResolutionGrant(
+            authorization_id="suse_" + "a" * 64,
+            workspace_id="workspace-a",
+            reference_registration_id="sref_" + "b" * 64,
+            provider_registration_id="sprov_" + "c" * 64,
+            endpoint_reference=SecretProviderEndpointReference("provider-a"),
+            credential_reference=SecretReference(
+                "secret://bootstrap/provider-a-token"
+            ),
+            reference=SecretReference("secret://provider-a/app/token"),
+            intent=SecretUseIntent.APPLICATION_CONTROL_TOKEN,
+            actor_subject="worker-a",
+            correlation_id="secret-use-" + "d" * 64,
+            intent_fingerprint="e" * 64,
+            effect_id="effect-a",
+        )
+        request = RuntimeEffectRequest(
+            effect_id="effect-a",
+            kind=RuntimeEffectKind.REALIZE_ACTIVITY,
+            runtime_kind=RuntimeKind.DOCKER,
+            source=_source(),
+            activity_id=ActivityId("activity-a"),
+            operation=StartNode(NodeTarget("api")),
+            secret_resolution_grants=(grant,),
+            products=(_product_material(),),
+        )
+
+        self.assertEqual(request.secret_resolution_grants, (grant,))
+        self.assertEqual(
+            request.descriptor()["secret_resolution_grants"],
+            [grant.descriptor()],
+        )
+        with self.assertRaises(RuntimeEffectContractError):
+            RuntimeEffectRequest(
+                effect_id="other-effect",
+                kind=RuntimeEffectKind.REALIZE_ACTIVITY,
+                runtime_kind=RuntimeKind.DOCKER,
+                source=_source(),
+                activity_id=ActivityId("activity-a"),
+                operation=StartNode(NodeTarget("api")),
+                secret_resolution_grants=(grant,),
+            )
 
     def test_product_material_rejects_identity_mismatch(self) -> None:
         identity = ProductIdentity("openj92", "hello-server", 1)

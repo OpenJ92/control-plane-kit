@@ -5508,3 +5508,53 @@ tunnel-token delivery, which now states
 state their exact purposes as well. This gives later #1183 authorization
 composition a pure, unambiguous `(reference, intent)` inventory before any
 provider or downstream IO occurs.
+
+## #1183 Authorized Secret Resolution Grants
+
+#1183 bridges durable operations authorization to interpreter IO without
+turning operations into a secret resolver:
+
+```text
+committed activity/probe intent
+  -> enumerate exact SecretReference x SecretUseIntent uses
+    -> one short authorization UnitOfWork per use
+      -> commit or replay AuthorizedSecretUse
+        -> project reference-only SecretResolutionGrant
+          -> interpreter/provider IO
+```
+
+`SecretResolutionGrant` pins the workspace, active provider and reference
+registrations, opaque provider endpoint and bootstrap credential references,
+exact use intent, trusted actor, retry-stable correlation, and bounded workflow
+identities. It contains no plaintext or ciphertext and is not a reusable bearer
+credential. An interpreter must match both the reference and intent before it
+may ask a provider to resolve material.
+
+Runtime, named-ingress, and gateway-probe signing now share one operations-owned
+`SecretUseResolutionAuthorizer` protocol and one deterministic correlation
+derivation. Runtime translation enumerates explicit environment/file delivery,
+OCI pull credentials, Postgres verification passwords, and remote Docker TLS
+material. Cloudflare ingress authorizes its admitted API-token reference before
+provider IO. Gateway probing commits its durable attempt before authorizing the
+signing key and performs zero gateway IO when authorization fails.
+
+The authorization fingerprint deliberately excludes `requested_at`. Time
+remains durable audit evidence, but an exact retry with the same correlation and
+workflow identities replays the original authorization instead of conflicting
+only because wall-clock time advanced. Provider or reference revocation still
+fails closed because active admission is reselected before replay evidence is
+returned.
+
+The transaction boundary remains:
+
+```text
+short intent transaction -> commit
+short secret-use authorization transaction -> commit
+provider/interpreter/network IO
+short result transaction -> commit
+```
+
+Operations never imports a provider HTTP client and never receives
+`SecretValue`. The remaining #1183 interpreter pass must consume these grants
+through the bounded provider client from #1182 and remove silent production use
+of process-local reference resolvers.
