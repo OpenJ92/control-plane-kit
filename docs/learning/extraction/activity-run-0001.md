@@ -5849,3 +5849,54 @@ historical one-second cadence. Canonical encoding always emits the interval,
 so newly generated product descriptors and catalogue digests make the timing
 contract explicit. A separate startup-grace field was rejected for now because
 the live evidence requires bounded cadence, not a second pre-attempt delay.
+
+## #1202 Durable Secret Lifecycle Acceptance
+
+The #1208/#1209 prerequisite closed the restart timing gap without treating
+Docker lifecycle state as application readiness:
+
+```text
+stop old container process
+  -> start replacement container lifecycle
+    -> attempt cpk-server semantic readiness immediately
+      -> wait VerificationPolicy.interval_seconds between failures
+        -> accept only /health/ready success
+```
+
+Concrete HTTP, Redis, Postgres, and Docker HTTP verification now share one
+interpreter-layer attempt iterator. There is no delay before attempt one and no
+delay after success or exhaustion. Current server descriptors declare cadence
+explicitly; cpk-server uses ten attempts at a two-second interval, while
+existing product behavior retains a one-second interval. The hosted controller
+consumes the same descriptor policy. Its generic Docker restart helper proves
+only that the old process stopped and a new container lifecycle began.
+
+With that prerequisite merged, the source-built #1202 acceptance proved:
+
+- cpk-server and the durable secrets provider can restart after provider and
+  reference admission, then continue through the public deployment workflow;
+- a Postgres effect resolved version A, rotation created version B without
+  erasing A, exact correlation replay remained pinned to A, and a new effect
+  resolved B;
+- revocation before unresolved use failed closed before any new Docker
+  container, network, or volume mutation;
+- concurrent resolve/revoke produced one provider transaction order with
+  truthful bounded audit evidence;
+- three workspaces resolved distinct references and versions concurrently
+  without cross-delivery;
+- operations authorization correlations, provider audit/version metadata,
+  activity outcomes, and public readback agreed;
+- teardown removed only owned resources and the final Docker residue audit was
+  clean.
+
+The provider now receives production-style credentials through an owner-only
+mounted file rather than development JSON environment configuration. Generated
+test values were scanned against cpk-server logs, provider logs, the operations
+database dump, and provider storage. No plaintext was found. Operations
+continues to retain only provider/reference/use metadata; encrypted custody and
+version history remain provider-owned; plaintext exists only at provider and
+interpreter IO boundaries.
+
+This remains source-built acceptance. It does not claim immutable published OCI
+acceptance. #1203 next proves generated Cloudflare tunnel-token custody through
+the same admitted provider path.
