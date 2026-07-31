@@ -15,7 +15,7 @@
         "registry": "ghcr.io",
         "repository": "openj92/control-plane-kit-servers/cpk-server",
         "tag": "harden-secrets-1205-cpk-server",
-        "digest": "sha256:db0de3e0e34dbfe90945af46419576da799a484a7bc45b985767f1cf0131a92d"
+        "digest": "sha256:141534c254c0fb2291db3b13bfc0c26ffed70a604e7d47009ad682ef9368dd8d"
       }
     },
     {
@@ -27,7 +27,7 @@
         "registry": "ghcr.io",
         "repository": "openj92/control-plane-kit-servers/cpk-server",
         "tag": "harden-secrets-1205-cpk-server",
-        "digest": "sha256:db0de3e0e34dbfe90945af46419576da799a484a7bc45b985767f1cf0131a92d"
+        "digest": "sha256:141534c254c0fb2291db3b13bfc0c26ffed70a604e7d47009ad682ef9368dd8d"
       }
     },
     {
@@ -39,7 +39,7 @@
         "registry": "ghcr.io",
         "repository": "openj92/control-plane-kit-servers/cpk-server",
         "tag": "harden-secrets-1205-cpk-server",
-        "digest": "sha256:db0de3e0e34dbfe90945af46419576da799a484a7bc45b985767f1cf0131a92d"
+        "digest": "sha256:141534c254c0fb2291db3b13bfc0c26ffed70a604e7d47009ad682ef9368dd8d"
       }
     },
     {
@@ -123,7 +123,7 @@
         "registry": "ghcr.io",
         "repository": "openj92/control-plane-kit-servers/secrets-server",
         "tag": "harden-secrets-1205-secrets-server",
-        "digest": "sha256:caed948f005a7bab75c930ba9f4db2ecab33bfc1f9cf10cb2160c7af8db3194c"
+        "digest": "sha256:e7e9e6efa53dbd82b6bc1b2a92e9ea52df87e6b7dc88b8ceda3aa1df0b3d1b53"
       }
     }
   ]

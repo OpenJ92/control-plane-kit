@@ -22,8 +22,8 @@
     },
     {
       "descriptor_path": "products/cpk_server/product.cpk.json",
-      "descriptor_sha256": "d3d5160a6ff347c573fc3e5f48bd344c1666104b6dcdde1841cb2fc19f15dd1b",
-      "image_digest": "sha256:db0de3e0e34dbfe90945af46419576da799a484a7bc45b985767f1cf0131a92d",
+      "descriptor_sha256": "c10fd8fdc202cdcf85258b0b2486933b1b158c9d7faefa169dffddde1cf40bf4",
+      "image_digest": "sha256:141534c254c0fb2291db3b13bfc0c26ffed70a604e7d47009ad682ef9368dd8d",
       "image_ref": "ghcr.io/openj92/control-plane-kit-servers/cpk-server:harden-secrets-1205-cpk-server",
       "owner_directory": "products/cpk_server",
       "product_id": "cpk-server",
@@ -32,8 +32,8 @@
     },
     {
       "descriptor_path": "products/cpk_server/product.docker.cpk.json",
-      "descriptor_sha256": "ff42244b3a54aab20272c208e347640e7e831945d533f1424b2ec8bd184fc52b",
-      "image_digest": "sha256:db0de3e0e34dbfe90945af46419576da799a484a7bc45b985767f1cf0131a92d",
+      "descriptor_sha256": "6783bf07550d59b5f85071626a06541f82815d99e1605501c9a36a1f20e9dd1b",
+      "image_digest": "sha256:141534c254c0fb2291db3b13bfc0c26ffed70a604e7d47009ad682ef9368dd8d",
       "image_ref": "ghcr.io/openj92/control-plane-kit-servers/cpk-server:harden-secrets-1205-cpk-server",
       "owner_directory": "products/cpk_server",
       "product_id": "cpk-server-docker",
@@ -42,8 +42,8 @@
     },
     {
       "descriptor_path": "products/cpk_server/product.docker-cloudflare.cpk.json",
-      "descriptor_sha256": "48705804def54f19e3b62c5e3cc562f3fbdec2709b1d7d8e3accbbed01890924",
-      "image_digest": "sha256:db0de3e0e34dbfe90945af46419576da799a484a7bc45b985767f1cf0131a92d",
+      "descriptor_sha256": "ce96a65ac6c40f24d1473684f4c23fdaccce53045788a0c603531bc1ac8f0349",
+      "image_digest": "sha256:141534c254c0fb2291db3b13bfc0c26ffed70a604e7d47009ad682ef9368dd8d",
       "image_ref": "ghcr.io/openj92/control-plane-kit-servers/cpk-server:harden-secrets-1205-cpk-server",
       "owner_directory": "products/cpk_server",
       "product_id": "cpk-server-docker-cloudflare",
@@ -92,8 +92,8 @@
     },
     {
       "descriptor_path": "products/secrets_server/product.cpk.json",
-      "descriptor_sha256": "e60394ef72708b7155f409fe7a068cb43692d5e3b1b5337da7891599a6d2c2a4",
-      "image_digest": "sha256:caed948f005a7bab75c930ba9f4db2ecab33bfc1f9cf10cb2160c7af8db3194c",
+      "descriptor_sha256": "5f6e10d5e86a501a2a0a8d9d6e58f805d35b0d9857596a80516c2ebdd180dd6a",
+      "image_digest": "sha256:e7e9e6efa53dbd82b6bc1b2a92e9ea52df87e6b7dc88b8ceda3aa1df0b3d1b53",
       "image_ref": "ghcr.io/openj92/control-plane-kit-servers/secrets-server:harden-secrets-1205-secrets-server",
       "owner_directory": "products/secrets_server",
       "product_id": "secrets-server",
