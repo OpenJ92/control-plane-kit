@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import base64
+from dataclasses import replace
 import json
 import os
 from pathlib import Path
@@ -11,13 +12,21 @@ from urllib.error import HTTPError
 from urllib.request import Request, urlopen
 
 from control_plane_kit_core.policies import PolicyScope
+from control_plane_kit_core.products import ProductDescriptorCodec
+from control_plane_kit_core.runtime_authority import RuntimeAuthorityReference
+from control_plane_kit_core.topology import DeploymentGraph
+from control_plane_kit_core.verification import VerificationContract
 
 from cpk_server_hosted_activity import (
     AUTHORIZATION,
     HostedWorkflow,
+    _assert_activity_mentions,
+    _assert_runtime_activity_mentions,
     _clock,
     _http,
     _mcp,
+    _product_document,
+    _single_hello_graph,
 )
 
 
@@ -28,14 +37,25 @@ AUTHORITY_REF = "source-live-remote-docker-tls"
 CA_REFERENCE = "secret://control-plane-kit/docker-tls/ca"
 CERTIFICATE_REFERENCE = "secret://control-plane-kit/docker-tls/cert"
 KEY_REFERENCE = "secret://control-plane-kit/docker-tls/key"
+GHCR_PULL_CREDENTIAL_REFERENCE = "secret://control-plane-kit/oci-pull/ghcr"
 CA_INTENT = "docker.remote-tls.ca-certificate"
 CERTIFICATE_INTENT = "docker.remote-tls.client-certificate"
 KEY_INTENT = "docker.remote-tls.client-key"
+OCI_PULL_CREDENTIAL_INTENT = "oci.pull-credential"
 PROVIDER_BASE_URL = "http://cpk-secrets:8081"
+STATE_FILENAME = "remote-tls-graph-state.json"
 TLS_SECRETS = (
     (CA_REFERENCE, CA_INTENT, "ca.pem"),
     (CERTIFICATE_REFERENCE, CERTIFICATE_INTENT, "cert.pem"),
     (KEY_REFERENCE, KEY_INTENT, "key.pem"),
+)
+CUSTODY_SECRETS = (
+    *TLS_SECRETS,
+    (
+        GHCR_PULL_CREDENTIAL_REFERENCE,
+        OCI_PULL_CREDENTIAL_INTENT,
+        "ghcr-pull-credential.json",
+    ),
 )
 
 
@@ -46,6 +66,9 @@ def main() -> int:
     endpoint = _required_env("CPK_REMOTE_DOCKER_TLS_ENDPOINT")
     bootstrap_dir = Path(_required_env("CPK_SECRET_PROVIDER_BOOTSTRAP_DIR"))
     provider_token_file = Path(_required_env("CPK_SECRET_PROVIDER_TOKEN_FILE"))
+    state_file = Path(_required_env("CPK_REMOTE_TLS_STATE_DIR")) / STATE_FILENAME
+    servers_repo = Path(_required_env("CPK_HOSTED_ACTIVITY_SERVERS_REPO"))
+    phase = _required_env("CPK_REMOTE_TLS_PHASE")
 
     workflow = HostedWorkflow(
         base_url,
@@ -54,10 +77,40 @@ def main() -> int:
         server_container=server_container,
     )
     workflow.wait_ready()
-    workflow.create_workspace(name="Remote Docker TLS custody foundation")
+    if phase == "deploy":
+        _deploy_initial_graph(
+            workflow,
+            endpoint=endpoint,
+            bootstrap_dir=bootstrap_dir,
+            provider_token_file=provider_token_file,
+            servers_repo=servers_repo,
+            state_file=state_file,
+        )
+    elif phase == "resume":
+        _resume_update_and_teardown(
+            workflow,
+            servers_repo=servers_repo,
+            state_file=state_file,
+        )
+    else:
+        raise RuntimeError("CPK_REMOTE_TLS_PHASE must be deploy or resume")
+    return 0
 
+
+def _deploy_initial_graph(
+    workflow: HostedWorkflow,
+    *,
+    endpoint: str,
+    bootstrap_dir: Path,
+    provider_token_file: Path,
+    servers_repo: Path,
+    state_file: Path,
+) -> None:
+    current_graph_id = workflow.create_workspace(
+        name="Remote Docker TLS durable-custody graph"
+    )
     provider_registration_id = _register_provider(workflow)
-    for reference, intent, value_file in TLS_SECRETS:
+    for reference, intent, value_file in CUSTODY_SECRETS:
         _register_reference(
             workflow,
             provider_registration_id=provider_registration_id,
@@ -65,17 +118,122 @@ def main() -> int:
             intent=intent,
         )
         _provider_write_secret(
-            workspace_id=workspace_id,
+            workspace_id=workflow.workspace_id,
             reference=reference,
             intent=intent,
             value_file=bootstrap_dir / value_file,
             provider_token_file=provider_token_file,
         )
-
     _register_runtime_authority(workflow, endpoint=endpoint)
+    workflow.register_ghcr_pull_authority(
+        credential_reference=GHCR_PULL_CREDENTIAL_REFERENCE,
+    )
+    hello_document = _verification_free_hello_document(servers_repo)
+    workflow.import_product("remote-hello", hello_document)
+    graph = _single_hello_graph(
+        hello_document,
+        workspace_id=workflow.workspace_id,
+        authority_ref=RuntimeAuthorityReference(AUTHORITY_REF),
+        message="Hello from remote Docker TLS blue",
+    )
+    deployed = workflow.run_approved_transition(
+        title="Remote Docker TLS blue deployment",
+        graph=graph,
+        current_graph_id=current_graph_id,
+        sync_runtime_networks=False,
+    )
+    _assert_runtime_activity_mentions(workflow, deployed.run_id, "docker")
+    _assert_activity_mentions(workflow, deployed.run_id, "hello")
     _assert_public_metadata_is_secret_free(workflow)
-    print("cpk-server remote Docker TLS durable-custody foundation passed")
-    return 0
+    _write_state(
+        state_file,
+        {
+            "current_graph_id": deployed.current_graph_id,
+            "desired_graph_id": deployed.desired_graph_id,
+            "initial_run_id": deployed.run_id,
+        },
+    )
+    print("cpk-server remote Docker TLS durable-custody deployment passed")
+
+
+def _resume_update_and_teardown(
+    workflow: HostedWorkflow,
+    *,
+    servers_repo: Path,
+    state_file: Path,
+) -> None:
+    state = _read_state(state_file)
+    current_graph_id = str(state["current_graph_id"])
+    desired_graph_id = str(state["desired_graph_id"])
+    if workflow.read_current_graph_id() != current_graph_id:
+        raise RuntimeError("cpk-server restart lost current graph truth")
+    _assert_public_metadata_is_secret_free(workflow)
+
+    hello_document = _verification_free_hello_document(servers_repo)
+    graph = _single_hello_graph(
+        hello_document,
+        workspace_id=workflow.workspace_id,
+        authority_ref=RuntimeAuthorityReference(AUTHORITY_REF),
+        message="Hello from remote Docker TLS green",
+    )
+    updated = workflow.run_approved_transition(
+        title="Remote Docker TLS green update after restart",
+        graph=graph,
+        current_graph_id=current_graph_id,
+        expected_desired_graph_id=desired_graph_id,
+        sync_runtime_networks=False,
+    )
+    _assert_activity_mentions(workflow, updated.run_id, "hello")
+    removed = workflow.run_approved_transition(
+        title="Remote Docker TLS teardown after restart",
+        graph=DeploymentGraph(workflow.workspace_id),
+        current_graph_id=updated.current_graph_id,
+        expected_desired_graph_id=updated.desired_graph_id,
+        sync_runtime_networks=False,
+    )
+    _assert_activity_mentions(workflow, removed.run_id, "hello")
+    _write_state(
+        state_file,
+        {
+            **state,
+            "updated_graph_id": updated.current_graph_id,
+            "updated_run_id": updated.run_id,
+            "teardown_graph_id": removed.current_graph_id,
+            "teardown_run_id": removed.run_id,
+        },
+    )
+    print("cpk-server remote Docker TLS restart/update/teardown passed")
+
+
+def _verification_free_hello_document(servers_repo: Path) -> Any:
+    seeded = _product_document(servers_repo, "hello_server")
+    product = replace(
+        seeded.product,
+        runtime_contract=replace(
+            seeded.product.runtime_contract,
+            verification=VerificationContract(),
+        ),
+        description=(
+            "Source-live remote Docker TLS harness product. Semantic verification "
+            "is omitted because the parent cpk-server is outside the nested daemon network."
+        ),
+    )
+    return ProductDescriptorCodec().encode_document(product)
+
+
+def _write_state(path: Path, state: dict[str, object]) -> None:
+    path.write_text(
+        json.dumps(state, separators=(",", ":"), sort_keys=True),
+        encoding="utf-8",
+    )
+    os.chmod(path, 0o600)
+
+
+def _read_state(path: Path) -> dict[str, object]:
+    value = json.loads(path.read_text(encoding="utf-8"))
+    if not isinstance(value, dict):
+        raise RuntimeError("remote Docker TLS state is malformed")
+    return value
 
 
 def _register_provider(workflow: HostedWorkflow) -> str:
@@ -86,16 +244,18 @@ def _register_provider(workflow: HostedWorkflow) -> str:
         {
             "provider_id": PROVIDER_ID,
             "provider_kind": "control-plane-kit-secrets",
-            "display_name": "Remote Docker TLS source-live custody",
+            "display_name": "Remote Docker TLS and OCI pull source-live custody",
             "endpoint_reference": PROVIDER_ENDPOINT_REFERENCE,
             "credential_reference": PROVIDER_CREDENTIAL_REFERENCE,
             "allowed_reference_prefixes": [
-                "secret://control-plane-kit/docker-tls"
+                "secret://control-plane-kit/docker-tls",
+                "secret://control-plane-kit/oci-pull",
             ],
             "allowed_intents": [
                 CA_INTENT,
                 CERTIFICATE_INTENT,
                 KEY_INTENT,
+                OCI_PULL_CREDENTIAL_INTENT,
             ],
             "admitted_at": _clock(),
             "metadata": {"acceptance": "remote-docker-tls-source-live"},
@@ -199,9 +359,9 @@ def _assert_public_metadata_is_secret_free(workflow: HostedWorkflow) -> None:
     if {item.get("provider_id") for item in provider_items} != {PROVIDER_ID}:
         raise RuntimeError("public provider readback omitted admitted provider")
     reference_items = references.get("items", [])
-    expected_references = {reference for reference, _, _ in TLS_SECRETS}
+    expected_references = {reference for reference, _, _ in CUSTODY_SECRETS}
     if {item.get("reference_id") for item in reference_items} != expected_references:
-        raise RuntimeError("public reference readback omitted admitted TLS reference")
+        raise RuntimeError("public reference readback omitted admitted custody reference")
     authority_items = authorities.get("items", [])
     if {item.get("authority_ref") for item in authority_items} != {AUTHORITY_REF}:
         raise RuntimeError("public authority readback omitted remote Docker authority")

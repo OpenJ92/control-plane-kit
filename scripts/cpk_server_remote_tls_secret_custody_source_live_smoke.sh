@@ -16,14 +16,22 @@ WORKSPACE_LABEL="org.openj92.cpk.workspace=$WORKSPACE_ID"
 STATE_ROOT="$(mktemp -d)"
 PROVIDER_DATA_DIR="$STATE_ROOT/provider-data"
 BOOTSTRAP_DIR="$STATE_ROOT/bootstrap"
+CONTROLLER_STATE_DIR="$STATE_ROOT/controller-state"
 OPERATIONS_DUMP="$STATE_ROOT/operations.sql"
+OPERATIONS_AUTHORIZATIONS="$STATE_ROOT/operations-authorizations.txt"
+PROVIDER_SELECTIONS="$STATE_ROOT/provider-selections.txt"
+HOST_INVENTORY_BEFORE="$STATE_ROOT/host-inventory-before.txt"
+HOST_INVENTORY_AFTER="$STATE_ROOT/host-inventory-after.txt"
+REMOTE_INVENTORY="$STATE_ROOT/remote-inventory.txt"
+SERVER_LOG="$STATE_ROOT/cpk-server.log"
+PROVIDER_LOG="$STATE_ROOT/secrets-provider.log"
 POSTGRES_CONTAINER=""
 SECRETS_CONTAINER=""
 DIND_CONTAINER=""
 SERVER_CONTAINER=""
 
 umask 077
-mkdir -p "$PROVIDER_DATA_DIR" "$BOOTSTRAP_DIR"
+mkdir -p "$PROVIDER_DATA_DIR" "$BOOTSTRAP_DIR" "$CONTROLLER_STATE_DIR"
 
 cleanup() {
   for container in "$SERVER_CONTAINER" "$SECRETS_CONTAINER" "$POSTGRES_CONTAINER" "$DIND_CONTAINER"; do
@@ -53,6 +61,125 @@ cleanup() {
   rm -rf "$STATE_ROOT"
 }
 trap cleanup EXIT INT TERM
+
+wait_for_secrets() {
+  for _ in 1 2 3 4 5 6 7 8 9 10 11 12 13 14 15; do
+    if docker run --rm \
+      --network "$NETWORK" \
+      "$SECRETS_IMAGE" \
+      python -c '
+from urllib.request import urlopen
+with urlopen("http://cpk-secrets:8081/health/ready", timeout=2) as response:
+    raise SystemExit(0 if response.status == 200 else 1)
+' >/dev/null 2>&1; then
+      return
+    fi
+    sleep 1
+  done
+  echo "secrets provider did not become ready" >&2
+  exit 1
+}
+
+start_secrets() {
+  SECRETS_CONTAINER="$(docker run -d \
+    --label "$PROJECT_LABEL" \
+    --label "$WORKSPACE_LABEL" \
+    --network "$NETWORK" \
+    --network-alias cpk-secrets \
+    -v "$PROVIDER_DATA_DIR:/var/lib/cpk-secrets" \
+    -v "$BOOTSTRAP_DIR/master.key:/run/secrets/cpk-secrets/master-key:ro" \
+    -v "$BOOTSTRAP_DIR/credentials.json:/run/secrets/cpk-secrets/credentials.json:ro" \
+    -e CPK_SECRETS_DATABASE_PATH=/var/lib/cpk-secrets/secrets.sqlite3 \
+    -e CPK_SECRETS_MASTER_KEY_FILE=/run/secrets/cpk-secrets/master-key \
+    -e CPK_SECRETS_CREDENTIALS_FILE=/run/secrets/cpk-secrets/credentials.json \
+    -e CPK_SECRETS_PROVIDER_ID=control-plane-kit \
+    "$SECRETS_IMAGE" \
+    python -m uvicorn control_plane_kit_secrets.server:app \
+      --host 0.0.0.0 --port 8081 --log-level warning)"
+  wait_for_secrets
+}
+
+start_server() {
+  SERVER_CONTAINER="$(docker run -d \
+    --label "$PROJECT_LABEL" \
+    --label "$WORKSPACE_LABEL" \
+    --network "$NETWORK" \
+    --network-alias cpk-server \
+    -v "$BOOTSTRAP_DIR/client-token:/run/secrets/cpk-provider/client-token:ro" \
+    -e CPK_SERVER_MODE=execution-capable \
+    -e CPK_CONTROL_AUTH_VERIFIER=static-development \
+    -e CPK_CONTROL_AUTH_STATIC_PRINCIPALS_JSON="$CPK_CONTROL_AUTH_STATIC_PRINCIPALS_JSON" \
+    -e CPK_PORT=8080 \
+    -e CPK_RUNTIME_INTERPRETERS=docker \
+    -e CPK_PRODUCT_MATERIAL_RESOLVER=provider \
+    -e CPK_MATERIAL_PROVIDER_ROUTES_JSON="$PROVIDER_ROUTES_JSON" \
+    -e CPK_MATERIAL_PROVIDER_BOOTSTRAP_FILES_JSON="$PROVIDER_BOOTSTRAP_FILES_JSON" \
+    -e CPK_WORKPLACE_DATABASE_URL=postgresql://cpk:cpk@cpk-postgres:5432/cpk \
+    -e CPK_ACTIVITY_HISTORY_DATABASE_URL=postgresql://cpk:cpk@cpk-postgres:5432/cpk \
+    -e CPK_OBSERVER_STATE_DATABASE_URL=postgresql://cpk:cpk@cpk-postgres:5432/cpk \
+    -e CPK_GRAPH_TOPOLOGY_DATABASE_URL=postgresql://cpk:cpk@cpk-postgres:5432/cpk \
+    "$SERVER_IMAGE")"
+}
+
+run_controller() {
+  phase="$1"
+  if ! docker run --rm \
+    --label "$PROJECT_LABEL" \
+    --label "$WORKSPACE_LABEL" \
+    --network "$NETWORK" \
+    -v "$BOOTSTRAP_DIR:/run/secrets/cpk-source-live:ro" \
+    -v "$CONTROLLER_STATE_DIR:/run/cpk-state" \
+    -e CPK_HOSTED_ACTIVITY_BASE_URL=http://cpk-server:8080 \
+    -e CPK_HOSTED_ACTIVITY_SERVER_CONTAINER="$SERVER_CONTAINER" \
+    -e CPK_HOSTED_ACTIVITY_SERVERS_REPO=/app \
+    -e CPK_HOSTED_ACTIVITY_WORKSPACE_ID="$WORKSPACE_ID" \
+    -e CPK_REMOTE_DOCKER_TLS_ENDPOINT=tcp://remote-docker:2376 \
+    -e CPK_SECRET_PROVIDER_TOKEN_FILE=/run/secrets/cpk-source-live/client-token \
+    -e CPK_SECRET_PROVIDER_BOOTSTRAP_DIR=/run/secrets/cpk-source-live \
+    -e CPK_REMOTE_TLS_STATE_DIR=/run/cpk-state \
+    -e CPK_REMOTE_TLS_PHASE="$phase" \
+    "$CONTROLLER_IMAGE" \
+    python scripts/cpk_server_remote_tls_secret_custody_source_live.py; then
+    docker logs "$SERVER_CONTAINER" 2>&1 | tail -n 100 >&2 || true
+    docker logs "$SECRETS_CONTAINER" 2>&1 | tail -n 100 >&2 || true
+    exit 1
+  fi
+}
+
+host_inventory() {
+  destination="$1"
+  {
+    docker ps -aq --filter "label=$WORKSPACE_LABEL" | sort | sed 's/^/container:/'
+    docker network ls -q --filter "label=$WORKSPACE_LABEL" | sort | sed 's/^/network:/'
+    docker volume ls -q --filter "label=$WORKSPACE_LABEL" | sort | sed 's/^/volume:/'
+  } >"$destination"
+}
+
+remote_inventory() {
+  docker exec "$DIND_CONTAINER" sh -c "
+    docker ps -aq --filter 'label=$WORKSPACE_LABEL' | sort | sed 's/^/container:/'
+    docker network ls -q --filter 'label=$WORKSPACE_LABEL' | sort | sed 's/^/network:/'
+    docker volume ls -q --filter 'label=$WORKSPACE_LABEL' | sort | sed 's/^/volume:/'
+  " >"$REMOTE_INVENTORY"
+}
+
+assert_host_inventory_unchanged() {
+  host_inventory "$HOST_INVENTORY_AFTER"
+  if ! cmp -s "$HOST_INVENTORY_BEFORE" "$HOST_INVENTORY_AFTER"; then
+    echo "remote authority execution mutated host Docker inventory" >&2
+    diff -u "$HOST_INVENTORY_BEFORE" "$HOST_INVENTORY_AFTER" >&2 || true
+    exit 1
+  fi
+}
+
+assert_no_tls_temp_directory() {
+  if docker exec "$SERVER_CONTAINER" sh -c \
+    'test -z "$(find /tmp -maxdepth 1 -type d -name "cpk-docker-tls-*" -print -quit)"'; then
+    return
+  fi
+  echo "cpk-server retained an authority-scoped Docker TLS directory" >&2
+  exit 1
+}
 
 if [ "$BUILD_IMAGES" = "1" ]; then
   docker build -f "$SERVERS_REPO/Dockerfile.test" -t "$CONTROLLER_IMAGE" "$SERVERS_REPO"
@@ -91,6 +218,7 @@ DIND_CONTAINER="$(docker run -d \
   --label "$PROJECT_LABEL" \
   --label "$WORKSPACE_LABEL" \
   --network "$NETWORK" \
+  --hostname remote-docker \
   --network-alias remote-docker \
   -e DOCKER_TLS_CERTDIR=/certs \
   "$DIND_IMAGE")"
@@ -118,6 +246,33 @@ docker cp "$DIND_CONTAINER:/certs/client/ca.pem" "$BOOTSTRAP_DIR/ca.pem"
 docker cp "$DIND_CONTAINER:/certs/client/cert.pem" "$BOOTSTRAP_DIR/cert.pem"
 docker cp "$DIND_CONTAINER:/certs/client/key.pem" "$BOOTSTRAP_DIR/key.pem"
 chmod 0400 "$BOOTSTRAP_DIR/ca.pem" "$BOOTSTRAP_DIR/cert.pem" "$BOOTSTRAP_DIR/key.pem"
+
+if command -v gh >/dev/null 2>&1 && GHCR_TOKEN="$(gh auth token 2>/dev/null)"; then
+  BOOTSTRAP_DIR="$BOOTSTRAP_DIR" GHCR_TOKEN="$GHCR_TOKEN" python3 -c '
+import json
+import os
+from pathlib import Path
+
+base = Path(os.environ["BOOTSTRAP_DIR"])
+base.joinpath("ghcr-pull-credential.json").write_text(
+    json.dumps(
+        {"username": "OpenJ92", "password": os.environ["GHCR_TOKEN"]},
+        separators=(",", ":"),
+        sort_keys=True,
+    ),
+    encoding="utf-8",
+)
+base.joinpath("ghcr-token-sentinel").write_text(
+    os.environ["GHCR_TOKEN"],
+    encoding="utf-8",
+)
+'
+  unset GHCR_TOKEN
+fi
+if [ ! -s "$BOOTSTRAP_DIR/ghcr-pull-credential.json" ]; then
+  echo "GHCR pull authority is unavailable" >&2
+  exit 1
+fi
 
 docker run --rm \
   -v "$BOOTSTRAP_DIR:/bootstrap" \
@@ -150,6 +305,7 @@ intents = [
     "docker.remote-tls.ca-certificate",
     "docker.remote-tls.client-certificate",
     "docker.remote-tls.client-key",
+    "oci.pull-credential",
 ]
 credentials = [{
     "subject": "cpk-server-remote-tls-source-live",
@@ -179,6 +335,11 @@ operator_scopes = [
     "hub:instance:read",
     "instance:workspace:read",
     "instance:workspace:edit",
+    "plan:request",
+    "plan:approve",
+    "plan:approve-destructive",
+    "plan:execute",
+    "execution:operate",
     "runtime-authority:register",
     "runtime-authority:read",
     "runtime-authority:use",
@@ -186,100 +347,164 @@ operator_scopes = [
     "secret-provider:read",
     "secret-provider:use",
 ]
+worker_scopes = ["execution:operate", "secret-provider:use"]
 print(json.dumps([{
     "credential": "present",
     "subject_id": "hosted-operator",
     "kind": "operator",
     "workspace_grants": {workspace_id: operator_scopes},
+}, {
+    "credential": "worker-present",
+    "subject_id": "hosted-worker",
+    "kind": "worker",
+    "workspace_grants": {workspace_id: worker_scopes},
 }], separators=(",", ":"), sort_keys=True))
 '
 )"
 
-SECRETS_CONTAINER="$(docker run -d \
-  --label "$PROJECT_LABEL" \
-  --label "$WORKSPACE_LABEL" \
-  --network "$NETWORK" \
-  --network-alias cpk-secrets \
-  -v "$PROVIDER_DATA_DIR:/var/lib/cpk-secrets" \
-  -v "$BOOTSTRAP_DIR/master.key:/run/secrets/cpk-secrets/master-key:ro" \
-  -v "$BOOTSTRAP_DIR/credentials.json:/run/secrets/cpk-secrets/credentials.json:ro" \
-  -e CPK_SECRETS_DATABASE_PATH=/var/lib/cpk-secrets/secrets.sqlite3 \
-  -e CPK_SECRETS_MASTER_KEY_FILE=/run/secrets/cpk-secrets/master-key \
-  -e CPK_SECRETS_CREDENTIALS_FILE=/run/secrets/cpk-secrets/credentials.json \
-  -e CPK_SECRETS_PROVIDER_ID=control-plane-kit \
-  "$SECRETS_IMAGE" \
-  python -m uvicorn control_plane_kit_secrets.server:app \
-    --host 0.0.0.0 --port 8081 --log-level warning)"
-
-SECRETS_READY=0
-for _ in 1 2 3 4 5 6 7 8 9 10 11 12 13 14 15; do
-  if docker run --rm \
-    --network "$NETWORK" \
-    "$SECRETS_IMAGE" \
-    python -c '
-from urllib.request import urlopen
-with urlopen("http://cpk-secrets:8081/health/ready", timeout=2) as response:
-    raise SystemExit(0 if response.status == 200 else 1)
-' >/dev/null 2>&1; then
-    SECRETS_READY=1
-    break
-  fi
-  sleep 1
-done
-if [ "$SECRETS_READY" != "1" ]; then
-  echo "secrets provider did not become ready" >&2
-  exit 1
-fi
-
 PROVIDER_ROUTES_JSON='{"source-live-secrets":"http://cpk-secrets:8081"}'
 PROVIDER_BOOTSTRAP_FILES_JSON='{"secret://bootstrap/provider/client-token":"/run/secrets/cpk-provider/client-token"}'
-SERVER_CONTAINER="$(docker run -d \
-  --label "$PROJECT_LABEL" \
-  --label "$WORKSPACE_LABEL" \
-  --network "$NETWORK" \
-  --network-alias cpk-server \
-  -v "$BOOTSTRAP_DIR/client-token:/run/secrets/cpk-provider/client-token:ro" \
-  -e CPK_SERVER_MODE=execution-capable \
-  -e CPK_CONTROL_AUTH_VERIFIER=static-development \
-  -e CPK_CONTROL_AUTH_STATIC_PRINCIPALS_JSON="$CPK_CONTROL_AUTH_STATIC_PRINCIPALS_JSON" \
-  -e CPK_PORT=8080 \
-  -e CPK_RUNTIME_INTERPRETERS=docker \
-  -e CPK_PRODUCT_MATERIAL_RESOLVER=provider \
-  -e CPK_MATERIAL_PROVIDER_ROUTES_JSON="$PROVIDER_ROUTES_JSON" \
-  -e CPK_MATERIAL_PROVIDER_BOOTSTRAP_FILES_JSON="$PROVIDER_BOOTSTRAP_FILES_JSON" \
-  -e CPK_WORKPLACE_DATABASE_URL=postgresql://cpk:cpk@cpk-postgres:5432/cpk \
-  -e CPK_ACTIVITY_HISTORY_DATABASE_URL=postgresql://cpk:cpk@cpk-postgres:5432/cpk \
-  -e CPK_OBSERVER_STATE_DATABASE_URL=postgresql://cpk:cpk@cpk-postgres:5432/cpk \
-  -e CPK_GRAPH_TOPOLOGY_DATABASE_URL=postgresql://cpk:cpk@cpk-postgres:5432/cpk \
-  "$SERVER_IMAGE")"
+start_secrets
+start_server
 
-if ! docker run --rm \
-  --label "$PROJECT_LABEL" \
-  --label "$WORKSPACE_LABEL" \
-  --network "$NETWORK" \
-  -v "$BOOTSTRAP_DIR:/run/secrets/cpk-source-live:ro" \
-  -e CPK_HOSTED_ACTIVITY_BASE_URL=http://cpk-server:8080 \
-  -e CPK_HOSTED_ACTIVITY_SERVER_CONTAINER="$SERVER_CONTAINER" \
-  -e CPK_HOSTED_ACTIVITY_WORKSPACE_ID="$WORKSPACE_ID" \
-  -e CPK_REMOTE_DOCKER_TLS_ENDPOINT=tcp://remote-docker:2376 \
-  -e CPK_SECRET_PROVIDER_TOKEN_FILE=/run/secrets/cpk-source-live/client-token \
-  -e CPK_SECRET_PROVIDER_BOOTSTRAP_DIR=/run/secrets/cpk-source-live \
-  "$CONTROLLER_IMAGE" \
-  python scripts/cpk_server_remote_tls_secret_custody_source_live.py; then
-  docker logs "$SERVER_CONTAINER" 2>&1 | tail -n 100 >&2 || true
-  docker logs "$SECRETS_CONTAINER" 2>&1 | tail -n 100 >&2 || true
+host_inventory "$HOST_INVENTORY_BEFORE"
+run_controller deploy
+assert_host_inventory_unchanged
+assert_no_tls_temp_directory
+remote_inventory
+if ! grep -q '^container:' "$REMOTE_INVENTORY" \
+  || ! grep -q '^network:' "$REMOTE_INVENTORY"; then
+  echo "remote Docker TLS deployment did not create labelled workload resources" >&2
+  cat "$REMOTE_INVENTORY" >&2
   exit 1
 fi
+REMOTE_CONTAINER="$(docker exec "$DIND_CONTAINER" docker ps -q \
+  --filter "label=$WORKSPACE_LABEL" | head -n 1)"
+EXPECTED_HELLO_IMAGE="$(SERVERS_REPO="$SERVERS_REPO" python3 -c '
+import json
+import os
+from pathlib import Path
+document = json.loads(
+    Path(os.environ["SERVERS_REPO"], "products/hello_server/product.cpk.json").read_text()
+)
+image = document["product"]["image"]
+print("{}/{}@{}".format(image["registry"], image["repository"], image["digest"]))
+')"
+ACTUAL_REMOTE_IMAGE="$(docker exec "$DIND_CONTAINER" docker inspect \
+  --format '{{.Config.Image}}' "$REMOTE_CONTAINER")"
+if [ "$ACTUAL_REMOTE_IMAGE" != "$EXPECTED_HELLO_IMAGE" ]; then
+  echo "remote daemon realized an unexpected workload image" >&2
+  exit 1
+fi
+docker logs "$SERVER_CONTAINER" >>"$SERVER_LOG" 2>&1 || true
+docker logs "$SECRETS_CONTAINER" >>"$PROVIDER_LOG" 2>&1 || true
+
+docker rm -f "$SERVER_CONTAINER" "$SECRETS_CONTAINER" >/dev/null
+SERVER_CONTAINER=""
+SECRETS_CONTAINER=""
+start_secrets
+start_server
+
+host_inventory "$HOST_INVENTORY_BEFORE"
+run_controller resume
+assert_host_inventory_unchanged
+assert_no_tls_temp_directory
+remote_inventory
+if [ -s "$REMOTE_INVENTORY" ]; then
+  echo "remote Docker TLS teardown left labelled nested-daemon resources" >&2
+  cat "$REMOTE_INVENTORY" >&2
+  exit 1
+fi
+docker logs "$SERVER_CONTAINER" >>"$SERVER_LOG" 2>&1 || true
+docker logs "$SECRETS_CONTAINER" >>"$PROVIDER_LOG" 2>&1 || true
+
+docker exec "$POSTGRES_CONTAINER" psql -U cpk -d cpk -At -F '|' -c "
+SELECT correlation_id, use_intent, run_id, activity_id, effect_id
+FROM cpk_secret_use_authorizations
+WHERE workspace_id = '$WORKSPACE_ID'
+ORDER BY correlation_id;
+" >"$OPERATIONS_AUTHORIZATIONS"
+docker exec -e WORKSPACE_ID="$WORKSPACE_ID" "$SECRETS_CONTAINER" python -c '
+import os
+import sqlite3
+
+connection = sqlite3.connect("/var/lib/cpk-secrets/secrets.sqlite3")
+rows = connection.execute(
+    """
+    SELECT correlation_id, intent, version_id
+    FROM secret_resolution_selections
+    WHERE workspace_id = ?
+    ORDER BY correlation_id
+    """,
+    (os.environ["WORKSPACE_ID"],),
+).fetchall()
+for row in rows:
+    print("|".join(str(value) for value in row))
+' >"$PROVIDER_SELECTIONS"
+
+OPERATIONS_AUTHORIZATIONS="$OPERATIONS_AUTHORIZATIONS" \
+PROVIDER_SELECTIONS="$PROVIDER_SELECTIONS" python3 -c '
+import os
+from collections import defaultdict
+from pathlib import Path
+
+tls_intents = {
+    "docker.remote-tls.ca-certificate",
+    "docker.remote-tls.client-certificate",
+    "docker.remote-tls.client-key",
+}
+oci_pull_intent = "oci.pull-credential"
+operations = [
+    tuple(line.split("|"))
+    for line in Path(os.environ["OPERATIONS_AUTHORIZATIONS"]).read_text().splitlines()
+    if line
+]
+provider = [
+    tuple(line.split("|"))
+    for line in Path(os.environ["PROVIDER_SELECTIONS"]).read_text().splitlines()
+    if line
+]
+if not operations or not provider:
+    raise SystemExit("operations/provider secret-use evidence was empty")
+by_effect = defaultdict(set)
+run_ids = set()
+for correlation, intent, run_id, activity_id, effect_id in operations:
+    if not all((correlation, intent, run_id, activity_id, effect_id)):
+        raise SystemExit("operations TLS authorization evidence was incomplete")
+    by_effect[effect_id].add(intent)
+    run_ids.add(run_id)
+allowed_intent_sets = (tls_intents, tls_intents | {oci_pull_intent})
+if any(intents not in allowed_intent_sets for intents in by_effect.values()):
+    raise SystemExit("an effect did not preserve exact Docker TLS and OCI pull intents")
+if not any(oci_pull_intent in intents for intents in by_effect.values()):
+    raise SystemExit("no product effect authorized the private OCI pull credential")
+if len(run_ids) < 3:
+    raise SystemExit("restart acceptance did not correlate deploy/update/teardown runs")
+provider_pairs = {(correlation, intent) for correlation, intent, version in provider if version}
+operation_pairs = {(correlation, intent) for correlation, intent, *_ in operations}
+if len(provider_pairs) != len(provider):
+    raise SystemExit("provider selected-version evidence was incomplete or duplicated")
+if not provider_pairs.issubset(operation_pairs):
+    raise SystemExit("provider resolved a secret without operations authorization")
+provider_intents = {intent for _, intent in provider_pairs}
+if not tls_intents.issubset(provider_intents) or oci_pull_intent not in provider_intents:
+    raise SystemExit("provider did not resolve the required TLS and OCI pull material")
+resolved_run_ids = {
+    run_id
+    for correlation, intent, run_id, *_ in operations
+    if (correlation, intent) in provider_pairs
+}
+if len(resolved_run_ids) < 3:
+    raise SystemExit("provider evidence did not span deploy/update/teardown runs")
+'
 
 docker exec "$POSTGRES_CONTAINER" pg_dump -U cpk -d cpk >"$OPERATIONS_DUMP"
-for secret_file in ca.pem cert.pem key.pem client-token; do
-  if docker logs "$SERVER_CONTAINER" 2>&1 \
-    | grep -F -f "$BOOTSTRAP_DIR/$secret_file" >/dev/null 2>&1; then
+for secret_file in ca.pem cert.pem key.pem client-token ghcr-pull-credential.json ghcr-token-sentinel; do
+  if grep -F -f "$BOOTSTRAP_DIR/$secret_file" "$SERVER_LOG" >/dev/null 2>&1; then
     echo "cpk-server logs contain forbidden remote-TLS material" >&2
     exit 1
   fi
-  if docker logs "$SECRETS_CONTAINER" 2>&1 \
-    | grep -F -f "$BOOTSTRAP_DIR/$secret_file" >/dev/null 2>&1; then
+  if grep -F -f "$BOOTSTRAP_DIR/$secret_file" "$PROVIDER_LOG" >/dev/null 2>&1; then
     echo "provider logs contain forbidden remote-TLS material" >&2
     exit 1
   fi
@@ -301,4 +526,4 @@ POSTGRES_CONTAINER=""
 DIND_CONTAINER=""
 
 sh "$SERVERS_REPO/scripts/docker_residue_audit.sh"
-echo "cpk-server remote Docker TLS durable-custody foundation smoke passed"
+echo "cpk-server remote Docker TLS durable-custody graph/restart smoke passed"
