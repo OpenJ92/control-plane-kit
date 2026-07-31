@@ -107,7 +107,7 @@ VALUE_BASE64="$(printf '%s' "$SECRET_VALUE" | base64 | tr -d '\n')"
 curl --fail --silent --show-error \
   -H "Authorization: Bearer $TOKEN" \
   -H "Content-Type: application/json" \
-  -d "{\"value_base64\":\"$VALUE_BASE64\",\"correlation_id\":\"write-1\"}" \
+  -d "{\"value_base64\":\"$VALUE_BASE64\",\"intent\":\"postgres.password\",\"correlation_id\":\"write-1\"}" \
   "http://127.0.0.1:$PORT/v1/workspaces/workspace-smoke/secrets/postgres-password" \
   >"$ROOT/write.json"
 

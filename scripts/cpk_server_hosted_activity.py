@@ -55,7 +55,10 @@ AUTHORIZATION = "Bearer present"
 WORKER_AUTHORIZATION = "Bearer worker-present"
 LOCAL_DOCKER_AUTHORITY_REF = "local-docker"
 OPENJ92_INGRESS_AUTHORITY_REF = "openj92-cloudflare"
-PUBLIC_GATEWAY_HOSTNAME = "cpk-gateway-001.openj92.dev"
+PUBLIC_GATEWAY_HOSTNAME = os.environ.get(
+    "CPK_PUBLIC_GATEWAY_HOSTNAME",
+    "cpk-gateway-001.openj92.dev",
+)
 PUBLIC_GATEWAY_READY_ATTEMPTS = 60
 PUBLIC_GATEWAY_READY_RETRY_SECONDS = 2
 GATEWAY_PROBE_ISSUER = "urn:control-plane-kit:source-live"
@@ -120,6 +123,11 @@ class HostedWorkflow:
         )
 
     def register_ghcr_pull_authority_from_docker_config(self) -> None:
+        self.register_ghcr_pull_authority(
+            credential_reference="secret://docker-config/ghcr.io"
+        )
+
+    def register_ghcr_pull_authority(self, *, credential_reference: str) -> None:
         _http(
             self.base_url,
             "POST",
@@ -127,7 +135,7 @@ class HostedWorkflow:
             {
                 "registry": "ghcr.io",
                 "repository": "openj92/control-plane-kit-servers",
-                "credential_reference": "secret://docker-config/ghcr.io",
+                "credential_reference": credential_reference,
                 "actor_id": "operator-a",
                 "admitted_at": _clock(),
                 "idempotency_key": f"{self.workspace_id}:pull-authority:ghcr",
@@ -205,6 +213,59 @@ class HostedWorkflow:
         authority = detail.get("ingress_authority", {})
         if authority.get("authority_ref") != OPENJ92_INGRESS_AUTHORITY_REF:
             raise RuntimeError("registered ingress authority was not readable")
+
+    def register_provider_backed_cloudflare_ingress_authority(
+        self,
+        *,
+        api_token_ref: str,
+        generated_secret_provider_registration_id: str,
+        generated_secret_reference_prefix: str,
+        allowed_hostname_pattern: str,
+    ) -> None:
+        _mcp_tool(
+            self.base_url,
+            "command.ingress-authority.register",
+            {
+                "workspace_id": self.workspace_id,
+                "authority_ref": OPENJ92_INGRESS_AUTHORITY_REF,
+                "authority": {
+                    "provider_kind": "cloudflare",
+                    "account_id": _required_env("OPENJ92_CLOUDFLARE_ACCOUNT_ID"),
+                    "zone_id": _required_env("OPENJ92_CLOUDFLARE_ZONE_ID"),
+                    "zone_name": os.environ.get(
+                        "OPENJ92_CLOUDFLARE_ZONE",
+                        "openj92.dev",
+                    ),
+                    "api_token_ref": api_token_ref,
+                    "allowed_hostname_pattern": allowed_hostname_pattern,
+                    "generated_secret_provider_registration_id": (
+                        generated_secret_provider_registration_id
+                    ),
+                    "generated_secret_reference_prefix": (
+                        generated_secret_reference_prefix
+                    ),
+                },
+                "actor_id": "operator-a",
+                "actor_scopes": [PolicyScope.INGRESS_AUTHORITY_REGISTER.value],
+                "admitted_at": _clock(),
+                "idempotency_key": (
+                    f"{self.workspace_id}:ingress-authority:"
+                    "openj92-cloudflare-provider"
+                ),
+            },
+        )
+        detail = _mcp_read(
+            self.base_url,
+            "read.ingress-authority-detail",
+            {
+                "workspace_id": self.workspace_id,
+                "authority_ref": OPENJ92_INGRESS_AUTHORITY_REF,
+                "actor_scopes": [PolicyScope.INGRESS_AUTHORITY_READ.value],
+            },
+        )
+        authority = detail.get("ingress_authority", {})
+        if authority.get("authority_ref") != OPENJ92_INGRESS_AUTHORITY_REF:
+            raise RuntimeError("provider-backed ingress authority was not readable")
 
     def start_session(self, title: str) -> str:
         session = _http(
@@ -1321,12 +1382,7 @@ def _assert_gateway_rejects_unauthenticated_without_target_io() -> None:
 
 
 def _assert_gateway_rejects_replay_while_alive(workspace_id: str) -> None:
-    private_key = serialization.load_pem_private_key(
-        _required_env("CPK_GATEWAY_PROBE_PRIVATE_KEY_PEM").encode("ascii"),
-        password=None,
-    )
-    if not isinstance(private_key, Ed25519PrivateKey):
-        raise RuntimeError("gateway test private key is not Ed25519")
+    private_key = _gateway_probe_private_key()
     request = GatewayProbeRequest(
         GatewayProbeCommandKind.HTTP_STATUS,
         GatewayTargetId("hello.internal"),
@@ -1724,6 +1780,7 @@ def _public_gateway_ingress_graph(
     *,
     workspace_id: str,
     authority_ref: RuntimeAuthorityReference | None = None,
+    public_hostname: str = PUBLIC_GATEWAY_HOSTNAME,
 ) -> DeploymentGraph:
     hello_product = hello_document.product
     hello = instantiate_product(
@@ -1741,7 +1798,7 @@ def _public_gateway_ingress_graph(
         target_node_id="gateway",
         target_provider_socket="control",
         connector_node_id="cloudflared-gateway",
-        public_hostname=PUBLIC_GATEWAY_HOSTNAME,
+        public_hostname=public_hostname,
     )
     return compile_topology(
         DeploymentTopology(
@@ -2111,6 +2168,49 @@ def _assert_public_gateway_private_probe(hostname: str) -> None:
     _assert_public_gateway_http_probe(hostname, "hello.internal")
 
 
+def _assert_public_gateway_authenticated_http_probe(
+    hostname: str,
+    *,
+    workspace_id: str,
+    target_id: str = "hello.internal",
+) -> None:
+    request = GatewayProbeRequest(
+        GatewayProbeCommandKind.HTTP_STATUS,
+        GatewayTargetId(target_id),
+        "/",
+    )
+    token = _signed_gateway_capability(
+        _gateway_probe_private_key(),
+        _direct_gateway_grant(
+            request,
+            jti=f"public-{workspace_id}-{int(time.time())}",
+            workspace_id=workspace_id,
+        ),
+    )
+    response = _public_https_json(
+        hostname,
+        "POST",
+        "/cpk/probes",
+        body=_gateway_probe_body(request),
+        authorization=f"CPK-Gateway {token}",
+        timeout=10,
+    )
+    payload = json.loads(response.body.decode("utf-8"))
+    if (
+        response.status != 200
+        or payload.get("outcome") != "passed"
+        or payload.get("status") != 200
+        or payload.get("target_id") != target_id
+    ):
+        raise RuntimeError(
+            f"authenticated public gateway probe failed: "
+            f"status={response.status} payload={payload!r}"
+        )
+    encoded = json.dumps(payload).lower()
+    if any(value in encoded for value in ("secret", "token", "password")):
+        raise RuntimeError("authenticated public gateway probe leaked secret material")
+
+
 def _assert_public_gateway_http_probe(hostname: str, target_id: str) -> None:
     response = _public_https_json(
         hostname,
@@ -2227,12 +2327,14 @@ def _direct_gateway_grant(
     request: GatewayProbeRequest,
     *,
     jti: str,
+    workspace_id: str | None = None,
 ) -> DelegatedGatewayProbeGrant:
     now = int(time.time())
-    workspace_id = os.environ.get(
-        "CPK_HOSTED_ACTIVITY_WORKSPACE_ID",
-        DEFAULT_WORKSPACE_ID,
-    )
+    if workspace_id is None:
+        workspace_id = os.environ.get(
+            "CPK_HOSTED_ACTIVITY_WORKSPACE_ID",
+            DEFAULT_WORKSPACE_ID,
+        )
     return DelegatedGatewayProbeGrant(
         issuer=GATEWAY_PROBE_ISSUER,
         key_id=GATEWAY_PROBE_KEY_ID,
@@ -2248,6 +2350,18 @@ def _direct_gateway_grant(
         expires_at=now + 60,
         jti=jti,
     )
+
+
+def _gateway_probe_private_key() -> Ed25519PrivateKey:
+    key_file = os.environ.get("CPK_GATEWAY_PROBE_PRIVATE_KEY_FILE")
+    if key_file:
+        encoded = Path(key_file).read_bytes()
+    else:
+        encoded = _required_env("CPK_GATEWAY_PROBE_PRIVATE_KEY_PEM").encode("ascii")
+    private_key = serialization.load_pem_private_key(encoded, password=None)
+    if not isinstance(private_key, Ed25519PrivateKey):
+        raise RuntimeError("gateway test private key is not Ed25519")
+    return private_key
 
 
 def _signed_gateway_capability(
@@ -2289,16 +2403,20 @@ def _public_https_json(
     path: str,
     *,
     body: bytes | None = None,
+    authorization: str | None = None,
     timeout: float,
 ) -> _PublicHttpsResponse:
     address = _public_ingress_address(hostname)
+    headers = {"Accept": "application/json"}
+    if authorization is not None:
+        headers["Authorization"] = authorization
     return _https_request_to_address(
         address,
         hostname=hostname,
         method=method,
         path=path,
         body=body,
-        headers={"Accept": "application/json"},
+        headers=headers,
         timeout=timeout,
     )
 

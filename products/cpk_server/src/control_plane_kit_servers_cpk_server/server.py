@@ -31,6 +31,7 @@ from control_plane_kit_core.probe_intents import (
 from control_plane_kit_core.secrets import SecretReference, SecretResolutionError
 from control_plane_kit_core.types import RuntimeKind
 from control_plane_kit_operations import (
+    ActivityExecutionDispatcher,
     ActivityExecutionOutcome,
     ActivityExecutionAdapter,
     ActivityPlanningCommandService,
@@ -979,22 +980,6 @@ class _UnsupportedExecutionAdapter:
         )
 
 
-@dataclass(frozen=True)
-class _CompositeExecutionAdapter:
-    adapters: tuple[ActivityExecutionAdapter, ...]
-
-    def execute(self, context: ActivityRealizationContext) -> ActivityExecutionOutcome:
-        last_unsupported: ActivityExecutionOutcome | None = None
-        for adapter in self.adapters:
-            outcome = adapter.execute(context)
-            if outcome.kind is EffectResultKind.UNSUPPORTED:
-                last_unsupported = outcome
-                continue
-            return outcome
-        assert last_unsupported is not None
-        return last_unsupported
-
-
 def _activity_adapter(
     config: CpkServerBootstrapConfiguration,
     unit_of_work,
@@ -1014,7 +999,7 @@ def _activity_adapter(
         clock=_clock,
         secret_use_authorizer=secret_use_authorizer,
     )
-    return _CompositeExecutionAdapter((ingress, runtime))
+    return ActivityExecutionDispatcher(runtime=runtime, ingress=ingress)
 
 
 def _runtime_adapter(

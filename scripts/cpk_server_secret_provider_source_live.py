@@ -32,8 +32,13 @@ from cpk_server_hosted_activity import (
     LOCAL_DOCKER_AUTHORITY_REF,
     HostedWorkflow,
     _assert_activity_mentions,
+    _assert_gateway_probe_succeeded,
     _assert_no_node_containers,
+    _assert_no_runtime_networks,
+    _assert_public_gateway_authenticated_http_probe,
+    _assert_public_gateway_unreachable,
     _assert_runtime_activity_mentions,
+    _assert_secret_absent_from_activity,
     _bootstrap_workspace,
     _clock,
     _disconnect_runtime_networks,
@@ -41,7 +46,10 @@ from cpk_server_hosted_activity import (
     _mcp_read,
     _mcp_tool,
     _product_document,
+    _public_gateway_ingress_graph,
+    _single_hello_graph,
     _sync_runtime_networks,
+    _wait_public_gateway_ready,
 )
 
 
@@ -52,6 +60,22 @@ WRONG_PROVIDER_CREDENTIAL_REFERENCE = "secret://bootstrap/provider/wrong-token"
 POSTGRES_PASSWORD_REFERENCE = "secret://control-plane-kit/postgres/password"
 POSTGRES_INTENT = "postgres.password"
 APPLICATION_TOKEN_INTENT = "application.control-token"
+CLOUDFLARE_API_TOKEN_REFERENCE = (
+    "secret://control-plane-kit/cloudflare/openj92/api-token"
+)
+CLOUDFLARE_GENERATED_REFERENCE_PREFIX = (
+    "secret://control-plane-kit/cloudflare/openj92/generated-source-live"
+)
+GATEWAY_SIGNING_KEY_REFERENCE = (
+    "secret://control-plane-kit/gateway/source-live-signing-key"
+)
+GHCR_PULL_CREDENTIAL_REFERENCE = (
+    "secret://control-plane-kit/oci/ghcr-source-live-credential"
+)
+CLOUDFLARE_API_TOKEN_INTENT = "cloudflare.api-token"
+CLOUDFLARE_TUNNEL_TOKEN_INTENT = "cloudflare.tunnel-token"
+GATEWAY_SIGNING_KEY_INTENT = "gateway.probe-signing-key"
+OCI_PULL_CREDENTIAL_INTENT = "oci.pull-credential"
 WORKER_AUTHORIZATION = "Bearer worker-present"
 NO_SECRET_WORKER_AUTHORIZATION = "Bearer worker-no-secret"
 SUCCESS_WORKSPACE = "workspace-secret-provider-live"
@@ -81,6 +105,21 @@ def main() -> int:
     operations_database_url = _required_env("CPK_OPERATIONS_DATABASE_URL")
     provider_token_file = Path(_required_env("CPK_SECRET_PROVIDER_TOKEN_FILE"))
     bootstrap_dir = Path(_required_env("CPK_SECRET_PROVIDER_BOOTSTRAP_DIR"))
+    if (
+        os.environ.get("CPK_SECRET_PROVIDER_SOURCE_LIVE_SCENARIO")
+        == "cloudflare-tunnel-custody"
+    ):
+        _run_cloudflare_tunnel_custody(
+            base_url=base_url,
+            server_container=server_container,
+            provider_container=provider_container,
+            servers_repo=servers_repo,
+            operations_database_url=operations_database_url,
+            provider_token_file=provider_token_file,
+            bootstrap_dir=bootstrap_dir,
+        )
+        print("cpk-server Cloudflare generated-secret custody acceptance passed")
+        return 0
 
     cpk_server_document = _product_document(servers_repo, "cpk_server")
     postgres_document = _product_document(servers_repo, "postgres_server")
@@ -225,6 +264,243 @@ def main() -> int:
     )
     print("cpk-server durable secret-provider source-live acceptance passed")
     return 0
+
+
+def _run_cloudflare_tunnel_custody(
+    *,
+    base_url: str,
+    server_container: str,
+    provider_container: str,
+    servers_repo: Path,
+    operations_database_url: str,
+    provider_token_file: Path,
+    bootstrap_dir: Path,
+) -> None:
+    workspace_id = _required_env("CPK_HOSTED_ACTIVITY_WORKSPACE_ID")
+    public_hostname = _required_env("CPK_PUBLIC_GATEWAY_HOSTNAME")
+    gateway_document = _product_document(servers_repo, "cpk_local_gateway")
+    hello_document = _product_document(servers_repo, "hello_server")
+    cloudflared_document = _product_document(servers_repo, "cloudflared_connector")
+    workflow = _workflow(
+        base_url,
+        server_container,
+        workspace_id=workspace_id,
+        worker_id="hosted-worker",
+        worker_authorization=WORKER_AUTHORIZATION,
+    )
+    workflow.wait_ready()
+    current_graph_id = _bootstrap_workspace(
+        workflow,
+        name="Cloudflare generated-secret custody source-live",
+        product_documents={
+            "gateway": gateway_document,
+            "hello": hello_document,
+            "cloudflared": cloudflared_document,
+        },
+        register_runtime_authority=True,
+        register_runtime_delivery=False,
+    )
+    provider_registration_id = _register_cloudflare_provider_and_references(workflow)
+    _assert_provider_metadata_is_secret_free(workflow)
+    _provider_write_secret(
+        workspace_id=workspace_id,
+        reference=CLOUDFLARE_API_TOKEN_REFERENCE,
+        intent=CLOUDFLARE_API_TOKEN_INTENT,
+        value_file=bootstrap_dir / "cloudflare-api-token",
+        provider_token_file=provider_token_file,
+        correlation_id="source-live-cloudflare-api-bootstrap",
+    )
+    _provider_write_secret(
+        workspace_id=workspace_id,
+        reference=GATEWAY_SIGNING_KEY_REFERENCE,
+        intent=GATEWAY_SIGNING_KEY_INTENT,
+        value_file=bootstrap_dir / "gateway-private-key.pem",
+        provider_token_file=provider_token_file,
+        correlation_id="source-live-gateway-signing-bootstrap",
+    )
+    _provider_write_secret(
+        workspace_id=workspace_id,
+        reference=GHCR_PULL_CREDENTIAL_REFERENCE,
+        intent=OCI_PULL_CREDENTIAL_INTENT,
+        value_file=bootstrap_dir / "ghcr-pull-credential.json",
+        provider_token_file=provider_token_file,
+        correlation_id="source-live-ghcr-pull-bootstrap",
+    )
+    workflow.register_ghcr_pull_authority(
+        credential_reference=GHCR_PULL_CREDENTIAL_REFERENCE,
+    )
+    workflow.register_provider_backed_cloudflare_ingress_authority(
+        api_token_ref=CLOUDFLARE_API_TOKEN_REFERENCE,
+        generated_secret_provider_registration_id=provider_registration_id,
+        generated_secret_reference_prefix=CLOUDFLARE_GENERATED_REFERENCE_PREFIX,
+        allowed_hostname_pattern="cpk-sec1203-*.openj92.dev",
+    )
+
+    public_graph = _public_gateway_ingress_graph(
+        gateway_document,
+        hello_document,
+        cloudflared_document,
+        workspace_id=workspace_id,
+        authority_ref=RuntimeAuthorityReference(LOCAL_DOCKER_AUTHORITY_REF),
+        public_hostname=public_hostname,
+    )
+    private_graph = _single_hello_graph(
+        hello_document,
+        workspace_id=workspace_id,
+        authority_ref=RuntimeAuthorityReference(LOCAL_DOCKER_AUTHORITY_REF),
+        message="Hello through public ingress",
+    )
+
+    public_on = workflow.run_approved_transition(
+        title="Cloudflare custody public overlay on",
+        graph=public_graph,
+        current_graph_id=current_graph_id,
+        sync_runtime_networks=False,
+    )
+    _assert_activity_mentions(workflow, public_on.run_id, "gateway")
+    _assert_activity_mentions(workflow, public_on.run_id, "hello")
+    _assert_activity_mentions(workflow, public_on.run_id, "cloudflared-gateway")
+    _wait_public_gateway_ready(public_hostname)
+    _assert_public_gateway_authenticated_http_probe(
+        public_hostname,
+        workspace_id=workspace_id,
+    )
+    _sync_runtime_networks(server_container, workspace_id=workspace_id)
+    private_probe = workflow.request_gateway_probe_http(
+        request_id=f"{workspace_id}:gateway-probe:first",
+        expected_current_graph_id=public_on.current_graph_id,
+        gateway_node_id="gateway",
+        kind="http-status",
+        target_id="hello.internal",
+        path="/",
+    )
+    _assert_gateway_probe_succeeded(private_probe, target_id="hello.internal")
+
+    public_off = workflow.run_approved_transition(
+        title="Cloudflare custody public overlay off",
+        graph=private_graph,
+        current_graph_id=public_on.current_graph_id,
+        expected_desired_graph_id=public_on.desired_graph_id,
+        sync_runtime_networks=False,
+    )
+    _assert_activity_mentions(workflow, public_off.run_id, "cloudflared-gateway")
+    _assert_public_gateway_unreachable(public_hostname)
+    _assert_owned_cloudflare_resources_removed(
+        operations_database_url,
+        workspace_id=workspace_id,
+        api_token_file=bootstrap_dir / "cloudflare-api-token",
+        expected_minimum=1,
+    )
+
+    public_on_again = workflow.run_approved_transition(
+        title="Cloudflare custody public overlay on again",
+        graph=public_graph,
+        current_graph_id=public_off.current_graph_id,
+        expected_desired_graph_id=public_off.desired_graph_id,
+        sync_runtime_networks=False,
+    )
+    _assert_activity_mentions(workflow, public_on_again.run_id, "gateway")
+    _assert_activity_mentions(workflow, public_on_again.run_id, "cloudflared-gateway")
+    _wait_public_gateway_ready(public_hostname)
+    _assert_public_gateway_authenticated_http_probe(
+        public_hostname,
+        workspace_id=workspace_id,
+    )
+    _disconnect_runtime_networks(server_container, workspace_id=workspace_id)
+    removed = workflow.run_approved_transition(
+        title="Cloudflare custody final teardown",
+        graph=DeploymentGraph(workspace_id),
+        current_graph_id=public_on_again.current_graph_id,
+        expected_desired_graph_id=public_on_again.desired_graph_id,
+        sync_runtime_networks=False,
+    )
+    _assert_activity_mentions(workflow, removed.run_id, "cloudflared-gateway")
+    _assert_public_gateway_unreachable(public_hostname)
+    _assert_no_runtime_networks(workspace_id)
+    _assert_owned_cloudflare_resources_removed(
+        operations_database_url,
+        workspace_id=workspace_id,
+        api_token_file=bootstrap_dir / "cloudflare-api-token",
+        expected_minimum=2,
+    )
+    _assert_cloudflare_provider_correlation(
+        provider_container=provider_container,
+        operations_database_url=operations_database_url,
+        workspace_id=workspace_id,
+    )
+    _assert_activity_is_secret_free(workflow)
+    _assert_secret_absent_from_activity(
+        workflow,
+        (bootstrap_dir / "cloudflare-api-token").read_text(encoding="utf-8"),
+    )
+
+
+def _register_cloudflare_provider_and_references(
+    workflow: HostedWorkflow,
+) -> str:
+    provider = _http(
+        workflow.base_url,
+        "POST",
+        f"/workspaces/{workflow.workspace_id}/secret-providers",
+        {
+            "provider_id": PROVIDER_ID,
+            "provider_kind": "control-plane-kit-secrets",
+            "display_name": "Source-live durable Cloudflare custody",
+            "endpoint_reference": PROVIDER_ENDPOINT_REFERENCE,
+            "credential_reference": PROVIDER_CREDENTIAL_REFERENCE,
+            "allowed_reference_prefixes": [
+                CLOUDFLARE_API_TOKEN_REFERENCE,
+                CLOUDFLARE_GENERATED_REFERENCE_PREFIX,
+                GATEWAY_SIGNING_KEY_REFERENCE,
+                GHCR_PULL_CREDENTIAL_REFERENCE,
+            ],
+            "allowed_intents": [
+                CLOUDFLARE_API_TOKEN_INTENT,
+                CLOUDFLARE_TUNNEL_TOKEN_INTENT,
+                GATEWAY_SIGNING_KEY_INTENT,
+                OCI_PULL_CREDENTIAL_INTENT,
+            ],
+            "admitted_at": _clock(),
+            "metadata": {"acceptance": "source-live-cloudflare-custody"},
+            "idempotency_key": (
+                f"{workflow.workspace_id}:secret-provider:cloudflare-custody"
+            ),
+        },
+    )
+    provider_registration_id = str(provider["registration_id"])
+    for label, reference, intent in (
+        (
+            "cloudflare-api-token",
+            CLOUDFLARE_API_TOKEN_REFERENCE,
+            CLOUDFLARE_API_TOKEN_INTENT,
+        ),
+        (
+            "gateway-signing-key",
+            GATEWAY_SIGNING_KEY_REFERENCE,
+            GATEWAY_SIGNING_KEY_INTENT,
+        ),
+        (
+            "ghcr-pull-credential",
+            GHCR_PULL_CREDENTIAL_REFERENCE,
+            OCI_PULL_CREDENTIAL_INTENT,
+        ),
+    ):
+        _http(
+            workflow.base_url,
+            "POST",
+            f"/workspaces/{workflow.workspace_id}/secret-references",
+            {
+                "reference": reference,
+                "provider_registration_id": provider_registration_id,
+                "allowed_intents": [intent],
+                "admitted_at": _clock(),
+                "metadata": {"acceptance": "source-live-cloudflare-custody"},
+                "idempotency_key": (
+                    f"{workflow.workspace_id}:secret-reference:{label}"
+                ),
+            },
+        )
+    return provider_registration_id
 
 
 def _run_denial_matrix(
@@ -940,17 +1216,20 @@ def _wait_provider_ready() -> None:
 def _provider_write_secret(
     *,
     workspace_id: str,
+    reference: str = POSTGRES_PASSWORD_REFERENCE,
+    intent: str = POSTGRES_INTENT,
     value_file: Path,
     provider_token_file: Path,
     correlation_id: str,
 ) -> str:
     status, payload = _provider_request(
         method="POST",
-        path=_provider_secret_path(workspace_id),
+        path=_provider_secret_path(workspace_id, reference=reference),
         provider_token_file=provider_token_file,
         payload={
             "value_base64": base64.b64encode(value_file.read_bytes()).decode("ascii"),
-            "labels": {"intent": POSTGRES_INTENT},
+            "intent": intent,
+            "labels": {"intent": intent},
             "caller_subject": "source-live-bootstrap",
             "correlation_id": correlation_id,
         },
@@ -973,6 +1252,7 @@ def _provider_rotate_secret(
         provider_token_file=provider_token_file,
         payload={
             "value_base64": base64.b64encode(value_file.read_bytes()).decode("ascii"),
+            "intent": POSTGRES_INTENT,
             "labels": {"intent": POSTGRES_INTENT},
             "caller_subject": "source-live-rotation",
             "correlation_id": correlation_id,
@@ -1057,8 +1337,13 @@ def _provider_request(
     return status, decoded
 
 
-def _provider_secret_path(workspace_id: str, *, suffix: str = "") -> str:
-    encoded = base64.urlsafe_b64encode(POSTGRES_PASSWORD_REFERENCE.encode("utf-8"))
+def _provider_secret_path(
+    workspace_id: str,
+    *,
+    reference: str = POSTGRES_PASSWORD_REFERENCE,
+    suffix: str = "",
+) -> str:
+    encoded = base64.urlsafe_b64encode(reference.encode("utf-8"))
     secret_id = f"cpk1_{encoded.rstrip(b'=').decode('ascii')}"
     return f"/v1/workspaces/{workspace_id}/secrets/{secret_id}{suffix}"
 
@@ -1099,6 +1384,235 @@ def _workspace_runtime_resources(workspace_id: str) -> tuple[tuple[str, ...], ..
             )
         ),
     )
+
+
+def _assert_owned_cloudflare_resources_removed(
+    operations_database_url: str,
+    *,
+    workspace_id: str,
+    api_token_file: Path,
+    expected_minimum: int,
+) -> None:
+    query = """
+        SELECT tunnel_id, dns_record_id, tunnel_name, hostname, zone_id, status
+        FROM cpk_cloudflare_ingress_resources
+        WHERE workspace_id = %s
+        ORDER BY epoch
+    """
+    with psycopg.connect(operations_database_url) as connection:
+        with connection.cursor() as cursor:
+            cursor.execute(query, (workspace_id,))
+            resources = cursor.fetchall()
+    if len(resources) < expected_minimum:
+        raise RuntimeError("operations omitted owned Cloudflare resource evidence")
+    tunnel_ids = {str(row[0]) for row in resources}
+    if len(tunnel_ids) != len(resources):
+        raise RuntimeError("Cloudflare recreation reused a prior tunnel identity")
+    for tunnel_id, dns_record_id, _name, hostname, zone_id, status in resources:
+        if status != "removed":
+            raise RuntimeError("owned Cloudflare resource was not durably removed")
+        if hostname != _required_env("CPK_PUBLIC_GATEWAY_HOSTNAME"):
+            raise RuntimeError("owned Cloudflare evidence changed the test hostname")
+        _assert_cloudflare_resource_absent(
+            f"/zones/{zone_id}/dns_records/{dns_record_id}",
+            api_token_file,
+        )
+        _assert_cloudflare_tunnel_deleted(
+            account_id=_required_env("OPENJ92_CLOUDFLARE_ACCOUNT_ID"),
+            tunnel_id=str(tunnel_id),
+            api_token_file=api_token_file,
+        )
+
+
+def _assert_cloudflare_resource_absent(
+    path: str,
+    api_token_file: Path,
+) -> None:
+    request = Request(
+        f"https://api.cloudflare.com/client/v4{path}",
+        method="GET",
+        headers={
+            "Authorization": (
+                f"Bearer {api_token_file.read_text(encoding='utf-8').strip()}"
+            ),
+            "Accept": "application/json",
+        },
+    )
+    try:
+        with urlopen(request, timeout=20) as response:
+            status = response.status
+    except HTTPError as error:
+        status = error.code
+    if status != 404:
+        raise RuntimeError(
+            f"owned Cloudflare resource remained after teardown: status={status}"
+        )
+
+
+def _assert_cloudflare_tunnel_deleted(
+    *,
+    account_id: str,
+    tunnel_id: str,
+    api_token_file: Path,
+) -> None:
+    base_path = f"/accounts/{account_id}/cfd_tunnel"
+    exact_status, exact_payload = _cloudflare_api_get_json(
+        f"{base_path}/{tunnel_id}",
+        api_token_file,
+    )
+    active_status, active_payload = _cloudflare_api_get_json(
+        f"{base_path}?is_deleted=false&uuid={tunnel_id}&per_page=1",
+        api_token_file,
+    )
+    _validate_cloudflare_tunnel_deletion(
+        tunnel_id=tunnel_id,
+        exact_status=exact_status,
+        exact_payload=exact_payload,
+        active_status=active_status,
+        active_payload=active_payload,
+    )
+
+
+def _cloudflare_api_get_json(
+    path: str,
+    api_token_file: Path,
+) -> tuple[int, dict[str, object] | None]:
+    request = Request(
+        f"https://api.cloudflare.com/client/v4{path}",
+        method="GET",
+        headers={
+            "Authorization": (
+                f"Bearer {api_token_file.read_text(encoding='utf-8').strip()}"
+            ),
+            "Accept": "application/json",
+        },
+    )
+    try:
+        with urlopen(request, timeout=20) as response:
+            status = response.status
+            body = response.read(65_537)
+    except HTTPError as error:
+        status = error.code
+        body = error.read(65_537)
+    if len(body) > 65_536:
+        raise RuntimeError("Cloudflare deletion response exceeded evidence limit")
+    if status == 404:
+        return status, None
+    try:
+        payload = json.loads(body.decode("utf-8"))
+    except (UnicodeDecodeError, json.JSONDecodeError) as error:
+        raise RuntimeError("Cloudflare deletion response was malformed") from error
+    if not isinstance(payload, dict):
+        raise RuntimeError("Cloudflare deletion response was malformed")
+    return status, payload
+
+
+def _validate_cloudflare_tunnel_deletion(
+    *,
+    tunnel_id: str,
+    exact_status: int,
+    exact_payload: dict[str, object] | None,
+    active_status: int,
+    active_payload: dict[str, object] | None,
+) -> None:
+    if exact_status == 404:
+        pass
+    elif exact_status == 200:
+        result = (
+            exact_payload.get("result")
+            if isinstance(exact_payload, dict)
+            and exact_payload.get("success") is True
+            else None
+        )
+        if (
+            not isinstance(result, dict)
+            or result.get("id") != tunnel_id
+            or not isinstance(result.get("deleted_at"), str)
+            or not result["deleted_at"].strip()
+        ):
+            raise RuntimeError(
+                "Cloudflare tunnel tombstone did not match owned deletion"
+            )
+    else:
+        raise RuntimeError(
+            f"Cloudflare tunnel deletion could not be verified: status={exact_status}"
+        )
+
+    active_results = (
+        active_payload.get("result")
+        if active_status == 200
+        and isinstance(active_payload, dict)
+        and active_payload.get("success") is True
+        else None
+    )
+    if not isinstance(active_results, list) or not all(
+        isinstance(candidate, dict) for candidate in active_results
+    ):
+        raise RuntimeError("Cloudflare active tunnel inventory was malformed")
+    if any(candidate.get("id") == tunnel_id for candidate in active_results):
+        raise RuntimeError("owned Cloudflare tunnel remained active after teardown")
+
+
+def _assert_cloudflare_provider_correlation(
+    *,
+    provider_container: str,
+    operations_database_url: str,
+    workspace_id: str,
+) -> None:
+    provider_rows = _provider_audit_rows(provider_container, workspace_id)
+    for intent in (
+        CLOUDFLARE_API_TOKEN_INTENT,
+        CLOUDFLARE_TUNNEL_TOKEN_INTENT,
+        OCI_PULL_CREDENTIAL_INTENT,
+    ):
+        resolved = [
+            row
+            for row in provider_rows
+            if row["outcome"] == "resolved" and row["intent"] == intent
+        ]
+        if not resolved:
+            raise RuntimeError(f"provider omitted successful {intent} resolution audit")
+        operation_correlations = _operations_correlations(
+            operations_database_url,
+            workspace_id=workspace_id,
+            intent=intent,
+        )
+        if not {row["correlation_id"] for row in resolved}.issubset(
+            operation_correlations
+        ):
+            raise RuntimeError(f"operations/provider {intent} correlation diverged")
+
+    stored_tunnel_versions = {
+        row["version_id"]
+        for row in provider_rows
+        if row["outcome"] == "stored"
+        and row["intent"] == CLOUDFLARE_TUNNEL_TOKEN_INTENT
+        and row["version_id"]
+    }
+    revoked_tunnel_versions = {
+        row["version_id"]
+        for row in provider_rows
+        if row["outcome"] == "revoked"
+        and row["intent"] == CLOUDFLARE_TUNNEL_TOKEN_INTENT
+        and row["version_id"]
+    }
+    with psycopg.connect(operations_database_url) as connection:
+        with connection.cursor() as cursor:
+            cursor.execute(
+                """
+                SELECT metadata->>'provider_version_id'
+                FROM cpk_generated_ingress_secret_references
+                WHERE workspace_id = %s
+                  AND purpose = 'cloudflared-tunnel-token'
+                ORDER BY recorded_at
+                """,
+                (workspace_id,),
+            )
+            recorded_versions = {str(row[0]) for row in cursor.fetchall()}
+    if len(recorded_versions) < 2 or recorded_versions != stored_tunnel_versions:
+        raise RuntimeError("generated tunnel custody/version evidence diverged")
+    if not recorded_versions.issubset(revoked_tunnel_versions):
+        raise RuntimeError("teardown did not revoke every generated tunnel token")
 
 
 def _provider_audit_rows(
@@ -1178,6 +1692,7 @@ def _operations_correlations(
     operations_database_url: str,
     *,
     workspace_id: str,
+    intent: str = POSTGRES_INTENT,
     run_id: str | None = None,
 ) -> set[str]:
     query = """
@@ -1185,7 +1700,7 @@ def _operations_correlations(
         FROM cpk_secret_use_authorizations
         WHERE workspace_id = %s AND use_intent = %s
     """
-    parameters: list[str] = [workspace_id, POSTGRES_INTENT]
+    parameters: list[str] = [workspace_id, intent]
     if run_id is not None:
         query += " AND run_id = %s"
         parameters.append(run_id)
