@@ -94,18 +94,16 @@ class IngressAuthorityValueTests(unittest.TestCase):
 
                 generated_secret_reference_prefix=SecretReference("secret://generated/ingress"),
             )
-        with self.assertRaisesRegex(ValueError, "secret"):
-            CloudflareZoneIngressAuthority(
-                account_id="account-openj92",
-                zone_id="zone-openj92",
-                zone_name="openj92.dev",
-                api_token_ref=SecretReference("secret://cloudflare/openj92/api-token"),
-                allowed_hostname_pattern="cpk-token-*.openj92.dev",
-
-                generated_secret_provider_registration_id="sprov-generated-ingress",
-
-                generated_secret_reference_prefix=SecretReference("secret://generated/ingress"),
-            )
+        authority = CloudflareZoneIngressAuthority(
+            account_id="account-openj92",
+            zone_id="zone-openj92",
+            zone_name="openj92.dev",
+            api_token_ref=SecretReference("secret://cloudflare/openj92/api-token"),
+            allowed_hostname_pattern="cpk-token-*.openj92.dev",
+            generated_secret_provider_registration_id="sprov-generated-ingress",
+            generated_secret_reference_prefix=SecretReference("secret://generated/ingress"),
+        )
+        self.assertTrue(authority.allows_hostname("cpk-token-001.openj92.dev"))
 
     def test_cloudflare_owned_resource_evidence_is_bounded_and_secret_free(self) -> None:
         resource = self.cloudflare_resource()
@@ -123,6 +121,25 @@ class IngressAuthorityValueTests(unittest.TestCase):
         self.assertNotIn("cf_api_token", repr(descriptor).lower())
         self.assertNotIn("bearer", repr(descriptor).lower())
         self.assertNotIn("eyj", repr(descriptor).lower())
+
+    def test_cloudflare_owned_resource_accepts_benign_secret_shaped_identifiers(
+        self,
+    ) -> None:
+        resource = self.cloudflare_resource(
+            workspace_id="workspace-secret-operations",
+            runtime_id="runtime-token-worker",
+            ingress_id="credential-probe",
+            tunnel_id="tunnel-token-evidence",
+        )
+
+        descriptor = resource.descriptor()
+
+        self.assertEqual(descriptor["workspace_id"], "workspace-secret-operations")
+        self.assertEqual(descriptor["runtime_id"], "runtime-token-worker")
+        self.assertEqual(descriptor["ingress_id"], "credential-probe")
+        self.assertEqual(descriptor["tunnel_id"], "tunnel-token-evidence")
+        self.assertNotIn("api_token", descriptor)
+        self.assertNotIn("credential", descriptor)
 
     def test_owned_ingress_resource_status_is_operations_lifecycle_truth(
         self,
@@ -351,6 +368,8 @@ class IngressAuthorityValueTests(unittest.TestCase):
     def cloudflare_resource(
         self,
         *,
+        workspace_id: str = "workspace-a",
+        runtime_id: str = "docker-a",
         lifecycle: PublicIngressLifecycle = PublicIngressLifecycle.EPHEMERAL,
         ingress_id: str = "gateway-001",
         epoch: int = 1,
@@ -363,8 +382,8 @@ class IngressAuthorityValueTests(unittest.TestCase):
         removed_by_run_id: str | None = None,
     ) -> CloudflareOwnedIngressResource:
         return CloudflareOwnedIngressResource(
-            workspace_id="workspace-a",
-            runtime_id="docker-a",
+            workspace_id=workspace_id,
+            runtime_id=runtime_id,
             ingress_id=ingress_id,
             authority_ref=IngressAuthorityReference("openj92-public-ingress"),
             provider_kind=IngressAuthorityProviderKind.CLOUDFLARE,

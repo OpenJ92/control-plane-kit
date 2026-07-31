@@ -59,6 +59,15 @@ class IngressAllocationResult(Protocol):
     endpoint_url: str
 
 
+class IngressOwnedResourceCoordinates(Protocol):
+    """Exact provider coordinates accepted by provider teardown."""
+
+    tunnel_id: str
+    tunnel_name: str
+    dns_record_id: str
+    hostname: str
+
+
 class IngressProviderInterpreter(Protocol):
     """Provider-specific interpreter supplied at the composition boundary."""
 
@@ -77,7 +86,7 @@ class IngressProviderInterpreter(Protocol):
         self,
         *,
         authority: CloudflareZoneIngressAuthority,
-        resources: CloudflareOwnedIngressResource,
+        resources: IngressOwnedResourceCoordinates,
         secret_resolution_grant: SecretResolutionGrant,
         secret_custody_grant: SecretCustodyGrant,
     ) -> None: ...
@@ -171,13 +180,14 @@ class IngressRealizationAdapter:
         except (KeyError, ValueError, InvalidOperationCommand) as error:
             return _unsupported(context, "ingress.allocate-unsupported", str(error))
 
-        resource: CloudflareOwnedIngressResource | None = None
         try:
             grant = self._authorize_api_token(context, authority.authority)
             custody_grant = self._generated_secret_custody_grant(
                 context,
                 authority.authority,
             )
+            recorded_at = self.clock()
+            _validate_fold_timestamp(recorded_at)
             allocation = interpreter.create(
                 ingress,
                 authority=authority.authority,
@@ -214,8 +224,8 @@ class IngressRealizationAdapter:
                 hostname=allocation.hostname,
                 zone_id=authority.authority.zone_id,
                 lifecycle=ingress.lifecycle,
-                created_at=self.clock(),
-                observed_at=self.clock(),
+                created_at=recorded_at,
+                observed_at=recorded_at,
                 source_run_id=context.run.run_id,
                 source_activity_id=context.activity.activity_id.value,
                 source_event_id=context.intent_event.event_id,
@@ -230,7 +240,7 @@ class IngressRealizationAdapter:
             reference_candidate = generated_secret_reference_candidate(
                 grant=custody_grant,
                 receipt=receipt,
-                admitted_at=self.clock(),
+                admitted_at=recorded_at,
             )
             secret_evidence = record_generated_ingress_secret(
                 workspace_id=context.request.identity.workspace_id,
@@ -240,7 +250,7 @@ class IngressRealizationAdapter:
                 source_run_id=context.run.run_id,
                 source_activity_id=context.activity.activity_id.value,
                 source_event_id=context.intent_event.event_id,
-                recorded_at=self.clock(),
+                recorded_at=recorded_at,
             )
             with self.unit_of_work_factory() as unit_of_work:
                 provider = unit_of_work.stores.secret_providers.require_active_registration(
@@ -259,18 +269,21 @@ class IngressRealizationAdapter:
                 unit_of_work.stores.ingress_resources.record_cloudflare(resource)
                 unit_of_work.stores.generated_ingress_secrets.record(secret_evidence)
                 unit_of_work.commit()
-        except Exception as error:  # noqa: BLE001 - incomplete folding is uncertain.
-            if resource is not None:
-                try:
-                    interpreter.teardown(
-                        authority=authority.authority,
-                        resources=resource,
-                        secret_resolution_grant=grant,
-                        secret_custody_grant=custody_grant,
-                    )
-                except Exception:  # noqa: BLE001 - compensation failure is bounded.
-                    pass
-            return _uncertain("ingress.record-uncertain", type(error).__name__)
+        except Exception as error:  # noqa: BLE001 - compensate exact provider effect.
+            try:
+                interpreter.teardown(
+                    authority=authority.authority,
+                    resources=allocation,
+                    secret_resolution_grant=grant,
+                    secret_custody_grant=custody_grant,
+                )
+            except Exception as compensation_error:  # noqa: BLE001
+                return _compensation_uncertain(
+                    allocation,
+                    fold_exception_type=type(error).__name__,
+                    compensation_exception_type=type(compensation_error).__name__,
+                )
+            return _failed_after_compensation(type(error).__name__)
 
         return ActivityExecutionOutcome.succeeded(
             BoundedEvidence.from_mapping(
@@ -595,5 +608,53 @@ def _uncertain(code: str, exception_type: str) -> ActivityExecutionOutcome:
             code,
             "ingress provider result is uncertain",
             BoundedEvidence.from_mapping({"exception_type": exception_type}),
+        )
+    )
+
+
+def _validate_fold_timestamp(value: object) -> None:
+    if (
+        not isinstance(value, str)
+        or not value
+        or len(value) > 512
+        or any(ord(character) < 32 for character in value)
+    ):
+        raise InvalidOperationCommand(
+            "ingress allocation fold timestamp must be nonempty and bounded"
+        )
+
+
+def _failed_after_compensation(exception_type: str) -> ActivityExecutionOutcome:
+    return ActivityExecutionOutcome.failed(
+        FailureEvidence(
+            FailureCategory.RETRYABLE,
+            "ingress.record-failed-compensated",
+            "ingress allocation was compensated after durable recording failed",
+            BoundedEvidence.from_mapping({"exception_type": exception_type}),
+        )
+    )
+
+
+def _compensation_uncertain(
+    allocation: IngressOwnedResourceCoordinates,
+    *,
+    fold_exception_type: str,
+    compensation_exception_type: str,
+) -> ActivityExecutionOutcome:
+    return ActivityExecutionOutcome.uncertain(
+        FailureEvidence(
+            FailureCategory.UNCERTAIN,
+            "ingress.compensation-uncertain",
+            "ingress allocation compensation is uncertain",
+            BoundedEvidence.from_mapping(
+                {
+                    "fold_exception_type": fold_exception_type,
+                    "compensation_exception_type": compensation_exception_type,
+                    "tunnel_id": allocation.tunnel_id,
+                    "tunnel_name": allocation.tunnel_name,
+                    "dns_record_id": allocation.dns_record_id,
+                    "hostname": allocation.hostname,
+                }
+            ),
         )
     )

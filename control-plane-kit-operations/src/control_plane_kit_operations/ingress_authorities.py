@@ -242,9 +242,14 @@ class CloudflareOwnedIngressResource:
             raise IngressAuthorityRegistrationError(
                 "only removed ingress resources may carry removal evidence"
             )
-        if any(marker in repr(self.descriptor()).lower() for marker in _SECRET_MARKERS):
+        descriptor_keys = tuple(self.descriptor())
+        if any(
+            marker in key.lower()
+            for key in descriptor_keys
+            for marker in _SECRET_MARKERS
+        ):
             raise IngressAuthorityRegistrationError(
-                "Cloudflare ingress resource evidence must be secret-free"
+                "Cloudflare ingress resource evidence fields must be secret-free"
             )
 
     def descriptor(self) -> dict[str, object]:
@@ -842,10 +847,6 @@ def _validate_hostname_pattern(pattern: str, *, zone_name: str) -> None:
     if pattern != lowered:
         raise IngressAuthorityRegistrationError(
             "allowed hostname pattern must be lowercase"
-        )
-    if any(marker in lowered for marker in _SECRET_MARKERS):
-        raise IngressAuthorityRegistrationError(
-            "allowed hostname pattern must not contain secret-shaped text"
         )
     if lowered.count("*") != 1:
         raise IngressAuthorityRegistrationError(
