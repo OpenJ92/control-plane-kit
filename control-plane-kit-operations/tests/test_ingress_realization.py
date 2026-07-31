@@ -146,6 +146,8 @@ class RecordingIngressInterpreter:
         self.teardown_custody_grants: list[SecretCustodyGrant] = []
         self.fail_teardown = False
         self.return_mismatched_custody_receipt = False
+        self.return_invalid_coordinates = False
+        self.on_create = None
 
     def create(
         self,
@@ -163,6 +165,8 @@ class RecordingIngressInterpreter:
         self.create_authorities.append(authority)
         self.create_grants.append(secret_resolution_grant)
         self.create_custody_grants.append(secret_custody_grant)
+        if self.on_create is not None:
+            self.on_create()
         receipt_reference = secret_custody_grant.reference
         if self.return_mismatched_custody_receipt:
             receipt_reference = SecretReference(
@@ -177,6 +181,11 @@ class RecordingIngressInterpreter:
                 reference=receipt_reference,
                 version_id="version-tunnel-token",
                 version_number=1,
+            ),
+            tunnel_id=(
+                "tunnel\ninvalid"
+                if self.return_invalid_coordinates
+                else "tunnel-001"
             ),
             tunnel_name=allocation_name,
             hostname=ingress.hostname,
@@ -396,7 +405,7 @@ class IngressRealizationAdapterTests(unittest.TestCase):
 
         outcome = adapter.execute(self.context())
 
-        self.assertEqual(outcome.kind.name, "UNCERTAIN")
+        self.assertEqual(outcome.kind.name, "FAILED")
         self.assertEqual(len(interpreter.teardown_resources), 1)
         self.assertEqual(
             interpreter.teardown_custody_grants,
@@ -411,6 +420,98 @@ class IngressRealizationAdapterTests(unittest.TestCase):
             )
         self.assertEqual(resources, ())
         self.assertEqual(references, ())
+
+    def test_projection_failure_after_create_compensates_from_allocation_result(
+        self,
+    ) -> None:
+        interpreter = RecordingIngressInterpreter(self.tracker)
+        interpreter.return_invalid_coordinates = True
+        adapter = IngressRealizationAdapter(
+            self.unit_of_work,
+            interpreters={IngressAuthorityProviderKind.CLOUDFLARE: interpreter},
+            clock=lambda: "2026-07-28T08:01:00Z",
+            secret_use_authorizer=self.authorizer,
+        )
+
+        outcome = adapter.execute(self.context())
+
+        self.assertEqual(outcome.kind.name, "FAILED")
+        self.assertEqual(len(interpreter.teardown_resources), 1)
+        allocation = interpreter.teardown_resources[0]
+        self.assertEqual(allocation.tunnel_id, "tunnel\ninvalid")
+        self.assertEqual(allocation.dns_record_id, "dns-001")
+        self.assertEqual(interpreter.teardown_active_counts, [0])
+
+    def test_invalid_fold_timestamp_fails_before_provider_mutation(self) -> None:
+        interpreter = RecordingIngressInterpreter(self.tracker)
+        adapter = IngressRealizationAdapter(
+            self.unit_of_work,
+            interpreters={IngressAuthorityProviderKind.CLOUDFLARE: interpreter},
+            clock=lambda: "invalid\ntimestamp",
+            secret_use_authorizer=self.authorizer,
+        )
+
+        outcome = adapter.execute(self.context())
+
+        self.assertEqual(outcome.kind.name, "UNSUPPORTED")
+        self.assertEqual(interpreter.create_active_counts, [])
+        self.assertEqual(interpreter.teardown_resources, [])
+
+    def test_durable_fold_race_after_create_compensates_exact_allocation(
+        self,
+    ) -> None:
+        interpreter = RecordingIngressInterpreter(self.tracker)
+
+        def revoke_generated_secret_provider() -> None:
+            with self.unit_of_work() as unit_of_work:
+                unit_of_work.stores.secret_providers.revoke_active(
+                    "workspace-a",
+                    SecretProviderId("generated"),
+                    revoked_by="concurrent-operator",
+                    revoked_at="2026-07-28T08:00:59Z",
+                )
+                unit_of_work.commit()
+
+        interpreter.on_create = revoke_generated_secret_provider
+        adapter = IngressRealizationAdapter(
+            self.unit_of_work,
+            interpreters={IngressAuthorityProviderKind.CLOUDFLARE: interpreter},
+            clock=lambda: "2026-07-28T08:01:00Z",
+            secret_use_authorizer=self.authorizer,
+        )
+
+        outcome = adapter.execute(self.context())
+
+        self.assertEqual(outcome.kind.name, "FAILED")
+        self.assertEqual(len(interpreter.teardown_resources), 1)
+        self.assertEqual(interpreter.teardown_resources[0].tunnel_id, "tunnel-001")
+        with self.unit_of_work() as unit_of_work:
+            self.assertEqual(
+                unit_of_work.stores.ingress_resources.list_cloudflare("workspace-a"),
+                (),
+            )
+
+    def test_compensation_failure_preserves_bounded_owned_coordinates(self) -> None:
+        interpreter = RecordingIngressInterpreter(self.tracker)
+        interpreter.return_mismatched_custody_receipt = True
+        interpreter.fail_teardown = True
+        adapter = IngressRealizationAdapter(
+            self.unit_of_work,
+            interpreters={IngressAuthorityProviderKind.CLOUDFLARE: interpreter},
+            clock=lambda: "2026-07-28T08:01:00Z",
+            secret_use_authorizer=self.authorizer,
+        )
+
+        outcome = adapter.execute(self.context())
+
+        self.assertEqual(outcome.kind.name, "UNCERTAIN")
+        self.assertEqual(outcome.failure.code, "ingress.compensation-uncertain")
+        details = outcome.failure.details.descriptor()
+        self.assertEqual(details["tunnel_id"], "tunnel-001")
+        self.assertEqual(details["dns_record_id"], "dns-001")
+        self.assertEqual(details["hostname"], "cpk-gateway-001.openj92.dev")
+        self.assertEqual(details["fold_exception_type"], "InvalidOperationCommand")
+        self.assertEqual(details["compensation_exception_type"], "RuntimeError")
 
     def test_allocate_public_ingress_uses_unique_tunnel_names_for_distinct_runs(
         self,

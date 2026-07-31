@@ -6018,3 +6018,39 @@ packaged catalogue sha256:
 Exact-commit server-products validation passed all current package/product
 tests, cpk-server image build, authenticated HTTP/MCP smoke, semantic Postgres
 readiness, and Docker residue audit. No Cloudflare resource was mutated.
+
+## #1221 Ingress Allocation Fold Compensation
+
+The first #1215 source-live Cloudflare custody run proved that provider creation
+could succeed before operations rejected the returned allocation. The owned
+resource value scanned every descriptor value for words such as `secret` and
+therefore rejected the valid workspace id
+`workspace-secret-cloudflare-...`. Because compensation depended on first
+constructing that durable value, the tunnel and DNS record remained outside
+operations truth.
+
+Owned ingress evidence now excludes secret-bearing fields structurally: its
+closed descriptor keys are checked, while benign identifier values may contain
+words such as `secret`, `token`, or `credential`. Hostname policy likewise
+validates bounded DNS structure rather than guessing sensitivity from lexical
+content. Raw authority credentials remain represented only by
+`SecretReference` on the authority, never on owned resource evidence.
+
+Post-create compensation now consumes the exact provider coordinates returned
+by `IngressProviderInterpreter.create()`:
+
+```text
+provider allocation result
+  -> durable resource/secret fold
+    -> fold succeeds: active owned truth
+    -> fold fails: exact provider teardown from allocation result
+      -> teardown succeeds: retryable compensated failure
+      -> teardown fails: bounded uncertainty with exact resource ids
+```
+
+Operations-owned timestamps are captured and validated before provider IO.
+Cloudflare IO remains outside Postgres transactions. A provider-registration
+race during the result transaction rolls back all operations writes and invokes
+exact compensation. Compensation failure is no longer swallowed; the activity
+failure retains tunnel id, tunnel name, DNS record id, hostname, and bounded
+exception types for later reconciliation under #1095.
