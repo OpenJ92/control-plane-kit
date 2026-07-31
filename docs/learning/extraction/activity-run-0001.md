@@ -6261,3 +6261,64 @@ The complete server-products Docker-first suite, cpk-server image smoke,
 source-live remote TLS graph/restart acceptance, leak scan, coordinate check,
 and residue audit pass. This remains source-built acceptance. Immutable
 published-image acceptance belongs to the later publication gate.
+
+## #1231 Remote Docker TLS Zero-Mutation Denial Matrix
+
+The provider-backed remote Docker TLS vertical now proves four independent
+denials through the same authenticated cpk-server workflow as successful graph
+execution:
+
+```text
+wrong workspace
+wrong exact use intent
+revoked selected version
+unavailable provider
+  -> plan / approve / admit / claim / start
+    -> execute fails closed
+      -> current graph does not advance
+        -> no host or remote daemon mutation
+```
+
+Each case prepares a real admitted run before the denial is introduced or
+encountered. The acceptance then snapshots exact container, network, volume,
+and image inventories on both the host daemon and the remote TLS daemon. The
+inventories remain byte-for-byte identical after denied execution. This rules
+out image pulls and partial Docker resource creation in addition to ruling out
+running containers. The cpk-server container has no host Docker socket, so a
+failed remote authority cannot fall back to ambient local Docker.
+
+The audit distinguishes authorization from resolution:
+
+```text
+operations grant     = this correlated use may be attempted
+provider audit       = the provider received the correlated request
+version selection    = a concrete secret version was resolved
+```
+
+Wrong-workspace and wrong-intent denials stop before provider IO. Revocation
+reaches the provider and records a correlated `revoked` outcome. Provider
+unavailability leaves prior operations grants but cannot invent provider audit
+or selection evidence. No denial selects a secret version or records a
+`resolved` provider outcome.
+
+Public activity and terminal readback expose only bounded denial codes. Leak
+checks reject certificate, private-key, provider-value, and OCI credential
+material. The successful deploy/restart/update/teardown path remains green in
+the same source-live run, all temporary TLS directories are absent afterward,
+the server-products Docker-first suite passes 161 unittest cases plus the real
+cpk-server image smoke, and the residue audit leaves only the five protected
+Pottery Factory containers.
+
+Implementation evidence:
+
+```text
+control-plane-kit-servers PR:
+  OpenJ92/control-plane-kit-servers#64
+
+control-plane-kit-servers merge commit:
+  bf42d877bef45bad3ff80b2ecc08d6c15816167a
+```
+
+This remains source-built acceptance. #1232 owns the independent leak,
+ownership, transaction, restart, and test-integrity closeout for #1204 before
+published-digest acceptance begins.
