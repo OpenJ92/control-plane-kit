@@ -12,7 +12,7 @@ RUN python -m pip install --no-cache-dir \
     "uvicorn>=0.30" \
     "control-plane-kit-core @ https://github.com/OpenJ92/control-plane-kit/archive/d2d81efb4d0f4ec7fd43145317779ed8e324833f.zip#subdirectory=control-plane-kit-core" \
     "control-plane-kit-operations @ https://github.com/OpenJ92/control-plane-kit/archive/d2d81efb4d0f4ec7fd43145317779ed8e324833f.zip#subdirectory=control-plane-kit-operations" \
-    "control-plane-kit-interpreters[cloudflare,docker,gateway] @ https://github.com/OpenJ92/control-plane-kit-interpreters/archive/c86512a04218fe8dca841c969a84c3d37496d78e.zip"
+    "control-plane-kit-interpreters[cloudflare,docker,gateway] @ https://github.com/OpenJ92/control-plane-kit-interpreters/archive/0e6b844fcd43c813a8c0a7be241adbe4fbece440.zip"
 
 COPY products/cpk_server/src ./products/cpk_server/src
 

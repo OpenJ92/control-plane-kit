@@ -1,12 +1,15 @@
 import ast
 import base64
 import importlib
+import importlib.util
 import json
+import os
 from pathlib import Path
 import tempfile
 import sys
 import time
 import unittest
+from unittest.mock import patch
 
 from cryptography.hazmat.primitives import serialization
 from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PrivateKey
@@ -884,7 +887,7 @@ class CpkServerImageBootstrapTests(unittest.TestCase):
             )
 
             self.assertEqual(str(config.ingress_interpreters), "cloudflare")
-            self.assertEqual(type(adapter).__name__, "_CompositeExecutionAdapter")
+            self.assertEqual(type(adapter).__name__, "ActivityExecutionDispatcher")
             self.assertNotIn("provider-token", repr(adapter))
         finally:
             sys.path.remove(str(PRODUCT_SRC))
@@ -1576,6 +1579,178 @@ class CpkServerImageBootstrapTests(unittest.TestCase):
         self.assertIn("workspace-secret-unavailable", controller)
         self.assertNotIn("DockerRuntimeInterpreter", controller)
         self.assertNotIn("ControlPlaneKitSecretsResolver", controller)
+
+    def test_cloudflare_custody_source_live_uses_provider_backed_composition(
+        self,
+    ) -> None:
+        smoke = (
+            ROOT
+            / "scripts"
+            / "cpk_server_cloudflare_secret_custody_source_live_smoke.sh"
+        ).read_text(encoding="utf-8")
+        controller = (
+            ROOT / "scripts" / "cpk_server_secret_provider_source_live.py"
+        ).read_text(encoding="utf-8")
+
+        self.assertIn("CPK_PRODUCT_MATERIAL_RESOLVER=provider", smoke)
+        self.assertIn("CPK_INGRESS_INTERPRETERS=cloudflare", smoke)
+        self.assertIn(
+            "CPK_SECRET_PROVIDER_SOURCE_LIVE_SCENARIO=cloudflare-tunnel-custody",
+            smoke,
+        )
+        self.assertIn("cloudflare-api-token", smoke)
+        self.assertNotIn("CPK_PRODUCT_SECRET_VALUES_JSON", smoke)
+        self.assertNotIn("CPK_IMAGE_PULL_CREDENTIAL_RESOLVER", smoke)
+        self.assertNotIn("DOCKER_CONFIG=", smoke)
+        self.assertNotIn("-e OPENJ92_CLOUDFLARE_API_TOKEN=", smoke)
+        self.assertIn("ghcr-pull-credential.json", smoke)
+        self.assertGreaterEqual(smoke.count('"oci.pull-credential",'), 2)
+        operator_scopes = smoke[
+            smoke.index("operator_scopes = [") : smoke.index("worker_scopes = [")
+        ]
+        self.assertIn('"gateway-probe:use"', operator_scopes)
+        self.assertIn('"secret-provider:use"', operator_scopes)
+        self.assertIn("GHCR_PULL_CREDENTIAL_REFERENCE", controller)
+        self.assertIn('OCI_PULL_CREDENTIAL_INTENT = "oci.pull-credential"', controller)
+        self.assertIn("register_provider_backed_cloudflare_ingress_authority", controller)
+        self.assertIn(
+            "api_token_ref=CLOUDFLARE_API_TOKEN_REFERENCE",
+            controller,
+        )
+        self.assertNotIn(
+            '"api_token_ref": "secret://cloudflare/openj92/api-token"',
+            controller,
+        )
+        self.assertIn("cpk_generated_ingress_secret_references", controller)
+        self.assertIn("_assert_cloudflare_provider_correlation", controller)
+        self.assertIn("_assert_public_gateway_authenticated_http_probe", controller)
+        self.assertIn("_assert_owned_cloudflare_resources_removed", controller)
+        self.assertIn('"intent": intent,', controller)
+        self.assertIn('"intent": POSTGRES_INTENT,', controller)
+
+    def test_http_only_public_gateway_omits_postgres_secret_delivery(self) -> None:
+        script = ROOT / "scripts" / "cpk_server_hosted_activity.py"
+        spec = importlib.util.spec_from_file_location(
+            "cpk_server_hosted_activity_graph_test",
+            script,
+        )
+        if spec is None or spec.loader is None:
+            self.fail("hosted activity controller could not be loaded")
+        module = importlib.util.module_from_spec(spec)
+        sys.modules[spec.name] = module
+        try:
+            with patch.dict(
+                os.environ,
+                {"CPK_GATEWAY_PROBE_PUBLIC_KEYS_JSON": '{"test-key":"public"}'},
+            ):
+                spec.loader.exec_module(module)
+                graph = module._public_gateway_ingress_graph(
+                    module._product_document(ROOT, "cpk_local_gateway"),
+                    module._product_document(ROOT, "hello_server"),
+                    module._product_document(ROOT, "cloudflared_connector"),
+                    workspace_id="workspace-custody-test",
+                    authority_ref=module.RuntimeAuthorityReference("local-docker"),
+                    public_hostname="cpk-sec1203-test.openj92.dev",
+                )
+        finally:
+            sys.modules.pop(spec.name, None)
+
+        self.assertEqual(graph.node("gateway").secret_deliveries, ())
+        self.assertEqual(
+            graph.public_ingresses[0].hostname,
+            "cpk-sec1203-test.openj92.dev",
+        )
+
+    def test_cloudflare_tunnel_deletion_accepts_only_absent_or_exact_tombstone(
+        self,
+    ) -> None:
+        script_dir = ROOT / "scripts"
+        spec = importlib.util.spec_from_file_location(
+            "cpk_server_secret_provider_soft_delete_test",
+            script_dir / "cpk_server_secret_provider_source_live.py",
+        )
+        if spec is None or spec.loader is None:
+            self.fail("secret provider source-live controller could not be loaded")
+        module = importlib.util.module_from_spec(spec)
+        sys.path.insert(0, str(script_dir))
+        sys.modules[spec.name] = module
+        try:
+            spec.loader.exec_module(module)
+        finally:
+            sys.modules.pop(spec.name, None)
+            sys.path.remove(str(script_dir))
+
+        tunnel_id = "11111111-2222-3333-4444-555555555555"
+        active_empty = {"success": True, "result": []}
+        module._validate_cloudflare_tunnel_deletion(
+            tunnel_id=tunnel_id,
+            exact_status=404,
+            exact_payload=None,
+            active_status=200,
+            active_payload=active_empty,
+        )
+        module._validate_cloudflare_tunnel_deletion(
+            tunnel_id=tunnel_id,
+            exact_status=200,
+            exact_payload={
+                "success": True,
+                "result": {
+                    "id": tunnel_id,
+                    "deleted_at": "2026-07-31T04:14:35Z",
+                },
+            },
+            active_status=200,
+            active_payload=active_empty,
+        )
+
+        rejected = (
+            (
+                200,
+                {
+                    "success": True,
+                    "result": {
+                        "id": "aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee",
+                        "deleted_at": "2026-07-31T04:14:35Z",
+                    },
+                },
+                200,
+                active_empty,
+            ),
+            (
+                200,
+                {"success": True, "result": {"id": tunnel_id}},
+                200,
+                active_empty,
+            ),
+            (200, {"success": False, "result": None}, 200, active_empty),
+            (
+                200,
+                {
+                    "success": True,
+                    "result": {
+                        "id": tunnel_id,
+                        "deleted_at": "2026-07-31T04:14:35Z",
+                    },
+                },
+                200,
+                {"success": True, "result": [{"id": tunnel_id}]},
+            ),
+            (404, None, 503, None),
+            (404, None, 200, {"success": True, "result": {}}),
+        )
+        for exact_status, exact_payload, active_status, active_payload in rejected:
+            with self.subTest(
+                exact_payload=exact_payload,
+                active_payload=active_payload,
+            ):
+                with self.assertRaises(RuntimeError):
+                    module._validate_cloudflare_tunnel_deletion(
+                        tunnel_id=tunnel_id,
+                        exact_status=exact_status,
+                        exact_payload=exact_payload,
+                        active_status=active_status,
+                        active_payload=active_payload,
+                    )
 
     def test_recursive_activity_smoke_uses_published_parent_and_secret_authority(
         self,

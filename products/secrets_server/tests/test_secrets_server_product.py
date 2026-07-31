@@ -23,6 +23,10 @@ BOOTSTRAP = PRODUCT / "bootstrap.contract.json"
 DOCKERFILE = PRODUCT / "Dockerfile"
 ENTRYPOINT = PRODUCT / "entrypoint.sh"
 SMOKE = ROOT / "scripts" / "secrets_server_image_smoke.sh"
+COORDINATES = json.loads(
+    (ROOT / "coordinates" / "server-products.json").read_text(encoding="utf-8")
+)
+SECRETS_PIN = COORDINATES["upstreams"]["control_plane_kit_secrets_commit"]
 
 
 class SecretsServerProductTests(unittest.TestCase):
@@ -97,7 +101,7 @@ class SecretsServerProductTests(unittest.TestCase):
         self.assertIn("USER secrets", dockerfile)
         self.assertIn(
             "control-plane-kit-secrets/archive/"
-            "d1c923ca476a87f74af628b7e2fb9b7c0712debe.zip",
+            f"{SECRETS_PIN}.zip",
             dockerfile,
         )
         self.assertNotIn("CPK_SECRETS_DEVELOPMENT_CREDENTIALS_JSON", dockerfile)
@@ -112,6 +116,7 @@ class SecretsServerProductTests(unittest.TestCase):
         self.assertIn('docker rm -f "$CONTAINER"', smoke)
         self.assertGreaterEqual(smoke.count("start_provider"), 3)
         self.assertIn("resolve-after-restart", smoke)
+        self.assertIn('\\"intent\\":\\"postgres.password\\"', smoke)
         self.assertIn("cpk.test-run", smoke)
         self.assertIn("docker volume create", smoke)
 

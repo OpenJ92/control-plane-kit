@@ -9,7 +9,7 @@ ENV PIP_DEFAULT_TIMEOUT=120 \
 COPY products/secrets_server/entrypoint.sh /usr/local/bin/cpk-secrets-entrypoint
 
 RUN python -m pip install --no-cache-dir \
-    "control-plane-kit-secrets @ https://github.com/OpenJ92/control-plane-kit-secrets/archive/d1c923ca476a87f74af628b7e2fb9b7c0712debe.zip" \
+    "control-plane-kit-secrets @ https://github.com/OpenJ92/control-plane-kit-secrets/archive/7c53591f4771422e94ed4da82e71c126aa76af61.zip" \
     "uvicorn>=0.35" \
     && adduser --disabled-password --gecos "" --uid 10006 secrets \
     && chmod 0555 /usr/local/bin/cpk-secrets-entrypoint \
