@@ -6428,3 +6428,132 @@ control-plane-kit-servers PR #64:
 acceptance. #1205 next owns cpk-server republication, immutable coordinate
 refresh, digest-only image smokes, and provenance validation. #1206 then owns
 the final published multi-consumer gate and #1117 closeout.
+
+## #1205-#1206 Immutable Multi-Consumer Secrets Closeout
+
+The final HARDEN.SECRETS gate now proves the durable provider design through
+published artifacts rather than source-built consumer images. Server-products
+owns one guarded aggregate wrapper that derives every product image from the
+canonical coordinate manifest, rejects references without `@sha256`, pre-pulls
+the artifacts, disables all underlying product builds, and composes the three
+existing live programs without duplicating their semantics.
+
+The accepted version policy is:
+
+```text
+first authorized effect correlation
+  -> provider atomically selects the current active version
+    -> exact same correlation and semantic identity reuses that version
+
+new effect correlation after rotation
+  -> selects the newly current version
+
+revoked selected version
+  -> unresolved use and retry fail before external mutation
+
+completed effect history
+  -> remains immutable reference/version/correlation evidence
+```
+
+This must not be confused with recovery policy. The provider deterministically
+pins a value if an authorized correlation is resolved again; the operations
+coordinator still refuses to replay an uncertain external effect. Recovery and
+fencing own any later decision to reconcile ambiguous side effects.
+
+The published acceptance used these exact images:
+
+```text
+cpk-server:
+  ghcr.io/openj92/control-plane-kit-servers/cpk-server
+  @sha256:141534c254c0fb2291db3b13bfc0c26ffed70a604e7d47009ad682ef9368dd8d
+
+secrets-server:
+  ghcr.io/openj92/control-plane-kit-servers/secrets-server
+  @sha256:e7e9e6efa53dbd82b6bc1b2a92e9ea52df87e6b7dc88b8ceda3aa1df0b3d1b53
+
+cpk-local-gateway:
+  @sha256:035de9903e4eddd47560687b524a43e9e20fbbf5923d7d688acfc069018085c9
+
+cloudflared-connector:
+  @sha256:b5db8bec60f852c1cb488fe6ea79efa38d1016878acd05d2a83089c50b94909e
+
+postgres-server:
+  @sha256:57c72fd2a128e416c7fcc499958864df5301e940bca0a56f58fddf30ffc07777
+
+hello-server:
+  @sha256:e2288b23844b1f0b7526d2798cbc1eaf6e9f536399173a043e7957f0e7730cbf
+
+Docker-in-Docker TLS daemon:
+  @sha256:aa3df78ecf320f5fafdce71c659f1629e96e9de0968305fe1de670e0ca9176ce
+```
+
+The cpk-server and secrets-server packages remain private. Publication needed
+an exact repository Actions access repair: `OpenJ92/control-plane-kit-servers`
+received `Write` access to only those two existing packages. No broad PAT,
+public visibility change, or administrator package grant was introduced.
+
+The live matrix passed:
+
+- Postgres password delivery across provider/cpk-server restart, rotation,
+  revocation, same-correlation retry, new correlations, denial cases, and three
+  concurrent workspace consumers;
+- Cloudflare API-token resolution plus generated tunnel-token custody, public
+  authenticated gateway probing, ingress teardown/recreation with distinct
+  owned identities, and API-verified tunnel/DNS deletion;
+- remote Docker TLS CA, client certificate, client key, and private OCI pull
+  credential delivery through deploy, cpk-server/provider restart, graph
+  update, graph teardown, and wrong-workspace, wrong-intent, revoked-version,
+  and unavailable-provider zero-mutation denials.
+
+The public controller uses authenticated HTTP commands and MCP reads/tools over
+the same operations adapters. Operations stores authorization, correlation,
+run, activity, effect, reference, and bounded result evidence. The provider
+stores encrypted values, selected version ids, and provider-local audits.
+Interpreters alone receive plaintext at immediate Cloudflare, Docker, gateway,
+or product IO.
+
+Targeted leak checks passed against cpk-server logs, provider logs, complete
+operations Postgres dumps, provider SQLite raw bytes, public readback, runtime
+observations, errors, and retained fixture paths. No Cloudflare API token,
+generated tunnel token, Postgres password, TLS private key/certificates, or OCI
+credential entered those forbidden surfaces.
+
+Cloudflare preflight and postflight inventories were identical: the protected
+`auth-potteryfactory` tunnel and three pre-existing CPK DNS records were
+unchanged. Every acceptance tunnel/DNS identity was unique and removed using
+exact durable ownership evidence. Docker postflight retained only the five
+protected Pottery Factory containers; the CPK residue audit found no owned
+container, network, or volume.
+
+The first aggregate invocation exposed a wrapper-only Python quoting error
+before any pull or external mutation. The repaired wrapper now has an
+executable plan-only mode that resolves and validates all seven immutable
+coordinates before live work, preventing static implementation-text checks
+from claiming shell executability.
+
+Final publication metadata:
+
+```text
+cpk-server descriptor checksums:
+  base:               c10fd8fdc202cdcf85258b0b2486933b1b158c9d7faefa169dffddde1cf40bf4
+  Docker:             6783bf07550d59b5f85071626a06541f82815d99e1605501c9a36a1f20e9dd1b
+  Docker+Cloudflare:  ce96a65ac6c40f24d1473684f4c23fdaccce53045788a0c603531bc1ac8f0349
+
+secrets-server descriptor checksum:
+  5f6e10d5e86a501a2a0a8d9d6e58f805d35b0d9857596a80516c2ebdd180dd6a
+
+catalogue checksum:
+  7c557dbbf18fb0bbde71b777d8bb83ea616fc9016a59b3bda5dc627b1c4900b5
+
+control-plane-kit-servers publication PR:
+  #65
+
+control-plane-kit-servers published acceptance PR:
+  #66
+```
+
+The complete server-products Docker-first suite and independent GitHub Actions
+checks pass. #1207 remains deliberately open as the post-SECRETS consolidation
+track for duplicated shell fixtures, polling/cleanup fragments, source-text
+assertions, and explicit source/published/provider-mutating acceptance levels.
+It is not a missing durability requirement and should not weaken any live gate.
