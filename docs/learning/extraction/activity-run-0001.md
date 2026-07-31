@@ -6184,3 +6184,80 @@ ambiguous-effect reconciliation belong to HARDEN.RECOVERY/FENCING.
 denial, leak, and ownership laws to the independent three-file Docker TLS
 consumer. It must prove remote Docker SDK IO with no local-socket or
 process-local resolver fallback.
+
+## #1230 Remote Docker TLS Graph Resume Through Durable Custody
+
+The source-live success path now proves that an authenticated cpk-server can
+deploy, update, and tear down a graph on a distinct Docker daemon without a
+host socket or process-local secret resolver:
+
+```text
+authenticated cpk-server workflow
+  -> admitted secret provider and references
+    -> admitted RemoteDockerTlsAuthority
+      -> graph runtime names authority_ref
+        -> operations grants exact secret uses
+          -> provider resolves selected versions
+            -> DockerRuntimeInterpreter
+              -> authority-scoped DockerSdkClient
+                -> remote TLS daemon mutation
+```
+
+The live fixture stores the CA certificate, client certificate, client key,
+and private GHCR pull credential in durable provider custody. The runtime
+authority references only the TLS ids. A separate workspace-scoped
+`ImagePullAuthority` references the OCI credential. This separation became
+observable only after the first successful TLS connection: the nested daemon
+correctly rejected the private digest-pinned Hello image until pull authority
+was admitted through the existing language.
+
+DIND also distinguishes DNS reachability from TLS identity. A Docker network
+alias made `remote-docker` resolvable but did not place that name in the
+generated server certificate. The fixture now sets both the daemon hostname
+and network alias to the authority endpoint name; certificate verification
+remains enabled.
+
+The acceptance runs three approved transitions through the public cpk-server
+workflow:
+
+```text
+Deploy(empty, blue Hello)
+  -> restart cpk-server and secrets provider with retained stores
+    -> Deploy(blue Hello, green Hello)
+      -> Deploy(green Hello, empty)
+```
+
+Exact host and nested-daemon inventories prove that graph resources exist only
+on the TLS daemon. Every authority-scoped Docker client closes after one
+effect, all temporary TLS files disappear, and teardown leaves no labelled
+container, network, or volume. The five unrelated Pottery Factory containers
+remain running.
+
+Operations authorization rows and provider selection rows have related but
+different meanings:
+
+```text
+operations authorization = a bounded use that may occur
+provider selection        = a version actually resolved
+```
+
+Therefore provider selections must be a subset of prior operations grants,
+not an equal-sized mirror. The final audit proves every consumed CA,
+certificate, key, and OCI credential version maps to an authorized
+correlation, run, activity, and effect; unused grants remain valid evidence of
+least-privilege admission rather than provider reads.
+
+Implementation evidence:
+
+```text
+control-plane-kit-interpreters:
+  5af32fc74b71682c6094b902b64b468e1ab2c3f9
+
+control-plane-kit-servers PR:
+  OpenJ92/control-plane-kit-servers#63
+```
+
+The complete server-products Docker-first suite, cpk-server image smoke,
+source-live remote TLS graph/restart acceptance, leak scan, coordinate check,
+and residue audit pass. This remains source-built acceptance. Immutable
+published-image acceptance belongs to the later publication gate.
