@@ -20,6 +20,7 @@ CONTROLLER_STATE_DIR="$STATE_ROOT/controller-state"
 OPERATIONS_DUMP="$STATE_ROOT/operations.sql"
 OPERATIONS_AUTHORIZATIONS="$STATE_ROOT/operations-authorizations.txt"
 PROVIDER_SELECTIONS="$STATE_ROOT/provider-selections.txt"
+DENIAL_EVIDENCE_DIR="$STATE_ROOT/denials"
 HOST_INVENTORY_BEFORE="$STATE_ROOT/host-inventory-before.txt"
 HOST_INVENTORY_AFTER="$STATE_ROOT/host-inventory-after.txt"
 REMOTE_INVENTORY="$STATE_ROOT/remote-inventory.txt"
@@ -31,7 +32,11 @@ DIND_CONTAINER=""
 SERVER_CONTAINER=""
 
 umask 077
-mkdir -p "$PROVIDER_DATA_DIR" "$BOOTSTRAP_DIR" "$CONTROLLER_STATE_DIR"
+mkdir -p \
+  "$PROVIDER_DATA_DIR" \
+  "$BOOTSTRAP_DIR" \
+  "$CONTROLLER_STATE_DIR" \
+  "$DENIAL_EVIDENCE_DIR"
 
 cleanup() {
   for container in "$SERVER_CONTAINER" "$SECRETS_CONTAINER" "$POSTGRES_CONTAINER" "$DIND_CONTAINER"; do
@@ -123,6 +128,12 @@ start_server() {
 
 run_controller() {
   phase="$1"
+  denial_case="${2:-}"
+  denial_action="${3:-}"
+  controller_workspace="$WORKSPACE_ID"
+  if [ "$phase" = "deny" ]; then
+    controller_workspace="$WORKSPACE_ID-denial-$denial_case"
+  fi
   if ! docker run --rm \
     --label "$PROJECT_LABEL" \
     --label "$WORKSPACE_LABEL" \
@@ -132,18 +143,56 @@ run_controller() {
     -e CPK_HOSTED_ACTIVITY_BASE_URL=http://cpk-server:8080 \
     -e CPK_HOSTED_ACTIVITY_SERVER_CONTAINER="$SERVER_CONTAINER" \
     -e CPK_HOSTED_ACTIVITY_SERVERS_REPO=/app \
-    -e CPK_HOSTED_ACTIVITY_WORKSPACE_ID="$WORKSPACE_ID" \
+    -e CPK_HOSTED_ACTIVITY_WORKSPACE_ID="$controller_workspace" \
     -e CPK_REMOTE_DOCKER_TLS_ENDPOINT=tcp://remote-docker:2376 \
     -e CPK_SECRET_PROVIDER_TOKEN_FILE=/run/secrets/cpk-source-live/client-token \
     -e CPK_SECRET_PROVIDER_BOOTSTRAP_DIR=/run/secrets/cpk-source-live \
     -e CPK_REMOTE_TLS_STATE_DIR=/run/cpk-state \
     -e CPK_REMOTE_TLS_PHASE="$phase" \
+    -e CPK_REMOTE_TLS_DENIAL_CASE="$denial_case" \
+    -e CPK_REMOTE_TLS_DENIAL_ACTION="$denial_action" \
     "$CONTROLLER_IMAGE" \
     python scripts/cpk_server_remote_tls_secret_custody_source_live.py; then
     docker logs "$SERVER_CONTAINER" 2>&1 | tail -n 100 >&2 || true
     docker logs "$SECRETS_CONTAINER" 2>&1 | tail -n 100 >&2 || true
     exit 1
   fi
+}
+
+host_denial_inventory() {
+  destination="$1"
+  {
+    docker ps -aq --no-trunc | sort | sed 's/^/container:/'
+    docker network ls -q --no-trunc | sort | sed 's/^/network:/'
+    docker volume ls -q | sort | sed 's/^/volume:/'
+    docker image ls --no-trunc \
+      --format '{{.ID}}|{{.Repository}}|{{.Tag}}|{{.Digest}}' \
+      | sort | sed 's/^/image:/'
+  } >"$destination"
+}
+
+remote_denial_inventory() {
+  destination="$1"
+  docker exec "$DIND_CONTAINER" sh -c "
+    docker ps -aq --no-trunc | sort | sed 's/^/container:/'
+    docker network ls -q --no-trunc | sort | sed 's/^/network:/'
+    docker volume ls -q | sort | sed 's/^/volume:/'
+    docker image ls --no-trunc \
+      --format '{{.ID}}|{{.Repository}}|{{.Tag}}|{{.Digest}}' \
+      | sort | sed 's/^/image:/'
+  " >"$destination"
+}
+
+assert_denial_inventory_unchanged() {
+  before="$1"
+  after="$2"
+  scope="$3"
+  if cmp -s "$before" "$after"; then
+    return
+  fi
+  echo "remote Docker TLS denial mutated $scope inventory" >&2
+  diff -u "$before" "$after" >&2 || true
+  exit 1
 }
 
 host_inventory() {
@@ -179,6 +228,109 @@ assert_no_tls_temp_directory() {
   fi
   echo "cpk-server retained an authority-scoped Docker TLS directory" >&2
   exit 1
+}
+
+assert_denial_audit() {
+  denial_case="$1"
+  denial_workspace="$2"
+  operations_rows="$DENIAL_EVIDENCE_DIR/$denial_case-operations.txt"
+  provider_rows="$DENIAL_EVIDENCE_DIR/$denial_case-provider.txt"
+  selection_rows="$DENIAL_EVIDENCE_DIR/$denial_case-selections.txt"
+
+  docker exec "$POSTGRES_CONTAINER" psql -U cpk -d cpk -At -F '|' -c "
+SELECT correlation_id, use_intent
+FROM cpk_secret_use_authorizations
+WHERE workspace_id = '$denial_workspace'
+ORDER BY correlation_id, use_intent;
+" >"$operations_rows"
+  docker exec -e DENIAL_WORKSPACE="$denial_workspace" "$SECRETS_CONTAINER" python -c '
+import os
+import sqlite3
+
+connection = sqlite3.connect("/var/lib/cpk-secrets/secrets.sqlite3")
+for row in connection.execute(
+    """
+    SELECT correlation_id, outcome, intent
+    FROM audit_records
+    WHERE workspace_id = ?
+    ORDER BY rowid
+    """,
+    (os.environ["DENIAL_WORKSPACE"],),
+):
+    print("|".join("" if value is None else str(value) for value in row))
+' >"$provider_rows"
+  docker exec -e DENIAL_WORKSPACE="$denial_workspace" "$SECRETS_CONTAINER" python -c '
+import os
+import sqlite3
+
+connection = sqlite3.connect("/var/lib/cpk-secrets/secrets.sqlite3")
+for row in connection.execute(
+    """
+    SELECT correlation_id, intent, version_id
+    FROM secret_resolution_selections
+    WHERE workspace_id = ?
+    ORDER BY correlation_id
+    """,
+    (os.environ["DENIAL_WORKSPACE"],),
+):
+    print("|".join(str(value) for value in row))
+' >"$selection_rows"
+
+  DENIAL_CASE="$denial_case" \
+  OPERATIONS_ROWS="$operations_rows" \
+  PROVIDER_ROWS="$provider_rows" \
+  SELECTION_ROWS="$selection_rows" python3 -c '
+import os
+from pathlib import Path
+
+def rows(name):
+    return [
+        tuple(line.split("|"))
+        for line in Path(os.environ[name]).read_text().splitlines()
+        if line
+    ]
+
+case = os.environ["DENIAL_CASE"]
+operations = set(rows("OPERATIONS_ROWS"))
+provider = rows("PROVIDER_ROWS")
+selections = rows("SELECTION_ROWS")
+allowed_intents = {
+    "docker.remote-tls.ca-certificate",
+    "docker.remote-tls.client-certificate",
+    "docker.remote-tls.client-key",
+    "oci.pull-credential",
+}
+if any(intent not in allowed_intents for _, intent in operations):
+    raise SystemExit("denial authorized an unexpected secret intent")
+if selections:
+    raise SystemExit("denied remote Docker TLS use selected a secret version")
+operation_correlations = {correlation for correlation, _ in operations}
+runtime_provider = [
+    (correlation, outcome, intent)
+    for correlation, outcome, intent in provider
+    if correlation in operation_correlations
+]
+if any(outcome == "resolved" for _, outcome, _ in runtime_provider):
+    raise SystemExit("denied remote Docker TLS use resolved secret material")
+if case == "wrong-workspace":
+    if operations or runtime_provider:
+        raise SystemExit("wrong-workspace denial escaped operations")
+elif case == "wrong-intent":
+    if runtime_provider:
+        raise SystemExit("wrong-intent denial reached provider IO")
+elif case == "revoked-version":
+    if not operations or not any(
+        outcome == "revoked"
+        and intent == "docker.remote-tls.ca-certificate"
+        for _, outcome, intent in runtime_provider
+    ):
+        raise SystemExit("revoked-version denial lacked correlated provider evidence")
+elif case == "provider-unavailable":
+    if not operations or runtime_provider:
+        raise SystemExit("unavailable-provider denial evidence was inconsistent")
+else:
+    raise SystemExit("unknown remote Docker TLS denial case")
+'
 }
 
 if [ "$BUILD_IMAGES" = "1" ]; then
@@ -330,6 +482,20 @@ import json
 import os
 
 workspace_id = os.environ["WORKSPACE_ID"]
+denial_workspaces = [
+    f"{workspace_id}-denial-{case}"
+    for case in (
+        "wrong-workspace",
+        "wrong-intent",
+        "revoked-version",
+        "provider-unavailable",
+    )
+]
+all_workspaces = [
+    workspace_id,
+    *denial_workspaces,
+    f"{workspace_id}-denial-wrong-workspace-source",
+]
 operator_scopes = [
     "hub:instance:create",
     "hub:instance:read",
@@ -352,12 +518,18 @@ print(json.dumps([{
     "credential": "present",
     "subject_id": "hosted-operator",
     "kind": "operator",
-    "workspace_grants": {workspace_id: operator_scopes},
+    "workspace_grants": {
+        candidate_workspace: operator_scopes
+        for candidate_workspace in all_workspaces
+    },
 }, {
     "credential": "worker-present",
     "subject_id": "hosted-worker",
     "kind": "worker",
-    "workspace_grants": {workspace_id: worker_scopes},
+    "workspace_grants": {
+        candidate_workspace: worker_scopes
+        for candidate_workspace in all_workspaces
+    },
 }], separators=(",", ":"), sort_keys=True))
 '
 )"
@@ -415,6 +587,40 @@ if [ -s "$REMOTE_INVENTORY" ]; then
   cat "$REMOTE_INVENTORY" >&2
   exit 1
 fi
+docker logs "$SERVER_CONTAINER" >>"$SERVER_LOG" 2>&1 || true
+docker logs "$SECRETS_CONTAINER" >>"$PROVIDER_LOG" 2>&1 || true
+
+for denial_case in \
+  wrong-workspace \
+  wrong-intent \
+  revoked-version \
+  provider-unavailable
+do
+  denial_workspace="$WORKSPACE_ID-denial-$denial_case"
+  host_before="$DENIAL_EVIDENCE_DIR/$denial_case-host-before.txt"
+  host_after="$DENIAL_EVIDENCE_DIR/$denial_case-host-after.txt"
+  remote_before="$DENIAL_EVIDENCE_DIR/$denial_case-remote-before.txt"
+  remote_after="$DENIAL_EVIDENCE_DIR/$denial_case-remote-after.txt"
+
+  run_controller deny "$denial_case" prepare
+  host_denial_inventory "$host_before"
+  remote_denial_inventory "$remote_before"
+  if [ "$denial_case" = "provider-unavailable" ]; then
+    docker stop "$SECRETS_CONTAINER" >/dev/null
+  fi
+  run_controller deny "$denial_case" execute
+  if [ "$denial_case" = "provider-unavailable" ]; then
+    docker start "$SECRETS_CONTAINER" >/dev/null
+    wait_for_secrets
+  fi
+  host_denial_inventory "$host_after"
+  remote_denial_inventory "$remote_after"
+  assert_denial_inventory_unchanged "$host_before" "$host_after" "host Docker"
+  assert_denial_inventory_unchanged "$remote_before" "$remote_after" "remote DIND"
+  assert_no_tls_temp_directory
+  assert_denial_audit "$denial_case" "$denial_workspace"
+done
+
 docker logs "$SERVER_CONTAINER" >>"$SERVER_LOG" 2>&1 || true
 docker logs "$SECRETS_CONTAINER" >>"$PROVIDER_LOG" 2>&1 || true
 

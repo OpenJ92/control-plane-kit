@@ -1990,6 +1990,42 @@ class CpkServerImageBootstrapTests(unittest.TestCase):
         self.assertIn("CONTROLLER_STATE_DIR:/run/cpk-state", smoke)
         self.assertNotIn('STATE_ROOT:/run/cpk-state', smoke)
 
+    def test_remote_tls_custody_denials_precede_all_daemon_mutation(self) -> None:
+        smoke = (
+            ROOT
+            / "scripts"
+            / "cpk_server_remote_tls_secret_custody_source_live_smoke.sh"
+        ).read_text(encoding="utf-8")
+        controller = (
+            ROOT
+            / "scripts"
+            / "cpk_server_remote_tls_secret_custody_source_live.py"
+        ).read_text(encoding="utf-8")
+
+        self.assertIn('phase == "deny"', controller)
+        self.assertIn("wrong-workspace", controller)
+        self.assertIn("wrong-intent", controller)
+        self.assertIn("revoked-version", controller)
+        self.assertIn("provider-unavailable", controller)
+        self.assertIn("def _prepare_denied_run", controller)
+        self.assertIn("def _execute_until_terminal", controller)
+        self.assertIn("def _provider_revoke_secret", controller)
+        self.assertIn("coordinator_status", controller)
+        self.assertIn("secret_resolution_selections", smoke)
+        self.assertIn("cpk_secret_use_authorizations", smoke)
+
+        self.assertIn("run_controller deny", smoke)
+        self.assertIn("host_denial_inventory", smoke)
+        self.assertIn("remote_denial_inventory", smoke)
+        self.assertIn("docker image ls --no-trunc", smoke)
+        self.assertIn("assert_denial_inventory_unchanged", smoke)
+        self.assertIn("assert_no_tls_temp_directory", smoke)
+        self.assertIn("provider-unavailable", smoke)
+        self.assertNotIn("/var/run/docker.sock", smoke[
+            smoke.index('SERVER_CONTAINER="$(docker run -d') :
+            smoke.index('if ! docker run --rm')
+        ])
+
 
 if __name__ == "__main__":
     unittest.main()
