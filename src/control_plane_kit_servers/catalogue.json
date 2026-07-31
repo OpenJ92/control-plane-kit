@@ -22,32 +22,32 @@
     },
     {
       "descriptor_path": "products/cpk_server/product.cpk.json",
-      "descriptor_sha256": "87296c39f7c1f6a3867af7965d288f49fb0fd9bdc369dbfac21d4a2740941d4f",
-      "image_digest": "sha256:db0de3e0e34dbfe90945af46419576da799a484a7bc45b985767f1cf0131a92d",
-      "image_ref": "ghcr.io/openj92/control-plane-kit-servers/cpk-server:auth-gateway-1143-cpk-server",
+      "descriptor_sha256": "c10fd8fdc202cdcf85258b0b2486933b1b158c9d7faefa169dffddde1cf40bf4",
+      "image_digest": "sha256:141534c254c0fb2291db3b13bfc0c26ffed70a604e7d47009ad682ef9368dd8d",
+      "image_ref": "ghcr.io/openj92/control-plane-kit-servers/cpk-server:harden-secrets-1205-cpk-server",
       "owner_directory": "products/cpk_server",
       "product_id": "cpk-server",
-      "source_commit": "e40e0f6e95bcc92a55bb8ebfe2cff10f002e2e6c",
+      "source_commit": "606f8e74d07873f070d4a06f2968d705034173f6",
       "status": "completed"
     },
     {
       "descriptor_path": "products/cpk_server/product.docker.cpk.json",
-      "descriptor_sha256": "7a60ec9fc018e32713f8c4b354efdede209e06fa98ccd8aef6b52758c15ca3dc",
-      "image_digest": "sha256:db0de3e0e34dbfe90945af46419576da799a484a7bc45b985767f1cf0131a92d",
-      "image_ref": "ghcr.io/openj92/control-plane-kit-servers/cpk-server:auth-gateway-1143-cpk-server",
+      "descriptor_sha256": "6783bf07550d59b5f85071626a06541f82815d99e1605501c9a36a1f20e9dd1b",
+      "image_digest": "sha256:141534c254c0fb2291db3b13bfc0c26ffed70a604e7d47009ad682ef9368dd8d",
+      "image_ref": "ghcr.io/openj92/control-plane-kit-servers/cpk-server:harden-secrets-1205-cpk-server",
       "owner_directory": "products/cpk_server",
       "product_id": "cpk-server-docker",
-      "source_commit": "e40e0f6e95bcc92a55bb8ebfe2cff10f002e2e6c",
+      "source_commit": "606f8e74d07873f070d4a06f2968d705034173f6",
       "status": "completed"
     },
     {
       "descriptor_path": "products/cpk_server/product.docker-cloudflare.cpk.json",
-      "descriptor_sha256": "a6bc7d0a6b14bc3c5064187064d1a776dd6c6b31ce7d9fe76e4b537c138736d2",
-      "image_digest": "sha256:db0de3e0e34dbfe90945af46419576da799a484a7bc45b985767f1cf0131a92d",
-      "image_ref": "ghcr.io/openj92/control-plane-kit-servers/cpk-server:auth-gateway-1143-cpk-server",
+      "descriptor_sha256": "ce96a65ac6c40f24d1473684f4c23fdaccce53045788a0c603531bc1ac8f0349",
+      "image_digest": "sha256:141534c254c0fb2291db3b13bfc0c26ffed70a604e7d47009ad682ef9368dd8d",
+      "image_ref": "ghcr.io/openj92/control-plane-kit-servers/cpk-server:harden-secrets-1205-cpk-server",
       "owner_directory": "products/cpk_server",
       "product_id": "cpk-server-docker-cloudflare",
-      "source_commit": "e40e0f6e95bcc92a55bb8ebfe2cff10f002e2e6c",
+      "source_commit": "606f8e74d07873f070d4a06f2968d705034173f6",
       "status": "completed"
     },
     {
@@ -92,12 +92,12 @@
     },
     {
       "descriptor_path": "products/secrets_server/product.cpk.json",
-      "descriptor_sha256": "20c262403028ec0973ef57af41bd5a1a57c05fcbf2afc96067ecc74c1d8301c0",
-      "image_digest": "sha256:caed948f005a7bab75c930ba9f4db2ecab33bfc1f9cf10cb2160c7af8db3194c",
-      "image_ref": "ghcr.io/openj92/control-plane-kit-servers/secrets-server:harden-secrets-1201",
+      "descriptor_sha256": "5f6e10d5e86a501a2a0a8d9d6e58f805d35b0d9857596a80516c2ebdd180dd6a",
+      "image_digest": "sha256:e7e9e6efa53dbd82b6bc1b2a92e9ea52df87e6b7dc88b8ceda3aa1df0b3d1b53",
+      "image_ref": "ghcr.io/openj92/control-plane-kit-servers/secrets-server:harden-secrets-1205-secrets-server",
       "owner_directory": "products/secrets_server",
       "product_id": "secrets-server",
-      "source_commit": "d1c923ca476a87f74af628b7e2fb9b7c0712debe",
+      "source_commit": "606f8e74d07873f070d4a06f2968d705034173f6",
       "status": "completed"
     }
   ],
