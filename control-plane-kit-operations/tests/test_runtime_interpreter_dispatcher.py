@@ -7,12 +7,15 @@ from control_plane_kit_core.operations.lifecycle import (
     ActivityEventKind,
     ActivityRunStatus,
     ExecutionRequestStatus,
+    FailureCategory,
 )
 from control_plane_kit_core.planning import (
     ActivityId,
     ActivityPlan,
+    AllocatePublicIngress,
     PlannedActivity,
     NodeTarget,
+    PublicIngressActivityTarget,
     ReconcileRuntime,
     RemoveNodeResource,
     RuntimeTarget,
@@ -53,6 +56,8 @@ from control_plane_kit_core.secrets import (
 from control_plane_kit_core.topology import DeploymentGraph, Node, RuntimeRecord
 from control_plane_kit_core.types import BlockFamily, Protocol, RuntimeKind
 from control_plane_kit_operations.coordinator import (
+    ActivityExecutionDispatcher,
+    ActivityExecutionOutcome,
     ActivityRealizationContext,
     RuntimeInterpreterDispatcher,
 )
@@ -72,10 +77,12 @@ from control_plane_kit_operations.records import (
     ActivityPlanStatus,
     ActivityRunRecord,
     AdmittedRun,
+    BoundedEvidence,
     ClaimIdentity,
     ExecutionIdempotency,
     ExecutionRequestIdentity,
     ExecutionRequestRecord,
+    FailureEvidence,
     GraphVersionRecord,
     RetryIdentity,
 )
@@ -96,6 +103,19 @@ class RecordingInterpreter:
             request.effect_id,
             evidence={"interpreter": self.name},
         )
+
+
+class RecordingActivityAdapter:
+    def __init__(self, outcome: ActivityExecutionOutcome) -> None:
+        self.outcome = outcome
+        self.contexts: list[ActivityRealizationContext] = []
+
+    def execute(
+        self,
+        context: ActivityRealizationContext,
+    ) -> ActivityExecutionOutcome:
+        self.contexts.append(context)
+        return self.outcome
 
 
 class AuthorityAwareRecordingInterpreter(RecordingInterpreter):
@@ -152,6 +172,67 @@ class RecordingSecretUseAuthorizer:
 
 
 class RuntimeInterpreterDispatcherTests(unittest.TestCase):
+    def test_activity_dispatcher_preserves_handled_ingress_failure(self) -> None:
+        ingress_failure = ActivityExecutionOutcome.unsupported(
+            FailureEvidence(
+                FailureCategory.OPERATOR_REVIEW,
+                "secret.use-not-authorized",
+                "ingress authority secret use was not authorized",
+                BoundedEvidence(),
+            )
+        )
+        ingress = RecordingActivityAdapter(ingress_failure)
+        runtime = RecordingActivityAdapter(ActivityExecutionOutcome.succeeded())
+        dispatcher = ActivityExecutionDispatcher(runtime=runtime, ingress=ingress)
+        context = context_for(
+            AllocatePublicIngress(PublicIngressActivityTarget("gateway-public"))
+        )
+
+        outcome = dispatcher.execute(context)
+
+        self.assertIs(outcome, ingress_failure)
+        self.assertEqual(ingress.contexts, [context])
+        self.assertEqual(runtime.contexts, [])
+
+    def test_activity_dispatcher_routes_runtime_operation_only_to_runtime(self) -> None:
+        ingress = RecordingActivityAdapter(ActivityExecutionOutcome.succeeded())
+        runtime_outcome = ActivityExecutionOutcome.succeeded(
+            BoundedEvidence.from_mapping({"adapter": "runtime"})
+        )
+        runtime = RecordingActivityAdapter(runtime_outcome)
+        dispatcher = ActivityExecutionDispatcher(runtime=runtime, ingress=ingress)
+        context = context_for(StartRuntime(RuntimeTarget("runtime-a")))
+
+        outcome = dispatcher.execute(context)
+
+        self.assertIs(outcome, runtime_outcome)
+        self.assertEqual(runtime.contexts, [context])
+        self.assertEqual(ingress.contexts, [])
+
+    def test_activity_dispatcher_reports_missing_ingress_without_runtime_call(
+        self,
+    ) -> None:
+        runtime = RecordingActivityAdapter(ActivityExecutionOutcome.succeeded())
+        dispatcher = ActivityExecutionDispatcher(runtime=runtime)
+        context = context_for(
+            AllocatePublicIngress(PublicIngressActivityTarget("gateway-public"))
+        )
+
+        outcome = dispatcher.execute(context)
+
+        self.assertEqual(outcome.kind.name, "UNSUPPORTED")
+        self.assertIsNotNone(outcome.failure)
+        assert outcome.failure is not None
+        self.assertEqual(outcome.failure.code, "ingress.interpreter-missing")
+        self.assertEqual(
+            outcome.failure.details.descriptor(),
+            {
+                "activity_id": "activity-a",
+                "operation": "AllocatePublicIngress",
+            },
+        )
+        self.assertEqual(runtime.contexts, [])
+
     def test_start_node_dispatches_by_desired_graph_runtime_kind(self) -> None:
         docker = RecordingInterpreter("docker")
         dry_run = RecordingInterpreter("dry-run")

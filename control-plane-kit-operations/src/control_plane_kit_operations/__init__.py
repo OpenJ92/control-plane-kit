@@ -41,6 +41,7 @@ from .advancement import (
 )
 from .coordinator import (
     ActivityExecutionAdapter,
+    ActivityExecutionDispatcher,
     ActivityExecutionOutcome,
     ActivityRealizationContext,
     CoordinatorStatus,
@@ -375,6 +376,7 @@ __all__ = [
     "ExecutionAdmissionNotFound",
     "ExecutionAdmissionResult",
     "ActivityExecutionAdapter",
+    "ActivityExecutionDispatcher",
     "ActivityExecutionOutcome",
     "ActivityRealizationContext",
     "CoordinatorStatus",
