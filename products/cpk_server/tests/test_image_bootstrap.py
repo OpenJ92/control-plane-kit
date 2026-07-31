@@ -1895,6 +1895,9 @@ class CpkServerImageBootstrapTests(unittest.TestCase):
         self.assertIn("command.runtime-authority.register", controller)
         self.assertIn("read.runtime-authorities", controller)
         self.assertIn("read.runtime-authority-detail", controller)
+        self.assertIn("expected_references", controller)
+        self.assertIn("public reference readback omitted", controller)
+        self.assertIn("public authority readback omitted", controller)
         self.assertIn('"kind": "remote-docker-tls"', controller)
         self.assertIn("secret://control-plane-kit/docker-tls/ca", controller)
         self.assertIn("secret://control-plane-kit/docker-tls/cert", controller)
@@ -1914,6 +1917,56 @@ class CpkServerImageBootstrapTests(unittest.TestCase):
         self.assertNotIn("CpkServerOperationsApplication", controller)
         self.assertNotIn("PostgresUnitOfWork", controller)
         self.assertNotIn("DockerRuntimeInterpreter", controller)
+
+    def test_remote_tls_custody_foundation_uses_durable_provider_without_host_fallback(
+        self,
+    ) -> None:
+        smoke = (
+            ROOT
+            / "scripts"
+            / "cpk_server_remote_tls_secret_custody_source_live_smoke.sh"
+        ).read_text(encoding="utf-8")
+        controller = (
+            ROOT
+            / "scripts"
+            / "cpk_server_remote_tls_secret_custody_source_live.py"
+        ).read_text(encoding="utf-8")
+
+        self.assertIn("docker:27-dind", smoke)
+        self.assertIn("DOCKER_TLS_CERTDIR=/certs", smoke)
+        self.assertIn("-H tcp://127.0.0.1:2376 version", smoke)
+        self.assertIn("control_plane_kit_secrets.server:app", smoke)
+        self.assertIn("CPK_PRODUCT_MATERIAL_RESOLVER=provider", smoke)
+        self.assertIn("CPK_MATERIAL_PROVIDER_ROUTES_JSON", smoke)
+        self.assertIn("CPK_MATERIAL_PROVIDER_BOOTSTRAP_FILES_JSON", smoke)
+        self.assertIn("docker.remote-tls.ca-certificate", smoke)
+        self.assertIn("docker.remote-tls.client-certificate", smoke)
+        self.assertIn("docker.remote-tls.client-key", smoke)
+        self.assertNotIn("CPK_PRODUCT_SECRET_VALUES_JSON", smoke)
+        self.assertNotIn("CPK_PRODUCT_MATERIAL_RESOLVER=local-development", smoke)
+        server_run = smoke[
+            smoke.index('SERVER_CONTAINER="$(docker run -d') :
+            smoke.index('if ! docker run --rm')
+        ]
+        self.assertNotIn("/var/run/docker.sock", server_run)
+
+        self.assertIn("/secret-providers", controller)
+        self.assertIn("/secret-references", controller)
+        self.assertIn('"secret://control-plane-kit/docker-tls"', controller)
+        self.assertNotIn('"secret://control-plane-kit/docker-tls/"', controller)
+        self.assertIn("for reference, intent, value_file in TLS_SECRETS", controller)
+        self.assertIn('"docker.remote-tls.ca-certificate"', controller)
+        self.assertIn('"docker.remote-tls.client-certificate"', controller)
+        self.assertIn('"docker.remote-tls.client-key"', controller)
+        self.assertIn("command.runtime-authority.register", controller)
+        self.assertIn("read.runtime-authorities", controller)
+        self.assertIn("read.runtime-authority-detail", controller)
+        self.assertIn('"kind": "remote-docker-tls"', controller)
+        self.assertIn("secret://control-plane-kit/docker-tls/ca", controller)
+        self.assertIn("secret://control-plane-kit/docker-tls/cert", controller)
+        self.assertIn("secret://control-plane-kit/docker-tls/key", controller)
+        self.assertNotIn("DockerRuntimeInterpreter", controller)
+        self.assertNotIn("ControlPlaneKitSecretsResolver", controller)
 
 
 if __name__ == "__main__":
