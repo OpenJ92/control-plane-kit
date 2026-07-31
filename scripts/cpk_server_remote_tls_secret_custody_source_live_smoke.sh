@@ -7,6 +7,7 @@ CONTROLLER_IMAGE="${CPK_SERVERS_TEST_IMAGE:-control-plane-kit-servers-test:local
 SERVER_IMAGE="${CPK_REMOTE_TLS_CUSTODY_SERVER_IMAGE:-control-plane-kit-servers/cpk-server:source-1229}"
 SECRETS_IMAGE="${CPK_SECRETS_TEST_IMAGE:-control-plane-kit-secrets:source-1229}"
 DIND_IMAGE="${CPK_REMOTE_TLS_DIND_IMAGE:-docker:27-dind}"
+POSTGRES_IMAGE="${CPK_LIVE_POSTGRES_IMAGE:-postgres:16-alpine}"
 BUILD_IMAGES="${CPK_REMOTE_TLS_CUSTODY_BUILD_IMAGES:-1}"
 RUN_SUFFIX="$(date +%s)-$$"
 WORKSPACE_ID="workspace-remote-docker-tls-$RUN_SUFFIX"
@@ -350,7 +351,7 @@ POSTGRES_CONTAINER="$(docker run -d \
   -e POSTGRES_DB=cpk \
   -e POSTGRES_USER=cpk \
   -e POSTGRES_PASSWORD=cpk \
-  postgres:16-alpine)"
+  "$POSTGRES_IMAGE")"
 
 POSTGRES_READY=0
 for _ in 1 2 3 4 5 6 7 8 9 10 11 12 13 14 15; do
