@@ -5,6 +5,7 @@ import importlib.util
 import json
 import os
 from pathlib import Path
+import subprocess
 import tempfile
 import sys
 import time
@@ -2025,6 +2026,71 @@ class CpkServerImageBootstrapTests(unittest.TestCase):
             smoke.index('SERVER_CONTAINER="$(docker run -d') :
             smoke.index('if ! docker run --rm')
         ])
+
+    def test_published_secret_consumer_gate_uses_only_immutable_product_images(
+        self,
+    ) -> None:
+        wrapper = (
+            ROOT / "scripts" / "cpk_server_secret_consumers_published_live_smoke.sh"
+        ).read_text(encoding="utf-8")
+
+        self.assertIn("CPK_SECRET_CONSUMERS_PUBLISHED_LIVE_ACCEPTANCE", wrapper)
+        self.assertIn("CPK_SECRET_CONSUMERS_PUBLISHED_LIVE_PLAN_ONLY", wrapper)
+        self.assertIn("coordinates/server-products.json", wrapper)
+        for product_id in (
+            "cpk-server",
+            "secrets-server",
+            "cpk-local-gateway",
+            "cloudflared-connector",
+            "postgres-server",
+            "hello-server",
+        ):
+            self.assertIn(f"coordinate_image {product_id}", wrapper)
+        self.assertIn("require_digest", wrapper)
+        self.assertIn("@sha256:", wrapper)
+        self.assertIn("docker.io/library/docker@sha256:", wrapper)
+        self.assertIn("CPK_SECRET_PROVIDER_BUILD_IMAGES=0", wrapper)
+        self.assertIn("CPK_CLOUDFLARE_CUSTODY_BUILD_IMAGES=0", wrapper)
+        self.assertIn("CPK_REMOTE_TLS_CUSTODY_BUILD_IMAGES=0", wrapper)
+        self.assertIn("CPK_LIVE_POSTGRES_IMAGE", wrapper)
+        self.assertIn("cpk_server_secret_provider_source_live_smoke.sh", wrapper)
+        self.assertIn(
+            "cpk_server_cloudflare_secret_custody_source_live_smoke.sh",
+            wrapper,
+        )
+        self.assertIn(
+            "cpk_server_remote_tls_secret_custody_source_live_smoke.sh",
+            wrapper,
+        )
+        self.assertIn("docker_residue_audit.sh", wrapper)
+        self.assertNotIn("cpk-server:source-", wrapper)
+        self.assertNotIn("control-plane-kit-secrets:source-", wrapper)
+
+        for script_name in (
+            "cpk_server_secret_provider_source_live_smoke.sh",
+            "cpk_server_cloudflare_secret_custody_source_live_smoke.sh",
+            "cpk_server_remote_tls_secret_custody_source_live_smoke.sh",
+        ):
+            smoke = (ROOT / "scripts" / script_name).read_text(encoding="utf-8")
+            self.assertIn("CPK_LIVE_POSTGRES_IMAGE", smoke)
+            self.assertIn('"$POSTGRES_IMAGE")', smoke)
+
+        completed = subprocess.run(
+            [str(ROOT / "scripts" / "cpk_server_secret_consumers_published_live_smoke.sh")],
+            cwd=ROOT,
+            env={
+                **os.environ,
+                "CPK_SECRET_CONSUMERS_PUBLISHED_LIVE_ACCEPTANCE": "1",
+                "CPK_SECRET_CONSUMERS_PUBLISHED_LIVE_PLAN_ONLY": "1",
+            },
+            check=False,
+            capture_output=True,
+            text=True,
+        )
+        self.assertEqual(0, completed.returncode, completed.stderr)
+        planned_images = completed.stdout.splitlines()
+        self.assertEqual(7, len(planned_images))
+        self.assertTrue(all("@sha256:" in image for image in planned_images))
 
 
 if __name__ == "__main__":
