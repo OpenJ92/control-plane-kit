@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import base64
-from dataclasses import replace
+from dataclasses import dataclass, replace
 import json
 import os
 from pathlib import Path
@@ -42,8 +42,15 @@ CA_INTENT = "docker.remote-tls.ca-certificate"
 CERTIFICATE_INTENT = "docker.remote-tls.client-certificate"
 KEY_INTENT = "docker.remote-tls.client-key"
 OCI_PULL_CREDENTIAL_INTENT = "oci.pull-credential"
+APPLICATION_TOKEN_INTENT = "application.control-token"
 PROVIDER_BASE_URL = "http://cpk-secrets:8081"
 STATE_FILENAME = "remote-tls-graph-state.json"
+DENIAL_CASES = (
+    "wrong-workspace",
+    "wrong-intent",
+    "revoked-version",
+    "provider-unavailable",
+)
 TLS_SECRETS = (
     (CA_REFERENCE, CA_INTENT, "ca.pem"),
     (CERTIFICATE_REFERENCE, CERTIFICATE_INTENT, "cert.pem"),
@@ -92,8 +99,37 @@ def main() -> int:
             servers_repo=servers_repo,
             state_file=state_file,
         )
+    elif phase == "deny":
+        denial_case = _required_env("CPK_REMOTE_TLS_DENIAL_CASE")
+        denial_action = _required_env("CPK_REMOTE_TLS_DENIAL_ACTION")
+        if denial_case not in DENIAL_CASES:
+            raise RuntimeError("CPK_REMOTE_TLS_DENIAL_CASE is unsupported")
+        denial_state_file = (
+            state_file.parent / f"remote-tls-denial-{denial_case}.json"
+        )
+        if denial_action == "prepare":
+            _prepare_denial(
+                workflow,
+                denial_case=denial_case,
+                endpoint=endpoint,
+                bootstrap_dir=bootstrap_dir,
+                provider_token_file=provider_token_file,
+                servers_repo=servers_repo,
+                state_file=denial_state_file,
+            )
+        elif denial_action == "execute":
+            _execute_denial(
+                workflow,
+                denial_case=denial_case,
+                bootstrap_dir=bootstrap_dir,
+                state_file=denial_state_file,
+            )
+        else:
+            raise RuntimeError(
+                "CPK_REMOTE_TLS_DENIAL_ACTION must be prepare or execute"
+            )
     else:
-        raise RuntimeError("CPK_REMOTE_TLS_PHASE must be deploy or resume")
+        raise RuntimeError("CPK_REMOTE_TLS_PHASE must be deploy, resume, or deny")
     return 0
 
 
@@ -205,6 +241,255 @@ def _resume_update_and_teardown(
     print("cpk-server remote Docker TLS restart/update/teardown passed")
 
 
+@dataclass(frozen=True)
+class PreparedDenialRun:
+    run_id: str
+    plan_id: str
+    current_graph_id: str
+    desired_graph_id: str
+
+
+def _prepare_denial(
+    workflow: HostedWorkflow,
+    *,
+    denial_case: str,
+    endpoint: str,
+    bootstrap_dir: Path,
+    provider_token_file: Path,
+    servers_repo: Path,
+    state_file: Path,
+) -> None:
+    current_graph_id = workflow.create_workspace(
+        name=f"Remote Docker TLS denial {denial_case}"
+    )
+    if denial_case == "wrong-workspace":
+        source = HostedWorkflow(
+            workflow.base_url,
+            workspace_id=f"{workflow.workspace_id}-source",
+            worker_id=workflow.worker_id,
+            server_container=workflow.server_container,
+            worker_authorization=workflow.worker_authorization,
+        )
+        source.create_workspace(name="Remote Docker TLS wrong-workspace source")
+        _register_custody_material(
+            source,
+            bootstrap_dir=bootstrap_dir,
+            provider_token_file=provider_token_file,
+        )
+    else:
+        reference_intents = {}
+        provider_intents = tuple(intent for _, intent, _ in CUSTODY_SECRETS)
+        if denial_case == "wrong-intent":
+            reference_intents[CERTIFICATE_REFERENCE] = (
+                APPLICATION_TOKEN_INTENT,
+            )
+            provider_intents = (*provider_intents, APPLICATION_TOKEN_INTENT)
+        _register_custody_material(
+            workflow,
+            bootstrap_dir=bootstrap_dir,
+            provider_token_file=provider_token_file,
+            provider_intents=provider_intents,
+            reference_intents=reference_intents,
+        )
+
+    _register_runtime_authority(workflow, endpoint=endpoint)
+    workflow.register_ghcr_pull_authority(
+        credential_reference=GHCR_PULL_CREDENTIAL_REFERENCE,
+    )
+    hello_document = _verification_free_hello_document(servers_repo)
+    workflow.import_product("remote-hello", hello_document)
+    graph = _single_hello_graph(
+        hello_document,
+        workspace_id=workflow.workspace_id,
+        authority_ref=RuntimeAuthorityReference(AUTHORITY_REF),
+        message=f"Remote Docker TLS denied {denial_case}",
+    )
+    prepared = _prepare_denied_run(
+        workflow,
+        title=f"Remote Docker TLS denied {denial_case}",
+        graph=graph,
+        current_graph_id=current_graph_id,
+    )
+    if denial_case == "revoked-version":
+        _provider_revoke_secret(
+            workspace_id=workflow.workspace_id,
+            reference=CA_REFERENCE,
+            provider_token_file=provider_token_file,
+            correlation_id=f"{workflow.workspace_id}:revoked-version:setup",
+        )
+    _write_state(
+        state_file,
+        {
+            "denial_case": denial_case,
+            "run_id": prepared.run_id,
+            "plan_id": prepared.plan_id,
+            "current_graph_id": prepared.current_graph_id,
+            "desired_graph_id": prepared.desired_graph_id,
+        },
+    )
+    print(f"cpk-server remote Docker TLS denial prepared: {denial_case}")
+
+
+def _execute_denial(
+    workflow: HostedWorkflow,
+    *,
+    denial_case: str,
+    bootstrap_dir: Path,
+    state_file: Path,
+) -> None:
+    state = _read_state(state_file)
+    if state.get("denial_case") != denial_case:
+        raise RuntimeError("remote Docker TLS denial state does not match case")
+    terminal = _execute_until_terminal(workflow, str(state["run_id"]))
+    if terminal.get("coordinator_status") not in {
+        "failed",
+        "unsupported",
+        "uncertain",
+        "blocked",
+    }:
+        raise RuntimeError("remote Docker TLS denial did not stop execution")
+    if workflow.read_current_graph_id() != str(state["current_graph_id"]):
+        raise RuntimeError("denied remote Docker TLS run advanced current graph")
+    timeline = _http(
+        workflow.base_url,
+        "GET",
+        f"/workspaces/{workflow.workspace_id}/activity",
+    )
+    rendered = json.dumps(
+        {"terminal": terminal, "timeline": timeline},
+        separators=(",", ":"),
+        sort_keys=True,
+    )
+    expected_code = {
+        "wrong-workspace": "secret.use-not-authorized",
+        "wrong-intent": "secret.use-not-authorized",
+        "revoked-version": "docker.runtime-authority-secret-denied",
+        "provider-unavailable": "docker.runtime-authority-uncertain",
+    }[denial_case]
+    if expected_code not in rendered:
+        raise RuntimeError(
+            f"remote Docker TLS denial omitted bounded code {expected_code}"
+        )
+    lowered = rendered.lower()
+    for forbidden in ("begin certificate", "begin private key", "value_base64"):
+        if forbidden in lowered:
+            raise RuntimeError("remote Docker TLS denial exposed secret material")
+    credential = json.loads(
+        (bootstrap_dir / "ghcr-pull-credential.json").read_text(encoding="utf-8")
+    )
+    token = credential.get("password")
+    if isinstance(token, str) and token and token in rendered:
+        raise RuntimeError("remote Docker TLS denial exposed OCI credential")
+    print(f"cpk-server remote Docker TLS denial passed: {denial_case}")
+
+
+def _prepare_denied_run(
+    workflow: HostedWorkflow,
+    *,
+    title: str,
+    graph: DeploymentGraph,
+    current_graph_id: str,
+) -> PreparedDenialRun:
+    session_id = workflow.start_session(title)
+    desired_graph_id = workflow.set_desired_graph(
+        session_id=session_id,
+        graph=graph,
+        title=title,
+        expected_desired_graph_id=None,
+    )
+    plan_id = workflow.plan_transition(
+        session_id=session_id,
+        title=title,
+        current_graph_id=current_graph_id,
+        desired_graph_id=desired_graph_id,
+    )
+    approval = workflow.request_approval(
+        session_id=session_id,
+        title=title,
+        plan_id=plan_id,
+    )
+    approval_id = str(approval["request_id"])
+    workflow.assert_approval_visible(approval_id, plan_id)
+    workflow.approve(session_id=session_id, title=title, approval=approval)
+    request_id = workflow.admit(
+        session_id=session_id,
+        title=title,
+        plan_id=plan_id,
+        approval_id=approval_id,
+    )
+    run_id = workflow.claim(title=title, request_id=request_id)
+    workflow.start_run(title=title, run_id=run_id)
+    return PreparedDenialRun(
+        run_id=run_id,
+        plan_id=plan_id,
+        current_graph_id=current_graph_id,
+        desired_graph_id=desired_graph_id,
+    )
+
+
+def _execute_until_terminal(
+    workflow: HostedWorkflow,
+    run_id: str,
+) -> dict[str, Any]:
+    for attempt in range(40):
+        result = _mcp(
+            workflow.base_url,
+            "tools/call",
+            "command.deployment.execute",
+            {
+                "workspace_id": workflow.workspace_id,
+                "run_id": run_id,
+                "worker_id": workflow.worker_id,
+                "actor_scopes": [PolicyScope.EXECUTION_OPERATE.value],
+                "idempotency_key": (
+                    f"{workflow.workspace_id}:denied-execute:{attempt}"
+                ),
+                "max_effects": 1,
+            },
+            timeout=90,
+            authorization=workflow.worker_authorization,
+        )
+        if result.get("coordinator_status") in {
+            "completed",
+            "failed",
+            "unsupported",
+            "uncertain",
+            "blocked",
+        }:
+            return result
+    raise RuntimeError("remote Docker TLS denial did not reach a terminal state")
+
+
+def _register_custody_material(
+    workflow: HostedWorkflow,
+    *,
+    bootstrap_dir: Path,
+    provider_token_file: Path,
+    provider_intents: tuple[str, ...] | None = None,
+    reference_intents: dict[str, tuple[str, ...]] | None = None,
+) -> None:
+    provider_registration_id = _register_provider(
+        workflow,
+        allowed_intents=provider_intents,
+    )
+    overrides = reference_intents or {}
+    for reference, intent, value_file in CUSTODY_SECRETS:
+        _register_reference(
+            workflow,
+            provider_registration_id=provider_registration_id,
+            reference=reference,
+            intent=intent,
+            allowed_intents=overrides.get(reference),
+        )
+        _provider_write_secret(
+            workspace_id=workflow.workspace_id,
+            reference=reference,
+            intent=intent,
+            value_file=bootstrap_dir / value_file,
+            provider_token_file=provider_token_file,
+        )
+
+
 def _verification_free_hello_document(servers_repo: Path) -> Any:
     seeded = _product_document(servers_repo, "hello_server")
     product = replace(
@@ -236,7 +521,14 @@ def _read_state(path: Path) -> dict[str, object]:
     return value
 
 
-def _register_provider(workflow: HostedWorkflow) -> str:
+def _register_provider(
+    workflow: HostedWorkflow,
+    *,
+    allowed_intents: tuple[str, ...] | None = None,
+) -> str:
+    intents = allowed_intents or tuple(
+        intent for _, intent, _ in CUSTODY_SECRETS
+    )
     response = _http(
         workflow.base_url,
         "POST",
@@ -251,12 +543,7 @@ def _register_provider(workflow: HostedWorkflow) -> str:
                 "secret://control-plane-kit/docker-tls",
                 "secret://control-plane-kit/oci-pull",
             ],
-            "allowed_intents": [
-                CA_INTENT,
-                CERTIFICATE_INTENT,
-                KEY_INTENT,
-                OCI_PULL_CREDENTIAL_INTENT,
-            ],
+            "allowed_intents": list(intents),
             "admitted_at": _clock(),
             "metadata": {"acceptance": "remote-docker-tls-source-live"},
             "idempotency_key": f"{workflow.workspace_id}:secret-provider",
@@ -271,6 +558,7 @@ def _register_reference(
     provider_registration_id: str,
     reference: str,
     intent: str,
+    allowed_intents: tuple[str, ...] | None = None,
 ) -> None:
     _http(
         workflow.base_url,
@@ -279,7 +567,7 @@ def _register_reference(
         {
             "reference": reference,
             "provider_registration_id": provider_registration_id,
-            "allowed_intents": [intent],
+            "allowed_intents": list(allowed_intents or (intent,)),
             "admitted_at": _clock(),
             "metadata": {"acceptance": "remote-docker-tls-source-live"},
             "idempotency_key": (
@@ -395,8 +683,7 @@ def _provider_write_secret(
     value_file: Path,
     provider_token_file: Path,
 ) -> None:
-    encoded_reference = base64.urlsafe_b64encode(reference.encode("utf-8"))
-    secret_id = f"cpk1_{encoded_reference.rstrip(b'=').decode('ascii')}"
+    secret_id = _provider_secret_id(reference)
     request = Request(
         f"{PROVIDER_BASE_URL}/v1/workspaces/{workspace_id}/secrets/{secret_id}",
         method="POST",
@@ -429,6 +716,50 @@ def _provider_write_secret(
         payload = json.loads(error.read())
     if status != 200 or not isinstance(payload, dict) or payload.get("outcome") != "stored":
         raise RuntimeError("provider TLS fixture write failed")
+
+
+def _provider_revoke_secret(
+    *,
+    workspace_id: str,
+    reference: str,
+    provider_token_file: Path,
+    correlation_id: str,
+) -> None:
+    request = Request(
+        (
+            f"{PROVIDER_BASE_URL}/v1/workspaces/{workspace_id}/secrets/"
+            f"{_provider_secret_id(reference)}/revoke"
+        ),
+        method="POST",
+        headers={
+            "Authorization": (
+                f"Bearer {provider_token_file.read_text(encoding='utf-8').strip()}"
+            ),
+            "Content-Type": "application/json",
+        },
+        data=json.dumps(
+            {
+                "caller_subject": "remote-tls-source-live-bootstrap",
+                "correlation_id": correlation_id,
+            },
+            separators=(",", ":"),
+            sort_keys=True,
+        ).encode("utf-8"),
+    )
+    try:
+        with urlopen(request, timeout=20) as response:
+            status = response.status
+            payload: Any = json.loads(response.read())
+    except HTTPError as error:
+        status = error.code
+        payload = json.loads(error.read())
+    if status != 200 or not isinstance(payload, dict):
+        raise RuntimeError("provider TLS fixture revocation failed")
+
+
+def _provider_secret_id(reference: str) -> str:
+    encoded_reference = base64.urlsafe_b64encode(reference.encode("utf-8"))
+    return f"cpk1_{encoded_reference.rstrip(b'=').decode('ascii')}"
 
 
 def _required_env(name: str) -> str:
