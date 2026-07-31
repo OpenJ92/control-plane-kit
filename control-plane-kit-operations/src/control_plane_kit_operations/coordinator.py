@@ -17,7 +17,9 @@ from control_plane_kit_core.planning import (
     ActivityId,
     ActivityPlan,
     AddSocketConnection,
+    AllocatePublicIngress,
     PlannedActivity,
+    RemovePublicIngress,
     RemoveSocketConnection,
     SwitchSocketConnection,
 )
@@ -363,6 +365,51 @@ class ActivityExecutionAdapter(Protocol):
         self,
         context: ActivityRealizationContext,
     ) -> ActivityExecutionOutcome: ...
+
+
+@dataclass(frozen=True)
+class ActivityExecutionDispatcher:
+    """Dispatch a planned activity to its closed operations-owned effect family."""
+
+    runtime: ActivityExecutionAdapter
+    ingress: ActivityExecutionAdapter | None = None
+
+    def __post_init__(self) -> None:
+        if not hasattr(self.runtime, "execute"):
+            raise InvalidOperationCommand("runtime activity adapter must expose execute")
+        if self.ingress is not None and not hasattr(self.ingress, "execute"):
+            raise InvalidOperationCommand("ingress activity adapter must expose execute")
+
+    def execute(
+        self,
+        context: ActivityRealizationContext,
+    ) -> ActivityExecutionOutcome:
+        if not isinstance(context, ActivityRealizationContext):
+            raise InvalidOperationCommand(
+                "activity dispatch requires ActivityRealizationContext"
+            )
+        if isinstance(
+            context.activity.operation,
+            (AllocatePublicIngress, RemovePublicIngress),
+        ):
+            if self.ingress is None:
+                return ActivityExecutionOutcome.unsupported(
+                    FailureEvidence(
+                        FailureCategory.OPERATOR_REVIEW,
+                        "ingress.interpreter-missing",
+                        "no ingress activity adapter is configured",
+                        BoundedEvidence.from_mapping(
+                            {
+                                "activity_id": context.activity.activity_id.value,
+                                "operation": type(
+                                    context.activity.operation
+                                ).__name__,
+                            }
+                        ),
+                    )
+                )
+            return self.ingress.execute(context)
+        return self.runtime.execute(context)
 
 
 class RuntimeEffectInterpreter(Protocol):
