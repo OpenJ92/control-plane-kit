@@ -1,8 +1,8 @@
 {
   "schema": "cpk-servers.coordinates",
   "upstreams": {
-    "control_plane_kit_commit": "ba38616580dda5ae30376bc1751d2c93616ea24a",
-    "control_plane_kit_interpreters_commit": "d2f507488a07b4dcec628307a161a0c732543657",
+    "control_plane_kit_commit": "d2d81efb4d0f4ec7fd43145317779ed8e324833f",
+    "control_plane_kit_interpreters_commit": "c86512a04218fe8dca841c969a84c3d37496d78e",
     "control_plane_kit_secrets_commit": "d1c923ca476a87f74af628b7e2fb9b7c0712debe"
   },
   "products": [
@@ -82,12 +82,12 @@
       "product_id": "cpk-local-gateway",
       "owner_directory": "products/cpk_local_gateway",
       "descriptor_path": "products/cpk_local_gateway/product.cpk.json",
-      "source_commit": "02120b7f9853583804b545bfee262103835b3eea",
+      "source_commit": "b33e9734a7e8216362454e18439e79aa7b0dfc0d",
       "image": {
         "registry": "ghcr.io",
         "repository": "openj92/control-plane-kit-servers/cpk-local-gateway",
-        "tag": "auth-gateway-1143",
-        "digest": "sha256:5698c1ee9e8b933920177d260bf44963e2ebbdfc58f791fc98bf6efd21156aa8"
+        "tag": "harden-secrets-1225",
+        "digest": "sha256:035de9903e4eddd47560687b524a43e9e20fbbf5923d7d688acfc069018085c9"
       }
     },
     {

@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from concurrent.futures import ThreadPoolExecutor
 import hashlib
+import importlib.util
 import json
 from pathlib import Path
 import sys
@@ -46,6 +47,9 @@ ROOT = Path(__file__).resolve().parents[3]
 PRODUCT = ROOT / "products" / "cpk_local_gateway"
 PRODUCT_SRC = PRODUCT / "src"
 DESCRIPTOR = PRODUCT / "product.cpk.json"
+STRUCTURAL_GRANT_CHECK = (
+    ROOT / "scripts" / "cpk_local_gateway_structural_grant_check.py"
+)
 ISSUER = "urn:control-plane-kit:test-gateway"
 AUDIENCE = "gateway:workspace-auth-private:gateway"
 GATEWAY_NODE_ID = "gateway"
@@ -672,6 +676,23 @@ class CpkLocalGatewayProductTests(unittest.TestCase):
         self.assertNotIn("sync_runtime_networks", smoke)
         self.assertNotIn("-p 5432", smoke)
         self.assertNotIn("docker system prune", smoke)
+
+    def test_structural_grant_check_accepts_source_live_identity(self) -> None:
+        spec = importlib.util.spec_from_file_location(
+            "cpk_local_gateway_structural_grant_check",
+            STRUCTURAL_GRANT_CHECK,
+        )
+        if spec is None or spec.loader is None:
+            self.fail("could not load gateway structural grant check")
+        module = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(module)
+
+        self.assertEqual(module.main(), 0)
+        self.assertTrue(module.WORKSPACE_ID.startswith("workspace-secret-cloudflare-"))
+        self.assertEqual(
+            module.AUDIENCE,
+            f"gateway:{module.WORKSPACE_ID}:gateway",
+        )
 
 def _ed25519_keys() -> tuple[Ed25519PrivateKey, str]:
     private_key = Ed25519PrivateKey.generate()
