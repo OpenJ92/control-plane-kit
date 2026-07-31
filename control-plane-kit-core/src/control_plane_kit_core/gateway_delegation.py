@@ -183,7 +183,6 @@ class DelegatedGatewayProbeGrant:
             raise GatewayDelegationContractError(
                 "grant key_id must be a bounded identifier"
             )
-        _reject_secret_text(self.key_id, "grant key_id")
         if not isinstance(self.probe_kind, GatewayProbeCommandKind):
             raise GatewayDelegationContractError("grant probe_kind must be closed")
         if not isinstance(self.target_id, GatewayTargetId):
@@ -373,7 +372,7 @@ def _validate_http_path(value: object) -> None:
         raise GatewayDelegationContractError(
             "HTTP gateway probe path must be a bounded absolute path"
         )
-    _reject_secret_text(value, "HTTP gateway probe path")
+    _reject_secret_assignment(value, "HTTP gateway probe path")
 
 
 def _validate_reference(value: object, name: str) -> None:
@@ -385,7 +384,6 @@ def _validate_reference(value: object, name: str) -> None:
         raise GatewayDelegationContractError(
             f"{name} must be a bounded reference"
         )
-    _reject_secret_text(value, name)
 
 
 def _validate_epoch(value: object, name: str) -> None:
@@ -395,11 +393,8 @@ def _validate_epoch(value: object, name: str) -> None:
         )
 
 
-def _reject_secret_text(value: str, name: str) -> None:
-    normalized = value.lower().replace("_", " ").replace("-", " ")
-    if any(marker in value.lower() for marker in _SECRET_MARKERS) or any(
-        marker in normalized for marker in ("password ", "token ", "secret ")
-    ):
+def _reject_secret_assignment(value: str, name: str) -> None:
+    if any(marker in value.lower() for marker in _SECRET_MARKERS):
         raise GatewayDelegationContractError(f"{name} contains secret-shaped text")
 
 
