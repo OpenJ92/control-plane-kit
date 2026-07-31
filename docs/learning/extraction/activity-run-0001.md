@@ -6322,3 +6322,109 @@ control-plane-kit-servers merge commit:
 This remains source-built acceptance. #1232 owns the independent leak,
 ownership, transaction, restart, and test-integrity closeout for #1204 before
 published-digest acceptance begins.
+
+## #1232 Durable Remote Docker TLS Independent Closeout Audit
+
+An independent pass re-read the current core, operations, interpreter,
+provider, and server-product implementations and reran the complete source-live
+vertical. It found no blocking architecture, custody, transaction, ownership,
+or test-integrity defect.
+
+The final custody boundary has four distinct storage classes:
+
+```text
+provider SQLite
+  encrypted ciphertext plus bounded metadata and selections
+
+operations Postgres
+  references, grants, correlations, activity history, and observations
+
+bounded bootstrap directory
+  owner-restricted fixture plaintext before provider admission only
+
+interpreter TLS directory
+  three 0600 files during one authority-scoped Docker SDK effect only
+```
+
+The provider database raw-byte scan contains no CA, certificate, private key,
+provider credential, or OCI credential sentinel. The same targeted plaintext
+scan passes against cpk-server logs, provider logs, and a complete operations
+database dump. Bootstrap material is removed with the exact-owned acceptance
+state. `DockerSdkClient.close()` clears the SDK client and in-memory TLS
+configuration and removes its temporary directory; `execute_with_authority()`
+performs that close in `finally` after success, bounded failure, uncertainty,
+or an unexpected execution exception. Close failure produces bounded uncertain
+evidence without retaining a path or secret value.
+
+The transaction audit confirms the external-effect law:
+
+```text
+short UoW: load pinned context and record STEP_STARTED
+  -> commit
+    -> authorize exact uses and perform provider HTTP / Docker SDK IO
+      -> short UoW: record result, observations, and terminal evidence
+```
+
+No Postgres UnitOfWork remains open across provider HTTP, TLS connection,
+Docker image pull, container/network mutation, or verification. Provider
+selection and provider audit remain separate durable SQLite writes; their
+crash-atomic reconciliation is explicitly deferred to HARDEN.RECOVERY/FENCING
+rather than claimed here.
+
+The authoritative live rerun proves:
+
+- deploy to the remote TLS daemon;
+- cpk-server and provider restart with retained stores;
+- graph update and graph teardown;
+- wrong-workspace, wrong-intent, revoked-version, and unavailable-provider
+  denial with exact zero mutation;
+- operations/provider/version correlation;
+- no local Docker socket or process-local resolver fallback;
+- no host or nested-daemon container, network, volume, or TLS-file residue.
+
+The old `CPK_PRODUCT_SECRET_VALUES_JSON` development path still exists in a
+separate recursive/local-development harness, but it is neither invoked nor
+presented as #1204 evidence. The authoritative #1204 controller and smoke
+explicitly reject that path. Broad removal of remaining development
+materialization fragments belongs to the linked consolidation work rather
+than this security closeout.
+
+Current Docker-first validation passed:
+
+```text
+control-plane-kit-core:          459 tests + compile/import
+control-plane-kit-operations:    238 tests + Postgres + compile/import
+control-plane-kit-interpreters:  133 tests + compile
+control-plane-kit-secrets:        39 tests + live provider process
+control-plane-kit-servers:       161 tests + product/image smokes
+total current unittest cases:   1030
+```
+
+No relevant skip, xfail, hidden collection, weakened assertion, direct-daemon
+success substitution, or mock-only live claim was found. Host postflight shows
+only the five protected Pottery Factory containers. The repository residue
+audit reports no CPK-labelled container, network, or volume.
+
+Merged implementation coordinates:
+
+```text
+control-plane-kit core/operations:
+  d2d81efb4d0f4ec7fd43145317779ed8e324833f
+
+control-plane-kit-secrets:
+  7c53591f4771422e94ed4da82e71c126aa76af61
+
+control-plane-kit-interpreters PR #56:
+  5af32fc74b71682c6094b902b64b468e1ab2c3f9
+
+control-plane-kit-servers PR #63:
+  0058e0af7ae0ca70cbcd5fae0e8e22b55d690fba
+
+control-plane-kit-servers PR #64:
+  bf42d877bef45bad3ff80b2ecc08d6c15816167a
+```
+
+#1204 is complete as source-built provider-backed remote Docker TLS
+acceptance. #1205 next owns cpk-server republication, immutable coordinate
+refresh, digest-only image smokes, and provenance validation. #1206 then owns
+the final published multi-consumer gate and #1117 closeout.
