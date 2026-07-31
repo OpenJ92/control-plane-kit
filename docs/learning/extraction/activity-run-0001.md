@@ -6087,3 +6087,100 @@ digests, exact audience/target/request binding, short expiry, signing,
 verification, and replay protection remain intact. It corrects the category
 error that vocabulary can determine whether a bounded public identifier is
 secret.
+
+## #1203 Generated Cloudflare Tunnel-Token Custody
+
+The completed source-live vertical proves that named-ingress creation can
+generate a new secret at one interpreter boundary and deliver it through
+durable provider custody to another interpreter without returning plaintext to
+operations:
+
+```text
+authenticated cpk-server workflow
+  -> admitted Cloudflare authority and SecretReferences
+    -> operations-owned ActivityExecutionDispatcher
+      -> Cloudflare interpreter resolves the API token
+        -> creates exact tunnel, route, and DNS resources
+          -> writes the generated tunnel token to provider custody
+            -> operations records reference/version/correlation/ownership only
+              -> Docker interpreter resolves TUNNEL_TOKEN
+                -> cloudflared joins the tunnel
+                  -> authenticated public gateway probe reaches private Hello
+```
+
+The acceptance exercised the complete public workflow for initial overlay
+creation, removal to a private workload-only graph, recreation with a new
+tunnel identity and generated secret version, and final teardown to the empty
+graph. The runtime authority remained the power to realize the private island;
+gateway plus named ingress remained a removable access overlay.
+
+Secret-provider mutations now require the admitted use intent as an explicit
+top-level request field. A matching metadata label is useful for storage and
+inspection but is not trusted authorization or audit truth. The final live
+fixture caught and corrected this distinction for write and rotate requests:
+
+```text
+SecretUseIntent
+  -> authenticated provider mutation request
+    -> provider authorization
+      -> canonical mutation audit intent
+```
+
+Generated tunnel-token writes, resolves, and revocations now correlate with
+operations authorization and generated-reference records by version and
+correlation id. Every version created during overlay recreation was later
+revoked. Operations retained no plaintext or ciphertext.
+
+Cloudflare tunnel deletion is provider-specific soft deletion. Correct owned
+cleanup evidence accepts either exact absence or an exact tombstone with a
+non-empty `deleted_at`, and additionally requires the tunnel id to be absent
+from active inventory. DNS cleanup still requires exact 404 absence. Cleanup
+uses only stored tunnel and DNS identifiers; it never deletes by prefix or
+broad hostname match.
+
+The live leak audit scanned cpk-server logs, provider logs, the operations
+database dump, and encrypted provider storage for the Cloudflare API token,
+provider credential, gateway private key, GHCR credential, and generated test
+sentinels. No forbidden plaintext was found. Independent API and Docker
+postflight found:
+
+- no active `cpk-gateway-public-*` tunnel;
+- no `cpk-sec1203-*` DNS record;
+- no CPK-labelled container, network, or volume;
+- five Pottery Factory containers still running;
+- the protected `auth-potteryfactory` tunnel and `cpk.openj92.dev` DNS record
+  still present.
+
+Merged implementation coordinates:
+
+```text
+control-plane-kit:
+  d2d81efb4d0f4ec7fd43145317779ed8e324833f
+
+control-plane-kit-interpreters:
+  0e6b844fcd43c813a8c0a7be241adbe4fbece440
+
+control-plane-kit-secrets:
+  7c53591f4771422e94ed4da82e71c126aa76af61
+
+control-plane-kit-servers PR #61:
+  7ecd6d19b6a9b288d89d6095c3819c86cb857ea8
+
+packaged catalogue sha256:
+  f2bf6c60668fdbae0888937a097ccbe46762310a4782ddf1a9556911a5ccbc4b
+```
+
+Provider tests, interpreter tests, focused server-product tests, the live
+secrets-server image smoke, the complete server-products Docker-first suite,
+GitHub Docker CI, the cpk-server-driven Cloudflare custody acceptance, and
+independent residue audits passed.
+
+This remains source-built acceptance and does not claim immutable published
+cpk-server or secrets-server OCI acceptance. Provider mutation and provider
+audit also remain separate SQLite durable writes; crash-atomic outbox and
+ambiguous-effect reconciliation belong to HARDEN.RECOVERY/FENCING.
+
+#1204 next applies the same admitted provider, intent, correlation, restart,
+denial, leak, and ownership laws to the independent three-file Docker TLS
+consumer. It must prove remote Docker SDK IO with no local-socket or
+process-local resolver fallback.
