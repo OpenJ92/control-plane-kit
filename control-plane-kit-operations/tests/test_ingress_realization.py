@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from collections.abc import Callable
 from dataclasses import dataclass
 import os
 import unittest
@@ -53,7 +54,10 @@ from control_plane_kit_operations.ingress_authorities import (
     IngressAuthorityProviderKind,
     OwnedIngressResourceStatus,
 )
-from control_plane_kit_operations.ingress_realization import IngressRealizationAdapter
+from control_plane_kit_operations.ingress_realization import (
+    IngressOwnedResourceCoordinates,
+    IngressRealizationAdapter,
+)
 from control_plane_kit_operations.lifecycle import ExecutionWorkerAuthority
 from control_plane_kit_operations.postgres import PostgresUnitOfWork, install_schema
 from control_plane_kit_operations.records import (
@@ -141,13 +145,13 @@ class RecordingIngressInterpreter:
         self.create_grants: list[SecretResolutionGrant] = []
         self.create_custody_grants: list[SecretCustodyGrant] = []
         self.teardown_active_counts: list[int] = []
-        self.teardown_resources: list[CloudflareOwnedIngressResource] = []
+        self.teardown_resources: list[IngressOwnedResourceCoordinates] = []
         self.teardown_grants: list[SecretResolutionGrant] = []
         self.teardown_custody_grants: list[SecretCustodyGrant] = []
         self.fail_teardown = False
         self.return_mismatched_custody_receipt = False
         self.return_invalid_coordinates = False
-        self.on_create = None
+        self.on_create: Callable[[], None] | None = None
 
     def create(
         self,
@@ -195,7 +199,7 @@ class RecordingIngressInterpreter:
         self,
         *,
         authority: CloudflareZoneIngressAuthority,
-        resources: CloudflareOwnedIngressResource,
+        resources: IngressOwnedResourceCoordinates,
         secret_resolution_grant: SecretResolutionGrant,
         secret_custody_grant: SecretCustodyGrant,
     ) -> None:
