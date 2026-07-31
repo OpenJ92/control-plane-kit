@@ -119,9 +119,14 @@ class GatewayDelegationLanguageTests(unittest.TestCase):
             },
         )
         self.assertEqual(DelegatedGatewayProbeGrantCodec().decode(descriptor), grant)
-        self.assertNotIn("token", repr(descriptor).lower())
-        self.assertNotIn("credential", repr(descriptor).lower())
-        self.assertNotIn("signature", repr(descriptor).lower())
+        self.assertTrue(
+            {
+                "compact_token",
+                "credential",
+                "signature",
+                "authorization",
+            }.isdisjoint(descriptor)
+        )
 
     def test_grant_rejects_invalid_lifetime_and_malformed_digest(self) -> None:
         request = GatewayProbeRequest(
@@ -137,7 +142,7 @@ class GatewayDelegationLanguageTests(unittest.TestCase):
         with self.assertRaisesRegex(GatewayDelegationContractError, "digest"):
             GatewayProbeRequestDigest("not-a-canonical-digest")
 
-    def test_grant_rejects_missing_or_secret_shaped_identity(self) -> None:
+    def test_grant_rejects_missing_or_malformed_identity(self) -> None:
         request = GatewayProbeRequest(
             kind=GatewayProbeCommandKind.POSTGRES_SELECT_ONE,
             target_id=GatewayTargetId("postgres.postgres"),
@@ -161,8 +166,49 @@ class GatewayDelegationLanguageTests(unittest.TestCase):
             DelegatedGatewayProbeGrant(
                 **{**base, "audience": "token=do-not-store"}
             )
+        for audience in (
+            "workspace with spaces",
+            "workspace?query",
+            "w" * 257,
+        ):
+            with self.subTest(audience=audience):
+                with self.assertRaisesRegex(
+                    GatewayDelegationContractError,
+                    "bounded reference",
+                ):
+                    DelegatedGatewayProbeGrant(
+                        **{**base, "audience": audience}
+                    )
 
-    def test_grant_codec_rejects_unknown_and_secret_shaped_material(self) -> None:
+    def test_grant_accepts_benign_security_vocabulary_in_public_identity(self) -> None:
+        request = GatewayProbeRequest(
+            kind=GatewayProbeCommandKind.HTTP_STATUS,
+            target_id=GatewayTargetId("hello.internal"),
+            path="/health/ready",
+        )
+        grant = DelegatedGatewayProbeGrant(
+            **{
+                **_grant_kwargs(request),
+                "issuer": "token-broker",
+                "key_id": "credential-signing-key",
+                "audience": (
+                    "gateway:workspace-secret-cloudflare-1785464721-55624:"
+                    "gateway"
+                ),
+                "workspace_id": "workspace-secret-cloudflare-1785464721-55624",
+                "operation_id": "rotate-secret-reference",
+                "request_id": "credential-read-request",
+                "gateway_node_id": "secret-gateway",
+                "jti": "token-probe-grant",
+            }
+        )
+
+        self.assertEqual(
+            DelegatedGatewayProbeGrantCodec().decode(grant.descriptor()),
+            grant,
+        )
+
+    def test_grant_codec_rejects_unknown_secret_bearing_fields(self) -> None:
         request = GatewayProbeRequest(
             kind=GatewayProbeCommandKind.POSTGRES_SELECT_ONE,
             target_id=GatewayTargetId("postgres.postgres"),
@@ -173,9 +219,25 @@ class GatewayDelegationLanguageTests(unittest.TestCase):
             DelegatedGatewayProbeGrantCodec().decode(
                 {**descriptor, "compact_token": "do-not-store"}
             )
-        with self.assertRaises(GatewayDelegationContractError):
-            DelegatedGatewayProbeGrantCodec().decode(
-                {**descriptor, "issuer": "bearer do-not-store"}
+        for field in ("credential", "signature", "authorization"):
+            with self.subTest(field=field):
+                with self.assertRaisesRegex(
+                    GatewayDelegationContractError,
+                    "unknown",
+                ):
+                    DelegatedGatewayProbeGrantCodec().decode(
+                        {**descriptor, field: "do-not-store"}
+                    )
+
+    def test_http_path_rejects_secret_assignment_material(self) -> None:
+        with self.assertRaisesRegex(
+            GatewayDelegationContractError,
+            "secret-shaped",
+        ):
+            GatewayProbeRequest(
+                kind=GatewayProbeCommandKind.HTTP_STATUS,
+                target_id=GatewayTargetId("hello.internal"),
+                path="/health?token=do-not-store",
             )
 
     def test_health_disclosure_is_explicit_and_minimal(self) -> None:

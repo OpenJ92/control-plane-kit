@@ -6054,3 +6054,36 @@ race during the result transaction rolls back all operations writes and invokes
 exact compensation. Compensation failure is no longer swallowed; the activity
 failure retains tunnel id, tunnel name, DNS record id, hostname, and bounded
 exception types for later reconciliation under #1095.
+
+## #1223 Structural Gateway Delegation Secret Exclusion
+
+The next #1215 source-live run reached real named-ingress allocation and gateway
+readiness, then exposed the same lexical false-positive class at the delegated
+gateway boundary. The legitimate run-scoped workspace
+`workspace-secret-cloudflare-...` produced the public audience
+`gateway:workspace-secret-cloudflare-...:gateway`; core rejected that identity
+because it contained the word `secret`.
+
+Gateway delegation now distinguishes public identity from potentially
+value-bearing request material:
+
+```text
+grant identities:
+  bounded grammar + closed fields
+
+HTTP probe path:
+  bounded absolute path + explicit secret-assignment rejection
+```
+
+Issuer, key id, audience, workspace, operation, request, gateway node, and JTI
+may contain benign words such as `secret`, `token`, or `credential`. The grant
+descriptor remains a closed secret-free structure and rejects unknown compact
+token, credential, signature, and authorization fields. HTTP paths continue to
+reject explicit assignment/header-shaped secret material such as
+`token=...`.
+
+This changes no cryptographic or authorization semantics. Canonical request
+digests, exact audience/target/request binding, short expiry, signing,
+verification, and replay protection remain intact. It corrects the category
+error that vocabulary can determine whether a bounded public identifier is
+secret.
