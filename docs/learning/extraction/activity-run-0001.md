@@ -6594,3 +6594,74 @@ boundary. Both were corrected without weakening assertions.
 private/public fingerprint verification at immediate IO, bounded public verifier
 set delivery to gateway runtime configuration, and authenticated HTTP/MCP key
 management surfaces needed by #1241 source-live rotation acceptance.
+
+## #1240 Provider-Backed Gateway Signer Selection
+
+Gateway probe issuance no longer depends on process bootstrap key identity.
+Operations selects the one durable active delegation key for each probe and
+passes only its admitted `SecretReference` plus immutable public identity to the
+interpreter signer. The signer resolves private bytes at immediate provider IO,
+derives the public key, and refuses to sign unless the derived fingerprint
+matches operations' registered public identity.
+
+The public lifecycle is available through exact HTTP/MCP parity:
+
+```text
+command.delegation-key.register
+command.delegation-key.activate
+command.delegation-key.retire
+command.delegation-key.revoke
+read.delegation-keys
+read.gateway-verifier-configuration
+```
+
+`cpk-server` composes the services and accepts a bounded grant lifetime, but it
+does not own key lifecycle or private material. Gateway runtime configuration
+contains only issuer, audience, and the selected public verifier set.
+
+## #1241 Source-Live Delegation-Key Rotation
+
+The source-live gate proved the complete private runtime-island lifecycle with
+two independently generated Ed25519 keypairs stored under separate durable
+provider references:
+
+```text
+A registered and activated
+  -> A signs HTTP and Postgres probes
+    -> B registered
+      -> gateway verifies A+B while A remains signer
+        -> B activated and A becomes verify-only
+          -> B signs new probes
+            -> wait beyond configured two-second grant lifetime
+              -> A retired and removed from verifier configuration
+                -> expired A, fresh retired A, and unknown kid reject
+                  -> A registration and provider reference revoked
+                    -> cpk-server and gateway restart
+                      -> B reconstructs from Postgres metadata + provider custody
+```
+
+The operator path remained cpk-server-driven. HTTP exercised Hello and MCP
+exercised Postgres `select-one`; both converged on the same operations gateway
+probe service. Rejected A/unknown capabilities were sent only as bounded direct
+diagnostics after retirement, with Hello request-count evidence proving zero
+target IO.
+
+Private seeded OCI pulls also used an admitted provider-backed GHCR authority.
+No ambient registry credential or local-only image tag was substituted. The
+gateway received public verifier material only; private key bytes remained in
+`control-plane-kit-secrets` and were resolved only by the interpreter signer.
+
+The live gate exposed and corrected four composition defects without weakening
+the protocol:
+
+1. a URI-shaped issuer violated the intentional bounded identifier grammar;
+2. the new scenario omitted private OCI pull authority;
+3. gateway recreation after verifier changes raced process readiness;
+4. the first readiness diagnostic hid the underlying URL error.
+
+The final readiness path consumes the gateway descriptor's existing bounded
+policy and remains diagnostic only. cpk-server's authenticated probe result is
+the success evidence. The complete source-live scenario, full server-products
+suite, image smoke, and Docker residue audit pass. No Cloudflare resource was
+mutated, all #1241-owned Docker resources were removed, and all five Pottery
+Factory containers remained running.
