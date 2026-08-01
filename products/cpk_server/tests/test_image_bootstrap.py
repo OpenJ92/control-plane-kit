@@ -676,6 +676,7 @@ class CpkServerImageBootstrapTests(unittest.TestCase):
 
             self.assertEqual(observed_resolution_grants, [secret_grant])
             self.assertEqual(config.gateway_probe_signer, "ed25519")
+            self.assertEqual(config.gateway_probe_grant_lifetime_seconds, 60)
             self.assertEqual(observed["scheme"], "CPK-Gateway")
             self.assertEqual(
                 observed["claims"]["gateway_probe"],
@@ -739,6 +740,28 @@ class CpkServerImageBootstrapTests(unittest.TestCase):
                         "CPK_GATEWAY_PROBE_SIGNER": "home-grown",
                     }
                 )
+            for value in ("zero", "0", "301"):
+                with self.subTest(grant_lifetime=value):
+                    with self.assertRaisesRegex(
+                        server_module.BootstrapConfigurationError,
+                        "CPK_GATEWAY_PROBE_GRANT_LIFETIME_SECONDS",
+                    ):
+                        server_module.CpkServerBootstrapConfiguration.from_environment(
+                            {
+                                **base,
+                                "CPK_PRODUCT_MATERIAL_RESOLVER": "provider",
+                                "CPK_MATERIAL_PROVIDER_ROUTES_JSON": json.dumps(
+                                    {"provider-main": "https://secrets.internal.example"}
+                                ),
+                                "CPK_MATERIAL_PROVIDER_BOOTSTRAP_FILES_JSON": json.dumps(
+                                    {
+                                        "secret://bootstrap/provider-token":
+                                            "/run/secrets/provider-token"
+                                    }
+                                ),
+                                "CPK_GATEWAY_PROBE_GRANT_LIFETIME_SECONDS": value,
+                            }
+                        )
         finally:
             sys.path.remove(str(PRODUCT_SRC))
             for name in list(sys.modules):
@@ -1573,6 +1596,20 @@ class CpkServerImageBootstrapTests(unittest.TestCase):
         self.assertIn("workspace-secret-missing", controller)
         self.assertIn("workspace-secret-wrong-credential", controller)
         self.assertIn("workspace-secret-unavailable", controller)
+        self.assertIn("gateway-key-rotation", controller)
+        self.assertIn("request_gateway_probe_http", controller)
+        self.assertIn("request_gateway_probe_mcp", controller)
+        self.assertIn("/delegation-keys", controller)
+        self.assertIn("verifier-configuration", controller)
+        self.assertIn("gateway-rotation-key-a.pem", smoke)
+        self.assertIn("gateway-rotation-key-b.pem", smoke)
+        self.assertIn("GHCR pull authority is unavailable", smoke)
+        self.assertIn("register_ghcr_pull_authority", controller)
+        self.assertIn("GHCR_PULL_CREDENTIAL_REFERENCE", controller)
+        self.assertIn("CPK_GATEWAY_PROBE_GRANT_LIFETIME_SECONDS=2", smoke)
+        self.assertIn("docker_residue_audit.sh", smoke)
+        self.assertNotIn("CPK_GATEWAY_PROBE_SIGNING_KEY_REF", smoke)
+        self.assertNotIn("CPK_GATEWAY_PROBE_PRIVATE_KEY", smoke)
         self.assertNotIn("DockerRuntimeInterpreter", controller)
         self.assertNotIn("ControlPlaneKitSecretsResolver", controller)
 
