@@ -63,6 +63,13 @@ class GatewayProbeCommandKind(StrEnum):
     POSTGRES_SELECT_ONE = "postgres-select-one"
 
 
+class GatewayProbeAccessPath(StrEnum):
+    """Closed graph-derived transport used to reach a runtime-island gateway."""
+
+    RUNTIME_PRIVATE = "runtime-private"
+    NAMED_PUBLIC_INGRESS = "named-public-ingress"
+
+
 @dataclass(frozen=True, order=True)
 class GatewayProbeRequestDigest:
     """Canonical digest of the complete bounded gateway probe request."""

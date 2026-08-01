@@ -6,7 +6,10 @@ from typing import Any
 
 from psycopg.types.json import Jsonb
 
-from control_plane_kit_core.gateway_delegation import GatewayProbeCommandKind
+from control_plane_kit_core.gateway_delegation import (
+    GatewayProbeAccessPath,
+    GatewayProbeCommandKind,
+)
 from control_plane_kit_operations.gateway_probes import (
     GatewayProbeAttempt,
     GatewayProbeAttemptStatus,
@@ -34,13 +37,13 @@ class GatewayProbeStore:
             INSERT INTO cpk_gateway_probe_attempts (
               probe_id, workspace_id, request_id, actor_id, current_graph_id,
               gateway_node_id, gateway_runtime_id, probe_kind, target_id,
-              request_digest, issuer, key_id, audience, grant_jti, issued_at,
+              access_path, request_digest, issuer, key_id, audience, grant_jti, issued_at,
               expires_at, status, requested_at, intent_fingerprint,
               completed_at, result_code, evidence
             )
             VALUES (
               %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s,
-              %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s
+              %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s
             )
             """,
             _record_values(record),
@@ -139,7 +142,7 @@ class GatewayProbeStore:
 _COLUMNS = """
 probe_id, workspace_id, request_id, actor_id, current_graph_id,
 gateway_node_id, gateway_runtime_id, probe_kind, target_id, request_digest,
-issuer, key_id, audience, grant_jti, issued_at, expires_at, status,
+access_path, issuer, key_id, audience, grant_jti, issued_at, expires_at, status,
 requested_at, intent_fingerprint, completed_at, result_code, evidence
 """
 _SELECT = f"SELECT {_COLUMNS} FROM cpk_gateway_probe_attempts"
@@ -156,6 +159,7 @@ def _record_values(record: GatewayProbeAttempt) -> tuple[object, ...]:
         record.gateway_runtime_id,
         record.probe_kind.value,
         record.target_id,
+        record.access_path.value,
         record.request_digest,
         record.issuer,
         record.key_id,
@@ -184,16 +188,17 @@ def _row_to_attempt(row: tuple[Any, ...]) -> GatewayProbeAttempt:
         probe_kind=GatewayProbeCommandKind(row[7]),
         target_id=row[8],
         request_digest=row[9],
-        issuer=row[10],
-        key_id=row[11],
-        audience=row[12],
-        grant_jti=row[13],
-        issued_at=row[14],
-        expires_at=row[15],
-        status=GatewayProbeAttemptStatus(row[16]),
-        requested_at=row[17],
-        intent_fingerprint=row[18],
-        completed_at=row[19],
-        result_code=row[20],
-        evidence=BoundedEvidence.from_mapping(row[21]),
+        access_path=GatewayProbeAccessPath(row[10]),
+        issuer=row[11],
+        key_id=row[12],
+        audience=row[13],
+        grant_jti=row[14],
+        issued_at=row[15],
+        expires_at=row[16],
+        status=GatewayProbeAttemptStatus(row[17]),
+        requested_at=row[18],
+        intent_fingerprint=row[19],
+        completed_at=row[20],
+        result_code=row[21],
+        evidence=BoundedEvidence.from_mapping(row[22]),
     )

@@ -12,6 +12,7 @@ from control_plane_kit_core.identity import (
     TrustedCommandContext,
 )
 from control_plane_kit_core.gateway_delegation import (
+    GatewayProbeAccessPath,
     GatewayProbeCommandKind,
     GatewayProbeRequest,
 )
@@ -1130,6 +1131,10 @@ class CpkServerGatewayProbeService:
                         kind=kind,
                         target_id=GatewayTargetId(_text(payload, "target_id")),
                         path=_optional_text(payload, "path"),
+                    ),
+                    access_path=GatewayProbeAccessPath(
+                        _optional_text(payload, "access_path")
+                        or GatewayProbeAccessPath.RUNTIME_PRIVATE.value
                     ),
                 )
             )
