@@ -30,6 +30,7 @@ from control_plane_kit_core.probe_intents import (
     LiteralEndpointMaterial,
     RuntimeEndpointObservation,
 )
+from control_plane_kit_core.public_ingress import PublicIngressExposure
 from control_plane_kit_core.runtime_authority import (
     RuntimeAuthorityAccessDelivery,
     RuntimeAuthorityReference,
@@ -551,6 +552,45 @@ def gateway_control_endpoint_for_node(
         protocol=Protocol.HTTP,
         context=EndpointContext.RUNTIME_PRIVATE,
         address=LiteralEndpointMaterial(f"http://{node_id}:{port}"),
+    )
+
+
+def named_public_gateway_endpoint_for_node(
+    graph: DeploymentGraph,
+    *,
+    graph_id: str,
+    node_id: str,
+) -> RuntimeEndpointObservation:
+    """Return the unique graph-declared public endpoint for gateway control."""
+
+    if not isinstance(graph_id, str) or not graph_id.strip():
+        raise InvalidOperationCommand("gateway endpoint graph identity is missing")
+    matches = tuple(
+        ingress
+        for ingress in graph.public_ingresses
+        if ingress.target.node_id == node_id
+        and ingress.target.provider_socket == "control"
+    )
+    if not matches:
+        raise InvalidOperationCommand(
+            "gateway control node has no named public ingress"
+        )
+    if len(matches) != 1:
+        raise InvalidOperationCommand(
+            "gateway control named public ingress is ambiguous"
+        )
+    ingress = matches[0]
+    if ingress.exposure is not PublicIngressExposure.HTTPS:
+        raise InvalidOperationCommand(
+            "gateway control named public ingress must use HTTPS"
+        )
+    return RuntimeEndpointObservation(
+        subject_id=node_id,
+        socket_name="control",
+        graph_id=graph_id,
+        protocol=Protocol.HTTP,
+        context=EndpointContext.PUBLIC,
+        address=LiteralEndpointMaterial(f"https://{ingress.hostname}:443"),
     )
 
 

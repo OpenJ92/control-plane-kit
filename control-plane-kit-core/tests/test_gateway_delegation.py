@@ -8,6 +8,7 @@ from control_plane_kit_core.gateway_delegation import (
     DelegatedGatewayProbeVerificationCode,
     DelegatedGatewayProbeVerificationResult,
     GatewayHealthAccess,
+    GatewayProbeAccessPath,
     GatewayProbeCommandKind,
     GatewayProbeRequest,
     GatewayProbeRequestCodec,
@@ -19,6 +20,14 @@ from control_plane_kit_core.runtime_effects import GatewayTargetId
 
 
 class GatewayDelegationLanguageTests(unittest.TestCase):
+    def test_gateway_probe_access_path_is_provider_neutral_and_closed(self) -> None:
+        self.assertEqual(
+            tuple(value.value for value in GatewayProbeAccessPath),
+            ("runtime-private", "named-public-ingress"),
+        )
+        with self.assertRaises(ValueError):
+            GatewayProbeAccessPath("cloudflare")
+
     def test_canonical_request_digest_binds_kind_target_and_http_path(self) -> None:
         request = GatewayProbeRequest(
             kind=GatewayProbeCommandKind.HTTP_STATUS,

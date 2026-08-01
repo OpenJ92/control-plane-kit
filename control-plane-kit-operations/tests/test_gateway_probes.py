@@ -14,6 +14,7 @@ from control_plane_kit_core.algebra import (
     RequirementSocket,
 )
 from control_plane_kit_core.gateway_delegation import (
+    GatewayProbeAccessPath,
     GatewayProbeCommandKind,
     GatewayProbeRequest,
 )
@@ -43,6 +44,11 @@ from control_plane_kit_core.products import (
     ProductReference,
     ProductRuntimeContract,
     ProviderRuntimePort,
+)
+from control_plane_kit_core.public_ingress import (
+    IngressAuthorityReference,
+    NamedPublicIngress,
+    PublicIngressTarget,
 )
 from control_plane_kit_core.runtime_effects import GatewayTargetId
 from control_plane_kit_core.secrets import (
@@ -237,6 +243,10 @@ class GatewayProbeCommandServiceTests(unittest.TestCase):
         self.assertEqual(result.attempt.status, GatewayProbeAttemptStatus.SUCCEEDED)
         self.assertEqual(result.attempt.current_graph_id, "graph-current")
         self.assertEqual(result.attempt.gateway_runtime_id, "docker-a")
+        self.assertIs(
+            result.attempt.access_path,
+            GatewayProbeAccessPath.RUNTIME_PRIVATE,
+        )
         self.assertEqual(result.attempt.result_code, "probe-succeeded")
         self.assertFalse(result.replayed)
         endpoint = self.dispatcher.requests[0].gateway_endpoint
@@ -273,6 +283,73 @@ class GatewayProbeCommandServiceTests(unittest.TestCase):
         self.assertNotIn("compact", repr(descriptor).lower())
         self.assertNotIn("authorization", repr(descriptor).lower())
 
+    def test_named_public_access_path_uses_exact_current_graph_ingress(self) -> None:
+        result = self.service.execute(
+            self.command(
+                access_path=GatewayProbeAccessPath.NAMED_PUBLIC_INGRESS,
+            )
+        )
+
+        self.assertIs(
+            result.attempt.access_path,
+            GatewayProbeAccessPath.NAMED_PUBLIC_INGRESS,
+        )
+        endpoint = self.dispatcher.requests[0].gateway_endpoint
+        self.assertEqual(endpoint.context, EndpointContext.PUBLIC)
+        self.assertEqual(
+            endpoint.address,
+            LiteralEndpointMaterial("https://gateway-public.example.test:443"),
+        )
+
+    def test_public_access_path_requires_one_exact_graph_ingress(self) -> None:
+        row = self.connection.execute(
+            "SELECT graph_descriptor FROM cpk_graph_versions WHERE graph_id = %s",
+            ("graph-current",),
+        ).fetchone()
+        original = dict(row[0])
+        cases = {
+            "missing": [],
+            "wrong-target": [
+                {
+                    **original["public_ingresses"][0],
+                    "target": {
+                        "node_id": "hello",
+                        "provider_socket": "http",
+                    },
+                }
+            ],
+            "ambiguous": [
+                original["public_ingresses"][0],
+                {
+                    **original["public_ingresses"][0],
+                    "ingress_id": "gateway-public-second",
+                    "hostname": "gateway-public-second.example.test",
+                },
+            ],
+        }
+        for label, public_ingresses in cases.items():
+            with self.subTest(label=label):
+                descriptor = {**original, "public_ingresses": public_ingresses}
+                self.connection.execute(
+                    "UPDATE cpk_graph_versions SET graph_descriptor = %s "
+                    "WHERE graph_id = %s",
+                    (json.dumps(descriptor), "graph-current"),
+                )
+                expected = (
+                    "ambiguous"
+                    if label == "ambiguous"
+                    else "no named public ingress"
+                )
+                with self.assertRaisesRegex(GatewayProbeConflict, expected):
+                    self.service.execute(
+                        self.command(
+                            access_path=(
+                                GatewayProbeAccessPath.NAMED_PUBLIC_INGRESS
+                            ),
+                        )
+                    )
+        self.assertEqual(self.dispatcher.requests, [])
+
     def test_duplicate_request_is_idempotent_without_redispatch(self) -> None:
         first = self.service.execute(self.command())
         replay = self.service.execute(self.command())
@@ -290,6 +367,12 @@ class GatewayProbeCommandServiceTests(unittest.TestCase):
                         GatewayTargetId("hello.http"),
                         "/health/live",
                     )
+                )
+            )
+        with self.assertRaises(GatewayProbeConflict):
+            self.service.execute(
+                self.command(
+                    access_path=GatewayProbeAccessPath.NAMED_PUBLIC_INGRESS,
                 )
             )
 
@@ -379,12 +462,33 @@ class GatewayProbeCommandServiceTests(unittest.TestCase):
                 PolicyScope.SECRET_PROVIDER_USE,
             )
         )
-        http = adapter.handle(self.route_request("http", "request-http", principal))
-        mcp = adapter.handle(self.route_request("mcp", "request-mcp", principal))
+        http = adapter.handle(
+            self.route_request(
+                "http",
+                "request-http",
+                principal,
+                access_path=GatewayProbeAccessPath.NAMED_PUBLIC_INGRESS,
+            )
+        )
+        mcp = adapter.handle(
+            self.route_request(
+                "mcp",
+                "request-mcp",
+                principal,
+                access_path=GatewayProbeAccessPath.NAMED_PUBLIC_INGRESS,
+            )
+        )
 
         self.assertEqual(http["gateway_probe"]["result_code"], "probe-succeeded")
         self.assertEqual(mcp["gateway_probe"]["result_code"], "probe-succeeded")
         self.assertEqual(len(self.dispatcher.requests), 2)
+        self.assertEqual(
+            tuple(
+                request.gateway_endpoint.context
+                for request in self.dispatcher.requests
+            ),
+            (EndpointContext.PUBLIC, EndpointContext.PUBLIC),
+        )
 
     def command(
         self,
@@ -392,6 +496,7 @@ class GatewayProbeCommandServiceTests(unittest.TestCase):
         context=None,
         expected_current_graph_id: str = "graph-current",
         request: GatewayProbeRequest | None = None,
+        access_path: GatewayProbeAccessPath = GatewayProbeAccessPath.RUNTIME_PRIVATE,
     ) -> RequestGatewayProbe:
         return RequestGatewayProbe(
             context=self.context() if context is None else context,
@@ -407,6 +512,7 @@ class GatewayProbeCommandServiceTests(unittest.TestCase):
                 if request is None
                 else request
             ),
+            access_path=access_path,
         )
 
     def route_request(
@@ -414,6 +520,8 @@ class GatewayProbeCommandServiceTests(unittest.TestCase):
         surface: str,
         request_id: str,
         principal: AuthenticatedPrincipal,
+        *,
+        access_path: GatewayProbeAccessPath = GatewayProbeAccessPath.RUNTIME_PRIVATE,
     ) -> RouteRequest:
         return RouteRequest(
             surface=surface,
@@ -429,6 +537,7 @@ class GatewayProbeCommandServiceTests(unittest.TestCase):
                 "kind": "http-status",
                 "target_id": "hello.http",
                 "path": "/health/ready",
+                "access_path": access_path.value,
             },
             principal=principal,
         )
@@ -554,8 +663,10 @@ class GatewayProbeCommandServiceTests(unittest.TestCase):
             Protocol.HTTP,
             8000,
         )
+        connector_document = _connector_product_document()
         gateway_ref = ProductReference.from_document(gateway_document)
         hello_ref = ProductReference.from_document(hello_document)
+        connector_ref = ProductReference.from_document(connector_document)
         graph = DeploymentGraph(
             "gateway-probe",
             nodes={
@@ -588,6 +699,15 @@ class GatewayProbeCommandServiceTests(unittest.TestCase):
                     ),
                     metadata=_product_metadata(hello_ref),
                 ),
+                "connector": Node(
+                    node_id="connector",
+                    block_family=BlockFamily.PROXY,
+                    block_spec=BlockSpec("connector"),
+                    kind="container-server",
+                    runtime_id="docker-a",
+                    sockets=BlockSockets(),
+                    metadata=_product_metadata(connector_ref),
+                ),
             },
             edges={
                 "gateway.target->hello.http": Edge(
@@ -604,9 +724,18 @@ class GatewayProbeCommandServiceTests(unittest.TestCase):
                 "docker-a": RuntimeRecord(
                     "docker-a",
                     RuntimeKind.DOCKER,
-                    ("gateway", "hello"),
+                    ("gateway", "hello", "connector"),
                 )
             },
+            public_ingresses=(
+                NamedPublicIngress(
+                    ingress_id="gateway-public",
+                    authority_ref=IngressAuthorityReference("ingress-authority-a"),
+                    target=PublicIngressTarget("gateway", "control"),
+                    connector_node_id="connector",
+                    hostname="gateway-public.example.test",
+                ),
+            ),
         )
         with self.tracker() as unit_of_work:
             unit_of_work.stores.workspaces.create(
@@ -622,7 +751,7 @@ class GatewayProbeCommandServiceTests(unittest.TestCase):
                     created_at="2027-01-15T07:59:00Z",
                 )
             )
-            for document in (gateway_document, hello_document):
+            for document in (gateway_document, hello_document, connector_document):
                 unit_of_work.stores.registered_products.register(
                     workspace_id="workspace-a",
                     descriptor_document=document,
@@ -666,6 +795,26 @@ def _product_metadata(reference: ProductReference) -> dict[str, str]:
         "product_identity": reference.identity.key,
         "product_descriptor_digest": reference.descriptor_sha256.value,
     }
+
+
+def _connector_product_document():
+    return ProductDescriptorCodec().encode_document(
+        ContainerServerProduct(
+            identity=ProductIdentity(
+                "control-plane-kit",
+                "cloudflared-connector",
+                1,
+            ),
+            image=OciImageReference(
+                registry="ghcr.io",
+                repository=(
+                    "openj92/control-plane-kit-servers/cloudflared-connector"
+                ),
+                digest="sha256:" + "b" * 64,
+            ),
+            runtime_contract=ProductRuntimeContract(sockets=BlockSockets()),
+        )
+    )
 
 
 if __name__ == "__main__":

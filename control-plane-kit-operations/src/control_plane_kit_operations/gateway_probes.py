@@ -10,6 +10,7 @@ from typing import Any, Callable, Mapping, Protocol
 
 from control_plane_kit_core.gateway_delegation import (
     DelegatedGatewayProbeGrant,
+    GatewayProbeAccessPath,
     GatewayProbeCommandKind,
     GatewayProbeRequest,
 )
@@ -40,6 +41,7 @@ from control_plane_kit_operations.delegation_signing_keys import (
 from control_plane_kit_operations.runtime_effects import (
     gateway_control_endpoint_for_node,
     gateway_target_map_for_node,
+    named_public_gateway_endpoint_for_node,
 )
 from control_plane_kit_operations.secret_providers import (
     AuthorizeSecretUse,
@@ -47,6 +49,7 @@ from control_plane_kit_operations.secret_providers import (
     SecretUseResolutionAuthorizer,
     secret_use_correlation_for,
 )
+from control_plane_kit_operations.workflows import InvalidOperationCommand
 
 
 class GatewayProbeError(RuntimeError):
@@ -247,6 +250,7 @@ class GatewayProbeAttempt:
     current_graph_id: str
     gateway_node_id: str
     gateway_runtime_id: str
+    access_path: GatewayProbeAccessPath
     probe_kind: GatewayProbeCommandKind
     target_id: str
     request_digest: str
@@ -284,6 +288,8 @@ class GatewayProbeAttempt:
             _required_text(value, name)
         if not isinstance(self.probe_kind, GatewayProbeCommandKind):
             raise GatewayProbeError("probe_kind must be closed")
+        if not isinstance(self.access_path, GatewayProbeAccessPath):
+            raise GatewayProbeError("access_path must be closed")
         if not isinstance(self.status, GatewayProbeAttemptStatus):
             raise GatewayProbeError("attempt status must be closed")
         if type(self.issued_at) is not int or type(self.expires_at) is not int:
@@ -305,6 +311,7 @@ class GatewayProbeAttempt:
             "current_graph_id": self.current_graph_id,
             "gateway_node_id": self.gateway_node_id,
             "gateway_runtime_id": self.gateway_runtime_id,
+            "access_path": self.access_path.value,
             "probe_kind": self.probe_kind.value,
             "target_id": self.target_id,
             "request_digest": self.request_digest,
@@ -333,6 +340,7 @@ class RequestGatewayProbe:
     expected_current_graph_id: str
     gateway_node_id: str
     request: GatewayProbeRequest
+    access_path: GatewayProbeAccessPath = GatewayProbeAccessPath.RUNTIME_PRIVATE
 
     def __post_init__(self) -> None:
         if not isinstance(self.context, TrustedCommandContext):
@@ -340,6 +348,8 @@ class RequestGatewayProbe:
         _required_text(self.request_id, "request_id")
         _required_text(self.expected_current_graph_id, "expected_current_graph_id")
         _required_text(self.gateway_node_id, "gateway_node_id")
+        if not isinstance(self.access_path, GatewayProbeAccessPath):
+            raise GatewayProbeError("gateway probe access_path must be closed")
         if not isinstance(self.request, GatewayProbeRequest):
             raise GatewayProbeError("gateway probe request is malformed")
 
@@ -452,12 +462,22 @@ class GatewayProbeCommandService:
                     "gateway target is not declared by the current graph"
                 )
             _require_matching_probe_kind(command.request.kind, target)
-            endpoint = gateway_control_endpoint_for_node(
-                graph,
-                graph_id=graph_record.graph_id,
-                node_id=command.gateway_node_id,
-                registered_products=products,
-            )
+            try:
+                if command.access_path is GatewayProbeAccessPath.RUNTIME_PRIVATE:
+                    endpoint = gateway_control_endpoint_for_node(
+                        graph,
+                        graph_id=graph_record.graph_id,
+                        node_id=command.gateway_node_id,
+                        registered_products=products,
+                    )
+                else:
+                    endpoint = named_public_gateway_endpoint_for_node(
+                        graph,
+                        graph_id=graph_record.graph_id,
+                        node_id=command.gateway_node_id,
+                    )
+            except InvalidOperationCommand as error:
+                raise GatewayProbeConflict(str(error)) from error
             try:
                 signing_key = stores.delegation_signing_keys.require_unambiguous_active(
                     command.context.workspace_id,
@@ -496,6 +516,7 @@ class GatewayProbeCommandService:
                 current_graph_id=graph_record.graph_id,
                 gateway_node_id=command.gateway_node_id,
                 gateway_runtime_id=gateway_node.runtime_id,
+                access_path=command.access_path,
                 probe_kind=command.request.kind,
                 target_id=command.request.target_id.value,
                 request_digest=grant.request_digest.value,
@@ -619,6 +640,7 @@ def _intent_fingerprint(command: RequestGatewayProbe) -> str:
         "workspace_id": command.context.workspace_id,
         "expected_current_graph_id": command.expected_current_graph_id,
         "gateway_node_id": command.gateway_node_id,
+        "access_path": command.access_path.value,
         "request": command.request.descriptor(),
     }
     canonical = json.dumps(

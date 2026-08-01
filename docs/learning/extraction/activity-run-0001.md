@@ -6665,3 +6665,27 @@ the success evidence. The complete source-live scenario, full server-products
 suite, image smoke, and Docker residue audit pass. No Cloudflare resource was
 mutated, all #1241-owned Docker resources were removed, and all five Pottery
 Factory containers remained running.
+
+## #1256 Graph-Derived Gateway Access Paths
+
+One signed gateway-probe command can now select either a runtime-private path or
+a named-public-ingress path without accepting a caller-provided endpoint. Core
+owns the closed, provider-neutral `GatewayProbeAccessPath`; operations resolves
+the selected endpoint exclusively from accepted current graph truth.
+
+```text
+runtime-private
+  -> gateway control provider socket
+
+named-public-ingress
+  -> exactly one NamedPublicIngress
+    -> target gateway control provider socket
+      -> explicit HTTPS authority on port 443
+```
+
+The access path is part of the durable attempt and idempotency fingerprint, so
+one request identity cannot silently switch transport. Missing, wrong-target,
+or multiple public ingresses fail before signing-key authorization or network
+dispatch. HTTP and MCP use the same operations service and produce the same
+public endpoint semantics. The implementation remains provider-neutral:
+Cloudflare is an ingress interpreter choice, not gateway command language.

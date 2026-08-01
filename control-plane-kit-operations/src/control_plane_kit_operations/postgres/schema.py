@@ -8,7 +8,10 @@ from typing import Any, Protocol
 from jinja2 import Environment, StrictUndefined
 
 from control_plane_kit_core.operations.commands import OperatorCommandKind
-from control_plane_kit_core.gateway_delegation import GatewayProbeCommandKind
+from control_plane_kit_core.gateway_delegation import (
+    GatewayProbeAccessPath,
+    GatewayProbeCommandKind,
+)
 from control_plane_kit_core.delegation_keys import (
     DelegationKeyAlgorithm,
     DelegationKeyPurpose,
@@ -166,6 +169,7 @@ CREATE TABLE IF NOT EXISTS cpk_gateway_probe_attempts (
   current_graph_id text NOT NULL REFERENCES cpk_graph_versions(graph_id),
   gateway_node_id text NOT NULL,
   gateway_runtime_id text NOT NULL,
+  access_path text NOT NULL DEFAULT 'runtime-private',
   probe_kind text NOT NULL,
   target_id text NOT NULL,
   request_digest text NOT NULL,
@@ -187,6 +191,8 @@ CREATE TABLE IF NOT EXISTS cpk_gateway_probe_attempts (
     CHECK (status IN ({{ gateway_probe_attempt_statuses | sql_values }})),
   CONSTRAINT cpk_gateway_probe_kind_check
     CHECK (probe_kind IN ({{ gateway_probe_command_kinds | sql_values }})),
+  CONSTRAINT cpk_gateway_probe_access_path_check
+    CHECK (access_path IN ({{ gateway_probe_access_paths | sql_values }})),
   CONSTRAINT cpk_gateway_probe_digest_check
     CHECK (request_digest ~ '^[0-9a-f]{64}$'),
   CONSTRAINT cpk_gateway_probe_time_check
@@ -212,6 +218,23 @@ CREATE INDEX IF NOT EXISTS cpk_gateway_probe_workspace_timeline
 
 ALTER TABLE cpk_registered_products
   ADD COLUMN IF NOT EXISTS descriptor_content text;
+
+ALTER TABLE cpk_gateway_probe_attempts
+  ADD COLUMN IF NOT EXISTS access_path text NOT NULL DEFAULT 'runtime-private';
+
+DO $$
+BEGIN
+  IF NOT EXISTS (
+    SELECT 1 FROM pg_constraint
+    WHERE conname = 'cpk_gateway_probe_access_path_check'
+      AND conrelid = 'cpk_gateway_probe_attempts'::regclass
+  ) THEN
+    ALTER TABLE cpk_gateway_probe_attempts
+      ADD CONSTRAINT cpk_gateway_probe_access_path_check
+      CHECK (access_path IN ({{ gateway_probe_access_paths | sql_values }}));
+  END IF;
+END
+$$;
 
 CREATE TABLE IF NOT EXISTS cpk_image_pull_authorities (
   authority_id text PRIMARY KEY,
@@ -916,6 +939,7 @@ POSTGRES_SCHEMA = _SQL_ENVIRONMENT.from_string(_POSTGRES_SCHEMA_TEMPLATE).render
     secret_provider_kinds=tuple(SecretProviderKind),
     secret_use_intents=tuple(SecretUseIntent),
     gateway_probe_attempt_statuses=tuple(GatewayProbeAttemptStatus),
+    gateway_probe_access_paths=tuple(GatewayProbeAccessPath),
     gateway_probe_command_kinds=tuple(GatewayProbeCommandKind),
     delegation_key_algorithms=tuple(DelegationKeyAlgorithm),
     delegation_key_purposes=tuple(DelegationKeyPurpose),
