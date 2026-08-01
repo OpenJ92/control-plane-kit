@@ -14,6 +14,7 @@ EXPECTED_MODULES = {
     "configuration_rendering",
     "control_contracts",
     "control_routes",
+    "delegation_keys",
     "environment",
     "gateway_delegation",
     "identity",

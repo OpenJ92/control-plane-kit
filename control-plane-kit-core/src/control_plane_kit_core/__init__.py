@@ -129,6 +129,11 @@ from control_plane_kit_core.control_contracts import (
     ControlVariableSpec,
     ReloadPolicy,
 )
+from control_plane_kit_core.delegation_keys import (
+    DelegationKeyAlgorithm,
+    DelegationKeyPurpose,
+    DelegationPublicKey,
+)
 from control_plane_kit_core.gateway_delegation import (
     DelegatedGatewayProbeGrant,
     DelegatedGatewayProbeGrantCodec,

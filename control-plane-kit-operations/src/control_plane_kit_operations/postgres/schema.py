@@ -9,6 +9,10 @@ from jinja2 import Environment, StrictUndefined
 
 from control_plane_kit_core.operations.commands import OperatorCommandKind
 from control_plane_kit_core.gateway_delegation import GatewayProbeCommandKind
+from control_plane_kit_core.delegation_keys import (
+    DelegationKeyAlgorithm,
+    DelegationKeyPurpose,
+)
 from control_plane_kit_core.operations.lifecycle import (
     ActivityEventKind,
     ActivityEventScope,
@@ -30,6 +34,9 @@ from control_plane_kit_core.types import RuntimeKind
 from control_plane_kit_core.types import WorkspaceLifecycle
 from control_plane_kit_operations.records import ObservationFreshness, ObservationStatus
 from control_plane_kit_operations.gateway_probes import GatewayProbeAttemptStatus
+from control_plane_kit_operations.delegation_signing_keys import (
+    RegisteredDelegationSigningKeyStatus,
+)
 from control_plane_kit_operations.ingress_authorities import (
     GeneratedSecretPurpose,
     IngressAuthorityProviderKind,
@@ -404,6 +411,59 @@ CREATE INDEX IF NOT EXISTS cpk_secret_references_history
     admitted_at,
     registration_id
   );
+
+CREATE TABLE IF NOT EXISTS cpk_delegation_signing_keys (
+  registration_id text PRIMARY KEY,
+  workspace_id text NOT NULL REFERENCES cpk_workspaces(workspace_id),
+  purpose text NOT NULL,
+  issuer text NOT NULL,
+  key_id text NOT NULL,
+  algorithm text NOT NULL,
+  public_key_pem text NOT NULL,
+  public_fingerprint_sha256 text NOT NULL,
+  private_key_reference text NOT NULL,
+  admitted_by text NOT NULL,
+  admitted_at text NOT NULL,
+  status text NOT NULL,
+  activated_by text,
+  activated_at text,
+  retired_by text,
+  retired_at text,
+  revoked_by text,
+  revoked_at text,
+  UNIQUE (registration_id, workspace_id),
+  UNIQUE (workspace_id, purpose, issuer, key_id),
+  CONSTRAINT cpk_delegation_signing_keys_registration_check
+    CHECK (registration_id ~ '^dkey_[0-9a-f]{64}$'),
+  CONSTRAINT cpk_delegation_signing_keys_purpose_check
+    CHECK (purpose IN ({{ delegation_key_purposes | sql_values }})),
+  CONSTRAINT cpk_delegation_signing_keys_algorithm_check
+    CHECK (algorithm IN ({{ delegation_key_algorithms | sql_values }})),
+  CONSTRAINT cpk_delegation_signing_keys_status_check
+    CHECK (status IN ({{ delegation_signing_key_statuses | sql_values }})),
+  CONSTRAINT cpk_delegation_signing_keys_issuer_check
+    CHECK (issuer ~ '^[a-z][a-z0-9._-]{0,127}$'),
+  CONSTRAINT cpk_delegation_signing_keys_key_id_check
+    CHECK (key_id ~ '^[a-z][a-z0-9._-]{0,127}$'),
+  CONSTRAINT cpk_delegation_signing_keys_fingerprint_check
+    CHECK (public_fingerprint_sha256 ~ '^[0-9a-f]{64}$'),
+  CONSTRAINT cpk_delegation_signing_keys_private_reference_check
+    CHECK (private_key_reference ~ '^secret://[a-z][a-z0-9-]{0,62}/[A-Za-z0-9._/-]+$'),
+  CONSTRAINT cpk_delegation_signing_keys_activation_evidence_check
+    CHECK ((activated_by IS NULL) = (activated_at IS NULL)),
+  CONSTRAINT cpk_delegation_signing_keys_retirement_evidence_check
+    CHECK ((retired_by IS NULL) = (retired_at IS NULL)),
+  CONSTRAINT cpk_delegation_signing_keys_revocation_evidence_check
+    CHECK ((revoked_by IS NULL) = (revoked_at IS NULL))
+);
+
+CREATE UNIQUE INDEX IF NOT EXISTS cpk_delegation_signing_keys_active_scope
+  ON cpk_delegation_signing_keys (workspace_id, purpose, issuer)
+  WHERE status = 'active';
+
+CREATE INDEX IF NOT EXISTS cpk_delegation_signing_keys_verifier_set
+  ON cpk_delegation_signing_keys (workspace_id, purpose, issuer, key_id)
+  WHERE status IN ('active', 'verify-only');
 
 CREATE TABLE IF NOT EXISTS cpk_secret_use_authorizations (
   authorization_id text PRIMARY KEY,
@@ -857,6 +917,9 @@ POSTGRES_SCHEMA = _SQL_ENVIRONMENT.from_string(_POSTGRES_SCHEMA_TEMPLATE).render
     secret_use_intents=tuple(SecretUseIntent),
     gateway_probe_attempt_statuses=tuple(GatewayProbeAttemptStatus),
     gateway_probe_command_kinds=tuple(GatewayProbeCommandKind),
+    delegation_key_algorithms=tuple(DelegationKeyAlgorithm),
+    delegation_key_purposes=tuple(DelegationKeyPurpose),
+    delegation_signing_key_statuses=tuple(RegisteredDelegationSigningKeyStatus),
     risk_levels=tuple(RiskLevel),
     runtime_authority_kinds=tuple(RuntimeAuthorityKind),
     runtime_kinds=tuple(RuntimeKind),
