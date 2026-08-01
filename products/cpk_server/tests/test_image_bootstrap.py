@@ -101,9 +101,6 @@ class CpkServerImageBootstrapTests(unittest.TestCase):
                 "CPK_RUNTIME_INTERPRETERS",
                 "CPK_INGRESS_INTERPRETERS",
                 "CPK_GATEWAY_PROBE_SIGNER",
-                "CPK_GATEWAY_PROBE_SIGNING_KEY_REF",
-                "CPK_GATEWAY_PROBE_ISSUER",
-                "CPK_GATEWAY_PROBE_KEY_ID",
                 "CPK_PRODUCT_MATERIAL_RESOLVER",
                 "CPK_PRODUCT_SECRET_VALUES_JSON",
                 "CPK_MATERIAL_PROVIDER_ROUTES_JSON",
@@ -513,6 +510,10 @@ class CpkServerImageBootstrapTests(unittest.TestCase):
                 GatewayProbeCommandKind,
                 GatewayProbeRequest,
             )
+            from control_plane_kit_core.delegation_keys import (
+                DelegationKeyAlgorithm,
+                DelegationPublicKey,
+            )
             from control_plane_kit_core.probe_intents import (
                 EndpointContext,
                 LiteralEndpointMaterial,
@@ -551,9 +552,6 @@ class CpkServerImageBootstrapTests(unittest.TestCase):
                     "CPK_PORT": "8080",
                     "CPK_RUNTIME_INTERPRETERS": "none",
                     "CPK_GATEWAY_PROBE_SIGNER": "ed25519",
-                    "CPK_GATEWAY_PROBE_SIGNING_KEY_REF": key_reference,
-                    "CPK_GATEWAY_PROBE_ISSUER": "urn:cpk:test",
-                    "CPK_GATEWAY_PROBE_KEY_ID": "gateway-key-a",
                     "CPK_PRODUCT_MATERIAL_RESOLVER": "provider",
                     "CPK_MATERIAL_PROVIDER_ROUTES_JSON": json.dumps(
                         {"provider-main": "https://secrets.internal.example"}
@@ -666,16 +664,18 @@ class CpkServerImageBootstrapTests(unittest.TestCase):
                         EndpointContext.RUNTIME_PRIVATE,
                         LiteralEndpointMaterial("http://gateway-a:8000"),
                     ),
+                    SecretReference(key_reference),
+                    DelegationPublicKey(
+                        key_id="gateway-key-a",
+                        algorithm=DelegationKeyAlgorithm.ED25519,
+                        public_key_pem=public_pem,
+                    ),
                     secret_grant,
                 )
             )
 
             self.assertEqual(observed_resolution_grants, [secret_grant])
             self.assertEqual(config.gateway_probe_signer, "ed25519")
-            self.assertEqual(
-                config.gateway_probe_signing_key_reference.reference_id,
-                key_reference,
-            )
             self.assertEqual(observed["scheme"], "CPK-Gateway")
             self.assertEqual(
                 observed["claims"]["gateway_probe"],
@@ -718,11 +718,6 @@ class CpkServerImageBootstrapTests(unittest.TestCase):
                 "CPK_PORT": "8080",
                 "CPK_RUNTIME_INTERPRETERS": "none",
                 "CPK_GATEWAY_PROBE_SIGNER": "ed25519",
-                "CPK_GATEWAY_PROBE_SIGNING_KEY_REF": (
-                    "secret://control-plane-kit/gateway/signing-key"
-                ),
-                "CPK_GATEWAY_PROBE_ISSUER": "urn:cpk:test",
-                "CPK_GATEWAY_PROBE_KEY_ID": "gateway-key-a",
                 "CPK_WORKPLACE_DATABASE_URL": "postgres://user:pass@db/cpk",
                 "CPK_ACTIVITY_HISTORY_DATABASE_URL": "postgres://user:pass@db/cpk",
                 "CPK_OBSERVER_STATE_DATABASE_URL": "postgres://user:pass@db/cpk",

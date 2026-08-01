@@ -62,27 +62,6 @@
       ]
     },
     {
-      "name": "CPK_GATEWAY_PROBE_SIGNING_KEY_REF",
-      "required": false,
-      "allowed_values": [
-        "runtime-secret-reference"
-      ]
-    },
-    {
-      "name": "CPK_GATEWAY_PROBE_ISSUER",
-      "required": false,
-      "allowed_values": [
-        "bounded-issuer-identity"
-      ]
-    },
-    {
-      "name": "CPK_GATEWAY_PROBE_KEY_ID",
-      "required": false,
-      "allowed_values": [
-        "bounded-public-key-identity"
-      ]
-    },
-    {
       "name": "CPK_PRODUCT_MATERIAL_RESOLVER",
       "required": false,
       "allowed_values": [
