@@ -33,6 +33,7 @@ class OperatorCommandFamily(StrEnum):
     RUNTIME_AUTHORITY = "runtime-authority"
     INGRESS_AUTHORITY = "ingress-authority"
     SECRET_PROVIDER = "secret-provider"
+    DELEGATION_KEY = "delegation-key"
     GATEWAY_PROBE = "gateway-probe"
 
 
@@ -52,6 +53,10 @@ class OperatorCommandKind(StrEnum):
     REVOKE_SECRET_PROVIDER = "revoke-secret-provider"
     REGISTER_SECRET_REFERENCE = "register-secret-reference"
     REVOKE_SECRET_REFERENCE = "revoke-secret-reference"
+    REGISTER_DELEGATION_KEY = "register-delegation-key"
+    ACTIVATE_DELEGATION_KEY = "activate-delegation-key"
+    RETIRE_DELEGATION_KEY = "retire-delegation-key"
+    REVOKE_DELEGATION_KEY = "revoke-delegation-key"
     START_OPERATION_SESSION = "start-operation-session"
     CLOSE_OPERATION_SESSION = "close-operation-session"
     CANCEL_OPERATION_SESSION = "cancel-operation-session"
@@ -77,6 +82,7 @@ class CommandPayloadPolicy(StrEnum):
     INGRESS_AUTHORITY_REFERENCE = "ingress-authority-reference"
     SECRET_PROVIDER_REFERENCE = "secret-provider-reference"
     SECRET_REFERENCE = "secret-reference"
+    DELEGATION_KEY_REFERENCE = "delegation-key-reference"
     GATEWAY_PROBE_REFERENCE = "gateway-probe-reference"
 
 
@@ -116,6 +122,10 @@ _KIND_FAMILY = {
     OperatorCommandKind.REVOKE_SECRET_REFERENCE: (
         OperatorCommandFamily.SECRET_PROVIDER
     ),
+    OperatorCommandKind.REGISTER_DELEGATION_KEY: OperatorCommandFamily.DELEGATION_KEY,
+    OperatorCommandKind.ACTIVATE_DELEGATION_KEY: OperatorCommandFamily.DELEGATION_KEY,
+    OperatorCommandKind.RETIRE_DELEGATION_KEY: OperatorCommandFamily.DELEGATION_KEY,
+    OperatorCommandKind.REVOKE_DELEGATION_KEY: OperatorCommandFamily.DELEGATION_KEY,
     OperatorCommandKind.START_OPERATION_SESSION: OperatorCommandFamily.OPERATION_SESSION,
     OperatorCommandKind.CLOSE_OPERATION_SESSION: OperatorCommandFamily.OPERATION_SESSION,
     OperatorCommandKind.CANCEL_OPERATION_SESSION: OperatorCommandFamily.OPERATION_SESSION,
@@ -410,6 +420,54 @@ class _CommandDefinition:
 
 
 _CANONICAL_COMMANDS = (
+    _CommandDefinition(
+        "delegation-key.register",
+        OperatorCommandKind.REGISTER_DELEGATION_KEY,
+        OperatorCommandFamily.DELEGATION_KEY,
+        DeploymentProgramStage.PLAN,
+        ControlPlaneServiceRole.PLANNING,
+        "RegisterDelegationSigningKeyRequest",
+        "RegisteredDelegationSigningKeyResponse",
+        ApprovalPolicy.NOT_REQUIRED,
+        CommandPayloadPolicy.DELEGATION_KEY_REFERENCE,
+        requires_open_session=False,
+    ),
+    _CommandDefinition(
+        "delegation-key.activate",
+        OperatorCommandKind.ACTIVATE_DELEGATION_KEY,
+        OperatorCommandFamily.DELEGATION_KEY,
+        DeploymentProgramStage.PLAN,
+        ControlPlaneServiceRole.PLANNING,
+        "ActivateDelegationSigningKeyRequest",
+        "RegisteredDelegationSigningKeyResponse",
+        ApprovalPolicy.NOT_REQUIRED,
+        CommandPayloadPolicy.DELEGATION_KEY_REFERENCE,
+        requires_open_session=False,
+    ),
+    _CommandDefinition(
+        "delegation-key.retire",
+        OperatorCommandKind.RETIRE_DELEGATION_KEY,
+        OperatorCommandFamily.DELEGATION_KEY,
+        DeploymentProgramStage.PLAN,
+        ControlPlaneServiceRole.PLANNING,
+        "RetireDelegationSigningKeyRequest",
+        "RegisteredDelegationSigningKeyResponse",
+        ApprovalPolicy.NOT_REQUIRED,
+        CommandPayloadPolicy.DELEGATION_KEY_REFERENCE,
+        requires_open_session=False,
+    ),
+    _CommandDefinition(
+        "delegation-key.revoke",
+        OperatorCommandKind.REVOKE_DELEGATION_KEY,
+        OperatorCommandFamily.DELEGATION_KEY,
+        DeploymentProgramStage.PLAN,
+        ControlPlaneServiceRole.PLANNING,
+        "RevokeDelegationSigningKeyRequest",
+        "RegisteredDelegationSigningKeyResponse",
+        ApprovalPolicy.NOT_REQUIRED,
+        CommandPayloadPolicy.DELEGATION_KEY_REFERENCE,
+        requires_open_session=False,
+    ),
     _CommandDefinition(
         "gateway-probe.request",
         OperatorCommandKind.REQUEST_GATEWAY_PROBE,

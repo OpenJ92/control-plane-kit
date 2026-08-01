@@ -13,6 +13,7 @@ from control_plane_kit_core.planning import (
     RiskLevel,
     plan_recovery_transition,
 )
+from control_plane_kit_core.delegation_keys import DelegationKeyPurpose
 from control_plane_kit_core.public_ingress import IngressAuthorityReference
 from control_plane_kit_core.runtime_authority import RuntimeAuthorityReference
 from control_plane_kit_core.secrets import SecretProviderId
@@ -43,6 +44,15 @@ from control_plane_kit_operations.secret_providers import (
     RegisteredSecretProvider,
     RegisteredSecretReference,
     SecretProviderNotFound,
+)
+from control_plane_kit_operations.delegation_signing_keys import (
+    DelegationSigningKeyNotFound,
+    RegisteredDelegationSigningKey,
+    RegisteredDelegationSigningKeyStatus,
+)
+from control_plane_kit_operations.gateway_probes import (
+    GatewayProbeError,
+    GatewayProbeVerifierConfiguration,
 )
 
 _REDACTED = "<redacted>"
@@ -132,6 +142,26 @@ class GatewayProbeStore(Protocol):
         offset: int,
     ) -> tuple[object, ...]: ...
     def count_for_workspace(self, workspace_id: str) -> int: ...
+
+
+class DelegationSigningKeyStore(Protocol):
+    def list_workspace(
+        self,
+        workspace_id: str,
+    ) -> tuple[RegisteredDelegationSigningKey, ...]: ...
+
+    def require_unambiguous_active(
+        self,
+        workspace_id: str,
+        purpose: DelegationKeyPurpose,
+    ) -> RegisteredDelegationSigningKey: ...
+
+    def list_for_verification(
+        self,
+        workspace_id: str,
+        purpose: DelegationKeyPurpose,
+        issuer: str,
+    ) -> tuple[RegisteredDelegationSigningKey, ...]: ...
 
 
 @dataclass(frozen=True)
@@ -355,6 +385,7 @@ class InstanceReadService:
         secret_provider_store: SecretProviderStore | None = None,
         secret_reference_store: SecretReferenceStore | None = None,
         gateway_probe_store: GatewayProbeStore | None = None,
+        delegation_signing_key_store: DelegationSigningKeyStore | None = None,
         graph_codec: GraphDescriptorCodec = DEFAULT_GRAPH_CODEC,
         clock=lambda: datetime.now(timezone.utc),
         observation_freshness: ObservationFreshnessPolicy = ObservationFreshnessPolicy(),
@@ -370,6 +401,7 @@ class InstanceReadService:
         self._secret_provider_store = secret_provider_store
         self._secret_reference_store = secret_reference_store
         self._gateway_probe_store = gateway_probe_store
+        self._delegation_signing_key_store = delegation_signing_key_store
         self._graph_codec = graph_codec
         self._clock = clock
         self._observation_freshness = observation_freshness
@@ -812,6 +844,82 @@ class InstanceReadService:
             workspace_id=workspace_id,
             kind="gateway-probe-detail",
             payload={"gateway_probe": attempt.descriptor()},
+        )
+
+    def delegation_signing_keys(
+        self,
+        workspace_id: str,
+    ) -> SecretMetadataCollectionReadModel:
+        self._workspace(workspace_id)
+        if self._delegation_signing_key_store is None:
+            raise ReadModelError("delegation signing key store is not configured")
+        return SecretMetadataCollectionReadModel(
+            workspace_id=workspace_id,
+            kind="delegation-signing-keys",
+            items=tuple(
+                value.descriptor()
+                for value in self._delegation_signing_key_store.list_workspace(
+                    workspace_id
+                )
+            ),
+        )
+
+    def gateway_verifier_configuration(
+        self,
+        workspace_id: str,
+        gateway_node_id: str,
+    ) -> FocusedDetailReadModel:
+        self._workspace(workspace_id)
+        if self._delegation_signing_key_store is None:
+            raise ReadModelError("delegation signing key store is not configured")
+        try:
+            active = self._delegation_signing_key_store.require_unambiguous_active(
+                workspace_id,
+                DelegationKeyPurpose.GATEWAY_PROBE,
+            )
+            verification_keys = (
+                self._delegation_signing_key_store.list_for_verification(
+                    workspace_id,
+                    DelegationKeyPurpose.GATEWAY_PROBE,
+                    active.issuer,
+                )
+            )
+            if not any(
+                value.status is RegisteredDelegationSigningKeyStatus.ACTIVE
+                for value in verification_keys
+            ):
+                raise GatewayProbeError("gateway verifier set has no active key")
+            configuration = GatewayProbeVerifierConfiguration(
+                issuer=active.issuer,
+                audience=f"gateway:{workspace_id}:{gateway_node_id}",
+                gateway_node_id=gateway_node_id,
+                public_keys=tuple(value.public_key for value in verification_keys),
+            )
+        except (DelegationSigningKeyNotFound, GatewayProbeError) as error:
+            raise ReadModelError(
+                "gateway verifier configuration is unavailable"
+            ) from error
+        return FocusedDetailReadModel(
+            workspace_id=workspace_id,
+            kind="gateway-verifier-configuration",
+            payload={
+                "gateway_verifier_configuration": {
+                    "issuer": configuration.issuer,
+                    "audience": configuration.audience,
+                    "gateway_node_id": configuration.gateway_node_id,
+                    "public_keys": [
+                        {
+                            **key.descriptor(),
+                            "public_key_pem": key.public_key_pem,
+                        }
+                        for key in configuration.public_keys
+                    ],
+                    "public_environment": [
+                        binding.descriptor()
+                        for binding in configuration.public_environment()
+                    ],
+                }
+            },
         )
 
     def control_surface(

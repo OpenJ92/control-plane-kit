@@ -15,6 +15,11 @@ from control_plane_kit_core.gateway_delegation import (
     GatewayProbeCommandKind,
     GatewayProbeRequest,
 )
+from control_plane_kit_core.delegation_keys import (
+    DelegationKeyAlgorithm,
+    DelegationKeyPurpose,
+    DelegationPublicKey,
+)
 from control_plane_kit_core.runtime_effects import GatewayTargetId
 from control_plane_kit_core.operations import ControlPlaneServiceRole
 from control_plane_kit_core.operations.commands import OperatorCommandKind
@@ -66,6 +71,17 @@ from control_plane_kit_operations.gateway_probes import (
     GatewayProbeError,
     GatewayProbeNotFound,
     RequestGatewayProbe,
+)
+from control_plane_kit_operations.delegation_signing_keys import (
+    ActivateDelegationSigningKeyCommand,
+    DelegationSigningKeyAuthorizationDenied,
+    DelegationSigningKeyConflict,
+    DelegationSigningKeyError,
+    DelegationSigningKeyNotFound,
+    DelegationSigningKeyRegistrationService,
+    RegisterDelegationSigningKeyCommand,
+    RetireDelegationSigningKeyCommand,
+    RevokeDelegationSigningKeyCommand,
 )
 from control_plane_kit_operations.lifecycle import (
     ClaimAndOpenActivityRun,
@@ -249,6 +265,12 @@ _ROUTE_AUTHORIZATION_POLICIES: dict[str, RouteAuthorizationPolicy] = {
     ),
     "read.gateway-probe-timeline": _WORKSPACE_READ,
     "read.gateway-probe-detail": _WORKSPACE_READ,
+    "read.delegation-keys": RouteAuthorizationPolicy(
+        required_scopes=(PolicyScope.DELEGATION_KEY_READ,)
+    ),
+    "read.gateway-verifier-configuration": RouteAuthorizationPolicy(
+        required_scopes=(PolicyScope.DELEGATION_KEY_READ,)
+    ),
     "command.workspace.create": RouteAuthorizationPolicy(
         required_scopes=(PolicyScope.HUB_INSTANCE_CREATE,)
     ),
@@ -290,6 +312,18 @@ _ROUTE_AUTHORIZATION_POLICIES: dict[str, RouteAuthorizationPolicy] = {
             PolicyScope.DELEGATION_KEY_USE,
             PolicyScope.SECRET_PROVIDER_USE,
         )
+    ),
+    "command.delegation-key.register": RouteAuthorizationPolicy(
+        required_scopes=(PolicyScope.DELEGATION_KEY_REGISTER,)
+    ),
+    "command.delegation-key.activate": RouteAuthorizationPolicy(
+        required_scopes=(PolicyScope.DELEGATION_KEY_ACTIVATE,)
+    ),
+    "command.delegation-key.retire": RouteAuthorizationPolicy(
+        required_scopes=(PolicyScope.DELEGATION_KEY_RETIRE,)
+    ),
+    "command.delegation-key.revoke": RouteAuthorizationPolicy(
+        required_scopes=(PolicyScope.DELEGATION_KEY_REVOKE,)
     ),
     "command.operation-session.start": _WORKSPACE_EDIT,
     "command.operation-session.close": _WORKSPACE_EDIT,
@@ -372,6 +406,7 @@ class CpkServerReadService:
                 "secret_provider_store": stores.secret_providers,
                 "secret_reference_store": stores.secret_references,
                 "gateway_probe_store": stores.gateway_probes,
+                "delegation_signing_key_store": stores.delegation_signing_keys,
             }
             if self._clock is not None:
                 kwargs["clock"] = self._clock
@@ -395,6 +430,7 @@ class CpkServerPlanningService:
         runtime_authorities: RuntimeAuthorityRegistrationService | None = None,
         ingress_authorities: IngressAuthorityRegistrationService | None = None,
         secret_providers: SecretProviderRegistrationService | None = None,
+        delegation_signing_keys: DelegationSigningKeyRegistrationService | None = None,
         desired_graphs: DesiredGraphCommandService | None = None,
     ) -> None:
         self._service = service
@@ -404,6 +440,7 @@ class CpkServerPlanningService:
         self._runtime_authorities = runtime_authorities
         self._ingress_authorities = ingress_authorities
         self._secret_providers = secret_providers
+        self._delegation_signing_keys = delegation_signing_keys
         self._desired_graphs = desired_graphs
 
     def handle(self, request: CpkServerRouteRequest) -> Mapping[str, object]:
@@ -613,6 +650,14 @@ class CpkServerPlanningService:
                 request,
                 context,
             )
+        if request.route_id.startswith("command.delegation-key."):
+            if self._delegation_signing_keys is None:
+                raise _service_not_configured(request)
+            return _handle_delegation_signing_key_command(
+                self._delegation_signing_keys,
+                request,
+                context,
+            )
         if request.route_id == "command.desired-graph.set":
             if self._desired_graphs is None:
                 raise _service_not_configured(request)
@@ -762,6 +807,93 @@ def _handle_secret_provider_command(
     except SecretProviderRegistrationConflict as error:
         raise CpkServerApplicationError(409, str(error)) from error
     except (SecretProviderRegistrationError, TypeError, ValueError) as error:
+        raise CpkServerApplicationError(400, str(error)) from error
+    return result.descriptor()
+
+
+def _handle_delegation_signing_key_command(
+    service: DelegationSigningKeyRegistrationService,
+    request: CpkServerRouteRequest,
+    context: TrustedCommandContext,
+) -> Mapping[str, object]:
+    """Decode public key metadata and secret references into lifecycle commands."""
+
+    payload = _arguments(request)
+    _text(payload, "idempotency_key")
+    try:
+        purpose = DelegationKeyPurpose(
+            _optional_text(payload, "purpose")
+            or DelegationKeyPurpose.GATEWAY_PROBE.value
+        )
+        issuer = _path_or_payload(payload, "issuer", "issuer")
+        key_id = _path_or_payload(payload, "key_id", "key_id")
+        if request.route_id == "command.delegation-key.register":
+            result = service.register(
+                RegisterDelegationSigningKeyCommand(
+                    workspace_id=_workspace_id(payload),
+                    purpose=purpose,
+                    issuer=issuer,
+                    public_key=DelegationPublicKey(
+                        key_id=key_id,
+                        algorithm=DelegationKeyAlgorithm(
+                            _optional_text(payload, "algorithm")
+                            or DelegationKeyAlgorithm.ED25519.value
+                        ),
+                        public_key_pem=_text(payload, "public_key_pem"),
+                    ),
+                    private_key_reference=SecretReference(
+                        _text(payload, "private_key_reference")
+                    ),
+                    admitted_by=context.actor_id,
+                    admitted_at=_text(payload, "admitted_at"),
+                    actor_scopes=context.granted_scopes,
+                )
+            )
+        elif request.route_id == "command.delegation-key.activate":
+            result = service.activate(
+                ActivateDelegationSigningKeyCommand(
+                    workspace_id=_workspace_id(payload),
+                    purpose=purpose,
+                    issuer=issuer,
+                    key_id=key_id,
+                    activated_by=context.actor_id,
+                    activated_at=_text(payload, "activated_at"),
+                    actor_scopes=context.granted_scopes,
+                )
+            )
+        elif request.route_id == "command.delegation-key.retire":
+            result = service.retire(
+                RetireDelegationSigningKeyCommand(
+                    workspace_id=_workspace_id(payload),
+                    purpose=purpose,
+                    issuer=issuer,
+                    key_id=key_id,
+                    retired_by=context.actor_id,
+                    retired_at=_text(payload, "retired_at"),
+                    actor_scopes=context.granted_scopes,
+                )
+            )
+        elif request.route_id == "command.delegation-key.revoke":
+            result = service.revoke(
+                RevokeDelegationSigningKeyCommand(
+                    workspace_id=_workspace_id(payload),
+                    purpose=purpose,
+                    issuer=issuer,
+                    key_id=key_id,
+                    revoked_by=context.actor_id,
+                    revoked_at=_text(payload, "revoked_at"),
+                    actor_scopes=context.granted_scopes,
+                )
+            )
+        else:
+            raise _unsupported_route(request)
+    except DelegationSigningKeyAuthorizationDenied as error:
+        raise CpkServerApplicationError(403, str(error)) from error
+    except DelegationSigningKeyNotFound as error:
+        raise CpkServerApplicationError(404, "delegation signing key was not found") from error
+    except DelegationSigningKeyConflict as error:
+        raise CpkServerApplicationError(409, str(error)) from error
+    except (DelegationSigningKeyError, TypeError, ValueError) as error:
         raise CpkServerApplicationError(400, str(error)) from error
     return result.descriptor()
 
@@ -1040,6 +1172,7 @@ def cpk_server_services(
     runtime_authorities: RuntimeAuthorityRegistrationService | None = None,
     ingress_authorities: IngressAuthorityRegistrationService | None = None,
     secret_providers: SecretProviderRegistrationService | None = None,
+    delegation_signing_keys: DelegationSigningKeyRegistrationService | None = None,
     desired_graphs: DesiredGraphCommandService | None = None,
     operations: OperationCommandService | None = None,
     advancement: CurrentGraphAdvancementCommandService | None = None,
@@ -1064,6 +1197,7 @@ def cpk_server_services(
             runtime_authorities=runtime_authorities,
             ingress_authorities=ingress_authorities,
             secret_providers=secret_providers,
+            delegation_signing_keys=delegation_signing_keys,
             desired_graphs=desired_graphs,
         ),
         ControlPlaneServiceRole.APPROVAL: CpkServerApprovalService(approval),
@@ -1203,6 +1337,13 @@ def _read_model(service: InstanceReadService, request: CpkServerRouteRequest) ->
         return service.gateway_probe_detail(
             _workspace_id(args),
             _text(args, "probe_id"),
+        )
+    if route_id == "read.delegation-keys":
+        return service.delegation_signing_keys(_workspace_id(args))
+    if route_id == "read.gateway-verifier-configuration":
+        return service.gateway_verifier_configuration(
+            _workspace_id(args),
+            _path_or_payload(args, "gateway_node_id", "gateway_node_id"),
         )
     raise _unsupported_route(request)
 

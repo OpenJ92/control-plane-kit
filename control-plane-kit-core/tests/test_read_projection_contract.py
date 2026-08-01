@@ -69,6 +69,14 @@ class ReadProjectionContractTests(unittest.TestCase):
                     False,
                 ),
                 (
+                    "read.delegation-keys",
+                    ReadProjectionKind.DELEGATION_KEYS,
+                    "DelegationSigningKeyCollectionReadResponse",
+                    ReadProjectionPolicy.REDACTED_DELEGATION_KEY,
+                    True,
+                    False,
+                ),
+                (
                     "read.desired-graph",
                     ReadProjectionKind.DESIRED_GRAPH,
                     "GraphReadResponse",
@@ -91,6 +99,14 @@ class ReadProjectionContractTests(unittest.TestCase):
                     ReadProjectionPolicy.DELEGATED_GATEWAY_PROBE_EVIDENCE,
                     True,
                     True,
+                ),
+                (
+                    "read.gateway-verifier-configuration",
+                    ReadProjectionKind.GATEWAY_VERIFIER_CONFIGURATION,
+                    "GatewayVerifierConfigurationReadResponse",
+                    ReadProjectionPolicy.PUBLIC_GATEWAY_VERIFIER_CONFIGURATION,
+                    True,
+                    False,
                 ),
                 (
                     "read.ingress-authorities",

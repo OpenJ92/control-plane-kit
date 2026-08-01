@@ -39,6 +39,8 @@ class ReadProjectionKind(StrEnum):
     SECRET_PROVIDER_DETAIL = "secret-provider-detail"
     SECRET_REFERENCES = "secret-references"
     SECRET_REFERENCE_DETAIL = "secret-reference-detail"
+    DELEGATION_KEYS = "delegation-keys"
+    GATEWAY_VERIFIER_CONFIGURATION = "gateway-verifier-configuration"
     GATEWAY_PROBE_DETAIL = "gateway-probe-detail"
     GATEWAY_PROBE_TIMELINE = "gateway-probe-timeline"
 
@@ -57,6 +59,8 @@ class ReadProjectionPolicy(StrEnum):
     REDACTED_INGRESS_AUTHORITY = "redacted-ingress-authority"
     REDACTED_SECRET_PROVIDER = "redacted-secret-provider"
     REDACTED_SECRET_REFERENCE = "redacted-secret-reference"
+    REDACTED_DELEGATION_KEY = "redacted-delegation-key"
+    PUBLIC_GATEWAY_VERIFIER_CONFIGURATION = "public-gateway-verifier-configuration"
     DELEGATED_GATEWAY_PROBE_EVIDENCE = "delegated-gateway-probe-evidence"
 
 
@@ -279,6 +283,18 @@ class _ProjectionDefinition:
 
 
 _CANONICAL_PROJECTIONS = (
+    _ProjectionDefinition(
+        "read.delegation-keys",
+        ReadProjectionKind.DELEGATION_KEYS,
+        "DelegationSigningKeyCollectionReadResponse",
+        ReadProjectionPolicy.REDACTED_DELEGATION_KEY,
+    ),
+    _ProjectionDefinition(
+        "read.gateway-verifier-configuration",
+        ReadProjectionKind.GATEWAY_VERIFIER_CONFIGURATION,
+        "GatewayVerifierConfigurationReadResponse",
+        ReadProjectionPolicy.PUBLIC_GATEWAY_VERIFIER_CONFIGURATION,
+    ),
     _ProjectionDefinition(
         "read.gateway-probe-detail",
         ReadProjectionKind.GATEWAY_PROBE_DETAIL,

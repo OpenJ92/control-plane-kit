@@ -54,6 +54,12 @@ class AdapterParityContractTests(unittest.TestCase):
                     "GraphReadResponse",
                 ),
                 (
+                    "read.delegation-keys",
+                    "read.delegation-keys",
+                    "list_delegation_keys",
+                    "DelegationSigningKeyCollectionReadResponse",
+                ),
+                (
                     "read.desired-graph",
                     "read.desired-graph",
                     "get_desired_graph",
@@ -70,6 +76,12 @@ class AdapterParityContractTests(unittest.TestCase):
                     "read.gateway-probe-timeline",
                     "list_gateway_probes",
                     "GatewayProbeTimelineReadResponse",
+                ),
+                (
+                    "read.gateway-verifier-configuration",
+                    "read.gateway-verifier-configuration",
+                    "get_gateway_verifier_configuration",
+                    "GatewayVerifierConfigurationReadResponse",
                 ),
                 (
                     "read.ingress-authorities",
