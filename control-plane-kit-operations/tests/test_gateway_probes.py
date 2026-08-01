@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
+import json
 import os
 import unittest
 
@@ -15,6 +16,11 @@ from control_plane_kit_core.algebra import (
 from control_plane_kit_core.gateway_delegation import (
     GatewayProbeCommandKind,
     GatewayProbeRequest,
+)
+from control_plane_kit_core.delegation_keys import (
+    DelegationKeyAlgorithm,
+    DelegationKeyPurpose,
+    DelegationPublicKey,
 )
 from control_plane_kit_core.identity import (
     AuthenticatedPrincipal,
@@ -59,7 +65,11 @@ from control_plane_kit_operations.gateway_probes import (
     GatewayProbeConflict,
     GatewayProbeDispatchResult,
     GatewayProbeNotFound,
+    GatewayProbeVerifierConfigurationService,
     RequestGatewayProbe,
+)
+from control_plane_kit_operations.delegation_signing_keys import (
+    delegation_signing_key_registration_id_for,
 )
 from control_plane_kit_operations.postgres import PostgresUnitOfWork, install_schema
 from control_plane_kit_operations.products import InlineDescriptorSource
@@ -208,15 +218,13 @@ class GatewayProbeCommandServiceTests(unittest.TestCase):
         self.service = GatewayProbeCommandService(
             self.tracker,
             dispatcher=self.dispatcher,
-            issuer="urn:cpk:test",
-            key_id="gateway-test-key",
-            signing_key_reference=self.signing_key_reference,
             secret_use_authorizer=self.secret_use_authorizer,
             epoch_clock=lambda: 1_800_000_000,
             clock=lambda: "2027-01-15T08:00:00Z",
             id_factory=GeneratedIds(),
         )
         self._seed_current_graph()
+        self._seed_signing_key()
 
     def tearDown(self) -> None:
         self.connection.close()
@@ -243,6 +251,14 @@ class GatewayProbeCommandServiceTests(unittest.TestCase):
             LiteralEndpointMaterial("http://gateway:8000"),
         )
         self.assertEqual(len(self.secret_use_authorizer.commands), 1)
+        self.assertEqual(
+            self.dispatcher.requests[0].signing_key_reference,
+            self.signing_key_reference,
+        )
+        self.assertEqual(
+            self.dispatcher.requests[0].signing_public_key.key_id,
+            "gateway-test-key",
+        )
         authorization = self.secret_use_authorizer.commands[0]
         self.assertEqual(authorization.reference, self.signing_key_reference)
         self.assertEqual(authorization.probe_id, result.attempt.probe_id)
@@ -302,6 +318,45 @@ class GatewayProbeCommandServiceTests(unittest.TestCase):
             )
         self.assertEqual(self.dispatcher.requests, [])
 
+    def test_missing_or_ambiguous_active_key_fails_before_intent_and_dispatch(self) -> None:
+        self.connection.execute(
+            "UPDATE cpk_delegation_signing_keys SET status = 'retired'"
+        )
+        with self.assertRaises(GatewayProbeConflict):
+            self.service.execute(self.command())
+        self.assertEqual(self.dispatcher.requests, [])
+
+    def test_verifier_configuration_contains_exact_active_overlap_set(self) -> None:
+        self._seed_verify_only_key()
+        configuration = GatewayProbeVerifierConfigurationService(
+            self.tracker
+        ).for_gateway(
+            workspace_id="workspace-a",
+            gateway_node_id="renamed-gateway",
+        )
+
+        environment = {
+            binding.name: binding.value
+            for binding in configuration.public_environment()
+        }
+        self.assertEqual(configuration.issuer, "cpk-test")
+        self.assertEqual(
+            environment["CPK_GATEWAY_PROBE_AUDIENCE"],
+            "gateway:workspace-a:renamed-gateway",
+        )
+        self.assertEqual(
+            environment["CPK_GATEWAY_PROBE_NODE_ID"],
+            "renamed-gateway",
+        )
+        self.assertEqual(
+            set(
+                json.loads(
+                    environment["CPK_GATEWAY_PROBE_VERIFICATION_KEYS_JSON"]
+                )
+            ),
+            {"gateway-test-key", "gateway-test-key-b"},
+        )
+
     def test_signing_secret_denial_is_folded_without_gateway_io(self) -> None:
         self.secret_use_authorizer.denied = True
 
@@ -319,6 +374,7 @@ class GatewayProbeCommandServiceTests(unittest.TestCase):
         principal = self.principal(
             scopes=(
                 PolicyScope.GATEWAY_PROBE_USE,
+                PolicyScope.DELEGATION_KEY_USE,
                 PolicyScope.INSTANCE_WORKSPACE_READ,
                 PolicyScope.SECRET_PROVIDER_USE,
             )
@@ -382,6 +438,7 @@ class GatewayProbeCommandServiceTests(unittest.TestCase):
         *,
         scopes: tuple[PolicyScope, ...] = (
             PolicyScope.GATEWAY_PROBE_USE,
+            PolicyScope.DELEGATION_KEY_USE,
             PolicyScope.SECRET_PROVIDER_USE,
         ),
     ):
@@ -399,6 +456,89 @@ class GatewayProbeCommandServiceTests(unittest.TestCase):
                 kind=PrincipalKind.OPERATOR,
             ),
             (WorkspaceGrant("workspace-a", scopes),),
+        )
+
+    def _seed_signing_key(self) -> None:
+        public_key = DelegationPublicKey(
+            key_id="gateway-test-key",
+            algorithm=DelegationKeyAlgorithm.ED25519,
+            public_key_pem=(
+                "-----BEGIN PUBLIC KEY-----\n"
+                "MCowBQYDK2VwAyEAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA=\n"
+                "-----END PUBLIC KEY-----\n"
+            ),
+        )
+        registration_id = delegation_signing_key_registration_id_for(
+            workspace_id="workspace-a",
+            purpose=DelegationKeyPurpose.GATEWAY_PROBE,
+            issuer="cpk-test",
+            public_key=public_key,
+            private_key_reference=self.signing_key_reference,
+        )
+        self.connection.execute(
+            """
+            INSERT INTO cpk_delegation_signing_keys (
+              registration_id, workspace_id, purpose, issuer, key_id, algorithm,
+              public_key_pem, public_fingerprint_sha256, private_key_reference,
+              admitted_by, admitted_at, status, activated_by, activated_at
+            ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, 'active', %s, %s)
+            """,
+            (
+                registration_id,
+                "workspace-a",
+                DelegationKeyPurpose.GATEWAY_PROBE.value,
+                "cpk-test",
+                public_key.key_id,
+                public_key.algorithm.value,
+                public_key.public_key_pem,
+                public_key.fingerprint_sha256,
+                self.signing_key_reference.reference_id,
+                "operator-a",
+                "2027-01-15T07:59:00Z",
+                "operator-a",
+                "2027-01-15T07:59:30Z",
+            ),
+        )
+
+    def _seed_verify_only_key(self) -> None:
+        public_key = DelegationPublicKey(
+            key_id="gateway-test-key-b",
+            algorithm=DelegationKeyAlgorithm.ED25519,
+            public_key_pem=(
+                "-----BEGIN PUBLIC KEY-----\n"
+                "MCowBQYDK2VwAyEAbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb=\n"
+                "-----END PUBLIC KEY-----\n"
+            ),
+        )
+        reference = SecretReference("secret://gateway/probe/signing-key-b")
+        registration_id = delegation_signing_key_registration_id_for(
+            workspace_id="workspace-a",
+            purpose=DelegationKeyPurpose.GATEWAY_PROBE,
+            issuer="cpk-test",
+            public_key=public_key,
+            private_key_reference=reference,
+        )
+        self.connection.execute(
+            """
+            INSERT INTO cpk_delegation_signing_keys (
+              registration_id, workspace_id, purpose, issuer, key_id, algorithm,
+              public_key_pem, public_fingerprint_sha256, private_key_reference,
+              admitted_by, admitted_at, status
+            ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, 'verify-only')
+            """,
+            (
+                registration_id,
+                "workspace-a",
+                DelegationKeyPurpose.GATEWAY_PROBE.value,
+                "cpk-test",
+                public_key.key_id,
+                public_key.algorithm.value,
+                public_key.public_key_pem,
+                public_key.fingerprint_sha256,
+                reference.reference_id,
+                "operator-a",
+                "2027-01-15T08:00:00Z",
+            ),
         )
 
     def _seed_current_graph(self) -> None:

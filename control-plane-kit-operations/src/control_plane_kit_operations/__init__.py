@@ -97,6 +97,8 @@ from .gateway_probes import (
     GatewayProbeDispatchResult,
     GatewayProbeError,
     GatewayProbeNotFound,
+    GatewayProbeVerifierConfiguration,
+    GatewayProbeVerifierConfigurationService,
     RequestGatewayProbe,
 )
 from .foundation import (
@@ -447,6 +449,8 @@ __all__ = [
     "GatewayProbeDispatchResult",
     "GatewayProbeError",
     "GatewayProbeNotFound",
+    "GatewayProbeVerifierConfiguration",
+    "GatewayProbeVerifierConfigurationService",
     "GraphAuthoringError",
     "GraphAuthoringService",
     "GraphVersionRecord",

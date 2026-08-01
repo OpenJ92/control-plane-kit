@@ -285,7 +285,11 @@ _ROUTE_AUTHORIZATION_POLICIES: dict[str, RouteAuthorizationPolicy] = {
         required_scopes=(PolicyScope.SECRET_PROVIDER_REVOKE,)
     ),
     "command.gateway-probe.request": RouteAuthorizationPolicy(
-        required_scopes=(PolicyScope.GATEWAY_PROBE_USE,)
+        required_scopes=(
+            PolicyScope.GATEWAY_PROBE_USE,
+            PolicyScope.DELEGATION_KEY_USE,
+            PolicyScope.SECRET_PROVIDER_USE,
+        )
     ),
     "command.operation-session.start": _WORKSPACE_EDIT,
     "command.operation-session.close": _WORKSPACE_EDIT,
