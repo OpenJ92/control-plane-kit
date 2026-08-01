@@ -123,6 +123,29 @@ class DelegationSigningKeyStore:
             )
         return _row(row)
 
+    def require_unambiguous_active(
+        self,
+        workspace_id: str,
+        purpose: DelegationKeyPurpose,
+    ) -> RegisteredDelegationSigningKey:
+        """Select one workspace-purpose signer without bootstrap issuer input."""
+
+        rows = self._connection.execute(
+            f"""
+            {_SELECT}
+            WHERE workspace_id = %s
+              AND purpose = %s
+              AND status = 'active'
+            ORDER BY issuer, key_id
+            """,
+            (workspace_id, purpose.value),
+        ).fetchall()
+        if len(rows) != 1:
+            raise DelegationSigningKeyNotFound(
+                "exactly one active delegation signing key is required"
+            )
+        return _row(rows[0])
+
     def list_workspace(
         self,
         workspace_id: str,

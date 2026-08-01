@@ -13,7 +13,12 @@ from control_plane_kit_core.gateway_delegation import (
     GatewayProbeCommandKind,
     GatewayProbeRequest,
 )
+from control_plane_kit_core.delegation_keys import (
+    DelegationKeyPurpose,
+    DelegationPublicKey,
+)
 from control_plane_kit_core.identity import TrustedCommandContext
+from control_plane_kit_core.environment import PublicStaticEnvironmentBinding
 from control_plane_kit_core.policies import PolicyScope
 from control_plane_kit_core.probe_intents import RuntimeEndpointObservation
 from control_plane_kit_core.runtime_effects import (
@@ -27,6 +32,11 @@ from control_plane_kit_core.secrets import (
 )
 from control_plane_kit_core.topology import DEFAULT_GRAPH_CODEC
 from control_plane_kit_operations.records import BoundedEvidence
+from control_plane_kit_operations.delegation_signing_keys import (
+    DelegationSigningKeyNotFound,
+    RegisteredDelegationSigningKey,
+    RegisteredDelegationSigningKeyStatus,
+)
 from control_plane_kit_operations.runtime_effects import (
     gateway_control_endpoint_for_node,
     gateway_target_map_for_node,
@@ -95,6 +105,8 @@ class GatewayProbeDispatch:
     grant: DelegatedGatewayProbeGrant
     request: GatewayProbeRequest
     gateway_endpoint: RuntimeEndpointObservation
+    signing_key_reference: SecretReference
+    signing_public_key: DelegationPublicKey
     secret_resolution_grant: SecretResolutionGrant
 
     def __post_init__(self) -> None:
@@ -106,6 +118,12 @@ class GatewayProbeDispatch:
             raise GatewayProbeError(
                 "gateway endpoint must be a typed runtime observation"
             )
+        if not isinstance(self.signing_key_reference, SecretReference):
+            raise GatewayProbeError("gateway signing key reference is malformed")
+        if not isinstance(self.signing_public_key, DelegationPublicKey):
+            raise GatewayProbeError("gateway signing public key is malformed")
+        if self.grant.key_id != self.signing_public_key.key_id:
+            raise GatewayProbeError("gateway signing key identity is inconsistent")
         if not isinstance(self.secret_resolution_grant, SecretResolutionGrant):
             raise GatewayProbeError(
                 "gateway signing requires a secret resolution grant"
@@ -116,6 +134,106 @@ class GatewayProbeDispatcher(Protocol):
     """Sign and dispatch one exact probe outside operations transactions."""
 
     def dispatch(self, request: GatewayProbeDispatch) -> GatewayProbeDispatchResult: ...
+
+
+@dataclass(frozen=True)
+class GatewayProbeVerifierConfiguration:
+    """Bounded public verifier material for one explicit gateway node."""
+
+    issuer: str
+    audience: str
+    gateway_node_id: str
+    public_keys: tuple[DelegationPublicKey, ...]
+
+    def __post_init__(self) -> None:
+        _required_text(self.issuer, "issuer")
+        _required_text(self.audience, "audience")
+        _required_text(self.gateway_node_id, "gateway_node_id")
+        keys = tuple(sorted(self.public_keys, key=lambda value: value.key_id))
+        if not keys or len(keys) > 16 or not all(
+            isinstance(value, DelegationPublicKey) for value in keys
+        ):
+            raise GatewayProbeError("gateway verifier key set is unavailable")
+        if len({value.key_id for value in keys}) != len(keys):
+            raise GatewayProbeError("gateway verifier key ids must be unique")
+        object.__setattr__(self, "public_keys", keys)
+
+    def public_environment(self) -> tuple[PublicStaticEnvironmentBinding, ...]:
+        key_map = {key.key_id: key.public_key_pem for key in self.public_keys}
+        return tuple(
+            sorted(
+                (
+                    PublicStaticEnvironmentBinding(
+                        "CPK_GATEWAY_PROBE_AUDIENCE",
+                        self.audience,
+                    ),
+                    PublicStaticEnvironmentBinding(
+                        "CPK_GATEWAY_PROBE_ISSUER",
+                        self.issuer,
+                    ),
+                    PublicStaticEnvironmentBinding(
+                        "CPK_GATEWAY_PROBE_NODE_ID",
+                        self.gateway_node_id,
+                    ),
+                    PublicStaticEnvironmentBinding(
+                        "CPK_GATEWAY_PROBE_VERIFICATION_KEYS_JSON",
+                        json.dumps(
+                            key_map,
+                            ensure_ascii=True,
+                            separators=(",", ":"),
+                            sort_keys=True,
+                        ),
+                    ),
+                    PublicStaticEnvironmentBinding(
+                        "CPK_GATEWAY_PROBE_VERIFIER",
+                        "ed25519",
+                    ),
+                )
+            )
+        )
+
+
+class GatewayProbeVerifierConfigurationService:
+    """Read public overlap material from durable key lifecycle truth."""
+
+    def __init__(self, unit_of_work_factory: Callable[[], Any]) -> None:
+        self._unit_of_work_factory = unit_of_work_factory
+
+    def for_gateway(
+        self,
+        *,
+        workspace_id: str,
+        gateway_node_id: str,
+    ) -> GatewayProbeVerifierConfiguration:
+        with self._unit_of_work_factory() as unit_of_work:
+            stores = unit_of_work.stores
+            try:
+                stores.workspaces.get(workspace_id)
+                active = stores.delegation_signing_keys.require_unambiguous_active(
+                    workspace_id,
+                    DelegationKeyPurpose.GATEWAY_PROBE,
+                )
+                verifier_keys = stores.delegation_signing_keys.list_for_verification(
+                    workspace_id,
+                    DelegationKeyPurpose.GATEWAY_PROBE,
+                    active.issuer,
+                )
+            except (KeyError, DelegationSigningKeyNotFound) as error:
+                raise GatewayProbeNotFound(
+                    "gateway verifier configuration is unavailable"
+                ) from error
+            unit_of_work.commit()
+        if not any(
+            value.status is RegisteredDelegationSigningKeyStatus.ACTIVE
+            for value in verifier_keys
+        ):
+            raise GatewayProbeConflict("gateway verifier set has no active key")
+        return GatewayProbeVerifierConfiguration(
+            issuer=active.issuer,
+            audience=f"gateway:{workspace_id}:{gateway_node_id}",
+            gateway_node_id=gateway_node_id,
+            public_keys=tuple(value.public_key for value in verifier_keys),
+        )
 
 
 @dataclass(frozen=True)
@@ -248,9 +366,6 @@ class GatewayProbeCommandService:
         unit_of_work_factory: Callable[[], Any],
         *,
         dispatcher: GatewayProbeDispatcher,
-        issuer: str,
-        key_id: str,
-        signing_key_reference: SecretReference,
         secret_use_authorizer: SecretUseResolutionAuthorizer,
         epoch_clock: Callable[[], int],
         clock: Callable[[], str],
@@ -259,17 +374,10 @@ class GatewayProbeCommandService:
     ) -> None:
         self._unit_of_work_factory = unit_of_work_factory
         self._dispatcher = dispatcher
-        self._issuer = issuer
-        self._key_id = key_id
-        if not isinstance(signing_key_reference, SecretReference):
-            raise GatewayProbeError(
-                "gateway signing key reference must be SecretReference"
-            )
         if not hasattr(secret_use_authorizer, "authorize_resolution"):
             raise GatewayProbeError(
                 "gateway secret use authorizer must expose authorize_resolution"
             )
-        self._signing_key_reference = signing_key_reference
         self._secret_use_authorizer = secret_use_authorizer
         self._epoch_clock = epoch_clock
         self._clock = clock
@@ -283,6 +391,8 @@ class GatewayProbeCommandService:
             raise GatewayProbeError("execute requires RequestGatewayProbe")
         if PolicyScope.GATEWAY_PROBE_USE not in command.context.granted_scopes:
             raise GatewayProbeAuthorizationDenied("scope gateway-probe:use is missing")
+        if PolicyScope.DELEGATION_KEY_USE not in command.context.granted_scopes:
+            raise GatewayProbeAuthorizationDenied("scope delegation-key:use is missing")
         fingerprint = _intent_fingerprint(command)
 
         with self._unit_of_work_factory() as unit_of_work:
@@ -348,6 +458,15 @@ class GatewayProbeCommandService:
                 node_id=command.gateway_node_id,
                 registered_products=products,
             )
+            try:
+                signing_key = stores.delegation_signing_keys.require_unambiguous_active(
+                    command.context.workspace_id,
+                    DelegationKeyPurpose.GATEWAY_PROBE,
+                )
+            except DelegationSigningKeyNotFound as error:
+                raise GatewayProbeConflict(
+                    "active gateway delegation signing key is unavailable"
+                ) from error
             issued_at = self._epoch_clock()
             probe_id = self._id_factory()
             grant_jti = self._id_factory()
@@ -355,8 +474,8 @@ class GatewayProbeCommandService:
                 f"gateway:{command.context.workspace_id}:{command.gateway_node_id}"
             )
             grant = DelegatedGatewayProbeGrant(
-                issuer=self._issuer,
-                key_id=self._key_id,
+                issuer=signing_key.issuer,
+                key_id=signing_key.key_id,
                 audience=audience,
                 workspace_id=command.context.workspace_id,
                 operation_id=probe_id,
@@ -394,7 +513,11 @@ class GatewayProbeCommandService:
             unit_of_work.commit()
 
         try:
-            resolution_grant = self._authorize_signing_key(command, attempt)
+            resolution_grant = self._authorize_signing_key(
+                command,
+                attempt,
+                signing_key,
+            )
         except SecretProviderRegistrationError:
             dispatch_result = GatewayProbeDispatchResult(
                 status=GatewayProbeAttemptStatus.REJECTED,
@@ -412,6 +535,8 @@ class GatewayProbeCommandService:
                         grant,
                         command.request,
                         endpoint,
+                        signing_key.private_key_reference,
+                        signing_key.public_key,
                         resolution_grant,
                     )
                 )
@@ -439,17 +564,18 @@ class GatewayProbeCommandService:
         self,
         command: RequestGatewayProbe,
         attempt: GatewayProbeAttempt,
+        signing_key: RegisteredDelegationSigningKey,
     ) -> SecretResolutionGrant:
         intent = SecretUseIntent.GATEWAY_PROBE_SIGNING_KEY
         resolution_grant = self._secret_use_authorizer.authorize_resolution(
             AuthorizeSecretUse(
                 workspace_id=command.context.workspace_id,
-                reference=self._signing_key_reference,
+                reference=signing_key.private_key_reference,
                 intent=intent,
                 actor_subject=command.context.actor_id,
                 correlation_id=secret_use_correlation_for(
                     workspace_id=command.context.workspace_id,
-                    reference=self._signing_key_reference,
+                    reference=signing_key.private_key_reference,
                     intent=intent,
                     actor_subject=command.context.actor_id,
                     operation_id=attempt.probe_id,
@@ -466,7 +592,7 @@ class GatewayProbeCommandService:
             or resolution_grant.workspace_id != command.context.workspace_id
             or resolution_grant.probe_id != attempt.probe_id
             or not resolution_grant.permits(
-                self._signing_key_reference,
+                signing_key.private_key_reference,
                 intent,
             )
         ):
