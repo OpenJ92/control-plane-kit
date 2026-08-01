@@ -637,6 +637,13 @@ class CpkServerImageBootstrapTests(unittest.TestCase):
 
             observed_resolution_grants = []
 
+            class PublicResolver:
+                def resolve(self, hostname):
+                    self.hostname = hostname
+                    return ("8.8.8.8",)
+
+            public_resolver = PublicResolver()
+
             class AuthorizedResolver:
                 def resolve(self, received):
                     observed_resolution_grants.append(received)
@@ -651,6 +658,7 @@ class CpkServerImageBootstrapTests(unittest.TestCase):
                     authorized_resolver=AuthorizedResolver()
                 ),
                 transport=httpx.MockTransport(handler),
+                public_resolver=public_resolver,
             )
             result = dispatch.dispatch(
                 GatewayProbeDispatch(
@@ -697,6 +705,35 @@ class CpkServerImageBootstrapTests(unittest.TestCase):
             self.assertNotIn(private_pem, repr(config))
             self.assertNotIn(private_pem, repr(dispatch))
             self.assertNotIn(private_pem, repr(result))
+
+            public_result = dispatch.dispatch(
+                GatewayProbeDispatch(
+                    grant,
+                    request,
+                    RuntimeEndpointObservation(
+                        "gateway-a",
+                        "control",
+                        "graph-a",
+                        Protocol.HTTP,
+                        EndpointContext.PUBLIC,
+                        LiteralEndpointMaterial(
+                            "https://gateway-public.example.test:443"
+                        ),
+                    ),
+                    SecretReference(key_reference),
+                    DelegationPublicKey(
+                        key_id="gateway-key-a",
+                        algorithm=DelegationKeyAlgorithm.ED25519,
+                        public_key_pem=public_pem,
+                    ),
+                    secret_grant,
+                )
+            )
+            self.assertEqual(public_result.code, "probe-succeeded")
+            self.assertEqual(
+                public_resolver.hostname,
+                "gateway-public.example.test",
+            )
         finally:
             sys.path.remove(str(PRODUCT_SRC))
             for name in list(sys.modules):

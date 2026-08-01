@@ -7,6 +7,7 @@ from datetime import datetime, timezone
 import json
 import os
 from pathlib import Path
+import socket
 import time
 from typing import Mapping
 from urllib.parse import urlsplit
@@ -836,11 +837,12 @@ class _SignedGatewayProbeDispatcher:
     def dispatch(self, request: GatewayProbeDispatch) -> GatewayProbeDispatchResult:
         endpoint = request.gateway_endpoint
         if (
-            endpoint.context is not EndpointContext.RUNTIME_PRIVATE
+            endpoint.context
+            not in (EndpointContext.RUNTIME_PRIVATE, EndpointContext.PUBLIC)
             or not isinstance(endpoint.address, LiteralEndpointMaterial)
         ):
             raise GatewayProbeDispatchError(
-                "gateway endpoint is not an admitted private runtime address"
+                "gateway endpoint is not an admitted gateway address"
             )
         parsed = urlsplit(endpoint.address.value)
         if not parsed.scheme or not parsed.netloc:
@@ -848,6 +850,8 @@ class _SignedGatewayProbeDispatcher:
         try:
             client = self.client_factory(
                 f"{parsed.scheme}://{parsed.netloc}",
+                endpoint.context,
+                parsed.hostname,
                 request.signing_key_reference,
                 request.signing_public_key,
             )
@@ -882,6 +886,7 @@ def _gateway_probe_dispatcher(
     *,
     secret_provider: "_SecretProviderComposition | None" = None,
     transport=None,
+    public_resolver=None,
 ):
     if config.gateway_probe_signer != "ed25519":
         raise BootstrapConfigurationError("gateway probe signer is disabled")
@@ -907,8 +912,11 @@ def _gateway_probe_dispatcher(
             "CPK_GATEWAY_PROBE_SIGNER=ed25519 requires "
             "control-plane-kit-interpreters[gateway]"
         ) from error
+
     def client_factory(
-        runtime_private_authority: str,
+        endpoint_authority: str,
+        endpoint_context: EndpointContext,
+        endpoint_hostname: str | None,
         signing_key_reference,
         signing_public_key,
     ):
@@ -921,8 +929,21 @@ def _gateway_probe_dispatcher(
             signer=signer,
             address_policy=ProbeAddressPolicy(
                 runtime_private_authorities=frozenset(
-                    {runtime_private_authority}
-                )
+                    {endpoint_authority}
+                    if endpoint_context is EndpointContext.RUNTIME_PRIVATE
+                    else ()
+                ),
+                public_hosts=frozenset(
+                    {endpoint_hostname}
+                    if endpoint_context is EndpointContext.PUBLIC
+                    and endpoint_hostname is not None
+                    else ()
+                ),
+            ),
+            public_resolver=(
+                public_resolver or _SystemPublicAddressResolver()
+                if endpoint_context is EndpointContext.PUBLIC
+                else None
             ),
             transport=transport,
         )
@@ -936,6 +957,22 @@ def _gateway_probe_dispatcher(
         succeeded_code=GatewayProbeClientCode.SUCCEEDED,
         rejected_code=GatewayProbeClientCode.REJECTED,
     )
+
+
+@dataclass(frozen=True)
+class _SystemPublicAddressResolver:
+    """Resolve public DNS at dispatch time for same-request address pinning."""
+
+    def resolve(self, hostname: str) -> tuple[str, ...]:
+        addresses = {
+            record[4][0]
+            for record in socket.getaddrinfo(
+                hostname,
+                443,
+                type=socket.SOCK_STREAM,
+            )
+        }
+        return tuple(sorted(addresses))
 
 
 class _UnsupportedExecutionAdapter:
