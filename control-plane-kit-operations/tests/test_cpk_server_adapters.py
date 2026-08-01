@@ -60,6 +60,9 @@ from control_plane_kit_operations.coordinator import (
     ExecutionCoordinator,
 )
 from control_plane_kit_operations.lifecycle import RunLifecycleCommandService
+from control_plane_kit_operations.delegation_signing_keys import (
+    DelegationSigningKeyRegistrationService,
+)
 from control_plane_kit_operations.ingress_authorities import (
     IngressAuthorityRegistrationService,
 )
@@ -1877,6 +1880,180 @@ class CpkServerOperationsAdapterTests(unittest.TestCase):
             "bearer ",
         ):
             self.assertNotIn(forbidden, leaked)
+
+    def test_delegation_key_routes_drive_overlap_through_http_and_mcp(self) -> None:
+        self.seed_workspace()
+        planning = CpkServerPlanningService(
+            RecordingService(),
+            secret_providers=SecretProviderRegistrationService(self.unit_of_work),
+            delegation_signing_keys=DelegationSigningKeyRegistrationService(
+                self.unit_of_work
+            ),
+        )
+        reads = CpkServerReadService(self.unit_of_work)
+        register_principal = operator_principal(
+            subject_id="security-operator",
+            scopes=(
+                PolicyScope.SECRET_PROVIDER_REGISTER,
+                PolicyScope.DELEGATION_KEY_REGISTER,
+                PolicyScope.DELEGATION_KEY_ACTIVATE,
+                PolicyScope.DELEGATION_KEY_RETIRE,
+            ),
+        )
+        provider = planning.handle(
+            RouteRequest(
+                surface="http",
+                route_id="command.secret-provider.register",
+                service_role=ControlPlaneServiceRole.PLANNING,
+                path_parameters={"workspace_id": "workspace-a"},
+                payload={
+                    "provider_id": "delegation-secrets",
+                    "provider_kind": "control-plane-kit-secrets",
+                    "display_name": "Delegation secrets",
+                    "endpoint_reference": "delegation-secrets",
+                    "credential_reference": "secret://bootstrap/provider/client-token",
+                    "allowed_reference_prefixes": [
+                        "secret://delegation-secrets/workspace-a"
+                    ],
+                    "allowed_intents": ["gateway.probe-signing-key"],
+                    "admitted_at": "2026-08-01T10:00:00Z",
+                    "idempotency_key": "provider-delegation",
+                },
+                principal=register_principal,
+            )
+        )
+        for key_id in ("key-a", "key-b"):
+            planning.handle(
+                RouteRequest(
+                    surface="mcp",
+                    route_id="command.secret-reference.register",
+                    service_role=ControlPlaneServiceRole.PLANNING,
+                    path_parameters={},
+                    payload={
+                        "workspace_id": "workspace-a",
+                        "reference": (
+                            f"secret://delegation-secrets/workspace-a/{key_id}"
+                        ),
+                        "provider_registration_id": provider["registration_id"],
+                        "allowed_intents": ["gateway.probe-signing-key"],
+                        "admitted_at": "2026-08-01T10:01:00Z",
+                        "idempotency_key": f"reference-{key_id}",
+                    },
+                    principal=register_principal,
+                )
+            )
+
+        public_keys = {
+            "key-a": """-----BEGIN PUBLIC KEY-----
+MCowBQYDK2VwAyEAaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa=
+-----END PUBLIC KEY-----
+""",
+            "key-b": """-----BEGIN PUBLIC KEY-----
+MCowBQYDK2VwAyEAbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb=
+-----END PUBLIC KEY-----
+""",
+        }
+        for surface, key_id in (("http", "key-a"), ("mcp", "key-b")):
+            registered = planning.handle(
+                RouteRequest(
+                    surface=surface,
+                    route_id="command.delegation-key.register",
+                    service_role=ControlPlaneServiceRole.PLANNING,
+                    path_parameters={"workspace_id": "workspace-a"},
+                    payload={
+                        "purpose": "gateway-probe",
+                        "issuer": "cpk-server-a",
+                        "key_id": key_id,
+                        "algorithm": "ed25519",
+                        "public_key_pem": public_keys[key_id],
+                        "private_key_reference": (
+                            f"secret://delegation-secrets/workspace-a/{key_id}"
+                        ),
+                        "admitted_at": "2026-08-01T10:02:00Z",
+                        "idempotency_key": f"register-{key_id}",
+                    },
+                    principal=register_principal,
+                )
+            )
+            self.assertEqual(registered["admitted_by"], "security-operator")
+            self.assertNotIn("PUBLIC KEY", str(registered))
+
+        for key_id, activated_at in (
+            ("key-a", "2026-08-01T10:03:00Z"),
+            ("key-b", "2026-08-01T10:04:00Z"),
+        ):
+            planning.handle(
+                RouteRequest(
+                    surface="http",
+                    route_id="command.delegation-key.activate",
+                    service_role=ControlPlaneServiceRole.PLANNING,
+                    path_parameters={
+                        "workspace_id": "workspace-a",
+                        "issuer": "cpk-server-a",
+                        "key_id": key_id,
+                    },
+                    payload={
+                        "activated_at": activated_at,
+                        "idempotency_key": f"activate-{key_id}",
+                    },
+                    principal=register_principal,
+                )
+            )
+
+        read_principal = operator_principal(
+            scopes=(PolicyScope.DELEGATION_KEY_READ,)
+        )
+        listed = reads.handle(
+            RouteRequest(
+                surface="http",
+                route_id="read.delegation-keys",
+                service_role=ControlPlaneServiceRole.READS,
+                path_parameters={"workspace_id": "workspace-a"},
+                payload={},
+                principal=read_principal,
+            )
+        )
+        self.assertEqual(
+            {item["key_id"]: item["status"] for item in listed["items"]},
+            {"key-a": "verify-only", "key-b": "active"},
+        )
+        configuration = reads.handle(
+            RouteRequest(
+                surface="mcp",
+                route_id="read.gateway-verifier-configuration",
+                service_role=ControlPlaneServiceRole.READS,
+                path_parameters={},
+                payload={
+                    "workspace_id": "workspace-a",
+                    "gateway_node_id": "gateway-renamed",
+                },
+                principal=read_principal,
+            )
+        )["gateway_verifier_configuration"]
+        self.assertEqual(
+            configuration["audience"],
+            "gateway:workspace-a:gateway-renamed",
+        )
+        self.assertEqual(
+            [value["key_id"] for value in configuration["public_keys"]],
+            ["key-a", "key-b"],
+        )
+        self.assertNotIn("private_key_reference", str(configuration))
+
+        with self.assertRaises(CpkServerApplicationError) as denied:
+            reads.handle(
+                RouteRequest(
+                    surface="http",
+                    route_id="read.delegation-keys",
+                    service_role=ControlPlaneServiceRole.READS,
+                    path_parameters={"workspace_id": "workspace-a"},
+                    payload={},
+                    principal=operator_principal(
+                        scopes=(PolicyScope.DELEGATION_KEY_REGISTER,)
+                    ),
+                )
+            )
+        self.assertEqual(denied.exception.status, 403)
 
     def test_secret_provider_payload_rejects_raw_endpoint_and_secret_material(
         self,

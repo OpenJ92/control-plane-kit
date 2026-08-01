@@ -818,6 +818,18 @@ def operator_command_parity(
 
 _OPERATOR_READ_PROJECTIONS = (
     (
+        "read.delegation-keys",
+        "read.delegation-keys",
+        "list_delegation_keys",
+        "DelegationSigningKeyCollectionReadResponse",
+    ),
+    (
+        "read.gateway-verifier-configuration",
+        "read.gateway-verifier-configuration",
+        "get_gateway_verifier_configuration",
+        "GatewayVerifierConfigurationReadResponse",
+    ),
+    (
         "read.gateway-probe-detail",
         "read.gateway-probe-detail",
         "get_gateway_probe_detail",
@@ -965,6 +977,42 @@ _OPERATOR_READ_PROJECTIONS = (
 
 
 _OPERATOR_COMMANDS = (
+    (
+        "delegation-key.register",
+        "command.delegation-key.register",
+        "register_delegation_key",
+        ControlPlaneServiceRole.PLANNING,
+        "RegisterDelegationSigningKeyRequest",
+        "RegisteredDelegationSigningKeyResponse",
+        ApprovalPolicy.NOT_REQUIRED,
+    ),
+    (
+        "delegation-key.activate",
+        "command.delegation-key.activate",
+        "activate_delegation_key",
+        ControlPlaneServiceRole.PLANNING,
+        "ActivateDelegationSigningKeyRequest",
+        "RegisteredDelegationSigningKeyResponse",
+        ApprovalPolicy.NOT_REQUIRED,
+    ),
+    (
+        "delegation-key.retire",
+        "command.delegation-key.retire",
+        "retire_delegation_key",
+        ControlPlaneServiceRole.PLANNING,
+        "RetireDelegationSigningKeyRequest",
+        "RegisteredDelegationSigningKeyResponse",
+        ApprovalPolicy.NOT_REQUIRED,
+    ),
+    (
+        "delegation-key.revoke",
+        "command.delegation-key.revoke",
+        "revoke_delegation_key",
+        ControlPlaneServiceRole.PLANNING,
+        "RevokeDelegationSigningKeyRequest",
+        "RegisteredDelegationSigningKeyResponse",
+        ApprovalPolicy.NOT_REQUIRED,
+    ),
     (
         "gateway-probe.request",
         "command.gateway-probe.request",
