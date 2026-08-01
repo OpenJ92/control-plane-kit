@@ -43,6 +43,7 @@ from control_plane_kit_operations import (
     CpkServerOperationsApplication,
     CurrentGraphAdvancementCommandService,
     DesiredGraphCommandService,
+    DelegationSigningKeyRegistrationService,
     ExecutionAdmissionCommandService,
     ExecutionCoordinator,
     FailureEvidence,
@@ -164,9 +165,6 @@ class CpkServerBootstrapConfiguration:
     material_provider_bootstrap_files_json: str | None = field(repr=False)
     store_endpoints: Mapping[str, str]
     gateway_probe_signer: str = "none"
-    gateway_probe_signing_key_reference: SecretReference | None = None
-    gateway_probe_issuer: str | None = None
-    gateway_probe_key_id: str | None = None
     control_auth_static_workspace_grants: tuple[WorkspaceGrant, ...] = ()
     control_auth_static_principals: tuple[
         StaticDevelopmentPrincipalCredential, ...
@@ -211,11 +209,6 @@ class CpkServerBootstrapConfiguration:
             "CPK_MATERIAL_PROVIDER_BOOTSTRAP_FILES_JSON"
         )
         gateway_probe_signer = values.get("CPK_GATEWAY_PROBE_SIGNER", "none")
-        gateway_probe_signing_key_text = values.get(
-            "CPK_GATEWAY_PROBE_SIGNING_KEY_REF"
-        )
-        gateway_probe_issuer = values.get("CPK_GATEWAY_PROBE_ISSUER")
-        gateway_probe_key_id = values.get("CPK_GATEWAY_PROBE_KEY_ID")
         store_endpoints = {
             name: _required(values, name)
             for name in (
@@ -323,46 +316,12 @@ class CpkServerBootstrapConfiguration:
             raise BootstrapConfigurationError(
                 "CPK_GATEWAY_PROBE_SIGNER must be one of: none, ed25519"
             )
-        gateway_probe_signing_key_reference = None
-        gateway_probe_fields = (
-            gateway_probe_signing_key_text,
-            gateway_probe_issuer,
-            gateway_probe_key_id,
-        )
-        if gateway_probe_signer == "none" and any(
-            value is not None for value in gateway_probe_fields
-        ):
-            raise BootstrapConfigurationError(
-                "gateway probe signing authority requires "
-                "CPK_GATEWAY_PROBE_SIGNER=ed25519"
-            )
         if gateway_probe_signer == "ed25519":
-            if not all(gateway_probe_fields):
-                raise BootstrapConfigurationError(
-                    "CPK_GATEWAY_PROBE_SIGNER=ed25519 requires signing key "
-                    "reference, issuer, and key id"
-                )
             if product_material_resolver != "provider":
                 raise BootstrapConfigurationError(
                     "CPK_GATEWAY_PROBE_SIGNER=ed25519 requires provider-backed "
                     "secret resolution"
                 )
-            try:
-                gateway_probe_signing_key_reference = SecretReference(
-                    gateway_probe_signing_key_text
-                )
-            except SecretResolutionError as error:
-                raise BootstrapConfigurationError(
-                    "CPK_GATEWAY_PROBE_SIGNING_KEY_REF must be a secret reference"
-                ) from error
-            gateway_probe_issuer = _bounded_ascii(
-                gateway_probe_issuer,
-                "CPK_GATEWAY_PROBE_ISSUER",
-            )
-            gateway_probe_key_id = _bounded_ascii(
-                gateway_probe_key_id,
-                "CPK_GATEWAY_PROBE_KEY_ID",
-            )
         if (
             product_material_resolver == "local-development"
             and RuntimeKind.DOCKER not in runtime_dispatcher.runtime_kinds
@@ -439,11 +398,6 @@ class CpkServerBootstrapConfiguration:
             ),
             store_endpoints=store_endpoints,
             gateway_probe_signer=gateway_probe_signer,
-            gateway_probe_signing_key_reference=(
-                gateway_probe_signing_key_reference
-            ),
-            gateway_probe_issuer=gateway_probe_issuer,
-            gateway_probe_key_id=gateway_probe_key_id,
             control_auth_static_workspace_grants=(
                 control_auth_static_workspace_grants
             ),
@@ -789,6 +743,9 @@ def _operations_application(
             runtime_authorities=RuntimeAuthorityRegistrationService(unit_of_work),
             ingress_authorities=IngressAuthorityRegistrationService(unit_of_work),
             secret_providers=SecretProviderRegistrationService(unit_of_work),
+            delegation_signing_keys=DelegationSigningKeyRegistrationService(
+                unit_of_work
+            ),
             desired_graphs=DesiredGraphCommandService(
                 unit_of_work,
                 clock=_clock,
@@ -835,21 +792,12 @@ def _gateway_probe_service(
 ):
     if config.gateway_probe_signer == "none":
         return None
-    if (
-        config.gateway_probe_issuer is None
-        or config.gateway_probe_key_id is None
-        or config.gateway_probe_signing_key_reference is None
-    ):
-        raise AssertionError("gateway probe signer fields validated at bootstrap")
     return GatewayProbeCommandService(
         unit_of_work,
         dispatcher=_gateway_probe_dispatcher(
             config,
             secret_provider=secret_provider,
         ),
-        issuer=config.gateway_probe_issuer,
-        key_id=config.gateway_probe_key_id,
-        signing_key_reference=config.gateway_probe_signing_key_reference,
         secret_use_authorizer=secret_use_authorizer,
         epoch_clock=lambda: int(time.time()),
         clock=_clock,
@@ -877,7 +825,11 @@ class _SignedGatewayProbeDispatcher:
         if not parsed.scheme or not parsed.netloc:
             raise GatewayProbeDispatchError("gateway endpoint is malformed")
         try:
-            client = self.client_factory(f"{parsed.scheme}://{parsed.netloc}")
+            client = self.client_factory(
+                f"{parsed.scheme}://{parsed.netloc}",
+                request.signing_key_reference,
+                request.signing_public_key,
+            )
             result = client.dispatch(
                 request.grant,
                 request.request,
@@ -912,8 +864,6 @@ def _gateway_probe_dispatcher(
 ):
     if config.gateway_probe_signer != "ed25519":
         raise BootstrapConfigurationError("gateway probe signer is disabled")
-    if config.gateway_probe_signing_key_reference is None:
-        raise AssertionError("gateway probe signing key validated at bootstrap")
     provider = secret_provider or _secret_provider_composition(
         config,
         transport=transport,
@@ -936,12 +886,16 @@ def _gateway_probe_dispatcher(
             "CPK_GATEWAY_PROBE_SIGNER=ed25519 requires "
             "control-plane-kit-interpreters[gateway]"
         ) from error
-    signer = Ed25519GatewayProbeSigner(
-        config.gateway_probe_signing_key_reference,
-        provider.authorized_resolver,
-    )
-
-    def client_factory(runtime_private_authority: str):
+    def client_factory(
+        runtime_private_authority: str,
+        signing_key_reference,
+        signing_public_key,
+    ):
+        signer = Ed25519GatewayProbeSigner(
+            signing_key_reference,
+            signing_public_key,
+            provider.authorized_resolver,
+        )
         return SignedGatewayProbeClient(
             signer=signer,
             address_policy=ProbeAddressPolicy(
