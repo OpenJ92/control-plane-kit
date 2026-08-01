@@ -9,6 +9,9 @@ from control_plane_kit_operations.postgres.activity_history import (
     PostgresActivityHistoryStore,
 )
 from control_plane_kit_operations.postgres.execution import PostgresExecutionStore
+from control_plane_kit_operations.postgres.delegation_signing_key_store import (
+    DelegationSigningKeyStore,
+)
 from control_plane_kit_operations.postgres.graph_store import (
     PostgresGraphTopologyStore,
     PostgresWorkspaceStore,
@@ -47,6 +50,7 @@ __all__ = [
     "POSTGRES_SCHEMA",
     "PostgresActivityHistoryStore",
     "PostgresExecutionStore",
+    "DelegationSigningKeyStore",
     "PostgresGraphTopologyStore",
     "GatewayProbeStore",
     "ImagePullAuthorityStore",

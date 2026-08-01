@@ -8,6 +8,9 @@ from control_plane_kit_operations.postgres.activity_history import (
     PostgresActivityHistoryStore,
 )
 from control_plane_kit_operations.postgres.execution import PostgresExecutionStore
+from control_plane_kit_operations.postgres.delegation_signing_key_store import (
+    DelegationSigningKeyStore,
+)
 from control_plane_kit_operations.postgres.graph_store import (
     PostgresGraphTopologyStore,
     PostgresWorkspaceStore,
@@ -63,6 +66,7 @@ class PostgresStoreBundle:
     execution: PostgresExecutionStore = field(init=False)
     observed_state: PostgresObservedStateStore = field(init=False)
     gateway_probes: GatewayProbeStore = field(init=False)
+    delegation_signing_keys: DelegationSigningKeyStore = field(init=False)
 
     def __post_init__(self) -> None:
         object.__setattr__(
@@ -144,4 +148,9 @@ class PostgresStoreBundle:
             self,
             "gateway_probes",
             GatewayProbeStore(self.connection),
+        )
+        object.__setattr__(
+            self,
+            "delegation_signing_keys",
+            DelegationSigningKeyStore(self.connection),
         )

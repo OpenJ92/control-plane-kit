@@ -6557,3 +6557,40 @@ checks pass. #1207 remains deliberately open as the post-SECRETS consolidation
 track for duplicated shell fixtures, polling/cleanup fragments, source-text
 assertions, and explicit source/published/provider-mutating acceptance levels.
 It is not a missing durability requirement and should not weaken any live gate.
+
+## #1239 Immutable Delegation Signing-Key Registration
+
+Gateway capability signing now has durable identity separate from secret
+custody. Core owns provider-neutral purpose, algorithm, public-key identity,
+and canonical public fingerprint language. Operations owns workspace-scoped
+registration and lifecycle metadata. The private key remains only an admitted
+`SecretReference`; neither operations nor its Postgres schema receives private
+bytes.
+
+The lifecycle is explicit:
+
+```text
+register new key identity -> verify-only
+activate candidate        -> active
+previous active           -> verify-only overlap
+retire old verifier       -> retired
+emergency removal         -> revoked
+```
+
+One `key_id` cannot be reused with changed public material or a changed private
+reference. Registration and activation both require that the referenced secret
+is currently admitted for `GATEWAY_PROBE_SIGNING_KEY`. Missing or wrongly
+scoped references fail as bounded delegation-key conflicts before provider IO.
+The store maintains at most one active key per workspace/purpose/issuer while
+retaining the old public verifier during an explicit overlap window.
+
+The first red gate added the pure module and failed exactly on its absence. The
+first operations pass also exposed two useful boundary details: secret namespace
+prefixes are hierarchical path segments rather than string prefixes, and
+secret-provider lookup errors must be translated at the delegation-key service
+boundary. Both were corrected without weakening assertions.
+
+#1240 next owns durable active-key selection for signing, cryptographic
+private/public fingerprint verification at immediate IO, bounded public verifier
+set delivery to gateway runtime configuration, and authenticated HTTP/MCP key
+management surfaces needed by #1241 source-live rotation acceptance.
