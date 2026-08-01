@@ -8,6 +8,7 @@ SERVER_IMAGE="${CPK_SECRET_PROVIDER_SERVER_IMAGE:-control-plane-kit-servers/cpk-
 SECRETS_IMAGE="${CPK_SECRETS_TEST_IMAGE:-control-plane-kit-secrets:source-1202}"
 POSTGRES_IMAGE="${CPK_LIVE_POSTGRES_IMAGE:-postgres:16-alpine}"
 BUILD_IMAGES="${CPK_SECRET_PROVIDER_BUILD_IMAGES:-1}"
+SCENARIO="${CPK_SECRET_PROVIDER_SOURCE_LIVE_SCENARIO:-default}"
 NETWORK="cpk-secret-provider-source-live-$$"
 LABEL="org.openj92.project=control-plane-kit-servers"
 STATE_ROOT="$(mktemp -d)"
@@ -40,7 +41,8 @@ cleanup_workspace_resources() {
             workspace-secret-revoked-before-use|\
             workspace-secret-concurrent-a|\
             workspace-secret-concurrent-b|\
-            workspace-secret-concurrent-c)
+            workspace-secret-concurrent-c|\
+            workspace-gateway-key-rotation)
               docker rm -f "$resource" >/dev/null 2>&1 || true
               ;;
           esac
@@ -64,7 +66,8 @@ cleanup_workspace_resources() {
               workspace-secret-revoked-before-use|\
               workspace-secret-concurrent-a|\
               workspace-secret-concurrent-b|\
-              workspace-secret-concurrent-c)
+              workspace-secret-concurrent-c|\
+              workspace-gateway-key-rotation)
               docker volume rm "$resource" >/dev/null 2>&1 || true
               ;;
           esac
@@ -88,7 +91,8 @@ cleanup_workspace_resources() {
               workspace-secret-revoked-before-use|\
               workspace-secret-concurrent-a|\
               workspace-secret-concurrent-b|\
-              workspace-secret-concurrent-c)
+              workspace-secret-concurrent-c|\
+              workspace-gateway-key-rotation)
               docker network rm "$resource" >/dev/null 2>&1 || true
               ;;
           esac
@@ -125,6 +129,8 @@ docker run --rm \
 from pathlib import Path
 import os
 import secrets
+from cryptography.hazmat.primitives import serialization
+from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PrivateKey
 from control_plane_kit_secrets.crypto import encode_master_key_for_file
 
 base = Path("/bootstrap")
@@ -157,6 +163,21 @@ for index in range(1, 4):
         secrets.token_urlsafe(40),
         encoding="utf-8",
     )
+for label in ("a", "b"):
+    private_key = Ed25519PrivateKey.generate()
+    base.joinpath(f"gateway-rotation-key-{label}.pem").write_bytes(
+        private_key.private_bytes(
+            encoding=serialization.Encoding.PEM,
+            format=serialization.PrivateFormat.PKCS8,
+            encryption_algorithm=serialization.NoEncryption(),
+        )
+    )
+    base.joinpath(f"gateway-rotation-key-{label}-public.pem").write_bytes(
+        private_key.public_key().public_bytes(
+            encoding=serialization.Encoding.PEM,
+            format=serialization.PublicFormat.SubjectPublicKeyInfo,
+        )
+    )
 '
 chmod 0400 "$BOOTSTRAP_DIR/master.key"
 chmod 0400 "$BOOTSTRAP_DIR/client-token"
@@ -165,6 +186,7 @@ chmod 0400 "$BOOTSTRAP_DIR/postgres-password"
 chmod 0400 "$BOOTSTRAP_DIR/postgres-password-v2"
 chmod 0400 "$BOOTSTRAP_DIR/postgres-revoked"
 chmod 0400 "$BOOTSTRAP_DIR"/postgres-concurrent-*
+chmod 0400 "$BOOTSTRAP_DIR"/gateway-rotation-key-*.pem
 
 BOOTSTRAP_DIR="$BOOTSTRAP_DIR" python3 -c '
 import json
@@ -185,6 +207,26 @@ credentials = [{
             "action": "secret.resolve",
             "workspace_id": "*",
             "intents": ["postgres.password"],
+        },
+        {
+            "action": "secret.write",
+            "workspace_id": "*",
+            "intents": ["gateway.probe-signing-key"],
+        },
+        {
+            "action": "secret.resolve",
+            "workspace_id": "*",
+            "intents": ["gateway.probe-signing-key"],
+        },
+        {
+            "action": "secret.write",
+            "workspace_id": "*",
+            "intents": ["oci.pull-credential"],
+        },
+        {
+            "action": "secret.resolve",
+            "workspace_id": "*",
+            "intents": ["oci.pull-credential"],
         },
         {
             "action": "secret.rotate",
@@ -221,7 +263,8 @@ WORKSPACES='[
   "workspace-secret-revoked-before-use",
   "workspace-secret-concurrent-a",
   "workspace-secret-concurrent-b",
-  "workspace-secret-concurrent-c"
+  "workspace-secret-concurrent-c",
+  "workspace-gateway-key-rotation"
 ]'
 CPK_CONTROL_AUTH_STATIC_PRINCIPALS_JSON="$(
   WORKSPACES="$WORKSPACES" python3 -c '
@@ -246,6 +289,14 @@ operator_scopes = [
     "secret-provider:register",
     "secret-provider:read",
     "secret-provider:revoke",
+    "secret-provider:use",
+    "gateway-probe:use",
+    "delegation-key:register",
+    "delegation-key:read",
+    "delegation-key:activate",
+    "delegation-key:retire",
+    "delegation-key:revoke",
+    "delegation-key:use",
 ]
 worker_scopes = ["execution:operate", "secret-provider:use"]
 limited_worker_scopes = ["execution:operate"]
@@ -336,6 +387,38 @@ if [ "$SECRETS_READY" != "1" ]; then
   exit 1
 fi
 
+if [ "$SCENARIO" = "gateway-key-rotation" ]; then
+  if command -v gh >/dev/null 2>&1 && GHCR_TOKEN="$(gh auth token 2>/dev/null)"; then
+    BOOTSTRAP_DIR="$BOOTSTRAP_DIR" GHCR_TOKEN="$GHCR_TOKEN" python3 -c '
+import json
+import os
+from pathlib import Path
+
+base = Path(os.environ["BOOTSTRAP_DIR"])
+base.joinpath("ghcr-pull-credential.json").write_text(
+    json.dumps(
+        {"username": "OpenJ92", "password": os.environ["GHCR_TOKEN"]},
+        separators=(",", ":"),
+        sort_keys=True,
+    ),
+    encoding="utf-8",
+)
+base.joinpath("ghcr-token-sentinel").write_text(
+    os.environ["GHCR_TOKEN"],
+    encoding="utf-8",
+)
+'
+    unset GHCR_TOKEN
+  fi
+  if [ ! -s "$BOOTSTRAP_DIR/ghcr-pull-credential.json" ]; then
+    echo "GHCR pull authority is unavailable" >&2
+    exit 1
+  fi
+  chmod 0400 \
+    "$BOOTSTRAP_DIR/ghcr-pull-credential.json" \
+    "$BOOTSTRAP_DIR/ghcr-token-sentinel"
+fi
+
 SERVER_CONTAINER="$(docker run -d \
   --label "$LABEL" \
   --network "$NETWORK" \
@@ -351,6 +434,8 @@ SERVER_CONTAINER="$(docker run -d \
   -e CPK_RUNTIME_INTERPRETERS=docker \
   -e CPK_INGRESS_INTERPRETERS=none \
   -e CPK_PRODUCT_MATERIAL_RESOLVER=provider \
+  -e CPK_GATEWAY_PROBE_SIGNER=ed25519 \
+  -e CPK_GATEWAY_PROBE_GRANT_LIFETIME_SECONDS=2 \
   -e CPK_MATERIAL_PROVIDER_ROUTES_JSON="$PROVIDER_ROUTES_JSON" \
   -e CPK_MATERIAL_PROVIDER_BOOTSTRAP_FILES_JSON="$PROVIDER_BOOTSTRAP_FILES_JSON" \
   -e CPK_WORKPLACE_DATABASE_URL=postgresql://cpk:cpk@cpk-postgres:5432/cpk \
@@ -371,6 +456,7 @@ if ! docker run --rm \
   -e CPK_SECRET_PROVIDER_BOOTSTRAP_DIR=/run/secrets/cpk-source-live \
   -e CPK_HOSTED_ACTIVITY_SERVERS_REPO=/app \
   -e CPK_OPERATIONS_DATABASE_URL=postgresql://cpk:cpk@cpk-postgres:5432/cpk \
+  -e CPK_SECRET_PROVIDER_SOURCE_LIVE_SCENARIO="$SCENARIO" \
   "$CONTROLLER_IMAGE" \
   python scripts/cpk_server_secret_provider_source_live.py; then
   docker logs "$SERVER_CONTAINER" 2>&1 | tail -n 100 >&2 || true
@@ -387,8 +473,15 @@ for secret_file in \
   postgres-revoked \
   postgres-concurrent-1 \
   postgres-concurrent-2 \
-  postgres-concurrent-3
+  postgres-concurrent-3 \
+  gateway-rotation-key-a.pem \
+  gateway-rotation-key-b.pem \
+  ghcr-pull-credential.json \
+  ghcr-token-sentinel
 do
+  if [ ! -f "$BOOTSTRAP_DIR/$secret_file" ]; then
+    continue
+  fi
   if docker logs "$SERVER_CONTAINER" 2>&1 \
     | grep -F -f "$BOOTSTRAP_DIR/$secret_file" >/dev/null 2>&1; then
     echo "cpk-server logs contain forbidden source-live material" >&2

@@ -165,6 +165,7 @@ class CpkServerBootstrapConfiguration:
     material_provider_bootstrap_files_json: str | None = field(repr=False)
     store_endpoints: Mapping[str, str]
     gateway_probe_signer: str = "none"
+    gateway_probe_grant_lifetime_seconds: int = 60
     control_auth_static_workspace_grants: tuple[WorkspaceGrant, ...] = ()
     control_auth_static_principals: tuple[
         StaticDevelopmentPrincipalCredential, ...
@@ -209,6 +210,10 @@ class CpkServerBootstrapConfiguration:
             "CPK_MATERIAL_PROVIDER_BOOTSTRAP_FILES_JSON"
         )
         gateway_probe_signer = values.get("CPK_GATEWAY_PROBE_SIGNER", "none")
+        gateway_probe_grant_lifetime_text = values.get(
+            "CPK_GATEWAY_PROBE_GRANT_LIFETIME_SECONDS",
+            "60",
+        )
         store_endpoints = {
             name: _required(values, name)
             for name in (
@@ -322,6 +327,18 @@ class CpkServerBootstrapConfiguration:
                     "CPK_GATEWAY_PROBE_SIGNER=ed25519 requires provider-backed "
                     "secret resolution"
                 )
+        try:
+            gateway_probe_grant_lifetime_seconds = int(
+                gateway_probe_grant_lifetime_text
+            )
+        except ValueError as error:
+            raise BootstrapConfigurationError(
+                "CPK_GATEWAY_PROBE_GRANT_LIFETIME_SECONDS must be an integer"
+            ) from error
+        if not 1 <= gateway_probe_grant_lifetime_seconds <= 300:
+            raise BootstrapConfigurationError(
+                "CPK_GATEWAY_PROBE_GRANT_LIFETIME_SECONDS must be from 1 through 300"
+            )
         if (
             product_material_resolver == "local-development"
             and RuntimeKind.DOCKER not in runtime_dispatcher.runtime_kinds
@@ -398,6 +415,9 @@ class CpkServerBootstrapConfiguration:
             ),
             store_endpoints=store_endpoints,
             gateway_probe_signer=gateway_probe_signer,
+            gateway_probe_grant_lifetime_seconds=(
+                gateway_probe_grant_lifetime_seconds
+            ),
             control_auth_static_workspace_grants=(
                 control_auth_static_workspace_grants
             ),
@@ -802,6 +822,7 @@ def _gateway_probe_service(
         epoch_clock=lambda: int(time.time()),
         clock=_clock,
         id_factory=_id,
+        grant_lifetime_seconds=config.gateway_probe_grant_lifetime_seconds,
     )
 
 
