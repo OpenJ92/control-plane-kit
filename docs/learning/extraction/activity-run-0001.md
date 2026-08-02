@@ -7192,3 +7192,32 @@ The existing reference-wide revoke remains available for whole-secret
 lifecycles. Gateway rotation must use only the exact-version protocol. The
 interpreter client treats malformed success after mutation as uncertain and
 the custodian returns the typed core receipt without exposing secret bytes.
+
+## #1301 Replacement activation and durable grant drain
+
+Accepted overlap now progresses through an operations-owned application
+program rather than harness timing:
+
+```text
+OVERLAP_READY(G[A+B])
+  -> atomically activate B and demote A
+    -> NEW_KEY_ACTIVE
+      -> DRAINING_OLD_GRANTS
+        -> WAITING | READY_FOR_RETIREMENT
+```
+
+The program requires both rotation and key-activation scopes, verifies the
+accepted current overlap checkpoint, exact A/B identities and statuses, B's
+active admitted secret reference, and deterministic transition lineage. Key
+activation and the two rotation folds remain three separate transactions. A
+real Postgres physical-commit crash matrix proves restart after each boundary:
+if B is already active but the aggregate remains `OVERLAP_READY`, recovery
+recognizes that exact state and folds it without a second activation.
+
+The aggregate alone computes the drain deadline as trusted epoch time plus the
+maximum grant lifetime and clock skew. Before it, the program returns typed
+`WAITING` with zero writes; at the exact deadline it returns
+`READY_FOR_RETIREMENT`, also without changing the aggregate beyond
+`DRAINING_OLD_GRANTS`. There is no sleep, polling loop, provider, Docker,
+gateway, HTTP, filesystem IO, or secret material. #1302 next prepares the exact
+B-only retirement projection from this durable readiness result.
