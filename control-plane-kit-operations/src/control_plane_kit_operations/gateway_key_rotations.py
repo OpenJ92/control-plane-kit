@@ -48,6 +48,7 @@ class GatewayKeyRotationStatus(StrEnum):
     NEW_KEY_ACTIVE = "new-key-active"
     DRAINING_OLD_GRANTS = "draining-old-grants"
     RETIREMENT_DEPLOYING = "retirement-deploying"
+    RETIREMENT_READY = "retirement-ready"
     COMPLETED = "completed"
     BLOCKED = "blocked"
     REJECTED = "rejected"
@@ -411,7 +412,13 @@ _LEGAL = {
         GatewayKeyRotationStatus.RETIREMENT_DEPLOYING,
         GatewayKeyRotationStatus.BLOCKED},
     GatewayKeyRotationStatus.RETIREMENT_DEPLOYING: {
-        GatewayKeyRotationStatus.COMPLETED, GatewayKeyRotationStatus.BLOCKED},
+        GatewayKeyRotationStatus.RETIREMENT_READY,
+        GatewayKeyRotationStatus.BLOCKED,
+    },
+    GatewayKeyRotationStatus.RETIREMENT_READY: {
+        GatewayKeyRotationStatus.COMPLETED,
+        GatewayKeyRotationStatus.BLOCKED,
+    },
 }
 
 
@@ -689,6 +696,15 @@ def _transition(current: GatewayKeyRotation, command: AdvanceGatewayKeyRotation,
             raise GatewayKeyRotationConflict("old capability grants have not drained")
         _checkpoint(command.deployment, GatewayKeyRotationDeploymentPhase.RETIREMENT,
                     GatewayKeyRotationDeploymentStatus.PREPARED)
+        changes["retirement_deployment"] = command.deployment
+    elif target is GatewayKeyRotationStatus.RETIREMENT_READY:
+        _checkpoint(command.deployment, GatewayKeyRotationDeploymentPhase.RETIREMENT,
+                    GatewayKeyRotationDeploymentStatus.ACCEPTED)
+        if (current.retirement_deployment is None
+                or command.deployment is None
+                or not _same_deployment_identity(current.retirement_deployment,
+                                                 command.deployment)):
+            raise GatewayKeyRotationConflict("retirement acceptance identity changed")
         changes["retirement_deployment"] = command.deployment
     elif target is GatewayKeyRotationStatus.COMPLETED:
         _checkpoint(command.deployment, GatewayKeyRotationDeploymentPhase.RETIREMENT,

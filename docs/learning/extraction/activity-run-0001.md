@@ -7259,3 +7259,37 @@ mutation, stale lineage/version/key/approval failures, unexpected-key rejection,
 and recovery after each of eight physical commits. #1303 owns one-step ordinary
 retirement dispatch and acceptance; #1096 can later reuse the now-explicit
 phase-child preparation spine without absorbing gateway key semantics.
+
+## #1303 B-only retirement deployment execution
+
+The prepared retirement child now uses the same phase-neutral execution kernel
+as overlap while retaining a typed public retirement command and result:
+
+```text
+RETIREMENT_DEPLOYING(prepared G[A+B] -> G[B])
+  -> classify exact durable child truth
+  -> dispatch at most one coordinator effect
+  -> fold terminal result
+  -> complete the ordinary activity run
+  -> guarded current projection advancement to G[B]
+  -> RETIREMENT_READY(accepted checkpoint)
+```
+
+The shared kernel owns only the mechanical isomorphism: checkpoint loading,
+child plan/request/run validation, bounded coordinator progress, guarded current
+advancement, accepted-checkpoint construction, replay classification, and
+uncertainty blocking. Typed overlap and retirement wrappers fix the phase so a
+public caller cannot select a different lifecycle phase through a generic flag.
+
+`RETIREMENT_READY` is intentionally distinct from `COMPLETED`. At this point
+the B-only verifier projection is accepted as current, but key A remains
+`VERIFY_ONLY`, its private secret version remains unrevoked, and the rotation
+contains no retirement timestamps. #1304 owns those consequential effects and
+may complete the aggregate only from this evidence-bearing boundary.
+
+Real Postgres tests prove multi-activity one-effect dispatch, accepted replay
+without duplicate IO, bounded failed/unsupported/uncertain outcomes, process
+loss after durable intent without redispatch, recovery after each post-effect
+physical commit, stale checkpoint/lineage/scope rejection before IO, one authored
+graph row, and no premature key retirement. The pre-existing overlap execution
+suite passes unchanged through the extracted kernel.
