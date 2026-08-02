@@ -342,8 +342,12 @@ class DesiredGraphCommandService:
     def execute(self, command: SetDesiredGraph) -> DesiredGraphEditResult:
         fingerprint = _desired_graph_fingerprint(command)
         with self._unit_of_work_factory() as unit_of_work:
-            session = _desired_session(unit_of_work, command)
-            existing = unit_of_work.stores.activity_history.action_for_idempotency(
+            history = unit_of_work.stores.activity_history
+            history.lock_action_idempotency(
+                command.session_id,
+                command.idempotency_key.value,
+            )
+            existing = history.action_for_idempotency(
                 command.session_id,
                 command.idempotency_key.value,
             )
@@ -351,6 +355,7 @@ class DesiredGraphCommandService:
                 result = _desired_graph_replay(unit_of_work, existing, fingerprint)
                 unit_of_work.commit()
                 return result
+            session = _desired_session(unit_of_work, command)
             if session.status is not OperationSessionStatus.OPEN:
                 raise DesiredGraphSessionConflict("operation session is not open")
             created_at = self._clock()
@@ -579,7 +584,9 @@ class ActivityPlanningCommandService:
 
 def _desired_session(unit_of_work: Any, command: SetDesiredGraph) -> Any:
     try:
-        session = unit_of_work.stores.activity_history.get_session(command.session_id)
+        session = unit_of_work.stores.activity_history.get_session_for_update(
+            command.session_id
+        )
     except KeyError as error:
         raise DesiredGraphSessionConflict("operation session was not found") from error
     if session.workspace_id != command.workspace_id:

@@ -1,6 +1,8 @@
 from __future__ import annotations
 
+import concurrent.futures
 import os
+import threading
 import unittest
 
 import psycopg
@@ -214,6 +216,160 @@ class PlanningCommandTests(unittest.TestCase):
                 self.desired_service("unused-graph", "unused-action"),
                 actor_id="operator-b",
             )
+
+    def test_concurrent_identical_requests_converge_on_one_graph(self) -> None:
+        barrier = threading.Barrier(2)
+
+        def submit(ids: tuple[str, str]):
+            barrier.wait(timeout=5)
+            return self.set_desired(self.desired_service(*ids))
+
+        with concurrent.futures.ThreadPoolExecutor(max_workers=2) as executor:
+            results = tuple(
+                executor.map(
+                    submit,
+                    (("graph-a", "action-a"), ("graph-b", "action-b")),
+                )
+            )
+
+        self.assertEqual(len({result.graph_version_id for result in results}), 1)
+        self.assertEqual(len({result.action.action_id for result in results}), 1)
+        self.assertEqual(sum(result.replayed for result in results), 1)
+
+    def test_concurrent_identical_request_persists_one_complete_result(self) -> None:
+        barrier = threading.Barrier(2)
+
+        def submit(ids: tuple[str, str]):
+            barrier.wait(timeout=5)
+            return self.set_desired(self.desired_service(*ids))
+
+        with concurrent.futures.ThreadPoolExecutor(max_workers=2) as executor:
+            results = tuple(
+                executor.map(
+                    submit,
+                    (("graph-a", "action-a"), ("graph-b", "action-b")),
+                )
+            )
+
+        workspace = self.connection.execute(
+            """
+            SELECT desired_graph_id, desired_realized_projection_id,
+                   desired_graph_revision
+            FROM cpk_workspaces
+            WHERE workspace_id = 'workspace-a'
+            """
+        ).fetchone()
+        graph_count = self.connection.execute(
+            "SELECT count(*) FROM cpk_graph_versions WHERE workspace_id = 'workspace-a'"
+        ).fetchone()[0]
+        projection_count = self.connection.execute(
+            """
+            SELECT count(*)
+            FROM cpk_realized_graph_projections
+            WHERE workspace_id = 'workspace-a'
+            """
+        ).fetchone()[0]
+        actions = self.connection.execute(
+            """
+            SELECT action_id, ordinal
+            FROM cpk_operation_actions
+            WHERE session_id = 'session-a'
+            ORDER BY ordinal
+            """
+        ).fetchall()
+
+        self.assertEqual(graph_count, 2)
+        self.assertEqual(projection_count, 2)
+        self.assertEqual(workspace[2], 1)
+        self.assertEqual(workspace[0], results[0].graph_version_id)
+        self.assertEqual(workspace[1], results[0].desired_realized_projection_id)
+        self.assertEqual(actions[0], ("action-start", 1))
+        self.assertEqual(actions[1], (results[0].action.action_id, 2))
+        self.assertEqual(len(actions), 2)
+
+    def test_concurrent_distinct_requests_publish_one_and_reject_one_stale(
+        self,
+    ) -> None:
+        barrier = threading.Barrier(2)
+
+        def submit(actor_id: str, ids: tuple[str, str], key: str):
+            barrier.wait(timeout=5)
+            try:
+                return self.set_desired(
+                    self.desired_service(*ids),
+                    key=key,
+                    actor_id=actor_id,
+                )
+            except StaleDesiredGraph as error:
+                return error
+
+        with concurrent.futures.ThreadPoolExecutor(max_workers=2) as executor:
+            first = executor.submit(
+                submit,
+                "operator-a",
+                ("graph-a", "action-a"),
+                "desired-a",
+            )
+            second = executor.submit(
+                submit,
+                "operator-b",
+                ("graph-b", "action-b"),
+                "desired-b",
+            )
+            outcomes = (first.result(), second.result())
+
+        self.assertEqual(sum(isinstance(value, StaleDesiredGraph) for value in outcomes), 1)
+        with self.unit_of_work() as unit_of_work:
+            workspace = unit_of_work.stores.workspaces.get("workspace-a")
+            actions = unit_of_work.stores.activity_history.actions_for_session(
+                "session-a"
+            )
+        self.assertIn(workspace.desired_graph_id, {"graph-a", "graph-b"})
+        self.assertEqual(
+            tuple(action.action_type.value for action in actions),
+            ("start-operation-session", "set-desired-graph"),
+        )
+
+    def test_desired_graph_replay_survives_pointer_change_and_session_close(
+        self,
+    ) -> None:
+        first = self.set_desired()
+        with self.unit_of_work() as unit_of_work:
+            workspace = unit_of_work.stores.workspaces.get("workspace-a")
+        self.desired_service("graph-next", "action-next").execute(
+            SetDesiredGraph(
+                session_id="session-a",
+                workspace_id="workspace-a",
+                actor_id="operator-a",
+                graph=self.product_graph(),
+                expected_desired_graph_id=workspace.desired_graph_id,
+                expected_desired_realized_projection_id=(
+                    workspace.desired_realized_projection_id
+                ),
+                expected_desired_graph_revision=workspace.desired_graph_revision,
+                idempotency_key=IdempotencyKey("desired-next"),
+            )
+        )
+        self.operation_service("action-close").execute(
+            CloseOperationSession(
+                "session-a",
+                "operator-a",
+                IdempotencyKey("close"),
+            )
+        )
+
+        replay = self.set_desired(
+            self.desired_service("unused-graph", "unused-action")
+        )
+
+        self.assertTrue(replay.replayed)
+        self.assertEqual(replay.graph_version_id, first.graph_version_id)
+        self.assertEqual(
+            replay.desired_realized_projection_id,
+            first.desired_realized_projection_id,
+        )
+        self.assertEqual(replay.desired_graph_revision, first.desired_graph_revision)
+        self.assertEqual(replay.action, first.action)
 
     def test_desired_graph_late_action_failure_rolls_back_graph_truth(self) -> None:
         with self.assertRaises(psycopg.errors.UniqueViolation):
