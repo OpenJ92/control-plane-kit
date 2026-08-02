@@ -1221,25 +1221,56 @@ class CpkServerOperationsAdapterTests(unittest.TestCase):
             ["start-runtime", "start-node", "wait-healthy"],
         )
 
+        advance_payload = {
+            "plan_id": plan_id,
+            "expected_current_graph_id": current_graph_id,
+            "expected_current_realized_projection_id": current_projection_id,
+            "desired_graph_id": desired_graph_id,
+            "desired_realized_projection_id": desired_projection_id,
+            "expected_desired_graph_revision": desired_revision,
+            "worker_id": "worker-a",
+            "actor_scopes": [PolicyScope.EXECUTION_OPERATE.value],
+            "idempotency_key": "advance-a",
+        }
         advanced = application.handle(
             RouteRequest(
                 surface="http",
                 route_id="command.graph.advance-current",
                 service_role=ControlPlaneServiceRole.LIFECYCLE,
                 path_parameters={"workspace_id": "workspace-a", "run_id": run_id},
-                payload={
-                    "plan_id": plan_id,
-                    "expected_current_graph_id": current_graph_id,
-                    "desired_graph_id": desired_graph_id,
-                    "worker_id": "worker-a",
-                    "actor_scopes": [PolicyScope.EXECUTION_OPERATE.value],
-                    "idempotency_key": "advance-a",
+                payload=advance_payload,
+                principal=worker_principal(),
+            )
+        )
+        advanced_mcp = application.handle(
+            RouteRequest(
+                surface="mcp",
+                route_id="command.graph.advance-current",
+                service_role=ControlPlaneServiceRole.LIFECYCLE,
+                path_parameters={
+                    "workspace_id": "workspace-a",
+                    "run_id": run_id,
                 },
+                payload=advance_payload,
                 principal=worker_principal(),
             )
         )
         self.assertEqual(advanced["from_graph_id"], current_graph_id)
         self.assertEqual(advanced["to_graph_id"], desired_graph_id)
+        self.assertEqual(
+            advanced["from_realized_projection_id"],
+            current_projection_id,
+        )
+        self.assertEqual(
+            advanced["to_realized_projection_id"],
+            desired_projection_id,
+        )
+        self.assertEqual(advanced["desired_graph_revision"], desired_revision)
+        self.assertTrue(advanced_mcp["replayed"])
+        self.assertEqual(
+            advanced_mcp["to_realized_projection_id"],
+            advanced["to_realized_projection_id"],
+        )
 
         current = application.handle(
             RouteRequest(
@@ -1251,6 +1282,21 @@ class CpkServerOperationsAdapterTests(unittest.TestCase):
             )
         )
         self.assertEqual(current["graph_id"], desired_graph_id)
+        self.assertEqual(current["authored_graph_id"], desired_graph_id)
+        self.assertEqual(
+            current["realized_projection_id"],
+            desired_projection_id,
+        )
+        current_mcp = application.handle(
+            RouteRequest(
+                surface="mcp",
+                route_id="read.current-graph",
+                service_role=ControlPlaneServiceRole.READS,
+                path_parameters={},
+                payload={"workspace_id": "workspace-a"},
+            )
+        )
+        self.assertEqual(current_mcp, current)
 
     def test_unsupported_services_fail_closed_until_extracted(self) -> None:
         service = CpkServerUnsupportedService(ControlPlaneServiceRole.RECOVERY)

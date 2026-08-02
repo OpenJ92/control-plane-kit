@@ -1195,7 +1195,8 @@ laws:
 ### CurrentGraph
 
 meaning:
-  Workspace pointer to the accepted current graph version.
+  Workspace lineage pairing the accepted operator-authored graph version with
+  the exact realized graph projection that successfully executed.
 
 owned by:
   `control-plane-kit-operations`.
@@ -1211,7 +1212,11 @@ interpreted by:
 
 laws:
   Current graph advancement is explicit and guarded by accepted run evidence.
-  Runtime success alone does not silently mutate the pointer.
+  Runtime success alone does not silently mutate the pointer. Advancement
+  atomically compares current authored and realized identity, desired authored
+  and realized identity, and desired revision. Its durable evidence names the
+  accepted realized projection and digest while public current/desired graph
+  descriptors remain authored truth.
 
 ## Runtime Effect Language
 

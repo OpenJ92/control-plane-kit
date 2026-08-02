@@ -32,6 +32,7 @@ from control_plane_kit_operations.records import (
     BoundedEvidence,
     ExecutionRequestRecord,
     OperationActionRecord,
+    RealizedGraphProjectionRecord,
     WorkspaceRecord,
 )
 from control_plane_kit_operations.workflows import (
@@ -72,7 +73,10 @@ class AdvanceCurrentGraph:
     run_id: str
     plan_id: str
     expected_current_graph_id: str
+    expected_current_realized_projection_id: str
     desired_graph_id: str
+    desired_realized_projection_id: str
+    expected_desired_graph_revision: int
     authority: ExecutionWorkerAuthority
     idempotency_key: IdempotencyKey
 
@@ -81,10 +85,29 @@ class AdvanceCurrentGraph:
         _required_text(self.run_id, "run_id")
         _required_text(self.plan_id, "plan_id")
         _required_text(self.expected_current_graph_id, "expected_current_graph_id")
+        _required_text(
+            self.expected_current_realized_projection_id,
+            "expected_current_realized_projection_id",
+        )
         _required_text(self.desired_graph_id, "desired_graph_id")
-        if self.expected_current_graph_id == self.desired_graph_id:
+        _required_text(
+            self.desired_realized_projection_id,
+            "desired_realized_projection_id",
+        )
+        if (
+            type(self.expected_desired_graph_revision) is not int
+            or self.expected_desired_graph_revision < 0
+        ):
             raise InvalidOperationCommand(
-                "current graph advancement requires distinct graph identities"
+                "expected_desired_graph_revision must be nonnegative"
+            )
+        if (
+            self.expected_current_graph_id == self.desired_graph_id
+            and self.expected_current_realized_projection_id
+            == self.desired_realized_projection_id
+        ):
+            raise InvalidOperationCommand(
+                "current graph advancement requires distinct realized lineage"
             )
         if not isinstance(self.authority, ExecutionWorkerAuthority):
             raise InvalidOperationCommand("authority must be ExecutionWorkerAuthority")
@@ -97,8 +120,12 @@ class CurrentGraphAdvancementResult:
     """Stable evidence returned for an original command or exact replay."""
 
     workspace_id: str
-    from_graph_id: str
-    to_graph_id: str
+    from_authored_graph_id: str
+    from_realized_projection_id: str
+    to_authored_graph_id: str
+    to_realized_projection_id: str
+    to_realized_projection_digest: str
+    desired_graph_revision: int
     run_id: str
     plan_id: str
     event: ActivityEventRecord
@@ -106,6 +133,30 @@ class CurrentGraphAdvancementResult:
     replayed: bool = False
 
     def __post_init__(self) -> None:
+        for value, name in (
+            (self.workspace_id, "workspace_id"),
+            (self.from_authored_graph_id, "from_authored_graph_id"),
+            (self.from_realized_projection_id, "from_realized_projection_id"),
+            (self.to_authored_graph_id, "to_authored_graph_id"),
+            (self.to_realized_projection_id, "to_realized_projection_id"),
+            (self.run_id, "run_id"),
+            (self.plan_id, "plan_id"),
+        ):
+            _required_text(value, name)
+        if (
+            len(self.to_realized_projection_digest) != 64
+            or any(
+                value not in "0123456789abcdef"
+                for value in self.to_realized_projection_digest
+            )
+        ):
+            raise CurrentGraphAdvancementError(
+                "advancement result requires a lowercase sha256 projection digest"
+            )
+        if type(self.desired_graph_revision) is not int or self.desired_graph_revision < 0:
+            raise CurrentGraphAdvancementError(
+                "advancement result requires a nonnegative desired revision"
+            )
         if self.event.kind is not ActivityEventKind.CURRENT_GRAPH_ADVANCED:
             raise CurrentGraphAdvancementError(
                 "advancement result requires current-graph activity evidence"
@@ -120,8 +171,12 @@ class CurrentGraphAdvancementResult:
             "workspace_id": self.workspace_id,
             "plan_id": self.plan_id,
             "run_id": self.run_id,
-            "from_graph_id": self.from_graph_id,
-            "to_graph_id": self.to_graph_id,
+            "from_authored_graph_id": self.from_authored_graph_id,
+            "from_realized_projection_id": self.from_realized_projection_id,
+            "to_authored_graph_id": self.to_authored_graph_id,
+            "to_realized_projection_id": self.to_realized_projection_id,
+            "to_realized_projection_digest": self.to_realized_projection_digest,
+            "desired_graph_revision": self.desired_graph_revision,
         }
         if self.event.run_id != self.run_id:
             raise CurrentGraphAdvancementError("advancement event belongs elsewhere")
@@ -130,11 +185,29 @@ class CurrentGraphAdvancementResult:
                 "advancement event does not encode the claimed graph transition"
             )
 
+    @property
+    def from_graph_id(self) -> str:
+        """Compatibility alias for the authored source graph identity."""
+
+        return self.from_authored_graph_id
+
+    @property
+    def to_graph_id(self) -> str:
+        """Compatibility alias for the authored destination graph identity."""
+
+        return self.to_authored_graph_id
+
     def descriptor(self) -> dict[str, object]:
         return {
             "workspace_id": self.workspace_id,
-            "from_graph_id": self.from_graph_id,
-            "to_graph_id": self.to_graph_id,
+            "from_authored_graph_id": self.from_authored_graph_id,
+            "from_realized_projection_id": self.from_realized_projection_id,
+            "to_authored_graph_id": self.to_authored_graph_id,
+            "to_realized_projection_id": self.to_realized_projection_id,
+            "to_realized_projection_digest": self.to_realized_projection_digest,
+            "desired_graph_revision": self.desired_graph_revision,
+            "from_graph_id": self.from_authored_graph_id,
+            "to_graph_id": self.to_authored_graph_id,
             "run_id": self.run_id,
             "plan_id": self.plan_id,
             "event_id": self.event.event_id,
@@ -183,7 +256,14 @@ class CurrentGraphAdvancementCommandService:
                 return result
 
             _require_worker_owns(request, command.authority)
-            _require_identity(command, workspace, request, run, plan)
+            current_projection, desired_projection = _require_identity(
+                command,
+                workspace,
+                request,
+                run,
+                plan,
+                stores.realized_graphs,
+            )
             _require_graph_ownership(
                 stores.graphs,
                 command.workspace_id,
@@ -197,6 +277,19 @@ class CurrentGraphAdvancementCommandService:
                 command.workspace_id,
                 expected_graph_id=command.expected_current_graph_id,
                 replacement_graph_id=command.desired_graph_id,
+                expected_realized_projection_id=(
+                    command.expected_current_realized_projection_id
+                ),
+                replacement_realized_projection_id=(
+                    command.desired_realized_projection_id
+                ),
+                expected_desired_graph_id=command.desired_graph_id,
+                expected_desired_realized_projection_id=(
+                    command.desired_realized_projection_id
+                ),
+                expected_desired_graph_revision=(
+                    command.expected_desired_graph_revision
+                ),
             )
             if advanced is None:
                 raise CurrentGraphAdvancementConflict(
@@ -209,8 +302,14 @@ class CurrentGraphAdvancementCommandService:
                     "workspace_id": command.workspace_id,
                     "plan_id": command.plan_id,
                     "run_id": command.run_id,
-                    "from_graph_id": command.expected_current_graph_id,
-                    "to_graph_id": command.desired_graph_id,
+                    "from_authored_graph_id": command.expected_current_graph_id,
+                    "from_realized_projection_id": current_projection.projection_id,
+                    "to_authored_graph_id": command.desired_graph_id,
+                    "to_realized_projection_id": desired_projection.projection_id,
+                    "to_realized_projection_digest": (
+                        desired_projection.projection_digest
+                    ),
+                    "desired_graph_revision": command.expected_desired_graph_revision,
                 }
             )
             event = stores.execution.add_event(
@@ -251,7 +350,8 @@ def _require_identity(
     request: ExecutionRequestRecord,
     run: ActivityRunRecord,
     plan: ActivityPlanRecord,
-) -> None:
+    realized_graph_store: Any,
+) -> tuple[RealizedGraphProjectionRecord, RealizedGraphProjectionRecord]:
     if request.identity.workspace_id != command.workspace_id:
         raise CurrentGraphAdvancementConflict("execution request belongs elsewhere")
     if request.identity.plan_id != command.plan_id or run.plan_id != command.plan_id:
@@ -262,10 +362,65 @@ def _require_identity(
         raise CurrentGraphAdvancementConflict("plan base graph does not match command")
     if plan.desired_graph_id != command.desired_graph_id:
         raise CurrentGraphAdvancementConflict("plan desired graph does not match command")
+    if (
+        plan.base_realized_projection_id
+        != command.expected_current_realized_projection_id
+        or plan.desired_realized_projection_id
+        != command.desired_realized_projection_id
+        or plan.desired_graph_revision != command.expected_desired_graph_revision
+    ):
+        raise CurrentGraphAdvancementConflict(
+            "plan realized lineage does not match command"
+        )
     if workspace.current_graph_id != command.expected_current_graph_id:
         raise CurrentGraphAdvancementConflict("workspace current graph is stale")
     if workspace.desired_graph_id != command.desired_graph_id:
         raise CurrentGraphAdvancementConflict("workspace desired graph changed")
+    if (
+        workspace.current_realized_projection_id
+        != command.expected_current_realized_projection_id
+        or workspace.desired_realized_projection_id
+        != command.desired_realized_projection_id
+        or workspace.desired_graph_revision
+        != command.expected_desired_graph_revision
+    ):
+        raise CurrentGraphAdvancementConflict("workspace realized lineage changed")
+    current = _projection(
+        realized_graph_store,
+        projection_id=command.expected_current_realized_projection_id,
+        workspace_id=command.workspace_id,
+        source_authored_graph_id=command.expected_current_graph_id,
+    )
+    desired = _projection(
+        realized_graph_store,
+        projection_id=command.desired_realized_projection_id,
+        workspace_id=command.workspace_id,
+        source_authored_graph_id=command.desired_graph_id,
+    )
+    return current, desired
+
+
+def _projection(
+    store: Any,
+    *,
+    projection_id: str,
+    workspace_id: str,
+    source_authored_graph_id: str,
+) -> RealizedGraphProjectionRecord:
+    try:
+        record = store.get(projection_id)
+    except KeyError as error:
+        raise CurrentGraphAdvancementConflict(
+            "realized graph projection is stale or missing"
+        ) from error
+    if (
+        record.workspace_id != workspace_id
+        or record.source_authored_graph_id != source_authored_graph_id
+    ):
+        raise CurrentGraphAdvancementConflict(
+            "realized graph projection belongs to different authored truth"
+        )
+    return record
 
 
 def _require_graph_ownership(
@@ -386,8 +541,27 @@ def _result(
 ) -> CurrentGraphAdvancementResult:
     return CurrentGraphAdvancementResult(
         workspace_id=_payload_text(action.payload, "workspace_id"),
-        from_graph_id=_payload_text(action.payload, "from_graph_id"),
-        to_graph_id=_payload_text(action.payload, "to_graph_id"),
+        from_authored_graph_id=_payload_text(
+            action.payload,
+            "from_authored_graph_id",
+        ),
+        from_realized_projection_id=_payload_text(
+            action.payload,
+            "from_realized_projection_id",
+        ),
+        to_authored_graph_id=_payload_text(action.payload, "to_authored_graph_id"),
+        to_realized_projection_id=_payload_text(
+            action.payload,
+            "to_realized_projection_id",
+        ),
+        to_realized_projection_digest=_payload_text(
+            action.payload,
+            "to_realized_projection_digest",
+        ),
+        desired_graph_revision=_payload_nonnegative_integer(
+            action.payload,
+            "desired_graph_revision",
+        ),
         run_id=_payload_text(action.payload, "run_id"),
         plan_id=_payload_text(action.payload, "plan_id"),
         event=event,
@@ -403,7 +577,12 @@ def _fingerprint(command: AdvanceCurrentGraph) -> str:
         "run_id": command.run_id,
         "plan_id": command.plan_id,
         "expected_current_graph_id": command.expected_current_graph_id,
+        "expected_current_realized_projection_id": (
+            command.expected_current_realized_projection_id
+        ),
         "desired_graph_id": command.desired_graph_id,
+        "desired_realized_projection_id": command.desired_realized_projection_id,
+        "expected_desired_graph_revision": command.expected_desired_graph_revision,
         "worker_id": command.authority.worker_id,
     }
     return hashlib.sha256(
@@ -414,6 +593,13 @@ def _fingerprint(command: AdvanceCurrentGraph) -> str:
 def _payload_text(payload: Mapping[str, object], key: str) -> str:
     value = payload.get(key)
     if not isinstance(value, str) or not value:
+        raise CurrentGraphAdvancementError(f"advancement action payload lacks {key}")
+    return value
+
+
+def _payload_nonnegative_integer(payload: Mapping[str, object], key: str) -> int:
+    value = payload.get(key)
+    if type(value) is not int or value < 0:
         raise CurrentGraphAdvancementError(f"advancement action payload lacks {key}")
     return value
 

@@ -96,8 +96,11 @@ class PostgresWorkspaceStore:
         *,
         expected_graph_id: str,
         replacement_graph_id: str,
-        expected_realized_projection_id: str | None = None,
-        replacement_realized_projection_id: str | None = None,
+        expected_realized_projection_id: str,
+        replacement_realized_projection_id: str,
+        expected_desired_graph_id: str,
+        expected_desired_realized_projection_id: str,
+        expected_desired_graph_revision: int,
     ) -> WorkspaceRecord | None:
         try:
             expected_projection_id = self._projection_for_source(
@@ -105,13 +108,25 @@ class PostgresWorkspaceStore:
                 expected_graph_id,
                 expected_realized_projection_id,
             )
-        except KeyError:
+        except (KeyError, RealizedGraphProjectionConflict):
             return None
         replacement_projection_id = self._projection_for_source(
             workspace_id,
             replacement_graph_id,
             replacement_realized_projection_id,
         )
+        desired_projection_id = self._projection_for_source(
+            workspace_id,
+            expected_desired_graph_id,
+            expected_desired_realized_projection_id,
+        )
+        if (
+            replacement_graph_id != expected_desired_graph_id
+            or replacement_projection_id != desired_projection_id
+        ):
+            raise RealizedGraphProjectionConflict(
+                "current graph replacement must be the exact desired lineage"
+            )
         row = self._connection.execute(
             """
             UPDATE cpk_workspaces
@@ -119,6 +134,9 @@ class PostgresWorkspaceStore:
             WHERE workspace_id = %s
               AND current_graph_id = %s
               AND current_realized_projection_id = %s
+              AND desired_graph_id = %s
+              AND desired_realized_projection_id = %s
+              AND desired_graph_revision = %s
             RETURNING workspace_id, name, lifecycle, current_graph_id,
                       desired_graph_id, metadata, current_realized_projection_id,
                       desired_realized_projection_id, desired_graph_revision
@@ -129,6 +147,9 @@ class PostgresWorkspaceStore:
                 workspace_id,
                 expected_graph_id,
                 expected_projection_id,
+                expected_desired_graph_id,
+                desired_projection_id,
+                expected_desired_graph_revision,
             ),
         ).fetchone()
         if row is None:

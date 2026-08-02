@@ -199,6 +199,8 @@ class GraphPointerReadModel:
     pointer: str
     assigned: bool
     graph_id: str | None = None
+    authored_graph_id: str | None = None
+    realized_projection_id: str | None = None
     version: int | None = None
     graph_name: str | None = None
     graph_descriptor: Mapping[str, object] | None = None
@@ -209,6 +211,8 @@ class GraphPointerReadModel:
             "pointer": self.pointer,
             "assigned": self.assigned,
             "graph_id": self.graph_id,
+            "authored_graph_id": self.authored_graph_id,
+            "realized_projection_id": self.realized_projection_id,
             "version": self.version,
             "graph_name": self.graph_name,
         }
@@ -422,11 +426,19 @@ class InstanceReadService:
 
     def current_graph(self, workspace_id: str) -> GraphPointerReadModel:
         workspace = self._workspace(workspace_id)
-        return self._graph_pointer("current", workspace.current_graph_id)
+        return self._graph_pointer(
+            "current",
+            workspace.current_graph_id,
+            workspace.current_realized_projection_id,
+        )
 
     def desired_graph(self, workspace_id: str) -> GraphPointerReadModel:
         workspace = self._workspace(workspace_id)
-        return self._graph_pointer("desired", workspace.desired_graph_id)
+        return self._graph_pointer(
+            "desired",
+            workspace.desired_graph_id,
+            workspace.desired_realized_projection_id,
+        )
 
     def operator_graph(
         self,
@@ -438,6 +450,7 @@ class InstanceReadService:
         return self._graph_pointer(
             pointer,
             _graph_id_for_pointer(workspace, pointer),
+            _projection_id_for_pointer(workspace, pointer),
             include_operator_graph=True,
         )
 
@@ -978,10 +991,11 @@ class InstanceReadService:
         self,
         pointer: str,
         graph_id: str | None,
+        realized_projection_id: str | None,
         *,
         include_operator_graph: bool = False,
     ) -> GraphPointerReadModel:
-        if graph_id is None:
+        if graph_id is None or realized_projection_id is None:
             return GraphPointerReadModel(pointer=pointer, assigned=False)
         record = self._graph_topology_store.get(graph_id)
         operator_graph: Mapping[str, object] | None = None
@@ -994,6 +1008,7 @@ class InstanceReadService:
         return _graph_pointer_read_model(
             pointer,
             record,
+            realized_projection_id=realized_projection_id,
             operator_graph=operator_graph,
         )
 
@@ -1085,16 +1100,30 @@ def _graph_id_for_pointer(workspace: WorkspaceRecord, pointer: str) -> str | Non
     raise ReadModelError(f"unknown graph pointer {pointer!r}")
 
 
+def _projection_id_for_pointer(
+    workspace: WorkspaceRecord,
+    pointer: str,
+) -> str | None:
+    if pointer == "current":
+        return workspace.current_realized_projection_id
+    if pointer == "desired":
+        return workspace.desired_realized_projection_id
+    raise ReadModelError(f"unknown graph pointer {pointer!r}")
+
+
 def _graph_pointer_read_model(
     pointer: str,
     record: GraphVersionRecord,
     *,
+    realized_projection_id: str,
     operator_graph: Mapping[str, object] | None,
 ) -> GraphPointerReadModel:
     return GraphPointerReadModel(
         pointer=pointer,
         assigned=True,
         graph_id=record.graph_id,
+        authored_graph_id=record.graph_id,
+        realized_projection_id=realized_projection_id,
         version=record.version,
         graph_name=str(record.graph_descriptor.get("name", record.graph_id)),
         graph_descriptor=_redact_graph_descriptor(record.graph_descriptor),
