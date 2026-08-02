@@ -7133,3 +7133,36 @@ prepared replay; later rotation phases are reported without mutation. This is
 the concrete #1096 requirement for a reusable pre-approved-derived-plan entry
 path. #1295 owns dispatch, durable recovery classification, guarded current
 advancement, and the OVERLAP_READY fold.
+
+## #1295 Overlap dispatch, reconciliation, and acceptance
+
+The prepared overlap checkpoint now drives an operations-owned execution step:
+
+```text
+OVERLAP_DEPLOYING(prepared)
+  -> load exact child run and pinned graph lineage
+  -> ExecutionCoordinator(max_effects=1)
+  -> guarded current projection advancement
+  -> OVERLAP_READY(accepted)
+```
+
+One invocation dispatches at most one planned effect. The overlap plan contains
+multiple ordinary activities, so callers resume the program through repeated
+bounded commands rather than an internal loop. All workspace, plan, approval,
+request, run, projection, and revision identities come from the checkpoint.
+Exact replay after advancement uses the existing current-graph idempotency
+action; replay after the rotation fold performs no child command.
+
+Known failure and unsupported evidence block with bounded codes. `IN_FLIGHT` or
+`UNCERTAIN` journal evidence blocks as `overlap-effect-uncertain`; the adapter is
+never called again. #1092 owns later generic operator reconciliation and
+fencing. This phase does not reinterpret uncertainty as success.
+
+The real Postgres crash matrix covers loss after step intent, terminal result,
+run completion, current advancement, and rotation folding. During this work the
+shared crash fixture exposed a test-integrity defect: `PostgresUnitOfWork.commit`
+requests a commit, while the physical commit occurs in `__exit__`. The old
+fixture raised after the request and therefore caused rollback. The corrected
+fixture raises only after `__exit__` has physically committed, and both #1294
+preparation recovery and #1295 execution recovery pass under that stronger
+proof. No authored graph row is added or changed by verifier rotation.

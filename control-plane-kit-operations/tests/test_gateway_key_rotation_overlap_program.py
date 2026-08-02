@@ -6,7 +6,12 @@ import unittest
 
 import psycopg
 
-from gateway_rotation_overlap_fixture import GatewayRotationOverlapFixture
+from gateway_rotation_overlap_fixture import (
+    CrashAfterCommitUnitOfWork,
+    CrashControl,
+    GatewayRotationOverlapFixture,
+    SimulatedProcessLoss,
+)
 from control_plane_kit_core.policies import PolicyScope
 from control_plane_kit_operations.gateway_key_rotation_overlap_program import (
     GatewayKeyRotationOverlapPreparationAuthorizationDenied,
@@ -26,10 +31,6 @@ from control_plane_kit_operations.lifecycle import ExecutionWorkerAuthority
 from control_plane_kit_operations.postgres import PostgresUnitOfWork, install_schema
 
 
-class SimulatedProcessCrash(RuntimeError):
-    pass
-
-
 class CountingIds:
     def __init__(self, prefix: str) -> None:
         self.prefix = prefix
@@ -38,40 +39,6 @@ class CountingIds:
     def __call__(self) -> str:
         self.count += 1
         return f"{self.prefix}-{self.count}"
-
-
-class CrashControl:
-    def __init__(self, crash_after_commit: int) -> None:
-        self.crash_after_commit = crash_after_commit
-        self.commits = 0
-
-
-class CrashAfterCommitUnitOfWork:
-    """Delegate to real Postgres, then simulate process loss after commit."""
-
-    def __init__(self, inner: PostgresUnitOfWork, control: CrashControl) -> None:
-        self.inner = inner
-        self.control = control
-
-    def __enter__(self) -> "CrashAfterCommitUnitOfWork":
-        self.inner.__enter__()
-        return self
-
-    def __exit__(self, exc_type, exc, traceback) -> bool | None:
-        return self.inner.__exit__(exc_type, exc, traceback)
-
-    @property
-    def stores(self):
-        return self.inner.stores
-
-    def commit(self) -> None:
-        self.inner.commit()
-        self.control.commits += 1
-        if self.control.commits == self.control.crash_after_commit:
-            raise SimulatedProcessCrash("simulated loss after durable commit")
-
-    def rollback(self) -> None:
-        self.inner.rollback()
 
 
 class GatewayKeyRotationOverlapPreparationTests(
@@ -221,7 +188,7 @@ class GatewayKeyRotationOverlapPreparationTests(
             with self.subTest(commit_number=commit_number):
                 self.reset_truth()
                 control = CrashControl(commit_number)
-                with self.assertRaises(SimulatedProcessCrash):
+                with self.assertRaises(SimulatedProcessLoss):
                     self.program(
                         unit_of_work_factory=lambda: self.crashing_unit_of_work(
                             control

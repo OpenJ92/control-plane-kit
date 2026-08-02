@@ -945,6 +945,33 @@ laws:
   without mutation. Runtime dispatch, waiting, health checks, and current-graph
   advancement are deliberately outside this preparation step.
 
+  Overlap execution resumes only from that exact prepared checkpoint and
+  advances by at most one coordinator effect per invocation:
+
+  ```text
+  OVERLAP_DEPLOYING(prepared checkpoint)
+    -> classify durable run + activity journal + current projection
+      -> no effect evidence: dispatch one ExecutionCoordinator step
+      -> terminal success: guarded CurrentGraph advancement to G[A+B]
+      -> accepted advancement: OVERLAP_READY(accepted checkpoint)
+      -> known failure: BLOCKED(bounded failure code)
+      -> started without terminal evidence: BLOCKED(uncertain)
+  ```
+
+  The checkpoint, not the caller, supplies workspace, plan, request, run,
+  approval, projection, and revision identities. The coordinator records
+  `STEP_STARTED` before external IO and terminal evidence afterward. A restart
+  that finds an in-flight step never redispatches it; generic reconciliation
+  remains owned by the recovery/fencing program. A restart after terminal step
+  evidence may complete the run, a restart after current advancement replays
+  the exact advancement action, and a restart after the rotation fold returns
+  accepted replay. The authored graph remains unchanged throughout.
+
+  Preparation, each coordinator event, run completion, current advancement,
+  and rotation folding remain separate short transactions. No transaction
+  spans adapter IO. Failure transition time comes from the injected trusted
+  application clock, not runtime evidence or a caller-provided timestamp.
+
 ### DelegationKeyGenerationGrant / DelegationKeyGenerationEvidence
 
 meaning:
