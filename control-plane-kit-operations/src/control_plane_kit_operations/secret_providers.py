@@ -780,6 +780,7 @@ def secret_custody_grant_for(
     run_id: str | None = None,
     activity_id: str | None = None,
     effect_id: str | None = None,
+    required_scope: PolicyScope = PolicyScope.SECRET_PROVIDER_USE,
 ) -> SecretCustodyGrant:
     """Authorize one deterministic generated reference under admitted provider truth."""
 
@@ -787,7 +788,11 @@ def secret_custody_grant_for(
         raise SecretProviderRegistrationError(
             "secret custody requires RegisteredSecretProvider"
         )
-    _require_scope(actor_scopes, PolicyScope.SECRET_PROVIDER_USE)
+    if not isinstance(required_scope, PolicyScope):
+        raise SecretProviderRegistrationError(
+            "secret custody required scope is unsupported"
+        )
+    _require_scope(actor_scopes, required_scope)
     _require_identifier(workspace_id, "workspace_id")
     _require_secret_reference(reference, "reference")
     if not isinstance(intent, SecretUseIntent):

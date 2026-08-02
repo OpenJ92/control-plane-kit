@@ -16,6 +16,8 @@ CONCRETE_RUNTIME_IMPORT_ROOTS = {
     "boto3",
     "botocore",
     "control_plane_kit_interpreters",
+    "control_plane_kit_secrets",
+    "cryptography",
     "docker",
     "google",
     "kubernetes",

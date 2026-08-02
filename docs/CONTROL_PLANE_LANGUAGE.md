@@ -877,6 +877,50 @@ laws:
   duplicate key ids, changed issuers, raw authored verifier environment, and
   private material fail closed before runtime effects.
 
+### DelegationKeyGenerationGrant / DelegationKeyGenerationEvidence
+
+meaning:
+  Reference-only authority for one admitted provider to generate an asymmetric
+  delegation key, plus bounded public evidence returned after encrypted
+  provider custody succeeds:
+
+```text
+GenerateDelegationSigningKey
+  -> DelegationKeyGenerationGrant
+    -> provider IO
+      -> DelegationKeyGenerationEvidence
+        -> RegisteredSecretReference x RegisteredDelegationSigningKey
+```
+
+owned by:
+  Core owns the distinct `delegation-key:generate` permission and public key
+  language. Operations owns preparation, the provider-neutral protocol, exact
+  result validation, and atomic durable folding. `control-plane-kit-secrets`
+  generates and retains private bytes. An outer interpreter client performs
+  provider IO.
+
+durable:
+  Operations stores the admitted `SecretReference`, provider version identity,
+  correlation, and public verification identity. Generation intent and program
+  phase become durable rotation state in the succeeding rotation-program leg.
+
+may contain secrets:
+  No. The grant contains only provider, endpoint, credential, and generated
+  secret references. Evidence contains bounded public PEM and version metadata.
+  Private bytes never cross the provider boundary.
+
+interpreted by:
+  A provider implementation composed outside operations. The operations
+  package imports neither the concrete provider client nor cryptography.
+
+laws:
+  Generation permission is distinct from provider use, key registration, and
+  key use. Provider IO occurs between short operations transactions. Workspace,
+  reference, purpose, issuer, and correlation must match exactly. The fold
+  rechecks active provider identity and atomically admits both the generated
+  reference and public key; a second-write conflict rolls both back. Exact
+  provider replay is idempotent.
+
 ### GatewayProbeAttempt
 
 meaning:

@@ -216,10 +216,14 @@ Private OCI image pull
 
 Gateway delegation-key rotation:
 
-  one authored graph binding
-    -> realized verifier A
-      -> realized verifier A+B
-        -> realized verifier B
+  operator has delegation-key:generate
+    -> operations prepares a reference-only provider grant
+      -> secrets provider generates and retains private key B
+        -> operations atomically admits B reference + public identity
+          -> one authored graph binding
+            -> realized verifier A
+              -> realized verifier A+B
+                -> realized verifier B
 ```
 
 For each example, mark:
