@@ -274,8 +274,12 @@ class OperationCommandService:
     ) -> OperationCommandResult:
         fingerprint = _fingerprint(command)
         with self._unit_of_work_factory() as unit_of_work:
-            session = _get_session(unit_of_work, command.session_id)
-            existing = unit_of_work.stores.activity_history.action_for_idempotency(
+            history = unit_of_work.stores.activity_history
+            history.lock_action_idempotency(
+                command.session_id,
+                command.idempotency_key.value,
+            )
+            existing = history.action_for_idempotency(
                 command.session_id,
                 command.idempotency_key.value,
             )
@@ -290,6 +294,7 @@ class OperationCommandService:
                     existing,
                     replayed=True,
                 )
+            session = _get_session_for_update(unit_of_work, command.session_id)
             if session.status is not OperationSessionStatus.OPEN:
                 raise OperationSessionStateConflict("operation session is not open")
             action = OperationActionRecord(
@@ -364,6 +369,16 @@ _RESERVED_MANUAL_ACTIONS = frozenset(
 def _get_session(unit_of_work: Any, session_id: str) -> OperationSessionRecord:
     try:
         return unit_of_work.stores.activity_history.get_session(session_id)
+    except KeyError as error:
+        raise OperationSessionNotFound("operation session was not found") from error
+
+
+def _get_session_for_update(
+    unit_of_work: Any,
+    session_id: str,
+) -> OperationSessionRecord:
+    try:
+        return unit_of_work.stores.activity_history.get_session_for_update(session_id)
     except KeyError as error:
         raise OperationSessionNotFound("operation session was not found") from error
 

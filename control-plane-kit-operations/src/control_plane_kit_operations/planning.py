@@ -444,18 +444,21 @@ class ActivityPlanningCommandService:
     def execute(self, command: RequestActivityPlan) -> ActivityPlanningResult:
         fingerprint = _activity_plan_fingerprint(command)
         with self._unit_of_work_factory() as unit_of_work:
+            history = unit_of_work.stores.activity_history
+            history.lock_action_idempotency(
+                command.session_id,
+                command.idempotency_key.value,
+            )
+            existing = history.action_for_idempotency(
+                command.session_id,
+                command.idempotency_key.value,
+            )
+            if existing is not None:
+                result = _activity_plan_replay(unit_of_work, existing, fingerprint)
+                unit_of_work.commit()
+                return result
             try:
-                workspace = unit_of_work.stores.workspaces.get_for_update(
-                    command.workspace_id
-                )
-            except KeyError as error:
-                raise ActivityPlanningWorkspaceNotFound(
-                    "workspace was not found"
-                ) from error
-            try:
-                session = unit_of_work.stores.activity_history.get_session(
-                    command.session_id
-                )
+                session = history.get_session_for_update(command.session_id)
             except KeyError as error:
                 raise ActivityPlanningSessionConflict(
                     "operation session was not found"
@@ -464,16 +467,16 @@ class ActivityPlanningCommandService:
                 raise ActivityPlanningSessionConflict(
                     "operation session and plan must belong to one workspace"
                 )
-            existing = unit_of_work.stores.activity_history.action_for_idempotency(
-                command.session_id,
-                command.idempotency_key.value,
-            )
-            if existing is not None:
-                result = _activity_plan_replay(unit_of_work, existing, fingerprint)
-                unit_of_work.commit()
-                return result
             if session.status is not OperationSessionStatus.OPEN:
                 raise ActivityPlanningSessionConflict("operation session is not open")
+            try:
+                workspace = unit_of_work.stores.workspaces.get_for_update(
+                    command.workspace_id
+                )
+            except KeyError as error:
+                raise ActivityPlanningWorkspaceNotFound(
+                    "workspace was not found"
+                ) from error
             expected_desired_revision = (
                 workspace.desired_graph_revision
                 if command.expected_desired_graph_revision is None

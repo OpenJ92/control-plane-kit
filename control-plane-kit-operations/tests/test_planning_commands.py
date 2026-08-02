@@ -29,6 +29,7 @@ from control_plane_kit_operations.planning import (
     ActivityPlanningCommandService,
     ActivityPlanningGraphStateConflict,
     ActivityPlanningIdempotencyConflict,
+    ActivityPlanningSessionConflict,
     DesiredGraphCommandService,
     DesiredGraphIdempotencyConflict,
     DesiredGraphSessionConflict,
@@ -49,9 +50,11 @@ from control_plane_kit_operations.records import (
     WorkspaceRecord,
 )
 from control_plane_kit_operations.workflows import (
+    CancelOperationSession,
     CloseOperationSession,
     IdempotencyKey,
     OperationCommandService,
+    OperationSessionStateConflict,
     StartOperationSession,
 )
 
@@ -62,6 +65,41 @@ class Sequence:
 
     def __call__(self) -> str:
         return self._values.pop(0)
+
+
+class SessionLockObservedConnection:
+    def __init__(
+        self,
+        connection,
+        *,
+        before_session_lock: threading.Event | None = None,
+        after_session_lock: threading.Event | None = None,
+    ) -> None:
+        self._connection = connection
+        self._before_session_lock = before_session_lock
+        self._after_session_lock = after_session_lock
+
+    def execute(self, query, params=()):
+        normalized = " ".join(str(query).upper().split())
+        session_lock = (
+            "FROM CPK_OPERATION_SESSIONS" in normalized
+            and "FOR UPDATE" in normalized
+        )
+        if session_lock and self._before_session_lock is not None:
+            self._before_session_lock.set()
+        result = self._connection.execute(query, params)
+        if session_lock and self._after_session_lock is not None:
+            self._after_session_lock.set()
+        return result
+
+    def commit(self) -> None:
+        self._connection.commit()
+
+    def rollback(self) -> None:
+        self._connection.rollback()
+
+    def close(self) -> None:
+        self._connection.close()
 
 
 class PlanningCommandTests(unittest.TestCase):
@@ -119,10 +157,15 @@ class PlanningCommandTests(unittest.TestCase):
         database_url = os.environ["CPK_OPERATIONS_TEST_DATABASE_URL"]
         return PostgresUnitOfWork(lambda: psycopg.connect(database_url))
 
-    def operation_service(self, *ids: str) -> OperationCommandService:
+    def operation_service(
+        self,
+        *ids: str,
+        clock=None,
+        unit_of_work_factory=None,
+    ) -> OperationCommandService:
         return OperationCommandService(
-            self.unit_of_work,
-            clock=lambda: "2026-07-22T10:01:00Z",
+            unit_of_work_factory or self.unit_of_work,
+            clock=clock or (lambda: "2026-07-22T10:01:00Z"),
             id_factory=Sequence(*ids),
         )
 
@@ -133,12 +176,36 @@ class PlanningCommandTests(unittest.TestCase):
             id_factory=Sequence(*ids),
         )
 
-    def planning_service(self, *ids: str) -> ActivityPlanningCommandService:
+    def planning_service(
+        self,
+        *ids: str,
+        clock=None,
+        unit_of_work_factory=None,
+    ) -> ActivityPlanningCommandService:
         return ActivityPlanningCommandService(
-            self.unit_of_work,
-            clock=lambda: "2026-07-22T10:03:00Z",
+            unit_of_work_factory or self.unit_of_work,
+            clock=clock or (lambda: "2026-07-22T10:03:00Z"),
             id_factory=Sequence(*ids),
         )
+
+    def observed_unit_of_work_factory(
+        self,
+        *,
+        before_session_lock: threading.Event | None = None,
+        after_session_lock: threading.Event | None = None,
+    ):
+        database_url = os.environ["CPK_OPERATIONS_TEST_DATABASE_URL"]
+
+        def factory() -> PostgresUnitOfWork:
+            return PostgresUnitOfWork(
+                lambda: SessionLockObservedConnection(
+                    psycopg.connect(database_url),
+                    before_session_lock=before_session_lock,
+                    after_session_lock=after_session_lock,
+                )
+            )
+
+        return factory
 
     def set_desired(
         self,
@@ -575,6 +642,188 @@ class PlanningCommandTests(unittest.TestCase):
                     )
                 )
 
+    def test_replay_survives_later_pointer_and_session_state_changes(self) -> None:
+        self.set_desired()
+        first = self.request_plan()
+        self.operation_service("action-close").execute(
+            CloseOperationSession(
+                "session-a",
+                "operator-a",
+                IdempotencyKey("close"),
+            )
+        )
+
+        replay = self.request_plan(
+            self.planning_service("unused-plan", "unused-action")
+        )
+
+        self.assertTrue(replay.replayed)
+        self.assertEqual(replay.plan_record, first.plan_record)
+
+    def test_concurrent_identical_requests_converge_on_one_plan(self) -> None:
+        self.set_desired()
+        barrier = threading.Barrier(2)
+
+        def submit(ids: tuple[str, str]):
+            barrier.wait(timeout=5)
+            return self.request_plan(self.planning_service(*ids))
+
+        with concurrent.futures.ThreadPoolExecutor(max_workers=2) as executor:
+            results = tuple(
+                executor.map(
+                    submit,
+                    (("plan-a", "action-a"), ("plan-b", "action-b")),
+                )
+            )
+
+        self.assertEqual(len({result.plan_record.plan_id for result in results}), 1)
+        self.assertEqual(len({result.action.action_id for result in results}), 1)
+        self.assertEqual(sum(result.replayed for result in results), 1)
+
+    def test_concurrent_close_and_plan_publish_in_a_serial_session_order(
+        self,
+    ) -> None:
+        self.set_desired()
+        barrier = threading.Barrier(2)
+
+        def plan():
+            barrier.wait(timeout=5)
+            try:
+                return self.request_plan(
+                    self.planning_service("plan-a", "action-plan")
+                )
+            except ActivityPlanningSessionConflict as error:
+                return error
+
+        def close():
+            barrier.wait(timeout=5)
+            return self.operation_service("action-close").execute(
+                CloseOperationSession(
+                    "session-a",
+                    "operator-a",
+                    IdempotencyKey("close"),
+                )
+            )
+
+        with concurrent.futures.ThreadPoolExecutor(max_workers=2) as executor:
+            plan_future = executor.submit(plan)
+            close_future = executor.submit(close)
+            plan_outcome = plan_future.result()
+            close_future.result()
+
+        with self.unit_of_work() as unit_of_work:
+            kinds = tuple(
+                action.action_type.value
+                for action in unit_of_work.stores.activity_history.actions_for_session(
+                    "session-a"
+                )
+            )
+        if isinstance(plan_outcome, ActivityPlanningSessionConflict):
+            self.assertEqual(
+                kinds,
+                (
+                    "start-operation-session",
+                    "set-desired-graph",
+                    "close-operation-session",
+                ),
+            )
+        else:
+            self.assertEqual(
+                kinds,
+                (
+                    "start-operation-session",
+                    "set-desired-graph",
+                    "request-activity-plan",
+                    "close-operation-session",
+                ),
+            )
+
+    def test_planning_lock_owner_commits_before_close(self) -> None:
+        self.set_desired()
+        plan_session_locked = threading.Event()
+        plan_at_clock = threading.Event()
+        release_plan = threading.Event()
+        close_started = threading.Event()
+
+        def plan_clock() -> str:
+            plan_at_clock.set()
+            if not release_plan.wait(timeout=5):
+                raise TimeoutError("plan test barrier timed out")
+            return "2026-07-22T10:03:00Z"
+
+        def close():
+            close_started.set()
+            return self.operation_service("action-close").execute(
+                CloseOperationSession(
+                    "session-a", "operator-a", IdempotencyKey("close")
+                )
+            )
+
+        with concurrent.futures.ThreadPoolExecutor(max_workers=2) as executor:
+            plan_future = executor.submit(
+                self.request_plan,
+                self.planning_service(
+                    "plan-a",
+                    "action-plan",
+                    clock=plan_clock,
+                    unit_of_work_factory=self.observed_unit_of_work_factory(
+                        after_session_lock=plan_session_locked
+                    ),
+                ),
+            )
+            if not plan_session_locked.wait(timeout=5):
+                release_plan.set()
+                plan_future.result(timeout=10)
+                self.fail("planning did not lock the session before its clock")
+            self.assertTrue(plan_at_clock.wait(timeout=5))
+            close_future = executor.submit(close)
+            self.assertTrue(close_started.wait(timeout=5))
+            release_plan.set()
+            plan_future.result(timeout=10)
+            close_future.result(timeout=10)
+
+        self.assertEqual(
+            self._action_kinds(),
+            (
+                "start-operation-session",
+                "set-desired-graph",
+                "request-activity-plan",
+                "close-operation-session",
+            ),
+        )
+
+    def test_close_lock_owner_rejects_later_planning_without_writes(self) -> None:
+        self._assert_terminal_owner_rejects_plan(cancel=False)
+
+    def test_cancel_lock_owner_rejects_later_planning_without_writes(self) -> None:
+        self._assert_terminal_owner_rejects_plan(cancel=True)
+
+    def test_terminal_transition_is_write_once_and_exactly_replayable(self) -> None:
+        self.set_desired()
+        command = CloseOperationSession(
+            "session-a", "operator-a", IdempotencyKey("close")
+        )
+        first = self.operation_service("action-close").execute(command)
+        replay = self.operation_service("unused-action").execute(command)
+
+        self.assertTrue(replay.replayed)
+        self.assertEqual(replay.session, first.session)
+        self.assertEqual(replay.action, first.action)
+        with self.assertRaises(OperationSessionStateConflict):
+            self.operation_service("action-cancel").execute(
+                CancelOperationSession(
+                    "session-a", "operator-a", IdempotencyKey("cancel")
+                )
+            )
+        self.assertEqual(
+            self._action_kinds(),
+            (
+                "start-operation-session",
+                "set-desired-graph",
+                "close-operation-session",
+            ),
+        )
+
     def test_malformed_durable_graph_cannot_become_desired_truth(self) -> None:
         with self.unit_of_work() as unit_of_work:
             unit_of_work.stores.graphs.save(
@@ -628,6 +877,85 @@ class PlanningCommandTests(unittest.TestCase):
                     )
                 ),
                 2,
+            )
+
+    def _assert_terminal_owner_rejects_plan(self, *, cancel: bool) -> None:
+        self.set_desired()
+        terminal_at_clock = threading.Event()
+        release_terminal = threading.Event()
+        plan_started = threading.Event()
+
+        def terminal_clock() -> str:
+            terminal_at_clock.set()
+            if not release_terminal.wait(timeout=5):
+                raise TimeoutError("terminal test barrier timed out")
+            return "2026-07-22T10:04:00Z"
+
+        terminal_command = (
+            CancelOperationSession(
+                "session-a", "operator-a", IdempotencyKey("cancel")
+            )
+            if cancel
+            else CloseOperationSession(
+                "session-a", "operator-a", IdempotencyKey("close")
+            )
+        )
+
+        def plan():
+            plan_started.set()
+            return self.request_plan(
+                self.planning_service(
+                    "plan-a",
+                    "action-plan",
+                    unit_of_work_factory=self.observed_unit_of_work_factory(
+                        before_session_lock=plan_session_lock_attempted
+                    ),
+                )
+            )
+
+        plan_session_lock_attempted = threading.Event()
+
+        with concurrent.futures.ThreadPoolExecutor(max_workers=2) as executor:
+            terminal_future = executor.submit(
+                self.operation_service(
+                    "action-terminal",
+                    clock=terminal_clock,
+                ).execute,
+                terminal_command,
+            )
+            self.assertTrue(terminal_at_clock.wait(timeout=5))
+            plan_future = executor.submit(plan)
+            self.assertTrue(plan_started.wait(timeout=5))
+            self.assertTrue(plan_session_lock_attempted.wait(timeout=5))
+            release_terminal.set()
+            terminal_future.result(timeout=10)
+            with self.assertRaises(ActivityPlanningSessionConflict):
+                plan_future.result(timeout=10)
+
+        terminal_kind = (
+            "cancel-operation-session" if cancel else "close-operation-session"
+        )
+        self.assertEqual(
+            self._action_kinds(),
+            (
+                "start-operation-session",
+                "set-desired-graph",
+                terminal_kind,
+            ),
+        )
+        with self.unit_of_work() as unit_of_work:
+            self.assertEqual(
+                unit_of_work.stores.activity_history.plans_for_session("session-a"),
+                (),
+            )
+
+    def _action_kinds(self) -> tuple[str, ...]:
+        with self.unit_of_work() as unit_of_work:
+            return tuple(
+                action.action_type.value
+                for action in unit_of_work.stores.activity_history.actions_for_session(
+                    "session-a"
+                )
             )
 
     def product(self, name: str) -> ContainerServerProduct:
