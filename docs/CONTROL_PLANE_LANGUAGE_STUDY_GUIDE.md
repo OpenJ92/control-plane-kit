@@ -294,6 +294,23 @@ from those results rather than operator input. The `||` matters: preparation
 creates a resumable handoff but does not call Docker, a gateway, or the
 execution coordinator.
 
+Then continue the drawing one bounded invocation at a time:
+
+```text
+[prepared checkpoint]
+  -> [journal classification]
+    -> [at most one effect]
+      -> [run complete]
+        -> [current G[A+B]]
+          -> [OVERLAP_READY]
+```
+
+Put a process-loss mark after `STEP_STARTED`, `STEP_SUCCEEDED`, run completion,
+current advancement, and the rotation fold. After `STEP_STARTED` alone, draw a
+hard arrow to `BLOCKED(uncertain)`, never back to the adapter. At every later
+mark, draw recovery from committed evidence with no duplicate effect. This is
+the distinction between durable history and safe effect replay.
+
 Keep the three authorities visually separate: requesting rotation, reviewing
 the rotation subject, and executing the accepted deployment are not equivalent
 permissions. The reviewer sees bounded rotation intent, never a secret

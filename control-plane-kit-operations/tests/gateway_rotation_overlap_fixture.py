@@ -38,6 +38,7 @@ from control_plane_kit_operations.records import (
     RealizedGraphProjectionRecord,
     WorkspaceRecord,
 )
+from control_plane_kit_operations.postgres import PostgresUnitOfWork
 from control_plane_kit_operations.workflows import (
     IdempotencyKey,
     OperationCommandService,
@@ -65,6 +66,50 @@ class Sequence:
 
     def __call__(self) -> str:
         return next(self._values)
+
+
+class SimulatedProcessLoss(BaseException):
+    pass
+
+
+class CrashControl:
+    def __init__(self, crash_after_commit: int) -> None:
+        self.crash_after_commit = crash_after_commit
+        self.commits = 0
+
+
+class CrashAfterCommitUnitOfWork:
+    """Simulate process loss only after the physical Postgres commit succeeds."""
+
+    def __init__(self, inner: PostgresUnitOfWork, control: CrashControl) -> None:
+        self.inner = inner
+        self.control = control
+        self.commit_requested = False
+
+    def __enter__(self) -> "CrashAfterCommitUnitOfWork":
+        self.inner.__enter__()
+        return self
+
+    def __exit__(self, exc_type, exc, traceback) -> bool | None:
+        result = self.inner.__exit__(exc_type, exc, traceback)
+        if exc_type is None and self.commit_requested:
+            self.control.commits += 1
+            if self.control.commits == self.control.crash_after_commit:
+                raise SimulatedProcessLoss(
+                    "simulated process loss after durable commit"
+                )
+        return result
+
+    @property
+    def stores(self):
+        return self.inner.stores
+
+    def commit(self) -> None:
+        self.inner.commit()
+        self.commit_requested = True
+
+    def rollback(self) -> None:
+        self.inner.rollback()
 
 
 class GatewayRotationOverlapFixture:
