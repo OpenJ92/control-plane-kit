@@ -1,4 +1,4 @@
-"""Prepare an approved A -> A+B rotation deployment without runtime effects."""
+"""Prepare an approved A+B -> B retirement deployment without runtime effects."""
 
 from __future__ import annotations
 
@@ -10,18 +10,18 @@ from typing import Any, Callable
 
 from control_plane_kit_core.policies import PolicyScope
 from control_plane_kit_operations.admission import (
-    ExecutionAdmissionCommandService,
     ExecutionAdmissionDenied,
     ExecutionAdmissionError,
-)
-from control_plane_kit_operations.gateway_key_rotation_overlap import (
-    GatewayKeyRotationOverlapProjectionAuthorizationDenied,
-    GatewayKeyRotationOverlapProjectionError,
-    GatewayKeyRotationOverlapProjectionService,
-    PublishGatewayKeyRotationOverlapProjection,
+    ExecutionAdmissionCommandService,
 )
 from control_plane_kit_operations.gateway_key_rotation_deployment_preparation import (
     prepare_gateway_key_rotation_child,
+)
+from control_plane_kit_operations.gateway_key_rotation_retirement import (
+    GatewayKeyRotationRetirementProjectionAuthorizationDenied,
+    GatewayKeyRotationRetirementProjectionError,
+    GatewayKeyRotationRetirementProjectionService,
+    PublishGatewayKeyRotationRetirementProjection,
 )
 from control_plane_kit_operations.gateway_key_rotations import (
     AdvanceGatewayKeyRotation,
@@ -53,48 +53,34 @@ from control_plane_kit_operations.workflows import (
 
 _IDENTIFIER = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._:-]{0,199}$")
 _REQUIRED_SCOPES = frozenset(
-    {
-        PolicyScope.DELEGATION_KEY_ROTATE,
-        PolicyScope.PLAN_EXECUTE,
-    }
-)
-_POST_OVERLAP_STATUSES = frozenset(
-    {
-        GatewayKeyRotationStatus.OVERLAP_READY,
-        GatewayKeyRotationStatus.NEW_KEY_ACTIVE,
-        GatewayKeyRotationStatus.DRAINING_OLD_GRANTS,
-        GatewayKeyRotationStatus.RETIREMENT_DEPLOYING,
-        GatewayKeyRotationStatus.COMPLETED,
-    }
+    {PolicyScope.DELEGATION_KEY_ROTATE, PolicyScope.PLAN_EXECUTE}
 )
 
 
-class GatewayKeyRotationOverlapPreparationError(ValueError):
-    """Base bounded failure for overlap child-workflow preparation."""
+class GatewayKeyRotationRetirementPreparationError(ValueError):
+    """Base bounded failure for retirement child preparation."""
 
 
-class GatewayKeyRotationOverlapPreparationConflict(
-    GatewayKeyRotationOverlapPreparationError
+class GatewayKeyRotationRetirementPreparationConflict(
+    GatewayKeyRotationRetirementPreparationError
 ):
-    """Raised when durable rotation, graph, approval, or child truth diverges."""
+    """Raised when rotation, graph, deadline, approval, or child truth diverges."""
 
 
-class GatewayKeyRotationOverlapPreparationAuthorizationDenied(
-    GatewayKeyRotationOverlapPreparationError
+class GatewayKeyRotationRetirementPreparationAuthorizationDenied(
+    GatewayKeyRotationRetirementPreparationError
 ):
     """Raised before mutation when fixed preparation authority is absent."""
 
 
-class GatewayKeyRotationOverlapPreparationOutcome(StrEnum):
+class GatewayKeyRotationRetirementPreparationOutcome(StrEnum):
     PREPARED = "prepared"
     PREPARED_REPLAY = "prepared-replay"
     ALREADY_ADVANCED = "already-advanced"
 
 
 @dataclass(frozen=True)
-class PrepareGatewayKeyRotationOverlap:
-    """Expected settled A lineage plus authority for one overlap preparation."""
-
+class PrepareGatewayKeyRotationRetirement:
     rotation_id: str
     expected_rotation_version: int
     expected_authored_graph_id: str
@@ -125,9 +111,7 @@ class PrepareGatewayKeyRotationOverlap:
             type(self.expected_rotation_version) is not int
             or self.expected_rotation_version < 1
         ):
-            raise InvalidOperationCommand(
-                "expected_rotation_version must be positive"
-            )
+            raise InvalidOperationCommand("expected_rotation_version must be positive")
         if (
             type(self.expected_desired_graph_revision) is not int
             or self.expected_desired_graph_revision < 0
@@ -140,7 +124,7 @@ class PrepareGatewayKeyRotationOverlap:
             != self.expected_desired_realized_projection_id
         ):
             raise InvalidOperationCommand(
-                "overlap preparation requires one settled realized lineage"
+                "retirement preparation requires one settled realized lineage"
             )
         if not isinstance(self.actor_scopes, tuple) or not all(
             isinstance(scope, PolicyScope) for scope in self.actor_scopes
@@ -159,34 +143,34 @@ class PrepareGatewayKeyRotationOverlap:
 
 
 @dataclass(frozen=True)
-class GatewayKeyRotationOverlapPreparationResult:
+class GatewayKeyRotationRetirementPreparationResult:
     rotation: GatewayKeyRotation
-    outcome: GatewayKeyRotationOverlapPreparationOutcome
+    outcome: GatewayKeyRotationRetirementPreparationOutcome
     checkpoint: GatewayKeyRotationDeploymentCheckpoint
 
     def __post_init__(self) -> None:
         if not isinstance(self.rotation, GatewayKeyRotation):
-            raise GatewayKeyRotationOverlapPreparationError(
+            raise GatewayKeyRotationRetirementPreparationError(
                 "preparation result rotation is malformed"
             )
         if not isinstance(
             self.outcome,
-            GatewayKeyRotationOverlapPreparationOutcome,
+            GatewayKeyRotationRetirementPreparationOutcome,
         ):
-            raise GatewayKeyRotationOverlapPreparationError(
+            raise GatewayKeyRotationRetirementPreparationError(
                 "preparation outcome is unsupported"
             )
         if not isinstance(
             self.checkpoint,
             GatewayKeyRotationDeploymentCheckpoint,
         ):
-            raise GatewayKeyRotationOverlapPreparationError(
+            raise GatewayKeyRotationRetirementPreparationError(
                 "preparation checkpoint is malformed"
             )
 
 
-class GatewayKeyRotationOverlapPreparationProgram:
-    """Compose canonical transactions through a started run and checkpoint."""
+class GatewayKeyRotationRetirementPreparationProgram:
+    """Converge drained overlap to one started B-only ordinary child run."""
 
     def __init__(
         self,
@@ -196,89 +180,85 @@ class GatewayKeyRotationOverlapPreparationProgram:
         trusted_epoch_clock: Callable[[], int],
         id_factory: Callable[[], str],
     ) -> None:
-        self._unit_of_work_factory = unit_of_work_factory
+        self._trusted_epoch_clock = trusted_epoch_clock
         self._operations = OperationCommandService(
-            unit_of_work_factory,
-            clock=clock,
-            id_factory=id_factory,
+            unit_of_work_factory, clock=clock, id_factory=id_factory
         )
-        self._projections = GatewayKeyRotationOverlapProjectionService(
+        self._projections = GatewayKeyRotationRetirementProjectionService(
             unit_of_work_factory,
             clock=clock,
+            trusted_epoch_clock=trusted_epoch_clock,
             action_id_factory=id_factory,
         )
         self._planning = ActivityPlanningCommandService(
-            unit_of_work_factory,
-            clock=clock,
-            id_factory=id_factory,
+            unit_of_work_factory, clock=clock, id_factory=id_factory
         )
         self._admission = ExecutionAdmissionCommandService(
-            unit_of_work_factory,
-            clock=clock,
-            id_factory=id_factory,
+            unit_of_work_factory, clock=clock, id_factory=id_factory
         )
         self._lifecycle = RunLifecycleCommandService(
-            unit_of_work_factory,
-            clock=clock,
-            id_factory=id_factory,
+            unit_of_work_factory, clock=clock, id_factory=id_factory
         )
         self._rotations = GatewayKeyRotationService(
-            unit_of_work_factory,
-            clock=trusted_epoch_clock,
+            unit_of_work_factory, clock=trusted_epoch_clock
         )
 
     def prepare(
         self,
-        command: PrepareGatewayKeyRotationOverlap,
-    ) -> GatewayKeyRotationOverlapPreparationResult:
-        if not isinstance(command, PrepareGatewayKeyRotationOverlap):
-            raise TypeError("command must be PrepareGatewayKeyRotationOverlap")
-        self._require_fixed_authority(command)
+        command: PrepareGatewayKeyRotationRetirement,
+    ) -> GatewayKeyRotationRetirementPreparationResult:
+        if not isinstance(command, PrepareGatewayKeyRotationRetirement):
+            raise TypeError("command must be PrepareGatewayKeyRotationRetirement")
+        self._require_authority(command)
         rotation = self._rotation(command.rotation_id)
-        prior = self._classify_existing(rotation, command)
-        if prior is not None:
-            return prior
+        existing = self._classify_existing(rotation, command)
+        if existing is not None:
+            return existing
         if (
-            rotation.status is not GatewayKeyRotationStatus.KEY_GENERATED
+            rotation.status is not GatewayKeyRotationStatus.DRAINING_OLD_GRANTS
             or rotation.version != command.expected_rotation_version
             or rotation.approval_request_id is None
             or rotation.approval_decision_id is None
+            or rotation.drain_deadline_epoch is None
         ):
-            raise GatewayKeyRotationOverlapPreparationConflict(
-                "rotation is not the expected key-generated truth"
+            raise GatewayKeyRotationRetirementPreparationConflict(
+                "rotation is not the expected draining truth"
             )
-        prefix = "gkrot-overlap:" + sha256(
+        now = self._trusted_epoch_clock()
+        if type(now) is not int or now < rotation.drain_deadline_epoch:
+            raise GatewayKeyRotationRetirementPreparationConflict(
+                "old capability grants have not drained"
+            )
+        prefix = "gkrot-retirement:" + sha256(
             rotation.rotation_id.encode("utf-8")
         ).hexdigest()
         try:
             child = prepare_gateway_key_rotation_child(
                 rotation=rotation,
                 command=command,
-                phase=GatewayKeyRotationDeploymentPhase.OVERLAP,
+                phase=GatewayKeyRotationDeploymentPhase.RETIREMENT,
                 prefix=prefix,
                 operations=self._operations,
                 projections=self._projections,
                 projection_command=lambda session_id: (
-                    PublishGatewayKeyRotationOverlapProjection(
-                    rotation_id=rotation.rotation_id,
-                    session_id=session_id,
-                    actor_id=command.actor_id,
-                    expected_rotation_version=command.expected_rotation_version,
-                    expected_authored_graph_id=(
-                        command.expected_authored_graph_id
-                    ),
-                    expected_current_realized_projection_id=(
-                        command.expected_current_realized_projection_id
-                    ),
-                    expected_desired_realized_projection_id=(
-                        command.expected_desired_realized_projection_id
-                    ),
-                    expected_desired_graph_revision=(
-                        command.expected_desired_graph_revision
-                    ),
-                    actor_scopes=command.actor_scopes,
-                    idempotency_key=IdempotencyKey(f"{prefix}:projection"),
-                )
+                    PublishGatewayKeyRotationRetirementProjection(
+                        rotation_id=rotation.rotation_id,
+                        session_id=session_id,
+                        actor_id=command.actor_id,
+                        expected_rotation_version=command.expected_rotation_version,
+                        expected_authored_graph_id=command.expected_authored_graph_id,
+                        expected_current_realized_projection_id=(
+                            command.expected_current_realized_projection_id
+                        ),
+                        expected_desired_realized_projection_id=(
+                            command.expected_desired_realized_projection_id
+                        ),
+                        expected_desired_graph_revision=(
+                            command.expected_desired_graph_revision
+                        ),
+                        actor_scopes=command.actor_scopes,
+                        idempotency_key=IdempotencyKey(f"{prefix}:projection"),
+                    )
                 ),
                 planning=self._planning,
                 admission=self._admission,
@@ -289,9 +269,9 @@ class GatewayKeyRotationOverlapPreparationProgram:
                 AdvanceGatewayKeyRotation(
                     rotation_id=rotation.rotation_id,
                     transition_id=f"{prefix}:prepared",
-                    expected_status=GatewayKeyRotationStatus.KEY_GENERATED,
+                    expected_status=GatewayKeyRotationStatus.DRAINING_OLD_GRANTS,
                     expected_version=rotation.version,
-                    target_status=GatewayKeyRotationStatus.OVERLAP_DEPLOYING,
+                    target_status=GatewayKeyRotationStatus.RETIREMENT_DEPLOYING,
                     advanced_by=command.actor_id,
                     advanced_at=checkpoint.prepared_at,
                     actor_scopes=command.actor_scopes,
@@ -302,43 +282,44 @@ class GatewayKeyRotationOverlapPreparationProgram:
             ActivityPlanningError,
             ExecutionAdmissionError,
             GatewayKeyRotationError,
-            GatewayKeyRotationOverlapProjectionError,
+            GatewayKeyRotationRetirementProjectionError,
             OperationCommandError,
             RunLifecycleError,
+            ValueError,
         ) as error:
             if isinstance(
                 error,
                 (
                     ExecutionAdmissionDenied,
-                    GatewayKeyRotationOverlapProjectionAuthorizationDenied,
+                    GatewayKeyRotationRetirementProjectionAuthorizationDenied,
                     RunLifecycleDenied,
                 ),
             ):
-                raise GatewayKeyRotationOverlapPreparationAuthorizationDenied(
+                raise GatewayKeyRotationRetirementPreparationAuthorizationDenied(
                     str(error)
                 ) from error
-            raise GatewayKeyRotationOverlapPreparationConflict(str(error)) from error
-        return GatewayKeyRotationOverlapPreparationResult(
-            rotation=prepared,
-            outcome=GatewayKeyRotationOverlapPreparationOutcome.PREPARED,
-            checkpoint=checkpoint,
+            raise GatewayKeyRotationRetirementPreparationConflict(str(error)) from error
+        return GatewayKeyRotationRetirementPreparationResult(
+            prepared,
+            GatewayKeyRotationRetirementPreparationOutcome.PREPARED,
+            checkpoint,
         )
 
     def _rotation(self, rotation_id: str) -> GatewayKeyRotation:
         try:
             return self._rotations.get(rotation_id)
         except GatewayKeyRotationError as error:
-            raise GatewayKeyRotationOverlapPreparationConflict(str(error)) from error
+            raise GatewayKeyRotationRetirementPreparationConflict(str(error)) from error
 
     def _classify_existing(
         self,
         rotation: GatewayKeyRotation,
-        command: PrepareGatewayKeyRotationOverlap,
-    ) -> GatewayKeyRotationOverlapPreparationResult | None:
-        if rotation.status is GatewayKeyRotationStatus.KEY_GENERATED:
+        command: PrepareGatewayKeyRotationRetirement,
+    ) -> GatewayKeyRotationRetirementPreparationResult | None:
+        if rotation.status is GatewayKeyRotationStatus.DRAINING_OLD_GRANTS:
             return None
-        checkpoint = rotation.overlap_deployment
-        if rotation.status is GatewayKeyRotationStatus.OVERLAP_DEPLOYING:
+        checkpoint = rotation.retirement_deployment
+        if rotation.status is GatewayKeyRotationStatus.RETIREMENT_DEPLOYING:
             checkpoint = self._require_checkpoint(
                 rotation,
                 command,
@@ -346,19 +327,16 @@ class GatewayKeyRotationOverlapPreparationProgram:
                 expected_status=GatewayKeyRotationDeploymentStatus.PREPARED,
                 expected_version=command.expected_rotation_version + 1,
             )
-            return GatewayKeyRotationOverlapPreparationResult(
-                rotation=rotation,
-                outcome=(
-                    GatewayKeyRotationOverlapPreparationOutcome.PREPARED_REPLAY
-                ),
-                checkpoint=checkpoint,
+            return GatewayKeyRotationRetirementPreparationResult(
+                rotation,
+                GatewayKeyRotationRetirementPreparationOutcome.PREPARED_REPLAY,
+                checkpoint,
             )
-        later = rotation.status in _POST_OVERLAP_STATUSES or (
-            rotation.status is GatewayKeyRotationStatus.BLOCKED
-            and checkpoint is not None
-        )
-        if not later or rotation.version <= command.expected_rotation_version:
-            raise GatewayKeyRotationOverlapPreparationConflict(
+        if (
+            rotation.status is not GatewayKeyRotationStatus.COMPLETED
+            or rotation.version <= command.expected_rotation_version
+        ):
+            raise GatewayKeyRotationRetirementPreparationConflict(
                 "rotation cannot be prepared from its current state"
             )
         checkpoint = self._require_checkpoint(
@@ -368,54 +346,51 @@ class GatewayKeyRotationOverlapPreparationProgram:
             expected_status=None,
             expected_version=None,
         )
-        return GatewayKeyRotationOverlapPreparationResult(
-            rotation=rotation,
-            outcome=GatewayKeyRotationOverlapPreparationOutcome.ALREADY_ADVANCED,
-            checkpoint=checkpoint,
+        return GatewayKeyRotationRetirementPreparationResult(
+            rotation,
+            GatewayKeyRotationRetirementPreparationOutcome.ALREADY_ADVANCED,
+            checkpoint,
         )
 
     @staticmethod
-    def _require_fixed_authority(
-        command: PrepareGatewayKeyRotationOverlap,
-    ) -> None:
+    def _require_authority(command: PrepareGatewayKeyRotationRetirement) -> None:
         missing = _REQUIRED_SCOPES - set(command.actor_scopes)
         if missing:
-            raise GatewayKeyRotationOverlapPreparationAuthorizationDenied(
-                "overlap preparation scopes are missing: "
+            raise GatewayKeyRotationRetirementPreparationAuthorizationDenied(
+                "retirement preparation scopes are missing: "
                 + ", ".join(sorted(scope.value for scope in missing))
             )
         if PolicyScope.EXECUTION_OPERATE not in command.worker_authority.scopes:
-            raise GatewayKeyRotationOverlapPreparationAuthorizationDenied(
-                "overlap worker requires execution:operate"
+            raise GatewayKeyRotationRetirementPreparationAuthorizationDenied(
+                "retirement worker requires execution:operate"
             )
 
     @staticmethod
     def _require_checkpoint(
         rotation: GatewayKeyRotation,
-        command: PrepareGatewayKeyRotationOverlap,
+        command: PrepareGatewayKeyRotationRetirement,
         checkpoint: GatewayKeyRotationDeploymentCheckpoint | None,
         *,
         expected_status: GatewayKeyRotationDeploymentStatus | None,
         expected_version: int | None,
     ) -> GatewayKeyRotationDeploymentCheckpoint:
         if checkpoint is None:
-            raise GatewayKeyRotationOverlapPreparationConflict(
-                "rotation overlap checkpoint is missing"
+            raise GatewayKeyRotationRetirementPreparationConflict(
+                "rotation retirement checkpoint is missing"
             )
         if expected_status is not None and checkpoint.status is not expected_status:
-            raise GatewayKeyRotationOverlapPreparationConflict(
-                "rotation overlap checkpoint status changed"
+            raise GatewayKeyRotationRetirementPreparationConflict(
+                "rotation retirement checkpoint status changed"
             )
         if expected_version is not None and rotation.version != expected_version:
-            raise GatewayKeyRotationOverlapPreparationConflict(
-                "rotation overlap checkpoint version changed"
+            raise GatewayKeyRotationRetirementPreparationConflict(
+                "rotation retirement checkpoint version changed"
             )
         if (
-            checkpoint.phase is not GatewayKeyRotationDeploymentPhase.OVERLAP
+            checkpoint.phase is not GatewayKeyRotationDeploymentPhase.RETIREMENT
             or checkpoint.approval_request_id != rotation.approval_request_id
             or checkpoint.approval_decision_id != rotation.approval_decision_id
-            or checkpoint.base_authored_graph_id
-            != command.expected_authored_graph_id
+            or checkpoint.base_authored_graph_id != command.expected_authored_graph_id
             or checkpoint.desired_authored_graph_id
             != command.expected_authored_graph_id
             or checkpoint.base_realized_projection_id
@@ -423,12 +398,12 @@ class GatewayKeyRotationOverlapPreparationProgram:
             or command.expected_current_realized_projection_id
             != command.expected_desired_realized_projection_id
             or checkpoint.desired_realized_projection_id
-            != f"gateway-rotation-{rotation.rotation_id}-overlap"
+            != f"gateway-rotation-{rotation.rotation_id}-retirement"
             or checkpoint.desired_revision
             != command.expected_desired_graph_revision + 1
         ):
-            raise GatewayKeyRotationOverlapPreparationConflict(
-                "rotation overlap checkpoint does not match expected lineage"
+            raise GatewayKeyRotationRetirementPreparationConflict(
+                "rotation retirement checkpoint does not match expected lineage"
             )
         return checkpoint
 
@@ -444,11 +419,11 @@ def _text(value: object, name: str) -> None:
 
 
 __all__ = [
-    "GatewayKeyRotationOverlapPreparationAuthorizationDenied",
-    "GatewayKeyRotationOverlapPreparationConflict",
-    "GatewayKeyRotationOverlapPreparationError",
-    "GatewayKeyRotationOverlapPreparationOutcome",
-    "GatewayKeyRotationOverlapPreparationProgram",
-    "GatewayKeyRotationOverlapPreparationResult",
-    "PrepareGatewayKeyRotationOverlap",
+    "GatewayKeyRotationRetirementPreparationAuthorizationDenied",
+    "GatewayKeyRotationRetirementPreparationConflict",
+    "GatewayKeyRotationRetirementPreparationError",
+    "GatewayKeyRotationRetirementPreparationOutcome",
+    "GatewayKeyRotationRetirementPreparationProgram",
+    "GatewayKeyRotationRetirementPreparationResult",
+    "PrepareGatewayKeyRotationRetirement",
 ]

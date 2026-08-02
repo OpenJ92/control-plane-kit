@@ -35,9 +35,9 @@ from control_plane_kit_core.topology import (
     validate_graph,
 )
 from control_plane_kit_core.types import Protocol, SocketBinding
-from control_plane_kit_operations.gateway_key_rotation_overlap import (
-    GatewayKeyRotationOverlapProjectionError,
-    derive_gateway_key_rotation_overlap_graph,
+from control_plane_kit_operations.gateway_key_rotation_projection import (
+    GatewayKeyRotationProjectionConflict,
+    derive_gateway_key_rotation_projection_graph,
 )
 from control_plane_kit_operations.gateway_key_rotations import (
     GatewayKeyRotation,
@@ -349,7 +349,6 @@ class ExecutionAdmissionCommandService:
             if rotation_subject is not None:
                 _require_gateway_rotation_child_authorization(
                     stores,
-                    phase=GatewayKeyRotationDeploymentPhase.OVERLAP,
                     workspace=workspace,
                     plan=plan,
                     approval=approval,
@@ -425,7 +424,6 @@ class ExecutionAdmissionCommandService:
 def _require_gateway_rotation_child_authorization(
     stores: Any,
     *,
-    phase: GatewayKeyRotationDeploymentPhase,
     workspace: WorkspaceRecord,
     plan: ActivityPlanRecord,
     approval: ApprovalRequestRecord,
@@ -434,11 +432,6 @@ def _require_gateway_rotation_child_authorization(
     desired: DeploymentGraph,
 ) -> None:
     """Authorize one exact child plan under one approved rotation subject."""
-
-    if phase is not GatewayKeyRotationDeploymentPhase.OVERLAP:
-        raise ExecutionAdmissionDenied(
-            "gateway rotation child phase is not implemented"
-        )
     subject = approval.subject
     if not isinstance(subject, GatewayKeyRotationApprovalSubject):
         raise ExecutionAdmissionDenied(
@@ -455,13 +448,16 @@ def _require_gateway_rotation_child_authorization(
         raise ExecutionAdmissionDenied(
             "rotation approval subject does not match durable rotation intent"
         )
-    if (
-        rotation.status is not GatewayKeyRotationStatus.KEY_GENERATED
-        or rotation.new_key_id is None
-    ):
+    if rotation.status is GatewayKeyRotationStatus.KEY_GENERATED:
+        phase = GatewayKeyRotationDeploymentPhase.OVERLAP
+    elif rotation.status is GatewayKeyRotationStatus.DRAINING_OLD_GRANTS:
+        phase = GatewayKeyRotationDeploymentPhase.RETIREMENT
+    else:
         raise ExecutionAdmissionConflict(
-            "rotation is not ready to authorize overlap deployment"
+            "rotation is not ready to authorize a deployment child"
         )
+    if rotation.new_key_id is None:
+        raise ExecutionAdmissionConflict("rotation lacks replacement key identity")
     if (
         rotation.approval_request_id != approval.request_id
         or rotation.approval_decision_id != decision.decision_id
@@ -473,7 +469,7 @@ def _require_gateway_rotation_child_authorization(
         or decision.scope is not PolicyScope.DELEGATION_KEY_ROTATE_APPROVE
     ):
         raise ExecutionAdmissionDenied(
-            "rotation approval evidence does not authorize overlap deployment"
+            "rotation approval evidence does not authorize deployment child"
         )
     _require_rotation_approval_action(stores.activity_history, approval, subject)
     if (
@@ -496,39 +492,42 @@ def _require_gateway_rotation_child_authorization(
             plan.desired_realized_projection_id
         )
         authored = DEFAULT_GRAPH_CODEC.decode(authored_record.graph_descriptor)
-        expected_desired = derive_gateway_key_rotation_overlap_graph(
+        expected_desired = derive_gateway_key_rotation_projection_graph(
             stores,
             rotation,
             authored,
             current,
+            phase=phase,
         )
     except (
-        GatewayKeyRotationOverlapProjectionError,
+        GatewayKeyRotationProjectionConflict,
         GraphDescriptorError,
         KeyError,
         ValueError,
     ) as error:
         raise ExecutionAdmissionConflict(
-            "rotation overlap graph truth is unavailable or invalid"
+            "rotation child graph truth is unavailable or invalid"
         ) from error
+    suffix = phase.value
     if (
         authored_record.workspace_id != workspace.workspace_id
         or desired_record.projection_id
-        != f"gateway-rotation-{rotation.rotation_id}-overlap"
+        != f"gateway-rotation-{rotation.rotation_id}-{suffix}"
         or desired_record.projection_kind
         is not RealizedGraphProjectionKind.DELEGATION_VERIFIER
         or desired_record.projection_key
-        != f"gateway-rotation:{rotation.rotation_id}:overlap"
+        != f"gateway-rotation:{rotation.rotation_id}:{suffix}"
         or DEFAULT_GRAPH_CODEC.encode(expected_desired)
         != DEFAULT_GRAPH_CODEC.encode(desired)
     ):
         raise ExecutionAdmissionConflict(
-            "desired projection is not the exact approved rotation overlap"
+            "desired projection is not the exact approved rotation child"
         )
-    _require_overlap_publication_action(
+    _require_rotation_publication_action(
         stores.activity_history,
         rotation=rotation,
         plan=plan,
+        phase=phase,
     )
     try:
         validated_current = validate_graph(current)
@@ -577,11 +576,12 @@ def _require_rotation_approval_action(
         )
 
 
-def _require_overlap_publication_action(
+def _require_rotation_publication_action(
     history: Any,
     *,
     rotation: GatewayKeyRotation,
     plan: ActivityPlanRecord,
+    phase: GatewayKeyRotationDeploymentPhase,
 ) -> None:
     actions = tuple(
         action
@@ -593,7 +593,7 @@ def _require_overlap_publication_action(
     )
     if len(actions) != 1:
         raise ExecutionAdmissionDenied(
-            "rotation overlap publication evidence is missing or ambiguous"
+            f"rotation {phase.value} publication evidence is missing or ambiguous"
         )
     evidence = actions[0].payload
     if (
@@ -606,7 +606,7 @@ def _require_overlap_publication_action(
         or evidence.get("source_operation_version") != rotation.version
     ):
         raise ExecutionAdmissionDenied(
-            "rotation overlap publication evidence does not match child lineage"
+            f"rotation {phase.value} publication evidence does not match child lineage"
         )
 
 

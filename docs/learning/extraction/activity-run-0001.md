@@ -7221,3 +7221,41 @@ maximum grant lifetime and clock skew. Before it, the program returns typed
 `DRAINING_OLD_GRANTS`. There is no sleep, polling loop, provider, Docker,
 gateway, HTTP, filesystem IO, or secret material. #1302 next prepares the exact
 B-only retirement projection from this durable readiness result.
+
+## #1302 B-only retirement deployment preparation
+
+The drained rotation now prepares its inverse deployment through the same
+ordinary operations spine as overlap:
+
+```text
+DRAINING_OLD_GRANTS at/after deadline with current G[A+B]
+  -> publish immutable desired G[B]
+  -> canonical plan
+  -> exact admission under the original rotation approval
+  -> claim and start ordinary child run
+  -> RETIREMENT_DEPLOYING(prepared checkpoint)
+  -> stop before ExecutionCoordinator
+```
+
+Projection derivation is now one phase-typed implementation. OVERLAP requires
+active A, verify-only B, and exact current G[A], then derives G[A+B]. RETIREMENT
+requires verify-only A, active B, and exact current G[A+B], then derives G[B].
+Both reject unexpected verifier keys and preserve every unrelated delegation
+projection. Session, projection, plan, admission, claim, start, and checkpoint
+composition also share one mechanical implementation, while public overlap and
+retirement commands retain distinct preconditions and bounded errors.
+
+Retirement checks the persisted drain deadline before creating a child session,
+again in the projection transaction before desired-pointer mutation, and again
+when the aggregate enters `RETIREMENT_DEPLOYING`. Admission freshly derives the
+phase graph and canonical plan and binds it to the original approval request,
+decision, review digest, publication action, source rotation version, and exact
+workspace lineage. The authored graph remains unchanged and only a new immutable
+realized projection is published.
+
+Real Postgres tests prove exact G[A+B] -> G[B], deterministic replay, one authored
+graph row, no runtime observation before checkpoint, premature-deadline zero
+mutation, stale lineage/version/key/approval failures, unexpected-key rejection,
+and recovery after each of eight physical commits. #1303 owns one-step ordinary
+retirement dispatch and acceptance; #1096 can later reuse the now-explicit
+phase-child preparation spine without absorbing gateway key semantics.

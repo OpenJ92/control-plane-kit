@@ -1,4 +1,4 @@
-"""Derive and publish the overlap verifier projection for one key rotation."""
+"""Publish the exact B-only verifier projection for gateway key retirement."""
 
 from __future__ import annotations
 
@@ -7,47 +7,44 @@ from typing import Any, Callable
 
 from control_plane_kit_core.delegation_authority import DelegationAuthorityError
 from control_plane_kit_core.policies import PolicyScope
-from control_plane_kit_core.topology import DeploymentGraph, GraphDescriptorError
-from control_plane_kit_operations.delegation_signing_keys import DelegationSigningKeyError
+from control_plane_kit_core.topology import GraphDescriptorError
+from control_plane_kit_operations.delegation_signing_keys import (
+    DelegationSigningKeyError,
+)
 from control_plane_kit_operations.desired_realized_projections import (
     DesiredRealizedProjectionPublicationError,
     DesiredRealizedProjectionPublicationResult,
-    PublishDesiredRealizedProjection,
     publish_desired_realized_projection_in_unit_of_work,
-)
-from control_plane_kit_operations.gateway_key_rotations import (
-    GatewayKeyRotation,
-    GatewayKeyRotationDeploymentPhase,
-    GatewayKeyRotationError,
 )
 from control_plane_kit_operations.gateway_key_rotation_projection import (
     GatewayKeyRotationProjectionConflict,
     build_gateway_key_rotation_projection_publication,
-    derive_gateway_key_rotation_projection_graph,
+)
+from control_plane_kit_operations.gateway_key_rotations import (
+    GatewayKeyRotationDeploymentPhase,
+    GatewayKeyRotationError,
 )
 from control_plane_kit_operations.workflows import IdempotencyKey, InvalidOperationCommand
 
 
-class GatewayKeyRotationOverlapProjectionError(RuntimeError):
-    """Base error for overlap verifier projection publication."""
+class GatewayKeyRotationRetirementProjectionError(RuntimeError):
+    """Base bounded failure for B-only projection publication."""
 
 
-class GatewayKeyRotationOverlapProjectionConflict(
-    GatewayKeyRotationOverlapProjectionError
+class GatewayKeyRotationRetirementProjectionConflict(
+    GatewayKeyRotationRetirementProjectionError
 ):
-    """Raised when rotation, graph, key, session, or replay truth disagrees."""
+    """Raised when rotation, graph, key, deadline, or replay truth diverges."""
 
 
-class GatewayKeyRotationOverlapProjectionAuthorizationDenied(
-    GatewayKeyRotationOverlapProjectionError
+class GatewayKeyRotationRetirementProjectionAuthorizationDenied(
+    GatewayKeyRotationRetirementProjectionError
 ):
-    """Raised when the actor lacks focused key-rotation authority."""
+    """Raised when focused key-rotation authority is absent."""
 
 
 @dataclass(frozen=True)
-class PublishGatewayKeyRotationOverlapProjection:
-    """Request A+B projection derivation from one exact key-generated rotation."""
-
+class PublishGatewayKeyRotationRetirementProjection:
     rotation_id: str
     session_id: str
     actor_id: str
@@ -97,46 +94,50 @@ class PublishGatewayKeyRotationOverlapProjection:
 
 
 @dataclass(frozen=True)
-class GatewayKeyRotationOverlapProjectionResult:
-    """Rotation identity plus committed desired projection evidence."""
-
+class GatewayKeyRotationRetirementProjectionResult:
     rotation_id: str
     publication: DesiredRealizedProjectionPublicationResult
 
 
-class GatewayKeyRotationOverlapProjectionService:
-    """Compile exact A+B verifier material inside one operations transaction."""
+class GatewayKeyRotationRetirementProjectionService:
+    """Publish exact G[B] inside one transaction after the durable drain."""
 
     def __init__(
         self,
         unit_of_work_factory: Callable[[], Any],
         *,
         clock: Callable[[], str],
+        trusted_epoch_clock: Callable[[], int],
         action_id_factory: Callable[[], str],
     ) -> None:
         self._unit_of_work_factory = unit_of_work_factory
         self._clock = clock
+        self._trusted_epoch_clock = trusted_epoch_clock
         self._action_id_factory = action_id_factory
 
     def execute(
         self,
-        command: PublishGatewayKeyRotationOverlapProjection,
-    ) -> GatewayKeyRotationOverlapProjectionResult:
-        if not isinstance(command, PublishGatewayKeyRotationOverlapProjection):
+        command: PublishGatewayKeyRotationRetirementProjection,
+    ) -> GatewayKeyRotationRetirementProjectionResult:
+        if not isinstance(command, PublishGatewayKeyRotationRetirementProjection):
             raise TypeError(
-                "command must be PublishGatewayKeyRotationOverlapProjection"
+                "command must be PublishGatewayKeyRotationRetirementProjection"
             )
         if PolicyScope.DELEGATION_KEY_ROTATE not in command.actor_scopes:
-            raise GatewayKeyRotationOverlapProjectionAuthorizationDenied(
-                "overlap projection publication requires delegation-key.rotate"
+            raise GatewayKeyRotationRetirementProjectionAuthorizationDenied(
+                "retirement projection publication requires delegation-key.rotate"
             )
         with self._unit_of_work_factory() as unit_of_work:
             created_at = self._clock()
             try:
-                publication_command = self._publication_command(
-                    unit_of_work,
-                    command,
-                    created_at=created_at,
+                publication_command = (
+                    build_gateway_key_rotation_projection_publication(
+                        unit_of_work,
+                        command,
+                        phase=GatewayKeyRotationDeploymentPhase.RETIREMENT,
+                        created_at=created_at,
+                        trusted_epoch=self._trusted_epoch_clock(),
+                    )
                 )
                 publication = publish_desired_realized_projection_in_unit_of_work(
                     unit_of_work,
@@ -144,67 +145,33 @@ class GatewayKeyRotationOverlapProjectionService:
                     created_at=created_at,
                     action_id=self._action_id_factory(),
                 )
-            except GatewayKeyRotationOverlapProjectionError:
+            except GatewayKeyRotationRetirementProjectionError:
                 raise
             except (
                 DelegationAuthorityError,
                 DelegationSigningKeyError,
                 DesiredRealizedProjectionPublicationError,
                 GatewayKeyRotationError,
+                GatewayKeyRotationProjectionConflict,
                 GraphDescriptorError,
                 KeyError,
                 ValueError,
             ) as error:
-                raise GatewayKeyRotationOverlapProjectionConflict(str(error)) from error
+                raise GatewayKeyRotationRetirementProjectionConflict(
+                    str(error)
+                ) from error
             unit_of_work.commit()
-            return GatewayKeyRotationOverlapProjectionResult(
+            return GatewayKeyRotationRetirementProjectionResult(
                 command.rotation_id,
                 publication,
             )
 
-    def _publication_command(
-        self,
-        unit_of_work: Any,
-        command: PublishGatewayKeyRotationOverlapProjection,
-        *,
-        created_at: str,
-    ) -> PublishDesiredRealizedProjection:
-        try:
-            return build_gateway_key_rotation_projection_publication(
-                unit_of_work,
-                command,
-                phase=GatewayKeyRotationDeploymentPhase.OVERLAP,
-                created_at=created_at,
-            )
-        except GatewayKeyRotationProjectionConflict as error:
-            raise GatewayKeyRotationOverlapProjectionConflict(str(error)) from error
-
-
-def derive_gateway_key_rotation_overlap_graph(
-    stores: Any,
-    rotation: GatewayKeyRotation,
-    authored: DeploymentGraph,
-    current: DeploymentGraph,
-) -> DeploymentGraph:
-    """Derive exact A+B material from durable rotation and signing-key truth."""
-    try:
-        return derive_gateway_key_rotation_projection_graph(
-            stores,
-            rotation,
-            authored,
-            current,
-            phase=GatewayKeyRotationDeploymentPhase.OVERLAP,
-        )
-    except GatewayKeyRotationProjectionConflict as error:
-        raise GatewayKeyRotationOverlapProjectionConflict(str(error)) from error
-
 
 __all__ = [
-    "GatewayKeyRotationOverlapProjectionAuthorizationDenied",
-    "GatewayKeyRotationOverlapProjectionConflict",
-    "GatewayKeyRotationOverlapProjectionError",
-    "GatewayKeyRotationOverlapProjectionResult",
-    "GatewayKeyRotationOverlapProjectionService",
-    "PublishGatewayKeyRotationOverlapProjection",
-    "derive_gateway_key_rotation_overlap_graph",
+    "GatewayKeyRotationRetirementProjectionAuthorizationDenied",
+    "GatewayKeyRotationRetirementProjectionConflict",
+    "GatewayKeyRotationRetirementProjectionError",
+    "GatewayKeyRotationRetirementProjectionResult",
+    "GatewayKeyRotationRetirementProjectionService",
+    "PublishGatewayKeyRotationRetirementProjection",
 ]
