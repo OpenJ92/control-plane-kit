@@ -7330,3 +7330,22 @@ operations commit boundary, including public retirement, checkpoint
 preparation, public revocation, and final completion. A two-version adapter
 proof revokes only A while B remains active, and public rotation readback
 contains no secret/provider-version detail.
+
+## #1310 Cross-phase rotation acceptance
+
+The complete rotation now has one real-Postgres acceptance scenario spanning
+typed approval, provider generation, A-to-A+B deployment, signer activation,
+the durable drain barrier, A+B-to-B deployment, and exact A-version
+revocation. The test invokes the existing operations programs rather than
+introducing a second orchestration model. Only provider and runtime effects are
+typed fakes, and they assert that no Postgres UnitOfWork is active when called.
+
+Every externally actionable checkpoint is re-entered through a newly
+constructed program object before progress continues. Exact replay of prepared
+generation, generated evidence, overlap preparation/acceptance, drain state,
+retirement preparation/acceptance, and final completion performs no duplicate
+provider or runtime mutation. The final transition ledger contains the full
+closed happy-path state sequence while deliberately excluding secret
+references, provider versions, public PEM, compact grants, and private
+material. Adversarial cross-phase failures and concurrency remain isolated to
+#1311; this issue establishes the reusable healthy-path fixture they require.

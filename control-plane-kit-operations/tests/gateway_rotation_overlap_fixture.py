@@ -115,7 +115,11 @@ class CrashAfterCommitUnitOfWork:
 class GatewayRotationOverlapFixture:
     """Shared real-store fixture for exact A -> A+B rotation tests."""
 
-    def seed_graph_and_keys(self) -> None:
+    def seed_graph_and_keys(
+        self,
+        *,
+        include_replacement_key: bool = True,
+    ) -> None:
         authored = self.authored_graph()
         realized_a = materialize_delegation_verifiers(
             authored,
@@ -172,9 +176,10 @@ class GatewayRotationOverlapFixture:
                 activated_by="operator-a",
                 activated_at="2026-08-02T01:00:01Z",
             )
-            stores.delegation_signing_keys.register(
-                self.signing_key("key-b", PUBLIC_KEY_B)
-            )
+            if include_replacement_key:
+                stores.delegation_signing_keys.register(
+                    self.signing_key("key-b", PUBLIC_KEY_B)
+                )
             unit_of_work.commit()
 
     def seed_rotation_approval(self) -> None:
