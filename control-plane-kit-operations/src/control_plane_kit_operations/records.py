@@ -6,6 +6,7 @@ import json
 import math
 from dataclasses import dataclass, field
 from enum import StrEnum
+from hashlib import sha256
 from typing import Mapping
 
 from control_plane_kit_core.operations.commands import OperatorCommandKind
@@ -167,6 +168,137 @@ class GraphVersionRecord:
             created_by=created_by,
             created_at=created_at,
             metadata={} if metadata is None else metadata,
+        )
+
+
+class RealizedGraphProjectionKind(StrEnum):
+    """Closed reasons an authored graph has one executable projection."""
+
+    IDENTITY = "identity"
+    DELEGATION_VERIFIER = "delegation-verifier"
+
+
+@dataclass(frozen=True)
+class RealizedGraphProjectionRecord:
+    """One immutable executable projection derived from authored graph truth."""
+
+    projection_id: str
+    workspace_id: str
+    source_authored_graph_id: str
+    projection_kind: RealizedGraphProjectionKind
+    projection_key: str
+    projection_digest: str
+    graph_descriptor: Mapping[str, object]
+    created_by: str
+    created_at: str
+
+    def __post_init__(self) -> None:
+        _validate_text(self.projection_id, "projection_id")
+        _validate_text(self.workspace_id, "workspace_id")
+        _validate_text(self.source_authored_graph_id, "source_authored_graph_id")
+        if not isinstance(self.projection_kind, RealizedGraphProjectionKind):
+            raise OperationsRecordError("realized projection kind must be closed")
+        _validate_text(self.projection_key, "projection_key")
+        if len(self.projection_key) > 256:
+            raise OperationsRecordError("projection_key is too long")
+        if (
+            not isinstance(self.projection_digest, str)
+            or len(self.projection_digest) != 64
+            or any(value not in "0123456789abcdef" for value in self.projection_digest)
+        ):
+            raise OperationsRecordError("projection_digest must be lowercase sha256")
+        if not isinstance(self.graph_descriptor, Mapping):
+            raise OperationsRecordError("projection graph_descriptor must be mapping")
+        try:
+            graph = DEFAULT_GRAPH_CODEC.decode(self.graph_descriptor)
+        except ValueError as error:
+            raise OperationsRecordError(
+                "projection graph_descriptor must be canonical"
+            ) from error
+        canonical = DEFAULT_GRAPH_CODEC.encode(graph)
+        if canonical != self.graph_descriptor:
+            raise OperationsRecordError(
+                "projection graph_descriptor must be canonical"
+            )
+        expected_digest = _realized_projection_digest(
+            workspace_id=self.workspace_id,
+            source_authored_graph_id=self.source_authored_graph_id,
+            projection_kind=self.projection_kind,
+            projection_key=self.projection_key,
+            graph_descriptor=canonical,
+        )
+        if self.projection_digest != expected_digest:
+            raise OperationsRecordError(
+                "projection_digest does not match realized graph material"
+            )
+        _validate_text(self.created_by, "created_by")
+        _validate_text(self.created_at, "created_at")
+
+    @classmethod
+    def from_graph(
+        cls,
+        *,
+        projection_id: str,
+        workspace_id: str,
+        source_authored_graph_id: str,
+        projection_kind: RealizedGraphProjectionKind,
+        projection_key: str,
+        graph: DeploymentGraph,
+        created_by: str,
+        created_at: str,
+    ) -> "RealizedGraphProjectionRecord":
+        if not isinstance(graph, DeploymentGraph):
+            raise OperationsRecordError(
+                "realized graph projection requires DeploymentGraph"
+            )
+        descriptor = DEFAULT_GRAPH_CODEC.encode(graph)
+        return cls(
+            projection_id=projection_id,
+            workspace_id=workspace_id,
+            source_authored_graph_id=source_authored_graph_id,
+            projection_kind=projection_kind,
+            projection_key=projection_key,
+            projection_digest=_realized_projection_digest(
+                workspace_id=workspace_id,
+                source_authored_graph_id=source_authored_graph_id,
+                projection_kind=projection_kind,
+                projection_key=projection_key,
+                graph_descriptor=descriptor,
+            ),
+            graph_descriptor=descriptor,
+            created_by=created_by,
+            created_at=created_at,
+        )
+
+    @classmethod
+    def identity_for_authored(
+        cls,
+        *,
+        authored_record: GraphVersionRecord,
+    ) -> "RealizedGraphProjectionRecord":
+        if not isinstance(authored_record, GraphVersionRecord):
+            raise OperationsRecordError(
+                "identity projection requires GraphVersionRecord"
+            )
+        graph = DEFAULT_GRAPH_CODEC.decode(authored_record.graph_descriptor)
+        descriptor = DEFAULT_GRAPH_CODEC.encode(graph)
+        digest = _realized_projection_digest(
+            workspace_id=authored_record.workspace_id,
+            source_authored_graph_id=authored_record.graph_id,
+            projection_kind=RealizedGraphProjectionKind.IDENTITY,
+            projection_key="identity",
+            graph_descriptor=descriptor,
+        )
+        return cls(
+            projection_id=f"projection-{digest}",
+            workspace_id=authored_record.workspace_id,
+            source_authored_graph_id=authored_record.graph_id,
+            projection_kind=RealizedGraphProjectionKind.IDENTITY,
+            projection_key="identity",
+            projection_digest=digest,
+            graph_descriptor=descriptor,
+            created_by=authored_record.created_by,
+            created_at=authored_record.created_at,
         )
 
 
@@ -629,6 +761,30 @@ class ObservationRecord:
                 f"{self.probe_outcome.value} is not a valid "
                 f"{self.probe_kind.value} observation"
             )
+
+
+def _realized_projection_digest(
+    *,
+    workspace_id: str,
+    source_authored_graph_id: str,
+    projection_kind: RealizedGraphProjectionKind,
+    projection_key: str,
+    graph_descriptor: Mapping[str, object],
+) -> str:
+    document = {
+        "workspace_id": workspace_id,
+        "source_authored_graph_id": source_authored_graph_id,
+        "projection_kind": projection_kind.value,
+        "projection_key": projection_key,
+        "graph_descriptor": graph_descriptor,
+    }
+    encoded = json.dumps(
+        document,
+        ensure_ascii=True,
+        separators=(",", ":"),
+        sort_keys=True,
+    ).encode("utf-8")
+    return sha256(encoded).hexdigest()
 
 
 _STARTED_RUN_STATUSES = frozenset(

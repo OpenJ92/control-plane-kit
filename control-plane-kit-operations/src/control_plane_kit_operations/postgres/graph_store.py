@@ -9,7 +9,16 @@ from psycopg.types.json import Jsonb
 
 from control_plane_kit_core.types import WorkspaceLifecycle
 from control_plane_kit_operations.postgres.schema import PostgresConnection
-from control_plane_kit_operations.records import GraphVersionRecord, WorkspaceRecord
+from control_plane_kit_operations.records import (
+    GraphVersionRecord,
+    RealizedGraphProjectionKind,
+    RealizedGraphProjectionRecord,
+    WorkspaceRecord,
+)
+
+
+class RealizedGraphProjectionConflict(ValueError):
+    """Raised when one projection identity is reused for different material."""
 
 
 class PostgresWorkspaceStore:
@@ -169,6 +178,112 @@ class PostgresGraphTopologyStore:
         return int(row[0])
 
 
+class PostgresRealizedGraphProjectionStore:
+    """Postgres-backed immutable authored-to-realized graph lineage."""
+
+    def __init__(self, connection: PostgresConnection) -> None:
+        self._connection = connection
+
+    def save(
+        self,
+        record: RealizedGraphProjectionRecord,
+    ) -> RealizedGraphProjectionRecord:
+        source = self._connection.execute(
+            """
+            SELECT workspace_id
+            FROM cpk_graph_versions
+            WHERE graph_id = %s
+            """,
+            (record.source_authored_graph_id,),
+        ).fetchone()
+        if source is None or source[0] != record.workspace_id:
+            raise RealizedGraphProjectionConflict(
+                "realized projection source is not an authored graph in its workspace"
+            )
+        inserted = self._connection.execute(
+            """
+            INSERT INTO cpk_realized_graph_projections
+              (projection_id, workspace_id, source_authored_graph_id,
+               projection_kind, projection_key, projection_digest,
+               graph_descriptor, created_by, created_at)
+            VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s)
+            ON CONFLICT DO NOTHING
+            RETURNING projection_id, workspace_id, source_authored_graph_id,
+                      projection_kind, projection_key, projection_digest,
+                      graph_descriptor, created_by, created_at
+            """,
+            (
+                record.projection_id,
+                record.workspace_id,
+                record.source_authored_graph_id,
+                record.projection_kind.value,
+                record.projection_key,
+                record.projection_digest,
+                Jsonb(record.graph_descriptor),
+                record.created_by,
+                record.created_at,
+            ),
+        ).fetchone()
+        if inserted is not None:
+            return _realized_graph_projection_record(inserted)
+        existing = self._by_identity(
+            workspace_id=record.workspace_id,
+            source_authored_graph_id=record.source_authored_graph_id,
+            projection_kind=record.projection_kind,
+            projection_key=record.projection_key,
+        )
+        if existing is None or existing.projection_digest != record.projection_digest:
+            raise RealizedGraphProjectionConflict(
+                "realized projection identity is already bound to different material"
+            )
+        return existing
+
+    def get(self, projection_id: str) -> RealizedGraphProjectionRecord:
+        row = self._connection.execute(
+            """
+            SELECT projection_id, workspace_id, source_authored_graph_id,
+                   projection_kind, projection_key, projection_digest,
+                   graph_descriptor, created_by, created_at
+            FROM cpk_realized_graph_projections
+            WHERE projection_id = %s
+            """,
+            (projection_id,),
+        ).fetchone()
+        if row is None:
+            raise KeyError(f"missing realized graph projection {projection_id!r}")
+        return _realized_graph_projection_record(row)
+
+    def _by_identity(
+        self,
+        *,
+        workspace_id: str,
+        source_authored_graph_id: str,
+        projection_kind: RealizedGraphProjectionKind,
+        projection_key: str,
+    ) -> RealizedGraphProjectionRecord | None:
+        row = self._connection.execute(
+            """
+            SELECT projection_id, workspace_id, source_authored_graph_id,
+                   projection_kind, projection_key, projection_digest,
+                   graph_descriptor, created_by, created_at
+            FROM cpk_realized_graph_projections
+            WHERE workspace_id = %s
+              AND source_authored_graph_id = %s
+              AND projection_kind = %s
+              AND projection_key = %s
+            """,
+            (
+                workspace_id,
+                source_authored_graph_id,
+                projection_kind.value,
+                projection_key,
+            ),
+        ).fetchone()
+        if row is None:
+            return None
+        return _realized_graph_projection_record(row)
+
+
 def _workspace_record(row: tuple[Any, ...]) -> WorkspaceRecord:
     return WorkspaceRecord(
         workspace_id=row[0],
@@ -189,4 +304,20 @@ def _graph_record(row: tuple[Any, ...]) -> GraphVersionRecord:
         created_by=row[4],
         created_at=row[5],
         metadata=row[6],
+    )
+
+
+def _realized_graph_projection_record(
+    row: tuple[Any, ...],
+) -> RealizedGraphProjectionRecord:
+    return RealizedGraphProjectionRecord(
+        projection_id=row[0],
+        workspace_id=row[1],
+        source_authored_graph_id=row[2],
+        projection_kind=RealizedGraphProjectionKind(row[3]),
+        projection_key=row[4],
+        projection_digest=row[5],
+        graph_descriptor=row[6],
+        created_by=row[7],
+        created_at=row[8],
     )

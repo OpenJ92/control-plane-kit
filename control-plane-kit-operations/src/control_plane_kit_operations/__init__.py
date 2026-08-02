@@ -277,6 +277,8 @@ from .records import (
     ObservationStaleReason,
     ObservationStatus,
     RetryIdentity,
+    RealizedGraphProjectionKind,
+    RealizedGraphProjectionRecord,
     WorkspaceRecord,
 )
 from .read_services import (
@@ -454,6 +456,8 @@ __all__ = [
     "GraphAuthoringError",
     "GraphAuthoringService",
     "GraphVersionRecord",
+    "RealizedGraphProjectionKind",
+    "RealizedGraphProjectionRecord",
     "IngressAllocationResult",
     "IngressProviderInterpreter",
     "IngressRealizationAdapter",

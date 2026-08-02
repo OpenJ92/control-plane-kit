@@ -6732,3 +6732,31 @@ preserved and the canonical module set was updated explicitly. Core then passed
 467 tests, compileall, and package import; operations compatibility validation
 also passed. #1274 next owns durable authored/realized projection lineage rather
 than weakening the existing desired-plan-current graph identity law.
+# HARDEN.AUTH.GATEWAY.ROTATION authored/realized graph lineage
+
+## #1276 immutable realized projection persistence
+
+The rotation dry run exposed a distinction that cannot be represented honestly
+by changing the existing graph descriptor in place. `GraphVersionRecord` remains
+immutable operator-authored truth. A separate `RealizedGraphProjectionRecord`
+now records executable material derived from that truth:
+
+```text
+authored graph id
+  + closed projection kind and key
+  + canonical realized graph descriptor
+    -> immutable projection digest and record
+```
+
+Projection versioning is deliberately independent from authored graph version
+numbers. The Postgres store enforces workspace/source lineage with a composite
+foreign key and enforces one semantic projection identity with a unique key.
+Repeating the same semantic save returns the existing row; reusing the identity
+for different material fails closed. Ordinary deployment has a deterministic
+identity projection, providing a migration path without rewriting historical
+graph descriptors.
+
+The store participates in the existing UnitOfWork connection and never commits
+independently. Authored and realized writes therefore commit or roll back
+together, while no provider, key-generation, Docker, network, or filesystem IO
+occurs in the transaction. Workspace pointers remain unchanged until #1277.
