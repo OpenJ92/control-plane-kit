@@ -117,6 +117,16 @@ class CommandWorkflowContractTests(unittest.TestCase):
                     ActivityHistoryPolicy.RECORD_ACCEPTED_AND_REJECTED_COMMANDS,
                 ),
                 (
+                    "desired-realized-projection.publish",
+                    OperatorCommandKind.PUBLISH_DESIRED_REALIZED_PROJECTION,
+                    OperatorCommandFamily.DESIRED_GRAPH,
+                    DeploymentProgramStage.PLAN,
+                    ControlPlaneServiceRole.PLANNING,
+                    CommandIdempotencyPolicy.REQUIRED,
+                    ApprovalPolicy.REQUIRES_CURRENT_APPROVAL,
+                    ActivityHistoryPolicy.RECORD_ACCEPTED_AND_REJECTED_COMMANDS,
+                ),
+                (
                     "gateway-probe.request",
                     OperatorCommandKind.REQUEST_GATEWAY_PROBE,
                     OperatorCommandFamily.GATEWAY_PROBE,
@@ -339,6 +349,10 @@ class CommandWorkflowContractTests(unittest.TestCase):
         self.assertIs(
             contract.command("desired-graph.set").payload_policy,
             CommandPayloadPolicy.GRAPH_DESCRIPTOR_REFERENCE,
+        )
+        self.assertIs(
+            contract.command("desired-realized-projection.publish").payload_policy,
+            CommandPayloadPolicy.REALIZED_GRAPH_PROJECTION_REFERENCE,
         )
         self.assertIs(
             contract.command("activity-plan.request").payload_policy,

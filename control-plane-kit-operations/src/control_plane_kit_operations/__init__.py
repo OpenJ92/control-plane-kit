@@ -70,6 +70,14 @@ from .delegation_signing_keys import (
     RevokeDelegationSigningKeyCommand,
     delegation_signing_key_registration_id_for,
 )
+from .desired_realized_projections import (
+    DesiredRealizedProjectionCommandService,
+    DesiredRealizedProjectionPublicationConflict,
+    DesiredRealizedProjectionPublicationError,
+    DesiredRealizedProjectionPublicationNotFound,
+    DesiredRealizedProjectionPublicationResult,
+    PublishDesiredRealizedProjection,
+)
 from .delegation_key_generation import (
     AdmitGeneratedDelegationSigningKey,
     AdmittedGeneratedDelegationSigningKey,
@@ -143,6 +151,14 @@ from .gateway_key_rotation_program import (
     GatewayKeyRotationGenerationProgramResult,
     PrepareGatewayKeyRotationGeneration,
     SubmitGatewayKeyRotationGeneration,
+)
+from .gateway_key_rotation_overlap import (
+    GatewayKeyRotationOverlapProjectionAuthorizationDenied,
+    GatewayKeyRotationOverlapProjectionConflict,
+    GatewayKeyRotationOverlapProjectionError,
+    GatewayKeyRotationOverlapProjectionResult,
+    GatewayKeyRotationOverlapProjectionService,
+    PublishGatewayKeyRotationOverlapProjection,
 )
 from .foundation import (
     OPERATIONS_PACKAGE_BOUNDARY,
@@ -477,6 +493,11 @@ __all__ = [
     "DesiredGraphIdempotencyConflict",
     "DesiredGraphSessionConflict",
     "DesiredGraphWorkspaceNotFound",
+    "DesiredRealizedProjectionCommandService",
+    "DesiredRealizedProjectionPublicationConflict",
+    "DesiredRealizedProjectionPublicationError",
+    "DesiredRealizedProjectionPublicationNotFound",
+    "DesiredRealizedProjectionPublicationResult",
     "DockerRuntimeAuthorityCodec",
     "ExecutionAdmissionCommandService",
     "ExecutionAdmissionConflict",
@@ -533,6 +554,11 @@ __all__ = [
     "GatewayProbeNotFound",
     "GatewayProbeVerifierConfiguration",
     "GatewayProbeVerifierConfigurationService",
+    "GatewayKeyRotationOverlapProjectionAuthorizationDenied",
+    "GatewayKeyRotationOverlapProjectionConflict",
+    "GatewayKeyRotationOverlapProjectionError",
+    "GatewayKeyRotationOverlapProjectionResult",
+    "GatewayKeyRotationOverlapProjectionService",
     "GraphAuthoringError",
     "GraphAuthoringService",
     "GraphVersionRecord",
@@ -663,6 +689,8 @@ __all__ = [
     "SetDesiredGraph",
     "SetDesiredGraphCommand",
     "SetDesiredGraphResult",
+    "PublishDesiredRealizedProjection",
+    "PublishGatewayKeyRotationOverlapProjection",
     "StartOperationSession",
     "StartActivityRun",
     "StaleDesiredGraph",

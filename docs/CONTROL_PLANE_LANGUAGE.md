@@ -877,6 +877,33 @@ laws:
   duplicate key ids, changed issuers, raw authored verifier environment, and
   private material fail closed before runtime effects.
 
+  Publishing a desired realized projection is distinct from authoring a desired
+  graph. `desired-realized-projection.publish` keeps the authored graph id and
+  graph-version row unchanged, advances only the desired projection pointer and
+  monotonic desired revision, and records ordered operation-action evidence in
+  the same UnitOfWork. The generic command carries immutable projection identity
+  and digest evidence; focused programs must derive its material from durable
+  approved truth rather than accept verifier keys or environment from callers.
+
+  Gateway-key overlap publication applies that command as:
+
+  ```text
+  key-generated rotation
+    x settled G[A]
+    x exact ACTIVE key A
+    x exact VERIFY_ONLY key B
+      -> immutable G[A+B]
+        -> desired projection CAS
+  ```
+
+  The target binding is selected by workspace, gateway node, purpose, and
+  issuer. Its audience is `gateway:{workspace_id}:{gateway_node_id}`. Other
+  authored delegation bindings preserve their exact current public projections.
+  Missing or extra verification keys, stale pointers or revisions, changed
+  projection material under a deterministic identity, and a current target
+  other than exact A fail before pointer mutation. No provider or runtime IO is
+  performed by projection publication.
+
 ### DelegationKeyGenerationGrant / DelegationKeyGenerationEvidence
 
 meaning:
