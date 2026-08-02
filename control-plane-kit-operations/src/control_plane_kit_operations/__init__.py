@@ -187,6 +187,23 @@ from .gateway_key_rotation_activation import (
     GatewayKeyRotationActivationResult,
     ProgressGatewayKeyRotationActivation,
 )
+from .gateway_key_rotation_retirement import (
+    GatewayKeyRotationRetirementProjectionAuthorizationDenied,
+    GatewayKeyRotationRetirementProjectionConflict,
+    GatewayKeyRotationRetirementProjectionError,
+    GatewayKeyRotationRetirementProjectionResult,
+    GatewayKeyRotationRetirementProjectionService,
+    PublishGatewayKeyRotationRetirementProjection,
+)
+from .gateway_key_rotation_retirement_program import (
+    GatewayKeyRotationRetirementPreparationAuthorizationDenied,
+    GatewayKeyRotationRetirementPreparationConflict,
+    GatewayKeyRotationRetirementPreparationError,
+    GatewayKeyRotationRetirementPreparationOutcome,
+    GatewayKeyRotationRetirementPreparationProgram,
+    GatewayKeyRotationRetirementPreparationResult,
+    PrepareGatewayKeyRotationRetirement,
+)
 from .foundation import (
     OPERATIONS_PACKAGE_BOUNDARY,
     OperationsPackageBoundary,
