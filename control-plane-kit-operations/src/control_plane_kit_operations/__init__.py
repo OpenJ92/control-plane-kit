@@ -160,6 +160,15 @@ from .gateway_key_rotation_overlap import (
     GatewayKeyRotationOverlapProjectionService,
     PublishGatewayKeyRotationOverlapProjection,
 )
+from .gateway_key_rotation_overlap_program import (
+    GatewayKeyRotationOverlapPreparationAuthorizationDenied,
+    GatewayKeyRotationOverlapPreparationConflict,
+    GatewayKeyRotationOverlapPreparationError,
+    GatewayKeyRotationOverlapPreparationOutcome,
+    GatewayKeyRotationOverlapPreparationProgram,
+    GatewayKeyRotationOverlapPreparationResult,
+    PrepareGatewayKeyRotationOverlap,
+)
 from .foundation import (
     OPERATIONS_PACKAGE_BOUNDARY,
     OperationsPackageBoundary,
@@ -559,6 +568,12 @@ __all__ = [
     "GatewayKeyRotationOverlapProjectionError",
     "GatewayKeyRotationOverlapProjectionResult",
     "GatewayKeyRotationOverlapProjectionService",
+    "GatewayKeyRotationOverlapPreparationAuthorizationDenied",
+    "GatewayKeyRotationOverlapPreparationConflict",
+    "GatewayKeyRotationOverlapPreparationError",
+    "GatewayKeyRotationOverlapPreparationOutcome",
+    "GatewayKeyRotationOverlapPreparationProgram",
+    "GatewayKeyRotationOverlapPreparationResult",
     "GraphAuthoringError",
     "GraphAuthoringService",
     "GraphVersionRecord",
@@ -691,6 +706,7 @@ __all__ = [
     "SetDesiredGraphResult",
     "PublishDesiredRealizedProjection",
     "PublishGatewayKeyRotationOverlapProjection",
+    "PrepareGatewayKeyRotationOverlap",
     "StartOperationSession",
     "StartActivityRun",
     "StaleDesiredGraph",

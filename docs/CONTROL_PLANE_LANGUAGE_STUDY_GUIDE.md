@@ -279,6 +279,21 @@ set, compiled activities, and publication provenance all agree. The resulting
 execution request points to the child plan while retaining the original
 rotation approval request and decision ids.
 
+Then draw preparation as committed boxes, with the effect boundary after the
+last box:
+
+```text
+[session] -> [G[A+B] desired] -> [plan] -> [admit]
+  -> [claim] -> [start] -> [rotation checkpoint] || runtime effect
+```
+
+Each box is its own operations transaction. A restart repeats the same command
+identity and recovers the original row. The checkpoint's session, plan,
+approval, request, run, graph, projection, revision, and preparation time come
+from those results rather than operator input. The `||` matters: preparation
+creates a resumable handoff but does not call Docker, a gateway, or the
+execution coordinator.
+
 Keep the three authorities visually separate: requesting rotation, reviewing
 the rotation subject, and executing the accepted deployment are not equivalent
 permissions. The reviewer sees bounded rotation intent, never a secret

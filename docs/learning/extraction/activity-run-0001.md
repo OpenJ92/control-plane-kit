@@ -7098,3 +7098,38 @@ tests plus compile and import checks; the full current suite passes 1,232 tests.
 #1294 next prepares the durable overlap deployment checkpoint from these exact
 execution identities; #1096 should later generalize this successful phase-child
 composition without broadening approval.
+
+## #1294 Durable overlap child-workflow preparation
+
+The first rotation deployment phase is now composed inside operations instead
+of a hosted controller:
+
+```text
+KEY_GENERATED
+  -> StartOperationSession
+  -> publish desired G[A+B]
+  -> RequestActivityPlan
+  -> RequestPlanExecution under the original rotation approval
+  -> ClaimAndOpenActivityRun
+  -> StartActivityRun
+  -> OVERLAP_DEPLOYING(exact prepared checkpoint)
+  -> stop before ExecutionCoordinator
+```
+
+The program does not copy graph diff, publication, admission, claim, or run
+lifecycle behavior. It invokes the canonical services with deterministic
+rotation/phase idempotency keys. The checkpoint is constructed from their
+committed results, including the original approval ids and the exact session,
+plan, execution request, run, authored graph, realized projections, desired
+revision, and run-start timestamp. The caller supplies only expected settled
+starting lineage and typed actor/worker authority.
+
+Postgres tests simulate process loss immediately after each of the eight
+transactions traversed by preparation. Every restart converges on one child
+session, one immutable overlap projection, one plan, one execution request, and
+one started run. Current remains G[A], desired becomes G[A+B], and no
+observation or runtime effect exists. Reentry after the checkpoint is a bounded
+prepared replay; later rotation phases are reported without mutation. This is
+the concrete #1096 requirement for a reusable pre-approved-derived-plan entry
+path. #1295 owns dispatch, durable recovery classification, guarded current
+advancement, and the OVERLAP_READY fold.

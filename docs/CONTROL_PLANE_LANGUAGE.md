@@ -921,6 +921,30 @@ laws:
   operator still requires `plan:execute` and every runtime/ingress authority-use
   scope implied by the exact child graphs.
 
+  Overlap preparation is a bounded operations program over the existing
+  transactional services:
+
+  ```text
+  KEY_GENERATED
+    -> start child session
+    -> publish desired G[A+B]
+    -> plan canonical G[A] -> G[A+B]
+    -> admit under the exact rotation approval
+    -> claim and start the ordinary activity run
+    -> persist OVERLAP_DEPLOYING(prepared checkpoint)
+    -> stop before runtime dispatch
+  ```
+
+  Every step retains its own explicit UnitOfWork. Deterministic idempotency
+  identities allow restart before any committed boundary without duplicating
+  session, projection, plan, request, or run truth. The checkpoint is built
+  only from committed service results and contains the exact approval, plan,
+  run, authored graph, realized projection, and desired-revision lineage.
+  Callers provide expected starting lineage, never checkpoint identities. A
+  prepared replay performs no child command; a later rotation phase is reported
+  without mutation. Runtime dispatch, waiting, health checks, and current-graph
+  advancement are deliberately outside this preparation step.
+
 ### DelegationKeyGenerationGrant / DelegationKeyGenerationEvidence
 
 meaning:
