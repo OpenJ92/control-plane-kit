@@ -66,6 +66,14 @@ class PostgresActivityHistoryStore:
             (f"operation-session:{workspace_id}:{idempotency_key}",),
         )
 
+    def lock_action_idempotency(self, session_id: str, idempotency_key: str) -> None:
+        """Serialize one session-scoped command before its action row exists."""
+
+        self._connection.execute(
+            "SELECT pg_advisory_xact_lock(hashtextextended(%s, 0))",
+            (f"operation-action:{session_id}:{idempotency_key}",),
+        )
+
     def get_session(self, session_id: str) -> OperationSessionRecord:
         row = self._connection.execute(
             """
@@ -73,6 +81,23 @@ class PostgresActivityHistoryStore:
                    closed_at, metadata, idempotency_key, intent_fingerprint
             FROM cpk_operation_sessions
             WHERE session_id = %s
+            """,
+            (session_id,),
+        ).fetchone()
+        if row is None:
+            raise KeyError(f"missing session {session_id!r}")
+        return _session_record(row)
+
+    def get_session_for_update(self, session_id: str) -> OperationSessionRecord:
+        """Lock and return the authoritative lifecycle row for one session."""
+
+        row = self._connection.execute(
+            """
+            SELECT session_id, workspace_id, actor_id, title, status, created_at,
+                   closed_at, metadata, idempotency_key, intent_fingerprint
+            FROM cpk_operation_sessions
+            WHERE session_id = %s
+            FOR UPDATE
             """,
             (session_id,),
         ).fetchone()
