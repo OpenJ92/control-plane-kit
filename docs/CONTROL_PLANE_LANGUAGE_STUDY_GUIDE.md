@@ -227,7 +227,7 @@ Gateway delegation-key rotation:
               -> operations atomically admits B reference + public identity
                 -> one authored graph binding
                   -> realized verifier A
-                    -> realized verifier A+B
+                    -> publish desired realized projection A+B
                       -> realized verifier B
 ```
 
@@ -248,6 +248,20 @@ insert in the same transaction. Draw provider, Docker, gateway, and health IO
 outside that transaction. Replace any imagined `sleep()` with a durable deadline
 and an injected trusted clock. An uncertain child effect points to `blocked`,
 not back to the effect and not forward to success.
+
+For A -> A+B, draw two graph identities, not two authored graphs:
+
+```text
+authored graph:     G ---------------------------- G
+current projection: G[A] ------------------------- G[A]
+desired projection: G[A] -- publish + revision --> G[A+B]
+```
+
+The publication transaction stores immutable G[A+B], compare-and-sets the
+desired projection pointer, increments the desired revision, and appends one
+operation action. Planning and execution happen afterward. The operator does
+not provide public-key PEM, verifier environment, audience, or projection ids;
+operations derives them from the approved rotation and durable key lifecycle.
 
 Keep the three authorities visually separate: requesting rotation, reviewing
 the rotation subject, and executing the accepted deployment are not equivalent

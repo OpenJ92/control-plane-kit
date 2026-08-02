@@ -62,6 +62,7 @@ class OperatorCommandKind(StrEnum):
     CANCEL_OPERATION_SESSION = "cancel-operation-session"
     RECORD_OPERATION_ACTION = "record-operation-action"
     SET_DESIRED_GRAPH = "set-desired-graph"
+    PUBLISH_DESIRED_REALIZED_PROJECTION = "publish-desired-realized-projection"
     REQUEST_ACTIVITY_PLAN = "request-activity-plan"
     REQUEST_APPROVAL = "request-approval"
     DECIDE_APPROVAL = "decide-approval"
@@ -73,6 +74,7 @@ class CommandPayloadPolicy(StrEnum):
 
     REDACT_OPERATOR_VALUES = "redact-operator-values"
     GRAPH_DESCRIPTOR_REFERENCE = "graph-descriptor-reference"
+    REALIZED_GRAPH_PROJECTION_REFERENCE = "realized-graph-projection-reference"
     PLAN_DESCRIPTOR_REFERENCE = "plan-descriptor-reference"
     APPROVAL_RISK_EVIDENCE = "approval-risk-evidence"
     PRODUCT_DESCRIPTOR_DOCUMENT = "product-descriptor-document"
@@ -131,6 +133,9 @@ _KIND_FAMILY = {
     OperatorCommandKind.CANCEL_OPERATION_SESSION: OperatorCommandFamily.OPERATION_SESSION,
     OperatorCommandKind.RECORD_OPERATION_ACTION: OperatorCommandFamily.OPERATION_SESSION,
     OperatorCommandKind.SET_DESIRED_GRAPH: OperatorCommandFamily.DESIRED_GRAPH,
+    OperatorCommandKind.PUBLISH_DESIRED_REALIZED_PROJECTION: (
+        OperatorCommandFamily.DESIRED_GRAPH
+    ),
     OperatorCommandKind.REQUEST_ACTIVITY_PLAN: OperatorCommandFamily.ACTIVITY_PLANNING,
     OperatorCommandKind.REQUEST_APPROVAL: OperatorCommandFamily.APPROVAL,
     OperatorCommandKind.DECIDE_APPROVAL: OperatorCommandFamily.APPROVAL,
@@ -682,6 +687,18 @@ _CANONICAL_COMMANDS = (
         "DesiredGraphEditResult",
         ApprovalPolicy.SUBMITS_FOR_APPROVAL,
         CommandPayloadPolicy.GRAPH_DESCRIPTOR_REFERENCE,
+        requires_open_session=True,
+    ),
+    _CommandDefinition(
+        "desired-realized-projection.publish",
+        OperatorCommandKind.PUBLISH_DESIRED_REALIZED_PROJECTION,
+        OperatorCommandFamily.DESIRED_GRAPH,
+        DeploymentProgramStage.PLAN,
+        ControlPlaneServiceRole.PLANNING,
+        "PublishDesiredRealizedProjection",
+        "DesiredRealizedProjectionPublicationResult",
+        ApprovalPolicy.REQUIRES_CURRENT_APPROVAL,
+        CommandPayloadPolicy.REALIZED_GRAPH_PROJECTION_REFERENCE,
         requires_open_session=True,
     ),
     _CommandDefinition(

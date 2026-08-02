@@ -7021,3 +7021,44 @@ idempotent, preserves existing rows, and expands both aggregate and transition
 closed-value constraints. Focused validation passes 286 operations tests plus
 compile and import checks. #1287 next composes the overlap deployment program
 from this durable `key-generated` checkpoint.
+
+## #1292 Desired overlap realized-projection publication
+
+The overlap deployment now has an operations-owned desired-material command
+instead of mutating authored graph truth or relying on a harness-generated
+environment:
+
+```text
+key-generated GatewayKeyRotation
+  x current/desired authored graph G
+  x current/desired realized projection G[A]
+  x exact ACTIVE A + VERIFY_ONLY B
+    -> materialize immutable G[A+B]
+      -> desired projection compare-and-set
+        -> desired revision + 1
+          -> ordered operation action
+```
+
+Core gained only provider-neutral
+`desired-realized-projection.publish` vocabulary and a realized-projection
+reference payload policy. Operations derives the projection from locked
+workspace, rotation, authored graph, current realized graph, and delegation-key
+records. The focused command accepts rotation/session/version identity, scope,
+and idempotency only; it cannot accept PEM, key sets, audience, projection
+identity, environment, or arbitrary graph material.
+
+The compiler replaces only the exact `(gateway node, purpose)` projection and
+preserves every other current delegation projection. It requires current graph
+truth to be settled at one unchanged authored and realized lineage, exact old
+key A to be active, exact generated key B to be verify-only, and the verification
+scope to contain no extra keys. Deterministic projection identity makes exact
+replay idempotent and changed material conflict.
+
+Projection save, desired-pointer CAS, revision advance, and action append share
+one Postgres UnitOfWork. Focused rollback coverage proves a late action insert
+failure removes the new immutable projection and restores the old desired
+pointer/revision. No provider, Docker, gateway, HTTP, filesystem, private-key,
+plaintext, or ciphertext boundary is crossed. Validation passed 474 core tests,
+296 operations tests plus compile/import checks, and the 1,232-test full current
+suite. #1293 next authorizes the exact ordinary child plan using the
+already-approved rotation subject rather than a synthetic plan approval.
