@@ -35,7 +35,11 @@ from control_plane_kit_core.probe_intents import (
 )
 from control_plane_kit_core.types import RuntimeKind
 from control_plane_kit_core.types import WorkspaceLifecycle
-from control_plane_kit_operations.records import ObservationFreshness, ObservationStatus
+from control_plane_kit_operations.records import (
+    ObservationFreshness,
+    ObservationStatus,
+    RealizedGraphProjectionKind,
+)
 from control_plane_kit_operations.gateway_probes import GatewayProbeAttemptStatus
 from control_plane_kit_operations.delegation_signing_keys import (
     RegisteredDelegationSigningKeyStatus,
@@ -140,6 +144,32 @@ CREATE TABLE IF NOT EXISTS cpk_graph_versions (
   CONSTRAINT cpk_graph_versions_workspace_identity
     UNIQUE (graph_id, workspace_id),
   UNIQUE (workspace_id, version)
+);
+
+CREATE TABLE IF NOT EXISTS cpk_realized_graph_projections (
+  projection_id text PRIMARY KEY,
+  workspace_id text NOT NULL REFERENCES cpk_workspaces(workspace_id),
+  source_authored_graph_id text NOT NULL,
+  projection_kind text NOT NULL,
+  projection_key text NOT NULL,
+  projection_digest text NOT NULL,
+  graph_descriptor jsonb NOT NULL,
+  created_by text NOT NULL,
+  created_at text NOT NULL,
+  CONSTRAINT cpk_realized_graph_projection_source
+    FOREIGN KEY (source_authored_graph_id, workspace_id)
+    REFERENCES cpk_graph_versions(graph_id, workspace_id),
+  CONSTRAINT cpk_realized_graph_projection_kind_check
+    CHECK (projection_kind IN ({{ realized_graph_projection_kinds | sql_values }})),
+  CONSTRAINT cpk_realized_graph_projection_digest_check
+    CHECK (projection_digest ~ '^[0-9a-f]{64}$'),
+  CONSTRAINT cpk_realized_graph_projection_identity
+    UNIQUE (
+      workspace_id,
+      source_authored_graph_id,
+      projection_kind,
+      projection_key
+    )
 );
 
 CREATE TABLE IF NOT EXISTS cpk_registered_products (
@@ -945,6 +975,7 @@ POSTGRES_SCHEMA = _SQL_ENVIRONMENT.from_string(_POSTGRES_SCHEMA_TEMPLATE).render
     delegation_key_purposes=tuple(DelegationKeyPurpose),
     delegation_signing_key_statuses=tuple(RegisteredDelegationSigningKeyStatus),
     risk_levels=tuple(RiskLevel),
+    realized_graph_projection_kinds=tuple(RealizedGraphProjectionKind),
     runtime_authority_kinds=tuple(RuntimeAuthorityKind),
     runtime_kinds=tuple(RuntimeKind),
     settled_run_statuses=_SETTLED_RUN_STATUSES,

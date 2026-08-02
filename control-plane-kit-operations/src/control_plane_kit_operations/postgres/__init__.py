@@ -14,7 +14,9 @@ from control_plane_kit_operations.postgres.delegation_signing_key_store import (
 )
 from control_plane_kit_operations.postgres.graph_store import (
     PostgresGraphTopologyStore,
+    PostgresRealizedGraphProjectionStore,
     PostgresWorkspaceStore,
+    RealizedGraphProjectionConflict,
 )
 from control_plane_kit_operations.postgres.gateway_probe_store import GatewayProbeStore
 from control_plane_kit_operations.postgres.image_pull_authority_store import (
@@ -52,6 +54,8 @@ __all__ = [
     "PostgresExecutionStore",
     "DelegationSigningKeyStore",
     "PostgresGraphTopologyStore",
+    "PostgresRealizedGraphProjectionStore",
+    "RealizedGraphProjectionConflict",
     "GatewayProbeStore",
     "ImagePullAuthorityStore",
     "GeneratedIngressSecretReferenceStore",

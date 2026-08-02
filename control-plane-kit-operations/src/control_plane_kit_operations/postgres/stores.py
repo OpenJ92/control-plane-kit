@@ -13,6 +13,7 @@ from control_plane_kit_operations.postgres.delegation_signing_key_store import (
 )
 from control_plane_kit_operations.postgres.graph_store import (
     PostgresGraphTopologyStore,
+    PostgresRealizedGraphProjectionStore,
     PostgresWorkspaceStore,
 )
 from control_plane_kit_operations.postgres.gateway_probe_store import GatewayProbeStore
@@ -52,6 +53,7 @@ class PostgresStoreBundle:
     connection: PostgresConnection
     workspaces: PostgresWorkspaceStore = field(init=False)
     graphs: PostgresGraphTopologyStore = field(init=False)
+    realized_graphs: PostgresRealizedGraphProjectionStore = field(init=False)
     registered_products: RegisteredProductStore = field(init=False)
     image_pull_authorities: ImagePullAuthorityStore = field(init=False)
     ingress_authorities: IngressAuthorityStore = field(init=False)
@@ -78,6 +80,11 @@ class PostgresStoreBundle:
             self,
             "graphs",
             PostgresGraphTopologyStore(self.connection),
+        )
+        object.__setattr__(
+            self,
+            "realized_graphs",
+            PostgresRealizedGraphProjectionStore(self.connection),
         )
         object.__setattr__(
             self,
