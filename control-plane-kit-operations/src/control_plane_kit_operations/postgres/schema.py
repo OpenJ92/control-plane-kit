@@ -44,6 +44,11 @@ from control_plane_kit_operations.records import (
     RealizedGraphProjectionRecord,
 )
 from control_plane_kit_operations.gateway_probes import GatewayProbeAttemptStatus
+from control_plane_kit_operations.gateway_key_rotations import (
+    GatewayKeyRotationDeploymentPhase,
+    GatewayKeyRotationDeploymentStatus,
+    GatewayKeyRotationStatus,
+)
 from control_plane_kit_operations.delegation_signing_keys import (
     RegisteredDelegationSigningKeyStatus,
 )
@@ -527,6 +532,120 @@ CREATE UNIQUE INDEX IF NOT EXISTS cpk_delegation_signing_keys_active_scope
 CREATE INDEX IF NOT EXISTS cpk_delegation_signing_keys_verifier_set
   ON cpk_delegation_signing_keys (workspace_id, purpose, issuer, key_id)
   WHERE status IN ('active', 'verify-only');
+
+CREATE TABLE IF NOT EXISTS cpk_gateway_key_rotations (
+  rotation_id text PRIMARY KEY,
+  workspace_id text NOT NULL REFERENCES cpk_workspaces(workspace_id),
+  gateway_node_id text NOT NULL,
+  purpose text NOT NULL,
+  issuer text NOT NULL,
+  old_key_id text NOT NULL,
+  new_secret_reference text NOT NULL,
+  key_generation_correlation text NOT NULL,
+  maximum_grant_lifetime_seconds integer NOT NULL,
+  clock_skew_seconds integer NOT NULL,
+  correlation_id text NOT NULL,
+  requested_by text NOT NULL,
+  requested_at text NOT NULL,
+  intent_fingerprint text NOT NULL,
+  status text NOT NULL,
+  version integer NOT NULL,
+  approval_request_id text,
+  approval_decision_id text,
+  new_key_id text,
+  new_secret_version_id text,
+  new_secret_version_number integer,
+  new_key_activated_at text,
+  drain_deadline_epoch bigint,
+  old_key_retired_at text,
+  old_secret_revoked_at text,
+  failure_code text,
+  updated_by text,
+  updated_at text,
+  UNIQUE (workspace_id, correlation_id),
+  CONSTRAINT cpk_gateway_key_rotations_status_check
+    CHECK (status IN ({{ gateway_key_rotation_statuses | sql_values }})),
+  CONSTRAINT cpk_gateway_key_rotations_purpose_check
+    CHECK (purpose IN ({{ delegation_key_purposes | sql_values }})),
+  CONSTRAINT cpk_gateway_key_rotations_version_check CHECK (version > 0),
+  CONSTRAINT cpk_gateway_key_rotations_lifetime_check
+    CHECK (maximum_grant_lifetime_seconds BETWEEN 1 AND 300),
+  CONSTRAINT cpk_gateway_key_rotations_skew_check
+    CHECK (clock_skew_seconds BETWEEN 0 AND 60),
+  CONSTRAINT cpk_gateway_key_rotations_secret_version_check
+    CHECK ((new_key_id IS NULL) = (new_secret_version_id IS NULL)
+      AND (new_secret_version_id IS NULL) = (new_secret_version_number IS NULL)),
+  CONSTRAINT cpk_gateway_key_rotations_activation_check
+    CHECK ((new_key_activated_at IS NULL) = (drain_deadline_epoch IS NULL)),
+  CONSTRAINT cpk_gateway_key_rotations_retirement_check
+    CHECK ((old_key_retired_at IS NULL) = (old_secret_revoked_at IS NULL)),
+  CONSTRAINT cpk_gateway_key_rotations_failure_check
+    CHECK ((status IN ('blocked', 'rejected')) = (failure_code IS NOT NULL)),
+  CONSTRAINT cpk_gateway_key_rotations_fingerprint_check
+    CHECK (intent_fingerprint ~ '^[0-9a-f]{64}$')
+);
+
+CREATE UNIQUE INDEX IF NOT EXISTS cpk_gateway_key_rotations_nonterminal_binding
+  ON cpk_gateway_key_rotations (workspace_id, gateway_node_id, purpose, issuer)
+  WHERE status NOT IN ('completed', 'blocked', 'rejected');
+
+CREATE TABLE IF NOT EXISTS cpk_gateway_key_rotation_transitions (
+  rotation_id text NOT NULL REFERENCES cpk_gateway_key_rotations(rotation_id),
+  transition_id text NOT NULL,
+  from_status text NOT NULL,
+  to_status text NOT NULL,
+  from_version integer NOT NULL,
+  to_version integer NOT NULL,
+  transition_fingerprint text NOT NULL,
+  advanced_by text NOT NULL,
+  advanced_at text NOT NULL,
+  failure_code text,
+  PRIMARY KEY (rotation_id, transition_id),
+  UNIQUE (rotation_id, to_version),
+  CONSTRAINT cpk_gateway_key_rotation_transitions_from_status_check
+    CHECK (from_status IN ({{ gateway_key_rotation_statuses | sql_values }})),
+  CONSTRAINT cpk_gateway_key_rotation_transitions_to_status_check
+    CHECK (to_status IN ({{ gateway_key_rotation_statuses | sql_values }})),
+  CONSTRAINT cpk_gateway_key_rotation_transitions_version_check
+    CHECK (from_version > 0 AND to_version = from_version + 1),
+  CONSTRAINT cpk_gateway_key_rotation_transitions_fingerprint_check
+    CHECK (transition_fingerprint ~ '^[0-9a-f]{64}$')
+);
+
+CREATE TABLE IF NOT EXISTS cpk_gateway_key_rotation_deployments (
+  rotation_id text NOT NULL REFERENCES cpk_gateway_key_rotations(rotation_id),
+  phase text NOT NULL,
+  status text NOT NULL,
+  session_id text NOT NULL,
+  plan_id text NOT NULL,
+  approval_request_id text NOT NULL,
+  approval_decision_id text NOT NULL,
+  execution_request_id text NOT NULL,
+  run_id text NOT NULL,
+  base_authored_graph_id text NOT NULL,
+  base_realized_projection_id text NOT NULL,
+  desired_authored_graph_id text NOT NULL,
+  desired_realized_projection_id text NOT NULL,
+  desired_revision integer NOT NULL,
+  prepared_at text NOT NULL,
+  accepted_current_graph_id text,
+  accepted_current_projection_id text,
+  accepted_at text,
+  PRIMARY KEY (rotation_id, phase),
+  CONSTRAINT cpk_gateway_key_rotation_deployments_phase_check
+    CHECK (phase IN ({{ gateway_key_rotation_deployment_phases | sql_values }})),
+  CONSTRAINT cpk_gateway_key_rotation_deployments_status_check
+    CHECK (status IN ({{ gateway_key_rotation_deployment_statuses | sql_values }})),
+  CONSTRAINT cpk_gateway_key_rotation_deployments_revision_check
+    CHECK (desired_revision >= 0),
+  CONSTRAINT cpk_gateway_key_rotation_deployments_acceptance_check CHECK (
+    (status = 'accepted' AND accepted_current_graph_id IS NOT NULL
+      AND accepted_current_projection_id IS NOT NULL AND accepted_at IS NOT NULL)
+    OR
+    (status = 'prepared' AND accepted_current_graph_id IS NULL
+      AND accepted_current_projection_id IS NULL AND accepted_at IS NULL)
+  )
+);
 
 CREATE TABLE IF NOT EXISTS cpk_secret_use_authorizations (
   authorization_id text PRIMARY KEY,
@@ -1100,6 +1219,9 @@ POSTGRES_SCHEMA = _SQL_ENVIRONMENT.from_string(_POSTGRES_SCHEMA_TEMPLATE).render
     gateway_probe_attempt_statuses=tuple(GatewayProbeAttemptStatus),
     gateway_probe_access_paths=tuple(GatewayProbeAccessPath),
     gateway_probe_command_kinds=tuple(GatewayProbeCommandKind),
+    gateway_key_rotation_statuses=tuple(GatewayKeyRotationStatus),
+    gateway_key_rotation_deployment_phases=tuple(GatewayKeyRotationDeploymentPhase),
+    gateway_key_rotation_deployment_statuses=tuple(GatewayKeyRotationDeploymentStatus),
     delegation_key_algorithms=tuple(DelegationKeyAlgorithm),
     delegation_key_purposes=tuple(DelegationKeyPurpose),
     delegation_signing_key_statuses=tuple(RegisteredDelegationSigningKeyStatus),

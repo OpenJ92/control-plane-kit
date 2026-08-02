@@ -17,6 +17,9 @@ from control_plane_kit_operations.postgres.graph_store import (
     PostgresWorkspaceStore,
 )
 from control_plane_kit_operations.postgres.gateway_probe_store import GatewayProbeStore
+from control_plane_kit_operations.postgres.gateway_key_rotation_store import (
+    GatewayKeyRotationStore,
+)
 from control_plane_kit_operations.postgres.image_pull_authority_store import (
     ImagePullAuthorityStore,
 )
@@ -69,6 +72,7 @@ class PostgresStoreBundle:
     observed_state: PostgresObservedStateStore = field(init=False)
     gateway_probes: GatewayProbeStore = field(init=False)
     delegation_signing_keys: DelegationSigningKeyStore = field(init=False)
+    gateway_key_rotations: GatewayKeyRotationStore = field(init=False)
 
     def __post_init__(self) -> None:
         object.__setattr__(
@@ -160,4 +164,9 @@ class PostgresStoreBundle:
             self,
             "delegation_signing_keys",
             DelegationSigningKeyStore(self.connection),
+        )
+        object.__setattr__(
+            self,
+            "gateway_key_rotations",
+            GatewayKeyRotationStore(self.connection),
         )

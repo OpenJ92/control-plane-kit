@@ -226,6 +226,22 @@ Gateway delegation-key rotation:
                 -> realized verifier B
 ```
 
+Then draw the durable operations program beside the realized projections:
+
+```text
+GatewayKeyRotation(status, version)
+  x GatewayKeyRotationTransition(transition_id, from, to)
+  x overlap DeploymentCheckpoint
+  x drain_deadline
+  x retirement DeploymentCheckpoint
+```
+
+Mark each state change as one Postgres compare-and-set plus one transition-ledger
+insert in the same transaction. Draw provider, Docker, gateway, and health IO
+outside that transaction. Replace any imagined `sleep()` with a durable deadline
+and an injected trusted clock. An uncertain child effect points to `blocked`,
+not back to the effect and not forward to success.
+
 For each example, mark:
 
 ```text

@@ -53,6 +53,7 @@ class PolicyScope(StrEnum):
     DELEGATION_KEY_RETIRE = "delegation-key:retire"
     DELEGATION_KEY_REVOKE = "delegation-key:revoke"
     DELEGATION_KEY_USE = "delegation-key:use"
+    DELEGATION_KEY_ROTATE = "delegation-key:rotate"
     GATEWAY_PROBE_USE = "gateway-probe:use"
 
 

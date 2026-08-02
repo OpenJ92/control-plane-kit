@@ -6885,3 +6885,61 @@ This issue deliberately does not call the provider from inside an operations
 transaction and does not yet sequence generation into rotation. #1269 owns the
 durable rotation state machine and drain barrier. #1270 will compose the
 approved, resumable program around this prepare/effect/fold boundary.
+
+## #1269 Durable Gateway Key-Rotation State And Drain Barrier
+
+Rotation policy is no longer represented by harness timing. Operations now
+persists a closed `GatewayKeyRotation` aggregate covering request, approval,
+provider generation evidence, overlap deployment, activation, grant draining,
+retirement deployment, completion, rejection, and blocked uncertainty.
+
+The initial compare-and-set design fenced stale workers but did not make a
+retried transition durably distinguishable from a different stale command. The
+review therefore added a normalized transition ledger:
+
+```text
+AdvanceGatewayKeyRotation(transition_id, expected status/version, target)
+  -> lock aggregate row
+    -> exact existing transition fingerprint: replay without mutation
+    -> reused transition id with different semantics: conflict
+    -> stale expected lineage: conflict
+    -> aggregate compare-and-set + transition insert in one UnitOfWork
+```
+
+This is stricter than merely storing a `last_transition_id`: any accepted phase
+remains recognizable after later phases and restart. The transition ledger also
+provides normalized phase timestamps without turning the aggregate into an
+opaque program blob.
+
+Overlap and retirement checkpoints persist deterministic session, plan,
+approval, execution-request, run, authored graph, realized projection, and
+revision identities before child effects begin. An accepted checkpoint may only
+fold over those exact identities. If a process dies after the child effect but
+before folding, restart recovers the prepared checkpoint; absence of accepted
+evidence does not authorize another effect. Uncertain outcomes become `blocked`
+and hand off to #1092.
+
+When B becomes active, operations records:
+
+```text
+drain_deadline = trusted_now
+  + maximum accepted capability lifetime
+  + bounded clock skew
+```
+
+The program may enter retirement deployment only when an injected trusted clock
+reaches that durable deadline. Operations does not sleep and this child does not
+introduce a scheduler.
+
+Security and transaction review found no private material or resolved secret
+values in the aggregate, transition ledger, deployment checkpoints, or public
+read model. Internal state retains only a `SecretReference` and bounded provider
+version identity; public readback omits both. Every request or advancement is
+one explicit Postgres transaction, stores never commit independently, and this
+state layer performs no provider, Docker, gateway, network, or filesystem IO.
+
+Focused validation passes 470 core tests and 270 operations tests, plus
+compileall and package-import checks. Concurrency acceptance proves one
+nonterminal rotation wins per gateway authority binding. Restart acceptance
+proves prepared child identities survive without inferred replay. #1270 next
+composes provider and deployment effects around this durable state.

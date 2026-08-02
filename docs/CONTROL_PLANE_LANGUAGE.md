@@ -921,6 +921,51 @@ laws:
   reference and public key; a second-write conflict rolls both back. Exact
   provider replay is idempotent.
 
+### GatewayKeyRotation / GatewayKeyRotationTransition
+
+meaning:
+  Durable operations truth for one approved gateway delegation-key lifecycle
+  program. The aggregate records the current closed phase and bounded evidence;
+  the transition ledger records each accepted state change exactly once:
+
+```text
+requested -> awaiting-approval -> approved -> key-generated
+  -> overlap-deploying -> overlap-ready -> new-key-active
+    -> draining-old-grants -> retirement-deploying -> completed
+```
+
+owned by:
+  Operations owns the aggregate, transition law, Postgres store, approval and
+  child-deployment identities, and public read projection. Core owns only the
+  focused `delegation-key:rotate` permission shared by public contracts.
+
+durable:
+  Yes. Rotation state, version, operator correlation, deterministic child
+  deployment identities, accepted current-graph evidence, phase timestamps,
+  and the grant-drain deadline survive process restart. One nonterminal
+  rotation owns a `(workspace, gateway, purpose, issuer)` binding.
+
+may contain secrets:
+  Internal operations state may retain a `SecretReference` and provider version
+  identity, never plaintext, ciphertext, or private key bytes. Public rotation
+  readback omits the reference and provider version metadata.
+
+interpreted by:
+  A later operations-owned rotation program. This state layer performs no
+  provider, Docker, gateway, HTTP, filesystem, or other external IO.
+
+laws:
+  Every advancement requires `delegation-key:rotate`, an exact expected status
+  and version, and a unique transition id. Exact transition replay is
+  idempotent; semantic reuse conflicts. The aggregate CAS and transition record
+  share one UnitOfWork transaction. Child operation identities are persisted
+  before their effects begin. Accepted overlap and retirement evidence must
+  preserve those exact identities. The old-grant drain deadline is computed
+  from the maximum issued capability lifetime plus bounded clock skew when the
+  new key becomes active; advancement consults an injected trusted clock and
+  never sleeps. Uncertain child effects move to `blocked` with retained evidence
+  for recovery/fencing work; absence of a folded result never licenses a retry.
+
 ### GatewayProbeAttempt
 
 meaning:
