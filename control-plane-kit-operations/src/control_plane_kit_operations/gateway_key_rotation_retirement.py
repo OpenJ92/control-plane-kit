@@ -14,6 +14,7 @@ from control_plane_kit_operations.delegation_signing_keys import (
 from control_plane_kit_operations.desired_realized_projections import (
     DesiredRealizedProjectionPublicationError,
     DesiredRealizedProjectionPublicationResult,
+    prepare_desired_realized_projection_publication,
     publish_desired_realized_projection_in_unit_of_work,
 )
 from control_plane_kit_operations.gateway_key_rotation_projection import (
@@ -130,6 +131,11 @@ class GatewayKeyRotationRetirementProjectionService:
         with self._unit_of_work_factory() as unit_of_work:
             created_at = self._clock()
             try:
+                prepare_desired_realized_projection_publication(
+                    unit_of_work,
+                    command.session_id,
+                    command.idempotency_key.value,
+                )
                 publication_command = (
                     build_gateway_key_rotation_projection_publication(
                         unit_of_work,

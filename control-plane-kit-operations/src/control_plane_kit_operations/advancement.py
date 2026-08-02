@@ -32,6 +32,7 @@ from control_plane_kit_operations.records import (
     BoundedEvidence,
     ExecutionRequestRecord,
     OperationActionRecord,
+    OperationSessionStatus,
     RealizedGraphProjectionRecord,
     WorkspaceRecord,
 )
@@ -239,21 +240,44 @@ class CurrentGraphAdvancementCommandService:
         with self._unit_of_work_factory() as unit_of_work:
             stores = unit_of_work.stores
             try:
-                workspace = stores.workspaces.get_for_update(command.workspace_id)
-                run = stores.execution.get_run_for_update(command.run_id)
-                request = stores.execution.get_request(run.admission.request_id)
-                plan = stores.activity_history.get_plan(command.plan_id)
+                locator_run = stores.execution.get_run(command.run_id)
+                locator_request = stores.execution.get_request(
+                    locator_run.admission.request_id
+                )
             except KeyError as error:
                 raise CurrentGraphAdvancementNotFound(str(error)) from error
 
-            existing = stores.activity_history.action_for_idempotency(
-                request.identity.session_id,
+            history = stores.activity_history
+            history.lock_action_idempotency(
+                locator_request.identity.session_id,
+                command.idempotency_key.value,
+            )
+            existing = history.action_for_idempotency(
+                locator_request.identity.session_id,
                 command.idempotency_key.value,
             )
             if existing is not None:
                 result = _replay(stores, existing, fingerprint)
                 unit_of_work.commit()
                 return result
+            try:
+                session = history.get_session_for_update(
+                    locator_request.identity.session_id
+                )
+                workspace = stores.workspaces.get_for_update(command.workspace_id)
+                run = stores.execution.get_run_for_update(command.run_id)
+                request = stores.execution.get_request(run.admission.request_id)
+                plan = history.get_plan(command.plan_id)
+            except KeyError as error:
+                raise CurrentGraphAdvancementNotFound(str(error)) from error
+            if session.status is not OperationSessionStatus.OPEN:
+                raise CurrentGraphAdvancementConflict(
+                    "current graph advancement requires an open session"
+                )
+            if request.identity.session_id != session.session_id:
+                raise CurrentGraphAdvancementConflict(
+                    "activity run session linkage changed"
+                )
 
             _require_worker_owns(request, command.authority)
             current_projection, desired_projection = _require_identity(
@@ -326,7 +350,7 @@ class CurrentGraphAdvancementCommandService:
                 OperationActionRecord(
                     self._id_factory(),
                     request.identity.session_id,
-                    stores.activity_history.next_action_ordinal(
+                    history.next_action_ordinal(
                         request.identity.session_id
                     ),
                     LifecycleOperationKind.ADVANCE_CURRENT_GRAPH,

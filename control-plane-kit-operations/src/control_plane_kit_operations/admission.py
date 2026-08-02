@@ -220,18 +220,13 @@ class ExecutionAdmissionCommandService:
         fingerprint = _fingerprint(command)
         with self._unit_of_work_factory() as unit_of_work:
             stores = unit_of_work.stores
-            try:
-                workspace = stores.workspaces.get_for_update(command.workspace_id)
-                session = stores.activity_history.get_session(command.session_id)
-                plan = stores.activity_history.get_plan(command.plan_id)
-                approval = stores.activity_history.get_approval_request(
-                    command.approval_request_id
-                )
-            except KeyError as error:
-                raise ExecutionAdmissionNotFound(str(error)) from error
-
+            history = stores.activity_history
             if PolicyScope.PLAN_EXECUTE not in command.actor_scopes:
                 raise ExecutionAdmissionDenied("scope plan:execute is missing")
+            history.lock_action_idempotency(
+                command.session_id,
+                command.idempotency_key.value,
+            )
             stores.execution.lock_admission_idempotency(
                 command.workspace_id,
                 command.idempotency_key.value,
@@ -241,9 +236,25 @@ class ExecutionAdmissionCommandService:
                 command.idempotency_key.value,
             )
             if replay is not None:
-                result = _replay(stores.activity_history, replay, fingerprint)
+                result = _replay(history, replay, fingerprint)
                 unit_of_work.commit()
                 return result
+            if history.action_for_idempotency(
+                command.session_id,
+                command.idempotency_key.value,
+            ) is not None:
+                raise ExecutionAdmissionIdempotencyConflict(
+                    "idempotency key is already owned by another session action"
+                )
+            try:
+                session = history.get_session_for_update(command.session_id)
+                workspace = stores.workspaces.get_for_update(command.workspace_id)
+                plan = history.get_plan(command.plan_id)
+                approval = history.get_approval_request(
+                    command.approval_request_id
+                )
+            except KeyError as error:
+                raise ExecutionAdmissionNotFound(str(error)) from error
 
             if session.workspace_id != command.workspace_id:
                 raise ExecutionAdmissionConflict(
@@ -265,7 +276,7 @@ class ExecutionAdmissionCommandService:
                 )
             if not plan.plan.ready_for_execution:
                 raise ExecutionAdmissionConflict("plan contains unresolved review blockers")
-            decision = stores.activity_history.approval_decision_for_request(
+            decision = history.approval_decision_for_request(
                 command.approval_request_id
             )
             rotation_subject: GatewayKeyRotationApprovalSubject | None = None
@@ -372,7 +383,7 @@ class ExecutionAdmissionCommandService:
                     + ", ".join(sorted(missing))
                 )
 
-            ordinal = stores.activity_history.next_action_ordinal(command.session_id)
+            ordinal = history.next_action_ordinal(command.session_id)
             requested_at = self._clock()
             request = stores.execution.add_request(
                 ExecutionRequestRecord(
@@ -393,7 +404,7 @@ class ExecutionAdmissionCommandService:
                     ),
                 )
             )
-            action = stores.activity_history.add_action(
+            action = history.add_action(
                 OperationActionRecord(
                     action_id=self._id_factory(),
                     session_id=command.session_id,

@@ -40,6 +40,10 @@ from control_plane_kit_operations.records import (
     RetryIdentity,
 )
 from control_plane_kit_operations.workflows import IdempotencyKey
+from control_plane_kit_operations.workflows import (
+    CloseOperationSession,
+    OperationCommandService,
+)
 
 
 class Sequence:
@@ -320,6 +324,40 @@ class RunLifecycleTests(unittest.TestCase):
                     IdempotencyKey("complete-after-fail"),
                 )
             )
+
+    def test_lifecycle_replay_survives_close_but_new_transition_is_fenced(self) -> None:
+        claim_command = self.claim_command()
+        claimed = self.service("run-a", "event-open", "action-claim").execute(
+            claim_command
+        )
+        OperationCommandService(
+            self.unit_of_work,
+            clock=lambda: "2026-07-22T13:01:00Z",
+            id_factory=Sequence("action-close"),
+        ).execute(
+            CloseOperationSession(
+                "session-a",
+                "operator-a",
+                IdempotencyKey("close"),
+            )
+        )
+
+        replay = self.service("unused", "unused", "unused").execute(claim_command)
+        self.assertTrue(replay.replayed)
+        self.assertEqual(replay.run, claimed.run)
+        with self.assertRaisesRegex(RunLifecycleConflict, "open session"):
+            self.service("event-start", "action-start").execute(
+                StartActivityRun(
+                    "run-a",
+                    self.authority(),
+                    IdempotencyKey("start-after-close"),
+                )
+            )
+
+        self.assertEqual(
+            tuple(event.kind for event in self.events()),
+            (ActivityEventKind.RUN_OPENED,),
+        )
 
     def claim(self) -> None:
         self.service("run-a", "event-open", "action-claim").execute(

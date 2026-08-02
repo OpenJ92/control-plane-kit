@@ -54,7 +54,11 @@ from control_plane_kit_operations.records import (
     RetryIdentity,
     WorkspaceRecord,
 )
-from control_plane_kit_operations.workflows import IdempotencyKey
+from control_plane_kit_operations.workflows import (
+    CloseOperationSession,
+    IdempotencyKey,
+    OperationCommandService,
+)
 
 
 class Sequence:
@@ -142,6 +146,17 @@ class CurrentGraphAdvancementTests(unittest.TestCase):
         result = self.service("event-advance", "action-advance").execute(
             self.command()
         )
+        OperationCommandService(
+            self.unit_of_work,
+            clock=lambda: "2026-07-22T13:06:00Z",
+            id_factory=Sequence("action-close"),
+        ).execute(
+            CloseOperationSession(
+                "session-a",
+                "operator-a",
+                IdempotencyKey("close"),
+            )
+        )
         replay = self.service("unused-event", "unused-action").execute(self.command())
 
         with self.unit_of_work() as unit_of_work:
@@ -188,6 +203,33 @@ class CurrentGraphAdvancementTests(unittest.TestCase):
                 ActivityEventKind.CURRENT_GRAPH_ADVANCED,
             ],
         )
+
+    def test_closed_session_cannot_publish_a_new_advancement(self) -> None:
+        self.seed_succeeded_run()
+        OperationCommandService(
+            self.unit_of_work,
+            clock=lambda: "2026-07-22T13:04:00Z",
+            id_factory=Sequence("action-close"),
+        ).execute(
+            CloseOperationSession(
+                "session-a",
+                "operator-a",
+                IdempotencyKey("close"),
+            )
+        )
+
+        with self.assertRaisesRegex(CurrentGraphAdvancementConflict, "open session"):
+            self.service("event-advance", "action-advance").execute(self.command())
+
+        with self.unit_of_work() as unit_of_work:
+            workspace = unit_of_work.stores.workspaces.get("workspace-a")
+            events = unit_of_work.stores.execution.events_for_run("run-a")
+            self.assertEqual(workspace.current_graph_id, "graph-current")
+            self.assertNotIn(
+                ActivityEventKind.CURRENT_GRAPH_ADVANCED,
+                tuple(event.kind for event in events),
+            )
+            unit_of_work.commit()
 
     def test_incomplete_uncertain_or_failed_evidence_cannot_advance(self) -> None:
         for step_kind in (

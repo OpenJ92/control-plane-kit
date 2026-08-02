@@ -13,6 +13,7 @@ from control_plane_kit_operations.desired_realized_projections import (
     DesiredRealizedProjectionPublicationError,
     DesiredRealizedProjectionPublicationResult,
     PublishDesiredRealizedProjection,
+    prepare_desired_realized_projection_publication,
     publish_desired_realized_projection_in_unit_of_work,
 )
 from control_plane_kit_operations.gateway_key_rotations import (
@@ -133,6 +134,11 @@ class GatewayKeyRotationOverlapProjectionService:
         with self._unit_of_work_factory() as unit_of_work:
             created_at = self._clock()
             try:
+                prepare_desired_realized_projection_publication(
+                    unit_of_work,
+                    command.session_id,
+                    command.idempotency_key.value,
+                )
                 publication_command = self._publication_command(
                     unit_of_work,
                     command,

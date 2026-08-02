@@ -324,8 +324,12 @@ class OperationCommandService:
     def _record(self, command: RecordOperationAction) -> OperationCommandResult:
         fingerprint = _fingerprint(command)
         with self._unit_of_work_factory() as unit_of_work:
-            session = _get_session(unit_of_work, command.session_id)
-            existing = unit_of_work.stores.activity_history.action_for_idempotency(
+            history = unit_of_work.stores.activity_history
+            history.lock_action_idempotency(
+                command.session_id,
+                command.idempotency_key.value,
+            )
+            existing = history.action_for_idempotency(
                 command.session_id,
                 command.idempotency_key.value,
             )
@@ -335,15 +339,18 @@ class OperationCommandService:
                         "idempotency key was reused with different intent"
                     )
                 unit_of_work.commit()
-                return OperationCommandResult(session, existing, replayed=True)
+                return OperationCommandResult(
+                    history.get_session(command.session_id),
+                    existing,
+                    replayed=True,
+                )
+            session = _get_session_for_update(unit_of_work, command.session_id)
             if session.status is not OperationSessionStatus.OPEN:
                 raise OperationSessionStateConflict("operation session is not open")
             action = OperationActionRecord(
                 action_id=self._id_factory(),
                 session_id=session.session_id,
-                ordinal=unit_of_work.stores.activity_history.next_action_ordinal(
-                    session.session_id
-                ),
+                ordinal=history.next_action_ordinal(session.session_id),
                 action_type=command.action_type,
                 actor_id=command.actor_id,
                 payload=command.payload,
@@ -351,7 +358,7 @@ class OperationCommandService:
                 idempotency_key=command.idempotency_key.value,
                 intent_fingerprint=fingerprint,
             )
-            unit_of_work.stores.activity_history.add_action(action)
+            history.add_action(action)
             unit_of_work.commit()
             return OperationCommandResult(session, action)
 

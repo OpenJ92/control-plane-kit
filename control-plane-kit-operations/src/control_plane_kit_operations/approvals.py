@@ -281,7 +281,10 @@ class ApprovalCommandService:
         fingerprint = _fingerprint(command)
         with self._unit_of_work_factory() as unit_of_work:
             history = unit_of_work.stores.activity_history
-            session = _session(history, command.session_id)
+            history.lock_action_idempotency(
+                command.session_id,
+                command.idempotency_key.value,
+            )
             replay = history.approval_request_for_idempotency(
                 command.session_id,
                 command.idempotency_key.value,
@@ -290,12 +293,13 @@ class ApprovalCommandService:
                 result = _request_replay(history, replay, fingerprint)
                 unit_of_work.commit()
                 return result
+            session = _session_for_update(history, command.session_id)
+            _require_open(session)
             _require_unused_action_key(
                 history,
                 command.session_id,
                 command.idempotency_key.value,
             )
-            _require_open(session)
             try:
                 plan = history.get_plan(command.plan_id)
             except KeyError as error:
@@ -312,21 +316,6 @@ class ApprovalCommandService:
             requirement = self._policy.requirement_for(plan.plan)
 
             ordinal = history.next_action_ordinal(command.session_id)
-            locked = _session(history, command.session_id)
-            replay = history.approval_request_for_idempotency(
-                command.session_id,
-                command.idempotency_key.value,
-            )
-            if replay is not None:
-                result = _request_replay(history, replay, fingerprint)
-                unit_of_work.commit()
-                return result
-            _require_unused_action_key(
-                history,
-                command.session_id,
-                command.idempotency_key.value,
-            )
-            _require_open(locked)
             requested_at = self._clock()
             request = history.add_approval_request(
                 ApprovalRequestRecord(
@@ -366,7 +355,10 @@ class ApprovalCommandService:
         fingerprint = _fingerprint(command)
         with self._unit_of_work_factory() as unit_of_work:
             history = unit_of_work.stores.activity_history
-            session = _session(history, command.session_id)
+            history.lock_action_idempotency(
+                command.session_id,
+                command.idempotency_key.value,
+            )
             replay = history.approval_request_for_idempotency(
                 command.session_id,
                 command.idempotency_key.value,
@@ -375,12 +367,13 @@ class ApprovalCommandService:
                 result = _request_replay(history, replay, fingerprint)
                 unit_of_work.commit()
                 return result
+            session = _session_for_update(history, command.session_id)
+            _require_open(session)
             _require_unused_action_key(
                 history,
                 command.session_id,
                 command.idempotency_key.value,
             )
-            _require_open(session)
             try:
                 rotation = unit_of_work.stores.gateway_key_rotations.get(
                     command.rotation_id
@@ -405,21 +398,6 @@ class ApprovalCommandService:
             subject = gateway_key_rotation_approval_subject(rotation)
 
             ordinal = history.next_action_ordinal(command.session_id)
-            locked = _session(history, command.session_id)
-            replay = history.approval_request_for_idempotency(
-                command.session_id,
-                command.idempotency_key.value,
-            )
-            if replay is not None:
-                result = _request_replay(history, replay, fingerprint)
-                unit_of_work.commit()
-                return result
-            _require_unused_action_key(
-                history,
-                command.session_id,
-                command.idempotency_key.value,
-            )
-            _require_open(locked)
             current = unit_of_work.stores.gateway_key_rotations.get_for_update(
                 command.rotation_id
             )
@@ -467,27 +445,37 @@ class ApprovalCommandService:
         fingerprint = _fingerprint(command)
         with self._unit_of_work_factory() as unit_of_work:
             history = unit_of_work.stores.activity_history
-            session = _session(history, command.session_id)
+            history.lock_action_idempotency(
+                command.session_id,
+                command.idempotency_key.value,
+            )
+            replay = history.approval_decision_for_idempotency(
+                command.request_id,
+                command.idempotency_key.value,
+            )
+            if replay is not None:
+                try:
+                    request = history.get_approval_request(command.request_id)
+                except KeyError as error:
+                    raise ApprovalTargetNotFound(
+                        "approval request was not found"
+                    ) from error
+                result = _decision_replay(history, request, replay, fingerprint)
+                unit_of_work.commit()
+                return result
+            session = _session_for_update(history, command.session_id)
+            _require_open(session)
             try:
                 request = history.get_approval_request(command.request_id)
             except KeyError as error:
                 raise ApprovalTargetNotFound("approval request was not found") from error
             if request.session_id != command.session_id:
                 raise ApprovalStateConflict("request and decision must share a session")
-            replay = history.approval_decision_for_idempotency(
-                command.request_id,
-                command.idempotency_key.value,
-            )
-            if replay is not None:
-                result = _decision_replay(history, request, replay, fingerprint)
-                unit_of_work.commit()
-                return result
             _require_unused_action_key(
                 history,
                 command.session_id,
                 command.idempotency_key.value,
             )
-            _require_open(session)
             if history.approval_decision_for_request(command.request_id) is not None:
                 raise ApprovalStateConflict("approval request already has a decision")
             if isinstance(request.subject, GatewayKeyRotationApprovalSubject):
@@ -503,23 +491,6 @@ class ApprovalCommandService:
                 raise ApprovalAuthorizationDenied(authority.reason)
 
             ordinal = history.next_action_ordinal(command.session_id)
-            locked = _session(history, command.session_id)
-            replay = history.approval_decision_for_idempotency(
-                command.request_id,
-                command.idempotency_key.value,
-            )
-            if replay is not None:
-                result = _decision_replay(history, request, replay, fingerprint)
-                unit_of_work.commit()
-                return result
-            _require_unused_action_key(
-                history,
-                command.session_id,
-                command.idempotency_key.value,
-            )
-            _require_open(locked)
-            if history.approval_decision_for_request(command.request_id) is not None:
-                raise ApprovalStateConflict("approval request already has a decision")
             decided_at = self._clock()
             decision = history.add_approval_decision(
                 ApprovalDecisionRecord(
@@ -556,9 +527,9 @@ class ApprovalCommandService:
             return ApprovalDecisionResult(request, decision, action)
 
 
-def _session(history: Any, session_id: str) -> OperationSessionRecord:
+def _session_for_update(history: Any, session_id: str) -> OperationSessionRecord:
     try:
-        return history.get_session(session_id)
+        return history.get_session_for_update(session_id)
     except KeyError as error:
         raise ApprovalTargetNotFound("operation session was not found") from error
 

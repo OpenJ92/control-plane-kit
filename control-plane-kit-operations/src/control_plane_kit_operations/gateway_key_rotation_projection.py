@@ -84,7 +84,13 @@ def build_gateway_key_rotation_projection_publication(
             idempotency_key=command.idempotency_key,
         )
 
+    rotation_locator = stores.gateway_key_rotations.get(command.rotation_id)
+    workspace = stores.workspaces.get_for_update(rotation_locator.workspace_id)
     rotation = stores.gateway_key_rotations.get_for_update(command.rotation_id)
+    if rotation.workspace_id != workspace.workspace_id:
+        raise GatewayKeyRotationProjectionConflict(
+            "rotation workspace linkage changed"
+        )
     expected_status = (
         GatewayKeyRotationStatus.KEY_GENERATED
         if phase is GatewayKeyRotationDeploymentPhase.OVERLAP
@@ -107,7 +113,6 @@ def build_gateway_key_rotation_projection_publication(
             raise GatewayKeyRotationProjectionConflict(
                 "old capability grants have not drained"
             )
-    workspace = stores.workspaces.get_for_update(rotation.workspace_id)
     if (
         workspace.current_graph_id != command.expected_authored_graph_id
         or workspace.desired_graph_id != command.expected_authored_graph_id

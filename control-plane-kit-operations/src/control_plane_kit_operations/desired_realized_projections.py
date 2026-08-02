@@ -190,8 +190,20 @@ def publish_desired_realized_projection_in_unit_of_work(
     _required_text(created_at, "created_at")
     _required_text(action_id, "action_id")
     stores = unit_of_work.stores
+    history = stores.activity_history
+    history.lock_action_idempotency(
+        command.session_id,
+        command.idempotency_key.value,
+    )
+    existing = history.action_for_idempotency(
+        command.session_id,
+        command.idempotency_key.value,
+    )
+    fingerprint = _fingerprint(command)
+    if existing is not None:
+        return _replay(stores, existing, fingerprint)
     try:
-        session = stores.activity_history.get_session(command.session_id)
+        session = history.get_session_for_update(command.session_id)
     except KeyError as error:
         raise DesiredRealizedProjectionPublicationNotFound(
             "operation session was not found"
@@ -200,13 +212,6 @@ def publish_desired_realized_projection_in_unit_of_work(
         raise DesiredRealizedProjectionPublicationConflict(
             "operation session and projection must belong to one workspace"
         )
-    fingerprint = _fingerprint(command)
-    existing = stores.activity_history.action_for_idempotency(
-        command.session_id,
-        command.idempotency_key.value,
-    )
-    if existing is not None:
-        return _replay(stores, existing, fingerprint)
     if session.status is not OperationSessionStatus.OPEN:
         raise DesiredRealizedProjectionPublicationConflict(
             "operation session is not open"
@@ -276,6 +281,31 @@ def publish_desired_realized_projection_in_unit_of_work(
         projection_digest=projection.projection_digest,
         action=action,
     )
+
+
+def prepare_desired_realized_projection_publication(
+    unit_of_work: Any,
+    session_id: str,
+    idempotency_key: str,
+) -> OperationActionRecord | None:
+    """Serialize publication identity and fence new work on the owning session."""
+
+    history = unit_of_work.stores.activity_history
+    history.lock_action_idempotency(session_id, idempotency_key)
+    existing = history.action_for_idempotency(session_id, idempotency_key)
+    if existing is not None:
+        return existing
+    try:
+        session = history.get_session_for_update(session_id)
+    except KeyError as error:
+        raise DesiredRealizedProjectionPublicationNotFound(
+            "operation session was not found"
+        ) from error
+    if session.status is not OperationSessionStatus.OPEN:
+        raise DesiredRealizedProjectionPublicationConflict(
+            "operation session is not open"
+        )
+    return None
 
 
 def _replay(
@@ -350,4 +380,5 @@ __all__ = [
     "DesiredRealizedProjectionPublicationResult",
     "PublishDesiredRealizedProjection",
     "publish_desired_realized_projection_in_unit_of_work",
+    "prepare_desired_realized_projection_publication",
 ]
