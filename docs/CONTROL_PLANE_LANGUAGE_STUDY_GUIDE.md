@@ -216,14 +216,17 @@ Private OCI image pull
 
 Gateway delegation-key rotation:
 
-  operator has delegation-key:generate
-    -> operations prepares a reference-only provider grant
-      -> secrets provider generates and retains private key B
-        -> operations atomically admits B reference + public identity
-          -> one authored graph binding
-            -> realized verifier A
-              -> realized verifier A+B
-                -> realized verifier B
+  operator has delegation-key:rotate
+    -> operations derives GatewayKeyRotationApprovalSubject
+      -> reviewer has delegation-key:rotate-approve
+        -> immutable review digest is approved
+          -> operations prepares a reference-only provider grant
+            -> secrets provider generates and retains private key B
+              -> operations atomically admits B reference + public identity
+                -> one authored graph binding
+                  -> realized verifier A
+                    -> realized verifier A+B
+                      -> realized verifier B
 ```
 
 Then draw the durable operations program beside the realized projections:
@@ -231,6 +234,7 @@ Then draw the durable operations program beside the realized projections:
 ```text
 GatewayKeyRotation(status, version)
   x GatewayKeyRotationTransition(transition_id, from, to)
+  x ApprovalSubject(kind, review_digest)
   x overlap DeploymentCheckpoint
   x drain_deadline
   x retirement DeploymentCheckpoint
@@ -241,6 +245,11 @@ insert in the same transaction. Draw provider, Docker, gateway, and health IO
 outside that transaction. Replace any imagined `sleep()` with a durable deadline
 and an injected trusted clock. An uncertain child effect points to `blocked`,
 not back to the effect and not forward to success.
+
+Keep the three authorities visually separate: requesting rotation, reviewing
+the rotation subject, and executing the accepted deployment are not equivalent
+permissions. The reviewer sees bounded rotation intent, never a secret
+reference, provider version, private key, or generated verifier material.
 
 For each example, mark:
 

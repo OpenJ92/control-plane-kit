@@ -937,7 +937,8 @@ requested -> awaiting-approval -> approved -> key-generated
 owned by:
   Operations owns the aggregate, transition law, Postgres store, approval and
   child-deployment identities, and public read projection. Core owns only the
-  focused `delegation-key:rotate` permission shared by public contracts.
+  pure rotation approval subject plus the focused `delegation-key:rotate` and
+  `delegation-key:rotate-approve` permissions shared by public contracts.
 
 durable:
   Yes. Rotation state, version, operator correlation, deterministic child
@@ -955,8 +956,12 @@ interpreted by:
   provider, Docker, gateway, HTTP, filesystem, or other external IO.
 
 laws:
-  Every advancement requires `delegation-key:rotate`, an exact expected status
-  and version, and a unique transition id. Exact transition replay is
+  Request and advancement require `delegation-key:rotate`; accepting or
+  rejecting the immutable rotation review subject requires the distinct
+  `delegation-key:rotate-approve` scope. The approval subject is derived from
+  persisted rotation intent and contains no secret reference or private
+  material. Every advancement also requires an exact expected status and
+  version and a unique transition id. Exact transition replay is
   idempotent; semantic reuse conflicts. The aggregate CAS and transition record
   share one UnitOfWork transaction. Child operation identities are persisted
   before their effects begin. Accepted overlap and retirement evidence must
@@ -1186,15 +1191,23 @@ laws:
   Session history is append-only evidence. A later failure does not erase
   earlier operator intent.
 
-### ApprovalRequest
+### ApprovalSubject / ApprovalRequest
 
 meaning:
-  Durable suspension point asking an authorized reviewer to accept or reject a
-  compiled plan.
+  A closed, immutable description of the exact operational intent presented to
+  a reviewer, plus the durable suspension point asking that reviewer to accept
+  or reject it:
+
+```text
+ApprovalSubject
+  = ActivityPlanApprovalSubject
+  | GatewayKeyRotationApprovalSubject
+```
 
 owned by:
-  `control-plane-kit-operations` for durable behavior.
-  `control-plane-kit-core` for pure command and route contract names.
+  `control-plane-kit-core` owns the pure closed subject language and review
+  digest. `control-plane-kit-operations` owns durable requests, decisions,
+  authorization, stores, and read models.
 
 durable:
   Yes.
@@ -1207,8 +1220,14 @@ interpreted by:
   routes.
 
 laws:
-  Admission rejects missing, rejected, stale, wrong-plan, or insufficient-scope
-  approval. Execution must not bypass approval.
+  Subject kind, bounded subject descriptor, and deterministic review digest are
+  persisted together. Plan approvals retain their existing public shape.
+  Rotation approvals expose only secret-free rotation intent. Request,
+  decision, and execution permissions are distinct. Admission rejects missing,
+  rejected, stale, wrong-plan, or insufficient-scope plan approval. Rotation
+  advancement similarly rejects missing, rejected, stale, wrong-subject, or
+  insufficient-scope evidence. Neither execution nor lifecycle advancement may
+  bypass approval.
 
 ### AdmittedRun
 

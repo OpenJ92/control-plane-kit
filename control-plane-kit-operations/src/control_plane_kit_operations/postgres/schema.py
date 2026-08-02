@@ -8,6 +8,7 @@ from typing import Any, Protocol
 from jinja2 import Environment, StrictUndefined
 from psycopg.types.json import Jsonb
 
+from control_plane_kit_core.approval_subjects import ApprovalSubjectKind
 from control_plane_kit_core.operations.commands import OperatorCommandKind
 from control_plane_kit_core.gateway_delegation import (
     GatewayProbeAccessPath,
@@ -848,7 +849,11 @@ CREATE TABLE IF NOT EXISTS cpk_activity_plans (
 CREATE TABLE IF NOT EXISTS cpk_approval_requests (
   request_id text PRIMARY KEY,
   session_id text NOT NULL REFERENCES cpk_operation_sessions(session_id),
-  plan_id text NOT NULL REFERENCES cpk_activity_plans(plan_id),
+  plan_id text REFERENCES cpk_activity_plans(plan_id),
+  rotation_id text,
+  subject_kind text NOT NULL,
+  subject_payload jsonb NOT NULL,
+  review_digest text NOT NULL,
   requested_by text NOT NULL,
   requested_at text NOT NULL,
   required_scope text NOT NULL,
@@ -860,12 +865,102 @@ CREATE TABLE IF NOT EXISTS cpk_approval_requests (
   CONSTRAINT cpk_approval_requests_scope_check
     CHECK (required_scope IN ({{ policy_scopes | sql_values }})),
   CONSTRAINT cpk_approval_requests_risk_check
-    CHECK (max_risk IN ({{ risk_levels | sql_values }}))
+    CHECK (max_risk IN ({{ risk_levels | sql_values }})),
+  CONSTRAINT cpk_approval_requests_subject_kind_check
+    CHECK (subject_kind IN ({{ approval_subject_kinds | sql_values }})),
+  CONSTRAINT cpk_approval_requests_review_digest_check
+    CHECK (review_digest ~ '^[0-9a-f]{64}$'),
+  CONSTRAINT cpk_approval_requests_subject_identity_check
+    CHECK (
+      (subject_kind = 'activity-plan' AND plan_id IS NOT NULL AND rotation_id IS NULL)
+      OR
+      (subject_kind = 'gateway-key-rotation' AND plan_id IS NULL AND rotation_id IS NOT NULL)
+    )
 );
+
+ALTER TABLE cpk_approval_requests
+  ADD COLUMN IF NOT EXISTS rotation_id text;
+ALTER TABLE cpk_approval_requests
+  ADD COLUMN IF NOT EXISTS subject_kind text;
+ALTER TABLE cpk_approval_requests
+  ADD COLUMN IF NOT EXISTS subject_payload jsonb;
+ALTER TABLE cpk_approval_requests
+  ADD COLUMN IF NOT EXISTS review_digest text;
+
+UPDATE cpk_approval_requests
+SET subject_kind = 'activity-plan',
+    subject_payload = jsonb_build_object(
+      'kind', 'activity-plan',
+      'plan_id', plan_id
+    ),
+    review_digest = encode(
+      sha256(convert_to('activity-plan:' || plan_id, 'UTF8')),
+      'hex'
+    )
+WHERE subject_kind IS NULL;
+
+ALTER TABLE cpk_approval_requests
+  ALTER COLUMN plan_id DROP NOT NULL;
+ALTER TABLE cpk_approval_requests
+  ALTER COLUMN subject_kind SET NOT NULL;
+ALTER TABLE cpk_approval_requests
+  ALTER COLUMN subject_payload SET NOT NULL;
+ALTER TABLE cpk_approval_requests
+  ALTER COLUMN review_digest SET NOT NULL;
+
+DO $$
+BEGIN
+  IF NOT EXISTS (
+    SELECT 1 FROM pg_constraint
+    WHERE conname = 'cpk_approval_requests_rotation_fk'
+      AND conrelid = 'cpk_approval_requests'::regclass
+  ) THEN
+    ALTER TABLE cpk_approval_requests
+      ADD CONSTRAINT cpk_approval_requests_rotation_fk
+      FOREIGN KEY (rotation_id)
+      REFERENCES cpk_gateway_key_rotations(rotation_id);
+  END IF;
+  IF NOT EXISTS (
+    SELECT 1 FROM pg_constraint
+    WHERE conname = 'cpk_approval_requests_subject_kind_check'
+      AND conrelid = 'cpk_approval_requests'::regclass
+  ) THEN
+    ALTER TABLE cpk_approval_requests
+      ADD CONSTRAINT cpk_approval_requests_subject_kind_check
+      CHECK (subject_kind IN ({{ approval_subject_kinds | sql_values }}));
+  END IF;
+  IF NOT EXISTS (
+    SELECT 1 FROM pg_constraint
+    WHERE conname = 'cpk_approval_requests_review_digest_check'
+      AND conrelid = 'cpk_approval_requests'::regclass
+  ) THEN
+    ALTER TABLE cpk_approval_requests
+      ADD CONSTRAINT cpk_approval_requests_review_digest_check
+      CHECK (review_digest ~ '^[0-9a-f]{64}$');
+  END IF;
+  IF NOT EXISTS (
+    SELECT 1 FROM pg_constraint
+    WHERE conname = 'cpk_approval_requests_subject_identity_check'
+      AND conrelid = 'cpk_approval_requests'::regclass
+  ) THEN
+    ALTER TABLE cpk_approval_requests
+      ADD CONSTRAINT cpk_approval_requests_subject_identity_check
+      CHECK (
+        (subject_kind = 'activity-plan' AND plan_id IS NOT NULL AND rotation_id IS NULL)
+        OR
+        (subject_kind = 'gateway-key-rotation' AND plan_id IS NULL AND rotation_id IS NOT NULL)
+      );
+  END IF;
+END
+$$;
 
 CREATE UNIQUE INDEX IF NOT EXISTS cpk_approval_requests_idempotency
   ON cpk_approval_requests (session_id, idempotency_key)
   WHERE idempotency_key IS NOT NULL;
+
+CREATE UNIQUE INDEX IF NOT EXISTS cpk_approval_requests_rotation_identity
+  ON cpk_approval_requests (rotation_id)
+  WHERE rotation_id IS NOT NULL;
 
 CREATE TABLE IF NOT EXISTS cpk_approval_decisions (
   decision_id text PRIMARY KEY,
@@ -1189,6 +1284,7 @@ POSTGRES_SCHEMA = _SQL_ENVIRONMENT.from_string(_POSTGRES_SCHEMA_TEMPLATE).render
     activity_event_step_kinds=_ACTIVITY_EVENT_KINDS,
     activity_run_statuses=tuple(ActivityRunStatus),
     approval_decision_kinds=tuple(_ApprovalDecisionKind),
+    approval_subject_kinds=tuple(ApprovalSubjectKind),
     execution_request_statuses=tuple(ExecutionRequestStatus),
     operation_action_kinds=tuple(OperatorCommandKind) + tuple(LifecycleOperationKind),
     operation_session_statuses=tuple(_OperationsSessionStatus),
@@ -1239,8 +1335,44 @@ def install_schema(connection: PostgresConnection) -> None:
     """Install the current operations schema on a caller-managed transaction."""
 
     connection.execute(POSTGRES_SCHEMA)
+    _upgrade_approval_scope_constraints(connection)
     _backfill_graph_lineage(connection)
     connection.execute(_GRAPH_LINEAGE_CONSTRAINTS)
+
+
+def _upgrade_approval_scope_constraints(connection: PostgresConnection) -> None:
+    """Evolve closed approval scopes only when an installed check is stale."""
+
+    required = PolicyScope.DELEGATION_KEY_ROTATE_APPROVE.value
+    allowed = _sql_values(tuple(PolicyScope))
+    for table, column, constraint in (
+        (
+            "cpk_approval_requests",
+            "required_scope",
+            "cpk_approval_requests_scope_check",
+        ),
+        (
+            "cpk_approval_decisions",
+            "scope",
+            "cpk_approval_decisions_scope_check",
+        ),
+    ):
+        row = connection.execute(
+            """
+            SELECT pg_get_constraintdef(oid)
+            FROM pg_constraint
+            WHERE conname = %s
+              AND conrelid = %s::regclass
+            """,
+            (constraint, table),
+        ).fetchone()
+        if row is None or required in row[0]:
+            continue
+        connection.execute(f"ALTER TABLE {table} DROP CONSTRAINT {constraint}")
+        connection.execute(
+            f"ALTER TABLE {table} ADD CONSTRAINT {constraint} "
+            f"CHECK ({column} IN ({allowed}))"
+        )
 
 
 def _backfill_graph_lineage(connection: PostgresConnection) -> None:

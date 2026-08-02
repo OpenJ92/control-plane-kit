@@ -6943,3 +6943,40 @@ compileall and package-import checks. Concurrency acceptance proves one
 nonterminal rotation wins per gateway authority binding. Restart acceptance
 proves prepared child identities survive without inferred replay. #1270 next
 composes provider and deployment effects around this durable state.
+
+## #1285 Closed Approval Subjects For Gateway-Key Rotation
+
+The plan-only approval row has become one closed approval-subject boundary
+without changing the existing plan approval API:
+
+```text
+ApprovalSubject
+  = ActivityPlanApprovalSubject
+  | GatewayKeyRotationApprovalSubject
+```
+
+Operations derives a rotation subject from the locked durable
+`GatewayKeyRotation`; callers cannot provide the reviewed fields. The subject
+captures workspace, gateway, purpose, issuer, old key identity, bounded grant
+policy, and the immutable rotation-intent digest. It intentionally excludes the
+new `SecretReference`, provider version identity, generated public key, and all
+private material. Subject descriptor and deterministic review digest are stored
+with the approval request so later state advancement can verify the exact
+request and decision rather than trust caller-supplied ids.
+
+Rotation request authority remains `delegation-key:rotate`. Review requires the
+new distinct `delegation-key:rotate-approve` scope; plan execution, rotation
+request, and ordinary plan-review scopes do not imply it. The approval service
+uses one UnitOfWork transaction and performs no external IO. Postgres migration
+backfills old plan requests deterministically, preserves the old plan read
+shape, enforces exactly one plan or rotation subject identity, and permits only
+one approval request per rotation.
+
+The implementation also closes a failure-boundary detail: missing persisted
+approval evidence becomes a bounded `GatewayKeyRotationConflict`, not a raw
+store exception. Constraint upgrades are explicit, guarded, table-scoped, and
+idempotent. Focused and package validation prove idempotent request replay,
+semantic idempotency conflict, distinct request/review scopes, exact-subject
+linking, rejected-decision refusal, legacy-row migration, and schema reinstall
+stability. #1286 next composes provider-owned key generation only after this
+approved subject has been durably accepted.

@@ -9,6 +9,9 @@ import json
 import re
 from typing import Any, Callable
 
+from control_plane_kit_core.approval_subjects import (
+    GatewayKeyRotationApprovalSubject,
+)
 from control_plane_kit_core.delegation_keys import DelegationKeyPurpose
 from control_plane_kit_core.policies import PolicyScope
 from control_plane_kit_core.secrets import SecretReference
@@ -436,6 +439,7 @@ class GatewayKeyRotationService:
             if (current.status is not command.expected_status
                     or current.version != command.expected_version):
                 raise GatewayKeyRotationConflict("rotation expected state is stale")
+            _validate_approval_evidence(uow, current, command)
             now = self._clock()
             if type(now) is not int or now < 0:
                 raise GatewayKeyRotationError("trusted clock returned malformed time")
@@ -487,6 +491,93 @@ def _candidate(command: RequestGatewayKeyRotation) -> GatewayKeyRotation:
         clock_skew_seconds=command.clock_skew_seconds,
         correlation_id=command.correlation_id, requested_by=command.requested_by,
         requested_at=command.requested_at, intent_fingerprint=fingerprint)
+
+
+def gateway_key_rotation_approval_subject(
+    rotation: GatewayKeyRotation,
+) -> GatewayKeyRotationApprovalSubject:
+    """Project one rotation into its immutable secret-free review meaning."""
+
+    if not isinstance(rotation, GatewayKeyRotation):
+        raise TypeError("rotation approval subject requires GatewayKeyRotation")
+    return GatewayKeyRotationApprovalSubject(
+        rotation_id=rotation.rotation_id,
+        workspace_id=rotation.workspace_id,
+        gateway_node_id=rotation.gateway_node_id,
+        purpose=rotation.purpose,
+        issuer=rotation.issuer,
+        old_key_id=rotation.old_key_id,
+        maximum_grant_lifetime_seconds=rotation.maximum_grant_lifetime_seconds,
+        clock_skew_seconds=rotation.clock_skew_seconds,
+        rotation_intent_digest=rotation.intent_fingerprint,
+    )
+
+
+def _validate_approval_evidence(uow, current, command) -> None:
+    target = command.target_status
+    if target is GatewayKeyRotationStatus.AWAITING_APPROVAL:
+        request_id = command.approval_request_id
+        if request_id is None:
+            return
+        try:
+            request = uow.stores.activity_history.get_approval_request(request_id)
+        except KeyError as error:
+            raise GatewayKeyRotationConflict(
+                "rotation approval request was not found"
+            ) from error
+        if request.subject != gateway_key_rotation_approval_subject(current):
+            raise GatewayKeyRotationConflict(
+                "rotation approval request reviews different intent"
+            )
+        if request.required_scope is not PolicyScope.DELEGATION_KEY_ROTATE_APPROVE:
+            raise GatewayKeyRotationConflict(
+                "rotation approval request has insufficient review authority"
+            )
+        if (
+            uow.stores.activity_history.approval_decision_for_request(request_id)
+            is not None
+        ):
+            raise GatewayKeyRotationConflict(
+                "rotation approval request was already decided"
+            )
+        return
+    if target not in {
+        GatewayKeyRotationStatus.APPROVED,
+        GatewayKeyRotationStatus.REJECTED,
+    }:
+        return
+    if current.approval_request_id is None:
+        raise GatewayKeyRotationConflict("rotation approval request is missing")
+    try:
+        request = uow.stores.activity_history.get_approval_request(
+            current.approval_request_id
+        )
+    except KeyError as error:
+        raise GatewayKeyRotationConflict(
+            "rotation approval request was not found"
+        ) from error
+    if request.subject != gateway_key_rotation_approval_subject(current):
+        raise GatewayKeyRotationConflict(
+            "rotation approval request reviews different intent"
+        )
+    decision = uow.stores.activity_history.approval_decision_for_request(
+        request.request_id
+    )
+    if decision is None or decision.decision_id != command.approval_decision_id:
+        raise GatewayKeyRotationConflict("rotation approval decision is missing")
+    expected = (
+        "approved"
+        if target is GatewayKeyRotationStatus.APPROVED
+        else "rejected"
+    )
+    if decision.decision.value != expected:
+        raise GatewayKeyRotationConflict(
+            "rotation approval decision does not authorize target state"
+        )
+    if decision.scope is not PolicyScope.DELEGATION_KEY_ROTATE_APPROVE:
+        raise GatewayKeyRotationConflict(
+            "rotation approval decision has insufficient authority"
+        )
 
 
 def _transition(current: GatewayKeyRotation, command: AdvanceGatewayKeyRotation,
@@ -661,4 +752,5 @@ __all__ = [
     "GatewayKeyRotationStatus",
     "GatewayKeyRotationTransition",
     "RequestGatewayKeyRotation",
+    "gateway_key_rotation_approval_subject",
 ]

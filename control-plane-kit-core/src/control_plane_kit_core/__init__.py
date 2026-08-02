@@ -134,6 +134,13 @@ from control_plane_kit_core.delegation_keys import (
     DelegationKeyPurpose,
     DelegationPublicKey,
 )
+from control_plane_kit_core.approval_subjects import (
+    ActivityPlanApprovalSubject,
+    ApprovalSubject,
+    ApprovalSubjectKind,
+    GatewayKeyRotationApprovalSubject,
+    approval_subject_from_descriptor,
+)
 from control_plane_kit_core.delegation_authority import (
     DelegationAuthorityBinding,
     DelegationAuthorityError,
@@ -234,6 +241,7 @@ from control_plane_kit_core.runtime_effects import (
 )
 
 __all__ = [
+    "ActivityPlanApprovalSubject",
     "ActivityHistoryPolicy",
     "ActivityEventContract",
     "ActivityEventKind",
@@ -247,6 +255,8 @@ __all__ = [
     "AdapterParityContract",
     "AdapterProjectionBinding",
     "ApprovalPolicy",
+    "ApprovalSubject",
+    "ApprovalSubjectKind",
     "CommandIdempotencyPolicy",
     "CommandPayloadPolicy",
     "ContainerServerProduct",
@@ -299,6 +309,7 @@ __all__ = [
     "FailureCategory",
     "GatewayDelegationContractError",
     "GatewayHealthAccess",
+    "GatewayKeyRotationApprovalSubject",
     "GatewayHealthDisclosurePolicy",
     "GatewayProbeAccessPath",
     "GatewayHttpTarget",
@@ -429,6 +440,7 @@ __all__ = [
     "VerificationCommandKind",
     "VerificationResultKind",
     "activity_event_scope",
+    "approval_subject_from_descriptor",
     "canonical_cpk_server_entrypoint_handoff",
     "canonical_cpk_server_material_handoff",
     "canonical_cpk_server_publication_handoff",

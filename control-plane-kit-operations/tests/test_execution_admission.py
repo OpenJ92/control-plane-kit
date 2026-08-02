@@ -7,6 +7,7 @@ import unittest
 
 import psycopg
 
+from control_plane_kit_core.approval_subjects import ActivityPlanApprovalSubject
 from control_plane_kit_core.algebra import (
     BlockSockets,
     DeploymentTopology,
@@ -665,7 +666,7 @@ class ExecutionAdmissionTests(unittest.TestCase):
                 ApprovalRequestRecord(
                     request_id=approval_request_id,
                     session_id="session-a",
-                    plan_id=plan_id,
+                    subject=ActivityPlanApprovalSubject(plan_id),
                     requested_by="operator-a",
                     requested_at="2026-07-22T12:02:00Z",
                     required_scope=required_scope or requirement.required_scope,

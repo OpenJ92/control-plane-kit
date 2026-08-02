@@ -15,6 +15,7 @@ from .approvals import (
     ApprovalWorkflowError,
     DecideApproval,
     RequestApproval,
+    RequestGatewayKeyRotationApproval,
 )
 from .admission import (
     ExecutionAdmissionCommandService,
@@ -582,6 +583,7 @@ __all__ = [
     "ReadModelError",
     "RetryIdentity",
     "RequestApproval",
+    "RequestGatewayKeyRotationApproval",
     "RequestActivityPlan",
     "RequestPlanExecution",
     "RequestGatewayProbe",

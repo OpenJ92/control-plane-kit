@@ -9,6 +9,7 @@ from psycopg.errors import CheckViolation
 from psycopg.types.json import Jsonb
 
 from control_plane_kit_core.topology import DEFAULT_GRAPH_CODEC, DeploymentGraph
+from control_plane_kit_core.policies import PolicyScope
 from control_plane_kit_operations.postgres import POSTGRES_SCHEMA, install_schema
 
 
@@ -71,6 +72,98 @@ class PostgresSchemaFoundationTests(unittest.TestCase):
                 ("recovery_decision_recorded", None),
             ],
         )
+
+    def test_install_backfills_legacy_plan_approval_as_closed_subject(self) -> None:
+        install_schema(self.connection)
+        self._seed_minimal_execution_truth()
+        self.connection.execute(
+            "ALTER TABLE cpk_approval_requests DROP COLUMN rotation_id CASCADE"
+        )
+        self.connection.execute(
+            "ALTER TABLE cpk_approval_requests DROP COLUMN subject_kind CASCADE"
+        )
+        self.connection.execute(
+            "ALTER TABLE cpk_approval_requests DROP COLUMN subject_payload CASCADE"
+        )
+        self.connection.execute(
+            "ALTER TABLE cpk_approval_requests DROP COLUMN review_digest CASCADE"
+        )
+        self.connection.execute(
+            "ALTER TABLE cpk_approval_requests ALTER COLUMN plan_id SET NOT NULL"
+        )
+
+        install_schema(self.connection)
+
+        row = self.connection.execute(
+            """
+            SELECT plan_id, rotation_id, subject_kind, subject_payload,
+                   review_digest
+            FROM cpk_approval_requests
+            WHERE request_id = 'approval-request-a'
+            """
+        ).fetchone()
+        self.assertEqual(row[0:3], ("plan-a", None, "activity-plan"))
+        self.assertEqual(
+            row[3],
+            {"kind": "activity-plan", "plan_id": "plan-a"},
+        )
+        self.assertEqual(len(row[4]), 64)
+
+    def test_install_expands_stale_approval_scope_checks_once(self) -> None:
+        install_schema(self.connection)
+        self._seed_minimal_execution_truth()
+        old_values = ", ".join(
+            f"'{scope.value}'"
+            for scope in PolicyScope
+            if scope is not PolicyScope.DELEGATION_KEY_ROTATE_APPROVE
+        )
+        for table, column, constraint in (
+            (
+                "cpk_approval_requests",
+                "required_scope",
+                "cpk_approval_requests_scope_check",
+            ),
+            (
+                "cpk_approval_decisions",
+                "scope",
+                "cpk_approval_decisions_scope_check",
+            ),
+        ):
+            self.connection.execute(
+                f"ALTER TABLE {table} DROP CONSTRAINT {constraint}"
+            )
+            self.connection.execute(
+                f"ALTER TABLE {table} ADD CONSTRAINT {constraint} "
+                f"CHECK ({column} IN ({old_values}))"
+            )
+
+        install_schema(self.connection)
+        after_upgrade = self._constraint_identities()
+
+        definitions = " ".join(
+            row[0]
+            for row in self.connection.execute(
+                """
+                SELECT pg_get_constraintdef(oid)
+                FROM pg_constraint
+                WHERE conname IN (
+                  'cpk_approval_requests_scope_check',
+                  'cpk_approval_decisions_scope_check'
+                )
+                ORDER BY conname
+                """
+            ).fetchall()
+        )
+        self.assertIn(PolicyScope.DELEGATION_KEY_ROTATE_APPROVE.value, definitions)
+        self.assertEqual(
+            self.connection.execute(
+                "SELECT count(*) FROM cpk_approval_requests"
+            ).fetchone(),
+            (1,),
+        )
+
+        install_schema(self.connection)
+        self.assertEqual(self._constraint_identities(), after_upgrade)
 
     def test_cloudflare_owned_ingress_resources_are_epoch_history_records(
         self,
@@ -176,9 +269,13 @@ class PostgresSchemaFoundationTests(unittest.TestCase):
             self.connection.execute(
                 """
                 INSERT INTO cpk_approval_requests
-                  (request_id, session_id, plan_id, requested_by, requested_at,
+                  (request_id, session_id, plan_id, subject_kind, subject_payload,
+                   review_digest, requested_by, requested_at,
                    required_scope, max_risk, destructive)
-                VALUES ('bad-approval-scope', 'session-a', 'plan-a', 'operator',
+                VALUES ('bad-approval-scope', 'session-a', 'plan-a', 'activity-plan',
+                        '{"kind":"activity-plan","plan_id":"plan-a"}'::jsonb,
+                        encode(sha256(convert_to('activity-plan:plan-a', 'UTF8')), 'hex'),
+                        'operator',
                         'approval-request-at', 'plan:invented', 'low', false)
                 """
             )
@@ -186,9 +283,13 @@ class PostgresSchemaFoundationTests(unittest.TestCase):
             self.connection.execute(
                 """
                 INSERT INTO cpk_approval_requests
-                  (request_id, session_id, plan_id, requested_by, requested_at,
+                  (request_id, session_id, plan_id, subject_kind, subject_payload,
+                   review_digest, requested_by, requested_at,
                    required_scope, max_risk, destructive)
-                VALUES ('bad-approval-risk', 'session-a', 'plan-a', 'operator',
+                VALUES ('bad-approval-risk', 'session-a', 'plan-a', 'activity-plan',
+                        '{"kind":"activity-plan","plan_id":"plan-a"}'::jsonb,
+                        encode(sha256(convert_to('activity-plan:plan-a', 'UTF8')), 'hex'),
+                        'operator',
                         'approval-request-at', 'plan:approve', 'invented', false)
                 """
             )
@@ -256,9 +357,13 @@ class PostgresSchemaFoundationTests(unittest.TestCase):
             VALUES ('plan-a', 'session-a', 'graph-a', 'graph-a', 'planned',
                     'plan-at', '{}'::jsonb);
             INSERT INTO cpk_approval_requests
-              (request_id, session_id, plan_id, requested_by, requested_at,
+              (request_id, session_id, plan_id, subject_kind, subject_payload,
+               review_digest, requested_by, requested_at,
                required_scope, max_risk, destructive)
-            VALUES ('approval-request-a', 'session-a', 'plan-a', 'operator',
+            VALUES ('approval-request-a', 'session-a', 'plan-a', 'activity-plan',
+                    '{"kind":"activity-plan","plan_id":"plan-a"}'::jsonb,
+                    encode(sha256(convert_to('activity-plan:plan-a', 'UTF8')), 'hex'),
+                    'operator',
                     'approval-request-at', 'plan:approve', 'low', false);
             INSERT INTO cpk_approval_decisions
               (decision_id, request_id, actor_id, decision, scope, decided_at)

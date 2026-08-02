@@ -6,6 +6,7 @@ from datetime import datetime, timezone
 
 import psycopg
 
+from control_plane_kit_core.approval_subjects import ActivityPlanApprovalSubject
 from control_plane_kit_core.algebra import (
     BlockSockets,
     DeploymentTopology,
@@ -377,7 +378,7 @@ class InstanceReadServiceTests(unittest.TestCase):
                 ApprovalRequestRecord(
                     request_id="approval-a",
                     session_id="session-a",
-                    plan_id="plan-a",
+                    subject=ActivityPlanApprovalSubject("plan-a"),
                     requested_by="operator-a",
                     requested_at="2026-07-22T11:03:00Z",
                     required_scope=PolicyScope.PLAN_APPROVE,
@@ -459,7 +460,7 @@ class InstanceReadServiceTests(unittest.TestCase):
                 ApprovalRequestRecord(
                     request_id="approval-public-ingress",
                     session_id="session-public-ingress",
-                    plan_id="plan-public-ingress",
+                    subject=ActivityPlanApprovalSubject("plan-public-ingress"),
                     requested_by="operator-a",
                     requested_at="2026-07-22T11:03:00Z",
                     required_scope=PolicyScope.PLAN_APPROVE,
