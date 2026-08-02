@@ -416,6 +416,158 @@ class SecretCustodyReceipt:
         }
 
 
+@dataclass(frozen=True)
+class SecretVersionRevocationGrant:
+    """Reference-only authority to revoke one exact provider secret version."""
+
+    revocation_id: str
+    workspace_id: str
+    provider_registration_id: str
+    endpoint_reference: SecretProviderEndpointReference
+    credential_reference: CredentialReference
+    reference: SecretReference
+    version_id: str
+    version_number: int
+    actor_subject: str
+    correlation_id: str
+    revocation_fingerprint: str
+    operation_id: str | None = None
+    session_id: str | None = None
+    run_id: str | None = None
+    activity_id: str | None = None
+    effect_id: str | None = None
+
+    def __post_init__(self) -> None:
+        for value, label in (
+            (self.revocation_id, "revocation_id"),
+            (self.workspace_id, "workspace_id"),
+            (self.provider_registration_id, "provider_registration_id"),
+            (self.version_id, "version_id"),
+            (self.actor_subject, "actor_subject"),
+            (self.correlation_id, "correlation_id"),
+        ):
+            _validate_grant_identifier(value, label)
+        if not isinstance(
+            self.endpoint_reference,
+            SecretProviderEndpointReference,
+        ):
+            raise SecretProviderContractError(
+                "secret version revocation endpoint reference is malformed"
+            )
+        if not isinstance(self.credential_reference, SecretReference):
+            raise SecretProviderContractError(
+                "secret version revocation credential reference is malformed"
+            )
+        if not isinstance(self.reference, SecretReference):
+            raise SecretProviderContractError(
+                "secret version revocation reference is malformed"
+            )
+        if type(self.version_number) is not int or self.version_number < 1:
+            raise SecretProviderContractError(
+                "secret version revocation version number is malformed"
+            )
+        if (
+            not isinstance(self.revocation_fingerprint, str)
+            or not _SHA256.fullmatch(self.revocation_fingerprint)
+        ):
+            raise SecretProviderContractError(
+                "secret version revocation fingerprint is malformed"
+            )
+        for value, label in (
+            (self.operation_id, "operation_id"),
+            (self.session_id, "session_id"),
+            (self.run_id, "run_id"),
+            (self.activity_id, "activity_id"),
+            (self.effect_id, "effect_id"),
+        ):
+            if value is not None:
+                _validate_grant_identifier(value, label)
+
+    def permits(
+        self,
+        reference: SecretReference,
+        version_id: str,
+        version_number: int,
+    ) -> bool:
+        return (
+            self.reference == reference
+            and self.version_id == version_id
+            and self.version_number == version_number
+        )
+
+    def descriptor(self) -> dict[str, object]:
+        return {
+            "revocation_id": self.revocation_id,
+            "workspace_id": self.workspace_id,
+            "provider_registration_id": self.provider_registration_id,
+            "endpoint_reference": self.endpoint_reference.reference_id,
+            "credential_reference": self.credential_reference.reference_id,
+            "reference_id": self.reference.reference_id,
+            "version_id": self.version_id,
+            "version_number": self.version_number,
+            "actor_subject": self.actor_subject,
+            "correlation_id": self.correlation_id,
+            "revocation_fingerprint": self.revocation_fingerprint,
+            "operation_id": self.operation_id,
+            "session_id": self.session_id,
+            "run_id": self.run_id,
+            "activity_id": self.activity_id,
+            "effect_id": self.effect_id,
+        }
+
+
+@dataclass(frozen=True)
+class SecretVersionRevocationReceipt:
+    """Secret-free identity returned after exact provider-version revocation."""
+
+    revocation_id: str
+    provider_registration_id: str
+    reference: SecretReference
+    version_id: str
+    version_number: int
+    status: SecretCustodyStatus = SecretCustodyStatus.REVOKED
+
+    def __post_init__(self) -> None:
+        for value, label in (
+            (self.revocation_id, "revocation_id"),
+            (self.provider_registration_id, "provider_registration_id"),
+            (self.version_id, "version_id"),
+        ):
+            _validate_grant_identifier(value, label)
+        if not isinstance(self.reference, SecretReference):
+            raise SecretProviderContractError(
+                "secret version revocation receipt reference is malformed"
+            )
+        if type(self.version_number) is not int or self.version_number < 1:
+            raise SecretProviderContractError(
+                "secret version revocation receipt version number is malformed"
+            )
+        if self.status is not SecretCustodyStatus.REVOKED:
+            raise SecretProviderContractError(
+                "secret version revocation receipt status must be revoked"
+            )
+
+    def matches(self, grant: SecretVersionRevocationGrant) -> bool:
+        return (
+            isinstance(grant, SecretVersionRevocationGrant)
+            and self.revocation_id == grant.revocation_id
+            and self.provider_registration_id == grant.provider_registration_id
+            and self.reference == grant.reference
+            and self.version_id == grant.version_id
+            and self.version_number == grant.version_number
+        )
+
+    def descriptor(self) -> dict[str, object]:
+        return {
+            "revocation_id": self.revocation_id,
+            "provider_registration_id": self.provider_registration_id,
+            "reference_id": self.reference.reference_id,
+            "version_id": self.version_id,
+            "version_number": self.version_number,
+            "status": self.status.value,
+        }
+
+
 @dataclass(frozen=True, order=True)
 class SecretEnvironmentDelivery:
     """Resolve one reference for one explicit use and inject it into an environment."""

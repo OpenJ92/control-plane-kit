@@ -1,3 +1,4 @@
+from dataclasses import replace
 import unittest
 
 from control_plane_kit_core.operations import (
@@ -17,6 +18,8 @@ from control_plane_kit_core.secrets import (
     SecretReference,
     SecretResolutionGrant,
     SecretUseIntent,
+    SecretVersionRevocationGrant,
+    SecretVersionRevocationReceipt,
 )
 
 
@@ -134,6 +137,43 @@ class SecretProviderContractTests(unittest.TestCase):
         self.assertNotIn("secret_value", grant.descriptor())
         self.assertNotIn("plaintext", repr(grant.descriptor()).lower())
         self.assertNotIn("plaintext", repr(receipt.descriptor()).lower())
+
+    def test_secret_version_revocation_is_reference_only_and_exact(self) -> None:
+        reference = SecretReference("secret://provider-a/keys/gateway-a")
+        grant = SecretVersionRevocationGrant(
+            revocation_id="srevoke_" + "a" * 64,
+            workspace_id="workspace-a",
+            provider_registration_id="sprov_" + "b" * 64,
+            endpoint_reference=SecretProviderEndpointReference("provider-a"),
+            credential_reference=SecretReference(
+                "secret://bootstrap/provider-a-token"
+            ),
+            reference=reference,
+            version_id="version-a",
+            version_number=1,
+            actor_subject="rotation-program",
+            correlation_id="secret-revocation-" + "c" * 64,
+            revocation_fingerprint="d" * 64,
+            operation_id="rotation-a-to-b",
+        )
+        receipt = SecretVersionRevocationReceipt(
+            revocation_id=grant.revocation_id,
+            provider_registration_id=grant.provider_registration_id,
+            reference=reference,
+            version_id="version-a",
+            version_number=1,
+        )
+
+        self.assertTrue(grant.permits(reference, "version-a", 1))
+        self.assertFalse(grant.permits(reference, "version-b", 2))
+        self.assertTrue(receipt.matches(grant))
+        self.assertEqual(receipt.status, SecretCustodyStatus.REVOKED)
+        self.assertNotIn("secret_value", grant.descriptor())
+        self.assertNotIn("plaintext", repr(grant.descriptor()).lower())
+        self.assertNotIn("plaintext", repr(receipt.descriptor()).lower())
+
+        with self.assertRaises(SecretProviderContractError):
+            replace(grant, version_number=0)
 
     def test_provider_permissions_are_independent(self) -> None:
         self.assertEqual(
