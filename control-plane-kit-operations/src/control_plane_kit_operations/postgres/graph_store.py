@@ -7,6 +7,7 @@ from typing import Any
 
 from psycopg.types.json import Jsonb
 
+from control_plane_kit_core.topology import GraphDescriptorError
 from control_plane_kit_core.types import WorkspaceLifecycle
 from control_plane_kit_operations.postgres.schema import PostgresConnection
 from control_plane_kit_operations.records import (
@@ -31,8 +32,10 @@ class PostgresWorkspaceStore:
         self._connection.execute(
             """
             INSERT INTO cpk_workspaces
-              (workspace_id, name, lifecycle, current_graph_id, desired_graph_id, metadata)
-            VALUES (%s, %s, %s, %s, %s, %s)
+              (workspace_id, name, lifecycle, current_graph_id, desired_graph_id,
+               metadata, current_realized_projection_id,
+               desired_realized_projection_id, desired_graph_revision)
+            VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s)
             """,
             (
                 record.workspace_id,
@@ -41,6 +44,9 @@ class PostgresWorkspaceStore:
                 record.current_graph_id,
                 record.desired_graph_id,
                 Jsonb(record.metadata),
+                record.current_realized_projection_id,
+                record.desired_realized_projection_id,
+                record.desired_graph_revision,
             ),
         )
         return record
@@ -63,13 +69,26 @@ class PostgresWorkspaceStore:
         )
         return record
 
-    def set_current_graph(self, workspace_id: str, graph_id: str) -> WorkspaceRecord:
-        record = replace(self.get(workspace_id), current_graph_id=graph_id)
-        self._connection.execute(
-            "UPDATE cpk_workspaces SET current_graph_id = %s WHERE workspace_id = %s",
-            (graph_id, workspace_id),
+    def set_current_graph(
+        self,
+        workspace_id: str,
+        graph_id: str,
+        realized_projection_id: str | None = None,
+    ) -> WorkspaceRecord:
+        projection_id = self._projection_for_source(
+            workspace_id,
+            graph_id,
+            realized_projection_id,
         )
-        return record
+        self._connection.execute(
+            """
+            UPDATE cpk_workspaces
+            SET current_graph_id = %s, current_realized_projection_id = %s
+            WHERE workspace_id = %s
+            """,
+            (graph_id, projection_id, workspace_id),
+        )
+        return self.get(workspace_id)
 
     def compare_and_set_current_graph(
         self,
@@ -77,34 +96,112 @@ class PostgresWorkspaceStore:
         *,
         expected_graph_id: str,
         replacement_graph_id: str,
+        expected_realized_projection_id: str | None = None,
+        replacement_realized_projection_id: str | None = None,
     ) -> WorkspaceRecord | None:
+        try:
+            expected_projection_id = self._projection_for_source(
+                workspace_id,
+                expected_graph_id,
+                expected_realized_projection_id,
+            )
+        except KeyError:
+            return None
+        replacement_projection_id = self._projection_for_source(
+            workspace_id,
+            replacement_graph_id,
+            replacement_realized_projection_id,
+        )
         row = self._connection.execute(
             """
             UPDATE cpk_workspaces
-            SET current_graph_id = %s
-            WHERE workspace_id = %s AND current_graph_id = %s
+            SET current_graph_id = %s, current_realized_projection_id = %s
+            WHERE workspace_id = %s
+              AND current_graph_id = %s
+              AND current_realized_projection_id = %s
             RETURNING workspace_id, name, lifecycle, current_graph_id,
-                      desired_graph_id, metadata
+                      desired_graph_id, metadata, current_realized_projection_id,
+                      desired_realized_projection_id, desired_graph_revision
             """,
-            (replacement_graph_id, workspace_id, expected_graph_id),
+            (
+                replacement_graph_id,
+                replacement_projection_id,
+                workspace_id,
+                expected_graph_id,
+                expected_projection_id,
+            ),
         ).fetchone()
         if row is None:
             return None
         return _workspace_record(row)
 
-    def set_desired_graph(self, workspace_id: str, graph_id: str) -> WorkspaceRecord:
-        record = replace(self.get(workspace_id), desired_graph_id=graph_id)
-        self._connection.execute(
-            "UPDATE cpk_workspaces SET desired_graph_id = %s WHERE workspace_id = %s",
-            (graph_id, workspace_id),
+    def set_desired_graph(
+        self,
+        workspace_id: str,
+        graph_id: str,
+        realized_projection_id: str | None = None,
+    ) -> WorkspaceRecord:
+        projection_id = self._projection_for_source(
+            workspace_id,
+            graph_id,
+            realized_projection_id,
         )
-        return record
+        self._connection.execute(
+            """
+            UPDATE cpk_workspaces
+            SET desired_graph_id = %s,
+                desired_realized_projection_id = %s,
+                desired_graph_revision = desired_graph_revision + 1
+            WHERE workspace_id = %s
+            """,
+            (graph_id, projection_id, workspace_id),
+        )
+        return self.get(workspace_id)
+
+    def compare_and_set_desired_projection(
+        self,
+        workspace_id: str,
+        *,
+        expected_authored_graph_id: str,
+        expected_realized_projection_id: str,
+        expected_revision: int,
+        replacement_realized_projection_id: str,
+    ) -> WorkspaceRecord | None:
+        replacement = self._projection_for_source(
+            workspace_id,
+            expected_authored_graph_id,
+            replacement_realized_projection_id,
+        )
+        row = self._connection.execute(
+            """
+            UPDATE cpk_workspaces
+            SET desired_realized_projection_id = %s,
+                desired_graph_revision = desired_graph_revision + 1
+            WHERE workspace_id = %s
+              AND desired_graph_id = %s
+              AND desired_realized_projection_id = %s
+              AND desired_graph_revision = %s
+            RETURNING workspace_id, name, lifecycle, current_graph_id,
+                      desired_graph_id, metadata, current_realized_projection_id,
+                      desired_realized_projection_id, desired_graph_revision
+            """,
+            (
+                replacement,
+                workspace_id,
+                expected_authored_graph_id,
+                expected_realized_projection_id,
+                expected_revision,
+            ),
+        ).fetchone()
+        return None if row is None else _workspace_record(row)
 
     def _get(self, workspace_id: str, *, for_update: bool) -> WorkspaceRecord:
         lock = " FOR UPDATE" if for_update else ""
         row = self._connection.execute(
             f"""
-            SELECT workspace_id, name, lifecycle, current_graph_id, desired_graph_id, metadata
+            SELECT workspace_id, name, lifecycle, current_graph_id, desired_graph_id,
+                   metadata, current_realized_projection_id,
+                   desired_realized_projection_id, desired_graph_revision
             FROM cpk_workspaces WHERE workspace_id = %s{lock}
             """,
             (workspace_id,),
@@ -112,6 +209,41 @@ class PostgresWorkspaceStore:
         if row is None:
             raise KeyError(f"missing workspace {workspace_id!r}")
         return _workspace_record(row)
+
+    def _projection_for_source(
+        self,
+        workspace_id: str,
+        authored_graph_id: str,
+        projection_id: str | None,
+    ) -> str:
+        if projection_id is None:
+            store = PostgresRealizedGraphProjectionStore(self._connection)
+            try:
+                identity = store.identity_for_authored(
+                    workspace_id,
+                    authored_graph_id,
+                )
+            except GraphDescriptorError as error:
+                raise RealizedGraphProjectionConflict(
+                    "workspace graph pointer requires valid realized graph material"
+                ) from error
+            row = (store.save(identity).projection_id,)
+        else:
+            row = self._connection.execute(
+                """
+                SELECT projection_id
+                FROM cpk_realized_graph_projections
+                WHERE projection_id = %s
+                  AND workspace_id = %s
+                  AND source_authored_graph_id = %s
+                """,
+                (projection_id, workspace_id, authored_graph_id),
+            ).fetchone()
+        if row is None:
+            raise RealizedGraphProjectionConflict(
+                "workspace graph pointer requires a matching realized projection"
+            )
+        return str(row[0])
 
 
 class PostgresGraphTopologyStore:
@@ -253,6 +385,43 @@ class PostgresRealizedGraphProjectionStore:
             raise KeyError(f"missing realized graph projection {projection_id!r}")
         return _realized_graph_projection_record(row)
 
+    def identity_for_authored(
+        self,
+        workspace_id: str,
+        authored_graph_id: str,
+    ) -> RealizedGraphProjectionRecord:
+        row = self._connection.execute(
+            """
+            SELECT projection_id, workspace_id, source_authored_graph_id,
+                   projection_kind, projection_key, projection_digest,
+                   graph_descriptor, created_by, created_at
+            FROM cpk_realized_graph_projections
+            WHERE workspace_id = %s
+              AND source_authored_graph_id = %s
+              AND projection_kind = 'identity'
+              AND projection_key = 'identity'
+            """,
+            (workspace_id, authored_graph_id),
+        ).fetchone()
+        if row is None:
+            source = self._connection.execute(
+                """
+                SELECT graph_id, workspace_id, version, graph_descriptor,
+                       created_by, created_at, metadata
+                FROM cpk_graph_versions
+                WHERE graph_id = %s AND workspace_id = %s
+                """,
+                (authored_graph_id, workspace_id),
+            ).fetchone()
+            if source is None:
+                raise KeyError(
+                    f"missing authored graph {authored_graph_id!r}"
+                )
+            return RealizedGraphProjectionRecord.identity_for_authored(
+                authored_record=_graph_record(source)
+            )
+        return _realized_graph_projection_record(row)
+
     def _by_identity(
         self,
         *,
@@ -292,6 +461,9 @@ def _workspace_record(row: tuple[Any, ...]) -> WorkspaceRecord:
         current_graph_id=row[3],
         desired_graph_id=row[4],
         metadata=row[5],
+        current_realized_projection_id=row[6],
+        desired_realized_projection_id=row[7],
+        desired_graph_revision=row[8],
     )
 
 

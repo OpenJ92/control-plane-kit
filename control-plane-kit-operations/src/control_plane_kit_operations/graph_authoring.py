@@ -16,7 +16,11 @@ from control_plane_kit_operations.products import (
     ProductRegistrationNotFound,
     RegisteredProductStatus,
 )
-from control_plane_kit_operations.records import GraphVersionRecord, WorkspaceRecord
+from control_plane_kit_operations.records import (
+    GraphVersionRecord,
+    RealizedGraphProjectionRecord,
+    WorkspaceRecord,
+)
 
 
 class GraphAuthoringError(ValueError):
@@ -31,6 +35,8 @@ class SetDesiredGraphCommand:
     actor_id: str
     graph: DeploymentGraph
     expected_desired_graph_id: str | None
+    expected_desired_realized_projection_id: str | None = None
+    expected_desired_graph_revision: int = 0
 
     def __post_init__(self) -> None:
         _validate_text(self.workspace_id, "workspace_id")
@@ -39,6 +45,18 @@ class SetDesiredGraphCommand:
             raise GraphAuthoringError("set desired graph requires DeploymentGraph")
         if self.expected_desired_graph_id is not None:
             _validate_text(self.expected_desired_graph_id, "expected_desired_graph_id")
+        if self.expected_desired_realized_projection_id is not None:
+            _validate_text(
+                self.expected_desired_realized_projection_id,
+                "expected_desired_realized_projection_id",
+            )
+        if (
+            type(self.expected_desired_graph_revision) is not int
+            or self.expected_desired_graph_revision < 0
+        ):
+            raise GraphAuthoringError(
+                "expected_desired_graph_revision must be nonnegative"
+            )
 
 
 @dataclass(frozen=True)
@@ -47,6 +65,7 @@ class SetDesiredGraphResult:
 
     workspace: WorkspaceRecord
     graph_version: GraphVersionRecord
+    realized_projection: RealizedGraphProjectionRecord
     product_references: tuple[ProductReference, ...]
 
 
@@ -120,7 +139,13 @@ def set_desired_graph_in_unit_of_work(
     workspace = unit_of_work.stores.workspaces.get_for_update(
         command.workspace_id,
     )
-    if workspace.desired_graph_id != command.expected_desired_graph_id:
+    if (
+        workspace.desired_graph_id != command.expected_desired_graph_id
+        or workspace.desired_realized_projection_id
+        != command.expected_desired_realized_projection_id
+        or workspace.desired_graph_revision
+        != command.expected_desired_graph_revision
+    ):
         raise GraphAuthoringError("stale desired graph pointer")
     for reference in product_references:
         try:
@@ -147,13 +172,21 @@ def set_desired_graph_in_unit_of_work(
         created_at=created_at,
     )
     unit_of_work.stores.graphs.save(graph_version)
+    realized_projection = unit_of_work.stores.realized_graphs.save(
+        unit_of_work.stores.realized_graphs.identity_for_authored(
+            command.workspace_id,
+            graph_version.graph_id,
+        )
+    )
     updated = unit_of_work.stores.workspaces.set_desired_graph(
         command.workspace_id,
         graph_version.graph_id,
+        realized_projection.projection_id,
     )
     return SetDesiredGraphResult(
         workspace=updated,
         graph_version=graph_version,
+        realized_projection=realized_projection,
         product_references=product_references,
     )
 

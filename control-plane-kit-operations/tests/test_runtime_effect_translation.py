@@ -84,6 +84,7 @@ from control_plane_kit_operations.records import (
     ExecutionRequestIdentity,
     ExecutionRequestRecord,
     GraphVersionRecord,
+    RealizedGraphProjectionRecord,
     RetryIdentity,
 )
 from control_plane_kit_operations.runtime_effects import runtime_effect_request_for_context
@@ -613,21 +614,25 @@ def _context(
             "2026-07-22T10:00:00Z",
             plan,
         ),
-        base_graph=GraphVersionRecord.from_graph(
-            graph_id="graph-base",
-            workspace_id="workspace-a",
-            version=1,
-            graph=graph,
-            created_by="operator-a",
-            created_at="2026-07-22T09:00:00Z",
+        base_graph=RealizedGraphProjectionRecord.identity_for_authored(
+            authored_record=GraphVersionRecord.from_graph(
+                graph_id="graph-base",
+                workspace_id="workspace-a",
+                version=1,
+                graph=graph,
+                created_by="operator-a",
+                created_at="2026-07-22T09:00:00Z",
+            )
         ),
-        desired_graph=GraphVersionRecord.from_graph(
-            graph_id="graph-desired",
-            workspace_id="workspace-a",
-            version=2,
-            graph=graph if desired_graph is None else desired_graph,
-            created_by="operator-a",
-            created_at="2026-07-22T10:00:00Z",
+        desired_graph=RealizedGraphProjectionRecord.identity_for_authored(
+            authored_record=GraphVersionRecord.from_graph(
+                graph_id="graph-desired",
+                workspace_id="workspace-a",
+                version=2,
+                graph=graph if desired_graph is None else desired_graph,
+                created_by="operator-a",
+                created_at="2026-07-22T10:00:00Z",
+            )
         ),
         registered_products=(
             (_registered_product(),)

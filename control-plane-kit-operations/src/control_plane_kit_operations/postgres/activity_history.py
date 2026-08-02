@@ -203,15 +203,19 @@ class PostgresActivityHistoryStore:
         self._connection.execute(
             """
             INSERT INTO cpk_activity_plans
-              (plan_id, session_id, base_graph_id, desired_graph_id, status,
-               created_at, payload)
-            VALUES (%s, %s, %s, %s, %s, %s, %s)
+              (plan_id, session_id, base_graph_id, desired_graph_id,
+               base_realized_projection_id, desired_realized_projection_id,
+               desired_graph_revision, status, created_at, payload)
+            VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
             """,
             (
                 record.plan_id,
                 record.session_id,
                 record.base_graph_id,
                 record.desired_graph_id,
+                record.base_realized_projection_id,
+                record.desired_realized_projection_id,
+                record.desired_graph_revision,
                 record.status.value,
                 record.created_at,
                 Jsonb(DEFAULT_ACTIVITY_PLAN_CODEC.encode(record.plan)),
@@ -222,8 +226,9 @@ class PostgresActivityHistoryStore:
     def get_plan(self, plan_id: str) -> ActivityPlanRecord:
         row = self._connection.execute(
             """
-            SELECT plan_id, session_id, base_graph_id, desired_graph_id, status,
-                   created_at, payload
+            SELECT plan_id, session_id, base_graph_id, desired_graph_id,
+                   base_realized_projection_id, desired_realized_projection_id,
+                   desired_graph_revision, status, created_at, payload
             FROM cpk_activity_plans
             WHERE plan_id = %s
             """,
@@ -236,8 +241,9 @@ class PostgresActivityHistoryStore:
     def plans_for_session(self, session_id: str) -> tuple[ActivityPlanRecord, ...]:
         rows = self._connection.execute(
             """
-            SELECT plan_id, session_id, base_graph_id, desired_graph_id, status,
-                   created_at, payload
+            SELECT plan_id, session_id, base_graph_id, desired_graph_id,
+                   base_realized_projection_id, desired_realized_projection_id,
+                   desired_graph_revision, status, created_at, payload
             FROM cpk_activity_plans
             WHERE session_id = %s
             ORDER BY created_at ASC, plan_id ASC
@@ -415,9 +421,12 @@ def _plan_record(row: tuple[Any, ...]) -> ActivityPlanRecord:
         session_id=row[1],
         base_graph_id=row[2],
         desired_graph_id=row[3],
-        status=ActivityPlanStatus(row[4]),
-        created_at=row[5],
-        plan=DEFAULT_ACTIVITY_PLAN_CODEC.decode(row[6]),
+        base_realized_projection_id=row[4],
+        desired_realized_projection_id=row[5],
+        desired_graph_revision=row[6],
+        status=ActivityPlanStatus(row[7]),
+        created_at=row[8],
+        plan=DEFAULT_ACTIVITY_PLAN_CODEC.decode(row[9]),
     )
 
 

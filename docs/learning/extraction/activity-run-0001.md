@@ -6760,3 +6760,49 @@ The store participates in the existing UnitOfWork connection and never commits
 independently. Authored and realized writes therefore commit or roll back
 together, while no provider, key-generation, Docker, network, or filesystem IO
 occurs in the transaction. Workspace pointers remain unchanged until #1277.
+
+## #1277 Authored And Realized Lineage Through Admission
+
+Workspace, planning, admission, and execution now preserve two identities
+without treating either as an alias for the other:
+
+```text
+authored graph id
+  -> stable operator intent
+
+realized projection id
+  -> exact executable material derived from that intent
+```
+
+Ordinary authoring creates and pins a deterministic identity projection. A
+materialization program may later select another immutable projection while the
+authored graph id remains stable. Activity plans pin the exact authored base and
+desired ids, exact realized base and desired projection ids, and the workspace's
+monotonic desired revision. Admission compares all five values before creating
+an execution request, and the coordinator reloads the admitted realized records
+rather than substituting authored descriptors.
+
+The monotonic desired revision closes an otherwise subtle approval-reuse hole.
+Projection changes A -> B -> A restore the same pointer but do not restore the
+old revision, so an approval for the first A remains stale. Historical plans
+without projection fields remain readable through deterministic identity
+compatibility, but admission does not invent a current revision for them;
+migrated revision-zero evidence is valid only against revision-zero workspace
+truth.
+
+Postgres enforces workspace, authored-source, and realized-pointer coherence
+with composite foreign keys and paired-null checks. Workspace bootstrap now
+creates the workspace, empty authored graph, identity projection, and current
+pointer in one UnitOfWork transaction. Malformed authored descriptors may not
+become current or desired truth because no valid identity projection can be
+formed. Stale compare-and-set expectations return no match without weakening
+replacement validation.
+
+Public planning inputs and workspace/plan read models expose the realized ids
+and desired revision. HTTP and MCP translate the same fields into the same
+operations command. Focused coverage proves stable authored identity across
+projection changes, stale current/desired projection rejection, A -> B -> A
+approval invalidation, exact coordinator loading, readback, and route parity.
+The operations gate passes 255 tests, compileall, and package import without
+provider, Docker, network, key-generation, plaintext, or ciphertext IO inside
+the lineage transactions.

@@ -264,14 +264,42 @@ class ExecutionAdmissionCommandService:
                 raise ExecutionAdmissionDenied(
                     "approval decision has insufficient scope"
                 )
+            base_projection_id = (
+                plan.base_realized_projection_id
+                or stores.realized_graphs.identity_for_authored(
+                    command.workspace_id,
+                    plan.base_graph_id,
+                ).projection_id
+            )
+            desired_projection_id = (
+                plan.desired_realized_projection_id
+                or stores.realized_graphs.identity_for_authored(
+                    command.workspace_id,
+                    plan.desired_graph_id,
+                ).projection_id
+            )
+            plan_revision = plan.desired_graph_revision
             if (
                 workspace.current_graph_id != plan.base_graph_id
                 or workspace.desired_graph_id != plan.desired_graph_id
+                or workspace.current_realized_projection_id != base_projection_id
+                or workspace.desired_realized_projection_id != desired_projection_id
+                or workspace.desired_graph_revision != plan_revision
             ):
                 raise ExecutionAdmissionConflict("plan graph references are stale")
 
-            current = _graph(stores.graphs, plan.base_graph_id, command.workspace_id)
-            desired = _graph(stores.graphs, plan.desired_graph_id, command.workspace_id)
+            current = _graph(
+                stores.realized_graphs,
+                base_projection_id,
+                plan.base_graph_id,
+                command.workspace_id,
+            )
+            desired = _graph(
+                stores.realized_graphs,
+                desired_projection_id,
+                plan.desired_graph_id,
+                command.workspace_id,
+            )
             _require_authority_use_scopes(command.actor_scopes, current, desired)
             required = _readiness_required(plan.plan.activities, current, desired)
             supplied = {item.activity_id for item in command.readiness}
@@ -323,6 +351,9 @@ class ExecutionAdmissionCommandService:
                         "approval_decision_id": decision.decision_id,
                         "base_graph_id": plan.base_graph_id,
                         "desired_graph_id": plan.desired_graph_id,
+                        "base_realized_projection_id": base_projection_id,
+                        "desired_realized_projection_id": desired_projection_id,
+                        "desired_graph_revision": plan_revision,
                         "readiness": [item.descriptor() for item in command.readiness],
                     },
                     created_at=requested_at,
@@ -352,16 +383,26 @@ def _require_authority_use_scopes(
         raise ExecutionAdmissionDenied("scope ingress-authority:use is missing")
 
 
-def _graph(store: Any, graph_id: str, workspace_id: str) -> DeploymentGraph:
+def _graph(
+    store: Any,
+    projection_id: str,
+    authored_graph_id: str,
+    workspace_id: str,
+) -> DeploymentGraph:
     try:
-        record = store.get(graph_id)
+        record = store.get(projection_id)
         graph = DEFAULT_GRAPH_CODEC.decode(record.graph_descriptor)
     except (KeyError, GraphDescriptorError) as error:
         raise ExecutionAdmissionConflict(
-            f"graph {graph_id!r} is unavailable or invalid"
+            f"realized graph {projection_id!r} is unavailable or invalid"
         ) from error
-    if record.workspace_id != workspace_id:
-        raise ExecutionAdmissionConflict("plan graph belongs to another workspace")
+    if (
+        record.workspace_id != workspace_id
+        or record.source_authored_graph_id != authored_graph_id
+    ):
+        raise ExecutionAdmissionConflict(
+            "plan realized graph does not match workspace authored truth"
+        )
     return graph
 
 

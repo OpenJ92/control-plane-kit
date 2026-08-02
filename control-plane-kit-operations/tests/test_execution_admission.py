@@ -76,6 +76,8 @@ from control_plane_kit_operations.records import (
     ApprovalDecisionRecord,
     ApprovalRequestRecord,
     GraphVersionRecord,
+    RealizedGraphProjectionKind,
+    RealizedGraphProjectionRecord,
     WorkspaceRecord,
 )
 from control_plane_kit_operations.workflows import (
@@ -239,6 +241,62 @@ class ExecutionAdmissionTests(unittest.TestCase):
             self.admission_service("unused-request", "unused-action").execute(
                 self.command(actor_id="operator-b")
             )
+
+    def test_approval_cannot_be_reused_after_projection_cycles_back(self) -> None:
+        with self.unit_of_work() as unit_of_work:
+            stores = unit_of_work.stores
+            original = stores.workspaces.get("workspace-a")
+            assert original.desired_realized_projection_id is not None
+            projected = stores.realized_graphs.save(
+                RealizedGraphProjectionRecord.from_graph(
+                    projection_id="projection-rotation-b",
+                    workspace_id="workspace-a",
+                    source_authored_graph_id="graph-desired",
+                    projection_kind=(
+                        RealizedGraphProjectionKind.DELEGATION_VERIFIER
+                    ),
+                    projection_key="rotation-b",
+                    graph=self.product_graph(),
+                    created_by="operator-a",
+                    created_at="2026-07-22T12:03:30Z",
+                )
+            )
+            moved = stores.workspaces.compare_and_set_desired_projection(
+                "workspace-a",
+                expected_authored_graph_id="graph-desired",
+                expected_realized_projection_id=(
+                    original.desired_realized_projection_id
+                ),
+                expected_revision=original.desired_graph_revision,
+                replacement_realized_projection_id=projected.projection_id,
+            )
+            assert moved is not None
+            restored = stores.workspaces.compare_and_set_desired_projection(
+                "workspace-a",
+                expected_authored_graph_id="graph-desired",
+                expected_realized_projection_id=projected.projection_id,
+                expected_revision=moved.desired_graph_revision,
+                replacement_realized_projection_id=(
+                    original.desired_realized_projection_id
+                ),
+            )
+            assert restored is not None
+            unit_of_work.commit()
+
+        self.assertEqual(restored.desired_graph_id, "graph-desired")
+        self.assertEqual(
+            restored.desired_realized_projection_id,
+            original.desired_realized_projection_id,
+        )
+        self.assertGreater(
+            restored.desired_graph_revision,
+            original.desired_graph_revision,
+        )
+        with self.assertRaisesRegex(
+            ExecutionAdmissionConflict,
+            "plan graph references are stale",
+        ):
+            self.admission_service("unused", "unused").execute(self.command())
 
     def test_concurrent_identical_admission_converges(self) -> None:
         def submit(ids: tuple[str, str]):
@@ -570,7 +628,25 @@ class ExecutionAdmissionTests(unittest.TestCase):
     ) -> None:
         requirement = ApprovalPolicy().requirement_for(plan)
         with self.unit_of_work() as unit_of_work:
-            history = unit_of_work.stores.activity_history
+            stores = unit_of_work.stores
+            history = stores.activity_history
+            workspace = stores.workspaces.get("workspace-a")
+            base_projection = (
+                workspace.current_realized_projection_id
+                if workspace.current_graph_id == base_graph_id
+                else stores.realized_graphs.identity_for_authored(
+                    "workspace-a",
+                    base_graph_id,
+                ).projection_id
+            )
+            desired_projection = (
+                workspace.desired_realized_projection_id
+                if workspace.desired_graph_id == desired_graph_id
+                else stores.realized_graphs.identity_for_authored(
+                    "workspace-a",
+                    desired_graph_id,
+                ).projection_id
+            )
             history.add_plan(
                 ActivityPlanRecord(
                     plan_id=plan_id,
@@ -580,6 +656,9 @@ class ExecutionAdmissionTests(unittest.TestCase):
                     status=ActivityPlanStatus.PLANNED,
                     created_at="2026-07-22T12:01:30Z",
                     plan=plan,
+                    base_realized_projection_id=base_projection,
+                    desired_realized_projection_id=desired_projection,
+                    desired_graph_revision=workspace.desired_graph_revision,
                 )
             )
             history.add_approval_request(
