@@ -9,6 +9,10 @@ from urllib.parse import urlsplit
 
 from control_plane_kit_core.algebra import BlockSockets, BlockSpec, RequirementSocket
 from control_plane_kit_core.configuration import ConfigurationArtifact
+from control_plane_kit_core.delegation_authority import (
+    DelegationAuthorityBinding,
+    DelegationVerifierProjection,
+)
 from control_plane_kit_core.environment import (
     PublicStaticEnvironmentBinding,
     SocketDerivedEnvironmentBinding,
@@ -110,6 +114,7 @@ class Node:
     lifecycle: ResourceLifecycle = OWNED_EPHEMERAL
     configuration_artifacts: tuple[ConfigurationArtifact, ...] = ()
     secret_deliveries: tuple[SecretDelivery, ...] = ()
+    delegation_verifier_projection: DelegationVerifierProjection | None = None
 
     def __post_init__(self) -> None:
         if "environment" in self.metadata:
@@ -154,6 +159,13 @@ class Node:
             raise TypeError("node secret deliveries must be a tuple")
         if len(set(self.secret_deliveries)) != len(self.secret_deliveries):
             raise ValueError("node secret deliveries must be unique")
+        if self.delegation_verifier_projection is not None and not isinstance(
+            self.delegation_verifier_projection,
+            DelegationVerifierProjection,
+        ):
+            raise TypeError(
+                "node delegation verifier projection must be typed public material"
+            )
         secret_environment_names: list[str] = []
         for delivery in self.secret_deliveries:
             match delivery:
@@ -200,7 +212,7 @@ class Node:
         }
 
     def descriptor(self) -> dict[str, object]:
-        return {
+        descriptor: dict[str, object] = {
             "node_id": self.node_id,
             "block_family": self.block_family.value,
             "block_spec": {
@@ -243,6 +255,11 @@ class Node:
                 )
             ],
         }
+        if self.delegation_verifier_projection is not None:
+            descriptor["delegation_verifier_projection"] = (
+                self.delegation_verifier_projection.descriptor()
+            )
+        return descriptor
 
 
 def _requirement_socket_descriptor(
@@ -326,6 +343,7 @@ class GraphIdentityKind(StrEnum):
     EDGE = "edge"
     RUNTIME = "runtime"
     PUBLIC_INGRESS = "public-ingress"
+    DELEGATION_AUTHORITY = "delegation-authority"
 
 
 class GraphConstructionError(ValueError):
@@ -354,6 +372,7 @@ class DeploymentGraph:
     edges: Mapping[str, Edge] = field(default_factory=dict)
     runtimes: Mapping[str, RuntimeRecord] = field(default_factory=dict)
     public_ingresses: tuple[NamedPublicIngress, ...] = ()
+    delegation_authorities: tuple[DelegationAuthorityBinding, ...] = ()
 
     def __post_init__(self) -> None:
         identities = tuple(ingress.ingress_id for ingress in self.public_ingresses)
@@ -366,6 +385,34 @@ class DeploymentGraph:
                 GraphIdentityKind.PUBLIC_INGRESS,
                 duplicate,
             )
+        if not isinstance(self.delegation_authorities, tuple) or not all(
+            isinstance(value, DelegationAuthorityBinding)
+            for value in self.delegation_authorities
+        ):
+            raise TypeError("delegation authorities must be typed bindings")
+        bindings = tuple(
+            sorted(
+                self.delegation_authorities,
+                key=lambda value: (
+                    value.delegate_node_id,
+                    value.purpose.value,
+                    value.issuer,
+                ),
+            )
+        )
+        binding_identities = tuple(value.identity for value in bindings)
+        if len(set(binding_identities)) != len(binding_identities):
+            duplicate_binding = next(
+                identity
+                for identity in binding_identities
+                if binding_identities.count(identity) > 1
+            )
+            raise GraphConstructionError(
+                GraphConstructionCode.DUPLICATE_IDENTITY,
+                GraphIdentityKind.DELEGATION_AUTHORITY,
+                f"{duplicate_binding[0]}:{duplicate_binding[1].value}",
+            )
+        object.__setattr__(self, "delegation_authorities", bindings)
 
     def node(self, node_id: str) -> Node:
         try:

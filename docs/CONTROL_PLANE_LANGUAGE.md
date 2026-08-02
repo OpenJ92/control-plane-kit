@@ -828,6 +828,55 @@ laws:
   require delegated authority. Replay evidence is bounded and process-local,
   so no cross-restart replay guarantee is claimed.
 
+### DelegationAuthorityBinding / DelegationVerifierProjection
+
+meaning:
+  A stable authored declaration that one exact graph node receives bounded
+  delegated authority, plus the generated public verifier material for one
+  exact lifecycle projection:
+
+```text
+DelegationAuthorityBinding
+  = delegate_node_id
+  x DelegationKeyPurpose
+  x issuer
+
+DelegationVerifierProjection
+  = exact binding identity
+  x audience
+  x projection_id
+  x ordered DelegationPublicKey set
+```
+
+owned by:
+  `control-plane-kit-core` owns both pure values, canonical graph encoding, and
+  deterministic materialization. Operations will own durable projection
+  lineage and lifecycle selection. Secret providers retain private keys.
+
+durable:
+  The binding is immutable authored graph truth. A verifier projection is an
+  immutable realized-graph value linked to the authored binding and exact key
+  lifecycle version. A, A+B, and B are distinct realized projections over one
+  unchanged authored graph.
+
+may contain secrets:
+  No. The projection may contain bounded public PEM material. It never contains
+  a private key, private-key `SecretReference`, provider credential, compact
+  signed grant, or resolved secret value.
+
+interpreted by:
+  A pure materializer attaches the projection to the bound realized node.
+  Runtime translation derives the gateway verifier environment at the effect
+  boundary. Generated environment is never fed back into authored product
+  instance configuration.
+
+laws:
+  Binding identities are exact and unambiguous. Projections must cover the
+  exact authored bindings and match purpose and issuer. Materialization is
+  deterministic and idempotent for the same projection. Missing nodes,
+  duplicate key ids, changed issuers, raw authored verifier environment, and
+  private material fail closed before runtime effects.
+
 ### GatewayProbeAttempt
 
 meaning:

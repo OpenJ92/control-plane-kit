@@ -9,6 +9,7 @@ from typing import Mapping, TypeAlias
 
 from control_plane_kit_core.algebra import BlockSockets, BlockSpec
 from control_plane_kit_core.configuration import ConfigurationArtifact
+from control_plane_kit_core.delegation_authority import DelegationVerifierProjection
 from control_plane_kit_core.environment import (
     PublicStaticEnvironmentBinding,
     SocketDerivedEnvironmentBinding,
@@ -59,6 +60,8 @@ class StructuralField(StrEnum):
     NODE_METADATA = "node-metadata"
     CONFIGURATION_ARTIFACTS = "configuration-artifacts"
     SECRET_DELIVERIES = "secret-deliveries"
+    DELEGATION_AUTHORITIES = "delegation-authorities"
+    DELEGATION_VERIFIER_PROJECTION = "delegation-verifier-projection"
     RESOURCE_LIFECYCLE = "resource-lifecycle"
 
 
@@ -162,6 +165,23 @@ class SecretDeliveriesValue:
             descriptor["reference_id"] = _REDACTED
             descriptors.append(descriptor)
         return descriptors
+
+
+@dataclass(frozen=True)
+class DelegationVerifierProjectionValue:
+    value: DelegationVerifierProjection | None
+
+    def descriptor(self) -> dict[str, object] | None:
+        if self.value is None:
+            return None
+        return {
+            "delegate_node_id": self.value.delegate_node_id,
+            "purpose": self.value.purpose.value,
+            "issuer": self.value.issuer,
+            "audience": self.value.audience,
+            "projection_id": self.value.projection_id,
+            "public_keys": [key.descriptor() for key in self.value.public_keys],
+        }
 
 
 @dataclass(frozen=True)
@@ -270,6 +290,9 @@ class NodeValue:
             ).descriptor(),
             "secret_deliveries": SecretDeliveriesValue(
                 self.node.secret_deliveries
+            ).descriptor(),
+            "delegation_verifier_projection": DelegationVerifierProjectionValue(
+                self.node.delegation_verifier_projection
             ).descriptor(),
         }
 
