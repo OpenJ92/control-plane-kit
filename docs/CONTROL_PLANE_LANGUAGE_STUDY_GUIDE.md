@@ -263,6 +263,22 @@ operation action. Planning and execution happen afterward. The operator does
 not provide public-key PEM, verifier environment, audience, or projection ids;
 operations derives them from the approved rotation and durable key lifecycle.
 
+Then draw the approval bridge as an intersection, not inheritance:
+
+```text
+approved rotation subject
+  x key-generated rotation
+  x exact overlap publication evidence
+  x canonical plan(G[A], G[A+B])
+    -> one ordinary execution request
+```
+
+The rotation approval does not become a general plan approval. It authorizes
+only the exact phase child whose workspace, projections, revision, public key
+set, compiled activities, and publication provenance all agree. The resulting
+execution request points to the child plan while retaining the original
+rotation approval request and decision ids.
+
 Keep the three authorities visually separate: requesting rotation, reviewing
 the rotation subject, and executing the accepted deployment are not equivalent
 permissions. The reviewer sees bounded rotation intent, never a secret

@@ -904,6 +904,23 @@ laws:
   other than exact A fail before pointer mutation. No provider or runtime IO is
   performed by projection publication.
 
+  A gateway-key rotation approval may authorize an ordinary child deployment
+  plan without creating a synthetic plan approval, but only through the closed
+  rotation-child bridge. For the overlap phase, admission jointly verifies the
+  original approved `GatewayKeyRotationApprovalSubject`, a `KEY_GENERATED`
+  rotation, the exact publication action and rotation version, settled
+  `G[A] -> G[A+B]` workspace pointers, and the canonical activity plan compiled
+  from that realized projection diff. The execution request retains the
+  original rotation approval request and decision ids. A different session is
+  permitted only for this explicit subject branch; ordinary activity-plan
+  approvals retain exact plan/session/risk matching.
+
+  The bridge does not convert rotation approval into reusable plan authority.
+  Another workspace, plan, projection, revision, phase, key set, publication
+  provenance, or compiled activity set fails before execution admission. The
+  operator still requires `plan:execute` and every runtime/ingress authority-use
+  scope implied by the exact child graphs.
+
 ### DelegationKeyGenerationGrant / DelegationKeyGenerationEvidence
 
 meaning:
