@@ -213,6 +213,13 @@ Deploy graph A -> graph B
 Parent cpk-server -> child cpk-server
 
 Private OCI image pull
+
+Gateway delegation-key rotation:
+
+  one authored graph binding
+    -> realized verifier A
+      -> realized verifier A+B
+        -> realized verifier B
 ```
 
 For each example, mark:
@@ -224,6 +231,11 @@ where the transaction stops;
 where the external effect happens;
 where observation is recorded;
 when CurrentGraph advances.
+
+For the rotation example, use different colors for authored intent and realized
+projection. The authored graph must not change merely because public verifier
+keys rotate. Each realized projection must still have an immutable identity and
+accepted execution evidence.
 ```
 
 ## Five-Band Summary

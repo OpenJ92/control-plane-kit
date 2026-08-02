@@ -7,6 +7,7 @@ from enum import StrEnum
 from typing import Protocol as TypingProtocol, TypeAlias
 
 from control_plane_kit_core.capabilities import CapabilityName
+from control_plane_kit_core.delegation_authority import DelegationAuthorityBinding
 from control_plane_kit_core.lifecycle import EXTERNAL_RETAINED, OWNED_EPHEMERAL, ResourceLifecycle
 from control_plane_kit_core.public_ingress import NamedPublicIngress
 from control_plane_kit_core.runtime_authority import RuntimeAuthorityReference
@@ -258,6 +259,28 @@ class DeploymentTopology:
     name: str
     root: RuntimeContext
     public_ingresses: tuple[NamedPublicIngress, ...] = ()
+    delegation_authorities: tuple[DelegationAuthorityBinding, ...] = ()
+
+    def __post_init__(self) -> None:
+        if not isinstance(self.delegation_authorities, tuple) or not all(
+            isinstance(value, DelegationAuthorityBinding)
+            for value in self.delegation_authorities
+        ):
+            raise TypeError("delegation authorities must be typed bindings")
+        bindings = tuple(
+            sorted(
+                self.delegation_authorities,
+                key=lambda value: (
+                    value.delegate_node_id,
+                    value.purpose.value,
+                    value.issuer,
+                ),
+            )
+        )
+        identities = tuple(value.identity for value in bindings)
+        if len(set(identities)) != len(identities):
+            raise ValueError("delegation authority binding identities must be unique")
+        object.__setattr__(self, "delegation_authorities", bindings)
 
 
 # Backward-compatible rollout alias. New code should use DeploymentTopology.

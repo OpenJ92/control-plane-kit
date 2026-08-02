@@ -14,6 +14,7 @@ from control_plane_kit_core.topology.changes import (
     EdgeValue,
     EndpointValue,
     ConfigurationArtifactsValue,
+    DelegationVerifierProjectionValue,
     SecretDeliveriesValue,
     EnvironmentBindingsValue,
     FieldSubject,
@@ -76,6 +77,7 @@ def diff_graphs(current: ValidatedGraph, desired: ValidatedGraph) -> GraphDiff:
     _diff_nodes(current_graph, desired_graph, codec, changes)
     _diff_edges(current_graph, desired_graph, changes)
     _diff_public_ingresses(current_graph, desired_graph, changes)
+    _diff_delegation_authorities(current_graph, desired_graph, changes)
     return GraphDiff(
         current_graph.name,
         desired_graph.name,
@@ -266,6 +268,21 @@ def _diff_nodes(
                     SecretDeliveriesValue(after.secret_deliveries),
                 )
             )
+        if before.delegation_verifier_projection != after.delegation_verifier_projection:
+            changes.append(
+                ModifiedChange(
+                    FieldSubject(
+                        subject,
+                        StructuralField.DELEGATION_VERIFIER_PROJECTION,
+                    ),
+                    DelegationVerifierProjectionValue(
+                        before.delegation_verifier_projection
+                    ),
+                    DelegationVerifierProjectionValue(
+                        after.delegation_verifier_projection
+                    ),
+                )
+            )
         if before.lifecycle != after.lifecycle:
             changes.append(
                 ModifiedChange(
@@ -367,6 +384,39 @@ def _diff_public_ingresses(
                     PublicIngressValue(desired_by_id[ingress_id]),
                 )
             )
+
+
+def _diff_delegation_authorities(
+    current: DeploymentGraph,
+    desired: DeploymentGraph,
+    changes: list[StructuralChange],
+) -> None:
+    if current.delegation_authorities == desired.delegation_authorities:
+        return
+    changes.append(
+        ModifiedChange(
+            FieldSubject(
+                GraphSubject(),
+                StructuralField.DELEGATION_AUTHORITIES,
+            ),
+            MetadataValue(
+                {
+                    "bindings": [
+                        value.descriptor()
+                        for value in current.delegation_authorities
+                    ]
+                }
+            ),
+            MetadataValue(
+                {
+                    "bindings": [
+                        value.descriptor()
+                        for value in desired.delegation_authorities
+                    ]
+                }
+            ),
+        )
+    )
 
 
 def _node_value(node: Node, codec: GraphDescriptorCodec) -> NodeValue:

@@ -134,6 +134,12 @@ from control_plane_kit_core.delegation_keys import (
     DelegationKeyPurpose,
     DelegationPublicKey,
 )
+from control_plane_kit_core.delegation_authority import (
+    DelegationAuthorityBinding,
+    DelegationAuthorityError,
+    DelegationVerifierProjection,
+    materialize_delegation_verifiers,
+)
 from control_plane_kit_core.gateway_delegation import (
     DelegatedGatewayProbeGrant,
     DelegatedGatewayProbeGrantCodec,
@@ -263,6 +269,12 @@ __all__ = [
     "DelegatedGatewayProbeGrantCodec",
     "DelegatedGatewayProbeVerificationCode",
     "DelegatedGatewayProbeVerificationResult",
+    "DelegationAuthorityBinding",
+    "DelegationAuthorityError",
+    "DelegationVerifierProjection",
+    "DelegationKeyAlgorithm",
+    "DelegationKeyPurpose",
+    "DelegationPublicKey",
     "DependencyReadinessKind",
     "DeploymentProgramStage",
     "DeploymentProgramBoundary",
@@ -429,6 +441,7 @@ __all__ = [
     "canonical_persistence_boundary_contract_set",
     "instantiate_catalog_product",
     "instantiate_product",
+    "materialize_delegation_verifiers",
     "operator_adapter_security_parity",
     "operator_command_http_routes",
     "operator_command_parity",

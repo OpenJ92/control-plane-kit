@@ -6689,3 +6689,46 @@ or multiple public ingresses fail before signing-key authorization or network
 dispatch. HTTP and MCP use the same operations service and produce the same
 public endpoint semantics. The implementation remains provider-neutral:
 Cloudflare is an ingress interpreter choice, not gateway command language.
+
+## #1273 Authored Delegation Authority And Pure Verifier Projection
+
+The rotation dry run found that the old source-live harness conflated two
+different kinds of truth. It read durable public keys and copied generated
+`CPK_GATEWAY_PROBE_*` values into a newly authored graph. Because public
+environment participates in graph identity and diffing, a key-lifecycle change
+looked like new operator-authored topology.
+
+The pure language now separates those values:
+
+```text
+authored DeploymentGraph
+  -> DelegationAuthorityBinding(delegate node, purpose, issuer)
+
+realized DeploymentGraph
+  -> typed DelegationVerifierProjection(
+       binding identity,
+       audience,
+       projection identity,
+       bounded public keys,
+     )
+```
+
+The binding survives topology compilation and the canonical graph codec. The
+pure materializer returns a new realized graph, never mutates authored truth,
+and is idempotent when the same projection is applied again. A, A+B, and B are
+deterministic distinct realized descriptors over one unchanged authored
+descriptor. Private keys and private-key references cannot enter either value.
+
+The first implementation put generated values directly into
+`Node.public_environment`. Although focused tests passed, review rejected that
+shape because it preserved the old environment convention behind a helper and
+could not make repeated materialization structurally idempotent. A typed node
+projection replaced it before merge; environment rendering is now a derived
+boundary operation.
+
+The first full core gate also correctly failed because the exact package module
+inventory had not admitted `delegation_authority`. The inventory assertion was
+preserved and the canonical module set was updated explicitly. Core then passed
+467 tests, compileall, and package import; operations compatibility validation
+also passed. #1274 next owns durable authored/realized projection lineage rather
+than weakening the existing desired-plan-current graph identity law.
