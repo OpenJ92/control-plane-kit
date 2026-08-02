@@ -7,6 +7,7 @@ from control_plane_kit_core.delegation_keys import (
     DelegationKeyPurpose,
     DelegationPublicKey,
 )
+from control_plane_kit_core.policies import PolicyScope
 
 
 PUBLIC_KEY_A = """-----BEGIN PUBLIC KEY-----
@@ -45,6 +46,20 @@ class DelegationPublicKeyTests(unittest.TestCase):
 
     def test_purpose_is_provider_neutral(self) -> None:
         self.assertEqual(DelegationKeyPurpose.GATEWAY_PROBE.value, "gateway-probe")
+
+    def test_generation_authority_is_distinct_from_registration_and_use(self) -> None:
+        self.assertEqual(
+            PolicyScope.DELEGATION_KEY_GENERATE.value,
+            "delegation-key:generate",
+        )
+        self.assertNotEqual(
+            PolicyScope.DELEGATION_KEY_GENERATE,
+            PolicyScope.DELEGATION_KEY_REGISTER,
+        )
+        self.assertNotEqual(
+            PolicyScope.DELEGATION_KEY_GENERATE,
+            PolicyScope.DELEGATION_KEY_USE,
+        )
 
 
 if __name__ == "__main__":

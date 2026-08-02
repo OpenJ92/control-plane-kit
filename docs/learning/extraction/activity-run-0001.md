@@ -6851,3 +6851,37 @@ wrong worker, concurrent advancement, late transaction failure, and conflicting
 idempotency all fail without advancing truth. The operations gate passes 258
 tests, compileall, and package import. Generic uncertain-effect recovery remains
 owned by #1092; this issue does not promote uncertain evidence to success.
+
+## #1268 Provider-Owned Delegation-Key Generation
+
+The private-key generation boundary now matches durable secret custody instead
+of the old source-live harness. `control-plane-kit-secrets` generates Ed25519
+material, encrypts and stores the PKCS8 private key, writes provider-local audit
+evidence in the same SQLite transaction, and returns only the reference,
+version, correlation, and public SPKI identity. Exact correlation replay returns
+the same identity; semantic correlation reuse, revocation, corruption, and
+audit failure fail closed.
+
+The interpreter client validates the bounded response and marks malformed
+post-mutation responses uncertain. Operations now owns the provider-neutral
+boundary:
+
+```text
+GenerateDelegationSigningKey
+  -> prepare DelegationKeyGenerationGrant from committed provider truth
+    -> external provider IO
+      -> validate DelegationKeyGenerationEvidence
+        -> atomically register SecretReference + public delegation key
+```
+
+`delegation-key:generate` is a distinct permission from secret-provider use,
+delegation-key registration, and delegation-key use. The operations fold
+rechecks the exact active provider registration and exact workspace, reference,
+purpose, issuer, and correlation before writing. A conflict on the key write
+rolls back the preceding reference write. Operations imports neither the
+provider package, interpreter client, nor cryptography.
+
+This issue deliberately does not call the provider from inside an operations
+transaction and does not yet sequence generation into rotation. #1269 owns the
+durable rotation state machine and drain barrier. #1270 will compose the
+approved, resumable program around this prepare/effect/fold boundary.
