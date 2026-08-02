@@ -204,6 +204,15 @@ from .gateway_key_rotation_retirement_program import (
     GatewayKeyRotationRetirementPreparationResult,
     PrepareGatewayKeyRotationRetirement,
 )
+from .gateway_key_rotation_retirement_execution import (
+    GatewayKeyRotationRetirementExecutionAuthorizationDenied,
+    GatewayKeyRotationRetirementExecutionConflict,
+    GatewayKeyRotationRetirementExecutionError,
+    GatewayKeyRotationRetirementExecutionOutcome,
+    GatewayKeyRotationRetirementExecutionProgram,
+    GatewayKeyRotationRetirementExecutionResult,
+    ProgressGatewayKeyRotationRetirement,
+)
 from .foundation import (
     OPERATIONS_PACKAGE_BOUNDARY,
     OperationsPackageBoundary,

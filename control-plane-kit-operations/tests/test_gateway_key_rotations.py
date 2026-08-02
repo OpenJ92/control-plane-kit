@@ -170,19 +170,22 @@ class GatewayKeyRotationTests(unittest.TestCase):
         self.now += 65
         rotation = self.advance(rotation, GatewayKeyRotationStatus.RETIREMENT_DEPLOYING,
             deployment=retirement)
-        rotation = self.advance(rotation, GatewayKeyRotationStatus.COMPLETED,
-            deployment=replace(retirement,
+        accepted_retirement = replace(retirement,
                 status=GatewayKeyRotationDeploymentStatus.ACCEPTED,
                 accepted_current_graph_id="graph-a",
                 accepted_current_projection_id="projection-b",
-                accepted_at="2026-08-02T01:08:00Z"),
+                accepted_at="2026-08-02T01:08:00Z")
+        rotation = self.advance(rotation, GatewayKeyRotationStatus.RETIREMENT_READY,
+            deployment=accepted_retirement)
+        rotation = self.advance(rotation, GatewayKeyRotationStatus.COMPLETED,
+            deployment=accepted_retirement,
             old_key_retired_at="2026-08-02T01:09:00Z",
             old_secret_revoked_at="2026-08-02T01:09:01Z")
 
         self.assertEqual(rotation.status, GatewayKeyRotationStatus.COMPLETED)
         self.assertEqual(self.service().get(rotation.rotation_id), rotation)
         transitions = self.service().transitions(rotation.rotation_id)
-        self.assertEqual(len(transitions), 10)
+        self.assertEqual(len(transitions), 11)
         self.assertEqual(transitions[0].from_status, GatewayKeyRotationStatus.REQUESTED)
         self.assertEqual(
             transitions[2].to_status,

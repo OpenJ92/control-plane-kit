@@ -1097,7 +1097,8 @@ meaning:
 requested -> awaiting-approval -> approved -> generation-prepared
   -> key-generated
   -> overlap-deploying -> overlap-ready -> new-key-active
-    -> draining-old-grants -> retirement-deploying -> completed
+    -> draining-old-grants -> retirement-deploying -> retirement-ready
+      -> completed
 ```
 
 owned by:
@@ -1141,6 +1142,10 @@ laws:
   new key becomes active; advancement consults an injected trusted clock and
   never sleeps. Uncertain child effects move to `blocked` with retained evidence
   for recovery/fencing work; absence of a folded result never licenses a retry.
+  Retirement deployment acceptance advances the aggregate only to
+  `retirement-ready`: current graph G[B] is then accepted, but old key A and its
+  secret version remain intact until a separate retirement program records
+  their exact successful lifecycle evidence and advances to `completed`.
   Approved rotation does not call a provider directly: it first commits
   `generation-prepared`, performs provider IO outside transactions, and then
   folds bounded evidence. Exact success and uncertainty replay are idempotent;

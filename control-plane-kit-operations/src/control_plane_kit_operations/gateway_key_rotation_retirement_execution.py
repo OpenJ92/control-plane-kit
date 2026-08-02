@@ -1,4 +1,4 @@
-"""Typed overlap wrapper around the phase-neutral rotation execution kernel."""
+"""Typed retirement wrapper around the phase-neutral rotation execution kernel."""
 
 from __future__ import annotations
 
@@ -7,6 +7,7 @@ from enum import StrEnum
 from typing import Any, Callable
 
 from control_plane_kit_core.policies import PolicyScope
+from control_plane_kit_operations.advancement import CurrentGraphAdvancementResult
 from control_plane_kit_operations.coordinator import (
     CoordinatorStatus,
     ExecutionCoordinator,
@@ -14,7 +15,6 @@ from control_plane_kit_operations.coordinator import (
 from control_plane_kit_operations.gateway_key_rotation_deployment_execution import (
     GatewayKeyRotationDeploymentExecutionAuthorizationDenied,
     GatewayKeyRotationDeploymentExecutionConflict,
-    GatewayKeyRotationDeploymentExecutionOutcome,
     GatewayKeyRotationDeploymentExecutionProgram,
     GatewayKeyRotationDeploymentExecutionResult,
     ProgressGatewayKeyRotationDeployment,
@@ -26,26 +26,25 @@ from control_plane_kit_operations.gateway_key_rotations import (
     GatewayKeyRotationDeploymentStatus,
 )
 from control_plane_kit_operations.lifecycle import ExecutionWorkerAuthority
-from control_plane_kit_operations.advancement import CurrentGraphAdvancementResult
 
 
-class GatewayKeyRotationOverlapExecutionError(ValueError):
-    pass
+class GatewayKeyRotationRetirementExecutionError(ValueError):
+    """Base bounded failure for post-checkpoint retirement execution."""
 
 
-class GatewayKeyRotationOverlapExecutionConflict(
-    GatewayKeyRotationOverlapExecutionError
+class GatewayKeyRotationRetirementExecutionConflict(
+    GatewayKeyRotationRetirementExecutionError
 ):
-    pass
+    """Raised when checkpoint, run, graph, or rotation truth diverges."""
 
 
-class GatewayKeyRotationOverlapExecutionAuthorizationDenied(
-    GatewayKeyRotationOverlapExecutionError
+class GatewayKeyRotationRetirementExecutionAuthorizationDenied(
+    GatewayKeyRotationRetirementExecutionError
 ):
-    pass
+    """Raised before progress when rotation or worker authority is absent."""
 
 
-class GatewayKeyRotationOverlapExecutionOutcome(StrEnum):
+class GatewayKeyRotationRetirementExecutionOutcome(StrEnum):
     DISPATCHED = "dispatched"
     PROGRESSED = "progressed"
     ACCEPTED = "accepted"
@@ -55,7 +54,7 @@ class GatewayKeyRotationOverlapExecutionOutcome(StrEnum):
 
 
 @dataclass(frozen=True)
-class ProgressGatewayKeyRotationOverlap:
+class ProgressGatewayKeyRotationRetirement:
     rotation_id: str
     expected_prepared_rotation_version: int
     actor_id: str
@@ -69,7 +68,7 @@ class ProgressGatewayKeyRotationOverlap:
     def deployment_command(self) -> ProgressGatewayKeyRotationDeployment:
         return ProgressGatewayKeyRotationDeployment(
             rotation_id=self.rotation_id,
-            phase=GatewayKeyRotationDeploymentPhase.OVERLAP,
+            phase=GatewayKeyRotationDeploymentPhase.RETIREMENT,
             expected_prepared_rotation_version=(
                 self.expected_prepared_rotation_version
             ),
@@ -80,9 +79,9 @@ class ProgressGatewayKeyRotationOverlap:
 
 
 @dataclass(frozen=True)
-class GatewayKeyRotationOverlapExecutionResult:
+class GatewayKeyRotationRetirementExecutionResult:
     rotation: GatewayKeyRotation
-    outcome: GatewayKeyRotationOverlapExecutionOutcome
+    outcome: GatewayKeyRotationRetirementExecutionOutcome
     checkpoint: GatewayKeyRotationDeploymentCheckpoint
     coordinator_status: CoordinatorStatus | None = None
     effects_attempted: int = 0
@@ -91,47 +90,53 @@ class GatewayKeyRotationOverlapExecutionResult:
 
     def __post_init__(self) -> None:
         if not isinstance(self.rotation, GatewayKeyRotation):
-            raise GatewayKeyRotationOverlapExecutionError(
+            raise GatewayKeyRotationRetirementExecutionError(
                 "execution result rotation is malformed"
             )
-        if not isinstance(self.outcome, GatewayKeyRotationOverlapExecutionOutcome):
-            raise GatewayKeyRotationOverlapExecutionError(
+        if not isinstance(
+            self.outcome, GatewayKeyRotationRetirementExecutionOutcome
+        ):
+            raise GatewayKeyRotationRetirementExecutionError(
                 "execution outcome is unsupported"
             )
         if not isinstance(self.checkpoint, GatewayKeyRotationDeploymentCheckpoint):
-            raise GatewayKeyRotationOverlapExecutionError(
+            raise GatewayKeyRotationRetirementExecutionError(
                 "execution checkpoint is malformed"
             )
         if self.coordinator_status is not None and not isinstance(
             self.coordinator_status, CoordinatorStatus
         ):
-            raise GatewayKeyRotationOverlapExecutionError(
+            raise GatewayKeyRotationRetirementExecutionError(
                 "coordinator status is malformed"
             )
         if type(self.effects_attempted) is not int or self.effects_attempted < 0:
-            raise GatewayKeyRotationOverlapExecutionError(
+            raise GatewayKeyRotationRetirementExecutionError(
                 "effects_attempted must be nonnegative"
             )
         accepted = self.outcome in {
-            GatewayKeyRotationOverlapExecutionOutcome.ACCEPTED,
-            GatewayKeyRotationOverlapExecutionOutcome.ACCEPTED_REPLAY,
-            GatewayKeyRotationOverlapExecutionOutcome.ALREADY_ADVANCED,
+            GatewayKeyRotationRetirementExecutionOutcome.ACCEPTED,
+            GatewayKeyRotationRetirementExecutionOutcome.ACCEPTED_REPLAY,
+            GatewayKeyRotationRetirementExecutionOutcome.ALREADY_ADVANCED,
         }
         if accepted != (
             self.checkpoint.status
             is GatewayKeyRotationDeploymentStatus.ACCEPTED
         ):
-            raise GatewayKeyRotationOverlapExecutionError(
+            raise GatewayKeyRotationRetirementExecutionError(
                 "accepted outcome and checkpoint disagree"
             )
-        blocked = self.outcome is GatewayKeyRotationOverlapExecutionOutcome.BLOCKED
+        blocked = (
+            self.outcome is GatewayKeyRotationRetirementExecutionOutcome.BLOCKED
+        )
         if blocked != (self.failure_code is not None):
-            raise GatewayKeyRotationOverlapExecutionError(
+            raise GatewayKeyRotationRetirementExecutionError(
                 "blocked outcome requires one bounded failure code"
             )
 
 
-class GatewayKeyRotationOverlapExecutionProgram:
+class GatewayKeyRotationRetirementExecutionProgram:
+    """Advance one prepared retirement deployment by one recoverable invocation."""
+
     def __init__(
         self,
         unit_of_work_factory: Callable[[], Any],
@@ -151,27 +156,27 @@ class GatewayKeyRotationOverlapExecutionProgram:
 
     def progress(
         self,
-        command: ProgressGatewayKeyRotationOverlap,
-    ) -> GatewayKeyRotationOverlapExecutionResult:
-        if not isinstance(command, ProgressGatewayKeyRotationOverlap):
-            raise TypeError("command must be ProgressGatewayKeyRotationOverlap")
+        command: ProgressGatewayKeyRotationRetirement,
+    ) -> GatewayKeyRotationRetirementExecutionResult:
+        if not isinstance(command, ProgressGatewayKeyRotationRetirement):
+            raise TypeError("command must be ProgressGatewayKeyRotationRetirement")
         try:
             result = self._program.progress(command.deployment_command())
         except GatewayKeyRotationDeploymentExecutionAuthorizationDenied as error:
-            raise GatewayKeyRotationOverlapExecutionAuthorizationDenied(
+            raise GatewayKeyRotationRetirementExecutionAuthorizationDenied(
                 str(error)
             ) from error
         except GatewayKeyRotationDeploymentExecutionConflict as error:
-            raise GatewayKeyRotationOverlapExecutionConflict(str(error)) from error
+            raise GatewayKeyRotationRetirementExecutionConflict(str(error)) from error
         return _result(result)
 
 
 def _result(
     value: GatewayKeyRotationDeploymentExecutionResult,
-) -> GatewayKeyRotationOverlapExecutionResult:
-    return GatewayKeyRotationOverlapExecutionResult(
+) -> GatewayKeyRotationRetirementExecutionResult:
+    return GatewayKeyRotationRetirementExecutionResult(
         rotation=value.rotation,
-        outcome=GatewayKeyRotationOverlapExecutionOutcome(value.outcome.value),
+        outcome=GatewayKeyRotationRetirementExecutionOutcome(value.outcome.value),
         checkpoint=value.checkpoint,
         coordinator_status=value.coordinator_status,
         effects_attempted=value.effects_attempted,
@@ -181,11 +186,11 @@ def _result(
 
 
 __all__ = [
-    "GatewayKeyRotationOverlapExecutionAuthorizationDenied",
-    "GatewayKeyRotationOverlapExecutionConflict",
-    "GatewayKeyRotationOverlapExecutionError",
-    "GatewayKeyRotationOverlapExecutionOutcome",
-    "GatewayKeyRotationOverlapExecutionProgram",
-    "GatewayKeyRotationOverlapExecutionResult",
-    "ProgressGatewayKeyRotationOverlap",
+    "GatewayKeyRotationRetirementExecutionAuthorizationDenied",
+    "GatewayKeyRotationRetirementExecutionConflict",
+    "GatewayKeyRotationRetirementExecutionError",
+    "GatewayKeyRotationRetirementExecutionOutcome",
+    "GatewayKeyRotationRetirementExecutionProgram",
+    "GatewayKeyRotationRetirementExecutionResult",
+    "ProgressGatewayKeyRotationRetirement",
 ]
