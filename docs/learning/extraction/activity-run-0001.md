@@ -7293,3 +7293,40 @@ loss after durable intent without redispatch, recovery after each post-effect
 physical commit, stale checkpoint/lineage/scope rejection before IO, one authored
 graph row, and no premature key retirement. The pre-existing overlap execution
 suite passes unchanged through the extracted kernel.
+
+## #1304 Exact old-key and private-version retirement
+
+Accepted current G[B] now leads to completion through an operations-owned
+prepare/effect/fold program rather than a harness-owned destructive tail:
+
+```text
+RETIREMENT_READY(G[B])
+  -> derive exact A custody identity from admitted truth
+  -> retire A public verification identity
+  -> OLD_KEY_RETIRED
+  -> persist exact provider/reference/version/correlation/action digest
+  -> REVOCATION_PREPARED
+  -> provider exact-version revocation outside Postgres
+  -> matching SecretVersionRevocationReceipt
+  -> revoke A public registration
+  -> COMPLETED
+```
+
+The old signing-key registration supplies the immutable `SecretReference`;
+the active admitted reference supplies provider version id/number; and the
+active provider registration supplies only opaque endpoint and credential
+references. Callers cannot choose any of them. Missing or malformed version
+metadata fails before A is retired. Public retirement and private custody
+revocation are independently durable, replacing the earlier paired-timestamp
+shortcut.
+
+The provider action is replay-safe because its correlation and fingerprint are
+committed before IO. A definite pre-mutation failure returns the same prepared
+action as retryable. An uncertain result, malformed result, or mismatched
+receipt blocks the aggregate for #1092. Process loss after provider success
+resubmits the identical provider correlation; provider replay returns the same
+receipt without a second mutation. Real Postgres crash injection covers every
+operations commit boundary, including public retirement, checkpoint
+preparation, public revocation, and final completion. A two-version adapter
+proof revokes only A while B remains active, and public rotation readback
+contains no secret/provider-version detail.

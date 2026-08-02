@@ -11,6 +11,7 @@ from control_plane_kit_operations.gateway_key_rotations import (
     GatewayKeyRotationDeploymentPhase,
     GatewayKeyRotationDeploymentStatus,
     GatewayKeyRotationNotFound,
+    GatewayKeyRotationRevocationCheckpoint,
     GatewayKeyRotationStatus,
     GatewayKeyRotationTransition,
 )
@@ -97,6 +98,8 @@ class GatewayKeyRotationStore:
                            replacement.retirement_deployment):
             if checkpoint is not None:
                 self._put_checkpoint(replacement.rotation_id, checkpoint)
+        if replacement.revocation is not None:
+            self._put_revocation(replacement.rotation_id, replacement.revocation)
         return self.get(replacement.rotation_id)
 
     def transition_for_id(self, rotation_id, transition_id):
@@ -139,6 +142,7 @@ class GatewayKeyRotationStore:
 
     def _row(self, row):
         checkpoints = {value.phase: value for value in self._checkpoints(row[0])}
+        revocation = self._revocation(row[0])
         return GatewayKeyRotation(
             rotation_id=row[0], workspace_id=row[1], gateway_node_id=row[2],
             purpose=DelegationKeyPurpose(row[3]), issuer=row[4], old_key_id=row[5],
@@ -154,6 +158,7 @@ class GatewayKeyRotationStore:
             overlap_deployment=checkpoints.get(GatewayKeyRotationDeploymentPhase.OVERLAP),
             new_key_activated_at=row[23], drain_deadline_epoch=row[24],
             retirement_deployment=checkpoints.get(GatewayKeyRotationDeploymentPhase.RETIREMENT),
+            revocation=revocation,
             old_key_retired_at=row[25], old_secret_revoked_at=row[26],
             failure_code=row[27], updated_by=row[28], updated_at=row[29])
 
@@ -198,6 +203,61 @@ class GatewayKeyRotationStore:
         if row is None:
             raise GatewayKeyRotationConflict(
                 "deployment checkpoint identity changed concurrently")
+
+    def _put_revocation(self, rotation_id, value):
+        row = self._connection.execute("""
+            INSERT INTO cpk_gateway_key_rotation_revocations AS current
+              (rotation_id, provider_registration_id, secret_reference,
+               provider_version_id, provider_version_number, revocation_id,
+               correlation_id, action_digest, prepared_at)
+            VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s)
+            ON CONFLICT (rotation_id) DO UPDATE SET
+              provider_registration_id=EXCLUDED.provider_registration_id
+            WHERE current.provider_registration_id=EXCLUDED.provider_registration_id
+              AND current.secret_reference=EXCLUDED.secret_reference
+              AND current.provider_version_id=EXCLUDED.provider_version_id
+              AND current.provider_version_number=EXCLUDED.provider_version_number
+              AND current.revocation_id=EXCLUDED.revocation_id
+              AND current.correlation_id=EXCLUDED.correlation_id
+              AND current.action_digest=EXCLUDED.action_digest
+              AND current.prepared_at=EXCLUDED.prepared_at
+            RETURNING rotation_id
+            """, (
+                rotation_id,
+                value.provider_registration_id,
+                value.secret_reference.reference_id,
+                value.provider_version_id,
+                value.provider_version_number,
+                value.revocation_id,
+                value.correlation_id,
+                value.action_digest,
+                value.prepared_at,
+            )).fetchone()
+        if row is None:
+            raise GatewayKeyRotationConflict(
+                "revocation checkpoint identity changed concurrently"
+            )
+
+    def _revocation(self, rotation_id):
+        row = self._connection.execute("""
+            SELECT provider_registration_id,secret_reference,
+              provider_version_id,provider_version_number,revocation_id,
+              correlation_id,action_digest,prepared_at
+            FROM cpk_gateway_key_rotation_revocations
+            WHERE rotation_id=%s
+            """, (rotation_id,)).fetchone()
+        if row is None:
+            return None
+        return GatewayKeyRotationRevocationCheckpoint(
+            provider_registration_id=row[0],
+            secret_reference=SecretReference(row[1]),
+            provider_version_id=row[2],
+            provider_version_number=row[3],
+            revocation_id=row[4],
+            correlation_id=row[5],
+            action_digest=row[6],
+            prepared_at=row[7],
+        )
 
     def _checkpoints(self, rotation_id):
         rows = self._connection.execute("""

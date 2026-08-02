@@ -587,7 +587,7 @@ CREATE TABLE IF NOT EXISTS cpk_gateway_key_rotations (
   CONSTRAINT cpk_gateway_key_rotations_activation_check
     CHECK ((new_key_activated_at IS NULL) = (drain_deadline_epoch IS NULL)),
   CONSTRAINT cpk_gateway_key_rotations_retirement_check
-    CHECK ((old_key_retired_at IS NULL) = (old_secret_revoked_at IS NULL)),
+    CHECK (old_secret_revoked_at IS NULL OR old_key_retired_at IS NOT NULL),
   CONSTRAINT cpk_gateway_key_rotations_failure_check
     CHECK ((status IN ('blocked', 'rejected')) = (failure_code IS NOT NULL)),
   CONSTRAINT cpk_gateway_key_rotations_fingerprint_check
@@ -627,6 +627,24 @@ $$;
 CREATE UNIQUE INDEX IF NOT EXISTS cpk_gateway_key_rotations_nonterminal_binding
   ON cpk_gateway_key_rotations (workspace_id, gateway_node_id, purpose, issuer)
   WHERE status NOT IN ('completed', 'blocked', 'rejected');
+
+CREATE TABLE IF NOT EXISTS cpk_gateway_key_rotation_revocations (
+  rotation_id text PRIMARY KEY REFERENCES cpk_gateway_key_rotations(rotation_id),
+  provider_registration_id text NOT NULL,
+  secret_reference text NOT NULL,
+  provider_version_id text NOT NULL,
+  provider_version_number integer NOT NULL,
+  revocation_id text NOT NULL,
+  correlation_id text NOT NULL,
+  action_digest text NOT NULL,
+  prepared_at text NOT NULL,
+  CONSTRAINT cpk_gateway_key_rotation_revocations_version_check
+    CHECK (provider_version_number > 0),
+  CONSTRAINT cpk_gateway_key_rotation_revocations_reference_check
+    CHECK (secret_reference ~ '^secret://[a-z][a-z0-9-]{0,62}/[A-Za-z0-9._/-]+$'),
+  CONSTRAINT cpk_gateway_key_rotation_revocations_digest_check
+    CHECK (action_digest ~ '^[0-9a-f]{64}$')
+);
 
 CREATE TABLE IF NOT EXISTS cpk_gateway_key_rotation_transitions (
   rotation_id text NOT NULL REFERENCES cpk_gateway_key_rotations(rotation_id),
@@ -1375,6 +1393,7 @@ def install_schema(connection: PostgresConnection) -> None:
     connection.execute(POSTGRES_SCHEMA)
     _upgrade_approval_scope_constraints(connection)
     _upgrade_gateway_key_rotation_status_constraints(connection)
+    _upgrade_gateway_key_rotation_retirement_constraint(connection)
     _backfill_graph_lineage(connection)
     connection.execute(_GRAPH_LINEAGE_CONSTRAINTS)
 
@@ -1419,8 +1438,8 @@ def _upgrade_gateway_key_rotation_status_constraints(
 ) -> None:
     """Expand installed closed rotation-state checks without row loss."""
 
-    required = GatewayKeyRotationStatus.GENERATION_PREPARED.value
-    allowed = _sql_values(tuple(GatewayKeyRotationStatus))
+    statuses = tuple(GatewayKeyRotationStatus)
+    allowed = _sql_values(statuses)
     for table, column, constraint in (
         (
             "cpk_gateway_key_rotations",
@@ -1447,13 +1466,43 @@ def _upgrade_gateway_key_rotation_status_constraints(
             """,
             (constraint, table),
         ).fetchone()
-        if row is None or required in row[0]:
+        if row is None or all(status.value in row[0] for status in statuses):
             continue
         connection.execute(f"ALTER TABLE {table} DROP CONSTRAINT {constraint}")
         connection.execute(
             f"ALTER TABLE {table} ADD CONSTRAINT {constraint} "
             f"CHECK ({column} IN ({allowed}))"
         )
+
+
+def _upgrade_gateway_key_rotation_retirement_constraint(
+    connection: PostgresConnection,
+) -> None:
+    """Allow public retirement to precede exact private-version revocation."""
+
+    table = "cpk_gateway_key_rotations"
+    constraint = "cpk_gateway_key_rotations_retirement_check"
+    row = connection.execute(
+        """
+        SELECT pg_get_constraintdef(oid)
+        FROM pg_constraint
+        WHERE conname = %s
+          AND conrelid = %s::regclass
+        """,
+        (constraint, table),
+    ).fetchone()
+    definition = "" if row is None else row[0].lower()
+    if (
+        "old_secret_revoked_at is null" in definition
+        and "old_key_retired_at is not null" in definition
+    ):
+        return
+    connection.execute(f"ALTER TABLE {table} DROP CONSTRAINT {constraint}")
+    connection.execute(
+        f"ALTER TABLE {table} ADD CONSTRAINT {constraint} "
+        "CHECK (old_secret_revoked_at IS NULL "
+        "OR old_key_retired_at IS NOT NULL)"
+    )
 
 
 def _backfill_graph_lineage(connection: PostgresConnection) -> None:

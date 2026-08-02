@@ -49,6 +49,8 @@ class GatewayKeyRotationStatus(StrEnum):
     DRAINING_OLD_GRANTS = "draining-old-grants"
     RETIREMENT_DEPLOYING = "retirement-deploying"
     RETIREMENT_READY = "retirement-ready"
+    OLD_KEY_RETIRED = "old-key-retired"
+    REVOCATION_PREPARED = "revocation-prepared"
     COMPLETED = "completed"
     BLOCKED = "blocked"
     REJECTED = "rejected"
@@ -69,6 +71,45 @@ class GatewayKeyRotationDeploymentPhase(StrEnum):
 class GatewayKeyRotationDeploymentStatus(StrEnum):
     PREPARED = "prepared"
     ACCEPTED = "accepted"
+
+
+@dataclass(frozen=True)
+class GatewayKeyRotationRevocationCheckpoint:
+    """Secret-free identity for one prepared exact-version revocation."""
+
+    provider_registration_id: str
+    secret_reference: SecretReference
+    provider_version_id: str
+    provider_version_number: int
+    revocation_id: str
+    correlation_id: str
+    action_digest: str
+    prepared_at: str
+
+    def __post_init__(self) -> None:
+        for name in (
+            "provider_registration_id",
+            "provider_version_id",
+            "revocation_id",
+            "correlation_id",
+        ):
+            _identifier(getattr(self, name), name)
+        if not isinstance(self.secret_reference, SecretReference):
+            raise GatewayKeyRotationError(
+                "revocation checkpoint secret reference is malformed"
+            )
+        if (
+            type(self.provider_version_number) is not int
+            or self.provider_version_number < 1
+        ):
+            raise GatewayKeyRotationError(
+                "revocation checkpoint version number is malformed"
+            )
+        if not re.fullmatch(r"[0-9a-f]{64}", self.action_digest):
+            raise GatewayKeyRotationError(
+                "revocation checkpoint action digest is malformed"
+            )
+        _text(self.prepared_at, "prepared_at")
 
 
 @dataclass(frozen=True)
@@ -156,6 +197,7 @@ class GatewayKeyRotation:
     new_key_activated_at: str | None = None
     drain_deadline_epoch: int | None = None
     retirement_deployment: GatewayKeyRotationDeploymentCheckpoint | None = None
+    revocation: GatewayKeyRotationRevocationCheckpoint | None = None
     old_key_retired_at: str | None = None
     old_secret_revoked_at: str | None = None
     failure_code: str | None = None
@@ -224,8 +266,10 @@ class GatewayKeyRotation:
             raise GatewayKeyRotationError("generated key evidence is incomplete")
         if (self.new_key_activated_at is None) != (self.drain_deadline_epoch is None):
             raise GatewayKeyRotationError("key activation evidence is incomplete")
-        if (self.old_key_retired_at is None) != (self.old_secret_revoked_at is None):
-            raise GatewayKeyRotationError("key retirement evidence is incomplete")
+        if self.old_secret_revoked_at is not None and self.old_key_retired_at is None:
+            raise GatewayKeyRotationError(
+                "secret revocation requires prior public-key retirement"
+            )
         if self.overlap_deployment is not None and (
                 not isinstance(self.overlap_deployment,
                                GatewayKeyRotationDeploymentCheckpoint)
@@ -238,6 +282,25 @@ class GatewayKeyRotation:
                 or self.retirement_deployment.phase
                     is not GatewayKeyRotationDeploymentPhase.RETIREMENT):
             raise GatewayKeyRotationError("retirement deployment evidence is malformed")
+        if self.revocation is not None and not isinstance(
+            self.revocation,
+            GatewayKeyRotationRevocationCheckpoint,
+        ):
+            raise GatewayKeyRotationError("revocation checkpoint is malformed")
+        if self.revocation is not None and self.old_key_retired_at is None:
+            raise GatewayKeyRotationError(
+                "revocation checkpoint requires prior public-key retirement"
+            )
+        if self.old_secret_revoked_at is not None and self.revocation is None:
+            raise GatewayKeyRotationError(
+                "secret revocation requires prepared exact-version evidence"
+            )
+        if self.status is GatewayKeyRotationStatus.COMPLETED and (
+            self.revocation is None or self.old_secret_revoked_at is None
+        ):
+            raise GatewayKeyRotationError(
+                "completed rotation requires exact revocation evidence"
+            )
         for name in ("new_key_activated_at", "old_key_retired_at",
                      "old_secret_revoked_at", "updated_at"):
             value = getattr(self, name)
@@ -360,6 +423,7 @@ class AdvanceGatewayKeyRotation:
     new_secret_version_number: int | None = None
     deployment: GatewayKeyRotationDeploymentCheckpoint | None = None
     new_key_activated_at: str | None = None
+    revocation: GatewayKeyRotationRevocationCheckpoint | None = None
     old_key_retired_at: str | None = None
     old_secret_revoked_at: str | None = None
     failure_code: str | None = None
@@ -416,6 +480,14 @@ _LEGAL = {
         GatewayKeyRotationStatus.BLOCKED,
     },
     GatewayKeyRotationStatus.RETIREMENT_READY: {
+        GatewayKeyRotationStatus.OLD_KEY_RETIRED,
+        GatewayKeyRotationStatus.BLOCKED,
+    },
+    GatewayKeyRotationStatus.OLD_KEY_RETIRED: {
+        GatewayKeyRotationStatus.REVOCATION_PREPARED,
+        GatewayKeyRotationStatus.BLOCKED,
+    },
+    GatewayKeyRotationStatus.REVOCATION_PREPARED: {
         GatewayKeyRotationStatus.COMPLETED,
         GatewayKeyRotationStatus.BLOCKED,
     },
@@ -706,18 +778,28 @@ def _transition(current: GatewayKeyRotation, command: AdvanceGatewayKeyRotation,
                                                  command.deployment)):
             raise GatewayKeyRotationConflict("retirement acceptance identity changed")
         changes["retirement_deployment"] = command.deployment
-    elif target is GatewayKeyRotationStatus.COMPLETED:
-        _checkpoint(command.deployment, GatewayKeyRotationDeploymentPhase.RETIREMENT,
-                    GatewayKeyRotationDeploymentStatus.ACCEPTED)
-        if (current.retirement_deployment is None or command.deployment is None
-                or not _same_deployment_identity(current.retirement_deployment,
-                                                 command.deployment)):
-            raise GatewayKeyRotationConflict("retirement acceptance identity changed")
+    elif target is GatewayKeyRotationStatus.OLD_KEY_RETIRED:
         _required(command.old_key_retired_at, "old_key_retired_at")
+        changes["old_key_retired_at"] = command.old_key_retired_at
+    elif target is GatewayKeyRotationStatus.REVOCATION_PREPARED:
+        if not isinstance(
+            command.revocation,
+            GatewayKeyRotationRevocationCheckpoint,
+        ):
+            raise GatewayKeyRotationConflict(
+                "exact revocation checkpoint is required"
+            )
+        changes["revocation"] = command.revocation
+    elif target is GatewayKeyRotationStatus.COMPLETED:
+        _checkpoint(current.retirement_deployment,
+                    GatewayKeyRotationDeploymentPhase.RETIREMENT,
+                    GatewayKeyRotationDeploymentStatus.ACCEPTED)
+        if current.revocation is None:
+            raise GatewayKeyRotationConflict(
+                "exact revocation checkpoint is missing"
+            )
         _required(command.old_secret_revoked_at, "old_secret_revoked_at")
-        changes.update(retirement_deployment=command.deployment,
-                       old_key_retired_at=command.old_key_retired_at,
-                       old_secret_revoked_at=command.old_secret_revoked_at)
+        changes["old_secret_revoked_at"] = command.old_secret_revoked_at
     elif target is GatewayKeyRotationStatus.BLOCKED:
         _required(command.failure_code, "failure_code")
         changes["failure_code"] = command.failure_code
@@ -744,6 +826,7 @@ def _transition_fingerprint(command: AdvanceGatewayKeyRotation) -> str:
         "new_secret_version_number": command.new_secret_version_number,
         "deployment": _checkpoint_semantics(command.deployment),
         "new_key_activated_at": command.new_key_activated_at,
+        "revocation": _revocation_semantics(command.revocation),
         "old_key_retired_at": command.old_key_retired_at,
         "old_secret_revoked_at": command.old_secret_revoked_at,
         "failure_code": command.failure_code,
@@ -771,6 +854,21 @@ def _checkpoint_semantics(value):
         "accepted_current_graph_id": value.accepted_current_graph_id,
         "accepted_current_projection_id": value.accepted_current_projection_id,
         "accepted_at": value.accepted_at,
+    }
+
+
+def _revocation_semantics(value):
+    if value is None:
+        return None
+    return {
+        "provider_registration_id": value.provider_registration_id,
+        "secret_reference": value.secret_reference.reference_id,
+        "provider_version_id": value.provider_version_id,
+        "provider_version_number": value.provider_version_number,
+        "revocation_id": value.revocation_id,
+        "correlation_id": value.correlation_id,
+        "action_digest": value.action_digest,
+        "prepared_at": value.prepared_at,
     }
 
 
