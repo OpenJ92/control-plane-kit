@@ -11,7 +11,11 @@ from control_plane_kit_core.delegation_authority import (
     materialize_delegation_verifiers,
 )
 from control_plane_kit_core.policies import PolicyScope
-from control_plane_kit_core.topology import DEFAULT_GRAPH_CODEC, GraphDescriptorError
+from control_plane_kit_core.topology import (
+    DEFAULT_GRAPH_CODEC,
+    DeploymentGraph,
+    GraphDescriptorError,
+)
 from control_plane_kit_operations.delegation_signing_keys import (
     DelegationSigningKeyError,
     RegisteredDelegationSigningKey,
@@ -24,6 +28,7 @@ from control_plane_kit_operations.desired_realized_projections import (
     publish_desired_realized_projection_in_unit_of_work,
 )
 from control_plane_kit_operations.gateway_key_rotations import (
+    GatewayKeyRotation,
     GatewayKeyRotationError,
     GatewayKeyRotationStatus,
 )
@@ -256,72 +261,11 @@ class GatewayKeyRotationOverlapProjectionService:
             )
         authored = DEFAULT_GRAPH_CODEC.decode(authored_record.graph_descriptor)
         current = DEFAULT_GRAPH_CODEC.decode(current_record.graph_descriptor)
-        projections = _current_projections(authored, current)
-        identity = (rotation.gateway_node_id, rotation.purpose)
-        bindings = {
-            binding.identity: binding for binding in authored.delegation_authorities
-        }
-        binding = bindings.get(identity)
-        if binding is None or binding.issuer != rotation.issuer:
-            raise GatewayKeyRotationOverlapProjectionConflict(
-                "rotation target does not match an exact authored delegation binding"
-            )
-        old_key = stores.delegation_signing_keys.get(
-            rotation.workspace_id,
-            rotation.purpose,
-            rotation.issuer,
-            rotation.old_key_id,
-        )
-        new_key = stores.delegation_signing_keys.get(
-            rotation.workspace_id,
-            rotation.purpose,
-            rotation.issuer,
-            rotation.new_key_id,
-        )
-        _require_rotation_keys(rotation, old_key, new_key)
-        verification_keys = stores.delegation_signing_keys.list_for_verification(
-            rotation.workspace_id,
-            rotation.purpose,
-            rotation.issuer,
-        )
-        if {value.key_id for value in verification_keys} != {
-            rotation.old_key_id,
-            rotation.new_key_id,
-        } or len(verification_keys) != 2:
-            raise GatewayKeyRotationOverlapProjectionConflict(
-                "rotation verifier scope contains unexpected key truth"
-            )
-        current_target = projections[identity]
-        expected_audience = (
-            f"gateway:{rotation.workspace_id}:{rotation.gateway_node_id}"
-        )
-        if (
-            current_target.issuer != rotation.issuer
-            or current_target.audience != expected_audience
-            or tuple(key.key_id for key in current_target.public_keys)
-            != (rotation.old_key_id,)
-            or current_target.public_keys[0] != old_key.public_key
-        ):
-            raise GatewayKeyRotationOverlapProjectionConflict(
-                "current realized target is not exact old-key projection A"
-            )
-        verifier_projection_id = (
-            f"gateway-rotation-{rotation.rotation_id}-overlap-verifier"
-        )
-        projections[identity] = DelegationVerifierProjection(
-            delegate_node_id=rotation.gateway_node_id,
-            purpose=rotation.purpose,
-            issuer=rotation.issuer,
-            audience=expected_audience,
-            projection_id=verifier_projection_id,
-            public_keys=(old_key.public_key, new_key.public_key),
-        )
-        realized = materialize_delegation_verifiers(
+        realized = derive_gateway_key_rotation_overlap_graph(
+            stores,
+            rotation,
             authored,
-            tuple(projections[key] for key in sorted(
-                projections,
-                key=lambda value: (value[0], value[1].value),
-            )),
+            current,
         )
         projection_id = f"gateway-rotation-{rotation.rotation_id}-overlap"
         projection = RealizedGraphProjectionRecord.from_graph(
@@ -346,6 +290,81 @@ class GatewayKeyRotationOverlapProjectionService:
             source_operation_version=rotation.version,
             idempotency_key=command.idempotency_key,
         )
+
+
+def derive_gateway_key_rotation_overlap_graph(
+    stores: Any,
+    rotation: GatewayKeyRotation,
+    authored: DeploymentGraph,
+    current: DeploymentGraph,
+) -> DeploymentGraph:
+    """Derive exact A+B material from durable rotation and signing-key truth."""
+
+    projections = _current_projections(authored, current)
+    identity = (rotation.gateway_node_id, rotation.purpose)
+    bindings = {
+        binding.identity: binding for binding in authored.delegation_authorities
+    }
+    binding = bindings.get(identity)
+    if binding is None or binding.issuer != rotation.issuer:
+        raise GatewayKeyRotationOverlapProjectionConflict(
+            "rotation target does not match an exact authored delegation binding"
+        )
+    old_key = stores.delegation_signing_keys.get(
+        rotation.workspace_id,
+        rotation.purpose,
+        rotation.issuer,
+        rotation.old_key_id,
+    )
+    new_key = stores.delegation_signing_keys.get(
+        rotation.workspace_id,
+        rotation.purpose,
+        rotation.issuer,
+        rotation.new_key_id,
+    )
+    _require_rotation_keys(rotation, old_key, new_key)
+    verification_keys = stores.delegation_signing_keys.list_for_verification(
+        rotation.workspace_id,
+        rotation.purpose,
+        rotation.issuer,
+    )
+    if {value.key_id for value in verification_keys} != {
+        rotation.old_key_id,
+        rotation.new_key_id,
+    } or len(verification_keys) != 2:
+        raise GatewayKeyRotationOverlapProjectionConflict(
+            "rotation verifier scope contains unexpected key truth"
+        )
+    current_target = projections[identity]
+    expected_audience = f"gateway:{rotation.workspace_id}:{rotation.gateway_node_id}"
+    if (
+        current_target.issuer != rotation.issuer
+        or current_target.audience != expected_audience
+        or tuple(key.key_id for key in current_target.public_keys)
+        != (rotation.old_key_id,)
+        or current_target.public_keys[0] != old_key.public_key
+    ):
+        raise GatewayKeyRotationOverlapProjectionConflict(
+            "current realized target is not exact old-key projection A"
+        )
+    projections[identity] = DelegationVerifierProjection(
+        delegate_node_id=rotation.gateway_node_id,
+        purpose=rotation.purpose,
+        issuer=rotation.issuer,
+        audience=expected_audience,
+        projection_id=f"gateway-rotation-{rotation.rotation_id}-overlap-verifier",
+        public_keys=(old_key.public_key, new_key.public_key),
+    )
+    return materialize_delegation_verifiers(
+        authored,
+        tuple(
+            projections[key]
+            for key in sorted(
+                projections,
+                key=lambda value: (value[0], value[1].value),
+            )
+        ),
+    )
 
 
 def _current_projections(authored: Any, current: Any) -> dict[Any, Any]:
@@ -413,4 +432,5 @@ __all__ = [
     "GatewayKeyRotationOverlapProjectionResult",
     "GatewayKeyRotationOverlapProjectionService",
     "PublishGatewayKeyRotationOverlapProjection",
+    "derive_gateway_key_rotation_overlap_graph",
 ]

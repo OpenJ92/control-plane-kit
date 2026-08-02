@@ -9,6 +9,11 @@ from collections.abc import Iterable
 from dataclasses import dataclass
 from typing import Any, Callable
 
+from control_plane_kit_core.approval_subjects import (
+    ActivityPlanApprovalSubject,
+    GatewayKeyRotationApprovalSubject,
+)
+from control_plane_kit_core.operations.commands import OperatorCommandKind
 from control_plane_kit_core.operations.lifecycle import (
     ExecutionRequestStatus,
     LifecycleOperationKind,
@@ -16,20 +21,43 @@ from control_plane_kit_core.operations.lifecycle import (
 from control_plane_kit_core.planning import (
     PlannedActivity,
     ReconcileNode,
+    RiskLevel,
     SwitchSocketConnection,
+    compile_activity_plan,
 )
 from control_plane_kit_core.policies import ApprovalPolicy, PolicyScope
-from control_plane_kit_core.topology import DEFAULT_GRAPH_CODEC, DeploymentGraph
-from control_plane_kit_core.topology import GraphDescriptorError
+from control_plane_kit_core.topology import (
+    DEFAULT_GRAPH_CODEC,
+    DeploymentGraph,
+    GraphDescriptorError,
+    GraphValidationError,
+    diff_graphs,
+    validate_graph,
+)
 from control_plane_kit_core.types import Protocol, SocketBinding
+from control_plane_kit_operations.gateway_key_rotation_overlap import (
+    GatewayKeyRotationOverlapProjectionError,
+    derive_gateway_key_rotation_overlap_graph,
+)
+from control_plane_kit_operations.gateway_key_rotations import (
+    GatewayKeyRotation,
+    GatewayKeyRotationDeploymentPhase,
+    GatewayKeyRotationStatus,
+    gateway_key_rotation_approval_subject,
+)
 from control_plane_kit_operations.records import (
+    ActivityPlanRecord,
     ActivityPlanStatus,
+    ApprovalDecisionRecord,
     ApprovalDecisionKind,
+    ApprovalRequestRecord,
     ExecutionIdempotency,
     ExecutionRequestIdentity,
     ExecutionRequestRecord,
     OperationActionRecord,
     OperationSessionStatus,
+    RealizedGraphProjectionKind,
+    WorkspaceRecord,
 )
 from control_plane_kit_operations.workflows import (
     IdempotencyKey,
@@ -237,32 +265,50 @@ class ExecutionAdmissionCommandService:
                 )
             if not plan.plan.ready_for_execution:
                 raise ExecutionAdmissionConflict("plan contains unresolved review blockers")
-            if (
-                approval.session_id != command.session_id
-                or approval.plan_id != command.plan_id
-            ):
-                raise ExecutionAdmissionConflict(
-                    "approval does not authorize this plan and session"
-                )
-            requirement = self._policy.requirement_for(plan.plan)
-            if (
-                approval.required_scope is not requirement.required_scope
-                or approval.destructive is not requirement.destructive
-                or approval.max_risk is not requirement.max_risk
-            ):
-                raise ExecutionAdmissionDenied(
-                    "approval evidence does not match canonical plan risk"
-                )
             decision = stores.activity_history.approval_decision_for_request(
                 command.approval_request_id
             )
-            if decision is None:
-                raise ExecutionAdmissionDenied("plan has no approval decision")
-            if decision.decision is not ApprovalDecisionKind.APPROVED:
-                raise ExecutionAdmissionDenied("plan approval was rejected")
-            if decision.scope is not approval.required_scope:
+            rotation_subject: GatewayKeyRotationApprovalSubject | None = None
+            if isinstance(approval.subject, ActivityPlanApprovalSubject):
+                if (
+                    approval.session_id != command.session_id
+                    or approval.plan_id != command.plan_id
+                ):
+                    raise ExecutionAdmissionConflict(
+                        "approval does not authorize this plan and session"
+                    )
+                requirement = self._policy.requirement_for(plan.plan)
+                if (
+                    approval.required_scope is not requirement.required_scope
+                    or approval.destructive is not requirement.destructive
+                    or approval.max_risk is not requirement.max_risk
+                ):
+                    raise ExecutionAdmissionDenied(
+                        "approval evidence does not match canonical plan risk"
+                    )
+                if decision is None:
+                    raise ExecutionAdmissionDenied("plan has no approval decision")
+                if decision.decision is not ApprovalDecisionKind.APPROVED:
+                    raise ExecutionAdmissionDenied("plan approval was rejected")
+                if decision.scope is not approval.required_scope:
+                    raise ExecutionAdmissionDenied(
+                        "approval decision has insufficient scope"
+                    )
+            elif isinstance(approval.subject, GatewayKeyRotationApprovalSubject):
+                rotation_subject = approval.subject
+                if decision is None:
+                    raise ExecutionAdmissionDenied(
+                        "rotation has no approval decision"
+                    )
+                if decision.decision is not ApprovalDecisionKind.APPROVED:
+                    raise ExecutionAdmissionDenied("rotation approval was rejected")
+                if decision.scope is not PolicyScope.DELEGATION_KEY_ROTATE_APPROVE:
+                    raise ExecutionAdmissionDenied(
+                        "rotation approval decision has insufficient scope"
+                    )
+            else:
                 raise ExecutionAdmissionDenied(
-                    "approval decision has insufficient scope"
+                    "approval subject cannot authorize execution"
                 )
             base_projection_id = (
                 plan.base_realized_projection_id
@@ -300,6 +346,17 @@ class ExecutionAdmissionCommandService:
                 plan.desired_graph_id,
                 command.workspace_id,
             )
+            if rotation_subject is not None:
+                _require_gateway_rotation_child_authorization(
+                    stores,
+                    phase=GatewayKeyRotationDeploymentPhase.OVERLAP,
+                    workspace=workspace,
+                    plan=plan,
+                    approval=approval,
+                    decision=decision,
+                    current=current,
+                    desired=desired,
+                )
             _require_authority_use_scopes(command.actor_scopes, current, desired)
             required = _readiness_required(plan.plan.activities, current, desired)
             supplied = {item.activity_id for item in command.readiness}
@@ -363,6 +420,194 @@ class ExecutionAdmissionCommandService:
             )
             unit_of_work.commit()
             return ExecutionAdmissionResult(request, action)
+
+
+def _require_gateway_rotation_child_authorization(
+    stores: Any,
+    *,
+    phase: GatewayKeyRotationDeploymentPhase,
+    workspace: WorkspaceRecord,
+    plan: ActivityPlanRecord,
+    approval: ApprovalRequestRecord,
+    decision: ApprovalDecisionRecord,
+    current: DeploymentGraph,
+    desired: DeploymentGraph,
+) -> None:
+    """Authorize one exact child plan under one approved rotation subject."""
+
+    if phase is not GatewayKeyRotationDeploymentPhase.OVERLAP:
+        raise ExecutionAdmissionDenied(
+            "gateway rotation child phase is not implemented"
+        )
+    subject = approval.subject
+    if not isinstance(subject, GatewayKeyRotationApprovalSubject):
+        raise ExecutionAdmissionDenied(
+            "gateway rotation child requires rotation approval subject"
+        )
+    try:
+        rotation = stores.gateway_key_rotations.get_for_update(subject.rotation_id)
+    except KeyError as error:
+        raise ExecutionAdmissionNotFound(
+            "gateway key rotation was not found"
+        ) from error
+    expected_subject = gateway_key_rotation_approval_subject(rotation)
+    if subject != expected_subject or subject.review_digest != expected_subject.review_digest:
+        raise ExecutionAdmissionDenied(
+            "rotation approval subject does not match durable rotation intent"
+        )
+    if (
+        rotation.status is not GatewayKeyRotationStatus.KEY_GENERATED
+        or rotation.new_key_id is None
+    ):
+        raise ExecutionAdmissionConflict(
+            "rotation is not ready to authorize overlap deployment"
+        )
+    if (
+        rotation.approval_request_id != approval.request_id
+        or rotation.approval_decision_id != decision.decision_id
+        or approval.required_scope is not PolicyScope.DELEGATION_KEY_ROTATE_APPROVE
+        or approval.max_risk is not RiskLevel.HIGH
+        or approval.destructive is not True
+        or decision.request_id != approval.request_id
+        or decision.decision is not ApprovalDecisionKind.APPROVED
+        or decision.scope is not PolicyScope.DELEGATION_KEY_ROTATE_APPROVE
+    ):
+        raise ExecutionAdmissionDenied(
+            "rotation approval evidence does not authorize overlap deployment"
+        )
+    _require_rotation_approval_action(stores.activity_history, approval, subject)
+    if (
+        rotation.workspace_id != workspace.workspace_id
+        or plan.base_graph_id != plan.desired_graph_id
+        or plan.base_graph_id != workspace.current_graph_id
+        or plan.desired_graph_id != workspace.desired_graph_id
+        or plan.base_realized_projection_id
+        != workspace.current_realized_projection_id
+        or plan.desired_realized_projection_id
+        != workspace.desired_realized_projection_id
+        or plan.desired_graph_revision != workspace.desired_graph_revision
+    ):
+        raise ExecutionAdmissionConflict(
+            "rotation child plan does not match exact workspace projection lineage"
+        )
+    try:
+        authored_record = stores.graphs.get(plan.base_graph_id)
+        desired_record = stores.realized_graphs.get(
+            plan.desired_realized_projection_id
+        )
+        authored = DEFAULT_GRAPH_CODEC.decode(authored_record.graph_descriptor)
+        expected_desired = derive_gateway_key_rotation_overlap_graph(
+            stores,
+            rotation,
+            authored,
+            current,
+        )
+    except (
+        GatewayKeyRotationOverlapProjectionError,
+        GraphDescriptorError,
+        KeyError,
+        ValueError,
+    ) as error:
+        raise ExecutionAdmissionConflict(
+            "rotation overlap graph truth is unavailable or invalid"
+        ) from error
+    if (
+        authored_record.workspace_id != workspace.workspace_id
+        or desired_record.projection_id
+        != f"gateway-rotation-{rotation.rotation_id}-overlap"
+        or desired_record.projection_kind
+        is not RealizedGraphProjectionKind.DELEGATION_VERIFIER
+        or desired_record.projection_key
+        != f"gateway-rotation:{rotation.rotation_id}:overlap"
+        or DEFAULT_GRAPH_CODEC.encode(expected_desired)
+        != DEFAULT_GRAPH_CODEC.encode(desired)
+    ):
+        raise ExecutionAdmissionConflict(
+            "desired projection is not the exact approved rotation overlap"
+        )
+    _require_overlap_publication_action(
+        stores.activity_history,
+        rotation=rotation,
+        plan=plan,
+    )
+    try:
+        validated_current = validate_graph(current)
+        validated_current.require_valid()
+        validated_desired = validate_graph(desired)
+        validated_desired.require_valid()
+        canonical_plan = compile_activity_plan(
+            diff_graphs(validated_current, validated_desired)
+        )
+    except GraphValidationError as error:
+        raise ExecutionAdmissionConflict(
+            "rotation child graph cannot enter canonical planning"
+        ) from error
+    if plan.plan != canonical_plan:
+        raise ExecutionAdmissionConflict(
+            "rotation child plan differs from canonical realized projection diff"
+        )
+
+
+def _require_rotation_approval_action(
+    history: Any,
+    approval: ApprovalRequestRecord,
+    subject: GatewayKeyRotationApprovalSubject,
+) -> None:
+    if approval.idempotency_key is None:
+        raise ExecutionAdmissionDenied(
+            "rotation approval request is missing durable action correlation"
+        )
+    action = history.action_for_idempotency(
+        approval.session_id,
+        approval.idempotency_key,
+    )
+    if (
+        action is None
+        or action.action_type is not OperatorCommandKind.REQUEST_APPROVAL
+        or action.payload.get("request_id") != approval.request_id
+        or action.payload.get("subject_kind") != subject.kind.value
+        or action.payload.get("subject_id") != subject.subject_id
+        or action.payload.get("review_digest") != subject.review_digest
+        or action.payload.get("required_scope") != approval.required_scope.value
+        or action.payload.get("max_risk") != approval.max_risk.value
+        or action.payload.get("destructive") is not approval.destructive
+    ):
+        raise ExecutionAdmissionDenied(
+            "rotation approval request action evidence is incomplete"
+        )
+
+
+def _require_overlap_publication_action(
+    history: Any,
+    *,
+    rotation: GatewayKeyRotation,
+    plan: ActivityPlanRecord,
+) -> None:
+    actions = tuple(
+        action
+        for action in history.actions_for_session(plan.session_id)
+        if action.action_type
+        is OperatorCommandKind.PUBLISH_DESIRED_REALIZED_PROJECTION
+        and action.payload.get("desired_realized_projection_id")
+        == plan.desired_realized_projection_id
+    )
+    if len(actions) != 1:
+        raise ExecutionAdmissionDenied(
+            "rotation overlap publication evidence is missing or ambiguous"
+        )
+    evidence = actions[0].payload
+    if (
+        evidence.get("workspace_id") != rotation.workspace_id
+        or evidence.get("authored_graph_id") != plan.base_graph_id
+        or evidence.get("previous_realized_projection_id")
+        != plan.base_realized_projection_id
+        or evidence.get("desired_graph_revision") != plan.desired_graph_revision
+        or evidence.get("source_operation_id") != rotation.rotation_id
+        or evidence.get("source_operation_version") != rotation.version
+    ):
+        raise ExecutionAdmissionDenied(
+            "rotation overlap publication evidence does not match child lineage"
+        )
 
 
 def _require_authority_use_scopes(

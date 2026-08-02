@@ -7062,3 +7062,39 @@ plaintext, or ciphertext boundary is crossed. Validation passed 474 core tests,
 296 operations tests plus compile/import checks, and the 1,232-test full current
 suite. #1293 next authorizes the exact ordinary child plan using the
 already-approved rotation subject rather than a synthetic plan approval.
+
+## #1293 Exact overlap child-plan authorization
+
+Normal execution admission now dispatches on the closed approval subject rather
+than assuming every approval directly names the child plan:
+
+```text
+ActivityPlanApprovalSubject
+  -> unchanged exact plan/session/risk admission
+
+GatewayKeyRotationApprovalSubject
+  -> exact overlap child validation
+    -> ordinary ExecutionRequestRecord
+```
+
+The rotation branch requires the original approved request/decision ids and
+review digest, `delegation-key:rotate-approve`, a key-generated rotation, exact
+publication action provenance, settled `G[A] -> G[A+B]` pointers and revision,
+the deterministic overlap projection identity, and an activity plan equal to a
+fresh canonical compilation of the realized diff. It reuses the #1292 overlap
+derivation function, so publication and admission cannot drift into two
+definitions of A+B. Ordinary `plan:execute`, runtime-authority use,
+ingress-authority use, readiness, request persistence, and action evidence stay
+on the existing admission path.
+
+The child session may differ from the rotation review session only in this
+closed subject branch. No synthetic approval is added. The resulting execution
+request names the child plan while retaining the original rotation approval
+request and decision ids. Postgres coverage proves exact success and replay;
+plan/session/workspace forgery; review/provenance tampering; stale current,
+desired, and revision truth; unexpected keys; wrong phase; rejected or missing
+decision; and missing execution scope. Focused validation passes 304 operations
+tests plus compile and import checks; the full current suite passes 1,232 tests.
+#1294 next prepares the durable overlap deployment checkpoint from these exact
+execution identities; #1096 should later generalize this successful phase-child
+composition without broadening approval.
