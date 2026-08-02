@@ -106,6 +106,22 @@ class InstanceReadServiceTests(unittest.TestCase):
         )
         self.assertEqual(model["workspace"]["desired_graph_revision"], 1)
         self.assertEqual(model["current_graph"]["graph_id"], "graph-current")
+        self.assertEqual(
+            model["current_graph"]["authored_graph_id"],
+            "graph-current",
+        )
+        self.assertEqual(
+            model["current_graph"]["realized_projection_id"],
+            model["workspace"]["current_realized_projection_id"],
+        )
+        self.assertEqual(
+            model["desired_graph"]["authored_graph_id"],
+            "graph-desired",
+        )
+        self.assertEqual(
+            model["desired_graph"]["realized_projection_id"],
+            model["workspace"]["desired_realized_projection_id"],
+        )
         metadata = model["current_graph"]["graph_descriptor"]["nodes"]["hello"]["metadata"]
         self.assertEqual(metadata["api_token"], "<redacted>")
         self.assertEqual(metadata["public_note"], "visible")

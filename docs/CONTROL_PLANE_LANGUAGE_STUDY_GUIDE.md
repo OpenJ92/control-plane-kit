@@ -235,7 +235,9 @@ when CurrentGraph advances.
 For the rotation example, use different colors for authored intent and realized
 projection. The authored graph must not change merely because public verifier
 keys rotate. Each realized projection must still have an immutable identity and
-accepted execution evidence.
+accepted execution evidence. Draw the advancement guard as one atomic check over
+current authored/projection identity, desired authored/projection identity, and
+the monotonic desired revision.
 ```
 
 ## Five-Band Summary

@@ -6806,3 +6806,48 @@ approval invalidation, exact coordinator loading, readback, and route parity.
 The operations gate passes 255 tests, compileall, and package import without
 provider, Docker, network, key-generation, plaintext, or ciphertext IO inside
 the lineage transactions.
+
+## #1278 Guarded Advancement And Accepted Lineage
+
+Current graph advancement now consumes the exact lineage admitted by planning
+rather than treating authored graph ids as executable identity. The command
+pins current and desired authored ids, current and desired realized projection
+ids, and the monotonic desired revision. It validates the immutable plan,
+request, run, workspace, and projection records before accepting successful
+activity-journal evidence.
+
+The final pointer update is one Postgres compare-and-set:
+
+```text
+expected current authored id
+  + expected current realized projection id
+  + expected desired authored id
+  + expected desired realized projection id
+  + expected desired revision
+    -> set current authored and realized lineage to desired lineage
+```
+
+A stale expected-current pair is a normal CAS miss and becomes a bounded
+advancement conflict. Invalid desired or replacement lineage remains a hard
+`RealizedGraphProjectionConflict`; it cannot be normalized into contention.
+The store still shares the caller's UnitOfWork and never commits independently.
+
+The accepted `CURRENT_GRAPH_ADVANCED` event and matching operation action record
+the destination projection id and digest, source/destination authored ids,
+current projection id, desired revision, plan id, and run id. Exact idempotent
+replay returns that same evidence after restart; different lineage under one
+idempotency key fails closed. No separate accepted-graph model or table was
+needed.
+
+Public current/desired graph reads now label `authored_graph_id` and
+`realized_projection_id` separately. Their graph descriptor remains the authored
+descriptor, so generated verifier environment cannot feed back into operator
+intent. HTTP and MCP exercise the same advancement and read services.
+
+Focused acceptance advances realized verifier projections A -> A+B -> B through
+two successful runs while one authored graph id remains unchanged. Stale
+projection/revision, missing workspace/plan/run, uncertain or failed journals,
+wrong worker, concurrent advancement, late transaction failure, and conflicting
+idempotency all fail without advancing truth. The operations gate passes 258
+tests, compileall, and package import. Generic uncertain-effect recovery remains
+owned by #1092; this issue does not promote uncertain evidence to success.

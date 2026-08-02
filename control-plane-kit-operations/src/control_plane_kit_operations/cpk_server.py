@@ -1065,7 +1065,19 @@ class CpkServerLifecycleService:
                         payload,
                         "expected_current_graph_id",
                     ),
+                    expected_current_realized_projection_id=_text(
+                        payload,
+                        "expected_current_realized_projection_id",
+                    ),
                     desired_graph_id=_text(payload, "desired_graph_id"),
+                    desired_realized_projection_id=_text(
+                        payload,
+                        "desired_realized_projection_id",
+                    ),
+                    expected_desired_graph_revision=_nonnegative_integer(
+                        payload,
+                        "expected_desired_graph_revision",
+                    ),
                     authority=_worker_authority(context),
                     idempotency_key=IdempotencyKey(_text(payload, "idempotency_key")),
                 )
@@ -1467,6 +1479,13 @@ def _optional_nonnegative_integer(
         return None
     if type(value) is not int or value < 0:
         raise CpkServerApplicationError(400, f"{name} must be nonnegative integer")
+    return value
+
+
+def _nonnegative_integer(values: Mapping[str, object], name: str) -> int:
+    value = _optional_nonnegative_integer(values, name)
+    if value is None:
+        raise CpkServerApplicationError(400, f"{name} is required")
     return value
 
 

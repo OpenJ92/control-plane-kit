@@ -166,15 +166,41 @@ class WorkspaceGraphStoreTests(unittest.TestCase):
                 )
             )
             unit_of_work.stores.workspaces.set_current_graph("workspace-a", "graph-1")
+            workspace = unit_of_work.stores.workspaces.set_desired_graph(
+                "workspace-a",
+                "graph-2",
+            )
             stale = unit_of_work.stores.workspaces.compare_and_set_current_graph(
                 "workspace-a",
                 expected_graph_id="graph-stale",
                 replacement_graph_id="graph-2",
+                expected_realized_projection_id=(
+                    workspace.current_realized_projection_id
+                ),
+                replacement_realized_projection_id=(
+                    workspace.desired_realized_projection_id
+                ),
+                expected_desired_graph_id="graph-2",
+                expected_desired_realized_projection_id=(
+                    workspace.desired_realized_projection_id
+                ),
+                expected_desired_graph_revision=workspace.desired_graph_revision,
             )
             advanced = unit_of_work.stores.workspaces.compare_and_set_current_graph(
                 "workspace-a",
                 expected_graph_id="graph-1",
                 replacement_graph_id="graph-2",
+                expected_realized_projection_id=(
+                    workspace.current_realized_projection_id
+                ),
+                replacement_realized_projection_id=(
+                    workspace.desired_realized_projection_id
+                ),
+                expected_desired_graph_id="graph-2",
+                expected_desired_realized_projection_id=(
+                    workspace.desired_realized_projection_id
+                ),
+                expected_desired_graph_revision=workspace.desired_graph_revision,
             )
             unit_of_work.commit()
 
