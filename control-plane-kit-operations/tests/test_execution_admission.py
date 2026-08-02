@@ -82,6 +82,7 @@ from control_plane_kit_operations.records import (
     WorkspaceRecord,
 )
 from control_plane_kit_operations.workflows import (
+    CloseOperationSession,
     IdempotencyKey,
     InvalidOperationCommand,
     OperationCommandService,
@@ -170,10 +171,14 @@ class ExecutionAdmissionTests(unittest.TestCase):
             id_factory=Sequence(*ids),
         )
 
-    def admission_service(self, *ids: str) -> ExecutionAdmissionCommandService:
+    def admission_service(
+        self,
+        *ids: str,
+        clock=None,
+    ) -> ExecutionAdmissionCommandService:
         return ExecutionAdmissionCommandService(
             self.unit_of_work,
-            clock=lambda: "2026-07-22T12:04:00Z",
+            clock=clock or (lambda: "2026-07-22T12:04:00Z"),
             id_factory=Sequence(*ids),
         )
 
@@ -316,6 +321,34 @@ class ExecutionAdmissionTests(unittest.TestCase):
             1,
         )
         self.assertEqual(sum(value.replayed for value in results), 1)
+
+    def test_admission_replay_survives_close_but_new_admission_is_fenced(self) -> None:
+        command = self.command()
+        admitted = self.admission_service("execution-a", "action-a").execute(command)
+        self.operation_service("action-close").execute(
+            CloseOperationSession(
+                "session-a",
+                "operator-a",
+                IdempotencyKey("close"),
+            )
+        )
+
+        replay = self.admission_service("unused", "unused").execute(command)
+        self.assertTrue(replay.replayed)
+        self.assertEqual(replay.request, admitted.request)
+        with self.assertRaisesRegex(ExecutionAdmissionConflict, "open session"):
+            self.admission_service("execution-b", "action-b").execute(
+                self.command(key="execute-after-close")
+            )
+
+        with self.unit_of_work() as unit_of_work:
+            self.assertEqual(
+                unit_of_work.stores.execution.get_request("execution-a"),
+                admitted.request,
+            )
+            with self.assertRaises(KeyError):
+                unit_of_work.stores.execution.get_request("execution-b")
+            unit_of_work.commit()
 
     def test_late_action_failure_rolls_back_execution_request(self) -> None:
         with self.assertRaises(psycopg.errors.UniqueViolation):

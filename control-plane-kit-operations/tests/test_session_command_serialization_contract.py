@@ -68,6 +68,31 @@ class SessionCommandSerializationContractTests(unittest.TestCase):
 
         self.assertEqual(_operation_action_writers(), expected)
 
+    def test_every_existing_session_writer_acquires_locks_in_contract_order(self) -> None:
+        writers = _writer_call_sequences()
+
+        for item in self.contract["command_roles"]:
+            if item["command"] == "start-operation-session":
+                continue
+            calls = writers[item["writer"]]
+            with self.subTest(command=item["command"]):
+                identity = calls.index("lock_action_idempotency")
+                session = calls.index("get_session_for_update")
+                ordinal = calls.index("next_action_ordinal")
+                self.assertLess(identity, session)
+                self.assertLess(session, ordinal)
+
+    def test_rotation_projection_locks_workspace_before_rotation_truth(self) -> None:
+        source = (
+            SOURCE_ROOT / "gateway_key_rotation_projection.py"
+        ).read_text(encoding="utf-8")
+
+        locator = source.index("gateway_key_rotations.get(command.rotation_id)")
+        workspace = source.index("workspaces.get_for_update")
+        rotation = source.index("gateway_key_rotations.get_for_update")
+        self.assertLess(locator, workspace)
+        self.assertLess(workspace, rotation)
+
     def test_each_command_uses_a_strict_global_order_subsequence(self) -> None:
         order = {
             role: index
@@ -106,7 +131,11 @@ class SessionCommandSerializationContractTests(unittest.TestCase):
             self.assertTrue(law)
 
 def _operation_action_writers() -> set[str]:
-    writers: set[str] = set()
+    return set(_writer_call_sequences())
+
+
+def _writer_call_sequences() -> dict[str, tuple[str, ...]]:
+    writers: dict[str, tuple[str, ...]] = {}
     for source_path in SOURCE_ROOT.rglob("*.py"):
         tree = ast.parse(source_path.read_text(encoding="utf-8"))
         relative = source_path.relative_to(SOURCE_ROOT).as_posix()
@@ -119,17 +148,36 @@ def _operation_action_writers() -> set[str]:
                 class_names.pop()
 
             def visit_FunctionDef(self, node: ast.FunctionDef) -> None:
-                if any(
-                    isinstance(candidate, ast.Call)
-                    and isinstance(candidate.func, ast.Attribute)
-                    and candidate.func.attr == "add_action"
-                    for candidate in ast.walk(node)
-                ):
+                calls = tuple(
+                    _call_name(candidate)
+                    for candidate in sorted(
+                        (item for item in ast.walk(node) if isinstance(item, ast.Call)),
+                        key=lambda item: (item.lineno, item.col_offset),
+                    )
+                )
+                if "add_action" in calls:
                     owner = ".".join((*class_names, node.name))
-                    writers.add(f"{relative}:{owner}")
+                    writers[f"{relative}:{owner}"] = calls
 
         WriterVisitor().visit(tree)
     return writers
+
+
+def _call_name(node: ast.AST) -> str:
+    if not isinstance(node, ast.Call):
+        return ""
+    if isinstance(node.func, ast.Attribute):
+        return node.func.attr
+    if isinstance(node.func, ast.Name):
+        if node.func.id in {
+            "_desired_session",
+            "_get_open_session_for_update",
+            "_get_session_for_update",
+            "_session_for_update",
+        }:
+            return "get_session_for_update"
+        return node.func.id
+    return ""
 
 
 if __name__ == "__main__":

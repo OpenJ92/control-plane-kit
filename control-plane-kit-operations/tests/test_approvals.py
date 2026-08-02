@@ -34,6 +34,7 @@ from control_plane_kit_operations.records import (
     WorkspaceRecord,
 )
 from control_plane_kit_operations.workflows import (
+    CancelOperationSession,
     CloseOperationSession,
     IdempotencyKey,
     OperationCommandService,
@@ -371,6 +372,100 @@ class ApprovalCommandTests(unittest.TestCase):
                     ]
                 ),
                 1,
+            )
+            unit_of_work.commit()
+
+    def test_concurrent_identical_decisions_converge_on_one_fact(self) -> None:
+        self.approval_service("request-a", "action-request").execute(self.request())
+        barrier = threading.Barrier(2)
+
+        def decide(ids: tuple[str, str]):
+            barrier.wait(timeout=5)
+            return self.approval_service(*ids).execute(self.decision())
+
+        with concurrent.futures.ThreadPoolExecutor(max_workers=2) as executor:
+            first = executor.submit(decide, ("decision-a", "action-a"))
+            second = executor.submit(decide, ("decision-b", "action-b"))
+            outcomes = (first.result(timeout=5), second.result(timeout=5))
+
+        self.assertEqual(len({item.decision.decision_id for item in outcomes}), 1)
+        self.assertEqual(len({item.action.action_id for item in outcomes}), 1)
+        self.assertEqual(sum(item.replayed for item in outcomes), 1)
+
+    def test_request_and_decision_replays_survive_session_close(self) -> None:
+        request_command = self.request()
+        request = self.approval_service("request-a", "action-request").execute(
+            request_command
+        )
+        decision_command = self.decision()
+        decision = self.approval_service("decision-a", "action-decision").execute(
+            decision_command
+        )
+        self.operation_service("action-close").execute(
+            CloseOperationSession(
+                "session-a",
+                "operator-a",
+                IdempotencyKey("close"),
+            )
+        )
+
+        request_replay = self.approval_service("unused", "unused").execute(
+            request_command
+        )
+        decision_replay = self.approval_service("unused", "unused").execute(
+            decision_command
+        )
+
+        self.assertTrue(request_replay.replayed)
+        self.assertEqual(request_replay.request, request.request)
+        self.assertTrue(decision_replay.replayed)
+        self.assertEqual(decision_replay.decision, decision.decision)
+
+    def test_cancel_fences_a_later_approval_request(self) -> None:
+        entered = threading.Event()
+        release = threading.Event()
+
+        def terminal_clock() -> str:
+            entered.set()
+            if not release.wait(timeout=5):
+                raise TimeoutError("terminal clock was not released")
+            return "2026-07-22T11:02:00Z"
+
+        cancel_service = OperationCommandService(
+            self.unit_of_work,
+            clock=terminal_clock,
+            id_factory=Sequence("action-cancel"),
+        )
+        with concurrent.futures.ThreadPoolExecutor(max_workers=2) as executor:
+            cancel = executor.submit(
+                cancel_service.execute,
+                CancelOperationSession(
+                    "session-a",
+                    "operator-a",
+                    IdempotencyKey("cancel"),
+                ),
+            )
+            self.assertTrue(entered.wait(timeout=5))
+            request = executor.submit(
+                self.approval_service("request-a", "action-request").execute,
+                self.request(),
+            )
+            with self.assertRaises(concurrent.futures.TimeoutError):
+                request.result(timeout=0.1)
+            release.set()
+            cancel.result(timeout=5)
+            with self.assertRaises(ApprovalStateConflict):
+                request.result(timeout=5)
+
+        with self.unit_of_work() as unit_of_work:
+            history = unit_of_work.stores.activity_history
+            self.assertEqual(history.approval_requests_for_session("session-a"), ())
+            self.assertEqual(
+                tuple(
+                    action.action_type.value
+                    for action in history.actions_for_session("session-a")
+                ),
+                ("start-operation-session", "cancel-operation-session"),
             )
             unit_of_work.commit()
 

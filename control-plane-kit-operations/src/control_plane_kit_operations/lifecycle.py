@@ -23,6 +23,7 @@ from control_plane_kit_operations.records import (
     ExecutionRequestRecord,
     FailureEvidence,
     OperationActionRecord,
+    OperationSessionStatus,
     RetryIdentity,
 )
 from control_plane_kit_operations.workflows import (
@@ -283,17 +284,31 @@ class RunLifecycleCommandService:
         with self._unit_of_work_factory() as unit_of_work:
             stores = unit_of_work.stores
             try:
-                request = stores.execution.get_request(command.request_id)
+                locator = stores.execution.get_request(command.request_id)
             except KeyError as error:
                 raise RunLifecycleNotFound("execution request was not found") from error
-            existing = stores.activity_history.action_for_idempotency(
-                request.identity.session_id,
+            history = stores.activity_history
+            history.lock_action_idempotency(
+                locator.identity.session_id,
+                command.idempotency_key.value,
+            )
+            existing = history.action_for_idempotency(
+                locator.identity.session_id,
                 command.idempotency_key.value,
             )
             if existing is not None:
-                result = _replay(stores, request, existing, fingerprint)
+                result = _replay(stores, locator, existing, fingerprint)
                 unit_of_work.commit()
                 return result
+            session = _get_open_session_for_update(
+                history,
+                locator.identity.session_id,
+            )
+            request = _get_request(stores, command.request_id)
+            if request.identity.session_id != session.session_id:
+                raise RunLifecycleConflict(
+                    "execution request session linkage changed"
+                )
             claimed = stores.execution.claim_request(
                 command.request_id,
                 command.authority.worker_id,
@@ -331,7 +346,7 @@ class RunLifecycleCommandService:
                 OperationActionRecord(
                     action_id=self._id_factory(),
                     session_id=claimed.identity.session_id,
-                    ordinal=stores.activity_history.next_action_ordinal(
+                    ordinal=history.next_action_ordinal(
                         claimed.identity.session_id
                     ),
                     action_type=LifecycleOperationKind.CLAIM_RUN,
@@ -369,17 +384,36 @@ class RunLifecycleCommandService:
         now = self._clock()
         with self._unit_of_work_factory() as unit_of_work:
             stores = unit_of_work.stores
-            run = _get_run_for_update(stores, command.run_id)
-            request = _get_request(stores, run.admission.request_id)
-            _require_worker_owns(request, command.authority)
-            existing = stores.activity_history.action_for_idempotency(
-                request.identity.session_id,
+            try:
+                locator_run = stores.execution.get_run(command.run_id)
+            except KeyError as error:
+                raise RunLifecycleNotFound("activity run was not found") from error
+            locator_request = _get_request(
+                stores,
+                locator_run.admission.request_id,
+            )
+            history = stores.activity_history
+            history.lock_action_idempotency(
+                locator_request.identity.session_id,
+                command.idempotency_key.value,
+            )
+            existing = history.action_for_idempotency(
+                locator_request.identity.session_id,
                 command.idempotency_key.value,
             )
             if existing is not None:
-                result = _replay(stores, request, existing, fingerprint)
+                result = _replay(stores, locator_request, existing, fingerprint)
                 unit_of_work.commit()
                 return result
+            session = _get_open_session_for_update(
+                history,
+                locator_request.identity.session_id,
+            )
+            run = _get_run_for_update(stores, command.run_id)
+            request = _get_request(stores, run.admission.request_id)
+            if request.identity.session_id != session.session_id:
+                raise RunLifecycleConflict("activity run session linkage changed")
+            _require_worker_owns(request, command.authority)
             transitioned = None
             for status in expected:
                 transitioned = stores.execution.compare_and_set_run_status(
@@ -408,7 +442,7 @@ class RunLifecycleCommandService:
                 OperationActionRecord(
                     action_id=self._id_factory(),
                     session_id=request.identity.session_id,
-                    ordinal=stores.activity_history.next_action_ordinal(
+                    ordinal=history.next_action_ordinal(
                         request.identity.session_id
                     ),
                     action_type=action_type,
@@ -435,6 +469,16 @@ def _get_request(stores: Any, request_id: str) -> ExecutionRequestRecord:
         return stores.execution.get_request(request_id)
     except KeyError as error:
         raise RunLifecycleNotFound("execution request was not found") from error
+
+
+def _get_open_session_for_update(history: Any, session_id: str) -> Any:
+    try:
+        session = history.get_session_for_update(session_id)
+    except KeyError as error:
+        raise RunLifecycleNotFound("operation session was not found") from error
+    if session.status is not OperationSessionStatus.OPEN:
+        raise RunLifecycleConflict("run lifecycle requires an open session")
+    return session
 
 
 def _replay(

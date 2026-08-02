@@ -1,6 +1,8 @@
 from __future__ import annotations
 
+import concurrent.futures
 import os
+import threading
 import unittest
 
 import psycopg
@@ -14,6 +16,7 @@ from control_plane_kit_operations.records import (
     WorkspaceRecord,
 )
 from control_plane_kit_operations.workflows import (
+    CancelOperationSession,
     CloseOperationSession,
     IdempotencyKey,
     InvalidOperationCommand,
@@ -32,6 +35,19 @@ class Sequence:
 
     def __call__(self) -> str:
         return self._values.pop(0)
+
+
+class BlockingClock:
+    def __init__(self, value: str) -> None:
+        self.value = value
+        self.entered = threading.Event()
+        self.release = threading.Event()
+
+    def __call__(self) -> str:
+        self.entered.set()
+        if not self.release.wait(timeout=5):
+            raise TimeoutError("test clock was not released")
+        return self.value
 
 
 class OperationWorkflowTests(unittest.TestCase):
@@ -181,6 +197,180 @@ class OperationWorkflowTests(unittest.TestCase):
                     IdempotencyKey("after-close"),
                 )
             )
+
+    def test_manual_action_and_close_follow_the_session_lock_order(self) -> None:
+        self.start(self.service("session-a", "action-start"))
+        manual_clock = BlockingClock("2026-07-22T10:01:00Z")
+        manual = self.service("action-manual", clock=manual_clock)
+        close = self.service("action-close")
+        command = RecordOperationAction(
+            "session-a",
+            "operator-a",
+            OperatorCommandKind.REQUEST_ACTIVITY_PLAN,
+            IdempotencyKey("manual"),
+        )
+
+        with concurrent.futures.ThreadPoolExecutor(max_workers=2) as executor:
+            manual_future = executor.submit(manual.execute, command)
+            self.assertTrue(manual_clock.entered.wait(timeout=5))
+            close_future = executor.submit(
+                close.execute,
+                CloseOperationSession(
+                    "session-a",
+                    "operator-a",
+                    IdempotencyKey("close"),
+                ),
+            )
+            with self.assertRaises(concurrent.futures.TimeoutError):
+                close_future.result(timeout=0.1)
+            manual_clock.release.set()
+            manual_result = manual_future.result(timeout=5)
+            close_result = close_future.result(timeout=5)
+
+        self.assertEqual(manual_result.action.ordinal, 2)
+        self.assertEqual(close_result.action.ordinal, 3)
+
+    def test_close_fences_a_later_manual_action_without_partial_history(self) -> None:
+        self.start(self.service("session-a", "action-start"))
+        close_clock = BlockingClock("2026-07-22T10:01:00Z")
+        close = self.service("action-close", clock=close_clock)
+        manual = self.service("action-manual")
+
+        with concurrent.futures.ThreadPoolExecutor(max_workers=2) as executor:
+            close_future = executor.submit(
+                close.execute,
+                CloseOperationSession(
+                    "session-a",
+                    "operator-a",
+                    IdempotencyKey("close"),
+                ),
+            )
+            self.assertTrue(close_clock.entered.wait(timeout=5))
+            manual_future = executor.submit(
+                manual.execute,
+                RecordOperationAction(
+                    "session-a",
+                    "operator-a",
+                    OperatorCommandKind.REQUEST_ACTIVITY_PLAN,
+                    IdempotencyKey("manual"),
+                ),
+            )
+            with self.assertRaises(concurrent.futures.TimeoutError):
+                manual_future.result(timeout=0.1)
+            close_clock.release.set()
+            close_future.result(timeout=5)
+            with self.assertRaises(OperationSessionStateConflict):
+                manual_future.result(timeout=5)
+
+        with self.unit_of_work() as unit_of_work:
+            self.assertEqual(
+                tuple(
+                    action.action_type.value
+                    for action in unit_of_work.stores.activity_history.actions_for_session(
+                        "session-a"
+                    )
+                ),
+                ("start-operation-session", "close-operation-session"),
+            )
+            unit_of_work.commit()
+
+    def test_concurrent_close_and_cancel_are_write_once_without_deadlock(self) -> None:
+        for attempt in range(8):
+            session_id = f"terminal-session-{attempt}"
+            self.service(session_id, f"start-{attempt}").execute(
+                StartOperationSession(
+                    "workspace-a",
+                    "operator-a",
+                    f"Terminal race {attempt}",
+                    IdempotencyKey(f"start-{attempt}"),
+                )
+            )
+            barrier = threading.Barrier(2)
+
+            def terminal(command, action_id):
+                barrier.wait(timeout=5)
+                try:
+                    return self.service(action_id).execute(command)
+                except OperationSessionStateConflict as error:
+                    return error
+
+            with concurrent.futures.ThreadPoolExecutor(max_workers=2) as executor:
+                close_future = executor.submit(
+                    terminal,
+                    CloseOperationSession(
+                        session_id,
+                        "operator-a",
+                        IdempotencyKey(f"close-{attempt}"),
+                    ),
+                    f"close-action-{attempt}",
+                )
+                cancel_future = executor.submit(
+                    terminal,
+                    CancelOperationSession(
+                        session_id,
+                        "operator-a",
+                        IdempotencyKey(f"cancel-{attempt}"),
+                    ),
+                    f"cancel-action-{attempt}",
+                )
+                outcomes = (
+                    close_future.result(timeout=5),
+                    cancel_future.result(timeout=5),
+                )
+
+            self.assertEqual(
+                sum(isinstance(item, OperationSessionStateConflict) for item in outcomes),
+                1,
+            )
+            with self.unit_of_work() as unit_of_work:
+                actions = unit_of_work.stores.activity_history.actions_for_session(
+                    session_id
+                )
+                self.assertEqual(tuple(action.ordinal for action in actions), (1, 2))
+                self.assertIn(
+                    actions[-1].action_type,
+                    (
+                        OperatorCommandKind.CLOSE_OPERATION_SESSION,
+                        OperatorCommandKind.CANCEL_OPERATION_SESSION,
+                    ),
+                )
+                unit_of_work.commit()
+
+    def test_independent_session_commands_do_not_share_a_lifecycle_lock(self) -> None:
+        self.start(self.service("session-a", "action-start"))
+        self.service("session-b", "action-start-b").execute(
+            StartOperationSession(
+                "workspace-a",
+                "operator-a",
+                "Independent",
+                IdempotencyKey("start-b"),
+            )
+        )
+        blocked_clock = BlockingClock("2026-07-22T10:01:00Z")
+
+        with concurrent.futures.ThreadPoolExecutor(max_workers=2) as executor:
+            blocked = executor.submit(
+                self.service("action-a", clock=blocked_clock).execute,
+                RecordOperationAction(
+                    "session-a",
+                    "operator-a",
+                    OperatorCommandKind.REQUEST_ACTIVITY_PLAN,
+                    IdempotencyKey("manual-a"),
+                ),
+            )
+            self.assertTrue(blocked_clock.entered.wait(timeout=5))
+            independent = executor.submit(
+                self.service("action-b").execute,
+                RecordOperationAction(
+                    "session-b",
+                    "operator-a",
+                    OperatorCommandKind.REQUEST_ACTIVITY_PLAN,
+                    IdempotencyKey("manual-b"),
+                ),
+            )
+            self.assertEqual(independent.result(timeout=2).action.ordinal, 2)
+            blocked_clock.release.set()
+            self.assertEqual(blocked.result(timeout=5).action.ordinal, 2)
 
     def test_reserved_lifecycle_actions_cannot_be_forged(self) -> None:
         with self.assertRaisesRegex(InvalidOperationCommand, "reserved"):

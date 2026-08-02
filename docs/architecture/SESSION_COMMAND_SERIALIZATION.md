@@ -57,27 +57,31 @@ then acquire its session row. Immutable foreign-key linkage may be read without
 a lock to locate the session, but every mutable fact must be re-read after the
 ordered locks are held.
 
-## Current Violations And Handoff
+## Enforced Owners
 
-The #1330 audit found these pre-contract shapes:
+The #1331 through #1334 implementation applies the contract to:
 
-- desired-graph checks replay before workspace serialization, then locks the
-  session only while allocating an ordinal;
-- planning locks workspace before reading session and later locks session for
-  ordinal allocation;
-- terminal/manual commands read session and replay evidence before their late
-  ordinal lock;
-- approvals use a late session lock and recheck, but lack command-identity
-  serialization before the initial replay read;
-- admission locks workspace and its own idempotency scope before the session;
-- lifecycle paths lock execution request/run truth before session action order;
-- realized-projection publication and current-graph advancement lock workspace
-  or runtime truth before session action order.
+- desired-graph edits and realized-projection publication;
+- planning and close/cancel transitions;
+- manual operation actions;
+- plan and gateway-key-rotation approval requests and decisions;
+- execution admission;
+- claim and run lifecycle transitions;
+- current-graph advancement; and
+- gateway-key-rotation overlap and retirement projection derivation.
 
-#1331 must add only the named command-identity and exact session `FOR UPDATE`
-primitives needed by this contract. #1332 and #1333 apply them to desired graph,
-planning, and terminal transitions. #1334 audits every remaining mapped writer
-and proves the order with independent Postgres connections.
+Lifecycle and advancement may read immutable execution-request or run linkage
+to locate the owning session. They then acquire command identity, resolve
+replay, lock the session, and re-read mutable request/run truth. Rotation
+projection uses the same locator rule for immutable rotation-to-workspace
+linkage, then locks workspace before rotation truth.
+
+The machine-readable contract test discovers every operation-action writer and
+requires identity, session, and ordinal calls in source order. Dedicated
+Postgres tests prove both legal terminal race outcomes, exact duplicate replay,
+conflicting reuse rejection, write-once close/cancel, independent-session
+concurrency, monotonic ordinals, rollback, and bounded repeated runs without
+deadlock.
 
 Execution leases, worker fencing, and uncertain external effects remain owned by
 #1092. Executable `DeploymentProgram` composition remains owned by #1096.
