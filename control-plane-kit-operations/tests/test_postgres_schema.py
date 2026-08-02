@@ -8,8 +8,12 @@ import psycopg
 from psycopg.errors import CheckViolation
 from psycopg.types.json import Jsonb
 
+from control_plane_kit_core.delegation_keys import DelegationKeyPurpose
 from control_plane_kit_core.topology import DEFAULT_GRAPH_CODEC, DeploymentGraph
 from control_plane_kit_core.policies import PolicyScope
+from control_plane_kit_operations.gateway_key_rotations import (
+    GatewayKeyRotationStatus,
+)
 from control_plane_kit_operations.postgres import POSTGRES_SCHEMA, install_schema
 
 
@@ -160,6 +164,100 @@ class PostgresSchemaFoundationTests(unittest.TestCase):
                 "SELECT count(*) FROM cpk_approval_requests"
             ).fetchone(),
             (1,),
+        )
+
+        install_schema(self.connection)
+        self.assertEqual(self._constraint_identities(), after_upgrade)
+
+    def test_install_expands_stale_rotation_status_checks_without_row_loss(
+        self,
+    ) -> None:
+        install_schema(self.connection)
+        self.connection.execute(
+            """
+            INSERT INTO cpk_workspaces (workspace_id, name, lifecycle)
+            VALUES ('workspace-a', 'Workspace A', 'created')
+            """
+        )
+        self.connection.execute(
+            """
+            INSERT INTO cpk_gateway_key_rotations (
+              rotation_id, workspace_id, gateway_node_id, purpose, issuer,
+              old_key_id, new_secret_reference, key_generation_correlation,
+              maximum_grant_lifetime_seconds, clock_skew_seconds,
+              correlation_id, requested_by, requested_at, intent_fingerprint,
+              status, version
+            ) VALUES (
+              'rotation-a', 'workspace-a', 'gateway-a', %s, 'cpk-server',
+              'gateway-key-a',
+              'secret://workspace-secrets/keys/gateway-key-b',
+              'generate-gateway-key-b', 120, 10, 'rotation-a', 'operator-a',
+              '2026-08-02T00:00:00Z', %s, 'approved', 1
+            )
+            """,
+            (DelegationKeyPurpose.GATEWAY_PROBE.value, "a" * 64),
+        )
+        old_values = ", ".join(
+            f"'{status.value}'"
+            for status in GatewayKeyRotationStatus
+            if status is not GatewayKeyRotationStatus.GENERATION_PREPARED
+        )
+        for table, column, constraint in (
+            (
+                "cpk_gateway_key_rotations",
+                "status",
+                "cpk_gateway_key_rotations_status_check",
+            ),
+            (
+                "cpk_gateway_key_rotation_transitions",
+                "from_status",
+                "cpk_gateway_key_rotation_transitions_from_status_check",
+            ),
+            (
+                "cpk_gateway_key_rotation_transitions",
+                "to_status",
+                "cpk_gateway_key_rotation_transitions_to_status_check",
+            ),
+        ):
+            self.connection.execute(
+                f"ALTER TABLE {table} DROP CONSTRAINT {constraint}"
+            )
+            self.connection.execute(
+                f"ALTER TABLE {table} ADD CONSTRAINT {constraint} "
+                f"CHECK ({column} IN ({old_values}))"
+            )
+
+        install_schema(self.connection)
+        after_upgrade = self._constraint_identities()
+        self.connection.execute(
+            """
+            UPDATE cpk_gateway_key_rotations
+            SET status = 'generation-prepared', version = 2,
+                generation_provider_registration_id = 'provider-registration-a',
+                generation_action_digest = %s
+            WHERE rotation_id = 'rotation-a'
+            """,
+            ("b" * 64,),
+        )
+        self.connection.execute(
+            """
+            INSERT INTO cpk_gateway_key_rotation_transitions (
+              rotation_id, transition_id, from_status, to_status,
+              from_version, to_version, transition_fingerprint,
+              advanced_by, advanced_at
+            ) VALUES (
+              'rotation-a', 'prepare-generation', 'approved',
+              'generation-prepared', 1, 2, %s, 'operator-a',
+              '2026-08-02T00:00:01Z'
+            )
+            """,
+            ("c" * 64,),
+        )
+        self.assertEqual(
+            self.connection.execute(
+                "SELECT status FROM cpk_gateway_key_rotations"
+            ).fetchall(),
+            [(GatewayKeyRotationStatus.GENERATION_PREPARED.value,)],
         )
 
         install_schema(self.connection)

@@ -146,6 +146,7 @@ class GatewayKeyRotationTests(unittest.TestCase):
             approval_request_id="approval-request-a")
         rotation = self.advance(rotation, GatewayKeyRotationStatus.APPROVED,
             approval_decision_id="approval-decision-a")
+        rotation = self.prepare_generation(rotation)
         rotation = self.advance(rotation, GatewayKeyRotationStatus.KEY_GENERATED,
             new_key_id="gateway-key-b", new_secret_version_id="version-b",
             new_secret_version_number=1)
@@ -181,8 +182,12 @@ class GatewayKeyRotationTests(unittest.TestCase):
         self.assertEqual(rotation.status, GatewayKeyRotationStatus.COMPLETED)
         self.assertEqual(self.service().get(rotation.rotation_id), rotation)
         transitions = self.service().transitions(rotation.rotation_id)
-        self.assertEqual(len(transitions), 9)
+        self.assertEqual(len(transitions), 10)
         self.assertEqual(transitions[0].from_status, GatewayKeyRotationStatus.REQUESTED)
+        self.assertEqual(
+            transitions[2].to_status,
+            GatewayKeyRotationStatus.GENERATION_PREPARED,
+        )
         self.assertEqual(transitions[-1].to_status, GatewayKeyRotationStatus.COMPLETED)
         read = self.service().read(rotation.rotation_id)
         self.assertNotIn("secret", repr(read).lower())
@@ -195,6 +200,7 @@ class GatewayKeyRotationTests(unittest.TestCase):
             approval_request_id="approval-request-a")
         rotation = self.advance(rotation, GatewayKeyRotationStatus.APPROVED,
             approval_decision_id="approval-decision-a")
+        rotation = self.prepare_generation(rotation)
         rotation = self.advance(rotation, GatewayKeyRotationStatus.KEY_GENERATED,
             new_key_id="gateway-key-b", new_secret_version_id="version-b",
             new_secret_version_number=1)
@@ -220,6 +226,7 @@ class GatewayKeyRotationTests(unittest.TestCase):
             approval_request_id="approval-request-a")
         rotation = self.advance(rotation, GatewayKeyRotationStatus.APPROVED,
             approval_decision_id="approval-decision-a")
+        rotation = self.prepare_generation(rotation)
         rotation = self.advance(rotation, GatewayKeyRotationStatus.KEY_GENERATED,
             new_key_id="gateway-key-b", new_secret_version_id="version-b",
             new_secret_version_number=1)
@@ -234,6 +241,20 @@ class GatewayKeyRotationTests(unittest.TestCase):
             self.service().transitions(rotation.rotation_id)[-1].to_status,
             GatewayKeyRotationStatus.OVERLAP_DEPLOYING,
         )
+
+    def prepare_generation(self, rotation):
+        prepared = self.advance(
+            rotation,
+            GatewayKeyRotationStatus.GENERATION_PREPARED,
+            generation_provider_registration_id="provider-registration-a",
+            generation_action_digest="a" * 64,
+        )
+        self.assertEqual(
+            prepared.generation_provider_registration_id,
+            "provider-registration-a",
+        )
+        self.assertEqual(prepared.generation_action_digest, "a" * 64)
+        return prepared
 
     def request(self) -> RequestGatewayKeyRotation:
         return RequestGatewayKeyRotation(
