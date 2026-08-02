@@ -365,9 +365,13 @@ class RunLifecycleTests(unittest.TestCase):
             VALUES ('plan-a', 'session-a', 'graph-current', 'graph-desired',
                     'planned', '2026-07-22T12:02:00Z', '{}'::jsonb);
             INSERT INTO cpk_approval_requests
-              (request_id, session_id, plan_id, requested_by, requested_at,
+              (request_id, session_id, plan_id, subject_kind, subject_payload,
+               review_digest, requested_by, requested_at,
                required_scope, max_risk, destructive)
-            VALUES ('approval-request-a', 'session-a', 'plan-a', 'operator-a',
+            VALUES ('approval-request-a', 'session-a', 'plan-a', 'activity-plan',
+                    '{"kind":"activity-plan","plan_id":"plan-a"}'::jsonb,
+                    encode(sha256(convert_to('activity-plan:plan-a', 'UTF8')), 'hex'),
+                    'operator-a',
                     '2026-07-22T12:03:00Z', 'plan:approve', 'low', false);
             INSERT INTO cpk_approval_decisions
               (decision_id, request_id, actor_id, decision, scope, decided_at)

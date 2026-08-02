@@ -54,6 +54,7 @@ class PolicyScope(StrEnum):
     DELEGATION_KEY_REVOKE = "delegation-key:revoke"
     DELEGATION_KEY_USE = "delegation-key:use"
     DELEGATION_KEY_ROTATE = "delegation-key:rotate"
+    DELEGATION_KEY_ROTATE_APPROVE = "delegation-key:rotate-approve"
     GATEWAY_PROBE_USE = "gateway-probe:use"
 
 
@@ -176,6 +177,25 @@ class ApprovalPolicy:
             else PolicyScope.PLAN_APPROVE
         )
         return _require_scope(actor_scopes, required)
+
+    def can_request_gateway_key_rotation(
+        self,
+        actor_scopes: Iterable[PolicyScope],
+    ) -> PolicyDecision:
+        """Require focused authority to request a key-rotation review."""
+
+        return _require_scope(actor_scopes, PolicyScope.DELEGATION_KEY_ROTATE)
+
+    def can_approve_gateway_key_rotation(
+        self,
+        actor_scopes: Iterable[PolicyScope],
+    ) -> PolicyDecision:
+        """Keep rotation review authority distinct from rotation execution."""
+
+        return _require_scope(
+            actor_scopes,
+            PolicyScope.DELEGATION_KEY_ROTATE_APPROVE,
+        )
 
     def requirement_for(self, plan: ActivityPlan) -> ApprovalRequirement:
         """Derive immutable approval evidence from canonical plan data."""

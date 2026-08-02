@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from dataclasses import replace
 from concurrent.futures import ThreadPoolExecutor
+import itertools
 import os
 import unittest
 
@@ -10,6 +11,11 @@ import psycopg
 from control_plane_kit_core.delegation_keys import DelegationKeyPurpose
 from control_plane_kit_core.policies import PolicyScope
 from control_plane_kit_core.secrets import SecretReference
+from control_plane_kit_operations.approvals import (
+    ApprovalCommandService,
+    DecideApproval,
+    RequestGatewayKeyRotationApproval,
+)
 from control_plane_kit_operations.gateway_key_rotations import (
     AdvanceGatewayKeyRotation,
     GatewayKeyRotationAuthorizationDenied,
@@ -22,6 +28,12 @@ from control_plane_kit_operations.gateway_key_rotations import (
     RequestGatewayKeyRotation,
 )
 from control_plane_kit_operations.postgres import PostgresUnitOfWork, install_schema
+from control_plane_kit_operations.records import (
+    ApprovalDecisionKind,
+    OperationSessionRecord,
+    OperationSessionStatus,
+)
+from control_plane_kit_operations.workflows import IdempotencyKey
 
 
 class GatewayKeyRotationTests(unittest.TestCase):
@@ -38,6 +50,9 @@ class GatewayKeyRotationTests(unittest.TestCase):
             "VALUES ('workspace-a', 'Workspace A', 'created')"
         )
         self.now = 1_800_000_000
+        self.ids = itertools.count(1)
+        self.approval_requests = {}
+        self.approval_decisions = {}
 
     def tearDown(self) -> None:
         self.connection.close()
@@ -85,6 +100,7 @@ class GatewayKeyRotationTests(unittest.TestCase):
     def test_transition_id_is_exactly_idempotent_and_semantic_reuse_conflicts(self) -> None:
         service = self.service()
         rotation = service.request(self.request())
+        request = self.request_approval(rotation)
         command = AdvanceGatewayKeyRotation(
             rotation_id=rotation.rotation_id,
             transition_id="request-approval",
@@ -94,7 +110,7 @@ class GatewayKeyRotationTests(unittest.TestCase):
             advanced_by="operator-a",
             advanced_at="2026-08-02T01:01:00Z",
             actor_scopes=(PolicyScope.DELEGATION_KEY_ROTATE,),
-            approval_request_id="approval-request-a",
+            approval_request_id=request.request.request_id,
         )
 
         first = service.advance(command)
@@ -233,6 +249,15 @@ class GatewayKeyRotationTests(unittest.TestCase):
             actor_scopes=(PolicyScope.DELEGATION_KEY_ROTATE,))
 
     def advance(self, rotation, target, **kwargs):
+        if target is GatewayKeyRotationStatus.AWAITING_APPROVAL:
+            request = self.request_approval(rotation)
+            kwargs["approval_request_id"] = request.request.request_id
+        elif target in {
+            GatewayKeyRotationStatus.APPROVED,
+            GatewayKeyRotationStatus.REJECTED,
+        }:
+            decision = self.decide_approval(rotation, target)
+            kwargs["approval_decision_id"] = decision.decision.decision_id
         return self.service().advance(AdvanceGatewayKeyRotation(
             rotation_id=rotation.rotation_id,
             transition_id=f"{rotation.version}-{target.value}",
@@ -240,6 +265,72 @@ class GatewayKeyRotationTests(unittest.TestCase):
             expected_version=rotation.version, target_status=target,
             advanced_by="operator-a", advanced_at="2026-08-02T01:01:00Z",
             actor_scopes=(PolicyScope.DELEGATION_KEY_ROTATE,), **kwargs))
+
+    def request_approval(self, rotation):
+        existing = self.approval_requests.get(rotation.rotation_id)
+        if existing is not None:
+            return existing
+        session_id = f"rotation-session-{next(self.ids)}"
+        with self.unit_of_work() as unit_of_work:
+            unit_of_work.stores.activity_history.add_session(
+                OperationSessionRecord(
+                    session_id=session_id,
+                    workspace_id=rotation.workspace_id,
+                    actor_id="operator-a",
+                    title="Review gateway key rotation",
+                    status=OperationSessionStatus.OPEN,
+                    created_at="2026-08-02T01:00:30Z",
+                )
+            )
+            unit_of_work.commit()
+        service = ApprovalCommandService(
+            self.unit_of_work,
+            clock=lambda: "2026-08-02T01:00:31Z",
+            id_factory=lambda: f"approval-{next(self.ids)}",
+        )
+        result = service.execute(
+            RequestGatewayKeyRotationApproval(
+                session_id=session_id,
+                rotation_id=rotation.rotation_id,
+                actor_id="operator-a",
+                actor_scopes=(PolicyScope.DELEGATION_KEY_ROTATE,),
+                idempotency_key=IdempotencyKey(
+                    f"request-{rotation.rotation_id}"
+                ),
+            )
+        )
+        self.approval_requests[rotation.rotation_id] = result
+        return result
+
+    def decide_approval(self, rotation, target):
+        existing = self.approval_decisions.get(rotation.rotation_id)
+        if existing is not None:
+            return existing
+        request = self.request_approval(rotation)
+        decision_kind = (
+            ApprovalDecisionKind.APPROVED
+            if target is GatewayKeyRotationStatus.APPROVED
+            else ApprovalDecisionKind.REJECTED
+        )
+        service = ApprovalCommandService(
+            self.unit_of_work,
+            clock=lambda: "2026-08-02T01:00:32Z",
+            id_factory=lambda: f"approval-{next(self.ids)}",
+        )
+        result = service.execute(
+            DecideApproval(
+                session_id=request.request.session_id,
+                request_id=request.request.request_id,
+                actor_id="manager-a",
+                actor_scopes=(PolicyScope.DELEGATION_KEY_ROTATE_APPROVE,),
+                decision=decision_kind,
+                idempotency_key=IdempotencyKey(
+                    f"decide-{rotation.rotation_id}"
+                ),
+            )
+        )
+        self.approval_decisions[rotation.rotation_id] = result
+        return result
 
     def checkpoint(self, phase):
         suffix = "overlap" if phase is GatewayKeyRotationDeploymentPhase.OVERLAP else "retire"

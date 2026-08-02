@@ -8,7 +8,12 @@ from collections.abc import Iterable
 from dataclasses import dataclass
 from typing import Any, Callable
 
+from control_plane_kit_core.approval_subjects import (
+    ActivityPlanApprovalSubject,
+    GatewayKeyRotationApprovalSubject,
+)
 from control_plane_kit_core.operations.commands import OperatorCommandKind
+from control_plane_kit_core.planning import RiskLevel
 from control_plane_kit_core.policies import ApprovalPolicy, PolicyScope
 from control_plane_kit_operations.records import (
     ApprovalDecisionKind,
@@ -17,6 +22,10 @@ from control_plane_kit_operations.records import (
     OperationActionRecord,
     OperationSessionRecord,
     OperationSessionStatus,
+)
+from control_plane_kit_operations.gateway_key_rotations import (
+    GatewayKeyRotationStatus,
+    gateway_key_rotation_approval_subject,
 )
 from control_plane_kit_operations.workflows import (
     IdempotencyKey,
@@ -76,6 +85,37 @@ class RequestApproval:
 
 
 @dataclass(frozen=True)
+class RequestGatewayKeyRotationApproval:
+    """Request review authority over one persisted key-rotation program."""
+
+    session_id: str
+    rotation_id: str
+    actor_id: str
+    actor_scopes: tuple[PolicyScope, ...]
+    idempotency_key: IdempotencyKey
+    comment: str | None = None
+
+    def __post_init__(self) -> None:
+        _required_text(self.session_id, "session_id")
+        _required_text(self.rotation_id, "rotation_id")
+        _required_text(self.actor_id, "actor_id")
+        _require_idempotency_key(self.idempotency_key)
+        object.__setattr__(self, "actor_scopes", _scopes(self.actor_scopes))
+        _optional_text(self.comment, "comment")
+
+    def descriptor(self) -> dict[str, object]:
+        return {
+            "command": OperatorCommandKind.REQUEST_APPROVAL.value,
+            "session_id": self.session_id,
+            "rotation_id": self.rotation_id,
+            "actor_id": self.actor_id,
+            "actor_scopes": tuple(scope.value for scope in self.actor_scopes),
+            "idempotency_key": self.idempotency_key.value,
+            "comment_present": self.comment is not None,
+        }
+
+
+@dataclass(frozen=True)
 class DecideApproval:
     """Record an immutable answer to one approval request."""
 
@@ -127,14 +167,21 @@ class ApprovalRequestResult:
             raise InvalidOperationCommand("request and action must share a session")
         if self.action.payload.get("request_id") != self.request.request_id:
             raise InvalidOperationCommand("request action must reference request truth")
-        if self.action.payload.get("plan_id") != self.request.plan_id:
-            raise InvalidOperationCommand("request action must reference plan truth")
+        if isinstance(self.request.subject, ActivityPlanApprovalSubject):
+            if self.action.payload.get("plan_id") != self.request.subject.plan_id:
+                raise InvalidOperationCommand("request action must reference plan truth")
+        else:
+            if self.action.payload.get("subject_kind") != self.request.subject.kind.value:
+                raise InvalidOperationCommand("request action must reference subject kind")
+            if self.action.payload.get("subject_id") != self.request.subject.subject_id:
+                raise InvalidOperationCommand("request action must reference subject truth")
+            if self.action.payload.get("review_digest") != self.request.subject.review_digest:
+                raise InvalidOperationCommand("request action must reference review meaning")
 
     def descriptor(self) -> dict[str, object]:
-        return {
+        descriptor = {
             "request_id": self.request.request_id,
             "session_id": self.request.session_id,
-            "plan_id": self.request.plan_id,
             "state": "pending",
             "required_scope": self.request.required_scope.value,
             "max_risk": self.request.max_risk.value,
@@ -145,6 +192,12 @@ class ApprovalRequestResult:
             "action_ordinal": self.action.ordinal,
             "replayed": self.replayed,
         }
+        if isinstance(self.request.subject, ActivityPlanApprovalSubject):
+            descriptor["plan_id"] = self.request.plan_id
+        else:
+            descriptor["subject"] = self.request.subject.descriptor()
+            descriptor["review_digest"] = self.request.subject.review_digest
+        return descriptor
 
 
 @dataclass(frozen=True)
@@ -173,9 +226,8 @@ class ApprovalDecisionResult:
             raise InvalidOperationCommand("decision action must reference decision truth")
 
     def descriptor(self) -> dict[str, object]:
-        return {
+        descriptor = {
             "request_id": self.request.request_id,
-            "plan_id": self.request.plan_id,
             "state": self.decision.decision.value,
             "decision_id": self.decision.decision_id,
             "decided_by": self.decision.actor_id,
@@ -186,9 +238,15 @@ class ApprovalDecisionResult:
             "action_ordinal": self.action.ordinal,
             "replayed": self.replayed,
         }
+        if isinstance(self.request.subject, ActivityPlanApprovalSubject):
+            descriptor["plan_id"] = self.request.plan_id
+        else:
+            descriptor["subject"] = self.request.subject.descriptor()
+            descriptor["review_digest"] = self.request.subject.review_digest
+        return descriptor
 
 
-ApprovalCommand = RequestApproval | DecideApproval
+ApprovalCommand = RequestApproval | RequestGatewayKeyRotationApproval | DecideApproval
 
 
 class ApprovalCommandService:
@@ -213,6 +271,8 @@ class ApprovalCommandService:
     ) -> ApprovalRequestResult | ApprovalDecisionResult:
         if isinstance(command, RequestApproval):
             return self._request(command)
+        if isinstance(command, RequestGatewayKeyRotationApproval):
+            return self._request_rotation(command)
         if isinstance(command, DecideApproval):
             return self._decide(command)
         raise InvalidOperationCommand("unsupported approval command")
@@ -272,12 +332,116 @@ class ApprovalCommandService:
                 ApprovalRequestRecord(
                     request_id=self._id_factory(),
                     session_id=command.session_id,
-                    plan_id=command.plan_id,
+                    subject=ActivityPlanApprovalSubject(command.plan_id),
                     requested_by=command.actor_id,
                     requested_at=requested_at,
                     required_scope=requirement.required_scope,
                     max_risk=requirement.max_risk,
                     destructive=requirement.destructive,
+                    comment=command.comment,
+                    idempotency_key=command.idempotency_key.value,
+                    intent_fingerprint=fingerprint,
+                )
+            )
+            action = history.add_action(
+                OperationActionRecord(
+                    action_id=self._id_factory(),
+                    session_id=command.session_id,
+                    ordinal=ordinal,
+                    action_type=OperatorCommandKind.REQUEST_APPROVAL,
+                    actor_id=command.actor_id,
+                    payload=_request_evidence(request),
+                    created_at=requested_at,
+                    idempotency_key=command.idempotency_key.value,
+                    intent_fingerprint=fingerprint,
+                )
+            )
+            unit_of_work.commit()
+            return ApprovalRequestResult(request, action)
+
+    def _request_rotation(
+        self,
+        command: RequestGatewayKeyRotationApproval,
+    ) -> ApprovalRequestResult:
+        fingerprint = _fingerprint(command)
+        with self._unit_of_work_factory() as unit_of_work:
+            history = unit_of_work.stores.activity_history
+            session = _session(history, command.session_id)
+            replay = history.approval_request_for_idempotency(
+                command.session_id,
+                command.idempotency_key.value,
+            )
+            if replay is not None:
+                result = _request_replay(history, replay, fingerprint)
+                unit_of_work.commit()
+                return result
+            _require_unused_action_key(
+                history,
+                command.session_id,
+                command.idempotency_key.value,
+            )
+            _require_open(session)
+            try:
+                rotation = unit_of_work.stores.gateway_key_rotations.get(
+                    command.rotation_id
+                )
+            except KeyError as error:
+                raise ApprovalTargetNotFound(
+                    "gateway key rotation was not found"
+                ) from error
+            if rotation.workspace_id != session.workspace_id:
+                raise ApprovalStateConflict(
+                    "rotation and approval session must share a workspace"
+                )
+            if rotation.status is not GatewayKeyRotationStatus.REQUESTED:
+                raise ApprovalStateConflict(
+                    "rotation is not awaiting an approval request"
+                )
+            authority = self._policy.can_request_gateway_key_rotation(
+                command.actor_scopes
+            )
+            if not authority.allowed:
+                raise ApprovalAuthorizationDenied(authority.reason)
+            subject = gateway_key_rotation_approval_subject(rotation)
+
+            ordinal = history.next_action_ordinal(command.session_id)
+            locked = _session(history, command.session_id)
+            replay = history.approval_request_for_idempotency(
+                command.session_id,
+                command.idempotency_key.value,
+            )
+            if replay is not None:
+                result = _request_replay(history, replay, fingerprint)
+                unit_of_work.commit()
+                return result
+            _require_unused_action_key(
+                history,
+                command.session_id,
+                command.idempotency_key.value,
+            )
+            _require_open(locked)
+            current = unit_of_work.stores.gateway_key_rotations.get_for_update(
+                command.rotation_id
+            )
+            if current != rotation:
+                raise ApprovalStateConflict(
+                    "rotation changed while approval was requested"
+                )
+            if history.approval_request_for_rotation(command.rotation_id) is not None:
+                raise ApprovalStateConflict(
+                    "rotation already has an approval request"
+                )
+            requested_at = self._clock()
+            request = history.add_approval_request(
+                ApprovalRequestRecord(
+                    request_id=self._id_factory(),
+                    session_id=command.session_id,
+                    subject=subject,
+                    requested_by=command.actor_id,
+                    requested_at=requested_at,
+                    required_scope=PolicyScope.DELEGATION_KEY_ROTATE_APPROVE,
+                    max_risk=RiskLevel.HIGH,
+                    destructive=True,
                     comment=command.comment,
                     idempotency_key=command.idempotency_key.value,
                     intent_fingerprint=fingerprint,
@@ -326,10 +490,15 @@ class ApprovalCommandService:
             _require_open(session)
             if history.approval_decision_for_request(command.request_id) is not None:
                 raise ApprovalStateConflict("approval request already has a decision")
-            authority = self._policy.can_approve_plan(
-                command.actor_scopes,
-                destructive=request.destructive,
-            )
+            if isinstance(request.subject, GatewayKeyRotationApprovalSubject):
+                authority = self._policy.can_approve_gateway_key_rotation(
+                    command.actor_scopes
+                )
+            else:
+                authority = self._policy.can_approve_plan(
+                    command.actor_scopes,
+                    destructive=request.destructive,
+                )
             if not authority.allowed:
                 raise ApprovalAuthorizationDenied(authority.reason)
 
@@ -441,13 +610,21 @@ def _decision_replay(
 
 
 def _request_evidence(request: ApprovalRequestRecord) -> dict[str, object]:
-    return {
+    evidence = {
         "request_id": request.request_id,
-        "plan_id": request.plan_id,
         "required_scope": request.required_scope.value,
         "max_risk": request.max_risk.value,
         "destructive": request.destructive,
     }
+    if isinstance(request.subject, ActivityPlanApprovalSubject):
+        evidence["plan_id"] = request.plan_id
+    else:
+        evidence.update(
+            subject_kind=request.subject.kind.value,
+            subject_id=request.subject.subject_id,
+            review_digest=request.subject.review_digest,
+        )
+    return evidence
 
 
 def _require_unused_action_key(
@@ -467,6 +644,14 @@ def _fingerprint(command: ApprovalCommand) -> str:
             "command": "request-approval",
             "session_id": command.session_id,
             "plan_id": command.plan_id,
+            "actor_id": command.actor_id,
+            "comment": command.comment,
+        }
+    elif isinstance(command, RequestGatewayKeyRotationApproval):
+        intent = {
+            "command": "request-approval",
+            "session_id": command.session_id,
+            "rotation_id": command.rotation_id,
             "actor_id": command.actor_id,
             "comment": command.comment,
         }

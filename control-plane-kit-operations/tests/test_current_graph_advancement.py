@@ -8,6 +8,7 @@ from typing import Any
 
 import psycopg
 
+from control_plane_kit_core.approval_subjects import ActivityPlanApprovalSubject
 from control_plane_kit_core.operations.lifecycle import (
     ActivityEventKind,
     ActivityRunStatus,
@@ -575,7 +576,7 @@ class CurrentGraphAdvancementTests(unittest.TestCase):
                 ApprovalRequestRecord(
                     "approval-request-a",
                     "session-a",
-                    "plan-a",
+                    ActivityPlanApprovalSubject("plan-a"),
                     "operator-a",
                     "2026-07-22T12:03:00Z",
                     PolicyScope.PLAN_APPROVE,
@@ -708,7 +709,7 @@ class CurrentGraphAdvancementTests(unittest.TestCase):
             ApprovalRequestRecord(
                 f"approval-request-{suffix}",
                 session_id,
-                plan_id,
+                ActivityPlanApprovalSubject(plan_id),
                 "operator-a",
                 "2026-07-22T12:03:00Z",
                 PolicyScope.PLAN_APPROVE,

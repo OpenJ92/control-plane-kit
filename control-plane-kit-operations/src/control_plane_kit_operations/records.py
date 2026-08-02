@@ -9,6 +9,11 @@ from enum import StrEnum
 from hashlib import sha256
 from typing import Mapping
 
+from control_plane_kit_core.approval_subjects import (
+    ActivityPlanApprovalSubject,
+    ApprovalSubject,
+    GatewayKeyRotationApprovalSubject,
+)
 from control_plane_kit_core.operations.commands import OperatorCommandKind
 from control_plane_kit_core.operations.lifecycle import (
     ActivityEventKind,
@@ -481,11 +486,11 @@ class ActivityPlanRecord:
 
 @dataclass(frozen=True)
 class ApprovalRequestRecord:
-    """Immutable request for authority over one persisted plan."""
+    """Immutable request for authority over one closed persisted subject."""
 
     request_id: str
     session_id: str
-    plan_id: str
+    subject: ApprovalSubject
     requested_by: str
     requested_at: str
     required_scope: PolicyScope
@@ -498,7 +503,13 @@ class ApprovalRequestRecord:
     def __post_init__(self) -> None:
         _validate_text(self.request_id, "request_id")
         _validate_text(self.session_id, "session_id")
-        _validate_text(self.plan_id, "plan_id")
+        if not isinstance(
+            self.subject,
+            (ActivityPlanApprovalSubject, GatewayKeyRotationApprovalSubject),
+        ):
+            raise OperationsRecordError(
+                "approval request requires a closed ApprovalSubject"
+            )
         _validate_text(self.requested_by, "requested_by")
         _validate_text(self.requested_at, "requested_at")
         if not isinstance(self.required_scope, PolicyScope):
@@ -510,6 +521,12 @@ class ApprovalRequestRecord:
         _validate_optional_text(self.comment, "comment")
         _validate_optional_text(self.idempotency_key, "idempotency_key")
         _validate_optional_text(self.intent_fingerprint, "intent_fingerprint")
+
+    @property
+    def plan_id(self) -> str | None:
+        """Compatibility projection for activity-plan approval consumers."""
+
+        return getattr(self.subject, "plan_id", None)
 
 
 @dataclass(frozen=True)

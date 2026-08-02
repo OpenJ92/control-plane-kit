@@ -6,6 +6,7 @@ from dataclasses import dataclass, field
 from datetime import datetime, timedelta, timezone
 from typing import Mapping, Protocol
 
+from control_plane_kit_core.approval_subjects import ActivityPlanApprovalSubject
 from control_plane_kit_core.planning import (
     DEFAULT_ACTIVITY_PLAN_CODEC,
     ActivityImpact,
@@ -591,27 +592,31 @@ class InstanceReadService:
         self._workspace(workspace_id)
         store = self._activity_history()
         approval = _approval_in_workspace(store, workspace_id, approval_request_id)
-        plan = _plan_in_workspace(store, workspace_id, approval.plan_id)
-        if plan.session_id != approval.session_id:
-            raise ReadModelError(
-                f"approval {approval_request_id!r} references plan truth outside its session"
+        detail: dict[str, object] = {
+            "approval": _approval_descriptor(store, approval)
+        }
+        if isinstance(approval.subject, ActivityPlanApprovalSubject):
+            plan = _plan_in_workspace(store, workspace_id, approval.subject.plan_id)
+            if plan.session_id != approval.session_id:
+                raise ReadModelError(
+                    f"approval {approval_request_id!r} references plan truth outside its session"
+                )
+            payload = _plan_descriptor(
+                store,
+                self._execution(),
+                plan,
+                workspace_id=workspace_id,
+                limit=limit,
             )
-        payload = _plan_descriptor(
-            store,
-            self._execution(),
-            plan,
-            workspace_id=workspace_id,
-            limit=limit,
-        )
-        payload["risk_summary"] = _risk_summary(plan)
-        payload["recovery"] = self._recovery_for_plan(workspace_id, plan)
+            payload["risk_summary"] = _risk_summary(plan)
+            payload["recovery"] = self._recovery_for_plan(workspace_id, plan)
+            detail["plan"] = payload
+        else:
+            detail["rotation"] = approval.subject.descriptor()
         return FocusedDetailReadModel(
             workspace_id=workspace_id,
             kind="approval-detail",
-            payload={
-                "approval": _approval_descriptor(store, approval),
-                "plan": payload,
-            },
+            payload=detail,
         )
 
     def observed_state(self, workspace_id: str) -> ObservedStateReadModel:
@@ -1351,10 +1356,9 @@ def _approval_descriptor(
     approval: ApprovalRequestRecord,
 ) -> dict[str, object]:
     decision = store.approval_decision_for_request(approval.request_id)
-    return {
+    descriptor = {
         "request_id": approval.request_id,
         "session_id": approval.session_id,
-        "plan_id": approval.plan_id,
         "requested_by": approval.requested_by,
         "requested_at": approval.requested_at,
         "required_scope": approval.required_scope.value,
@@ -1371,6 +1375,12 @@ def _approval_descriptor(
             "comment": getattr(decision, "comment"),
         },
     }
+    if isinstance(approval.subject, ActivityPlanApprovalSubject):
+        descriptor["plan_id"] = approval.plan_id
+    else:
+        descriptor["subject"] = approval.subject.descriptor()
+        descriptor["review_digest"] = approval.subject.review_digest
+    return descriptor
 
 
 def _plan_descriptor(

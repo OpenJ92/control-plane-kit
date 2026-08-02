@@ -6,6 +6,11 @@ from typing import Any
 
 from psycopg.types.json import Jsonb
 
+from control_plane_kit_core.approval_subjects import (
+    ActivityPlanApprovalSubject,
+    GatewayKeyRotationApprovalSubject,
+    approval_subject_from_descriptor,
+)
 from control_plane_kit_core.operations.commands import OperatorCommandKind
 from control_plane_kit_core.operations.lifecycle import LifecycleOperationKind
 from control_plane_kit_core.planning import DEFAULT_ACTIVITY_PLAN_CODEC
@@ -259,15 +264,20 @@ class PostgresActivityHistoryStore:
         self._connection.execute(
             """
             INSERT INTO cpk_approval_requests
-              (request_id, session_id, plan_id, requested_by, requested_at,
+              (request_id, session_id, plan_id, rotation_id, subject_kind,
+               subject_payload, review_digest, requested_by, requested_at,
                required_scope, max_risk, destructive, comment, idempotency_key,
                intent_fingerprint)
-            VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+            VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
             """,
             (
                 record.request_id,
                 record.session_id,
                 record.plan_id,
+                _rotation_id(record),
+                record.subject.kind.value,
+                Jsonb(record.subject.descriptor()),
+                record.subject.review_digest,
                 record.requested_by,
                 record.requested_at,
                 record.required_scope.value,
@@ -283,7 +293,8 @@ class PostgresActivityHistoryStore:
     def get_approval_request(self, request_id: str) -> ApprovalRequestRecord:
         row = self._connection.execute(
             """
-            SELECT request_id, session_id, plan_id, requested_by, requested_at,
+            SELECT request_id, session_id, plan_id, rotation_id, subject_kind,
+                   subject_payload, review_digest, requested_by, requested_at,
                    required_scope, max_risk, destructive, comment,
                    idempotency_key, intent_fingerprint
             FROM cpk_approval_requests
@@ -302,7 +313,8 @@ class PostgresActivityHistoryStore:
     ) -> ApprovalRequestRecord | None:
         row = self._connection.execute(
             """
-            SELECT request_id, session_id, plan_id, requested_by, requested_at,
+            SELECT request_id, session_id, plan_id, rotation_id, subject_kind,
+                   subject_payload, review_digest, requested_by, requested_at,
                    required_scope, max_risk, destructive, comment,
                    idempotency_key, intent_fingerprint
             FROM cpk_approval_requests
@@ -318,7 +330,8 @@ class PostgresActivityHistoryStore:
     ) -> tuple[ApprovalRequestRecord, ...]:
         rows = self._connection.execute(
             """
-            SELECT request_id, session_id, plan_id, requested_by, requested_at,
+            SELECT request_id, session_id, plan_id, rotation_id, subject_kind,
+                   subject_payload, review_digest, requested_by, requested_at,
                    required_scope, max_risk, destructive, comment,
                    idempotency_key, intent_fingerprint
             FROM cpk_approval_requests
@@ -328,6 +341,23 @@ class PostgresActivityHistoryStore:
             (session_id,),
         ).fetchall()
         return tuple(_approval_request_record(row) for row in rows)
+
+    def approval_request_for_rotation(
+        self,
+        rotation_id: str,
+    ) -> ApprovalRequestRecord | None:
+        row = self._connection.execute(
+            """
+            SELECT request_id, session_id, plan_id, rotation_id, subject_kind,
+                   subject_payload, review_digest, requested_by, requested_at,
+                   required_scope, max_risk, destructive, comment,
+                   idempotency_key, intent_fingerprint
+            FROM cpk_approval_requests
+            WHERE rotation_id = %s
+            """,
+            (rotation_id,),
+        ).fetchone()
+        return None if row is None else _approval_request_record(row)
 
     def add_approval_decision(
         self,
@@ -431,19 +461,34 @@ def _plan_record(row: tuple[Any, ...]) -> ActivityPlanRecord:
 
 
 def _approval_request_record(row: tuple[Any, ...]) -> ApprovalRequestRecord:
+    subject = approval_subject_from_descriptor(row[5])
+    if subject.kind.value != row[4] or subject.review_digest != row[6]:
+        raise ValueError("approval subject persistence is inconsistent")
+    if isinstance(subject, ActivityPlanApprovalSubject):
+        if row[2] != subject.plan_id or row[3] is not None:
+            raise ValueError("activity-plan approval identity is inconsistent")
+    elif isinstance(subject, GatewayKeyRotationApprovalSubject):
+        if row[2] is not None or row[3] != subject.rotation_id:
+            raise ValueError("rotation approval identity is inconsistent")
     return ApprovalRequestRecord(
         request_id=row[0],
         session_id=row[1],
-        plan_id=row[2],
-        requested_by=row[3],
-        requested_at=row[4],
-        required_scope=PolicyScope(row[5]),
-        max_risk=RiskLevel(row[6]),
-        destructive=row[7],
-        comment=row[8],
-        idempotency_key=row[9],
-        intent_fingerprint=row[10],
+        subject=subject,
+        requested_by=row[7],
+        requested_at=row[8],
+        required_scope=PolicyScope(row[9]),
+        max_risk=RiskLevel(row[10]),
+        destructive=row[11],
+        comment=row[12],
+        idempotency_key=row[13],
+        intent_fingerprint=row[14],
     )
+
+
+def _rotation_id(record: ApprovalRequestRecord) -> str | None:
+    if isinstance(record.subject, GatewayKeyRotationApprovalSubject):
+        return record.subject.rotation_id
+    return None
 
 
 def _approval_decision_record(row: tuple[Any, ...]) -> ApprovalDecisionRecord:
