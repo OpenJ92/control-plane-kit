@@ -221,6 +221,8 @@ Gateway delegation-key rotation:
       -> reviewer has delegation-key:rotate-approve
         -> immutable review digest is approved
           -> operations prepares a reference-only provider grant
+            -> commits provider registration + action digest
+              -> enters generation-prepared
             -> secrets provider generates and retains private key B
               -> operations atomically admits B reference + public identity
                 -> one authored graph binding
@@ -235,6 +237,7 @@ Then draw the durable operations program beside the realized projections:
 GatewayKeyRotation(status, version)
   x GatewayKeyRotationTransition(transition_id, from, to)
   x ApprovalSubject(kind, review_digest)
+  x GenerationCheckpoint(provider_registration_id, action_digest)
   x overlap DeploymentCheckpoint
   x drain_deadline
   x retirement DeploymentCheckpoint

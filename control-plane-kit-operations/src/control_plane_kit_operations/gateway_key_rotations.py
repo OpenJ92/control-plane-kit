@@ -41,6 +41,7 @@ class GatewayKeyRotationStatus(StrEnum):
     REQUESTED = "requested"
     AWAITING_APPROVAL = "awaiting-approval"
     APPROVED = "approved"
+    GENERATION_PREPARED = "generation-prepared"
     KEY_GENERATED = "key-generated"
     OVERLAP_DEPLOYING = "overlap-deploying"
     OVERLAP_READY = "overlap-ready"
@@ -145,6 +146,8 @@ class GatewayKeyRotation:
     version: int = 1
     approval_request_id: str | None = None
     approval_decision_id: str | None = None
+    generation_provider_registration_id: str | None = None
+    generation_action_digest: str | None = None
     new_key_id: str | None = None
     new_secret_version_id: str | None = None
     new_secret_version_number: int | None = None
@@ -178,11 +181,33 @@ class GatewayKeyRotation:
             raise GatewayKeyRotationError("rotation status is unsupported")
         if type(self.version) is not int or self.version < 1:
             raise GatewayKeyRotationError("rotation version is malformed")
-        for name in ("approval_request_id", "approval_decision_id", "new_key_id",
-                     "new_secret_version_id", "failure_code", "updated_by"):
+        for name in (
+            "approval_request_id",
+            "approval_decision_id",
+            "generation_provider_registration_id",
+            "new_key_id",
+            "new_secret_version_id",
+            "failure_code",
+            "updated_by",
+        ):
             value = getattr(self, name)
             if value is not None:
                 _identifier(value, name)
+        generation_evidence = (
+            self.generation_provider_registration_id,
+            self.generation_action_digest,
+        )
+        if any(value is not None for value in generation_evidence) != all(
+            value is not None for value in generation_evidence
+        ):
+            raise GatewayKeyRotationError(
+                "generation checkpoint evidence is incomplete"
+            )
+        if (
+            self.generation_action_digest is not None
+            and not re.fullmatch(r"[0-9a-f]{64}", self.generation_action_digest)
+        ):
+            raise GatewayKeyRotationError("generation action digest is malformed")
         if self.new_secret_version_number is not None and (
             type(self.new_secret_version_number) is not int
             or self.new_secret_version_number < 1
@@ -327,6 +352,8 @@ class AdvanceGatewayKeyRotation:
     actor_scopes: tuple[PolicyScope, ...]
     approval_request_id: str | None = None
     approval_decision_id: str | None = None
+    generation_provider_registration_id: str | None = None
+    generation_action_digest: str | None = None
     new_key_id: str | None = None
     new_secret_version_id: str | None = None
     new_secret_version_number: int | None = None
@@ -345,6 +372,16 @@ class AdvanceGatewayKeyRotation:
             raise GatewayKeyRotationError("target rotation status is unsupported")
         if type(self.expected_version) is not int or self.expected_version < 1:
             raise GatewayKeyRotationError("expected rotation version is malformed")
+        if self.generation_provider_registration_id is not None:
+            _identifier(
+                self.generation_provider_registration_id,
+                "generation_provider_registration_id",
+            )
+        if (
+            self.generation_action_digest is not None
+            and not re.fullmatch(r"[0-9a-f]{64}", self.generation_action_digest)
+        ):
+            raise GatewayKeyRotationError("generation action digest is malformed")
         _text(self.advanced_at, "advanced_at")
 
 
@@ -352,10 +389,18 @@ _LEGAL = {
     GatewayKeyRotationStatus.REQUESTED: {GatewayKeyRotationStatus.AWAITING_APPROVAL},
     GatewayKeyRotationStatus.AWAITING_APPROVAL: {
         GatewayKeyRotationStatus.APPROVED, GatewayKeyRotationStatus.REJECTED},
-    GatewayKeyRotationStatus.APPROVED: {GatewayKeyRotationStatus.KEY_GENERATED,
-                                       GatewayKeyRotationStatus.BLOCKED},
-    GatewayKeyRotationStatus.KEY_GENERATED: {GatewayKeyRotationStatus.OVERLAP_DEPLOYING,
-                                             GatewayKeyRotationStatus.BLOCKED},
+    GatewayKeyRotationStatus.APPROVED: {
+        GatewayKeyRotationStatus.GENERATION_PREPARED,
+        GatewayKeyRotationStatus.BLOCKED,
+    },
+    GatewayKeyRotationStatus.GENERATION_PREPARED: {
+        GatewayKeyRotationStatus.KEY_GENERATED,
+        GatewayKeyRotationStatus.BLOCKED,
+    },
+    GatewayKeyRotationStatus.KEY_GENERATED: {
+        GatewayKeyRotationStatus.OVERLAP_DEPLOYING,
+        GatewayKeyRotationStatus.BLOCKED,
+    },
     GatewayKeyRotationStatus.OVERLAP_DEPLOYING: {GatewayKeyRotationStatus.OVERLAP_READY,
                                                 GatewayKeyRotationStatus.BLOCKED},
     GatewayKeyRotationStatus.OVERLAP_READY: {GatewayKeyRotationStatus.NEW_KEY_ACTIVE,
@@ -598,6 +643,21 @@ def _transition(current: GatewayKeyRotation, command: AdvanceGatewayKeyRotation,
         if target is GatewayKeyRotationStatus.REJECTED:
             _required(command.failure_code, "failure_code")
             changes["failure_code"] = command.failure_code
+    elif target is GatewayKeyRotationStatus.GENERATION_PREPARED:
+        _required(
+            command.generation_provider_registration_id,
+            "generation_provider_registration_id",
+        )
+        if command.generation_action_digest is None:
+            raise GatewayKeyRotationConflict(
+                "generation_action_digest is required"
+            )
+        changes.update(
+            generation_provider_registration_id=(
+                command.generation_provider_registration_id
+            ),
+            generation_action_digest=command.generation_action_digest,
+        )
     elif target is GatewayKeyRotationStatus.KEY_GENERATED:
         for name in ("new_key_id", "new_secret_version_id"):
             _required(getattr(command, name), name)
@@ -659,6 +719,10 @@ def _transition_fingerprint(command: AdvanceGatewayKeyRotation) -> str:
         "advanced_at": command.advanced_at,
         "approval_request_id": command.approval_request_id,
         "approval_decision_id": command.approval_decision_id,
+        "generation_provider_registration_id": (
+            command.generation_provider_registration_id
+        ),
+        "generation_action_digest": command.generation_action_digest,
         "new_key_id": command.new_key_id,
         "new_secret_version_id": command.new_secret_version_id,
         "new_secret_version_number": command.new_secret_version_number,

@@ -901,8 +901,10 @@ owned by:
 
 durable:
   Operations stores the admitted `SecretReference`, provider version identity,
-  correlation, and public verification identity. Generation intent and program
-  phase become durable rotation state in the succeeding rotation-program leg.
+  correlation, and public verification identity. For rotation, operations first
+  stores the exact active provider-registration identity and a secret-free
+  custody-grant fingerprint in `generation-prepared`; provider IO begins only
+  after that checkpoint commits.
 
 may contain secrets:
   No. The grant contains only provider, endpoint, credential, and generated
@@ -921,6 +923,13 @@ laws:
   reference and public key; a second-write conflict rolls both back. Exact
   provider replay is idempotent.
 
+  Rotation generation is a prepare/effect/fold program. Restart reconstructs
+  the exact action from the committed transition timestamp and custody
+  fingerprint. A definite pre-mutation failure leaves that same action
+  retryable. An uncertain post-mutation outcome blocks the rotation. Successful
+  replay must match workspace, reference, purpose, issuer, correlation, public
+  key identity, and provider version exactly.
+
 ### GatewayKeyRotation / GatewayKeyRotationTransition
 
 meaning:
@@ -929,7 +938,8 @@ meaning:
   the transition ledger records each accepted state change exactly once:
 
 ```text
-requested -> awaiting-approval -> approved -> key-generated
+requested -> awaiting-approval -> approved -> generation-prepared
+  -> key-generated
   -> overlap-deploying -> overlap-ready -> new-key-active
     -> draining-old-grants -> retirement-deploying -> completed
 ```
@@ -943,8 +953,9 @@ owned by:
 durable:
   Yes. Rotation state, version, operator correlation, deterministic child
   deployment identities, accepted current-graph evidence, phase timestamps,
-  and the grant-drain deadline survive process restart. One nonterminal
-  rotation owns a `(workspace, gateway, purpose, issuer)` binding.
+  generation provider-registration identity, generation action digest, and the
+  grant-drain deadline survive process restart. One nonterminal rotation owns a
+  `(workspace, gateway, purpose, issuer)` binding.
 
 may contain secrets:
   Internal operations state may retain a `SecretReference` and provider version
@@ -970,6 +981,10 @@ laws:
   new key becomes active; advancement consults an injected trusted clock and
   never sleeps. Uncertain child effects move to `blocked` with retained evidence
   for recovery/fencing work; absence of a folded result never licenses a retry.
+  Approved rotation does not call a provider directly: it first commits
+  `generation-prepared`, performs provider IO outside transactions, and then
+  folds bounded evidence. Exact success and uncertainty replay are idempotent;
+  changed action lineage, provider evidence, or failure identity conflicts.
 
 ### GatewayProbeAttempt
 

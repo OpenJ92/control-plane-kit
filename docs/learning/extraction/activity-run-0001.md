@@ -6980,3 +6980,44 @@ semantic idempotency conflict, distinct request/review scopes, exact-subject
 linking, rejected-decision refusal, legacy-row migration, and schema reinstall
 stability. #1286 next composes provider-owned key generation only after this
 approved subject has been durably accepted.
+
+## #1286 Approved Gateway-Key Generation Program
+
+Approved rotation now crosses the first external-effect boundary through an
+operations-owned prepare/effect/fold program rather than a harness sequence:
+
+```text
+approved GatewayKeyRotation
+  -> persist generation-prepared(provider registration, custody fingerprint)
+    -> commit
+      -> typed provider generation action
+        -> provider IO outside operations
+          -> bounded public evidence
+            -> atomically admit SecretReference + public key
+              -> persist key-generated
+```
+
+The provider registration is selected from the `SecretReference` provider id
+and active workspace admission; callers cannot substitute a registration after
+approval. The action digest is the existing `SecretCustodyGrant` fingerprint,
+which commits workspace, provider registration, endpoint and credential
+references, generated secret reference, use intent, actor, and correlation
+without exposing any resolved value. The committed preparation transition owns
+the action timestamp, so restart reconstructs the exact action rather than
+trusting a new caller timestamp.
+
+Known pre-mutation provider failure returns the same prepared action for retry.
+Uncertain post-mutation outcomes advance to `blocked`; only exact uncertainty
+replay is idempotent. Successful replay must match the full workspace,
+reference, purpose, issuer, correlation, public key, and provider-version
+evidence already folded into durable truth. A crash after admission but before
+rotation advancement is safe because both generated-reference and public-key
+registration are idempotent before the rotation CAS resumes.
+
+No provider client or interpreter package enters operations. Preparation,
+admission, and rotation advancement are separate short Postgres transactions;
+provider IO occurs only between them. The status migration is guarded and
+idempotent, preserves existing rows, and expands both aggregate and transition
+closed-value constraints. Focused validation passes 286 operations tests plus
+compile and import checks. #1287 next composes the overlap deployment program
+from this durable `key-generated` checkpoint.

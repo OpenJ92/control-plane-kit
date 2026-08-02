@@ -553,6 +553,8 @@ CREATE TABLE IF NOT EXISTS cpk_gateway_key_rotations (
   version integer NOT NULL,
   approval_request_id text,
   approval_decision_id text,
+  generation_provider_registration_id text,
+  generation_action_digest text,
   new_key_id text,
   new_secret_version_id text,
   new_secret_version_number integer,
@@ -576,6 +578,12 @@ CREATE TABLE IF NOT EXISTS cpk_gateway_key_rotations (
   CONSTRAINT cpk_gateway_key_rotations_secret_version_check
     CHECK ((new_key_id IS NULL) = (new_secret_version_id IS NULL)
       AND (new_secret_version_id IS NULL) = (new_secret_version_number IS NULL)),
+  CONSTRAINT cpk_gateway_key_rotations_generation_checkpoint_check
+    CHECK ((generation_provider_registration_id IS NULL)
+      = (generation_action_digest IS NULL)),
+  CONSTRAINT cpk_gateway_key_rotations_generation_digest_check
+    CHECK (generation_action_digest IS NULL
+      OR generation_action_digest ~ '^[0-9a-f]{64}$'),
   CONSTRAINT cpk_gateway_key_rotations_activation_check
     CHECK ((new_key_activated_at IS NULL) = (drain_deadline_epoch IS NULL)),
   CONSTRAINT cpk_gateway_key_rotations_retirement_check
@@ -585,6 +593,36 @@ CREATE TABLE IF NOT EXISTS cpk_gateway_key_rotations (
   CONSTRAINT cpk_gateway_key_rotations_fingerprint_check
     CHECK (intent_fingerprint ~ '^[0-9a-f]{64}$')
 );
+
+ALTER TABLE cpk_gateway_key_rotations
+  ADD COLUMN IF NOT EXISTS generation_provider_registration_id text;
+ALTER TABLE cpk_gateway_key_rotations
+  ADD COLUMN IF NOT EXISTS generation_action_digest text;
+
+DO $$
+BEGIN
+  IF NOT EXISTS (
+    SELECT 1 FROM pg_constraint
+    WHERE conname = 'cpk_gateway_key_rotations_generation_checkpoint_check'
+      AND conrelid = 'cpk_gateway_key_rotations'::regclass
+  ) THEN
+    ALTER TABLE cpk_gateway_key_rotations
+      ADD CONSTRAINT cpk_gateway_key_rotations_generation_checkpoint_check
+      CHECK ((generation_provider_registration_id IS NULL)
+        = (generation_action_digest IS NULL));
+  END IF;
+  IF NOT EXISTS (
+    SELECT 1 FROM pg_constraint
+    WHERE conname = 'cpk_gateway_key_rotations_generation_digest_check'
+      AND conrelid = 'cpk_gateway_key_rotations'::regclass
+  ) THEN
+    ALTER TABLE cpk_gateway_key_rotations
+      ADD CONSTRAINT cpk_gateway_key_rotations_generation_digest_check
+      CHECK (generation_action_digest IS NULL
+        OR generation_action_digest ~ '^[0-9a-f]{64}$');
+  END IF;
+END
+$$;
 
 CREATE UNIQUE INDEX IF NOT EXISTS cpk_gateway_key_rotations_nonterminal_binding
   ON cpk_gateway_key_rotations (workspace_id, gateway_node_id, purpose, issuer)
@@ -1336,6 +1374,7 @@ def install_schema(connection: PostgresConnection) -> None:
 
     connection.execute(POSTGRES_SCHEMA)
     _upgrade_approval_scope_constraints(connection)
+    _upgrade_gateway_key_rotation_status_constraints(connection)
     _backfill_graph_lineage(connection)
     connection.execute(_GRAPH_LINEAGE_CONSTRAINTS)
 
@@ -1355,6 +1394,48 @@ def _upgrade_approval_scope_constraints(connection: PostgresConnection) -> None:
             "cpk_approval_decisions",
             "scope",
             "cpk_approval_decisions_scope_check",
+        ),
+    ):
+        row = connection.execute(
+            """
+            SELECT pg_get_constraintdef(oid)
+            FROM pg_constraint
+            WHERE conname = %s
+              AND conrelid = %s::regclass
+            """,
+            (constraint, table),
+        ).fetchone()
+        if row is None or required in row[0]:
+            continue
+        connection.execute(f"ALTER TABLE {table} DROP CONSTRAINT {constraint}")
+        connection.execute(
+            f"ALTER TABLE {table} ADD CONSTRAINT {constraint} "
+            f"CHECK ({column} IN ({allowed}))"
+        )
+
+
+def _upgrade_gateway_key_rotation_status_constraints(
+    connection: PostgresConnection,
+) -> None:
+    """Expand installed closed rotation-state checks without row loss."""
+
+    required = GatewayKeyRotationStatus.GENERATION_PREPARED.value
+    allowed = _sql_values(tuple(GatewayKeyRotationStatus))
+    for table, column, constraint in (
+        (
+            "cpk_gateway_key_rotations",
+            "status",
+            "cpk_gateway_key_rotations_status_check",
+        ),
+        (
+            "cpk_gateway_key_rotation_transitions",
+            "from_status",
+            "cpk_gateway_key_rotation_transitions_from_status_check",
+        ),
+        (
+            "cpk_gateway_key_rotation_transitions",
+            "to_status",
+            "cpk_gateway_key_rotation_transitions_to_status_check",
         ),
     ):
         row = connection.execute(

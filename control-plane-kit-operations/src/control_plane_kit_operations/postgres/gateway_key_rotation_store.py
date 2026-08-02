@@ -21,7 +21,8 @@ _COLUMNS = """rotation_id, workspace_id, gateway_node_id, purpose, issuer,
 old_key_id, new_secret_reference, key_generation_correlation,
 maximum_grant_lifetime_seconds, clock_skew_seconds, correlation_id,
 requested_by, requested_at, intent_fingerprint, status, version,
-approval_request_id, approval_decision_id, new_key_id, new_secret_version_id,
+approval_request_id, approval_decision_id, generation_provider_registration_id,
+generation_action_digest, new_key_id, new_secret_version_id,
 new_secret_version_number, new_key_activated_at, drain_deadline_epoch,
 old_key_retired_at, old_secret_revoked_at, failure_code, updated_by, updated_at"""
 
@@ -38,7 +39,7 @@ class GatewayKeyRotationStore:
     def add(self, value: GatewayKeyRotation) -> GatewayKeyRotation:
         self._connection.execute(
             f"""INSERT INTO cpk_gateway_key_rotations ({_COLUMNS})
-            VALUES ({', '.join(['%s'] * 28)})""", _values(value))
+            VALUES ({', '.join(['%s'] * 30)})""", _values(value))
         return value
 
     def get(self, rotation_id: str) -> GatewayKeyRotation:
@@ -72,15 +73,19 @@ class GatewayKeyRotationStore:
         row = self._connection.execute(
             f"""UPDATE cpk_gateway_key_rotations SET
             status=%s, version=%s, approval_request_id=%s,
-            approval_decision_id=%s, new_key_id=%s, new_secret_version_id=%s,
-            new_secret_version_number=%s, new_key_activated_at=%s,
-            drain_deadline_epoch=%s, old_key_retired_at=%s,
-            old_secret_revoked_at=%s, failure_code=%s, updated_by=%s, updated_at=%s
+            approval_decision_id=%s, generation_provider_registration_id=%s,
+            generation_action_digest=%s, new_key_id=%s,
+            new_secret_version_id=%s, new_secret_version_number=%s,
+            new_key_activated_at=%s, drain_deadline_epoch=%s,
+            old_key_retired_at=%s, old_secret_revoked_at=%s, failure_code=%s,
+            updated_by=%s, updated_at=%s
             WHERE rotation_id=%s AND status=%s AND version=%s
             RETURNING {_COLUMNS}""",
             (replacement.status.value, replacement.version,
              replacement.approval_request_id, replacement.approval_decision_id,
-             replacement.new_key_id, replacement.new_secret_version_id,
+             replacement.generation_provider_registration_id,
+             replacement.generation_action_digest, replacement.new_key_id,
+             replacement.new_secret_version_id,
              replacement.new_secret_version_number, replacement.new_key_activated_at,
              replacement.drain_deadline_epoch, replacement.old_key_retired_at,
              replacement.old_secret_revoked_at, replacement.failure_code,
@@ -143,13 +148,14 @@ class GatewayKeyRotationStore:
             correlation_id=row[10], requested_by=row[11], requested_at=row[12],
             intent_fingerprint=row[13], status=GatewayKeyRotationStatus(row[14]),
             version=row[15], approval_request_id=row[16], approval_decision_id=row[17],
-            new_key_id=row[18], new_secret_version_id=row[19],
-            new_secret_version_number=row[20],
+            generation_provider_registration_id=row[18],
+            generation_action_digest=row[19], new_key_id=row[20],
+            new_secret_version_id=row[21], new_secret_version_number=row[22],
             overlap_deployment=checkpoints.get(GatewayKeyRotationDeploymentPhase.OVERLAP),
-            new_key_activated_at=row[21], drain_deadline_epoch=row[22],
+            new_key_activated_at=row[23], drain_deadline_epoch=row[24],
             retirement_deployment=checkpoints.get(GatewayKeyRotationDeploymentPhase.RETIREMENT),
-            old_key_retired_at=row[23], old_secret_revoked_at=row[24],
-            failure_code=row[25], updated_by=row[26], updated_at=row[27])
+            old_key_retired_at=row[25], old_secret_revoked_at=row[26],
+            failure_code=row[27], updated_by=row[28], updated_at=row[29])
 
     def _put_checkpoint(self, rotation_id, value):
         row = self._connection.execute("""
@@ -220,7 +226,9 @@ def _values(value):
             value.key_generation_correlation,value.maximum_grant_lifetime_seconds,
             value.clock_skew_seconds,value.correlation_id,value.requested_by,
             value.requested_at,value.intent_fingerprint,value.status.value,value.version,
-            value.approval_request_id,value.approval_decision_id,value.new_key_id,
+            value.approval_request_id,value.approval_decision_id,
+            value.generation_provider_registration_id,value.generation_action_digest,
+            value.new_key_id,
             value.new_secret_version_id,value.new_secret_version_number,
             value.new_key_activated_at,value.drain_deadline_epoch,value.old_key_retired_at,
             value.old_secret_revoked_at,value.failure_code,value.updated_by,value.updated_at)
