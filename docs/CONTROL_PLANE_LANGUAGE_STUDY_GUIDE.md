@@ -316,6 +316,23 @@ hard arrow to `BLOCKED(uncertain)`, never back to the adapter. At every later
 mark, draw recovery from committed evidence with no duplicate effect. This is
 the distinction between durable history and safe effect replay.
 
+Continue from accepted overlap with three separate committed boxes:
+
+```text
+[activate B; A becomes verify-only]
+  -> [NEW_KEY_ACTIVE; deadline = trusted now + lifetime + skew]
+    -> [DRAINING_OLD_GRANTS]
+      -> WAITING(now, deadline)
+      -> READY_FOR_RETIREMENT(now, deadline)
+```
+
+Draw a process-loss mark after every box. Recovery reads key and rotation truth:
+if B is already active while the rotation still says `OVERLAP_READY`, it folds
+the committed activation rather than activating again. Circle the deadline and
+write "not caller input". `WAITING` performs no write and contains no sleep.
+`READY_FOR_RETIREMENT` is an application-program outcome, not another durable
+aggregate state; the next phase will prepare the exact B-only projection.
+
 Keep the three authorities visually separate: requesting rotation, reviewing
 the rotation subject, and executing the accepted deployment are not equivalent
 permissions. The reviewer sees bounded rotation intent, never a secret

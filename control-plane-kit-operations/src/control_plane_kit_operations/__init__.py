@@ -178,6 +178,15 @@ from .gateway_key_rotation_overlap_execution import (
     GatewayKeyRotationOverlapExecutionResult,
     ProgressGatewayKeyRotationOverlap,
 )
+from .gateway_key_rotation_activation import (
+    GatewayKeyRotationActivationAuthorizationDenied,
+    GatewayKeyRotationActivationConflict,
+    GatewayKeyRotationActivationError,
+    GatewayKeyRotationActivationOutcome,
+    GatewayKeyRotationActivationProgram,
+    GatewayKeyRotationActivationResult,
+    ProgressGatewayKeyRotationActivation,
+)
 from .foundation import (
     OPERATIONS_PACKAGE_BOUNDARY,
     OperationsPackageBoundary,
@@ -589,6 +598,12 @@ __all__ = [
     "GatewayKeyRotationOverlapExecutionOutcome",
     "GatewayKeyRotationOverlapExecutionProgram",
     "GatewayKeyRotationOverlapExecutionResult",
+    "GatewayKeyRotationActivationAuthorizationDenied",
+    "GatewayKeyRotationActivationConflict",
+    "GatewayKeyRotationActivationError",
+    "GatewayKeyRotationActivationOutcome",
+    "GatewayKeyRotationActivationProgram",
+    "GatewayKeyRotationActivationResult",
     "GraphAuthoringError",
     "GraphAuthoringService",
     "GraphVersionRecord",
@@ -596,6 +611,7 @@ __all__ = [
     "RealizedGraphProjectionKind",
     "RealizedGraphProjectionRecord",
     "ProgressGatewayKeyRotationOverlap",
+    "ProgressGatewayKeyRotationActivation",
     "IngressAllocationResult",
     "IngressProviderInterpreter",
     "IngressRealizationAdapter",

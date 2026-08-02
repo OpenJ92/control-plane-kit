@@ -972,6 +972,29 @@ laws:
   spans adapter IO. Failure transition time comes from the injected trusted
   application clock, not runtime evidence or a caller-provided timestamp.
 
+  Accepted overlap activates B through a focused operations program:
+
+  ```text
+  OVERLAP_READY with accepted current G[A+B]
+    -> exact ACTIVE A + VERIFY_ONLY B
+      -> activate B atomically, demoting A to VERIFY_ONLY
+        -> NEW_KEY_ACTIVE(trusted activation evidence + drain deadline)
+          -> DRAINING_OLD_GRANTS
+            -> WAITING before deadline
+            -> READY_FOR_RETIREMENT at or after deadline
+  ```
+
+  Activation and each aggregate fold retain separate explicit transactions.
+  If the process is lost after activation but before the aggregate fold, the
+  program recognizes exact ACTIVE B plus VERIFY_ONLY A and resumes without
+  activating another key. The deadline is computed only by the rotation
+  aggregate from the configured maximum grant lifetime and clock skew. The
+  caller supplies neither timestamps nor a deadline. Waiting is a typed,
+  mutation-free result from an injected trusted epoch clock; it is never a
+  sleep or polling loop. `READY_FOR_RETIREMENT` is a program result while the
+  aggregate remains `DRAINING_OLD_GRANTS`, leaving retirement projection
+  preparation to the next explicit phase.
+
 ### DelegationKeyGenerationGrant / DelegationKeyGenerationEvidence
 
 meaning:
@@ -1109,7 +1132,11 @@ laws:
   idempotent; semantic reuse conflicts. The aggregate CAS and transition record
   share one UnitOfWork transaction. Child operation identities are persisted
   before their effects begin. Accepted overlap and retirement evidence must
-  preserve those exact identities. The old-grant drain deadline is computed
+  preserve those exact identities. Activating replacement B requires both
+  `delegation-key:rotate` and `delegation-key:activate`; graph execution alone
+  grants neither authority. Activation atomically makes B the sole signer
+  while A remains verification-capable during the drain. The old-grant drain
+  deadline is computed
   from the maximum issued capability lifetime plus bounded clock skew when the
   new key becomes active; advancement consults an injected trusted clock and
   never sleeps. Uncertain child effects move to `blocked` with retained evidence
