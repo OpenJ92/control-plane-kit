@@ -25,7 +25,6 @@ from control_plane_kit_core.topology import DeploymentGraph, compile_topology
 from control_plane_kit_core.types import Protocol
 from control_plane_kit_operations.planning import (
     ActivityPlanningCommandService,
-    ActivityPlanningGraphInvalid,
     ActivityPlanningGraphStateConflict,
     ActivityPlanningIdempotencyConflict,
     DesiredGraphCommandService,
@@ -35,10 +34,16 @@ from control_plane_kit_operations.planning import (
     SetDesiredGraph,
     StaleDesiredGraph,
 )
-from control_plane_kit_operations.postgres import PostgresUnitOfWork, install_schema
+from control_plane_kit_operations.postgres import (
+    PostgresUnitOfWork,
+    RealizedGraphProjectionConflict,
+    install_schema,
+)
 from control_plane_kit_operations.products import InlineDescriptorSource
 from control_plane_kit_operations.records import (
     GraphVersionRecord,
+    RealizedGraphProjectionKind,
+    RealizedGraphProjectionRecord,
     WorkspaceRecord,
 )
 from control_plane_kit_operations.workflows import (
@@ -258,6 +263,20 @@ class PlanningCommandTests(unittest.TestCase):
         self.assertFalse(result.replayed)
         self.assertEqual(result.plan_record.base_graph_id, "graph-current")
         self.assertEqual(result.plan_record.desired_graph_id, "graph-desired")
+        with self.unit_of_work() as unit_of_work:
+            workspace = unit_of_work.stores.workspaces.get("workspace-a")
+        self.assertEqual(
+            result.plan_record.base_realized_projection_id,
+            workspace.current_realized_projection_id,
+        )
+        self.assertEqual(
+            result.plan_record.desired_realized_projection_id,
+            workspace.desired_realized_projection_id,
+        )
+        self.assertEqual(
+            result.plan_record.desired_graph_revision,
+            workspace.desired_graph_revision,
+        )
         self.assertEqual(
             tuple(
                 type(activity.operation)
@@ -281,6 +300,68 @@ class PlanningCommandTests(unittest.TestCase):
                 result.plan_record.plan,
             )
 
+    def test_planning_uses_selected_realized_projection_for_stable_authored_graph(
+        self,
+    ) -> None:
+        self.set_desired()
+        with self.unit_of_work() as unit_of_work:
+            stores = unit_of_work.stores
+            before = stores.workspaces.get("workspace-a")
+            assert before.desired_realized_projection_id is not None
+            projected = stores.realized_graphs.save(
+                RealizedGraphProjectionRecord.from_graph(
+                    projection_id="projection-rotation-b",
+                    workspace_id="workspace-a",
+                    source_authored_graph_id="graph-desired",
+                    projection_kind=(
+                        RealizedGraphProjectionKind.DELEGATION_VERIFIER
+                    ),
+                    projection_key="rotation-b",
+                    graph=self.product_graph(),
+                    created_by="operator-a",
+                    created_at="2026-07-22T10:02:30Z",
+                )
+            )
+            moved = stores.workspaces.compare_and_set_desired_projection(
+                "workspace-a",
+                expected_authored_graph_id="graph-desired",
+                expected_realized_projection_id=(
+                    before.desired_realized_projection_id
+                ),
+                expected_revision=before.desired_graph_revision,
+                replacement_realized_projection_id=projected.projection_id,
+            )
+            assert moved is not None
+            unit_of_work.commit()
+
+        result = self.planning_service("plan-projected", "action-projected").execute(
+            RequestActivityPlan(
+                session_id="session-a",
+                workspace_id="workspace-a",
+                actor_id="operator-a",
+                expected_current_graph_id="graph-current",
+                expected_desired_graph_id="graph-desired",
+                idempotency_key=IdempotencyKey("plan-projected"),
+                expected_current_realized_projection_id=(
+                    moved.current_realized_projection_id
+                ),
+                expected_desired_realized_projection_id=(
+                    moved.desired_realized_projection_id
+                ),
+                expected_desired_graph_revision=moved.desired_graph_revision,
+            )
+        )
+
+        self.assertEqual(result.plan_record.desired_graph_id, "graph-desired")
+        self.assertEqual(
+            result.plan_record.desired_realized_projection_id,
+            projected.projection_id,
+        )
+        self.assertEqual(
+            result.plan_record.desired_graph_revision,
+            moved.desired_graph_revision,
+        )
+
     def test_planning_replay_conflict_and_stale_pointer_guards(self) -> None:
         self.set_desired()
         first = self.request_plan()
@@ -301,7 +382,44 @@ class PlanningCommandTests(unittest.TestCase):
                 desired_graph_id="missing-graph",
             )
 
-    def test_malformed_durable_graph_rejects_without_plan_or_action(self) -> None:
+        with self.unit_of_work() as unit_of_work:
+            workspace = unit_of_work.stores.workspaces.get("workspace-a")
+        assert workspace.current_realized_projection_id is not None
+        assert workspace.desired_realized_projection_id is not None
+        for key, current_projection, desired_projection in (
+            (
+                "stale-current-projection",
+                workspace.desired_realized_projection_id,
+                workspace.desired_realized_projection_id,
+            ),
+            (
+                "stale-desired-projection",
+                workspace.current_realized_projection_id,
+                workspace.current_realized_projection_id,
+            ),
+        ):
+            with self.assertRaises(ActivityPlanningGraphStateConflict):
+                self.planning_service("unused-plan", "unused-action").execute(
+                    RequestActivityPlan(
+                        session_id="session-a",
+                        workspace_id="workspace-a",
+                        actor_id="operator-a",
+                        expected_current_graph_id="graph-current",
+                        expected_desired_graph_id="graph-desired",
+                        idempotency_key=IdempotencyKey(key),
+                        expected_current_realized_projection_id=(
+                            current_projection
+                        ),
+                        expected_desired_realized_projection_id=(
+                            desired_projection
+                        ),
+                        expected_desired_graph_revision=(
+                            workspace.desired_graph_revision
+                        ),
+                    )
+                )
+
+    def test_malformed_durable_graph_cannot_become_desired_truth(self) -> None:
         with self.unit_of_work() as unit_of_work:
             unit_of_work.stores.graphs.save(
                 GraphVersionRecord(
@@ -313,20 +431,18 @@ class PlanningCommandTests(unittest.TestCase):
                     created_at="2026-07-22T10:02:00Z",
                 )
             )
-            unit_of_work.stores.workspaces.set_desired_graph(
-                "workspace-a",
-                "graph-invalid",
-            )
-            unit_of_work.commit()
-
-        with self.assertRaises(ActivityPlanningGraphInvalid):
-            self.request_plan(
-                self.planning_service("plan-invalid", "action-invalid"),
-                key="invalid",
-                desired_graph_id="graph-invalid",
-            )
+            with self.assertRaisesRegex(
+                RealizedGraphProjectionConflict,
+                "valid realized graph material",
+            ):
+                unit_of_work.stores.workspaces.set_desired_graph(
+                    "workspace-a",
+                    "graph-invalid",
+                )
 
         with self.unit_of_work() as unit_of_work:
+            workspace = unit_of_work.stores.workspaces.get("workspace-a")
+            self.assertIsNone(workspace.desired_graph_id)
             self.assertEqual(
                 unit_of_work.stores.activity_history.plans_for_session("session-a"),
                 (),

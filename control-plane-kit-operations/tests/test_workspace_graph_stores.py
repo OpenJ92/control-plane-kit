@@ -64,6 +64,26 @@ class WorkspaceGraphStoreTests(unittest.TestCase):
                 "workspace-a",
                 WorkspaceLifecycle.RUNNING,
             )
+            unit_of_work.stores.graphs.save(
+                GraphVersionRecord.from_graph(
+                    graph_id="graph-current",
+                    workspace_id="workspace-a",
+                    version=1,
+                    graph=DeploymentGraph("current"),
+                    created_by="operator-a",
+                    created_at="2026-07-22T10:00:00Z",
+                )
+            )
+            unit_of_work.stores.graphs.save(
+                GraphVersionRecord.from_graph(
+                    graph_id="graph-desired",
+                    workspace_id="workspace-a",
+                    version=2,
+                    graph=DeploymentGraph("desired"),
+                    created_by="operator-a",
+                    created_at="2026-07-22T10:05:00Z",
+                )
+            )
             unit_of_work.stores.workspaces.set_current_graph(
                 "workspace-a",
                 "graph-current",
@@ -135,6 +155,16 @@ class WorkspaceGraphStoreTests(unittest.TestCase):
                 )
             )
             self.assertEqual(unit_of_work.stores.graphs.next_version_for_workspace("workspace-a"), 2)
+            unit_of_work.stores.graphs.save(
+                GraphVersionRecord.from_graph(
+                    graph_id="graph-2",
+                    workspace_id="workspace-a",
+                    version=2,
+                    graph=DeploymentGraph("second"),
+                    created_by="operator-a",
+                    created_at="2026-07-22T10:05:00Z",
+                )
+            )
             unit_of_work.stores.workspaces.set_current_graph("workspace-a", "graph-1")
             stale = unit_of_work.stores.workspaces.compare_and_set_current_graph(
                 "workspace-a",

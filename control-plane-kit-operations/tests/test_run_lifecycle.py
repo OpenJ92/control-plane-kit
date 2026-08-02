@@ -5,6 +5,7 @@ import os
 import unittest
 
 import psycopg
+from psycopg.types.json import Jsonb
 
 from control_plane_kit_core.operations.lifecycle import (
     ActivityEventKind,
@@ -14,6 +15,7 @@ from control_plane_kit_core.operations.lifecycle import (
     LifecycleOperationKind,
 )
 from control_plane_kit_core.policies import PolicyScope
+from control_plane_kit_core.topology import DEFAULT_GRAPH_CODEC, DeploymentGraph
 from control_plane_kit_operations.lifecycle import (
     ClaimAndOpenActivityRun,
     CompleteActivityRun,
@@ -333,14 +335,26 @@ class RunLifecycleTests(unittest.TestCase):
             """
             INSERT INTO cpk_workspaces (workspace_id, name, lifecycle)
             VALUES ('workspace-a', 'Workspace A', 'created');
+            """
+        )
+        self.connection.execute(
+            """
             INSERT INTO cpk_graph_versions
               (graph_id, workspace_id, version, graph_descriptor, created_by,
                created_at)
             VALUES
-              ('graph-current', 'workspace-a', 1, '{}'::jsonb, 'operator-a',
+              ('graph-current', 'workspace-a', 1, %s, 'operator-a',
                '2026-07-22T12:00:00Z'),
-              ('graph-desired', 'workspace-a', 2, '{}'::jsonb, 'operator-a',
+              ('graph-desired', 'workspace-a', 2, %s, 'operator-a',
                '2026-07-22T12:00:30Z');
+            """,
+            (
+                Jsonb(DEFAULT_GRAPH_CODEC.encode(DeploymentGraph("current"))),
+                Jsonb(DEFAULT_GRAPH_CODEC.encode(DeploymentGraph("desired"))),
+            ),
+        )
+        self.connection.execute(
+            """
             INSERT INTO cpk_operation_sessions
               (session_id, workspace_id, actor_id, title, status, created_at)
             VALUES ('session-a', 'workspace-a', 'operator-a', 'Deploy', 'open',

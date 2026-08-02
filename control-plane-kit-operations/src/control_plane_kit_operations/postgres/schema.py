@@ -6,6 +6,7 @@ from enum import StrEnum
 from typing import Any, Protocol
 
 from jinja2 import Environment, StrictUndefined
+from psycopg.types.json import Jsonb
 
 from control_plane_kit_core.operations.commands import OperatorCommandKind
 from control_plane_kit_core.gateway_delegation import (
@@ -36,9 +37,11 @@ from control_plane_kit_core.probe_intents import (
 from control_plane_kit_core.types import RuntimeKind
 from control_plane_kit_core.types import WorkspaceLifecycle
 from control_plane_kit_operations.records import (
+    GraphVersionRecord,
     ObservationFreshness,
     ObservationStatus,
     RealizedGraphProjectionKind,
+    RealizedGraphProjectionRecord,
 )
 from control_plane_kit_operations.gateway_probes import GatewayProbeAttemptStatus
 from control_plane_kit_operations.delegation_signing_keys import (
@@ -127,6 +130,9 @@ CREATE TABLE IF NOT EXISTS cpk_workspaces (
   lifecycle text NOT NULL,
   current_graph_id text,
   desired_graph_id text,
+  current_realized_projection_id text,
+  desired_realized_projection_id text,
+  desired_graph_revision bigint NOT NULL DEFAULT 0,
   metadata jsonb NOT NULL DEFAULT '{}'::jsonb,
   CONSTRAINT cpk_workspaces_lifecycle_check
     CHECK (lifecycle IN ({{ workspace_lifecycles | sql_values }}))
@@ -169,7 +175,11 @@ CREATE TABLE IF NOT EXISTS cpk_realized_graph_projections (
       source_authored_graph_id,
       projection_kind,
       projection_key
-    )
+    ),
+  CONSTRAINT cpk_realized_graph_projection_workspace_identity
+    UNIQUE (projection_id, workspace_id),
+  CONSTRAINT cpk_realized_graph_projection_source_identity
+    UNIQUE (projection_id, source_authored_graph_id)
 );
 
 CREATE TABLE IF NOT EXISTS cpk_registered_products (
@@ -704,6 +714,9 @@ CREATE TABLE IF NOT EXISTS cpk_activity_plans (
   session_id text NOT NULL REFERENCES cpk_operation_sessions(session_id),
   base_graph_id text NOT NULL,
   desired_graph_id text NOT NULL,
+  base_realized_projection_id text,
+  desired_realized_projection_id text,
+  desired_graph_revision bigint NOT NULL DEFAULT 0,
   status text NOT NULL,
   created_at text NOT NULL,
   payload jsonb NOT NULL DEFAULT '{}'::jsonb,
@@ -932,6 +945,122 @@ CREATE TABLE IF NOT EXISTS cpk_observations (
 
 CREATE INDEX IF NOT EXISTS cpk_observations_latest_subject
   ON cpk_observations (workspace_id, subject_id, observed_at DESC, observation_id DESC);
+
+ALTER TABLE cpk_workspaces
+  ADD COLUMN IF NOT EXISTS current_realized_projection_id text;
+ALTER TABLE cpk_workspaces
+  ADD COLUMN IF NOT EXISTS desired_realized_projection_id text;
+ALTER TABLE cpk_workspaces
+  ADD COLUMN IF NOT EXISTS desired_graph_revision bigint NOT NULL DEFAULT 0;
+
+ALTER TABLE cpk_activity_plans
+  ADD COLUMN IF NOT EXISTS base_realized_projection_id text;
+ALTER TABLE cpk_activity_plans
+  ADD COLUMN IF NOT EXISTS desired_realized_projection_id text;
+ALTER TABLE cpk_activity_plans
+  ADD COLUMN IF NOT EXISTS desired_graph_revision bigint NOT NULL DEFAULT 0;
+"""
+
+
+_GRAPH_LINEAGE_CONSTRAINTS = """
+DO $$
+BEGIN
+  IF NOT EXISTS (
+    SELECT 1 FROM pg_constraint
+    WHERE conname = 'cpk_realized_graph_projection_workspace_identity'
+  ) THEN
+    ALTER TABLE cpk_realized_graph_projections
+      ADD CONSTRAINT cpk_realized_graph_projection_workspace_identity
+      UNIQUE (projection_id, workspace_id);
+  END IF;
+  IF NOT EXISTS (
+    SELECT 1 FROM pg_constraint
+    WHERE conname = 'cpk_realized_graph_projection_source_identity'
+  ) THEN
+    ALTER TABLE cpk_realized_graph_projections
+      ADD CONSTRAINT cpk_realized_graph_projection_source_identity
+      UNIQUE (projection_id, source_authored_graph_id);
+  END IF;
+  IF NOT EXISTS (
+    SELECT 1 FROM pg_constraint
+    WHERE conname = 'cpk_workspaces_current_realized_projection_fk'
+  ) THEN
+    ALTER TABLE cpk_workspaces
+      ADD CONSTRAINT cpk_workspaces_current_realized_projection_fk
+      FOREIGN KEY (current_realized_projection_id, workspace_id)
+      REFERENCES cpk_realized_graph_projections(projection_id, workspace_id);
+  END IF;
+  IF NOT EXISTS (
+    SELECT 1 FROM pg_constraint
+    WHERE conname = 'cpk_workspaces_desired_realized_projection_fk'
+  ) THEN
+    ALTER TABLE cpk_workspaces
+      ADD CONSTRAINT cpk_workspaces_desired_realized_projection_fk
+      FOREIGN KEY (desired_realized_projection_id, workspace_id)
+      REFERENCES cpk_realized_graph_projections(projection_id, workspace_id);
+  END IF;
+  IF NOT EXISTS (
+    SELECT 1 FROM pg_constraint
+    WHERE conname = 'cpk_workspaces_current_projection_source_fk'
+  ) THEN
+    ALTER TABLE cpk_workspaces
+      ADD CONSTRAINT cpk_workspaces_current_projection_source_fk
+      FOREIGN KEY (current_realized_projection_id, current_graph_id)
+      REFERENCES cpk_realized_graph_projections(
+        projection_id, source_authored_graph_id
+      );
+  END IF;
+  IF NOT EXISTS (
+    SELECT 1 FROM pg_constraint
+    WHERE conname = 'cpk_workspaces_desired_projection_source_fk'
+  ) THEN
+    ALTER TABLE cpk_workspaces
+      ADD CONSTRAINT cpk_workspaces_desired_projection_source_fk
+      FOREIGN KEY (desired_realized_projection_id, desired_graph_id)
+      REFERENCES cpk_realized_graph_projections(
+        projection_id, source_authored_graph_id
+      );
+  END IF;
+  IF NOT EXISTS (
+    SELECT 1 FROM pg_constraint
+    WHERE conname = 'cpk_workspaces_current_lineage_check'
+  ) THEN
+    ALTER TABLE cpk_workspaces
+      ADD CONSTRAINT cpk_workspaces_current_lineage_check
+      CHECK ((current_graph_id IS NULL) = (current_realized_projection_id IS NULL));
+  END IF;
+  IF NOT EXISTS (
+    SELECT 1 FROM pg_constraint
+    WHERE conname = 'cpk_workspaces_desired_lineage_check'
+  ) THEN
+    ALTER TABLE cpk_workspaces
+      ADD CONSTRAINT cpk_workspaces_desired_lineage_check
+      CHECK ((desired_graph_id IS NULL) = (desired_realized_projection_id IS NULL));
+  END IF;
+  IF NOT EXISTS (
+    SELECT 1 FROM pg_constraint
+    WHERE conname = 'cpk_activity_plans_base_projection_source_fk'
+  ) THEN
+    ALTER TABLE cpk_activity_plans
+      ADD CONSTRAINT cpk_activity_plans_base_projection_source_fk
+      FOREIGN KEY (base_realized_projection_id, base_graph_id)
+      REFERENCES cpk_realized_graph_projections(
+        projection_id, source_authored_graph_id
+      );
+  END IF;
+  IF NOT EXISTS (
+    SELECT 1 FROM pg_constraint
+    WHERE conname = 'cpk_activity_plans_desired_projection_source_fk'
+  ) THEN
+    ALTER TABLE cpk_activity_plans
+      ADD CONSTRAINT cpk_activity_plans_desired_projection_source_fk
+      FOREIGN KEY (desired_realized_projection_id, desired_graph_id)
+      REFERENCES cpk_realized_graph_projections(
+        projection_id, source_authored_graph_id
+      );
+  END IF;
+END
+$$;
 """
 
 
@@ -988,3 +1117,122 @@ def install_schema(connection: PostgresConnection) -> None:
     """Install the current operations schema on a caller-managed transaction."""
 
     connection.execute(POSTGRES_SCHEMA)
+    _backfill_graph_lineage(connection)
+    connection.execute(_GRAPH_LINEAGE_CONSTRAINTS)
+
+
+def _backfill_graph_lineage(connection: PostgresConnection) -> None:
+    """Materialize deterministic identity projections for pre-lineage rows."""
+
+    rows = connection.execute(
+        """
+        SELECT graph_id, workspace_id, version, graph_descriptor,
+               created_by, created_at, metadata
+        FROM cpk_graph_versions
+        WHERE graph_id IN (
+          SELECT current_graph_id FROM cpk_workspaces
+          WHERE current_graph_id IS NOT NULL
+          UNION
+          SELECT desired_graph_id FROM cpk_workspaces
+          WHERE desired_graph_id IS NOT NULL
+          UNION
+          SELECT base_graph_id FROM cpk_activity_plans
+          UNION
+          SELECT desired_graph_id FROM cpk_activity_plans
+        )
+        ORDER BY workspace_id, version
+        """
+    ).fetchall()
+    for row in rows:
+        existing = connection.execute(
+            """
+            SELECT projection_id
+            FROM cpk_realized_graph_projections
+            WHERE workspace_id = %s
+              AND source_authored_graph_id = %s
+              AND projection_kind = 'identity'
+              AND projection_key = 'identity'
+            """,
+            (row[1], row[0]),
+        ).fetchone()
+        if existing is not None:
+            continue
+        authored = GraphVersionRecord(
+            graph_id=row[0],
+            workspace_id=row[1],
+            version=row[2],
+            graph_descriptor=row[3],
+            created_by=row[4],
+            created_at=row[5],
+            metadata=row[6],
+        )
+        projection = RealizedGraphProjectionRecord.identity_for_authored(
+            authored_record=authored
+        )
+        connection.execute(
+            """
+            INSERT INTO cpk_realized_graph_projections
+              (projection_id, workspace_id, source_authored_graph_id,
+               projection_kind, projection_key, projection_digest,
+               graph_descriptor, created_by, created_at)
+            VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s)
+            ON CONFLICT DO NOTHING
+            """,
+            (
+                projection.projection_id,
+                projection.workspace_id,
+                projection.source_authored_graph_id,
+                projection.projection_kind.value,
+                projection.projection_key,
+                projection.projection_digest,
+                Jsonb(projection.graph_descriptor),
+                projection.created_by,
+                projection.created_at,
+            ),
+        )
+    connection.execute(
+        """
+        UPDATE cpk_workspaces AS workspace
+        SET current_realized_projection_id = projection.projection_id
+        FROM cpk_realized_graph_projections AS projection
+        WHERE workspace.current_graph_id = projection.source_authored_graph_id
+          AND workspace.workspace_id = projection.workspace_id
+          AND projection.projection_kind = 'identity'
+          AND projection.projection_key = 'identity'
+          AND workspace.current_realized_projection_id IS NULL
+        """
+    )
+    connection.execute(
+        """
+        UPDATE cpk_workspaces AS workspace
+        SET desired_realized_projection_id = projection.projection_id
+        FROM cpk_realized_graph_projections AS projection
+        WHERE workspace.desired_graph_id = projection.source_authored_graph_id
+          AND workspace.workspace_id = projection.workspace_id
+          AND projection.projection_kind = 'identity'
+          AND projection.projection_key = 'identity'
+          AND workspace.desired_realized_projection_id IS NULL
+        """
+    )
+    connection.execute(
+        """
+        UPDATE cpk_activity_plans AS plan
+        SET base_realized_projection_id = projection.projection_id
+        FROM cpk_realized_graph_projections AS projection
+        WHERE plan.base_graph_id = projection.source_authored_graph_id
+          AND projection.projection_kind = 'identity'
+          AND projection.projection_key = 'identity'
+          AND plan.base_realized_projection_id IS NULL
+        """
+    )
+    connection.execute(
+        """
+        UPDATE cpk_activity_plans AS plan
+        SET desired_realized_projection_id = projection.projection_id
+        FROM cpk_realized_graph_projections AS projection
+        WHERE plan.desired_graph_id = projection.source_authored_graph_id
+          AND projection.projection_kind = 'identity'
+          AND projection.projection_key = 'identity'
+          AND plan.desired_realized_projection_id IS NULL
+        """
+    )

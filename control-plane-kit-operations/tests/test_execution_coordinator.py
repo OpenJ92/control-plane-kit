@@ -33,6 +33,7 @@ from control_plane_kit_core.public_ingress import (
     PublicIngressLifecycle,
 )
 from control_plane_kit_core.secrets import SecretReference
+from control_plane_kit_core.topology import DeploymentGraph
 from control_plane_kit_operations.coordinator import (
     ActivityExecutionOutcome,
     ActivityRealizationContext,
@@ -62,6 +63,7 @@ from control_plane_kit_operations.records import (
     ActivityPlanStatus,
     BoundedEvidence,
     FailureEvidence,
+    GraphVersionRecord,
     ObservationRecord,
     ObservationStatus,
 )
@@ -263,6 +265,31 @@ class ExecutionCoordinatorTests(unittest.TestCase):
         )
 
     def test_success_records_intent_and_result_without_transaction_spanning_adapter(self) -> None:
+        with self.unit_of_work() as unit_of_work:
+            stores = unit_of_work.stores
+            base_projection = stores.realized_graphs.save(
+                stores.realized_graphs.identity_for_authored(
+                    "workspace-a",
+                    "graph-current",
+                )
+            )
+            desired_projection = stores.realized_graphs.save(
+                stores.realized_graphs.identity_for_authored(
+                    "workspace-a",
+                    "graph-desired",
+                )
+            )
+            unit_of_work.commit()
+        self.connection.execute(
+            """
+            UPDATE cpk_activity_plans
+            SET base_realized_projection_id = %s,
+                desired_realized_projection_id = %s,
+                desired_graph_revision = 1
+            WHERE plan_id = 'plan-a'
+            """,
+            (base_projection.projection_id, desired_projection.projection_id),
+        )
         self.claim_and_start()
         adapter = RecordingAdapter(
             self.tracker,
@@ -296,8 +323,22 @@ class ExecutionCoordinatorTests(unittest.TestCase):
         self.assertEqual(context.run.run_id, "run-a")
         self.assertEqual(context.plan_record.plan_id, "plan-a")
         self.assertIs(context.plan, context.plan_record.plan)
-        self.assertEqual(context.base_graph.graph_id, "graph-current")
-        self.assertEqual(context.desired_graph.graph_id, "graph-desired")
+        self.assertEqual(
+            context.base_graph.source_authored_graph_id,
+            "graph-current",
+        )
+        self.assertEqual(
+            context.desired_graph.source_authored_graph_id,
+            "graph-desired",
+        )
+        self.assertEqual(
+            context.base_graph.projection_id,
+            base_projection.projection_id,
+        )
+        self.assertEqual(
+            context.desired_graph.projection_id,
+            desired_projection.projection_id,
+        )
         self.assertEqual(
             [
                 product.descriptor_document.product.identity.name
@@ -572,14 +613,6 @@ class ExecutionCoordinatorTests(unittest.TestCase):
             """
             INSERT INTO cpk_workspaces (workspace_id, name, lifecycle)
             VALUES ('workspace-a', 'Workspace A', 'created');
-            INSERT INTO cpk_graph_versions
-              (graph_id, workspace_id, version, graph_descriptor, created_by,
-               created_at)
-            VALUES
-              ('graph-current', 'workspace-a', 1, '{}'::jsonb, 'operator-a',
-               '2026-07-22T12:00:00Z'),
-              ('graph-desired', 'workspace-a', 2, '{}'::jsonb, 'operator-a',
-               '2026-07-22T12:00:30Z');
             INSERT INTO cpk_operation_sessions
               (session_id, workspace_id, actor_id, title, status, created_at)
             VALUES ('session-a', 'workspace-a', 'operator-a', 'Deploy', 'open',
@@ -587,6 +620,26 @@ class ExecutionCoordinatorTests(unittest.TestCase):
             """
         )
         with self.unit_of_work() as unit_of_work:
+            unit_of_work.stores.graphs.save(
+                GraphVersionRecord.from_graph(
+                    graph_id="graph-current",
+                    workspace_id="workspace-a",
+                    version=1,
+                    graph=DeploymentGraph("current"),
+                    created_by="operator-a",
+                    created_at="2026-07-22T12:00:00Z",
+                )
+            )
+            unit_of_work.stores.graphs.save(
+                GraphVersionRecord.from_graph(
+                    graph_id="graph-desired",
+                    workspace_id="workspace-a",
+                    version=2,
+                    graph=DeploymentGraph("desired"),
+                    created_by="operator-a",
+                    created_at="2026-07-22T12:00:30Z",
+                )
+            )
             product_document = ProductDescriptorCodec().encode_document(
                 ContainerServerProduct(
                     identity=ProductIdentity("control-plane-kit", "hello-server", 1),

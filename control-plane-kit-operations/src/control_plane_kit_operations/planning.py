@@ -90,6 +90,8 @@ class SetDesiredGraph:
     graph: DeploymentGraph
     expected_desired_graph_id: str | None
     idempotency_key: IdempotencyKey
+    expected_desired_realized_projection_id: str | None = None
+    expected_desired_graph_revision: int = 0
 
     def __post_init__(self) -> None:
         _required_text(self.session_id, "session_id")
@@ -102,6 +104,18 @@ class SetDesiredGraph:
                 self.expected_desired_graph_id,
                 "expected_desired_graph_id",
             )
+        if self.expected_desired_realized_projection_id is not None:
+            _required_text(
+                self.expected_desired_realized_projection_id,
+                "expected_desired_realized_projection_id",
+            )
+        if (
+            type(self.expected_desired_graph_revision) is not int
+            or self.expected_desired_graph_revision < 0
+        ):
+            raise InvalidOperationCommand(
+                "expected_desired_graph_revision must be nonnegative"
+            )
         _require_idempotency_key(self.idempotency_key)
 
     def descriptor(self) -> dict[str, object]:
@@ -111,6 +125,10 @@ class SetDesiredGraph:
             "workspace_id": self.workspace_id,
             "actor_id": self.actor_id,
             "expected_desired_graph_id": self.expected_desired_graph_id,
+            "expected_desired_realized_projection_id": (
+                self.expected_desired_realized_projection_id
+            ),
+            "expected_desired_graph_revision": self.expected_desired_graph_revision,
             "idempotency_key": self.idempotency_key.value,
             "graph": _graph_summary(self.graph),
         }
@@ -125,13 +143,21 @@ class DesiredGraphEditResult:
     graph_version_id: str
     graph_version: int
     action: OperationActionRecord
+    desired_realized_projection_id: str
+    desired_graph_revision: int
     replayed: bool = False
 
     def __post_init__(self) -> None:
         _required_text(self.workspace_id, "workspace_id")
         _required_text(self.graph_version_id, "graph_version_id")
+        _required_text(
+            self.desired_realized_projection_id,
+            "desired_realized_projection_id",
+        )
         if type(self.graph_version) is not int or self.graph_version < 1:
             raise InvalidOperationCommand("graph_version must be a positive integer")
+        if type(self.desired_graph_revision) is not int or self.desired_graph_revision < 1:
+            raise InvalidOperationCommand("desired_graph_revision must be positive")
         if self.action.action_type is not OperatorCommandKind.SET_DESIRED_GRAPH:
             raise InvalidOperationCommand(
                 "desired graph result requires SET_DESIRED_GRAPH action evidence"
@@ -141,6 +167,17 @@ class DesiredGraphEditResult:
             raise InvalidOperationCommand("action evidence workspace must match result")
         if evidence.get("desired_graph_id") != self.graph_version_id:
             raise InvalidOperationCommand("action evidence graph must match result")
+        if (
+            evidence.get("desired_realized_projection_id")
+            != self.desired_realized_projection_id
+        ):
+            raise InvalidOperationCommand(
+                "action evidence realized projection must match result"
+            )
+        if evidence.get("desired_graph_revision") != self.desired_graph_revision:
+            raise InvalidOperationCommand(
+                "action evidence desired revision must match result"
+            )
         if evidence.get("previous_desired_graph_id") != self.previous_desired_graph_id:
             raise InvalidOperationCommand(
                 "action evidence previous pointer must match result"
@@ -152,6 +189,8 @@ class DesiredGraphEditResult:
             "previous_desired_graph_id": self.previous_desired_graph_id,
             "desired_graph_id": self.graph_version_id,
             "desired_graph_version": self.graph_version,
+            "desired_realized_projection_id": self.desired_realized_projection_id,
+            "desired_graph_revision": self.desired_graph_revision,
             "action_id": self.action.action_id,
             "action_ordinal": self.action.ordinal,
             "replayed": self.replayed,
@@ -168,6 +207,9 @@ class RequestActivityPlan:
     expected_current_graph_id: str
     expected_desired_graph_id: str
     idempotency_key: IdempotencyKey
+    expected_current_realized_projection_id: str | None = None
+    expected_desired_realized_projection_id: str | None = None
+    expected_desired_graph_revision: int | None = None
 
     def __post_init__(self) -> None:
         _required_text(self.session_id, "session_id")
@@ -175,9 +217,31 @@ class RequestActivityPlan:
         _required_text(self.actor_id, "actor_id")
         _required_text(self.expected_current_graph_id, "expected_current_graph_id")
         _required_text(self.expected_desired_graph_id, "expected_desired_graph_id")
+        for value, field_name in (
+            (
+                self.expected_current_realized_projection_id,
+                "expected_current_realized_projection_id",
+            ),
+            (
+                self.expected_desired_realized_projection_id,
+                "expected_desired_realized_projection_id",
+            ),
+        ):
+            if value is not None:
+                _required_text(value, field_name)
+        if (
+            self.expected_desired_graph_revision is not None
+            and (
+                type(self.expected_desired_graph_revision) is not int
+                or self.expected_desired_graph_revision < 0
+            )
+        ):
+            raise InvalidOperationCommand(
+                "expected_desired_graph_revision must be nonnegative"
+            )
         _require_idempotency_key(self.idempotency_key)
 
-    def descriptor(self) -> dict[str, str]:
+    def descriptor(self) -> dict[str, object]:
         return {
             "command": OperatorCommandKind.REQUEST_ACTIVITY_PLAN.value,
             "session_id": self.session_id,
@@ -185,6 +249,13 @@ class RequestActivityPlan:
             "actor_id": self.actor_id,
             "expected_current_graph_id": self.expected_current_graph_id,
             "expected_desired_graph_id": self.expected_desired_graph_id,
+            "expected_current_realized_projection_id": (
+                self.expected_current_realized_projection_id
+            ),
+            "expected_desired_realized_projection_id": (
+                self.expected_desired_realized_projection_id
+            ),
+            "expected_desired_graph_revision": self.expected_desired_graph_revision,
             "idempotency_key": self.idempotency_key.value,
         }
 
@@ -211,6 +282,27 @@ class ActivityPlanningResult:
             raise InvalidOperationCommand("action evidence must reference base graph")
         if evidence.get("desired_graph_id") != self.plan_record.desired_graph_id:
             raise InvalidOperationCommand("action evidence must reference desired graph")
+        if (
+            evidence.get("base_realized_projection_id")
+            != self.plan_record.base_realized_projection_id
+        ):
+            raise InvalidOperationCommand(
+                "action evidence must reference base realized projection"
+            )
+        if (
+            evidence.get("desired_realized_projection_id")
+            != self.plan_record.desired_realized_projection_id
+        ):
+            raise InvalidOperationCommand(
+                "action evidence must reference desired realized projection"
+            )
+        if (
+            evidence.get("desired_graph_revision")
+            != self.plan_record.desired_graph_revision
+        ):
+            raise InvalidOperationCommand(
+                "action evidence must reference desired graph revision"
+            )
 
     def descriptor(self) -> dict[str, object]:
         return {
@@ -218,6 +310,13 @@ class ActivityPlanningResult:
             "session_id": self.plan_record.session_id,
             "base_graph_id": self.plan_record.base_graph_id,
             "desired_graph_id": self.plan_record.desired_graph_id,
+            "base_realized_projection_id": (
+                self.plan_record.base_realized_projection_id
+            ),
+            "desired_realized_projection_id": (
+                self.plan_record.desired_realized_projection_id
+            ),
+            "desired_graph_revision": self.plan_record.desired_graph_revision,
             "ready_for_execution": self.plan_record.plan.ready_for_execution,
             "activity_count": len(self.plan_record.plan.activities),
             "action_id": self.action.action_id,
@@ -263,6 +362,12 @@ class DesiredGraphCommandService:
                         actor_id=command.actor_id,
                         graph=command.graph,
                         expected_desired_graph_id=command.expected_desired_graph_id,
+                        expected_desired_realized_projection_id=(
+                            command.expected_desired_realized_projection_id
+                        ),
+                        expected_desired_graph_revision=(
+                            command.expected_desired_graph_revision
+                        ),
                     ),
                     graph_id=self._id_factory(),
                     created_at=created_at,
@@ -285,6 +390,12 @@ class DesiredGraphCommandService:
                     "workspace_id": command.workspace_id,
                     "previous_desired_graph_id": command.expected_desired_graph_id,
                     "desired_graph_id": graph_result.graph_version.graph_id,
+                    "desired_realized_projection_id": (
+                        graph_result.realized_projection.projection_id
+                    ),
+                    "desired_graph_revision": (
+                        graph_result.workspace.desired_graph_revision
+                    ),
                     "product_references": [
                         reference.descriptor()
                         for reference in graph_result.product_references
@@ -302,6 +413,10 @@ class DesiredGraphCommandService:
                 graph_version_id=graph_result.graph_version.graph_id,
                 graph_version=graph_result.graph_version.version,
                 action=action,
+                desired_realized_projection_id=(
+                    graph_result.realized_projection.projection_id
+                ),
+                desired_graph_revision=graph_result.workspace.desired_graph_revision,
             )
 
 
@@ -354,20 +469,51 @@ class ActivityPlanningCommandService:
                 return result
             if session.status is not OperationSessionStatus.OPEN:
                 raise ActivityPlanningSessionConflict("operation session is not open")
+            expected_desired_revision = (
+                workspace.desired_graph_revision
+                if command.expected_desired_graph_revision is None
+                else command.expected_desired_graph_revision
+            )
             if (
                 workspace.current_graph_id != command.expected_current_graph_id
                 or workspace.desired_graph_id != command.expected_desired_graph_id
+                or workspace.desired_graph_revision != expected_desired_revision
             ):
                 raise ActivityPlanningGraphStateConflict(
                     "workspace graph pointers changed"
                 )
-            current_record = _graph_record(
+            expected_current_projection_id = (
+                command.expected_current_realized_projection_id
+                or unit_of_work.stores.realized_graphs.identity_for_authored(
+                    command.workspace_id,
+                    command.expected_current_graph_id,
+                ).projection_id
+            )
+            expected_desired_projection_id = (
+                command.expected_desired_realized_projection_id
+                or unit_of_work.stores.realized_graphs.identity_for_authored(
+                    command.workspace_id,
+                    command.expected_desired_graph_id,
+                ).projection_id
+            )
+            if (
+                workspace.current_realized_projection_id
+                != expected_current_projection_id
+                or workspace.desired_realized_projection_id
+                != expected_desired_projection_id
+            ):
+                raise ActivityPlanningGraphStateConflict(
+                    "workspace graph pointers changed"
+                )
+            current_record = _projection_record(
                 unit_of_work,
+                expected_current_projection_id,
                 command.expected_current_graph_id,
                 command.workspace_id,
             )
-            desired_record = _graph_record(
+            desired_record = _projection_record(
                 unit_of_work,
+                expected_desired_projection_id,
                 command.expected_desired_graph_id,
                 command.workspace_id,
             )
@@ -389,11 +535,14 @@ class ActivityPlanningCommandService:
             plan_record = ActivityPlanRecord(
                 plan_id=self._id_factory(),
                 session_id=command.session_id,
-                base_graph_id=current_record.graph_id,
-                desired_graph_id=desired_record.graph_id,
+                base_graph_id=command.expected_current_graph_id,
+                desired_graph_id=command.expected_desired_graph_id,
                 status=ActivityPlanStatus.PLANNED,
                 created_at=created_at,
                 plan=plan,
+                base_realized_projection_id=current_record.projection_id,
+                desired_realized_projection_id=desired_record.projection_id,
+                desired_graph_revision=expected_desired_revision,
             )
             unit_of_work.stores.activity_history.add_plan(plan_record)
             action = OperationActionRecord(
@@ -409,6 +558,13 @@ class ActivityPlanningCommandService:
                     "plan_id": plan_record.plan_id,
                     "base_graph_id": plan_record.base_graph_id,
                     "desired_graph_id": plan_record.desired_graph_id,
+                    "base_realized_projection_id": (
+                        plan_record.base_realized_projection_id
+                    ),
+                    "desired_realized_projection_id": (
+                        plan_record.desired_realized_projection_id
+                    ),
+                    "desired_graph_revision": plan_record.desired_graph_revision,
                     "ready_for_execution": plan.ready_for_execution,
                     "activity_count": len(plan.activities),
                 },
@@ -449,10 +605,14 @@ def _desired_graph_replay(
     graph_id = action.payload.get("desired_graph_id")
     workspace_id = action.payload.get("workspace_id")
     previous = action.payload.get("previous_desired_graph_id")
+    projection_id = action.payload.get("desired_realized_projection_id")
+    desired_revision = action.payload.get("desired_graph_revision")
     if not isinstance(graph_id, str) or not isinstance(workspace_id, str):
         raise DesiredGraphCommandError("desired graph action evidence is incomplete")
     if previous is not None and not isinstance(previous, str):
         raise DesiredGraphCommandError("desired graph action has invalid previous pointer")
+    if not isinstance(projection_id, str) or type(desired_revision) is not int:
+        raise DesiredGraphCommandError("desired graph lineage evidence is incomplete")
     graph = unit_of_work.stores.graphs.get(graph_id)
     return DesiredGraphEditResult(
         workspace_id=workspace_id,
@@ -460,6 +620,8 @@ def _desired_graph_replay(
         graph_version_id=graph.graph_id,
         graph_version=graph.version,
         action=action,
+        desired_realized_projection_id=projection_id,
+        desired_graph_revision=desired_revision,
         replayed=True,
     )
 
@@ -487,16 +649,24 @@ def _activity_plan_replay(
     )
 
 
-def _graph_record(unit_of_work: Any, graph_id: str, workspace_id: str) -> Any:
+def _projection_record(
+    unit_of_work: Any,
+    projection_id: str,
+    authored_graph_id: str,
+    workspace_id: str,
+) -> Any:
     try:
-        record = unit_of_work.stores.graphs.get(graph_id)
+        record = unit_of_work.stores.realized_graphs.get(projection_id)
     except KeyError as error:
         raise ActivityPlanningGraphStateConflict(
-            f"workspace graph pointer {graph_id!r} has no graph truth"
+            f"workspace realized pointer {projection_id!r} has no graph truth"
         ) from error
-    if record.workspace_id != workspace_id:
+    if (
+        record.workspace_id != workspace_id
+        or record.source_authored_graph_id != authored_graph_id
+    ):
         raise ActivityPlanningGraphStateConflict(
-            f"graph {graph_id!r} does not belong to workspace {workspace_id!r}"
+            "realized graph projection does not match workspace authored truth"
         )
     return record
 
@@ -509,6 +679,10 @@ def _desired_graph_fingerprint(command: SetDesiredGraph) -> str:
             "workspace_id": command.workspace_id,
             "actor_id": command.actor_id,
             "expected_desired_graph_id": command.expected_desired_graph_id,
+            "expected_desired_realized_projection_id": (
+                command.expected_desired_realized_projection_id
+            ),
+            "expected_desired_graph_revision": command.expected_desired_graph_revision,
             "graph": DEFAULT_GRAPH_CODEC.encode(command.graph),
         }
     )

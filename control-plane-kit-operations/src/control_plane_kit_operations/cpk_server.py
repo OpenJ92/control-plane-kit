@@ -678,6 +678,17 @@ class CpkServerPlanningService:
                         "expected_desired_graph_id",
                     ),
                     idempotency_key=IdempotencyKey(_text(payload, "idempotency_key")),
+                    expected_desired_realized_projection_id=_optional_text(
+                        payload,
+                        "expected_desired_realized_projection_id",
+                    ),
+                    expected_desired_graph_revision=(
+                        _optional_nonnegative_integer(
+                            payload,
+                            "expected_desired_graph_revision",
+                        )
+                        or 0
+                    ),
                 )
             )
             return result.descriptor()
@@ -692,6 +703,18 @@ class CpkServerPlanningService:
                 expected_current_graph_id=_text(payload, "expected_current_graph_id"),
                 expected_desired_graph_id=_text(payload, "expected_desired_graph_id"),
                 idempotency_key=IdempotencyKey(_text(payload, "idempotency_key")),
+                expected_current_realized_projection_id=_optional_text(
+                    payload,
+                    "expected_current_realized_projection_id",
+                ),
+                expected_desired_realized_projection_id=_optional_text(
+                    payload,
+                    "expected_desired_realized_projection_id",
+                ),
+                expected_desired_graph_revision=_optional_nonnegative_integer(
+                    payload,
+                    "expected_desired_graph_revision",
+                ),
             )
         )
         return result.descriptor()
@@ -1432,6 +1455,18 @@ def _optional_text(values: Mapping[str, object], name: str) -> str | None:
         return None
     if not isinstance(value, str) or not value.strip():
         raise CpkServerApplicationError(400, f"{name} must be text")
+    return value
+
+
+def _optional_nonnegative_integer(
+    values: Mapping[str, object],
+    name: str,
+) -> int | None:
+    value = values.get(name)
+    if value is None:
+        return None
+    if type(value) is not int or value < 0:
+        raise CpkServerApplicationError(400, f"{name} must be nonnegative integer")
     return value
 
 

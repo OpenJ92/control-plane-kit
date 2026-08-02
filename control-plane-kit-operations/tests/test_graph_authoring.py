@@ -30,7 +30,7 @@ from control_plane_kit_operations.graph_authoring import (
 )
 from control_plane_kit_operations.postgres import PostgresUnitOfWork, install_schema
 from control_plane_kit_operations.products import InlineDescriptorSource
-from control_plane_kit_operations.records import WorkspaceRecord
+from control_plane_kit_operations.records import GraphVersionRecord, WorkspaceRecord
 
 
 class GraphAuthoringTests(unittest.TestCase):
@@ -85,6 +85,15 @@ class GraphAuthoringTests(unittest.TestCase):
         self.assertEqual(result.graph_version.graph_id, "graph-desired")
         self.assertEqual(result.graph_version.version, 1)
         self.assertEqual(result.workspace.desired_graph_id, "graph-desired")
+        self.assertEqual(
+            result.workspace.desired_realized_projection_id,
+            result.realized_projection.projection_id,
+        )
+        self.assertEqual(result.workspace.desired_graph_revision, 1)
+        self.assertEqual(
+            result.realized_projection.source_authored_graph_id,
+            result.graph_version.graph_id,
+        )
         self.assertEqual(result.product_references, (ProductReference.from_document(document),))
 
         with self.unit_of_work() as unit_of_work:
@@ -92,6 +101,12 @@ class GraphAuthoringTests(unittest.TestCase):
             workspace = unit_of_work.stores.workspaces.get("workspace-a")
             self.assertEqual(stored.graph_descriptor, result.graph_version.graph_descriptor)
             self.assertEqual(workspace.desired_graph_id, "graph-desired")
+            self.assertEqual(
+                unit_of_work.stores.realized_graphs.get(
+                    workspace.desired_realized_projection_id
+                ),
+                result.realized_projection,
+            )
 
     def test_unregistered_product_reference_rejects_without_graph_write(self) -> None:
         graph = self.graph_from_document(self.product("hello-server"))
@@ -278,7 +293,6 @@ class GraphAuthoringTests(unittest.TestCase):
                 WorkspaceRecord(
                     workspace_id="workspace-a",
                     name="Demo",
-                    desired_graph_id="graph-existing",
                 )
             )
             unit_of_work.stores.registered_products.register(
@@ -287,6 +301,20 @@ class GraphAuthoringTests(unittest.TestCase):
                 source=InlineDescriptorSource(),
                 imported_by="operator-a",
                 imported_at="2026-07-22T10:00:00Z",
+            )
+            unit_of_work.stores.graphs.save(
+                GraphVersionRecord.from_graph(
+                    graph_id="graph-existing",
+                    workspace_id="workspace-a",
+                    version=1,
+                    graph=DeploymentGraph("existing"),
+                    created_by="operator-a",
+                    created_at="2026-07-22T10:00:00Z",
+                )
+            )
+            unit_of_work.stores.workspaces.set_desired_graph(
+                "workspace-a",
+                "graph-existing",
             )
             unit_of_work.commit()
 

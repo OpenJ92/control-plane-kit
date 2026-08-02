@@ -754,28 +754,43 @@ class CpkServerOperationsAdapterTests(unittest.TestCase):
     def test_command_route_translates_payload_to_existing_planning_command(self) -> None:
         recording = RecordingService()
         service = CpkServerPlanningService(recording)
+        payload = {
+            "session_id": "session-a",
+            "actor_id": "operator-a",
+            "expected_current_graph_id": "graph-current",
+            "expected_desired_graph_id": "graph-desired",
+            "expected_current_realized_projection_id": "projection-current",
+            "expected_desired_realized_projection_id": "projection-desired",
+            "expected_desired_graph_revision": 7,
+            "idempotency_key": "plan-a",
+        }
 
-        result = service.handle(
-            RouteRequest(
-                surface="http",
-                route_id="command.deployment.plan",
-                service_role=ControlPlaneServiceRole.PLANNING,
-                path_parameters={"workspace_id": "workspace-a"},
-                payload={
-                    "session_id": "session-a",
-                    "actor_id": "operator-a",
-                    "expected_current_graph_id": "graph-current",
-                    "expected_desired_graph_id": "graph-desired",
-                    "idempotency_key": "plan-a",
-                },
+        for surface in ("http", "mcp"):
+            result = service.handle(
+                RouteRequest(
+                    surface=surface,
+                    route_id="command.deployment.plan",
+                    service_role=ControlPlaneServiceRole.PLANNING,
+                    path_parameters={"workspace_id": "workspace-a"},
+                    payload=payload,
+                )
             )
-        )
+            self.assertEqual(result, {"command_type": "RequestActivityPlan"})
 
-        self.assertEqual(result, {"command_type": "RequestActivityPlan"})
+        self.assertEqual(recording.commands[0], recording.commands[1])
         command = recording.commands[0]
         self.assertIsInstance(command, RequestActivityPlan)
         self.assertEqual(command.workspace_id, "workspace-a")
         self.assertEqual(command.expected_current_graph_id, "graph-current")
+        self.assertEqual(
+            command.expected_current_realized_projection_id,
+            "projection-current",
+        )
+        self.assertEqual(
+            command.expected_desired_realized_projection_id,
+            "projection-desired",
+        )
+        self.assertEqual(command.expected_desired_graph_revision, 7)
         self.assertEqual(command.idempotency_key.value, "plan-a")
 
     def test_approval_request_route_translates_payload_to_existing_command(self) -> None:
@@ -977,6 +992,9 @@ class CpkServerOperationsAdapterTests(unittest.TestCase):
             )
         )
         current_graph_id = str(workspace["workspace"]["current_graph_id"])
+        current_projection_id = str(
+            workspace["workspace"]["current_realized_projection_id"]
+        )
 
         application.handle(
             RouteRequest(
@@ -1023,11 +1041,17 @@ class CpkServerOperationsAdapterTests(unittest.TestCase):
                         self.graph_from_document(product_document.product)
                     ),
                     "expected_desired_graph_id": None,
+                    "expected_desired_realized_projection_id": None,
+                    "expected_desired_graph_revision": 0,
                     "idempotency_key": "desired-a",
                 },
             )
         )
         desired_graph_id = str(desired["desired_graph_id"])
+        desired_projection_id = str(
+            desired["desired_realized_projection_id"]
+        )
+        desired_revision = int(desired["desired_graph_revision"])
 
         planned = application.handle(
             RouteRequest(
@@ -1041,11 +1065,27 @@ class CpkServerOperationsAdapterTests(unittest.TestCase):
                     "actor_id": "operator-a",
                     "expected_current_graph_id": current_graph_id,
                     "expected_desired_graph_id": desired_graph_id,
+                    "expected_current_realized_projection_id": (
+                        current_projection_id
+                    ),
+                    "expected_desired_realized_projection_id": (
+                        desired_projection_id
+                    ),
+                    "expected_desired_graph_revision": desired_revision,
                     "idempotency_key": "plan-a",
                 },
             )
         )
         plan_id = str(planned["plan_id"])
+        self.assertEqual(
+            planned["base_realized_projection_id"],
+            current_projection_id,
+        )
+        self.assertEqual(
+            planned["desired_realized_projection_id"],
+            desired_projection_id,
+        )
+        self.assertEqual(planned["desired_graph_revision"], desired_revision)
 
         requested = application.handle(
             RouteRequest(

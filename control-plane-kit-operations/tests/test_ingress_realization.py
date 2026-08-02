@@ -71,6 +71,7 @@ from control_plane_kit_operations.records import (
     ExecutionRequestIdentity,
     ExecutionRequestRecord,
     GraphVersionRecord,
+    RealizedGraphProjectionRecord,
     RetryIdentity,
 )
 from control_plane_kit_operations.secret_providers import (
@@ -784,21 +785,25 @@ class IngressRealizationAdapterTests(unittest.TestCase):
                 "2026-07-28T08:00:10Z",
                 ActivityPlan((activity,)),
             ),
-            base_graph=GraphVersionRecord.from_graph(
-                graph_id="graph-current",
-                workspace_id="workspace-a",
-                version=1,
-                graph=base_graph or DeploymentGraph("empty"),
-                created_by="operator-a",
-                created_at="2026-07-28T08:00:00Z",
+            base_graph=RealizedGraphProjectionRecord.identity_for_authored(
+                authored_record=GraphVersionRecord.from_graph(
+                    graph_id="graph-current",
+                    workspace_id="workspace-a",
+                    version=1,
+                    graph=base_graph or DeploymentGraph("empty"),
+                    created_by="operator-a",
+                    created_at="2026-07-28T08:00:00Z",
+                )
             ),
-            desired_graph=GraphVersionRecord.from_graph(
-                graph_id="graph-desired",
-                workspace_id="workspace-a",
-                version=2,
-                graph=desired_graph or graph,
-                created_by="operator-a",
-                created_at="2026-07-28T08:00:05Z",
+            desired_graph=RealizedGraphProjectionRecord.identity_for_authored(
+                authored_record=GraphVersionRecord.from_graph(
+                    graph_id="graph-desired",
+                    workspace_id="workspace-a",
+                    version=2,
+                    graph=desired_graph or graph,
+                    created_by="operator-a",
+                    created_at="2026-07-28T08:00:05Z",
+                )
             ),
             registered_products=(),
             authority=ExecutionWorkerAuthority(

@@ -8,6 +8,7 @@ import psycopg
 from psycopg.errors import CheckViolation
 from psycopg.types.json import Jsonb
 
+from control_plane_kit_core.topology import DEFAULT_GRAPH_CODEC, DeploymentGraph
 from control_plane_kit_operations.postgres import POSTGRES_SCHEMA, install_schema
 
 
@@ -232,11 +233,19 @@ class PostgresSchemaFoundationTests(unittest.TestCase):
             """
             INSERT INTO cpk_workspaces (workspace_id, name, lifecycle)
             VALUES ('workspace-a', 'Current workspace', 'created');
+            """
+        )
+        self.connection.execute(
+            """
             INSERT INTO cpk_graph_versions
               (graph_id, workspace_id, version, graph_descriptor, created_by,
                created_at)
-            VALUES ('graph-a', 'workspace-a', 1, '{}'::jsonb, 'operator',
-                    'graph-at');
+            VALUES ('graph-a', 'workspace-a', 1, %s, 'operator', 'graph-at');
+            """,
+            (Jsonb(DEFAULT_GRAPH_CODEC.encode(DeploymentGraph("current"))),),
+        )
+        self.connection.execute(
+            """
             INSERT INTO cpk_operation_sessions
               (session_id, workspace_id, actor_id, title, status, created_at)
             VALUES ('session-a', 'workspace-a', 'operator', 'Deploy', 'open',

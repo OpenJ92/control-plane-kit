@@ -50,6 +50,13 @@ class CreateWorkspaceResult:
                 "lifecycle": self.workspace.lifecycle.value,
                 "current_graph_id": self.workspace.current_graph_id,
                 "desired_graph_id": self.workspace.desired_graph_id,
+                "current_realized_projection_id": (
+                    self.workspace.current_realized_projection_id
+                ),
+                "desired_realized_projection_id": (
+                    self.workspace.desired_realized_projection_id
+                ),
+                "desired_graph_revision": self.workspace.desired_graph_revision,
             },
             "current_graph": {
                 "graph_id": self.current_graph.graph_id,
@@ -110,11 +117,14 @@ class WorkspaceCommandService:
             workspace = WorkspaceRecord(
                 workspace_id=command.workspace_id,
                 name=command.name,
-                current_graph_id=current_graph.graph_id,
                 metadata=command.metadata,
             )
             unit_of_work.stores.workspaces.create(workspace)
             unit_of_work.stores.graphs.save(current_graph)
+            workspace = unit_of_work.stores.workspaces.set_current_graph(
+                command.workspace_id,
+                current_graph.graph_id,
+            )
             unit_of_work.commit()
             return CreateWorkspaceResult(workspace, current_graph)
 

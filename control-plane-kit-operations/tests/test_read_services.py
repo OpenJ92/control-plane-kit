@@ -98,6 +98,13 @@ class InstanceReadServiceTests(unittest.TestCase):
         model = self.service().workspace("workspace-a").descriptor()
 
         self.assertEqual(model["workspace"]["workspace_id"], "workspace-a")
+        self.assertIsNotNone(
+            model["workspace"]["current_realized_projection_id"]
+        )
+        self.assertIsNotNone(
+            model["workspace"]["desired_realized_projection_id"]
+        )
+        self.assertEqual(model["workspace"]["desired_graph_revision"], 1)
         self.assertEqual(model["current_graph"]["graph_id"], "graph-current")
         metadata = model["current_graph"]["graph_descriptor"]["nodes"]["hello"]["metadata"]
         self.assertEqual(metadata["api_token"], "<redacted>")
@@ -147,6 +154,9 @@ class InstanceReadServiceTests(unittest.TestCase):
         plan = detail["plan"]
 
         self.assertEqual(plan["plan_id"], "plan-a")
+        self.assertIsNotNone(plan["base_realized_projection_id"])
+        self.assertIsNotNone(plan["desired_realized_projection_id"])
+        self.assertEqual(plan["desired_graph_revision"], 1)
         self.assertEqual(plan["payload"]["schema"], "control-plane-kit.activity-plan")
         self.assertEqual(plan["risk_summary"]["ready_for_execution"], True)
         self.assertEqual(plan["recovery"]["mode"], "reverse-transition")
@@ -307,6 +317,7 @@ class InstanceReadServiceTests(unittest.TestCase):
     def seed_activity(self) -> None:
         self.seed_graphs()
         with self.unit_of_work() as unit_of_work:
+            workspace = unit_of_work.stores.workspaces.get("workspace-a")
             unit_of_work.stores.activity_history.add_session(
                 OperationSessionRecord(
                     session_id="session-a",
@@ -337,6 +348,13 @@ class InstanceReadServiceTests(unittest.TestCase):
                     status=ActivityPlanStatus.PLANNED,
                     created_at="2026-07-22T11:02:00Z",
                     plan=ActivityPlan(()),
+                    base_realized_projection_id=(
+                        workspace.current_realized_projection_id
+                    ),
+                    desired_realized_projection_id=(
+                        workspace.desired_realized_projection_id
+                    ),
+                    desired_graph_revision=workspace.desired_graph_revision,
                 )
             )
             unit_of_work.stores.activity_history.add_approval_request(
@@ -392,6 +410,7 @@ class InstanceReadServiceTests(unittest.TestCase):
                 "workspace-a",
                 "graph-public-desired",
             )
+            workspace = unit_of_work.stores.workspaces.get("workspace-a")
             unit_of_work.stores.activity_history.add_session(
                 OperationSessionRecord(
                     session_id="session-public-ingress",
@@ -411,6 +430,13 @@ class InstanceReadServiceTests(unittest.TestCase):
                     status=ActivityPlanStatus.PLANNED,
                     created_at="2026-07-22T11:02:00Z",
                     plan=ActivityPlan(()),
+                    base_realized_projection_id=(
+                        workspace.current_realized_projection_id
+                    ),
+                    desired_realized_projection_id=(
+                        workspace.desired_realized_projection_id
+                    ),
+                    desired_graph_revision=workspace.desired_graph_revision,
                 )
             )
             unit_of_work.stores.activity_history.add_approval_request(

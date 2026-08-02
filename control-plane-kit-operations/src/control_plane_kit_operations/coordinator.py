@@ -80,9 +80,9 @@ from control_plane_kit_operations.records import (
     BoundedEvidence,
     ExecutionRequestRecord,
     FailureEvidence,
-    GraphVersionRecord,
     ObservationRecord,
     ObservationStatus,
+    RealizedGraphProjectionRecord,
 )
 from control_plane_kit_operations.workflows import IdempotencyKey, InvalidOperationCommand
 
@@ -142,8 +142,8 @@ class ActivityRealizationContext:
     request: ExecutionRequestRecord
     run: ActivityRunRecord
     plan_record: ActivityPlanRecord
-    base_graph: GraphVersionRecord
-    desired_graph: GraphVersionRecord
+    base_graph: RealizedGraphProjectionRecord
+    desired_graph: RealizedGraphProjectionRecord
     registered_products: tuple[RegisteredProduct, ...]
     authority: ExecutionWorkerAuthority
     intent_event: ActivityEventRecord
@@ -167,10 +167,14 @@ class ActivityRealizationContext:
             raise InvalidOperationCommand("realization run must be ActivityRunRecord")
         if not isinstance(self.plan_record, ActivityPlanRecord):
             raise InvalidOperationCommand("realization plan must be ActivityPlanRecord")
-        if not isinstance(self.base_graph, GraphVersionRecord):
-            raise InvalidOperationCommand("realization base graph must be GraphVersionRecord")
-        if not isinstance(self.desired_graph, GraphVersionRecord):
-            raise InvalidOperationCommand("realization desired graph must be GraphVersionRecord")
+        if not isinstance(self.base_graph, RealizedGraphProjectionRecord):
+            raise InvalidOperationCommand(
+                "realization base graph must be RealizedGraphProjectionRecord"
+            )
+        if not isinstance(self.desired_graph, RealizedGraphProjectionRecord):
+            raise InvalidOperationCommand(
+                "realization desired graph must be RealizedGraphProjectionRecord"
+            )
         products = tuple(self.registered_products)
         if not all(isinstance(value, RegisteredProduct) for value in products):
             raise InvalidOperationCommand("realization products must be RegisteredProduct values")
@@ -248,10 +252,25 @@ class ActivityRealizationContext:
             raise InvalidOperationCommand("realization run must use the pinned plan")
         if self.request.identity.plan_id != self.plan_record.plan_id:
             raise InvalidOperationCommand("realization request must use the pinned plan")
-        if self.plan_record.base_graph_id != self.base_graph.graph_id:
-            raise InvalidOperationCommand("realization base graph must match plan")
-        if self.plan_record.desired_graph_id != self.desired_graph.graph_id:
-            raise InvalidOperationCommand("realization desired graph must match plan")
+        if self.plan_record.base_graph_id != self.base_graph.source_authored_graph_id:
+            raise InvalidOperationCommand("realization base graph source must match plan")
+        if (
+            self.plan_record.desired_graph_id
+            != self.desired_graph.source_authored_graph_id
+        ):
+            raise InvalidOperationCommand("realization desired graph source must match plan")
+        if (
+            self.plan_record.base_realized_projection_id is not None
+            and self.plan_record.base_realized_projection_id
+            != self.base_graph.projection_id
+        ):
+            raise InvalidOperationCommand("realization base projection must match plan")
+        if (
+            self.plan_record.desired_realized_projection_id is not None
+            and self.plan_record.desired_realized_projection_id
+            != self.desired_graph.projection_id
+        ):
+            raise InvalidOperationCommand("realization desired projection must match plan")
         if self.base_graph.workspace_id != workspace_id:
             raise InvalidOperationCommand("realization base graph must match workspace")
         if self.desired_graph.workspace_id != workspace_id:
@@ -928,9 +947,51 @@ class ExecutionCoordinator:
                 plan_record = stores.activity_history.get_plan(run.plan_id)
             except KeyError as error:
                 raise ExecutionCoordinatorNotFound("activity plan was not found") from error
+            for projection_id, graph_id, label in (
+                (
+                    plan_record.base_realized_projection_id,
+                    plan_record.base_graph_id,
+                    "base",
+                ),
+                (
+                    plan_record.desired_realized_projection_id,
+                    plan_record.desired_graph_id,
+                    "desired",
+                ),
+            ):
+                if projection_id is not None:
+                    continue
+                try:
+                    authored = stores.graphs.get(graph_id)
+                except KeyError as error:
+                    raise ExecutionCoordinatorNotFound(
+                        "pinned graph was not found"
+                    ) from error
+                if authored.workspace_id != request.identity.workspace_id:
+                    raise ExecutionCoordinatorConflict(
+                        f"{label} graph must match execution workspace"
+                    )
             try:
-                base_graph = stores.graphs.get(plan_record.base_graph_id)
-                desired_graph = stores.graphs.get(plan_record.desired_graph_id)
+                base_graph = (
+                    stores.realized_graphs.get(
+                        plan_record.base_realized_projection_id
+                    )
+                    if plan_record.base_realized_projection_id is not None
+                    else stores.realized_graphs.identity_for_authored(
+                        request.identity.workspace_id,
+                        plan_record.base_graph_id,
+                    )
+                )
+                desired_graph = (
+                    stores.realized_graphs.get(
+                        plan_record.desired_realized_projection_id
+                    )
+                    if plan_record.desired_realized_projection_id is not None
+                    else stores.realized_graphs.identity_for_authored(
+                        request.identity.workspace_id,
+                        plan_record.desired_graph_id,
+                    )
+                )
             except KeyError as error:
                 raise ExecutionCoordinatorNotFound("pinned graph was not found") from error
             registered_products = stores.registered_products.list_active(
@@ -991,8 +1052,8 @@ class _CoordinatorContext:
     request: ExecutionRequestRecord
     run: ActivityRunRecord
     plan_record: ActivityPlanRecord
-    base_graph: GraphVersionRecord
-    desired_graph: GraphVersionRecord
+    base_graph: RealizedGraphProjectionRecord
+    desired_graph: RealizedGraphProjectionRecord
     registered_products: tuple[RegisteredProduct, ...]
     image_pull_authorities: tuple[RegisteredImagePullAuthority, ...]
     runtime_authorities: tuple[RegisteredRuntimeAuthority, ...]
@@ -1013,10 +1074,33 @@ class _CoordinatorContext:
             raise ExecutionCoordinatorConflict("run must use pinned activity plan")
         if self.request.identity.plan_id != self.plan_record.plan_id:
             raise ExecutionCoordinatorConflict("request must use pinned activity plan")
-        if self.plan_record.base_graph_id != self.base_graph.graph_id:
-            raise ExecutionCoordinatorConflict("base graph must match activity plan")
-        if self.plan_record.desired_graph_id != self.desired_graph.graph_id:
-            raise ExecutionCoordinatorConflict("desired graph must match activity plan")
+        if self.plan_record.base_graph_id != self.base_graph.source_authored_graph_id:
+            raise ExecutionCoordinatorConflict(
+                "base graph source must match activity plan"
+            )
+        if (
+            self.plan_record.desired_graph_id
+            != self.desired_graph.source_authored_graph_id
+        ):
+            raise ExecutionCoordinatorConflict(
+                "desired graph source must match activity plan"
+            )
+        if (
+            self.plan_record.base_realized_projection_id is not None
+            and self.plan_record.base_realized_projection_id
+            != self.base_graph.projection_id
+        ):
+            raise ExecutionCoordinatorConflict(
+                "base realized projection must match activity plan"
+            )
+        if (
+            self.plan_record.desired_realized_projection_id is not None
+            and self.plan_record.desired_realized_projection_id
+            != self.desired_graph.projection_id
+        ):
+            raise ExecutionCoordinatorConflict(
+                "desired realized projection must match activity plan"
+            )
         if self.base_graph.workspace_id != workspace_id:
             raise ExecutionCoordinatorConflict("base graph must match execution workspace")
         if self.desired_graph.workspace_id != workspace_id:

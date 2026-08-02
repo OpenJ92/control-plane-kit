@@ -173,6 +173,9 @@ class WorkspaceSummary:
     lifecycle: str
     current_graph_id: str | None
     desired_graph_id: str | None
+    current_realized_projection_id: str | None
+    desired_realized_projection_id: str | None
+    desired_graph_revision: int
     metadata: Mapping[str, object] = field(default_factory=dict)
 
     def descriptor(self) -> dict[str, object]:
@@ -182,6 +185,9 @@ class WorkspaceSummary:
             "lifecycle": self.lifecycle,
             "current_graph_id": self.current_graph_id,
             "desired_graph_id": self.desired_graph_id,
+            "current_realized_projection_id": self.current_realized_projection_id,
+            "desired_realized_projection_id": self.desired_realized_projection_id,
+            "desired_graph_revision": self.desired_graph_revision,
             "metadata": _redact_descriptor_value("metadata", self.metadata),
         }
 
@@ -1064,6 +1070,9 @@ def _workspace_summary(record: WorkspaceRecord) -> WorkspaceSummary:
         lifecycle=record.lifecycle.value,
         current_graph_id=record.current_graph_id,
         desired_graph_id=record.desired_graph_id,
+        current_realized_projection_id=record.current_realized_projection_id,
+        desired_realized_projection_id=record.desired_realized_projection_id,
+        desired_graph_revision=record.desired_graph_revision,
         metadata=record.metadata,
     )
 
@@ -1349,6 +1358,9 @@ def _plan_descriptor(
         "session_id": plan.session_id,
         "base_graph_id": plan.base_graph_id,
         "desired_graph_id": plan.desired_graph_id,
+        "base_realized_projection_id": plan.base_realized_projection_id,
+        "desired_realized_projection_id": plan.desired_realized_projection_id,
+        "desired_graph_revision": plan.desired_graph_revision,
         "status": plan.status.value,
         "created_at": plan.created_at,
         "payload": DEFAULT_ACTIVITY_PLAN_CODEC.encode(plan.plan),

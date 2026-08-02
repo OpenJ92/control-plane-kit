@@ -110,6 +110,9 @@ class WorkspaceRecord:
     current_graph_id: str | None = None
     desired_graph_id: str | None = None
     metadata: Mapping[str, object] = field(default_factory=dict)
+    current_realized_projection_id: str | None = None
+    desired_realized_projection_id: str | None = None
+    desired_graph_revision: int = 0
 
     def __post_init__(self) -> None:
         _validate_text(self.workspace_id, "workspace_id")
@@ -120,6 +123,42 @@ class WorkspaceRecord:
         _validate_optional_text(self.desired_graph_id, "desired_graph_id")
         if not isinstance(self.metadata, Mapping):
             raise OperationsRecordError("workspace metadata must be mapping")
+        _validate_optional_text(
+            self.current_realized_projection_id,
+            "current_realized_projection_id",
+        )
+        _validate_optional_text(
+            self.desired_realized_projection_id,
+            "desired_realized_projection_id",
+        )
+        if type(self.desired_graph_revision) is not int or self.desired_graph_revision < 0:
+            raise OperationsRecordError(
+                "workspace desired_graph_revision must be a nonnegative integer"
+            )
+
+    @property
+    def current_lineage(self) -> "GraphProjectionLineage | None":
+        if (
+            self.current_graph_id is None
+            or self.current_realized_projection_id is None
+        ):
+            return None
+        return GraphProjectionLineage(
+            self.current_graph_id,
+            self.current_realized_projection_id,
+        )
+
+    @property
+    def desired_lineage(self) -> "GraphProjectionLineage | None":
+        if (
+            self.desired_graph_id is None
+            or self.desired_realized_projection_id is None
+        ):
+            return None
+        return GraphProjectionLineage(
+            self.desired_graph_id,
+            self.desired_realized_projection_id,
+        )
 
 
 @dataclass(frozen=True)
@@ -176,6 +215,18 @@ class RealizedGraphProjectionKind(StrEnum):
 
     IDENTITY = "identity"
     DELEGATION_VERIFIER = "delegation-verifier"
+
+
+@dataclass(frozen=True)
+class GraphProjectionLineage:
+    """One authored graph identity paired with exact executable material."""
+
+    authored_graph_id: str
+    realized_projection_id: str
+
+    def __post_init__(self) -> None:
+        _validate_text(self.authored_graph_id, "authored_graph_id")
+        _validate_text(self.realized_projection_id, "realized_projection_id")
 
 
 @dataclass(frozen=True)
@@ -382,6 +433,9 @@ class ActivityPlanRecord:
     status: ActivityPlanStatus
     created_at: str
     plan: ActivityPlan
+    base_realized_projection_id: str | None = None
+    desired_realized_projection_id: str | None = None
+    desired_graph_revision: int = 0
 
     def __post_init__(self) -> None:
         _validate_text(self.plan_id, "plan_id")
@@ -393,6 +447,36 @@ class ActivityPlanRecord:
         _validate_text(self.created_at, "created_at")
         if not isinstance(self.plan, ActivityPlan):
             raise OperationsRecordError("activity plan record requires ActivityPlan")
+        _validate_optional_text(
+            self.base_realized_projection_id,
+            "base_realized_projection_id",
+        )
+        _validate_optional_text(
+            self.desired_realized_projection_id,
+            "desired_realized_projection_id",
+        )
+        if type(self.desired_graph_revision) is not int or self.desired_graph_revision < 0:
+            raise OperationsRecordError(
+                "activity plan desired_graph_revision must be nonnegative"
+            )
+
+    @property
+    def base_lineage(self) -> GraphProjectionLineage | None:
+        if self.base_realized_projection_id is None:
+            return None
+        return GraphProjectionLineage(
+            self.base_graph_id,
+            self.base_realized_projection_id,
+        )
+
+    @property
+    def desired_lineage(self) -> GraphProjectionLineage | None:
+        if self.desired_realized_projection_id is None:
+            return None
+        return GraphProjectionLineage(
+            self.desired_graph_id,
+            self.desired_realized_projection_id,
+        )
 
 
 @dataclass(frozen=True)

@@ -84,6 +84,7 @@ from control_plane_kit_operations.records import (
     ExecutionRequestRecord,
     FailureEvidence,
     GraphVersionRecord,
+    RealizedGraphProjectionRecord,
     RetryIdentity,
 )
 
@@ -646,7 +647,7 @@ def context_for(
             "2026-07-22T10:00:30Z",
             plan,
         ),
-        base_graph=graph_version_record_from_graph(
+        base_graph=projection_record_from_graph(
             "graph-current",
             base_graph
             if base_graph is not None
@@ -655,7 +656,7 @@ def context_for(
                 registered_product=registered_product,
             ),
         ),
-        desired_graph=graph_version_record_from_graph(
+        desired_graph=projection_record_from_graph(
             "graph-desired",
             graph_with_node(
                 desired_kind,
@@ -681,19 +682,21 @@ def context_for(
     )
 
 
-def graph_version_record_from_graph(
+def projection_record_from_graph(
     graph_id: str,
     graph: DeploymentGraph,
     *,
     version: int = 1,
-) -> GraphVersionRecord:
-    return GraphVersionRecord.from_graph(
-        graph_id=graph_id,
-        workspace_id="workspace-a",
-        version=version,
-        graph=graph,
-        created_by="operator-a",
-        created_at="2026-07-22T10:00:00Z",
+) -> RealizedGraphProjectionRecord:
+    return RealizedGraphProjectionRecord.identity_for_authored(
+        authored_record=GraphVersionRecord.from_graph(
+            graph_id=graph_id,
+            workspace_id="workspace-a",
+            version=version,
+            graph=graph,
+            created_by="operator-a",
+            created_at="2026-07-22T10:00:00Z",
+        )
     )
 
 
