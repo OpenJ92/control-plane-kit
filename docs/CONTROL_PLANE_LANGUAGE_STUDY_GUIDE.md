@@ -201,6 +201,11 @@ Study it as a custody service, not a new graph language. Core still carries
 `SecretReference`; operations admits and authorizes use; interpreters resolve at
 the IO edge.
 
+For versioned credentials, distinguish custody-wide revocation from exact
+retirement. `SecretVersionRevocationGrant` names one reference and one provider
+version; `SecretVersionRevocationReceipt` proves only that version was revoked.
+This allows key A to retire while key B under the same reference remains usable.
+
 ### Fourth Pass: Examples
 
 Draw these concrete flows:

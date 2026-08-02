@@ -7166,3 +7166,29 @@ fixture raised after the request and therefore caused rollback. The corrected
 fixture raises only after `__exit__` has physically committed, and both #1294
 preparation recovery and #1295 execution recovery pass under that stronger
 proof. No authored graph row is added or changed by verifier rotation.
+
+## #1300 Exact secret-version revocation protocol
+
+Gateway key retirement exposed a real distinction between revoking a secret
+identity and revoking one version beneath it. The existing provider route
+revoked every version under one reference, which would revoke active B while
+retiring A. The new provider-neutral boundary is:
+
+```text
+SecretVersionRevocationGrant
+  -> exact provider IO
+    -> SecretVersionRevocationReceipt
+```
+
+The grant carries only workspace, provider registration, opaque endpoint and
+credential references, secret reference, exact version id/number, actor,
+correlation, and a fingerprint. The provider performs version status mutation,
+durable correlation binding, and provider-local audit append in one SQLite
+transaction. Exact replay survives restart; changed correlation or target
+fails closed. A two-version proof revokes A while B remains active and
+resolvable. Audit failure rolls the revocation back.
+
+The existing reference-wide revoke remains available for whole-secret
+lifecycles. Gateway rotation must use only the exact-version protocol. The
+interpreter client treats malformed success after mutation as uncertain and
+the custodian returns the typed core receipt without exposing secret bytes.

@@ -1025,6 +1025,44 @@ laws:
   replay must match workspace, reference, purpose, issuer, correlation, public
   key identity, and provider version exactly.
 
+### SecretVersionRevocationGrant / SecretVersionRevocationReceipt
+
+meaning:
+  Reference-only authority and evidence for revoking one exact durable provider
+  version without revoking sibling versions under the same `SecretReference`:
+
+```text
+SecretVersionRevocationGrant
+  -> provider IO
+    -> SecretVersionRevocationReceipt
+```
+
+owned by:
+  Core owns the provider-neutral grant and receipt. Operations will prepare and
+  fold the grant as part of an approved lifecycle program. An interpreter owns
+  provider transport. `control-plane-kit-secrets` owns the exact encrypted
+  mutation, replay correlation, workspace authorization, and provider-local
+  audit.
+
+durable:
+  The provider durably binds one workspace and correlation to one secret
+  identity, provider version id and version number, and actor. Operations may
+  retain the reference and version evidence, never the represented value.
+
+may contain secrets:
+  No. Endpoint, credential, and secret identities are opaque references. The
+  grant and receipt contain no plaintext, ciphertext, private key, or provider
+  credential bytes.
+
+laws:
+  Exact replay returns the same revoked version identity. Reusing a correlation
+  for a different reference, version, number, or actor fails closed. Reusing an
+  already-revoked target under a different correlation also fails closed.
+  Revocation state, replay binding, and audit append share one provider
+  transaction. Other active versions remain active and resolvable. Existing
+  reference-wide revocation remains a distinct operation and cannot substitute
+  for version retirement.
+
 ### GatewayKeyRotation / GatewayKeyRotationTransition
 
 meaning:
