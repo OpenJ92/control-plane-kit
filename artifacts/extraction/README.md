@@ -58,3 +58,22 @@ secrets. `./validate-semantic-test-migration-inventory.sh` fails when that
 evidence drifts from the declared source commits. Candidate matches are review
 inputs only; package migration issues decide actual successors, supersessions,
 future owners, and archival.
+
+`semantic-test-reconciliation.json` is the reviewed disposition overlay for the
+immutable laws selected by the migration inventory. It extends the parity
+artifacts; it is not a second count-based parity ledger. Each review names exact
+current tests, a reviewed non-current disposition, or one open issue that owns
+the still-desired law and its negative cases.
+
+`semantic-test-reconciliation-decisions.json` contains the small explicit input
+needed to regenerate completed issue slices. The builder resolves uniquely
+renamed methods but fails closed when a semantic rename, future owner, or
+current test identity is ambiguous. Validate a completed slice with:
+
+```bash
+python3 -m extraction_parity.reconciliation_builder --issue 1320 --check
+```
+
+The #1320 passing package evidence is recorded in
+`harden-tests-parity-1320-evidence.json`; its canonical digest is indexed by
+`successor-evidence.json`.

@@ -1,0 +1,11 @@
+{
+  "command": "control-plane-kit-core/test.sh",
+  "compileall": "passing",
+  "distribution": "control-plane-kit-core",
+  "import_check": "passing",
+  "issue": 1320,
+  "roadmap_baseline": "e779dc5402a5d42c9d2edaffff4c0e7eb342d1ab",
+  "schema": "cpk.semantic-test-reconciliation-evidence",
+  "status": "passing",
+  "tests": 482
+}
