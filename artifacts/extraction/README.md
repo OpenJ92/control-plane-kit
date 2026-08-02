@@ -44,3 +44,17 @@ is intentionally empty before migration begins. `parity-validation-report.json`
 is the deterministic foundation-policy report produced by
 `./validate-parity.sh foundation`; it proves complete mapping while reporting
 that required migration work remains incomplete.
+
+`semantic-test-migration-rules.json` assigns every module in the mutable legacy
+test tree to exactly one review issue. These assignments are provisional review
+queues, not claims of semantic equivalence. `semantic-test-migration-inventory.json`
+is generated from exact committed snapshots by
+`./build-semantic-test-migration-inventory.sh`. It joins all immutable reference
+laws to source locations, negative-case hints, structural legacy imports,
+recorded parity evidence, and name-based current successor candidates. It also
+inventories mutable-only tests, helpers, legacy shell entry points, and current
+package tests/scripts across core, operations, interpreters, servers, and
+secrets. `./validate-semantic-test-migration-inventory.sh` fails when that
+evidence drifts from the declared source commits. Candidate matches are review
+inputs only; package migration issues decide actual successors, supersessions,
+future owners, and archival.
