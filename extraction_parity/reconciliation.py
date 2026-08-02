@@ -37,6 +37,7 @@ REVIEW_FIELDS = {
     "future_issue",
     "rationale",
     "negative_case_disposition",
+    "obsolete_assumption_disposition",
 }
 FUTURE_ISSUE_FIELDS = {"repository", "number", "state", "evidence"}
 MUTABLE_REVIEW_FIELDS = {
@@ -92,6 +93,7 @@ def _decode_review(value: object) -> dict[str, object]:
         "owner",
         "rationale",
         "negative_case_disposition",
+        "obsolete_assumption_disposition",
     ):
         _text(value[field], f"review.{field}")
     _issue(value["reviewed_by_issue"], "review.reviewed_by_issue")

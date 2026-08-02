@@ -75,6 +75,7 @@ def _document() -> dict[str, object]:
                 "future_issue": None,
                 "rationale": "The current pure test preserves the law.",
                 "negative_case_disposition": "The rejection remains explicit.",
+                "obsolete_assumption_disposition": "The aggregate import path is discarded.",
             },
             {
                 "reference": "tests.test_future.FutureTests.test_law",
@@ -91,6 +92,7 @@ def _document() -> dict[str, object]:
                 },
                 "rationale": "The application program is intentionally future-owned.",
                 "negative_case_disposition": "The future issue retains invalid forms.",
+                "obsolete_assumption_disposition": "The frozen application module is not restored.",
             },
         ],
         "mutable_only_reviews": [],

@@ -100,6 +100,16 @@ def _negative_case_disposition(assignment: dict[str, object]) -> str:
 
 
 def _current_test_index(root: Path, distribution: str) -> tuple[set[str], dict[str, list[str]]]:
+    test_roots = {
+        "control-plane-kit-core": ("control-plane-kit-core/tests",),
+        "control-plane-kit-operations": ("control-plane-kit-operations/tests",),
+    }
+    try:
+        selected_test_roots = test_roots[distribution]
+    except KeyError as error:
+        raise ReconciliationError(
+            f"working-tree scanner has no configured test root for {distribution}"
+        ) from error
     lane = scan_test_root(
         SourceLane(
             distribution=distribution,
@@ -107,7 +117,7 @@ def _current_test_index(root: Path, distribution: str) -> tuple[set[str], dict[s
             commit="working-tree",
             gate="focused-unittest",
             root=root,
-            test_roots=("control-plane-kit-core/tests",),
+            test_roots=selected_test_roots,
         )
     )
     identities = {str(value["id"]) for value in lane["methods"]}
@@ -205,6 +215,7 @@ def apply_issue_slice(
                     },
                     "rationale": "The behavioral law remains desired, but its application-level owner is deliberately outside this current package slice.",
                     "negative_case_disposition": _negative_case_disposition(assignment),
+                    "obsolete_assumption_disposition": "The frozen application module and aggregate import path are not current package structure.",
                 }
             )
             continue
@@ -244,6 +255,11 @@ def apply_issue_slice(
                     else "The current package test preserves the frozen behavioral law without its obsolete aggregate imports or fixtures."
                 ),
                 "negative_case_disposition": _negative_case_disposition(assignment),
+                "obsolete_assumption_disposition": (
+                    "Recipe-specific constructors are replaced by the provider-neutral topology compiler."
+                    if disposition == "current-strengthened"
+                    else "Frozen aggregate imports, fixtures, and constructor layout do not constrain the current package test."
+                ),
             }
         )
 
