@@ -129,6 +129,11 @@
       "digest": "sha256:88e255d5eda11ffd2a0f9fe377ccbf60a4d88ee517a60077096579e6ce61c3df",
       "id": "extract-e-791.persistence-boundary-contract.unittest",
       "status": "passing"
+    },
+    {
+      "digest": "sha256:56b963ea19536f1200685c9faa0530e57888104e88f87171f9b76dc94db89025",
+      "id": "harden-tests-parity-1320.core.unittest",
+      "status": "passing"
     }
   ],
   "schema": "cpk.successor-evidence-index"

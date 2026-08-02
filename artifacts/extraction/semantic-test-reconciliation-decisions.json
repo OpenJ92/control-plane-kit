@@ -1,0 +1,45 @@
+{
+  "schema": "cpk.semantic-test-reconciliation-decisions",
+  "slices": [
+    {
+      "default_disposition": "current-isomorphic",
+      "distribution": "control-plane-kit-core",
+      "evidence_id": "harden-tests-parity-1320.core.unittest",
+      "future_issue_reviews": {
+        "tests.test_deployment_application_values.DeploymentApplicationValueTests.test_acceptance_corpus_exercises_all_four_deploy_transition_forms": {
+          "evidence": "Open issue #1096 requires acceptance for initial, update, teardown, and no-op through the executable DeploymentProgram.",
+          "number": 1096,
+          "repository": "OpenJ92/control-plane-kit"
+        },
+        "tests.test_deployment_application_values.DeploymentApplicationValueTests.test_one_interpreter_classifies_all_transition_forms": {
+          "evidence": "Open issue #1096 owns the closed DeploymentTransition language interpreted from one graph pair.",
+          "number": 1096,
+          "repository": "OpenJ92/control-plane-kit"
+        },
+        "tests.test_deployment_application_values.DeploymentApplicationValueTests.test_transition_constructors_make_invalid_forms_unrepresentable": {
+          "evidence": "Open issue #1096 owns typed stage handoffs and the closed transition forms, including invalid-form rejection.",
+          "number": 1096,
+          "repository": "OpenJ92/control-plane-kit"
+        },
+        "tests.test_deployment_application_values.DeploymentApplicationValueTests.test_two_distinct_empty_graphs_are_an_update_not_a_no_op": {
+          "evidence": "Open issue #1096 owns exact graph-pair classification and no-op identity semantics.",
+          "number": 1096,
+          "repository": "OpenJ92/control-plane-kit"
+        }
+      },
+      "issue": 1320,
+      "strengthened_references": [
+        "tests.test_compile.CompileTests.test_app_with_postgres_injects_database_url",
+        "tests.test_compile.CompileTests.test_graph_descriptor_uses_provider_requirement_vocabulary"
+      ],
+      "successor_overrides": {
+        "tests.test_compile.CompileTests.test_app_with_postgres_injects_database_url": [
+          "control-plane-kit-core:tests.test_kernel_pipeline.PureKernelPipelineTests.test_topology_compilation_wires_provider_to_requirement_environment"
+        ],
+        "tests.test_compile.CompileTests.test_graph_descriptor_uses_provider_requirement_vocabulary": [
+          "control-plane-kit-core:tests.test_kernel_pipeline.PureKernelPipelineTests.test_topology_compilation_wires_provider_to_requirement_environment"
+        ]
+      }
+    }
+  ]
+}
