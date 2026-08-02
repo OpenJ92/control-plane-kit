@@ -23,6 +23,7 @@ from control_plane_kit_operations.gateway_key_rotations import (
     GatewayKeyRotationDeploymentCheckpoint,
     GatewayKeyRotationDeploymentPhase,
     GatewayKeyRotationDeploymentStatus,
+    GatewayKeyRotationRevocationCheckpoint,
     GatewayKeyRotationService,
     GatewayKeyRotationStatus,
     RequestGatewayKeyRotation,
@@ -177,15 +178,28 @@ class GatewayKeyRotationTests(unittest.TestCase):
                 accepted_at="2026-08-02T01:08:00Z")
         rotation = self.advance(rotation, GatewayKeyRotationStatus.RETIREMENT_READY,
             deployment=accepted_retirement)
+        rotation = self.advance(rotation, GatewayKeyRotationStatus.OLD_KEY_RETIRED,
+            old_key_retired_at="2026-08-02T01:09:00Z")
+        rotation = self.advance(rotation, GatewayKeyRotationStatus.REVOCATION_PREPARED,
+            revocation=GatewayKeyRotationRevocationCheckpoint(
+                provider_registration_id="provider-a",
+                secret_reference=SecretReference(
+                    "secret://workspace-secrets/keys/key-a"
+                ),
+                provider_version_id="version-a",
+                provider_version_number=1,
+                revocation_id="srevoke_" + "a" * 64,
+                correlation_id="rotation-a:revoke-old-version",
+                action_digest="b" * 64,
+                prepared_at="2026-08-02T01:09:01Z",
+            ))
         rotation = self.advance(rotation, GatewayKeyRotationStatus.COMPLETED,
-            deployment=accepted_retirement,
-            old_key_retired_at="2026-08-02T01:09:00Z",
             old_secret_revoked_at="2026-08-02T01:09:01Z")
 
         self.assertEqual(rotation.status, GatewayKeyRotationStatus.COMPLETED)
         self.assertEqual(self.service().get(rotation.rotation_id), rotation)
         transitions = self.service().transitions(rotation.rotation_id)
-        self.assertEqual(len(transitions), 11)
+        self.assertEqual(len(transitions), 13)
         self.assertEqual(transitions[0].from_status, GatewayKeyRotationStatus.REQUESTED)
         self.assertEqual(
             transitions[2].to_status,

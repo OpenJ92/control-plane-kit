@@ -1098,7 +1098,7 @@ requested -> awaiting-approval -> approved -> generation-prepared
   -> key-generated
   -> overlap-deploying -> overlap-ready -> new-key-active
     -> draining-old-grants -> retirement-deploying -> retirement-ready
-      -> completed
+      -> old-key-retired -> revocation-prepared -> completed
 ```
 
 owned by:
@@ -1145,7 +1145,17 @@ laws:
   Retirement deployment acceptance advances the aggregate only to
   `retirement-ready`: current graph G[B] is then accepted, but old key A and its
   secret version remain intact until a separate retirement program records
-  their exact successful lifecycle evidence and advances to `completed`.
+  their exact successful lifecycle evidence. The program first joins A's
+  immutable signing-key reference to admitted provider-version metadata before
+  retiring A publicly. It then commits `old-key-retired`, commits an exact
+  reference/version/correlation/action-digest checkpoint at
+  `revocation-prepared`, performs provider IO outside every operations
+  transaction, accepts only a matching `SecretVersionRevocationReceipt`,
+  revokes A's public identity, and advances to `completed`. A definite
+  pre-mutation provider failure leaves the same prepared action retryable;
+  uncertain or malformed mutating evidence moves the rotation to `blocked` for
+  recovery/fencing. Exact provider replay uses the same durable correlation and
+  cannot mutate a sibling secret version.
   Approved rotation does not call a provider directly: it first commits
   `generation-prepared`, performs provider IO outside transactions, and then
   folds bounded evidence. Exact success and uncertainty replay are idempotent;
