@@ -18798,27 +18798,90 @@
     }
   ],
   "legacy_helpers": [
-    "tests/__init__.py",
-    "tests/architecture/__init__.py",
-    "tests/architecture/policies.py",
-    "tests/architecture/source.py",
-    "tests/fixtures/differential_scenario.py",
-    "tests/fixtures/dual_transport_server.py",
-    "tests/fixtures/tcp_reply_server.py",
-    "tests/fixtures/webhook_receiver.py",
-    "tests/live_coredns.py",
-    "tests/live_docker_configuration.py",
-    "tests/live_docker_publication.py",
-    "tests/live_docker_secret.py",
-    "tests/live_docker_transport.py",
-    "tests/live_opentelemetry_collector.py",
-    "tests/live_service_discovery.py",
-    "tests/live_tcp_switch.py",
-    "tests/packaging/base_wheel.py",
-    "tests/packaging/http_extra.py",
-    "tests/packaging/postgres_extra.py",
-    "tests/packaging/server_extra.py",
-    "tests/postgres_case.py"
+    {
+      "path": "tests/__init__.py",
+      "provisional_issue": 1325
+    },
+    {
+      "path": "tests/architecture/__init__.py",
+      "provisional_issue": 1325
+    },
+    {
+      "path": "tests/architecture/policies.py",
+      "provisional_issue": 1325
+    },
+    {
+      "path": "tests/architecture/source.py",
+      "provisional_issue": 1325
+    },
+    {
+      "path": "tests/fixtures/differential_scenario.py",
+      "provisional_issue": 1325
+    },
+    {
+      "path": "tests/fixtures/dual_transport_server.py",
+      "provisional_issue": 1325
+    },
+    {
+      "path": "tests/fixtures/tcp_reply_server.py",
+      "provisional_issue": 1325
+    },
+    {
+      "path": "tests/fixtures/webhook_receiver.py",
+      "provisional_issue": 1325
+    },
+    {
+      "path": "tests/live_coredns.py",
+      "provisional_issue": 1325
+    },
+    {
+      "path": "tests/live_docker_configuration.py",
+      "provisional_issue": 1325
+    },
+    {
+      "path": "tests/live_docker_publication.py",
+      "provisional_issue": 1325
+    },
+    {
+      "path": "tests/live_docker_secret.py",
+      "provisional_issue": 1325
+    },
+    {
+      "path": "tests/live_docker_transport.py",
+      "provisional_issue": 1325
+    },
+    {
+      "path": "tests/live_opentelemetry_collector.py",
+      "provisional_issue": 1325
+    },
+    {
+      "path": "tests/live_service_discovery.py",
+      "provisional_issue": 1325
+    },
+    {
+      "path": "tests/live_tcp_switch.py",
+      "provisional_issue": 1325
+    },
+    {
+      "path": "tests/packaging/base_wheel.py",
+      "provisional_issue": 1325
+    },
+    {
+      "path": "tests/packaging/http_extra.py",
+      "provisional_issue": 1325
+    },
+    {
+      "path": "tests/packaging/postgres_extra.py",
+      "provisional_issue": 1325
+    },
+    {
+      "path": "tests/packaging/server_extra.py",
+      "provisional_issue": 1325
+    },
+    {
+      "path": "tests/postgres_case.py",
+      "provisional_issue": 1325
+    }
   ],
   "legacy_module_imports": [
     {

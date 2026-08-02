@@ -22,6 +22,7 @@ class MigrationRulesTests(unittest.TestCase):
             decode_rules(
                 {
                     "schema": "cpk.semantic-test-migration-rules",
+                    "legacy_helper_issue": 1325,
                     "legacy_script_issue": 1325,
                     "assignments": [
                         {"issue": 1320, "distribution": "core", "modules": ["tests.test_graph"]},
@@ -33,6 +34,7 @@ class MigrationRulesTests(unittest.TestCase):
     def test_rules_are_closed(self) -> None:
         value = {
             "schema": "cpk.semantic-test-migration-rules",
+            "legacy_helper_issue": 1325,
             "legacy_script_issue": 1325,
             "assignments": [
                 {"issue": 1320, "distribution": "core", "modules": ["tests.test_graph"]}
@@ -211,6 +213,7 @@ def test_rejects_missing_value(self):
         demos = {"schema": "cpk.reference-demo-inventory", "demos": []}
         rules = {
             "schema": "cpk.semantic-test-migration-rules",
+            "legacy_helper_issue": 1325,
             "legacy_script_issue": 1325,
             "assignments": [
                 {

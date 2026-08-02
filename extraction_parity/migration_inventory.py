@@ -81,7 +81,12 @@ def _strings(value: object, label: str) -> tuple[str, ...]:
 
 
 def decode_rules(document: dict[str, object]) -> dict[str, object]:
-    if set(document) != {"schema", "assignments", "legacy_script_issue"}:
+    if set(document) != {
+        "schema",
+        "assignments",
+        "legacy_helper_issue",
+        "legacy_script_issue",
+    }:
         raise MigrationInventoryError("migration rules have unknown or missing fields")
     if document["schema"] != RULES_SCHEMA:
         raise MigrationInventoryError("unsupported migration rules schema")
@@ -112,6 +117,9 @@ def decode_rules(document: dict[str, object]) -> dict[str, object]:
     script_issue = document["legacy_script_issue"]
     if not isinstance(script_issue, int) or script_issue <= 0:
         raise MigrationInventoryError("legacy script issue must be a positive integer")
+    helper_issue = document["legacy_helper_issue"]
+    if not isinstance(helper_issue, int) or helper_issue <= 0:
+        raise MigrationInventoryError("legacy helper issue must be a positive integer")
     return document
 
 
@@ -507,7 +515,10 @@ def build_migration_inventory(
             reference_assignments, key=lambda item: str(item["reference"])
         ),
         "mutable_only_methods": sorted(mutable_only, key=lambda item: str(item["id"])),
-        "legacy_helpers": lane_by_name["legacy-mutable"]["helpers"],
+        "legacy_helpers": [
+            {"path": path, "provisional_issue": rules["legacy_helper_issue"]}
+            for path in lane_by_name["legacy-mutable"]["helpers"]
+        ],
         "legacy_scripts": legacy_scripts,
         "current_helpers": sorted(
             [
@@ -563,6 +574,9 @@ def decode_migration_inventory(document: dict[str, object]) -> dict[str, object]
     script_paths = [str(entry["path"]) for entry in document["legacy_scripts"]]
     if len(script_paths) != len(set(script_paths)):
         raise MigrationInventoryError("legacy script paths must be unique")
+    helper_paths = [str(entry["path"]) for entry in document["legacy_helpers"]]
+    if len(helper_paths) != len(set(helper_paths)):
+        raise MigrationInventoryError("legacy helper paths must be unique")
     counts = document["counts"]
     if not isinstance(counts, dict) or counts.get("reference_laws") != len(references):
         raise MigrationInventoryError("reference law count does not match assignments")
@@ -570,6 +584,8 @@ def decode_migration_inventory(document: dict[str, object]) -> dict[str, object]
         raise MigrationInventoryError("current method count does not match inventory")
     if counts.get("legacy_scripts") != len(script_paths):
         raise MigrationInventoryError("legacy script count does not match inventory")
+    if counts.get("legacy_helpers") != len(helper_paths):
+        raise MigrationInventoryError("legacy helper count does not match inventory")
     target_issues = [entry["issue"] for entry in document["provisional_target_counts"]]
     if len(target_issues) != len(set(target_issues)):
         raise MigrationInventoryError("provisional target issues must be unique")

@@ -1,5 +1,6 @@
 {
   "schema": "cpk.semantic-test-migration-rules",
+  "legacy_helper_issue": 1325,
   "legacy_script_issue": 1325,
   "assignments": [
     {
