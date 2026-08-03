@@ -33,17 +33,18 @@ HTTP semantics, graph effects, observations, retention, and cleanup remain
 observable rather than being normalized away.
 
 `parity-manifest.json` is the closed migration ledger generated from the law
-ownership and demo inventories. It maps all 1,107 frozen references without
-claiming that migration has begun: 880 entries are required and 227 deferred,
-while successor and reviewed-supersession evidence are both empty. Future
-milestones may add passing successor evidence or an explicitly reviewed
-supersession, but may not silently remove a frozen reference.
+ownership and demo inventories. It still maps all 1,107 frozen references: 880
+entries are required and 227 deferred. After semantic reconciliation, every
+entry has passing successor evidence, a reviewed supersession, or one detailed
+open issue. No generator may silently remove a frozen reference.
 
 `successor-evidence.json` is the closed index of immutable successor proof. It
-is intentionally empty before migration begins. `parity-validation-report.json`
-is the deterministic foundation-policy report produced by
+now indexes the merged package, cross-repository, and parity evidence used by
+the completed migration. `parity-validation-report.json` is the deterministic
+foundation-policy report produced by
 `./validate-parity.sh foundation`; it proves complete mapping while reporting
-that required migration work remains incomplete.
+future-owned required laws as incomplete. That foundation result is historical
+policy evidence, not the completed semantic migration result.
 
 `semantic-test-migration-rules.json` assigns every module in the mutable legacy
 test tree to exactly one review issue. These assignments are provisional review
