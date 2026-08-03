@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import ast
+from dataclasses import fields
 from pathlib import Path
 import tomllib
 import unittest
@@ -32,8 +33,48 @@ PROCESS_IMPORT_ROOTS = {
 FORBIDDEN_SOURCE_IMPORT_ROOTS = (
     CONCRETE_RUNTIME_IMPORT_ROOTS
     | PROCESS_IMPORT_ROOTS
-    | {"control_plane_kit", "subprocess"}
+    | {"aiohttp", "control_plane_kit", "requests", "subprocess", "urllib3"}
 )
+ROTATION_SOURCES = tuple(sorted(SRC_ROOT.glob("gateway_key_rotation*.py")))
+ROTATION_EFFECT_IMPORT_ROOTS = FORBIDDEN_SOURCE_IMPORT_ROOTS | {
+    "http",
+    "os",
+    "pathlib",
+    "shutil",
+    "socket",
+    "ssl",
+    "tempfile",
+    "urllib",
+}
+ROTATION_OWNER_MODULES = {
+    "GatewayKeyRotation": "gateway_key_rotations.py",
+    "GatewayKeyRotationTransition": "gateway_key_rotations.py",
+    "GatewayKeyRotationReadModel": "gateway_key_rotations.py",
+    "GatewayKeyRotationDeploymentCheckpoint": "gateway_key_rotations.py",
+    "GatewayKeyRotationGenerationProgram": "gateway_key_rotation_program.py",
+    "GatewayKeyRotationOverlapProjectionService": (
+        "gateway_key_rotation_overlap.py"
+    ),
+    "GatewayKeyRotationOverlapPreparationProgram": (
+        "gateway_key_rotation_overlap_program.py"
+    ),
+    "GatewayKeyRotationOverlapExecutionProgram": (
+        "gateway_key_rotation_overlap_execution.py"
+    ),
+    "GatewayKeyRotationActivationProgram": "gateway_key_rotation_activation.py",
+    "GatewayKeyRotationRetirementPreparationProgram": (
+        "gateway_key_rotation_retirement_program.py"
+    ),
+    "GatewayKeyRotationRetirementExecutionProgram": (
+        "gateway_key_rotation_retirement_execution.py"
+    ),
+    "GatewayKeyRotationCompletionProgram": (
+        "gateway_key_rotation_completion_program.py"
+    ),
+    "GatewayKeyRotationRetirementProjectionService": (
+        "gateway_key_rotation_retirement.py"
+    ),
+}
 
 
 def _source_imports() -> tuple[set[str], set[Path]]:
@@ -55,6 +96,43 @@ def _source_imports() -> tuple[set[str], set[Path]]:
                     psycopg_imports.add(source_path)
     return imports, psycopg_imports
 
+
+def _imports_for(source_path: Path) -> set[str]:
+    imports: set[str] = set()
+    tree = ast.parse(source_path.read_text(encoding="utf-8"))
+    for node in ast.walk(tree):
+        if isinstance(node, ast.Import):
+            imports.update(alias.name.split(".", 1)[0] for alias in node.names)
+        elif isinstance(node, ast.ImportFrom) and node.module:
+            imports.add(node.module.split(".", 1)[0])
+    return imports
+
+
+def _rotation_dependency_graph() -> dict[str, set[str]]:
+    module_names = {source_path.stem for source_path in ROTATION_SOURCES}
+    graph = {module_name: set() for module_name in module_names}
+    prefix = "control_plane_kit_operations."
+    for source_path in ROTATION_SOURCES:
+        tree = ast.parse(source_path.read_text(encoding="utf-8"))
+        for node in ast.walk(tree):
+            if not isinstance(node, ast.ImportFrom) or not node.module:
+                continue
+            if not node.module.startswith(prefix):
+                continue
+            dependency = node.module.removeprefix(prefix).split(".", 1)[0]
+            if dependency in module_names:
+                graph[source_path.stem].add(dependency)
+    return graph
+
+
+def _class_owners(class_names: set[str]) -> dict[str, list[str]]:
+    owners = {class_name: [] for class_name in class_names}
+    for source_path in SRC_ROOT.rglob("*.py"):
+        tree = ast.parse(source_path.read_text(encoding="utf-8"))
+        for node in tree.body:
+            if isinstance(node, ast.ClassDef) and node.name in owners:
+                owners[node.name].append(str(source_path.relative_to(SRC_ROOT)))
+    return owners
 
 
 class OperationsPackageBoundaryTests(unittest.TestCase):
@@ -105,6 +183,109 @@ class OperationsPackageBoundaryTests(unittest.TestCase):
         imports, _ = _source_imports()
 
         self.assertFalse(imports & CONCRETE_RUNTIME_IMPORT_ROOTS)
+
+    def test_rotation_modules_are_acyclic_and_import_no_effect_clients(self) -> None:
+        for source_path in ROTATION_SOURCES:
+            with self.subTest(module=source_path.stem):
+                self.assertFalse(
+                    _imports_for(source_path) & ROTATION_EFFECT_IMPORT_ROOTS
+                )
+
+        graph = _rotation_dependency_graph()
+        visiting: set[str] = set()
+        visited: set[str] = set()
+
+        def visit(module_name: str, path: tuple[str, ...]) -> None:
+            if module_name in visiting:
+                self.fail(
+                    "rotation import cycle: "
+                    + " -> ".join((*path, module_name))
+                )
+            if module_name in visited:
+                return
+            visiting.add(module_name)
+            for dependency in sorted(graph[module_name]):
+                visit(dependency, (*path, module_name))
+            visiting.remove(module_name)
+            visited.add(module_name)
+
+        for module_name in sorted(graph):
+            visit(module_name, ())
+
+    def test_rotation_concepts_have_one_canonical_owner(self) -> None:
+        from control_plane_kit_core.approval_subjects import (
+            GatewayKeyRotationApprovalSubject,
+        )
+        from control_plane_kit_core.delegation_authority import (
+            DelegationVerifierProjection,
+        )
+        from control_plane_kit_core.topology import DeploymentGraph
+        from control_plane_kit_operations.delegation_signing_keys import (
+            RegisteredDelegationSigningKey,
+        )
+        from control_plane_kit_operations.lifecycle import RunLifecycleCommandService
+
+        owners = _class_owners(set(ROTATION_OWNER_MODULES))
+        self.assertEqual(
+            owners,
+            {
+                name: [module]
+                for name, module in ROTATION_OWNER_MODULES.items()
+            },
+        )
+        self.assertEqual(
+            GatewayKeyRotationApprovalSubject.__module__,
+            "control_plane_kit_core.approval_subjects",
+        )
+        self.assertEqual(
+            DeploymentGraph.__module__,
+            "control_plane_kit_core.topology.graph",
+        )
+        self.assertEqual(
+            DelegationVerifierProjection.__module__,
+            "control_plane_kit_core.delegation_authority",
+        )
+        self.assertEqual(
+            RegisteredDelegationSigningKey.__module__,
+            "control_plane_kit_operations.delegation_signing_keys",
+        )
+        self.assertEqual(
+            RunLifecycleCommandService.__module__,
+            "control_plane_kit_operations.lifecycle",
+        )
+
+    def test_rotation_public_contract_fields_are_secret_free(self) -> None:
+        from control_plane_kit_core.approval_subjects import (
+            GatewayKeyRotationApprovalSubject,
+        )
+        from control_plane_kit_operations.gateway_key_rotations import (
+            GatewayKeyRotationReadModel,
+            GatewayKeyRotationTransition,
+        )
+
+        forbidden = {
+            "compact",
+            "credential",
+            "environment",
+            "pem",
+            "private",
+            "provider",
+            "secret",
+        }
+        for contract in (
+            GatewayKeyRotationApprovalSubject,
+            GatewayKeyRotationReadModel,
+            GatewayKeyRotationTransition,
+        ):
+            with self.subTest(contract=contract.__name__):
+                field_names = {field.name.lower() for field in fields(contract)}
+                self.assertFalse(
+                    {
+                        field_name
+                        for field_name in field_names
+                        if any(fragment in field_name for fragment in forbidden)
+                    }
+                )
 
     def test_runtime_dispatcher_bootstrap_is_not_authority_truth(self) -> None:
         from control_plane_kit_core.types import RuntimeKind

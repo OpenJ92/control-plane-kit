@@ -172,6 +172,34 @@ retry/resume story
 retention/cleanup
 ```
 
+## Narrow Resumable Programs
+
+When one operator workflow crosses an external-effect boundary, compose it as
+small durable phases:
+
+```text
+short transaction: prepare exact intent and action identity
+  -> commit
+    -> bounded external effect
+      -> short transaction: fold bounded result and evidence
+```
+
+Each command service owns its UnitOfWork. Stores never commit independently,
+and no Postgres transaction remains open across provider, Docker, gateway,
+health, HTTP, filesystem, clock waiting, or other external IO.
+
+Restart and retry semantics must be explicit. Exact committed intent replays
+the same result or action. A definite failure known to precede mutation may be
+retryable. An uncertain effect blocks; absence of a folded result is not proof
+that the effect did not happen. Waiting is a typed result derived from durable
+time evidence and an injected trusted clock, never a policy `sleep()`.
+
+Prefer issue-specific narrow programs while the domain law is still being
+learned. Do not invent a second generic workflow engine. #1092 owns reusable
+effect recovery, leases, and fencing. #1096 owns the eventual reusable
+`DeploymentProgram` composition after concrete programs have supplied enough
+evidence for the common abstraction.
+
 At the end of every roadmap node, check:
 
 ```text

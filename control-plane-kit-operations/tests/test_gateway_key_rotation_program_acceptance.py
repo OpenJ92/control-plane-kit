@@ -522,6 +522,7 @@ class GatewayKeyRotationProgramAcceptanceTests(
         self.assertEqual(self.uow.active, 0)
         self._assert_final_key_truth()
         self._assert_phase_ledger()
+        self._assert_public_evidence_is_secret_free()
 
     def test_authority_and_stale_lineage_fail_before_downstream_effects(self) -> None:
         runtime = RecordingRuntimeAdapter(self.uow)
@@ -1456,6 +1457,33 @@ class GatewayKeyRotationProgramAcceptanceTests(
             "compact",
         ):
             self.assertNotIn(forbidden, leaked)
+
+    def _assert_public_evidence_is_secret_free(self) -> None:
+        service = GatewayKeyRotationService(self.uow, clock=lambda: self.epoch)
+        public_evidence = [
+            service.read(self.approved.rotation_id),
+            service.transitions(self.approved.rotation_id),
+        ]
+        for table, column in (
+            ("cpk_operation_actions", "payload"),
+            ("cpk_activity_events", "payload"),
+            ("cpk_observations", "evidence"),
+        ):
+            rows = self.connection.execute(
+                f"SELECT {column} FROM {table} ORDER BY {column}::text"
+            ).fetchall()
+            public_evidence.extend(row[0] for row in rows)
+
+        rendered = repr(public_evidence).lower()
+        for forbidden in (
+            "secret://",
+            "provider_version",
+            "-----begin public key-----",
+            "-----begin private key-----",
+            "compact_grant",
+            "generated_verifier_environment",
+        ):
+            self.assertNotIn(forbidden, rendered)
 
     @staticmethod
     def _deployment_scopes() -> tuple[PolicyScope, ...]:
