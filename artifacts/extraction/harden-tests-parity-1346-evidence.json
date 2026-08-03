@@ -1,0 +1,23 @@
+{
+  "architecture_slice": {
+    "current_strengthened": 58,
+    "future_issue": 29,
+    "reference_laws": 117,
+    "reviewed_supersession": 30
+  },
+  "current_scan_commits": {
+    "control-plane-kit-core-operations": "220c4880d9a5b8a0cbd2c14f13b8980d992aa0e8",
+    "control-plane-kit-interpreters": "e9f19d558026d92af79df81fb9184d29da00110b",
+    "control-plane-kit-secrets": "313fd26cb15a362ef5196547a3f6b27122877609",
+    "control-plane-kit-servers": "09989e30dbd9e19fc5433c296077e791d35df63a"
+  },
+  "future_owners": {
+    "670": 2,
+    "1096": 3,
+    "1316": 6,
+    "1317": 18
+  },
+  "governing_decision": "Preserve package and ownership laws through package-local tests and precise future gates; do not restore the mutable monolith's AST analyzer, aggregate CLI, root facade, demo read server, or test-only fault-injector product.",
+  "issue": 1346,
+  "schema": "cpk.harden-tests-parity.architecture-evidence"
+}
