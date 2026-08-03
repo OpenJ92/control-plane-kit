@@ -134,6 +134,11 @@
       "digest": "sha256:56b963ea19536f1200685c9faa0530e57888104e88f87171f9b76dc94db89025",
       "id": "harden-tests-parity-1320.core.unittest",
       "status": "passing"
+    },
+    {
+      "digest": "sha256:1810aa3037d18d058725dffcc28e6721dc82b93a459b156e1c3d85b0f1fdc90a",
+      "id": "harden-tests-parity-1321.operations.unittest",
+      "status": "passing"
     }
   ],
   "schema": "cpk.successor-evidence-index"

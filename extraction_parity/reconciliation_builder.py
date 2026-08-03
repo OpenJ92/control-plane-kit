@@ -19,12 +19,13 @@ from extraction_parity.reconciliation import (
 DECISIONS_SCHEMA = "cpk.semantic-test-reconciliation-decisions"
 DECISION_FIELDS = {
     "issue",
-    "distribution",
+    "current_distributions",
     "evidence_id",
     "default_disposition",
     "strengthened_references",
     "successor_overrides",
     "future_issue_reviews",
+    "non_current_reviews",
 }
 
 
@@ -61,6 +62,19 @@ def _decode_decisions(document: dict[str, object]) -> dict[str, object]:
         if not isinstance(issue, int) or issue <= 0 or issue in issues:
             raise ReconciliationError("decision slice issue must be unique and positive")
         issues.add(issue)
+        distributions = value["current_distributions"]
+        if (
+            not isinstance(distributions, list)
+            or not distributions
+            or any(
+                not isinstance(distribution, str) or not distribution.strip()
+                for distribution in distributions
+            )
+            or len(distributions) != len(set(distributions))
+        ):
+            raise ReconciliationError(
+                "current distributions must be a non-empty unique text list"
+            )
         if value["default_disposition"] not in CURRENT_DISPOSITIONS:
             raise ReconciliationError("default disposition must be current")
         if not isinstance(value["strengthened_references"], list):
@@ -69,6 +83,35 @@ def _decode_decisions(document: dict[str, object]) -> dict[str, object]:
             raise ReconciliationError("successor overrides must be an object")
         if not isinstance(value["future_issue_reviews"], dict):
             raise ReconciliationError("future issue reviews must be an object")
+        non_current = value["non_current_reviews"]
+        if not isinstance(non_current, dict):
+            raise ReconciliationError("non-current reviews must be an object")
+        for reference, review in non_current.items():
+            if not isinstance(reference, str) or not reference.strip():
+                raise ReconciliationError("non-current review reference must be text")
+            if not isinstance(review, dict) or set(review) != {
+                "disposition",
+                "owner",
+                "rationale",
+                "negative_case_disposition",
+                "obsolete_assumption_disposition",
+            }:
+                raise ReconciliationError("non-current review is not closed")
+            if review["disposition"] not in {
+                "reviewed-supersession",
+                "archived-obsolete",
+            }:
+                raise ReconciliationError("non-current review disposition is invalid")
+            for field in (
+                "owner",
+                "rationale",
+                "negative_case_disposition",
+                "obsolete_assumption_disposition",
+            ):
+                if not isinstance(review[field], str) or not review[field].strip():
+                    raise ReconciliationError(
+                        f"non-current review {field} must be text"
+                    )
     return document
 
 
@@ -99,30 +142,36 @@ def _negative_case_disposition(assignment: dict[str, object]) -> str:
     return "The frozen law has no separate negative-case assertion; its exact observable remains covered."
 
 
-def _current_test_index(root: Path, distribution: str) -> tuple[set[str], dict[str, list[str]]]:
+def _current_test_index(
+    root: Path,
+    distributions: tuple[str, ...],
+) -> tuple[set[str], dict[str, list[str]]]:
     test_roots = {
         "control-plane-kit-core": ("control-plane-kit-core/tests",),
         "control-plane-kit-operations": ("control-plane-kit-operations/tests",),
     }
-    try:
-        selected_test_roots = test_roots[distribution]
-    except KeyError as error:
-        raise ReconciliationError(
-            f"working-tree scanner has no configured test root for {distribution}"
-        ) from error
-    lane = scan_test_root(
-        SourceLane(
-            distribution=distribution,
-            repository="working-tree",
-            commit="working-tree",
-            gate="focused-unittest",
-            root=root,
-            test_roots=selected_test_roots,
+    methods: list[dict[str, object]] = []
+    for distribution in distributions:
+        try:
+            selected_test_roots = test_roots[distribution]
+        except KeyError as error:
+            raise ReconciliationError(
+                f"working-tree scanner has no configured test root for {distribution}"
+            ) from error
+        lane = scan_test_root(
+            SourceLane(
+                distribution=distribution,
+                repository="working-tree",
+                commit="working-tree",
+                gate="focused-unittest",
+                root=root,
+                test_roots=selected_test_roots,
+            )
         )
-    )
-    identities = {str(value["id"]) for value in lane["methods"]}
+        methods.extend(lane["methods"])
+    identities = {str(value["id"]) for value in methods}
     by_method: dict[str, list[str]] = {}
-    for value in lane["methods"]:
+    for value in methods:
         by_method.setdefault(str(value["method"]), []).append(str(value["id"]))
     return identities, by_method
 
@@ -178,8 +227,8 @@ def apply_issue_slice(
     )
     if decision is None:
         raise ReconciliationError(f"missing decision slice for issue #{issue}")
-    distribution = str(decision["distribution"])
-    current_ids, current_by_method = _current_test_index(root, distribution)
+    distributions = tuple(str(value) for value in decision["current_distributions"])
+    current_ids, current_by_method = _current_test_index(root, distributions)
     manifest_entries = {
         str(value["reference"]): value
         for value in manifest["entries"]
@@ -191,12 +240,46 @@ def apply_issue_slice(
         if value["provisional_target"]["issue"] == issue
     ]
     future = decision["future_issue_reviews"]
+    non_current = decision["non_current_reviews"]
     strengthened = set(decision["strengthened_references"])
     overrides = decision["successor_overrides"]
     reviews: list[dict[str, object]] = []
     for assignment in assignments:
         reference = str(assignment["reference"])
         manifest_entry = manifest_entries[reference]
+        non_current_review = non_current.get(reference)
+        if non_current_review is not None:
+            manifest_entry["successors"] = []
+            manifest_entry["supersession"] = {
+                "rationale": non_current_review["rationale"],
+                "review": f"HARDEN.TESTS.PARITY #{issue}",
+                "obsolete_assumption": non_current_review[
+                    "obsolete_assumption_disposition"
+                ],
+                "replacement": non_current_review["owner"],
+                "negative_case_disposition": non_current_review[
+                    "negative_case_disposition"
+                ],
+            }
+            reviews.append(
+                {
+                    "reference": reference,
+                    "law": assignment["law"],
+                    "reviewed_by_issue": issue,
+                    "owner": non_current_review["owner"],
+                    "disposition": non_current_review["disposition"],
+                    "current_tests": [],
+                    "future_issue": None,
+                    "rationale": non_current_review["rationale"],
+                    "negative_case_disposition": non_current_review[
+                        "negative_case_disposition"
+                    ],
+                    "obsolete_assumption_disposition": non_current_review[
+                        "obsolete_assumption_disposition"
+                    ],
+                }
+            )
+            continue
         future_issue = future.get(reference)
         if future_issue is not None:
             manifest_entry["successors"] = []
@@ -245,7 +328,14 @@ def apply_issue_slice(
                 "reference": reference,
                 "law": assignment["law"],
                 "reviewed_by_issue": issue,
-                "owner": distribution,
+                "owner": "+".join(
+                    sorted(
+                        {
+                            value.split(":", maxsplit=1)[0]
+                            for value in successors
+                        }
+                    )
+                ),
                 "disposition": disposition,
                 "current_tests": list(successors),
                 "future_issue": None,
@@ -276,7 +366,7 @@ def apply_issue_slice(
             {
                 "source_id": assignment["id"],
                 "reviewed_by_issue": issue,
-                "distribution": distribution,
+                "distribution": candidates[0].split(":", maxsplit=1)[0],
                 "disposition": "current-strengthened",
                 "current_tests": candidates,
                 "rationale": "The live provider-neutral authentication contract retains this mutable-only hardening law.",

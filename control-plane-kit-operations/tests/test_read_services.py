@@ -82,7 +82,7 @@ class InstanceReadServiceTests(unittest.TestCase):
     def unit_of_work(self) -> PostgresUnitOfWork:
         return PostgresUnitOfWork(lambda: psycopg.connect(self.database_url))
 
-    def service(self) -> InstanceReadService:
+    def service(self, *, clock=None) -> InstanceReadService:
         stores = PostgresStoreBundle(self.connection)
         return InstanceReadService(
             workspace_store=stores.workspaces,
@@ -90,7 +90,8 @@ class InstanceReadServiceTests(unittest.TestCase):
             activity_history_store=stores.activity_history,
             execution_store=stores.execution,
             observed_state_store=stores.observed_state,
-            clock=lambda: datetime(2026, 7, 22, 13, 5, tzinfo=timezone.utc),
+            clock=clock
+            or (lambda: datetime(2026, 7, 22, 13, 5, tzinfo=timezone.utc)),
             observation_freshness=ObservationFreshnessPolicy(),
         )
 
@@ -269,6 +270,85 @@ class InstanceReadServiceTests(unittest.TestCase):
 
         self.assertEqual(model["observations"][0]["freshness"], "stale")
         self.assertEqual(model["observations"][0]["stale_reason"], "recorded-stale")
+
+    def test_exact_clock_boundary_is_fresh_then_expires(self) -> None:
+        self.seed_graphs()
+        with self.unit_of_work() as unit_of_work:
+            unit_of_work.stores.observed_state.put(
+                observation("obs-boundary", observed_at="2026-07-22T13:00:00Z")
+            )
+            unit_of_work.commit()
+
+        boundary = self.service().observed_state("workspace-a").descriptor()
+        expired = self.service(
+            clock=lambda: datetime(
+                2026,
+                7,
+                22,
+                13,
+                5,
+                0,
+                1,
+                tzinfo=timezone.utc,
+            )
+        ).observed_state("workspace-a").descriptor()
+
+        self.assertEqual(boundary["observations"][0]["freshness"], "fresh")
+        self.assertEqual(expired["observations"][0]["freshness"], "stale")
+        self.assertEqual(expired["observations"][0]["stale_reason"], "expired")
+
+    def test_malformed_timestamp_fails_closed_without_mutating_record(self) -> None:
+        self.seed_graphs()
+        record = observation("obs-malformed", observed_at="not-a-timestamp")
+        with self.unit_of_work() as unit_of_work:
+            unit_of_work.stores.observed_state.put(record)
+            unit_of_work.commit()
+
+        model = self.service().observed_state("workspace-a").descriptor()
+
+        self.assertEqual(
+            model["observations"][0]["stale_reason"],
+            "malformed-timestamp",
+        )
+        self.assertEqual(record.observed_at, "not-a-timestamp")
+        self.assertIs(record.freshness, ObservationFreshness.FRESH)
+
+    def test_future_timestamp_fails_closed(self) -> None:
+        self.seed_graphs()
+        with self.unit_of_work() as unit_of_work:
+            unit_of_work.stores.observed_state.put(
+                observation("obs-future", observed_at="2026-07-22T13:05:00.000001Z")
+            )
+            unit_of_work.commit()
+
+        model = self.service().observed_state("workspace-a").descriptor()
+
+        self.assertEqual(model["observations"][0]["stale_reason"], "future-timestamp")
+
+    def test_correlated_record_requires_complete_typed_probe_identity(self) -> None:
+        with self.assertRaisesRegex(
+            ValueError,
+            "requires graph, probe kind, and outcome",
+        ):
+            ObservationRecord(
+                "partial",
+                "workspace-a",
+                "hello",
+                ObservationStatus.HEALTHY,
+                "2026-07-22T13:00:00Z",
+                graph_id="graph-current",
+            )
+        with self.assertRaisesRegex(ValueError, "not a valid process observation"):
+            ObservationRecord(
+                "incoherent",
+                "workspace-a",
+                "hello",
+                ObservationStatus.HEALTHY,
+                "2026-07-22T13:00:00Z",
+                graph_id="graph-current",
+                probe_kind=ProbeKind.PROCESS,
+                probe_outcome=ProbeOutcome.HEALTHY,
+            )
 
     def test_control_surface_reads_declared_nodes_without_endpoint_leakage(self) -> None:
         self.seed_graphs()

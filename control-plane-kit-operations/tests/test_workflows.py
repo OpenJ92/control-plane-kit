@@ -129,6 +129,25 @@ class OperationWorkflowTests(unittest.TestCase):
                 )
             )
 
+    def test_concurrent_identical_starts_converge_on_one_session(self) -> None:
+        barrier = threading.Barrier(2)
+
+        def submit(ids: tuple[str, str]):
+            barrier.wait(timeout=5)
+            return self.start(self.service(*ids))
+
+        with concurrent.futures.ThreadPoolExecutor(max_workers=2) as executor:
+            results = tuple(
+                executor.map(
+                    submit,
+                    (("session-a", "action-a"), ("session-b", "action-b")),
+                )
+            )
+
+        self.assertEqual(len({result.session.session_id for result in results}), 1)
+        self.assertEqual(len({result.action.action_id for result in results}), 1)
+        self.assertEqual(sum(result.replayed for result in results), 1)
+
     def test_start_requires_workspace_truth(self) -> None:
         with self.assertRaises(OperationWorkspaceNotFound):
             self.service("session-a", "action-start").execute(
@@ -195,6 +214,30 @@ class OperationWorkflowTests(unittest.TestCase):
                     "operator-a",
                     OperatorCommandKind.SET_DESIRED_GRAPH,
                     IdempotencyKey("after-close"),
+                )
+            )
+
+    def test_cancelled_session_replays_cancel_and_rejects_new_actions(self) -> None:
+        self.start(self.service("session-a", "action-start"))
+        command = CancelOperationSession(
+            "session-a",
+            "operator-a",
+            IdempotencyKey("cancel"),
+        )
+        cancelled = self.service("action-cancel").execute(command)
+        replay = self.service("unused").execute(command)
+
+        self.assertEqual(cancelled.session.status, OperationSessionStatus.CANCELLED)
+        self.assertTrue(replay.replayed)
+        self.assertEqual(replay.session, cancelled.session)
+        self.assertEqual(replay.action, cancelled.action)
+        with self.assertRaises(OperationSessionStateConflict):
+            self.service("unused").execute(
+                RecordOperationAction(
+                    "session-a",
+                    "operator-a",
+                    OperatorCommandKind.SET_DESIRED_GRAPH,
+                    IdempotencyKey("after-cancel"),
                 )
             )
 

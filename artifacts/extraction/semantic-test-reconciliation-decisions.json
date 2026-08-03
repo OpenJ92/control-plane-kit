@@ -2,8 +2,10 @@
   "schema": "cpk.semantic-test-reconciliation-decisions",
   "slices": [
     {
+      "current_distributions": [
+        "control-plane-kit-core"
+      ],
       "default_disposition": "current-isomorphic",
-      "distribution": "control-plane-kit-core",
       "evidence_id": "harden-tests-parity-1320.core.unittest",
       "future_issue_reviews": {
         "tests.test_deployment_application_values.DeploymentApplicationValueTests.test_acceptance_corpus_exercises_all_four_deploy_transition_forms": {
@@ -28,6 +30,7 @@
         }
       },
       "issue": 1320,
+      "non_current_reviews": {},
       "strengthened_references": [
         "tests.test_compile.CompileTests.test_app_with_postgres_injects_database_url",
         "tests.test_compile.CompileTests.test_graph_descriptor_uses_provider_requirement_vocabulary"
@@ -38,6 +41,898 @@
         ],
         "tests.test_compile.CompileTests.test_graph_descriptor_uses_provider_requirement_vocabulary": [
           "control-plane-kit-core:tests.test_kernel_pipeline.PureKernelPipelineTests.test_topology_compilation_wires_provider_to_requirement_environment"
+        ]
+      }
+    },
+    {
+      "current_distributions": [
+        "control-plane-kit-core",
+        "control-plane-kit-operations"
+      ],
+      "default_disposition": "current-isomorphic",
+      "evidence_id": "harden-tests-parity-1321.operations.unittest",
+      "future_issue_reviews": {
+        "tests.test_backend_swap_planning_example.BackendSwapPlanningExampleTests.test_complete_workflow_persists_reviewable_plan_without_runtime_effects": {
+          "evidence": "Issue #1096 comment 5161184008 owns the exact deferred stage, scenario, no-op, replay, and negative-case laws.",
+          "number": 1096,
+          "repository": "OpenJ92/control-plane-kit"
+        },
+        "tests.test_backend_swap_planning_example.BackendSwapPlanningExampleTests.test_replaying_the_complete_workflow_reuses_every_durable_fact": {
+          "evidence": "Issue #1096 comment 5161184008 owns the exact deferred stage, scenario, no-op, replay, and negative-case laws.",
+          "number": 1096,
+          "repository": "OpenJ92/control-plane-kit"
+        },
+        "tests.test_deployment_admit_claim_stages.DeploymentAdmitClaimStageTests.test_approved_plan_reaches_execution_through_callable_stages": {
+          "evidence": "Issue #1096 comment 5161184008 owns the exact deferred stage, scenario, no-op, replay, and negative-case laws.",
+          "number": 1096,
+          "repository": "OpenJ92/control-plane-kit"
+        },
+        "tests.test_deployment_plan_approve_stages.DeploymentPlanApproveStageTests.test_approve_preserves_canonical_authorization_failure": {
+          "evidence": "Issue #1096 comment 5161184008 owns the exact deferred stage, scenario, no-op, replay, and negative-case laws.",
+          "number": 1096,
+          "repository": "OpenJ92/control-plane-kit"
+        },
+        "tests.test_deployment_plan_approve_stages.DeploymentPlanApproveStageTests.test_no_op_preserves_plan_evidence_without_requesting_approval": {
+          "evidence": "Issue #1096 comment 5161184008 owns the exact deferred stage, scenario, no-op, replay, and negative-case laws.",
+          "number": 1096,
+          "repository": "OpenJ92/control-plane-kit"
+        },
+        "tests.test_deployment_plan_approve_stages.DeploymentPlanApproveStageTests.test_plan_suspends_then_approve_records_explicit_authorized_decision": {
+          "evidence": "Issue #1096 comment 5161184008 owns the exact deferred stage, scenario, no-op, replay, and negative-case laws.",
+          "number": 1096,
+          "repository": "OpenJ92/control-plane-kit"
+        },
+        "tests.test_execution_concurrency.ExecutionConcurrencyTests.test_expired_claim_remains_durable_and_cannot_be_reclaimed": {
+          "evidence": "Issue #1092 comment 5161182196 owns lease expiry, reclaim, stale-worker fencing, and the exact negative cases.",
+          "number": 1092,
+          "repository": "OpenJ92/control-plane-kit"
+        },
+        "tests.test_execution_coordinator.ExecutionCoordinatorTests.test_compensation_adapter_loss_becomes_uncertain_after_restart": {
+          "evidence": "Issue #1092 comment 5161182196 owns interrupted-effect and compensation reconciliation, fencing, and crash-folding negative cases.",
+          "number": 1092,
+          "repository": "OpenJ92/control-plane-kit"
+        },
+        "tests.test_execution_coordinator.ExecutionCoordinatorTests.test_compensation_crash_before_dispatch_reconstructs_without_replay": {
+          "evidence": "Issue #1092 comment 5161182196 owns interrupted-effect and compensation reconciliation, fencing, and crash-folding negative cases.",
+          "number": 1092,
+          "repository": "OpenJ92/control-plane-kit"
+        },
+        "tests.test_execution_coordinator.ExecutionCoordinatorTests.test_compensation_executes_pinned_inverse_and_settles_run": {
+          "evidence": "Issue #1092 comment 5161182196 owns interrupted-effect and compensation reconciliation, fencing, and crash-folding negative cases.",
+          "number": 1092,
+          "repository": "OpenJ92/control-plane-kit"
+        },
+        "tests.test_execution_coordinator.ExecutionCoordinatorTests.test_compensation_failure_is_partial_and_preserves_forward_failure": {
+          "evidence": "Issue #1092 comment 5161182196 owns interrupted-effect and compensation reconciliation, fencing, and crash-folding negative cases.",
+          "number": 1092,
+          "repository": "OpenJ92/control-plane-kit"
+        },
+        "tests.test_execution_coordinator.ExecutionCoordinatorTests.test_compensation_result_transaction_crash_rolls_back_evidence": {
+          "evidence": "Issue #1092 comment 5161182196 owns interrupted-effect and compensation reconciliation, fencing, and crash-folding negative cases.",
+          "number": 1092,
+          "repository": "OpenJ92/control-plane-kit"
+        },
+        "tests.test_execution_coordinator.ExecutionCoordinatorTests.test_concurrent_observer_reports_in_flight_without_duplicate_effect": {
+          "evidence": "Issue #1092 comment 5161182196 owns interrupted-effect and compensation reconciliation, fencing, and crash-folding negative cases.",
+          "number": 1092,
+          "repository": "OpenJ92/control-plane-kit"
+        },
+        "tests.test_execution_coordinator.ExecutionCoordinatorTests.test_crash_after_effect_records_uncertainty_without_replay": {
+          "evidence": "Issue #1092 comment 5161182196 owns interrupted-effect and compensation reconciliation, fencing, and crash-folding negative cases.",
+          "number": 1092,
+          "repository": "OpenJ92/control-plane-kit"
+        },
+        "tests.test_execution_coordinator.ExecutionCoordinatorTests.test_crash_after_intent_never_blindly_attempts_effect": {
+          "evidence": "Issue #1092 comment 5161182196 owns interrupted-effect and compensation reconciliation, fencing, and crash-folding negative cases.",
+          "number": 1092,
+          "repository": "OpenJ92/control-plane-kit"
+        },
+        "tests.test_execution_coordinator.ExecutionCoordinatorTests.test_earlier_compensation_survives_later_failure": {
+          "evidence": "Issue #1092 comment 5161182196 owns interrupted-effect and compensation reconciliation, fencing, and crash-folding negative cases.",
+          "number": 1092,
+          "repository": "OpenJ92/control-plane-kit"
+        },
+        "tests.test_execution_coordinator.ExecutionCoordinatorTests.test_failed_result_commit_resumes_run_settlement_without_replay": {
+          "evidence": "Issue #1092 comment 5161182196 owns interrupted-effect and compensation reconciliation, fencing, and crash-folding negative cases.",
+          "number": 1092,
+          "repository": "OpenJ92/control-plane-kit"
+        },
+        "tests.test_execution_coordinator.ExecutionCoordinatorTests.test_parallel_compensation_uses_reverse_durable_completion_order": {
+          "evidence": "Issue #1092 comment 5161182196 owns interrupted-effect and compensation reconciliation, fencing, and crash-folding negative cases.",
+          "number": 1092,
+          "repository": "OpenJ92/control-plane-kit"
+        },
+        "tests.test_execution_coordinator.ExecutionCoordinatorTests.test_result_transaction_crash_rolls_back_result_and_observation": {
+          "evidence": "Issue #1092 comment 5161182196 owns interrupted-effect and compensation reconciliation, fencing, and crash-folding negative cases.",
+          "number": 1092,
+          "repository": "OpenJ92/control-plane-kit"
+        },
+        "tests.test_execution_coordinator.ExecutionCoordinatorTests.test_success_result_commit_resumes_run_settlement_without_replay": {
+          "evidence": "Issue #1092 comment 5161182196 owns interrupted-effect and compensation reconciliation, fencing, and crash-folding negative cases.",
+          "number": 1092,
+          "repository": "OpenJ92/control-plane-kit"
+        },
+        "tests.test_execution_coordinator.ExecutionCoordinatorTests.test_uncertain_compensation_pauses_without_blind_replay": {
+          "evidence": "Issue #1092 comment 5161182196 owns interrupted-effect and compensation reconciliation, fencing, and crash-folding negative cases.",
+          "number": 1092,
+          "repository": "OpenJ92/control-plane-kit"
+        },
+        "tests.test_operator_recovery_projection.OperatorRecoveryProjectionTests.test_accepted_uncompensated_and_recovery_history_remain_visible": {
+          "evidence": "Issue #1092 comment 5161182196 owns the exact deferred recovery, fencing, projection, and negative-case laws.",
+          "number": 1092,
+          "repository": "OpenJ92/control-plane-kit"
+        },
+        "tests.test_operator_recovery_projection.OperatorRecoveryProjectionTests.test_compensation_failure_never_replaces_original_failure": {
+          "evidence": "Issue #1092 comment 5161182196 owns the exact deferred recovery, fencing, projection, and negative-case laws.",
+          "number": 1092,
+          "repository": "OpenJ92/control-plane-kit"
+        },
+        "tests.test_operator_recovery_projection.OperatorRecoveryProjectionTests.test_compensation_progress_is_derived_from_the_canonical_journal": {
+          "evidence": "Issue #1092 comment 5161182196 owns the exact deferred recovery, fencing, projection, and negative-case laws.",
+          "number": 1092,
+          "repository": "OpenJ92/control-plane-kit"
+        },
+        "tests.test_operator_recovery_projection.OperatorRecoveryProjectionTests.test_empty_and_active_runs_preserve_distinct_run_and_saga_status": {
+          "evidence": "Issue #1092 comment 5161182196 owns the exact deferred recovery, fencing, projection, and negative-case laws.",
+          "number": 1092,
+          "repository": "OpenJ92/control-plane-kit"
+        },
+        "tests.test_operator_recovery_projection.OperatorRecoveryProjectionTests.test_expired_claim_replaces_effect_recovery_with_claim_recovery": {
+          "evidence": "Issue #1092 comment 5161182196 owns the exact deferred recovery, fencing, projection, and negative-case laws.",
+          "number": 1092,
+          "repository": "OpenJ92/control-plane-kit"
+        },
+        "tests.test_operator_recovery_projection.OperatorRecoveryProjectionTests.test_failed_run_preserves_failure_and_offers_closed_recovery": {
+          "evidence": "Issue #1092 comment 5161182196 owns the exact deferred recovery, fencing, projection, and negative-case laws.",
+          "number": 1092,
+          "repository": "OpenJ92/control-plane-kit"
+        },
+        "tests.test_operator_recovery_projection.OperatorRecoveryProjectionTests.test_foreign_identity_and_malformed_observation_fail_closed": {
+          "evidence": "Issue #1092 comment 5161182196 owns the exact deferred recovery, fencing, projection, and negative-case laws.",
+          "number": 1092,
+          "repository": "OpenJ92/control-plane-kit"
+        },
+        "tests.test_operator_recovery_projection.OperatorRecoveryProjectionTests.test_non_compensatable_failure_projects_bounded_activity_ids": {
+          "evidence": "Issue #1092 comment 5161182196 owns the exact deferred recovery, fencing, projection, and negative-case laws.",
+          "number": 1092,
+          "repository": "OpenJ92/control-plane-kit"
+        },
+        "tests.test_operator_recovery_projection.OperatorRecoveryProjectionTests.test_paused_uncertainty_exposes_only_evidence_guarded_choices": {
+          "evidence": "Issue #1092 comment 5161182196 owns the exact deferred recovery, fencing, projection, and negative-case laws.",
+          "number": 1092,
+          "repository": "OpenJ92/control-plane-kit"
+        },
+        "tests.test_planning_scenarios.PlanningScenarioWorkflowTests.test_every_scenario_runs_through_the_postgres_planning_workflow": {
+          "evidence": "Issue #1096 comment 5161184008 owns the exact deferred stage, scenario, no-op, replay, and negative-case laws.",
+          "number": 1096,
+          "repository": "OpenJ92/control-plane-kit"
+        },
+        "tests.test_postgres_scenario_runner.PostgresScenarioRunnerTests.test_complete_acceptance_corpus_uses_canonical_pipeline": {
+          "evidence": "Issue #1096 comment 5161184008 owns the exact deferred stage, scenario, no-op, replay, and negative-case laws.",
+          "number": 1096,
+          "repository": "OpenJ92/control-plane-kit"
+        },
+        "tests.test_postgres_scenario_runner.PostgresScenarioRunnerTests.test_deployment_context_rejects_cross_workspace_graph_truth": {
+          "evidence": "Issue #1096 comment 5161184008 owns the exact deferred stage, scenario, no-op, replay, and negative-case laws.",
+          "number": 1096,
+          "repository": "OpenJ92/control-plane-kit"
+        },
+        "tests.test_postgres_scenario_runner.PostgresScenarioRunnerTests.test_deployment_context_rejects_missing_plan_truth": {
+          "evidence": "Issue #1096 comment 5161184008 owns the exact deferred stage, scenario, no-op, replay, and negative-case laws.",
+          "number": 1096,
+          "repository": "OpenJ92/control-plane-kit"
+        },
+        "tests.test_postgres_scenario_runner.PostgresScenarioRunnerTests.test_deployment_program_reconstructs_plan_across_operator_requests": {
+          "evidence": "Issue #1096 comment 5161184008 owns the exact deferred stage, scenario, no-op, replay, and negative-case laws.",
+          "number": 1096,
+          "repository": "OpenJ92/control-plane-kit"
+        },
+        "tests.test_postgres_scenario_runner.PostgresScenarioRunnerTests.test_executable_scenario_uses_canonical_pipeline_and_projection": {
+          "evidence": "Issue #1096 comment 5161184008 owns the exact deferred stage, scenario, no-op, replay, and negative-case laws.",
+          "number": 1096,
+          "repository": "OpenJ92/control-plane-kit"
+        },
+        "tests.test_postgres_scenario_runner.PostgresScenarioRunnerTests.test_no_change_records_plan_but_no_approval_run_or_effect": {
+          "evidence": "Issue #1096 comment 5161184008 owns the exact deferred stage, scenario, no-op, replay, and negative-case laws.",
+          "number": 1096,
+          "repository": "OpenJ92/control-plane-kit"
+        },
+        "tests.test_postgres_scenario_runner.PostgresScenarioRunnerTests.test_programmed_failure_uses_real_coordinator_and_does_not_advance": {
+          "evidence": "Issue #1096 comment 5161184008 owns the exact deferred stage, scenario, no-op, replay, and negative-case laws.",
+          "number": 1096,
+          "repository": "OpenJ92/control-plane-kit"
+        },
+        "tests.test_postgres_scenario_runner.PostgresScenarioRunnerTests.test_programmed_uncertainty_remains_visible_without_advancement": {
+          "evidence": "Issue #1096 comment 5161184008 owns the exact deferred stage, scenario, no-op, replay, and negative-case laws.",
+          "number": 1096,
+          "repository": "OpenJ92/control-plane-kit"
+        },
+        "tests.test_postgres_scenario_runner.PostgresScenarioRunnerTests.test_readiness_gated_scenario_records_approval_but_no_effect": {
+          "evidence": "Issue #1096 comment 5161184008 owns the exact deferred stage, scenario, no-op, replay, and negative-case laws.",
+          "number": 1096,
+          "repository": "OpenJ92/control-plane-kit"
+        },
+        "tests.test_postgres_scenario_runner.PostgresScenarioRunnerTests.test_repeated_runs_have_distinct_workspaces_and_fake_state": {
+          "evidence": "Issue #1096 comment 5161184008 owns the exact deferred stage, scenario, no-op, replay, and negative-case laws.",
+          "number": 1096,
+          "repository": "OpenJ92/control-plane-kit"
+        },
+        "tests.test_postgres_scenario_runner.PostgresScenarioRunnerTests.test_review_blocked_scenario_never_requests_approval_or_effect": {
+          "evidence": "Issue #1096 comment 5161184008 owns the exact deferred stage, scenario, no-op, replay, and negative-case laws.",
+          "number": 1096,
+          "repository": "OpenJ92/control-plane-kit"
+        },
+        "tests.test_postgres_scenario_runner.PostgresScenarioRunnerTests.test_scenario_order_does_not_change_semantic_results": {
+          "evidence": "Issue #1096 comment 5161184008 owns the exact deferred stage, scenario, no-op, replay, and negative-case laws.",
+          "number": 1096,
+          "repository": "OpenJ92/control-plane-kit"
+        },
+        "tests.test_postgres_scenario_runner.PostgresScenarioRunnerTests.test_semantic_diagnostic_reports_event_order_not_generated_values": {
+          "evidence": "Issue #1096 comment 5161184008 owns the exact deferred stage, scenario, no-op, replay, and negative-case laws.",
+          "number": 1096,
+          "repository": "OpenJ92/control-plane-kit"
+        },
+        "tests.test_postgres_scenario_runner.PostgresScenarioRunnerTests.test_stored_deployment_preserves_stale_graph_admission_guard": {
+          "evidence": "Issue #1096 comment 5161184008 owns the exact deferred stage, scenario, no-op, replay, and negative-case laws.",
+          "number": 1096,
+          "repository": "OpenJ92/control-plane-kit"
+        },
+        "tests.test_postgres_scenario_runner.PostgresScenarioRunnerTests.test_stored_deployment_refuses_run_before_durable_approval": {
+          "evidence": "Issue #1096 comment 5161184008 owns the exact deferred stage, scenario, no-op, replay, and negative-case laws.",
+          "number": 1096,
+          "repository": "OpenJ92/control-plane-kit"
+        },
+        "tests.test_recovery_concurrency.RecoveryConcurrencyTests.test_expired_renew_takeover_and_abandon_have_one_postgres_winner": {
+          "evidence": "Issue #1092 comment 5161182196 owns the exact deferred recovery, fencing, projection, and negative-case laws.",
+          "number": 1092,
+          "repository": "OpenJ92/control-plane-kit"
+        },
+        "tests.test_recovery_concurrency.RecoveryConcurrencyTests.test_incompatible_recovery_decisions_have_one_postgres_winner": {
+          "evidence": "Issue #1092 comment 5161182196 owns the exact deferred recovery, fencing, projection, and negative-case laws.",
+          "number": 1092,
+          "repository": "OpenJ92/control-plane-kit"
+        },
+        "tests.test_recovery_concurrency.RecoveryConcurrencyTests.test_late_action_failure_rolls_back_expired_claim_recovery": {
+          "evidence": "Issue #1092 comment 5161182196 owns the exact deferred recovery, fencing, projection, and negative-case laws.",
+          "number": 1092,
+          "repository": "OpenJ92/control-plane-kit"
+        },
+        "tests.test_run_lifecycle.RunLifecycleTests.test_acceptance_and_remain_paused_preserve_distinct_projection_meaning": {
+          "evidence": "Issue #1092 comment 5161182196 owns recovery decisions, cancel/abandon semantics, projection, replay, and negative cases.",
+          "number": 1092,
+          "repository": "OpenJ92/control-plane-kit"
+        },
+        "tests.test_run_lifecycle.RunLifecycleTests.test_cancel_clears_request_claim_and_still_replays_exact_command": {
+          "evidence": "Issue #1092 comment 5161182196 owns recovery decisions, cancel/abandon semantics, projection, replay, and negative cases.",
+          "number": 1092,
+          "repository": "OpenJ92/control-plane-kit"
+        },
+        "tests.test_run_lifecycle.RunLifecycleTests.test_committed_recovery_command_drives_canonical_operator_projection": {
+          "evidence": "Issue #1092 comment 5161182196 owns the exact deferred recovery, expired-claim, compensation, and negative-case laws.",
+          "number": 1092,
+          "repository": "OpenJ92/control-plane-kit"
+        },
+        "tests.test_run_lifecycle.RunLifecycleTests.test_compensation_failure_records_partial_failure": {
+          "evidence": "Issue #1092 comment 5161182196 owns the exact deferred recovery, expired-claim, compensation, and negative-case laws.",
+          "number": 1092,
+          "repository": "OpenJ92/control-plane-kit"
+        },
+        "tests.test_run_lifecycle.RunLifecycleTests.test_compensation_uses_events_and_settles_without_erasing_failure": {
+          "evidence": "Issue #1092 comment 5161182196 owns the exact deferred recovery, expired-claim, compensation, and negative-case laws.",
+          "number": 1092,
+          "repository": "OpenJ92/control-plane-kit"
+        },
+        "tests.test_run_lifecycle.RunLifecycleTests.test_expired_claim_abandonment_is_terminal_and_event_producing": {
+          "evidence": "Issue #1092 comment 5161182196 owns the exact deferred recovery, expired-claim, compensation, and negative-case laws.",
+          "number": 1092,
+          "repository": "OpenJ92/control-plane-kit"
+        },
+        "tests.test_run_lifecycle.RunLifecycleTests.test_expired_claim_renewal_preserves_prior_ownership_evidence": {
+          "evidence": "Issue #1092 comment 5161182196 owns the exact deferred recovery, expired-claim, compensation, and negative-case laws.",
+          "number": 1092,
+          "repository": "OpenJ92/control-plane-kit"
+        },
+        "tests.test_run_lifecycle.RunLifecycleTests.test_expired_claim_takeover_changes_owner_with_immutable_evidence": {
+          "evidence": "Issue #1092 comment 5161182196 owns the exact deferred recovery, expired-claim, compensation, and negative-case laws.",
+          "number": 1092,
+          "repository": "OpenJ92/control-plane-kit"
+        },
+        "tests.test_run_lifecycle.RunLifecycleTests.test_failure_compensation_and_retry_preserve_truthful_lineage": {
+          "evidence": "Issue #1092 comment 5161182196 owns the exact deferred recovery, expired-claim, compensation, and negative-case laws.",
+          "number": 1092,
+          "repository": "OpenJ92/control-plane-kit"
+        },
+        "tests.test_run_lifecycle.RunLifecycleTests.test_recovery_authority_and_late_action_failure_fail_closed": {
+          "evidence": "Issue #1092 comment 5161182196 owns the exact deferred recovery, expired-claim, compensation, and negative-case laws.",
+          "number": 1092,
+          "repository": "OpenJ92/control-plane-kit"
+        },
+        "tests.test_run_lifecycle.RunLifecycleTests.test_recovery_journal_version_rejects_a_stale_competing_choice": {
+          "evidence": "Issue #1092 comment 5161182196 owns the exact deferred recovery, expired-claim, compensation, and negative-case laws.",
+          "number": 1092,
+          "repository": "OpenJ92/control-plane-kit"
+        },
+        "tests.test_run_lifecycle.RunLifecycleTests.test_recovery_rechecks_current_approval_without_journal_writes": {
+          "evidence": "Issue #1092 comment 5161182196 owns the exact deferred recovery, expired-claim, compensation, and negative-case laws.",
+          "number": 1092,
+          "repository": "OpenJ92/control-plane-kit"
+        },
+        "tests.test_run_lifecycle.RunLifecycleTests.test_recovery_rejects_foreign_worker_without_journal_writes": {
+          "evidence": "Issue #1092 comment 5161182196 owns the exact deferred recovery, expired-claim, compensation, and negative-case laws.",
+          "number": 1092,
+          "repository": "OpenJ92/control-plane-kit"
+        },
+        "tests.test_run_lifecycle.RunLifecycleTests.test_uncertainty_resolution_records_choice_and_consequence_atomically": {
+          "evidence": "Issue #1092 comment 5161182196 owns the exact deferred recovery, expired-claim, compensation, and negative-case laws.",
+          "number": 1092,
+          "repository": "OpenJ92/control-plane-kit"
+        }
+      },
+      "issue": 1321,
+      "non_current_reviews": {
+        "tests.test_current_graph_advancement.CurrentGraphAdvancementTests.test_operator_confirmed_uncertain_success_can_advance": {
+          "disposition": "reviewed-supersession",
+          "negative_case_disposition": "The stronger current rejection test covers incomplete, uncertain, and failed evidence without an operator override.",
+          "obsolete_assumption_disposition": "Operator confirmation is not runtime success evidence and cannot convert uncertainty into accepted realization.",
+          "owner": "control-plane-kit-operations:tests.test_current_graph_advancement.CurrentGraphAdvancementTests.test_incomplete_uncertain_or_failed_evidence_cannot_advance",
+          "rationale": "The frozen override allowed uncertain evidence to advance current graph truth. Current law deliberately requires complete accepted realization and rejects uncertainty."
+        }
+      },
+      "strengthened_references": [
+        "tests.test_execution_values.ExecutionValueTests.test_admitted_run_projection_rejects_impossible_timing",
+        "tests.test_execution_values.ExecutionValueTests.test_codec_round_trips_claim_retry_and_every_failure_category",
+        "tests.test_execution_values.ExecutionValueTests.test_codec_round_trips_every_closed_request_status",
+        "tests.test_execution_values.ExecutionValueTests.test_codec_round_trips_every_event_kind",
+        "tests.test_execution_values.ExecutionValueTests.test_codec_round_trips_every_observation_status_and_freshness",
+        "tests.test_execution_values.ExecutionValueTests.test_codec_round_trips_every_run_status",
+        "tests.test_execution_values.ExecutionValueTests.test_descriptor_rejects_unknown_version_variant_and_extra_fields",
+        "tests.test_execution_values.ExecutionValueTests.test_event_scope_is_valid_by_construction",
+        "tests.test_execution_values.ExecutionValueTests.test_every_event_kind_has_one_canonical_scope",
+        "tests.test_execution_values.ExecutionValueTests.test_evidence_is_copied_bounded_and_rejects_secret_shaped_fields",
+        "tests.test_execution_values.ExecutionValueTests.test_open_string_lifecycle_values_are_rejected",
+        "tests.test_execution_values.ExecutionValueTests.test_recovery_event_descriptor_is_strict_and_attributable",
+        "tests.test_execution_values.ExecutionValueTests.test_recovery_evidence_cannot_ride_on_an_unrelated_event",
+        "tests.test_execution_values.ExecutionValueTests.test_retry_identity_rejects_impossible_lineage",
+        "tests.test_execution_values.ExecutionValueTests.test_stale_finished_at_descriptor_fails_closed",
+        "tests.test_execution_values.ExecutionValueTests.test_unknown_recovery_members_are_not_malformed_shapes",
+        "tests.test_operation_commands.OperationCommandVocabularyTests.test_command_descriptors_do_not_publish_operator_values",
+        "tests.test_operation_commands.OperationCommandVocabularyTests.test_command_evidence_accepts_secret_references_but_rejects_secret_values",
+        "tests.test_operation_commands.OperationCommandVocabularyTests.test_durable_records_reject_untyped_lifecycle_and_action_values",
+        "tests.test_operation_commands.OperationCommandVocabularyTests.test_record_action_requires_closed_action_kind",
+        "tests.test_operation_commands.OperationCommandVocabularyTests.test_required_identifiers_and_idempotency_keys_fail_closed",
+        "tests.test_operation_commands.OperationCommandVocabularyTests.test_result_descriptor_preserves_typed_evidence",
+        "tests.test_operation_commands.OperationCommandVocabularyTests.test_start_command_is_a_validated_deterministic_product",
+        "tests.test_operation_commands.OperationCommandVocabularyTests.test_transition_commands_have_distinct_tags",
+        "tests.test_recovery_decisions.RecoveryDecisionTests.test_changed_intent_requires_a_fresh_plan",
+        "tests.test_recovery_decisions.RecoveryDecisionTests.test_claim_recovery_variants_round_trip_as_closed_descriptors",
+        "tests.test_recovery_decisions.RecoveryDecisionTests.test_decision_record_requires_attribution_and_reason",
+        "tests.test_recovery_decisions.RecoveryDecisionTests.test_each_closed_decision_has_an_explicit_authority",
+        "tests.test_recovery_decisions.RecoveryDecisionTests.test_expired_ownership_requires_one_closed_claim_recovery",
+        "tests.test_recovery_decisions.RecoveryDecisionTests.test_failed_attempt_choices_are_closed_and_evidence_guarded",
+        "tests.test_recovery_decisions.RecoveryDecisionTests.test_open_strings_do_not_enter_recovery_scopes_or_context",
+        "tests.test_recovery_decisions.RecoveryDecisionTests.test_uncertainty_must_be_resolved_before_other_recovery",
+        "tests.test_verification_command_service.VerificationCommandServiceTests.test_adapter_loss_leaves_immutable_intent_without_terminal_lie",
+        "tests.test_verification_command_service.VerificationCommandServiceTests.test_api_mcp_and_cli_expose_one_shared_redacted_projection",
+        "tests.test_verification_command_service.VerificationCommandServiceTests.test_authorization_and_graph_ownership_fail_before_effect",
+        "tests.test_verification_command_service.VerificationCommandServiceTests.test_executes_outside_transaction_and_persists_canonical_observation",
+        "tests.test_verification_command_service.VerificationCommandServiceTests.test_graph_change_marks_verification_stale_without_rewriting_it",
+        "tests.test_verification_command_service.VerificationCommandServiceTests.test_schema_reinstallation_preserves_verification_row_and_constraints",
+        "tests.test_verification_command_service.VerificationCommandServiceTests.test_unsupported_capability_is_durable_and_distinct_from_failure"
+      ],
+      "successor_overrides": {
+        "tests.test_activity_planning_command_service.ActivityPlanningCommandServiceTests.test_identical_request_replays_original_plan_and_evidence": [
+          "control-plane-kit-operations:tests.test_planning_commands.PlanningCommandTests.test_planning_replay_conflict_and_stale_pointer_guards"
+        ],
+        "tests.test_activity_planning_command_service.ActivityPlanningCommandServiceTests.test_malformed_durable_graph_rejects_without_writes": [
+          "control-plane-kit-operations:tests.test_planning_commands.PlanningCommandTests.test_malformed_durable_graph_cannot_become_desired_truth"
+        ],
+        "tests.test_activity_planning_command_service.ActivityPlanningCommandServiceTests.test_plan_and_action_commit_as_one_operator_command": [
+          "control-plane-kit-operations:tests.test_planning_commands.PlanningCommandTests.test_planning_pins_current_and_desired_graph_truth"
+        ],
+        "tests.test_activity_planning_command_service.ActivityPlanningCommandServiceTests.test_same_key_with_different_intent_fails_explicitly": [
+          "control-plane-kit-operations:tests.test_planning_commands.PlanningCommandTests.test_planning_replay_conflict_and_stale_pointer_guards"
+        ],
+        "tests.test_activity_planning_command_service.ActivityPlanningCommandServiceTests.test_stale_workspace_pointers_reject_without_writes": [
+          "control-plane-kit-operations:tests.test_planning_commands.PlanningCommandTests.test_planning_replay_conflict_and_stale_pointer_guards"
+        ],
+        "tests.test_approval_command_service.ApprovalCommandServiceTests.test_authority_fails_closed_and_destructive_plan_requires_stronger_scope": [
+          "control-plane-kit-operations:tests.test_approvals.ApprovalCommandTests.test_authority_fails_closed_and_destructive_plan_requires_scope"
+        ],
+        "tests.test_approval_command_service.ApprovalCommandServiceTests.test_concurrent_identical_decisions_converge_on_one_decision": [
+          "control-plane-kit-operations:tests.test_approvals.ApprovalCommandTests.test_concurrent_identical_decisions_converge_on_one_fact"
+        ],
+        "tests.test_approval_command_service.ApprovalCommandServiceTests.test_late_action_failures_roll_back_request_and_decision": [
+          "control-plane-kit-operations:tests.test_approvals.ApprovalCommandTests.test_late_action_failure_rolls_back_request_and_decision"
+        ],
+        "tests.test_current_graph_advancement.CurrentGraphAdvancementTests.test_authority_worker_and_stale_pointer_fail_closed": [
+          "control-plane-kit-operations:tests.test_current_graph_advancement.CurrentGraphAdvancementTests.test_scope_worker_and_stale_graph_fail_closed"
+        ],
+        "tests.test_current_graph_advancement.CurrentGraphAdvancementTests.test_complete_durable_success_advances_pointer_and_replays_evidence": [
+          "control-plane-kit-operations:tests.test_current_graph_advancement.CurrentGraphAdvancementTests.test_complete_durable_success_advances_current_graph_once"
+        ],
+        "tests.test_current_graph_advancement.CurrentGraphAdvancementTests.test_duplicate_terminal_success_evidence_fails_closed": [
+          "control-plane-kit-operations:tests.test_current_graph_advancement.CurrentGraphAdvancementTests.test_incomplete_uncertain_or_failed_evidence_cannot_advance"
+        ],
+        "tests.test_current_graph_advancement.CurrentGraphAdvancementTests.test_foreign_step_success_evidence_fails_closed": [
+          "control-plane-kit-operations:tests.test_current_graph_advancement.CurrentGraphAdvancementTests.test_incomplete_uncertain_or_failed_evidence_cannot_advance"
+        ],
+        "tests.test_current_graph_advancement.CurrentGraphAdvancementTests.test_late_evidence_failure_rolls_back_pointer_and_event": [
+          "control-plane-kit-operations:tests.test_current_graph_advancement.CurrentGraphAdvancementTests.test_late_action_failure_rolls_back_pointer_and_event"
+        ],
+        "tests.test_current_graph_advancement.CurrentGraphAdvancementTests.test_missing_step_success_evidence_fails_closed": [
+          "control-plane-kit-operations:tests.test_current_graph_advancement.CurrentGraphAdvancementTests.test_incomplete_uncertain_or_failed_evidence_cannot_advance"
+        ],
+        "tests.test_current_graph_advancement.CurrentGraphAdvancementTests.test_operator_confirmed_uncertain_failure_cannot_advance": [
+          "control-plane-kit-operations:tests.test_current_graph_advancement.CurrentGraphAdvancementTests.test_incomplete_uncertain_or_failed_evidence_cannot_advance"
+        ],
+        "tests.test_current_graph_advancement.CurrentGraphAdvancementTests.test_projection_and_observation_without_complete_steps_cannot_advance": [
+          "control-plane-kit-operations:tests.test_current_graph_advancement.CurrentGraphAdvancementTests.test_incomplete_uncertain_or_failed_evidence_cannot_advance"
+        ],
+        "tests.test_current_graph_advancement.CurrentGraphAdvancementTests.test_unsupported_step_cannot_advance_current_graph": [
+          "control-plane-kit-operations:tests.test_current_graph_advancement.CurrentGraphAdvancementTests.test_incomplete_uncertain_or_failed_evidence_cannot_advance"
+        ],
+        "tests.test_desired_graph_command_service.DesiredGraphCommandServiceTests.test_graph_pointer_and_action_commit_as_one_command": [
+          "control-plane-kit-operations:tests.test_planning_commands.PlanningCommandTests.test_desired_graph_command_records_graph_and_action_atomically"
+        ],
+        "tests.test_desired_graph_command_service.DesiredGraphCommandServiceTests.test_identical_request_replays_original_evidence": [
+          "control-plane-kit-operations:tests.test_planning_commands.PlanningCommandTests.test_desired_graph_replay_and_changed_intent_conflict"
+        ],
+        "tests.test_desired_graph_command_service.DesiredGraphCommandServiceTests.test_late_action_failure_rolls_back_graph_and_pointer": [
+          "control-plane-kit-operations:tests.test_planning_commands.PlanningCommandTests.test_desired_graph_replay_and_changed_intent_conflict"
+        ],
+        "tests.test_desired_graph_command_service.DesiredGraphCommandServiceTests.test_replay_remains_available_after_session_closes": [
+          "control-plane-kit-operations:tests.test_planning_commands.PlanningCommandTests.test_desired_graph_replay_survives_pointer_change_and_session_close"
+        ],
+        "tests.test_desired_graph_command_service.DesiredGraphCommandServiceTests.test_session_must_be_open_and_owned_by_workspace": [
+          "control-plane-kit-operations:tests.test_planning_commands.PlanningCommandTests.test_stale_or_closed_desired_graph_command_writes_nothing"
+        ],
+        "tests.test_desired_graph_command_service.DesiredGraphCommandServiceTests.test_stale_expected_pointer_rejects_without_partial_writes": [
+          "control-plane-kit-operations:tests.test_planning_commands.PlanningCommandTests.test_stale_or_closed_desired_graph_command_writes_nothing"
+        ],
+        "tests.test_desired_graph_commands.DesiredGraphCommandTests.test_invalid_or_untyped_edit_data_fails_closed": [
+          "control-plane-kit-core:tests.test_command_workflow_contract.CommandWorkflowContractTests.test_session_graph_plan_and_approval_contract_laws_are_explicit"
+        ],
+        "tests.test_desired_graph_commands.DesiredGraphCommandTests.test_result_ties_graph_and_action_evidence_to_one_workspace": [
+          "control-plane-kit-operations:tests.test_planning_commands.PlanningCommandTests.test_desired_graph_command_records_graph_and_action_atomically"
+        ],
+        "tests.test_desired_graph_commands.DesiredGraphCommandTests.test_set_desired_graph_is_typed_and_operator_descriptor_is_bounded": [
+          "control-plane-kit-core:tests.test_command_workflow_contract.CommandWorkflowContractTests.test_session_graph_plan_and_approval_contract_laws_are_explicit"
+        ],
+        "tests.test_execution_concurrency.ExecutionConcurrencyTests.test_competing_workers_have_one_claim_winner": [
+          "control-plane-kit-operations:tests.test_run_lifecycle.RunLifecycleTests.test_claim_replay_conflict_scope_and_competing_worker_fail_closed"
+        ],
+        "tests.test_execution_concurrency.ExecutionConcurrencyTests.test_event_ordinals_serialize_across_connections": [
+          "control-plane-kit-operations:tests.test_session_serialization_primitives.SessionSerializationPrimitiveTests.test_session_lock_serializes_unique_monotonic_action_ordinals"
+        ],
+        "tests.test_execution_concurrency.ExecutionConcurrencyTests.test_identical_worker_claims_converge_and_rollback_releases_lock": [
+          "control-plane-kit-operations:tests.test_run_lifecycle.RunLifecycleTests.test_claim_replay_conflict_scope_and_competing_worker_fail_closed"
+        ],
+        "tests.test_execution_concurrency.ExecutionConcurrencyTests.test_run_settlement_is_write_once": [
+          "control-plane-kit-operations:tests.test_run_lifecycle.RunLifecycleTests.test_fail_records_bounded_failure_and_terminal_settlement_is_write_once"
+        ],
+        "tests.test_execution_coordinator.ExecutionCoordinatorTests.test_attempted_failure_is_journaled_and_fails_run": [
+          "control-plane-kit-operations:tests.test_execution_coordinator.ExecutionCoordinatorTests.test_failed_and_unsupported_outcomes_fail_run_but_remain_distinct"
+        ],
+        "tests.test_execution_coordinator.ExecutionCoordinatorTests.test_cross_workspace_graph_substitution_fails_before_intent": [
+          "control-plane-kit-operations:tests.test_execution_coordinator.ExecutionCoordinatorTests.test_incoherent_pinned_graph_material_fails_before_step_intent"
+        ],
+        "tests.test_execution_coordinator.ExecutionCoordinatorTests.test_effect_limit_returns_typed_progress_without_settling_run": [
+          "control-plane-kit-operations:tests.test_execution_coordinator.ExecutionCoordinatorTests.test_max_effects_limits_progress_without_losing_schedule"
+        ],
+        "tests.test_execution_coordinator.ExecutionCoordinatorTests.test_failed_effect_observations_commit_with_the_step_result": [
+          "control-plane-kit-operations:tests.test_execution_coordinator.ExecutionCoordinatorTests.test_success_records_intent_and_result_without_transaction_spanning_adapter"
+        ],
+        "tests.test_execution_coordinator.ExecutionCoordinatorTests.test_later_workspace_pointer_does_not_retarget_pinned_graph_material": [
+          "control-plane-kit-operations:tests.test_execution_coordinator.ExecutionCoordinatorTests.test_incoherent_pinned_graph_material_fails_before_step_intent"
+        ],
+        "tests.test_execution_coordinator.ExecutionCoordinatorTests.test_live_capability_rejection_closes_intent_without_mutation": [
+          "control-plane-kit-operations:tests.test_execution_coordinator.ExecutionCoordinatorTests.test_failed_and_unsupported_outcomes_fail_run_but_remain_distinct"
+        ],
+        "tests.test_execution_coordinator.ExecutionCoordinatorTests.test_materialization_failure_records_no_intent_and_attempts_no_effect": [
+          "control-plane-kit-operations:tests.test_execution_coordinator.ExecutionCoordinatorTests.test_failed_and_unsupported_outcomes_fail_run_but_remain_distinct"
+        ],
+        "tests.test_execution_coordinator.ExecutionCoordinatorTests.test_non_compensatable_completed_work_remains_operator_visible": [
+          "control-plane-kit-operations:tests.test_execution_coordinator.ExecutionCoordinatorTests.test_success_records_intent_and_result_without_transaction_spanning_adapter"
+        ],
+        "tests.test_execution_coordinator.ExecutionCoordinatorTests.test_representative_scenario_executes_in_canonical_plan_order": [
+          "control-plane-kit-operations:tests.test_execution_coordinator.ExecutionCoordinatorTests.test_max_effects_limits_progress_without_losing_schedule"
+        ],
+        "tests.test_execution_coordinator.ExecutionCoordinatorTests.test_success_uses_two_short_transactions_and_settles_run": [
+          "control-plane-kit-operations:tests.test_execution_coordinator.ExecutionCoordinatorTests.test_success_records_intent_and_result_without_transaction_spanning_adapter"
+        ],
+        "tests.test_execution_coordinator.ExecutionCoordinatorTests.test_uncertain_adapter_result_preserves_open_run_for_operator_review": [
+          "control-plane-kit-operations:tests.test_execution_coordinator.ExecutionCoordinatorTests.test_adapter_exception_records_uncertainty_and_does_not_blind_replay"
+        ],
+        "tests.test_execution_coordinator.ExecutionCoordinatorTests.test_unsupported_capability_is_distinct_and_never_attempted": [
+          "control-plane-kit-operations:tests.test_execution_coordinator.ExecutionCoordinatorTests.test_failed_and_unsupported_outcomes_fail_run_but_remain_distinct"
+        ],
+        "tests.test_execution_coordinator.ExecutionCoordinatorTests.test_worker_identity_and_scope_fail_before_effect": [
+          "control-plane-kit-operations:tests.test_execution_coordinator.ExecutionCoordinatorTests.test_worker_scope_and_claim_ownership_are_checked_before_adapter"
+        ],
+        "tests.test_execution_schema_migration.ExecutionSchemaTests.test_current_schema_rejects_unknown_retired_and_malformed_events": [
+          "control-plane-kit-operations:tests.test_postgres_schema.PostgresSchemaFoundationTests.test_closed_values_and_event_shapes_fail_closed"
+        ],
+        "tests.test_execution_schema_migration.ExecutionSchemaTests.test_repeated_install_preserves_rows_and_constraint_identity": [
+          "control-plane-kit-operations:tests.test_postgres_schema.PostgresSchemaFoundationTests.test_repeated_install_preserves_rows_and_constraint_identities"
+        ],
+        "tests.test_execution_store.ExecutionStoreTests.test_canonical_request_run_and_event_round_trip": [
+          "control-plane-kit-operations:tests.test_run_lifecycle.RunRecordLawTests.test_run_timing_and_event_scope_fail_closed"
+        ],
+        "tests.test_execution_store.ExecutionStoreTests.test_recovery_and_forward_compensation_failures_round_trip_together": [
+          "control-plane-kit-core:tests.test_saga.SagaStateSuccessorTests.test_failure_and_compensation_failure_remain_explicit"
+        ],
+        "tests.test_execution_store.ExecutionStoreTests.test_uncommitted_unit_of_work_rolls_back_execution_and_history_together": [
+          "control-plane-kit-operations:tests.test_unit_of_work.PostgresUnitOfWorkTests.test_uncommitted_and_exceptional_exits_roll_back_and_close"
+        ],
+        "tests.test_execution_values.ExecutionValueTests.test_admitted_run_projection_rejects_impossible_timing": [
+          "control-plane-kit-core:tests.test_execution_lifecycle_contract.ExecutionLifecycleContractTests.test_run_timing_and_transition_domains_match_frozen_lifecycle_algebra"
+        ],
+        "tests.test_execution_values.ExecutionValueTests.test_codec_round_trips_claim_retry_and_every_failure_category": [
+          "control-plane-kit-core:tests.test_execution_lifecycle_contract.ExecutionLifecycleContractTests.test_descriptor_round_trips_strictly_and_rejects_open_values"
+        ],
+        "tests.test_execution_values.ExecutionValueTests.test_codec_round_trips_every_closed_request_status": [
+          "control-plane-kit-core:tests.test_execution_lifecycle_contract.ExecutionLifecycleContractTests.test_descriptor_round_trips_strictly_and_rejects_open_values"
+        ],
+        "tests.test_execution_values.ExecutionValueTests.test_codec_round_trips_every_event_kind": [
+          "control-plane-kit-core:tests.test_execution_lifecycle_contract.ExecutionLifecycleContractTests.test_descriptor_round_trips_strictly_and_rejects_open_values"
+        ],
+        "tests.test_execution_values.ExecutionValueTests.test_codec_round_trips_every_observation_status_and_freshness": [
+          "control-plane-kit-core:tests.test_execution_lifecycle_contract.ExecutionLifecycleContractTests.test_descriptor_round_trips_strictly_and_rejects_open_values"
+        ],
+        "tests.test_execution_values.ExecutionValueTests.test_codec_round_trips_every_run_status": [
+          "control-plane-kit-core:tests.test_execution_lifecycle_contract.ExecutionLifecycleContractTests.test_descriptor_round_trips_strictly_and_rejects_open_values"
+        ],
+        "tests.test_execution_values.ExecutionValueTests.test_descriptor_rejects_unknown_version_variant_and_extra_fields": [
+          "control-plane-kit-core:tests.test_execution_lifecycle_contract.ExecutionLifecycleContractTests.test_descriptor_round_trips_strictly_and_rejects_open_values"
+        ],
+        "tests.test_execution_values.ExecutionValueTests.test_event_scope_is_valid_by_construction": [
+          "control-plane-kit-core:tests.test_execution_lifecycle_contract.ExecutionLifecycleContractTests.test_event_scope_and_recovery_payload_laws_are_closed"
+        ],
+        "tests.test_execution_values.ExecutionValueTests.test_every_event_kind_has_one_canonical_scope": [
+          "control-plane-kit-core:tests.test_execution_lifecycle_contract.ExecutionLifecycleContractTests.test_event_scope_and_recovery_payload_laws_are_closed"
+        ],
+        "tests.test_execution_values.ExecutionValueTests.test_evidence_is_copied_bounded_and_rejects_secret_shaped_fields": [
+          "control-plane-kit-operations:tests.test_run_lifecycle.RunRecordLawTests.test_bounded_evidence_rejects_secret_shapes_and_non_json_values"
+        ],
+        "tests.test_execution_values.ExecutionValueTests.test_open_string_lifecycle_values_are_rejected": [
+          "control-plane-kit-core:tests.test_execution_lifecycle_contract.ExecutionLifecycleContractTests.test_descriptor_round_trips_strictly_and_rejects_open_values"
+        ],
+        "tests.test_execution_values.ExecutionValueTests.test_recovery_event_descriptor_is_strict_and_attributable": [
+          "control-plane-kit-core:tests.test_execution_lifecycle_contract.ExecutionLifecycleContractTests.test_descriptor_round_trips_strictly_and_rejects_open_values"
+        ],
+        "tests.test_execution_values.ExecutionValueTests.test_recovery_evidence_cannot_ride_on_an_unrelated_event": [
+          "control-plane-kit-core:tests.test_execution_lifecycle_contract.ExecutionLifecycleContractTests.test_event_scope_and_recovery_payload_laws_are_closed"
+        ],
+        "tests.test_execution_values.ExecutionValueTests.test_retry_identity_rejects_impossible_lineage": [
+          "control-plane-kit-core:tests.test_execution_lifecycle_contract.ExecutionLifecycleContractTests.test_run_timing_and_transition_domains_match_frozen_lifecycle_algebra"
+        ],
+        "tests.test_execution_values.ExecutionValueTests.test_stale_finished_at_descriptor_fails_closed": [
+          "control-plane-kit-core:tests.test_execution_lifecycle_contract.ExecutionLifecycleContractTests.test_descriptor_round_trips_strictly_and_rejects_open_values"
+        ],
+        "tests.test_execution_values.ExecutionValueTests.test_unknown_recovery_members_are_not_malformed_shapes": [
+          "control-plane-kit-core:tests.test_execution_lifecycle_contract.ExecutionLifecycleContractTests.test_event_scope_and_recovery_payload_laws_are_closed"
+        ],
+        "tests.test_focused_read_hardening.FocusedReadHardeningTests.test_all_adapters_preserve_canonical_focused_payloads": [
+          "control-plane-kit-operations:tests.test_read_services.InstanceReadServiceTests.test_activity_timeline_redacts_action_payloads_and_lists_pending_approvals"
+        ],
+        "tests.test_focused_read_hardening.FocusedReadHardeningTests.test_failure_evidence_is_canonical_and_bounded": [
+          "control-plane-kit-operations:tests.test_read_services.InstanceReadServiceTests.test_observed_state_is_latest_per_subject_and_does_not_rewrite_graph_truth"
+        ],
+        "tests.test_focused_read_hardening.FocusedReadHardeningTests.test_paging_is_deterministic_and_nested_sensitive_values_are_redacted": [
+          "control-plane-kit-operations:tests.test_read_services.InstanceReadServiceTests.test_open_sessions_are_paged_and_unknown_workspace_fails_readably"
+        ],
+        "tests.test_focused_read_hardening.FocusedReadHardeningTests.test_plan_detail_remains_pinned_when_workspace_desired_pointer_changes": [
+          "control-plane-kit-operations:tests.test_read_services.InstanceReadServiceTests.test_plan_detail_uses_pinned_graph_truth_and_core_plan_codec"
+        ],
+        "tests.test_focused_read_hardening.FocusedReadHardeningTests.test_recovery_projection_is_reconstructed_from_complete_journal": [
+          "control-plane-kit-operations:tests.test_read_services.InstanceReadServiceTests.test_observed_state_is_latest_per_subject_and_does_not_rewrite_graph_truth"
+        ],
+        "tests.test_focused_read_hardening.FocusedReadHardeningTests.test_secret_shaped_failure_details_are_rejected_before_persistence": [
+          "control-plane-kit-operations:tests.test_read_services.InstanceReadServiceTests.test_workspace_and_graph_reads_are_redacted"
+        ],
+        "tests.test_focused_read_hardening.FocusedReadHardeningTests.test_workspace_boundaries_fail_closed_without_disclosing_foreign_records": [
+          "control-plane-kit-operations:tests.test_read_services.InstanceReadServiceTests.test_workspace_and_graph_reads_are_redacted"
+        ],
+        "tests.test_focused_workflow_reads.FocusedWorkflowReadTests.test_focused_bounds_reject_unbounded_or_invalid_pages": [
+          "control-plane-kit-operations:tests.test_read_services.InstanceReadServiceTests.test_open_sessions_are_paged_and_unknown_workspace_fails_readably"
+        ],
+        "tests.test_focused_workflow_reads.FocusedWorkflowReadTests.test_focused_reads_fail_closed_across_workspace_boundaries": [
+          "control-plane-kit-operations:tests.test_read_services.InstanceReadServiceTests.test_workspace_and_graph_reads_are_redacted"
+        ],
+        "tests.test_focused_workflow_reads.FocusedWorkflowReadTests.test_open_sessions_are_workspace_scoped_redacted_and_paged": [
+          "control-plane-kit-operations:tests.test_read_services.InstanceReadServiceTests.test_open_sessions_are_paged_and_unknown_workspace_fails_readably"
+        ],
+        "tests.test_focused_workflow_reads.FocusedWorkflowReadTests.test_pending_approval_queue_excludes_decisions_and_is_bounded": [
+          "control-plane-kit-operations:tests.test_read_services.InstanceReadServiceTests.test_activity_timeline_redacts_action_payloads_and_lists_pending_approvals"
+        ],
+        "tests.test_focused_workflow_reads.FocusedWorkflowReadTests.test_plan_detail_reuses_canonical_plan_risk_and_recovery": [
+          "control-plane-kit-operations:tests.test_read_services.InstanceReadServiceTests.test_plan_detail_uses_pinned_graph_truth_and_core_plan_codec"
+        ],
+        "tests.test_focused_workflow_reads.FocusedWorkflowReadTests.test_plan_recovery_uses_the_injected_graph_codec": [
+          "control-plane-kit-operations:tests.test_read_services.InstanceReadServiceTests.test_plan_detail_uses_pinned_graph_truth_and_core_plan_codec"
+        ],
+        "tests.test_focused_workflow_reads.FocusedWorkflowReadTests.test_session_detail_is_bounded_and_redacted": [
+          "control-plane-kit-operations:tests.test_read_services.InstanceReadServiceTests.test_open_sessions_are_paged_and_unknown_workspace_fails_readably"
+        ],
+        "tests.test_instance_read_service.InstanceReadServiceTests.test_activity_timeline_does_not_cross_workspace_boundary": [
+          "control-plane-kit-operations:tests.test_read_services.InstanceReadServiceTests.test_activity_timeline_redacts_action_payloads_and_lists_pending_approvals"
+        ],
+        "tests.test_instance_read_service.InstanceReadServiceTests.test_activity_timeline_is_bounded_and_redacted": [
+          "control-plane-kit-operations:tests.test_read_services.InstanceReadServiceTests.test_activity_timeline_redacts_action_payloads_and_lists_pending_approvals"
+        ],
+        "tests.test_instance_read_service.InstanceReadServiceTests.test_activity_timeline_rejects_invalid_limits": [
+          "control-plane-kit-operations:tests.test_read_services.InstanceReadServiceTests.test_activity_timeline_redacts_action_payloads_and_lists_pending_approvals"
+        ],
+        "tests.test_instance_read_service.InstanceReadServiceTests.test_activity_timeline_requires_configured_activity_store": [
+          "control-plane-kit-operations:tests.test_read_services.InstanceReadServiceTests.test_activity_timeline_redacts_action_payloads_and_lists_pending_approvals"
+        ],
+        "tests.test_instance_read_service.InstanceReadServiceTests.test_activity_timeline_requires_workspace_truth": [
+          "control-plane-kit-operations:tests.test_read_services.InstanceReadServiceTests.test_activity_timeline_redacts_action_payloads_and_lists_pending_approvals"
+        ],
+        "tests.test_instance_read_service.InstanceReadServiceTests.test_control_surface_distinguishes_runtime_control_from_environment_binding": [
+          "control-plane-kit-operations:tests.test_read_services.InstanceReadServiceTests.test_control_surface_reads_declared_nodes_without_endpoint_leakage"
+        ],
+        "tests.test_instance_read_service.InstanceReadServiceTests.test_control_surface_lists_declared_capabilities_routes_and_sockets": [
+          "control-plane-kit-operations:tests.test_read_services.InstanceReadServiceTests.test_control_surface_reads_declared_nodes_without_endpoint_leakage"
+        ],
+        "tests.test_instance_read_service.InstanceReadServiceTests.test_control_surface_redacts_address_metadata_but_keeps_labels": [
+          "control-plane-kit-operations:tests.test_read_services.InstanceReadServiceTests.test_control_surface_reads_declared_nodes_without_endpoint_leakage"
+        ],
+        "tests.test_instance_read_service.InstanceReadServiceTests.test_control_surface_rejects_unknown_pointer": [
+          "control-plane-kit-operations:tests.test_read_services.InstanceReadServiceTests.test_control_surface_reads_declared_nodes_without_endpoint_leakage"
+        ],
+        "tests.test_instance_read_service.InstanceReadServiceTests.test_control_surface_unassigned_pointer_is_explicit": [
+          "control-plane-kit-operations:tests.test_read_services.InstanceReadServiceTests.test_control_surface_reads_declared_nodes_without_endpoint_leakage"
+        ],
+        "tests.test_instance_read_service.InstanceReadServiceTests.test_control_surface_warns_on_unknown_route_sets": [
+          "control-plane-kit-operations:tests.test_read_services.InstanceReadServiceTests.test_control_surface_reads_declared_nodes_without_endpoint_leakage"
+        ],
+        "tests.test_instance_read_service.InstanceReadServiceTests.test_graph_descriptor_redacts_addresses_and_environment_values": [
+          "control-plane-kit-operations:tests.test_read_services.InstanceReadServiceTests.test_workspace_and_graph_reads_are_redacted"
+        ],
+        "tests.test_instance_read_service.InstanceReadServiceTests.test_missing_workspace_fails_at_service_boundary": [
+          "control-plane-kit-operations:tests.test_read_services.InstanceReadServiceTests.test_workspace_and_graph_reads_are_redacted"
+        ],
+        "tests.test_instance_read_service.InstanceReadServiceTests.test_nested_payload_redaction_reaches_lists_and_mappings": [
+          "control-plane-kit-operations:tests.test_read_services.InstanceReadServiceTests.test_workspace_and_graph_reads_are_redacted"
+        ],
+        "tests.test_instance_read_service.InstanceReadServiceTests.test_observed_state_does_not_cross_workspace_boundary": [
+          "control-plane-kit-operations:tests.test_read_services.InstanceReadServiceTests.test_workspace_and_graph_reads_are_redacted"
+        ],
+        "tests.test_instance_read_service.InstanceReadServiceTests.test_observed_state_reports_latest_and_stale_markers": [
+          "control-plane-kit-operations:tests.test_read_services.InstanceReadServiceTests.test_workspace_and_graph_reads_are_redacted"
+        ],
+        "tests.test_instance_read_service.InstanceReadServiceTests.test_observed_state_requires_configured_observed_state_store": [
+          "control-plane-kit-operations:tests.test_read_services.InstanceReadServiceTests.test_workspace_and_graph_reads_are_redacted"
+        ],
+        "tests.test_instance_read_service.InstanceReadServiceTests.test_operator_graph_uses_shared_projection": [
+          "control-plane-kit-operations:tests.test_read_services.InstanceReadServiceTests.test_operator_graph_projects_socket_contracts"
+        ],
+        "tests.test_instance_read_service.InstanceReadServiceTests.test_unassigned_graph_pointers_are_explicit": [
+          "control-plane-kit-operations:tests.test_read_services.InstanceReadServiceTests.test_workspace_and_graph_reads_are_redacted"
+        ],
+        "tests.test_instance_read_service.InstanceReadServiceTests.test_unknown_graph_pointer_fails_loudly": [
+          "control-plane-kit-operations:tests.test_read_services.InstanceReadServiceTests.test_workspace_and_graph_reads_are_redacted"
+        ],
+        "tests.test_instance_read_service.InstanceReadServiceTests.test_workspace_read_model_includes_current_and_desired_graphs": [
+          "control-plane-kit-operations:tests.test_read_services.InstanceReadServiceTests.test_workspace_and_graph_reads_are_redacted"
+        ],
+        "tests.test_mcp_read.McpReadAdapterTests.test_activity_timeline_tool_uses_bounded_limit": [
+          "control-plane-kit-operations:tests.test_cpk_server_adapters.CpkServerOperationsAdapterTests.test_read_errors_are_bounded_without_sql_or_secret_leakage"
+        ],
+        "tests.test_mcp_read.McpReadAdapterTests.test_argument_and_service_errors_are_readable": [
+          "control-plane-kit-operations:tests.test_cpk_server_adapters.CpkServerOperationsAdapterTests.test_read_errors_are_bounded_without_sql_or_secret_leakage"
+        ],
+        "tests.test_mcp_read.McpReadAdapterTests.test_focused_tool_arguments_enforce_declared_bounds": [
+          "control-plane-kit-operations:tests.test_cpk_server_adapters.CpkServerOperationsAdapterTests.test_read_errors_are_bounded_without_sql_or_secret_leakage"
+        ],
+        "tests.test_mcp_read.McpReadAdapterTests.test_focused_tools_delegate_identifiers_and_bounds": [
+          "control-plane-kit-operations:tests.test_cpk_server_adapters.CpkServerOperationsAdapterTests.test_mcp_read_arguments_use_same_read_service_boundary"
+        ],
+        "tests.test_mcp_read.McpReadAdapterTests.test_graph_and_control_surface_tools_delegate_to_read_service": [
+          "control-plane-kit-operations:tests.test_cpk_server_adapters.CpkServerOperationsAdapterTests.test_mcp_read_arguments_use_same_read_service_boundary"
+        ],
+        "tests.test_mcp_read.McpReadAdapterTests.test_list_tools_is_read_only_and_deterministic": [
+          "control-plane-kit-operations:tests.test_cpk_server_adapters.CpkServerOperationsAdapterTests.test_read_errors_are_bounded_without_sql_or_secret_leakage"
+        ],
+        "tests.test_mcp_read.McpReadAdapterTests.test_unknown_or_mutation_like_tools_fail_closed": [
+          "control-plane-kit-operations:tests.test_cpk_server_adapters.CpkServerOperationsAdapterTests.test_read_errors_are_bounded_without_sql_or_secret_leakage"
+        ],
+        "tests.test_mcp_read.McpReadAdapterTests.test_workspace_tool_returns_mcp_shaped_json_content": [
+          "control-plane-kit-operations:tests.test_cpk_server_adapters.CpkServerOperationsAdapterTests.test_mcp_read_arguments_use_same_read_service_boundary"
+        ],
+        "tests.test_observation_projection.ObservationProjectionTests.test_graph_change_and_legacy_rows_are_explicitly_stale": [
+          "control-plane-kit-operations:tests.test_read_services.InstanceReadServiceTests.test_observed_state_is_latest_per_subject_and_does_not_rewrite_graph_truth"
+        ],
+        "tests.test_operation_command_service.OperationCommandServiceTests.test_action_replay_is_deterministic_and_conflict_is_explicit": [
+          "control-plane-kit-operations:tests.test_workflows.OperationWorkflowTests.test_start_replays_same_intent_and_conflicts_on_changed_intent"
+        ],
+        "tests.test_operation_command_service.OperationCommandServiceTests.test_closed_and_cancelled_sessions_reject_new_actions": [
+          "control-plane-kit-operations:tests.test_planning_commands.PlanningCommandTests.test_terminal_transition_is_write_once_and_exactly_replayable"
+        ],
+        "tests.test_operation_command_service.OperationCommandServiceTests.test_concurrent_terminal_transitions_cannot_both_publish": [
+          "control-plane-kit-operations:tests.test_planning_commands.PlanningCommandTests.test_terminal_transition_is_write_once_and_exactly_replayable"
+        ],
+        "tests.test_operation_command_service.OperationCommandServiceTests.test_late_action_failure_rolls_back_new_session": [
+          "control-plane-kit-operations:tests.test_workflows.OperationWorkflowTests.test_late_action_failure_rolls_back_session_start"
+        ],
+        "tests.test_operation_command_service.OperationCommandServiceTests.test_late_action_failure_rolls_back_terminal_projection": [
+          "control-plane-kit-operations:tests.test_workflows.OperationWorkflowTests.test_late_action_failure_rolls_back_session_start"
+        ],
+        "tests.test_operation_command_service.OperationCommandServiceTests.test_missing_session_and_reserved_lifecycle_actions_fail_closed": [
+          "control-plane-kit-operations:tests.test_planning_commands.PlanningCommandTests.test_terminal_transition_is_write_once_and_exactly_replayable"
+        ],
+        "tests.test_operation_command_service.OperationCommandServiceTests.test_same_intent_replays_and_conflicting_intent_fails": [
+          "control-plane-kit-operations:tests.test_workflows.OperationWorkflowTests.test_start_replays_same_intent_and_conflicts_on_changed_intent"
+        ],
+        "tests.test_operation_command_service.OperationCommandServiceTests.test_start_requires_workspace_truth_and_replay_returns_original_state": [
+          "control-plane-kit-operations:tests.test_workflows.OperationWorkflowTests.test_start_commits_session_and_initial_action_atomically"
+        ],
+        "tests.test_operation_commands.OperationCommandVocabularyTests.test_command_descriptors_do_not_publish_operator_values": [
+          "control-plane-kit-core:tests.test_command_workflow_contract.CommandWorkflowContractTests.test_canonical_commands_are_closed_stage_and_service_contracts"
+        ],
+        "tests.test_operation_commands.OperationCommandVocabularyTests.test_command_evidence_accepts_secret_references_but_rejects_secret_values": [
+          "control-plane-kit-core:tests.test_command_workflow_contract.CommandWorkflowContractTests.test_canonical_commands_are_closed_stage_and_service_contracts"
+        ],
+        "tests.test_operation_commands.OperationCommandVocabularyTests.test_durable_records_reject_untyped_lifecycle_and_action_values": [
+          "control-plane-kit-core:tests.test_command_workflow_contract.CommandWorkflowContractTests.test_session_graph_plan_and_approval_contract_laws_are_explicit"
+        ],
+        "tests.test_operation_commands.OperationCommandVocabularyTests.test_record_action_requires_closed_action_kind": [
+          "control-plane-kit-core:tests.test_command_workflow_contract.CommandWorkflowContractTests.test_session_graph_plan_and_approval_contract_laws_are_explicit"
+        ],
+        "tests.test_operation_commands.OperationCommandVocabularyTests.test_required_identifiers_and_idempotency_keys_fail_closed": [
+          "control-plane-kit-core:tests.test_command_workflow_contract.CommandWorkflowContractTests.test_session_graph_plan_and_approval_contract_laws_are_explicit"
+        ],
+        "tests.test_operation_commands.OperationCommandVocabularyTests.test_result_descriptor_preserves_typed_evidence": [
+          "control-plane-kit-core:tests.test_command_workflow_contract.CommandWorkflowContractTests.test_session_graph_plan_and_approval_contract_laws_are_explicit"
+        ],
+        "tests.test_operation_commands.OperationCommandVocabularyTests.test_start_command_is_a_validated_deterministic_product": [
+          "control-plane-kit-core:tests.test_command_workflow_contract.CommandWorkflowContractTests.test_canonical_commands_are_closed_stage_and_service_contracts"
+        ],
+        "tests.test_operation_commands.OperationCommandVocabularyTests.test_transition_commands_have_distinct_tags": [
+          "control-plane-kit-core:tests.test_command_workflow_contract.CommandWorkflowContractTests.test_canonical_commands_are_closed_stage_and_service_contracts"
+        ],
+        "tests.test_operation_postgres_primitives.OperationPostgresPrimitiveTests.test_concurrent_action_writers_receive_distinct_ordinals": [
+          "control-plane-kit-operations:tests.test_workflows.OperationWorkflowTests.test_action_records_ordinals_replay_and_conflict"
+        ],
+        "tests.test_operation_postgres_primitives.OperationPostgresPrimitiveTests.test_idempotency_keys_are_unique_within_their_scope": [
+          "control-plane-kit-operations:tests.test_workflows.OperationWorkflowTests.test_start_replays_same_intent_and_conflicts_on_changed_intent"
+        ],
+        "tests.test_operation_postgres_primitives.OperationPostgresPrimitiveTests.test_schema_install_forward_migrates_legacy_operation_tables": [
+          "control-plane-kit-operations:tests.test_workflows.OperationWorkflowTests.test_action_records_ordinals_replay_and_conflict"
+        ],
+        "tests.test_operation_postgres_primitives.OperationPostgresPrimitiveTests.test_scoped_session_and_action_idempotency_lookup_round_trips": [
+          "control-plane-kit-operations:tests.test_workflows.OperationWorkflowTests.test_start_replays_same_intent_and_conflicts_on_changed_intent"
+        ],
+        "tests.test_operation_postgres_primitives.OperationPostgresPrimitiveTests.test_terminal_transition_preserves_identity_and_rejects_stale_writes": [
+          "control-plane-kit-operations:tests.test_planning_commands.PlanningCommandTests.test_terminal_transition_is_write_once_and_exactly_replayable"
+        ],
+        "tests.test_operator_graph_projection.OperatorGraphProjectionTests.test_projection_exposes_typed_environment_sources_without_values": [
+          "control-plane-kit-operations:tests.test_read_services.InstanceReadServiceTests.test_workspace_and_graph_reads_are_redacted"
+        ],
+        "tests.test_operator_graph_projection.OperatorGraphProjectionTests.test_projection_includes_runtimes_nodes_sockets_and_edges": [
+          "control-plane-kit-operations:tests.test_read_services.InstanceReadServiceTests.test_operator_graph_projects_socket_contracts"
+        ],
+        "tests.test_operator_graph_projection.OperatorGraphProjectionTests.test_projection_is_deterministic": [
+          "control-plane-kit-operations:tests.test_read_services.InstanceReadServiceTests.test_workspace_and_graph_reads_are_redacted"
+        ],
+        "tests.test_operator_graph_projection.OperatorGraphProjectionTests.test_projection_marks_connected_and_dangling_requirement_sockets": [
+          "control-plane-kit-operations:tests.test_read_services.InstanceReadServiceTests.test_operator_graph_projects_socket_contracts"
+        ],
+        "tests.test_operator_graph_projection.OperatorGraphProjectionTests.test_projection_redacts_secret_like_metadata": [
+          "control-plane-kit-operations:tests.test_read_services.InstanceReadServiceTests.test_workspace_and_graph_reads_are_redacted"
+        ],
+        "tests.test_recovery_decisions.RecoveryDecisionTests.test_changed_intent_requires_a_fresh_plan": [
+          "control-plane-kit-core:tests.test_execution_lifecycle_contract.ExecutionLifecycleContractTests.test_recovery_decision_contracts_preserve_scopes_and_preconditions"
+        ],
+        "tests.test_recovery_decisions.RecoveryDecisionTests.test_claim_recovery_variants_round_trip_as_closed_descriptors": [
+          "control-plane-kit-core:tests.test_execution_lifecycle_contract.ExecutionLifecycleContractTests.test_recovery_decision_contracts_preserve_scopes_and_preconditions"
+        ],
+        "tests.test_recovery_decisions.RecoveryDecisionTests.test_decision_record_requires_attribution_and_reason": [
+          "control-plane-kit-core:tests.test_execution_lifecycle_contract.ExecutionLifecycleContractTests.test_recovery_decision_contracts_preserve_scopes_and_preconditions"
+        ],
+        "tests.test_recovery_decisions.RecoveryDecisionTests.test_each_closed_decision_has_an_explicit_authority": [
+          "control-plane-kit-core:tests.test_execution_lifecycle_contract.ExecutionLifecycleContractTests.test_recovery_decision_contracts_preserve_scopes_and_preconditions"
+        ],
+        "tests.test_recovery_decisions.RecoveryDecisionTests.test_expired_ownership_requires_one_closed_claim_recovery": [
+          "control-plane-kit-core:tests.test_execution_lifecycle_contract.ExecutionLifecycleContractTests.test_recovery_decision_contracts_preserve_scopes_and_preconditions"
+        ],
+        "tests.test_recovery_decisions.RecoveryDecisionTests.test_failed_attempt_choices_are_closed_and_evidence_guarded": [
+          "control-plane-kit-core:tests.test_execution_lifecycle_contract.ExecutionLifecycleContractTests.test_recovery_decision_contracts_preserve_scopes_and_preconditions"
+        ],
+        "tests.test_recovery_decisions.RecoveryDecisionTests.test_open_strings_do_not_enter_recovery_scopes_or_context": [
+          "control-plane-kit-core:tests.test_execution_lifecycle_contract.ExecutionLifecycleContractTests.test_recovery_decision_contracts_preserve_scopes_and_preconditions"
+        ],
+        "tests.test_recovery_decisions.RecoveryDecisionTests.test_uncertainty_must_be_resolved_before_other_recovery": [
+          "control-plane-kit-core:tests.test_execution_lifecycle_contract.ExecutionLifecycleContractTests.test_recovery_decision_contracts_preserve_scopes_and_preconditions"
+        ],
+        "tests.test_run_lifecycle.RunLifecycleTests.test_claim_scope_idempotency_conflict_and_competing_workers_fail_closed": [
+          "control-plane-kit-operations:tests.test_run_lifecycle.RunLifecycleTests.test_claim_replay_conflict_scope_and_competing_worker_fail_closed"
+        ],
+        "tests.test_run_lifecycle.RunLifecycleTests.test_late_operation_evidence_failure_rolls_back_claim_run_and_event": [
+          "control-plane-kit-operations:tests.test_run_lifecycle.RunLifecycleTests.test_worker_ownership_and_late_action_failure_roll_back_transition"
+        ],
+        "tests.test_run_lifecycle.RunLifecycleTests.test_start_pause_resume_complete_are_atomic_and_visible_to_reads": [
+          "control-plane-kit-operations:tests.test_run_lifecycle.RunLifecycleTests.test_start_pause_resume_complete_are_atomic_and_visible"
+        ],
+        "tests.test_run_lifecycle.RunLifecycleTests.test_transition_algebra_exhaustively_accepts_only_declared_domains": [
+          "control-plane-kit-core:tests.test_execution_lifecycle_contract.ExecutionLifecycleContractTests.test_run_timing_and_transition_domains_match_frozen_lifecycle_algebra"
+        ],
+        "tests.test_run_lifecycle.RunLifecycleTests.test_worker_ownership_and_transition_rollback_fail_closed": [
+          "control-plane-kit-operations:tests.test_run_lifecycle.RunLifecycleTests.test_worker_ownership_and_late_action_failure_roll_back_transition"
+        ],
+        "tests.test_stores.StoreContractTests.test_activity_history_preserves_action_order": [
+          "control-plane-kit-operations:tests.test_read_services.InstanceReadServiceTests.test_activity_timeline_redacts_action_payloads_and_lists_pending_approvals"
+        ],
+        "tests.test_stores.StoreContractTests.test_activity_history_supports_workspace_timeline_queries": [
+          "control-plane-kit-operations:tests.test_workspace_graph_stores.WorkspaceGraphStoreTests.test_workspace_tracks_lifecycle_current_and_desired_graph_pointers"
+        ],
+        "tests.test_stores.StoreContractTests.test_graph_topology_store_keeps_latest_workspace_version": [
+          "control-plane-kit-operations:tests.test_workspace_graph_stores.WorkspaceGraphStoreTests.test_workspace_tracks_lifecycle_current_and_desired_graph_pointers"
+        ],
+        "tests.test_stores.StoreContractTests.test_instance_registry_lists_by_owner_and_updates_lifecycle": [
+          "control-plane-kit-operations:tests.test_registered_products.RegisteredProductStoreTests.test_service_imports_descriptor_as_workspace_scoped_registered_product"
+        ],
+        "tests.test_stores.StoreContractTests.test_observed_state_is_separate_from_graph_truth": [
+          "control-plane-kit-operations:tests.test_read_services.InstanceReadServiceTests.test_observed_state_is_latest_per_subject_and_does_not_rewrite_graph_truth"
+        ],
+        "tests.test_stores.StoreContractTests.test_observed_state_lists_latest_per_workspace_subject": [
+          "control-plane-kit-operations:tests.test_workspace_graph_stores.WorkspaceGraphStoreTests.test_workspace_tracks_lifecycle_current_and_desired_graph_pointers"
+        ],
+        "tests.test_stores.StoreContractTests.test_observed_state_uses_observation_id_to_break_equal_time_ties": [
+          "control-plane-kit-operations:tests.test_read_services.InstanceReadServiceTests.test_observed_state_is_latest_per_subject_and_does_not_rewrite_graph_truth"
+        ],
+        "tests.test_stores.StoreContractTests.test_postgres_schema_is_the_durable_target_and_excludes_secret_values": [
+          "control-plane-kit-operations:tests.test_postgres_schema.PostgresSchemaFoundationTests.test_closed_values_and_event_shapes_fail_closed"
+        ],
+        "tests.test_stores.StoreContractTests.test_secret_reference_store_never_accepts_secret_values": [
+          "control-plane-kit-operations:tests.test_secret_providers.SecretProviderStoreTests.test_reference_requires_active_same_workspace_provider_prefix_and_intent"
+        ],
+        "tests.test_stores.StoreContractTests.test_workspace_tracks_current_and_desired_graph_pointers": [
+          "control-plane-kit-operations:tests.test_workspace_graph_stores.WorkspaceGraphStoreTests.test_workspace_tracks_lifecycle_current_and_desired_graph_pointers"
+        ],
+        "tests.test_unit_of_work.PostgresUnitOfWorkIntegrationTests.test_commit_publishes_all_participating_store_writes_together": [
+          "control-plane-kit-operations:tests.test_unit_of_work.PostgresUnitOfWorkIntegrationTests.test_commit_publishes_all_shared_connection_writes_together"
+        ],
+        "tests.test_unit_of_work.PostgresUnitOfWorkIntegrationTests.test_late_store_failure_rolls_back_every_earlier_write": [
+          "control-plane-kit-operations:tests.test_unit_of_work.PostgresUnitOfWorkTests.test_explicit_commit_commits_once_and_closes"
+        ],
+        "tests.test_unit_of_work.PostgresUnitOfWorkTests.test_exceptional_exit_rolls_back_and_preserves_exception": [
+          "control-plane-kit-operations:tests.test_unit_of_work.PostgresUnitOfWorkTests.test_uncommitted_and_exceptional_exits_roll_back_and_close"
+        ],
+        "tests.test_unit_of_work.PostgresUnitOfWorkTests.test_uncommitted_exit_rolls_back_and_closes": [
+          "control-plane-kit-operations:tests.test_unit_of_work.PostgresUnitOfWorkTests.test_uncommitted_and_exceptional_exits_roll_back_and_close"
+        ],
+        "tests.test_verification_command_service.VerificationCommandServiceTests.test_adapter_loss_leaves_immutable_intent_without_terminal_lie": [
+          "control-plane-kit-operations:tests.test_execution_coordinator.ExecutionCoordinatorTests.test_adapter_exception_records_uncertainty_and_does_not_blind_replay"
+        ],
+        "tests.test_verification_command_service.VerificationCommandServiceTests.test_api_mcp_and_cli_expose_one_shared_redacted_projection": [
+          "control-plane-kit-operations:tests.test_cpk_server_adapters.CpkServerOperationsAdapterTests.test_http_read_route_uses_operations_read_projection_not_demo_echo",
+          "control-plane-kit-operations:tests.test_cpk_server_adapters.CpkServerOperationsAdapterTests.test_mcp_read_arguments_use_same_read_service_boundary"
+        ],
+        "tests.test_verification_command_service.VerificationCommandServiceTests.test_authorization_and_graph_ownership_fail_before_effect": [
+          "control-plane-kit-operations:tests.test_execution_coordinator.ExecutionCoordinatorTests.test_worker_scope_and_claim_ownership_are_checked_before_adapter"
+        ],
+        "tests.test_verification_command_service.VerificationCommandServiceTests.test_executes_outside_transaction_and_persists_canonical_observation": [
+          "control-plane-kit-operations:tests.test_execution_coordinator.ExecutionCoordinatorTests.test_success_records_intent_and_result_without_transaction_spanning_adapter"
+        ],
+        "tests.test_verification_command_service.VerificationCommandServiceTests.test_graph_change_marks_verification_stale_without_rewriting_it": [
+          "control-plane-kit-operations:tests.test_read_services.InstanceReadServiceTests.test_observed_state_is_latest_per_subject_and_does_not_rewrite_graph_truth"
+        ],
+        "tests.test_verification_command_service.VerificationCommandServiceTests.test_schema_reinstallation_preserves_verification_row_and_constraints": [
+          "control-plane-kit-operations:tests.test_postgres_schema.PostgresSchemaFoundationTests.test_repeated_install_preserves_rows_and_constraint_identities"
+        ],
+        "tests.test_verification_command_service.VerificationCommandServiceTests.test_unsupported_capability_is_durable_and_distinct_from_failure": [
+          "control-plane-kit-operations:tests.test_execution_coordinator.ExecutionCoordinatorTests.test_failed_and_unsupported_outcomes_fail_run_but_remain_distinct"
+        ],
+        "tests.test_workflows.WorkflowServiceTests.test_action_service_preserves_session_action_order": [
+          "control-plane-kit-operations:tests.test_workflows.OperationWorkflowTests.test_action_records_ordinals_replay_and_conflict"
+        ],
+        "tests.test_workflows.WorkflowServiceTests.test_session_service_starts_and_closes_sessions": [
+          "control-plane-kit-operations:tests.test_workflows.OperationWorkflowTests.test_start_commits_session_and_initial_action_atomically"
+        ],
+        "tests.test_workflows.WorkflowServiceTests.test_workflow_services_do_not_mutate_graph_truth": [
+          "control-plane-kit-operations:tests.test_workflows.OperationWorkflowTests.test_action_records_ordinals_replay_and_conflict"
         ]
       }
     }
