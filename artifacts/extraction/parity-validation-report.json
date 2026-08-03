@@ -10,10 +10,10 @@
     "entries": 1107,
     "failed_successors": 0,
     "findings": 0,
-    "incomplete_required": 196,
-    "passing_successors": 846,
+    "incomplete_required": 201,
+    "passing_successors": 866,
     "required": 880,
-    "reviewed_supersessions": 34
+    "reviewed_supersessions": 25
   },
   "findings": [],
   "migration_complete": false,

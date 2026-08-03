@@ -4283,6 +4283,153 @@
     },
     {
       "current_tests": [
+        "control-plane-kit-interpreters:tests.test_docker_sdk_client.DockerSdkClientTests.test_secret_value_is_not_passed_as_helper_command",
+        "control-plane-kit-interpreters:tests.test_docker_sdk_client.DockerSdkClientTests.test_secret_materialization_uses_bounded_helper_and_digest"
+      ],
+      "disposition": "current-strengthened",
+      "future_issue": null,
+      "law": "behavior.cli-materialization-passes-value-only-through-stdin",
+      "negative_case_disposition": "Current evidence preserves the frozen negative cases: assertion:assertNotIn",
+      "obsolete_assumption_disposition": "Frozen aggregate imports and implementation-specific fixtures do not constrain the current package boundary.",
+      "owner": "control-plane-kit-interpreters",
+      "rationale": "The named current tests preserve the observable through a stricter package-owned contract without the frozen implementation coupling.",
+      "reference": "tests.test_docker_secrets.DockerSecretTests.test_cli_materialization_passes_value_only_through_stdin",
+      "reviewed_by_issue": 1324
+    },
+    {
+      "current_tests": [],
+      "disposition": "future-issue",
+      "future_issue": {
+        "evidence": "Issue #1070 comment 5161882835 owns the exact file-secret volume preflight, cleanup, rotation, uncertainty, and ownership-conflict laws from #1324.",
+        "number": 1070,
+        "repository": "OpenJ92/control-plane-kit",
+        "state": "open"
+      },
+      "law": "behavior.known-container-start-failure-removes-owned-secret-volume",
+      "negative_case_disposition": "Current evidence preserves the frozen negative cases: name:fail",
+      "obsolete_assumption_disposition": "The frozen application module and aggregate import path are not current package structure.",
+      "owner": "OpenJ92/control-plane-kit#1070",
+      "rationale": "The behavioral law remains desired, but its application-level owner is deliberately outside this current package slice.",
+      "reference": "tests.test_docker_secrets.DockerSecretTests.test_known_container_start_failure_removes_owned_secret_volume",
+      "reviewed_by_issue": 1324
+    },
+    {
+      "current_tests": [
+        "control-plane-kit-interpreters:tests.test_docker_runtime_interpreter.DockerRuntimeInterpreterTests.test_start_node_missing_secret_fails_before_docker_mutation",
+        "control-plane-kit-interpreters:tests.test_docker_runtime_interpreter.DockerRuntimeInterpreterTests.test_authorized_delivery_rejects_wrong_intent_grant_without_resolution"
+      ],
+      "disposition": "current-strengthened",
+      "future_issue": null,
+      "law": "behavior.missing-or-denied-reference-fails-before-volume-mutation",
+      "negative_case_disposition": "Current evidence preserves the frozen negative cases: assertion:assertFalse, assertion:assertNotIn, name:denied, name:fail, name:missing",
+      "obsolete_assumption_disposition": "Frozen aggregate imports and implementation-specific fixtures do not constrain the current package boundary.",
+      "owner": "control-plane-kit-interpreters",
+      "rationale": "The named current tests preserve the observable through a stricter package-owned contract without the frozen implementation coupling.",
+      "reference": "tests.test_docker_secrets.DockerSecretTests.test_missing_or_denied_reference_fails_before_volume_mutation",
+      "reviewed_by_issue": 1324
+    },
+    {
+      "current_tests": [],
+      "disposition": "future-issue",
+      "future_issue": {
+        "evidence": "Issue #1070 comment 5161882835 owns the exact file-secret volume preflight, cleanup, rotation, uncertainty, and ownership-conflict laws from #1324.",
+        "number": 1070,
+        "repository": "OpenJ92/control-plane-kit",
+        "state": "open"
+      },
+      "law": "behavior.reference-rotation-changes-container-and-volume-ownership",
+      "negative_case_disposition": "Current evidence preserves the frozen negative cases: assertion:assertNotEqual, assertion:assertNotIn",
+      "obsolete_assumption_disposition": "The frozen application module and aggregate import path are not current package structure.",
+      "owner": "OpenJ92/control-plane-kit#1070",
+      "rationale": "The behavioral law remains desired, but its application-level owner is deliberately outside this current package slice.",
+      "reference": "tests.test_docker_secrets.DockerSecretTests.test_reference_rotation_changes_container_and_volume_ownership",
+      "reviewed_by_issue": 1324
+    },
+    {
+      "current_tests": [
+        "control-plane-kit-secrets:tests.test_encrypted_store.EncryptedSecretStoreTests.test_resolution_correlation_pins_first_version_across_rotation_and_restart",
+        "control-plane-kit-operations:tests.test_execution_coordinator.ExecutionCoordinatorTests.test_completed_replay_does_not_repeat_effect"
+      ],
+      "disposition": "current-strengthened",
+      "future_issue": null,
+      "law": "behavior.same-immutable-reference-does-not-rewrite-provider-side-change",
+      "negative_case_disposition": "The frozen law has no separate negative-case assertion; its exact observable remains covered.",
+      "obsolete_assumption_disposition": "Frozen aggregate imports and implementation-specific fixtures do not constrain the current package boundary.",
+      "owner": "control-plane-kit-operations+control-plane-kit-secrets",
+      "rationale": "The named current tests preserve the observable through a stricter package-owned contract without the frozen implementation coupling.",
+      "reference": "tests.test_docker_secrets.DockerSecretTests.test_same_immutable_reference_does_not_rewrite_provider_side_change",
+      "reviewed_by_issue": 1324
+    },
+    {
+      "current_tests": [
+        "control-plane-kit-interpreters:tests.test_docker_runtime_interpreter.DockerRuntimeInterpreterTests.test_start_node_resolves_secret_environment_before_docker_mutation",
+        "control-plane-kit-interpreters:tests.test_docker_runtime_interpreter.DockerRuntimeInterpreterTests.test_start_node_resolves_file_secret_as_read_only_mount",
+        "control-plane-kit-interpreters:tests.test_docker_sdk_client.DockerSdkClientTests.test_secret_materialization_uses_bounded_helper_and_digest",
+        "control-plane-kit-operations:tests.test_execution_coordinator.ExecutionCoordinatorTests.test_completed_replay_does_not_repeat_effect"
+      ],
+      "disposition": "current-strengthened",
+      "future_issue": null,
+      "law": "behavior.start-materializes-before-container-and-replay-does-not-rewrite",
+      "negative_case_disposition": "Current evidence preserves the frozen negative cases: assertion:assertNotIn, name:replay",
+      "obsolete_assumption_disposition": "Frozen aggregate imports and implementation-specific fixtures do not constrain the current package boundary.",
+      "owner": "control-plane-kit-interpreters+control-plane-kit-operations",
+      "rationale": "The named current tests preserve the observable through a stricter package-owned contract without the frozen implementation coupling.",
+      "reference": "tests.test_docker_secrets.DockerSecretTests.test_start_materializes_before_container_and_replay_does_not_rewrite",
+      "reviewed_by_issue": 1324
+    },
+    {
+      "current_tests": [],
+      "disposition": "future-issue",
+      "future_issue": {
+        "evidence": "Issue #1070 comment 5161882835 owns the exact file-secret volume preflight, cleanup, rotation, uncertainty, and ownership-conflict laws from #1324.",
+        "number": 1070,
+        "repository": "OpenJ92/control-plane-kit",
+        "state": "open"
+      },
+      "law": "behavior.teardown-ownership-conflict-preserves-container-and-volume",
+      "negative_case_disposition": "Current evidence preserves the frozen negative cases: assertion:assertNotIn, name:conflict",
+      "obsolete_assumption_disposition": "The frozen application module and aggregate import path are not current package structure.",
+      "owner": "OpenJ92/control-plane-kit#1070",
+      "rationale": "The behavioral law remains desired, but its application-level owner is deliberately outside this current package slice.",
+      "reference": "tests.test_docker_secrets.DockerSecretTests.test_teardown_ownership_conflict_preserves_container_and_volume",
+      "reviewed_by_issue": 1324
+    },
+    {
+      "current_tests": [],
+      "disposition": "future-issue",
+      "future_issue": {
+        "evidence": "Issue #1070 comment 5161882835 owns the exact file-secret volume preflight, cleanup, rotation, uncertainty, and ownership-conflict laws from #1324.",
+        "number": 1070,
+        "repository": "OpenJ92/control-plane-kit",
+        "state": "open"
+      },
+      "law": "behavior.teardown-preflights-secret-volume-before-container-removal",
+      "negative_case_disposition": "The frozen law has no separate negative-case assertion; its exact observable remains covered.",
+      "obsolete_assumption_disposition": "The frozen application module and aggregate import path are not current package structure.",
+      "owner": "OpenJ92/control-plane-kit#1070",
+      "rationale": "The behavioral law remains desired, but its application-level owner is deliberately outside this current package slice.",
+      "reference": "tests.test_docker_secrets.DockerSecretTests.test_teardown_preflights_secret_volume_before_container_removal",
+      "reviewed_by_issue": 1324
+    },
+    {
+      "current_tests": [],
+      "disposition": "future-issue",
+      "future_issue": {
+        "evidence": "Issue #1070 comment 5161882835 owns the exact file-secret volume preflight, cleanup, rotation, uncertainty, and ownership-conflict laws from #1324.",
+        "number": 1070,
+        "repository": "OpenJ92/control-plane-kit",
+        "state": "open"
+      },
+      "law": "behavior.uncertain-materialization-preserves-owned-volume-for-recovery",
+      "negative_case_disposition": "Current evidence preserves the frozen negative cases: assertion:assertNotIn",
+      "obsolete_assumption_disposition": "The frozen application module and aggregate import path are not current package structure.",
+      "owner": "OpenJ92/control-plane-kit#1070",
+      "rationale": "The behavioral law remains desired, but its application-level owner is deliberately outside this current package slice.",
+      "reference": "tests.test_docker_secrets.DockerSecretTests.test_uncertain_materialization_preserves_owned_volume_for_recovery",
+      "reviewed_by_issue": 1324
+    },
+    {
+      "current_tests": [
         "control-plane-kit-operations:tests.test_execution_coordinator.ExecutionCoordinatorTests.test_failed_and_unsupported_outcomes_fail_run_but_remain_distinct"
       ],
       "disposition": "current-strengthened",
@@ -11999,6 +12146,198 @@
       "rationale": "The current package test preserves the frozen behavioral law without its obsolete aggregate imports or fixtures.",
       "reference": "tests.test_scheduling_scenarios.SchedulingScenarioTests.test_every_planning_scenario_has_a_deterministic_initial_schedule",
       "reviewed_by_issue": 1320
+    },
+    {
+      "current_tests": [
+        "control-plane-kit-core:tests.test_environment_secrets.SecretDeliveryTopologyTests.test_delivery_change_is_explicit_diff_without_exposing_values"
+      ],
+      "disposition": "current-strengthened",
+      "future_issue": null,
+      "law": "behavior.delivery-change-is-explicit-diff-and-reconcile",
+      "negative_case_disposition": "Current evidence preserves the frozen negative cases: assertion:assertNotEqual",
+      "obsolete_assumption_disposition": "Frozen aggregate imports and implementation-specific fixtures do not constrain the current package boundary.",
+      "owner": "control-plane-kit-core",
+      "rationale": "The named current tests preserve the observable through a stricter package-owned contract without the frozen implementation coupling.",
+      "reference": "tests.test_secret_delivery_topology.SecretDeliveryTopologyTests.test_delivery_change_is_explicit_diff_and_reconcile",
+      "reviewed_by_issue": 1324
+    },
+    {
+      "current_tests": [
+        "control-plane-kit-core:tests.test_environment_secrets.SecretDeliveryTopologyTests.test_exact_deliveries_remain_pinned_in_desired_graph_language",
+        "control-plane-kit-operations:tests.test_runtime_effect_translation.RuntimeEffectTranslationTests.test_context_translates_only_compiled_socket_bound_secret_deliveries"
+      ],
+      "disposition": "current-strengthened",
+      "future_issue": null,
+      "law": "behavior.exact-deliveries-reach-pinned-start-material",
+      "negative_case_disposition": "Current evidence preserves the frozen negative cases: assertion:assertNotIn",
+      "obsolete_assumption_disposition": "Frozen aggregate imports and implementation-specific fixtures do not constrain the current package boundary.",
+      "owner": "control-plane-kit-core+control-plane-kit-operations",
+      "rationale": "The named current tests preserve the observable through a stricter package-owned contract without the frozen implementation coupling.",
+      "reference": "tests.test_secret_delivery_topology.SecretDeliveryTopologyTests.test_exact_deliveries_reach_pinned_start_material",
+      "reviewed_by_issue": 1324
+    },
+    {
+      "current_tests": [
+        "control-plane-kit-core:tests.test_environment_secrets.SecretDeliveryTopologyTests.test_graph_codec_preserves_closed_deliveries_without_values"
+      ],
+      "disposition": "current-strengthened",
+      "future_issue": null,
+      "law": "behavior.graph-codec-preserves-closed-deliveries-without-values",
+      "negative_case_disposition": "Current evidence preserves the frozen negative cases: assertion:assertNotIn, name:without",
+      "obsolete_assumption_disposition": "Frozen aggregate imports and implementation-specific fixtures do not constrain the current package boundary.",
+      "owner": "control-plane-kit-core",
+      "rationale": "The named current tests preserve the observable through a stricter package-owned contract without the frozen implementation coupling.",
+      "reference": "tests.test_secret_delivery_topology.SecretDeliveryTopologyTests.test_graph_codec_preserves_closed_deliveries_without_values",
+      "reviewed_by_issue": 1324
+    },
+    {
+      "current_tests": [
+        "control-plane-kit-core:tests.test_environment_secrets.EnvironmentBindingTests.test_public_socket_and_secret_environment_names_remain_disjoint",
+        "control-plane-kit-core:tests.test_product_runtime_contract.ProductRuntimeContractTests.test_requirement_socket_rejects_conflicting_secret_targets"
+      ],
+      "disposition": "current-strengthened",
+      "future_issue": null,
+      "law": "behavior.literal-and-secret-environment-names-cannot-overlap",
+      "negative_case_disposition": "Current evidence preserves the frozen negative cases: assertion:assertRaisesRegex",
+      "obsolete_assumption_disposition": "Frozen aggregate imports and implementation-specific fixtures do not constrain the current package boundary.",
+      "owner": "control-plane-kit-core",
+      "rationale": "The named current tests preserve the observable through a stricter package-owned contract without the frozen implementation coupling.",
+      "reference": "tests.test_secret_delivery_topology.SecretDeliveryTopologyTests.test_literal_and_secret_environment_names_cannot_overlap",
+      "reviewed_by_issue": 1324
+    },
+    {
+      "current_tests": [
+        "control-plane-kit-core:tests.test_environment_secrets.SecretContractTests.test_bootstrap_configuration_cannot_exceed_authority",
+        "control-plane-kit-secrets:tests.test_provider_bootstrap.ProviderBootstrapTests.test_production_credentials_reject_unsafe_or_ambiguous_sources"
+      ],
+      "disposition": "current-strengthened",
+      "future_issue": null,
+      "law": "behavior.bootstrap-configuration-cannot-exceed-authority",
+      "negative_case_disposition": "Current evidence preserves the frozen negative cases: assertion:assertNotIn, assertion:assertRaises",
+      "obsolete_assumption_disposition": "Frozen aggregate imports and implementation-specific fixtures do not constrain the current package boundary.",
+      "owner": "control-plane-kit-core+control-plane-kit-secrets",
+      "rationale": "The named current tests preserve the observable through a stricter package-owned contract without the frozen implementation coupling.",
+      "reference": "tests.test_secrets.SecretContractTests.test_bootstrap_configuration_cannot_exceed_authority",
+      "reviewed_by_issue": 1324
+    },
+    {
+      "current_tests": [
+        "control-plane-kit-core:tests.test_environment_secrets.SecretContractTests.test_closed_delivery_variants_round_trip"
+      ],
+      "disposition": "current-strengthened",
+      "future_issue": null,
+      "law": "behavior.closed-delivery-variants-round-trip",
+      "negative_case_disposition": "The frozen law has no separate negative-case assertion; its exact observable remains covered.",
+      "obsolete_assumption_disposition": "Frozen aggregate imports and implementation-specific fixtures do not constrain the current package boundary.",
+      "owner": "control-plane-kit-core",
+      "rationale": "The named current tests preserve the observable through a stricter package-owned contract without the frozen implementation coupling.",
+      "reference": "tests.test_secrets.SecretContractTests.test_closed_delivery_variants_round_trip",
+      "reviewed_by_issue": 1324
+    },
+    {
+      "current_tests": [
+        "control-plane-kit-core:tests.test_environment_secrets.SecretContractTests.test_denied_and_missing_errors_are_closed_and_redacted",
+        "control-plane-kit-interpreters:tests.test_secret_provider_resolver.SecretProviderResolverTests.test_maps_bounded_missing_and_denied_provider_outcomes",
+        "control-plane-kit-secrets:tests.test_provider_api.ProviderApiTests.test_missing_resolve_is_audited_and_bounded"
+      ],
+      "disposition": "current-strengthened",
+      "future_issue": null,
+      "law": "behavior.denied-and-missing-errors-are-closed-and-redacted",
+      "negative_case_disposition": "Current evidence preserves the frozen negative cases: assertion:assertNotIn, assertion:assertRaises, name:denied, name:error, name:missing",
+      "obsolete_assumption_disposition": "Frozen aggregate imports and implementation-specific fixtures do not constrain the current package boundary.",
+      "owner": "control-plane-kit-core+control-plane-kit-interpreters+control-plane-kit-secrets",
+      "rationale": "The named current tests preserve the observable through a stricter package-owned contract without the frozen implementation coupling.",
+      "reference": "tests.test_secrets.SecretContractTests.test_denied_and_missing_errors_are_closed_and_redacted",
+      "reviewed_by_issue": 1324
+    },
+    {
+      "current_tests": [
+        "control-plane-kit-core:tests.test_environment_secrets.SecretContractTests.test_local_resolver_distinguishes_resolved_missing_and_denied",
+        "control-plane-kit-interpreters:tests.test_secret_provider_resolver.SecretProviderResolverTests.test_maps_bounded_missing_and_denied_provider_outcomes",
+        "control-plane-kit-secrets:tests.test_provider_api.ProviderApiTests.test_resolve_requires_authentication_scope_and_intent"
+      ],
+      "disposition": "current-strengthened",
+      "future_issue": null,
+      "law": "behavior.local-resolver-distinguishes-resolved-missing-and-denied",
+      "negative_case_disposition": "Current evidence preserves the frozen negative cases: name:denied, name:missing",
+      "obsolete_assumption_disposition": "Frozen aggregate imports and implementation-specific fixtures do not constrain the current package boundary.",
+      "owner": "control-plane-kit-core+control-plane-kit-interpreters+control-plane-kit-secrets",
+      "rationale": "The named current tests preserve the observable through a stricter package-owned contract without the frozen implementation coupling.",
+      "reference": "tests.test_secrets.SecretContractTests.test_local_resolver_distinguishes_resolved_missing_and_denied",
+      "reviewed_by_issue": 1324
+    },
+    {
+      "current_tests": [
+        "control-plane-kit-core:tests.test_environment_secrets.SecretContractTests.test_malformed_references_fail_at_construction"
+      ],
+      "disposition": "current-strengthened",
+      "future_issue": null,
+      "law": "behavior.malformed-references-fail-at-construction",
+      "negative_case_disposition": "Current evidence preserves the frozen negative cases: assertion:assertRaises, name:fail",
+      "obsolete_assumption_disposition": "Frozen aggregate imports and implementation-specific fixtures do not constrain the current package boundary.",
+      "owner": "control-plane-kit-core",
+      "rationale": "The named current tests preserve the observable through a stricter package-owned contract without the frozen implementation coupling.",
+      "reference": "tests.test_secrets.SecretContractTests.test_malformed_references_fail_at_construction",
+      "reviewed_by_issue": 1324
+    },
+    {
+      "current_tests": [
+        "control-plane-kit-core:tests.test_environment_secrets.SecretContractTests.test_reference_has_provider_and_path_identity",
+        "control-plane-kit-interpreters:tests.test_secret_provider_client.SecretProviderClientTests.test_canonical_secret_id_preserves_complete_reference_without_collision"
+      ],
+      "disposition": "current-strengthened",
+      "future_issue": null,
+      "law": "behavior.reference-has-provider-and-path-identity",
+      "negative_case_disposition": "The frozen law has no separate negative-case assertion; its exact observable remains covered.",
+      "obsolete_assumption_disposition": "Frozen aggregate imports and implementation-specific fixtures do not constrain the current package boundary.",
+      "owner": "control-plane-kit-core+control-plane-kit-interpreters",
+      "rationale": "The named current tests preserve the observable through a stricter package-owned contract without the frozen implementation coupling.",
+      "reference": "tests.test_secrets.SecretContractTests.test_reference_has_provider_and_path_identity",
+      "reviewed_by_issue": 1324
+    },
+    {
+      "current_tests": [
+        "control-plane-kit-core:tests.test_environment_secrets.SecretContractTests.test_secret_file_targets_are_closed_to_protected_namespace"
+      ],
+      "disposition": "current-strengthened",
+      "future_issue": null,
+      "law": "behavior.secret-file-targets-are-closed-to-protected-namespace",
+      "negative_case_disposition": "Current evidence preserves the frozen negative cases: assertion:assertRaises",
+      "obsolete_assumption_disposition": "Frozen aggregate imports and implementation-specific fixtures do not constrain the current package boundary.",
+      "owner": "control-plane-kit-core",
+      "rationale": "The named current tests preserve the observable through a stricter package-owned contract without the frozen implementation coupling.",
+      "reference": "tests.test_secrets.SecretContractTests.test_secret_file_targets_are_closed_to_protected_namespace",
+      "reviewed_by_issue": 1324
+    },
+    {
+      "current_tests": [
+        "control-plane-kit-core:tests.test_environment_secrets.SecretContractTests.test_unknown_or_extra_delivery_fields_fail_closed"
+      ],
+      "disposition": "current-strengthened",
+      "future_issue": null,
+      "law": "behavior.unknown-or-extra-delivery-fields-fail-closed",
+      "negative_case_disposition": "Current evidence preserves the frozen negative cases: assertion:assertRaises, name:fail, name:unknown",
+      "obsolete_assumption_disposition": "Frozen aggregate imports and implementation-specific fixtures do not constrain the current package boundary.",
+      "owner": "control-plane-kit-core",
+      "rationale": "The named current tests preserve the observable through a stricter package-owned contract without the frozen implementation coupling.",
+      "reference": "tests.test_secrets.SecretContractTests.test_unknown_or_extra_delivery_fields_fail_closed",
+      "reviewed_by_issue": 1324
+    },
+    {
+      "current_tests": [
+        "control-plane-kit-core:tests.test_environment_secrets.SecretContractTests.test_values_are_released_only_by_explicit_runtime_interpretation",
+        "control-plane-kit-interpreters:tests.test_secret_provider_resolver.SecretProviderResolverTests.test_resolves_exact_grant_and_preserves_provider_correlation",
+        "control-plane-kit-secrets:tests.test_encrypted_store.EncryptedSecretStoreTests.test_plaintext_and_master_key_are_absent_from_database_repr_and_errors"
+      ],
+      "disposition": "current-strengthened",
+      "future_issue": null,
+      "law": "behavior.values-are-released-only-by-explicit-runtime-interpretation",
+      "negative_case_disposition": "Current evidence preserves the frozen negative cases: assertion:assertNotIn",
+      "obsolete_assumption_disposition": "Frozen aggregate imports and implementation-specific fixtures do not constrain the current package boundary.",
+      "owner": "control-plane-kit-core+control-plane-kit-interpreters+control-plane-kit-secrets",
+      "rationale": "The named current tests preserve the observable through a stricter package-owned contract without the frozen implementation coupling.",
+      "reference": "tests.test_secrets.SecretContractTests.test_values_are_released_only_by_explicit_runtime_interpretation",
+      "reviewed_by_issue": 1324
     },
     {
       "current_tests": [],
