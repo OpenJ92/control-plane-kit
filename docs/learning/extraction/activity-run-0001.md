@@ -7402,3 +7402,28 @@ published-digest evidence. The final inventory still contained only the five
 protected Pottery Factory containers. This command is the executable
 replacement #1318 requires before mutable legacy test infrastructure can be
 deleted.
+
+## #1311 Adversarial cross-phase rotation laws
+
+The real-Postgres composite rotation scenario now proves that failures retain
+the already healthy phase sequence while exposing only a bounded boundary,
+outcome code, rotation status, and version. The diagnostic evidence excludes
+secret references, provider versions, public PEM, compact grants, private
+material, and generated verifier environment.
+
+The cross-phase matrix proves focused authority separation, missing and
+rejected approval denial before effects, stale rotation/graph/projection/
+revision/checkpoint rejection, definite provider retry, uncertain provider and
+runtime blocking, overlap and retirement failure containment, the durable
+drain barrier, exact late replay after completion, and concurrent activation
+convergence. Provider and runtime adapters count mutations and assert that no
+Postgres UnitOfWork is active during external IO.
+
+The matrix deliberately reuses rather than duplicates the focused phase
+evidence: transition semantic-reuse conflicts live in the rotation store
+suite; late projection failure plus the UnitOfWork suite prove rollback;
+generation, overlap, activation, retirement, and completion suites inject
+physical process loss around their commits and prove exact recovery without
+duplicate effects. Generic uncertain-effect reconciliation remains #1092,
+generic executable DeploymentProgram composition remains #1096, and real
+Docker/gateway source-live proof remains #1272.
