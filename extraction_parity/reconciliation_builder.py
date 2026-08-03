@@ -27,6 +27,13 @@ DECISION_FIELDS = {
     "future_issue_reviews",
     "non_current_reviews",
 }
+CURRENT_TEST_ROOTS = {
+    "control-plane-kit-core": ("control-plane-kit-core/tests",),
+    "control-plane-kit-operations": ("control-plane-kit-operations/tests",),
+    "control-plane-kit-interpreters": ("tests",),
+    "control-plane-kit-servers": ("tests",),
+    "control-plane-kit-secrets": ("tests",),
+}
 
 
 def _load(path: Path) -> dict[str, object]:
@@ -145,26 +152,33 @@ def _negative_case_disposition(assignment: dict[str, object]) -> str:
 def _current_test_index(
     root: Path,
     distributions: tuple[str, ...],
+    *,
+    current_roots: dict[str, Path] | None = None,
 ) -> tuple[set[str], dict[str, list[str]]]:
-    test_roots = {
-        "control-plane-kit-core": ("control-plane-kit-core/tests",),
-        "control-plane-kit-operations": ("control-plane-kit-operations/tests",),
-    }
+    selected_roots = {} if current_roots is None else current_roots
     methods: list[dict[str, object]] = []
     for distribution in distributions:
         try:
-            selected_test_roots = test_roots[distribution]
+            selected_test_roots = CURRENT_TEST_ROOTS[distribution]
         except KeyError as error:
             raise ReconciliationError(
                 f"working-tree scanner has no configured test root for {distribution}"
             ) from error
+        distribution_root = selected_roots.get(distribution, root)
+        if distribution not in {
+            "control-plane-kit-core",
+            "control-plane-kit-operations",
+        } and distribution not in selected_roots:
+            raise ReconciliationError(
+                f"working-tree scanner requires an explicit current root for {distribution}"
+            )
         lane = scan_test_root(
             SourceLane(
                 distribution=distribution,
                 repository="working-tree",
                 commit="working-tree",
                 gate="focused-unittest",
-                root=root,
+                root=distribution_root,
                 test_roots=selected_test_roots,
             )
         )
@@ -219,6 +233,7 @@ def apply_issue_slice(
     manifest: dict[str, object],
     reconciliation: dict[str, object],
     decisions: dict[str, object],
+    current_roots: dict[str, Path] | None = None,
 ) -> tuple[dict[str, object], dict[str, object], frozenset[str]]:
     _decode_decisions(decisions)
     decision = next(
@@ -228,7 +243,11 @@ def apply_issue_slice(
     if decision is None:
         raise ReconciliationError(f"missing decision slice for issue #{issue}")
     distributions = tuple(str(value) for value in decision["current_distributions"])
-    current_ids, current_by_method = _current_test_index(root, distributions)
+    current_ids, current_by_method = _current_test_index(
+        root,
+        distributions,
+        current_roots=current_roots,
+    )
     manifest_entries = {
         str(value["reference"]): value
         for value in manifest["entries"]
@@ -340,13 +359,13 @@ def apply_issue_slice(
                 "current_tests": list(successors),
                 "future_issue": None,
                 "rationale": (
-                    "The current topology compiler preserves and strengthens the old recipe-level observable."
+                    "The named current tests preserve the observable through a stricter package-owned contract without the frozen implementation coupling."
                     if disposition == "current-strengthened"
                     else "The current package test preserves the frozen behavioral law without its obsolete aggregate imports or fixtures."
                 ),
                 "negative_case_disposition": _negative_case_disposition(assignment),
                 "obsolete_assumption_disposition": (
-                    "Recipe-specific constructors are replaced by the provider-neutral topology compiler."
+                    "Frozen aggregate imports and implementation-specific fixtures do not constrain the current package boundary."
                     if disposition == "current-strengthened"
                     else "Frozen aggregate imports, fixtures, and constructor layout do not constrain the current package test."
                 ),
@@ -410,9 +429,27 @@ def main() -> int:
     parser.add_argument("--root", type=Path, default=Path.cwd())
     parser.add_argument("--issue", type=int, required=True)
     parser.add_argument("--evidence-digest")
+    parser.add_argument(
+        "--current-root",
+        action="append",
+        default=[],
+        metavar="DISTRIBUTION=PATH",
+    )
     parser.add_argument("--check", action="store_true")
     args = parser.parse_args()
     root = args.root.resolve()
+    current_roots: dict[str, Path] = {}
+    for value in args.current_root:
+        distribution, separator, path = value.partition("=")
+        if not separator or not distribution or not path:
+            raise ReconciliationError(
+                "current root must use DISTRIBUTION=PATH"
+            )
+        if distribution in current_roots:
+            raise ReconciliationError(
+                f"duplicate current root for {distribution}"
+            )
+        current_roots[distribution] = Path(path).resolve()
     inventory_path = root / "artifacts/extraction/semantic-test-migration-inventory.json"
     manifest_path = root / "artifacts/extraction/parity-manifest.json"
     reconciliation_path = root / "artifacts/extraction/semantic-test-reconciliation.json"
@@ -437,6 +474,7 @@ def main() -> int:
         manifest=manifest,
         reconciliation=reconciliation,
         decisions=decisions,
+        current_roots=current_roots,
     )
     if args.evidence_digest is not None:
         evidence = _load(evidence_path)

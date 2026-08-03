@@ -8,7 +8,14 @@ from control_plane_kit_core.environment import (
     SocketDerivedEnvironmentBinding,
 )
 from control_plane_kit_core.operations.execution import EffectResultKind
-from control_plane_kit_core.planning import ActivityId, NodeTarget, StartNode
+from control_plane_kit_core.planning import (
+    ActivityId,
+    ChangeTarget,
+    NodeTarget,
+    ReviewChange,
+    ReviewReason,
+    StartNode,
+)
 from control_plane_kit_core.probe_intents import (
     EndpointContext,
     LiteralEndpointMaterial,
@@ -53,6 +60,7 @@ from control_plane_kit_core.secrets import (
     SecretUseIntent,
 )
 from control_plane_kit_core.types import Protocol, RuntimeKind
+from control_plane_kit_core.topology import GraphSubject
 
 
 class RuntimeEffectContractTests(unittest.TestCase):
@@ -426,6 +434,58 @@ class RuntimeEffectContractTests(unittest.TestCase):
                 activity_id=ActivityId("activity-a"),
                 operation=StartNode(NodeTarget("api")),
                 secret_resolution_grants=(grant,),
+            )
+
+    def test_request_rejects_duplicate_secret_grants(self) -> None:
+        grant = SecretResolutionGrant(
+            authorization_id="suse_" + "a" * 64,
+            workspace_id="workspace-a",
+            reference_registration_id="sref_" + "b" * 64,
+            provider_registration_id="sprov_" + "c" * 64,
+            endpoint_reference=SecretProviderEndpointReference("provider-a"),
+            credential_reference=SecretReference(
+                "secret://bootstrap/provider-a-token"
+            ),
+            reference=SecretReference("secret://provider-a/app/token"),
+            intent=SecretUseIntent.APPLICATION_CONTROL_TOKEN,
+            actor_subject="worker-a",
+            correlation_id="secret-use-" + "d" * 64,
+            intent_fingerprint="e" * 64,
+            effect_id="effect-a",
+        )
+
+        with self.assertRaisesRegex(RuntimeEffectContractError, "unique"):
+            RuntimeEffectRequest(
+                effect_id="effect-a",
+                kind=RuntimeEffectKind.REALIZE_ACTIVITY,
+                runtime_kind=RuntimeKind.DOCKER,
+                source=_source(),
+                activity_id=ActivityId("activity-a"),
+                operation=StartNode(NodeTarget("api")),
+                secret_resolution_grants=(grant, grant),
+            )
+
+    def test_request_rejects_open_kind_and_review_work(self) -> None:
+        common = {
+            "effect_id": "effect-a",
+            "runtime_kind": RuntimeKind.DOCKER,
+            "source": _source(),
+            "activity_id": ActivityId("activity-a"),
+        }
+        with self.assertRaisesRegex(RuntimeEffectContractError, "kind must be closed"):
+            RuntimeEffectRequest(
+                **common,
+                kind="realize-activity",  # type: ignore[arg-type]
+                operation=StartNode(NodeTarget("api")),
+            )
+        with self.assertRaisesRegex(RuntimeEffectContractError, "review work"):
+            RuntimeEffectRequest(
+                **common,
+                kind=RuntimeEffectKind.REALIZE_ACTIVITY,
+                operation=ReviewChange(
+                    ChangeTarget(GraphSubject()),
+                    ReviewReason.UNSUPPORTED_CHANGE,
+                ),
             )
 
     def test_product_material_rejects_identity_mismatch(self) -> None:

@@ -2,10 +2,14 @@ from __future__ import annotations
 
 import json
 from pathlib import Path
+from tempfile import TemporaryDirectory
 import unittest
 
 from extraction_parity.migration_inventory import SourceLane, scan_test_root
-from extraction_parity.reconciliation_builder import _decode_decisions
+from extraction_parity.reconciliation_builder import (
+    _current_test_index,
+    _decode_decisions,
+)
 from extraction_parity.reconciliation import (
     ReconciliationError,
     decode_reconciliation,
@@ -101,6 +105,43 @@ def _document() -> dict[str, object]:
 
 
 class SemanticReconciliationTests(unittest.TestCase):
+    def test_current_test_index_requires_and_scans_explicit_external_root(self) -> None:
+        with TemporaryDirectory() as temporary:
+            external_root = Path(temporary)
+            tests = external_root / "tests"
+            tests.mkdir()
+            (tests / "test_external.py").write_text(
+                "import unittest\n\n"
+                "class ExternalTests(unittest.TestCase):\n"
+                "    def test_law(self):\n"
+                "        pass\n",
+                encoding="utf-8",
+            )
+
+            with self.assertRaisesRegex(
+                ReconciliationError,
+                "explicit current root",
+            ):
+                _current_test_index(
+                    external_root,
+                    ("control-plane-kit-interpreters",),
+                )
+
+            identities, methods = _current_test_index(
+                Path("/coordination-root-is-not-used"),
+                ("control-plane-kit-interpreters",),
+                current_roots={
+                    "control-plane-kit-interpreters": external_root,
+                },
+            )
+
+        identity = (
+            "control-plane-kit-interpreters:"
+            "tests.test_external.ExternalTests.test_law"
+        )
+        self.assertEqual(identities, {identity})
+        self.assertEqual(methods, {"test_law": [identity]})
+
     def test_decision_slice_accepts_multiple_unique_current_distributions(self) -> None:
         document = {
             "schema": "cpk.semantic-test-reconciliation-decisions",
@@ -298,6 +339,53 @@ class SemanticReconciliationTests(unittest.TestCase):
                 "reviewed_non_current": 1,
             },
         )
+
+    def test_issue_1322_artifact_records_external_interpreter_evidence(self) -> None:
+        root = Path(__file__).resolve().parents[2]
+        artifact_root = root / "artifacts/extraction"
+        reconciliation = json.loads(
+            (artifact_root / "semantic-test-reconciliation.json").read_text(
+                encoding="utf-8"
+            )
+        )
+        evidence = json.loads(
+            (artifact_root / "harden-tests-parity-1322-evidence.json").read_text(
+                encoding="utf-8"
+            )
+        )
+        reviews = [
+            value
+            for value in reconciliation["reviews"]
+            if value["reviewed_by_issue"] == 1322
+        ]
+
+        self.assertEqual(len(reviews), 117)
+        self.assertEqual(
+            {value["disposition"] for value in reviews},
+            {
+                "current-strengthened",
+                "future-issue",
+                "reviewed-supersession",
+            },
+        )
+        self.assertEqual(
+            sum(value["disposition"] == "current-strengthened" for value in reviews),
+            86,
+        )
+        self.assertEqual(
+            sum(value["disposition"] == "future-issue" for value in reviews),
+            27,
+        )
+        self.assertEqual(
+            sum(value["disposition"] == "reviewed-supersession" for value in reviews),
+            4,
+        )
+        self.assertEqual(
+            evidence["interpreter_commit"],
+            "e9f19d558026d92af79df81fb9184d29da00110b",
+        )
+        self.assertEqual(evidence["interpreters"]["tests"], 147)
+        self.assertEqual(evidence["core"]["tests"], 484)
 
 
 if __name__ == "__main__":
