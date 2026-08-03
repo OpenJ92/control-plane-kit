@@ -1,0 +1,30 @@
+{
+  "schema": "cpk.current-backend-lock.v1",
+  "server_products": {
+    "name": "control-plane-kit-servers",
+    "identity": "OpenJ92/control-plane-kit-servers",
+    "url": "https://github.com/OpenJ92/control-plane-kit-servers.git",
+    "commit": "43e9f359ca828c83fe4994ed1b62e1be54277ddd",
+    "coordinates_path": "coordinates/server-products.json"
+  },
+  "upstreams": [
+    {
+      "name": "control-plane-kit",
+      "identity": "OpenJ92/control-plane-kit",
+      "url": "https://github.com/OpenJ92/control-plane-kit.git",
+      "coordinate_key": "control_plane_kit_commit"
+    },
+    {
+      "name": "control-plane-kit-interpreters",
+      "identity": "OpenJ92/control-plane-kit-interpreters",
+      "url": "https://github.com/OpenJ92/control-plane-kit-interpreters.git",
+      "coordinate_key": "control_plane_kit_interpreters_commit"
+    },
+    {
+      "name": "control-plane-kit-secrets",
+      "identity": "OpenJ92/control-plane-kit-secrets",
+      "url": "https://github.com/OpenJ92/control-plane-kit-secrets.git",
+      "coordinate_key": "control_plane_kit_secrets_commit"
+    }
+  ]
+}
