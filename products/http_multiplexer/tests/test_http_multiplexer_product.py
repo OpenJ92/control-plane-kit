@@ -6,6 +6,7 @@ import threading
 from pathlib import Path
 import sys
 import unittest
+from unittest.mock import patch
 from urllib import request
 
 from control_plane_kit_core.products import (
@@ -200,6 +201,31 @@ class HttpMultiplexerProductTests(unittest.TestCase):
         finally:
             primary.close()
 
+    def test_observer_failure_evidence_excludes_raw_exception_text(self) -> None:
+        from control_plane_kit_servers_http_multiplexer.server import (
+            MultiplexerSettings,
+            deliver_observers,
+        )
+
+        with patch(
+            "control_plane_kit_servers_http_multiplexer.server._open",
+            side_effect=RuntimeError("token=secret target=http://observer.internal"),
+        ):
+            errors = deliver_observers(
+                MultiplexerSettings(
+                    primary_url="http://primary.internal",
+                    observer_urls=("http://observer.internal",),
+                ),
+                "POST",
+                "/wax",
+                {},
+                b"payload",
+            )
+
+        self.assertEqual(errors, ("observer-1: upstream-failure",))
+        self.assertNotIn("secret", errors[0])
+        self.assertNotIn("observer.internal", errors[0])
+
     def test_entrypoint_source_preserves_bounded_fail_open_observers(self) -> None:
         source = (
             PRODUCT_SRC / "control_plane_kit_servers_http_multiplexer" / "server.py"
@@ -212,6 +238,8 @@ class HttpMultiplexerProductTests(unittest.TestCase):
         self.assertIn("NoRedirects", source)
         self.assertIn("observers are explicitly fail-open", source)
         self.assertNotIn("allow_redirects=True", source)
+        self.assertNotIn('f"primary request failed:', source)
+        self.assertNotIn('errors.append(f"observer-{index}: {exc}")', source)
 
     def test_dockerfile_uses_product_entrypoint_and_non_root_user(self) -> None:
         dockerfile = (PRODUCT / "Dockerfile").read_text(encoding="utf-8")

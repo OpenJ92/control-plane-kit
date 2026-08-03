@@ -62,8 +62,8 @@ def forward(settings: RouterSettings, method: str, path: str, headers: Mapping[s
     except error.HTTPError as exc:
         payload = exc.read(MAX_RESPONSE_BYTES)
         return int(exc.code), payload, exc.headers.get("content-type", "text/plain")
-    except Exception as exc:  # pragma: no cover - exercised by Docker smoke.
-        return 502, f"upstream request failed: {exc}\n".encode("utf-8"), "text/plain"
+    except Exception:  # pragma: no cover - exercised by Docker smoke.
+        return 502, b"upstream request failed\n", "text/plain"
 
 
 def handler(settings: RouterSettings) -> type[http.server.BaseHTTPRequestHandler]:
