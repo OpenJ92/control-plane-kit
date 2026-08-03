@@ -1126,8 +1126,12 @@ may contain secrets:
   readback omits the reference and provider version metadata.
 
 interpreted by:
-  A later operations-owned rotation program. This state layer performs no
-  provider, Docker, gateway, HTTP, filesystem, or other external IO.
+  A family of narrow operations-owned programs: generation, overlap
+  preparation/execution, activation and drain, retirement
+  preparation/execution, and exact-version completion. Each program composes
+  the canonical stores and services for one phase. Operations imports no
+  provider client, interpreter, cryptography, Docker SDK, HTTP client, or
+  filesystem effect implementation.
 
 laws:
   Request and advancement require `delegation-key:rotate`; accepting or
@@ -1166,6 +1170,22 @@ laws:
   `generation-prepared`, performs provider IO outside transactions, and then
   folds bounded evidence. Exact success and uncertainty replay are idempotent;
   changed action lineage, provider evidence, or failure identity conflicts.
+
+  Program outcomes are closed progress vocabulary, not hidden loops. Overlap
+  and retirement execution return `dispatched`, `progressed`, `accepted`,
+  `accepted-replay`, `already-advanced`, or `blocked`. Activation returns
+  `waiting` or `ready-for-retirement` from the durable deadline and trusted
+  clock. Completion returns `completed`, `completed-replay`, `retryable`, or
+  `blocked`. A definite failure known to precede mutation may return the exact
+  committed action for retry. Missing or uncertain effect evidence never
+  licenses redispatch and remains a recovery/fencing handoff to #1092.
+
+  Public readback, transition diagnostics, operation actions, activity events,
+  and observations omit `SecretReference`, provider versions, public or private
+  PEM, compact grants, and generated verifier environment. Public verifier
+  material remains only in the immutable realized projection and the internal
+  signing-key registration where it is required to realize and verify the
+  graph.
 
 ### GatewayProbeAttempt
 

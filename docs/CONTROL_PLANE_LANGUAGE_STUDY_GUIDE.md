@@ -339,6 +339,40 @@ write "not caller input". `WAITING` performs no write and contains no sleep.
 `READY_FOR_RETIREMENT` is an application-program outcome, not another durable
 aggregate state; the next phase will prepare the exact B-only projection.
 
+Finish the drawing through B-only acceptance and exact A-version revocation:
+
+```text
+[READY_FOR_RETIREMENT]
+  -> [publish desired G[B]] -> [plan] -> [admit] -> [claim/start]
+    -> [retirement checkpoint] || runtime effect
+      -> [current G[B]] -> [RETIREMENT_READY]
+        -> [retire public key A] -> [OLD_KEY_RETIRED]
+          -> [exact A-version revocation checkpoint]
+            || secrets-provider effect
+              -> [matching receipt] -> [COMPLETED]
+```
+
+The second `||` is as important as the first. Operations commits only an exact
+provider registration, secret reference, version, correlation, and action
+digest before provider IO. A definite pre-mutation failure returns that same
+action as retryable. An uncertain result points to `BLOCKED`, never to a guessed
+retry or success. Completion revokes only A's exact private version; B remains
+the active signer. The public rotation view and diagnostic history contain
+neither provider-version evidence nor generated verifier material.
+
+Write the bounded caller outcomes beside the diagram:
+
+```text
+deployment: dispatched | progressed | accepted | accepted-replay
+            | already-advanced | blocked
+drain:      waiting | ready-for-retirement
+completion: completed | completed-replay | retryable | blocked
+```
+
+These are observations of one invocation. They are not a harness-owned policy
+loop. A future public caller asks the operations service to progress and reads
+durable state; cpk-server does not invent phase transitions.
+
 Keep the three authorities visually separate: requesting rotation, reviewing
 the rotation subject, and executing the accepted deployment are not equivalent
 permissions. The reviewer sees bounded rotation intent, never a secret
