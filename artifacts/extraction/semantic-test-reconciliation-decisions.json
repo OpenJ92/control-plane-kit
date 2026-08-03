@@ -6586,6 +6586,1081 @@
       "non_current_reviews": {},
       "strengthened_references": [],
       "successor_overrides": {}
+    },
+    {
+      "current_distributions": [
+        "control-plane-kit-core",
+        "control-plane-kit-operations",
+        "control-plane-kit-interpreters",
+        "control-plane-kit-servers",
+        "control-plane-kit-secrets"
+      ],
+      "current_review_overrides": {
+        "tests.test_architecture_dependencies.ArchitectureDependencyTests.test_effect_materialization_and_interpreters_cannot_import_stores": {
+          "negative_case_disposition": "The frozen law has no separate negative-case assertion; its architecture observable remains covered.",
+          "obsolete_assumption_disposition": "Frozen aggregate imports, analyzer internals, and root-package layout do not constrain independent live distributions.",
+          "rationale": "The named package-owned tests preserve this architecture law through stricter extracted boundaries without the mutable monolithic analyzer or root facade."
+        },
+        "tests.test_architecture_dependencies.ArchitectureDependencyTests.test_environment_metadata_escape_hatch_is_rejected": {
+          "negative_case_disposition": "Current evidence preserves the frozen negative cases: name:reject",
+          "obsolete_assumption_disposition": "Frozen aggregate imports, analyzer internals, and root-package layout do not constrain independent live distributions.",
+          "rationale": "The named package-owned tests preserve this architecture law through stricter extracted boundaries without the mutable monolithic analyzer or root facade."
+        },
+        "tests.test_architecture_dependencies.ArchitectureDependencyTests.test_jinja_environment_is_owned_by_declared_template_interpreters": {
+          "negative_case_disposition": "The frozen law has no separate negative-case assertion; its architecture observable remains covered.",
+          "obsolete_assumption_disposition": "Frozen aggregate imports, analyzer internals, and root-package layout do not constrain independent live distributions.",
+          "rationale": "The named package-owned tests preserve this architecture law through stricter extracted boundaries without the mutable monolithic analyzer or root facade."
+        },
+        "tests.test_architecture_dependencies.ArchitectureDependencyTests.test_raw_static_environment_mapping_is_rejected_at_docker_authoring": {
+          "negative_case_disposition": "Current evidence preserves the frozen negative cases: name:reject",
+          "obsolete_assumption_disposition": "Frozen aggregate imports, analyzer internals, and root-package layout do not constrain independent live distributions.",
+          "rationale": "The named package-owned tests preserve this architecture law through stricter extracted boundaries without the mutable monolithic analyzer or root facade."
+        },
+        "tests.test_architecture_dependencies.ArchitectureDependencyTests.test_relative_same_package_import_is_allowed": {
+          "negative_case_disposition": "The frozen law has no separate negative-case assertion; its architecture observable remains covered.",
+          "obsolete_assumption_disposition": "Frozen aggregate imports, analyzer internals, and root-package layout do not constrain independent live distributions.",
+          "rationale": "The named package-owned tests preserve this architecture law through stricter extracted boundaries without the mutable monolithic analyzer or root facade."
+        },
+        "tests.test_architecture_deploy.DeploymentApplicationArchitectureTests.test_policy_resolves_aliases_and_rejects_boundary_bypasses": {
+          "negative_case_disposition": "Current evidence preserves the frozen negative cases: name:reject",
+          "obsolete_assumption_disposition": "Frozen aggregate imports, analyzer internals, and root-package layout do not constrain independent live distributions.",
+          "rationale": "The named package-owned tests preserve this architecture law through stricter extracted boundaries without the mutable monolithic analyzer or root facade."
+        },
+        "tests.test_architecture_ownership.ArchitectureOwnershipTests.test_contract_boundary_may_read_process_environment": {
+          "negative_case_disposition": "The frozen law has no separate negative-case assertion; its architecture observable remains covered.",
+          "obsolete_assumption_disposition": "Frozen aggregate imports, analyzer internals, and root-package layout do not constrain independent live distributions.",
+          "rationale": "The named package-owned tests preserve this architecture law through stricter extracted boundaries without the mutable monolithic analyzer or root facade."
+        },
+        "tests.test_architecture_ownership.ArchitectureOwnershipTests.test_environment_aliases_are_rejected_outside_declared_boundaries": {
+          "negative_case_disposition": "Current evidence preserves the frozen negative cases: name:reject",
+          "obsolete_assumption_disposition": "Frozen aggregate imports, analyzer internals, and root-package layout do not constrain independent live distributions.",
+          "rationale": "The named package-owned tests preserve this architecture law through stricter extracted boundaries without the mutable monolithic analyzer or root facade."
+        },
+        "tests.test_architecture_ownership.ArchitectureOwnershipTests.test_observation_projection_cannot_mutate_graph_truth": {
+          "negative_case_disposition": "The frozen law has no separate negative-case assertion; its architecture observable remains covered.",
+          "obsolete_assumption_disposition": "Frozen aggregate imports, analyzer internals, and root-package layout do not constrain independent live distributions.",
+          "rationale": "The named package-owned tests preserve this architecture law through stricter extracted boundaries without the mutable monolithic analyzer or root facade."
+        },
+        "tests.test_architecture_ownership.ArchitectureOwnershipTests.test_packaged_servers_do_not_bypass_contract_mutation_boundary": {
+          "negative_case_disposition": "The frozen law has no separate negative-case assertion; its architecture observable remains covered.",
+          "obsolete_assumption_disposition": "Frozen aggregate imports, analyzer internals, and root-package layout do not constrain independent live distributions.",
+          "rationale": "The named package-owned tests preserve this architecture law through stricter extracted boundaries without the mutable monolithic analyzer or root facade."
+        },
+        "tests.test_architecture_ownership.ArchitectureOwnershipTests.test_raw_current_graph_mutation_is_reserved_to_guarded_workflow": {
+          "negative_case_disposition": "The frozen law has no separate negative-case assertion; its architecture observable remains covered.",
+          "obsolete_assumption_disposition": "Frozen aggregate imports, analyzer internals, and root-package layout do not constrain independent live distributions.",
+          "rationale": "The named package-owned tests preserve this architecture law through stricter extracted boundaries without the mutable monolithic analyzer or root facade."
+        },
+        "tests.test_architecture_ownership.ArchitectureOwnershipTests.test_repository_obeys_commit_environment_and_graph_mutation_ownership": {
+          "negative_case_disposition": "The frozen law has no separate negative-case assertion; its architecture observable remains covered.",
+          "obsolete_assumption_disposition": "Frozen aggregate imports, analyzer internals, and root-package layout do not constrain independent live distributions.",
+          "rationale": "The named package-owned tests preserve this architecture law through stricter extracted boundaries without the mutable monolithic analyzer or root facade."
+        },
+        "tests.test_architecture_ownership.ArchitectureOwnershipTests.test_store_commit_is_rejected_but_unit_of_work_commit_is_allowed": {
+          "negative_case_disposition": "Current evidence preserves the frozen negative cases: name:reject",
+          "obsolete_assumption_disposition": "Frozen aggregate imports, analyzer internals, and root-package layout do not constrain independent live distributions.",
+          "rationale": "The named package-owned tests preserve this architecture law through stricter extracted boundaries without the mutable monolithic analyzer or root facade."
+        },
+        "tests.test_architecture_ownership.ArchitectureOwnershipTests.test_workflow_may_request_commit_but_pure_package_may_not": {
+          "negative_case_disposition": "The frozen law has no separate negative-case assertion; its architecture observable remains covered.",
+          "obsolete_assumption_disposition": "Frozen aggregate imports, analyzer internals, and root-package layout do not constrain independent live distributions.",
+          "rationale": "The named package-owned tests preserve this architecture law through stricter extracted boundaries without the mutable monolithic analyzer or root facade."
+        },
+        "tests.test_architecture_protocol.ProtocolArchitectureTests.test_repository_does_not_erase_protocol_products_in_projections": {
+          "negative_case_disposition": "The frozen law has no separate negative-case assertion; its architecture observable remains covered.",
+          "obsolete_assumption_disposition": "Frozen aggregate imports, analyzer internals, and root-package layout do not constrain independent live distributions.",
+          "rationale": "The named package-owned tests preserve this architecture law through stricter extracted boundaries without the mutable monolithic analyzer or root facade."
+        },
+        "tests.test_architecture_protocol.ProtocolArchitectureTests.test_scalar_protocol_projection_is_rejected_but_display_is_owned": {
+          "negative_case_disposition": "Current evidence preserves the frozen negative cases: name:reject",
+          "obsolete_assumption_disposition": "Frozen aggregate imports, analyzer internals, and root-package layout do not constrain independent live distributions.",
+          "rationale": "The named package-owned tests preserve this architecture law through stricter extracted boundaries without the mutable monolithic analyzer or root facade."
+        },
+        "tests.test_architecture_read_routes.ArchitectureReadRouteTests.test_mutation_and_generic_route_decorators_fail_closed": {
+          "negative_case_disposition": "Current evidence preserves the frozen negative cases: name:fail",
+          "obsolete_assumption_disposition": "Frozen aggregate imports, analyzer internals, and root-package layout do not constrain independent live distributions.",
+          "rationale": "The named package-owned tests preserve this architecture law through stricter extracted boundaries without the mutable monolithic analyzer or root facade."
+        },
+        "tests.test_architecture_read_routes.ArchitectureReadRouteTests.test_read_modules_declare_only_read_methods": {
+          "negative_case_disposition": "The frozen law has no separate negative-case assertion; its architecture observable remains covered.",
+          "obsolete_assumption_disposition": "Frozen aggregate imports, analyzer internals, and root-package layout do not constrain independent live distributions.",
+          "rationale": "The named package-owned tests preserve this architecture law through stricter extracted boundaries without the mutable monolithic analyzer or root facade."
+        },
+        "tests.test_architecture_read_routes.ArchitectureReadRouteTests.test_static_declarations_match_realized_fastapi_workspace_routes": {
+          "negative_case_disposition": "The frozen law has no separate negative-case assertion; its architecture observable remains covered.",
+          "obsolete_assumption_disposition": "Frozen aggregate imports, analyzer internals, and root-package layout do not constrain independent live distributions.",
+          "rationale": "The named package-owned tests preserve this architecture law through stricter extracted boundaries without the mutable monolithic analyzer or root facade."
+        },
+        "tests.test_backend_boundaries.BackendBoundaryTests.test_destructive_classification_is_data_before_execution": {
+          "negative_case_disposition": "Current evidence preserves the frozen negative cases: assertion:assertFalse",
+          "obsolete_assumption_disposition": "Frozen aggregate imports, analyzer internals, and root-package layout do not constrain independent live distributions.",
+          "rationale": "The named package-owned tests preserve this architecture law through stricter extracted boundaries without the mutable monolithic analyzer or root facade."
+        },
+        "tests.test_backend_boundaries.BackendBoundaryTests.test_policy_decisions_do_not_create_workflow_records": {
+          "negative_case_disposition": "The frozen law has no separate negative-case assertion; its architecture observable remains covered.",
+          "obsolete_assumption_disposition": "Frozen aggregate imports, analyzer internals, and root-package layout do not constrain independent live distributions.",
+          "rationale": "The named package-owned tests preserve this architecture law through stricter extracted boundaries without the mutable monolithic analyzer or root facade."
+        },
+        "tests.test_backend_boundaries.BackendBoundaryTests.test_workflow_records_intent_without_writing_graph_truth": {
+          "negative_case_disposition": "Current evidence preserves the frozen negative cases: name:without",
+          "obsolete_assumption_disposition": "Frozen aggregate imports, analyzer internals, and root-package layout do not constrain independent live distributions.",
+          "rationale": "The named package-owned tests preserve this architecture law through stricter extracted boundaries without the mutable monolithic analyzer or root facade."
+        },
+        "tests.test_backend_boundaries.BackendBoundaryTests.test_workspace_and_graph_truth_are_owned_by_stores": {
+          "negative_case_disposition": "The frozen law has no separate negative-case assertion; its architecture observable remains covered.",
+          "obsolete_assumption_disposition": "Frozen aggregate imports, analyzer internals, and root-package layout do not constrain independent live distributions.",
+          "rationale": "The named package-owned tests preserve this architecture law through stricter extracted boundaries without the mutable monolithic analyzer or root facade."
+        },
+        "tests.test_instance_read_fastapi.InstanceReadFastAPITests.test_activity_and_observed_state_routes_are_read_only": {
+          "negative_case_disposition": "The frozen law has no separate negative-case assertion; its architecture observable remains covered.",
+          "obsolete_assumption_disposition": "Frozen aggregate imports, analyzer internals, and root-package layout do not constrain independent live distributions.",
+          "rationale": "The named package-owned tests preserve this architecture law through stricter extracted boundaries without the mutable monolithic analyzer or root facade."
+        },
+        "tests.test_instance_read_fastapi.InstanceReadFastAPITests.test_configured_token_protects_instance_reads": {
+          "negative_case_disposition": "The frozen law has no separate negative-case assertion; its architecture observable remains covered.",
+          "obsolete_assumption_disposition": "Frozen aggregate imports, analyzer internals, and root-package layout do not constrain independent live distributions.",
+          "rationale": "The named package-owned tests preserve this architecture law through stricter extracted boundaries without the mutable monolithic analyzer or root facade."
+        },
+        "tests.test_instance_read_fastapi.InstanceReadFastAPITests.test_focused_routes_delegate_with_explicit_bounds": {
+          "negative_case_disposition": "The frozen law has no separate negative-case assertion; its architecture observable remains covered.",
+          "obsolete_assumption_disposition": "Frozen aggregate imports, analyzer internals, and root-package layout do not constrain independent live distributions.",
+          "rationale": "The named package-owned tests preserve this architecture law through stricter extracted boundaries without the mutable monolithic analyzer or root facade."
+        },
+        "tests.test_instance_read_fastapi.InstanceReadFastAPITests.test_focused_routes_share_auth_and_workspace_safe_errors": {
+          "negative_case_disposition": "Current evidence preserves the frozen negative cases: name:error",
+          "obsolete_assumption_disposition": "Frozen aggregate imports, analyzer internals, and root-package layout do not constrain independent live distributions.",
+          "rationale": "The named package-owned tests preserve this architecture law through stricter extracted boundaries without the mutable monolithic analyzer or root facade."
+        },
+        "tests.test_instance_read_fastapi.InstanceReadFastAPITests.test_instance_read_app_exposes_no_workflow_mutation_routes": {
+          "negative_case_disposition": "The frozen law has no separate negative-case assertion; its architecture observable remains covered.",
+          "obsolete_assumption_disposition": "Frozen aggregate imports, analyzer internals, and root-package layout do not constrain independent live distributions.",
+          "rationale": "The named package-owned tests preserve this architecture law through stricter extracted boundaries without the mutable monolithic analyzer or root facade."
+        },
+        "tests.test_instance_read_fastapi.InstanceReadFastAPITests.test_projection_routes_delegate_to_read_service": {
+          "negative_case_disposition": "The frozen law has no separate negative-case assertion; its architecture observable remains covered.",
+          "obsolete_assumption_disposition": "Frozen aggregate imports, analyzer internals, and root-package layout do not constrain independent live distributions.",
+          "rationale": "The named package-owned tests preserve this architecture law through stricter extracted boundaries without the mutable monolithic analyzer or root facade."
+        },
+        "tests.test_instance_read_fastapi.InstanceReadFastAPITests.test_read_model_errors_map_to_http_statuses": {
+          "negative_case_disposition": "Current evidence preserves the frozen negative cases: name:error",
+          "obsolete_assumption_disposition": "Frozen aggregate imports, analyzer internals, and root-package layout do not constrain independent live distributions.",
+          "rationale": "The named package-owned tests preserve this architecture law through stricter extracted boundaries without the mutable monolithic analyzer or root facade."
+        },
+        "tests.test_instance_read_fastapi.InstanceReadFastAPITests.test_stale_recovery_graph_truth_maps_to_conflict": {
+          "negative_case_disposition": "Current evidence preserves the frozen negative cases: name:conflict, name:stale",
+          "obsolete_assumption_disposition": "Frozen aggregate imports, analyzer internals, and root-package layout do not constrain independent live distributions.",
+          "rationale": "The named package-owned tests preserve this architecture law through stricter extracted boundaries without the mutable monolithic analyzer or root facade."
+        },
+        "tests.test_instance_read_fastapi.InstanceReadFastAPITests.test_unconfigured_activity_store_returns_service_unavailable": {
+          "negative_case_disposition": "The frozen law has no separate negative-case assertion; its architecture observable remains covered.",
+          "obsolete_assumption_disposition": "Frozen aggregate imports, analyzer internals, and root-package layout do not constrain independent live distributions.",
+          "rationale": "The named package-owned tests preserve this architecture law through stricter extracted boundaries without the mutable monolithic analyzer or root facade."
+        },
+        "tests.test_instance_read_fastapi.InstanceReadFastAPITests.test_workspace_and_graph_routes_return_redacted_descriptors": {
+          "negative_case_disposition": "Current evidence preserves the frozen negative cases: assertion:assertNotIn",
+          "obsolete_assumption_disposition": "Frozen aggregate imports, analyzer internals, and root-package layout do not constrain independent live distributions.",
+          "rationale": "The named package-owned tests preserve this architecture law through stricter extracted boundaries without the mutable monolithic analyzer or root facade."
+        },
+        "tests.test_optional_dependencies.OptionalDependencyTests.test_available_dependencies_are_accepted": {
+          "negative_case_disposition": "The frozen law has no separate negative-case assertion; its architecture observable remains covered.",
+          "obsolete_assumption_disposition": "Frozen aggregate imports, analyzer internals, and root-package layout do not constrain independent live distributions.",
+          "rationale": "The named package-owned tests preserve this architecture law through stricter extracted boundaries without the mutable monolithic analyzer or root facade."
+        },
+        "tests.test_optional_dependencies.OptionalDependencyTests.test_missing_dependency_names_surface_and_install_extra": {
+          "negative_case_disposition": "Current evidence preserves the frozen negative cases: assertion:assertRaisesRegex, name:missing",
+          "obsolete_assumption_disposition": "Frozen aggregate imports, analyzer internals, and root-package layout do not constrain independent live distributions.",
+          "rationale": "The named package-owned tests preserve this architecture law through stricter extracted boundaries without the mutable monolithic analyzer or root facade."
+        },
+        "tests.test_package_inventory.PackageModuleInventoryTests.test_core_inventory_is_exactly_the_effect_free_pipeline_floor": {
+          "negative_case_disposition": "Current evidence preserves the frozen negative cases: assertion:assertNotIn",
+          "obsolete_assumption_disposition": "Frozen aggregate imports, analyzer internals, and root-package layout do not constrain independent live distributions.",
+          "rationale": "The named package-owned tests preserve this architecture law through stricter extracted boundaries without the mutable monolithic analyzer or root facade."
+        },
+        "tests.test_package_inventory.PackageModuleInventoryTests.test_current_core_tree_has_only_declared_pure_dependencies": {
+          "negative_case_disposition": "The frozen law has no separate negative-case assertion; its architecture observable remains covered.",
+          "obsolete_assumption_disposition": "Frozen aggregate imports, analyzer internals, and root-package layout do not constrain independent live distributions.",
+          "rationale": "The named package-owned tests preserve this architecture law through stricter extracted boundaries without the mutable monolithic analyzer or root facade."
+        },
+        "tests.test_package_inventory.PackageModuleInventoryTests.test_every_current_server_module_has_uniform_product_exterior": {
+          "negative_case_disposition": "The frozen law has no separate negative-case assertion; its architecture observable remains covered.",
+          "obsolete_assumption_disposition": "Frozen aggregate imports, analyzer internals, and root-package layout do not constrain independent live distributions.",
+          "rationale": "The named package-owned tests preserve this architecture law through stricter extracted boundaries without the mutable monolithic analyzer or root facade."
+        },
+        "tests.test_package_server_catalog.PackageServerCatalogTests.test_catalog_is_the_canonical_product_declaration_collection": {
+          "negative_case_disposition": "Current evidence preserves the frozen negative cases: assertion:assertRaises",
+          "obsolete_assumption_disposition": "Frozen aggregate imports, analyzer internals, and root-package layout do not constrain independent live distributions.",
+          "rationale": "The named package-owned tests preserve this architecture law through stricter extracted boundaries without the mutable monolithic analyzer or root facade."
+        },
+        "tests.test_package_server_catalog.PackageServerCatalogTests.test_catalogue_contains_each_closed_product_exactly_once": {
+          "negative_case_disposition": "The frozen law has no separate negative-case assertion; its architecture observable remains covered.",
+          "obsolete_assumption_disposition": "Frozen aggregate imports, analyzer internals, and root-package layout do not constrain independent live distributions.",
+          "rationale": "The named package-owned tests preserve this architecture law through stricter extracted boundaries without the mutable monolithic analyzer or root facade."
+        },
+        "tests.test_package_server_catalog.PackageServerCatalogTests.test_contract_rejects_capability_claim_without_evidence": {
+          "negative_case_disposition": "Current evidence preserves the frozen negative cases: assertion:assertRaisesRegex, name:reject, name:without",
+          "obsolete_assumption_disposition": "Frozen aggregate imports, analyzer internals, and root-package layout do not constrain independent live distributions.",
+          "rationale": "The named package-owned tests preserve this architecture law through stricter extracted boundaries without the mutable monolithic analyzer or root facade."
+        },
+        "tests.test_package_server_catalog.PackageServerCatalogTests.test_executable_evidence_shape_fails_closed": {
+          "negative_case_disposition": "Current evidence preserves the frozen negative cases: assertion:assertRaisesRegex, name:fail",
+          "obsolete_assumption_disposition": "Frozen aggregate imports, analyzer internals, and root-package layout do not constrain independent live distributions.",
+          "rationale": "The named package-owned tests preserve this architecture law through stricter extracted boundaries without the mutable monolithic analyzer or root facade."
+        },
+        "tests.test_package_server_catalog.PackageServerCatalogTests.test_free_form_metadata_cannot_change_typed_product_identity": {
+          "negative_case_disposition": "The frozen law has no separate negative-case assertion; its architecture observable remains covered.",
+          "obsolete_assumption_disposition": "Frozen aggregate imports, analyzer internals, and root-package layout do not constrain independent live distributions.",
+          "rationale": "The named package-owned tests preserve this architecture law through stricter extracted boundaries without the mutable monolithic analyzer or root facade."
+        },
+        "tests.test_package_server_catalog.PackageServerCatalogTests.test_managed_router_capabilities_are_control_route_backed": {
+          "negative_case_disposition": "The frozen law has no separate negative-case assertion; its architecture observable remains covered.",
+          "obsolete_assumption_disposition": "Frozen aggregate imports, analyzer internals, and root-package layout do not constrain independent live distributions.",
+          "rationale": "The named package-owned tests preserve this architecture law through stricter extracted boundaries without the mutable monolithic analyzer or root facade."
+        },
+        "tests.test_package_server_catalog.PackageServerCatalogTests.test_matrix_exposes_socket_binding_without_metadata_inference": {
+          "negative_case_disposition": "Current evidence preserves the frozen negative cases: name:without",
+          "obsolete_assumption_disposition": "Frozen aggregate imports, analyzer internals, and root-package layout do not constrain independent live distributions.",
+          "rationale": "The named package-owned tests preserve this architecture law through stricter extracted boundaries without the mutable monolithic analyzer or root facade."
+        },
+        "tests.test_package_server_catalog.PackageServerCatalogTests.test_package_product_identity_round_trips_through_default_codec": {
+          "negative_case_disposition": "The frozen law has no separate negative-case assertion; its architecture observable remains covered.",
+          "obsolete_assumption_disposition": "Frozen aggregate imports, analyzer internals, and root-package layout do not constrain independent live distributions.",
+          "rationale": "The named package-owned tests preserve this architecture law through stricter extracted boundaries without the mutable monolithic analyzer or root facade."
+        },
+        "tests.test_package_server_catalog.PackageServerCatalogTests.test_teaching_servers_advertise_only_executable_evidence": {
+          "negative_case_disposition": "The frozen law has no separate negative-case assertion; its architecture observable remains covered.",
+          "obsolete_assumption_disposition": "Frozen aggregate imports, analyzer internals, and root-package layout do not constrain independent live distributions.",
+          "rationale": "The named package-owned tests preserve this architecture law through stricter extracted boundaries without the mutable monolithic analyzer or root facade."
+        },
+        "tests.test_package_server_catalog.PackageServerCatalogTests.test_unknown_persisted_product_fails_closed": {
+          "negative_case_disposition": "Current evidence preserves the frozen negative cases: assertion:assertRaisesRegex, name:fail, name:unknown",
+          "obsolete_assumption_disposition": "Frozen aggregate imports, analyzer internals, and root-package layout do not constrain independent live distributions.",
+          "rationale": "The named package-owned tests preserve this architecture law through stricter extracted boundaries without the mutable monolithic analyzer or root facade."
+        },
+        "tests.test_package_structure.PackageStructureTests.test_canonical_types_report_their_new_module_homes": {
+          "negative_case_disposition": "Current evidence preserves the frozen negative cases: assertion:assertFalse, assertion:assertNotIn",
+          "obsolete_assumption_disposition": "Frozen aggregate imports, analyzer internals, and root-package layout do not constrain independent live distributions.",
+          "rationale": "The named package-owned tests preserve this architecture law through stricter extracted boundaries without the mutable monolithic analyzer or root facade."
+        },
+        "tests.test_package_structure.PackageStructureTests.test_product_and_entrypoint_foundations_have_one_way_ownership": {
+          "negative_case_disposition": "Current evidence preserves the frozen negative cases: assertion:assertFalse",
+          "obsolete_assumption_disposition": "Frozen aggregate imports, analyzer internals, and root-package layout do not constrain independent live distributions.",
+          "rationale": "The named package-owned tests preserve this architecture law through stricter extracted boundaries without the mutable monolithic analyzer or root facade."
+        },
+        "tests.test_package_structure.PackageStructureTests.test_pure_packages_do_not_import_workflow_or_store_layers": {
+          "negative_case_disposition": "The frozen law has no separate negative-case assertion; its architecture observable remains covered.",
+          "obsolete_assumption_disposition": "Frozen aggregate imports, analyzer internals, and root-package layout do not constrain independent live distributions.",
+          "rationale": "The named package-owned tests preserve this architecture law through stricter extracted boundaries without the mutable monolithic analyzer or root facade."
+        },
+        "tests.test_read_interface_demo_server.ReadInterfaceDemoServerTests.test_demo_server_requires_configured_token": {
+          "negative_case_disposition": "The frozen law has no separate negative-case assertion; its architecture observable remains covered.",
+          "obsolete_assumption_disposition": "Frozen aggregate imports, analyzer internals, and root-package layout do not constrain independent live distributions.",
+          "rationale": "The named package-owned tests preserve this architecture law through stricter extracted boundaries without the mutable monolithic analyzer or root facade."
+        },
+        "tests.test_read_interface_demo_server.ReadInterfaceDemoServerTests.test_demo_server_seeds_and_serves_read_routes": {
+          "negative_case_disposition": "The frozen law has no separate negative-case assertion; its architecture observable remains covered.",
+          "obsolete_assumption_disposition": "Frozen aggregate imports, analyzer internals, and root-package layout do not constrain independent live distributions.",
+          "rationale": "The named package-owned tests preserve this architecture law through stricter extracted boundaries without the mutable monolithic analyzer or root facade."
+        },
+        "tests.test_root_api.RootApiTests.test_interpreter_entrance_does_not_eagerly_import_optional_dependencies": {
+          "negative_case_disposition": "The frozen law has no separate negative-case assertion; its architecture observable remains covered.",
+          "obsolete_assumption_disposition": "Frozen aggregate imports, analyzer internals, and root-package layout do not constrain independent live distributions.",
+          "rationale": "The named package-owned tests preserve this architecture law through stricter extracted boundaries without the mutable monolithic analyzer or root facade."
+        },
+        "tests.test_root_api.RootApiTests.test_pure_package_roots_do_not_import_optional_dependencies": {
+          "negative_case_disposition": "The frozen law has no separate negative-case assertion; its architecture observable remains covered.",
+          "obsolete_assumption_disposition": "Frozen aggregate imports, analyzer internals, and root-package layout do not constrain independent live distributions.",
+          "rationale": "The named package-owned tests preserve this architecture law through stricter extracted boundaries without the mutable monolithic analyzer or root facade."
+        },
+        "tests.test_root_api.RootApiTests.test_root_all_names_are_bound": {
+          "negative_case_disposition": "The frozen law has no separate negative-case assertion; its architecture observable remains covered.",
+          "obsolete_assumption_disposition": "Frozen aggregate imports, analyzer internals, and root-package layout do not constrain independent live distributions.",
+          "rationale": "The named package-owned tests preserve this architecture law through stricter extracted boundaries without the mutable monolithic analyzer or root facade."
+        },
+        "tests.test_root_api.RootApiTests.test_root_api_does_not_import_optional_dependencies_directly": {
+          "negative_case_disposition": "The frozen law has no separate negative-case assertion; its architecture observable remains covered.",
+          "obsolete_assumption_disposition": "Frozen aggregate imports, analyzer internals, and root-package layout do not constrain independent live distributions.",
+          "rationale": "The named package-owned tests preserve this architecture law through stricter extracted boundaries without the mutable monolithic analyzer or root facade."
+        },
+        "tests.test_root_api.RootApiTests.test_root_api_imports_only_pure_package_surfaces": {
+          "negative_case_disposition": "The frozen law has no separate negative-case assertion; its architecture observable remains covered.",
+          "obsolete_assumption_disposition": "Frozen aggregate imports, analyzer internals, and root-package layout do not constrain independent live distributions.",
+          "rationale": "The named package-owned tests preserve this architecture law through stricter extracted boundaries without the mutable monolithic analyzer or root facade."
+        }
+      },
+      "default_disposition": "current-strengthened",
+      "evidence_id": "harden-tests-parity-1346.architecture-package",
+      "future_issue_reviews": {
+        "tests.test_architecture_dependencies.ArchitectureDependencyTests.test_process_and_http_clients_are_adapter_owned": {
+          "evidence": "#1317 owns the exact cross-repository dependency graph, transport ownership, reverse-edge rejection, and cycle checks in the current backend gate.",
+          "number": 1317,
+          "repository": "OpenJ92/control-plane-kit"
+        },
+        "tests.test_architecture_dependencies.ArchitectureDependencyTests.test_product_interpreter_edge_is_exactly_coredns_to_configuration_rendering": {
+          "evidence": "#670 owns CoreDNS configuration rendering, package placement, dependency edges, and negative cases before transfer.",
+          "number": 670,
+          "repository": "OpenJ92/control-plane-kit"
+        },
+        "tests.test_architecture_dependencies.ArchitectureDependencyTests.test_repository_obeys_declared_dependency_and_transport_ownership": {
+          "evidence": "#1317 owns the exact cross-repository dependency graph, transport ownership, reverse-edge rejection, and cycle checks in the current backend gate.",
+          "number": 1317,
+          "repository": "OpenJ92/control-plane-kit"
+        },
+        "tests.test_architecture_dependencies.ArchitectureDependencyTests.test_reverse_dependency_is_rejected_for_import_and_from_import": {
+          "evidence": "#1317 owns the exact cross-repository dependency graph, transport ownership, reverse-edge rejection, and cycle checks in the current backend gate.",
+          "number": 1317,
+          "repository": "OpenJ92/control-plane-kit"
+        },
+        "tests.test_architecture_deploy.DeploymentApplicationArchitectureTests.test_deployment_application_obeys_composition_boundary": {
+          "evidence": "#1096 owns the executable operations DeploymentProgram and the prohibition on caller-owned manual stage choreography.",
+          "number": 1096,
+          "repository": "OpenJ92/control-plane-kit"
+        },
+        "tests.test_architecture_scenarios.ScenarioArchitectureTests.test_atomic_contract_suites_remain_independent_of_scenario_runner": {
+          "evidence": "#1317 owns authoritative current-backend scenario composition, typed test capabilities, persistence boundaries, and bypass rejection without restoring the old scenario analyzer.",
+          "number": 1317,
+          "repository": "OpenJ92/control-plane-kit"
+        },
+        "tests.test_architecture_scenarios.ScenarioArchitectureTests.test_fake_effect_is_a_typed_capability_provider_not_an_application_mock": {
+          "evidence": "#1317 owns authoritative current-backend scenario composition, typed test capabilities, persistence boundaries, and bypass rejection without restoring the old scenario analyzer.",
+          "number": 1317,
+          "repository": "OpenJ92/control-plane-kit"
+        },
+        "tests.test_architecture_scenarios.ScenarioArchitectureTests.test_policy_rejects_store_scheduler_mock_and_private_coordinator_bypass": {
+          "evidence": "#1317 owns authoritative current-backend scenario composition, typed test capabilities, persistence boundaries, and bypass rejection without restoring the old scenario analyzer.",
+          "number": 1317,
+          "repository": "OpenJ92/control-plane-kit"
+        },
+        "tests.test_architecture_scenarios.ScenarioArchitectureTests.test_runner_uses_deploy_program_not_manual_command_chain": {
+          "evidence": "#1096 explicitly owns replacing caller and hosted-script command chains with the executable operations DeploymentProgram.",
+          "number": 1096,
+          "repository": "OpenJ92/control-plane-kit"
+        },
+        "tests.test_architecture_scenarios.ScenarioArchitectureTests.test_scenario_modules_obey_application_and_persistence_boundaries": {
+          "evidence": "#1317 owns authoritative current-backend scenario composition, typed test capabilities, persistence boundaries, and bypass rejection without restoring the old scenario analyzer.",
+          "number": 1317,
+          "repository": "OpenJ92/control-plane-kit"
+        },
+        "tests.test_architecture_test_integrity.ArchitectureTestIntegrityTests.test_allowed_skip_requires_a_reviewable_reason": {
+          "evidence": "#1316 explicitly owns skip approval, hidden collection, placeholder/swallowed-exception rejection, mock reporting, and proof-changing optional-mode integrity in every package gate.",
+          "number": 1316,
+          "repository": "OpenJ92/control-plane-kit"
+        },
+        "tests.test_architecture_test_integrity.ArchitectureTestIntegrityTests.test_duplicate_and_literal_false_approved_skips_fail_closed": {
+          "evidence": "#1316 explicitly owns skip approval, hidden collection, placeholder/swallowed-exception rejection, mock reporting, and proof-changing optional-mode integrity in every package gate.",
+          "number": 1316,
+          "repository": "OpenJ92/control-plane-kit"
+        },
+        "tests.test_architecture_test_integrity.ArchitectureTestIntegrityTests.test_mocks_are_reported_without_becoming_automatic_failures": {
+          "evidence": "#1316 explicitly owns skip approval, hidden collection, placeholder/swallowed-exception rejection, mock reporting, and proof-changing optional-mode integrity in every package gate.",
+          "number": 1316,
+          "repository": "OpenJ92/control-plane-kit"
+        },
+        "tests.test_architecture_test_integrity.ArchitectureTestIntegrityTests.test_placeholders_empty_tests_and_swallowed_exceptions_fail": {
+          "evidence": "#1316 explicitly owns skip approval, hidden collection, placeholder/swallowed-exception rejection, mock reporting, and proof-changing optional-mode integrity in every package gate.",
+          "number": 1316,
+          "repository": "OpenJ92/control-plane-kit"
+        },
+        "tests.test_architecture_test_integrity.ArchitectureTestIntegrityTests.test_repository_has_only_explicit_optional_dependency_skips": {
+          "evidence": "#1316 explicitly owns skip approval, hidden collection, placeholder/swallowed-exception rejection, mock reporting, and proof-changing optional-mode integrity in every package gate.",
+          "number": 1316,
+          "repository": "OpenJ92/control-plane-kit"
+        },
+        "tests.test_architecture_test_integrity.ArchitectureTestIntegrityTests.test_unconditional_and_unapproved_skips_fail_with_locations": {
+          "evidence": "#1316 explicitly owns skip approval, hidden collection, placeholder/swallowed-exception rejection, mock reporting, and proof-changing optional-mode integrity in every package gate.",
+          "number": 1316,
+          "repository": "OpenJ92/control-plane-kit"
+        },
+        "tests.test_package_inventory.PackageModuleInventoryTests.test_coredns_relocation_invariants_are_recorded": {
+          "evidence": "#670 owns the deferred CoreDNS product/interpreter relocation and exact package/product evidence.",
+          "number": 670,
+          "repository": "OpenJ92/control-plane-kit"
+        },
+        "tests.test_package_inventory.PackageModuleInventoryTests.test_domain_inventory_is_exactly_the_admitted_closed_languages": {
+          "evidence": "#1317 owns exhaustive current-repository inventory, one-owner assignment, exact source coordinates, and completed/deferred movement reporting.",
+          "number": 1317,
+          "repository": "OpenJ92/control-plane-kit"
+        },
+        "tests.test_package_inventory.PackageModuleInventoryTests.test_inventory_distinguishes_completed_and_deferred_movement": {
+          "evidence": "#1317 owns exhaustive current-repository inventory, one-owner assignment, exact source coordinates, and completed/deferred movement reporting.",
+          "number": 1317,
+          "repository": "OpenJ92/control-plane-kit"
+        },
+        "tests.test_package_inventory.PackageModuleInventoryTests.test_inventory_is_exhaustive_and_assigns_one_owner": {
+          "evidence": "#1317 owns exhaustive current-repository inventory, one-owner assignment, exact source coordinates, and completed/deferred movement reporting.",
+          "number": 1317,
+          "repository": "OpenJ92/control-plane-kit"
+        },
+        "tests.test_package_structure.PackageStructureTests.test_deployment_program_has_one_intentional_package_entrance": {
+          "evidence": "#1096 owns the one intentional operations DeploymentProgram entrance and rejects caller-owned choreography.",
+          "number": 1096,
+          "repository": "OpenJ92/control-plane-kit"
+        },
+        "tests.test_package_topology.CurrentPackageTopologyTests.test_current_package_graph_is_acyclic": {
+          "evidence": "#1317 owns the exact acyclic current cross-repository graph, direct/transitive forbidden-edge checks, package coordinates, and reverse-edge rejection.",
+          "number": 1317,
+          "repository": "OpenJ92/control-plane-kit"
+        },
+        "tests.test_package_topology.CurrentPackageTopologyTests.test_current_source_has_one_way_recovery_policy_planning_edges": {
+          "evidence": "#1317 owns the exact acyclic current cross-repository graph, direct/transitive forbidden-edge checks, package coordinates, and reverse-edge rejection.",
+          "number": 1317,
+          "repository": "OpenJ92/control-plane-kit"
+        },
+        "tests.test_package_topology.PackageTopologyPolicyTests.test_declared_edges_cannot_hide_direct_or_multi_node_cycles": {
+          "evidence": "#1317 owns the exact acyclic current cross-repository graph, direct/transitive forbidden-edge checks, package coordinates, and reverse-edge rejection.",
+          "number": 1317,
+          "repository": "OpenJ92/control-plane-kit"
+        },
+        "tests.test_package_topology.PackageTopologyPolicyTests.test_domain_language_rejects_operations_products_interpreters_and_entrypoints": {
+          "evidence": "#1317 owns the exact acyclic current cross-repository graph, direct/transitive forbidden-edge checks, package coordinates, and reverse-edge rejection.",
+          "number": 1317,
+          "repository": "OpenJ92/control-plane-kit"
+        },
+        "tests.test_package_topology.PackageTopologyPolicyTests.test_legal_acyclic_sibling_dependencies_are_representable": {
+          "evidence": "#1317 owns the exact acyclic current cross-repository graph, direct/transitive forbidden-edge checks, package coordinates, and reverse-edge rejection.",
+          "number": 1317,
+          "repository": "OpenJ92/control-plane-kit"
+        },
+        "tests.test_package_topology.PackageTopologyPolicyTests.test_product_may_project_domain_but_not_registry_or_process": {
+          "evidence": "#1317 owns the exact acyclic current cross-repository graph, direct/transitive forbidden-edge checks, package coordinates, and reverse-edge rejection.",
+          "number": 1317,
+          "repository": "OpenJ92/control-plane-kit"
+        },
+        "tests.test_package_topology.PackageTopologyPolicyTests.test_product_to_domain_projection_does_not_authorize_reverse_edge": {
+          "evidence": "#1317 owns the exact acyclic current cross-repository graph, direct/transitive forbidden-edge checks, package coordinates, and reverse-edge rejection.",
+          "number": 1317,
+          "repository": "OpenJ92/control-plane-kit"
+        },
+        "tests.test_package_topology.PackageTopologyPolicyTests.test_transitive_product_to_process_path_is_rejected": {
+          "evidence": "#1317 owns the exact acyclic current cross-repository graph, direct/transitive forbidden-edge checks, package coordinates, and reverse-edge rejection.",
+          "number": 1317,
+          "repository": "OpenJ92/control-plane-kit"
+        }
+      },
+      "issue": 1346,
+      "mutable_only_reviews": {},
+      "non_current_reviews": {
+        "tests.test_architecture_analysis.ArchitectureAnalysisTests.test_bare_and_named_exception_handlers_have_total_ordering": {
+          "disposition": "reviewed-supersession",
+          "negative_case_disposition": "Malformed source, unsupported exports, and policy violations remain fail-closed obligations of package-local and aggregate validation rather than this retired analyzer API.",
+          "obsolete_assumption_disposition": "No live package imports the monolithic architecture analyzer or depends on its private AST fact model.",
+          "owner": "package-local tests and the #1316/#1317 validation gates",
+          "rationale": "The mutable monolith's shared AST fact engine was test infrastructure, not application behavior. Current packages enforce their boundaries directly and #1316/#1317 own aggregate integrity checks."
+        },
+        "tests.test_architecture_analysis.ArchitectureAnalysisTests.test_boolean_arguments_assertions_and_empty_test_bodies_are_explicit": {
+          "disposition": "reviewed-supersession",
+          "negative_case_disposition": "Malformed source, unsupported exports, and policy violations remain fail-closed obligations of package-local and aggregate validation rather than this retired analyzer API.",
+          "obsolete_assumption_disposition": "No live package imports the monolithic architecture analyzer or depends on its private AST fact model.",
+          "owner": "package-local tests and the #1316/#1317 validation gates",
+          "rationale": "The mutable monolith's shared AST fact engine was test infrastructure, not application behavior. Current packages enforce their boundaries directly and #1316/#1317 own aggregate integrity checks."
+        },
+        "tests.test_architecture_analysis.ArchitectureAnalysisTests.test_call_keyword_shapes_are_recorded_without_values": {
+          "disposition": "reviewed-supersession",
+          "negative_case_disposition": "Malformed source, unsupported exports, and policy violations remain fail-closed obligations of package-local and aggregate validation rather than this retired analyzer API.",
+          "obsolete_assumption_disposition": "No live package imports the monolithic architecture analyzer or depends on its private AST fact model.",
+          "owner": "package-local tests and the #1316/#1317 validation gates",
+          "rationale": "The mutable monolith's shared AST fact engine was test infrastructure, not application behavior. Current packages enforce their boundaries directly and #1316/#1317 own aggregate integrity checks."
+        },
+        "tests.test_architecture_analysis.ArchitectureAnalysisTests.test_comments_strings_and_docstrings_do_not_become_code_facts": {
+          "disposition": "reviewed-supersession",
+          "negative_case_disposition": "Malformed source, unsupported exports, and policy violations remain fail-closed obligations of package-local and aggregate validation rather than this retired analyzer API.",
+          "obsolete_assumption_disposition": "No live package imports the monolithic architecture analyzer or depends on its private AST fact model.",
+          "owner": "package-local tests and the #1316/#1317 validation gates",
+          "rationale": "The mutable monolith's shared AST fact engine was test infrastructure, not application behavior. Current packages enforce their boundaries directly and #1316/#1317 own aggregate integrity checks."
+        },
+        "tests.test_architecture_analysis.ArchitectureAnalysisTests.test_computed_all_is_explicitly_unsupported": {
+          "disposition": "reviewed-supersession",
+          "negative_case_disposition": "Malformed source, unsupported exports, and policy violations remain fail-closed obligations of package-local and aggregate validation rather than this retired analyzer API.",
+          "obsolete_assumption_disposition": "No live package imports the monolithic architecture analyzer or depends on its private AST fact model.",
+          "owner": "package-local tests and the #1316/#1317 validation gates",
+          "rationale": "The mutable monolith's shared AST fact engine was test infrastructure, not application behavior. Current packages enforce their boundaries directly and #1316/#1317 own aggregate integrity checks."
+        },
+        "tests.test_architecture_analysis.ArchitectureAnalysisTests.test_dotted_import_binding_matches_python_semantics": {
+          "disposition": "reviewed-supersession",
+          "negative_case_disposition": "Malformed source, unsupported exports, and policy violations remain fail-closed obligations of package-local and aggregate validation rather than this retired analyzer API.",
+          "obsolete_assumption_disposition": "No live package imports the monolithic architecture analyzer or depends on its private AST fact model.",
+          "owner": "package-local tests and the #1316/#1317 validation gates",
+          "rationale": "The mutable monolith's shared AST fact engine was test infrastructure, not application behavior. Current packages enforce their boundaries directly and #1316/#1317 own aggregate integrity checks."
+        },
+        "tests.test_architecture_analysis.ArchitectureAnalysisTests.test_file_analysis_derives_module_and_rejects_files_outside_root": {
+          "disposition": "reviewed-supersession",
+          "negative_case_disposition": "Malformed source, unsupported exports, and policy violations remain fail-closed obligations of package-local and aggregate validation rather than this retired analyzer API.",
+          "obsolete_assumption_disposition": "No live package imports the monolithic architecture analyzer or depends on its private AST fact model.",
+          "owner": "package-local tests and the #1316/#1317 validation gates",
+          "rationale": "The mutable monolith's shared AST fact engine was test infrastructure, not application behavior. Current packages enforce their boundaries directly and #1316/#1317 own aggregate integrity checks."
+        },
+        "tests.test_architecture_analysis.ArchitectureAnalysisTests.test_import_aliases_calls_decorators_and_locations_are_resolved": {
+          "disposition": "reviewed-supersession",
+          "negative_case_disposition": "Malformed source, unsupported exports, and policy violations remain fail-closed obligations of package-local and aggregate validation rather than this retired analyzer API.",
+          "obsolete_assumption_disposition": "No live package imports the monolithic architecture analyzer or depends on its private AST fact model.",
+          "owner": "package-local tests and the #1316/#1317 validation gates",
+          "rationale": "The mutable monolith's shared AST fact engine was test infrastructure, not application behavior. Current packages enforce their boundaries directly and #1316/#1317 own aggregate integrity checks."
+        },
+        "tests.test_architecture_analysis.ArchitectureAnalysisTests.test_literal_all_exports_resolve_imported_and_local_provenance": {
+          "disposition": "reviewed-supersession",
+          "negative_case_disposition": "Malformed source, unsupported exports, and policy violations remain fail-closed obligations of package-local and aggregate validation rather than this retired analyzer API.",
+          "obsolete_assumption_disposition": "No live package imports the monolithic architecture analyzer or depends on its private AST fact model.",
+          "owner": "package-local tests and the #1316/#1317 validation gates",
+          "rationale": "The mutable monolith's shared AST fact engine was test infrastructure, not application behavior. Current packages enforce their boundaries directly and #1316/#1317 own aggregate integrity checks."
+        },
+        "tests.test_architecture_analysis.ArchitectureAnalysisTests.test_malformed_source_fails_without_echoing_source": {
+          "disposition": "reviewed-supersession",
+          "negative_case_disposition": "Malformed source, unsupported exports, and policy violations remain fail-closed obligations of package-local and aggregate validation rather than this retired analyzer API.",
+          "obsolete_assumption_disposition": "No live package imports the monolithic architecture analyzer or depends on its private AST fact model.",
+          "owner": "package-local tests and the #1316/#1317 validation gates",
+          "rationale": "The mutable monolith's shared AST fact engine was test infrastructure, not application behavior. Current packages enforce their boundaries directly and #1316/#1317 own aggregate integrity checks."
+        },
+        "tests.test_architecture_analysis.ArchitectureAnalysisTests.test_nested_class_names_and_decorators_are_explicit": {
+          "disposition": "reviewed-supersession",
+          "negative_case_disposition": "Malformed source, unsupported exports, and policy violations remain fail-closed obligations of package-local and aggregate validation rather than this retired analyzer API.",
+          "obsolete_assumption_disposition": "No live package imports the monolithic architecture analyzer or depends on its private AST fact model.",
+          "owner": "package-local tests and the #1316/#1317 validation gates",
+          "rationale": "The mutable monolith's shared AST fact engine was test infrastructure, not application behavior. Current packages enforce their boundaries directly and #1316/#1317 own aggregate integrity checks."
+        },
+        "tests.test_architecture_analysis.ArchitectureAnalysisTests.test_pass_only_functions_and_exception_handlers_are_explicit": {
+          "disposition": "reviewed-supersession",
+          "negative_case_disposition": "Malformed source, unsupported exports, and policy violations remain fail-closed obligations of package-local and aggregate validation rather than this retired analyzer API.",
+          "obsolete_assumption_disposition": "No live package imports the monolithic architecture analyzer or depends on its private AST fact model.",
+          "owner": "package-local tests and the #1316/#1317 validation gates",
+          "rationale": "The mutable monolith's shared AST fact engine was test infrastructure, not application behavior. Current packages enforce their boundaries directly and #1316/#1317 own aggregate integrity checks."
+        },
+        "tests.test_architecture_analysis.ArchitectureAnalysisTests.test_policy_evaluation_is_deterministic_and_location_backed": {
+          "disposition": "reviewed-supersession",
+          "negative_case_disposition": "Malformed source, unsupported exports, and policy violations remain fail-closed obligations of package-local and aggregate validation rather than this retired analyzer API.",
+          "obsolete_assumption_disposition": "No live package imports the monolithic architecture analyzer or depends on its private AST fact model.",
+          "owner": "package-local tests and the #1316/#1317 validation gates",
+          "rationale": "The mutable monolith's shared AST fact engine was test infrastructure, not application behavior. Current packages enforce their boundaries directly and #1316/#1317 own aggregate integrity checks."
+        },
+        "tests.test_architecture_analysis.ArchitectureAnalysisTests.test_prose_does_not_become_export_provenance": {
+          "disposition": "reviewed-supersession",
+          "negative_case_disposition": "Malformed source, unsupported exports, and policy violations remain fail-closed obligations of package-local and aggregate validation rather than this retired analyzer API.",
+          "obsolete_assumption_disposition": "No live package imports the monolithic architecture analyzer or depends on its private AST fact model.",
+          "owner": "package-local tests and the #1316/#1317 validation gates",
+          "rationale": "The mutable monolith's shared AST fact engine was test infrastructure, not application behavior. Current packages enforce their boundaries directly and #1316/#1317 own aggregate integrity checks."
+        },
+        "tests.test_architecture_analysis.ArchitectureAnalysisTests.test_relative_import_and_nested_method_names_are_preserved": {
+          "disposition": "reviewed-supersession",
+          "negative_case_disposition": "Malformed source, unsupported exports, and policy violations remain fail-closed obligations of package-local and aggregate validation rather than this retired analyzer API.",
+          "obsolete_assumption_disposition": "No live package imports the monolithic architecture analyzer or depends on its private AST fact model.",
+          "owner": "package-local tests and the #1316/#1317 validation gates",
+          "rationale": "The mutable monolith's shared AST fact engine was test infrastructure, not application behavior. Current packages enforce their boundaries directly and #1316/#1317 own aggregate integrity checks."
+        },
+        "tests.test_cli.CliTests.test_environment_supplies_base_url_and_token": {
+          "disposition": "reviewed-supersession",
+          "negative_case_disposition": "Missing configuration, authentication, bounded HTTP errors, identifier encoding, and pagination remain covered at the cpk-server contract/process boundary; a future client must bind those contracts rather than revive the root facade.",
+          "obsolete_assumption_disposition": "No live distribution promises the retired root control_plane_kit CLI command surface.",
+          "owner": "cpk-server authenticated HTTP and MCP boundaries",
+          "rationale": "The aggregate root CLI was an early demo client. Current operator contracts are transport-neutral core commands/reads exposed through cpk-server HTTP and MCP, with client UX intentionally deferred."
+        },
+        "tests.test_cli.CliTests.test_focused_read_commands_encode_identifiers_and_pagination": {
+          "disposition": "reviewed-supersession",
+          "negative_case_disposition": "Missing configuration, authentication, bounded HTTP errors, identifier encoding, and pagination remain covered at the cpk-server contract/process boundary; a future client must bind those contracts rather than revive the root facade.",
+          "obsolete_assumption_disposition": "No live distribution promises the retired root control_plane_kit CLI command surface.",
+          "owner": "cpk-server authenticated HTTP and MCP boundaries",
+          "rationale": "The aggregate root CLI was an early demo client. Current operator contracts are transport-neutral core commands/reads exposed through cpk-server HTTP and MCP, with client UX intentionally deferred."
+        },
+        "tests.test_cli.CliTests.test_http_error_returns_nonzero_and_prints_detail": {
+          "disposition": "reviewed-supersession",
+          "negative_case_disposition": "Missing configuration, authentication, bounded HTTP errors, identifier encoding, and pagination remain covered at the cpk-server contract/process boundary; a future client must bind those contracts rather than revive the root facade.",
+          "obsolete_assumption_disposition": "No live distribution promises the retired root control_plane_kit CLI command surface.",
+          "owner": "cpk-server authenticated HTTP and MCP boundaries",
+          "rationale": "The aggregate root CLI was an early demo client. Current operator contracts are transport-neutral core commands/reads exposed through cpk-server HTTP and MCP, with client UX intentionally deferred."
+        },
+        "tests.test_cli.CliTests.test_missing_base_url_is_usage_error": {
+          "disposition": "reviewed-supersession",
+          "negative_case_disposition": "Missing configuration, authentication, bounded HTTP errors, identifier encoding, and pagination remain covered at the cpk-server contract/process boundary; a future client must bind those contracts rather than revive the root facade.",
+          "obsolete_assumption_disposition": "No live distribution promises the retired root control_plane_kit CLI command surface.",
+          "owner": "cpk-server authenticated HTTP and MCP boundaries",
+          "rationale": "The aggregate root CLI was an early demo client. Current operator contracts are transport-neutral core commands/reads exposed through cpk-server HTTP and MCP, with client UX intentionally deferred."
+        },
+        "tests.test_cli.CliTests.test_pointer_and_limit_commands_encode_query_parameters": {
+          "disposition": "reviewed-supersession",
+          "negative_case_disposition": "Missing configuration, authentication, bounded HTTP errors, identifier encoding, and pagination remain covered at the cpk-server contract/process boundary; a future client must bind those contracts rather than revive the root facade.",
+          "obsolete_assumption_disposition": "No live distribution promises the retired root control_plane_kit CLI command surface.",
+          "owner": "cpk-server authenticated HTTP and MCP boundaries",
+          "rationale": "The aggregate root CLI was an early demo client. Current operator contracts are transport-neutral core commands/reads exposed through cpk-server HTTP and MCP, with client UX intentionally deferred."
+        },
+        "tests.test_cli.CliTests.test_token_sets_bearer_header": {
+          "disposition": "reviewed-supersession",
+          "negative_case_disposition": "Missing configuration, authentication, bounded HTTP errors, identifier encoding, and pagination remain covered at the cpk-server contract/process boundary; a future client must bind those contracts rather than revive the root facade.",
+          "obsolete_assumption_disposition": "No live distribution promises the retired root control_plane_kit CLI command surface.",
+          "owner": "cpk-server authenticated HTTP and MCP boundaries",
+          "rationale": "The aggregate root CLI was an early demo client. Current operator contracts are transport-neutral core commands/reads exposed through cpk-server HTTP and MCP, with client UX intentionally deferred."
+        },
+        "tests.test_cli.CliTests.test_workspace_command_reads_from_base_url_and_prints_json": {
+          "disposition": "reviewed-supersession",
+          "negative_case_disposition": "Missing configuration, authentication, bounded HTTP errors, identifier encoding, and pagination remain covered at the cpk-server contract/process boundary; a future client must bind those contracts rather than revive the root facade.",
+          "obsolete_assumption_disposition": "No live distribution promises the retired root control_plane_kit CLI command surface.",
+          "owner": "cpk-server authenticated HTTP and MCP boundaries",
+          "rationale": "The aggregate root CLI was an early demo client. Current operator contracts are transport-neutral core commands/reads exposed through cpk-server HTTP and MCP, with client UX intentionally deferred."
+        },
+        "tests.test_package_server_catalog.PackageServerCatalogTests.test_fault_injector_is_structurally_test_only": {
+          "disposition": "reviewed-supersession",
+          "negative_case_disposition": "Unknown products and unsupported capability claims continue to fail closed through descriptor and catalogue validation.",
+          "obsolete_assumption_disposition": "No production catalogue or graph may admit a test-only fault-injector identity.",
+          "owner": "typed injected test capabilities in current package-local and live tests",
+          "rationale": "The legacy fault-injector server product was test scaffolding. Current tests inject bounded typed failures at owned service/interpreter seams and do not publish a fake product."
+        },
+        "tests.test_package_structure.PackageStructureTests.test_retired_flat_modules_are_not_importable": {
+          "disposition": "reviewed-supersession",
+          "negative_case_disposition": "Package roots remain importable and lightweight; stale aggregate imports are rejected by #1316/#1317 and deletion searches.",
+          "obsolete_assumption_disposition": "No live code may import the mutable aggregate control_plane_kit facade or retired flat modules.",
+          "owner": "independent package roots with explicit dependency direction",
+          "rationale": "Extraction deliberately removed the aggregate root facade and retired flat module aliases. Each distribution now exposes only its owned public package surface."
+        },
+        "tests.test_package_structure.PackageStructureTests.test_root_api_reexports_canonical_package_objects": {
+          "disposition": "reviewed-supersession",
+          "negative_case_disposition": "Package roots remain importable and lightweight; stale aggregate imports are rejected by #1316/#1317 and deletion searches.",
+          "obsolete_assumption_disposition": "No live code may import the mutable aggregate control_plane_kit facade or retired flat modules.",
+          "owner": "independent package roots with explicit dependency direction",
+          "rationale": "Extraction deliberately removed the aggregate root facade and retired flat module aliases. Each distribution now exposes only its owned public package surface."
+        },
+        "tests.test_package_topology.CurrentPackageTopologyTests.test_root_pure_facade_has_a_closed_owner_set": {
+          "disposition": "reviewed-supersession",
+          "negative_case_disposition": "Forbidden imports, optional dependency leakage, reverse edges, and cycles remain fail-closed obligations of current package and #1317 gates.",
+          "obsolete_assumption_disposition": "Root export provenance and optional-leak rules are replaced by package-local lightweight-root rules.",
+          "owner": "independent package roots and #1317 cross-repository topology validation",
+          "rationale": "The aggregate pure root facade no longer exists. Current ownership is expressed by independent distributions and exact cross-repository dependency coordinates."
+        },
+        "tests.test_package_topology.PackageTopologyPolicyTests.test_computed_root_exports_fail_closed": {
+          "disposition": "reviewed-supersession",
+          "negative_case_disposition": "Forbidden imports, optional dependency leakage, reverse edges, and cycles remain fail-closed obligations of current package and #1317 gates.",
+          "obsolete_assumption_disposition": "Root export provenance and optional-leak rules are replaced by package-local lightweight-root rules.",
+          "owner": "independent package roots and #1317 cross-repository topology validation",
+          "rationale": "The aggregate pure root facade no longer exists. Current ownership is expressed by independent distributions and exact cross-repository dependency coordinates."
+        },
+        "tests.test_package_topology.PackageTopologyPolicyTests.test_root_exports_must_come_from_allowed_package_owners": {
+          "disposition": "reviewed-supersession",
+          "negative_case_disposition": "Forbidden imports, optional dependency leakage, reverse edges, and cycles remain fail-closed obligations of current package and #1317 gates.",
+          "obsolete_assumption_disposition": "Root export provenance and optional-leak rules are replaced by package-local lightweight-root rules.",
+          "owner": "independent package roots and #1317 cross-repository topology validation",
+          "rationale": "The aggregate pure root facade no longer exists. Current ownership is expressed by independent distributions and exact cross-repository dependency coordinates."
+        },
+        "tests.test_package_topology.PackageTopologyPolicyTests.test_root_provenance_rejects_optional_dependency_leakage": {
+          "disposition": "reviewed-supersession",
+          "negative_case_disposition": "Forbidden imports, optional dependency leakage, reverse edges, and cycles remain fail-closed obligations of current package and #1317 gates.",
+          "obsolete_assumption_disposition": "Root export provenance and optional-leak rules are replaced by package-local lightweight-root rules.",
+          "owner": "independent package roots and #1317 cross-repository topology validation",
+          "rationale": "The aggregate pure root facade no longer exists. Current ownership is expressed by independent distributions and exact cross-repository dependency coordinates."
+        },
+        "tests.test_root_api.RootApiTests.test_optional_import_fixture_is_rejected": {
+          "disposition": "reviewed-supersession",
+          "negative_case_disposition": "Eager Docker, FastAPI, psycopg, and provider imports remain rejected by current package tests.",
+          "obsolete_assumption_disposition": "No aggregate control_plane_kit root is retained for fixture injection.",
+          "owner": "package-local lightweight import tests",
+          "rationale": "The synthetic aggregate-root optional-import fixture tested a facade that extraction removed. Live package roots prove lazy optional imports directly."
+        }
+      },
+      "strengthened_references": [],
+      "successor_overrides": {
+        "tests.test_architecture_dependencies.ArchitectureDependencyTests.test_effect_materialization_and_interpreters_cannot_import_stores": [
+          "control-plane-kit-operations:tests.test_package_boundary.OperationsPackageBoundaryTests.test_operations_has_no_concrete_runtime_provider_imports",
+          "control-plane-kit-operations:tests.test_package_boundary.OperationsPackageBoundaryTests.test_operations_source_does_not_import_servers_or_process_packages",
+          "control-plane-kit-interpreters:tests.test_package_boundary.PackageBoundaryTests.test_package_root_does_not_import_docker_sdk",
+          "control-plane-kit-interpreters:tests.test_package_boundary.PackageBoundaryTests.test_product_specific_branches_are_absent_from_interpreters",
+          "control-plane-kit-interpreters:tests.test_package_boundary.PackageBoundaryTests.test_source_does_not_import_server_process_or_operations_packages"
+        ],
+        "tests.test_architecture_dependencies.ArchitectureDependencyTests.test_environment_metadata_escape_hatch_is_rejected": [
+          "control-plane-kit-core:tests.test_configuration_artifacts.ConfigurationRenderingTests.test_context_is_closed_bounded_and_secret_free_before_render",
+          "control-plane-kit-core:tests.test_environment_secrets.EnvironmentBindingTests.test_node_rejects_open_environment_metadata_and_untyped_bindings",
+          "control-plane-kit-interpreters:tests.test_package_boundary.PackageBoundaryTests.test_package_root_does_not_import_docker_sdk",
+          "control-plane-kit-interpreters:tests.test_package_boundary.PackageBoundaryTests.test_product_specific_branches_are_absent_from_interpreters",
+          "control-plane-kit-interpreters:tests.test_package_boundary.PackageBoundaryTests.test_source_does_not_import_server_process_or_operations_packages"
+        ],
+        "tests.test_architecture_dependencies.ArchitectureDependencyTests.test_jinja_environment_is_owned_by_declared_template_interpreters": [
+          "control-plane-kit-core:tests.test_configuration_artifacts.ConfigurationRenderingTests.test_context_is_closed_bounded_and_secret_free_before_render",
+          "control-plane-kit-core:tests.test_environment_secrets.EnvironmentBindingTests.test_node_rejects_open_environment_metadata_and_untyped_bindings",
+          "control-plane-kit-interpreters:tests.test_package_boundary.PackageBoundaryTests.test_package_root_does_not_import_docker_sdk",
+          "control-plane-kit-interpreters:tests.test_package_boundary.PackageBoundaryTests.test_product_specific_branches_are_absent_from_interpreters",
+          "control-plane-kit-interpreters:tests.test_package_boundary.PackageBoundaryTests.test_source_does_not_import_server_process_or_operations_packages"
+        ],
+        "tests.test_architecture_dependencies.ArchitectureDependencyTests.test_raw_static_environment_mapping_is_rejected_at_docker_authoring": [
+          "control-plane-kit-core:tests.test_configuration_artifacts.ConfigurationRenderingTests.test_context_is_closed_bounded_and_secret_free_before_render",
+          "control-plane-kit-core:tests.test_environment_secrets.EnvironmentBindingTests.test_node_rejects_open_environment_metadata_and_untyped_bindings",
+          "control-plane-kit-interpreters:tests.test_package_boundary.PackageBoundaryTests.test_package_root_does_not_import_docker_sdk",
+          "control-plane-kit-interpreters:tests.test_package_boundary.PackageBoundaryTests.test_product_specific_branches_are_absent_from_interpreters",
+          "control-plane-kit-interpreters:tests.test_package_boundary.PackageBoundaryTests.test_source_does_not_import_server_process_or_operations_packages"
+        ],
+        "tests.test_architecture_dependencies.ArchitectureDependencyTests.test_relative_same_package_import_is_allowed": [
+          "control-plane-kit-operations:tests.test_package_boundary.OperationsPackageBoundaryTests.test_operations_has_no_concrete_runtime_provider_imports",
+          "control-plane-kit-operations:tests.test_package_boundary.OperationsPackageBoundaryTests.test_operations_source_does_not_import_servers_or_process_packages",
+          "control-plane-kit-interpreters:tests.test_package_boundary.PackageBoundaryTests.test_package_root_does_not_import_docker_sdk",
+          "control-plane-kit-interpreters:tests.test_package_boundary.PackageBoundaryTests.test_product_specific_branches_are_absent_from_interpreters",
+          "control-plane-kit-interpreters:tests.test_package_boundary.PackageBoundaryTests.test_source_does_not_import_server_process_or_operations_packages"
+        ],
+        "tests.test_architecture_deploy.DeploymentApplicationArchitectureTests.test_policy_resolves_aliases_and_rejects_boundary_bypasses": [
+          "control-plane-kit-core:tests.test_deployment_program_boundary.DeploymentProgramBoundaryTests.test_operations_modules_do_not_import_process_or_product_packages",
+          "control-plane-kit-core:tests.test_deployment_program_boundary.DeploymentProgramBoundaryTests.test_stage_pipeline_is_closed_ordered_public_contract_data",
+          "control-plane-kit-operations:tests.test_package_boundary.OperationsPackageBoundaryTests.test_operations_has_no_concrete_runtime_provider_imports",
+          "control-plane-kit-operations:tests.test_package_boundary.OperationsPackageBoundaryTests.test_operations_source_does_not_import_servers_or_process_packages"
+        ],
+        "tests.test_architecture_ownership.ArchitectureOwnershipTests.test_contract_boundary_may_read_process_environment": [
+          "control-plane-kit-core:tests.test_control_contracts.ControlContractTests.test_contract_loads_explicit_values_by_name_or_metadata_without_process_reads",
+          "control-plane-kit-core:tests.test_environment_secrets.EnvironmentBindingTests.test_node_rejects_open_environment_metadata_and_untyped_bindings"
+        ],
+        "tests.test_architecture_ownership.ArchitectureOwnershipTests.test_environment_aliases_are_rejected_outside_declared_boundaries": [
+          "control-plane-kit-core:tests.test_control_contracts.ControlContractTests.test_contract_loads_explicit_values_by_name_or_metadata_without_process_reads",
+          "control-plane-kit-core:tests.test_environment_secrets.EnvironmentBindingTests.test_node_rejects_open_environment_metadata_and_untyped_bindings"
+        ],
+        "tests.test_architecture_ownership.ArchitectureOwnershipTests.test_observation_projection_cannot_mutate_graph_truth": [
+          "control-plane-kit-operations:tests.test_read_services.InstanceReadServiceTests.test_observed_state_is_latest_per_subject_and_does_not_rewrite_graph_truth",
+          "control-plane-kit-operations:tests.test_graph_authoring.GraphAuthoringTests.test_registered_product_graph_becomes_desired_graph_truth"
+        ],
+        "tests.test_architecture_ownership.ArchitectureOwnershipTests.test_packaged_servers_do_not_bypass_contract_mutation_boundary": [
+          "control-plane-kit-core:tests.test_package_boundary.PackageBoundaryTests.test_all_package_imports_stay_inside_pure_core",
+          "control-plane-kit-core:tests.test_package_boundary.PackageBoundaryTests.test_base_package_declares_only_core_language_dependencies",
+          "control-plane-kit-operations:tests.test_package_boundary.OperationsPackageBoundaryTests.test_operations_has_no_concrete_runtime_provider_imports",
+          "control-plane-kit-operations:tests.test_package_boundary.OperationsPackageBoundaryTests.test_operations_source_does_not_import_servers_or_process_packages"
+        ],
+        "tests.test_architecture_ownership.ArchitectureOwnershipTests.test_raw_current_graph_mutation_is_reserved_to_guarded_workflow": [
+          "control-plane-kit-operations:tests.test_read_services.InstanceReadServiceTests.test_observed_state_is_latest_per_subject_and_does_not_rewrite_graph_truth",
+          "control-plane-kit-operations:tests.test_graph_authoring.GraphAuthoringTests.test_registered_product_graph_becomes_desired_graph_truth"
+        ],
+        "tests.test_architecture_ownership.ArchitectureOwnershipTests.test_repository_obeys_commit_environment_and_graph_mutation_ownership": [
+          "control-plane-kit-operations:tests.test_read_services.InstanceReadServiceTests.test_observed_state_is_latest_per_subject_and_does_not_rewrite_graph_truth",
+          "control-plane-kit-operations:tests.test_graph_authoring.GraphAuthoringTests.test_registered_product_graph_becomes_desired_graph_truth"
+        ],
+        "tests.test_architecture_ownership.ArchitectureOwnershipTests.test_store_commit_is_rejected_but_unit_of_work_commit_is_allowed": [
+          "control-plane-kit-core:tests.test_unit_of_work_boundary.UnitOfWorkBoundaryTests.test_boundary_rejects_store_commit_and_effects_inside_transactions",
+          "control-plane-kit-operations:tests.test_unit_of_work.PostgresUnitOfWorkIntegrationTests.test_commit_publishes_all_shared_connection_writes_together"
+        ],
+        "tests.test_architecture_ownership.ArchitectureOwnershipTests.test_workflow_may_request_commit_but_pure_package_may_not": [
+          "control-plane-kit-core:tests.test_unit_of_work_boundary.UnitOfWorkBoundaryTests.test_boundary_rejects_store_commit_and_effects_inside_transactions",
+          "control-plane-kit-operations:tests.test_unit_of_work.PostgresUnitOfWorkIntegrationTests.test_commit_publishes_all_shared_connection_writes_together"
+        ],
+        "tests.test_architecture_protocol.ProtocolArchitectureTests.test_repository_does_not_erase_protocol_products_in_projections": [
+          "control-plane-kit-core:tests.test_graph_codec.GraphDescriptorCodecTests.test_edge_binding_and_protocol_products_are_closed",
+          "control-plane-kit-core:tests.test_product_catalog.ProductCatalogTests.test_catalogue_module_has_no_import_or_filesystem_product_loading"
+        ],
+        "tests.test_architecture_protocol.ProtocolArchitectureTests.test_scalar_protocol_projection_is_rejected_but_display_is_owned": [
+          "control-plane-kit-core:tests.test_graph_codec.GraphDescriptorCodecTests.test_edge_binding_and_protocol_products_are_closed",
+          "control-plane-kit-core:tests.test_product_catalog.ProductCatalogTests.test_catalogue_module_has_no_import_or_filesystem_product_loading"
+        ],
+        "tests.test_architecture_read_routes.ArchitectureReadRouteTests.test_mutation_and_generic_route_decorators_fail_closed": [
+          "control-plane-kit-core:tests.test_adapter_parity_contract.AdapterParityContractTests.test_operator_read_projection_parity_maps_frozen_http_routes_and_mcp_tools",
+          "control-plane-kit-servers:products.cpk_server.tests.test_http_mcp_boundaries.CpkServerHttpMcpBoundaryTests.test_http_read_route_delegates_to_shared_reads_service",
+          "control-plane-kit-servers:products.cpk_server.tests.test_http_mcp_boundaries.CpkServerHttpMcpBoundaryTests.test_mcp_tools_call_uses_same_application_boundary_as_http",
+          "control-plane-kit-servers:products.cpk_server.tests.test_http_mcp_boundaries.CpkServerHttpMcpBoundaryTests.test_application_errors_map_to_bounded_process_responses",
+          "control-plane-kit-servers:products.cpk_server.tests.test_http_mcp_boundaries.CpkServerHttpMcpBoundaryTests.test_invalid_credentials_fail_before_dispatch_and_are_redacted"
+        ],
+        "tests.test_architecture_read_routes.ArchitectureReadRouteTests.test_read_modules_declare_only_read_methods": [
+          "control-plane-kit-core:tests.test_adapter_parity_contract.AdapterParityContractTests.test_operator_read_projection_parity_maps_frozen_http_routes_and_mcp_tools",
+          "control-plane-kit-servers:products.cpk_server.tests.test_http_mcp_boundaries.CpkServerHttpMcpBoundaryTests.test_http_read_route_delegates_to_shared_reads_service",
+          "control-plane-kit-servers:products.cpk_server.tests.test_http_mcp_boundaries.CpkServerHttpMcpBoundaryTests.test_mcp_tools_call_uses_same_application_boundary_as_http",
+          "control-plane-kit-servers:products.cpk_server.tests.test_http_mcp_boundaries.CpkServerHttpMcpBoundaryTests.test_application_errors_map_to_bounded_process_responses",
+          "control-plane-kit-servers:products.cpk_server.tests.test_http_mcp_boundaries.CpkServerHttpMcpBoundaryTests.test_invalid_credentials_fail_before_dispatch_and_are_redacted"
+        ],
+        "tests.test_architecture_read_routes.ArchitectureReadRouteTests.test_static_declarations_match_realized_fastapi_workspace_routes": [
+          "control-plane-kit-core:tests.test_adapter_parity_contract.AdapterParityContractTests.test_operator_read_projection_parity_maps_frozen_http_routes_and_mcp_tools",
+          "control-plane-kit-servers:products.cpk_server.tests.test_http_mcp_boundaries.CpkServerHttpMcpBoundaryTests.test_http_read_route_delegates_to_shared_reads_service",
+          "control-plane-kit-servers:products.cpk_server.tests.test_http_mcp_boundaries.CpkServerHttpMcpBoundaryTests.test_mcp_tools_call_uses_same_application_boundary_as_http",
+          "control-plane-kit-servers:products.cpk_server.tests.test_http_mcp_boundaries.CpkServerHttpMcpBoundaryTests.test_application_errors_map_to_bounded_process_responses",
+          "control-plane-kit-servers:products.cpk_server.tests.test_http_mcp_boundaries.CpkServerHttpMcpBoundaryTests.test_invalid_credentials_fail_before_dispatch_and_are_redacted"
+        ],
+        "tests.test_backend_boundaries.BackendBoundaryTests.test_destructive_classification_is_data_before_execution": [
+          "control-plane-kit-operations:tests.test_graph_authoring.GraphAuthoringTests.test_registered_product_graph_becomes_desired_graph_truth",
+          "control-plane-kit-operations:tests.test_planning_commands.PlanningCommandTests.test_desired_graph_late_action_failure_rolls_back_graph_truth",
+          "control-plane-kit-core:tests.test_activity_plan.ActivityPlanTests.test_destructive_activity_requires_high_or_critical_risk",
+          "control-plane-kit-core:tests.test_unit_of_work_boundary.UnitOfWorkBoundaryTests.test_boundary_rejects_store_commit_and_effects_inside_transactions",
+          "control-plane-kit-operations:tests.test_unit_of_work.PostgresUnitOfWorkIntegrationTests.test_commit_publishes_all_shared_connection_writes_together"
+        ],
+        "tests.test_backend_boundaries.BackendBoundaryTests.test_policy_decisions_do_not_create_workflow_records": [
+          "control-plane-kit-operations:tests.test_graph_authoring.GraphAuthoringTests.test_registered_product_graph_becomes_desired_graph_truth",
+          "control-plane-kit-operations:tests.test_planning_commands.PlanningCommandTests.test_desired_graph_late_action_failure_rolls_back_graph_truth",
+          "control-plane-kit-core:tests.test_activity_plan.ActivityPlanTests.test_destructive_activity_requires_high_or_critical_risk",
+          "control-plane-kit-core:tests.test_unit_of_work_boundary.UnitOfWorkBoundaryTests.test_boundary_rejects_store_commit_and_effects_inside_transactions",
+          "control-plane-kit-operations:tests.test_unit_of_work.PostgresUnitOfWorkIntegrationTests.test_commit_publishes_all_shared_connection_writes_together"
+        ],
+        "tests.test_backend_boundaries.BackendBoundaryTests.test_workflow_records_intent_without_writing_graph_truth": [
+          "control-plane-kit-operations:tests.test_graph_authoring.GraphAuthoringTests.test_registered_product_graph_becomes_desired_graph_truth",
+          "control-plane-kit-operations:tests.test_planning_commands.PlanningCommandTests.test_desired_graph_late_action_failure_rolls_back_graph_truth",
+          "control-plane-kit-core:tests.test_activity_plan.ActivityPlanTests.test_destructive_activity_requires_high_or_critical_risk",
+          "control-plane-kit-core:tests.test_unit_of_work_boundary.UnitOfWorkBoundaryTests.test_boundary_rejects_store_commit_and_effects_inside_transactions",
+          "control-plane-kit-operations:tests.test_unit_of_work.PostgresUnitOfWorkIntegrationTests.test_commit_publishes_all_shared_connection_writes_together"
+        ],
+        "tests.test_backend_boundaries.BackendBoundaryTests.test_workspace_and_graph_truth_are_owned_by_stores": [
+          "control-plane-kit-operations:tests.test_graph_authoring.GraphAuthoringTests.test_registered_product_graph_becomes_desired_graph_truth",
+          "control-plane-kit-operations:tests.test_planning_commands.PlanningCommandTests.test_desired_graph_late_action_failure_rolls_back_graph_truth",
+          "control-plane-kit-core:tests.test_activity_plan.ActivityPlanTests.test_destructive_activity_requires_high_or_critical_risk",
+          "control-plane-kit-core:tests.test_unit_of_work_boundary.UnitOfWorkBoundaryTests.test_boundary_rejects_store_commit_and_effects_inside_transactions",
+          "control-plane-kit-operations:tests.test_unit_of_work.PostgresUnitOfWorkIntegrationTests.test_commit_publishes_all_shared_connection_writes_together"
+        ],
+        "tests.test_instance_read_fastapi.InstanceReadFastAPITests.test_activity_and_observed_state_routes_are_read_only": [
+          "control-plane-kit-core:tests.test_adapter_parity_contract.AdapterParityContractTests.test_operator_read_projection_parity_maps_frozen_http_routes_and_mcp_tools",
+          "control-plane-kit-servers:products.cpk_server.tests.test_http_mcp_boundaries.CpkServerHttpMcpBoundaryTests.test_http_read_route_delegates_to_shared_reads_service",
+          "control-plane-kit-servers:products.cpk_server.tests.test_http_mcp_boundaries.CpkServerHttpMcpBoundaryTests.test_mcp_tools_call_uses_same_application_boundary_as_http",
+          "control-plane-kit-servers:products.cpk_server.tests.test_http_mcp_boundaries.CpkServerHttpMcpBoundaryTests.test_application_errors_map_to_bounded_process_responses",
+          "control-plane-kit-servers:products.cpk_server.tests.test_http_mcp_boundaries.CpkServerHttpMcpBoundaryTests.test_invalid_credentials_fail_before_dispatch_and_are_redacted",
+          "control-plane-kit-operations:tests.test_read_services.InstanceReadServiceTests.test_workspace_and_graph_reads_are_redacted",
+          "control-plane-kit-operations:tests.test_read_services.InstanceReadServiceTests.test_observed_state_is_latest_per_subject_and_does_not_rewrite_graph_truth"
+        ],
+        "tests.test_instance_read_fastapi.InstanceReadFastAPITests.test_configured_token_protects_instance_reads": [
+          "control-plane-kit-core:tests.test_adapter_parity_contract.AdapterParityContractTests.test_operator_read_projection_parity_maps_frozen_http_routes_and_mcp_tools",
+          "control-plane-kit-servers:products.cpk_server.tests.test_http_mcp_boundaries.CpkServerHttpMcpBoundaryTests.test_http_read_route_delegates_to_shared_reads_service",
+          "control-plane-kit-servers:products.cpk_server.tests.test_http_mcp_boundaries.CpkServerHttpMcpBoundaryTests.test_mcp_tools_call_uses_same_application_boundary_as_http",
+          "control-plane-kit-servers:products.cpk_server.tests.test_http_mcp_boundaries.CpkServerHttpMcpBoundaryTests.test_application_errors_map_to_bounded_process_responses",
+          "control-plane-kit-servers:products.cpk_server.tests.test_http_mcp_boundaries.CpkServerHttpMcpBoundaryTests.test_invalid_credentials_fail_before_dispatch_and_are_redacted",
+          "control-plane-kit-operations:tests.test_read_services.InstanceReadServiceTests.test_workspace_and_graph_reads_are_redacted",
+          "control-plane-kit-operations:tests.test_read_services.InstanceReadServiceTests.test_observed_state_is_latest_per_subject_and_does_not_rewrite_graph_truth"
+        ],
+        "tests.test_instance_read_fastapi.InstanceReadFastAPITests.test_focused_routes_delegate_with_explicit_bounds": [
+          "control-plane-kit-core:tests.test_adapter_parity_contract.AdapterParityContractTests.test_operator_read_projection_parity_maps_frozen_http_routes_and_mcp_tools",
+          "control-plane-kit-servers:products.cpk_server.tests.test_http_mcp_boundaries.CpkServerHttpMcpBoundaryTests.test_http_read_route_delegates_to_shared_reads_service",
+          "control-plane-kit-servers:products.cpk_server.tests.test_http_mcp_boundaries.CpkServerHttpMcpBoundaryTests.test_mcp_tools_call_uses_same_application_boundary_as_http",
+          "control-plane-kit-servers:products.cpk_server.tests.test_http_mcp_boundaries.CpkServerHttpMcpBoundaryTests.test_application_errors_map_to_bounded_process_responses",
+          "control-plane-kit-servers:products.cpk_server.tests.test_http_mcp_boundaries.CpkServerHttpMcpBoundaryTests.test_invalid_credentials_fail_before_dispatch_and_are_redacted",
+          "control-plane-kit-operations:tests.test_read_services.InstanceReadServiceTests.test_workspace_and_graph_reads_are_redacted",
+          "control-plane-kit-operations:tests.test_read_services.InstanceReadServiceTests.test_observed_state_is_latest_per_subject_and_does_not_rewrite_graph_truth"
+        ],
+        "tests.test_instance_read_fastapi.InstanceReadFastAPITests.test_focused_routes_share_auth_and_workspace_safe_errors": [
+          "control-plane-kit-core:tests.test_adapter_parity_contract.AdapterParityContractTests.test_operator_read_projection_parity_maps_frozen_http_routes_and_mcp_tools",
+          "control-plane-kit-servers:products.cpk_server.tests.test_http_mcp_boundaries.CpkServerHttpMcpBoundaryTests.test_http_read_route_delegates_to_shared_reads_service",
+          "control-plane-kit-servers:products.cpk_server.tests.test_http_mcp_boundaries.CpkServerHttpMcpBoundaryTests.test_mcp_tools_call_uses_same_application_boundary_as_http",
+          "control-plane-kit-servers:products.cpk_server.tests.test_http_mcp_boundaries.CpkServerHttpMcpBoundaryTests.test_application_errors_map_to_bounded_process_responses",
+          "control-plane-kit-servers:products.cpk_server.tests.test_http_mcp_boundaries.CpkServerHttpMcpBoundaryTests.test_invalid_credentials_fail_before_dispatch_and_are_redacted",
+          "control-plane-kit-operations:tests.test_read_services.InstanceReadServiceTests.test_workspace_and_graph_reads_are_redacted",
+          "control-plane-kit-operations:tests.test_read_services.InstanceReadServiceTests.test_observed_state_is_latest_per_subject_and_does_not_rewrite_graph_truth"
+        ],
+        "tests.test_instance_read_fastapi.InstanceReadFastAPITests.test_instance_read_app_exposes_no_workflow_mutation_routes": [
+          "control-plane-kit-core:tests.test_adapter_parity_contract.AdapterParityContractTests.test_operator_read_projection_parity_maps_frozen_http_routes_and_mcp_tools",
+          "control-plane-kit-servers:products.cpk_server.tests.test_http_mcp_boundaries.CpkServerHttpMcpBoundaryTests.test_http_read_route_delegates_to_shared_reads_service",
+          "control-plane-kit-servers:products.cpk_server.tests.test_http_mcp_boundaries.CpkServerHttpMcpBoundaryTests.test_mcp_tools_call_uses_same_application_boundary_as_http",
+          "control-plane-kit-servers:products.cpk_server.tests.test_http_mcp_boundaries.CpkServerHttpMcpBoundaryTests.test_application_errors_map_to_bounded_process_responses",
+          "control-plane-kit-servers:products.cpk_server.tests.test_http_mcp_boundaries.CpkServerHttpMcpBoundaryTests.test_invalid_credentials_fail_before_dispatch_and_are_redacted",
+          "control-plane-kit-operations:tests.test_read_services.InstanceReadServiceTests.test_workspace_and_graph_reads_are_redacted",
+          "control-plane-kit-operations:tests.test_read_services.InstanceReadServiceTests.test_observed_state_is_latest_per_subject_and_does_not_rewrite_graph_truth"
+        ],
+        "tests.test_instance_read_fastapi.InstanceReadFastAPITests.test_projection_routes_delegate_to_read_service": [
+          "control-plane-kit-core:tests.test_adapter_parity_contract.AdapterParityContractTests.test_operator_read_projection_parity_maps_frozen_http_routes_and_mcp_tools",
+          "control-plane-kit-servers:products.cpk_server.tests.test_http_mcp_boundaries.CpkServerHttpMcpBoundaryTests.test_http_read_route_delegates_to_shared_reads_service",
+          "control-plane-kit-servers:products.cpk_server.tests.test_http_mcp_boundaries.CpkServerHttpMcpBoundaryTests.test_mcp_tools_call_uses_same_application_boundary_as_http",
+          "control-plane-kit-servers:products.cpk_server.tests.test_http_mcp_boundaries.CpkServerHttpMcpBoundaryTests.test_application_errors_map_to_bounded_process_responses",
+          "control-plane-kit-servers:products.cpk_server.tests.test_http_mcp_boundaries.CpkServerHttpMcpBoundaryTests.test_invalid_credentials_fail_before_dispatch_and_are_redacted",
+          "control-plane-kit-operations:tests.test_read_services.InstanceReadServiceTests.test_workspace_and_graph_reads_are_redacted",
+          "control-plane-kit-operations:tests.test_read_services.InstanceReadServiceTests.test_observed_state_is_latest_per_subject_and_does_not_rewrite_graph_truth"
+        ],
+        "tests.test_instance_read_fastapi.InstanceReadFastAPITests.test_read_model_errors_map_to_http_statuses": [
+          "control-plane-kit-core:tests.test_adapter_parity_contract.AdapterParityContractTests.test_operator_read_projection_parity_maps_frozen_http_routes_and_mcp_tools",
+          "control-plane-kit-servers:products.cpk_server.tests.test_http_mcp_boundaries.CpkServerHttpMcpBoundaryTests.test_http_read_route_delegates_to_shared_reads_service",
+          "control-plane-kit-servers:products.cpk_server.tests.test_http_mcp_boundaries.CpkServerHttpMcpBoundaryTests.test_mcp_tools_call_uses_same_application_boundary_as_http",
+          "control-plane-kit-servers:products.cpk_server.tests.test_http_mcp_boundaries.CpkServerHttpMcpBoundaryTests.test_application_errors_map_to_bounded_process_responses",
+          "control-plane-kit-servers:products.cpk_server.tests.test_http_mcp_boundaries.CpkServerHttpMcpBoundaryTests.test_invalid_credentials_fail_before_dispatch_and_are_redacted",
+          "control-plane-kit-operations:tests.test_read_services.InstanceReadServiceTests.test_workspace_and_graph_reads_are_redacted",
+          "control-plane-kit-operations:tests.test_read_services.InstanceReadServiceTests.test_observed_state_is_latest_per_subject_and_does_not_rewrite_graph_truth"
+        ],
+        "tests.test_instance_read_fastapi.InstanceReadFastAPITests.test_stale_recovery_graph_truth_maps_to_conflict": [
+          "control-plane-kit-core:tests.test_adapter_parity_contract.AdapterParityContractTests.test_operator_read_projection_parity_maps_frozen_http_routes_and_mcp_tools",
+          "control-plane-kit-servers:products.cpk_server.tests.test_http_mcp_boundaries.CpkServerHttpMcpBoundaryTests.test_http_read_route_delegates_to_shared_reads_service",
+          "control-plane-kit-servers:products.cpk_server.tests.test_http_mcp_boundaries.CpkServerHttpMcpBoundaryTests.test_mcp_tools_call_uses_same_application_boundary_as_http",
+          "control-plane-kit-servers:products.cpk_server.tests.test_http_mcp_boundaries.CpkServerHttpMcpBoundaryTests.test_application_errors_map_to_bounded_process_responses",
+          "control-plane-kit-servers:products.cpk_server.tests.test_http_mcp_boundaries.CpkServerHttpMcpBoundaryTests.test_invalid_credentials_fail_before_dispatch_and_are_redacted",
+          "control-plane-kit-operations:tests.test_read_services.InstanceReadServiceTests.test_workspace_and_graph_reads_are_redacted",
+          "control-plane-kit-operations:tests.test_read_services.InstanceReadServiceTests.test_observed_state_is_latest_per_subject_and_does_not_rewrite_graph_truth"
+        ],
+        "tests.test_instance_read_fastapi.InstanceReadFastAPITests.test_unconfigured_activity_store_returns_service_unavailable": [
+          "control-plane-kit-core:tests.test_adapter_parity_contract.AdapterParityContractTests.test_operator_read_projection_parity_maps_frozen_http_routes_and_mcp_tools",
+          "control-plane-kit-servers:products.cpk_server.tests.test_http_mcp_boundaries.CpkServerHttpMcpBoundaryTests.test_http_read_route_delegates_to_shared_reads_service",
+          "control-plane-kit-servers:products.cpk_server.tests.test_http_mcp_boundaries.CpkServerHttpMcpBoundaryTests.test_mcp_tools_call_uses_same_application_boundary_as_http",
+          "control-plane-kit-servers:products.cpk_server.tests.test_http_mcp_boundaries.CpkServerHttpMcpBoundaryTests.test_application_errors_map_to_bounded_process_responses",
+          "control-plane-kit-servers:products.cpk_server.tests.test_http_mcp_boundaries.CpkServerHttpMcpBoundaryTests.test_invalid_credentials_fail_before_dispatch_and_are_redacted",
+          "control-plane-kit-operations:tests.test_read_services.InstanceReadServiceTests.test_workspace_and_graph_reads_are_redacted",
+          "control-plane-kit-operations:tests.test_read_services.InstanceReadServiceTests.test_observed_state_is_latest_per_subject_and_does_not_rewrite_graph_truth"
+        ],
+        "tests.test_instance_read_fastapi.InstanceReadFastAPITests.test_workspace_and_graph_routes_return_redacted_descriptors": [
+          "control-plane-kit-core:tests.test_adapter_parity_contract.AdapterParityContractTests.test_operator_read_projection_parity_maps_frozen_http_routes_and_mcp_tools",
+          "control-plane-kit-servers:products.cpk_server.tests.test_http_mcp_boundaries.CpkServerHttpMcpBoundaryTests.test_http_read_route_delegates_to_shared_reads_service",
+          "control-plane-kit-servers:products.cpk_server.tests.test_http_mcp_boundaries.CpkServerHttpMcpBoundaryTests.test_mcp_tools_call_uses_same_application_boundary_as_http",
+          "control-plane-kit-servers:products.cpk_server.tests.test_http_mcp_boundaries.CpkServerHttpMcpBoundaryTests.test_application_errors_map_to_bounded_process_responses",
+          "control-plane-kit-servers:products.cpk_server.tests.test_http_mcp_boundaries.CpkServerHttpMcpBoundaryTests.test_invalid_credentials_fail_before_dispatch_and_are_redacted",
+          "control-plane-kit-operations:tests.test_read_services.InstanceReadServiceTests.test_workspace_and_graph_reads_are_redacted",
+          "control-plane-kit-operations:tests.test_read_services.InstanceReadServiceTests.test_observed_state_is_latest_per_subject_and_does_not_rewrite_graph_truth"
+        ],
+        "tests.test_optional_dependencies.OptionalDependencyTests.test_available_dependencies_are_accepted": [
+          "control-plane-kit-interpreters:tests.test_docker_sdk_client.DockerSdkClientTests.test_module_import_does_not_eagerly_import_docker_sdk",
+          "control-plane-kit-interpreters:tests.test_scaffold.InterpretersScaffoldTests.test_base_import_does_not_eagerly_import_optional_runtime_packages",
+          "control-plane-kit-secrets:tests.test_package_policy.PackagePolicyTests.test_base_import_does_not_eagerly_import_optional_service_packages"
+        ],
+        "tests.test_optional_dependencies.OptionalDependencyTests.test_missing_dependency_names_surface_and_install_extra": [
+          "control-plane-kit-interpreters:tests.test_docker_sdk_client.DockerSdkClientTests.test_module_import_does_not_eagerly_import_docker_sdk",
+          "control-plane-kit-interpreters:tests.test_scaffold.InterpretersScaffoldTests.test_base_import_does_not_eagerly_import_optional_runtime_packages",
+          "control-plane-kit-secrets:tests.test_package_policy.PackagePolicyTests.test_base_import_does_not_eagerly_import_optional_service_packages"
+        ],
+        "tests.test_package_inventory.PackageModuleInventoryTests.test_core_inventory_is_exactly_the_effect_free_pipeline_floor": [
+          "control-plane-kit-core:tests.test_package_boundary.PackageBoundaryTests.test_all_package_imports_stay_inside_pure_core",
+          "control-plane-kit-core:tests.test_package_boundary.PackageBoundaryTests.test_base_package_declares_only_core_language_dependencies",
+          "control-plane-kit-operations:tests.test_package_boundary.OperationsPackageBoundaryTests.test_operations_has_no_concrete_runtime_provider_imports",
+          "control-plane-kit-operations:tests.test_package_boundary.OperationsPackageBoundaryTests.test_operations_source_does_not_import_servers_or_process_packages"
+        ],
+        "tests.test_package_inventory.PackageModuleInventoryTests.test_current_core_tree_has_only_declared_pure_dependencies": [
+          "control-plane-kit-core:tests.test_package_boundary.PackageBoundaryTests.test_all_package_imports_stay_inside_pure_core",
+          "control-plane-kit-core:tests.test_package_boundary.PackageBoundaryTests.test_base_package_declares_only_core_language_dependencies",
+          "control-plane-kit-operations:tests.test_package_boundary.OperationsPackageBoundaryTests.test_operations_has_no_concrete_runtime_provider_imports",
+          "control-plane-kit-operations:tests.test_package_boundary.OperationsPackageBoundaryTests.test_operations_source_does_not_import_servers_or_process_packages"
+        ],
+        "tests.test_package_inventory.PackageModuleInventoryTests.test_every_current_server_module_has_uniform_product_exterior": [
+          "control-plane-kit-servers:tests.test_package_metadata.PackageMetadataTests.test_package_source_does_not_import_process_or_product_implementations",
+          "control-plane-kit-servers:tests.test_descriptor_catalogue.DescriptorCatalogueTests.test_catalogue_module_does_not_import_product_or_process_code",
+          "control-plane-kit-servers:tests.test_descriptor_catalogue.DescriptorCatalogueTests.test_catalogue_rejects_duplicate_product_ids",
+          "control-plane-kit-servers:tests.test_descriptor_catalogue.DescriptorCatalogueTests.test_catalogue_rejects_incomplete_and_unknown_declarations",
+          "control-plane-kit-servers:tests.test_descriptor_catalogue.DescriptorCatalogueTests.test_default_catalogue_loads_completed_declarations"
+        ],
+        "tests.test_package_server_catalog.PackageServerCatalogTests.test_catalog_is_the_canonical_product_declaration_collection": [
+          "control-plane-kit-servers:tests.test_descriptor_catalogue.DescriptorCatalogueTests.test_catalogue_rejects_duplicate_product_ids",
+          "control-plane-kit-servers:tests.test_descriptor_catalogue.DescriptorCatalogueTests.test_catalogue_rejects_incomplete_and_unknown_declarations",
+          "control-plane-kit-servers:tests.test_descriptor_catalogue.DescriptorCatalogueTests.test_default_catalogue_loads_completed_declarations",
+          "control-plane-kit-core:tests.test_product_descriptor.ProductDescriptorCodecTests.test_rejects_unknown_schema_keys_and_product_escape_hatches",
+          "control-plane-kit-core:tests.test_product_descriptor.ProductDescriptorCodecTests.test_round_trips_from_bytes_text_and_mapping",
+          "control-plane-kit-servers:products.cpk_server.tests.test_product_descriptor.CpkServerProductDescriptorTests.test_catalogue_admits_descriptor_and_core_catalog_lookup",
+          "control-plane-kit-servers:tests.test_descriptor_catalogue.DescriptorCatalogueTests.test_publication_artifact_is_deterministic_and_checksummed"
+        ],
+        "tests.test_package_server_catalog.PackageServerCatalogTests.test_catalogue_contains_each_closed_product_exactly_once": [
+          "control-plane-kit-servers:tests.test_descriptor_catalogue.DescriptorCatalogueTests.test_catalogue_rejects_duplicate_product_ids",
+          "control-plane-kit-servers:tests.test_descriptor_catalogue.DescriptorCatalogueTests.test_catalogue_rejects_incomplete_and_unknown_declarations",
+          "control-plane-kit-servers:tests.test_descriptor_catalogue.DescriptorCatalogueTests.test_default_catalogue_loads_completed_declarations",
+          "control-plane-kit-core:tests.test_product_descriptor.ProductDescriptorCodecTests.test_rejects_unknown_schema_keys_and_product_escape_hatches",
+          "control-plane-kit-core:tests.test_product_descriptor.ProductDescriptorCodecTests.test_round_trips_from_bytes_text_and_mapping",
+          "control-plane-kit-servers:products.cpk_server.tests.test_product_descriptor.CpkServerProductDescriptorTests.test_catalogue_admits_descriptor_and_core_catalog_lookup",
+          "control-plane-kit-servers:tests.test_descriptor_catalogue.DescriptorCatalogueTests.test_publication_artifact_is_deterministic_and_checksummed"
+        ],
+        "tests.test_package_server_catalog.PackageServerCatalogTests.test_contract_rejects_capability_claim_without_evidence": [
+          "control-plane-kit-core:tests.test_product_descriptor_hardening.ProductDescriptorHardeningTests.test_malicious_descriptor_matrix_fails_without_echoing_canary",
+          "control-plane-kit-servers:products.cpk_server.tests.test_product_descriptor.CpkServerProductDescriptorTests.test_descriptor_rejects_unknown_fields"
+        ],
+        "tests.test_package_server_catalog.PackageServerCatalogTests.test_executable_evidence_shape_fails_closed": [
+          "control-plane-kit-core:tests.test_product_descriptor_hardening.ProductDescriptorHardeningTests.test_malicious_descriptor_matrix_fails_without_echoing_canary",
+          "control-plane-kit-servers:products.cpk_server.tests.test_product_descriptor.CpkServerProductDescriptorTests.test_descriptor_rejects_unknown_fields"
+        ],
+        "tests.test_package_server_catalog.PackageServerCatalogTests.test_free_form_metadata_cannot_change_typed_product_identity": [
+          "control-plane-kit-servers:tests.test_descriptor_catalogue.DescriptorCatalogueTests.test_catalogue_rejects_duplicate_product_ids",
+          "control-plane-kit-servers:tests.test_descriptor_catalogue.DescriptorCatalogueTests.test_catalogue_rejects_incomplete_and_unknown_declarations",
+          "control-plane-kit-servers:tests.test_descriptor_catalogue.DescriptorCatalogueTests.test_default_catalogue_loads_completed_declarations",
+          "control-plane-kit-core:tests.test_product_descriptor.ProductDescriptorCodecTests.test_rejects_unknown_schema_keys_and_product_escape_hatches",
+          "control-plane-kit-core:tests.test_product_descriptor.ProductDescriptorCodecTests.test_round_trips_from_bytes_text_and_mapping",
+          "control-plane-kit-servers:products.cpk_server.tests.test_product_descriptor.CpkServerProductDescriptorTests.test_catalogue_admits_descriptor_and_core_catalog_lookup",
+          "control-plane-kit-servers:tests.test_descriptor_catalogue.DescriptorCatalogueTests.test_publication_artifact_is_deterministic_and_checksummed"
+        ],
+        "tests.test_package_server_catalog.PackageServerCatalogTests.test_managed_router_capabilities_are_control_route_backed": [
+          "control-plane-kit-servers:products.http_active_router.tests.test_http_active_router_product.HttpActiveRouterProductTests.test_descriptor_round_trips_as_external_product_contract",
+          "control-plane-kit-servers:products.http_active_router.tests.test_http_active_router_product.HttpActiveRouterProductTests.test_entrypoint_source_preserves_bounded_no_redirect_forwarding"
+        ],
+        "tests.test_package_server_catalog.PackageServerCatalogTests.test_matrix_exposes_socket_binding_without_metadata_inference": [
+          "control-plane-kit-core:tests.test_graph_validation.GraphValidationTests.test_edge_assignments_binding_and_consumer_environment_must_match",
+          "control-plane-kit-core:tests.test_graph_codec.GraphDescriptorCodecTests.test_edge_binding_and_protocol_products_are_closed"
+        ],
+        "tests.test_package_server_catalog.PackageServerCatalogTests.test_package_product_identity_round_trips_through_default_codec": [
+          "control-plane-kit-servers:tests.test_descriptor_catalogue.DescriptorCatalogueTests.test_catalogue_rejects_duplicate_product_ids",
+          "control-plane-kit-servers:tests.test_descriptor_catalogue.DescriptorCatalogueTests.test_catalogue_rejects_incomplete_and_unknown_declarations",
+          "control-plane-kit-servers:tests.test_descriptor_catalogue.DescriptorCatalogueTests.test_default_catalogue_loads_completed_declarations",
+          "control-plane-kit-core:tests.test_product_descriptor.ProductDescriptorCodecTests.test_rejects_unknown_schema_keys_and_product_escape_hatches",
+          "control-plane-kit-core:tests.test_product_descriptor.ProductDescriptorCodecTests.test_round_trips_from_bytes_text_and_mapping",
+          "control-plane-kit-servers:products.cpk_server.tests.test_product_descriptor.CpkServerProductDescriptorTests.test_catalogue_admits_descriptor_and_core_catalog_lookup",
+          "control-plane-kit-servers:tests.test_descriptor_catalogue.DescriptorCatalogueTests.test_publication_artifact_is_deterministic_and_checksummed"
+        ],
+        "tests.test_package_server_catalog.PackageServerCatalogTests.test_teaching_servers_advertise_only_executable_evidence": [
+          "control-plane-kit-core:tests.test_product_descriptor_hardening.ProductDescriptorHardeningTests.test_malicious_descriptor_matrix_fails_without_echoing_canary",
+          "control-plane-kit-servers:products.cpk_server.tests.test_product_descriptor.CpkServerProductDescriptorTests.test_descriptor_rejects_unknown_fields"
+        ],
+        "tests.test_package_server_catalog.PackageServerCatalogTests.test_unknown_persisted_product_fails_closed": [
+          "control-plane-kit-servers:tests.test_descriptor_catalogue.DescriptorCatalogueTests.test_catalogue_rejects_duplicate_product_ids",
+          "control-plane-kit-servers:tests.test_descriptor_catalogue.DescriptorCatalogueTests.test_catalogue_rejects_incomplete_and_unknown_declarations",
+          "control-plane-kit-servers:tests.test_descriptor_catalogue.DescriptorCatalogueTests.test_default_catalogue_loads_completed_declarations",
+          "control-plane-kit-core:tests.test_product_descriptor.ProductDescriptorCodecTests.test_rejects_unknown_schema_keys_and_product_escape_hatches",
+          "control-plane-kit-core:tests.test_product_descriptor.ProductDescriptorCodecTests.test_round_trips_from_bytes_text_and_mapping",
+          "control-plane-kit-servers:products.cpk_server.tests.test_product_descriptor.CpkServerProductDescriptorTests.test_catalogue_admits_descriptor_and_core_catalog_lookup",
+          "control-plane-kit-servers:tests.test_descriptor_catalogue.DescriptorCatalogueTests.test_publication_artifact_is_deterministic_and_checksummed"
+        ],
+        "tests.test_package_structure.PackageStructureTests.test_canonical_types_report_their_new_module_homes": [
+          "control-plane-kit-core:tests.test_package_boundary.PackageBoundaryTests.test_all_package_imports_stay_inside_pure_core",
+          "control-plane-kit-core:tests.test_package_boundary.PackageBoundaryTests.test_base_package_declares_only_core_language_dependencies",
+          "control-plane-kit-operations:tests.test_package_boundary.OperationsPackageBoundaryTests.test_operations_has_no_concrete_runtime_provider_imports",
+          "control-plane-kit-operations:tests.test_package_boundary.OperationsPackageBoundaryTests.test_operations_source_does_not_import_servers_or_process_packages",
+          "control-plane-kit-servers:tests.test_package_metadata.PackageMetadataTests.test_package_source_does_not_import_process_or_product_implementations",
+          "control-plane-kit-servers:tests.test_descriptor_catalogue.DescriptorCatalogueTests.test_catalogue_module_does_not_import_product_or_process_code"
+        ],
+        "tests.test_package_structure.PackageStructureTests.test_product_and_entrypoint_foundations_have_one_way_ownership": [
+          "control-plane-kit-core:tests.test_package_boundary.PackageBoundaryTests.test_all_package_imports_stay_inside_pure_core",
+          "control-plane-kit-core:tests.test_package_boundary.PackageBoundaryTests.test_base_package_declares_only_core_language_dependencies",
+          "control-plane-kit-operations:tests.test_package_boundary.OperationsPackageBoundaryTests.test_operations_has_no_concrete_runtime_provider_imports",
+          "control-plane-kit-operations:tests.test_package_boundary.OperationsPackageBoundaryTests.test_operations_source_does_not_import_servers_or_process_packages",
+          "control-plane-kit-servers:tests.test_package_metadata.PackageMetadataTests.test_package_source_does_not_import_process_or_product_implementations",
+          "control-plane-kit-servers:tests.test_descriptor_catalogue.DescriptorCatalogueTests.test_catalogue_module_does_not_import_product_or_process_code"
+        ],
+        "tests.test_package_structure.PackageStructureTests.test_pure_packages_do_not_import_workflow_or_store_layers": [
+          "control-plane-kit-core:tests.test_package_boundary.PackageBoundaryTests.test_all_package_imports_stay_inside_pure_core",
+          "control-plane-kit-core:tests.test_package_boundary.PackageBoundaryTests.test_base_package_declares_only_core_language_dependencies",
+          "control-plane-kit-operations:tests.test_package_boundary.OperationsPackageBoundaryTests.test_operations_has_no_concrete_runtime_provider_imports",
+          "control-plane-kit-operations:tests.test_package_boundary.OperationsPackageBoundaryTests.test_operations_source_does_not_import_servers_or_process_packages",
+          "control-plane-kit-servers:tests.test_package_metadata.PackageMetadataTests.test_package_source_does_not_import_process_or_product_implementations",
+          "control-plane-kit-servers:tests.test_descriptor_catalogue.DescriptorCatalogueTests.test_catalogue_module_does_not_import_product_or_process_code"
+        ],
+        "tests.test_read_interface_demo_server.ReadInterfaceDemoServerTests.test_demo_server_requires_configured_token": [
+          "control-plane-kit-servers:products.cpk_server.tests.test_image_bootstrap.CpkServerImageBootstrapTests.test_hosted_process_is_fastapi_over_operations_boundary",
+          "control-plane-kit-servers:products.cpk_server.tests.test_product_descriptor.CpkServerProductDescriptorTests.test_descriptor_and_catalogue_loading_do_not_import_process_code",
+          "control-plane-kit-core:tests.test_adapter_parity_contract.AdapterParityContractTests.test_operator_read_projection_parity_maps_frozen_http_routes_and_mcp_tools",
+          "control-plane-kit-servers:products.cpk_server.tests.test_http_mcp_boundaries.CpkServerHttpMcpBoundaryTests.test_http_read_route_delegates_to_shared_reads_service",
+          "control-plane-kit-servers:products.cpk_server.tests.test_http_mcp_boundaries.CpkServerHttpMcpBoundaryTests.test_mcp_tools_call_uses_same_application_boundary_as_http",
+          "control-plane-kit-servers:products.cpk_server.tests.test_http_mcp_boundaries.CpkServerHttpMcpBoundaryTests.test_application_errors_map_to_bounded_process_responses",
+          "control-plane-kit-servers:products.cpk_server.tests.test_http_mcp_boundaries.CpkServerHttpMcpBoundaryTests.test_invalid_credentials_fail_before_dispatch_and_are_redacted"
+        ],
+        "tests.test_read_interface_demo_server.ReadInterfaceDemoServerTests.test_demo_server_seeds_and_serves_read_routes": [
+          "control-plane-kit-servers:products.cpk_server.tests.test_image_bootstrap.CpkServerImageBootstrapTests.test_hosted_process_is_fastapi_over_operations_boundary",
+          "control-plane-kit-servers:products.cpk_server.tests.test_product_descriptor.CpkServerProductDescriptorTests.test_descriptor_and_catalogue_loading_do_not_import_process_code",
+          "control-plane-kit-core:tests.test_adapter_parity_contract.AdapterParityContractTests.test_operator_read_projection_parity_maps_frozen_http_routes_and_mcp_tools",
+          "control-plane-kit-servers:products.cpk_server.tests.test_http_mcp_boundaries.CpkServerHttpMcpBoundaryTests.test_http_read_route_delegates_to_shared_reads_service",
+          "control-plane-kit-servers:products.cpk_server.tests.test_http_mcp_boundaries.CpkServerHttpMcpBoundaryTests.test_mcp_tools_call_uses_same_application_boundary_as_http",
+          "control-plane-kit-servers:products.cpk_server.tests.test_http_mcp_boundaries.CpkServerHttpMcpBoundaryTests.test_application_errors_map_to_bounded_process_responses",
+          "control-plane-kit-servers:products.cpk_server.tests.test_http_mcp_boundaries.CpkServerHttpMcpBoundaryTests.test_invalid_credentials_fail_before_dispatch_and_are_redacted"
+        ],
+        "tests.test_root_api.RootApiTests.test_interpreter_entrance_does_not_eagerly_import_optional_dependencies": [
+          "control-plane-kit-interpreters:tests.test_scaffold.InterpretersScaffoldTests.test_package_root_exports_only_lightweight_boundary_values",
+          "control-plane-kit-secrets:tests.test_package_policy.PackagePolicyTests.test_package_root_exports_only_lightweight_boundary_values",
+          "control-plane-kit-servers:tests.test_package_metadata.PackageMetadataTests.test_root_import_is_lightweight_and_exposes_catalogue_entrance",
+          "control-plane-kit-interpreters:tests.test_docker_sdk_client.DockerSdkClientTests.test_module_import_does_not_eagerly_import_docker_sdk",
+          "control-plane-kit-interpreters:tests.test_scaffold.InterpretersScaffoldTests.test_base_import_does_not_eagerly_import_optional_runtime_packages",
+          "control-plane-kit-secrets:tests.test_package_policy.PackagePolicyTests.test_base_import_does_not_eagerly_import_optional_service_packages",
+          "control-plane-kit-core:tests.test_package_boundary.PackageBoundaryTests.test_all_package_imports_stay_inside_pure_core",
+          "control-plane-kit-core:tests.test_package_boundary.PackageBoundaryTests.test_base_package_declares_only_core_language_dependencies"
+        ],
+        "tests.test_root_api.RootApiTests.test_pure_package_roots_do_not_import_optional_dependencies": [
+          "control-plane-kit-interpreters:tests.test_scaffold.InterpretersScaffoldTests.test_package_root_exports_only_lightweight_boundary_values",
+          "control-plane-kit-secrets:tests.test_package_policy.PackagePolicyTests.test_package_root_exports_only_lightweight_boundary_values",
+          "control-plane-kit-servers:tests.test_package_metadata.PackageMetadataTests.test_root_import_is_lightweight_and_exposes_catalogue_entrance",
+          "control-plane-kit-interpreters:tests.test_docker_sdk_client.DockerSdkClientTests.test_module_import_does_not_eagerly_import_docker_sdk",
+          "control-plane-kit-interpreters:tests.test_scaffold.InterpretersScaffoldTests.test_base_import_does_not_eagerly_import_optional_runtime_packages",
+          "control-plane-kit-secrets:tests.test_package_policy.PackagePolicyTests.test_base_import_does_not_eagerly_import_optional_service_packages",
+          "control-plane-kit-core:tests.test_package_boundary.PackageBoundaryTests.test_all_package_imports_stay_inside_pure_core",
+          "control-plane-kit-core:tests.test_package_boundary.PackageBoundaryTests.test_base_package_declares_only_core_language_dependencies"
+        ],
+        "tests.test_root_api.RootApiTests.test_root_all_names_are_bound": [
+          "control-plane-kit-interpreters:tests.test_scaffold.InterpretersScaffoldTests.test_package_root_exports_only_lightweight_boundary_values",
+          "control-plane-kit-secrets:tests.test_package_policy.PackagePolicyTests.test_package_root_exports_only_lightweight_boundary_values",
+          "control-plane-kit-servers:tests.test_package_metadata.PackageMetadataTests.test_root_import_is_lightweight_and_exposes_catalogue_entrance",
+          "control-plane-kit-interpreters:tests.test_docker_sdk_client.DockerSdkClientTests.test_module_import_does_not_eagerly_import_docker_sdk",
+          "control-plane-kit-interpreters:tests.test_scaffold.InterpretersScaffoldTests.test_base_import_does_not_eagerly_import_optional_runtime_packages",
+          "control-plane-kit-secrets:tests.test_package_policy.PackagePolicyTests.test_base_import_does_not_eagerly_import_optional_service_packages",
+          "control-plane-kit-core:tests.test_package_boundary.PackageBoundaryTests.test_all_package_imports_stay_inside_pure_core",
+          "control-plane-kit-core:tests.test_package_boundary.PackageBoundaryTests.test_base_package_declares_only_core_language_dependencies"
+        ],
+        "tests.test_root_api.RootApiTests.test_root_api_does_not_import_optional_dependencies_directly": [
+          "control-plane-kit-interpreters:tests.test_scaffold.InterpretersScaffoldTests.test_package_root_exports_only_lightweight_boundary_values",
+          "control-plane-kit-secrets:tests.test_package_policy.PackagePolicyTests.test_package_root_exports_only_lightweight_boundary_values",
+          "control-plane-kit-servers:tests.test_package_metadata.PackageMetadataTests.test_root_import_is_lightweight_and_exposes_catalogue_entrance",
+          "control-plane-kit-interpreters:tests.test_docker_sdk_client.DockerSdkClientTests.test_module_import_does_not_eagerly_import_docker_sdk",
+          "control-plane-kit-interpreters:tests.test_scaffold.InterpretersScaffoldTests.test_base_import_does_not_eagerly_import_optional_runtime_packages",
+          "control-plane-kit-secrets:tests.test_package_policy.PackagePolicyTests.test_base_import_does_not_eagerly_import_optional_service_packages",
+          "control-plane-kit-core:tests.test_package_boundary.PackageBoundaryTests.test_all_package_imports_stay_inside_pure_core",
+          "control-plane-kit-core:tests.test_package_boundary.PackageBoundaryTests.test_base_package_declares_only_core_language_dependencies"
+        ],
+        "tests.test_root_api.RootApiTests.test_root_api_imports_only_pure_package_surfaces": [
+          "control-plane-kit-interpreters:tests.test_scaffold.InterpretersScaffoldTests.test_package_root_exports_only_lightweight_boundary_values",
+          "control-plane-kit-secrets:tests.test_package_policy.PackagePolicyTests.test_package_root_exports_only_lightweight_boundary_values",
+          "control-plane-kit-servers:tests.test_package_metadata.PackageMetadataTests.test_root_import_is_lightweight_and_exposes_catalogue_entrance",
+          "control-plane-kit-interpreters:tests.test_docker_sdk_client.DockerSdkClientTests.test_module_import_does_not_eagerly_import_docker_sdk",
+          "control-plane-kit-interpreters:tests.test_scaffold.InterpretersScaffoldTests.test_base_import_does_not_eagerly_import_optional_runtime_packages",
+          "control-plane-kit-secrets:tests.test_package_policy.PackagePolicyTests.test_base_import_does_not_eagerly_import_optional_service_packages",
+          "control-plane-kit-core:tests.test_package_boundary.PackageBoundaryTests.test_all_package_imports_stay_inside_pure_core",
+          "control-plane-kit-core:tests.test_package_boundary.PackageBoundaryTests.test_base_package_declares_only_core_language_dependencies"
+        ]
+      }
     }
   ]
 }

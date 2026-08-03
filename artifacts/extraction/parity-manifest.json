@@ -1089,14 +1089,14 @@
       "owner": "control-plane-kit-core",
       "owner_kind": "core",
       "reference": "tests.test_architecture_analysis.ArchitectureAnalysisTests.test_bare_and_named_exception_handlers_have_total_ordering",
-      "successors": [
-        {
-          "evidence": "extract-e-741.architecture-test-harness.unittest",
-          "id": "neutral-harness.architecture-test-harness",
-          "status": "passing"
-        }
-      ],
-      "supersession": null
+      "successors": [],
+      "supersession": {
+        "negative_case_disposition": "Malformed source, unsupported exports, and policy violations remain fail-closed obligations of package-local and aggregate validation rather than this retired analyzer API.",
+        "obsolete_assumption": "No live package imports the monolithic architecture analyzer or depends on its private AST fact model.",
+        "rationale": "The mutable monolith's shared AST fact engine was test infrastructure, not application behavior. Current packages enforce their boundaries directly and #1316/#1317 own aggregate integrity checks.",
+        "replacement": "package-local tests and the #1316/#1317 validation gates",
+        "review": "HARDEN.TESTS.PARITY #1346"
+      }
     },
     {
       "kind": "test",
@@ -1105,14 +1105,14 @@
       "owner": "control-plane-kit-core",
       "owner_kind": "core",
       "reference": "tests.test_architecture_analysis.ArchitectureAnalysisTests.test_boolean_arguments_assertions_and_empty_test_bodies_are_explicit",
-      "successors": [
-        {
-          "evidence": "extract-e-741.architecture-test-harness.unittest",
-          "id": "neutral-harness.architecture-test-harness",
-          "status": "passing"
-        }
-      ],
-      "supersession": null
+      "successors": [],
+      "supersession": {
+        "negative_case_disposition": "Malformed source, unsupported exports, and policy violations remain fail-closed obligations of package-local and aggregate validation rather than this retired analyzer API.",
+        "obsolete_assumption": "No live package imports the monolithic architecture analyzer or depends on its private AST fact model.",
+        "rationale": "The mutable monolith's shared AST fact engine was test infrastructure, not application behavior. Current packages enforce their boundaries directly and #1316/#1317 own aggregate integrity checks.",
+        "replacement": "package-local tests and the #1316/#1317 validation gates",
+        "review": "HARDEN.TESTS.PARITY #1346"
+      }
     },
     {
       "kind": "test",
@@ -1121,14 +1121,14 @@
       "owner": "control-plane-kit-core",
       "owner_kind": "core",
       "reference": "tests.test_architecture_analysis.ArchitectureAnalysisTests.test_call_keyword_shapes_are_recorded_without_values",
-      "successors": [
-        {
-          "evidence": "extract-e-741.architecture-test-harness.unittest",
-          "id": "neutral-harness.architecture-test-harness",
-          "status": "passing"
-        }
-      ],
-      "supersession": null
+      "successors": [],
+      "supersession": {
+        "negative_case_disposition": "Malformed source, unsupported exports, and policy violations remain fail-closed obligations of package-local and aggregate validation rather than this retired analyzer API.",
+        "obsolete_assumption": "No live package imports the monolithic architecture analyzer or depends on its private AST fact model.",
+        "rationale": "The mutable monolith's shared AST fact engine was test infrastructure, not application behavior. Current packages enforce their boundaries directly and #1316/#1317 own aggregate integrity checks.",
+        "replacement": "package-local tests and the #1316/#1317 validation gates",
+        "review": "HARDEN.TESTS.PARITY #1346"
+      }
     },
     {
       "kind": "test",
@@ -1137,14 +1137,14 @@
       "owner": "control-plane-kit-core",
       "owner_kind": "core",
       "reference": "tests.test_architecture_analysis.ArchitectureAnalysisTests.test_comments_strings_and_docstrings_do_not_become_code_facts",
-      "successors": [
-        {
-          "evidence": "extract-e-741.architecture-test-harness.unittest",
-          "id": "neutral-harness.architecture-test-harness",
-          "status": "passing"
-        }
-      ],
-      "supersession": null
+      "successors": [],
+      "supersession": {
+        "negative_case_disposition": "Malformed source, unsupported exports, and policy violations remain fail-closed obligations of package-local and aggregate validation rather than this retired analyzer API.",
+        "obsolete_assumption": "No live package imports the monolithic architecture analyzer or depends on its private AST fact model.",
+        "rationale": "The mutable monolith's shared AST fact engine was test infrastructure, not application behavior. Current packages enforce their boundaries directly and #1316/#1317 own aggregate integrity checks.",
+        "replacement": "package-local tests and the #1316/#1317 validation gates",
+        "review": "HARDEN.TESTS.PARITY #1346"
+      }
     },
     {
       "kind": "test",
@@ -1153,14 +1153,14 @@
       "owner": "control-plane-kit-core",
       "owner_kind": "core",
       "reference": "tests.test_architecture_analysis.ArchitectureAnalysisTests.test_computed_all_is_explicitly_unsupported",
-      "successors": [
-        {
-          "evidence": "extract-e-741.architecture-test-harness.unittest",
-          "id": "neutral-harness.architecture-test-harness",
-          "status": "passing"
-        }
-      ],
-      "supersession": null
+      "successors": [],
+      "supersession": {
+        "negative_case_disposition": "Malformed source, unsupported exports, and policy violations remain fail-closed obligations of package-local and aggregate validation rather than this retired analyzer API.",
+        "obsolete_assumption": "No live package imports the monolithic architecture analyzer or depends on its private AST fact model.",
+        "rationale": "The mutable monolith's shared AST fact engine was test infrastructure, not application behavior. Current packages enforce their boundaries directly and #1316/#1317 own aggregate integrity checks.",
+        "replacement": "package-local tests and the #1316/#1317 validation gates",
+        "review": "HARDEN.TESTS.PARITY #1346"
+      }
     },
     {
       "kind": "test",
@@ -1169,14 +1169,14 @@
       "owner": "control-plane-kit-core",
       "owner_kind": "core",
       "reference": "tests.test_architecture_analysis.ArchitectureAnalysisTests.test_dotted_import_binding_matches_python_semantics",
-      "successors": [
-        {
-          "evidence": "extract-e-741.architecture-test-harness.unittest",
-          "id": "neutral-harness.architecture-test-harness",
-          "status": "passing"
-        }
-      ],
-      "supersession": null
+      "successors": [],
+      "supersession": {
+        "negative_case_disposition": "Malformed source, unsupported exports, and policy violations remain fail-closed obligations of package-local and aggregate validation rather than this retired analyzer API.",
+        "obsolete_assumption": "No live package imports the monolithic architecture analyzer or depends on its private AST fact model.",
+        "rationale": "The mutable monolith's shared AST fact engine was test infrastructure, not application behavior. Current packages enforce their boundaries directly and #1316/#1317 own aggregate integrity checks.",
+        "replacement": "package-local tests and the #1316/#1317 validation gates",
+        "review": "HARDEN.TESTS.PARITY #1346"
+      }
     },
     {
       "kind": "test",
@@ -1185,14 +1185,14 @@
       "owner": "control-plane-kit-core",
       "owner_kind": "core",
       "reference": "tests.test_architecture_analysis.ArchitectureAnalysisTests.test_file_analysis_derives_module_and_rejects_files_outside_root",
-      "successors": [
-        {
-          "evidence": "extract-e-741.architecture-test-harness.unittest",
-          "id": "neutral-harness.architecture-test-harness",
-          "status": "passing"
-        }
-      ],
-      "supersession": null
+      "successors": [],
+      "supersession": {
+        "negative_case_disposition": "Malformed source, unsupported exports, and policy violations remain fail-closed obligations of package-local and aggregate validation rather than this retired analyzer API.",
+        "obsolete_assumption": "No live package imports the monolithic architecture analyzer or depends on its private AST fact model.",
+        "rationale": "The mutable monolith's shared AST fact engine was test infrastructure, not application behavior. Current packages enforce their boundaries directly and #1316/#1317 own aggregate integrity checks.",
+        "replacement": "package-local tests and the #1316/#1317 validation gates",
+        "review": "HARDEN.TESTS.PARITY #1346"
+      }
     },
     {
       "kind": "test",
@@ -1201,14 +1201,14 @@
       "owner": "control-plane-kit-core",
       "owner_kind": "core",
       "reference": "tests.test_architecture_analysis.ArchitectureAnalysisTests.test_import_aliases_calls_decorators_and_locations_are_resolved",
-      "successors": [
-        {
-          "evidence": "extract-e-741.architecture-test-harness.unittest",
-          "id": "neutral-harness.architecture-test-harness",
-          "status": "passing"
-        }
-      ],
-      "supersession": null
+      "successors": [],
+      "supersession": {
+        "negative_case_disposition": "Malformed source, unsupported exports, and policy violations remain fail-closed obligations of package-local and aggregate validation rather than this retired analyzer API.",
+        "obsolete_assumption": "No live package imports the monolithic architecture analyzer or depends on its private AST fact model.",
+        "rationale": "The mutable monolith's shared AST fact engine was test infrastructure, not application behavior. Current packages enforce their boundaries directly and #1316/#1317 own aggregate integrity checks.",
+        "replacement": "package-local tests and the #1316/#1317 validation gates",
+        "review": "HARDEN.TESTS.PARITY #1346"
+      }
     },
     {
       "kind": "test",
@@ -1217,14 +1217,14 @@
       "owner": "control-plane-kit-core",
       "owner_kind": "core",
       "reference": "tests.test_architecture_analysis.ArchitectureAnalysisTests.test_literal_all_exports_resolve_imported_and_local_provenance",
-      "successors": [
-        {
-          "evidence": "extract-e-741.architecture-test-harness.unittest",
-          "id": "neutral-harness.architecture-test-harness",
-          "status": "passing"
-        }
-      ],
-      "supersession": null
+      "successors": [],
+      "supersession": {
+        "negative_case_disposition": "Malformed source, unsupported exports, and policy violations remain fail-closed obligations of package-local and aggregate validation rather than this retired analyzer API.",
+        "obsolete_assumption": "No live package imports the monolithic architecture analyzer or depends on its private AST fact model.",
+        "rationale": "The mutable monolith's shared AST fact engine was test infrastructure, not application behavior. Current packages enforce their boundaries directly and #1316/#1317 own aggregate integrity checks.",
+        "replacement": "package-local tests and the #1316/#1317 validation gates",
+        "review": "HARDEN.TESTS.PARITY #1346"
+      }
     },
     {
       "kind": "test",
@@ -1233,14 +1233,14 @@
       "owner": "control-plane-kit-core",
       "owner_kind": "core",
       "reference": "tests.test_architecture_analysis.ArchitectureAnalysisTests.test_malformed_source_fails_without_echoing_source",
-      "successors": [
-        {
-          "evidence": "extract-e-741.architecture-test-harness.unittest",
-          "id": "neutral-harness.architecture-test-harness",
-          "status": "passing"
-        }
-      ],
-      "supersession": null
+      "successors": [],
+      "supersession": {
+        "negative_case_disposition": "Malformed source, unsupported exports, and policy violations remain fail-closed obligations of package-local and aggregate validation rather than this retired analyzer API.",
+        "obsolete_assumption": "No live package imports the monolithic architecture analyzer or depends on its private AST fact model.",
+        "rationale": "The mutable monolith's shared AST fact engine was test infrastructure, not application behavior. Current packages enforce their boundaries directly and #1316/#1317 own aggregate integrity checks.",
+        "replacement": "package-local tests and the #1316/#1317 validation gates",
+        "review": "HARDEN.TESTS.PARITY #1346"
+      }
     },
     {
       "kind": "test",
@@ -1249,14 +1249,14 @@
       "owner": "control-plane-kit-core",
       "owner_kind": "core",
       "reference": "tests.test_architecture_analysis.ArchitectureAnalysisTests.test_nested_class_names_and_decorators_are_explicit",
-      "successors": [
-        {
-          "evidence": "extract-e-741.architecture-test-harness.unittest",
-          "id": "neutral-harness.architecture-test-harness",
-          "status": "passing"
-        }
-      ],
-      "supersession": null
+      "successors": [],
+      "supersession": {
+        "negative_case_disposition": "Malformed source, unsupported exports, and policy violations remain fail-closed obligations of package-local and aggregate validation rather than this retired analyzer API.",
+        "obsolete_assumption": "No live package imports the monolithic architecture analyzer or depends on its private AST fact model.",
+        "rationale": "The mutable monolith's shared AST fact engine was test infrastructure, not application behavior. Current packages enforce their boundaries directly and #1316/#1317 own aggregate integrity checks.",
+        "replacement": "package-local tests and the #1316/#1317 validation gates",
+        "review": "HARDEN.TESTS.PARITY #1346"
+      }
     },
     {
       "kind": "test",
@@ -1265,14 +1265,14 @@
       "owner": "control-plane-kit-core",
       "owner_kind": "core",
       "reference": "tests.test_architecture_analysis.ArchitectureAnalysisTests.test_pass_only_functions_and_exception_handlers_are_explicit",
-      "successors": [
-        {
-          "evidence": "extract-e-741.architecture-test-harness.unittest",
-          "id": "neutral-harness.architecture-test-harness",
-          "status": "passing"
-        }
-      ],
-      "supersession": null
+      "successors": [],
+      "supersession": {
+        "negative_case_disposition": "Malformed source, unsupported exports, and policy violations remain fail-closed obligations of package-local and aggregate validation rather than this retired analyzer API.",
+        "obsolete_assumption": "No live package imports the monolithic architecture analyzer or depends on its private AST fact model.",
+        "rationale": "The mutable monolith's shared AST fact engine was test infrastructure, not application behavior. Current packages enforce their boundaries directly and #1316/#1317 own aggregate integrity checks.",
+        "replacement": "package-local tests and the #1316/#1317 validation gates",
+        "review": "HARDEN.TESTS.PARITY #1346"
+      }
     },
     {
       "kind": "test",
@@ -1281,14 +1281,14 @@
       "owner": "control-plane-kit-core",
       "owner_kind": "core",
       "reference": "tests.test_architecture_analysis.ArchitectureAnalysisTests.test_policy_evaluation_is_deterministic_and_location_backed",
-      "successors": [
-        {
-          "evidence": "extract-e-741.architecture-test-harness.unittest",
-          "id": "neutral-harness.architecture-test-harness",
-          "status": "passing"
-        }
-      ],
-      "supersession": null
+      "successors": [],
+      "supersession": {
+        "negative_case_disposition": "Malformed source, unsupported exports, and policy violations remain fail-closed obligations of package-local and aggregate validation rather than this retired analyzer API.",
+        "obsolete_assumption": "No live package imports the monolithic architecture analyzer or depends on its private AST fact model.",
+        "rationale": "The mutable monolith's shared AST fact engine was test infrastructure, not application behavior. Current packages enforce their boundaries directly and #1316/#1317 own aggregate integrity checks.",
+        "replacement": "package-local tests and the #1316/#1317 validation gates",
+        "review": "HARDEN.TESTS.PARITY #1346"
+      }
     },
     {
       "kind": "test",
@@ -1297,14 +1297,14 @@
       "owner": "control-plane-kit-core",
       "owner_kind": "core",
       "reference": "tests.test_architecture_analysis.ArchitectureAnalysisTests.test_prose_does_not_become_export_provenance",
-      "successors": [
-        {
-          "evidence": "extract-e-741.architecture-test-harness.unittest",
-          "id": "neutral-harness.architecture-test-harness",
-          "status": "passing"
-        }
-      ],
-      "supersession": null
+      "successors": [],
+      "supersession": {
+        "negative_case_disposition": "Malformed source, unsupported exports, and policy violations remain fail-closed obligations of package-local and aggregate validation rather than this retired analyzer API.",
+        "obsolete_assumption": "No live package imports the monolithic architecture analyzer or depends on its private AST fact model.",
+        "rationale": "The mutable monolith's shared AST fact engine was test infrastructure, not application behavior. Current packages enforce their boundaries directly and #1316/#1317 own aggregate integrity checks.",
+        "replacement": "package-local tests and the #1316/#1317 validation gates",
+        "review": "HARDEN.TESTS.PARITY #1346"
+      }
     },
     {
       "kind": "test",
@@ -1313,14 +1313,14 @@
       "owner": "control-plane-kit-core",
       "owner_kind": "core",
       "reference": "tests.test_architecture_analysis.ArchitectureAnalysisTests.test_relative_import_and_nested_method_names_are_preserved",
-      "successors": [
-        {
-          "evidence": "extract-e-741.architecture-test-harness.unittest",
-          "id": "neutral-harness.architecture-test-harness",
-          "status": "passing"
-        }
-      ],
-      "supersession": null
+      "successors": [],
+      "supersession": {
+        "negative_case_disposition": "Malformed source, unsupported exports, and policy violations remain fail-closed obligations of package-local and aggregate validation rather than this retired analyzer API.",
+        "obsolete_assumption": "No live package imports the monolithic architecture analyzer or depends on its private AST fact model.",
+        "rationale": "The mutable monolith's shared AST fact engine was test infrastructure, not application behavior. Current packages enforce their boundaries directly and #1316/#1317 own aggregate integrity checks.",
+        "replacement": "package-local tests and the #1316/#1317 validation gates",
+        "review": "HARDEN.TESTS.PARITY #1346"
+      }
     },
     {
       "kind": "test",
@@ -1331,8 +1331,28 @@
       "reference": "tests.test_architecture_dependencies.ArchitectureDependencyTests.test_effect_materialization_and_interpreters_cannot_import_stores",
       "successors": [
         {
-          "evidence": "extract-e-741.architecture-test-harness.unittest",
-          "id": "neutral-harness.architecture-test-harness",
+          "evidence": "harden-tests-parity-1346.architecture-package",
+          "id": "control-plane-kit-operations:tests.test_package_boundary.OperationsPackageBoundaryTests.test_operations_has_no_concrete_runtime_provider_imports",
+          "status": "passing"
+        },
+        {
+          "evidence": "harden-tests-parity-1346.architecture-package",
+          "id": "control-plane-kit-operations:tests.test_package_boundary.OperationsPackageBoundaryTests.test_operations_source_does_not_import_servers_or_process_packages",
+          "status": "passing"
+        },
+        {
+          "evidence": "harden-tests-parity-1346.architecture-package",
+          "id": "control-plane-kit-interpreters:tests.test_package_boundary.PackageBoundaryTests.test_package_root_does_not_import_docker_sdk",
+          "status": "passing"
+        },
+        {
+          "evidence": "harden-tests-parity-1346.architecture-package",
+          "id": "control-plane-kit-interpreters:tests.test_package_boundary.PackageBoundaryTests.test_product_specific_branches_are_absent_from_interpreters",
+          "status": "passing"
+        },
+        {
+          "evidence": "harden-tests-parity-1346.architecture-package",
+          "id": "control-plane-kit-interpreters:tests.test_package_boundary.PackageBoundaryTests.test_source_does_not_import_server_process_or_operations_packages",
           "status": "passing"
         }
       ],
@@ -1347,8 +1367,28 @@
       "reference": "tests.test_architecture_dependencies.ArchitectureDependencyTests.test_environment_metadata_escape_hatch_is_rejected",
       "successors": [
         {
-          "evidence": "extract-e-741.architecture-test-harness.unittest",
-          "id": "neutral-harness.architecture-test-harness",
+          "evidence": "harden-tests-parity-1346.architecture-package",
+          "id": "control-plane-kit-core:tests.test_configuration_artifacts.ConfigurationRenderingTests.test_context_is_closed_bounded_and_secret_free_before_render",
+          "status": "passing"
+        },
+        {
+          "evidence": "harden-tests-parity-1346.architecture-package",
+          "id": "control-plane-kit-core:tests.test_environment_secrets.EnvironmentBindingTests.test_node_rejects_open_environment_metadata_and_untyped_bindings",
+          "status": "passing"
+        },
+        {
+          "evidence": "harden-tests-parity-1346.architecture-package",
+          "id": "control-plane-kit-interpreters:tests.test_package_boundary.PackageBoundaryTests.test_package_root_does_not_import_docker_sdk",
+          "status": "passing"
+        },
+        {
+          "evidence": "harden-tests-parity-1346.architecture-package",
+          "id": "control-plane-kit-interpreters:tests.test_package_boundary.PackageBoundaryTests.test_product_specific_branches_are_absent_from_interpreters",
+          "status": "passing"
+        },
+        {
+          "evidence": "harden-tests-parity-1346.architecture-package",
+          "id": "control-plane-kit-interpreters:tests.test_package_boundary.PackageBoundaryTests.test_source_does_not_import_server_process_or_operations_packages",
           "status": "passing"
         }
       ],
@@ -1363,8 +1403,28 @@
       "reference": "tests.test_architecture_dependencies.ArchitectureDependencyTests.test_jinja_environment_is_owned_by_declared_template_interpreters",
       "successors": [
         {
-          "evidence": "extract-e-741.architecture-test-harness.unittest",
-          "id": "neutral-harness.architecture-test-harness",
+          "evidence": "harden-tests-parity-1346.architecture-package",
+          "id": "control-plane-kit-core:tests.test_configuration_artifacts.ConfigurationRenderingTests.test_context_is_closed_bounded_and_secret_free_before_render",
+          "status": "passing"
+        },
+        {
+          "evidence": "harden-tests-parity-1346.architecture-package",
+          "id": "control-plane-kit-core:tests.test_environment_secrets.EnvironmentBindingTests.test_node_rejects_open_environment_metadata_and_untyped_bindings",
+          "status": "passing"
+        },
+        {
+          "evidence": "harden-tests-parity-1346.architecture-package",
+          "id": "control-plane-kit-interpreters:tests.test_package_boundary.PackageBoundaryTests.test_package_root_does_not_import_docker_sdk",
+          "status": "passing"
+        },
+        {
+          "evidence": "harden-tests-parity-1346.architecture-package",
+          "id": "control-plane-kit-interpreters:tests.test_package_boundary.PackageBoundaryTests.test_product_specific_branches_are_absent_from_interpreters",
+          "status": "passing"
+        },
+        {
+          "evidence": "harden-tests-parity-1346.architecture-package",
+          "id": "control-plane-kit-interpreters:tests.test_package_boundary.PackageBoundaryTests.test_source_does_not_import_server_process_or_operations_packages",
           "status": "passing"
         }
       ],
@@ -1377,13 +1437,7 @@
       "owner": "control-plane-kit-core",
       "owner_kind": "core",
       "reference": "tests.test_architecture_dependencies.ArchitectureDependencyTests.test_process_and_http_clients_are_adapter_owned",
-      "successors": [
-        {
-          "evidence": "extract-e-741.architecture-test-harness.unittest",
-          "id": "neutral-harness.architecture-test-harness",
-          "status": "passing"
-        }
-      ],
+      "successors": [],
       "supersession": null
     },
     {
@@ -1393,13 +1447,7 @@
       "owner": "control-plane-kit-core",
       "owner_kind": "core",
       "reference": "tests.test_architecture_dependencies.ArchitectureDependencyTests.test_product_interpreter_edge_is_exactly_coredns_to_configuration_rendering",
-      "successors": [
-        {
-          "evidence": "extract-e-741.architecture-test-harness.unittest",
-          "id": "neutral-harness.architecture-test-harness",
-          "status": "passing"
-        }
-      ],
+      "successors": [],
       "supersession": null
     },
     {
@@ -1411,8 +1459,28 @@
       "reference": "tests.test_architecture_dependencies.ArchitectureDependencyTests.test_raw_static_environment_mapping_is_rejected_at_docker_authoring",
       "successors": [
         {
-          "evidence": "extract-e-741.architecture-test-harness.unittest",
-          "id": "neutral-harness.architecture-test-harness",
+          "evidence": "harden-tests-parity-1346.architecture-package",
+          "id": "control-plane-kit-core:tests.test_configuration_artifacts.ConfigurationRenderingTests.test_context_is_closed_bounded_and_secret_free_before_render",
+          "status": "passing"
+        },
+        {
+          "evidence": "harden-tests-parity-1346.architecture-package",
+          "id": "control-plane-kit-core:tests.test_environment_secrets.EnvironmentBindingTests.test_node_rejects_open_environment_metadata_and_untyped_bindings",
+          "status": "passing"
+        },
+        {
+          "evidence": "harden-tests-parity-1346.architecture-package",
+          "id": "control-plane-kit-interpreters:tests.test_package_boundary.PackageBoundaryTests.test_package_root_does_not_import_docker_sdk",
+          "status": "passing"
+        },
+        {
+          "evidence": "harden-tests-parity-1346.architecture-package",
+          "id": "control-plane-kit-interpreters:tests.test_package_boundary.PackageBoundaryTests.test_product_specific_branches_are_absent_from_interpreters",
+          "status": "passing"
+        },
+        {
+          "evidence": "harden-tests-parity-1346.architecture-package",
+          "id": "control-plane-kit-interpreters:tests.test_package_boundary.PackageBoundaryTests.test_source_does_not_import_server_process_or_operations_packages",
           "status": "passing"
         }
       ],
@@ -1427,8 +1495,28 @@
       "reference": "tests.test_architecture_dependencies.ArchitectureDependencyTests.test_relative_same_package_import_is_allowed",
       "successors": [
         {
-          "evidence": "extract-e-741.architecture-test-harness.unittest",
-          "id": "neutral-harness.architecture-test-harness",
+          "evidence": "harden-tests-parity-1346.architecture-package",
+          "id": "control-plane-kit-operations:tests.test_package_boundary.OperationsPackageBoundaryTests.test_operations_has_no_concrete_runtime_provider_imports",
+          "status": "passing"
+        },
+        {
+          "evidence": "harden-tests-parity-1346.architecture-package",
+          "id": "control-plane-kit-operations:tests.test_package_boundary.OperationsPackageBoundaryTests.test_operations_source_does_not_import_servers_or_process_packages",
+          "status": "passing"
+        },
+        {
+          "evidence": "harden-tests-parity-1346.architecture-package",
+          "id": "control-plane-kit-interpreters:tests.test_package_boundary.PackageBoundaryTests.test_package_root_does_not_import_docker_sdk",
+          "status": "passing"
+        },
+        {
+          "evidence": "harden-tests-parity-1346.architecture-package",
+          "id": "control-plane-kit-interpreters:tests.test_package_boundary.PackageBoundaryTests.test_product_specific_branches_are_absent_from_interpreters",
+          "status": "passing"
+        },
+        {
+          "evidence": "harden-tests-parity-1346.architecture-package",
+          "id": "control-plane-kit-interpreters:tests.test_package_boundary.PackageBoundaryTests.test_source_does_not_import_server_process_or_operations_packages",
           "status": "passing"
         }
       ],
@@ -1441,13 +1529,7 @@
       "owner": "control-plane-kit-core",
       "owner_kind": "core",
       "reference": "tests.test_architecture_dependencies.ArchitectureDependencyTests.test_repository_obeys_declared_dependency_and_transport_ownership",
-      "successors": [
-        {
-          "evidence": "extract-e-741.architecture-test-harness.unittest",
-          "id": "neutral-harness.architecture-test-harness",
-          "status": "passing"
-        }
-      ],
+      "successors": [],
       "supersession": null
     },
     {
@@ -1457,13 +1539,7 @@
       "owner": "control-plane-kit-core",
       "owner_kind": "core",
       "reference": "tests.test_architecture_dependencies.ArchitectureDependencyTests.test_reverse_dependency_is_rejected_for_import_and_from_import",
-      "successors": [
-        {
-          "evidence": "extract-e-741.architecture-test-harness.unittest",
-          "id": "neutral-harness.architecture-test-harness",
-          "status": "passing"
-        }
-      ],
+      "successors": [],
       "supersession": null
     },
     {
@@ -1473,13 +1549,7 @@
       "owner": "control-plane-kit-core",
       "owner_kind": "core",
       "reference": "tests.test_architecture_deploy.DeploymentApplicationArchitectureTests.test_deployment_application_obeys_composition_boundary",
-      "successors": [
-        {
-          "evidence": "extract-e-741.architecture-test-harness.unittest",
-          "id": "neutral-harness.architecture-test-harness",
-          "status": "passing"
-        }
-      ],
+      "successors": [],
       "supersession": null
     },
     {
@@ -1491,8 +1561,23 @@
       "reference": "tests.test_architecture_deploy.DeploymentApplicationArchitectureTests.test_policy_resolves_aliases_and_rejects_boundary_bypasses",
       "successors": [
         {
-          "evidence": "extract-e-741.architecture-test-harness.unittest",
-          "id": "neutral-harness.architecture-test-harness",
+          "evidence": "harden-tests-parity-1346.architecture-package",
+          "id": "control-plane-kit-core:tests.test_deployment_program_boundary.DeploymentProgramBoundaryTests.test_operations_modules_do_not_import_process_or_product_packages",
+          "status": "passing"
+        },
+        {
+          "evidence": "harden-tests-parity-1346.architecture-package",
+          "id": "control-plane-kit-core:tests.test_deployment_program_boundary.DeploymentProgramBoundaryTests.test_stage_pipeline_is_closed_ordered_public_contract_data",
+          "status": "passing"
+        },
+        {
+          "evidence": "harden-tests-parity-1346.architecture-package",
+          "id": "control-plane-kit-operations:tests.test_package_boundary.OperationsPackageBoundaryTests.test_operations_has_no_concrete_runtime_provider_imports",
+          "status": "passing"
+        },
+        {
+          "evidence": "harden-tests-parity-1346.architecture-package",
+          "id": "control-plane-kit-operations:tests.test_package_boundary.OperationsPackageBoundaryTests.test_operations_source_does_not_import_servers_or_process_packages",
           "status": "passing"
         }
       ],
@@ -1507,8 +1592,13 @@
       "reference": "tests.test_architecture_ownership.ArchitectureOwnershipTests.test_contract_boundary_may_read_process_environment",
       "successors": [
         {
-          "evidence": "extract-e-741.architecture-test-harness.unittest",
-          "id": "neutral-harness.architecture-test-harness",
+          "evidence": "harden-tests-parity-1346.architecture-package",
+          "id": "control-plane-kit-core:tests.test_control_contracts.ControlContractTests.test_contract_loads_explicit_values_by_name_or_metadata_without_process_reads",
+          "status": "passing"
+        },
+        {
+          "evidence": "harden-tests-parity-1346.architecture-package",
+          "id": "control-plane-kit-core:tests.test_environment_secrets.EnvironmentBindingTests.test_node_rejects_open_environment_metadata_and_untyped_bindings",
           "status": "passing"
         }
       ],
@@ -1523,8 +1613,13 @@
       "reference": "tests.test_architecture_ownership.ArchitectureOwnershipTests.test_environment_aliases_are_rejected_outside_declared_boundaries",
       "successors": [
         {
-          "evidence": "extract-e-741.architecture-test-harness.unittest",
-          "id": "neutral-harness.architecture-test-harness",
+          "evidence": "harden-tests-parity-1346.architecture-package",
+          "id": "control-plane-kit-core:tests.test_control_contracts.ControlContractTests.test_contract_loads_explicit_values_by_name_or_metadata_without_process_reads",
+          "status": "passing"
+        },
+        {
+          "evidence": "harden-tests-parity-1346.architecture-package",
+          "id": "control-plane-kit-core:tests.test_environment_secrets.EnvironmentBindingTests.test_node_rejects_open_environment_metadata_and_untyped_bindings",
           "status": "passing"
         }
       ],
@@ -1539,8 +1634,13 @@
       "reference": "tests.test_architecture_ownership.ArchitectureOwnershipTests.test_observation_projection_cannot_mutate_graph_truth",
       "successors": [
         {
-          "evidence": "extract-e-741.architecture-test-harness.unittest",
-          "id": "neutral-harness.architecture-test-harness",
+          "evidence": "harden-tests-parity-1346.architecture-package",
+          "id": "control-plane-kit-operations:tests.test_read_services.InstanceReadServiceTests.test_observed_state_is_latest_per_subject_and_does_not_rewrite_graph_truth",
+          "status": "passing"
+        },
+        {
+          "evidence": "harden-tests-parity-1346.architecture-package",
+          "id": "control-plane-kit-operations:tests.test_graph_authoring.GraphAuthoringTests.test_registered_product_graph_becomes_desired_graph_truth",
           "status": "passing"
         }
       ],
@@ -1555,8 +1655,23 @@
       "reference": "tests.test_architecture_ownership.ArchitectureOwnershipTests.test_packaged_servers_do_not_bypass_contract_mutation_boundary",
       "successors": [
         {
-          "evidence": "extract-e-741.architecture-test-harness.unittest",
-          "id": "neutral-harness.architecture-test-harness",
+          "evidence": "harden-tests-parity-1346.architecture-package",
+          "id": "control-plane-kit-core:tests.test_package_boundary.PackageBoundaryTests.test_all_package_imports_stay_inside_pure_core",
+          "status": "passing"
+        },
+        {
+          "evidence": "harden-tests-parity-1346.architecture-package",
+          "id": "control-plane-kit-core:tests.test_package_boundary.PackageBoundaryTests.test_base_package_declares_only_core_language_dependencies",
+          "status": "passing"
+        },
+        {
+          "evidence": "harden-tests-parity-1346.architecture-package",
+          "id": "control-plane-kit-operations:tests.test_package_boundary.OperationsPackageBoundaryTests.test_operations_has_no_concrete_runtime_provider_imports",
+          "status": "passing"
+        },
+        {
+          "evidence": "harden-tests-parity-1346.architecture-package",
+          "id": "control-plane-kit-operations:tests.test_package_boundary.OperationsPackageBoundaryTests.test_operations_source_does_not_import_servers_or_process_packages",
           "status": "passing"
         }
       ],
@@ -1571,8 +1686,13 @@
       "reference": "tests.test_architecture_ownership.ArchitectureOwnershipTests.test_raw_current_graph_mutation_is_reserved_to_guarded_workflow",
       "successors": [
         {
-          "evidence": "extract-e-741.architecture-test-harness.unittest",
-          "id": "neutral-harness.architecture-test-harness",
+          "evidence": "harden-tests-parity-1346.architecture-package",
+          "id": "control-plane-kit-operations:tests.test_read_services.InstanceReadServiceTests.test_observed_state_is_latest_per_subject_and_does_not_rewrite_graph_truth",
+          "status": "passing"
+        },
+        {
+          "evidence": "harden-tests-parity-1346.architecture-package",
+          "id": "control-plane-kit-operations:tests.test_graph_authoring.GraphAuthoringTests.test_registered_product_graph_becomes_desired_graph_truth",
           "status": "passing"
         }
       ],
@@ -1587,8 +1707,13 @@
       "reference": "tests.test_architecture_ownership.ArchitectureOwnershipTests.test_repository_obeys_commit_environment_and_graph_mutation_ownership",
       "successors": [
         {
-          "evidence": "extract-e-741.architecture-test-harness.unittest",
-          "id": "neutral-harness.architecture-test-harness",
+          "evidence": "harden-tests-parity-1346.architecture-package",
+          "id": "control-plane-kit-operations:tests.test_read_services.InstanceReadServiceTests.test_observed_state_is_latest_per_subject_and_does_not_rewrite_graph_truth",
+          "status": "passing"
+        },
+        {
+          "evidence": "harden-tests-parity-1346.architecture-package",
+          "id": "control-plane-kit-operations:tests.test_graph_authoring.GraphAuthoringTests.test_registered_product_graph_becomes_desired_graph_truth",
           "status": "passing"
         }
       ],
@@ -1603,8 +1728,13 @@
       "reference": "tests.test_architecture_ownership.ArchitectureOwnershipTests.test_store_commit_is_rejected_but_unit_of_work_commit_is_allowed",
       "successors": [
         {
-          "evidence": "extract-e-741.architecture-test-harness.unittest",
-          "id": "neutral-harness.architecture-test-harness",
+          "evidence": "harden-tests-parity-1346.architecture-package",
+          "id": "control-plane-kit-core:tests.test_unit_of_work_boundary.UnitOfWorkBoundaryTests.test_boundary_rejects_store_commit_and_effects_inside_transactions",
+          "status": "passing"
+        },
+        {
+          "evidence": "harden-tests-parity-1346.architecture-package",
+          "id": "control-plane-kit-operations:tests.test_unit_of_work.PostgresUnitOfWorkIntegrationTests.test_commit_publishes_all_shared_connection_writes_together",
           "status": "passing"
         }
       ],
@@ -1619,8 +1749,13 @@
       "reference": "tests.test_architecture_ownership.ArchitectureOwnershipTests.test_workflow_may_request_commit_but_pure_package_may_not",
       "successors": [
         {
-          "evidence": "extract-e-741.architecture-test-harness.unittest",
-          "id": "neutral-harness.architecture-test-harness",
+          "evidence": "harden-tests-parity-1346.architecture-package",
+          "id": "control-plane-kit-core:tests.test_unit_of_work_boundary.UnitOfWorkBoundaryTests.test_boundary_rejects_store_commit_and_effects_inside_transactions",
+          "status": "passing"
+        },
+        {
+          "evidence": "harden-tests-parity-1346.architecture-package",
+          "id": "control-plane-kit-operations:tests.test_unit_of_work.PostgresUnitOfWorkIntegrationTests.test_commit_publishes_all_shared_connection_writes_together",
           "status": "passing"
         }
       ],
@@ -1635,8 +1770,13 @@
       "reference": "tests.test_architecture_protocol.ProtocolArchitectureTests.test_repository_does_not_erase_protocol_products_in_projections",
       "successors": [
         {
-          "evidence": "extract-e-741.architecture-test-harness.unittest",
-          "id": "neutral-harness.architecture-test-harness",
+          "evidence": "harden-tests-parity-1346.architecture-package",
+          "id": "control-plane-kit-core:tests.test_graph_codec.GraphDescriptorCodecTests.test_edge_binding_and_protocol_products_are_closed",
+          "status": "passing"
+        },
+        {
+          "evidence": "harden-tests-parity-1346.architecture-package",
+          "id": "control-plane-kit-core:tests.test_product_catalog.ProductCatalogTests.test_catalogue_module_has_no_import_or_filesystem_product_loading",
           "status": "passing"
         }
       ],
@@ -1651,8 +1791,13 @@
       "reference": "tests.test_architecture_protocol.ProtocolArchitectureTests.test_scalar_protocol_projection_is_rejected_but_display_is_owned",
       "successors": [
         {
-          "evidence": "extract-e-741.architecture-test-harness.unittest",
-          "id": "neutral-harness.architecture-test-harness",
+          "evidence": "harden-tests-parity-1346.architecture-package",
+          "id": "control-plane-kit-core:tests.test_graph_codec.GraphDescriptorCodecTests.test_edge_binding_and_protocol_products_are_closed",
+          "status": "passing"
+        },
+        {
+          "evidence": "harden-tests-parity-1346.architecture-package",
+          "id": "control-plane-kit-core:tests.test_product_catalog.ProductCatalogTests.test_catalogue_module_has_no_import_or_filesystem_product_loading",
           "status": "passing"
         }
       ],
@@ -1667,8 +1812,28 @@
       "reference": "tests.test_architecture_read_routes.ArchitectureReadRouteTests.test_mutation_and_generic_route_decorators_fail_closed",
       "successors": [
         {
-          "evidence": "extract-e-741.architecture-test-harness.unittest",
-          "id": "neutral-harness.architecture-test-harness",
+          "evidence": "harden-tests-parity-1346.architecture-package",
+          "id": "control-plane-kit-core:tests.test_adapter_parity_contract.AdapterParityContractTests.test_operator_read_projection_parity_maps_frozen_http_routes_and_mcp_tools",
+          "status": "passing"
+        },
+        {
+          "evidence": "harden-tests-parity-1346.architecture-package",
+          "id": "control-plane-kit-servers:products.cpk_server.tests.test_http_mcp_boundaries.CpkServerHttpMcpBoundaryTests.test_http_read_route_delegates_to_shared_reads_service",
+          "status": "passing"
+        },
+        {
+          "evidence": "harden-tests-parity-1346.architecture-package",
+          "id": "control-plane-kit-servers:products.cpk_server.tests.test_http_mcp_boundaries.CpkServerHttpMcpBoundaryTests.test_mcp_tools_call_uses_same_application_boundary_as_http",
+          "status": "passing"
+        },
+        {
+          "evidence": "harden-tests-parity-1346.architecture-package",
+          "id": "control-plane-kit-servers:products.cpk_server.tests.test_http_mcp_boundaries.CpkServerHttpMcpBoundaryTests.test_application_errors_map_to_bounded_process_responses",
+          "status": "passing"
+        },
+        {
+          "evidence": "harden-tests-parity-1346.architecture-package",
+          "id": "control-plane-kit-servers:products.cpk_server.tests.test_http_mcp_boundaries.CpkServerHttpMcpBoundaryTests.test_invalid_credentials_fail_before_dispatch_and_are_redacted",
           "status": "passing"
         }
       ],
@@ -1683,8 +1848,28 @@
       "reference": "tests.test_architecture_read_routes.ArchitectureReadRouteTests.test_read_modules_declare_only_read_methods",
       "successors": [
         {
-          "evidence": "extract-e-741.architecture-test-harness.unittest",
-          "id": "neutral-harness.architecture-test-harness",
+          "evidence": "harden-tests-parity-1346.architecture-package",
+          "id": "control-plane-kit-core:tests.test_adapter_parity_contract.AdapterParityContractTests.test_operator_read_projection_parity_maps_frozen_http_routes_and_mcp_tools",
+          "status": "passing"
+        },
+        {
+          "evidence": "harden-tests-parity-1346.architecture-package",
+          "id": "control-plane-kit-servers:products.cpk_server.tests.test_http_mcp_boundaries.CpkServerHttpMcpBoundaryTests.test_http_read_route_delegates_to_shared_reads_service",
+          "status": "passing"
+        },
+        {
+          "evidence": "harden-tests-parity-1346.architecture-package",
+          "id": "control-plane-kit-servers:products.cpk_server.tests.test_http_mcp_boundaries.CpkServerHttpMcpBoundaryTests.test_mcp_tools_call_uses_same_application_boundary_as_http",
+          "status": "passing"
+        },
+        {
+          "evidence": "harden-tests-parity-1346.architecture-package",
+          "id": "control-plane-kit-servers:products.cpk_server.tests.test_http_mcp_boundaries.CpkServerHttpMcpBoundaryTests.test_application_errors_map_to_bounded_process_responses",
+          "status": "passing"
+        },
+        {
+          "evidence": "harden-tests-parity-1346.architecture-package",
+          "id": "control-plane-kit-servers:products.cpk_server.tests.test_http_mcp_boundaries.CpkServerHttpMcpBoundaryTests.test_invalid_credentials_fail_before_dispatch_and_are_redacted",
           "status": "passing"
         }
       ],
@@ -1699,8 +1884,28 @@
       "reference": "tests.test_architecture_read_routes.ArchitectureReadRouteTests.test_static_declarations_match_realized_fastapi_workspace_routes",
       "successors": [
         {
-          "evidence": "extract-e-741.architecture-test-harness.unittest",
-          "id": "neutral-harness.architecture-test-harness",
+          "evidence": "harden-tests-parity-1346.architecture-package",
+          "id": "control-plane-kit-core:tests.test_adapter_parity_contract.AdapterParityContractTests.test_operator_read_projection_parity_maps_frozen_http_routes_and_mcp_tools",
+          "status": "passing"
+        },
+        {
+          "evidence": "harden-tests-parity-1346.architecture-package",
+          "id": "control-plane-kit-servers:products.cpk_server.tests.test_http_mcp_boundaries.CpkServerHttpMcpBoundaryTests.test_http_read_route_delegates_to_shared_reads_service",
+          "status": "passing"
+        },
+        {
+          "evidence": "harden-tests-parity-1346.architecture-package",
+          "id": "control-plane-kit-servers:products.cpk_server.tests.test_http_mcp_boundaries.CpkServerHttpMcpBoundaryTests.test_mcp_tools_call_uses_same_application_boundary_as_http",
+          "status": "passing"
+        },
+        {
+          "evidence": "harden-tests-parity-1346.architecture-package",
+          "id": "control-plane-kit-servers:products.cpk_server.tests.test_http_mcp_boundaries.CpkServerHttpMcpBoundaryTests.test_application_errors_map_to_bounded_process_responses",
+          "status": "passing"
+        },
+        {
+          "evidence": "harden-tests-parity-1346.architecture-package",
+          "id": "control-plane-kit-servers:products.cpk_server.tests.test_http_mcp_boundaries.CpkServerHttpMcpBoundaryTests.test_invalid_credentials_fail_before_dispatch_and_are_redacted",
           "status": "passing"
         }
       ],
@@ -1713,13 +1918,7 @@
       "owner": "control-plane-kit-core",
       "owner_kind": "core",
       "reference": "tests.test_architecture_scenarios.ScenarioArchitectureTests.test_atomic_contract_suites_remain_independent_of_scenario_runner",
-      "successors": [
-        {
-          "evidence": "extract-e-741.architecture-test-harness.unittest",
-          "id": "neutral-harness.architecture-test-harness",
-          "status": "passing"
-        }
-      ],
+      "successors": [],
       "supersession": null
     },
     {
@@ -1729,13 +1928,7 @@
       "owner": "control-plane-kit-core",
       "owner_kind": "core",
       "reference": "tests.test_architecture_scenarios.ScenarioArchitectureTests.test_fake_effect_is_a_typed_capability_provider_not_an_application_mock",
-      "successors": [
-        {
-          "evidence": "extract-e-741.architecture-test-harness.unittest",
-          "id": "neutral-harness.architecture-test-harness",
-          "status": "passing"
-        }
-      ],
+      "successors": [],
       "supersession": null
     },
     {
@@ -1745,13 +1938,7 @@
       "owner": "control-plane-kit-core",
       "owner_kind": "core",
       "reference": "tests.test_architecture_scenarios.ScenarioArchitectureTests.test_policy_rejects_store_scheduler_mock_and_private_coordinator_bypass",
-      "successors": [
-        {
-          "evidence": "extract-e-741.architecture-test-harness.unittest",
-          "id": "neutral-harness.architecture-test-harness",
-          "status": "passing"
-        }
-      ],
+      "successors": [],
       "supersession": null
     },
     {
@@ -1761,13 +1948,7 @@
       "owner": "control-plane-kit-core",
       "owner_kind": "core",
       "reference": "tests.test_architecture_scenarios.ScenarioArchitectureTests.test_runner_uses_deploy_program_not_manual_command_chain",
-      "successors": [
-        {
-          "evidence": "extract-e-741.architecture-test-harness.unittest",
-          "id": "neutral-harness.architecture-test-harness",
-          "status": "passing"
-        }
-      ],
+      "successors": [],
       "supersession": null
     },
     {
@@ -1777,13 +1958,7 @@
       "owner": "control-plane-kit-core",
       "owner_kind": "core",
       "reference": "tests.test_architecture_scenarios.ScenarioArchitectureTests.test_scenario_modules_obey_application_and_persistence_boundaries",
-      "successors": [
-        {
-          "evidence": "extract-e-741.architecture-test-harness.unittest",
-          "id": "neutral-harness.architecture-test-harness",
-          "status": "passing"
-        }
-      ],
+      "successors": [],
       "supersession": null
     },
     {
@@ -1793,13 +1968,7 @@
       "owner": "control-plane-kit-core",
       "owner_kind": "core",
       "reference": "tests.test_architecture_test_integrity.ArchitectureTestIntegrityTests.test_allowed_skip_requires_a_reviewable_reason",
-      "successors": [
-        {
-          "evidence": "extract-e-741.architecture-test-harness.unittest",
-          "id": "neutral-harness.architecture-test-harness",
-          "status": "passing"
-        }
-      ],
+      "successors": [],
       "supersession": null
     },
     {
@@ -1809,13 +1978,7 @@
       "owner": "control-plane-kit-core",
       "owner_kind": "core",
       "reference": "tests.test_architecture_test_integrity.ArchitectureTestIntegrityTests.test_duplicate_and_literal_false_approved_skips_fail_closed",
-      "successors": [
-        {
-          "evidence": "extract-e-741.architecture-test-harness.unittest",
-          "id": "neutral-harness.architecture-test-harness",
-          "status": "passing"
-        }
-      ],
+      "successors": [],
       "supersession": null
     },
     {
@@ -1825,13 +1988,7 @@
       "owner": "control-plane-kit-core",
       "owner_kind": "core",
       "reference": "tests.test_architecture_test_integrity.ArchitectureTestIntegrityTests.test_mocks_are_reported_without_becoming_automatic_failures",
-      "successors": [
-        {
-          "evidence": "extract-e-741.architecture-test-harness.unittest",
-          "id": "neutral-harness.architecture-test-harness",
-          "status": "passing"
-        }
-      ],
+      "successors": [],
       "supersession": null
     },
     {
@@ -1841,13 +1998,7 @@
       "owner": "control-plane-kit-core",
       "owner_kind": "core",
       "reference": "tests.test_architecture_test_integrity.ArchitectureTestIntegrityTests.test_placeholders_empty_tests_and_swallowed_exceptions_fail",
-      "successors": [
-        {
-          "evidence": "extract-e-741.architecture-test-harness.unittest",
-          "id": "neutral-harness.architecture-test-harness",
-          "status": "passing"
-        }
-      ],
+      "successors": [],
       "supersession": null
     },
     {
@@ -1857,13 +2008,7 @@
       "owner": "control-plane-kit-core",
       "owner_kind": "core",
       "reference": "tests.test_architecture_test_integrity.ArchitectureTestIntegrityTests.test_repository_has_only_explicit_optional_dependency_skips",
-      "successors": [
-        {
-          "evidence": "extract-e-741.architecture-test-harness.unittest",
-          "id": "neutral-harness.architecture-test-harness",
-          "status": "passing"
-        }
-      ],
+      "successors": [],
       "supersession": null
     },
     {
@@ -1873,13 +2018,7 @@
       "owner": "control-plane-kit-core",
       "owner_kind": "core",
       "reference": "tests.test_architecture_test_integrity.ArchitectureTestIntegrityTests.test_unconditional_and_unapproved_skips_fail_with_locations",
-      "successors": [
-        {
-          "evidence": "extract-e-741.architecture-test-harness.unittest",
-          "id": "neutral-harness.architecture-test-harness",
-          "status": "passing"
-        }
-      ],
+      "successors": [],
       "supersession": null
     },
     {
@@ -1891,8 +2030,28 @@
       "reference": "tests.test_backend_boundaries.BackendBoundaryTests.test_destructive_classification_is_data_before_execution",
       "successors": [
         {
-          "evidence": "extract-e-786.deployment-program-boundary.unittest",
-          "id": "control-plane-kit-core.tests.test_backend_boundaries.BackendBoundaryTests.test_destructive_classification_is_data_before_execution",
+          "evidence": "harden-tests-parity-1346.architecture-package",
+          "id": "control-plane-kit-operations:tests.test_graph_authoring.GraphAuthoringTests.test_registered_product_graph_becomes_desired_graph_truth",
+          "status": "passing"
+        },
+        {
+          "evidence": "harden-tests-parity-1346.architecture-package",
+          "id": "control-plane-kit-operations:tests.test_planning_commands.PlanningCommandTests.test_desired_graph_late_action_failure_rolls_back_graph_truth",
+          "status": "passing"
+        },
+        {
+          "evidence": "harden-tests-parity-1346.architecture-package",
+          "id": "control-plane-kit-core:tests.test_activity_plan.ActivityPlanTests.test_destructive_activity_requires_high_or_critical_risk",
+          "status": "passing"
+        },
+        {
+          "evidence": "harden-tests-parity-1346.architecture-package",
+          "id": "control-plane-kit-core:tests.test_unit_of_work_boundary.UnitOfWorkBoundaryTests.test_boundary_rejects_store_commit_and_effects_inside_transactions",
+          "status": "passing"
+        },
+        {
+          "evidence": "harden-tests-parity-1346.architecture-package",
+          "id": "control-plane-kit-operations:tests.test_unit_of_work.PostgresUnitOfWorkIntegrationTests.test_commit_publishes_all_shared_connection_writes_together",
           "status": "passing"
         }
       ],
@@ -1907,8 +2066,28 @@
       "reference": "tests.test_backend_boundaries.BackendBoundaryTests.test_policy_decisions_do_not_create_workflow_records",
       "successors": [
         {
-          "evidence": "extract-e-786.deployment-program-boundary.unittest",
-          "id": "control-plane-kit-core.tests.test_backend_boundaries.BackendBoundaryTests.test_policy_decisions_do_not_create_workflow_records",
+          "evidence": "harden-tests-parity-1346.architecture-package",
+          "id": "control-plane-kit-operations:tests.test_graph_authoring.GraphAuthoringTests.test_registered_product_graph_becomes_desired_graph_truth",
+          "status": "passing"
+        },
+        {
+          "evidence": "harden-tests-parity-1346.architecture-package",
+          "id": "control-plane-kit-operations:tests.test_planning_commands.PlanningCommandTests.test_desired_graph_late_action_failure_rolls_back_graph_truth",
+          "status": "passing"
+        },
+        {
+          "evidence": "harden-tests-parity-1346.architecture-package",
+          "id": "control-plane-kit-core:tests.test_activity_plan.ActivityPlanTests.test_destructive_activity_requires_high_or_critical_risk",
+          "status": "passing"
+        },
+        {
+          "evidence": "harden-tests-parity-1346.architecture-package",
+          "id": "control-plane-kit-core:tests.test_unit_of_work_boundary.UnitOfWorkBoundaryTests.test_boundary_rejects_store_commit_and_effects_inside_transactions",
+          "status": "passing"
+        },
+        {
+          "evidence": "harden-tests-parity-1346.architecture-package",
+          "id": "control-plane-kit-operations:tests.test_unit_of_work.PostgresUnitOfWorkIntegrationTests.test_commit_publishes_all_shared_connection_writes_together",
           "status": "passing"
         }
       ],
@@ -1923,8 +2102,28 @@
       "reference": "tests.test_backend_boundaries.BackendBoundaryTests.test_workflow_records_intent_without_writing_graph_truth",
       "successors": [
         {
-          "evidence": "extract-e-786.deployment-program-boundary.unittest",
-          "id": "control-plane-kit-core.tests.test_backend_boundaries.BackendBoundaryTests.test_workflow_records_intent_without_writing_graph_truth",
+          "evidence": "harden-tests-parity-1346.architecture-package",
+          "id": "control-plane-kit-operations:tests.test_graph_authoring.GraphAuthoringTests.test_registered_product_graph_becomes_desired_graph_truth",
+          "status": "passing"
+        },
+        {
+          "evidence": "harden-tests-parity-1346.architecture-package",
+          "id": "control-plane-kit-operations:tests.test_planning_commands.PlanningCommandTests.test_desired_graph_late_action_failure_rolls_back_graph_truth",
+          "status": "passing"
+        },
+        {
+          "evidence": "harden-tests-parity-1346.architecture-package",
+          "id": "control-plane-kit-core:tests.test_activity_plan.ActivityPlanTests.test_destructive_activity_requires_high_or_critical_risk",
+          "status": "passing"
+        },
+        {
+          "evidence": "harden-tests-parity-1346.architecture-package",
+          "id": "control-plane-kit-core:tests.test_unit_of_work_boundary.UnitOfWorkBoundaryTests.test_boundary_rejects_store_commit_and_effects_inside_transactions",
+          "status": "passing"
+        },
+        {
+          "evidence": "harden-tests-parity-1346.architecture-package",
+          "id": "control-plane-kit-operations:tests.test_unit_of_work.PostgresUnitOfWorkIntegrationTests.test_commit_publishes_all_shared_connection_writes_together",
           "status": "passing"
         }
       ],
@@ -1939,8 +2138,28 @@
       "reference": "tests.test_backend_boundaries.BackendBoundaryTests.test_workspace_and_graph_truth_are_owned_by_stores",
       "successors": [
         {
-          "evidence": "extract-e-786.deployment-program-boundary.unittest",
-          "id": "control-plane-kit-core.tests.test_backend_boundaries.BackendBoundaryTests.test_workspace_and_graph_truth_are_owned_by_stores",
+          "evidence": "harden-tests-parity-1346.architecture-package",
+          "id": "control-plane-kit-operations:tests.test_graph_authoring.GraphAuthoringTests.test_registered_product_graph_becomes_desired_graph_truth",
+          "status": "passing"
+        },
+        {
+          "evidence": "harden-tests-parity-1346.architecture-package",
+          "id": "control-plane-kit-operations:tests.test_planning_commands.PlanningCommandTests.test_desired_graph_late_action_failure_rolls_back_graph_truth",
+          "status": "passing"
+        },
+        {
+          "evidence": "harden-tests-parity-1346.architecture-package",
+          "id": "control-plane-kit-core:tests.test_activity_plan.ActivityPlanTests.test_destructive_activity_requires_high_or_critical_risk",
+          "status": "passing"
+        },
+        {
+          "evidence": "harden-tests-parity-1346.architecture-package",
+          "id": "control-plane-kit-core:tests.test_unit_of_work_boundary.UnitOfWorkBoundaryTests.test_boundary_rejects_store_commit_and_effects_inside_transactions",
+          "status": "passing"
+        },
+        {
+          "evidence": "harden-tests-parity-1346.architecture-package",
+          "id": "control-plane-kit-operations:tests.test_unit_of_work.PostgresUnitOfWorkIntegrationTests.test_commit_publishes_all_shared_connection_writes_together",
           "status": "passing"
         }
       ],
@@ -2248,11 +2467,11 @@
       "reference": "tests.test_cli.CliTests.test_environment_supplies_base_url_and_token",
       "successors": [],
       "supersession": {
-        "negative_case_disposition": "URL encoding, bearer-token placement, usage errors, and HTTP error rendering remain required client/entrypoint tests outside core.",
-        "obsolete_assumption": "The operator CLI process belongs in the extracted core package.",
-        "rationale": "Frozen CLI tests execute a urllib-based client entrypoint. Extracted core owns HTTP route, schema, auth-scope, and projection contract language; executable CLI/client tooling belongs with cpk-server or a future client package.",
-        "replacement": "#788 read projection contracts plus #742 core HTTP/MCP release-contract evidence and a cpk-server/client handoff for executable CLI behavior.",
-        "review": "#742 validation packaging demo closeout"
+        "negative_case_disposition": "Missing configuration, authentication, bounded HTTP errors, identifier encoding, and pagination remain covered at the cpk-server contract/process boundary; a future client must bind those contracts rather than revive the root facade.",
+        "obsolete_assumption": "No live distribution promises the retired root control_plane_kit CLI command surface.",
+        "rationale": "The aggregate root CLI was an early demo client. Current operator contracts are transport-neutral core commands/reads exposed through cpk-server HTTP and MCP, with client UX intentionally deferred.",
+        "replacement": "cpk-server authenticated HTTP and MCP boundaries",
+        "review": "HARDEN.TESTS.PARITY #1346"
       }
     },
     {
@@ -2264,11 +2483,11 @@
       "reference": "tests.test_cli.CliTests.test_focused_read_commands_encode_identifiers_and_pagination",
       "successors": [],
       "supersession": {
-        "negative_case_disposition": "URL encoding, bearer-token placement, usage errors, and HTTP error rendering remain required client/entrypoint tests outside core.",
-        "obsolete_assumption": "The operator CLI process belongs in the extracted core package.",
-        "rationale": "Frozen CLI tests execute a urllib-based client entrypoint. Extracted core owns HTTP route, schema, auth-scope, and projection contract language; executable CLI/client tooling belongs with cpk-server or a future client package.",
-        "replacement": "#788 read projection contracts plus #742 core HTTP/MCP release-contract evidence and a cpk-server/client handoff for executable CLI behavior.",
-        "review": "#742 validation packaging demo closeout"
+        "negative_case_disposition": "Missing configuration, authentication, bounded HTTP errors, identifier encoding, and pagination remain covered at the cpk-server contract/process boundary; a future client must bind those contracts rather than revive the root facade.",
+        "obsolete_assumption": "No live distribution promises the retired root control_plane_kit CLI command surface.",
+        "rationale": "The aggregate root CLI was an early demo client. Current operator contracts are transport-neutral core commands/reads exposed through cpk-server HTTP and MCP, with client UX intentionally deferred.",
+        "replacement": "cpk-server authenticated HTTP and MCP boundaries",
+        "review": "HARDEN.TESTS.PARITY #1346"
       }
     },
     {
@@ -2280,11 +2499,11 @@
       "reference": "tests.test_cli.CliTests.test_http_error_returns_nonzero_and_prints_detail",
       "successors": [],
       "supersession": {
-        "negative_case_disposition": "URL encoding, bearer-token placement, usage errors, and HTTP error rendering remain required client/entrypoint tests outside core.",
-        "obsolete_assumption": "The operator CLI process belongs in the extracted core package.",
-        "rationale": "Frozen CLI tests execute a urllib-based client entrypoint. Extracted core owns HTTP route, schema, auth-scope, and projection contract language; executable CLI/client tooling belongs with cpk-server or a future client package.",
-        "replacement": "#788 read projection contracts plus #742 core HTTP/MCP release-contract evidence and a cpk-server/client handoff for executable CLI behavior.",
-        "review": "#742 validation packaging demo closeout"
+        "negative_case_disposition": "Missing configuration, authentication, bounded HTTP errors, identifier encoding, and pagination remain covered at the cpk-server contract/process boundary; a future client must bind those contracts rather than revive the root facade.",
+        "obsolete_assumption": "No live distribution promises the retired root control_plane_kit CLI command surface.",
+        "rationale": "The aggregate root CLI was an early demo client. Current operator contracts are transport-neutral core commands/reads exposed through cpk-server HTTP and MCP, with client UX intentionally deferred.",
+        "replacement": "cpk-server authenticated HTTP and MCP boundaries",
+        "review": "HARDEN.TESTS.PARITY #1346"
       }
     },
     {
@@ -2296,11 +2515,11 @@
       "reference": "tests.test_cli.CliTests.test_missing_base_url_is_usage_error",
       "successors": [],
       "supersession": {
-        "negative_case_disposition": "URL encoding, bearer-token placement, usage errors, and HTTP error rendering remain required client/entrypoint tests outside core.",
-        "obsolete_assumption": "The operator CLI process belongs in the extracted core package.",
-        "rationale": "Frozen CLI tests execute a urllib-based client entrypoint. Extracted core owns HTTP route, schema, auth-scope, and projection contract language; executable CLI/client tooling belongs with cpk-server or a future client package.",
-        "replacement": "#788 read projection contracts plus #742 core HTTP/MCP release-contract evidence and a cpk-server/client handoff for executable CLI behavior.",
-        "review": "#742 validation packaging demo closeout"
+        "negative_case_disposition": "Missing configuration, authentication, bounded HTTP errors, identifier encoding, and pagination remain covered at the cpk-server contract/process boundary; a future client must bind those contracts rather than revive the root facade.",
+        "obsolete_assumption": "No live distribution promises the retired root control_plane_kit CLI command surface.",
+        "rationale": "The aggregate root CLI was an early demo client. Current operator contracts are transport-neutral core commands/reads exposed through cpk-server HTTP and MCP, with client UX intentionally deferred.",
+        "replacement": "cpk-server authenticated HTTP and MCP boundaries",
+        "review": "HARDEN.TESTS.PARITY #1346"
       }
     },
     {
@@ -2312,11 +2531,11 @@
       "reference": "tests.test_cli.CliTests.test_pointer_and_limit_commands_encode_query_parameters",
       "successors": [],
       "supersession": {
-        "negative_case_disposition": "URL encoding, bearer-token placement, usage errors, and HTTP error rendering remain required client/entrypoint tests outside core.",
-        "obsolete_assumption": "The operator CLI process belongs in the extracted core package.",
-        "rationale": "Frozen CLI tests execute a urllib-based client entrypoint. Extracted core owns HTTP route, schema, auth-scope, and projection contract language; executable CLI/client tooling belongs with cpk-server or a future client package.",
-        "replacement": "#788 read projection contracts plus #742 core HTTP/MCP release-contract evidence and a cpk-server/client handoff for executable CLI behavior.",
-        "review": "#742 validation packaging demo closeout"
+        "negative_case_disposition": "Missing configuration, authentication, bounded HTTP errors, identifier encoding, and pagination remain covered at the cpk-server contract/process boundary; a future client must bind those contracts rather than revive the root facade.",
+        "obsolete_assumption": "No live distribution promises the retired root control_plane_kit CLI command surface.",
+        "rationale": "The aggregate root CLI was an early demo client. Current operator contracts are transport-neutral core commands/reads exposed through cpk-server HTTP and MCP, with client UX intentionally deferred.",
+        "replacement": "cpk-server authenticated HTTP and MCP boundaries",
+        "review": "HARDEN.TESTS.PARITY #1346"
       }
     },
     {
@@ -2328,11 +2547,11 @@
       "reference": "tests.test_cli.CliTests.test_token_sets_bearer_header",
       "successors": [],
       "supersession": {
-        "negative_case_disposition": "URL encoding, bearer-token placement, usage errors, and HTTP error rendering remain required client/entrypoint tests outside core.",
-        "obsolete_assumption": "The operator CLI process belongs in the extracted core package.",
-        "rationale": "Frozen CLI tests execute a urllib-based client entrypoint. Extracted core owns HTTP route, schema, auth-scope, and projection contract language; executable CLI/client tooling belongs with cpk-server or a future client package.",
-        "replacement": "#788 read projection contracts plus #742 core HTTP/MCP release-contract evidence and a cpk-server/client handoff for executable CLI behavior.",
-        "review": "#742 validation packaging demo closeout"
+        "negative_case_disposition": "Missing configuration, authentication, bounded HTTP errors, identifier encoding, and pagination remain covered at the cpk-server contract/process boundary; a future client must bind those contracts rather than revive the root facade.",
+        "obsolete_assumption": "No live distribution promises the retired root control_plane_kit CLI command surface.",
+        "rationale": "The aggregate root CLI was an early demo client. Current operator contracts are transport-neutral core commands/reads exposed through cpk-server HTTP and MCP, with client UX intentionally deferred.",
+        "replacement": "cpk-server authenticated HTTP and MCP boundaries",
+        "review": "HARDEN.TESTS.PARITY #1346"
       }
     },
     {
@@ -2344,11 +2563,11 @@
       "reference": "tests.test_cli.CliTests.test_workspace_command_reads_from_base_url_and_prints_json",
       "successors": [],
       "supersession": {
-        "negative_case_disposition": "URL encoding, bearer-token placement, usage errors, and HTTP error rendering remain required client/entrypoint tests outside core.",
-        "obsolete_assumption": "The operator CLI process belongs in the extracted core package.",
-        "rationale": "Frozen CLI tests execute a urllib-based client entrypoint. Extracted core owns HTTP route, schema, auth-scope, and projection contract language; executable CLI/client tooling belongs with cpk-server or a future client package.",
-        "replacement": "#788 read projection contracts plus #742 core HTTP/MCP release-contract evidence and a cpk-server/client handoff for executable CLI behavior.",
-        "review": "#742 validation packaging demo closeout"
+        "negative_case_disposition": "Missing configuration, authentication, bounded HTTP errors, identifier encoding, and pagination remain covered at the cpk-server contract/process boundary; a future client must bind those contracts rather than revive the root facade.",
+        "obsolete_assumption": "No live distribution promises the retired root control_plane_kit CLI command surface.",
+        "rationale": "The aggregate root CLI was an early demo client. Current operator contracts are transport-neutral core commands/reads exposed through cpk-server HTTP and MCP, with client UX intentionally deferred.",
+        "replacement": "cpk-server authenticated HTTP and MCP boundaries",
+        "review": "HARDEN.TESTS.PARITY #1346"
       }
     },
     {
@@ -10219,8 +10438,38 @@
       "reference": "tests.test_instance_read_fastapi.InstanceReadFastAPITests.test_activity_and_observed_state_routes_are_read_only",
       "successors": [
         {
-          "evidence": "extract-e-788.read-projection-contract.unittest",
-          "id": "control-plane-kit-core.tests.test_instance_read_fastapi.InstanceReadFastAPITests.test_activity_and_observed_state_routes_are_read_only",
+          "evidence": "harden-tests-parity-1346.architecture-package",
+          "id": "control-plane-kit-core:tests.test_adapter_parity_contract.AdapterParityContractTests.test_operator_read_projection_parity_maps_frozen_http_routes_and_mcp_tools",
+          "status": "passing"
+        },
+        {
+          "evidence": "harden-tests-parity-1346.architecture-package",
+          "id": "control-plane-kit-servers:products.cpk_server.tests.test_http_mcp_boundaries.CpkServerHttpMcpBoundaryTests.test_http_read_route_delegates_to_shared_reads_service",
+          "status": "passing"
+        },
+        {
+          "evidence": "harden-tests-parity-1346.architecture-package",
+          "id": "control-plane-kit-servers:products.cpk_server.tests.test_http_mcp_boundaries.CpkServerHttpMcpBoundaryTests.test_mcp_tools_call_uses_same_application_boundary_as_http",
+          "status": "passing"
+        },
+        {
+          "evidence": "harden-tests-parity-1346.architecture-package",
+          "id": "control-plane-kit-servers:products.cpk_server.tests.test_http_mcp_boundaries.CpkServerHttpMcpBoundaryTests.test_application_errors_map_to_bounded_process_responses",
+          "status": "passing"
+        },
+        {
+          "evidence": "harden-tests-parity-1346.architecture-package",
+          "id": "control-plane-kit-servers:products.cpk_server.tests.test_http_mcp_boundaries.CpkServerHttpMcpBoundaryTests.test_invalid_credentials_fail_before_dispatch_and_are_redacted",
+          "status": "passing"
+        },
+        {
+          "evidence": "harden-tests-parity-1346.architecture-package",
+          "id": "control-plane-kit-operations:tests.test_read_services.InstanceReadServiceTests.test_workspace_and_graph_reads_are_redacted",
+          "status": "passing"
+        },
+        {
+          "evidence": "harden-tests-parity-1346.architecture-package",
+          "id": "control-plane-kit-operations:tests.test_read_services.InstanceReadServiceTests.test_observed_state_is_latest_per_subject_and_does_not_rewrite_graph_truth",
           "status": "passing"
         }
       ],
@@ -10235,8 +10484,38 @@
       "reference": "tests.test_instance_read_fastapi.InstanceReadFastAPITests.test_configured_token_protects_instance_reads",
       "successors": [
         {
-          "evidence": "extract-e-788.read-projection-contract.unittest",
-          "id": "control-plane-kit-core.tests.test_instance_read_fastapi.InstanceReadFastAPITests.test_configured_token_protects_instance_reads",
+          "evidence": "harden-tests-parity-1346.architecture-package",
+          "id": "control-plane-kit-core:tests.test_adapter_parity_contract.AdapterParityContractTests.test_operator_read_projection_parity_maps_frozen_http_routes_and_mcp_tools",
+          "status": "passing"
+        },
+        {
+          "evidence": "harden-tests-parity-1346.architecture-package",
+          "id": "control-plane-kit-servers:products.cpk_server.tests.test_http_mcp_boundaries.CpkServerHttpMcpBoundaryTests.test_http_read_route_delegates_to_shared_reads_service",
+          "status": "passing"
+        },
+        {
+          "evidence": "harden-tests-parity-1346.architecture-package",
+          "id": "control-plane-kit-servers:products.cpk_server.tests.test_http_mcp_boundaries.CpkServerHttpMcpBoundaryTests.test_mcp_tools_call_uses_same_application_boundary_as_http",
+          "status": "passing"
+        },
+        {
+          "evidence": "harden-tests-parity-1346.architecture-package",
+          "id": "control-plane-kit-servers:products.cpk_server.tests.test_http_mcp_boundaries.CpkServerHttpMcpBoundaryTests.test_application_errors_map_to_bounded_process_responses",
+          "status": "passing"
+        },
+        {
+          "evidence": "harden-tests-parity-1346.architecture-package",
+          "id": "control-plane-kit-servers:products.cpk_server.tests.test_http_mcp_boundaries.CpkServerHttpMcpBoundaryTests.test_invalid_credentials_fail_before_dispatch_and_are_redacted",
+          "status": "passing"
+        },
+        {
+          "evidence": "harden-tests-parity-1346.architecture-package",
+          "id": "control-plane-kit-operations:tests.test_read_services.InstanceReadServiceTests.test_workspace_and_graph_reads_are_redacted",
+          "status": "passing"
+        },
+        {
+          "evidence": "harden-tests-parity-1346.architecture-package",
+          "id": "control-plane-kit-operations:tests.test_read_services.InstanceReadServiceTests.test_observed_state_is_latest_per_subject_and_does_not_rewrite_graph_truth",
           "status": "passing"
         }
       ],
@@ -10251,8 +10530,38 @@
       "reference": "tests.test_instance_read_fastapi.InstanceReadFastAPITests.test_focused_routes_delegate_with_explicit_bounds",
       "successors": [
         {
-          "evidence": "extract-e-788.read-projection-contract.unittest",
-          "id": "control-plane-kit-core.tests.test_instance_read_fastapi.InstanceReadFastAPITests.test_focused_routes_delegate_with_explicit_bounds",
+          "evidence": "harden-tests-parity-1346.architecture-package",
+          "id": "control-plane-kit-core:tests.test_adapter_parity_contract.AdapterParityContractTests.test_operator_read_projection_parity_maps_frozen_http_routes_and_mcp_tools",
+          "status": "passing"
+        },
+        {
+          "evidence": "harden-tests-parity-1346.architecture-package",
+          "id": "control-plane-kit-servers:products.cpk_server.tests.test_http_mcp_boundaries.CpkServerHttpMcpBoundaryTests.test_http_read_route_delegates_to_shared_reads_service",
+          "status": "passing"
+        },
+        {
+          "evidence": "harden-tests-parity-1346.architecture-package",
+          "id": "control-plane-kit-servers:products.cpk_server.tests.test_http_mcp_boundaries.CpkServerHttpMcpBoundaryTests.test_mcp_tools_call_uses_same_application_boundary_as_http",
+          "status": "passing"
+        },
+        {
+          "evidence": "harden-tests-parity-1346.architecture-package",
+          "id": "control-plane-kit-servers:products.cpk_server.tests.test_http_mcp_boundaries.CpkServerHttpMcpBoundaryTests.test_application_errors_map_to_bounded_process_responses",
+          "status": "passing"
+        },
+        {
+          "evidence": "harden-tests-parity-1346.architecture-package",
+          "id": "control-plane-kit-servers:products.cpk_server.tests.test_http_mcp_boundaries.CpkServerHttpMcpBoundaryTests.test_invalid_credentials_fail_before_dispatch_and_are_redacted",
+          "status": "passing"
+        },
+        {
+          "evidence": "harden-tests-parity-1346.architecture-package",
+          "id": "control-plane-kit-operations:tests.test_read_services.InstanceReadServiceTests.test_workspace_and_graph_reads_are_redacted",
+          "status": "passing"
+        },
+        {
+          "evidence": "harden-tests-parity-1346.architecture-package",
+          "id": "control-plane-kit-operations:tests.test_read_services.InstanceReadServiceTests.test_observed_state_is_latest_per_subject_and_does_not_rewrite_graph_truth",
           "status": "passing"
         }
       ],
@@ -10267,8 +10576,38 @@
       "reference": "tests.test_instance_read_fastapi.InstanceReadFastAPITests.test_focused_routes_share_auth_and_workspace_safe_errors",
       "successors": [
         {
-          "evidence": "extract-e-788.read-projection-contract.unittest",
-          "id": "control-plane-kit-core.tests.test_instance_read_fastapi.InstanceReadFastAPITests.test_focused_routes_share_auth_and_workspace_safe_errors",
+          "evidence": "harden-tests-parity-1346.architecture-package",
+          "id": "control-plane-kit-core:tests.test_adapter_parity_contract.AdapterParityContractTests.test_operator_read_projection_parity_maps_frozen_http_routes_and_mcp_tools",
+          "status": "passing"
+        },
+        {
+          "evidence": "harden-tests-parity-1346.architecture-package",
+          "id": "control-plane-kit-servers:products.cpk_server.tests.test_http_mcp_boundaries.CpkServerHttpMcpBoundaryTests.test_http_read_route_delegates_to_shared_reads_service",
+          "status": "passing"
+        },
+        {
+          "evidence": "harden-tests-parity-1346.architecture-package",
+          "id": "control-plane-kit-servers:products.cpk_server.tests.test_http_mcp_boundaries.CpkServerHttpMcpBoundaryTests.test_mcp_tools_call_uses_same_application_boundary_as_http",
+          "status": "passing"
+        },
+        {
+          "evidence": "harden-tests-parity-1346.architecture-package",
+          "id": "control-plane-kit-servers:products.cpk_server.tests.test_http_mcp_boundaries.CpkServerHttpMcpBoundaryTests.test_application_errors_map_to_bounded_process_responses",
+          "status": "passing"
+        },
+        {
+          "evidence": "harden-tests-parity-1346.architecture-package",
+          "id": "control-plane-kit-servers:products.cpk_server.tests.test_http_mcp_boundaries.CpkServerHttpMcpBoundaryTests.test_invalid_credentials_fail_before_dispatch_and_are_redacted",
+          "status": "passing"
+        },
+        {
+          "evidence": "harden-tests-parity-1346.architecture-package",
+          "id": "control-plane-kit-operations:tests.test_read_services.InstanceReadServiceTests.test_workspace_and_graph_reads_are_redacted",
+          "status": "passing"
+        },
+        {
+          "evidence": "harden-tests-parity-1346.architecture-package",
+          "id": "control-plane-kit-operations:tests.test_read_services.InstanceReadServiceTests.test_observed_state_is_latest_per_subject_and_does_not_rewrite_graph_truth",
           "status": "passing"
         }
       ],
@@ -10283,8 +10622,38 @@
       "reference": "tests.test_instance_read_fastapi.InstanceReadFastAPITests.test_instance_read_app_exposes_no_workflow_mutation_routes",
       "successors": [
         {
-          "evidence": "extract-e-788.read-projection-contract.unittest",
-          "id": "control-plane-kit-core.tests.test_instance_read_fastapi.InstanceReadFastAPITests.test_instance_read_app_exposes_no_workflow_mutation_routes",
+          "evidence": "harden-tests-parity-1346.architecture-package",
+          "id": "control-plane-kit-core:tests.test_adapter_parity_contract.AdapterParityContractTests.test_operator_read_projection_parity_maps_frozen_http_routes_and_mcp_tools",
+          "status": "passing"
+        },
+        {
+          "evidence": "harden-tests-parity-1346.architecture-package",
+          "id": "control-plane-kit-servers:products.cpk_server.tests.test_http_mcp_boundaries.CpkServerHttpMcpBoundaryTests.test_http_read_route_delegates_to_shared_reads_service",
+          "status": "passing"
+        },
+        {
+          "evidence": "harden-tests-parity-1346.architecture-package",
+          "id": "control-plane-kit-servers:products.cpk_server.tests.test_http_mcp_boundaries.CpkServerHttpMcpBoundaryTests.test_mcp_tools_call_uses_same_application_boundary_as_http",
+          "status": "passing"
+        },
+        {
+          "evidence": "harden-tests-parity-1346.architecture-package",
+          "id": "control-plane-kit-servers:products.cpk_server.tests.test_http_mcp_boundaries.CpkServerHttpMcpBoundaryTests.test_application_errors_map_to_bounded_process_responses",
+          "status": "passing"
+        },
+        {
+          "evidence": "harden-tests-parity-1346.architecture-package",
+          "id": "control-plane-kit-servers:products.cpk_server.tests.test_http_mcp_boundaries.CpkServerHttpMcpBoundaryTests.test_invalid_credentials_fail_before_dispatch_and_are_redacted",
+          "status": "passing"
+        },
+        {
+          "evidence": "harden-tests-parity-1346.architecture-package",
+          "id": "control-plane-kit-operations:tests.test_read_services.InstanceReadServiceTests.test_workspace_and_graph_reads_are_redacted",
+          "status": "passing"
+        },
+        {
+          "evidence": "harden-tests-parity-1346.architecture-package",
+          "id": "control-plane-kit-operations:tests.test_read_services.InstanceReadServiceTests.test_observed_state_is_latest_per_subject_and_does_not_rewrite_graph_truth",
           "status": "passing"
         }
       ],
@@ -10299,8 +10668,38 @@
       "reference": "tests.test_instance_read_fastapi.InstanceReadFastAPITests.test_projection_routes_delegate_to_read_service",
       "successors": [
         {
-          "evidence": "extract-e-788.read-projection-contract.unittest",
-          "id": "control-plane-kit-core.tests.test_instance_read_fastapi.InstanceReadFastAPITests.test_projection_routes_delegate_to_read_service",
+          "evidence": "harden-tests-parity-1346.architecture-package",
+          "id": "control-plane-kit-core:tests.test_adapter_parity_contract.AdapterParityContractTests.test_operator_read_projection_parity_maps_frozen_http_routes_and_mcp_tools",
+          "status": "passing"
+        },
+        {
+          "evidence": "harden-tests-parity-1346.architecture-package",
+          "id": "control-plane-kit-servers:products.cpk_server.tests.test_http_mcp_boundaries.CpkServerHttpMcpBoundaryTests.test_http_read_route_delegates_to_shared_reads_service",
+          "status": "passing"
+        },
+        {
+          "evidence": "harden-tests-parity-1346.architecture-package",
+          "id": "control-plane-kit-servers:products.cpk_server.tests.test_http_mcp_boundaries.CpkServerHttpMcpBoundaryTests.test_mcp_tools_call_uses_same_application_boundary_as_http",
+          "status": "passing"
+        },
+        {
+          "evidence": "harden-tests-parity-1346.architecture-package",
+          "id": "control-plane-kit-servers:products.cpk_server.tests.test_http_mcp_boundaries.CpkServerHttpMcpBoundaryTests.test_application_errors_map_to_bounded_process_responses",
+          "status": "passing"
+        },
+        {
+          "evidence": "harden-tests-parity-1346.architecture-package",
+          "id": "control-plane-kit-servers:products.cpk_server.tests.test_http_mcp_boundaries.CpkServerHttpMcpBoundaryTests.test_invalid_credentials_fail_before_dispatch_and_are_redacted",
+          "status": "passing"
+        },
+        {
+          "evidence": "harden-tests-parity-1346.architecture-package",
+          "id": "control-plane-kit-operations:tests.test_read_services.InstanceReadServiceTests.test_workspace_and_graph_reads_are_redacted",
+          "status": "passing"
+        },
+        {
+          "evidence": "harden-tests-parity-1346.architecture-package",
+          "id": "control-plane-kit-operations:tests.test_read_services.InstanceReadServiceTests.test_observed_state_is_latest_per_subject_and_does_not_rewrite_graph_truth",
           "status": "passing"
         }
       ],
@@ -10315,8 +10714,38 @@
       "reference": "tests.test_instance_read_fastapi.InstanceReadFastAPITests.test_read_model_errors_map_to_http_statuses",
       "successors": [
         {
-          "evidence": "extract-e-788.read-projection-contract.unittest",
-          "id": "control-plane-kit-core.tests.test_instance_read_fastapi.InstanceReadFastAPITests.test_read_model_errors_map_to_http_statuses",
+          "evidence": "harden-tests-parity-1346.architecture-package",
+          "id": "control-plane-kit-core:tests.test_adapter_parity_contract.AdapterParityContractTests.test_operator_read_projection_parity_maps_frozen_http_routes_and_mcp_tools",
+          "status": "passing"
+        },
+        {
+          "evidence": "harden-tests-parity-1346.architecture-package",
+          "id": "control-plane-kit-servers:products.cpk_server.tests.test_http_mcp_boundaries.CpkServerHttpMcpBoundaryTests.test_http_read_route_delegates_to_shared_reads_service",
+          "status": "passing"
+        },
+        {
+          "evidence": "harden-tests-parity-1346.architecture-package",
+          "id": "control-plane-kit-servers:products.cpk_server.tests.test_http_mcp_boundaries.CpkServerHttpMcpBoundaryTests.test_mcp_tools_call_uses_same_application_boundary_as_http",
+          "status": "passing"
+        },
+        {
+          "evidence": "harden-tests-parity-1346.architecture-package",
+          "id": "control-plane-kit-servers:products.cpk_server.tests.test_http_mcp_boundaries.CpkServerHttpMcpBoundaryTests.test_application_errors_map_to_bounded_process_responses",
+          "status": "passing"
+        },
+        {
+          "evidence": "harden-tests-parity-1346.architecture-package",
+          "id": "control-plane-kit-servers:products.cpk_server.tests.test_http_mcp_boundaries.CpkServerHttpMcpBoundaryTests.test_invalid_credentials_fail_before_dispatch_and_are_redacted",
+          "status": "passing"
+        },
+        {
+          "evidence": "harden-tests-parity-1346.architecture-package",
+          "id": "control-plane-kit-operations:tests.test_read_services.InstanceReadServiceTests.test_workspace_and_graph_reads_are_redacted",
+          "status": "passing"
+        },
+        {
+          "evidence": "harden-tests-parity-1346.architecture-package",
+          "id": "control-plane-kit-operations:tests.test_read_services.InstanceReadServiceTests.test_observed_state_is_latest_per_subject_and_does_not_rewrite_graph_truth",
           "status": "passing"
         }
       ],
@@ -10331,8 +10760,38 @@
       "reference": "tests.test_instance_read_fastapi.InstanceReadFastAPITests.test_stale_recovery_graph_truth_maps_to_conflict",
       "successors": [
         {
-          "evidence": "extract-e-788.read-projection-contract.unittest",
-          "id": "control-plane-kit-core.tests.test_instance_read_fastapi.InstanceReadFastAPITests.test_stale_recovery_graph_truth_maps_to_conflict",
+          "evidence": "harden-tests-parity-1346.architecture-package",
+          "id": "control-plane-kit-core:tests.test_adapter_parity_contract.AdapterParityContractTests.test_operator_read_projection_parity_maps_frozen_http_routes_and_mcp_tools",
+          "status": "passing"
+        },
+        {
+          "evidence": "harden-tests-parity-1346.architecture-package",
+          "id": "control-plane-kit-servers:products.cpk_server.tests.test_http_mcp_boundaries.CpkServerHttpMcpBoundaryTests.test_http_read_route_delegates_to_shared_reads_service",
+          "status": "passing"
+        },
+        {
+          "evidence": "harden-tests-parity-1346.architecture-package",
+          "id": "control-plane-kit-servers:products.cpk_server.tests.test_http_mcp_boundaries.CpkServerHttpMcpBoundaryTests.test_mcp_tools_call_uses_same_application_boundary_as_http",
+          "status": "passing"
+        },
+        {
+          "evidence": "harden-tests-parity-1346.architecture-package",
+          "id": "control-plane-kit-servers:products.cpk_server.tests.test_http_mcp_boundaries.CpkServerHttpMcpBoundaryTests.test_application_errors_map_to_bounded_process_responses",
+          "status": "passing"
+        },
+        {
+          "evidence": "harden-tests-parity-1346.architecture-package",
+          "id": "control-plane-kit-servers:products.cpk_server.tests.test_http_mcp_boundaries.CpkServerHttpMcpBoundaryTests.test_invalid_credentials_fail_before_dispatch_and_are_redacted",
+          "status": "passing"
+        },
+        {
+          "evidence": "harden-tests-parity-1346.architecture-package",
+          "id": "control-plane-kit-operations:tests.test_read_services.InstanceReadServiceTests.test_workspace_and_graph_reads_are_redacted",
+          "status": "passing"
+        },
+        {
+          "evidence": "harden-tests-parity-1346.architecture-package",
+          "id": "control-plane-kit-operations:tests.test_read_services.InstanceReadServiceTests.test_observed_state_is_latest_per_subject_and_does_not_rewrite_graph_truth",
           "status": "passing"
         }
       ],
@@ -10347,8 +10806,38 @@
       "reference": "tests.test_instance_read_fastapi.InstanceReadFastAPITests.test_unconfigured_activity_store_returns_service_unavailable",
       "successors": [
         {
-          "evidence": "extract-e-788.read-projection-contract.unittest",
-          "id": "control-plane-kit-core.tests.test_instance_read_fastapi.InstanceReadFastAPITests.test_unconfigured_activity_store_returns_service_unavailable",
+          "evidence": "harden-tests-parity-1346.architecture-package",
+          "id": "control-plane-kit-core:tests.test_adapter_parity_contract.AdapterParityContractTests.test_operator_read_projection_parity_maps_frozen_http_routes_and_mcp_tools",
+          "status": "passing"
+        },
+        {
+          "evidence": "harden-tests-parity-1346.architecture-package",
+          "id": "control-plane-kit-servers:products.cpk_server.tests.test_http_mcp_boundaries.CpkServerHttpMcpBoundaryTests.test_http_read_route_delegates_to_shared_reads_service",
+          "status": "passing"
+        },
+        {
+          "evidence": "harden-tests-parity-1346.architecture-package",
+          "id": "control-plane-kit-servers:products.cpk_server.tests.test_http_mcp_boundaries.CpkServerHttpMcpBoundaryTests.test_mcp_tools_call_uses_same_application_boundary_as_http",
+          "status": "passing"
+        },
+        {
+          "evidence": "harden-tests-parity-1346.architecture-package",
+          "id": "control-plane-kit-servers:products.cpk_server.tests.test_http_mcp_boundaries.CpkServerHttpMcpBoundaryTests.test_application_errors_map_to_bounded_process_responses",
+          "status": "passing"
+        },
+        {
+          "evidence": "harden-tests-parity-1346.architecture-package",
+          "id": "control-plane-kit-servers:products.cpk_server.tests.test_http_mcp_boundaries.CpkServerHttpMcpBoundaryTests.test_invalid_credentials_fail_before_dispatch_and_are_redacted",
+          "status": "passing"
+        },
+        {
+          "evidence": "harden-tests-parity-1346.architecture-package",
+          "id": "control-plane-kit-operations:tests.test_read_services.InstanceReadServiceTests.test_workspace_and_graph_reads_are_redacted",
+          "status": "passing"
+        },
+        {
+          "evidence": "harden-tests-parity-1346.architecture-package",
+          "id": "control-plane-kit-operations:tests.test_read_services.InstanceReadServiceTests.test_observed_state_is_latest_per_subject_and_does_not_rewrite_graph_truth",
           "status": "passing"
         }
       ],
@@ -10363,8 +10852,38 @@
       "reference": "tests.test_instance_read_fastapi.InstanceReadFastAPITests.test_workspace_and_graph_routes_return_redacted_descriptors",
       "successors": [
         {
-          "evidence": "extract-e-788.read-projection-contract.unittest",
-          "id": "control-plane-kit-core.tests.test_instance_read_fastapi.InstanceReadFastAPITests.test_workspace_and_graph_routes_return_redacted_descriptors",
+          "evidence": "harden-tests-parity-1346.architecture-package",
+          "id": "control-plane-kit-core:tests.test_adapter_parity_contract.AdapterParityContractTests.test_operator_read_projection_parity_maps_frozen_http_routes_and_mcp_tools",
+          "status": "passing"
+        },
+        {
+          "evidence": "harden-tests-parity-1346.architecture-package",
+          "id": "control-plane-kit-servers:products.cpk_server.tests.test_http_mcp_boundaries.CpkServerHttpMcpBoundaryTests.test_http_read_route_delegates_to_shared_reads_service",
+          "status": "passing"
+        },
+        {
+          "evidence": "harden-tests-parity-1346.architecture-package",
+          "id": "control-plane-kit-servers:products.cpk_server.tests.test_http_mcp_boundaries.CpkServerHttpMcpBoundaryTests.test_mcp_tools_call_uses_same_application_boundary_as_http",
+          "status": "passing"
+        },
+        {
+          "evidence": "harden-tests-parity-1346.architecture-package",
+          "id": "control-plane-kit-servers:products.cpk_server.tests.test_http_mcp_boundaries.CpkServerHttpMcpBoundaryTests.test_application_errors_map_to_bounded_process_responses",
+          "status": "passing"
+        },
+        {
+          "evidence": "harden-tests-parity-1346.architecture-package",
+          "id": "control-plane-kit-servers:products.cpk_server.tests.test_http_mcp_boundaries.CpkServerHttpMcpBoundaryTests.test_invalid_credentials_fail_before_dispatch_and_are_redacted",
+          "status": "passing"
+        },
+        {
+          "evidence": "harden-tests-parity-1346.architecture-package",
+          "id": "control-plane-kit-operations:tests.test_read_services.InstanceReadServiceTests.test_workspace_and_graph_reads_are_redacted",
+          "status": "passing"
+        },
+        {
+          "evidence": "harden-tests-parity-1346.architecture-package",
+          "id": "control-plane-kit-operations:tests.test_read_services.InstanceReadServiceTests.test_observed_state_is_latest_per_subject_and_does_not_rewrite_graph_truth",
           "status": "passing"
         }
       ],
@@ -11581,8 +12100,18 @@
       "reference": "tests.test_optional_dependencies.OptionalDependencyTests.test_available_dependencies_are_accepted",
       "successors": [
         {
-          "evidence": "extract-e-741.architecture-test-harness.unittest",
-          "id": "neutral-harness.architecture-test-harness",
+          "evidence": "harden-tests-parity-1346.architecture-package",
+          "id": "control-plane-kit-interpreters:tests.test_docker_sdk_client.DockerSdkClientTests.test_module_import_does_not_eagerly_import_docker_sdk",
+          "status": "passing"
+        },
+        {
+          "evidence": "harden-tests-parity-1346.architecture-package",
+          "id": "control-plane-kit-interpreters:tests.test_scaffold.InterpretersScaffoldTests.test_base_import_does_not_eagerly_import_optional_runtime_packages",
+          "status": "passing"
+        },
+        {
+          "evidence": "harden-tests-parity-1346.architecture-package",
+          "id": "control-plane-kit-secrets:tests.test_package_policy.PackagePolicyTests.test_base_import_does_not_eagerly_import_optional_service_packages",
           "status": "passing"
         }
       ],
@@ -11597,8 +12126,18 @@
       "reference": "tests.test_optional_dependencies.OptionalDependencyTests.test_missing_dependency_names_surface_and_install_extra",
       "successors": [
         {
-          "evidence": "extract-e-741.architecture-test-harness.unittest",
-          "id": "neutral-harness.architecture-test-harness",
+          "evidence": "harden-tests-parity-1346.architecture-package",
+          "id": "control-plane-kit-interpreters:tests.test_docker_sdk_client.DockerSdkClientTests.test_module_import_does_not_eagerly_import_docker_sdk",
+          "status": "passing"
+        },
+        {
+          "evidence": "harden-tests-parity-1346.architecture-package",
+          "id": "control-plane-kit-interpreters:tests.test_scaffold.InterpretersScaffoldTests.test_base_import_does_not_eagerly_import_optional_runtime_packages",
+          "status": "passing"
+        },
+        {
+          "evidence": "harden-tests-parity-1346.architecture-package",
+          "id": "control-plane-kit-secrets:tests.test_package_policy.PackagePolicyTests.test_base_import_does_not_eagerly_import_optional_service_packages",
           "status": "passing"
         }
       ],
@@ -11611,7 +12150,28 @@
       "owner": "control-plane-kit-test:cross-repository",
       "owner_kind": "system",
       "reference": "tests.test_package_inventory.PackageModuleInventoryTests.test_core_inventory_is_exactly_the_effect_free_pipeline_floor",
-      "successors": [],
+      "successors": [
+        {
+          "evidence": "harden-tests-parity-1346.architecture-package",
+          "id": "control-plane-kit-core:tests.test_package_boundary.PackageBoundaryTests.test_all_package_imports_stay_inside_pure_core",
+          "status": "passing"
+        },
+        {
+          "evidence": "harden-tests-parity-1346.architecture-package",
+          "id": "control-plane-kit-core:tests.test_package_boundary.PackageBoundaryTests.test_base_package_declares_only_core_language_dependencies",
+          "status": "passing"
+        },
+        {
+          "evidence": "harden-tests-parity-1346.architecture-package",
+          "id": "control-plane-kit-operations:tests.test_package_boundary.OperationsPackageBoundaryTests.test_operations_has_no_concrete_runtime_provider_imports",
+          "status": "passing"
+        },
+        {
+          "evidence": "harden-tests-parity-1346.architecture-package",
+          "id": "control-plane-kit-operations:tests.test_package_boundary.OperationsPackageBoundaryTests.test_operations_source_does_not_import_servers_or_process_packages",
+          "status": "passing"
+        }
+      ],
       "supersession": null
     },
     {
@@ -11631,7 +12191,28 @@
       "owner": "control-plane-kit-test:cross-repository",
       "owner_kind": "system",
       "reference": "tests.test_package_inventory.PackageModuleInventoryTests.test_current_core_tree_has_only_declared_pure_dependencies",
-      "successors": [],
+      "successors": [
+        {
+          "evidence": "harden-tests-parity-1346.architecture-package",
+          "id": "control-plane-kit-core:tests.test_package_boundary.PackageBoundaryTests.test_all_package_imports_stay_inside_pure_core",
+          "status": "passing"
+        },
+        {
+          "evidence": "harden-tests-parity-1346.architecture-package",
+          "id": "control-plane-kit-core:tests.test_package_boundary.PackageBoundaryTests.test_base_package_declares_only_core_language_dependencies",
+          "status": "passing"
+        },
+        {
+          "evidence": "harden-tests-parity-1346.architecture-package",
+          "id": "control-plane-kit-operations:tests.test_package_boundary.OperationsPackageBoundaryTests.test_operations_has_no_concrete_runtime_provider_imports",
+          "status": "passing"
+        },
+        {
+          "evidence": "harden-tests-parity-1346.architecture-package",
+          "id": "control-plane-kit-operations:tests.test_package_boundary.OperationsPackageBoundaryTests.test_operations_source_does_not_import_servers_or_process_packages",
+          "status": "passing"
+        }
+      ],
       "supersession": null
     },
     {
@@ -11651,7 +12232,33 @@
       "owner": "control-plane-kit-test:cross-repository",
       "owner_kind": "system",
       "reference": "tests.test_package_inventory.PackageModuleInventoryTests.test_every_current_server_module_has_uniform_product_exterior",
-      "successors": [],
+      "successors": [
+        {
+          "evidence": "harden-tests-parity-1346.architecture-package",
+          "id": "control-plane-kit-servers:tests.test_package_metadata.PackageMetadataTests.test_package_source_does_not_import_process_or_product_implementations",
+          "status": "passing"
+        },
+        {
+          "evidence": "harden-tests-parity-1346.architecture-package",
+          "id": "control-plane-kit-servers:tests.test_descriptor_catalogue.DescriptorCatalogueTests.test_catalogue_module_does_not_import_product_or_process_code",
+          "status": "passing"
+        },
+        {
+          "evidence": "harden-tests-parity-1346.architecture-package",
+          "id": "control-plane-kit-servers:tests.test_descriptor_catalogue.DescriptorCatalogueTests.test_catalogue_rejects_duplicate_product_ids",
+          "status": "passing"
+        },
+        {
+          "evidence": "harden-tests-parity-1346.architecture-package",
+          "id": "control-plane-kit-servers:tests.test_descriptor_catalogue.DescriptorCatalogueTests.test_catalogue_rejects_incomplete_and_unknown_declarations",
+          "status": "passing"
+        },
+        {
+          "evidence": "harden-tests-parity-1346.architecture-package",
+          "id": "control-plane-kit-servers:tests.test_descriptor_catalogue.DescriptorCatalogueTests.test_default_catalogue_loads_completed_declarations",
+          "status": "passing"
+        }
+      ],
       "supersession": null
     },
     {
@@ -11681,7 +12288,43 @@
       "owner": "control-plane-kit-test:cross-repository",
       "owner_kind": "system",
       "reference": "tests.test_package_server_catalog.PackageServerCatalogTests.test_catalog_is_the_canonical_product_declaration_collection",
-      "successors": [],
+      "successors": [
+        {
+          "evidence": "harden-tests-parity-1346.architecture-package",
+          "id": "control-plane-kit-servers:tests.test_descriptor_catalogue.DescriptorCatalogueTests.test_catalogue_rejects_duplicate_product_ids",
+          "status": "passing"
+        },
+        {
+          "evidence": "harden-tests-parity-1346.architecture-package",
+          "id": "control-plane-kit-servers:tests.test_descriptor_catalogue.DescriptorCatalogueTests.test_catalogue_rejects_incomplete_and_unknown_declarations",
+          "status": "passing"
+        },
+        {
+          "evidence": "harden-tests-parity-1346.architecture-package",
+          "id": "control-plane-kit-servers:tests.test_descriptor_catalogue.DescriptorCatalogueTests.test_default_catalogue_loads_completed_declarations",
+          "status": "passing"
+        },
+        {
+          "evidence": "harden-tests-parity-1346.architecture-package",
+          "id": "control-plane-kit-core:tests.test_product_descriptor.ProductDescriptorCodecTests.test_rejects_unknown_schema_keys_and_product_escape_hatches",
+          "status": "passing"
+        },
+        {
+          "evidence": "harden-tests-parity-1346.architecture-package",
+          "id": "control-plane-kit-core:tests.test_product_descriptor.ProductDescriptorCodecTests.test_round_trips_from_bytes_text_and_mapping",
+          "status": "passing"
+        },
+        {
+          "evidence": "harden-tests-parity-1346.architecture-package",
+          "id": "control-plane-kit-servers:products.cpk_server.tests.test_product_descriptor.CpkServerProductDescriptorTests.test_catalogue_admits_descriptor_and_core_catalog_lookup",
+          "status": "passing"
+        },
+        {
+          "evidence": "harden-tests-parity-1346.architecture-package",
+          "id": "control-plane-kit-servers:tests.test_descriptor_catalogue.DescriptorCatalogueTests.test_publication_artifact_is_deterministic_and_checksummed",
+          "status": "passing"
+        }
+      ],
       "supersession": null
     },
     {
@@ -11691,7 +12334,43 @@
       "owner": "control-plane-kit-test:cross-repository",
       "owner_kind": "system",
       "reference": "tests.test_package_server_catalog.PackageServerCatalogTests.test_catalogue_contains_each_closed_product_exactly_once",
-      "successors": [],
+      "successors": [
+        {
+          "evidence": "harden-tests-parity-1346.architecture-package",
+          "id": "control-plane-kit-servers:tests.test_descriptor_catalogue.DescriptorCatalogueTests.test_catalogue_rejects_duplicate_product_ids",
+          "status": "passing"
+        },
+        {
+          "evidence": "harden-tests-parity-1346.architecture-package",
+          "id": "control-plane-kit-servers:tests.test_descriptor_catalogue.DescriptorCatalogueTests.test_catalogue_rejects_incomplete_and_unknown_declarations",
+          "status": "passing"
+        },
+        {
+          "evidence": "harden-tests-parity-1346.architecture-package",
+          "id": "control-plane-kit-servers:tests.test_descriptor_catalogue.DescriptorCatalogueTests.test_default_catalogue_loads_completed_declarations",
+          "status": "passing"
+        },
+        {
+          "evidence": "harden-tests-parity-1346.architecture-package",
+          "id": "control-plane-kit-core:tests.test_product_descriptor.ProductDescriptorCodecTests.test_rejects_unknown_schema_keys_and_product_escape_hatches",
+          "status": "passing"
+        },
+        {
+          "evidence": "harden-tests-parity-1346.architecture-package",
+          "id": "control-plane-kit-core:tests.test_product_descriptor.ProductDescriptorCodecTests.test_round_trips_from_bytes_text_and_mapping",
+          "status": "passing"
+        },
+        {
+          "evidence": "harden-tests-parity-1346.architecture-package",
+          "id": "control-plane-kit-servers:products.cpk_server.tests.test_product_descriptor.CpkServerProductDescriptorTests.test_catalogue_admits_descriptor_and_core_catalog_lookup",
+          "status": "passing"
+        },
+        {
+          "evidence": "harden-tests-parity-1346.architecture-package",
+          "id": "control-plane-kit-servers:tests.test_descriptor_catalogue.DescriptorCatalogueTests.test_publication_artifact_is_deterministic_and_checksummed",
+          "status": "passing"
+        }
+      ],
       "supersession": null
     },
     {
@@ -11701,7 +12380,18 @@
       "owner": "control-plane-kit-test:cross-repository",
       "owner_kind": "system",
       "reference": "tests.test_package_server_catalog.PackageServerCatalogTests.test_contract_rejects_capability_claim_without_evidence",
-      "successors": [],
+      "successors": [
+        {
+          "evidence": "harden-tests-parity-1346.architecture-package",
+          "id": "control-plane-kit-core:tests.test_product_descriptor_hardening.ProductDescriptorHardeningTests.test_malicious_descriptor_matrix_fails_without_echoing_canary",
+          "status": "passing"
+        },
+        {
+          "evidence": "harden-tests-parity-1346.architecture-package",
+          "id": "control-plane-kit-servers:products.cpk_server.tests.test_product_descriptor.CpkServerProductDescriptorTests.test_descriptor_rejects_unknown_fields",
+          "status": "passing"
+        }
+      ],
       "supersession": null
     },
     {
@@ -11711,7 +12401,18 @@
       "owner": "control-plane-kit-test:cross-repository",
       "owner_kind": "system",
       "reference": "tests.test_package_server_catalog.PackageServerCatalogTests.test_executable_evidence_shape_fails_closed",
-      "successors": [],
+      "successors": [
+        {
+          "evidence": "harden-tests-parity-1346.architecture-package",
+          "id": "control-plane-kit-core:tests.test_product_descriptor_hardening.ProductDescriptorHardeningTests.test_malicious_descriptor_matrix_fails_without_echoing_canary",
+          "status": "passing"
+        },
+        {
+          "evidence": "harden-tests-parity-1346.architecture-package",
+          "id": "control-plane-kit-servers:products.cpk_server.tests.test_product_descriptor.CpkServerProductDescriptorTests.test_descriptor_rejects_unknown_fields",
+          "status": "passing"
+        }
+      ],
       "supersession": null
     },
     {
@@ -11722,7 +12423,13 @@
       "owner_kind": "system",
       "reference": "tests.test_package_server_catalog.PackageServerCatalogTests.test_fault_injector_is_structurally_test_only",
       "successors": [],
-      "supersession": null
+      "supersession": {
+        "negative_case_disposition": "Unknown products and unsupported capability claims continue to fail closed through descriptor and catalogue validation.",
+        "obsolete_assumption": "No production catalogue or graph may admit a test-only fault-injector identity.",
+        "rationale": "The legacy fault-injector server product was test scaffolding. Current tests inject bounded typed failures at owned service/interpreter seams and do not publish a fake product.",
+        "replacement": "typed injected test capabilities in current package-local and live tests",
+        "review": "HARDEN.TESTS.PARITY #1346"
+      }
     },
     {
       "kind": "test",
@@ -11731,7 +12438,43 @@
       "owner": "control-plane-kit-test:cross-repository",
       "owner_kind": "system",
       "reference": "tests.test_package_server_catalog.PackageServerCatalogTests.test_free_form_metadata_cannot_change_typed_product_identity",
-      "successors": [],
+      "successors": [
+        {
+          "evidence": "harden-tests-parity-1346.architecture-package",
+          "id": "control-plane-kit-servers:tests.test_descriptor_catalogue.DescriptorCatalogueTests.test_catalogue_rejects_duplicate_product_ids",
+          "status": "passing"
+        },
+        {
+          "evidence": "harden-tests-parity-1346.architecture-package",
+          "id": "control-plane-kit-servers:tests.test_descriptor_catalogue.DescriptorCatalogueTests.test_catalogue_rejects_incomplete_and_unknown_declarations",
+          "status": "passing"
+        },
+        {
+          "evidence": "harden-tests-parity-1346.architecture-package",
+          "id": "control-plane-kit-servers:tests.test_descriptor_catalogue.DescriptorCatalogueTests.test_default_catalogue_loads_completed_declarations",
+          "status": "passing"
+        },
+        {
+          "evidence": "harden-tests-parity-1346.architecture-package",
+          "id": "control-plane-kit-core:tests.test_product_descriptor.ProductDescriptorCodecTests.test_rejects_unknown_schema_keys_and_product_escape_hatches",
+          "status": "passing"
+        },
+        {
+          "evidence": "harden-tests-parity-1346.architecture-package",
+          "id": "control-plane-kit-core:tests.test_product_descriptor.ProductDescriptorCodecTests.test_round_trips_from_bytes_text_and_mapping",
+          "status": "passing"
+        },
+        {
+          "evidence": "harden-tests-parity-1346.architecture-package",
+          "id": "control-plane-kit-servers:products.cpk_server.tests.test_product_descriptor.CpkServerProductDescriptorTests.test_catalogue_admits_descriptor_and_core_catalog_lookup",
+          "status": "passing"
+        },
+        {
+          "evidence": "harden-tests-parity-1346.architecture-package",
+          "id": "control-plane-kit-servers:tests.test_descriptor_catalogue.DescriptorCatalogueTests.test_publication_artifact_is_deterministic_and_checksummed",
+          "status": "passing"
+        }
+      ],
       "supersession": null
     },
     {
@@ -11741,7 +12484,18 @@
       "owner": "control-plane-kit-test:cross-repository",
       "owner_kind": "system",
       "reference": "tests.test_package_server_catalog.PackageServerCatalogTests.test_managed_router_capabilities_are_control_route_backed",
-      "successors": [],
+      "successors": [
+        {
+          "evidence": "harden-tests-parity-1346.architecture-package",
+          "id": "control-plane-kit-servers:products.http_active_router.tests.test_http_active_router_product.HttpActiveRouterProductTests.test_descriptor_round_trips_as_external_product_contract",
+          "status": "passing"
+        },
+        {
+          "evidence": "harden-tests-parity-1346.architecture-package",
+          "id": "control-plane-kit-servers:products.http_active_router.tests.test_http_active_router_product.HttpActiveRouterProductTests.test_entrypoint_source_preserves_bounded_no_redirect_forwarding",
+          "status": "passing"
+        }
+      ],
       "supersession": null
     },
     {
@@ -11751,7 +12505,18 @@
       "owner": "control-plane-kit-test:cross-repository",
       "owner_kind": "system",
       "reference": "tests.test_package_server_catalog.PackageServerCatalogTests.test_matrix_exposes_socket_binding_without_metadata_inference",
-      "successors": [],
+      "successors": [
+        {
+          "evidence": "harden-tests-parity-1346.architecture-package",
+          "id": "control-plane-kit-core:tests.test_graph_validation.GraphValidationTests.test_edge_assignments_binding_and_consumer_environment_must_match",
+          "status": "passing"
+        },
+        {
+          "evidence": "harden-tests-parity-1346.architecture-package",
+          "id": "control-plane-kit-core:tests.test_graph_codec.GraphDescriptorCodecTests.test_edge_binding_and_protocol_products_are_closed",
+          "status": "passing"
+        }
+      ],
       "supersession": null
     },
     {
@@ -11761,7 +12526,43 @@
       "owner": "control-plane-kit-test:cross-repository",
       "owner_kind": "system",
       "reference": "tests.test_package_server_catalog.PackageServerCatalogTests.test_package_product_identity_round_trips_through_default_codec",
-      "successors": [],
+      "successors": [
+        {
+          "evidence": "harden-tests-parity-1346.architecture-package",
+          "id": "control-plane-kit-servers:tests.test_descriptor_catalogue.DescriptorCatalogueTests.test_catalogue_rejects_duplicate_product_ids",
+          "status": "passing"
+        },
+        {
+          "evidence": "harden-tests-parity-1346.architecture-package",
+          "id": "control-plane-kit-servers:tests.test_descriptor_catalogue.DescriptorCatalogueTests.test_catalogue_rejects_incomplete_and_unknown_declarations",
+          "status": "passing"
+        },
+        {
+          "evidence": "harden-tests-parity-1346.architecture-package",
+          "id": "control-plane-kit-servers:tests.test_descriptor_catalogue.DescriptorCatalogueTests.test_default_catalogue_loads_completed_declarations",
+          "status": "passing"
+        },
+        {
+          "evidence": "harden-tests-parity-1346.architecture-package",
+          "id": "control-plane-kit-core:tests.test_product_descriptor.ProductDescriptorCodecTests.test_rejects_unknown_schema_keys_and_product_escape_hatches",
+          "status": "passing"
+        },
+        {
+          "evidence": "harden-tests-parity-1346.architecture-package",
+          "id": "control-plane-kit-core:tests.test_product_descriptor.ProductDescriptorCodecTests.test_round_trips_from_bytes_text_and_mapping",
+          "status": "passing"
+        },
+        {
+          "evidence": "harden-tests-parity-1346.architecture-package",
+          "id": "control-plane-kit-servers:products.cpk_server.tests.test_product_descriptor.CpkServerProductDescriptorTests.test_catalogue_admits_descriptor_and_core_catalog_lookup",
+          "status": "passing"
+        },
+        {
+          "evidence": "harden-tests-parity-1346.architecture-package",
+          "id": "control-plane-kit-servers:tests.test_descriptor_catalogue.DescriptorCatalogueTests.test_publication_artifact_is_deterministic_and_checksummed",
+          "status": "passing"
+        }
+      ],
       "supersession": null
     },
     {
@@ -11771,7 +12572,18 @@
       "owner": "control-plane-kit-test:cross-repository",
       "owner_kind": "system",
       "reference": "tests.test_package_server_catalog.PackageServerCatalogTests.test_teaching_servers_advertise_only_executable_evidence",
-      "successors": [],
+      "successors": [
+        {
+          "evidence": "harden-tests-parity-1346.architecture-package",
+          "id": "control-plane-kit-core:tests.test_product_descriptor_hardening.ProductDescriptorHardeningTests.test_malicious_descriptor_matrix_fails_without_echoing_canary",
+          "status": "passing"
+        },
+        {
+          "evidence": "harden-tests-parity-1346.architecture-package",
+          "id": "control-plane-kit-servers:products.cpk_server.tests.test_product_descriptor.CpkServerProductDescriptorTests.test_descriptor_rejects_unknown_fields",
+          "status": "passing"
+        }
+      ],
       "supersession": null
     },
     {
@@ -11781,7 +12593,43 @@
       "owner": "control-plane-kit-test:cross-repository",
       "owner_kind": "system",
       "reference": "tests.test_package_server_catalog.PackageServerCatalogTests.test_unknown_persisted_product_fails_closed",
-      "successors": [],
+      "successors": [
+        {
+          "evidence": "harden-tests-parity-1346.architecture-package",
+          "id": "control-plane-kit-servers:tests.test_descriptor_catalogue.DescriptorCatalogueTests.test_catalogue_rejects_duplicate_product_ids",
+          "status": "passing"
+        },
+        {
+          "evidence": "harden-tests-parity-1346.architecture-package",
+          "id": "control-plane-kit-servers:tests.test_descriptor_catalogue.DescriptorCatalogueTests.test_catalogue_rejects_incomplete_and_unknown_declarations",
+          "status": "passing"
+        },
+        {
+          "evidence": "harden-tests-parity-1346.architecture-package",
+          "id": "control-plane-kit-servers:tests.test_descriptor_catalogue.DescriptorCatalogueTests.test_default_catalogue_loads_completed_declarations",
+          "status": "passing"
+        },
+        {
+          "evidence": "harden-tests-parity-1346.architecture-package",
+          "id": "control-plane-kit-core:tests.test_product_descriptor.ProductDescriptorCodecTests.test_rejects_unknown_schema_keys_and_product_escape_hatches",
+          "status": "passing"
+        },
+        {
+          "evidence": "harden-tests-parity-1346.architecture-package",
+          "id": "control-plane-kit-core:tests.test_product_descriptor.ProductDescriptorCodecTests.test_round_trips_from_bytes_text_and_mapping",
+          "status": "passing"
+        },
+        {
+          "evidence": "harden-tests-parity-1346.architecture-package",
+          "id": "control-plane-kit-servers:products.cpk_server.tests.test_product_descriptor.CpkServerProductDescriptorTests.test_catalogue_admits_descriptor_and_core_catalog_lookup",
+          "status": "passing"
+        },
+        {
+          "evidence": "harden-tests-parity-1346.architecture-package",
+          "id": "control-plane-kit-servers:tests.test_descriptor_catalogue.DescriptorCatalogueTests.test_publication_artifact_is_deterministic_and_checksummed",
+          "status": "passing"
+        }
+      ],
       "supersession": null
     },
     {
@@ -11791,7 +12639,38 @@
       "owner": "control-plane-kit-test:cross-repository",
       "owner_kind": "system",
       "reference": "tests.test_package_structure.PackageStructureTests.test_canonical_types_report_their_new_module_homes",
-      "successors": [],
+      "successors": [
+        {
+          "evidence": "harden-tests-parity-1346.architecture-package",
+          "id": "control-plane-kit-core:tests.test_package_boundary.PackageBoundaryTests.test_all_package_imports_stay_inside_pure_core",
+          "status": "passing"
+        },
+        {
+          "evidence": "harden-tests-parity-1346.architecture-package",
+          "id": "control-plane-kit-core:tests.test_package_boundary.PackageBoundaryTests.test_base_package_declares_only_core_language_dependencies",
+          "status": "passing"
+        },
+        {
+          "evidence": "harden-tests-parity-1346.architecture-package",
+          "id": "control-plane-kit-operations:tests.test_package_boundary.OperationsPackageBoundaryTests.test_operations_has_no_concrete_runtime_provider_imports",
+          "status": "passing"
+        },
+        {
+          "evidence": "harden-tests-parity-1346.architecture-package",
+          "id": "control-plane-kit-operations:tests.test_package_boundary.OperationsPackageBoundaryTests.test_operations_source_does_not_import_servers_or_process_packages",
+          "status": "passing"
+        },
+        {
+          "evidence": "harden-tests-parity-1346.architecture-package",
+          "id": "control-plane-kit-servers:tests.test_package_metadata.PackageMetadataTests.test_package_source_does_not_import_process_or_product_implementations",
+          "status": "passing"
+        },
+        {
+          "evidence": "harden-tests-parity-1346.architecture-package",
+          "id": "control-plane-kit-servers:tests.test_descriptor_catalogue.DescriptorCatalogueTests.test_catalogue_module_does_not_import_product_or_process_code",
+          "status": "passing"
+        }
+      ],
       "supersession": null
     },
     {
@@ -11811,7 +12690,38 @@
       "owner": "control-plane-kit-test:cross-repository",
       "owner_kind": "system",
       "reference": "tests.test_package_structure.PackageStructureTests.test_product_and_entrypoint_foundations_have_one_way_ownership",
-      "successors": [],
+      "successors": [
+        {
+          "evidence": "harden-tests-parity-1346.architecture-package",
+          "id": "control-plane-kit-core:tests.test_package_boundary.PackageBoundaryTests.test_all_package_imports_stay_inside_pure_core",
+          "status": "passing"
+        },
+        {
+          "evidence": "harden-tests-parity-1346.architecture-package",
+          "id": "control-plane-kit-core:tests.test_package_boundary.PackageBoundaryTests.test_base_package_declares_only_core_language_dependencies",
+          "status": "passing"
+        },
+        {
+          "evidence": "harden-tests-parity-1346.architecture-package",
+          "id": "control-plane-kit-operations:tests.test_package_boundary.OperationsPackageBoundaryTests.test_operations_has_no_concrete_runtime_provider_imports",
+          "status": "passing"
+        },
+        {
+          "evidence": "harden-tests-parity-1346.architecture-package",
+          "id": "control-plane-kit-operations:tests.test_package_boundary.OperationsPackageBoundaryTests.test_operations_source_does_not_import_servers_or_process_packages",
+          "status": "passing"
+        },
+        {
+          "evidence": "harden-tests-parity-1346.architecture-package",
+          "id": "control-plane-kit-servers:tests.test_package_metadata.PackageMetadataTests.test_package_source_does_not_import_process_or_product_implementations",
+          "status": "passing"
+        },
+        {
+          "evidence": "harden-tests-parity-1346.architecture-package",
+          "id": "control-plane-kit-servers:tests.test_descriptor_catalogue.DescriptorCatalogueTests.test_catalogue_module_does_not_import_product_or_process_code",
+          "status": "passing"
+        }
+      ],
       "supersession": null
     },
     {
@@ -11821,7 +12731,38 @@
       "owner": "control-plane-kit-test:cross-repository",
       "owner_kind": "system",
       "reference": "tests.test_package_structure.PackageStructureTests.test_pure_packages_do_not_import_workflow_or_store_layers",
-      "successors": [],
+      "successors": [
+        {
+          "evidence": "harden-tests-parity-1346.architecture-package",
+          "id": "control-plane-kit-core:tests.test_package_boundary.PackageBoundaryTests.test_all_package_imports_stay_inside_pure_core",
+          "status": "passing"
+        },
+        {
+          "evidence": "harden-tests-parity-1346.architecture-package",
+          "id": "control-plane-kit-core:tests.test_package_boundary.PackageBoundaryTests.test_base_package_declares_only_core_language_dependencies",
+          "status": "passing"
+        },
+        {
+          "evidence": "harden-tests-parity-1346.architecture-package",
+          "id": "control-plane-kit-operations:tests.test_package_boundary.OperationsPackageBoundaryTests.test_operations_has_no_concrete_runtime_provider_imports",
+          "status": "passing"
+        },
+        {
+          "evidence": "harden-tests-parity-1346.architecture-package",
+          "id": "control-plane-kit-operations:tests.test_package_boundary.OperationsPackageBoundaryTests.test_operations_source_does_not_import_servers_or_process_packages",
+          "status": "passing"
+        },
+        {
+          "evidence": "harden-tests-parity-1346.architecture-package",
+          "id": "control-plane-kit-servers:tests.test_package_metadata.PackageMetadataTests.test_package_source_does_not_import_process_or_product_implementations",
+          "status": "passing"
+        },
+        {
+          "evidence": "harden-tests-parity-1346.architecture-package",
+          "id": "control-plane-kit-servers:tests.test_descriptor_catalogue.DescriptorCatalogueTests.test_catalogue_module_does_not_import_product_or_process_code",
+          "status": "passing"
+        }
+      ],
       "supersession": null
     },
     {
@@ -11832,7 +12773,13 @@
       "owner_kind": "system",
       "reference": "tests.test_package_structure.PackageStructureTests.test_retired_flat_modules_are_not_importable",
       "successors": [],
-      "supersession": null
+      "supersession": {
+        "negative_case_disposition": "Package roots remain importable and lightweight; stale aggregate imports are rejected by #1316/#1317 and deletion searches.",
+        "obsolete_assumption": "No live code may import the mutable aggregate control_plane_kit facade or retired flat modules.",
+        "rationale": "Extraction deliberately removed the aggregate root facade and retired flat module aliases. Each distribution now exposes only its owned public package surface.",
+        "replacement": "independent package roots with explicit dependency direction",
+        "review": "HARDEN.TESTS.PARITY #1346"
+      }
     },
     {
       "kind": "test",
@@ -11842,7 +12789,13 @@
       "owner_kind": "system",
       "reference": "tests.test_package_structure.PackageStructureTests.test_root_api_reexports_canonical_package_objects",
       "successors": [],
-      "supersession": null
+      "supersession": {
+        "negative_case_disposition": "Package roots remain importable and lightweight; stale aggregate imports are rejected by #1316/#1317 and deletion searches.",
+        "obsolete_assumption": "No live code may import the mutable aggregate control_plane_kit facade or retired flat modules.",
+        "rationale": "Extraction deliberately removed the aggregate root facade and retired flat module aliases. Each distribution now exposes only its owned public package surface.",
+        "replacement": "independent package roots with explicit dependency direction",
+        "review": "HARDEN.TESTS.PARITY #1346"
+      }
     },
     {
       "kind": "test",
@@ -11872,7 +12825,13 @@
       "owner_kind": "system",
       "reference": "tests.test_package_topology.CurrentPackageTopologyTests.test_root_pure_facade_has_a_closed_owner_set",
       "successors": [],
-      "supersession": null
+      "supersession": {
+        "negative_case_disposition": "Forbidden imports, optional dependency leakage, reverse edges, and cycles remain fail-closed obligations of current package and #1317 gates.",
+        "obsolete_assumption": "Root export provenance and optional-leak rules are replaced by package-local lightweight-root rules.",
+        "rationale": "The aggregate pure root facade no longer exists. Current ownership is expressed by independent distributions and exact cross-repository dependency coordinates.",
+        "replacement": "independent package roots and #1317 cross-repository topology validation",
+        "review": "HARDEN.TESTS.PARITY #1346"
+      }
     },
     {
       "kind": "test",
@@ -11882,7 +12841,13 @@
       "owner_kind": "system",
       "reference": "tests.test_package_topology.PackageTopologyPolicyTests.test_computed_root_exports_fail_closed",
       "successors": [],
-      "supersession": null
+      "supersession": {
+        "negative_case_disposition": "Forbidden imports, optional dependency leakage, reverse edges, and cycles remain fail-closed obligations of current package and #1317 gates.",
+        "obsolete_assumption": "Root export provenance and optional-leak rules are replaced by package-local lightweight-root rules.",
+        "rationale": "The aggregate pure root facade no longer exists. Current ownership is expressed by independent distributions and exact cross-repository dependency coordinates.",
+        "replacement": "independent package roots and #1317 cross-repository topology validation",
+        "review": "HARDEN.TESTS.PARITY #1346"
+      }
     },
     {
       "kind": "test",
@@ -11942,7 +12907,13 @@
       "owner_kind": "system",
       "reference": "tests.test_package_topology.PackageTopologyPolicyTests.test_root_exports_must_come_from_allowed_package_owners",
       "successors": [],
-      "supersession": null
+      "supersession": {
+        "negative_case_disposition": "Forbidden imports, optional dependency leakage, reverse edges, and cycles remain fail-closed obligations of current package and #1317 gates.",
+        "obsolete_assumption": "Root export provenance and optional-leak rules are replaced by package-local lightweight-root rules.",
+        "rationale": "The aggregate pure root facade no longer exists. Current ownership is expressed by independent distributions and exact cross-repository dependency coordinates.",
+        "replacement": "independent package roots and #1317 cross-repository topology validation",
+        "review": "HARDEN.TESTS.PARITY #1346"
+      }
     },
     {
       "kind": "test",
@@ -11952,7 +12923,13 @@
       "owner_kind": "system",
       "reference": "tests.test_package_topology.PackageTopologyPolicyTests.test_root_provenance_rejects_optional_dependency_leakage",
       "successors": [],
-      "supersession": null
+      "supersession": {
+        "negative_case_disposition": "Forbidden imports, optional dependency leakage, reverse edges, and cycles remain fail-closed obligations of current package and #1317 gates.",
+        "obsolete_assumption": "Root export provenance and optional-leak rules are replaced by package-local lightweight-root rules.",
+        "rationale": "The aggregate pure root facade no longer exists. Current ownership is expressed by independent distributions and exact cross-repository dependency coordinates.",
+        "replacement": "independent package roots and #1317 cross-repository topology validation",
+        "review": "HARDEN.TESTS.PARITY #1346"
+      }
     },
     {
       "kind": "test",
@@ -12780,14 +13757,44 @@
       "owner": "control-plane-kit-core",
       "owner_kind": "core",
       "reference": "tests.test_read_interface_demo_server.ReadInterfaceDemoServerTests.test_demo_server_requires_configured_token",
-      "successors": [],
-      "supersession": {
-        "negative_case_disposition": "Token enforcement, seeded routes, and real HTTP demo behavior remain required server/system acceptance tests outside core.",
-        "obsolete_assumption": "The read-interface FastAPI demo server belongs in the extracted core package.",
-        "rationale": "Frozen read-interface demo tests execute a FastAPI/Postgres process. Extracted core owns the read-route and MCP contract language, not the hosted demo server process or seeded database.",
-        "replacement": "#788 read projection contracts plus #742 core HTTP/MCP release-contract evidence and cpk-server/system demo handoff.",
-        "review": "#742 validation packaging demo closeout"
-      }
+      "successors": [
+        {
+          "evidence": "harden-tests-parity-1346.architecture-package",
+          "id": "control-plane-kit-servers:products.cpk_server.tests.test_image_bootstrap.CpkServerImageBootstrapTests.test_hosted_process_is_fastapi_over_operations_boundary",
+          "status": "passing"
+        },
+        {
+          "evidence": "harden-tests-parity-1346.architecture-package",
+          "id": "control-plane-kit-servers:products.cpk_server.tests.test_product_descriptor.CpkServerProductDescriptorTests.test_descriptor_and_catalogue_loading_do_not_import_process_code",
+          "status": "passing"
+        },
+        {
+          "evidence": "harden-tests-parity-1346.architecture-package",
+          "id": "control-plane-kit-core:tests.test_adapter_parity_contract.AdapterParityContractTests.test_operator_read_projection_parity_maps_frozen_http_routes_and_mcp_tools",
+          "status": "passing"
+        },
+        {
+          "evidence": "harden-tests-parity-1346.architecture-package",
+          "id": "control-plane-kit-servers:products.cpk_server.tests.test_http_mcp_boundaries.CpkServerHttpMcpBoundaryTests.test_http_read_route_delegates_to_shared_reads_service",
+          "status": "passing"
+        },
+        {
+          "evidence": "harden-tests-parity-1346.architecture-package",
+          "id": "control-plane-kit-servers:products.cpk_server.tests.test_http_mcp_boundaries.CpkServerHttpMcpBoundaryTests.test_mcp_tools_call_uses_same_application_boundary_as_http",
+          "status": "passing"
+        },
+        {
+          "evidence": "harden-tests-parity-1346.architecture-package",
+          "id": "control-plane-kit-servers:products.cpk_server.tests.test_http_mcp_boundaries.CpkServerHttpMcpBoundaryTests.test_application_errors_map_to_bounded_process_responses",
+          "status": "passing"
+        },
+        {
+          "evidence": "harden-tests-parity-1346.architecture-package",
+          "id": "control-plane-kit-servers:products.cpk_server.tests.test_http_mcp_boundaries.CpkServerHttpMcpBoundaryTests.test_invalid_credentials_fail_before_dispatch_and_are_redacted",
+          "status": "passing"
+        }
+      ],
+      "supersession": null
     },
     {
       "kind": "test",
@@ -12796,14 +13803,44 @@
       "owner": "control-plane-kit-core",
       "owner_kind": "core",
       "reference": "tests.test_read_interface_demo_server.ReadInterfaceDemoServerTests.test_demo_server_seeds_and_serves_read_routes",
-      "successors": [],
-      "supersession": {
-        "negative_case_disposition": "Token enforcement, seeded routes, and real HTTP demo behavior remain required server/system acceptance tests outside core.",
-        "obsolete_assumption": "The read-interface FastAPI demo server belongs in the extracted core package.",
-        "rationale": "Frozen read-interface demo tests execute a FastAPI/Postgres process. Extracted core owns the read-route and MCP contract language, not the hosted demo server process or seeded database.",
-        "replacement": "#788 read projection contracts plus #742 core HTTP/MCP release-contract evidence and cpk-server/system demo handoff.",
-        "review": "#742 validation packaging demo closeout"
-      }
+      "successors": [
+        {
+          "evidence": "harden-tests-parity-1346.architecture-package",
+          "id": "control-plane-kit-servers:products.cpk_server.tests.test_image_bootstrap.CpkServerImageBootstrapTests.test_hosted_process_is_fastapi_over_operations_boundary",
+          "status": "passing"
+        },
+        {
+          "evidence": "harden-tests-parity-1346.architecture-package",
+          "id": "control-plane-kit-servers:products.cpk_server.tests.test_product_descriptor.CpkServerProductDescriptorTests.test_descriptor_and_catalogue_loading_do_not_import_process_code",
+          "status": "passing"
+        },
+        {
+          "evidence": "harden-tests-parity-1346.architecture-package",
+          "id": "control-plane-kit-core:tests.test_adapter_parity_contract.AdapterParityContractTests.test_operator_read_projection_parity_maps_frozen_http_routes_and_mcp_tools",
+          "status": "passing"
+        },
+        {
+          "evidence": "harden-tests-parity-1346.architecture-package",
+          "id": "control-plane-kit-servers:products.cpk_server.tests.test_http_mcp_boundaries.CpkServerHttpMcpBoundaryTests.test_http_read_route_delegates_to_shared_reads_service",
+          "status": "passing"
+        },
+        {
+          "evidence": "harden-tests-parity-1346.architecture-package",
+          "id": "control-plane-kit-servers:products.cpk_server.tests.test_http_mcp_boundaries.CpkServerHttpMcpBoundaryTests.test_mcp_tools_call_uses_same_application_boundary_as_http",
+          "status": "passing"
+        },
+        {
+          "evidence": "harden-tests-parity-1346.architecture-package",
+          "id": "control-plane-kit-servers:products.cpk_server.tests.test_http_mcp_boundaries.CpkServerHttpMcpBoundaryTests.test_application_errors_map_to_bounded_process_responses",
+          "status": "passing"
+        },
+        {
+          "evidence": "harden-tests-parity-1346.architecture-package",
+          "id": "control-plane-kit-servers:products.cpk_server.tests.test_http_mcp_boundaries.CpkServerHttpMcpBoundaryTests.test_invalid_credentials_fail_before_dispatch_and_are_redacted",
+          "status": "passing"
+        }
+      ],
+      "supersession": null
     },
     {
       "kind": "test",
@@ -13198,8 +14235,43 @@
       "reference": "tests.test_root_api.RootApiTests.test_interpreter_entrance_does_not_eagerly_import_optional_dependencies",
       "successors": [
         {
-          "evidence": "extract-e-741.architecture-test-harness.unittest",
-          "id": "neutral-harness.architecture-test-harness",
+          "evidence": "harden-tests-parity-1346.architecture-package",
+          "id": "control-plane-kit-interpreters:tests.test_scaffold.InterpretersScaffoldTests.test_package_root_exports_only_lightweight_boundary_values",
+          "status": "passing"
+        },
+        {
+          "evidence": "harden-tests-parity-1346.architecture-package",
+          "id": "control-plane-kit-secrets:tests.test_package_policy.PackagePolicyTests.test_package_root_exports_only_lightweight_boundary_values",
+          "status": "passing"
+        },
+        {
+          "evidence": "harden-tests-parity-1346.architecture-package",
+          "id": "control-plane-kit-servers:tests.test_package_metadata.PackageMetadataTests.test_root_import_is_lightweight_and_exposes_catalogue_entrance",
+          "status": "passing"
+        },
+        {
+          "evidence": "harden-tests-parity-1346.architecture-package",
+          "id": "control-plane-kit-interpreters:tests.test_docker_sdk_client.DockerSdkClientTests.test_module_import_does_not_eagerly_import_docker_sdk",
+          "status": "passing"
+        },
+        {
+          "evidence": "harden-tests-parity-1346.architecture-package",
+          "id": "control-plane-kit-interpreters:tests.test_scaffold.InterpretersScaffoldTests.test_base_import_does_not_eagerly_import_optional_runtime_packages",
+          "status": "passing"
+        },
+        {
+          "evidence": "harden-tests-parity-1346.architecture-package",
+          "id": "control-plane-kit-secrets:tests.test_package_policy.PackagePolicyTests.test_base_import_does_not_eagerly_import_optional_service_packages",
+          "status": "passing"
+        },
+        {
+          "evidence": "harden-tests-parity-1346.architecture-package",
+          "id": "control-plane-kit-core:tests.test_package_boundary.PackageBoundaryTests.test_all_package_imports_stay_inside_pure_core",
+          "status": "passing"
+        },
+        {
+          "evidence": "harden-tests-parity-1346.architecture-package",
+          "id": "control-plane-kit-core:tests.test_package_boundary.PackageBoundaryTests.test_base_package_declares_only_core_language_dependencies",
           "status": "passing"
         }
       ],
@@ -13212,14 +14284,14 @@
       "owner": "control-plane-kit-core",
       "owner_kind": "core",
       "reference": "tests.test_root_api.RootApiTests.test_optional_import_fixture_is_rejected",
-      "successors": [
-        {
-          "evidence": "extract-e-741.architecture-test-harness.unittest",
-          "id": "neutral-harness.architecture-test-harness",
-          "status": "passing"
-        }
-      ],
-      "supersession": null
+      "successors": [],
+      "supersession": {
+        "negative_case_disposition": "Eager Docker, FastAPI, psycopg, and provider imports remain rejected by current package tests.",
+        "obsolete_assumption": "No aggregate control_plane_kit root is retained for fixture injection.",
+        "rationale": "The synthetic aggregate-root optional-import fixture tested a facade that extraction removed. Live package roots prove lazy optional imports directly.",
+        "replacement": "package-local lightweight import tests",
+        "review": "HARDEN.TESTS.PARITY #1346"
+      }
     },
     {
       "kind": "test",
@@ -13230,8 +14302,43 @@
       "reference": "tests.test_root_api.RootApiTests.test_pure_package_roots_do_not_import_optional_dependencies",
       "successors": [
         {
-          "evidence": "extract-e-741.architecture-test-harness.unittest",
-          "id": "neutral-harness.architecture-test-harness",
+          "evidence": "harden-tests-parity-1346.architecture-package",
+          "id": "control-plane-kit-interpreters:tests.test_scaffold.InterpretersScaffoldTests.test_package_root_exports_only_lightweight_boundary_values",
+          "status": "passing"
+        },
+        {
+          "evidence": "harden-tests-parity-1346.architecture-package",
+          "id": "control-plane-kit-secrets:tests.test_package_policy.PackagePolicyTests.test_package_root_exports_only_lightweight_boundary_values",
+          "status": "passing"
+        },
+        {
+          "evidence": "harden-tests-parity-1346.architecture-package",
+          "id": "control-plane-kit-servers:tests.test_package_metadata.PackageMetadataTests.test_root_import_is_lightweight_and_exposes_catalogue_entrance",
+          "status": "passing"
+        },
+        {
+          "evidence": "harden-tests-parity-1346.architecture-package",
+          "id": "control-plane-kit-interpreters:tests.test_docker_sdk_client.DockerSdkClientTests.test_module_import_does_not_eagerly_import_docker_sdk",
+          "status": "passing"
+        },
+        {
+          "evidence": "harden-tests-parity-1346.architecture-package",
+          "id": "control-plane-kit-interpreters:tests.test_scaffold.InterpretersScaffoldTests.test_base_import_does_not_eagerly_import_optional_runtime_packages",
+          "status": "passing"
+        },
+        {
+          "evidence": "harden-tests-parity-1346.architecture-package",
+          "id": "control-plane-kit-secrets:tests.test_package_policy.PackagePolicyTests.test_base_import_does_not_eagerly_import_optional_service_packages",
+          "status": "passing"
+        },
+        {
+          "evidence": "harden-tests-parity-1346.architecture-package",
+          "id": "control-plane-kit-core:tests.test_package_boundary.PackageBoundaryTests.test_all_package_imports_stay_inside_pure_core",
+          "status": "passing"
+        },
+        {
+          "evidence": "harden-tests-parity-1346.architecture-package",
+          "id": "control-plane-kit-core:tests.test_package_boundary.PackageBoundaryTests.test_base_package_declares_only_core_language_dependencies",
           "status": "passing"
         }
       ],
@@ -13246,8 +14353,43 @@
       "reference": "tests.test_root_api.RootApiTests.test_root_all_names_are_bound",
       "successors": [
         {
-          "evidence": "extract-e-741.architecture-test-harness.unittest",
-          "id": "neutral-harness.architecture-test-harness",
+          "evidence": "harden-tests-parity-1346.architecture-package",
+          "id": "control-plane-kit-interpreters:tests.test_scaffold.InterpretersScaffoldTests.test_package_root_exports_only_lightweight_boundary_values",
+          "status": "passing"
+        },
+        {
+          "evidence": "harden-tests-parity-1346.architecture-package",
+          "id": "control-plane-kit-secrets:tests.test_package_policy.PackagePolicyTests.test_package_root_exports_only_lightweight_boundary_values",
+          "status": "passing"
+        },
+        {
+          "evidence": "harden-tests-parity-1346.architecture-package",
+          "id": "control-plane-kit-servers:tests.test_package_metadata.PackageMetadataTests.test_root_import_is_lightweight_and_exposes_catalogue_entrance",
+          "status": "passing"
+        },
+        {
+          "evidence": "harden-tests-parity-1346.architecture-package",
+          "id": "control-plane-kit-interpreters:tests.test_docker_sdk_client.DockerSdkClientTests.test_module_import_does_not_eagerly_import_docker_sdk",
+          "status": "passing"
+        },
+        {
+          "evidence": "harden-tests-parity-1346.architecture-package",
+          "id": "control-plane-kit-interpreters:tests.test_scaffold.InterpretersScaffoldTests.test_base_import_does_not_eagerly_import_optional_runtime_packages",
+          "status": "passing"
+        },
+        {
+          "evidence": "harden-tests-parity-1346.architecture-package",
+          "id": "control-plane-kit-secrets:tests.test_package_policy.PackagePolicyTests.test_base_import_does_not_eagerly_import_optional_service_packages",
+          "status": "passing"
+        },
+        {
+          "evidence": "harden-tests-parity-1346.architecture-package",
+          "id": "control-plane-kit-core:tests.test_package_boundary.PackageBoundaryTests.test_all_package_imports_stay_inside_pure_core",
+          "status": "passing"
+        },
+        {
+          "evidence": "harden-tests-parity-1346.architecture-package",
+          "id": "control-plane-kit-core:tests.test_package_boundary.PackageBoundaryTests.test_base_package_declares_only_core_language_dependencies",
           "status": "passing"
         }
       ],
@@ -13262,8 +14404,43 @@
       "reference": "tests.test_root_api.RootApiTests.test_root_api_does_not_import_optional_dependencies_directly",
       "successors": [
         {
-          "evidence": "extract-e-741.architecture-test-harness.unittest",
-          "id": "neutral-harness.architecture-test-harness",
+          "evidence": "harden-tests-parity-1346.architecture-package",
+          "id": "control-plane-kit-interpreters:tests.test_scaffold.InterpretersScaffoldTests.test_package_root_exports_only_lightweight_boundary_values",
+          "status": "passing"
+        },
+        {
+          "evidence": "harden-tests-parity-1346.architecture-package",
+          "id": "control-plane-kit-secrets:tests.test_package_policy.PackagePolicyTests.test_package_root_exports_only_lightweight_boundary_values",
+          "status": "passing"
+        },
+        {
+          "evidence": "harden-tests-parity-1346.architecture-package",
+          "id": "control-plane-kit-servers:tests.test_package_metadata.PackageMetadataTests.test_root_import_is_lightweight_and_exposes_catalogue_entrance",
+          "status": "passing"
+        },
+        {
+          "evidence": "harden-tests-parity-1346.architecture-package",
+          "id": "control-plane-kit-interpreters:tests.test_docker_sdk_client.DockerSdkClientTests.test_module_import_does_not_eagerly_import_docker_sdk",
+          "status": "passing"
+        },
+        {
+          "evidence": "harden-tests-parity-1346.architecture-package",
+          "id": "control-plane-kit-interpreters:tests.test_scaffold.InterpretersScaffoldTests.test_base_import_does_not_eagerly_import_optional_runtime_packages",
+          "status": "passing"
+        },
+        {
+          "evidence": "harden-tests-parity-1346.architecture-package",
+          "id": "control-plane-kit-secrets:tests.test_package_policy.PackagePolicyTests.test_base_import_does_not_eagerly_import_optional_service_packages",
+          "status": "passing"
+        },
+        {
+          "evidence": "harden-tests-parity-1346.architecture-package",
+          "id": "control-plane-kit-core:tests.test_package_boundary.PackageBoundaryTests.test_all_package_imports_stay_inside_pure_core",
+          "status": "passing"
+        },
+        {
+          "evidence": "harden-tests-parity-1346.architecture-package",
+          "id": "control-plane-kit-core:tests.test_package_boundary.PackageBoundaryTests.test_base_package_declares_only_core_language_dependencies",
           "status": "passing"
         }
       ],
@@ -13278,8 +14455,43 @@
       "reference": "tests.test_root_api.RootApiTests.test_root_api_imports_only_pure_package_surfaces",
       "successors": [
         {
-          "evidence": "extract-e-741.architecture-test-harness.unittest",
-          "id": "neutral-harness.architecture-test-harness",
+          "evidence": "harden-tests-parity-1346.architecture-package",
+          "id": "control-plane-kit-interpreters:tests.test_scaffold.InterpretersScaffoldTests.test_package_root_exports_only_lightweight_boundary_values",
+          "status": "passing"
+        },
+        {
+          "evidence": "harden-tests-parity-1346.architecture-package",
+          "id": "control-plane-kit-secrets:tests.test_package_policy.PackagePolicyTests.test_package_root_exports_only_lightweight_boundary_values",
+          "status": "passing"
+        },
+        {
+          "evidence": "harden-tests-parity-1346.architecture-package",
+          "id": "control-plane-kit-servers:tests.test_package_metadata.PackageMetadataTests.test_root_import_is_lightweight_and_exposes_catalogue_entrance",
+          "status": "passing"
+        },
+        {
+          "evidence": "harden-tests-parity-1346.architecture-package",
+          "id": "control-plane-kit-interpreters:tests.test_docker_sdk_client.DockerSdkClientTests.test_module_import_does_not_eagerly_import_docker_sdk",
+          "status": "passing"
+        },
+        {
+          "evidence": "harden-tests-parity-1346.architecture-package",
+          "id": "control-plane-kit-interpreters:tests.test_scaffold.InterpretersScaffoldTests.test_base_import_does_not_eagerly_import_optional_runtime_packages",
+          "status": "passing"
+        },
+        {
+          "evidence": "harden-tests-parity-1346.architecture-package",
+          "id": "control-plane-kit-secrets:tests.test_package_policy.PackagePolicyTests.test_base_import_does_not_eagerly_import_optional_service_packages",
+          "status": "passing"
+        },
+        {
+          "evidence": "harden-tests-parity-1346.architecture-package",
+          "id": "control-plane-kit-core:tests.test_package_boundary.PackageBoundaryTests.test_all_package_imports_stay_inside_pure_core",
+          "status": "passing"
+        },
+        {
+          "evidence": "harden-tests-parity-1346.architecture-package",
+          "id": "control-plane-kit-core:tests.test_package_boundary.PackageBoundaryTests.test_base_package_declares_only_core_language_dependencies",
           "status": "passing"
         }
       ],

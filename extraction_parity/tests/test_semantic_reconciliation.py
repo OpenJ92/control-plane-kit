@@ -769,6 +769,51 @@ class SemanticReconciliationTests(unittest.TestCase):
         )
         self.assertEqual(evidence["standalone_parity_tests"], 76)
 
+    def test_issue_1346_artifact_closes_architecture_and_package_laws(self) -> None:
+        root = Path(__file__).resolve().parents[2]
+        artifact_root = root / "artifacts" / "extraction"
+        reconciliation = json.loads(
+            (artifact_root / "semantic-test-reconciliation.json").read_text(
+                encoding="utf-8"
+            )
+        )
+        evidence = json.loads(
+            (artifact_root / "harden-tests-parity-1346-evidence.json").read_text(
+                encoding="utf-8"
+            )
+        )
+        reviews = [
+            value
+            for value in reconciliation["reviews"]
+            if value["reviewed_by_issue"] == 1346
+        ]
+
+        self.assertEqual(len(reviews), 117)
+        self.assertEqual(
+            sum(value["disposition"] == "current-strengthened" for value in reviews),
+            58,
+        )
+        self.assertEqual(
+            sum(value["disposition"] == "future-issue" for value in reviews),
+            29,
+        )
+        self.assertEqual(
+            sum(value["disposition"] == "reviewed-supersession" for value in reviews),
+            30,
+        )
+        self.assertEqual(
+            {
+                value["future_issue"]["number"]
+                for value in reviews
+                if value["future_issue"] is not None
+            },
+            {670, 1096, 1316, 1317},
+        )
+        self.assertEqual(
+            evidence["future_owners"],
+            {"670": 2, "1096": 3, "1316": 6, "1317": 18},
+        )
+
 
 if __name__ == "__main__":
     unittest.main()

@@ -1,11 +1,8 @@
 {
-  "schema": "cpk.semantic-test-migration-rules",
-  "legacy_helper_issue": 1325,
-  "legacy_script_issue": 1325,
   "assignments": [
     {
-      "issue": 1320,
       "distribution": "control-plane-kit-core",
+      "issue": 1320,
       "modules": [
         "tests.test_activity_plan",
         "tests.test_activity_plan_codec",
@@ -36,8 +33,8 @@
       ]
     },
     {
-      "issue": 1321,
       "distribution": "control-plane-kit-operations",
+      "issue": 1321,
       "modules": [
         "tests.test_activity_planning_command_service",
         "tests.test_approval_command_service",
@@ -78,8 +75,8 @@
       ]
     },
     {
-      "issue": 1322,
       "distribution": "control-plane-kit-interpreters",
+      "issue": 1322,
       "modules": [
         "tests.test_capability_interpreter_registry",
         "tests.test_configuration_rendering",
@@ -101,8 +98,8 @@
       ]
     },
     {
-      "issue": 1323,
       "distribution": "control-plane-kit-servers",
+      "issue": 1323,
       "modules": [
         "tests.test_block_control_fastapi",
         "tests.test_block_control_state",
@@ -147,8 +144,8 @@
       ]
     },
     {
-      "issue": 1324,
       "distribution": "cross-package-secrets",
+      "issue": 1324,
       "modules": [
         "tests.test_docker_secrets",
         "tests.test_secret_delivery_topology",
@@ -156,24 +153,10 @@
       ]
     },
     {
-      "issue": 1325,
-      "distribution": "cross-repository-live-meta-deferred",
-      "mutable_target": {
-        "issue": 1345,
-        "distribution": "control-plane-kit-parity"
-      },
+      "distribution": "control-plane-kit-parity",
+      "issue": 1345,
       "modules": [
         "tests.test_activity_live_external_interpreter",
-        "tests.test_architecture_analysis",
-        "tests.test_architecture_dependencies",
-        "tests.test_architecture_deploy",
-        "tests.test_architecture_ownership",
-        "tests.test_architecture_protocol",
-        "tests.test_architecture_read_routes",
-        "tests.test_architecture_scenarios",
-        "tests.test_architecture_test_integrity",
-        "tests.test_backend_boundaries",
-        "tests.test_cli",
         "tests.test_differential_language",
         "tests.test_differential_runner",
         "tests.test_extract_interpreters_closeout",
@@ -184,31 +167,64 @@
         "tests.test_extraction_rollout_topology",
         "tests.test_extraction_successor_mappings",
         "tests.test_extraction_supersession_review",
-        "tests.test_gate_d_live_smoke_scenario",
-        "tests.test_generated_hello_live_scenario",
-        "tests.test_host_publication",
-        "tests.test_instance_read_fastapi",
         "tests.test_interpreter_runtime_dry_run",
         "tests.test_operations_extraction_topology",
         "tests.test_operations_package_foundation",
+        "tests.test_parity_manifest",
+        "tests.test_parity_validation",
+        "tests.test_reference_demo_inventory",
+        "tests.test_reference_law_ownership",
+        "tests.test_reference_parity_evidence",
+        "tests.test_reference_test_inventory"
+      ]
+    },
+    {
+      "distribution": "cross-repository-architecture-package",
+      "issue": 1346,
+      "modules": [
+        "tests.test_architecture_analysis",
+        "tests.test_architecture_dependencies",
+        "tests.test_architecture_deploy",
+        "tests.test_architecture_ownership",
+        "tests.test_architecture_protocol",
+        "tests.test_architecture_read_routes",
+        "tests.test_architecture_scenarios",
+        "tests.test_architecture_test_integrity",
+        "tests.test_backend_boundaries",
+        "tests.test_cli",
+        "tests.test_instance_read_fastapi",
         "tests.test_optional_dependencies",
         "tests.test_package_inventory",
         "tests.test_package_server_catalog",
         "tests.test_package_structure",
         "tests.test_package_topology",
-        "tests.test_parity_manifest",
-        "tests.test_parity_validation",
         "tests.test_read_interface_demo_server",
-        "tests.test_reference_demo_inventory",
-        "tests.test_reference_law_ownership",
-        "tests.test_reference_parity_evidence",
-        "tests.test_reference_test_inventory",
-        "tests.test_root_api",
+        "tests.test_root_api"
+      ],
+      "mutable_target": {
+        "distribution": "control-plane-kit-parity",
+        "issue": 1345
+      }
+    },
+    {
+      "distribution": "cross-repository-live-demo",
+      "issue": 1347,
+      "modules": [
+        "tests.test_gate_d_live_smoke_scenario",
+        "tests.test_generated_hello_live_scenario",
+        "tests.test_host_publication",
         "tests.test_runtime_examples",
         "tests.test_service_infrastructure_acceptance",
         "tests.test_service_infrastructure_live",
         "tests.test_service_infrastructure_program"
-      ]
+      ],
+      "mutable_target": {
+        "distribution": "control-plane-kit-parity",
+        "issue": 1345
+      }
     }
-  ]
+  ],
+  "legacy_helper_issue": 1325,
+  "legacy_script_issue": 1325,
+  "schema": "cpk.semantic-test-migration-rules"
 }

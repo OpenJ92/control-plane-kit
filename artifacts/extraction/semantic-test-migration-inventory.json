@@ -21746,16 +21746,34 @@
       "reference_laws": 22
     },
     {
-      "distribution": "cross-repository-live-meta-deferred",
-      "issue": 1325,
-      "mutable_only_methods": 0,
-      "reference_laws": 149
-    },
-    {
       "distribution": "control-plane-kit-parity",
       "issue": 1345,
       "mutable_only_methods": 118,
       "reference_laws": 0
+    },
+    {
+      "distribution": "cross-repository-architecture-package",
+      "issue": 1346,
+      "mutable_only_methods": 0,
+      "reference_laws": 117
+    },
+    {
+      "distribution": "cross-repository-architecture-package",
+      "issue": 1346,
+      "mutable_only_methods": 0,
+      "reference_laws": 117
+    },
+    {
+      "distribution": "cross-repository-live-demo",
+      "issue": 1347,
+      "mutable_only_methods": 0,
+      "reference_laws": 32
+    },
+    {
+      "distribution": "cross-repository-live-demo",
+      "issue": 1347,
+      "mutable_only_methods": 0,
+      "reference_laws": 32
     }
   ],
   "recorded_parity_counts": {
@@ -22937,8 +22955,8 @@
       "current_successor_candidates": [],
       "law": "behavior.bare-and-named-exception-handlers-have-total-ordering",
       "provisional_target": {
-        "distribution": "cross-repository-live-meta-deferred",
-        "issue": 1325
+        "distribution": "cross-repository-architecture-package",
+        "issue": 1346
       },
       "reference": "tests.test_architecture_analysis.ArchitectureAnalysisTests.test_bare_and_named_exception_handlers_have_total_ordering",
       "source": {
@@ -22955,8 +22973,8 @@
       "current_successor_candidates": [],
       "law": "behavior.boolean-arguments-assertions-and-empty-test-bodies-are-explicit",
       "provisional_target": {
-        "distribution": "cross-repository-live-meta-deferred",
-        "issue": 1325
+        "distribution": "cross-repository-architecture-package",
+        "issue": 1346
       },
       "reference": "tests.test_architecture_analysis.ArchitectureAnalysisTests.test_boolean_arguments_assertions_and_empty_test_bodies_are_explicit",
       "source": {
@@ -22974,8 +22992,8 @@
       "current_successor_candidates": [],
       "law": "behavior.call-keyword-shapes-are-recorded-without-values",
       "provisional_target": {
-        "distribution": "cross-repository-live-meta-deferred",
-        "issue": 1325
+        "distribution": "cross-repository-architecture-package",
+        "issue": 1346
       },
       "reference": "tests.test_architecture_analysis.ArchitectureAnalysisTests.test_call_keyword_shapes_are_recorded_without_values",
       "source": {
@@ -22994,8 +23012,8 @@
       "current_successor_candidates": [],
       "law": "behavior.comments-strings-and-docstrings-do-not-become-code-facts",
       "provisional_target": {
-        "distribution": "cross-repository-live-meta-deferred",
-        "issue": 1325
+        "distribution": "cross-repository-architecture-package",
+        "issue": 1346
       },
       "reference": "tests.test_architecture_analysis.ArchitectureAnalysisTests.test_comments_strings_and_docstrings_do_not_become_code_facts",
       "source": {
@@ -23015,8 +23033,8 @@
       "current_successor_candidates": [],
       "law": "behavior.computed-all-is-explicitly-unsupported",
       "provisional_target": {
-        "distribution": "cross-repository-live-meta-deferred",
-        "issue": 1325
+        "distribution": "cross-repository-architecture-package",
+        "issue": 1346
       },
       "reference": "tests.test_architecture_analysis.ArchitectureAnalysisTests.test_computed_all_is_explicitly_unsupported",
       "source": {
@@ -23033,8 +23051,8 @@
       "current_successor_candidates": [],
       "law": "behavior.dotted-import-binding-matches-python-semantics",
       "provisional_target": {
-        "distribution": "cross-repository-live-meta-deferred",
-        "issue": 1325
+        "distribution": "cross-repository-architecture-package",
+        "issue": 1346
       },
       "reference": "tests.test_architecture_analysis.ArchitectureAnalysisTests.test_dotted_import_binding_matches_python_semantics",
       "source": {
@@ -23051,8 +23069,8 @@
       "current_successor_candidates": [],
       "law": "behavior.file-analysis-derives-module-and-rejects-files-outside-root",
       "provisional_target": {
-        "distribution": "cross-repository-live-meta-deferred",
-        "issue": 1325
+        "distribution": "cross-repository-architecture-package",
+        "issue": 1346
       },
       "reference": "tests.test_architecture_analysis.ArchitectureAnalysisTests.test_file_analysis_derives_module_and_rejects_files_outside_root",
       "source": {
@@ -23073,8 +23091,8 @@
       "current_successor_candidates": [],
       "law": "behavior.import-aliases-calls-decorators-and-locations-are-resolved",
       "provisional_target": {
-        "distribution": "cross-repository-live-meta-deferred",
-        "issue": 1325
+        "distribution": "cross-repository-architecture-package",
+        "issue": 1346
       },
       "reference": "tests.test_architecture_analysis.ArchitectureAnalysisTests.test_import_aliases_calls_decorators_and_locations_are_resolved",
       "source": {
@@ -23092,8 +23110,8 @@
       "current_successor_candidates": [],
       "law": "behavior.literal-all-exports-resolve-imported-and-local-provenance",
       "provisional_target": {
-        "distribution": "cross-repository-live-meta-deferred",
-        "issue": 1325
+        "distribution": "cross-repository-architecture-package",
+        "issue": 1346
       },
       "reference": "tests.test_architecture_analysis.ArchitectureAnalysisTests.test_literal_all_exports_resolve_imported_and_local_provenance",
       "source": {
@@ -23110,8 +23128,8 @@
       "current_successor_candidates": [],
       "law": "behavior.malformed-source-fails-without-echoing-source",
       "provisional_target": {
-        "distribution": "cross-repository-live-meta-deferred",
-        "issue": 1325
+        "distribution": "cross-repository-architecture-package",
+        "issue": 1346
       },
       "reference": "tests.test_architecture_analysis.ArchitectureAnalysisTests.test_malformed_source_fails_without_echoing_source",
       "source": {
@@ -23135,8 +23153,8 @@
       "current_successor_candidates": [],
       "law": "behavior.nested-class-names-and-decorators-are-explicit",
       "provisional_target": {
-        "distribution": "cross-repository-live-meta-deferred",
-        "issue": 1325
+        "distribution": "cross-repository-architecture-package",
+        "issue": 1346
       },
       "reference": "tests.test_architecture_analysis.ArchitectureAnalysisTests.test_nested_class_names_and_decorators_are_explicit",
       "source": {
@@ -23153,8 +23171,8 @@
       "current_successor_candidates": [],
       "law": "behavior.pass-only-functions-and-exception-handlers-are-explicit",
       "provisional_target": {
-        "distribution": "cross-repository-live-meta-deferred",
-        "issue": 1325
+        "distribution": "cross-repository-architecture-package",
+        "issue": 1346
       },
       "reference": "tests.test_architecture_analysis.ArchitectureAnalysisTests.test_pass_only_functions_and_exception_handlers_are_explicit",
       "source": {
@@ -23172,8 +23190,8 @@
       "current_successor_candidates": [],
       "law": "behavior.policy-evaluation-is-deterministic-and-location-backed",
       "provisional_target": {
-        "distribution": "cross-repository-live-meta-deferred",
-        "issue": 1325
+        "distribution": "cross-repository-architecture-package",
+        "issue": 1346
       },
       "reference": "tests.test_architecture_analysis.ArchitectureAnalysisTests.test_policy_evaluation_is_deterministic_and_location_backed",
       "source": {
@@ -23190,8 +23208,8 @@
       "current_successor_candidates": [],
       "law": "behavior.prose-does-not-become-export-provenance",
       "provisional_target": {
-        "distribution": "cross-repository-live-meta-deferred",
-        "issue": 1325
+        "distribution": "cross-repository-architecture-package",
+        "issue": 1346
       },
       "reference": "tests.test_architecture_analysis.ArchitectureAnalysisTests.test_prose_does_not_become_export_provenance",
       "source": {
@@ -23208,8 +23226,8 @@
       "current_successor_candidates": [],
       "law": "behavior.relative-import-and-nested-method-names-are-preserved",
       "provisional_target": {
-        "distribution": "cross-repository-live-meta-deferred",
-        "issue": 1325
+        "distribution": "cross-repository-architecture-package",
+        "issue": 1346
       },
       "reference": "tests.test_architecture_analysis.ArchitectureAnalysisTests.test_relative_import_and_nested_method_names_are_preserved",
       "source": {
@@ -23226,8 +23244,8 @@
       "current_successor_candidates": [],
       "law": "behavior.effect-materialization-and-interpreters-cannot-import-stores",
       "provisional_target": {
-        "distribution": "cross-repository-live-meta-deferred",
-        "issue": 1325
+        "distribution": "cross-repository-architecture-package",
+        "issue": 1346
       },
       "reference": "tests.test_architecture_dependencies.ArchitectureDependencyTests.test_effect_materialization_and_interpreters_cannot_import_stores",
       "source": {
@@ -23245,8 +23263,8 @@
       "current_successor_candidates": [],
       "law": "behavior.environment-metadata-escape-hatch-is-rejected",
       "provisional_target": {
-        "distribution": "cross-repository-live-meta-deferred",
-        "issue": 1325
+        "distribution": "cross-repository-architecture-package",
+        "issue": 1346
       },
       "reference": "tests.test_architecture_dependencies.ArchitectureDependencyTests.test_environment_metadata_escape_hatch_is_rejected",
       "source": {
@@ -23265,8 +23283,8 @@
       "current_successor_candidates": [],
       "law": "behavior.jinja-environment-is-owned-by-declared-template-interpreters",
       "provisional_target": {
-        "distribution": "cross-repository-live-meta-deferred",
-        "issue": 1325
+        "distribution": "cross-repository-architecture-package",
+        "issue": 1346
       },
       "reference": "tests.test_architecture_dependencies.ArchitectureDependencyTests.test_jinja_environment_is_owned_by_declared_template_interpreters",
       "source": {
@@ -23283,8 +23301,8 @@
       "current_successor_candidates": [],
       "law": "behavior.process-and-http-clients-are-adapter-owned",
       "provisional_target": {
-        "distribution": "cross-repository-live-meta-deferred",
-        "issue": 1325
+        "distribution": "cross-repository-architecture-package",
+        "issue": 1346
       },
       "reference": "tests.test_architecture_dependencies.ArchitectureDependencyTests.test_process_and_http_clients_are_adapter_owned",
       "source": {
@@ -23301,8 +23319,8 @@
       "current_successor_candidates": [],
       "law": "behavior.product-interpreter-edge-is-exactly-coredns-to-configuration-rendering",
       "provisional_target": {
-        "distribution": "cross-repository-live-meta-deferred",
-        "issue": 1325
+        "distribution": "cross-repository-architecture-package",
+        "issue": 1346
       },
       "reference": "tests.test_architecture_dependencies.ArchitectureDependencyTests.test_product_interpreter_edge_is_exactly_coredns_to_configuration_rendering",
       "source": {
@@ -23319,8 +23337,8 @@
       "current_successor_candidates": [],
       "law": "behavior.raw-static-environment-mapping-is-rejected-at-docker-authoring",
       "provisional_target": {
-        "distribution": "cross-repository-live-meta-deferred",
-        "issue": 1325
+        "distribution": "cross-repository-architecture-package",
+        "issue": 1346
       },
       "reference": "tests.test_architecture_dependencies.ArchitectureDependencyTests.test_raw_static_environment_mapping_is_rejected_at_docker_authoring",
       "source": {
@@ -23339,8 +23357,8 @@
       "current_successor_candidates": [],
       "law": "behavior.relative-same-package-import-is-allowed",
       "provisional_target": {
-        "distribution": "cross-repository-live-meta-deferred",
-        "issue": 1325
+        "distribution": "cross-repository-architecture-package",
+        "issue": 1346
       },
       "reference": "tests.test_architecture_dependencies.ArchitectureDependencyTests.test_relative_same_package_import_is_allowed",
       "source": {
@@ -23357,8 +23375,8 @@
       "current_successor_candidates": [],
       "law": "behavior.repository-obeys-declared-dependency-and-transport-ownership",
       "provisional_target": {
-        "distribution": "cross-repository-live-meta-deferred",
-        "issue": 1325
+        "distribution": "cross-repository-architecture-package",
+        "issue": 1346
       },
       "reference": "tests.test_architecture_dependencies.ArchitectureDependencyTests.test_repository_obeys_declared_dependency_and_transport_ownership",
       "source": {
@@ -23375,8 +23393,8 @@
       "current_successor_candidates": [],
       "law": "behavior.reverse-dependency-is-rejected-for-import-and-from-import",
       "provisional_target": {
-        "distribution": "cross-repository-live-meta-deferred",
-        "issue": 1325
+        "distribution": "cross-repository-architecture-package",
+        "issue": 1346
       },
       "reference": "tests.test_architecture_dependencies.ArchitectureDependencyTests.test_reverse_dependency_is_rejected_for_import_and_from_import",
       "source": {
@@ -23395,8 +23413,8 @@
       "current_successor_candidates": [],
       "law": "behavior.deployment-application-obeys-composition-boundary",
       "provisional_target": {
-        "distribution": "cross-repository-live-meta-deferred",
-        "issue": 1325
+        "distribution": "cross-repository-architecture-package",
+        "issue": 1346
       },
       "reference": "tests.test_architecture_deploy.DeploymentApplicationArchitectureTests.test_deployment_application_obeys_composition_boundary",
       "source": {
@@ -23414,8 +23432,8 @@
       "current_successor_candidates": [],
       "law": "behavior.policy-resolves-aliases-and-rejects-boundary-bypasses",
       "provisional_target": {
-        "distribution": "cross-repository-live-meta-deferred",
-        "issue": 1325
+        "distribution": "cross-repository-architecture-package",
+        "issue": 1346
       },
       "reference": "tests.test_architecture_deploy.DeploymentApplicationArchitectureTests.test_policy_resolves_aliases_and_rejects_boundary_bypasses",
       "source": {
@@ -23434,8 +23452,8 @@
       "current_successor_candidates": [],
       "law": "behavior.contract-boundary-may-read-process-environment",
       "provisional_target": {
-        "distribution": "cross-repository-live-meta-deferred",
-        "issue": 1325
+        "distribution": "cross-repository-architecture-package",
+        "issue": 1346
       },
       "reference": "tests.test_architecture_ownership.ArchitectureOwnershipTests.test_contract_boundary_may_read_process_environment",
       "source": {
@@ -23452,8 +23470,8 @@
       "current_successor_candidates": [],
       "law": "behavior.environment-aliases-are-rejected-outside-declared-boundaries",
       "provisional_target": {
-        "distribution": "cross-repository-live-meta-deferred",
-        "issue": 1325
+        "distribution": "cross-repository-architecture-package",
+        "issue": 1346
       },
       "reference": "tests.test_architecture_ownership.ArchitectureOwnershipTests.test_environment_aliases_are_rejected_outside_declared_boundaries",
       "source": {
@@ -23472,8 +23490,8 @@
       "current_successor_candidates": [],
       "law": "behavior.observation-projection-cannot-mutate-graph-truth",
       "provisional_target": {
-        "distribution": "cross-repository-live-meta-deferred",
-        "issue": 1325
+        "distribution": "cross-repository-architecture-package",
+        "issue": 1346
       },
       "reference": "tests.test_architecture_ownership.ArchitectureOwnershipTests.test_observation_projection_cannot_mutate_graph_truth",
       "source": {
@@ -23490,8 +23508,8 @@
       "current_successor_candidates": [],
       "law": "behavior.packaged-servers-do-not-bypass-contract-mutation-boundary",
       "provisional_target": {
-        "distribution": "cross-repository-live-meta-deferred",
-        "issue": 1325
+        "distribution": "cross-repository-architecture-package",
+        "issue": 1346
       },
       "reference": "tests.test_architecture_ownership.ArchitectureOwnershipTests.test_packaged_servers_do_not_bypass_contract_mutation_boundary",
       "source": {
@@ -23508,8 +23526,8 @@
       "current_successor_candidates": [],
       "law": "behavior.raw-current-graph-mutation-is-reserved-to-guarded-workflow",
       "provisional_target": {
-        "distribution": "cross-repository-live-meta-deferred",
-        "issue": 1325
+        "distribution": "cross-repository-architecture-package",
+        "issue": 1346
       },
       "reference": "tests.test_architecture_ownership.ArchitectureOwnershipTests.test_raw_current_graph_mutation_is_reserved_to_guarded_workflow",
       "source": {
@@ -23526,8 +23544,8 @@
       "current_successor_candidates": [],
       "law": "behavior.repository-obeys-commit-environment-and-graph-mutation-ownership",
       "provisional_target": {
-        "distribution": "cross-repository-live-meta-deferred",
-        "issue": 1325
+        "distribution": "cross-repository-architecture-package",
+        "issue": 1346
       },
       "reference": "tests.test_architecture_ownership.ArchitectureOwnershipTests.test_repository_obeys_commit_environment_and_graph_mutation_ownership",
       "source": {
@@ -23544,8 +23562,8 @@
       "current_successor_candidates": [],
       "law": "behavior.store-commit-is-rejected-but-unit-of-work-commit-is-allowed",
       "provisional_target": {
-        "distribution": "cross-repository-live-meta-deferred",
-        "issue": 1325
+        "distribution": "cross-repository-architecture-package",
+        "issue": 1346
       },
       "reference": "tests.test_architecture_ownership.ArchitectureOwnershipTests.test_store_commit_is_rejected_but_unit_of_work_commit_is_allowed",
       "source": {
@@ -23564,8 +23582,8 @@
       "current_successor_candidates": [],
       "law": "behavior.workflow-may-request-commit-but-pure-package-may-not",
       "provisional_target": {
-        "distribution": "cross-repository-live-meta-deferred",
-        "issue": 1325
+        "distribution": "cross-repository-architecture-package",
+        "issue": 1346
       },
       "reference": "tests.test_architecture_ownership.ArchitectureOwnershipTests.test_workflow_may_request_commit_but_pure_package_may_not",
       "source": {
@@ -23582,8 +23600,8 @@
       "current_successor_candidates": [],
       "law": "behavior.repository-does-not-erase-protocol-products-in-projections",
       "provisional_target": {
-        "distribution": "cross-repository-live-meta-deferred",
-        "issue": 1325
+        "distribution": "cross-repository-architecture-package",
+        "issue": 1346
       },
       "reference": "tests.test_architecture_protocol.ProtocolArchitectureTests.test_repository_does_not_erase_protocol_products_in_projections",
       "source": {
@@ -23600,8 +23618,8 @@
       "current_successor_candidates": [],
       "law": "behavior.scalar-protocol-projection-is-rejected-but-display-is-owned",
       "provisional_target": {
-        "distribution": "cross-repository-live-meta-deferred",
-        "issue": 1325
+        "distribution": "cross-repository-architecture-package",
+        "issue": 1346
       },
       "reference": "tests.test_architecture_protocol.ProtocolArchitectureTests.test_scalar_protocol_projection_is_rejected_but_display_is_owned",
       "source": {
@@ -23620,8 +23638,8 @@
       "current_successor_candidates": [],
       "law": "behavior.mutation-and-generic-route-decorators-fail-closed",
       "provisional_target": {
-        "distribution": "cross-repository-live-meta-deferred",
-        "issue": 1325
+        "distribution": "cross-repository-architecture-package",
+        "issue": 1346
       },
       "reference": "tests.test_architecture_read_routes.ArchitectureReadRouteTests.test_mutation_and_generic_route_decorators_fail_closed",
       "source": {
@@ -23640,8 +23658,8 @@
       "current_successor_candidates": [],
       "law": "behavior.read-modules-declare-only-read-methods",
       "provisional_target": {
-        "distribution": "cross-repository-live-meta-deferred",
-        "issue": 1325
+        "distribution": "cross-repository-architecture-package",
+        "issue": 1346
       },
       "reference": "tests.test_architecture_read_routes.ArchitectureReadRouteTests.test_read_modules_declare_only_read_methods",
       "source": {
@@ -23658,8 +23676,8 @@
       "current_successor_candidates": [],
       "law": "behavior.static-declarations-match-realized-fastapi-workspace-routes",
       "provisional_target": {
-        "distribution": "cross-repository-live-meta-deferred",
-        "issue": 1325
+        "distribution": "cross-repository-architecture-package",
+        "issue": 1346
       },
       "reference": "tests.test_architecture_read_routes.ArchitectureReadRouteTests.test_static_declarations_match_realized_fastapi_workspace_routes",
       "source": {
@@ -23676,8 +23694,8 @@
       "current_successor_candidates": [],
       "law": "behavior.atomic-contract-suites-remain-independent-of-scenario-runner",
       "provisional_target": {
-        "distribution": "cross-repository-live-meta-deferred",
-        "issue": 1325
+        "distribution": "cross-repository-architecture-package",
+        "issue": 1346
       },
       "reference": "tests.test_architecture_scenarios.ScenarioArchitectureTests.test_atomic_contract_suites_remain_independent_of_scenario_runner",
       "source": {
@@ -23697,8 +23715,8 @@
       "current_successor_candidates": [],
       "law": "behavior.fake-effect-is-a-typed-capability-provider-not-an-application-mock",
       "provisional_target": {
-        "distribution": "cross-repository-live-meta-deferred",
-        "issue": 1325
+        "distribution": "cross-repository-architecture-package",
+        "issue": 1346
       },
       "reference": "tests.test_architecture_scenarios.ScenarioArchitectureTests.test_fake_effect_is_a_typed_capability_provider_not_an_application_mock",
       "source": {
@@ -23716,8 +23734,8 @@
       "current_successor_candidates": [],
       "law": "behavior.policy-rejects-store-scheduler-mock-and-private-coordinator-bypass",
       "provisional_target": {
-        "distribution": "cross-repository-live-meta-deferred",
-        "issue": 1325
+        "distribution": "cross-repository-architecture-package",
+        "issue": 1346
       },
       "reference": "tests.test_architecture_scenarios.ScenarioArchitectureTests.test_policy_rejects_store_scheduler_mock_and_private_coordinator_bypass",
       "source": {
@@ -23736,8 +23754,8 @@
       "current_successor_candidates": [],
       "law": "behavior.runner-uses-deploy-program-not-manual-command-chain",
       "provisional_target": {
-        "distribution": "cross-repository-live-meta-deferred",
-        "issue": 1325
+        "distribution": "cross-repository-architecture-package",
+        "issue": 1346
       },
       "reference": "tests.test_architecture_scenarios.ScenarioArchitectureTests.test_runner_uses_deploy_program_not_manual_command_chain",
       "source": {
@@ -23755,8 +23773,8 @@
       "current_successor_candidates": [],
       "law": "behavior.scenario-modules-obey-application-and-persistence-boundaries",
       "provisional_target": {
-        "distribution": "cross-repository-live-meta-deferred",
-        "issue": 1325
+        "distribution": "cross-repository-architecture-package",
+        "issue": 1346
       },
       "reference": "tests.test_architecture_scenarios.ScenarioArchitectureTests.test_scenario_modules_obey_application_and_persistence_boundaries",
       "source": {
@@ -23773,8 +23791,8 @@
       "current_successor_candidates": [],
       "law": "behavior.allowed-skip-requires-a-reviewable-reason",
       "provisional_target": {
-        "distribution": "cross-repository-live-meta-deferred",
-        "issue": 1325
+        "distribution": "cross-repository-architecture-package",
+        "issue": 1346
       },
       "reference": "tests.test_architecture_test_integrity.ArchitectureTestIntegrityTests.test_allowed_skip_requires_a_reviewable_reason",
       "source": {
@@ -23793,8 +23811,8 @@
       "current_successor_candidates": [],
       "law": "behavior.duplicate-and-literal-false-approved-skips-fail-closed",
       "provisional_target": {
-        "distribution": "cross-repository-live-meta-deferred",
-        "issue": 1325
+        "distribution": "cross-repository-architecture-package",
+        "issue": 1346
       },
       "reference": "tests.test_architecture_test_integrity.ArchitectureTestIntegrityTests.test_duplicate_and_literal_false_approved_skips_fail_closed",
       "source": {
@@ -23816,8 +23834,8 @@
       "current_successor_candidates": [],
       "law": "behavior.mocks-are-reported-without-becoming-automatic-failures",
       "provisional_target": {
-        "distribution": "cross-repository-live-meta-deferred",
-        "issue": 1325
+        "distribution": "cross-repository-architecture-package",
+        "issue": 1346
       },
       "reference": "tests.test_architecture_test_integrity.ArchitectureTestIntegrityTests.test_mocks_are_reported_without_becoming_automatic_failures",
       "source": {
@@ -23838,8 +23856,8 @@
       "current_successor_candidates": [],
       "law": "behavior.placeholders-empty-tests-and-swallowed-exceptions-fail",
       "provisional_target": {
-        "distribution": "cross-repository-live-meta-deferred",
-        "issue": 1325
+        "distribution": "cross-repository-architecture-package",
+        "issue": 1346
       },
       "reference": "tests.test_architecture_test_integrity.ArchitectureTestIntegrityTests.test_placeholders_empty_tests_and_swallowed_exceptions_fail",
       "source": {
@@ -23858,8 +23876,8 @@
       "current_successor_candidates": [],
       "law": "behavior.repository-has-only-explicit-optional-dependency-skips",
       "provisional_target": {
-        "distribution": "cross-repository-live-meta-deferred",
-        "issue": 1325
+        "distribution": "cross-repository-architecture-package",
+        "issue": 1346
       },
       "reference": "tests.test_architecture_test_integrity.ArchitectureTestIntegrityTests.test_repository_has_only_explicit_optional_dependency_skips",
       "source": {
@@ -23876,8 +23894,8 @@
       "current_successor_candidates": [],
       "law": "behavior.unconditional-and-unapproved-skips-fail-with-locations",
       "provisional_target": {
-        "distribution": "cross-repository-live-meta-deferred",
-        "issue": 1325
+        "distribution": "cross-repository-architecture-package",
+        "issue": 1346
       },
       "reference": "tests.test_architecture_test_integrity.ArchitectureTestIntegrityTests.test_unconditional_and_unapproved_skips_fail_with_locations",
       "source": {
@@ -23896,8 +23914,8 @@
       "current_successor_candidates": [],
       "law": "behavior.destructive-classification-is-data-before-execution",
       "provisional_target": {
-        "distribution": "cross-repository-live-meta-deferred",
-        "issue": 1325
+        "distribution": "cross-repository-architecture-package",
+        "issue": 1346
       },
       "reference": "tests.test_backend_boundaries.BackendBoundaryTests.test_destructive_classification_is_data_before_execution",
       "source": {
@@ -23917,8 +23935,8 @@
       "current_successor_candidates": [],
       "law": "behavior.policy-decisions-do-not-create-workflow-records",
       "provisional_target": {
-        "distribution": "cross-repository-live-meta-deferred",
-        "issue": 1325
+        "distribution": "cross-repository-architecture-package",
+        "issue": 1346
       },
       "reference": "tests.test_backend_boundaries.BackendBoundaryTests.test_policy_decisions_do_not_create_workflow_records",
       "source": {
@@ -23936,8 +23954,8 @@
       "current_successor_candidates": [],
       "law": "behavior.workflow-records-intent-without-writing-graph-truth",
       "provisional_target": {
-        "distribution": "cross-repository-live-meta-deferred",
-        "issue": 1325
+        "distribution": "cross-repository-architecture-package",
+        "issue": 1346
       },
       "reference": "tests.test_backend_boundaries.BackendBoundaryTests.test_workflow_records_intent_without_writing_graph_truth",
       "source": {
@@ -23956,8 +23974,8 @@
       "current_successor_candidates": [],
       "law": "behavior.workspace-and-graph-truth-are-owned-by-stores",
       "provisional_target": {
-        "distribution": "cross-repository-live-meta-deferred",
-        "issue": 1325
+        "distribution": "cross-repository-architecture-package",
+        "issue": 1346
       },
       "reference": "tests.test_backend_boundaries.BackendBoundaryTests.test_workspace_and_graph_truth_are_owned_by_stores",
       "source": {
@@ -24452,8 +24470,8 @@
       "current_successor_candidates": [],
       "law": "behavior.environment-supplies-base-url-and-token",
       "provisional_target": {
-        "distribution": "cross-repository-live-meta-deferred",
-        "issue": 1325
+        "distribution": "cross-repository-architecture-package",
+        "issue": 1346
       },
       "reference": "tests.test_cli.CliTests.test_environment_supplies_base_url_and_token",
       "source": {
@@ -24470,8 +24488,8 @@
       "current_successor_candidates": [],
       "law": "behavior.focused-read-commands-encode-identifiers-and-pagination",
       "provisional_target": {
-        "distribution": "cross-repository-live-meta-deferred",
-        "issue": 1325
+        "distribution": "cross-repository-architecture-package",
+        "issue": 1346
       },
       "reference": "tests.test_cli.CliTests.test_focused_read_commands_encode_identifiers_and_pagination",
       "source": {
@@ -24488,8 +24506,8 @@
       "current_successor_candidates": [],
       "law": "behavior.http-error-returns-nonzero-and-prints-detail",
       "provisional_target": {
-        "distribution": "cross-repository-live-meta-deferred",
-        "issue": 1325
+        "distribution": "cross-repository-architecture-package",
+        "issue": 1346
       },
       "reference": "tests.test_cli.CliTests.test_http_error_returns_nonzero_and_prints_detail",
       "source": {
@@ -24508,8 +24526,8 @@
       "current_successor_candidates": [],
       "law": "behavior.missing-base-url-is-usage-error",
       "provisional_target": {
-        "distribution": "cross-repository-live-meta-deferred",
-        "issue": 1325
+        "distribution": "cross-repository-architecture-package",
+        "issue": 1346
       },
       "reference": "tests.test_cli.CliTests.test_missing_base_url_is_usage_error",
       "source": {
@@ -24529,8 +24547,8 @@
       "current_successor_candidates": [],
       "law": "behavior.pointer-and-limit-commands-encode-query-parameters",
       "provisional_target": {
-        "distribution": "cross-repository-live-meta-deferred",
-        "issue": 1325
+        "distribution": "cross-repository-architecture-package",
+        "issue": 1346
       },
       "reference": "tests.test_cli.CliTests.test_pointer_and_limit_commands_encode_query_parameters",
       "source": {
@@ -24547,8 +24565,8 @@
       "current_successor_candidates": [],
       "law": "behavior.token-sets-bearer-header",
       "provisional_target": {
-        "distribution": "cross-repository-live-meta-deferred",
-        "issue": 1325
+        "distribution": "cross-repository-architecture-package",
+        "issue": 1346
       },
       "reference": "tests.test_cli.CliTests.test_token_sets_bearer_header",
       "source": {
@@ -24565,8 +24583,8 @@
       "current_successor_candidates": [],
       "law": "behavior.workspace-command-reads-from-base-url-and-prints-json",
       "provisional_target": {
-        "distribution": "cross-repository-live-meta-deferred",
-        "issue": 1325
+        "distribution": "cross-repository-architecture-package",
+        "issue": 1346
       },
       "reference": "tests.test_cli.CliTests.test_workspace_command_reads_from_base_url_and_prints_json",
       "source": {
@@ -31694,8 +31712,8 @@
       "current_successor_candidates": [],
       "law": "behavior.blue-to-green-compiles-to-one-typed-active-edge-switch",
       "provisional_target": {
-        "distribution": "cross-repository-live-meta-deferred",
-        "issue": 1325
+        "distribution": "cross-repository-live-demo",
+        "issue": 1347
       },
       "reference": "tests.test_gate_d_live_smoke_scenario.GateDLiveSmokeScenarioTests.test_blue_to_green_compiles_to_one_typed_active_edge_switch",
       "source": {
@@ -31712,8 +31730,8 @@
       "current_successor_candidates": [],
       "law": "behavior.initial-graph-is-valid-and-wires-both-targets",
       "provisional_target": {
-        "distribution": "cross-repository-live-meta-deferred",
-        "issue": 1325
+        "distribution": "cross-repository-live-demo",
+        "issue": 1347
       },
       "reference": "tests.test_gate_d_live_smoke_scenario.GateDLiveSmokeScenarioTests.test_initial_graph_is_valid_and_wires_both_targets",
       "source": {
@@ -31731,8 +31749,8 @@
       "current_successor_candidates": [],
       "law": "behavior.unprefixed-live-container-name-matches-compiled-docker-dns",
       "provisional_target": {
-        "distribution": "cross-repository-live-meta-deferred",
-        "issue": 1325
+        "distribution": "cross-repository-live-demo",
+        "issue": 1347
       },
       "reference": "tests.test_gate_d_live_smoke_scenario.GateDLiveSmokeScenarioTests.test_unprefixed_live_container_name_matches_compiled_docker_dns",
       "source": {
@@ -31856,8 +31874,8 @@
       "current_successor_candidates": [],
       "law": "behavior.default-live-shape-is-a-valid-paired-dependency-topology",
       "provisional_target": {
-        "distribution": "cross-repository-live-meta-deferred",
-        "issue": 1325
+        "distribution": "cross-repository-live-demo",
+        "issue": 1347
       },
       "reference": "tests.test_generated_hello_live_scenario.GeneratedHelloLiveScenarioTests.test_default_live_shape_is_a_valid_paired_dependency_topology",
       "source": {
@@ -31874,8 +31892,8 @@
       "current_successor_candidates": [],
       "law": "behavior.generated-startup-wiring-never-becomes-control-route-effects",
       "provisional_target": {
-        "distribution": "cross-repository-live-meta-deferred",
-        "issue": 1325
+        "distribution": "cross-repository-live-demo",
+        "issue": 1347
       },
       "reference": "tests.test_generated_hello_live_scenario.GeneratedHelloLiveScenarioTests.test_generated_startup_wiring_never_becomes_control_route_effects",
       "source": {
@@ -31894,8 +31912,8 @@
       "current_successor_candidates": [],
       "law": "behavior.live-shape-limit-can-be-raised-explicitly",
       "provisional_target": {
-        "distribution": "cross-repository-live-meta-deferred",
-        "issue": 1325
+        "distribution": "cross-repository-live-demo",
+        "issue": 1347
       },
       "reference": "tests.test_generated_hello_live_scenario.GeneratedHelloLiveScenarioTests.test_live_shape_limit_can_be_raised_explicitly",
       "source": {
@@ -31912,8 +31930,8 @@
       "current_successor_candidates": [],
       "law": "behavior.live-shape-rejects-accidental-container-explosion",
       "provisional_target": {
-        "distribution": "cross-repository-live-meta-deferred",
-        "issue": 1325
+        "distribution": "cross-repository-live-demo",
+        "issue": 1347
       },
       "reference": "tests.test_generated_hello_live_scenario.GeneratedHelloLiveScenarioTests.test_live_shape_rejects_accidental_container_explosion",
       "source": {
@@ -31933,8 +31951,8 @@
       "current_successor_candidates": [],
       "law": "behavior.probe-authorities-drop-driver-and-database-path-information",
       "provisional_target": {
-        "distribution": "cross-repository-live-meta-deferred",
-        "issue": 1325
+        "distribution": "cross-repository-live-demo",
+        "issue": 1347
       },
       "reference": "tests.test_generated_hello_live_scenario.GeneratedHelloLiveScenarioTests.test_probe_authorities_drop_driver_and_database_path_information",
       "source": {
@@ -33251,8 +33269,8 @@
       "current_successor_candidates": [],
       "law": "behavior.adding-publication-is-explicit-disruptive-plan-work",
       "provisional_target": {
-        "distribution": "cross-repository-live-meta-deferred",
-        "issue": 1325
+        "distribution": "cross-repository-live-demo",
+        "issue": 1347
       },
       "reference": "tests.test_host_publication.HostPublicationTests.test_adding_publication_is_explicit_disruptive_plan_work",
       "source": {
@@ -33271,8 +33289,8 @@
       "current_successor_candidates": [],
       "law": "behavior.explicit-publication-survives-graph-and-pinned-materialization",
       "provisional_target": {
-        "distribution": "cross-repository-live-meta-deferred",
-        "issue": 1325
+        "distribution": "cross-repository-live-demo",
+        "issue": 1347
       },
       "reference": "tests.test_host_publication.HostPublicationTests.test_explicit_publication_survives_graph_and_pinned_materialization",
       "source": {
@@ -33292,8 +33310,8 @@
       "current_successor_candidates": [],
       "law": "behavior.loopback-factories-are-closed-ip-values",
       "provisional_target": {
-        "distribution": "cross-repository-live-meta-deferred",
-        "issue": 1325
+        "distribution": "cross-repository-live-demo",
+        "issue": 1347
       },
       "reference": "tests.test_host_publication.HostPublicationTests.test_loopback_factories_are_closed_ip_values",
       "source": {
@@ -33310,8 +33328,8 @@
       "current_successor_candidates": [],
       "law": "behavior.private-only-is-the-authoring-default",
       "provisional_target": {
-        "distribution": "cross-repository-live-meta-deferred",
-        "issue": 1325
+        "distribution": "cross-repository-live-demo",
+        "issue": 1347
       },
       "reference": "tests.test_host_publication.HostPublicationTests.test_private_only_is_the_authoring_default",
       "source": {
@@ -33328,8 +33346,8 @@
       "current_successor_candidates": [],
       "law": "behavior.same-fixed-host-port-is-valid-once-per-transport",
       "provisional_target": {
-        "distribution": "cross-repository-live-meta-deferred",
-        "issue": 1325
+        "distribution": "cross-repository-live-demo",
+        "issue": 1347
       },
       "reference": "tests.test_host_publication.HostPublicationTests.test_same_fixed_host_port_is_valid_once_per_transport",
       "source": {
@@ -33346,8 +33364,8 @@
       "current_successor_candidates": [],
       "law": "behavior.unknown-socket-and-fixed-port-collision-fail-at-authoring",
       "provisional_target": {
-        "distribution": "cross-repository-live-meta-deferred",
-        "issue": 1325
+        "distribution": "cross-repository-live-demo",
+        "issue": 1347
       },
       "reference": "tests.test_host_publication.HostPublicationTests.test_unknown_socket_and_fixed_port_collision_fail_at_authoring",
       "source": {
@@ -35488,8 +35506,8 @@
       "current_successor_candidates": [],
       "law": "behavior.activity-and-observed-state-routes-are-read-only",
       "provisional_target": {
-        "distribution": "cross-repository-live-meta-deferred",
-        "issue": 1325
+        "distribution": "cross-repository-architecture-package",
+        "issue": 1346
       },
       "reference": "tests.test_instance_read_fastapi.InstanceReadFastAPITests.test_activity_and_observed_state_routes_are_read_only",
       "source": {
@@ -35506,8 +35524,8 @@
       "current_successor_candidates": [],
       "law": "behavior.configured-token-protects-instance-reads",
       "provisional_target": {
-        "distribution": "cross-repository-live-meta-deferred",
-        "issue": 1325
+        "distribution": "cross-repository-architecture-package",
+        "issue": 1346
       },
       "reference": "tests.test_instance_read_fastapi.InstanceReadFastAPITests.test_configured_token_protects_instance_reads",
       "source": {
@@ -35524,8 +35542,8 @@
       "current_successor_candidates": [],
       "law": "behavior.focused-routes-delegate-with-explicit-bounds",
       "provisional_target": {
-        "distribution": "cross-repository-live-meta-deferred",
-        "issue": 1325
+        "distribution": "cross-repository-architecture-package",
+        "issue": 1346
       },
       "reference": "tests.test_instance_read_fastapi.InstanceReadFastAPITests.test_focused_routes_delegate_with_explicit_bounds",
       "source": {
@@ -35542,8 +35560,8 @@
       "current_successor_candidates": [],
       "law": "behavior.focused-routes-share-auth-and-workspace-safe-errors",
       "provisional_target": {
-        "distribution": "cross-repository-live-meta-deferred",
-        "issue": 1325
+        "distribution": "cross-repository-architecture-package",
+        "issue": 1346
       },
       "reference": "tests.test_instance_read_fastapi.InstanceReadFastAPITests.test_focused_routes_share_auth_and_workspace_safe_errors",
       "source": {
@@ -35562,8 +35580,8 @@
       "current_successor_candidates": [],
       "law": "behavior.instance-read-app-exposes-no-workflow-mutation-routes",
       "provisional_target": {
-        "distribution": "cross-repository-live-meta-deferred",
-        "issue": 1325
+        "distribution": "cross-repository-architecture-package",
+        "issue": 1346
       },
       "reference": "tests.test_instance_read_fastapi.InstanceReadFastAPITests.test_instance_read_app_exposes_no_workflow_mutation_routes",
       "source": {
@@ -35580,8 +35598,8 @@
       "current_successor_candidates": [],
       "law": "behavior.projection-routes-delegate-to-read-service",
       "provisional_target": {
-        "distribution": "cross-repository-live-meta-deferred",
-        "issue": 1325
+        "distribution": "cross-repository-architecture-package",
+        "issue": 1346
       },
       "reference": "tests.test_instance_read_fastapi.InstanceReadFastAPITests.test_projection_routes_delegate_to_read_service",
       "source": {
@@ -35599,8 +35617,8 @@
       "current_successor_candidates": [],
       "law": "behavior.read-model-errors-map-to-http-statuses",
       "provisional_target": {
-        "distribution": "cross-repository-live-meta-deferred",
-        "issue": 1325
+        "distribution": "cross-repository-architecture-package",
+        "issue": 1346
       },
       "reference": "tests.test_instance_read_fastapi.InstanceReadFastAPITests.test_read_model_errors_map_to_http_statuses",
       "source": {
@@ -35619,8 +35637,8 @@
       "current_successor_candidates": [],
       "law": "behavior.stale-recovery-graph-truth-maps-to-conflict",
       "provisional_target": {
-        "distribution": "cross-repository-live-meta-deferred",
-        "issue": 1325
+        "distribution": "cross-repository-architecture-package",
+        "issue": 1346
       },
       "reference": "tests.test_instance_read_fastapi.InstanceReadFastAPITests.test_stale_recovery_graph_truth_maps_to_conflict",
       "source": {
@@ -35640,8 +35658,8 @@
       "current_successor_candidates": [],
       "law": "behavior.unconfigured-activity-store-returns-service-unavailable",
       "provisional_target": {
-        "distribution": "cross-repository-live-meta-deferred",
-        "issue": 1325
+        "distribution": "cross-repository-architecture-package",
+        "issue": 1346
       },
       "reference": "tests.test_instance_read_fastapi.InstanceReadFastAPITests.test_unconfigured_activity_store_returns_service_unavailable",
       "source": {
@@ -35658,8 +35676,8 @@
       "current_successor_candidates": [],
       "law": "behavior.workspace-and-graph-routes-return-redacted-descriptors",
       "provisional_target": {
-        "distribution": "cross-repository-live-meta-deferred",
-        "issue": 1325
+        "distribution": "cross-repository-architecture-package",
+        "issue": 1346
       },
       "reference": "tests.test_instance_read_fastapi.InstanceReadFastAPITests.test_workspace_and_graph_routes_return_redacted_descriptors",
       "source": {
@@ -37376,8 +37394,8 @@
       "current_successor_candidates": [],
       "law": "behavior.available-dependencies-are-accepted",
       "provisional_target": {
-        "distribution": "cross-repository-live-meta-deferred",
-        "issue": 1325
+        "distribution": "cross-repository-architecture-package",
+        "issue": 1346
       },
       "reference": "tests.test_optional_dependencies.OptionalDependencyTests.test_available_dependencies_are_accepted",
       "source": {
@@ -37392,8 +37410,8 @@
       "current_successor_candidates": [],
       "law": "behavior.missing-dependency-names-surface-and-install-extra",
       "provisional_target": {
-        "distribution": "cross-repository-live-meta-deferred",
-        "issue": 1325
+        "distribution": "cross-repository-architecture-package",
+        "issue": 1346
       },
       "reference": "tests.test_optional_dependencies.OptionalDependencyTests.test_missing_dependency_names_surface_and_install_extra",
       "source": {
@@ -37413,8 +37431,8 @@
       "current_successor_candidates": [],
       "law": "behavior.core-inventory-is-exactly-the-effect-free-pipeline-floor",
       "provisional_target": {
-        "distribution": "cross-repository-live-meta-deferred",
-        "issue": 1325
+        "distribution": "cross-repository-architecture-package",
+        "issue": 1346
       },
       "reference": "tests.test_package_inventory.PackageModuleInventoryTests.test_core_inventory_is_exactly_the_effect_free_pipeline_floor",
       "source": {
@@ -37434,8 +37452,8 @@
       "current_successor_candidates": [],
       "law": "behavior.coredns-relocation-invariants-are-recorded",
       "provisional_target": {
-        "distribution": "cross-repository-live-meta-deferred",
-        "issue": 1325
+        "distribution": "cross-repository-architecture-package",
+        "issue": 1346
       },
       "reference": "tests.test_package_inventory.PackageModuleInventoryTests.test_coredns_relocation_invariants_are_recorded",
       "source": {
@@ -37454,8 +37472,8 @@
       "current_successor_candidates": [],
       "law": "behavior.current-core-tree-has-only-declared-pure-dependencies",
       "provisional_target": {
-        "distribution": "cross-repository-live-meta-deferred",
-        "issue": 1325
+        "distribution": "cross-repository-architecture-package",
+        "issue": 1346
       },
       "reference": "tests.test_package_inventory.PackageModuleInventoryTests.test_current_core_tree_has_only_declared_pure_dependencies",
       "source": {
@@ -37473,8 +37491,8 @@
       "current_successor_candidates": [],
       "law": "behavior.domain-inventory-is-exactly-the-admitted-closed-languages",
       "provisional_target": {
-        "distribution": "cross-repository-live-meta-deferred",
-        "issue": 1325
+        "distribution": "cross-repository-architecture-package",
+        "issue": 1346
       },
       "reference": "tests.test_package_inventory.PackageModuleInventoryTests.test_domain_inventory_is_exactly_the_admitted_closed_languages",
       "source": {
@@ -37491,8 +37509,8 @@
       "current_successor_candidates": [],
       "law": "behavior.every-current-server-module-has-uniform-product-exterior",
       "provisional_target": {
-        "distribution": "cross-repository-live-meta-deferred",
-        "issue": 1325
+        "distribution": "cross-repository-architecture-package",
+        "issue": 1346
       },
       "reference": "tests.test_package_inventory.PackageModuleInventoryTests.test_every_current_server_module_has_uniform_product_exterior",
       "source": {
@@ -37510,8 +37528,8 @@
       "current_successor_candidates": [],
       "law": "behavior.inventory-distinguishes-completed-and-deferred-movement",
       "provisional_target": {
-        "distribution": "cross-repository-live-meta-deferred",
-        "issue": 1325
+        "distribution": "cross-repository-architecture-package",
+        "issue": 1346
       },
       "reference": "tests.test_package_inventory.PackageModuleInventoryTests.test_inventory_distinguishes_completed_and_deferred_movement",
       "source": {
@@ -37528,8 +37546,8 @@
       "current_successor_candidates": [],
       "law": "behavior.inventory-is-exhaustive-and-assigns-one-owner",
       "provisional_target": {
-        "distribution": "cross-repository-live-meta-deferred",
-        "issue": 1325
+        "distribution": "cross-repository-architecture-package",
+        "issue": 1346
       },
       "reference": "tests.test_package_inventory.PackageModuleInventoryTests.test_inventory_is_exhaustive_and_assigns_one_owner",
       "source": {
@@ -37548,8 +37566,8 @@
       "current_successor_candidates": [],
       "law": "behavior.catalog-is-the-canonical-product-declaration-collection",
       "provisional_target": {
-        "distribution": "cross-repository-live-meta-deferred",
-        "issue": 1325
+        "distribution": "cross-repository-architecture-package",
+        "issue": 1346
       },
       "reference": "tests.test_package_server_catalog.PackageServerCatalogTests.test_catalog_is_the_canonical_product_declaration_collection",
       "source": {
@@ -37570,8 +37588,8 @@
       "current_successor_candidates": [],
       "law": "behavior.catalogue-contains-each-closed-product-exactly-once",
       "provisional_target": {
-        "distribution": "cross-repository-live-meta-deferred",
-        "issue": 1325
+        "distribution": "cross-repository-architecture-package",
+        "issue": 1346
       },
       "reference": "tests.test_package_server_catalog.PackageServerCatalogTests.test_catalogue_contains_each_closed_product_exactly_once",
       "source": {
@@ -37588,8 +37606,8 @@
       "current_successor_candidates": [],
       "law": "behavior.contract-rejects-capability-claim-without-evidence",
       "provisional_target": {
-        "distribution": "cross-repository-live-meta-deferred",
-        "issue": 1325
+        "distribution": "cross-repository-architecture-package",
+        "issue": 1346
       },
       "reference": "tests.test_package_server_catalog.PackageServerCatalogTests.test_contract_rejects_capability_claim_without_evidence",
       "source": {
@@ -37610,8 +37628,8 @@
       "current_successor_candidates": [],
       "law": "behavior.executable-evidence-shape-fails-closed",
       "provisional_target": {
-        "distribution": "cross-repository-live-meta-deferred",
-        "issue": 1325
+        "distribution": "cross-repository-architecture-package",
+        "issue": 1346
       },
       "reference": "tests.test_package_server_catalog.PackageServerCatalogTests.test_executable_evidence_shape_fails_closed",
       "source": {
@@ -37631,8 +37649,8 @@
       "current_successor_candidates": [],
       "law": "behavior.fault-injector-is-structurally-test-only",
       "provisional_target": {
-        "distribution": "cross-repository-live-meta-deferred",
-        "issue": 1325
+        "distribution": "cross-repository-architecture-package",
+        "issue": 1346
       },
       "reference": "tests.test_package_server_catalog.PackageServerCatalogTests.test_fault_injector_is_structurally_test_only",
       "source": {
@@ -37651,8 +37669,8 @@
       "current_successor_candidates": [],
       "law": "behavior.free-form-metadata-cannot-change-typed-product-identity",
       "provisional_target": {
-        "distribution": "cross-repository-live-meta-deferred",
-        "issue": 1325
+        "distribution": "cross-repository-architecture-package",
+        "issue": 1346
       },
       "reference": "tests.test_package_server_catalog.PackageServerCatalogTests.test_free_form_metadata_cannot_change_typed_product_identity",
       "source": {
@@ -37669,8 +37687,8 @@
       "current_successor_candidates": [],
       "law": "behavior.managed-router-capabilities-are-control-route-backed",
       "provisional_target": {
-        "distribution": "cross-repository-live-meta-deferred",
-        "issue": 1325
+        "distribution": "cross-repository-architecture-package",
+        "issue": 1346
       },
       "reference": "tests.test_package_server_catalog.PackageServerCatalogTests.test_managed_router_capabilities_are_control_route_backed",
       "source": {
@@ -37688,8 +37706,8 @@
       "current_successor_candidates": [],
       "law": "behavior.matrix-exposes-socket-binding-without-metadata-inference",
       "provisional_target": {
-        "distribution": "cross-repository-live-meta-deferred",
-        "issue": 1325
+        "distribution": "cross-repository-architecture-package",
+        "issue": 1346
       },
       "reference": "tests.test_package_server_catalog.PackageServerCatalogTests.test_matrix_exposes_socket_binding_without_metadata_inference",
       "source": {
@@ -37708,8 +37726,8 @@
       "current_successor_candidates": [],
       "law": "behavior.package-product-identity-round-trips-through-default-codec",
       "provisional_target": {
-        "distribution": "cross-repository-live-meta-deferred",
-        "issue": 1325
+        "distribution": "cross-repository-architecture-package",
+        "issue": 1346
       },
       "reference": "tests.test_package_server_catalog.PackageServerCatalogTests.test_package_product_identity_round_trips_through_default_codec",
       "source": {
@@ -37727,8 +37745,8 @@
       "current_successor_candidates": [],
       "law": "behavior.teaching-servers-advertise-only-executable-evidence",
       "provisional_target": {
-        "distribution": "cross-repository-live-meta-deferred",
-        "issue": 1325
+        "distribution": "cross-repository-architecture-package",
+        "issue": 1346
       },
       "reference": "tests.test_package_server_catalog.PackageServerCatalogTests.test_teaching_servers_advertise_only_executable_evidence",
       "source": {
@@ -37748,8 +37766,8 @@
       "current_successor_candidates": [],
       "law": "behavior.unknown-persisted-product-fails-closed",
       "provisional_target": {
-        "distribution": "cross-repository-live-meta-deferred",
-        "issue": 1325
+        "distribution": "cross-repository-architecture-package",
+        "issue": 1346
       },
       "reference": "tests.test_package_server_catalog.PackageServerCatalogTests.test_unknown_persisted_product_fails_closed",
       "source": {
@@ -37770,8 +37788,8 @@
       "current_successor_candidates": [],
       "law": "behavior.canonical-types-report-their-new-module-homes",
       "provisional_target": {
-        "distribution": "cross-repository-live-meta-deferred",
-        "issue": 1325
+        "distribution": "cross-repository-architecture-package",
+        "issue": 1346
       },
       "reference": "tests.test_package_structure.PackageStructureTests.test_canonical_types_report_their_new_module_homes",
       "source": {
@@ -37793,8 +37811,8 @@
       "current_successor_candidates": [],
       "law": "behavior.deployment-program-has-one-intentional-package-entrance",
       "provisional_target": {
-        "distribution": "cross-repository-live-meta-deferred",
-        "issue": 1325
+        "distribution": "cross-repository-architecture-package",
+        "issue": 1346
       },
       "reference": "tests.test_package_structure.PackageStructureTests.test_deployment_program_has_one_intentional_package_entrance",
       "source": {
@@ -37814,8 +37832,8 @@
       "current_successor_candidates": [],
       "law": "behavior.product-and-entrypoint-foundations-have-one-way-ownership",
       "provisional_target": {
-        "distribution": "cross-repository-live-meta-deferred",
-        "issue": 1325
+        "distribution": "cross-repository-architecture-package",
+        "issue": 1346
       },
       "reference": "tests.test_package_structure.PackageStructureTests.test_product_and_entrypoint_foundations_have_one_way_ownership",
       "source": {
@@ -37835,8 +37853,8 @@
       "current_successor_candidates": [],
       "law": "behavior.pure-packages-do-not-import-workflow-or-store-layers",
       "provisional_target": {
-        "distribution": "cross-repository-live-meta-deferred",
-        "issue": 1325
+        "distribution": "cross-repository-architecture-package",
+        "issue": 1346
       },
       "reference": "tests.test_package_structure.PackageStructureTests.test_pure_packages_do_not_import_workflow_or_store_layers",
       "source": {
@@ -37851,8 +37869,8 @@
       "current_successor_candidates": [],
       "law": "behavior.retired-flat-modules-are-not-importable",
       "provisional_target": {
-        "distribution": "cross-repository-live-meta-deferred",
-        "issue": 1325
+        "distribution": "cross-repository-architecture-package",
+        "issue": 1346
       },
       "reference": "tests.test_package_structure.PackageStructureTests.test_retired_flat_modules_are_not_importable",
       "source": {
@@ -37873,8 +37891,8 @@
       "current_successor_candidates": [],
       "law": "behavior.root-api-reexports-canonical-package-objects",
       "provisional_target": {
-        "distribution": "cross-repository-live-meta-deferred",
-        "issue": 1325
+        "distribution": "cross-repository-architecture-package",
+        "issue": 1346
       },
       "reference": "tests.test_package_structure.PackageStructureTests.test_root_api_reexports_canonical_package_objects",
       "source": {
@@ -37894,8 +37912,8 @@
       "current_successor_candidates": [],
       "law": "behavior.current-package-graph-is-acyclic",
       "provisional_target": {
-        "distribution": "cross-repository-live-meta-deferred",
-        "issue": 1325
+        "distribution": "cross-repository-architecture-package",
+        "issue": 1346
       },
       "reference": "tests.test_package_topology.CurrentPackageTopologyTests.test_current_package_graph_is_acyclic",
       "source": {
@@ -37912,8 +37930,8 @@
       "current_successor_candidates": [],
       "law": "behavior.current-source-has-one-way-recovery-policy-planning-edges",
       "provisional_target": {
-        "distribution": "cross-repository-live-meta-deferred",
-        "issue": 1325
+        "distribution": "cross-repository-architecture-package",
+        "issue": 1346
       },
       "reference": "tests.test_package_topology.CurrentPackageTopologyTests.test_current_source_has_one_way_recovery_policy_planning_edges",
       "source": {
@@ -37933,8 +37951,8 @@
       "current_successor_candidates": [],
       "law": "behavior.root-pure-facade-has-a-closed-owner-set",
       "provisional_target": {
-        "distribution": "cross-repository-live-meta-deferred",
-        "issue": 1325
+        "distribution": "cross-repository-architecture-package",
+        "issue": 1346
       },
       "reference": "tests.test_package_topology.CurrentPackageTopologyTests.test_root_pure_facade_has_a_closed_owner_set",
       "source": {
@@ -37955,8 +37973,8 @@
       "current_successor_candidates": [],
       "law": "behavior.computed-root-exports-fail-closed",
       "provisional_target": {
-        "distribution": "cross-repository-live-meta-deferred",
-        "issue": 1325
+        "distribution": "cross-repository-architecture-package",
+        "issue": 1346
       },
       "reference": "tests.test_package_topology.PackageTopologyPolicyTests.test_computed_root_exports_fail_closed",
       "source": {
@@ -37976,8 +37994,8 @@
       "current_successor_candidates": [],
       "law": "behavior.declared-edges-cannot-hide-direct-or-multi-node-cycles",
       "provisional_target": {
-        "distribution": "cross-repository-live-meta-deferred",
-        "issue": 1325
+        "distribution": "cross-repository-architecture-package",
+        "issue": 1346
       },
       "reference": "tests.test_package_topology.PackageTopologyPolicyTests.test_declared_edges_cannot_hide_direct_or_multi_node_cycles",
       "source": {
@@ -37994,8 +38012,8 @@
       "current_successor_candidates": [],
       "law": "behavior.domain-language-rejects-operations-products-interpreters-and-entrypoints",
       "provisional_target": {
-        "distribution": "cross-repository-live-meta-deferred",
-        "issue": 1325
+        "distribution": "cross-repository-architecture-package",
+        "issue": 1346
       },
       "reference": "tests.test_package_topology.PackageTopologyPolicyTests.test_domain_language_rejects_operations_products_interpreters_and_entrypoints",
       "source": {
@@ -38014,8 +38032,8 @@
       "current_successor_candidates": [],
       "law": "behavior.legal-acyclic-sibling-dependencies-are-representable",
       "provisional_target": {
-        "distribution": "cross-repository-live-meta-deferred",
-        "issue": 1325
+        "distribution": "cross-repository-architecture-package",
+        "issue": 1346
       },
       "reference": "tests.test_package_topology.PackageTopologyPolicyTests.test_legal_acyclic_sibling_dependencies_are_representable",
       "source": {
@@ -38032,8 +38050,8 @@
       "current_successor_candidates": [],
       "law": "behavior.product-may-project-domain-but-not-registry-or-process",
       "provisional_target": {
-        "distribution": "cross-repository-live-meta-deferred",
-        "issue": 1325
+        "distribution": "cross-repository-architecture-package",
+        "issue": 1346
       },
       "reference": "tests.test_package_topology.PackageTopologyPolicyTests.test_product_may_project_domain_but_not_registry_or_process",
       "source": {
@@ -38050,8 +38068,8 @@
       "current_successor_candidates": [],
       "law": "behavior.product-to-domain-projection-does-not-authorize-reverse-edge",
       "provisional_target": {
-        "distribution": "cross-repository-live-meta-deferred",
-        "issue": 1325
+        "distribution": "cross-repository-architecture-package",
+        "issue": 1346
       },
       "reference": "tests.test_package_topology.PackageTopologyPolicyTests.test_product_to_domain_projection_does_not_authorize_reverse_edge",
       "source": {
@@ -38068,8 +38086,8 @@
       "current_successor_candidates": [],
       "law": "behavior.root-exports-must-come-from-allowed-package-owners",
       "provisional_target": {
-        "distribution": "cross-repository-live-meta-deferred",
-        "issue": 1325
+        "distribution": "cross-repository-architecture-package",
+        "issue": 1346
       },
       "reference": "tests.test_package_topology.PackageTopologyPolicyTests.test_root_exports_must_come_from_allowed_package_owners",
       "source": {
@@ -38087,8 +38105,8 @@
       "current_successor_candidates": [],
       "law": "behavior.root-provenance-rejects-optional-dependency-leakage",
       "provisional_target": {
-        "distribution": "cross-repository-live-meta-deferred",
-        "issue": 1325
+        "distribution": "cross-repository-architecture-package",
+        "issue": 1346
       },
       "reference": "tests.test_package_topology.PackageTopologyPolicyTests.test_root_provenance_rejects_optional_dependency_leakage",
       "source": {
@@ -38108,8 +38126,8 @@
       "current_successor_candidates": [],
       "law": "behavior.transitive-product-to-process-path-is-rejected",
       "provisional_target": {
-        "distribution": "cross-repository-live-meta-deferred",
-        "issue": 1325
+        "distribution": "cross-repository-architecture-package",
+        "issue": 1346
       },
       "reference": "tests.test_package_topology.PackageTopologyPolicyTests.test_transitive_product_to_process_path_is_rejected",
       "source": {
@@ -39341,8 +39359,8 @@
       "current_successor_candidates": [],
       "law": "behavior.demo-server-requires-configured-token",
       "provisional_target": {
-        "distribution": "cross-repository-live-meta-deferred",
-        "issue": 1325
+        "distribution": "cross-repository-architecture-package",
+        "issue": 1346
       },
       "reference": "tests.test_read_interface_demo_server.ReadInterfaceDemoServerTests.test_demo_server_requires_configured_token",
       "source": {
@@ -39359,8 +39377,8 @@
       "current_successor_candidates": [],
       "law": "behavior.demo-server-seeds-and-serves-read-routes",
       "provisional_target": {
-        "distribution": "cross-repository-live-meta-deferred",
-        "issue": 1325
+        "distribution": "cross-repository-architecture-package",
+        "issue": 1346
       },
       "reference": "tests.test_read_interface_demo_server.ReadInterfaceDemoServerTests.test_demo_server_seeds_and_serves_read_routes",
       "source": {
@@ -39959,8 +39977,8 @@
       "current_successor_candidates": [],
       "law": "behavior.interpreter-entrance-does-not-eagerly-import-optional-dependencies",
       "provisional_target": {
-        "distribution": "cross-repository-live-meta-deferred",
-        "issue": 1325
+        "distribution": "cross-repository-architecture-package",
+        "issue": 1346
       },
       "reference": "tests.test_root_api.RootApiTests.test_interpreter_entrance_does_not_eagerly_import_optional_dependencies",
       "source": {
@@ -39977,8 +39995,8 @@
       "current_successor_candidates": [],
       "law": "behavior.optional-import-fixture-is-rejected",
       "provisional_target": {
-        "distribution": "cross-repository-live-meta-deferred",
-        "issue": 1325
+        "distribution": "cross-repository-architecture-package",
+        "issue": 1346
       },
       "reference": "tests.test_root_api.RootApiTests.test_optional_import_fixture_is_rejected",
       "source": {
@@ -39997,8 +40015,8 @@
       "current_successor_candidates": [],
       "law": "behavior.pure-package-roots-do-not-import-optional-dependencies",
       "provisional_target": {
-        "distribution": "cross-repository-live-meta-deferred",
-        "issue": 1325
+        "distribution": "cross-repository-architecture-package",
+        "issue": 1346
       },
       "reference": "tests.test_root_api.RootApiTests.test_pure_package_roots_do_not_import_optional_dependencies",
       "source": {
@@ -40015,8 +40033,8 @@
       "current_successor_candidates": [],
       "law": "behavior.root-all-names-are-bound",
       "provisional_target": {
-        "distribution": "cross-repository-live-meta-deferred",
-        "issue": 1325
+        "distribution": "cross-repository-architecture-package",
+        "issue": 1346
       },
       "reference": "tests.test_root_api.RootApiTests.test_root_all_names_are_bound",
       "source": {
@@ -40033,8 +40051,8 @@
       "current_successor_candidates": [],
       "law": "behavior.root-api-does-not-import-optional-dependencies-directly",
       "provisional_target": {
-        "distribution": "cross-repository-live-meta-deferred",
-        "issue": 1325
+        "distribution": "cross-repository-architecture-package",
+        "issue": 1346
       },
       "reference": "tests.test_root_api.RootApiTests.test_root_api_does_not_import_optional_dependencies_directly",
       "source": {
@@ -40051,8 +40069,8 @@
       "current_successor_candidates": [],
       "law": "behavior.root-api-imports-only-pure-package-surfaces",
       "provisional_target": {
-        "distribution": "cross-repository-live-meta-deferred",
-        "issue": 1325
+        "distribution": "cross-repository-architecture-package",
+        "issue": 1346
       },
       "reference": "tests.test_root_api.RootApiTests.test_root_api_imports_only_pure_package_surfaces",
       "source": {
@@ -40538,8 +40556,8 @@
       "current_successor_candidates": [],
       "law": "behavior.postgres-execution-still-receives-actual-environment",
       "provisional_target": {
-        "distribution": "cross-repository-live-meta-deferred",
-        "issue": 1325
+        "distribution": "cross-repository-live-demo",
+        "issue": 1347
       },
       "reference": "tests.test_runtime_examples.RuntimeCompositionExampleTests.test_postgres_execution_still_receives_actual_environment",
       "source": {
@@ -40557,8 +40575,8 @@
       "current_successor_candidates": [],
       "law": "behavior.postgres-plan-redacts-environment-descriptors",
       "provisional_target": {
-        "distribution": "cross-repository-live-meta-deferred",
-        "issue": 1325
+        "distribution": "cross-repository-live-demo",
+        "issue": 1347
       },
       "reference": "tests.test_runtime_examples.RuntimeCompositionExampleTests.test_postgres_plan_redacts_environment_descriptors",
       "source": {
@@ -40575,8 +40593,8 @@
       "current_successor_candidates": [],
       "law": "behavior.router-execution-receives-actual-active-target",
       "provisional_target": {
-        "distribution": "cross-repository-live-meta-deferred",
-        "issue": 1325
+        "distribution": "cross-repository-live-demo",
+        "issue": 1347
       },
       "reference": "tests.test_runtime_examples.RuntimeCompositionExampleTests.test_router_execution_receives_actual_active_target",
       "source": {
@@ -40593,8 +40611,8 @@
       "current_successor_candidates": [],
       "law": "behavior.router-graph-switches-active-target-by-socket-connection",
       "provisional_target": {
-        "distribution": "cross-repository-live-meta-deferred",
-        "issue": 1325
+        "distribution": "cross-repository-live-demo",
+        "issue": 1347
       },
       "reference": "tests.test_runtime_examples.RuntimeCompositionExampleTests.test_router_graph_switches_active_target_by_socket_connection",
       "source": {
@@ -40611,8 +40629,8 @@
       "current_successor_candidates": [],
       "law": "behavior.router-plan-runs-three-docker-containers",
       "provisional_target": {
-        "distribution": "cross-repository-live-meta-deferred",
-        "issue": 1325
+        "distribution": "cross-repository-live-demo",
+        "issue": 1347
       },
       "reference": "tests.test_runtime_examples.RuntimeCompositionExampleTests.test_router_plan_runs_three_docker_containers",
       "source": {
@@ -41979,8 +41997,8 @@
       "current_successor_candidates": [],
       "law": "behavior.application-owned-database-requirements-are-independently-wired",
       "provisional_target": {
-        "distribution": "cross-repository-live-meta-deferred",
-        "issue": 1325
+        "distribution": "cross-repository-live-demo",
+        "issue": 1347
       },
       "reference": "tests.test_service_infrastructure_acceptance.ServiceInfrastructureAcceptanceTests.test_application_owned_database_requirements_are_independently_wired",
       "source": {
@@ -42000,8 +42018,8 @@
       "current_successor_candidates": [],
       "law": "behavior.missing-and-incompatible-database-edges-fail-at-pure-boundaries",
       "provisional_target": {
-        "distribution": "cross-repository-live-meta-deferred",
-        "issue": 1325
+        "distribution": "cross-repository-live-demo",
+        "issue": 1347
       },
       "reference": "tests.test_service_infrastructure_acceptance.ServiceInfrastructureAcceptanceTests.test_missing_and_incompatible_database_edges_fail_at_pure_boundaries",
       "source": {
@@ -42024,8 +42042,8 @@
       "current_successor_candidates": [],
       "law": "behavior.plan-orders-provider-health-before-each-database-consumer",
       "provisional_target": {
-        "distribution": "cross-repository-live-meta-deferred",
-        "issue": 1325
+        "distribution": "cross-repository-live-demo",
+        "issue": 1347
       },
       "reference": "tests.test_service_infrastructure_acceptance.ServiceInfrastructureAcceptanceTests.test_plan_orders_provider_health_before_each_database_consumer",
       "source": {
@@ -42043,8 +42061,8 @@
       "current_successor_candidates": [],
       "law": "behavior.recipe-preserves-exact-products-protocols-and-secret-references",
       "provisional_target": {
-        "distribution": "cross-repository-live-meta-deferred",
-        "issue": 1325
+        "distribution": "cross-repository-live-demo",
+        "issue": 1347
       },
       "reference": "tests.test_service_infrastructure_acceptance.ServiceInfrastructureAcceptanceTests.test_recipe_preserves_exact_products_protocols_and_secret_references",
       "source": {
@@ -42063,8 +42081,8 @@
       "current_successor_candidates": [],
       "law": "behavior.architecture-policy-rejects-synthetic-and-direct-bypasses",
       "provisional_target": {
-        "distribution": "cross-repository-live-meta-deferred",
-        "issue": 1325
+        "distribution": "cross-repository-live-demo",
+        "issue": 1347
       },
       "reference": "tests.test_service_infrastructure_live.ServiceInfrastructureLiveCompositionTests.test_architecture_policy_rejects_synthetic_and_direct_bypasses",
       "source": {
@@ -42083,8 +42101,8 @@
       "current_successor_candidates": [],
       "law": "behavior.endpoint-policy-is-derived-from-exact-graph-identity",
       "provisional_target": {
-        "distribution": "cross-repository-live-meta-deferred",
-        "issue": 1325
+        "distribution": "cross-repository-live-demo",
+        "issue": 1347
       },
       "reference": "tests.test_service_infrastructure_live.ServiceInfrastructureLiveCompositionTests.test_endpoint_policy_is_derived_from_exact_graph_identity",
       "source": {
@@ -42105,8 +42123,8 @@
       "current_successor_candidates": [],
       "law": "behavior.live-composition-obeys-the-canonical-application-boundary",
       "provisional_target": {
-        "distribution": "cross-repository-live-meta-deferred",
-        "issue": 1325
+        "distribution": "cross-repository-live-demo",
+        "issue": 1347
       },
       "reference": "tests.test_service_infrastructure_live.ServiceInfrastructureLiveCompositionTests.test_live_composition_obeys_the_canonical_application_boundary",
       "source": {
@@ -42123,8 +42141,8 @@
       "current_successor_candidates": [],
       "law": "behavior.real-registry-covers-graph-lifecycle-and-health-capabilities",
       "provisional_target": {
-        "distribution": "cross-repository-live-meta-deferred",
-        "issue": 1325
+        "distribution": "cross-repository-live-demo",
+        "issue": 1347
       },
       "reference": "tests.test_service_infrastructure_live.ServiceInfrastructureLiveCompositionTests.test_real_registry_covers_graph_lifecycle_and_health_capabilities",
       "source": {
@@ -42142,8 +42160,8 @@
       "current_successor_candidates": [],
       "law": "behavior.recorder-observes-but-never-dispatches-inside-unit-of-work",
       "provisional_target": {
-        "distribution": "cross-repository-live-meta-deferred",
-        "issue": 1325
+        "distribution": "cross-repository-live-demo",
+        "issue": 1347
       },
       "reference": "tests.test_service_infrastructure_live.ServiceInfrastructureLiveCompositionTests.test_recorder_observes_but_never_dispatches_inside_unit_of_work",
       "source": {
@@ -42164,8 +42182,8 @@
       "current_successor_candidates": [],
       "law": "behavior.deploy-reconstructs-and-advances-with-redacted-read-truth",
       "provisional_target": {
-        "distribution": "cross-repository-live-meta-deferred",
-        "issue": 1325
+        "distribution": "cross-repository-live-demo",
+        "issue": 1347
       },
       "reference": "tests.test_service_infrastructure_program.ServiceInfrastructureProgramTests.test_deploy_reconstructs_and_advances_with_redacted_read_truth",
       "source": {
@@ -42190,8 +42208,8 @@
       "current_successor_candidates": [],
       "law": "behavior.invalid-graph-records-no-plan-approval-run-effect-or-advancement",
       "provisional_target": {
-        "distribution": "cross-repository-live-meta-deferred",
-        "issue": 1325
+        "distribution": "cross-repository-live-demo",
+        "issue": 1347
       },
       "reference": "tests.test_service_infrastructure_program.ServiceInfrastructureProgramTests.test_invalid_graph_records_no_plan_approval_run_effect_or_advancement",
       "source": {
@@ -42213,8 +42231,8 @@
       "current_successor_candidates": [],
       "law": "behavior.no-change-records-plan-without-approval-run-or-effect",
       "provisional_target": {
-        "distribution": "cross-repository-live-meta-deferred",
-        "issue": 1325
+        "distribution": "cross-repository-live-demo",
+        "issue": 1347
       },
       "reference": "tests.test_service_infrastructure_program.ServiceInfrastructureProgramTests.test_no_change_records_plan_without_approval_run_or_effect",
       "source": {
@@ -42235,8 +42253,8 @@
       "current_successor_candidates": [],
       "law": "behavior.teardown-reconstructs-executes-and-advances-to-empty-graph",
       "provisional_target": {
-        "distribution": "cross-repository-live-meta-deferred",
-        "issue": 1325
+        "distribution": "cross-repository-live-demo",
+        "issue": 1347
       },
       "reference": "tests.test_service_infrastructure_program.ServiceInfrastructureProgramTests.test_teardown_reconstructs_executes_and_advances_to_empty_graph",
       "source": {
