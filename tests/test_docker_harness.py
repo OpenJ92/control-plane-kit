@@ -14,7 +14,11 @@ class DockerHarnessTests(unittest.TestCase):
         self.assertIn("docker build", test_sh)
         self.assertIn("docker run", test_sh)
         self.assertIn("scripts/docker_residue_audit.sh", test_sh)
-        self.assertNotIn("python -m unittest", test_sh)
+        self.assertIn("scripts/apply_coordinates.py --check", test_sh)
+        self.assertIn("/test-support/package_integrity.py", test_sh)
+        self.assertIn("CPK_SERVER_BUILD_IMAGE=1", test_sh)
+        self.assertIn('"$POLICY_IMAGE"', test_sh)
+        self.assertIn("sh -c 'cd /test-support", test_sh)
         self.assertNotIn("docker system prune", test_sh)
         self.assertNotIn("docker volume prune", test_sh)
 
@@ -27,14 +31,11 @@ class DockerHarnessTests(unittest.TestCase):
         self.assertIn("scripts/run_all_tests.py", dockerfile)
         self.assertIn("COPY products ./products", dockerfile)
         self.assertIn("unittest", runner)
-        self.assertIn("products/cpk_server/tests", runner)
-        self.assertIn("products/hello_server/tests", runner)
-        self.assertIn("products/http_active_router/tests", runner)
-        self.assertIn("products/http_multiplexer/tests", runner)
-        self.assertIn("products/cpk_local_gateway/tests", runner)
-        self.assertIn("products/cloudflared_connector/tests", runner)
-        self.assertIn("products/postgres_server/tests", runner)
-        self.assertIn("products/secrets_server/tests", runner)
+        self.assertIn("def product_test_roots", runner)
+        self.assertIn('path / "tests"', runner)
+        self.assertIn("product test package is missing", runner)
+        self.assertIn("scripts/apply_coordinates.py", runner)
+        self.assertIn("compileall", runner)
         self.assertIn("product_image_lane.py", runner)
 
     def test_product_image_lane_reports_cpk_server_image_definition(self) -> None:
@@ -162,19 +163,22 @@ class DockerHarnessTests(unittest.TestCase):
 
         self.assertIn("org.openj92.project=control-plane-kit-servers", audit)
         self.assertIn("docker ps", audit)
+        self.assertIn("docker network ls", audit)
         self.assertIn("docker volume ls", audit)
         self.assertNotIn("docker rm", audit)
         self.assertNotIn("docker volume rm", audit)
         self.assertNotIn("prune", audit)
         self.assertIn("Pottery Factory", audit)
 
-    def test_github_actions_run_tests_on_main_and_develop(self) -> None:
+    def test_github_actions_run_authoritative_gate_for_every_pull_request(self) -> None:
         workflow = (ROOT / ".github" / "workflows" / "tests.yml").read_text(
             encoding="utf-8"
         )
 
         self.assertIn("main", workflow)
         self.assertIn("develop", workflow)
+        self.assertIn("pull_request:", workflow)
+        self.assertNotIn("pull_request:\n    branches:", workflow)
         self.assertIn("./test.sh", workflow)
 
 

@@ -2,21 +2,34 @@
 
 Reusable OCI server products and descriptors for `control-plane-kit`.
 
-This repository starts as an empty server-product catalogue foundation. It does
-not yet contain `cpk-server`, Hello, CoreDNS, routers, gateways, or any other
-product implementation.
+## Validation
 
-The repository has two bootstrap responsibilities, executed in order by the
-EXTRACT.F issue topology:
+The authoritative clean-checkout package gate is:
+
+```bash
+./test.sh
+```
+
+It checks generated coordinates, applies the shared package-integrity contract,
+discovers every product test package, compiles current source and tests, runs
+all unittests in Docker, verifies a clean installed import, exercises a real
+cpk-server image/process smoke, and rejects exact-owned Docker residue. Source-
+live and published/provider-mutating scenarios remain separate acceptance
+evidence and are not silently substituted by this package gate.
+
+This repository owns independently packaged server-product lanes and the
+catalogue that publishes their immutable descriptors and OCI coordinates.
+Current lanes include:
 
 ```text
 products/cpk_server
-  the control-plane process wrapper that imports the pinned core package and
-  exposes HTTP, MCP, health, configuration, image, and descriptor artifacts
-
-products/hello
-  the first ordinary reusable server product transferred with isomorphic tests
-  and live Docker proof
+products/hello_server
+products/http_active_router
+products/http_multiplexer
+products/cpk_local_gateway
+products/cloudflared_connector
+products/postgres_server
+products/secrets_server
 ```
 
 `control-plane-kit-core` never imports this repository. Server products may
@@ -37,12 +50,12 @@ Current package surface:
 ```python
 from control_plane_kit_servers import load_catalogue
 
-assert [item.product_id for item in load_catalogue()] == ["cpk-server"]
+product_ids = {item.product_id for item in load_catalogue()}
+assert {"cpk-server", "hello-server", "postgres-server"} <= product_ids
 ```
 
-The catalogue currently has the completed-product publication language and
-publishes `cpk-server` as the first completed product declaration. `hello`
-remains reserved for later transfer.
+The catalogue contains completed-product publication records only. Loading it
+does not import product process code.
 
 Publication source and generated artifacts are intentionally separate:
 

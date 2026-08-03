@@ -10,6 +10,8 @@ PHASE="bootstrap"
 LABEL="org.openj92.project=control-plane-kit-servers"
 MISSING_CONFIG_OUTPUT="/tmp/cpk-server-missing-config-$$.out"
 IMPORT_BODY="/tmp/cpk-server-import-product-$$.json"
+UNAUTHORIZED_BODY="/tmp/cpk-server-unauthorized-$$.json"
+MCP_UNAUTHORIZED_BODY="/tmp/cpk-server-mcp-unauthorized-$$.json"
 DATABASE_URL="${CPK_DATABASE_URL:-postgresql://cpk:cpk@cpk-postgres:5432/cpk}"
 WORKPLACE_DATABASE_URL="${CPK_WORKPLACE_DATABASE_URL:-$DATABASE_URL}"
 ACTIVITY_HISTORY_DATABASE_URL="${CPK_ACTIVITY_HISTORY_DATABASE_URL:-$DATABASE_URL}"
@@ -20,7 +22,7 @@ STATIC_WORKSPACE_GRANTS_JSON="${CPK_CONTROL_AUTH_STATIC_WORKSPACE_GRANTS_JSON:-{
 HEALTH_ATTEMPTS="${CPK_SERVER_HEALTH_ATTEMPTS:-30}"
 
 cleanup() {
-  rm -f "$MISSING_CONFIG_OUTPUT" "$IMPORT_BODY"
+  rm -f "$MISSING_CONFIG_OUTPUT" "$IMPORT_BODY" "$UNAUTHORIZED_BODY" "$MCP_UNAUTHORIZED_BODY"
   if [ -n "$CONTAINER" ]; then
     docker rm -f "$CONTAINER" >/dev/null 2>&1 || true
   fi
@@ -86,7 +88,7 @@ phase "verify non-root image contract"
 docker inspect "$IMAGE" --format '{{.Config.User}}' | grep -q '^cpk$'
 
 phase "create owned runtime network"
-docker network create "$NETWORK" >/dev/null
+docker network create --label "$LABEL" "$NETWORK" >/dev/null
 
 phase "start Postgres dependency"
 POSTGRES_CONTAINER="$(docker run -d \
@@ -154,12 +156,12 @@ if printf '%s' "$ready" | grep -q 'postgres://'; then
 fi
 
 phase "reject unauthenticated HTTP"
-unauthorized_status="$(curl -sS -o /tmp/cpk-server-unauthorized.json -w '%{http_code}' \
+unauthorized_status="$(curl -sS -o "$UNAUTHORIZED_BODY" -w '%{http_code}' \
 "$BASE/workspaces/workspace-a/graphs/current")"
 [ "$unauthorized_status" = "401" ]
 
 phase "reject unauthenticated MCP"
-mcp_unauthorized_status="$(curl -sS -o /tmp/cpk-server-mcp-unauthorized.json -w '%{http_code}' \
+mcp_unauthorized_status="$(curl -sS -o "$MCP_UNAUTHORIZED_BODY" -w '%{http_code}' \
   -H 'Accept: application/json' \
   -H 'MCP-Protocol-Version: 2025-06-18' \
   -H 'Mcp-Method: tools/call' \
