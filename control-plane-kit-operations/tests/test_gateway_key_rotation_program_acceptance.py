@@ -1,7 +1,9 @@
 from __future__ import annotations
 
+from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass
 import os
+from threading import Barrier
 import unittest
 
 import psycopg
@@ -16,6 +18,7 @@ from control_plane_kit_core.delegation_keys import (
     DelegationKeyPurpose,
     DelegationPublicKey,
 )
+from control_plane_kit_core.operations.lifecycle import FailureCategory
 from control_plane_kit_core.policies import PolicyScope
 from control_plane_kit_core.secrets import (
     SecretProviderEndpointReference,
@@ -35,6 +38,7 @@ from control_plane_kit_operations.coordinator import (
     ExecutionCoordinator,
 )
 from control_plane_kit_operations.gateway_key_rotation_activation import (
+    GatewayKeyRotationActivationConflict,
     GatewayKeyRotationActivationOutcome,
     GatewayKeyRotationActivationProgram,
     ProgressGatewayKeyRotationActivation,
@@ -47,29 +51,41 @@ from control_plane_kit_operations.gateway_key_rotation_completion_program import
     GatewayKeyRotationRevocationEffectResult,
 )
 from control_plane_kit_operations.gateway_key_rotation_overlap_execution import (
+    GatewayKeyRotationOverlapExecutionAuthorizationDenied,
+    GatewayKeyRotationOverlapExecutionOutcome,
     GatewayKeyRotationOverlapExecutionProgram,
     ProgressGatewayKeyRotationOverlap,
 )
 from control_plane_kit_operations.gateway_key_rotation_overlap_program import (
+    GatewayKeyRotationOverlapPreparationAuthorizationDenied,
+    GatewayKeyRotationOverlapPreparationConflict,
+    GatewayKeyRotationOverlapPreparationOutcome,
     GatewayKeyRotationOverlapPreparationProgram,
     PrepareGatewayKeyRotationOverlap,
 )
 from control_plane_kit_operations.gateway_key_rotation_program import (
+    GatewayKeyGenerationOutcome,
     GatewayKeyGenerationResult,
     GatewayKeyRotationGenerationProgram,
+    GatewayKeyRotationGenerationProgramAuthorizationDenied,
+    GatewayKeyRotationGenerationProgramConflict,
     PrepareGatewayKeyRotationGeneration,
     SubmitGatewayKeyRotationGeneration,
 )
 from control_plane_kit_operations.gateway_key_rotation_retirement_execution import (
+    GatewayKeyRotationRetirementExecutionOutcome,
     GatewayKeyRotationRetirementExecutionProgram,
     ProgressGatewayKeyRotationRetirement,
 )
 from control_plane_kit_operations.gateway_key_rotation_retirement_program import (
+    GatewayKeyRotationRetirementPreparationConflict,
+    GatewayKeyRotationRetirementPreparationOutcome,
     GatewayKeyRotationRetirementPreparationProgram,
     PrepareGatewayKeyRotationRetirement,
 )
 from control_plane_kit_operations.gateway_key_rotations import (
     AdvanceGatewayKeyRotation,
+    GatewayKeyRotationConflict,
     GatewayKeyRotationService,
     GatewayKeyRotationStatus,
     RequestGatewayKeyRotation,
@@ -85,7 +101,10 @@ from control_plane_kit_operations.lifecycle import (
     RunLifecycleCommandService,
 )
 from control_plane_kit_operations.postgres import PostgresUnitOfWork, install_schema
-from control_plane_kit_operations.records import ApprovalDecisionKind
+from control_plane_kit_operations.records import (
+    ApprovalDecisionKind,
+    FailureEvidence,
+)
 from control_plane_kit_operations.secret_providers import (
     RegisterSecretProviderCommand,
     RegisterSecretReferenceCommand,
@@ -104,6 +123,15 @@ class RotationPhaseEvidence:
     status: GatewayKeyRotationStatus
     version: int
     transition_id: str
+
+
+@dataclass(frozen=True)
+class RotationFailureEvidence:
+    healthy_phases: tuple[GatewayKeyRotationStatus, ...]
+    boundary: str
+    outcome_code: str
+    status: GatewayKeyRotationStatus
+    version: int
 
 
 class _TrackingUnitOfWork:
@@ -160,6 +188,30 @@ class RecordingRuntimeAdapter:
         return ActivityExecutionOutcome.succeeded()
 
 
+class ScriptedRuntimeAdapter(RecordingRuntimeAdapter):
+    def __init__(
+        self,
+        transaction_tracker: TrackingUnitOfWorkFactory,
+        *outcomes: ActivityExecutionOutcome | BaseException,
+    ) -> None:
+        super().__init__(transaction_tracker)
+        self._outcomes = list(outcomes)
+
+    def execute(
+        self,
+        context: ActivityRealizationContext,
+    ) -> ActivityExecutionOutcome:
+        if self._tracker.active:
+            raise AssertionError("runtime effect executed inside Postgres transaction")
+        self.calls.append(context.activity.activity_id.value)
+        if not self._outcomes:
+            raise AssertionError("unexpected duplicate runtime effect")
+        outcome = self._outcomes.pop(0)
+        if isinstance(outcome, BaseException):
+            raise outcome
+        return outcome
+
+
 class RecordingGenerationProvider:
     def __init__(self, transaction_tracker: TrackingUnitOfWorkFactory) -> None:
         self._tracker = transaction_tracker
@@ -208,6 +260,23 @@ class RecordingRevocationProvider:
                 version_number=grant.version_number,
             ),
         )
+
+
+class ScriptedRevocationProvider:
+    def __init__(
+        self,
+        transaction_tracker: TrackingUnitOfWorkFactory,
+        result: GatewayKeyRotationRevocationEffectResult,
+    ) -> None:
+        self._tracker = transaction_tracker
+        self._result = result
+        self.calls = []
+
+    def revoke_version(self, grant) -> GatewayKeyRotationRevocationEffectResult:
+        if self._tracker.active:
+            raise AssertionError("provider revocation executed inside transaction")
+        self.calls.append(grant)
+        return self._result
 
 
 class GatewayKeyRotationProgramAcceptanceTests(
@@ -420,6 +489,31 @@ class GatewayKeyRotationProgramAcceptanceTests(
             completion_replay.outcome,
             GatewayKeyRotationCompletionOutcome.COMPLETED_REPLAY,
         )
+        late_overlap_replay = GatewayKeyRotationOverlapPreparationProgram(
+            self.uow,
+            clock=lambda: "2026-08-02T07:00:00Z",
+            trusted_epoch_clock=lambda: self.epoch,
+            id_factory=self.ids,
+        ).prepare(overlap_command)
+        late_retirement_replay = GatewayKeyRotationRetirementPreparationProgram(
+            self.uow,
+            clock=lambda: "2026-08-02T07:00:00Z",
+            trusted_epoch_clock=lambda: self.epoch,
+            id_factory=self.ids,
+        ).prepare(retirement_command)
+        self.assertIs(
+            late_overlap_replay.outcome,
+            GatewayKeyRotationOverlapPreparationOutcome.ALREADY_ADVANCED,
+        )
+        self.assertIs(
+            late_retirement_replay.outcome,
+            GatewayKeyRotationRetirementPreparationOutcome.ALREADY_ADVANCED,
+        )
+        self.assertEqual(late_overlap_replay.checkpoint, overlap_ready.checkpoint)
+        self.assertEqual(
+            late_retirement_replay.checkpoint,
+            retirement_ready.checkpoint,
+        )
         self.assertEqual(generation_provider.calls, 1)
         self.assertEqual(revocation.calls, 1)
         self.assertEqual(revocation.versions["version-a"], "revoked")
@@ -428,6 +522,675 @@ class GatewayKeyRotationProgramAcceptanceTests(
         self.assertEqual(self.uow.active, 0)
         self._assert_final_key_truth()
         self._assert_phase_ledger()
+
+    def test_authority_and_stale_lineage_fail_before_downstream_effects(self) -> None:
+        runtime = RecordingRuntimeAdapter(self.uow)
+        with self.assertRaises(
+            GatewayKeyRotationGenerationProgramAuthorizationDenied
+        ):
+            self._prepare_generation(
+                scopes=(PolicyScope.PLAN_EXECUTE,),
+            )
+        self.assertEqual(runtime.calls, [])
+        self.assertIs(
+            self._rotation().status,
+            GatewayKeyRotationStatus.APPROVED,
+        )
+
+        generated, provider = self._drive_to_generated()
+        self.assertEqual(provider.calls, 1)
+        stale_commands = (
+            {"expected_version": generated.rotation.version + 1},
+            {"expected_authored_graph_id": "graph-stale"},
+            {"expected_realized_projection_id": "projection-stale"},
+            {"expected_desired_graph_revision": 2},
+        )
+        for changes in stale_commands:
+            with self.subTest(changes=changes):
+                with self.assertRaises(
+                    GatewayKeyRotationOverlapPreparationConflict
+                ):
+                    self._prepare_overlap(generated.rotation, **changes)
+        with self.assertRaises(
+            GatewayKeyRotationOverlapPreparationAuthorizationDenied
+        ):
+            self._prepare_overlap(
+                generated.rotation,
+                actor_scopes=(PolicyScope.DELEGATION_KEY_ROTATE,),
+            )
+
+        overlap = self._prepare_overlap(generated.rotation)
+        unauthorized = ProgressGatewayKeyRotationOverlap(
+            rotation_id=overlap.rotation.rotation_id,
+            expected_prepared_rotation_version=overlap.rotation.version,
+            actor_id="operator-a",
+            actor_scopes=(PolicyScope.DELEGATION_KEY_ROTATE,),
+            worker_authority=ExecutionWorkerAuthority("worker-a", ()),
+        )
+        with self.assertRaises(GatewayKeyRotationOverlapExecutionAuthorizationDenied):
+            self._overlap_execution_program(runtime).progress(unauthorized)
+
+        self.assertEqual(runtime.calls, [])
+        self._assert_diagnostic_safe(
+            self._failure_evidence(
+                boundary="overlap-execution-authorization",
+                outcome_code="execution-operate-required",
+                rotation=self._rotation(),
+            )
+        )
+
+    def test_missing_and_rejected_approval_dispatch_no_effects(self) -> None:
+        rotations = GatewayKeyRotationService(self.uow, clock=lambda: self.epoch)
+        fresh = rotations.request(
+            RequestGatewayKeyRotation(
+                workspace_id="workspace-a",
+                gateway_node_id="gateway-b",
+                purpose=DelegationKeyPurpose.GATEWAY_PROBE,
+                issuer="cpk-server",
+                old_key_id="key-a",
+                new_secret_reference=SecretReference(
+                    "secret://workspace-secrets/keys/key-c"
+                ),
+                key_generation_correlation="generate-key-c",
+                maximum_grant_lifetime_seconds=60,
+                clock_skew_seconds=5,
+                correlation_id="rotation-rejected",
+                requested_by="operator-a",
+                requested_at="2026-08-02T01:20:00Z",
+                actor_scopes=(PolicyScope.DELEGATION_KEY_ROTATE,),
+            )
+        )
+        provider = RecordingGenerationProvider(self.uow)
+        runtime = RecordingRuntimeAdapter(self.uow)
+        with self.assertRaises(GatewayKeyRotationGenerationProgramConflict):
+            self._prepare_generation_for(fresh)
+
+        approvals = ApprovalCommandService(
+            self.uow,
+            clock=lambda: "2026-08-02T01:21:00Z",
+            id_factory=self.ids,
+        )
+        approval = approvals.execute(
+            RequestGatewayKeyRotationApproval(
+                session_id="program-1",
+                rotation_id=fresh.rotation_id,
+                actor_id="operator-a",
+                actor_scopes=(PolicyScope.DELEGATION_KEY_ROTATE,),
+                idempotency_key=IdempotencyKey("program-rejected-approval"),
+            )
+        )
+        awaiting = rotations.advance(
+            AdvanceGatewayKeyRotation(
+                fresh.rotation_id,
+                "program-rejected-awaiting",
+                fresh.status,
+                fresh.version,
+                GatewayKeyRotationStatus.AWAITING_APPROVAL,
+                "operator-a",
+                "2026-08-02T01:22:00Z",
+                (PolicyScope.DELEGATION_KEY_ROTATE,),
+                approval_request_id=approval.request.request_id,
+            )
+        )
+        rejected = approvals.execute(
+            DecideApproval(
+                session_id="program-1",
+                request_id=approval.request.request_id,
+                actor_id="manager-a",
+                actor_scopes=(PolicyScope.DELEGATION_KEY_ROTATE_APPROVE,),
+                decision=ApprovalDecisionKind.REJECTED,
+                idempotency_key=IdempotencyKey("program-reject-approval"),
+            )
+        )
+        with self.assertRaises(GatewayKeyRotationConflict):
+            rotations.advance(
+                AdvanceGatewayKeyRotation(
+                    awaiting.rotation_id,
+                    "program-rejected-as-approved",
+                    awaiting.status,
+                    awaiting.version,
+                    GatewayKeyRotationStatus.APPROVED,
+                    "operator-a",
+                    "2026-08-02T01:23:00Z",
+                    (PolicyScope.DELEGATION_KEY_ROTATE,),
+                    approval_decision_id=rejected.decision.decision_id,
+                )
+            )
+        with self.assertRaises(GatewayKeyRotationGenerationProgramConflict):
+            self._prepare_generation_for(awaiting)
+        self.assertEqual(provider.calls, 0)
+        self.assertEqual(runtime.calls, [])
+        self._assert_diagnostic_safe(
+            self._failure_evidence(
+                boundary="rotation-approval",
+                outcome_code="approval-rejected",
+                rotation=awaiting,
+            )
+        )
+
+    def test_generation_definite_failure_retries_but_uncertainty_blocks(self) -> None:
+        action = self._prepare_generation()
+        definite = GatewayKeyRotationGenerationProgram(
+            self.uow,
+            clock=lambda: self.epoch,
+        ).submit(
+            self._generation_submit(
+                action,
+                GatewayKeyGenerationResult.definite_failure(
+                    "provider-unavailable"
+                ),
+            )
+        )
+        self.assertIs(definite.outcome, GatewayKeyGenerationOutcome.DEFINITE_FAILURE)
+        self.assertEqual(definite.next_action, action)
+        self.assertIs(
+            definite.rotation.status,
+            GatewayKeyRotationStatus.GENERATION_PREPARED,
+        )
+
+        uncertain = GatewayKeyRotationGenerationProgram(
+            self.uow,
+            clock=lambda: self.epoch,
+        ).submit(
+            self._generation_submit(
+                action,
+                GatewayKeyGenerationResult.uncertain(
+                    "provider-response-uncertain"
+                ),
+            )
+        )
+        self.assertIs(uncertain.rotation.status, GatewayKeyRotationStatus.BLOCKED)
+        self.assertIsNone(uncertain.next_action)
+        with self.assertRaises(GatewayKeyRotationOverlapPreparationConflict):
+            self._prepare_overlap(uncertain.rotation)
+        self.assertEqual(
+            self._phase_statuses(),
+            (
+                GatewayKeyRotationStatus.REQUESTED,
+                GatewayKeyRotationStatus.AWAITING_APPROVAL,
+                GatewayKeyRotationStatus.APPROVED,
+                GatewayKeyRotationStatus.GENERATION_PREPARED,
+                GatewayKeyRotationStatus.BLOCKED,
+            ),
+        )
+        self._assert_diagnostic_safe(
+            self._failure_evidence(
+                boundary="generation-provider-result",
+                outcome_code=uncertain.rotation.failure_code,
+                rotation=uncertain.rotation,
+            )
+        )
+
+    def test_overlap_failure_preserves_generation_and_prevents_activation(self) -> None:
+        generated, provider = self._drive_to_generated()
+        overlap = self._prepare_overlap(generated.rotation)
+        runtime = ScriptedRuntimeAdapter(
+            self.uow,
+            ActivityExecutionOutcome.failed(
+                FailureEvidence(
+                    FailureCategory.TERMINAL,
+                    "test-effect-failed",
+                    "test effect failed",
+                )
+            ),
+        )
+        command = self._overlap_execution_command(overlap.rotation)
+        blocked = self._overlap_execution_program(runtime).progress(command)
+
+        self.assertIs(
+            blocked.outcome,
+            GatewayKeyRotationOverlapExecutionOutcome.BLOCKED,
+        )
+        self.assertEqual(blocked.failure_code, "overlap-effect-failed")
+        self.assertEqual(provider.calls, 1)
+        self.assertEqual(len(runtime.calls), 1)
+        with self.assertRaises(GatewayKeyRotationActivationConflict):
+            self._activation_program().progress(
+                self._activation_command(blocked.rotation)
+            )
+        self.assertEqual(len(runtime.calls), 1)
+        self.assertEqual(
+            self._phase_statuses(),
+            (
+                GatewayKeyRotationStatus.REQUESTED,
+                GatewayKeyRotationStatus.AWAITING_APPROVAL,
+                GatewayKeyRotationStatus.APPROVED,
+                GatewayKeyRotationStatus.GENERATION_PREPARED,
+                GatewayKeyRotationStatus.KEY_GENERATED,
+                GatewayKeyRotationStatus.OVERLAP_DEPLOYING,
+                GatewayKeyRotationStatus.BLOCKED,
+            ),
+        )
+        self._assert_diagnostic_safe(
+            self._failure_evidence(
+                boundary="overlap-runtime-effect",
+                outcome_code=blocked.failure_code,
+                rotation=blocked.rotation,
+            )
+        )
+
+    def test_ambiguous_overlap_effect_blocks_without_redispatch(self) -> None:
+        generated, _provider = self._drive_to_generated()
+        overlap = self._prepare_overlap(generated.rotation)
+        crashing = ScriptedRuntimeAdapter(
+            self.uow,
+            RuntimeError("runtime result lost"),
+        )
+        command = self._overlap_execution_command(overlap.rotation)
+        blocked = self._overlap_execution_program(crashing).progress(command)
+        self.assertIs(
+            blocked.outcome,
+            GatewayKeyRotationOverlapExecutionOutcome.BLOCKED,
+        )
+        self.assertEqual(blocked.failure_code, "overlap-effect-uncertain")
+        self.assertEqual(len(crashing.calls), 1)
+
+        forbidden_replay = RecordingRuntimeAdapter(self.uow)
+        replay = self._overlap_execution_program(forbidden_replay).progress(command)
+        self.assertIs(
+            replay.outcome,
+            GatewayKeyRotationOverlapExecutionOutcome.BLOCKED,
+        )
+        self.assertEqual(forbidden_replay.calls, [])
+        self._assert_diagnostic_safe(
+            self._failure_evidence(
+                boundary="overlap-runtime-result",
+                outcome_code=replay.failure_code,
+                rotation=replay.rotation,
+            )
+        )
+
+    def test_premature_drain_and_retirement_failure_prevent_completion(self) -> None:
+        overlap_ready, runtime = self._drive_to_overlap_ready()
+        activation_command = self._activation_command(overlap_ready.rotation)
+        waiting = self._activation_program().progress(activation_command)
+        self.assertIs(waiting.outcome, GatewayKeyRotationActivationOutcome.WAITING)
+        with self.assertRaises(GatewayKeyRotationRetirementPreparationConflict):
+            self._prepare_retirement(waiting.rotation)
+
+        self.epoch = waiting.drain_deadline_epoch
+        ready = self._activation_program().progress(activation_command)
+        retirement = self._prepare_retirement(ready.rotation)
+        failing_runtime = ScriptedRuntimeAdapter(
+            self.uow,
+            ActivityExecutionOutcome.failed(
+                FailureEvidence(
+                    FailureCategory.TERMINAL,
+                    "test-effect-failed",
+                    "test effect failed",
+                )
+            ),
+        )
+        blocked = self._retirement_execution_program(failing_runtime).progress(
+            self._retirement_execution_command(retirement.rotation)
+        )
+        self.assertIs(
+            blocked.outcome,
+            GatewayKeyRotationRetirementExecutionOutcome.BLOCKED,
+        )
+        self.assertEqual(blocked.failure_code, "retirement-effect-failed")
+        revocation = RecordingRevocationProvider(self.uow)
+        completion = GatewayKeyRotationCompletionProgram(
+            self.uow,
+            revocation_adapter=revocation,
+            clock=lambda: "2026-08-02T06:00:00Z",
+            trusted_epoch_clock=lambda: self.epoch,
+        ).progress(self._completion_command(blocked.rotation))
+        self.assertIs(
+            completion.outcome,
+            GatewayKeyRotationCompletionOutcome.BLOCKED,
+        )
+        self.assertEqual(revocation.calls, 0)
+        self.assertGreater(len(runtime.calls), 0)
+        self.assertEqual(len(failing_runtime.calls), 1)
+        self._assert_diagnostic_safe(
+            self._failure_evidence(
+                boundary="retirement-runtime-effect",
+                outcome_code=blocked.failure_code,
+                rotation=blocked.rotation,
+            )
+        )
+
+    def test_revocation_uncertainty_blocks_without_replaying_provider_io(self) -> None:
+        retirement_ready, runtime = self._drive_to_retirement_ready()
+        revocation = ScriptedRevocationProvider(
+            self.uow,
+            GatewayKeyRotationRevocationEffectResult(
+                GatewayKeyRotationRevocationEffectOutcome.UNCERTAIN,
+                failure_code="provider-outcome-uncertain",
+            ),
+        )
+        command = self._completion_command(retirement_ready.rotation)
+        blocked = GatewayKeyRotationCompletionProgram(
+            self.uow,
+            revocation_adapter=revocation,
+            clock=lambda: "2026-08-02T06:00:00Z",
+            trusted_epoch_clock=lambda: self.epoch,
+        ).progress(command)
+        self.assertIs(
+            blocked.outcome,
+            GatewayKeyRotationCompletionOutcome.BLOCKED,
+        )
+        self.assertEqual(len(revocation.calls), 1)
+        replay = GatewayKeyRotationCompletionProgram(
+            self.uow,
+            revocation_adapter=revocation,
+            clock=lambda: "2026-08-02T06:00:00Z",
+            trusted_epoch_clock=lambda: self.epoch,
+        ).progress(command)
+        self.assertIs(
+            replay.outcome,
+            GatewayKeyRotationCompletionOutcome.BLOCKED,
+        )
+        self.assertEqual(len(revocation.calls), 1)
+        self.assertGreater(len(runtime.calls), 0)
+        self._assert_diagnostic_safe(
+            self._failure_evidence(
+                boundary="revocation-provider-result",
+                outcome_code=blocked.failure_code,
+                rotation=blocked.rotation,
+            )
+        )
+
+    def test_concurrent_exact_activation_has_one_durable_transition_sequence(self) -> None:
+        overlap_ready, runtime = self._drive_to_overlap_ready()
+        command = self._activation_command(overlap_ready.rotation)
+        barrier = Barrier(2)
+
+        def progress():
+            barrier.wait()
+            return self._activation_program().progress(command)
+
+        with ThreadPoolExecutor(max_workers=2) as pool:
+            results = tuple(pool.map(lambda _: progress(), range(2)))
+
+        self.assertEqual(results[0].rotation, results[1].rotation)
+        self.assertEqual(
+            {result.outcome for result in results},
+            {GatewayKeyRotationActivationOutcome.WAITING},
+        )
+        statuses = self._phase_statuses()
+        self.assertEqual(statuses.count(GatewayKeyRotationStatus.NEW_KEY_ACTIVE), 1)
+        self.assertEqual(
+            statuses.count(GatewayKeyRotationStatus.DRAINING_OLD_GRANTS),
+            1,
+        )
+        self.assertGreater(len(runtime.calls), 0)
+        self.assertEqual(self.uow.active, 0)
+
+    def _prepare_generation(
+        self,
+        *,
+        scopes: tuple[PolicyScope, ...] | None = None,
+    ):
+        return GatewayKeyRotationGenerationProgram(
+            self.uow,
+            clock=lambda: self.epoch,
+        ).prepare(
+            PrepareGatewayKeyRotationGeneration(
+                rotation_id=self.approved.rotation_id,
+                expected_version=self.approved.version,
+                actor_subject="operator-a",
+                prepared_by="operator-a",
+                prepared_at="2026-08-02T01:10:00Z",
+                actor_scopes=(
+                    (
+                        PolicyScope.DELEGATION_KEY_ROTATE,
+                        PolicyScope.DELEGATION_KEY_GENERATE,
+                    )
+                    if scopes is None
+                    else scopes
+                ),
+            )
+        )
+
+    def _prepare_generation_for(self, rotation):
+        return GatewayKeyRotationGenerationProgram(
+            self.uow,
+            clock=lambda: self.epoch,
+        ).prepare(
+            PrepareGatewayKeyRotationGeneration(
+                rotation_id=rotation.rotation_id,
+                expected_version=rotation.version,
+                actor_subject="operator-a",
+                prepared_by="operator-a",
+                prepared_at="2026-08-02T01:24:00Z",
+                actor_scopes=(
+                    PolicyScope.DELEGATION_KEY_ROTATE,
+                    PolicyScope.DELEGATION_KEY_GENERATE,
+                ),
+            )
+        )
+
+    @staticmethod
+    def _generation_submit(action, result):
+        return SubmitGatewayKeyRotationGeneration(
+            action=action,
+            result=result,
+            submitted_by="operator-a",
+            submitted_at="2026-08-02T01:11:00Z",
+            actor_scopes=(
+                PolicyScope.DELEGATION_KEY_ROTATE,
+                PolicyScope.DELEGATION_KEY_REGISTER,
+            ),
+        )
+
+    def _drive_to_generated(self):
+        action = self._prepare_generation()
+        provider = RecordingGenerationProvider(self.uow)
+        evidence = provider.generate(action)
+        result = GatewayKeyRotationGenerationProgram(
+            self.uow,
+            clock=lambda: self.epoch,
+        ).submit(
+            self._generation_submit(
+                action,
+                GatewayKeyGenerationResult.generated(evidence),
+            )
+        )
+        return result, provider
+
+    def _prepare_overlap(
+        self,
+        rotation,
+        *,
+        expected_version: int | None = None,
+        expected_authored_graph_id: str = "graph-a",
+        expected_realized_projection_id: str = "projection-a",
+        expected_desired_graph_revision: int = 1,
+        actor_scopes: tuple[PolicyScope, ...] | None = None,
+    ):
+        return GatewayKeyRotationOverlapPreparationProgram(
+            self.uow,
+            clock=lambda: "2026-08-02T02:00:00Z",
+            trusted_epoch_clock=lambda: self.epoch,
+            id_factory=self.ids,
+        ).prepare(
+            PrepareGatewayKeyRotationOverlap(
+                rotation_id=rotation.rotation_id,
+                expected_rotation_version=(
+                    rotation.version
+                    if expected_version is None
+                    else expected_version
+                ),
+                expected_authored_graph_id=expected_authored_graph_id,
+                expected_current_realized_projection_id=(
+                    expected_realized_projection_id
+                ),
+                expected_desired_realized_projection_id=(
+                    expected_realized_projection_id
+                ),
+                expected_desired_graph_revision=expected_desired_graph_revision,
+                actor_id="operator-a",
+                actor_scopes=(
+                    self._deployment_scopes()
+                    if actor_scopes is None
+                    else actor_scopes
+                ),
+                worker_authority=self._worker(),
+                lease_expires_at="2026-08-02T02:30:00Z",
+            )
+        )
+
+    def _overlap_execution_command(self, rotation):
+        return ProgressGatewayKeyRotationOverlap(
+            rotation_id=rotation.rotation_id,
+            expected_prepared_rotation_version=rotation.version,
+            actor_id="operator-a",
+            actor_scopes=(PolicyScope.DELEGATION_KEY_ROTATE,),
+            worker_authority=self._worker(),
+        )
+
+    def _drive_to_overlap_ready(self):
+        generated, _provider = self._drive_to_generated()
+        overlap = self._prepare_overlap(generated.rotation)
+        runtime = RecordingRuntimeAdapter(self.uow)
+        return (
+            self._execute_overlap(
+                self._overlap_execution_command(overlap.rotation),
+                runtime,
+            ),
+            runtime,
+        )
+
+    @staticmethod
+    def _activation_command(rotation):
+        return ProgressGatewayKeyRotationActivation(
+            rotation_id=rotation.rotation_id,
+            expected_overlap_version=rotation.version,
+            actor_id="operator-a",
+            actor_scopes=(
+                PolicyScope.DELEGATION_KEY_ROTATE,
+                PolicyScope.DELEGATION_KEY_ACTIVATE,
+            ),
+        )
+
+    def _prepare_retirement(self, rotation):
+        workspace = self._workspace()
+        return GatewayKeyRotationRetirementPreparationProgram(
+            self.uow,
+            clock=lambda: "2026-08-02T04:00:00Z",
+            trusted_epoch_clock=lambda: self.epoch,
+            id_factory=self.ids,
+        ).prepare(
+            PrepareGatewayKeyRotationRetirement(
+                rotation_id=rotation.rotation_id,
+                expected_rotation_version=rotation.version,
+                expected_authored_graph_id="graph-a",
+                expected_current_realized_projection_id=(
+                    workspace.current_realized_projection_id
+                ),
+                expected_desired_realized_projection_id=(
+                    workspace.desired_realized_projection_id
+                ),
+                expected_desired_graph_revision=workspace.desired_graph_revision,
+                actor_id="operator-a",
+                actor_scopes=self._deployment_scopes(),
+                worker_authority=self._worker(),
+                lease_expires_at="2026-08-02T04:30:00Z",
+            )
+        )
+
+    def _drive_to_retirement_ready(self):
+        overlap_ready, runtime = self._drive_to_overlap_ready()
+        activation_command = self._activation_command(overlap_ready.rotation)
+        waiting = self._activation_program().progress(activation_command)
+        self.epoch = waiting.drain_deadline_epoch
+        ready = self._activation_program().progress(activation_command)
+        retirement = self._prepare_retirement(ready.rotation)
+        return (
+            self._execute_retirement(
+                self._retirement_execution_command(retirement.rotation),
+                runtime,
+            ),
+            runtime,
+        )
+
+    def _retirement_execution_command(self, rotation):
+        return ProgressGatewayKeyRotationRetirement(
+            rotation_id=rotation.rotation_id,
+            expected_prepared_rotation_version=rotation.version,
+            actor_id="operator-a",
+            actor_scopes=(PolicyScope.DELEGATION_KEY_ROTATE,),
+            worker_authority=self._worker(),
+        )
+
+    @staticmethod
+    def _completion_command(rotation):
+        return CompleteGatewayKeyRotation(
+            rotation_id=rotation.rotation_id,
+            expected_retirement_ready_version=rotation.version,
+            actor_id="operator-a",
+            actor_scopes=(
+                PolicyScope.DELEGATION_KEY_ROTATE,
+                PolicyScope.DELEGATION_KEY_RETIRE,
+                PolicyScope.DELEGATION_KEY_REVOKE,
+                PolicyScope.SECRET_PROVIDER_REVOKE,
+            ),
+        )
+
+    def _rotation(self):
+        return GatewayKeyRotationService(
+            self.uow,
+            clock=lambda: self.epoch,
+        ).get(self.approved.rotation_id)
+
+    def _phase_statuses(self):
+        transitions = GatewayKeyRotationService(
+            self.uow,
+            clock=lambda: self.epoch,
+        ).transitions(self.approved.rotation_id)
+        return (
+            GatewayKeyRotationStatus.REQUESTED,
+            *(transition.to_status for transition in transitions),
+        )
+
+    def _failure_evidence(
+        self,
+        *,
+        boundary: str,
+        outcome_code: str,
+        rotation,
+    ) -> RotationFailureEvidence:
+        transitions = GatewayKeyRotationService(
+            self.uow,
+            clock=lambda: self.epoch,
+        ).transitions(rotation.rotation_id)
+        phases = (
+            GatewayKeyRotationStatus.REQUESTED,
+            *(transition.to_status for transition in transitions),
+        )
+        if phases[-1] is GatewayKeyRotationStatus.BLOCKED:
+            phases = phases[:-1]
+        return RotationFailureEvidence(
+            healthy_phases=phases,
+            boundary=boundary,
+            outcome_code=outcome_code,
+            status=rotation.status,
+            version=rotation.version,
+        )
+
+    def _assert_diagnostic_safe(self, evidence: RotationFailureEvidence) -> None:
+        self.assertTrue(evidence.healthy_phases)
+        self.assertIs(
+            evidence.healthy_phases[0],
+            GatewayKeyRotationStatus.REQUESTED,
+        )
+        self.assertNotIn(GatewayKeyRotationStatus.BLOCKED, evidence.healthy_phases)
+        self.assertIsInstance(evidence.status, GatewayKeyRotationStatus)
+        self.assertGreater(evidence.version, 0)
+        self.assertTrue(evidence.outcome_code)
+        rendered = repr(evidence).lower()
+        for forbidden in (
+            "secret://",
+            "version-a",
+            "version-b",
+            "public key",
+            "-----begin public key-----",
+            "private",
+            "compact",
+        ):
+            self.assertNotIn(forbidden, rendered)
 
     def _execute_overlap(self, command, adapter):
         for _ in range(32):
