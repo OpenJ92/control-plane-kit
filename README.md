@@ -190,6 +190,7 @@ approval, or secret semantics.
 - [Postgres Unit Of Work](docs/POSTGRES_UNIT_OF_WORK.md)
 - [Server Product Rollout](SERVER_PRODUCT_ROLLOUT.md)
 - [Current Backend Validation](current_backend/README.md)
+- [Test Evidence And Acceptance](docs/TESTING.md)
 
 Historical roadmap, review, and learning documents remain as design evidence.
 They may name retired source paths and old commands, but they are not current

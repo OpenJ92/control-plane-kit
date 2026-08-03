@@ -495,6 +495,10 @@ for a walkthrough. The durable artifacts should carry the detail.
 
 ## Validation
 
+Read `docs/TESTING.md` for the authoritative distinction between package,
+current-backend, source-live, published-digest, provider-mutating, diagnostic,
+and immutable-reference evidence.
+
 Run the narrowest useful validation before opening a PR. For code changes, use:
 
 ```bash
