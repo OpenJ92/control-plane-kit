@@ -96,10 +96,15 @@ def decode_rules(document: dict[str, object]) -> dict[str, object]:
     modules: set[str] = set()
     issues: set[int] = set()
     for assignment in assignments:
-        if not isinstance(assignment, dict) or set(assignment) != {
+        fields = set(assignment) if isinstance(assignment, dict) else set()
+        required_fields = {
             "issue",
             "distribution",
             "modules",
+        }
+        if not isinstance(assignment, dict) or fields not in {
+            frozenset(required_fields),
+            frozenset({*required_fields, "mutable_target"}),
         }:
             raise MigrationInventoryError("migration assignment is not closed")
         issue = assignment["issue"]
@@ -114,6 +119,19 @@ def decode_rules(document: dict[str, object]) -> dict[str, object]:
         if overlap:
             raise MigrationInventoryError(f"legacy modules have multiple owners: {sorted(overlap)}")
         modules.update(assigned_modules)
+        mutable_target = assignment.get("mutable_target")
+        if mutable_target is not None:
+            if not isinstance(mutable_target, dict) or set(mutable_target) != {
+                "issue",
+                "distribution",
+            }:
+                raise MigrationInventoryError("mutable target is not closed")
+            mutable_issue = mutable_target["issue"]
+            if not isinstance(mutable_issue, int) or mutable_issue <= 0:
+                raise MigrationInventoryError(
+                    "mutable target issue must be a positive integer"
+                )
+            _text(mutable_target["distribution"], "mutable_target.distribution")
     script_issue = document["legacy_script_issue"]
     if not isinstance(script_issue, int) or script_issue <= 0:
         raise MigrationInventoryError("legacy script issue must be a positive integer")
@@ -274,10 +292,15 @@ def scan_test_root(lane: SourceLane) -> dict[str, object]:
 def _assignment_index(rules: dict[str, object]) -> dict[str, dict[str, object]]:
     result: dict[str, dict[str, object]] = {}
     for assignment in rules["assignments"]:
+        reference_target = {
+            "issue": assignment["issue"],
+            "distribution": assignment["distribution"],
+        }
+        mutable_target = assignment.get("mutable_target", reference_target)
         for module in assignment["modules"]:
             result[module] = {
-                "issue": assignment["issue"],
-                "distribution": assignment["distribution"],
+                "reference": reference_target,
+                "mutable": mutable_target,
             }
     return result
 
@@ -383,7 +406,7 @@ def build_migration_inventory(
                     "negative_case_hints": source["negative_case_hints"],
                     "subtest_dimensions": source["subtest_dimensions"],
                 },
-                "provisional_target": target,
+                "provisional_target": target["reference"],
                 "current_successor_candidates": sorted(
                     current_by_method.get(str(source["method"]), [])
                 ),
@@ -403,7 +426,9 @@ def build_migration_inventory(
                 "path": method["path"],
                 "line": method["line"],
                 "method": method["method"],
-                "provisional_target": assignment_index[str(method["module"])],
+                "provisional_target": assignment_index[str(method["module"])][
+                    "mutable"
+                ],
                 "negative_case_hints": method["negative_case_hints"],
             }
         )
@@ -421,13 +446,22 @@ def build_migration_inventory(
                 "reference_demo": demo_scripts.get(script),
             }
         )
+    target_distributions: dict[int, str] = {}
+    for entry in (*reference_assignments, *mutable_only):
+        target = entry["provisional_target"]
+        issue = int(target["issue"])
+        distribution = str(target["distribution"])
+        existing = target_distributions.setdefault(issue, distribution)
+        if existing != distribution:
+            raise MigrationInventoryError(
+                f"issue {issue} has conflicting target distributions"
+            )
     provisional_target_counts = []
-    for assignment in rules["assignments"]:
-        issue = assignment["issue"]
+    for issue, distribution in sorted(target_distributions.items()):
         provisional_target_counts.append(
             {
                 "issue": issue,
-                "distribution": assignment["distribution"],
+                "distribution": distribution,
                 "reference_laws": sum(
                     entry["provisional_target"]["issue"] == issue
                     for entry in reference_assignments

@@ -20229,8 +20229,8 @@
       ],
       "path": "tests/test_activity_live_external_interpreter.py",
       "provisional_target": {
-        "distribution": "cross-repository-live-meta-deferred",
-        "issue": 1325
+        "distribution": "control-plane-kit-parity",
+        "issue": 1345
       }
     },
     {
@@ -20240,8 +20240,8 @@
       "negative_case_hints": [],
       "path": "tests/test_activity_live_external_interpreter.py",
       "provisional_target": {
-        "distribution": "cross-repository-live-meta-deferred",
-        "issue": 1325
+        "distribution": "control-plane-kit-parity",
+        "issue": 1345
       }
     },
     {
@@ -20254,8 +20254,8 @@
       ],
       "path": "tests/test_differential_language.py",
       "provisional_target": {
-        "distribution": "cross-repository-live-meta-deferred",
-        "issue": 1325
+        "distribution": "control-plane-kit-parity",
+        "issue": 1345
       }
     },
     {
@@ -20267,8 +20267,8 @@
       ],
       "path": "tests/test_differential_language.py",
       "provisional_target": {
-        "distribution": "cross-repository-live-meta-deferred",
-        "issue": 1325
+        "distribution": "control-plane-kit-parity",
+        "issue": 1345
       }
     },
     {
@@ -20280,8 +20280,8 @@
       ],
       "path": "tests/test_differential_language.py",
       "provisional_target": {
-        "distribution": "cross-repository-live-meta-deferred",
-        "issue": 1325
+        "distribution": "control-plane-kit-parity",
+        "issue": 1345
       }
     },
     {
@@ -20293,8 +20293,8 @@
       ],
       "path": "tests/test_differential_language.py",
       "provisional_target": {
-        "distribution": "cross-repository-live-meta-deferred",
-        "issue": 1325
+        "distribution": "control-plane-kit-parity",
+        "issue": 1345
       }
     },
     {
@@ -20304,8 +20304,8 @@
       "negative_case_hints": [],
       "path": "tests/test_differential_language.py",
       "provisional_target": {
-        "distribution": "cross-repository-live-meta-deferred",
-        "issue": 1325
+        "distribution": "control-plane-kit-parity",
+        "issue": 1345
       }
     },
     {
@@ -20317,8 +20317,8 @@
       ],
       "path": "tests/test_differential_language.py",
       "provisional_target": {
-        "distribution": "cross-repository-live-meta-deferred",
-        "issue": 1325
+        "distribution": "control-plane-kit-parity",
+        "issue": 1345
       }
     },
     {
@@ -20330,8 +20330,8 @@
       ],
       "path": "tests/test_differential_language.py",
       "provisional_target": {
-        "distribution": "cross-repository-live-meta-deferred",
-        "issue": 1325
+        "distribution": "control-plane-kit-parity",
+        "issue": 1345
       }
     },
     {
@@ -20341,8 +20341,8 @@
       "negative_case_hints": [],
       "path": "tests/test_differential_language.py",
       "provisional_target": {
-        "distribution": "cross-repository-live-meta-deferred",
-        "issue": 1325
+        "distribution": "control-plane-kit-parity",
+        "issue": 1345
       }
     },
     {
@@ -20354,8 +20354,8 @@
       ],
       "path": "tests/test_differential_runner.py",
       "provisional_target": {
-        "distribution": "cross-repository-live-meta-deferred",
-        "issue": 1325
+        "distribution": "control-plane-kit-parity",
+        "issue": 1345
       }
     },
     {
@@ -20365,8 +20365,8 @@
       "negative_case_hints": [],
       "path": "tests/test_differential_runner.py",
       "provisional_target": {
-        "distribution": "cross-repository-live-meta-deferred",
-        "issue": 1325
+        "distribution": "control-plane-kit-parity",
+        "issue": 1345
       }
     },
     {
@@ -20379,8 +20379,8 @@
       ],
       "path": "tests/test_differential_runner.py",
       "provisional_target": {
-        "distribution": "cross-repository-live-meta-deferred",
-        "issue": 1325
+        "distribution": "control-plane-kit-parity",
+        "issue": 1345
       }
     },
     {
@@ -20390,8 +20390,8 @@
       "negative_case_hints": [],
       "path": "tests/test_differential_runner.py",
       "provisional_target": {
-        "distribution": "cross-repository-live-meta-deferred",
-        "issue": 1325
+        "distribution": "control-plane-kit-parity",
+        "issue": 1345
       }
     },
     {
@@ -20404,8 +20404,8 @@
       ],
       "path": "tests/test_differential_runner.py",
       "provisional_target": {
-        "distribution": "cross-repository-live-meta-deferred",
-        "issue": 1325
+        "distribution": "control-plane-kit-parity",
+        "issue": 1345
       }
     },
     {
@@ -20415,8 +20415,8 @@
       "negative_case_hints": [],
       "path": "tests/test_differential_runner.py",
       "provisional_target": {
-        "distribution": "cross-repository-live-meta-deferred",
-        "issue": 1325
+        "distribution": "control-plane-kit-parity",
+        "issue": 1345
       }
     },
     {
@@ -20428,8 +20428,8 @@
       ],
       "path": "tests/test_differential_runner.py",
       "provisional_target": {
-        "distribution": "cross-repository-live-meta-deferred",
-        "issue": 1325
+        "distribution": "control-plane-kit-parity",
+        "issue": 1345
       }
     },
     {
@@ -20441,8 +20441,8 @@
       ],
       "path": "tests/test_differential_runner.py",
       "provisional_target": {
-        "distribution": "cross-repository-live-meta-deferred",
-        "issue": 1325
+        "distribution": "control-plane-kit-parity",
+        "issue": 1345
       }
     },
     {
@@ -20452,8 +20452,8 @@
       "negative_case_hints": [],
       "path": "tests/test_extract_interpreters_closeout.py",
       "provisional_target": {
-        "distribution": "cross-repository-live-meta-deferred",
-        "issue": 1325
+        "distribution": "control-plane-kit-parity",
+        "issue": 1345
       }
     },
     {
@@ -20463,8 +20463,8 @@
       "negative_case_hints": [],
       "path": "tests/test_extract_interpreters_closeout.py",
       "provisional_target": {
-        "distribution": "cross-repository-live-meta-deferred",
-        "issue": 1325
+        "distribution": "control-plane-kit-parity",
+        "issue": 1345
       }
     },
     {
@@ -20476,8 +20476,8 @@
       ],
       "path": "tests/test_extract_interpreters_closeout.py",
       "provisional_target": {
-        "distribution": "cross-repository-live-meta-deferred",
-        "issue": 1325
+        "distribution": "control-plane-kit-parity",
+        "issue": 1345
       }
     },
     {
@@ -20487,8 +20487,8 @@
       "negative_case_hints": [],
       "path": "tests/test_extract_interpreters_closeout.py",
       "provisional_target": {
-        "distribution": "cross-repository-live-meta-deferred",
-        "issue": 1325
+        "distribution": "control-plane-kit-parity",
+        "issue": 1345
       }
     },
     {
@@ -20500,8 +20500,8 @@
       ],
       "path": "tests/test_extraction_batch_plan.py",
       "provisional_target": {
-        "distribution": "cross-repository-live-meta-deferred",
-        "issue": 1325
+        "distribution": "control-plane-kit-parity",
+        "issue": 1345
       }
     },
     {
@@ -20513,8 +20513,8 @@
       ],
       "path": "tests/test_extraction_batch_plan.py",
       "provisional_target": {
-        "distribution": "cross-repository-live-meta-deferred",
-        "issue": 1325
+        "distribution": "control-plane-kit-parity",
+        "issue": 1345
       }
     },
     {
@@ -20524,8 +20524,8 @@
       "negative_case_hints": [],
       "path": "tests/test_extraction_batch_plan.py",
       "provisional_target": {
-        "distribution": "cross-repository-live-meta-deferred",
-        "issue": 1325
+        "distribution": "control-plane-kit-parity",
+        "issue": 1345
       }
     },
     {
@@ -20535,8 +20535,8 @@
       "negative_case_hints": [],
       "path": "tests/test_extraction_batch_plan.py",
       "provisional_target": {
-        "distribution": "cross-repository-live-meta-deferred",
-        "issue": 1325
+        "distribution": "control-plane-kit-parity",
+        "issue": 1345
       }
     },
     {
@@ -20546,8 +20546,8 @@
       "negative_case_hints": [],
       "path": "tests/test_extraction_batch_plan.py",
       "provisional_target": {
-        "distribution": "cross-repository-live-meta-deferred",
-        "issue": 1325
+        "distribution": "control-plane-kit-parity",
+        "issue": 1345
       }
     },
     {
@@ -20557,8 +20557,8 @@
       "negative_case_hints": [],
       "path": "tests/test_extraction_batch_plan.py",
       "provisional_target": {
-        "distribution": "cross-repository-live-meta-deferred",
-        "issue": 1325
+        "distribution": "control-plane-kit-parity",
+        "issue": 1345
       }
     },
     {
@@ -20568,8 +20568,8 @@
       "negative_case_hints": [],
       "path": "tests/test_extraction_batch_plan.py",
       "provisional_target": {
-        "distribution": "cross-repository-live-meta-deferred",
-        "issue": 1325
+        "distribution": "control-plane-kit-parity",
+        "issue": 1345
       }
     },
     {
@@ -20579,8 +20579,8 @@
       "negative_case_hints": [],
       "path": "tests/test_extraction_batch_plan.py",
       "provisional_target": {
-        "distribution": "cross-repository-live-meta-deferred",
-        "issue": 1325
+        "distribution": "control-plane-kit-parity",
+        "issue": 1345
       }
     },
     {
@@ -20590,8 +20590,8 @@
       "negative_case_hints": [],
       "path": "tests/test_extraction_batch_plan.py",
       "provisional_target": {
-        "distribution": "cross-repository-live-meta-deferred",
-        "issue": 1325
+        "distribution": "control-plane-kit-parity",
+        "issue": 1345
       }
     },
     {
@@ -20603,8 +20603,8 @@
       ],
       "path": "tests/test_extraction_contract_boundary.py",
       "provisional_target": {
-        "distribution": "cross-repository-live-meta-deferred",
-        "issue": 1325
+        "distribution": "control-plane-kit-parity",
+        "issue": 1345
       }
     },
     {
@@ -20614,8 +20614,8 @@
       "negative_case_hints": [],
       "path": "tests/test_extraction_contract_boundary.py",
       "provisional_target": {
-        "distribution": "cross-repository-live-meta-deferred",
-        "issue": 1325
+        "distribution": "control-plane-kit-parity",
+        "issue": 1345
       }
     },
     {
@@ -20625,8 +20625,8 @@
       "negative_case_hints": [],
       "path": "tests/test_extraction_contract_boundary.py",
       "provisional_target": {
-        "distribution": "cross-repository-live-meta-deferred",
-        "issue": 1325
+        "distribution": "control-plane-kit-parity",
+        "issue": 1345
       }
     },
     {
@@ -20636,8 +20636,8 @@
       "negative_case_hints": [],
       "path": "tests/test_extraction_contract_boundary.py",
       "provisional_target": {
-        "distribution": "cross-repository-live-meta-deferred",
-        "issue": 1325
+        "distribution": "control-plane-kit-parity",
+        "issue": 1345
       }
     },
     {
@@ -20647,8 +20647,8 @@
       "negative_case_hints": [],
       "path": "tests/test_extraction_control_route_boundary.py",
       "provisional_target": {
-        "distribution": "cross-repository-live-meta-deferred",
-        "issue": 1325
+        "distribution": "control-plane-kit-parity",
+        "issue": 1345
       }
     },
     {
@@ -20660,8 +20660,8 @@
       ],
       "path": "tests/test_extraction_control_route_boundary.py",
       "provisional_target": {
-        "distribution": "cross-repository-live-meta-deferred",
-        "issue": 1325
+        "distribution": "control-plane-kit-parity",
+        "issue": 1345
       }
     },
     {
@@ -20671,8 +20671,8 @@
       "negative_case_hints": [],
       "path": "tests/test_extraction_pure_core_audit.py",
       "provisional_target": {
-        "distribution": "cross-repository-live-meta-deferred",
-        "issue": 1325
+        "distribution": "control-plane-kit-parity",
+        "issue": 1345
       }
     },
     {
@@ -20682,8 +20682,8 @@
       "negative_case_hints": [],
       "path": "tests/test_extraction_pure_core_audit.py",
       "provisional_target": {
-        "distribution": "cross-repository-live-meta-deferred",
-        "issue": 1325
+        "distribution": "control-plane-kit-parity",
+        "issue": 1345
       }
     },
     {
@@ -20693,8 +20693,8 @@
       "negative_case_hints": [],
       "path": "tests/test_extraction_pure_core_audit.py",
       "provisional_target": {
-        "distribution": "cross-repository-live-meta-deferred",
-        "issue": 1325
+        "distribution": "control-plane-kit-parity",
+        "issue": 1345
       }
     },
     {
@@ -20704,8 +20704,8 @@
       "negative_case_hints": [],
       "path": "tests/test_extraction_rollout_topology.py",
       "provisional_target": {
-        "distribution": "cross-repository-live-meta-deferred",
-        "issue": 1325
+        "distribution": "control-plane-kit-parity",
+        "issue": 1345
       }
     },
     {
@@ -20715,8 +20715,8 @@
       "negative_case_hints": [],
       "path": "tests/test_extraction_rollout_topology.py",
       "provisional_target": {
-        "distribution": "cross-repository-live-meta-deferred",
-        "issue": 1325
+        "distribution": "control-plane-kit-parity",
+        "issue": 1345
       }
     },
     {
@@ -20726,8 +20726,8 @@
       "negative_case_hints": [],
       "path": "tests/test_extraction_rollout_topology.py",
       "provisional_target": {
-        "distribution": "cross-repository-live-meta-deferred",
-        "issue": 1325
+        "distribution": "control-plane-kit-parity",
+        "issue": 1345
       }
     },
     {
@@ -20737,8 +20737,8 @@
       "negative_case_hints": [],
       "path": "tests/test_extraction_rollout_topology.py",
       "provisional_target": {
-        "distribution": "cross-repository-live-meta-deferred",
-        "issue": 1325
+        "distribution": "control-plane-kit-parity",
+        "issue": 1345
       }
     },
     {
@@ -20748,8 +20748,8 @@
       "negative_case_hints": [],
       "path": "tests/test_extraction_rollout_topology.py",
       "provisional_target": {
-        "distribution": "cross-repository-live-meta-deferred",
-        "issue": 1325
+        "distribution": "control-plane-kit-parity",
+        "issue": 1345
       }
     },
     {
@@ -20759,8 +20759,8 @@
       "negative_case_hints": [],
       "path": "tests/test_extraction_rollout_topology.py",
       "provisional_target": {
-        "distribution": "cross-repository-live-meta-deferred",
-        "issue": 1325
+        "distribution": "control-plane-kit-parity",
+        "issue": 1345
       }
     },
     {
@@ -20773,8 +20773,8 @@
       ],
       "path": "tests/test_extraction_rollout_topology.py",
       "provisional_target": {
-        "distribution": "cross-repository-live-meta-deferred",
-        "issue": 1325
+        "distribution": "control-plane-kit-parity",
+        "issue": 1345
       }
     },
     {
@@ -20786,8 +20786,8 @@
       ],
       "path": "tests/test_extraction_rollout_topology.py",
       "provisional_target": {
-        "distribution": "cross-repository-live-meta-deferred",
-        "issue": 1325
+        "distribution": "control-plane-kit-parity",
+        "issue": 1345
       }
     },
     {
@@ -20799,8 +20799,8 @@
       ],
       "path": "tests/test_extraction_successor_mappings.py",
       "provisional_target": {
-        "distribution": "cross-repository-live-meta-deferred",
-        "issue": 1325
+        "distribution": "control-plane-kit-parity",
+        "issue": 1345
       }
     },
     {
@@ -20812,8 +20812,8 @@
       ],
       "path": "tests/test_extraction_successor_mappings.py",
       "provisional_target": {
-        "distribution": "cross-repository-live-meta-deferred",
-        "issue": 1325
+        "distribution": "control-plane-kit-parity",
+        "issue": 1345
       }
     },
     {
@@ -20825,8 +20825,8 @@
       ],
       "path": "tests/test_extraction_successor_mappings.py",
       "provisional_target": {
-        "distribution": "cross-repository-live-meta-deferred",
-        "issue": 1325
+        "distribution": "control-plane-kit-parity",
+        "issue": 1345
       }
     },
     {
@@ -20839,8 +20839,8 @@
       ],
       "path": "tests/test_extraction_successor_mappings.py",
       "provisional_target": {
-        "distribution": "cross-repository-live-meta-deferred",
-        "issue": 1325
+        "distribution": "control-plane-kit-parity",
+        "issue": 1345
       }
     },
     {
@@ -20852,8 +20852,8 @@
       ],
       "path": "tests/test_extraction_successor_mappings.py",
       "provisional_target": {
-        "distribution": "cross-repository-live-meta-deferred",
-        "issue": 1325
+        "distribution": "control-plane-kit-parity",
+        "issue": 1345
       }
     },
     {
@@ -20865,8 +20865,8 @@
       ],
       "path": "tests/test_extraction_successor_mappings.py",
       "provisional_target": {
-        "distribution": "cross-repository-live-meta-deferred",
-        "issue": 1325
+        "distribution": "control-plane-kit-parity",
+        "issue": 1345
       }
     },
     {
@@ -20878,8 +20878,8 @@
       ],
       "path": "tests/test_extraction_successor_mappings.py",
       "provisional_target": {
-        "distribution": "cross-repository-live-meta-deferred",
-        "issue": 1325
+        "distribution": "control-plane-kit-parity",
+        "issue": 1345
       }
     },
     {
@@ -20892,8 +20892,8 @@
       ],
       "path": "tests/test_extraction_successor_mappings.py",
       "provisional_target": {
-        "distribution": "cross-repository-live-meta-deferred",
-        "issue": 1325
+        "distribution": "control-plane-kit-parity",
+        "issue": 1345
       }
     },
     {
@@ -20905,8 +20905,8 @@
       ],
       "path": "tests/test_extraction_successor_mappings.py",
       "provisional_target": {
-        "distribution": "cross-repository-live-meta-deferred",
-        "issue": 1325
+        "distribution": "control-plane-kit-parity",
+        "issue": 1345
       }
     },
     {
@@ -20918,8 +20918,8 @@
       ],
       "path": "tests/test_extraction_successor_mappings.py",
       "provisional_target": {
-        "distribution": "cross-repository-live-meta-deferred",
-        "issue": 1325
+        "distribution": "control-plane-kit-parity",
+        "issue": 1345
       }
     },
     {
@@ -20931,8 +20931,8 @@
       ],
       "path": "tests/test_extraction_successor_mappings.py",
       "provisional_target": {
-        "distribution": "cross-repository-live-meta-deferred",
-        "issue": 1325
+        "distribution": "control-plane-kit-parity",
+        "issue": 1345
       }
     },
     {
@@ -20942,8 +20942,8 @@
       "negative_case_hints": [],
       "path": "tests/test_extraction_successor_mappings.py",
       "provisional_target": {
-        "distribution": "cross-repository-live-meta-deferred",
-        "issue": 1325
+        "distribution": "control-plane-kit-parity",
+        "issue": 1345
       }
     },
     {
@@ -20955,8 +20955,8 @@
       ],
       "path": "tests/test_extraction_successor_mappings.py",
       "provisional_target": {
-        "distribution": "cross-repository-live-meta-deferred",
-        "issue": 1325
+        "distribution": "control-plane-kit-parity",
+        "issue": 1345
       }
     },
     {
@@ -20968,8 +20968,8 @@
       ],
       "path": "tests/test_extraction_successor_mappings.py",
       "provisional_target": {
-        "distribution": "cross-repository-live-meta-deferred",
-        "issue": 1325
+        "distribution": "control-plane-kit-parity",
+        "issue": 1345
       }
     },
     {
@@ -20981,8 +20981,8 @@
       ],
       "path": "tests/test_extraction_successor_mappings.py",
       "provisional_target": {
-        "distribution": "cross-repository-live-meta-deferred",
-        "issue": 1325
+        "distribution": "control-plane-kit-parity",
+        "issue": 1345
       }
     },
     {
@@ -20995,8 +20995,8 @@
       ],
       "path": "tests/test_extraction_successor_mappings.py",
       "provisional_target": {
-        "distribution": "cross-repository-live-meta-deferred",
-        "issue": 1325
+        "distribution": "control-plane-kit-parity",
+        "issue": 1345
       }
     },
     {
@@ -21008,8 +21008,8 @@
       ],
       "path": "tests/test_extraction_successor_mappings.py",
       "provisional_target": {
-        "distribution": "cross-repository-live-meta-deferred",
-        "issue": 1325
+        "distribution": "control-plane-kit-parity",
+        "issue": 1345
       }
     },
     {
@@ -21022,8 +21022,8 @@
       ],
       "path": "tests/test_extraction_successor_mappings.py",
       "provisional_target": {
-        "distribution": "cross-repository-live-meta-deferred",
-        "issue": 1325
+        "distribution": "control-plane-kit-parity",
+        "issue": 1345
       }
     },
     {
@@ -21035,8 +21035,8 @@
       ],
       "path": "tests/test_extraction_successor_mappings.py",
       "provisional_target": {
-        "distribution": "cross-repository-live-meta-deferred",
-        "issue": 1325
+        "distribution": "control-plane-kit-parity",
+        "issue": 1345
       }
     },
     {
@@ -21048,8 +21048,8 @@
       ],
       "path": "tests/test_extraction_successor_mappings.py",
       "provisional_target": {
-        "distribution": "cross-repository-live-meta-deferred",
-        "issue": 1325
+        "distribution": "control-plane-kit-parity",
+        "issue": 1345
       }
     },
     {
@@ -21061,8 +21061,8 @@
       ],
       "path": "tests/test_extraction_successor_mappings.py",
       "provisional_target": {
-        "distribution": "cross-repository-live-meta-deferred",
-        "issue": 1325
+        "distribution": "control-plane-kit-parity",
+        "issue": 1345
       }
     },
     {
@@ -21075,8 +21075,8 @@
       ],
       "path": "tests/test_extraction_successor_mappings.py",
       "provisional_target": {
-        "distribution": "cross-repository-live-meta-deferred",
-        "issue": 1325
+        "distribution": "control-plane-kit-parity",
+        "issue": 1345
       }
     },
     {
@@ -21088,8 +21088,8 @@
       ],
       "path": "tests/test_extraction_successor_mappings.py",
       "provisional_target": {
-        "distribution": "cross-repository-live-meta-deferred",
-        "issue": 1325
+        "distribution": "control-plane-kit-parity",
+        "issue": 1345
       }
     },
     {
@@ -21099,8 +21099,8 @@
       "negative_case_hints": [],
       "path": "tests/test_extraction_supersession_review.py",
       "provisional_target": {
-        "distribution": "cross-repository-live-meta-deferred",
-        "issue": 1325
+        "distribution": "control-plane-kit-parity",
+        "issue": 1345
       }
     },
     {
@@ -21110,8 +21110,8 @@
       "negative_case_hints": [],
       "path": "tests/test_interpreter_runtime_dry_run.py",
       "provisional_target": {
-        "distribution": "cross-repository-live-meta-deferred",
-        "issue": 1325
+        "distribution": "control-plane-kit-parity",
+        "issue": 1345
       }
     },
     {
@@ -21121,8 +21121,8 @@
       "negative_case_hints": [],
       "path": "tests/test_interpreter_runtime_dry_run.py",
       "provisional_target": {
-        "distribution": "cross-repository-live-meta-deferred",
-        "issue": 1325
+        "distribution": "control-plane-kit-parity",
+        "issue": 1345
       }
     },
     {
@@ -21132,8 +21132,8 @@
       "negative_case_hints": [],
       "path": "tests/test_interpreter_runtime_dry_run.py",
       "provisional_target": {
-        "distribution": "cross-repository-live-meta-deferred",
-        "issue": 1325
+        "distribution": "control-plane-kit-parity",
+        "issue": 1345
       }
     },
     {
@@ -21143,8 +21143,8 @@
       "negative_case_hints": [],
       "path": "tests/test_interpreter_runtime_dry_run.py",
       "provisional_target": {
-        "distribution": "cross-repository-live-meta-deferred",
-        "issue": 1325
+        "distribution": "control-plane-kit-parity",
+        "issue": 1345
       }
     },
     {
@@ -21154,8 +21154,8 @@
       "negative_case_hints": [],
       "path": "tests/test_interpreter_runtime_dry_run.py",
       "provisional_target": {
-        "distribution": "cross-repository-live-meta-deferred",
-        "issue": 1325
+        "distribution": "control-plane-kit-parity",
+        "issue": 1345
       }
     },
     {
@@ -21165,8 +21165,8 @@
       "negative_case_hints": [],
       "path": "tests/test_operations_extraction_topology.py",
       "provisional_target": {
-        "distribution": "cross-repository-live-meta-deferred",
-        "issue": 1325
+        "distribution": "control-plane-kit-parity",
+        "issue": 1345
       }
     },
     {
@@ -21178,8 +21178,8 @@
       ],
       "path": "tests/test_operations_extraction_topology.py",
       "provisional_target": {
-        "distribution": "cross-repository-live-meta-deferred",
-        "issue": 1325
+        "distribution": "control-plane-kit-parity",
+        "issue": 1345
       }
     },
     {
@@ -21191,8 +21191,8 @@
       ],
       "path": "tests/test_operations_package_foundation.py",
       "provisional_target": {
-        "distribution": "cross-repository-live-meta-deferred",
-        "issue": 1325
+        "distribution": "control-plane-kit-parity",
+        "issue": 1345
       }
     },
     {
@@ -21204,8 +21204,8 @@
       ],
       "path": "tests/test_operations_package_foundation.py",
       "provisional_target": {
-        "distribution": "cross-repository-live-meta-deferred",
-        "issue": 1325
+        "distribution": "control-plane-kit-parity",
+        "issue": 1345
       }
     },
     {
@@ -21215,8 +21215,8 @@
       "negative_case_hints": [],
       "path": "tests/test_operations_package_foundation.py",
       "provisional_target": {
-        "distribution": "cross-repository-live-meta-deferred",
-        "issue": 1325
+        "distribution": "control-plane-kit-parity",
+        "issue": 1345
       }
     },
     {
@@ -21226,8 +21226,8 @@
       "negative_case_hints": [],
       "path": "tests/test_parity_manifest.py",
       "provisional_target": {
-        "distribution": "cross-repository-live-meta-deferred",
-        "issue": 1325
+        "distribution": "control-plane-kit-parity",
+        "issue": 1345
       }
     },
     {
@@ -21237,8 +21237,8 @@
       "negative_case_hints": [],
       "path": "tests/test_parity_manifest.py",
       "provisional_target": {
-        "distribution": "cross-repository-live-meta-deferred",
-        "issue": 1325
+        "distribution": "control-plane-kit-parity",
+        "issue": 1345
       }
     },
     {
@@ -21250,8 +21250,8 @@
       ],
       "path": "tests/test_parity_manifest.py",
       "provisional_target": {
-        "distribution": "cross-repository-live-meta-deferred",
-        "issue": 1325
+        "distribution": "control-plane-kit-parity",
+        "issue": 1345
       }
     },
     {
@@ -21266,8 +21266,8 @@
       ],
       "path": "tests/test_parity_manifest.py",
       "provisional_target": {
-        "distribution": "cross-repository-live-meta-deferred",
-        "issue": 1325
+        "distribution": "control-plane-kit-parity",
+        "issue": 1345
       }
     },
     {
@@ -21279,8 +21279,8 @@
       ],
       "path": "tests/test_parity_manifest.py",
       "provisional_target": {
-        "distribution": "cross-repository-live-meta-deferred",
-        "issue": 1325
+        "distribution": "control-plane-kit-parity",
+        "issue": 1345
       }
     },
     {
@@ -21292,8 +21292,8 @@
       ],
       "path": "tests/test_parity_validation.py",
       "provisional_target": {
-        "distribution": "cross-repository-live-meta-deferred",
-        "issue": 1325
+        "distribution": "control-plane-kit-parity",
+        "issue": 1345
       }
     },
     {
@@ -21306,8 +21306,8 @@
       ],
       "path": "tests/test_parity_validation.py",
       "provisional_target": {
-        "distribution": "cross-repository-live-meta-deferred",
-        "issue": 1325
+        "distribution": "control-plane-kit-parity",
+        "issue": 1345
       }
     },
     {
@@ -21319,8 +21319,8 @@
       ],
       "path": "tests/test_parity_validation.py",
       "provisional_target": {
-        "distribution": "cross-repository-live-meta-deferred",
-        "issue": 1325
+        "distribution": "control-plane-kit-parity",
+        "issue": 1345
       }
     },
     {
@@ -21335,8 +21335,8 @@
       ],
       "path": "tests/test_parity_validation.py",
       "provisional_target": {
-        "distribution": "cross-repository-live-meta-deferred",
-        "issue": 1325
+        "distribution": "control-plane-kit-parity",
+        "issue": 1345
       }
     },
     {
@@ -21346,8 +21346,8 @@
       "negative_case_hints": [],
       "path": "tests/test_parity_validation.py",
       "provisional_target": {
-        "distribution": "cross-repository-live-meta-deferred",
-        "issue": 1325
+        "distribution": "control-plane-kit-parity",
+        "issue": 1345
       }
     },
     {
@@ -21360,8 +21360,8 @@
       ],
       "path": "tests/test_parity_validation.py",
       "provisional_target": {
-        "distribution": "cross-repository-live-meta-deferred",
-        "issue": 1325
+        "distribution": "control-plane-kit-parity",
+        "issue": 1345
       }
     },
     {
@@ -21375,8 +21375,8 @@
       ],
       "path": "tests/test_parity_validation.py",
       "provisional_target": {
-        "distribution": "cross-repository-live-meta-deferred",
-        "issue": 1325
+        "distribution": "control-plane-kit-parity",
+        "issue": 1345
       }
     },
     {
@@ -21389,8 +21389,8 @@
       ],
       "path": "tests/test_parity_validation.py",
       "provisional_target": {
-        "distribution": "cross-repository-live-meta-deferred",
-        "issue": 1325
+        "distribution": "control-plane-kit-parity",
+        "issue": 1345
       }
     },
     {
@@ -21404,8 +21404,8 @@
       ],
       "path": "tests/test_parity_validation.py",
       "provisional_target": {
-        "distribution": "cross-repository-live-meta-deferred",
-        "issue": 1325
+        "distribution": "control-plane-kit-parity",
+        "issue": 1345
       }
     },
     {
@@ -21415,8 +21415,8 @@
       "negative_case_hints": [],
       "path": "tests/test_parity_validation.py",
       "provisional_target": {
-        "distribution": "cross-repository-live-meta-deferred",
-        "issue": 1325
+        "distribution": "control-plane-kit-parity",
+        "issue": 1345
       }
     },
     {
@@ -21426,8 +21426,8 @@
       "negative_case_hints": [],
       "path": "tests/test_parity_validation.py",
       "provisional_target": {
-        "distribution": "cross-repository-live-meta-deferred",
-        "issue": 1325
+        "distribution": "control-plane-kit-parity",
+        "issue": 1345
       }
     },
     {
@@ -21437,8 +21437,8 @@
       "negative_case_hints": [],
       "path": "tests/test_parity_validation.py",
       "provisional_target": {
-        "distribution": "cross-repository-live-meta-deferred",
-        "issue": 1325
+        "distribution": "control-plane-kit-parity",
+        "issue": 1345
       }
     },
     {
@@ -21450,8 +21450,8 @@
       ],
       "path": "tests/test_reference_demo_inventory.py",
       "provisional_target": {
-        "distribution": "cross-repository-live-meta-deferred",
-        "issue": 1325
+        "distribution": "control-plane-kit-parity",
+        "issue": 1345
       }
     },
     {
@@ -21465,8 +21465,8 @@
       ],
       "path": "tests/test_reference_demo_inventory.py",
       "provisional_target": {
-        "distribution": "cross-repository-live-meta-deferred",
-        "issue": 1325
+        "distribution": "control-plane-kit-parity",
+        "issue": 1345
       }
     },
     {
@@ -21476,8 +21476,8 @@
       "negative_case_hints": [],
       "path": "tests/test_reference_law_ownership.py",
       "provisional_target": {
-        "distribution": "cross-repository-live-meta-deferred",
-        "issue": 1325
+        "distribution": "control-plane-kit-parity",
+        "issue": 1345
       }
     },
     {
@@ -21487,8 +21487,8 @@
       "negative_case_hints": [],
       "path": "tests/test_reference_law_ownership.py",
       "provisional_target": {
-        "distribution": "cross-repository-live-meta-deferred",
-        "issue": 1325
+        "distribution": "control-plane-kit-parity",
+        "issue": 1345
       }
     },
     {
@@ -21500,8 +21500,8 @@
       ],
       "path": "tests/test_reference_law_ownership.py",
       "provisional_target": {
-        "distribution": "cross-repository-live-meta-deferred",
-        "issue": 1325
+        "distribution": "control-plane-kit-parity",
+        "issue": 1345
       }
     },
     {
@@ -21513,8 +21513,8 @@
       ],
       "path": "tests/test_reference_parity_evidence.py",
       "provisional_target": {
-        "distribution": "cross-repository-live-meta-deferred",
-        "issue": 1325
+        "distribution": "control-plane-kit-parity",
+        "issue": 1345
       }
     },
     {
@@ -21527,8 +21527,8 @@
       ],
       "path": "tests/test_reference_parity_evidence.py",
       "provisional_target": {
-        "distribution": "cross-repository-live-meta-deferred",
-        "issue": 1325
+        "distribution": "control-plane-kit-parity",
+        "issue": 1345
       }
     },
     {
@@ -21540,8 +21540,8 @@
       ],
       "path": "tests/test_reference_parity_evidence.py",
       "provisional_target": {
-        "distribution": "cross-repository-live-meta-deferred",
-        "issue": 1325
+        "distribution": "control-plane-kit-parity",
+        "issue": 1345
       }
     },
     {
@@ -21553,8 +21553,8 @@
       ],
       "path": "tests/test_reference_parity_evidence.py",
       "provisional_target": {
-        "distribution": "cross-repository-live-meta-deferred",
-        "issue": 1325
+        "distribution": "control-plane-kit-parity",
+        "issue": 1345
       }
     },
     {
@@ -21564,8 +21564,8 @@
       "negative_case_hints": [],
       "path": "tests/test_reference_parity_evidence.py",
       "provisional_target": {
-        "distribution": "cross-repository-live-meta-deferred",
-        "issue": 1325
+        "distribution": "control-plane-kit-parity",
+        "issue": 1345
       }
     },
     {
@@ -21580,8 +21580,8 @@
       ],
       "path": "tests/test_reference_parity_evidence.py",
       "provisional_target": {
-        "distribution": "cross-repository-live-meta-deferred",
-        "issue": 1325
+        "distribution": "control-plane-kit-parity",
+        "issue": 1345
       }
     },
     {
@@ -21596,8 +21596,8 @@
       ],
       "path": "tests/test_reference_test_inventory.py",
       "provisional_target": {
-        "distribution": "cross-repository-live-meta-deferred",
-        "issue": 1325
+        "distribution": "control-plane-kit-parity",
+        "issue": 1345
       }
     },
     {
@@ -21607,8 +21607,8 @@
       "negative_case_hints": [],
       "path": "tests/test_reference_test_inventory.py",
       "provisional_target": {
-        "distribution": "cross-repository-live-meta-deferred",
-        "issue": 1325
+        "distribution": "control-plane-kit-parity",
+        "issue": 1345
       }
     },
     {
@@ -21620,8 +21620,8 @@
       ],
       "path": "tests/test_reference_test_inventory.py",
       "provisional_target": {
-        "distribution": "cross-repository-live-meta-deferred",
-        "issue": 1325
+        "distribution": "control-plane-kit-parity",
+        "issue": 1345
       }
     },
     {
@@ -21635,8 +21635,8 @@
       ],
       "path": "tests/test_reference_test_inventory.py",
       "provisional_target": {
-        "distribution": "cross-repository-live-meta-deferred",
-        "issue": 1325
+        "distribution": "control-plane-kit-parity",
+        "issue": 1345
       }
     },
     {
@@ -21648,8 +21648,8 @@
       ],
       "path": "tests/test_reference_test_inventory.py",
       "provisional_target": {
-        "distribution": "cross-repository-live-meta-deferred",
-        "issue": 1325
+        "distribution": "control-plane-kit-parity",
+        "issue": 1345
       }
     },
     {
@@ -21659,8 +21659,8 @@
       "negative_case_hints": [],
       "path": "tests/test_reference_test_inventory.py",
       "provisional_target": {
-        "distribution": "cross-repository-live-meta-deferred",
-        "issue": 1325
+        "distribution": "control-plane-kit-parity",
+        "issue": 1345
       }
     },
     {
@@ -21670,8 +21670,8 @@
       "negative_case_hints": [],
       "path": "tests/test_reference_test_inventory.py",
       "provisional_target": {
-        "distribution": "cross-repository-live-meta-deferred",
-        "issue": 1325
+        "distribution": "control-plane-kit-parity",
+        "issue": 1345
       }
     },
     {
@@ -21681,8 +21681,8 @@
       "negative_case_hints": [],
       "path": "tests/test_reference_test_inventory.py",
       "provisional_target": {
-        "distribution": "cross-repository-live-meta-deferred",
-        "issue": 1325
+        "distribution": "control-plane-kit-parity",
+        "issue": 1345
       }
     },
     {
@@ -21748,8 +21748,14 @@
     {
       "distribution": "cross-repository-live-meta-deferred",
       "issue": 1325,
-      "mutable_only_methods": 118,
+      "mutable_only_methods": 0,
       "reference_laws": 149
+    },
+    {
+      "distribution": "control-plane-kit-parity",
+      "issue": 1345,
+      "mutable_only_methods": 118,
+      "reference_laws": 0
     }
   ],
   "recorded_parity_counts": {

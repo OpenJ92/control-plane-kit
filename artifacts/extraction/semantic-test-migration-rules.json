@@ -158,6 +158,10 @@
     {
       "issue": 1325,
       "distribution": "cross-repository-live-meta-deferred",
+      "mutable_target": {
+        "issue": 1345,
+        "distribution": "control-plane-kit-parity"
+      },
       "modules": [
         "tests.test_activity_live_external_interpreter",
         "tests.test_architecture_analysis",

@@ -17,6 +17,31 @@ from extraction_parity.migration_inventory import (
 
 
 class MigrationRulesTests(unittest.TestCase):
+    def test_mutable_only_target_is_closed_and_distinct_from_reference_target(
+        self,
+    ) -> None:
+        value = {
+            "schema": "cpk.semantic-test-migration-rules",
+            "legacy_helper_issue": 1325,
+            "legacy_script_issue": 1325,
+            "assignments": [
+                {
+                    "issue": 1325,
+                    "distribution": "cross-repository",
+                    "mutable_target": {
+                        "issue": 1345,
+                        "distribution": "control-plane-kit-parity",
+                    },
+                    "modules": ["tests.test_parity"],
+                }
+            ],
+        }
+
+        self.assertIs(decode_rules(value), value)
+        value["assignments"][0]["mutable_target"]["extra"] = True
+        with self.assertRaisesRegex(MigrationInventoryError, "mutable target"):
+            decode_rules(value)
+
     def test_rules_reject_duplicate_module_ownership(self) -> None:
         with self.assertRaisesRegex(MigrationInventoryError, "multiple owners"):
             decode_rules(
@@ -238,6 +263,39 @@ def test_rejects_missing_value(self):
         self.assertEqual(
             inventory["legacy_module_imports"],
             [{"module": "tests.test_values", "imports": ["control_plane_kit"]}],
+        )
+
+        rules["assignments"][0]["mutable_target"] = {
+            "issue": 1345,
+            "distribution": "control-plane-kit-parity",
+        }
+        mutable_only_method = {
+            **mutable_method,
+            "id": "legacy-mutable:tests.test_values.ValueTests.test_new_law",
+            "method": "test_new_law",
+        }
+        lanes_with_mutable_only = tuple(
+            {
+                **lane_value,
+                "methods": [*lane_value["methods"], mutable_only_method],
+            }
+            if lane_value["distribution"] == "legacy-mutable"
+            else lane_value
+            for lane_value in lanes
+        )
+        inventory = build_migration_inventory(
+            reference_tests=reference_tests,
+            manifest=manifest,
+            demos=demos,
+            rules=rules,
+            lanes=lanes_with_mutable_only,
+        )
+        self.assertEqual(
+            inventory["mutable_only_methods"][0]["provisional_target"],
+            {
+                "issue": 1345,
+                "distribution": "control-plane-kit-parity",
+            },
         )
 
         rules["assignments"][0]["modules"] = ["tests.test_stale"]
