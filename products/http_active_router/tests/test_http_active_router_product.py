@@ -218,10 +218,6 @@ class HttpActiveRouterProductTests(unittest.TestCase):
         self.assertEqual(ProductDescriptorCodec().decode_document(content).content_digest, digest)
 
 
-if __name__ == "__main__":
-    unittest.main()
-
-
 class _RecordingServer:
     def __init__(self, response_body: bytes) -> None:
         self.requests: list[tuple[str, str, bytes, str | None]] = []
@@ -261,3 +257,7 @@ class _RecordingServer:
         self.server.shutdown()
         self.thread.join(timeout=5)
         self.server.server_close()
+
+
+if __name__ == "__main__":
+    unittest.main()
