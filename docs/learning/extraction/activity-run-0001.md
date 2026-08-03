@@ -7349,3 +7349,56 @@ closed happy-path state sequence while deliberately excluding secret
 references, provider versions, public PEM, compact grants, and private
 material. Adversarial cross-phase failures and concurrency remain isolated to
 #1311; this issue establishes the reusable healthy-path fixture they require.
+
+## #1362 Exact current-backend executable gate
+
+The replacement backend test entrance is now one explicitly named command:
+
+```text
+current-backend-test.sh
+  -> exact source lock and materialization
+  -> static cross-repository contracts
+  -> independently authoritative package gates
+  -> separately named cpk-server HTTP/MCP source-live acceptance
+  -> exact-owned Docker residue audit
+  -> bounded JSON report
+```
+
+The runner is deliberately orchestration infrastructure, not application
+behavior. Python owns serial fail-fast execution and bounded reporting; the
+shell file only anchors the repository and invokes the module. Local mode reads
+exact Git objects and ignores dirty checkout files. CI clone mode fetches the
+same locked objects into temporary stores. Neither mode executes the mutable
+root `test.sh` or mutable `control_plane_kit` package.
+
+The first complete dry run passed every package but the separately named
+source-live stage intermittently failed liveness immediately after the
+server-products package had built and smoked the same image tag. Running the
+same locked smoke alone passed. Review found two runner ownership errors: the
+operations network/container names were attached to the core stage, and the
+package and source-live stages reused one image identity. The final plan assigns
+operations its own Postgres/network names and gives source-live its own image
+tag. A structural test now fixes both ownership laws.
+
+Final local exact-object validation passed:
+
+- runner: 34 tests;
+- cross-repository contract: 151 owned source files, 10 products, 6 protocols;
+- core: 484 tests, 0 mocks, 0 approved skips;
+- operations: 378 tests, 0 mocks, 0 approved skips;
+- interpreters: 147 tests, 11 visible SDK/timing seam mocks, 0 approved skips;
+- secrets: 51 tests, 0 mocks, 0 approved skips;
+- server-products: 166 tests, 10 visible process/transport seam mocks, 0 approved skips;
+- authenticated source-built cpk-server HTTP/MCP smoke: passed;
+- final Docker residue audit: passed.
+
+The exact application sources were coordination
+`f45384e72a79f59c93a715fd08f409f86a91218a`, interpreters
+`2335a21adc5c0b0ae2f592bd15757c6ca1a55e4b`, secrets
+`96e86dc3248d578780d64d5d7fc5d6359631d1d6`, and server-products
+`43e9f359ca828c83fe4994ed1b62e1be54277ddd`. The live stage is explicitly
+source-built, cpk-server-authoritative, non-provider-mutating, and not
+published-digest evidence. The final inventory still contained only the five
+protected Pottery Factory containers. This command is the executable
+replacement #1318 requires before mutable legacy test infrastructure can be
+deleted.
