@@ -494,6 +494,57 @@ class SemanticReconciliationTests(unittest.TestCase):
             "8221cc76d3f5de19242aa59a86cd3b16e768f4c7fb4767d52ba0fb204a2118b9",
         )
 
+    def test_issue_1324_artifact_records_durable_secret_evidence(self) -> None:
+        root = Path(__file__).resolve().parents[2]
+        artifact_root = root / "artifacts/extraction"
+        reconciliation = json.loads(
+            (artifact_root / "semantic-test-reconciliation.json").read_text(
+                encoding="utf-8"
+            )
+        )
+        evidence = json.loads(
+            (artifact_root / "harden-tests-parity-1324-evidence.json").read_text(
+                encoding="utf-8"
+            )
+        )
+        reviews = [
+            value
+            for value in reconciliation["reviews"]
+            if value["reviewed_by_issue"] == 1324
+        ]
+
+        self.assertEqual(len(reviews), 22)
+        self.assertEqual(
+            {value["disposition"] for value in reviews},
+            {"current-strengthened", "future-issue"},
+        )
+        self.assertEqual(
+            sum(value["disposition"] == "current-strengthened" for value in reviews),
+            17,
+        )
+        self.assertEqual(
+            sum(value["disposition"] == "future-issue" for value in reviews),
+            5,
+        )
+        self.assertEqual(
+            {
+                value["future_issue"]["number"]
+                for value in reviews
+                if value["future_issue"] is not None
+            },
+            {1070},
+        )
+        self.assertEqual(
+            evidence["secrets"]["commit"],
+            "313fd26cb15a362ef5196547a3f6b27122877609",
+        )
+        self.assertEqual(evidence["secrets"]["tests"], 51)
+        self.assertEqual(
+            evidence["interpreter"]["commit"],
+            "e9f19d558026d92af79df81fb9184d29da00110b",
+        )
+        self.assertEqual(evidence["interpreter"]["tests"], 147)
+
 
 if __name__ == "__main__":
     unittest.main()

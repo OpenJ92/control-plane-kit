@@ -5803,14 +5803,19 @@
       "owner": "control-plane-kit-core",
       "owner_kind": "core",
       "reference": "tests.test_docker_secrets.DockerSecretTests.test_cli_materialization_passes_value_only_through_stdin",
-      "successors": [],
-      "supersession": {
-        "negative_case_disposition": "Negative cases remain required for the future owner and are not erased; they are listed in the #743 closeout family record and successor issue handoff.",
-        "obsolete_assumption": "This frozen law was previously counted as extracted-core required behavior even though its executable owner is outside the pure core package.",
-        "rationale": "Frozen law exercises Docker, HTTP, probe, runtime materialization, runtime state, ownership, retention, dispatch, or substrate behavior. Extracted core must keep only the closed language/contract boundary and cannot execute the interpreter.",
-        "replacement": "#743 interpreter/runtime handoff; core retains closed protocol, lifecycle, verification, control-route, effect-boundary, and product-runtime contract values without owning effects.",
-        "review": "#743 interpreter runtime closeout"
-      }
+      "successors": [
+        {
+          "evidence": "harden-tests-parity-1324.secrets.unittest",
+          "id": "control-plane-kit-interpreters:tests.test_docker_sdk_client.DockerSdkClientTests.test_secret_value_is_not_passed_as_helper_command",
+          "status": "passing"
+        },
+        {
+          "evidence": "harden-tests-parity-1324.secrets.unittest",
+          "id": "control-plane-kit-interpreters:tests.test_docker_sdk_client.DockerSdkClientTests.test_secret_materialization_uses_bounded_helper_and_digest",
+          "status": "passing"
+        }
+      ],
+      "supersession": null
     },
     {
       "kind": "test",
@@ -5820,13 +5825,7 @@
       "owner_kind": "core",
       "reference": "tests.test_docker_secrets.DockerSecretTests.test_known_container_start_failure_removes_owned_secret_volume",
       "successors": [],
-      "supersession": {
-        "negative_case_disposition": "Negative cases remain required for the future owner and are not erased; they are listed in the #743 closeout family record and successor issue handoff.",
-        "obsolete_assumption": "This frozen law was previously counted as extracted-core required behavior even though its executable owner is outside the pure core package.",
-        "rationale": "Frozen law exercises Docker, HTTP, probe, runtime materialization, runtime state, ownership, retention, dispatch, or substrate behavior. Extracted core must keep only the closed language/contract boundary and cannot execute the interpreter.",
-        "replacement": "#743 interpreter/runtime handoff; core retains closed protocol, lifecycle, verification, control-route, effect-boundary, and product-runtime contract values without owning effects.",
-        "review": "#743 interpreter runtime closeout"
-      }
+      "supersession": null
     },
     {
       "kind": "test",
@@ -5835,14 +5834,19 @@
       "owner": "control-plane-kit-core",
       "owner_kind": "core",
       "reference": "tests.test_docker_secrets.DockerSecretTests.test_missing_or_denied_reference_fails_before_volume_mutation",
-      "successors": [],
-      "supersession": {
-        "negative_case_disposition": "Negative cases remain required for the future owner and are not erased; they are listed in the #743 closeout family record and successor issue handoff.",
-        "obsolete_assumption": "This frozen law was previously counted as extracted-core required behavior even though its executable owner is outside the pure core package.",
-        "rationale": "Frozen law exercises Docker, HTTP, probe, runtime materialization, runtime state, ownership, retention, dispatch, or substrate behavior. Extracted core must keep only the closed language/contract boundary and cannot execute the interpreter.",
-        "replacement": "#743 interpreter/runtime handoff; core retains closed protocol, lifecycle, verification, control-route, effect-boundary, and product-runtime contract values without owning effects.",
-        "review": "#743 interpreter runtime closeout"
-      }
+      "successors": [
+        {
+          "evidence": "harden-tests-parity-1324.secrets.unittest",
+          "id": "control-plane-kit-interpreters:tests.test_docker_runtime_interpreter.DockerRuntimeInterpreterTests.test_start_node_missing_secret_fails_before_docker_mutation",
+          "status": "passing"
+        },
+        {
+          "evidence": "harden-tests-parity-1324.secrets.unittest",
+          "id": "control-plane-kit-interpreters:tests.test_docker_runtime_interpreter.DockerRuntimeInterpreterTests.test_authorized_delivery_rejects_wrong_intent_grant_without_resolution",
+          "status": "passing"
+        }
+      ],
+      "supersession": null
     },
     {
       "kind": "test",
@@ -5852,13 +5856,7 @@
       "owner_kind": "core",
       "reference": "tests.test_docker_secrets.DockerSecretTests.test_reference_rotation_changes_container_and_volume_ownership",
       "successors": [],
-      "supersession": {
-        "negative_case_disposition": "Negative cases remain required for the future owner and are not erased; they are listed in the #743 closeout family record and successor issue handoff.",
-        "obsolete_assumption": "This frozen law was previously counted as extracted-core required behavior even though its executable owner is outside the pure core package.",
-        "rationale": "Frozen law exercises Docker, HTTP, probe, runtime materialization, runtime state, ownership, retention, dispatch, or substrate behavior. Extracted core must keep only the closed language/contract boundary and cannot execute the interpreter.",
-        "replacement": "#743 interpreter/runtime handoff; core retains closed protocol, lifecycle, verification, control-route, effect-boundary, and product-runtime contract values without owning effects.",
-        "review": "#743 interpreter runtime closeout"
-      }
+      "supersession": null
     },
     {
       "kind": "test",
@@ -5867,14 +5865,19 @@
       "owner": "control-plane-kit-core",
       "owner_kind": "core",
       "reference": "tests.test_docker_secrets.DockerSecretTests.test_same_immutable_reference_does_not_rewrite_provider_side_change",
-      "successors": [],
-      "supersession": {
-        "negative_case_disposition": "Negative cases remain required for the future owner and are not erased; they are listed in the #743 closeout family record and successor issue handoff.",
-        "obsolete_assumption": "This frozen law was previously counted as extracted-core required behavior even though its executable owner is outside the pure core package.",
-        "rationale": "Frozen law exercises Docker, HTTP, probe, runtime materialization, runtime state, ownership, retention, dispatch, or substrate behavior. Extracted core must keep only the closed language/contract boundary and cannot execute the interpreter.",
-        "replacement": "#743 interpreter/runtime handoff; core retains closed protocol, lifecycle, verification, control-route, effect-boundary, and product-runtime contract values without owning effects.",
-        "review": "#743 interpreter runtime closeout"
-      }
+      "successors": [
+        {
+          "evidence": "harden-tests-parity-1324.secrets.unittest",
+          "id": "control-plane-kit-secrets:tests.test_encrypted_store.EncryptedSecretStoreTests.test_resolution_correlation_pins_first_version_across_rotation_and_restart",
+          "status": "passing"
+        },
+        {
+          "evidence": "harden-tests-parity-1324.secrets.unittest",
+          "id": "control-plane-kit-operations:tests.test_execution_coordinator.ExecutionCoordinatorTests.test_completed_replay_does_not_repeat_effect",
+          "status": "passing"
+        }
+      ],
+      "supersession": null
     },
     {
       "kind": "test",
@@ -5883,14 +5886,29 @@
       "owner": "control-plane-kit-core",
       "owner_kind": "core",
       "reference": "tests.test_docker_secrets.DockerSecretTests.test_start_materializes_before_container_and_replay_does_not_rewrite",
-      "successors": [],
-      "supersession": {
-        "negative_case_disposition": "Negative cases remain required for the future owner and are not erased; they are listed in the #743 closeout family record and successor issue handoff.",
-        "obsolete_assumption": "This frozen law was previously counted as extracted-core required behavior even though its executable owner is outside the pure core package.",
-        "rationale": "Frozen law exercises Docker, HTTP, probe, runtime materialization, runtime state, ownership, retention, dispatch, or substrate behavior. Extracted core must keep only the closed language/contract boundary and cannot execute the interpreter.",
-        "replacement": "#743 interpreter/runtime handoff; core retains closed protocol, lifecycle, verification, control-route, effect-boundary, and product-runtime contract values without owning effects.",
-        "review": "#743 interpreter runtime closeout"
-      }
+      "successors": [
+        {
+          "evidence": "harden-tests-parity-1324.secrets.unittest",
+          "id": "control-plane-kit-interpreters:tests.test_docker_runtime_interpreter.DockerRuntimeInterpreterTests.test_start_node_resolves_secret_environment_before_docker_mutation",
+          "status": "passing"
+        },
+        {
+          "evidence": "harden-tests-parity-1324.secrets.unittest",
+          "id": "control-plane-kit-interpreters:tests.test_docker_runtime_interpreter.DockerRuntimeInterpreterTests.test_start_node_resolves_file_secret_as_read_only_mount",
+          "status": "passing"
+        },
+        {
+          "evidence": "harden-tests-parity-1324.secrets.unittest",
+          "id": "control-plane-kit-interpreters:tests.test_docker_sdk_client.DockerSdkClientTests.test_secret_materialization_uses_bounded_helper_and_digest",
+          "status": "passing"
+        },
+        {
+          "evidence": "harden-tests-parity-1324.secrets.unittest",
+          "id": "control-plane-kit-operations:tests.test_execution_coordinator.ExecutionCoordinatorTests.test_completed_replay_does_not_repeat_effect",
+          "status": "passing"
+        }
+      ],
+      "supersession": null
     },
     {
       "kind": "test",
@@ -5900,13 +5918,7 @@
       "owner_kind": "core",
       "reference": "tests.test_docker_secrets.DockerSecretTests.test_teardown_ownership_conflict_preserves_container_and_volume",
       "successors": [],
-      "supersession": {
-        "negative_case_disposition": "Negative cases remain required for the future owner and are not erased; they are listed in the #743 closeout family record and successor issue handoff.",
-        "obsolete_assumption": "This frozen law was previously counted as extracted-core required behavior even though its executable owner is outside the pure core package.",
-        "rationale": "Frozen law exercises Docker, HTTP, probe, runtime materialization, runtime state, ownership, retention, dispatch, or substrate behavior. Extracted core must keep only the closed language/contract boundary and cannot execute the interpreter.",
-        "replacement": "#743 interpreter/runtime handoff; core retains closed protocol, lifecycle, verification, control-route, effect-boundary, and product-runtime contract values without owning effects.",
-        "review": "#743 interpreter runtime closeout"
-      }
+      "supersession": null
     },
     {
       "kind": "test",
@@ -5916,13 +5928,7 @@
       "owner_kind": "core",
       "reference": "tests.test_docker_secrets.DockerSecretTests.test_teardown_preflights_secret_volume_before_container_removal",
       "successors": [],
-      "supersession": {
-        "negative_case_disposition": "Negative cases remain required for the future owner and are not erased; they are listed in the #743 closeout family record and successor issue handoff.",
-        "obsolete_assumption": "This frozen law was previously counted as extracted-core required behavior even though its executable owner is outside the pure core package.",
-        "rationale": "Frozen law exercises Docker, HTTP, probe, runtime materialization, runtime state, ownership, retention, dispatch, or substrate behavior. Extracted core must keep only the closed language/contract boundary and cannot execute the interpreter.",
-        "replacement": "#743 interpreter/runtime handoff; core retains closed protocol, lifecycle, verification, control-route, effect-boundary, and product-runtime contract values without owning effects.",
-        "review": "#743 interpreter runtime closeout"
-      }
+      "supersession": null
     },
     {
       "kind": "test",
@@ -5932,13 +5938,7 @@
       "owner_kind": "core",
       "reference": "tests.test_docker_secrets.DockerSecretTests.test_uncertain_materialization_preserves_owned_volume_for_recovery",
       "successors": [],
-      "supersession": {
-        "negative_case_disposition": "Negative cases remain required for the future owner and are not erased; they are listed in the #743 closeout family record and successor issue handoff.",
-        "obsolete_assumption": "This frozen law was previously counted as extracted-core required behavior even though its executable owner is outside the pure core package.",
-        "rationale": "Frozen law exercises Docker, HTTP, probe, runtime materialization, runtime state, ownership, retention, dispatch, or substrate behavior. Extracted core must keep only the closed language/contract boundary and cannot execute the interpreter.",
-        "replacement": "#743 interpreter/runtime handoff; core retains closed protocol, lifecycle, verification, control-route, effect-boundary, and product-runtime contract values without owning effects.",
-        "review": "#743 interpreter runtime closeout"
-      }
+      "supersession": null
     },
     {
       "kind": "test",
@@ -14106,8 +14106,8 @@
       "reference": "tests.test_secret_delivery_topology.SecretDeliveryTopologyTests.test_delivery_change_is_explicit_diff_and_reconcile",
       "successors": [
         {
-          "evidence": "extract-e-755.environment-secrets.unittest",
-          "id": "control-plane-kit-core.tests.test_environment_secrets.SecretDeliveryTopologyTests.test_delivery_change_is_explicit_diff_without_exposing_values",
+          "evidence": "harden-tests-parity-1324.secrets.unittest",
+          "id": "control-plane-kit-core:tests.test_environment_secrets.SecretDeliveryTopologyTests.test_delivery_change_is_explicit_diff_without_exposing_values",
           "status": "passing"
         }
       ],
@@ -14122,8 +14122,13 @@
       "reference": "tests.test_secret_delivery_topology.SecretDeliveryTopologyTests.test_exact_deliveries_reach_pinned_start_material",
       "successors": [
         {
-          "evidence": "extract-e-755.environment-secrets.unittest",
-          "id": "control-plane-kit-core.tests.test_environment_secrets.SecretDeliveryTopologyTests.test_exact_deliveries_remain_pinned_in_desired_graph_language",
+          "evidence": "harden-tests-parity-1324.secrets.unittest",
+          "id": "control-plane-kit-core:tests.test_environment_secrets.SecretDeliveryTopologyTests.test_exact_deliveries_remain_pinned_in_desired_graph_language",
+          "status": "passing"
+        },
+        {
+          "evidence": "harden-tests-parity-1324.secrets.unittest",
+          "id": "control-plane-kit-operations:tests.test_runtime_effect_translation.RuntimeEffectTranslationTests.test_context_translates_only_compiled_socket_bound_secret_deliveries",
           "status": "passing"
         }
       ],
@@ -14138,8 +14143,8 @@
       "reference": "tests.test_secret_delivery_topology.SecretDeliveryTopologyTests.test_graph_codec_preserves_closed_deliveries_without_values",
       "successors": [
         {
-          "evidence": "extract-e-755.environment-secrets.unittest",
-          "id": "control-plane-kit-core.tests.test_environment_secrets.SecretDeliveryTopologyTests.test_graph_codec_preserves_closed_deliveries_without_values",
+          "evidence": "harden-tests-parity-1324.secrets.unittest",
+          "id": "control-plane-kit-core:tests.test_environment_secrets.SecretDeliveryTopologyTests.test_graph_codec_preserves_closed_deliveries_without_values",
           "status": "passing"
         }
       ],
@@ -14154,8 +14159,13 @@
       "reference": "tests.test_secret_delivery_topology.SecretDeliveryTopologyTests.test_literal_and_secret_environment_names_cannot_overlap",
       "successors": [
         {
-          "evidence": "extract-e-755.environment-secrets.unittest",
-          "id": "control-plane-kit-core.tests.test_environment_secrets.EnvironmentBindingTests.test_public_socket_and_secret_environment_names_remain_disjoint",
+          "evidence": "harden-tests-parity-1324.secrets.unittest",
+          "id": "control-plane-kit-core:tests.test_environment_secrets.EnvironmentBindingTests.test_public_socket_and_secret_environment_names_remain_disjoint",
+          "status": "passing"
+        },
+        {
+          "evidence": "harden-tests-parity-1324.secrets.unittest",
+          "id": "control-plane-kit-core:tests.test_product_runtime_contract.ProductRuntimeContractTests.test_requirement_socket_rejects_conflicting_secret_targets",
           "status": "passing"
         }
       ],
@@ -14170,8 +14180,13 @@
       "reference": "tests.test_secrets.SecretContractTests.test_bootstrap_configuration_cannot_exceed_authority",
       "successors": [
         {
-          "evidence": "extract-e-755.environment-secrets.unittest",
-          "id": "control-plane-kit-core.tests.test_environment_secrets.SecretContractTests.test_bootstrap_configuration_cannot_exceed_authority",
+          "evidence": "harden-tests-parity-1324.secrets.unittest",
+          "id": "control-plane-kit-core:tests.test_environment_secrets.SecretContractTests.test_bootstrap_configuration_cannot_exceed_authority",
+          "status": "passing"
+        },
+        {
+          "evidence": "harden-tests-parity-1324.secrets.unittest",
+          "id": "control-plane-kit-secrets:tests.test_provider_bootstrap.ProviderBootstrapTests.test_production_credentials_reject_unsafe_or_ambiguous_sources",
           "status": "passing"
         }
       ],
@@ -14186,8 +14201,8 @@
       "reference": "tests.test_secrets.SecretContractTests.test_closed_delivery_variants_round_trip",
       "successors": [
         {
-          "evidence": "extract-e-755.environment-secrets.unittest",
-          "id": "control-plane-kit-core.tests.test_environment_secrets.SecretContractTests.test_closed_delivery_variants_round_trip",
+          "evidence": "harden-tests-parity-1324.secrets.unittest",
+          "id": "control-plane-kit-core:tests.test_environment_secrets.SecretContractTests.test_closed_delivery_variants_round_trip",
           "status": "passing"
         }
       ],
@@ -14202,8 +14217,18 @@
       "reference": "tests.test_secrets.SecretContractTests.test_denied_and_missing_errors_are_closed_and_redacted",
       "successors": [
         {
-          "evidence": "extract-e-755.environment-secrets.unittest",
-          "id": "control-plane-kit-core.tests.test_environment_secrets.SecretContractTests.test_denied_and_missing_errors_are_closed_and_redacted",
+          "evidence": "harden-tests-parity-1324.secrets.unittest",
+          "id": "control-plane-kit-core:tests.test_environment_secrets.SecretContractTests.test_denied_and_missing_errors_are_closed_and_redacted",
+          "status": "passing"
+        },
+        {
+          "evidence": "harden-tests-parity-1324.secrets.unittest",
+          "id": "control-plane-kit-interpreters:tests.test_secret_provider_resolver.SecretProviderResolverTests.test_maps_bounded_missing_and_denied_provider_outcomes",
+          "status": "passing"
+        },
+        {
+          "evidence": "harden-tests-parity-1324.secrets.unittest",
+          "id": "control-plane-kit-secrets:tests.test_provider_api.ProviderApiTests.test_missing_resolve_is_audited_and_bounded",
           "status": "passing"
         }
       ],
@@ -14218,8 +14243,18 @@
       "reference": "tests.test_secrets.SecretContractTests.test_local_resolver_distinguishes_resolved_missing_and_denied",
       "successors": [
         {
-          "evidence": "extract-e-755.environment-secrets.unittest",
-          "id": "control-plane-kit-core.tests.test_environment_secrets.SecretContractTests.test_local_resolver_distinguishes_resolved_missing_and_denied",
+          "evidence": "harden-tests-parity-1324.secrets.unittest",
+          "id": "control-plane-kit-core:tests.test_environment_secrets.SecretContractTests.test_local_resolver_distinguishes_resolved_missing_and_denied",
+          "status": "passing"
+        },
+        {
+          "evidence": "harden-tests-parity-1324.secrets.unittest",
+          "id": "control-plane-kit-interpreters:tests.test_secret_provider_resolver.SecretProviderResolverTests.test_maps_bounded_missing_and_denied_provider_outcomes",
+          "status": "passing"
+        },
+        {
+          "evidence": "harden-tests-parity-1324.secrets.unittest",
+          "id": "control-plane-kit-secrets:tests.test_provider_api.ProviderApiTests.test_resolve_requires_authentication_scope_and_intent",
           "status": "passing"
         }
       ],
@@ -14234,8 +14269,8 @@
       "reference": "tests.test_secrets.SecretContractTests.test_malformed_references_fail_at_construction",
       "successors": [
         {
-          "evidence": "extract-e-755.environment-secrets.unittest",
-          "id": "control-plane-kit-core.tests.test_environment_secrets.SecretContractTests.test_malformed_references_fail_at_construction",
+          "evidence": "harden-tests-parity-1324.secrets.unittest",
+          "id": "control-plane-kit-core:tests.test_environment_secrets.SecretContractTests.test_malformed_references_fail_at_construction",
           "status": "passing"
         }
       ],
@@ -14250,8 +14285,13 @@
       "reference": "tests.test_secrets.SecretContractTests.test_reference_has_provider_and_path_identity",
       "successors": [
         {
-          "evidence": "extract-e-755.environment-secrets.unittest",
-          "id": "control-plane-kit-core.tests.test_environment_secrets.SecretContractTests.test_reference_has_provider_and_path_identity",
+          "evidence": "harden-tests-parity-1324.secrets.unittest",
+          "id": "control-plane-kit-core:tests.test_environment_secrets.SecretContractTests.test_reference_has_provider_and_path_identity",
+          "status": "passing"
+        },
+        {
+          "evidence": "harden-tests-parity-1324.secrets.unittest",
+          "id": "control-plane-kit-interpreters:tests.test_secret_provider_client.SecretProviderClientTests.test_canonical_secret_id_preserves_complete_reference_without_collision",
           "status": "passing"
         }
       ],
@@ -14266,8 +14306,8 @@
       "reference": "tests.test_secrets.SecretContractTests.test_secret_file_targets_are_closed_to_protected_namespace",
       "successors": [
         {
-          "evidence": "extract-e-755.environment-secrets.unittest",
-          "id": "control-plane-kit-core.tests.test_environment_secrets.SecretContractTests.test_secret_file_targets_are_closed_to_protected_namespace",
+          "evidence": "harden-tests-parity-1324.secrets.unittest",
+          "id": "control-plane-kit-core:tests.test_environment_secrets.SecretContractTests.test_secret_file_targets_are_closed_to_protected_namespace",
           "status": "passing"
         }
       ],
@@ -14282,8 +14322,8 @@
       "reference": "tests.test_secrets.SecretContractTests.test_unknown_or_extra_delivery_fields_fail_closed",
       "successors": [
         {
-          "evidence": "extract-e-755.environment-secrets.unittest",
-          "id": "control-plane-kit-core.tests.test_environment_secrets.SecretContractTests.test_unknown_or_extra_delivery_fields_fail_closed",
+          "evidence": "harden-tests-parity-1324.secrets.unittest",
+          "id": "control-plane-kit-core:tests.test_environment_secrets.SecretContractTests.test_unknown_or_extra_delivery_fields_fail_closed",
           "status": "passing"
         }
       ],
@@ -14298,8 +14338,18 @@
       "reference": "tests.test_secrets.SecretContractTests.test_values_are_released_only_by_explicit_runtime_interpretation",
       "successors": [
         {
-          "evidence": "extract-e-755.environment-secrets.unittest",
-          "id": "control-plane-kit-core.tests.test_environment_secrets.SecretContractTests.test_values_are_released_only_by_explicit_runtime_interpretation",
+          "evidence": "harden-tests-parity-1324.secrets.unittest",
+          "id": "control-plane-kit-core:tests.test_environment_secrets.SecretContractTests.test_values_are_released_only_by_explicit_runtime_interpretation",
+          "status": "passing"
+        },
+        {
+          "evidence": "harden-tests-parity-1324.secrets.unittest",
+          "id": "control-plane-kit-interpreters:tests.test_secret_provider_resolver.SecretProviderResolverTests.test_resolves_exact_grant_and_preserves_provider_correlation",
+          "status": "passing"
+        },
+        {
+          "evidence": "harden-tests-parity-1324.secrets.unittest",
+          "id": "control-plane-kit-secrets:tests.test_encrypted_store.EncryptedSecretStoreTests.test_plaintext_and_master_key_are_absent_from_database_repr_and_errors",
           "status": "passing"
         }
       ],
