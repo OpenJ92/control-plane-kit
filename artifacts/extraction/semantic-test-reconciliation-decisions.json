@@ -1355,6 +1355,1339 @@
           "control-plane-kit-interpreters:tests.test_docker_runtime_interpreter.DockerRuntimeInterpreterTests.test_wait_for_healthy_fails_when_postgres_verification_fails"
         ]
       }
+    },
+{
+  "current_distributions": [
+    "control-plane-kit-servers"
+  ],
+  "default_disposition": "current-strengthened",
+  "evidence_id": "harden-tests-parity-1323.servers.unittest",
+  "future_issue_reviews": {
+    "tests.test_block_control_fastapi.BlockControlFastAPITests.test_configured_token_protects_control_routes": {
+      "evidence": "Issue #1146 comment 5161678608 owns the exact authenticated node-control, router, balancer, and negative-case laws from #1323.",
+      "number": 1146,
+      "repository": "OpenJ92/control-plane-kit"
+    },
+    "tests.test_block_control_fastapi.BlockControlFastAPITests.test_control_routes_can_be_called_without_token_when_unconfigured": {
+      "evidence": "Issue #1146 comment 5161678608 owns the exact authenticated node-control, router, balancer, and negative-case laws from #1323.",
+      "number": 1146,
+      "repository": "OpenJ92/control-plane-kit"
+    },
+    "tests.test_block_control_fastapi.BlockControlFastAPITests.test_execution_auth_does_not_protect_ordinary_data_routes": {
+      "evidence": "Issue #1146 comment 5161678608 owns the exact authenticated node-control, router, balancer, and negative-case laws from #1323.",
+      "number": 1146,
+      "repository": "OpenJ92/control-plane-kit"
+    },
+    "tests.test_block_control_fastapi.BlockControlFastAPITests.test_execution_mode_requires_auth_configuration": {
+      "evidence": "Issue #1146 comment 5161678608 owns the exact authenticated node-control, router, balancer, and negative-case laws from #1323.",
+      "number": 1146,
+      "repository": "OpenJ92/control-plane-kit"
+    },
+    "tests.test_block_control_fastapi.BlockControlFastAPITests.test_execution_mutation_body_is_bounded_before_application": {
+      "evidence": "Issue #1146 comment 5161678608 owns the exact authenticated node-control, router, balancer, and negative-case laws from #1323.",
+      "number": 1146,
+      "repository": "OpenJ92/control-plane-kit"
+    },
+    "tests.test_block_control_fastapi.BlockControlFastAPITests.test_execution_mutations_require_identity_replay_and_conflict": {
+      "evidence": "Issue #1146 comment 5161678608 owns the exact authenticated node-control, router, balancer, and negative-case laws from #1323.",
+      "number": 1146,
+      "repository": "OpenJ92/control-plane-kit"
+    },
+    "tests.test_block_control_fastapi.BlockControlFastAPITests.test_observers_route_mutates_state": {
+      "evidence": "Issue #1146 comment 5161678608 owns the exact authenticated node-control, router, balancer, and negative-case laws from #1323.",
+      "number": 1146,
+      "repository": "OpenJ92/control-plane-kit"
+    },
+    "tests.test_block_control_fastapi.BlockControlFastAPITests.test_unknown_active_target_returns_bad_request": {
+      "evidence": "Issue #1146 comment 5161678608 owns the exact authenticated node-control, router, balancer, and negative-case laws from #1323.",
+      "number": 1146,
+      "repository": "OpenJ92/control-plane-kit"
+    },
+    "tests.test_block_control_state.BlockControlStateTests.test_capability_payload_uses_descriptors": {
+      "evidence": "Issue #1146 comment 5161678608 owns the exact authenticated node-control, router, balancer, and negative-case laws from #1323.",
+      "number": 1146,
+      "repository": "OpenJ92/control-plane-kit"
+    },
+    "tests.test_block_control_state.BlockControlStateTests.test_control_state_is_backed_by_runtime_contract": {
+      "evidence": "Issue #1146 comment 5161678608 owns the exact authenticated node-control, router, balancer, and negative-case laws from #1323.",
+      "number": 1146,
+      "repository": "OpenJ92/control-plane-kit"
+    },
+    "tests.test_block_control_state.BlockControlStateTests.test_observer_mutation_updates_observer_state": {
+      "evidence": "Issue #1146 comment 5161678608 owns the exact authenticated node-control, router, balancer, and negative-case laws from #1323.",
+      "number": 1146,
+      "repository": "OpenJ92/control-plane-kit"
+    },
+    "tests.test_block_control_state.BlockControlStateTests.test_replacing_targets_clears_stale_active_target": {
+      "evidence": "Issue #1146 comment 5161678608 owns the exact authenticated node-control, router, balancer, and negative-case laws from #1323.",
+      "number": 1146,
+      "repository": "OpenJ92/control-plane-kit"
+    },
+    "tests.test_block_control_state.BlockControlStateTests.test_status_and_log_providers_are_used_when_present": {
+      "evidence": "Issue #1146 comment 5161678608 owns the exact authenticated node-control, router, balancer, and negative-case laws from #1323.",
+      "number": 1146,
+      "repository": "OpenJ92/control-plane-kit"
+    },
+    "tests.test_block_control_state.BlockControlStateTests.test_target_switch_rejects_unknown_targets": {
+      "evidence": "Issue #1146 comment 5161678608 owns the exact authenticated node-control, router, balancer, and negative-case laws from #1323.",
+      "number": 1146,
+      "repository": "OpenJ92/control-plane-kit"
+    },
+    "tests.test_coredns.CoreDnsTests.test_a_and_aaaa_projection_deliberately_discards_endpoint_port": {
+      "evidence": "Issue #670 comment 5161678137 owns the exact CoreDNS laws and negative cases from #1323.",
+      "number": 670,
+      "repository": "OpenJ92/control-plane-kit"
+    },
+    "tests.test_coredns.CoreDnsTests.test_artifact_change_is_an_explicit_graph_change_and_round_trips": {
+      "evidence": "Issue #670 comment 5161678137 owns the exact CoreDNS laws and negative cases from #1323.",
+      "number": 670,
+      "repository": "OpenJ92/control-plane-kit"
+    },
+    "tests.test_coredns.CoreDnsTests.test_block_uses_official_pinned_image_and_exact_socket_products": {
+      "evidence": "Issue #670 comment 5161678137 owns the exact CoreDNS laws and negative cases from #1323.",
+      "number": 670,
+      "repository": "OpenJ92/control-plane-kit"
+    },
+    "tests.test_coredns.CoreDnsTests.test_catalogue_exposes_probe_and_runtime_restart_evidence": {
+      "evidence": "Issue #670 comment 5161678137 owns the exact CoreDNS laws and negative cases from #1323.",
+      "number": 670,
+      "repository": "OpenJ92/control-plane-kit"
+    },
+    "tests.test_coredns.CoreDnsTests.test_configuration_canonicalizes_record_permutations": {
+      "evidence": "Issue #670 comment 5161678137 owns the exact CoreDNS laws and negative cases from #1323.",
+      "number": 670,
+      "repository": "OpenJ92/control-plane-kit"
+    },
+    "tests.test_coredns.CoreDnsTests.test_configuration_rejects_out_of_zone_and_duplicate_records": {
+      "evidence": "Issue #670 comment 5161678137 owns the exact CoreDNS laws and negative cases from #1323.",
+      "number": 670,
+      "repository": "OpenJ92/control-plane-kit"
+    },
+    "tests.test_coredns.CoreDnsTests.test_names_and_records_are_closed_typed_values": {
+      "evidence": "Issue #670 comment 5161678137 owns the exact CoreDNS laws and negative cases from #1323.",
+      "number": 670,
+      "repository": "OpenJ92/control-plane-kit"
+    },
+    "tests.test_coredns.CoreDnsTests.test_projection_rejects_stale_inactive_and_unprojectable_records": {
+      "evidence": "Issue #670 comment 5161678137 owns the exact CoreDNS laws and negative cases from #1323.",
+      "number": 670,
+      "repository": "OpenJ92/control-plane-kit"
+    },
+    "tests.test_coredns.CoreDnsTests.test_public_example_exposes_the_complete_pure_projection": {
+      "evidence": "Issue #670 comment 5161678137 owns the exact CoreDNS laws and negative cases from #1323.",
+      "number": 670,
+      "repository": "OpenJ92/control-plane-kit"
+    },
+    "tests.test_coredns.CoreDnsTests.test_registry_projection_is_deterministic_and_preserves_truth_boundary": {
+      "evidence": "Issue #670 comment 5161678137 owns the exact CoreDNS laws and negative cases from #1323.",
+      "number": 670,
+      "repository": "OpenJ92/control-plane-kit"
+    },
+    "tests.test_coredns.CoreDnsTests.test_strict_rendering_is_deterministic_read_only_and_secret_free": {
+      "evidence": "Issue #670 comment 5161678137 owns the exact CoreDNS laws and negative cases from #1323.",
+      "number": 670,
+      "repository": "OpenJ92/control-plane-kit"
+    },
+    "tests.test_discovery_language.DiscoveryLanguageTests.test_authority_keeps_workspace_and_self_identity_explicit": {
+      "evidence": "Issue #1153 comment 5161678698 owns the exact durable discovery laws and negative cases from #1323.",
+      "number": 1153,
+      "repository": "OpenJ92/control-plane-kit"
+    },
+    "tests.test_discovery_language.DiscoveryLanguageTests.test_block_is_graph_data_with_explicit_database_requirement": {
+      "evidence": "Issue #1153 comment 5161678698 owns the exact durable discovery laws and negative cases from #1323.",
+      "number": 1153,
+      "repository": "OpenJ92/control-plane-kit"
+    },
+    "tests.test_discovery_language.DiscoveryLanguageTests.test_closed_command_language_round_trips_exhaustively": {
+      "evidence": "Issue #1153 comment 5161678698 owns the exact durable discovery laws and negative cases from #1323.",
+      "number": 1153,
+      "repository": "OpenJ92/control-plane-kit"
+    },
+    "tests.test_discovery_language.DiscoveryLanguageTests.test_endpoint_scheme_must_match_closed_protocol": {
+      "evidence": "Issue #1153 comment 5161678698 owns the exact durable discovery laws and negative cases from #1323.",
+      "number": 1153,
+      "repository": "OpenJ92/control-plane-kit"
+    },
+    "tests.test_discovery_language.DiscoveryLanguageTests.test_lease_and_identifiers_are_bounded_typed_values": {
+      "evidence": "Issue #1153 comment 5161678698 owns the exact durable discovery laws and negative cases from #1323.",
+      "number": 1153,
+      "repository": "OpenJ92/control-plane-kit"
+    },
+    "tests.test_discovery_language.DiscoveryLanguageTests.test_registry_endpoint_is_typed_literal_and_not_process_local": {
+      "evidence": "Issue #1153 comment 5161678698 owns the exact durable discovery laws and negative cases from #1323.",
+      "number": 1153,
+      "repository": "OpenJ92/control-plane-kit"
+    },
+    "tests.test_discovery_language.DiscoveryLanguageTests.test_self_authority_requires_service_and_instance_as_one_product": {
+      "evidence": "Issue #1153 comment 5161678698 owns the exact durable discovery laws and negative cases from #1323.",
+      "number": 1153,
+      "repository": "OpenJ92/control-plane-kit"
+    },
+    "tests.test_discovery_language.DiscoveryLanguageTests.test_unknown_variants_and_fields_fail_closed": {
+      "evidence": "Issue #1153 comment 5161678698 owns the exact durable discovery laws and negative cases from #1323.",
+      "number": 1153,
+      "repository": "OpenJ92/control-plane-kit"
+    },
+    "tests.test_discovery_registry.DiscoveryRegistryTests.test_changed_command_intent_conflicts_without_mutation": {
+      "evidence": "Issue #1153 comment 5161678698 owns the exact durable discovery laws and negative cases from #1323.",
+      "number": 1153,
+      "repository": "OpenJ92/control-plane-kit"
+    },
+    "tests.test_discovery_registry.DiscoveryRegistryTests.test_concurrent_heartbeats_have_one_winner": {
+      "evidence": "Issue #1153 comment 5161678698 owns the exact durable discovery laws and negative cases from #1323.",
+      "number": 1153,
+      "repository": "OpenJ92/control-plane-kit"
+    },
+    "tests.test_discovery_registry.DiscoveryRegistryTests.test_concurrent_registrations_have_one_winner": {
+      "evidence": "Issue #1153 comment 5161678698 owns the exact durable discovery laws and negative cases from #1323.",
+      "number": 1153,
+      "repository": "OpenJ92/control-plane-kit"
+    },
+    "tests.test_discovery_registry.DiscoveryRegistryTests.test_deregister_and_heartbeat_race_has_one_state_winner": {
+      "evidence": "Issue #1153 comment 5161678698 owns the exact durable discovery laws and negative cases from #1323.",
+      "number": 1153,
+      "repository": "OpenJ92/control-plane-kit"
+    },
+    "tests.test_discovery_registry.DiscoveryRegistryTests.test_deregister_and_self_registration_enforce_authority": {
+      "evidence": "Issue #1153 comment 5161678698 owns the exact durable discovery laws and negative cases from #1323.",
+      "number": 1153,
+      "repository": "OpenJ92/control-plane-kit"
+    },
+    "tests.test_discovery_registry.DiscoveryRegistryTests.test_expired_identity_can_register_again_but_cannot_heartbeat": {
+      "evidence": "Issue #1153 comment 5161678698 owns the exact durable discovery laws and negative cases from #1323.",
+      "number": 1153,
+      "repository": "OpenJ92/control-plane-kit"
+    },
+    "tests.test_discovery_registry.DiscoveryRegistryTests.test_expiry_and_heartbeat_race_cannot_both_mutate_the_lease": {
+      "evidence": "Issue #1153 comment 5161678698 owns the exact durable discovery laws and negative cases from #1323.",
+      "number": 1153,
+      "repository": "OpenJ92/control-plane-kit"
+    },
+    "tests.test_discovery_registry.DiscoveryRegistryTests.test_expiry_boundary_removes_resolution_without_deleting_truth": {
+      "evidence": "Issue #1153 comment 5161678698 owns the exact durable discovery laws and negative cases from #1323.",
+      "number": 1153,
+      "repository": "OpenJ92/control-plane-kit"
+    },
+    "tests.test_discovery_registry.DiscoveryRegistryTests.test_heartbeat_requires_current_expiry_and_extends_revision": {
+      "evidence": "Issue #1153 comment 5161678698 owns the exact durable discovery laws and negative cases from #1323.",
+      "number": 1153,
+      "repository": "OpenJ92/control-plane-kit"
+    },
+    "tests.test_discovery_registry.DiscoveryRegistryTests.test_late_heartbeat_after_deregistration_fails_closed": {
+      "evidence": "Issue #1153 comment 5161678698 owns the exact durable discovery laws and negative cases from #1323.",
+      "number": 1153,
+      "repository": "OpenJ92/control-plane-kit"
+    },
+    "tests.test_discovery_registry.DiscoveryRegistryTests.test_late_ledger_failure_rolls_back_projection_mutation": {
+      "evidence": "Issue #1153 comment 5161678698 owns the exact durable discovery laws and negative cases from #1323.",
+      "number": 1153,
+      "repository": "OpenJ92/control-plane-kit"
+    },
+    "tests.test_discovery_registry.DiscoveryRegistryTests.test_register_resolve_and_exact_replay_share_one_command_ledger": {
+      "evidence": "Issue #1153 comment 5161678698 owns the exact durable discovery laws and negative cases from #1323.",
+      "number": 1153,
+      "repository": "OpenJ92/control-plane-kit"
+    },
+    "tests.test_discovery_registry.DiscoveryRegistryTests.test_resolution_limit_is_deterministic_and_workspace_scoped": {
+      "evidence": "Issue #1153 comment 5161678698 owns the exact durable discovery laws and negative cases from #1323.",
+      "number": 1153,
+      "repository": "OpenJ92/control-plane-kit"
+    },
+    "tests.test_discovery_registry.DiscoveryRegistryTests.test_schema_reinstall_preserves_rows_and_named_constraints": {
+      "evidence": "Issue #1153 comment 5161678698 owns the exact durable discovery laws and negative cases from #1323.",
+      "number": 1153,
+      "repository": "OpenJ92/control-plane-kit"
+    },
+    "tests.test_discovery_registry.DiscoveryRegistryTests.test_workspace_authority_fails_before_writes": {
+      "evidence": "Issue #1153 comment 5161678698 owns the exact durable discovery laws and negative cases from #1323.",
+      "number": 1153,
+      "repository": "OpenJ92/control-plane-kit"
+    },
+    "tests.test_generated_hello_graphs.GeneratedHelloGraphTests.test_every_application_dependency_has_paired_edges": {
+      "evidence": "Issue #941 comment 5161678428 owns the exact generated Hello graph stress laws and negative cases from #1323.",
+      "number": 941,
+      "repository": "OpenJ92/control-plane-kit"
+    },
+    "tests.test_generated_hello_graphs.GeneratedHelloGraphTests.test_generated_graph_round_trips_and_compiles_from_empty": {
+      "evidence": "Issue #941 comment 5161678428 owns the exact generated Hello graph stress laws and negative cases from #1323.",
+      "number": 941,
+      "repository": "OpenJ92/control-plane-kit"
+    },
+    "tests.test_generated_hello_graphs.GeneratedHelloGraphTests.test_invalidities_produce_exact_structured_findings": {
+      "evidence": "Issue #941 comment 5161678428 owns the exact generated Hello graph stress laws and negative cases from #1323.",
+      "number": 941,
+      "repository": "OpenJ92/control-plane-kit"
+    },
+    "tests.test_generated_hello_graphs.GeneratedHelloGraphTests.test_shape_has_closed_resource_bounds": {
+      "evidence": "Issue #941 comment 5161678428 owns the exact generated Hello graph stress laws and negative cases from #1323.",
+      "number": 941,
+      "repository": "OpenJ92/control-plane-kit"
+    },
+    "tests.test_generated_hello_graphs.GeneratedHelloGraphTests.test_valid_generation_is_deterministic_and_counted_by_shape": {
+      "evidence": "Issue #941 comment 5161678428 owns the exact generated Hello graph stress laws and negative cases from #1323.",
+      "number": 941,
+      "repository": "OpenJ92/control-plane-kit"
+    },
+    "tests.test_generated_hello_program.GeneratedHelloProgramTests.test_generated_graphs_plan_and_reconstruct_through_deployment_program": {
+      "evidence": "Issue #1096 comment 5161678522 owns the exact generated Hello DeploymentProgram laws and negative cases from #1323.",
+      "number": 1096,
+      "repository": "OpenJ92/control-plane-kit"
+    },
+    "tests.test_generated_hello_program.GeneratedHelloProgramTests.test_invalid_generated_graph_records_no_plan_approval_or_effect": {
+      "evidence": "Issue #1096 comment 5161678522 owns the exact generated Hello DeploymentProgram laws and negative cases from #1323.",
+      "number": 1096,
+      "repository": "OpenJ92/control-plane-kit"
+    },
+    "tests.test_hello_server_block.HelloServerBlockTests.test_dependencies_expand_to_paired_http_and_postgres_requirements": {
+      "evidence": "Issue #1342 body and comment 5161678793 own the exact per-instance dynamic requirement laws and negative cases from #1323.",
+      "number": 1342,
+      "repository": "OpenJ92/control-plane-kit"
+    },
+    "tests.test_hello_server_block.HelloServerBlockTests.test_paired_dependencies_compile_to_socket_derived_environment": {
+      "evidence": "Issue #1342 body and comment 5161678793 own the exact per-instance dynamic requirement laws and negative cases from #1323.",
+      "number": 1342,
+      "repository": "OpenJ92/control-plane-kit"
+    },
+    "tests.test_http_active_router_server_block.HttpActiveRouterServerBlockTests.test_active_router_rejects_unknown_active_target": {
+      "evidence": "Issue #1146 comment 5161678608 owns the exact authenticated node-control, router, balancer, and negative-case laws from #1323.",
+      "number": 1146,
+      "repository": "OpenJ92/control-plane-kit"
+    },
+    "tests.test_http_auth_gateway_server_block.HttpAuthGatewayTests.test_authentication_and_authorization_are_separate_closed_decisions": {
+      "evidence": "Issue #672 comment 5161678336 owns the exact webhook, idempotency, auth-test, telemetry, TCP, and negative-case laws from #1323.",
+      "number": 672,
+      "repository": "OpenJ92/control-plane-kit"
+    },
+    "tests.test_http_auth_gateway_server_block.HttpAuthGatewayTests.test_block_is_test_only_and_secret_values_are_runtime_material": {
+      "evidence": "Issue #672 comment 5161678336 owns the exact webhook, idempotency, auth-test, telemetry, TCP, and negative-case laws from #1323.",
+      "number": 672,
+      "repository": "OpenJ92/control-plane-kit"
+    },
+    "tests.test_http_auth_gateway_server_block.HttpAuthGatewayTests.test_live_test_adapter_strips_forgery_enforces_policy_and_redacts": {
+      "evidence": "Issue #672 comment 5161678336 owns the exact webhook, idempotency, auth-test, telemetry, TCP, and negative-case laws from #1323.",
+      "number": 672,
+      "repository": "OpenJ92/control-plane-kit"
+    },
+    "tests.test_http_auth_gateway_server_block.HttpAuthGatewayTests.test_policy_language_is_closed_and_mechanism_specific": {
+      "evidence": "Issue #672 comment 5161678336 owns the exact webhook, idempotency, auth-test, telemetry, TCP, and negative-case laws from #1323.",
+      "number": 672,
+      "repository": "OpenJ92/control-plane-kit"
+    },
+    "tests.test_http_auth_gateway_server_block.HttpAuthGatewayTests.test_route_prefixes_match_segments_not_lexical_prefixes": {
+      "evidence": "Issue #672 comment 5161678336 owns the exact webhook, idempotency, auth-test, telemetry, TCP, and negative-case laws from #1323.",
+      "number": 672,
+      "repository": "OpenJ92/control-plane-kit"
+    },
+    "tests.test_http_auth_gateway_server_block.HttpAuthGatewayTests.test_untrusted_identity_headers_are_replaced_after_authentication": {
+      "evidence": "Issue #672 comment 5161678336 owns the exact webhook, idempotency, auth-test, telemetry, TCP, and negative-case laws from #1323.",
+      "number": 672,
+      "repository": "OpenJ92/control-plane-kit"
+    },
+    "tests.test_http_auth_gateway_server_block.HttpAuthGatewayTests.test_validator_unavailability_fails_closed_without_becoming_forbidden": {
+      "evidence": "Issue #672 comment 5161678336 owns the exact webhook, idempotency, auth-test, telemetry, TCP, and negative-case laws from #1323.",
+      "number": 672,
+      "repository": "OpenJ92/control-plane-kit"
+    },
+    "tests.test_http_block_compositions.HttpBlockCompositionTests.test_all_http_block_composition_examples_compile": {
+      "evidence": "Issue #671 comment 5161678243 owns the exact HTTP teaching, resilience, observation, and negative-case laws from #1323.",
+      "number": 671,
+      "repository": "OpenJ92/control-plane-kit"
+    },
+    "tests.test_http_block_compositions.HttpBlockCompositionTests.test_proxy_composition_binds_target_environment": {
+      "evidence": "Issue #671 comment 5161678243 owns the exact HTTP teaching, resilience, observation, and negative-case laws from #1323.",
+      "number": 671,
+      "repository": "OpenJ92/control-plane-kit"
+    },
+    "tests.test_http_block_compositions.HttpBlockCompositionTests.test_rate_limiter_composition_binds_target": {
+      "evidence": "Issue #671 comment 5161678243 owns the exact HTTP teaching, resilience, observation, and negative-case laws from #1323.",
+      "number": 671,
+      "repository": "OpenJ92/control-plane-kit"
+    },
+    "tests.test_http_block_compositions.HttpBlockCompositionTests.test_weighted_balancer_composition_binds_two_targets": {
+      "evidence": "Issue #671 comment 5161678243 owns the exact HTTP teaching, resilience, observation, and negative-case laws from #1323.",
+      "number": 671,
+      "repository": "OpenJ92/control-plane-kit"
+    },
+    "tests.test_http_bulkhead_server_block.HttpBulkheadTests.test_live_generated_server_enforces_concurrency_queue_and_auth": {
+      "evidence": "Issue #671 comment 5161678243 owns the exact HTTP teaching, resilience, observation, and negative-case laws from #1323.",
+      "number": 671,
+      "repository": "OpenJ92/control-plane-kit"
+    },
+    "tests.test_http_bulkhead_server_block.HttpBulkheadTests.test_policy_and_block_identity_are_closed_and_bounded": {
+      "evidence": "Issue #671 comment 5161678243 owns the exact HTTP teaching, resilience, observation, and negative-case laws from #1323.",
+      "number": 671,
+      "repository": "OpenJ92/control-plane-kit"
+    },
+    "tests.test_http_bulkhead_server_block.HttpBulkheadTests.test_queue_timeout_and_target_failure_recover_without_negative_permits": {
+      "evidence": "Issue #671 comment 5161678243 owns the exact HTTP teaching, resilience, observation, and negative-case laws from #1323.",
+      "number": 671,
+      "repository": "OpenJ92/control-plane-kit"
+    },
+    "tests.test_http_bulkhead_server_block.HttpBulkheadTests.test_ticketed_queue_rejects_overflow_and_releases_all_permits": {
+      "evidence": "Issue #671 comment 5161678243 owns the exact HTTP teaching, resilience, observation, and negative-case laws from #1323.",
+      "number": 671,
+      "repository": "OpenJ92/control-plane-kit"
+    },
+    "tests.test_http_cache_server_block.HttpCacheTests.test_capacity_eviction_and_purge_are_exact": {
+      "evidence": "Issue #671 comment 5161678243 owns the exact HTTP teaching, resilience, observation, and negative-case laws from #1323.",
+      "number": 671,
+      "repository": "OpenJ92/control-plane-kit"
+    },
+    "tests.test_http_cache_server_block.HttpCacheTests.test_explicit_safe_vary_headers_partition_hashed_keys": {
+      "evidence": "Issue #671 comment 5161678243 owns the exact HTTP teaching, resilience, observation, and negative-case laws from #1323.",
+      "number": 671,
+      "repository": "OpenJ92/control-plane-kit"
+    },
+    "tests.test_http_cache_server_block.HttpCacheTests.test_hit_miss_expiry_and_stale_refresh_are_deterministic": {
+      "evidence": "Issue #671 comment 5161678243 owns the exact HTTP teaching, resilience, observation, and negative-case laws from #1323.",
+      "number": 671,
+      "repository": "OpenJ92/control-plane-kit"
+    },
+    "tests.test_http_cache_server_block.HttpCacheTests.test_live_generated_server_caches_bounds_purges_and_redacts": {
+      "evidence": "Issue #671 comment 5161678243 owns the exact HTTP teaching, resilience, observation, and negative-case laws from #1323.",
+      "number": 671,
+      "repository": "OpenJ92/control-plane-kit"
+    },
+    "tests.test_http_cache_server_block.HttpCacheTests.test_policy_and_block_identity_are_closed_and_bounded": {
+      "evidence": "Issue #671 comment 5161678243 owns the exact HTTP teaching, resilience, observation, and negative-case laws from #1323.",
+      "number": 671,
+      "repository": "OpenJ92/control-plane-kit"
+    },
+    "tests.test_http_cache_server_block.HttpCacheTests.test_sensitive_private_and_unknown_vary_responses_fail_closed": {
+      "evidence": "Issue #671 comment 5161678243 owns the exact HTTP teaching, resilience, observation, and negative-case laws from #1323.",
+      "number": 671,
+      "repository": "OpenJ92/control-plane-kit"
+    },
+    "tests.test_http_circuit_breaker_server_block.HttpCircuitBreakerTests.test_block_preserves_product_policy_and_opaque_control_secret": {
+      "evidence": "Issue #671 comment 5161678243 owns the exact HTTP teaching, resilience, observation, and negative-case laws from #1323.",
+      "number": 671,
+      "repository": "OpenJ92/control-plane-kit"
+    },
+    "tests.test_http_circuit_breaker_server_block.HttpCircuitBreakerTests.test_closed_open_half_open_closed_is_pure_and_bounded": {
+      "evidence": "Issue #671 comment 5161678243 owns the exact HTTP teaching, resilience, observation, and negative-case laws from #1323.",
+      "number": 671,
+      "repository": "OpenJ92/control-plane-kit"
+    },
+    "tests.test_http_circuit_breaker_server_block.HttpCircuitBreakerTests.test_half_open_failure_reopens_and_safe_method_policy_is_explicit": {
+      "evidence": "Issue #671 comment 5161678243 owns the exact HTTP teaching, resilience, observation, and negative-case laws from #1323.",
+      "number": 671,
+      "repository": "OpenJ92/control-plane-kit"
+    },
+    "tests.test_http_circuit_breaker_server_block.HttpCircuitBreakerTests.test_live_generated_server_enforces_state_auth_and_reset": {
+      "evidence": "Issue #671 comment 5161678243 owns the exact HTTP teaching, resilience, observation, and negative-case laws from #1323.",
+      "number": 671,
+      "repository": "OpenJ92/control-plane-kit"
+    },
+    "tests.test_http_circuit_breaker_server_block.HttpCircuitBreakerTests.test_policy_bounds_request_response_and_typed_methods": {
+      "evidence": "Issue #671 comment 5161678243 owns the exact HTTP teaching, resilience, observation, and negative-case laws from #1323.",
+      "number": 671,
+      "repository": "OpenJ92/control-plane-kit"
+    },
+    "tests.test_http_fault_injector_server_block.HttpFaultInjectionTests.test_block_maturity_survives_graph_codec_and_production_policy_rejects_it": {
+      "evidence": "Issue #671 comment 5161678243 owns the exact HTTP teaching, resilience, observation, and negative-case laws from #1323.",
+      "number": 671,
+      "repository": "OpenJ92/control-plane-kit"
+    },
+    "tests.test_http_fault_injector_server_block.HttpFaultInjectionTests.test_closed_fault_variants_have_exact_behavior": {
+      "evidence": "Issue #671 comment 5161678243 owns the exact HTTP teaching, resilience, observation, and negative-case laws from #1323.",
+      "number": 671,
+      "repository": "OpenJ92/control-plane-kit"
+    },
+    "tests.test_http_fault_injector_server_block.HttpFaultInjectionTests.test_disabled_default_and_injected_and_natural_evidence_are_independent": {
+      "evidence": "Issue #671 comment 5161678243 owns the exact HTTP teaching, resilience, observation, and negative-case laws from #1323.",
+      "number": 671,
+      "repository": "OpenJ92/control-plane-kit"
+    },
+    "tests.test_http_fault_injector_server_block.HttpFaultInjectionTests.test_fault_descriptor_language_is_exact_closed_and_bounded": {
+      "evidence": "Issue #671 comment 5161678243 owns the exact HTTP teaching, resilience, observation, and negative-case laws from #1323.",
+      "number": 671,
+      "repository": "OpenJ92/control-plane-kit"
+    },
+    "tests.test_http_fault_injector_server_block.HttpFaultInjectionTests.test_graph_composition_drives_retry_and_circuit_interactions": {
+      "evidence": "Issue #671 comment 5161678243 owns the exact HTTP teaching, resilience, observation, and negative-case laws from #1323.",
+      "number": 671,
+      "repository": "OpenJ92/control-plane-kit"
+    },
+    "tests.test_http_fault_injector_server_block.HttpFaultInjectionTests.test_live_generated_server_mutates_only_with_auth_and_cleans_up": {
+      "evidence": "Issue #671 comment 5161678243 owns the exact HTTP teaching, resilience, observation, and negative-case laws from #1323.",
+      "number": 671,
+      "repository": "OpenJ92/control-plane-kit"
+    },
+    "tests.test_http_fault_injector_server_block.HttpFaultInjectionTests.test_seeded_probability_replays_exact_selection_sequence": {
+      "evidence": "Issue #671 comment 5161678243 owns the exact HTTP teaching, resilience, observation, and negative-case laws from #1323.",
+      "number": 671,
+      "repository": "OpenJ92/control-plane-kit"
+    },
+    "tests.test_http_load_generator.HttpLoadGeneratorTests.test_block_is_test_only_application_with_graph_wired_target": {
+      "evidence": "Issue #671 comment 5161678243 owns the exact HTTP teaching, resilience, observation, and negative-case laws from #1323.",
+      "number": 671,
+      "repository": "OpenJ92/control-plane-kit"
+    },
+    "tests.test_http_load_generator.HttpLoadGeneratorTests.test_cancellation_stops_future_dispatch_and_shutdown_settles_workers": {
+      "evidence": "Issue #671 comment 5161678243 owns the exact HTTP teaching, resilience, observation, and negative-case laws from #1323.",
+      "number": 671,
+      "repository": "OpenJ92/control-plane-kit"
+    },
+    "tests.test_http_load_generator.HttpLoadGeneratorTests.test_exact_trigger_replays_and_changed_intent_conflicts": {
+      "evidence": "Issue #671 comment 5161678243 owns the exact HTTP teaching, resilience, observation, and negative-case laws from #1323.",
+      "number": 671,
+      "repository": "OpenJ92/control-plane-kit"
+    },
+    "tests.test_http_load_generator.HttpLoadGeneratorTests.test_fastapi_control_routes_fail_closed_and_replay_exact_command": {
+      "evidence": "Issue #671 comment 5161678243 owns the exact HTTP teaching, resilience, observation, and negative-case laws from #1323.",
+      "number": 671,
+      "repository": "OpenJ92/control-plane-kit"
+    },
+    "tests.test_http_load_generator.HttpLoadGeneratorTests.test_injected_clock_executes_the_pure_deterministic_schedule": {
+      "evidence": "Issue #671 comment 5161678243 owns the exact HTTP teaching, resilience, observation, and negative-case laws from #1323.",
+      "number": 671,
+      "repository": "OpenJ92/control-plane-kit"
+    },
+    "tests.test_http_load_generator.HttpLoadGeneratorTests.test_live_process_drives_rate_limiter_and_weighted_balancer": {
+      "evidence": "Issue #671 comment 5161678243 owns the exact HTTP teaching, resilience, observation, and negative-case laws from #1323.",
+      "number": 671,
+      "repository": "OpenJ92/control-plane-kit"
+    },
+    "tests.test_http_load_generator.HttpLoadGeneratorTests.test_outcomes_are_aggregate_only_and_concurrency_is_bounded": {
+      "evidence": "Issue #671 comment 5161678243 owns the exact HTTP teaching, resilience, observation, and negative-case laws from #1323.",
+      "number": 671,
+      "repository": "OpenJ92/control-plane-kit"
+    },
+    "tests.test_http_load_generator.HttpLoadGeneratorTests.test_policy_command_codec_and_schedule_are_closed_and_deterministic": {
+      "evidence": "Issue #671 comment 5161678243 owns the exact HTTP teaching, resilience, observation, and negative-case laws from #1323.",
+      "number": 671,
+      "repository": "OpenJ92/control-plane-kit"
+    },
+    "tests.test_http_load_generator.HttpLoadGeneratorTests.test_startup_policy_rejects_excessive_or_overlapping_runs_before_dispatch": {
+      "evidence": "Issue #671 comment 5161678243 owns the exact HTTP teaching, resilience, observation, and negative-case laws from #1323.",
+      "number": 671,
+      "repository": "OpenJ92/control-plane-kit"
+    },
+    "tests.test_http_policy_family_acceptance.HttpPolicyFamilyAcceptanceTests.test_live_representative_chain_composes_real_http_servers": {
+      "evidence": "Issue #671 comment 5161678243 owns the exact HTTP teaching, resilience, observation, and negative-case laws from #1323.",
+      "number": 671,
+      "repository": "OpenJ92/control-plane-kit"
+    },
+    "tests.test_http_policy_family_acceptance.HttpPolicyFamilyAcceptanceTests.test_plan_derives_provider_health_before_consumer_start": {
+      "evidence": "Issue #671 comment 5161678243 owns the exact HTTP teaching, resilience, observation, and negative-case laws from #1323.",
+      "number": 671,
+      "repository": "OpenJ92/control-plane-kit"
+    },
+    "tests.test_http_policy_family_acceptance.HttpPolicyFamilyAcceptanceTests.test_production_policy_rejects_test_and_teaching_products": {
+      "evidence": "Issue #671 comment 5161678243 owns the exact HTTP teaching, resilience, observation, and negative-case laws from #1323.",
+      "number": 671,
+      "repository": "OpenJ92/control-plane-kit"
+    },
+    "tests.test_http_policy_family_acceptance.HttpPolicyFamilyAcceptanceTests.test_recipe_contains_the_complete_typed_http_product_family": {
+      "evidence": "Issue #671 comment 5161678243 owns the exact HTTP teaching, resilience, observation, and negative-case laws from #1323.",
+      "number": 671,
+      "repository": "OpenJ92/control-plane-kit"
+    },
+    "tests.test_http_proxy_server_block.HttpProxyServerBlockTests.test_proxy_block_advertises_provider_and_target_requirement": {
+      "evidence": "Issue #671 comment 5161678243 owns the exact HTTP teaching, resilience, observation, and negative-case laws from #1323.",
+      "number": 671,
+      "repository": "OpenJ92/control-plane-kit"
+    },
+    "tests.test_http_proxy_server_block.HttpProxyServerBlockTests.test_proxy_block_compiles_socket_connection_to_environment": {
+      "evidence": "Issue #671 comment 5161678243 owns the exact HTTP teaching, resilience, observation, and negative-case laws from #1323.",
+      "number": 671,
+      "repository": "OpenJ92/control-plane-kit"
+    },
+    "tests.test_http_proxy_server_block.HttpProxyServerBlockTests.test_proxy_forwards_request_to_active_target": {
+      "evidence": "Issue #671 comment 5161678243 owns the exact HTTP teaching, resilience, observation, and negative-case laws from #1323.",
+      "number": 671,
+      "repository": "OpenJ92/control-plane-kit"
+    },
+    "tests.test_http_proxy_server_block.HttpProxyServerBlockTests.test_proxy_runtime_target_change_affects_later_requests": {
+      "evidence": "Issue #671 comment 5161678243 owns the exact HTTP teaching, resilience, observation, and negative-case laws from #1323.",
+      "number": 671,
+      "repository": "OpenJ92/control-plane-kit"
+    },
+    "tests.test_http_rate_limiter_server_block.HttpRateLimiterServerBlockTests.test_rate_limiter_allows_until_quota_is_exhausted_then_returns_429": {
+      "evidence": "Issue #671 comment 5161678243 owns the exact HTTP teaching, resilience, observation, and negative-case laws from #1323.",
+      "number": 671,
+      "repository": "OpenJ92/control-plane-kit"
+    },
+    "tests.test_http_rate_limiter_server_block.HttpRateLimiterServerBlockTests.test_rate_limiter_block_advertises_provider_and_target_requirement": {
+      "evidence": "Issue #671 comment 5161678243 owns the exact HTTP teaching, resilience, observation, and negative-case laws from #1323.",
+      "number": 671,
+      "repository": "OpenJ92/control-plane-kit"
+    },
+    "tests.test_http_rate_limiter_server_block.HttpRateLimiterServerBlockTests.test_rate_limiter_block_compiles_socket_connection_to_environment": {
+      "evidence": "Issue #671 comment 5161678243 owns the exact HTTP teaching, resilience, observation, and negative-case laws from #1323.",
+      "number": 671,
+      "repository": "OpenJ92/control-plane-kit"
+    },
+    "tests.test_http_rate_limiter_server_block.HttpRateLimiterServerBlockTests.test_rate_limiter_reset_reloads_quota": {
+      "evidence": "Issue #671 comment 5161678243 owns the exact HTTP teaching, resilience, observation, and negative-case laws from #1323.",
+      "number": 671,
+      "repository": "OpenJ92/control-plane-kit"
+    },
+    "tests.test_http_retry_server_block.HttpRetryTests.test_block_has_closed_product_and_policy_identity": {
+      "evidence": "Issue #671 comment 5161678243 owns the exact HTTP teaching, resilience, observation, and negative-case laws from #1323.",
+      "number": 671,
+      "repository": "OpenJ92/control-plane-kit"
+    },
+    "tests.test_http_retry_server_block.HttpRetryTests.test_graph_order_expresses_retry_and_circuit_composition": {
+      "evidence": "Issue #671 comment 5161678243 owns the exact HTTP teaching, resilience, observation, and negative-case laws from #1323.",
+      "number": 671,
+      "repository": "OpenJ92/control-plane-kit"
+    },
+    "tests.test_http_retry_server_block.HttpRetryTests.test_live_generated_server_bounds_retries_timeouts_and_evidence": {
+      "evidence": "Issue #671 comment 5161678243 owns the exact HTTP teaching, resilience, observation, and negative-case laws from #1323.",
+      "number": 671,
+      "repository": "OpenJ92/control-plane-kit"
+    },
+    "tests.test_http_retry_server_block.HttpRetryTests.test_non_idempotent_retry_requires_explicit_key_policy": {
+      "evidence": "Issue #671 comment 5161678243 owns the exact HTTP teaching, resilience, observation, and negative-case laws from #1323.",
+      "number": 671,
+      "repository": "OpenJ92/control-plane-kit"
+    },
+    "tests.test_http_retry_server_block.HttpRetryTests.test_policy_and_payloads_are_bounded_closed_values": {
+      "evidence": "Issue #671 comment 5161678243 owns the exact HTTP teaching, resilience, observation, and negative-case laws from #1323.",
+      "number": 671,
+      "repository": "OpenJ92/control-plane-kit"
+    },
+    "tests.test_http_retry_server_block.HttpRetryTests.test_success_recovery_and_exhaustion_are_finite": {
+      "evidence": "Issue #671 comment 5161678243 owns the exact HTTP teaching, resilience, observation, and negative-case laws from #1323.",
+      "number": 671,
+      "repository": "OpenJ92/control-plane-kit"
+    },
+    "tests.test_http_timeout_server_block.HttpTimeoutTests.test_live_generated_server_bounds_effect_and_reports_client_disconnect": {
+      "evidence": "Issue #671 comment 5161678243 owns the exact HTTP teaching, resilience, observation, and negative-case laws from #1323.",
+      "number": 671,
+      "repository": "OpenJ92/control-plane-kit"
+    },
+    "tests.test_http_timeout_server_block.HttpTimeoutTests.test_per_attempt_and_total_deadline_remain_separate": {
+      "evidence": "Issue #671 comment 5161678243 owns the exact HTTP teaching, resilience, observation, and negative-case laws from #1323.",
+      "number": 671,
+      "repository": "OpenJ92/control-plane-kit"
+    },
+    "tests.test_http_timeout_server_block.HttpTimeoutTests.test_policy_and_block_identity_are_closed_and_finite": {
+      "evidence": "Issue #671 comment 5161678243 owns the exact HTTP teaching, resilience, observation, and negative-case laws from #1323.",
+      "number": 671,
+      "repository": "OpenJ92/control-plane-kit"
+    },
+    "tests.test_http_timeout_server_block.HttpTimeoutTests.test_success_timeout_disconnect_and_bounds_are_distinct": {
+      "evidence": "Issue #671 comment 5161678243 owns the exact HTTP teaching, resilience, observation, and negative-case laws from #1323.",
+      "number": 671,
+      "repository": "OpenJ92/control-plane-kit"
+    },
+    "tests.test_http_traffic_logger_server_block.HttpTrafficLoggerTests.test_evidence_is_bounded_paginated_and_evicts_oldest": {
+      "evidence": "Issue #671 comment 5161678243 owns the exact HTTP teaching, resilience, observation, and negative-case laws from #1323.",
+      "number": 671,
+      "repository": "OpenJ92/control-plane-kit"
+    },
+    "tests.test_http_traffic_logger_server_block.HttpTrafficLoggerTests.test_live_generated_server_forwards_and_exposes_only_authenticated_pages": {
+      "evidence": "Issue #671 comment 5161678243 owns the exact HTTP teaching, resilience, observation, and negative-case laws from #1323.",
+      "number": 671,
+      "repository": "OpenJ92/control-plane-kit"
+    },
+    "tests.test_http_traffic_logger_server_block.HttpTrafficLoggerTests.test_local_rejection_and_target_loss_are_visible_without_raising": {
+      "evidence": "Issue #671 comment 5161678243 owns the exact HTTP teaching, resilience, observation, and negative-case laws from #1323.",
+      "number": 671,
+      "repository": "OpenJ92/control-plane-kit"
+    },
+    "tests.test_http_traffic_logger_server_block.HttpTrafficLoggerTests.test_one_block_type_logs_inbound_and_outbound_by_graph_position": {
+      "evidence": "Issue #671 comment 5161678243 owns the exact HTTP teaching, resilience, observation, and negative-case laws from #1323.",
+      "number": 671,
+      "repository": "OpenJ92/control-plane-kit"
+    },
+    "tests.test_http_traffic_logger_server_block.HttpTrafficLoggerTests.test_policy_and_block_identity_are_closed": {
+      "evidence": "Issue #671 comment 5161678243 owns the exact HTTP teaching, resilience, observation, and negative-case laws from #1323.",
+      "number": 671,
+      "repository": "OpenJ92/control-plane-kit"
+    },
+    "tests.test_http_traffic_logger_server_block.HttpTrafficLoggerTests.test_redacted_and_hashed_paths_never_retain_sensitive_values": {
+      "evidence": "Issue #671 comment 5161678243 owns the exact HTTP teaching, resilience, observation, and negative-case laws from #1323.",
+      "number": 671,
+      "repository": "OpenJ92/control-plane-kit"
+    },
+    "tests.test_http_weighted_balancer_server_block.HttpWeightedLoadBalancerServerBlockTests.test_weighted_balancer_block_advertises_provider_and_target_requirements": {
+      "evidence": "Issue #1146 comment 5161678608 owns the exact authenticated node-control, router, balancer, and negative-case laws from #1323.",
+      "number": 1146,
+      "repository": "OpenJ92/control-plane-kit"
+    },
+    "tests.test_http_weighted_balancer_server_block.HttpWeightedLoadBalancerServerBlockTests.test_weighted_balancer_block_compiles_socket_connections_to_environment": {
+      "evidence": "Issue #1146 comment 5161678608 owns the exact authenticated node-control, router, balancer, and negative-case laws from #1323.",
+      "number": 1146,
+      "repository": "OpenJ92/control-plane-kit"
+    },
+    "tests.test_http_weighted_balancer_server_block.HttpWeightedLoadBalancerServerBlockTests.test_weighted_balancer_rejects_no_positive_weights": {
+      "evidence": "Issue #1146 comment 5161678608 owns the exact authenticated node-control, router, balancer, and negative-case laws from #1323.",
+      "number": 1146,
+      "repository": "OpenJ92/control-plane-kit"
+    },
+    "tests.test_http_weighted_balancer_server_block.HttpWeightedLoadBalancerServerBlockTests.test_weighted_balancer_routes_by_deterministic_weighted_cycle": {
+      "evidence": "Issue #1146 comment 5161678608 owns the exact authenticated node-control, router, balancer, and negative-case laws from #1323.",
+      "number": 1146,
+      "repository": "OpenJ92/control-plane-kit"
+    },
+    "tests.test_idempotency_gateway.IdempotencyGatewayTests.test_authority_and_route_eligibility_fail_before_effect_or_write": {
+      "evidence": "Issue #672 comment 5161678336 owns the exact webhook, idempotency, auth-test, telemetry, TCP, and negative-case laws from #1323.",
+      "number": 672,
+      "repository": "OpenJ92/control-plane-kit"
+    },
+    "tests.test_idempotency_gateway.IdempotencyGatewayTests.test_concurrent_identical_requests_have_one_execution_winner": {
+      "evidence": "Issue #672 comment 5161678336 owns the exact webhook, idempotency, auth-test, telemetry, TCP, and negative-case laws from #1323.",
+      "number": 672,
+      "repository": "OpenJ92/control-plane-kit"
+    },
+    "tests.test_idempotency_gateway.IdempotencyGatewayTests.test_effect_loss_is_uncertain_and_never_replays_automatically": {
+      "evidence": "Issue #672 comment 5161678336 owns the exact webhook, idempotency, auth-test, telemetry, TCP, and negative-case laws from #1323.",
+      "number": 672,
+      "repository": "OpenJ92/control-plane-kit"
+    },
+    "tests.test_idempotency_gateway.IdempotencyGatewayTests.test_exact_replay_returns_reference_without_persisting_body_or_key": {
+      "evidence": "Issue #672 comment 5161678336 owns the exact webhook, idempotency, auth-test, telemetry, TCP, and negative-case laws from #1323.",
+      "number": 672,
+      "repository": "OpenJ92/control-plane-kit"
+    },
+    "tests.test_idempotency_gateway.IdempotencyGatewayTests.test_expired_in_flight_record_becomes_uncertain_without_dispatch": {
+      "evidence": "Issue #672 comment 5161678336 owns the exact webhook, idempotency, auth-test, telemetry, TCP, and negative-case laws from #1323.",
+      "number": 672,
+      "repository": "OpenJ92/control-plane-kit"
+    },
+    "tests.test_idempotency_gateway.IdempotencyGatewayTests.test_expired_terminal_record_can_be_reused_as_fresh_intent": {
+      "evidence": "Issue #672 comment 5161678336 owns the exact webhook, idempotency, auth-test, telemetry, TCP, and negative-case laws from #1323.",
+      "number": 672,
+      "repository": "OpenJ92/control-plane-kit"
+    },
+    "tests.test_idempotency_gateway.IdempotencyGatewayTests.test_fastapi_boundary_rejects_oversized_body_before_service": {
+      "evidence": "Issue #672 comment 5161678336 owns the exact webhook, idempotency, auth-test, telemetry, TCP, and negative-case laws from #1323.",
+      "number": 672,
+      "repository": "OpenJ92/control-plane-kit"
+    },
+    "tests.test_idempotency_gateway.IdempotencyGatewayTests.test_fastapi_boundary_requires_attestation_and_reconstructs_durable_replay": {
+      "evidence": "Issue #672 comment 5161678336 owns the exact webhook, idempotency, auth-test, telemetry, TCP, and negative-case laws from #1323.",
+      "number": 672,
+      "repository": "OpenJ92/control-plane-kit"
+    },
+    "tests.test_idempotency_gateway.IdempotencyGatewayTests.test_gateway_unit_of_work_rolls_back_without_commit_request": {
+      "evidence": "Issue #672 comment 5161678336 owns the exact webhook, idempotency, auth-test, telemetry, TCP, and negative-case laws from #1323.",
+      "number": 672,
+      "repository": "OpenJ92/control-plane-kit"
+    },
+    "tests.test_idempotency_gateway.IdempotencyGatewayTests.test_live_process_bootstraps_own_store_and_replays_without_second_effect": {
+      "evidence": "Issue #672 comment 5161678336 owns the exact webhook, idempotency, auth-test, telemetry, TCP, and negative-case laws from #1323.",
+      "number": 672,
+      "repository": "OpenJ92/control-plane-kit"
+    },
+    "tests.test_idempotency_gateway.IdempotencyGatewayTests.test_oversized_result_reference_is_not_retained_for_replay": {
+      "evidence": "Issue #672 comment 5161678336 owns the exact webhook, idempotency, auth-test, telemetry, TCP, and negative-case laws from #1323.",
+      "number": 672,
+      "repository": "OpenJ92/control-plane-kit"
+    },
+    "tests.test_idempotency_gateway.IdempotencyGatewayTests.test_policy_codec_and_block_preserve_closed_runtime_requirements": {
+      "evidence": "Issue #672 comment 5161678336 owns the exact webhook, idempotency, auth-test, telemetry, TCP, and negative-case laws from #1323.",
+      "number": 672,
+      "repository": "OpenJ92/control-plane-kit"
+    },
+    "tests.test_idempotency_gateway.IdempotencyGatewayTests.test_result_persistence_loss_becomes_uncertain_after_lease_expiry": {
+      "evidence": "Issue #672 comment 5161678336 owns the exact webhook, idempotency, auth-test, telemetry, TCP, and negative-case laws from #1323.",
+      "number": 672,
+      "repository": "OpenJ92/control-plane-kit"
+    },
+    "tests.test_idempotency_gateway.IdempotencyGatewayTests.test_same_key_with_changed_actor_conflicts_without_effect": {
+      "evidence": "Issue #672 comment 5161678336 owns the exact webhook, idempotency, auth-test, telemetry, TCP, and negative-case laws from #1323.",
+      "number": 672,
+      "repository": "OpenJ92/control-plane-kit"
+    },
+    "tests.test_idempotency_gateway.IdempotencyGatewayTests.test_same_key_with_changed_payload_conflicts_without_effect": {
+      "evidence": "Issue #672 comment 5161678336 owns the exact webhook, idempotency, auth-test, telemetry, TCP, and negative-case laws from #1323.",
+      "number": 672,
+      "repository": "OpenJ92/control-plane-kit"
+    },
+    "tests.test_idempotency_gateway.IdempotencyGatewayTests.test_same_key_with_changed_query_conflicts_without_effect": {
+      "evidence": "Issue #672 comment 5161678336 owns the exact webhook, idempotency, auth-test, telemetry, TCP, and negative-case laws from #1323.",
+      "number": 672,
+      "repository": "OpenJ92/control-plane-kit"
+    },
+    "tests.test_idempotency_gateway.IdempotencyGatewayTests.test_schema_reinstall_preserves_rows_and_constraint_identity": {
+      "evidence": "Issue #672 comment 5161678336 owns the exact webhook, idempotency, auth-test, telemetry, TCP, and negative-case laws from #1323.",
+      "number": 672,
+      "repository": "OpenJ92/control-plane-kit"
+    },
+    "tests.test_idempotency_gateway.IdempotencyGatewayTests.test_uncertain_records_are_not_evicted_to_make_capacity": {
+      "evidence": "Issue #672 comment 5161678336 owns the exact webhook, idempotency, auth-test, telemetry, TCP, and negative-case laws from #1323.",
+      "number": 672,
+      "repository": "OpenJ92/control-plane-kit"
+    },
+    "tests.test_managed_http_router.ManagedHttpRouterTests.test_block_declares_graph_wired_targets_and_opaque_control_secret": {
+      "evidence": "Issue #1146 comment 5161678608 owns the exact authenticated node-control, router, balancer, and negative-case laws from #1323.",
+      "number": 1146,
+      "repository": "OpenJ92/control-plane-kit"
+    },
+    "tests.test_managed_http_router.ManagedHttpRouterTests.test_same_data_path_changes_only_after_authenticated_switch": {
+      "evidence": "Issue #1146 comment 5161678608 owns the exact authenticated node-control, router, balancer, and negative-case laws from #1323.",
+      "number": 1146,
+      "repository": "OpenJ92/control-plane-kit"
+    },
+    "tests.test_opentelemetry_collector.OpenTelemetryCollectorTests.test_block_advertises_exact_otlp_and_health_sockets": {
+      "evidence": "Issue #672 comment 5161678336 owns the exact webhook, idempotency, auth-test, telemetry, TCP, and negative-case laws from #1323.",
+      "number": 672,
+      "repository": "OpenJ92/control-plane-kit"
+    },
+    "tests.test_opentelemetry_collector.OpenTelemetryCollectorTests.test_catalogue_marks_official_integration_operational": {
+      "evidence": "Issue #672 comment 5161678336 owns the exact webhook, idempotency, auth-test, telemetry, TCP, and negative-case laws from #1323.",
+      "number": 672,
+      "repository": "OpenJ92/control-plane-kit"
+    },
+    "tests.test_opentelemetry_collector.OpenTelemetryCollectorTests.test_default_configuration_is_deterministic_closed_yaml": {
+      "evidence": "Issue #672 comment 5161678336 owns the exact webhook, idempotency, auth-test, telemetry, TCP, and negative-case laws from #1323.",
+      "number": 672,
+      "repository": "OpenJ92/control-plane-kit"
+    },
+    "tests.test_opentelemetry_collector.OpenTelemetryCollectorTests.test_exporter_headers_are_bounded": {
+      "evidence": "Issue #672 comment 5161678336 owns the exact webhook, idempotency, auth-test, telemetry, TCP, and negative-case laws from #1323.",
+      "number": 672,
+      "repository": "OpenJ92/control-plane-kit"
+    },
+    "tests.test_opentelemetry_collector.OpenTelemetryCollectorTests.test_exporter_requirement_and_environment_names_are_globally_unique": {
+      "evidence": "Issue #672 comment 5161678336 owns the exact webhook, idempotency, auth-test, telemetry, TCP, and negative-case laws from #1323.",
+      "number": 672,
+      "repository": "OpenJ92/control-plane-kit"
+    },
+    "tests.test_opentelemetry_collector.OpenTelemetryCollectorTests.test_graph_codec_and_diff_retain_exact_artifact_identity": {
+      "evidence": "Issue #672 comment 5161678336 owns the exact webhook, idempotency, auth-test, telemetry, TCP, and negative-case laws from #1323.",
+      "number": 672,
+      "repository": "OpenJ92/control-plane-kit"
+    },
+    "tests.test_opentelemetry_collector.OpenTelemetryCollectorTests.test_invalid_pipeline_references_fail_at_pure_boundary": {
+      "evidence": "Issue #672 comment 5161678336 owns the exact webhook, idempotency, auth-test, telemetry, TCP, and negative-case laws from #1323.",
+      "number": 672,
+      "repository": "OpenJ92/control-plane-kit"
+    },
+    "tests.test_opentelemetry_collector.OpenTelemetryCollectorTests.test_provider_socket_names_and_ports_are_globally_unique": {
+      "evidence": "Issue #672 comment 5161678336 owns the exact webhook, idempotency, auth-test, telemetry, TCP, and negative-case laws from #1323.",
+      "number": 672,
+      "repository": "OpenJ92/control-plane-kit"
+    },
+    "tests.test_opentelemetry_collector.OpenTelemetryCollectorTests.test_remote_exporter_uses_socket_and_opaque_secret_delivery": {
+      "evidence": "Issue #672 comment 5161678336 owns the exact webhook, idempotency, auth-test, telemetry, TCP, and negative-case laws from #1323.",
+      "number": 672,
+      "repository": "OpenJ92/control-plane-kit"
+    },
+    "tests.test_opentelemetry_collector.OpenTelemetryCollectorTests.test_sampling_is_rejected_outside_trace_pipeline": {
+      "evidence": "Issue #672 comment 5161678336 owns the exact webhook, idempotency, auth-test, telemetry, TCP, and negative-case laws from #1323.",
+      "number": 672,
+      "repository": "OpenJ92/control-plane-kit"
+    },
+    "tests.test_request_observer_server_block.RequestObserverServerTests.test_behavior_retains_only_count_and_generated_identity": {
+      "evidence": "Issue #671 comment 5161678243 owns the exact HTTP teaching, resilience, observation, and negative-case laws from #1323.",
+      "number": 671,
+      "repository": "OpenJ92/control-plane-kit"
+    },
+    "tests.test_request_observer_server_block.RequestObserverServerTests.test_block_is_a_closed_docker_product_with_opaque_control_secret": {
+      "evidence": "Issue #671 comment 5161678243 owns the exact HTTP teaching, resilience, observation, and negative-case laws from #1323.",
+      "number": 671,
+      "repository": "OpenJ92/control-plane-kit"
+    },
+    "tests.test_request_observer_server_block.RequestObserverServerTests.test_live_command_authenticates_metrics_and_redacts_traffic": {
+      "evidence": "Issue #671 comment 5161678243 owns the exact HTTP teaching, resilience, observation, and negative-case laws from #1323.",
+      "number": 671,
+      "repository": "OpenJ92/control-plane-kit"
+    },
+    "tests.test_request_observer_server_block.RequestObserverServerTests.test_live_multiplexer_copies_traffic_to_observer": {
+      "evidence": "Issue #671 comment 5161678243 owns the exact HTTP teaching, resilience, observation, and negative-case laws from #1323.",
+      "number": 671,
+      "repository": "OpenJ92/control-plane-kit"
+    },
+    "tests.test_request_observer_server_block.RequestObserverServerTests.test_oversized_request_is_rejected_without_observation": {
+      "evidence": "Issue #671 comment 5161678243 owns the exact HTTP teaching, resilience, observation, and negative-case laws from #1323.",
+      "number": 671,
+      "repository": "OpenJ92/control-plane-kit"
+    },
+    "tests.test_service_discovery_fastapi.ServiceDiscoveryFastAPITests.test_block_now_advertises_only_real_docker_capabilities": {
+      "evidence": "Issue #1153 comment 5161678698 owns the exact durable discovery laws and negative cases from #1323.",
+      "number": 1153,
+      "repository": "OpenJ92/control-plane-kit"
+    },
+    "tests.test_service_discovery_fastapi.ServiceDiscoveryFastAPITests.test_body_bounds_and_closed_descriptors_fail_before_service": {
+      "evidence": "Issue #1153 comment 5161678698 owns the exact durable discovery laws and negative cases from #1323.",
+      "number": 1153,
+      "repository": "OpenJ92/control-plane-kit"
+    },
+    "tests.test_service_discovery_fastapi.ServiceDiscoveryFastAPITests.test_expiry_route_requires_management_scope": {
+      "evidence": "Issue #1153 comment 5161678698 owns the exact durable discovery laws and negative cases from #1323.",
+      "number": 1153,
+      "repository": "OpenJ92/control-plane-kit"
+    },
+    "tests.test_service_discovery_fastapi.ServiceDiscoveryFastAPITests.test_health_is_distinct_from_semantic_readiness": {
+      "evidence": "Issue #1153 comment 5161678698 owns the exact durable discovery laws and negative cases from #1323.",
+      "number": 1153,
+      "repository": "OpenJ92/control-plane-kit"
+    },
+    "tests.test_service_discovery_fastapi.ServiceDiscoveryFastAPITests.test_heartbeat_and_deregister_enforce_path_identity": {
+      "evidence": "Issue #1153 comment 5161678698 owns the exact durable discovery laws and negative cases from #1323.",
+      "number": 1153,
+      "repository": "OpenJ92/control-plane-kit"
+    },
+    "tests.test_service_discovery_fastapi.ServiceDiscoveryFastAPITests.test_maximum_resolution_page_has_a_bounded_response": {
+      "evidence": "Issue #1153 comment 5161678698 owns the exact durable discovery laws and negative cases from #1323.",
+      "number": 1153,
+      "repository": "OpenJ92/control-plane-kit"
+    },
+    "tests.test_service_discovery_fastapi.ServiceDiscoveryFastAPITests.test_process_boundary_vends_direct_psycopg_dsn_from_graph_identity": {
+      "evidence": "Issue #1153 comment 5161678698 owns the exact durable discovery laws and negative cases from #1323.",
+      "number": 1153,
+      "repository": "OpenJ92/control-plane-kit"
+    },
+    "tests.test_service_discovery_fastapi.ServiceDiscoveryFastAPITests.test_register_and_resolve_use_scoped_authenticated_service_commands": {
+      "evidence": "Issue #1153 comment 5161678698 owns the exact durable discovery laws and negative cases from #1323.",
+      "number": 1153,
+      "repository": "OpenJ92/control-plane-kit"
+    },
+    "tests.test_service_discovery_fastapi.ServiceDiscoveryFastAPITests.test_rejected_endpoint_and_identity_material_are_redacted": {
+      "evidence": "Issue #1153 comment 5161678698 owns the exact durable discovery laws and negative cases from #1323.",
+      "number": 1153,
+      "repository": "OpenJ92/control-plane-kit"
+    },
+    "tests.test_service_discovery_fastapi.ServiceDiscoveryFastAPITests.test_self_registration_is_bound_to_service_and_instance_identity": {
+      "evidence": "Issue #1153 comment 5161678698 owns the exact durable discovery laws and negative cases from #1323.",
+      "number": 1153,
+      "repository": "OpenJ92/control-plane-kit"
+    },
+    "tests.test_service_discovery_fastapi.ServiceDiscoveryFastAPITests.test_under_scoped_mutation_fails_before_registry_write": {
+      "evidence": "Issue #1153 comment 5161678698 owns the exact durable discovery laws and negative cases from #1323.",
+      "number": 1153,
+      "repository": "OpenJ92/control-plane-kit"
+    },
+    "tests.test_tcp_switch.TcpSwitchTests.test_active_data_path_changes_only_after_authenticated_switch": {
+      "evidence": "Issue #672 comment 5161678336 owns the exact webhook, idempotency, auth-test, telemetry, TCP, and negative-case laws from #1323.",
+      "number": 672,
+      "repository": "OpenJ92/control-plane-kit"
+    },
+    "tests.test_tcp_switch.TcpSwitchTests.test_block_retains_exact_product_protocol_and_control_contract": {
+      "evidence": "Issue #672 comment 5161678336 owns the exact webhook, idempotency, auth-test, telemetry, TCP, and negative-case laws from #1323.",
+      "number": 672,
+      "repository": "OpenJ92/control-plane-kit"
+    },
+    "tests.test_tcp_switch.TcpSwitchTests.test_round_robin_selects_connections_without_inspecting_bytes": {
+      "evidence": "Issue #672 comment 5161678336 owns the exact webhook, idempotency, auth-test, telemetry, TCP, and negative-case laws from #1323.",
+      "number": 672,
+      "repository": "OpenJ92/control-plane-kit"
+    },
+    "tests.test_tcp_switch.TcpSwitchTests.test_runtime_target_replacement_is_bounded_and_validated": {
+      "evidence": "Issue #672 comment 5161678336 owns the exact webhook, idempotency, auth-test, telemetry, TCP, and negative-case laws from #1323.",
+      "number": 672,
+      "repository": "OpenJ92/control-plane-kit"
+    },
+    "tests.test_tcp_switch.TcpSwitchTests.test_target_parser_rejects_credentials_paths_and_wrong_protocol": {
+      "evidence": "Issue #672 comment 5161678336 owns the exact webhook, idempotency, auth-test, telemetry, TCP, and negative-case laws from #1323.",
+      "number": 672,
+      "repository": "OpenJ92/control-plane-kit"
+    },
+    "tests.test_webhook.WebhookAlgebraTests.test_authority_descriptor_is_closed_typed_and_deterministic": {
+      "evidence": "Issue #672 comment 5161678336 owns the exact webhook, idempotency, auth-test, telemetry, TCP, and negative-case laws from #1323.",
+      "number": 672,
+      "repository": "OpenJ92/control-plane-kit"
+    },
+    "tests.test_webhook.WebhookAlgebraTests.test_backoff_is_deterministic_bounded_and_capped": {
+      "evidence": "Issue #672 comment 5161678336 owns the exact webhook, idempotency, auth-test, telemetry, TCP, and negative-case laws from #1323.",
+      "number": 672,
+      "repository": "OpenJ92/control-plane-kit"
+    },
+    "tests.test_webhook.WebhookAlgebraTests.test_claim_release_is_explicit_and_safe_only_before_dispatch": {
+      "evidence": "Issue #672 comment 5161678336 owns the exact webhook, idempotency, auth-test, telemetry, TCP, and negative-case laws from #1323.",
+      "number": 672,
+      "repository": "OpenJ92/control-plane-kit"
+    },
+    "tests.test_webhook.WebhookAlgebraTests.test_endpoint_authority_is_closed_exact_and_interpreter_independent": {
+      "evidence": "Issue #672 comment 5161678336 owns the exact webhook, idempotency, auth-test, telemetry, TCP, and negative-case laws from #1323.",
+      "number": 672,
+      "repository": "OpenJ92/control-plane-kit"
+    },
+    "tests.test_webhook.WebhookAlgebraTests.test_endpoint_shape_rejects_unsafe_or_open_forms": {
+      "evidence": "Issue #672 comment 5161678336 owns the exact webhook, idempotency, auth-test, telemetry, TCP, and negative-case laws from #1323.",
+      "number": 672,
+      "repository": "OpenJ92/control-plane-kit"
+    },
+    "tests.test_webhook.WebhookAlgebraTests.test_every_event_variant_round_trips_through_exact_codec": {
+      "evidence": "Issue #672 comment 5161678336 owns the exact webhook, idempotency, auth-test, telemetry, TCP, and negative-case laws from #1323.",
+      "number": 672,
+      "repository": "OpenJ92/control-plane-kit"
+    },
+    "tests.test_webhook.WebhookAlgebraTests.test_impossible_histories_fail_at_the_pure_boundary": {
+      "evidence": "Issue #672 comment 5161678336 owns the exact webhook, idempotency, auth-test, telemetry, TCP, and negative-case laws from #1323.",
+      "number": 672,
+      "repository": "OpenJ92/control-plane-kit"
+    },
+    "tests.test_webhook.WebhookAlgebraTests.test_intent_is_closed_bounded_and_deterministically_fingerprinted": {
+      "evidence": "Issue #672 comment 5161678336 owns the exact webhook, idempotency, auth-test, telemetry, TCP, and negative-case laws from #1323.",
+      "number": 672,
+      "repository": "OpenJ92/control-plane-kit"
+    },
+    "tests.test_webhook.WebhookAlgebraTests.test_payload_is_nonempty_bounded_and_digest_verified": {
+      "evidence": "Issue #672 comment 5161678336 owns the exact webhook, idempotency, auth-test, telemetry, TCP, and negative-case laws from #1323.",
+      "number": 672,
+      "repository": "OpenJ92/control-plane-kit"
+    },
+    "tests.test_webhook.WebhookAlgebraTests.test_retry_history_requires_exact_policy_time_and_attempt_order": {
+      "evidence": "Issue #672 comment 5161678336 owns the exact webhook, idempotency, auth-test, telemetry, TCP, and negative-case laws from #1323.",
+      "number": 672,
+      "repository": "OpenJ92/control-plane-kit"
+    },
+    "tests.test_webhook.WebhookAlgebraTests.test_signing_is_opaque_closed_and_uses_non_reserved_header": {
+      "evidence": "Issue #672 comment 5161678336 owns the exact webhook, idempotency, auth-test, telemetry, TCP, and negative-case laws from #1323.",
+      "number": 672,
+      "repository": "OpenJ92/control-plane-kit"
+    },
+    "tests.test_webhook.WebhookAlgebraTests.test_success_history_reconstructs_without_mutable_cursor": {
+      "evidence": "Issue #672 comment 5161678336 owns the exact webhook, idempotency, auth-test, telemetry, TCP, and negative-case laws from #1323.",
+      "number": 672,
+      "repository": "OpenJ92/control-plane-kit"
+    },
+    "tests.test_webhook.WebhookAlgebraTests.test_terminal_and_uncertain_histories_have_distinct_destinations": {
+      "evidence": "Issue #672 comment 5161678336 owns the exact webhook, idempotency, auth-test, telemetry, TCP, and negative-case laws from #1323.",
+      "number": 672,
+      "repository": "OpenJ92/control-plane-kit"
+    },
+    "tests.test_webhook.WebhookAlgebraTests.test_unknown_extra_and_malformed_descriptor_values_fail_closed": {
+      "evidence": "Issue #672 comment 5161678336 owns the exact webhook, idempotency, auth-test, telemetry, TCP, and negative-case laws from #1323.",
+      "number": 672,
+      "repository": "OpenJ92/control-plane-kit"
+    },
+    "tests.test_webhook_app.WebhookFastApiTests.test_app_factory_reports_its_entrypoint_home": {
+      "evidence": "Issue #672 comment 5161678336 owns the exact webhook, idempotency, auth-test, telemetry, TCP, and negative-case laws from #1323.",
+      "number": 672,
+      "repository": "OpenJ92/control-plane-kit"
+    },
+    "tests.test_webhook_app.WebhookFastApiTests.test_authenticated_routes_drive_canonical_service_and_read_projection": {
+      "evidence": "Issue #672 comment 5161678336 owns the exact webhook, idempotency, auth-test, telemetry, TCP, and negative-case laws from #1323.",
+      "number": 672,
+      "repository": "OpenJ92/control-plane-kit"
+    },
+    "tests.test_webhook_app.WebhookFastApiTests.test_authentication_scope_and_workspace_fail_closed": {
+      "evidence": "Issue #672 comment 5161678336 owns the exact webhook, idempotency, auth-test, telemetry, TCP, and negative-case laws from #1323.",
+      "number": 672,
+      "repository": "OpenJ92/control-plane-kit"
+    },
+    "tests.test_webhook_app.WebhookFastApiTests.test_body_is_bounded_before_json_or_service_execution": {
+      "evidence": "Issue #672 comment 5161678336 owns the exact webhook, idempotency, auth-test, telemetry, TCP, and negative-case laws from #1323.",
+      "number": 672,
+      "repository": "OpenJ92/control-plane-kit"
+    },
+    "tests.test_webhook_app.WebhookFastApiTests.test_unknown_command_fields_and_read_scope_are_exact": {
+      "evidence": "Issue #672 comment 5161678336 owns the exact webhook, idempotency, auth-test, telemetry, TCP, and negative-case laws from #1323.",
+      "number": 672,
+      "repository": "OpenJ92/control-plane-kit"
+    },
+    "tests.test_webhook_http.WebhookHttpTests.test_endpoint_must_match_exact_grant_before_secret_resolution": {
+      "evidence": "Issue #672 comment 5161678336 owns the exact webhook, idempotency, auth-test, telemetry, TCP, and negative-case laws from #1323.",
+      "number": 672,
+      "repository": "OpenJ92/control-plane-kit"
+    },
+    "tests.test_webhook_http.WebhookHttpTests.test_exact_local_grant_signs_body_only_at_dispatch_boundary": {
+      "evidence": "Issue #672 comment 5161678336 owns the exact webhook, idempotency, auth-test, telemetry, TCP, and negative-case laws from #1323.",
+      "number": 672,
+      "repository": "OpenJ92/control-plane-kit"
+    },
+    "tests.test_webhook_http.WebhookHttpTests.test_http_delivery_reports_its_interpreter_home": {
+      "evidence": "Issue #672 comment 5161678336 owns the exact webhook, idempotency, auth-test, telemetry, TCP, and negative-case laws from #1323.",
+      "number": 672,
+      "repository": "OpenJ92/control-plane-kit"
+    },
+    "tests.test_webhook_http.WebhookHttpTests.test_http_statuses_redirects_and_transport_failures_are_distinct": {
+      "evidence": "Issue #672 comment 5161678336 owns the exact webhook, idempotency, auth-test, telemetry, TCP, and negative-case laws from #1323.",
+      "number": 672,
+      "repository": "OpenJ92/control-plane-kit"
+    },
+    "tests.test_webhook_http.WebhookHttpTests.test_public_dns_rebinding_and_public_plaintext_fail_closed": {
+      "evidence": "Issue #672 comment 5161678336 owns the exact webhook, idempotency, auth-test, telemetry, TCP, and negative-case laws from #1323.",
+      "number": 672,
+      "repository": "OpenJ92/control-plane-kit"
+    },
+    "tests.test_webhook_http.WebhookHttpTests.test_public_hostname_is_resolved_and_pinned_for_same_request": {
+      "evidence": "Issue #672 comment 5161678336 owns the exact webhook, idempotency, auth-test, telemetry, TCP, and negative-case laws from #1323.",
+      "number": 672,
+      "repository": "OpenJ92/control-plane-kit"
+    },
+    "tests.test_webhook_http.WebhookHttpTests.test_response_body_and_headers_are_bounded_after_send": {
+      "evidence": "Issue #672 comment 5161678336 owns the exact webhook, idempotency, auth-test, telemetry, TCP, and negative-case laws from #1323.",
+      "number": 672,
+      "repository": "OpenJ92/control-plane-kit"
+    },
+    "tests.test_webhook_http.WebhookHttpTests.test_runtime_private_scope_rejects_other_address_classes": {
+      "evidence": "Issue #672 comment 5161678336 owns the exact webhook, idempotency, auth-test, telemetry, TCP, and negative-case laws from #1323.",
+      "number": 672,
+      "repository": "OpenJ92/control-plane-kit"
+    },
+    "tests.test_webhook_live_harness.WebhookLiveHarnessTests.test_restart_readiness_rejects_malformed_success": {
+      "evidence": "Issue #672 comment 5161678336 owns the exact webhook, idempotency, auth-test, telemetry, TCP, and negative-case laws from #1323.",
+      "number": 672,
+      "repository": "OpenJ92/control-plane-kit"
+    },
+    "tests.test_webhook_live_harness.WebhookLiveHarnessTests.test_restart_readiness_retries_only_startup_unavailability": {
+      "evidence": "Issue #672 comment 5161678336 owns the exact webhook, idempotency, auth-test, telemetry, TCP, and negative-case laws from #1323.",
+      "number": 672,
+      "repository": "OpenJ92/control-plane-kit"
+    },
+    "tests.test_webhook_live_harness.WebhookLiveHarnessTests.test_restart_readiness_timeout_is_bounded_and_non_secret": {
+      "evidence": "Issue #672 comment 5161678336 owns the exact webhook, idempotency, auth-test, telemetry, TCP, and negative-case laws from #1323.",
+      "number": 672,
+      "repository": "OpenJ92/control-plane-kit"
+    },
+    "tests.test_webhook_postgres.WebhookPostgresTests.test_command_ledger_preserves_exact_replay_identity": {
+      "evidence": "Issue #672 comment 5161678336 owns the exact webhook, idempotency, auth-test, telemetry, TCP, and negative-case laws from #1323.",
+      "number": 672,
+      "repository": "OpenJ92/control-plane-kit"
+    },
+    "tests.test_webhook_postgres.WebhookPostgresTests.test_concurrent_claim_has_one_winner_and_one_canonical_event": {
+      "evidence": "Issue #672 comment 5161678336 owns the exact webhook, idempotency, auth-test, telemetry, TCP, and negative-case laws from #1323.",
+      "number": 672,
+      "repository": "OpenJ92/control-plane-kit"
+    },
+    "tests.test_webhook_postgres.WebhookPostgresTests.test_concurrent_enqueue_has_one_winner_on_independent_connections": {
+      "evidence": "Issue #672 comment 5161678336 owns the exact webhook, idempotency, auth-test, telemetry, TCP, and negative-case laws from #1323.",
+      "number": 672,
+      "repository": "OpenJ92/control-plane-kit"
+    },
+    "tests.test_webhook_postgres.WebhookPostgresTests.test_intent_journal_and_projection_reconstruct_exact_canonical_state": {
+      "evidence": "Issue #672 comment 5161678336 owns the exact webhook, idempotency, auth-test, telemetry, TCP, and negative-case laws from #1323.",
+      "number": 672,
+      "repository": "OpenJ92/control-plane-kit"
+    },
+    "tests.test_webhook_postgres.WebhookPostgresTests.test_one_unit_of_work_rolls_back_all_webhook_relations_together": {
+      "evidence": "Issue #672 comment 5161678336 owns the exact webhook, idempotency, auth-test, telemetry, TCP, and negative-case laws from #1323.",
+      "number": 672,
+      "repository": "OpenJ92/control-plane-kit"
+    },
+    "tests.test_webhook_postgres.WebhookPostgresTests.test_schema_installer_leaves_commit_and_rollback_to_caller": {
+      "evidence": "Issue #672 comment 5161678336 owns the exact webhook, idempotency, auth-test, telemetry, TCP, and negative-case laws from #1323.",
+      "number": 672,
+      "repository": "OpenJ92/control-plane-kit"
+    },
+    "tests.test_webhook_postgres.WebhookPostgresTests.test_schema_reinstall_preserves_rows_and_constraint_identity": {
+      "evidence": "Issue #672 comment 5161678336 owns the exact webhook, idempotency, auth-test, telemetry, TCP, and negative-case laws from #1323.",
+      "number": 672,
+      "repository": "OpenJ92/control-plane-kit"
+    },
+    "tests.test_webhook_postgres.WebhookPostgresTests.test_unknown_closed_values_and_malformed_shapes_fail_in_postgres": {
+      "evidence": "Issue #672 comment 5161678336 owns the exact webhook, idempotency, auth-test, telemetry, TCP, and negative-case laws from #1323.",
+      "number": 672,
+      "repository": "OpenJ92/control-plane-kit"
+    },
+    "tests.test_webhook_postgres.WebhookPostgresTests.test_versioned_append_and_projection_reject_stale_writers": {
+      "evidence": "Issue #672 comment 5161678336 owns the exact webhook, idempotency, auth-test, telemetry, TCP, and negative-case laws from #1323.",
+      "number": 672,
+      "repository": "OpenJ92/control-plane-kit"
+    },
+    "tests.test_webhook_server_block.WebhookDeliveryBlockTests.test_block_declares_product_database_http_and_opaque_secrets": {
+      "evidence": "Issue #672 comment 5161678336 owns the exact webhook, idempotency, auth-test, telemetry, TCP, and negative-case laws from #1323.",
+      "number": 672,
+      "repository": "OpenJ92/control-plane-kit"
+    },
+    "tests.test_webhook_server_block.WebhookDeliveryBlockTests.test_catalogue_exposes_only_executable_readiness_capability": {
+      "evidence": "Issue #672 comment 5161678336 owns the exact webhook, idempotency, auth-test, telemetry, TCP, and negative-case laws from #1323.",
+      "number": 672,
+      "repository": "OpenJ92/control-plane-kit"
+    },
+    "tests.test_webhook_server_block.WebhookDeliveryBlockTests.test_graph_connection_supplies_the_only_database_url": {
+      "evidence": "Issue #672 comment 5161678336 owns the exact webhook, idempotency, auth-test, telemetry, TCP, and negative-case laws from #1323.",
+      "number": 672,
+      "repository": "OpenJ92/control-plane-kit"
+    },
+    "tests.test_webhook_server_block.WebhookDeliveryBlockTests.test_policy_codec_is_deterministic_closed_and_bounded": {
+      "evidence": "Issue #672 comment 5161678336 owns the exact webhook, idempotency, auth-test, telemetry, TCP, and negative-case laws from #1323.",
+      "number": 672,
+      "repository": "OpenJ92/control-plane-kit"
+    },
+    "tests.test_webhook_server_block.WebhookDeliveryBlockTests.test_policy_rejects_excessive_grants_and_encoded_content": {
+      "evidence": "Issue #672 comment 5161678336 owns the exact webhook, idempotency, auth-test, telemetry, TCP, and negative-case laws from #1323.",
+      "number": 672,
+      "repository": "OpenJ92/control-plane-kit"
+    },
+    "tests.test_webhook_server_block.WebhookDeliveryBlockTests.test_process_factory_reports_its_entrypoint_home": {
+      "evidence": "Issue #672 comment 5161678336 owns the exact webhook, idempotency, auth-test, telemetry, TCP, and negative-case laws from #1323.",
+      "number": 672,
+      "repository": "OpenJ92/control-plane-kit"
+    },
+    "tests.test_webhook_server_block.WebhookDeliveryBlockTests.test_product_and_verification_round_trip_through_graph_codec": {
+      "evidence": "Issue #672 comment 5161678336 owns the exact webhook, idempotency, auth-test, telemetry, TCP, and negative-case laws from #1323.",
+      "number": 672,
+      "repository": "OpenJ92/control-plane-kit"
+    },
+    "tests.test_webhook_server_block.WebhookDeliveryBlockTests.test_psycopg_interpreter_preserves_graph_identity_but_vends_driver_dsn": {
+      "evidence": "Issue #672 comment 5161678336 owns the exact webhook, idempotency, auth-test, telemetry, TCP, and negative-case laws from #1323.",
+      "number": 672,
+      "repository": "OpenJ92/control-plane-kit"
+    },
+    "tests.test_webhook_service.WebhookServiceTests.test_competing_service_claims_have_one_winner": {
+      "evidence": "Issue #672 comment 5161678336 owns the exact webhook, idempotency, auth-test, telemetry, TCP, and negative-case laws from #1323.",
+      "number": 672,
+      "repository": "OpenJ92/control-plane-kit"
+    },
+    "tests.test_webhook_service.WebhookServiceTests.test_crash_after_effect_start_is_reconstructed_as_uncertain_and_never_replayed": {
+      "evidence": "Issue #672 comment 5161678336 owns the exact webhook, idempotency, auth-test, telemetry, TCP, and negative-case laws from #1323.",
+      "number": 672,
+      "repository": "OpenJ92/control-plane-kit"
+    },
+    "tests.test_webhook_service.WebhookServiceTests.test_crash_before_dispatch_releases_expired_claim_for_new_worker": {
+      "evidence": "Issue #672 comment 5161678336 owns the exact webhook, idempotency, auth-test, telemetry, TCP, and negative-case laws from #1323.",
+      "number": 672,
+      "repository": "OpenJ92/control-plane-kit"
+    },
+    "tests.test_webhook_service.WebhookServiceTests.test_effect_exception_becomes_operator_required_without_secret_or_payload_evidence": {
+      "evidence": "Issue #672 comment 5161678336 owns the exact webhook, idempotency, auth-test, telemetry, TCP, and negative-case laws from #1323.",
+      "number": 672,
+      "repository": "OpenJ92/control-plane-kit"
+    },
+    "tests.test_webhook_service.WebhookServiceTests.test_enqueue_is_atomic_exactly_idempotent_and_authorized": {
+      "evidence": "Issue #672 comment 5161678336 owns the exact webhook, idempotency, auth-test, telemetry, TCP, and negative-case laws from #1323.",
+      "number": 672,
+      "repository": "OpenJ92/control-plane-kit"
+    },
+    "tests.test_webhook_service.WebhookServiceTests.test_expired_claim_cannot_be_relabelled_as_voluntary_abandonment": {
+      "evidence": "Issue #672 comment 5161678336 owns the exact webhook, idempotency, auth-test, telemetry, TCP, and negative-case laws from #1323.",
+      "number": 672,
+      "repository": "OpenJ92/control-plane-kit"
+    },
+    "tests.test_webhook_service.WebhookServiceTests.test_retry_failure_dead_letters_when_backoff_cannot_fit_deadline": {
+      "evidence": "Issue #672 comment 5161678336 owns the exact webhook, idempotency, auth-test, telemetry, TCP, and negative-case laws from #1323.",
+      "number": 672,
+      "repository": "OpenJ92/control-plane-kit"
+    },
+    "tests.test_webhook_service.WebhookServiceTests.test_retry_policy_schedules_next_attempt_then_delivers": {
+      "evidence": "Issue #672 comment 5161678336 owns the exact webhook, idempotency, auth-test, telemetry, TCP, and negative-case laws from #1323.",
+      "number": 672,
+      "repository": "OpenJ92/control-plane-kit"
+    },
+    "tests.test_webhook_service.WebhookServiceTests.test_successful_dispatch_uses_split_transactions_and_never_replays_effect": {
+      "evidence": "Issue #672 comment 5161678336 owns the exact webhook, idempotency, auth-test, telemetry, TCP, and negative-case laws from #1323.",
+      "number": 672,
+      "repository": "OpenJ92/control-plane-kit"
+    },
+    "tests.test_webhook_service.WebhookServiceTests.test_terminal_failure_dead_letters_without_retry": {
+      "evidence": "Issue #672 comment 5161678336 owns the exact webhook, idempotency, auth-test, telemetry, TCP, and negative-case laws from #1323.",
+      "number": 672,
+      "repository": "OpenJ92/control-plane-kit"
+    },
+    "tests.test_webhook_service.WebhookServiceTests.test_worker_can_abandon_claim_before_attempt_start": {
+      "evidence": "Issue #672 comment 5161678336 owns the exact webhook, idempotency, auth-test, telemetry, TCP, and negative-case laws from #1323.",
+      "number": 672,
+      "repository": "OpenJ92/control-plane-kit"
+    },
+    "tests.test_webhook_service_hardening.WebhookServiceHardeningTests.test_command_ledger_failure_rolls_back_all_enqueue_facts": {
+      "evidence": "Issue #672 comment 5161678336 owns the exact webhook, idempotency, auth-test, telemetry, TCP, and negative-case laws from #1323.",
+      "number": 672,
+      "repository": "OpenJ92/control-plane-kit"
+    },
+    "tests.test_webhook_service_hardening.WebhookServiceHardeningTests.test_committed_result_wins_before_late_recovery": {
+      "evidence": "Issue #672 comment 5161678336 owns the exact webhook, idempotency, auth-test, telemetry, TCP, and negative-case laws from #1323.",
+      "number": 672,
+      "repository": "OpenJ92/control-plane-kit"
+    },
+    "tests.test_webhook_service_hardening.WebhookServiceHardeningTests.test_dispatch_at_expiry_and_recovery_before_expiry_fail_closed": {
+      "evidence": "Issue #672 comment 5161678336 owns the exact webhook, idempotency, auth-test, telemetry, TCP, and negative-case laws from #1323.",
+      "number": 672,
+      "repository": "OpenJ92/control-plane-kit"
+    },
+    "tests.test_webhook_service_hardening.WebhookServiceHardeningTests.test_effect_success_with_result_transaction_failure_remains_uncertain": {
+      "evidence": "Issue #672 comment 5161678336 owns the exact webhook, idempotency, auth-test, telemetry, TCP, and negative-case laws from #1323.",
+      "number": 672,
+      "repository": "OpenJ92/control-plane-kit"
+    },
+    "tests.test_webhook_service_hardening.WebhookServiceHardeningTests.test_malformed_capability_result_cannot_publish_false_result": {
+      "evidence": "Issue #672 comment 5161678336 owns the exact webhook, idempotency, auth-test, telemetry, TCP, and negative-case laws from #1323.",
+      "number": 672,
+      "repository": "OpenJ92/control-plane-kit"
+    },
+    "tests.test_webhook_service_hardening.WebhookServiceHardeningTests.test_recovery_wins_race_against_late_effect_result": {
+      "evidence": "Issue #672 comment 5161678336 owns the exact webhook, idempotency, auth-test, telemetry, TCP, and negative-case laws from #1323.",
+      "number": 672,
+      "repository": "OpenJ92/control-plane-kit"
     }
+  },
+  "issue": 1323,
+  "non_current_reviews": {
+    "tests.test_server_command_templates.ServerCommandTemplateTests.test_invalid_rendered_source_fails_without_retaining_source": {
+      "disposition": "reviewed-supersession",
+      "negative_case_disposition": "Malformed descriptors, invalid process source, and undeclared environment material fail in current descriptor, compile, import, and published-image gates without retaining generated source.",
+      "obsolete_assumption_disposition": "A server command is no longer dynamically rendered Python source embedded in the deployment language.",
+      "owner": "control-plane-kit-servers immutable descriptors and package-owned process code",
+      "rationale": "Dynamic Python command-template rendering is replaced by immutable package-owned process modules, strict product descriptors, digest-pinned OCI images, compile validation, and interpreter-owned runtime materialization."
+    },
+    "tests.test_server_command_templates.ServerCommandTemplateTests.test_rendered_commands_include_expected_environment_names": {
+      "disposition": "reviewed-supersession",
+      "negative_case_disposition": "Malformed descriptors, invalid process source, and undeclared environment material fail in current descriptor, compile, import, and published-image gates without retaining generated source.",
+      "obsolete_assumption_disposition": "A server command is no longer dynamically rendered Python source embedded in the deployment language.",
+      "owner": "control-plane-kit-servers immutable descriptors and package-owned process code",
+      "rationale": "Dynamic Python command-template rendering is replaced by immutable package-owned process modules, strict product descriptors, digest-pinned OCI images, compile validation, and interpreter-owned runtime materialization."
+    },
+    "tests.test_server_command_templates.ServerCommandTemplateTests.test_server_commands_render_python_scripts": {
+      "disposition": "reviewed-supersession",
+      "negative_case_disposition": "Malformed descriptors, invalid process source, and undeclared environment material fail in current descriptor, compile, import, and published-image gates without retaining generated source.",
+      "obsolete_assumption_disposition": "A server command is no longer dynamically rendered Python source embedded in the deployment language.",
+      "owner": "control-plane-kit-servers immutable descriptors and package-owned process code",
+      "rationale": "Dynamic Python command-template rendering is replaced by immutable package-owned process modules, strict product descriptors, digest-pinned OCI images, compile validation, and interpreter-owned runtime materialization."
+    },
+    "tests.test_server_command_templates.ServerCommandTemplateTests.test_validated_command_preserves_valid_source_exactly": {
+      "disposition": "reviewed-supersession",
+      "negative_case_disposition": "Malformed descriptors, invalid process source, and undeclared environment material fail in current descriptor, compile, import, and published-image gates without retaining generated source.",
+      "obsolete_assumption_disposition": "A server command is no longer dynamically rendered Python source embedded in the deployment language.",
+      "owner": "control-plane-kit-servers immutable descriptors and package-owned process code",
+      "rationale": "Dynamic Python command-template rendering is replaced by immutable package-owned process modules, strict product descriptors, digest-pinned OCI images, compile validation, and interpreter-owned runtime materialization."
+    }
+  },
+  "strengthened_references": [],
+  "successor_overrides": {
+    "tests.test_hello_runtime.HelloRuntimeExampleTests.test_hello_can_run_through_injected_client": [
+      "control-plane-kit-servers:products.cpk_server.tests.test_image_bootstrap.CpkServerImageBootstrapTests.test_hosted_activity_controller_drives_public_workflow_over_http_and_mcp"
+    ],
+    "tests.test_hello_runtime.HelloRuntimeExampleTests.test_hello_graph_compiles_to_one_docker_node": [
+      "control-plane-kit-servers:products.hello_server.tests.test_hello_server_product.HelloServerProductTests.test_descriptor_instantiates_without_importing_process_code",
+      "control-plane-kit-servers:products.cpk_server.tests.test_image_bootstrap.CpkServerImageBootstrapTests.test_hosted_activity_smoke_uses_published_image_and_docker_runtime_authority"
+    ],
+    "tests.test_hello_runtime.HelloRuntimeExampleTests.test_hello_plan_uses_docker_interpreter": [
+      "control-plane-kit-servers:products.cpk_server.tests.test_image_bootstrap.CpkServerImageBootstrapTests.test_hosted_activity_smoke_uses_published_image_and_docker_runtime_authority"
+    ],
+    "tests.test_hello_server_block.HelloServerBlockTests.test_dependency_command_contains_names_not_endpoint_values": [
+      "control-plane-kit-servers:products.hello_server.tests.test_hello_server_product.HelloServerProductTests.test_process_dependency_descriptor_contains_env_names_not_endpoints"
+    ],
+    "tests.test_hello_server_block.HelloServerBlockTests.test_dependency_names_are_closed_unique_identifiers": [
+      "control-plane-kit-servers:products.hello_server.tests.test_hello_server_product.HelloServerProductTests.test_process_dependency_names_are_closed_and_unique"
+    ],
+    "tests.test_hello_server_block.HelloServerBlockTests.test_hello_environment_loads_message_contract": [
+      "control-plane-kit-servers:products.hello_server.tests.test_hello_server_product.HelloServerProductTests.test_descriptor_declares_http_provider_and_message_contract"
+    ],
+    "tests.test_hello_server_block.HelloServerBlockTests.test_hello_server_block_advertises_http_provider": [
+      "control-plane-kit-servers:products.hello_server.tests.test_hello_server_product.HelloServerProductTests.test_descriptor_declares_http_provider_and_message_contract"
+    ],
+    "tests.test_hello_server_block.HelloServerBlockTests.test_hello_server_block_compiles_under_docker_runtime": [
+      "control-plane-kit-servers:products.hello_server.tests.test_hello_server_product.HelloServerProductTests.test_descriptor_instantiates_without_importing_process_code",
+      "control-plane-kit-servers:products.cpk_server.tests.test_image_bootstrap.CpkServerImageBootstrapTests.test_hosted_activity_smoke_uses_published_image_and_docker_runtime_authority"
+    ],
+    "tests.test_http_active_router_server_block.HttpActiveRouterServerBlockTests.test_active_router_block_advertises_provider_and_active_requirement": [
+      "control-plane-kit-servers:products.http_active_router.tests.test_http_active_router_product.HttpActiveRouterProductTests.test_descriptor_declares_http_provider_and_active_requirement"
+    ],
+    "tests.test_http_active_router_server_block.HttpActiveRouterServerBlockTests.test_active_router_block_compiles_socket_connection_to_environment": [
+      "control-plane-kit-servers:products.http_active_router.tests.test_http_active_router_product.HttpActiveRouterProductTests.test_descriptor_declares_http_provider_and_active_requirement",
+      "control-plane-kit-servers:products.cpk_server.tests.test_image_bootstrap.CpkServerImageBootstrapTests.test_hosted_activity_controller_proves_workspace_a_router_transition"
+    ],
+    "tests.test_http_active_router_server_block.HttpActiveRouterServerBlockTests.test_active_router_forwards_to_active_target": [
+      "control-plane-kit-servers:products.http_active_router.tests.test_http_active_router_product.HttpActiveRouterProductTests.test_process_forwards_method_path_headers_and_body_to_active_target"
+    ],
+    "tests.test_http_block_compositions.HttpBlockCompositionTests.test_active_router_composition_binds_selected_target": [
+      "control-plane-kit-servers:products.cpk_server.tests.test_image_bootstrap.CpkServerImageBootstrapTests.test_hosted_activity_controller_proves_workspace_a_router_transition"
+    ],
+    "tests.test_http_block_compositions.HttpBlockCompositionTests.test_multiplexer_composition_binds_primary_and_observer": [
+      "control-plane-kit-servers:products.cpk_server.tests.test_image_bootstrap.CpkServerImageBootstrapTests.test_hosted_activity_controller_proves_workspace_b_multiplexer_observer"
+    ],
+    "tests.test_http_multiplexer_server_block.HttpMultiplexerServerBlockTests.test_multiplexer_block_advertises_provider_and_target_requirements": [
+      "control-plane-kit-servers:products.http_multiplexer.tests.test_http_multiplexer_product.HttpMultiplexerProductTests.test_descriptor_declares_primary_and_optional_observer_requirements"
+    ],
+    "tests.test_http_multiplexer_server_block.HttpMultiplexerServerBlockTests.test_multiplexer_block_compiles_socket_connections_to_environment": [
+      "control-plane-kit-servers:products.http_multiplexer.tests.test_http_multiplexer_product.HttpMultiplexerProductTests.test_descriptor_declares_primary_and_optional_observer_requirements",
+      "control-plane-kit-servers:products.cpk_server.tests.test_image_bootstrap.CpkServerImageBootstrapTests.test_hosted_activity_controller_proves_workspace_b_multiplexer_observer"
+    ],
+    "tests.test_http_multiplexer_server_block.HttpMultiplexerServerBlockTests.test_multiplexer_observer_failure_is_recorded_but_primary_response_wins": [
+      "control-plane-kit-servers:products.http_multiplexer.tests.test_http_multiplexer_product.HttpMultiplexerProductTests.test_observer_failure_is_reported_but_primary_response_can_survive"
+    ],
+    "tests.test_http_multiplexer_server_block.HttpMultiplexerServerBlockTests.test_multiplexer_returns_primary_response_and_copies_to_observers": [
+      "control-plane-kit-servers:products.http_multiplexer.tests.test_http_multiplexer_product.HttpMultiplexerProductTests.test_primary_response_wins_and_observer_receives_copied_request"
+    ]
+  }
+}
   ]
 }

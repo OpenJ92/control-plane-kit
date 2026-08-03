@@ -142,6 +142,53 @@ class SemanticReconciliationTests(unittest.TestCase):
         self.assertEqual(identities, {identity})
         self.assertEqual(methods, {"test_law": [identity]})
 
+    def test_server_index_includes_repository_and_product_owned_tests(self) -> None:
+        with TemporaryDirectory() as temporary:
+            external_root = Path(temporary)
+            repository_tests = external_root / "tests"
+            product_tests = external_root / "products" / "hello" / "tests"
+            repository_tests.mkdir()
+            product_tests.mkdir(parents=True)
+            (repository_tests / "test_catalogue.py").write_text(
+                "import unittest\n\n"
+                "class CatalogueTests(unittest.TestCase):\n"
+                "    def test_catalogue(self):\n"
+                "        pass\n",
+                encoding="utf-8",
+            )
+            (product_tests / "test_product.py").write_text(
+                "import unittest\n\n"
+                "class ProductTests(unittest.TestCase):\n"
+                "    def test_product(self):\n"
+                "        pass\n",
+                encoding="utf-8",
+            )
+
+            identities, methods = _current_test_index(
+                Path("/coordination-root-is-not-used"),
+                ("control-plane-kit-servers",),
+                current_roots={
+                    "control-plane-kit-servers": external_root,
+                },
+            )
+
+        catalogue = (
+            "control-plane-kit-servers:"
+            "tests.test_catalogue.CatalogueTests.test_catalogue"
+        )
+        product = (
+            "control-plane-kit-servers:products.hello.tests."
+            "test_product.ProductTests.test_product"
+        )
+        self.assertEqual(identities, {catalogue, product})
+        self.assertEqual(
+            methods,
+            {
+                "test_catalogue": [catalogue],
+                "test_product": [product],
+            },
+        )
+
     def test_decision_slice_accepts_multiple_unique_current_distributions(self) -> None:
         document = {
             "schema": "cpk.semantic-test-reconciliation-decisions",
@@ -386,6 +433,66 @@ class SemanticReconciliationTests(unittest.TestCase):
         )
         self.assertEqual(evidence["interpreters"]["tests"], 147)
         self.assertEqual(evidence["core"]["tests"], 484)
+
+    def test_issue_1323_artifact_records_server_product_evidence(self) -> None:
+        root = Path(__file__).resolve().parents[2]
+        artifact_root = root / "artifacts/extraction"
+        reconciliation = json.loads(
+            (artifact_root / "semantic-test-reconciliation.json").read_text(
+                encoding="utf-8"
+            )
+        )
+        evidence = json.loads(
+            (artifact_root / "harden-tests-parity-1323-evidence.json").read_text(
+                encoding="utf-8"
+            )
+        )
+        reviews = [
+            value
+            for value in reconciliation["reviews"]
+            if value["reviewed_by_issue"] == 1323
+        ]
+
+        self.assertEqual(len(reviews), 268)
+        self.assertEqual(
+            {value["disposition"] for value in reviews},
+            {
+                "current-strengthened",
+                "future-issue",
+                "reviewed-supersession",
+            },
+        )
+        self.assertEqual(
+            sum(value["disposition"] == "current-strengthened" for value in reviews),
+            17,
+        )
+        self.assertEqual(
+            sum(value["disposition"] == "future-issue" for value in reviews),
+            247,
+        )
+        self.assertEqual(
+            sum(value["disposition"] == "reviewed-supersession" for value in reviews),
+            4,
+        )
+        self.assertEqual(
+            evidence["server_products"]["repository_merge_commit"],
+            "d2fe4cbde6766616981d67e87e3e81462a3f58e7",
+        )
+        self.assertEqual(evidence["server_products"]["full_tests"], 166)
+        self.assertEqual(
+            evidence["published_images"]["http-active-router"],
+            "ghcr.io/openj92/control-plane-kit-servers/http-active-router@"
+            "sha256:a58938fdc5c37bfda1b2b0dbd95fc0bf3ba7391f5ce3b8fdfb3956dccf0a01c8",
+        )
+        self.assertEqual(
+            evidence["published_images"]["http-multiplexer"],
+            "ghcr.io/openj92/control-plane-kit-servers/http-multiplexer@"
+            "sha256:7fd15d9477db02c122e834d62074268a3b947b49b31fa3cad10d6a7737ca4fcb",
+        )
+        self.assertEqual(
+            evidence["catalogue_checksum"],
+            "8221cc76d3f5de19242aa59a86cd3b16e768f4c7fb4767d52ba0fb204a2118b9",
+        )
 
 
 if __name__ == "__main__":

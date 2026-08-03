@@ -1974,13 +1974,7 @@
       "owner_kind": "core",
       "reference": "tests.test_block_control_fastapi.BlockControlFastAPITests.test_configured_token_protects_control_routes",
       "successors": [],
-      "supersession": {
-        "negative_case_disposition": "Negative cases remain required for the future owner and are not erased; they are listed in the #743 closeout family record and successor issue handoff.",
-        "obsolete_assumption": "This frozen law was previously counted as extracted-core required behavior even though its executable owner is outside the pure core package.",
-        "rationale": "Frozen control routes execute FastAPI/process mutation and authentication behavior. Extracted core owns closed control-route descriptor values; the executable process belongs to cpk-server or an interpreter-owned process package.",
-        "replacement": "#743 cpk-server control-process handoff; core descriptor values remain covered by extract-e-762-control-routes.unittest and process handoff contracts.",
-        "review": "#743 interpreter runtime closeout"
-      }
+      "supersession": null
     },
     {
       "kind": "test",
@@ -1990,13 +1984,7 @@
       "owner_kind": "core",
       "reference": "tests.test_block_control_fastapi.BlockControlFastAPITests.test_control_routes_can_be_called_without_token_when_unconfigured",
       "successors": [],
-      "supersession": {
-        "negative_case_disposition": "Negative cases remain required for the future owner and are not erased; they are listed in the #743 closeout family record and successor issue handoff.",
-        "obsolete_assumption": "This frozen law was previously counted as extracted-core required behavior even though its executable owner is outside the pure core package.",
-        "rationale": "Frozen control routes execute FastAPI/process mutation and authentication behavior. Extracted core owns closed control-route descriptor values; the executable process belongs to cpk-server or an interpreter-owned process package.",
-        "replacement": "#743 cpk-server control-process handoff; core descriptor values remain covered by extract-e-762-control-routes.unittest and process handoff contracts.",
-        "review": "#743 interpreter runtime closeout"
-      }
+      "supersession": null
     },
     {
       "kind": "test",
@@ -2006,13 +1994,7 @@
       "owner_kind": "core",
       "reference": "tests.test_block_control_fastapi.BlockControlFastAPITests.test_execution_auth_does_not_protect_ordinary_data_routes",
       "successors": [],
-      "supersession": {
-        "negative_case_disposition": "Negative cases remain required for the future owner and are not erased; they are listed in the #743 closeout family record and successor issue handoff.",
-        "obsolete_assumption": "This frozen law was previously counted as extracted-core required behavior even though its executable owner is outside the pure core package.",
-        "rationale": "Frozen control routes execute FastAPI/process mutation and authentication behavior. Extracted core owns closed control-route descriptor values; the executable process belongs to cpk-server or an interpreter-owned process package.",
-        "replacement": "#743 cpk-server control-process handoff; core descriptor values remain covered by extract-e-762-control-routes.unittest and process handoff contracts.",
-        "review": "#743 interpreter runtime closeout"
-      }
+      "supersession": null
     },
     {
       "kind": "test",
@@ -2022,13 +2004,7 @@
       "owner_kind": "core",
       "reference": "tests.test_block_control_fastapi.BlockControlFastAPITests.test_execution_mode_requires_auth_configuration",
       "successors": [],
-      "supersession": {
-        "negative_case_disposition": "Negative cases remain required for the future owner and are not erased; they are listed in the #743 closeout family record and successor issue handoff.",
-        "obsolete_assumption": "This frozen law was previously counted as extracted-core required behavior even though its executable owner is outside the pure core package.",
-        "rationale": "Frozen control routes execute FastAPI/process mutation and authentication behavior. Extracted core owns closed control-route descriptor values; the executable process belongs to cpk-server or an interpreter-owned process package.",
-        "replacement": "#743 cpk-server control-process handoff; core descriptor values remain covered by extract-e-762-control-routes.unittest and process handoff contracts.",
-        "review": "#743 interpreter runtime closeout"
-      }
+      "supersession": null
     },
     {
       "kind": "test",
@@ -2038,13 +2014,7 @@
       "owner_kind": "core",
       "reference": "tests.test_block_control_fastapi.BlockControlFastAPITests.test_execution_mutation_body_is_bounded_before_application",
       "successors": [],
-      "supersession": {
-        "negative_case_disposition": "Negative cases remain required for the future owner and are not erased; they are listed in the #743 closeout family record and successor issue handoff.",
-        "obsolete_assumption": "This frozen law was previously counted as extracted-core required behavior even though its executable owner is outside the pure core package.",
-        "rationale": "Frozen control routes execute FastAPI/process mutation and authentication behavior. Extracted core owns closed control-route descriptor values; the executable process belongs to cpk-server or an interpreter-owned process package.",
-        "replacement": "#743 cpk-server control-process handoff; core descriptor values remain covered by extract-e-762-control-routes.unittest and process handoff contracts.",
-        "review": "#743 interpreter runtime closeout"
-      }
+      "supersession": null
     },
     {
       "kind": "test",
@@ -2054,13 +2024,7 @@
       "owner_kind": "core",
       "reference": "tests.test_block_control_fastapi.BlockControlFastAPITests.test_execution_mutations_require_identity_replay_and_conflict",
       "successors": [],
-      "supersession": {
-        "negative_case_disposition": "Negative cases remain required for the future owner and are not erased; they are listed in the #743 closeout family record and successor issue handoff.",
-        "obsolete_assumption": "This frozen law was previously counted as extracted-core required behavior even though its executable owner is outside the pure core package.",
-        "rationale": "Frozen control routes execute FastAPI/process mutation and authentication behavior. Extracted core owns closed control-route descriptor values; the executable process belongs to cpk-server or an interpreter-owned process package.",
-        "replacement": "#743 cpk-server control-process handoff; core descriptor values remain covered by extract-e-762-control-routes.unittest and process handoff contracts.",
-        "review": "#743 interpreter runtime closeout"
-      }
+      "supersession": null
     },
     {
       "kind": "test",
@@ -2070,13 +2034,7 @@
       "owner_kind": "core",
       "reference": "tests.test_block_control_fastapi.BlockControlFastAPITests.test_observers_route_mutates_state",
       "successors": [],
-      "supersession": {
-        "negative_case_disposition": "Negative cases remain required for the future owner and are not erased; they are listed in the #743 closeout family record and successor issue handoff.",
-        "obsolete_assumption": "This frozen law was previously counted as extracted-core required behavior even though its executable owner is outside the pure core package.",
-        "rationale": "Frozen control routes execute FastAPI/process mutation and authentication behavior. Extracted core owns closed control-route descriptor values; the executable process belongs to cpk-server or an interpreter-owned process package.",
-        "replacement": "#743 cpk-server control-process handoff; core descriptor values remain covered by extract-e-762-control-routes.unittest and process handoff contracts.",
-        "review": "#743 interpreter runtime closeout"
-      }
+      "supersession": null
     },
     {
       "kind": "test",
@@ -2086,13 +2044,7 @@
       "owner_kind": "core",
       "reference": "tests.test_block_control_fastapi.BlockControlFastAPITests.test_unknown_active_target_returns_bad_request",
       "successors": [],
-      "supersession": {
-        "negative_case_disposition": "Negative cases remain required for the future owner and are not erased; they are listed in the #743 closeout family record and successor issue handoff.",
-        "obsolete_assumption": "This frozen law was previously counted as extracted-core required behavior even though its executable owner is outside the pure core package.",
-        "rationale": "Frozen control routes execute FastAPI/process mutation and authentication behavior. Extracted core owns closed control-route descriptor values; the executable process belongs to cpk-server or an interpreter-owned process package.",
-        "replacement": "#743 cpk-server control-process handoff; core descriptor values remain covered by extract-e-762-control-routes.unittest and process handoff contracts.",
-        "review": "#743 interpreter runtime closeout"
-      }
+      "supersession": null
     },
     {
       "kind": "test",
@@ -2102,13 +2054,7 @@
       "owner_kind": "core",
       "reference": "tests.test_block_control_state.BlockControlStateTests.test_capability_payload_uses_descriptors",
       "successors": [],
-      "supersession": {
-        "negative_case_disposition": "Negative cases remain required for the future owner and are not erased; they are listed in the #743 closeout family record and successor issue handoff.",
-        "obsolete_assumption": "This frozen law was previously counted as extracted-core required behavior even though its executable owner is outside the pure core package.",
-        "rationale": "Frozen control routes execute FastAPI/process mutation and authentication behavior. Extracted core owns closed control-route descriptor values; the executable process belongs to cpk-server or an interpreter-owned process package.",
-        "replacement": "#743 cpk-server control-process handoff; core descriptor values remain covered by extract-e-762-control-routes.unittest and process handoff contracts.",
-        "review": "#743 interpreter runtime closeout"
-      }
+      "supersession": null
     },
     {
       "kind": "test",
@@ -2118,13 +2064,7 @@
       "owner_kind": "core",
       "reference": "tests.test_block_control_state.BlockControlStateTests.test_control_state_is_backed_by_runtime_contract",
       "successors": [],
-      "supersession": {
-        "negative_case_disposition": "Negative cases remain required for the future owner and are not erased; they are listed in the #743 closeout family record and successor issue handoff.",
-        "obsolete_assumption": "This frozen law was previously counted as extracted-core required behavior even though its executable owner is outside the pure core package.",
-        "rationale": "Frozen control routes execute FastAPI/process mutation and authentication behavior. Extracted core owns closed control-route descriptor values; the executable process belongs to cpk-server or an interpreter-owned process package.",
-        "replacement": "#743 cpk-server control-process handoff; core descriptor values remain covered by extract-e-762-control-routes.unittest and process handoff contracts.",
-        "review": "#743 interpreter runtime closeout"
-      }
+      "supersession": null
     },
     {
       "kind": "test",
@@ -2134,13 +2074,7 @@
       "owner_kind": "core",
       "reference": "tests.test_block_control_state.BlockControlStateTests.test_observer_mutation_updates_observer_state",
       "successors": [],
-      "supersession": {
-        "negative_case_disposition": "Negative cases remain required for the future owner and are not erased; they are listed in the #743 closeout family record and successor issue handoff.",
-        "obsolete_assumption": "This frozen law was previously counted as extracted-core required behavior even though its executable owner is outside the pure core package.",
-        "rationale": "Frozen control routes execute FastAPI/process mutation and authentication behavior. Extracted core owns closed control-route descriptor values; the executable process belongs to cpk-server or an interpreter-owned process package.",
-        "replacement": "#743 cpk-server control-process handoff; core descriptor values remain covered by extract-e-762-control-routes.unittest and process handoff contracts.",
-        "review": "#743 interpreter runtime closeout"
-      }
+      "supersession": null
     },
     {
       "kind": "test",
@@ -2150,13 +2084,7 @@
       "owner_kind": "core",
       "reference": "tests.test_block_control_state.BlockControlStateTests.test_replacing_targets_clears_stale_active_target",
       "successors": [],
-      "supersession": {
-        "negative_case_disposition": "Negative cases remain required for the future owner and are not erased; they are listed in the #743 closeout family record and successor issue handoff.",
-        "obsolete_assumption": "This frozen law was previously counted as extracted-core required behavior even though its executable owner is outside the pure core package.",
-        "rationale": "Frozen control routes execute FastAPI/process mutation and authentication behavior. Extracted core owns closed control-route descriptor values; the executable process belongs to cpk-server or an interpreter-owned process package.",
-        "replacement": "#743 cpk-server control-process handoff; core descriptor values remain covered by extract-e-762-control-routes.unittest and process handoff contracts.",
-        "review": "#743 interpreter runtime closeout"
-      }
+      "supersession": null
     },
     {
       "kind": "test",
@@ -2166,13 +2094,7 @@
       "owner_kind": "core",
       "reference": "tests.test_block_control_state.BlockControlStateTests.test_status_and_log_providers_are_used_when_present",
       "successors": [],
-      "supersession": {
-        "negative_case_disposition": "Negative cases remain required for the future owner and are not erased; they are listed in the #743 closeout family record and successor issue handoff.",
-        "obsolete_assumption": "This frozen law was previously counted as extracted-core required behavior even though its executable owner is outside the pure core package.",
-        "rationale": "Frozen control routes execute FastAPI/process mutation and authentication behavior. Extracted core owns closed control-route descriptor values; the executable process belongs to cpk-server or an interpreter-owned process package.",
-        "replacement": "#743 cpk-server control-process handoff; core descriptor values remain covered by extract-e-762-control-routes.unittest and process handoff contracts.",
-        "review": "#743 interpreter runtime closeout"
-      }
+      "supersession": null
     },
     {
       "kind": "test",
@@ -2182,13 +2104,7 @@
       "owner_kind": "core",
       "reference": "tests.test_block_control_state.BlockControlStateTests.test_target_switch_rejects_unknown_targets",
       "successors": [],
-      "supersession": {
-        "negative_case_disposition": "Negative cases remain required for the future owner and are not erased; they are listed in the #743 closeout family record and successor issue handoff.",
-        "obsolete_assumption": "This frozen law was previously counted as extracted-core required behavior even though its executable owner is outside the pure core package.",
-        "rationale": "Frozen control routes execute FastAPI/process mutation and authentication behavior. Extracted core owns closed control-route descriptor values; the executable process belongs to cpk-server or an interpreter-owned process package.",
-        "replacement": "#743 cpk-server control-process handoff; core descriptor values remain covered by extract-e-762-control-routes.unittest and process handoff contracts.",
-        "review": "#743 interpreter runtime closeout"
-      }
+      "supersession": null
     },
     {
       "kind": "test",
@@ -8963,7 +8879,13 @@
       "owner": "control-plane-kit-servers:hello",
       "owner_kind": "hello",
       "reference": "tests.test_hello_runtime.HelloRuntimeExampleTests.test_hello_can_run_through_injected_client",
-      "successors": [],
+      "successors": [
+        {
+          "evidence": "harden-tests-parity-1323.servers.unittest",
+          "id": "control-plane-kit-servers:products.cpk_server.tests.test_image_bootstrap.CpkServerImageBootstrapTests.test_hosted_activity_controller_drives_public_workflow_over_http_and_mcp",
+          "status": "passing"
+        }
+      ],
       "supersession": null
     },
     {
@@ -8973,7 +8895,18 @@
       "owner": "control-plane-kit-servers:hello",
       "owner_kind": "hello",
       "reference": "tests.test_hello_runtime.HelloRuntimeExampleTests.test_hello_graph_compiles_to_one_docker_node",
-      "successors": [],
+      "successors": [
+        {
+          "evidence": "harden-tests-parity-1323.servers.unittest",
+          "id": "control-plane-kit-servers:products.hello_server.tests.test_hello_server_product.HelloServerProductTests.test_descriptor_instantiates_without_importing_process_code",
+          "status": "passing"
+        },
+        {
+          "evidence": "harden-tests-parity-1323.servers.unittest",
+          "id": "control-plane-kit-servers:products.cpk_server.tests.test_image_bootstrap.CpkServerImageBootstrapTests.test_hosted_activity_smoke_uses_published_image_and_docker_runtime_authority",
+          "status": "passing"
+        }
+      ],
       "supersession": null
     },
     {
@@ -8983,7 +8916,13 @@
       "owner": "control-plane-kit-servers:hello",
       "owner_kind": "hello",
       "reference": "tests.test_hello_runtime.HelloRuntimeExampleTests.test_hello_plan_uses_docker_interpreter",
-      "successors": [],
+      "successors": [
+        {
+          "evidence": "harden-tests-parity-1323.servers.unittest",
+          "id": "control-plane-kit-servers:products.cpk_server.tests.test_image_bootstrap.CpkServerImageBootstrapTests.test_hosted_activity_smoke_uses_published_image_and_docker_runtime_authority",
+          "status": "passing"
+        }
+      ],
       "supersession": null
     },
     {
@@ -9003,7 +8942,13 @@
       "owner": "control-plane-kit-servers:hello",
       "owner_kind": "hello",
       "reference": "tests.test_hello_server_block.HelloServerBlockTests.test_dependency_command_contains_names_not_endpoint_values",
-      "successors": [],
+      "successors": [
+        {
+          "evidence": "harden-tests-parity-1323.servers.unittest",
+          "id": "control-plane-kit-servers:products.hello_server.tests.test_hello_server_product.HelloServerProductTests.test_process_dependency_descriptor_contains_env_names_not_endpoints",
+          "status": "passing"
+        }
+      ],
       "supersession": null
     },
     {
@@ -9013,7 +8958,13 @@
       "owner": "control-plane-kit-servers:hello",
       "owner_kind": "hello",
       "reference": "tests.test_hello_server_block.HelloServerBlockTests.test_dependency_names_are_closed_unique_identifiers",
-      "successors": [],
+      "successors": [
+        {
+          "evidence": "harden-tests-parity-1323.servers.unittest",
+          "id": "control-plane-kit-servers:products.hello_server.tests.test_hello_server_product.HelloServerProductTests.test_process_dependency_names_are_closed_and_unique",
+          "status": "passing"
+        }
+      ],
       "supersession": null
     },
     {
@@ -9023,7 +8974,13 @@
       "owner": "control-plane-kit-servers:hello",
       "owner_kind": "hello",
       "reference": "tests.test_hello_server_block.HelloServerBlockTests.test_hello_environment_loads_message_contract",
-      "successors": [],
+      "successors": [
+        {
+          "evidence": "harden-tests-parity-1323.servers.unittest",
+          "id": "control-plane-kit-servers:products.hello_server.tests.test_hello_server_product.HelloServerProductTests.test_descriptor_declares_http_provider_and_message_contract",
+          "status": "passing"
+        }
+      ],
       "supersession": null
     },
     {
@@ -9033,7 +8990,13 @@
       "owner": "control-plane-kit-servers:hello",
       "owner_kind": "hello",
       "reference": "tests.test_hello_server_block.HelloServerBlockTests.test_hello_server_block_advertises_http_provider",
-      "successors": [],
+      "successors": [
+        {
+          "evidence": "harden-tests-parity-1323.servers.unittest",
+          "id": "control-plane-kit-servers:products.hello_server.tests.test_hello_server_product.HelloServerProductTests.test_descriptor_declares_http_provider_and_message_contract",
+          "status": "passing"
+        }
+      ],
       "supersession": null
     },
     {
@@ -9043,7 +9006,18 @@
       "owner": "control-plane-kit-servers:hello",
       "owner_kind": "hello",
       "reference": "tests.test_hello_server_block.HelloServerBlockTests.test_hello_server_block_compiles_under_docker_runtime",
-      "successors": [],
+      "successors": [
+        {
+          "evidence": "harden-tests-parity-1323.servers.unittest",
+          "id": "control-plane-kit-servers:products.hello_server.tests.test_hello_server_product.HelloServerProductTests.test_descriptor_instantiates_without_importing_process_code",
+          "status": "passing"
+        },
+        {
+          "evidence": "harden-tests-parity-1323.servers.unittest",
+          "id": "control-plane-kit-servers:products.cpk_server.tests.test_image_bootstrap.CpkServerImageBootstrapTests.test_hosted_activity_smoke_uses_published_image_and_docker_runtime_authority",
+          "status": "passing"
+        }
+      ],
       "supersession": null
     },
     {
@@ -9159,7 +9133,13 @@
       "owner": "control-plane-kit-servers:http-router",
       "owner_kind": "deferred-product",
       "reference": "tests.test_http_active_router_server_block.HttpActiveRouterServerBlockTests.test_active_router_block_advertises_provider_and_active_requirement",
-      "successors": [],
+      "successors": [
+        {
+          "evidence": "harden-tests-parity-1323.servers.unittest",
+          "id": "control-plane-kit-servers:products.http_active_router.tests.test_http_active_router_product.HttpActiveRouterProductTests.test_descriptor_declares_http_provider_and_active_requirement",
+          "status": "passing"
+        }
+      ],
       "supersession": null
     },
     {
@@ -9169,7 +9149,18 @@
       "owner": "control-plane-kit-servers:http-router",
       "owner_kind": "deferred-product",
       "reference": "tests.test_http_active_router_server_block.HttpActiveRouterServerBlockTests.test_active_router_block_compiles_socket_connection_to_environment",
-      "successors": [],
+      "successors": [
+        {
+          "evidence": "harden-tests-parity-1323.servers.unittest",
+          "id": "control-plane-kit-servers:products.http_active_router.tests.test_http_active_router_product.HttpActiveRouterProductTests.test_descriptor_declares_http_provider_and_active_requirement",
+          "status": "passing"
+        },
+        {
+          "evidence": "harden-tests-parity-1323.servers.unittest",
+          "id": "control-plane-kit-servers:products.cpk_server.tests.test_image_bootstrap.CpkServerImageBootstrapTests.test_hosted_activity_controller_proves_workspace_a_router_transition",
+          "status": "passing"
+        }
+      ],
       "supersession": null
     },
     {
@@ -9179,7 +9170,13 @@
       "owner": "control-plane-kit-servers:http-router",
       "owner_kind": "deferred-product",
       "reference": "tests.test_http_active_router_server_block.HttpActiveRouterServerBlockTests.test_active_router_forwards_to_active_target",
-      "successors": [],
+      "successors": [
+        {
+          "evidence": "harden-tests-parity-1323.servers.unittest",
+          "id": "control-plane-kit-servers:products.http_active_router.tests.test_http_active_router_product.HttpActiveRouterProductTests.test_process_forwards_method_path_headers_and_body_to_active_target",
+          "status": "passing"
+        }
+      ],
       "supersession": null
     },
     {
@@ -9269,7 +9266,13 @@
       "owner": "control-plane-kit-test:cross-repository",
       "owner_kind": "system",
       "reference": "tests.test_http_block_compositions.HttpBlockCompositionTests.test_active_router_composition_binds_selected_target",
-      "successors": [],
+      "successors": [
+        {
+          "evidence": "harden-tests-parity-1323.servers.unittest",
+          "id": "control-plane-kit-servers:products.cpk_server.tests.test_image_bootstrap.CpkServerImageBootstrapTests.test_hosted_activity_controller_proves_workspace_a_router_transition",
+          "status": "passing"
+        }
+      ],
       "supersession": null
     },
     {
@@ -9289,7 +9292,13 @@
       "owner": "control-plane-kit-test:cross-repository",
       "owner_kind": "system",
       "reference": "tests.test_http_block_compositions.HttpBlockCompositionTests.test_multiplexer_composition_binds_primary_and_observer",
-      "successors": [],
+      "successors": [
+        {
+          "evidence": "harden-tests-parity-1323.servers.unittest",
+          "id": "control-plane-kit-servers:products.cpk_server.tests.test_image_bootstrap.CpkServerImageBootstrapTests.test_hosted_activity_controller_proves_workspace_b_multiplexer_observer",
+          "status": "passing"
+        }
+      ],
       "supersession": null
     },
     {
@@ -9639,7 +9648,13 @@
       "owner": "control-plane-kit-servers:http-multiplexer",
       "owner_kind": "deferred-product",
       "reference": "tests.test_http_multiplexer_server_block.HttpMultiplexerServerBlockTests.test_multiplexer_block_advertises_provider_and_target_requirements",
-      "successors": [],
+      "successors": [
+        {
+          "evidence": "harden-tests-parity-1323.servers.unittest",
+          "id": "control-plane-kit-servers:products.http_multiplexer.tests.test_http_multiplexer_product.HttpMultiplexerProductTests.test_descriptor_declares_primary_and_optional_observer_requirements",
+          "status": "passing"
+        }
+      ],
       "supersession": null
     },
     {
@@ -9649,7 +9664,18 @@
       "owner": "control-plane-kit-servers:http-multiplexer",
       "owner_kind": "deferred-product",
       "reference": "tests.test_http_multiplexer_server_block.HttpMultiplexerServerBlockTests.test_multiplexer_block_compiles_socket_connections_to_environment",
-      "successors": [],
+      "successors": [
+        {
+          "evidence": "harden-tests-parity-1323.servers.unittest",
+          "id": "control-plane-kit-servers:products.http_multiplexer.tests.test_http_multiplexer_product.HttpMultiplexerProductTests.test_descriptor_declares_primary_and_optional_observer_requirements",
+          "status": "passing"
+        },
+        {
+          "evidence": "harden-tests-parity-1323.servers.unittest",
+          "id": "control-plane-kit-servers:products.cpk_server.tests.test_image_bootstrap.CpkServerImageBootstrapTests.test_hosted_activity_controller_proves_workspace_b_multiplexer_observer",
+          "status": "passing"
+        }
+      ],
       "supersession": null
     },
     {
@@ -9659,7 +9685,13 @@
       "owner": "control-plane-kit-servers:http-multiplexer",
       "owner_kind": "deferred-product",
       "reference": "tests.test_http_multiplexer_server_block.HttpMultiplexerServerBlockTests.test_multiplexer_observer_failure_is_recorded_but_primary_response_wins",
-      "successors": [],
+      "successors": [
+        {
+          "evidence": "harden-tests-parity-1323.servers.unittest",
+          "id": "control-plane-kit-servers:products.http_multiplexer.tests.test_http_multiplexer_product.HttpMultiplexerProductTests.test_observer_failure_is_reported_but_primary_response_can_survive",
+          "status": "passing"
+        }
+      ],
       "supersession": null
     },
     {
@@ -9669,7 +9701,13 @@
       "owner": "control-plane-kit-servers:http-multiplexer",
       "owner_kind": "deferred-product",
       "reference": "tests.test_http_multiplexer_server_block.HttpMultiplexerServerBlockTests.test_multiplexer_returns_primary_response_and_copies_to_observers",
-      "successors": [],
+      "successors": [
+        {
+          "evidence": "harden-tests-parity-1323.servers.unittest",
+          "id": "control-plane-kit-servers:products.http_multiplexer.tests.test_http_multiplexer_product.HttpMultiplexerProductTests.test_primary_response_wins_and_observer_receives_copied_request",
+          "status": "passing"
+        }
+      ],
       "supersession": null
     },
     {
@@ -14275,7 +14313,13 @@
       "owner_kind": "deferred-product",
       "reference": "tests.test_server_command_templates.ServerCommandTemplateTests.test_invalid_rendered_source_fails_without_retaining_source",
       "successors": [],
-      "supersession": null
+      "supersession": {
+        "negative_case_disposition": "Malformed descriptors, invalid process source, and undeclared environment material fail in current descriptor, compile, import, and published-image gates without retaining generated source.",
+        "obsolete_assumption": "A server command is no longer dynamically rendered Python source embedded in the deployment language.",
+        "rationale": "Dynamic Python command-template rendering is replaced by immutable package-owned process modules, strict product descriptors, digest-pinned OCI images, compile validation, and interpreter-owned runtime materialization.",
+        "replacement": "control-plane-kit-servers immutable descriptors and package-owned process code",
+        "review": "HARDEN.TESTS.PARITY #1323"
+      }
     },
     {
       "kind": "test",
@@ -14285,7 +14329,13 @@
       "owner_kind": "deferred-product",
       "reference": "tests.test_server_command_templates.ServerCommandTemplateTests.test_rendered_commands_include_expected_environment_names",
       "successors": [],
-      "supersession": null
+      "supersession": {
+        "negative_case_disposition": "Malformed descriptors, invalid process source, and undeclared environment material fail in current descriptor, compile, import, and published-image gates without retaining generated source.",
+        "obsolete_assumption": "A server command is no longer dynamically rendered Python source embedded in the deployment language.",
+        "rationale": "Dynamic Python command-template rendering is replaced by immutable package-owned process modules, strict product descriptors, digest-pinned OCI images, compile validation, and interpreter-owned runtime materialization.",
+        "replacement": "control-plane-kit-servers immutable descriptors and package-owned process code",
+        "review": "HARDEN.TESTS.PARITY #1323"
+      }
     },
     {
       "kind": "test",
@@ -14295,7 +14345,13 @@
       "owner_kind": "deferred-product",
       "reference": "tests.test_server_command_templates.ServerCommandTemplateTests.test_server_commands_render_python_scripts",
       "successors": [],
-      "supersession": null
+      "supersession": {
+        "negative_case_disposition": "Malformed descriptors, invalid process source, and undeclared environment material fail in current descriptor, compile, import, and published-image gates without retaining generated source.",
+        "obsolete_assumption": "A server command is no longer dynamically rendered Python source embedded in the deployment language.",
+        "rationale": "Dynamic Python command-template rendering is replaced by immutable package-owned process modules, strict product descriptors, digest-pinned OCI images, compile validation, and interpreter-owned runtime materialization.",
+        "replacement": "control-plane-kit-servers immutable descriptors and package-owned process code",
+        "review": "HARDEN.TESTS.PARITY #1323"
+      }
     },
     {
       "kind": "test",
@@ -14305,7 +14361,13 @@
       "owner_kind": "deferred-product",
       "reference": "tests.test_server_command_templates.ServerCommandTemplateTests.test_validated_command_preserves_valid_source_exactly",
       "successors": [],
-      "supersession": null
+      "supersession": {
+        "negative_case_disposition": "Malformed descriptors, invalid process source, and undeclared environment material fail in current descriptor, compile, import, and published-image gates without retaining generated source.",
+        "obsolete_assumption": "A server command is no longer dynamically rendered Python source embedded in the deployment language.",
+        "rationale": "Dynamic Python command-template rendering is replaced by immutable package-owned process modules, strict product descriptors, digest-pinned OCI images, compile validation, and interpreter-owned runtime materialization.",
+        "replacement": "control-plane-kit-servers immutable descriptors and package-owned process code",
+        "review": "HARDEN.TESTS.PARITY #1323"
+      }
     },
     {
       "kind": "test",
