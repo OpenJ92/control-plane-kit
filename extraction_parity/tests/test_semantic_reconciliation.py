@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import hashlib
 import json
 from pathlib import Path
 from tempfile import TemporaryDirectory
@@ -884,6 +885,86 @@ class SemanticReconciliationTests(unittest.TestCase):
                 "future_issue": 9,
                 "deletion_issue": 1318,
             },
+        )
+
+    def test_issue_1348_aggregates_every_cross_repository_input(self) -> None:
+        root = Path(__file__).resolve().parents[2]
+        artifact_root = root / "artifacts" / "extraction"
+        inventory = json.loads(
+            (artifact_root / "semantic-test-migration-inventory.json").read_text(
+                encoding="utf-8"
+            )
+        )
+        reconciliation = json.loads(
+            (artifact_root / "semantic-test-reconciliation.json").read_text(
+                encoding="utf-8"
+            )
+        )
+        evidence = json.loads(
+            (artifact_root / "harden-tests-parity-1348-evidence.json").read_text(
+                encoding="utf-8"
+            )
+        )
+        immutable = [
+            value
+            for value in reconciliation["reviews"]
+            if value["reviewed_by_issue"] in {1346, 1347}
+        ]
+        mutable = [
+            value
+            for value in reconciliation["mutable_only_reviews"]
+            if value["reviewed_by_issue"] == 1345
+        ]
+        assigned_immutable = [
+            value
+            for value in inventory["reference_assignments"]
+            if value["provisional_target"]["issue"] in {1346, 1347}
+        ]
+
+        self.assertEqual(len(assigned_immutable), 149)
+        self.assertEqual(len(immutable), 149)
+        self.assertEqual(len(mutable), 118)
+        self.assertEqual(
+            evidence["aggregate"],
+            {
+                "immutable": {
+                    "total": 149,
+                    "current_strengthened": 81,
+                    "future_issue": 38,
+                    "reviewed_supersession": 30,
+                },
+                "mutable_only": {
+                    "total": 118,
+                    "current_strengthened": 52,
+                    "reviewed_archived": 66,
+                },
+                "unreviewed": 0,
+            },
+        )
+        self.assertFalse(
+            any(
+                value["provisional_target"]["issue"] == 1325
+                for value in inventory["reference_assignments"]
+            )
+        )
+        self.assertEqual(
+            evidence["future_owners"],
+            {"670": 2, "941": 5, "1096": 7, "1316": 6, "1317": 18},
+        )
+        self.assertEqual(evidence["foundation_validation"]["findings"], 0)
+        self.assertEqual(evidence["standalone_parity"]["tests"], 79)
+        for issue, predecessor in evidence["predecessors"].items():
+            payload = (artifact_root / f"harden-tests-parity-{issue}-evidence.json").read_bytes()
+            self.assertEqual(
+                predecessor["evidence_digest"],
+                "sha256:" + hashlib.sha256(payload).hexdigest(),
+            )
+        script_payload = (
+            artifact_root / "harden-tests-parity-1347-live-script-dispositions.json"
+        ).read_bytes()
+        self.assertEqual(
+            evidence["legacy_scripts"]["script_dispositions_digest"],
+            "sha256:" + hashlib.sha256(script_payload).hexdigest(),
         )
 
 
