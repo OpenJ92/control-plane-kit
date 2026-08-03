@@ -1,64 +1,59 @@
 # Public Import Surfaces
 
-`control_plane_kit.core` is the minimal deployment kernel. The package root is
-a stable, lightweight facade over that kernel and selected pure operational
-value languages. It must remain importable with the base installation and
-without FastAPI, HTTPX, psycopg, Uvicorn, Docker, or a running service.
+The mutable aggregate `control_plane_kit` facade was retired after extraction.
+Current code imports from the package that owns the language or behavior.
 
-The root pipeline is:
+## Coordination Repository
 
-```text
-DeploymentRecipe
-  -> DeploymentGraph
-  -> ValidatedGraph
-  -> GraphDiff
-  -> ActivityPlan
-```
-
-## Export Inventory
-
-Every name in `control_plane_kit.__all__` is classified by its originating
-module below. The source import blocks and `__all__` together are the
-machine-checkable symbol inventory; this table records the ownership class of
-every originating module.
-
-| Classification | Import surfaces |
-| --- | --- |
-| Deployment kernel | `core.algebra`, `core.capabilities`, `core.configuration`, `core.control_routes`, `core.environment`, `core.implementations`, `core.lifecycle`, `core.secrets`, `core.types`, `core.verification` |
-| Pure topology and planning pipeline | `core.topology`, `core.planning` |
-| Pure operational value languages | `contracts`, `effects`, `execution`, `saga`, `scheduling` |
-| Independent domain languages | `domains.discovery`, `domains.idempotency`, `domains.load_generation`, `domains.webhook` |
-| Optional HTTP and process adapters | `adapters`, `entrypoints`, transitional `servers`, `discovery_server`, `idempotency_gateway` |
-| Optional Postgres operations | `discovery_registry`, `stores`, operational portions of `webhook` |
-| Runtime interpreters | `docker_runtime`, `runtimes` |
-| Durable control-plane operations | `workflows`, `read_services` |
-
-Only deployment-kernel and pure operational value names may be re-exported by
-`control_plane_kit`. Domains, products, concrete interpreters, durable services,
-and process entrypoints use their owning package entrances. The architecture
-policy treats the root as this explicit facade; it does not redefine
-operational values as core.
-
-Examples:
+Pure deployment language belongs to `control_plane_kit_core`:
 
 ```python
-from control_plane_kit import DeploymentRecipe, compile_recipe, diff_graphs
-from control_plane_kit.docker_runtime import DockerRuntimeInterpreter
-from control_plane_kit.discovery_registry import DiscoveryRegistryService
-from control_plane_kit.products.servers import coredns_block
-from control_plane_kit.operations.webhook import WebhookDeliveryService
+from control_plane_kit_core import DeploymentGraph, ProductDescriptor
+from control_plane_kit_core.planning import ActivityPlan
+```
+
+Durable application behavior belongs to `control_plane_kit_operations`:
+
+```python
+from control_plane_kit_operations import RuntimeInterpreterDispatcher
+```
+
+The operations package owns stores, Unit of Work boundaries, application
+services, activity history, read models, and dispatcher protocols. It does not
+import concrete runtime or provider SDKs.
+
+## External Packages
+
+Concrete effect implementations are imported from
+`control_plane_kit_interpreters` at a composition boundary. Encrypted secret
+custody is provided by `control_plane_kit_secrets`. Product descriptors,
+processes, Dockerfiles, and OCI publication metadata live in
+`control-plane-kit-servers`.
+
+The intended dependency direction is:
+
+```text
+control-plane-kit-core
+  <- control-plane-kit-operations
+  <- cpk-server composition
+       -> control-plane-kit-interpreters
+       -> control-plane-kit-secrets client
+
+control-plane-kit-servers
+  -> package-owned product descriptors and processes
 ```
 
 ## Dependency Diagnostics
 
-Operational packages fail immediately with an actionable installation message
-when their optional dependencies are absent. HTTP adapters name the focused
-`[http]` extra, Postgres process composition names `[postgres]`, and `[server]`
-remains the broad runnable-server bundle. They do not use lazy imports,
-silently swallow missing dependencies, or make those dependencies mandatory for
-the pure package root.
+Each live package has an independent `./test.sh` gate and clean-import check.
+The repository-level current backend gate validates exact source coordinates,
+cross-package protocols, package gates, source-live cpk-server HTTP/MCP
+acceptance, and Docker residue:
 
-Representative product boundaries now prove the split for webhook delivery,
-the test-only auth gateway, and CoreDNS. Broader teaching-server and operational
-module relocations remain explicit inventory work; they do not receive duplicate
-canonical implementations or compatibility facades.
+```bash
+./current-backend-test.sh
+```
+
+Historical imports from `control_plane_kit` remain only in frozen evidence and
+historical design records. They are not compatibility surfaces and current
+source must not import them.

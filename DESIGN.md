@@ -1,48 +1,37 @@
 # Design
 
-`control-plane-kit` is organized around one product form:
+The current design is maintained in:
+
+- [Control Plane Language](docs/CONTROL_PLANE_LANGUAGE.md)
+- [Language Study Guide](docs/CONTROL_PLANE_LANGUAGE_STUDY_GUIDE.md)
+- [Operating Model](docs/OPERATING_MODEL.md)
+- [Server Product Rollout](SERVER_PRODUCT_ROLLOUT.md)
+
+The original aggregate design centered on `DeployBlock = Spec x
+RuntimeImplementation x RoleSockets`. That document described the retired
+mutable package and is preserved in the immutable
+`pre-server-product-extraction-2026-07-20` tag.
+
+The current package boundary is:
 
 ```text
-DeployBlock = Spec x RuntimeImplementation x RoleSockets
+core
+  pure topology, product, socket, policy, runtime-effect, ingress,
+  authorization, verification, and secret-reference language
+
+operations
+  durable graph truth, registrations, planning, approval, lifecycle,
+  coordinator, observations, and read models
+
+interpreters
+  provider-neutral requests -> concrete external IO -> bounded results
+
+servers
+  cpk-server process composition and package-owned OCI products
+
+secrets
+  encrypted durable custody and scoped resolution
 ```
 
-## Spec
-
-A spec identifies the thing being deployed. Different block families can use
-different specs: `AppSpec`, `DataSpec`, `ProxySpec`. Specs should contain stable
-identity and metadata, not runtime effects.
-
-## RuntimeImplementation
-
-An implementation says how the block exists under a runtime. Examples:
-
-- Docker image
-- local source command
-- external HTTP URL
-- external Postgres URL
-- Docker Postgres
-- plan-only router
-
-Implementations do not own the runtime. They are interpreted by the enclosing
-runtime context.
-
-## RoleSockets
-
-Sockets are the communication contract.
-
-- `RoleOutputSocket`: an endpoint the node provides.
-- `RoleInputSocket`: an env-backed requirement the node needs fulfilled.
-
-A socket connection wires provider output to consumer input.
-
-## Compiler
-
-The compiler walks the recipe tree, materializes blocks into graph nodes, then
-applies socket connections. Connections validate protocol compatibility and
-write environment assignments into the consumer node.
-
-## Graph
-
-The compiled graph is pure data. It has nodes, edges, environment assignments,
-runtime context records, and descriptors. Runtime interpreters can act on this
-later.
+Current validation is `./current-backend-test.sh`; immutable historical
+reproduction is `./reference-test.sh`.

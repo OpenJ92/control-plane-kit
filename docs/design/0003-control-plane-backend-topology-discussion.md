@@ -2,6 +2,10 @@
 
 Status: Draft discussion document
 
+> Historical pre-extraction discussion. Names under `control_plane_kit/` below
+> record the design path and are not current package ownership or import
+> guidance. See `docs/OPERATING_MODEL.md` for the live extracted boundaries.
+
 This document is a working notebook for the design discussion around the
 backend structure of `control-plane-kit`.
 

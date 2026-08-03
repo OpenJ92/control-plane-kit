@@ -131,6 +131,11 @@
       "status": "passing"
     },
     {
+      "digest": "sha256:2d88ee1052535d367ffd450c11a48e876f35fb1f3fcf6e772b9daa408fe507c1",
+      "id": "harden-tests-parity-1318-completed-owner-promotion",
+      "status": "passing"
+    },
+    {
       "digest": "sha256:56b963ea19536f1200685c9faa0530e57888104e88f87171f9b76dc94db89025",
       "id": "harden-tests-parity-1320.core.unittest",
       "status": "passing"

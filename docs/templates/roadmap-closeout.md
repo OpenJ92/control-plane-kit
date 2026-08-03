@@ -20,10 +20,11 @@ Curated snippets that explain the final shape.
 
 ## Validation
 
-- [ ] `./test.sh`
-- [ ] `python3 -m compileall control_plane_kit tests`
+- [ ] Changed package-local `./test.sh` gates
+- [ ] `./current-backend-test.sh --report /tmp/current-backend-report.json` when cross-repository behavior changed
+- [ ] Current source compilation/import checks
 - [ ] `git diff --check`
-- [ ] Examples/smoke checks:
+- [ ] Named source-live/published/provider-mutating acceptance as required:
 
 ## Security Result
 
@@ -46,4 +47,3 @@ What durable state changed, if any.
 ## Handoff To Next Roadmap
 
 What the next roadmap node inherits.
-

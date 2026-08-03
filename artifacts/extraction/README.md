@@ -97,3 +97,26 @@ is either implemented, reviewed-superseded, or assigned to one detailed open
 issue. It does not claim that future-owned behavior is implemented. The older
 foundation report remains useful and intentionally reports those future-owned
 required laws as incomplete.
+
+`harden-tests-parity-1318-future-owner-refresh.json` records the live issue-state
+refresh immediately before legacy deletion. Ten owners remain open. #1316 and
+#1317 are closed only because their package-integrity and current-backend laws
+are now implemented.
+
+`harden-tests-parity-1318-completed-owner-promotion.json` binds those two
+completed issues to exact merged source and passing test evidence. The #1318
+promotion overlay moves exactly 24 reviews from future ownership to current
+strengthened successors. The older #1346/#1348 artifacts remain immutable
+records of the handoff that existed before implementation.
+
+`harden-tests-parity-1318-retirement-manifest.json` classifies every file in the
+approved pre-deletion baseline exactly once. The validator rejects omissions,
+duplicate paths, unclassified files, protected current-package deletion, stale
+future ownership, missing reference evidence, and surviving mutable paths.
+`harden-tests-parity-1318-evidence.json` records its bounded pre/post deletion
+result. Regenerate and validate with:
+
+```bash
+./build-legacy-retirement-manifest.sh
+./validate-legacy-retirement.sh --require-deleted
+```

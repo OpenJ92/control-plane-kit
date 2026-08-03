@@ -788,15 +788,33 @@ class SemanticReconciliationTests(unittest.TestCase):
             for value in reconciliation["reviews"]
             if value["reviewed_by_issue"] == 1346
         ]
+        promoted = [
+            value
+            for value in reconciliation["reviews"]
+            if value["reviewed_by_issue"] == 1318
+            and value["reference"].startswith(
+                (
+                    "tests.test_architecture_dependencies.",
+                    "tests.test_architecture_scenarios.",
+                    "tests.test_architecture_test_integrity.",
+                    "tests.test_package_inventory.",
+                    "tests.test_package_topology.",
+                )
+            )
+        ]
 
-        self.assertEqual(len(reviews), 117)
+        self.assertEqual(len(reviews), 93)
+        self.assertEqual(len(promoted), 24)
+        self.assertTrue(
+            all(value["disposition"] == "current-strengthened" for value in promoted)
+        )
         self.assertEqual(
             sum(value["disposition"] == "current-strengthened" for value in reviews),
             58,
         )
         self.assertEqual(
             sum(value["disposition"] == "future-issue" for value in reviews),
-            29,
+            5,
         )
         self.assertEqual(
             sum(value["disposition"] == "reviewed-supersession" for value in reviews),
@@ -808,12 +826,20 @@ class SemanticReconciliationTests(unittest.TestCase):
                 for value in reviews
                 if value["future_issue"] is not None
             },
-            {670, 1096, 1316, 1317},
+            {670, 1096},
         )
         self.assertEqual(
             evidence["future_owners"],
             {"670": 2, "1096": 3, "1316": 6, "1317": 18},
         )
+        promotion = json.loads(
+            (
+                artifact_root
+                / "harden-tests-parity-1318-completed-owner-promotion.json"
+            ).read_text(encoding="utf-8")
+        )
+        self.assertEqual(promotion["completed_issues"], [1316, 1317])
+        self.assertEqual(promotion["promoted_laws"], 24)
 
     def test_issue_1347_artifacts_close_live_laws_and_legacy_scripts(self) -> None:
         root = Path(__file__).resolve().parents[2]
@@ -908,7 +934,7 @@ class SemanticReconciliationTests(unittest.TestCase):
         immutable = [
             value
             for value in reconciliation["reviews"]
-            if value["reviewed_by_issue"] in {1346, 1347}
+            if value["reviewed_by_issue"] in {1318, 1346, 1347}
         ]
         mutable = [
             value
@@ -924,6 +950,26 @@ class SemanticReconciliationTests(unittest.TestCase):
         self.assertEqual(len(assigned_immutable), 149)
         self.assertEqual(len(immutable), 149)
         self.assertEqual(len(mutable), 118)
+        self.assertEqual(
+            {
+                "current_strengthened": sum(
+                    value["disposition"] == "current-strengthened"
+                    for value in immutable
+                ),
+                "future_issue": sum(
+                    value["disposition"] == "future-issue" for value in immutable
+                ),
+                "reviewed_supersession": sum(
+                    value["disposition"] == "reviewed-supersession"
+                    for value in immutable
+                ),
+            },
+            {
+                "current_strengthened": 105,
+                "future_issue": 14,
+                "reviewed_supersession": 30,
+            },
+        )
         self.assertEqual(
             evidence["aggregate"],
             {

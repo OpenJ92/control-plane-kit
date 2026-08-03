@@ -95,7 +95,11 @@ plan/approve/admit/execute/advance against them through `cpk-server`.
 
 ## Decisions
 
-### Repository names
+### Historical repository-name decision
+
+The block below records the pre-extraction naming decision. It is retained as
+rollout history and is superseded by the current package boundaries documented
+in `README.md` and `docs/root-import-surfaces.md`.
 
 Use these canonical names consistently:
 
@@ -484,17 +488,16 @@ Socket connections supply concrete dependencies.
 
 ## Repository Topology
 
-### Frozen reference
+### Immutable reference
 
 ```text
-control-plane-kit/
-  existing source
-  existing tests
-  existing roadmaps and learning
-  SERVER_PRODUCT_ROLLOUT.md
+tag: pre-server-product-extraction-2026-07-20
+commit: 20129959d3b0f8e8bd5dbdafdf51c0a5d592a9ec
+runner: reference-test.sh
 ```
 
-The repository remains useful for:
+The mutable aggregate source and tests were retired after the semantic parity
+ledger reached zero unowned laws. The immutable tag remains useful for:
 
 - behavioral comparison;
 - source and test migration;
@@ -503,13 +506,12 @@ The repository remains useful for:
 - rollback to the pre-extraction tag;
 - and detecting capabilities accidentally lost during extraction.
 
-No new server product is added to the frozen package after this plan is
-accepted. Security fixes may still be applied deliberately if the reference is
-running anywhere.
+No new work is applied to the immutable reference. Current behavior belongs to
+the extracted distributions and external product repositories.
 
-### Core repository
+### Core and operations distributions
 
-The target begins approximately as:
+The current coordination repository contains:
 
 ```text
 control-plane-kit-core/
@@ -519,41 +521,17 @@ control-plane-kit-core/
   Dockerfile
   test.sh
 
-  control_plane_kit/
-    core/
-      algebra.py
-      products.py
-      configuration.py
-      environment.py
-      verification.py
-      topology/
-      planning/
-
-    application/
-      deploy/
-
-    operations/
-      activity/
-      approval/
-      execution/
-      recovery/
-      reads/
-
-    interpreters/
-      docker/
-      http/
-      probes/
-      configuration/
-
-    stores/
-      postgres/
-
-    entrypoints/
-      cli.py
-
+  src/control_plane_kit_core/
   tests/
-    architecture/
-    fixtures/
+
+control-plane-kit-operations/
+  AGENTS.md
+  README.md
+  pyproject.toml
+  Dockerfile
+  test.sh
+  src/control_plane_kit_operations/
+  tests/
 ```
 
 The final paths must follow evidence from the current inventory rather than a
@@ -971,10 +949,11 @@ The extraction must preserve or strengthen the current testing standard.
 
 ### Universal laws
 
-All repositories use Docker-first validation and expose:
+All live repositories use Docker-first validation and expose a package-local
+gate:
 
 ```bash
-./test.sh
+<live-repository>/test.sh
 ```
 
 Tests must not:
@@ -1122,10 +1101,10 @@ failing test. Tests must not be skipped, marked `xfail`, weakened, pointed back
 at the frozen implementation, or hidden from collection.
 
 The parity foundation supplies immutable reference-green evidence. Individual
-issues do not rerun the complete frozen `./test.sh` bundle before their dry run
-unless that evidence is missing, stale, or disputed. Focused target tests prove
-red and green locally; broader package, parity, and live suites run after
-implementation and at the PR or milestone boundaries named by the issue.
+issues do not rerun `./reference-test.sh` before their dry run unless that
+evidence is missing, stale, or disputed. Focused target tests prove red and
+green locally; broader package, current-backend, parity, and live suites run
+after implementation and at the PR or milestone boundaries named by the issue.
 
 Each issue dry run reports:
 

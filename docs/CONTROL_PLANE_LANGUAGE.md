@@ -1,7 +1,7 @@
 # Control Plane Kit Language
 
 Status: Living reference
-Last updated: 2026-07-24
+Last updated: 2026-08-03
 
 This document is the dictionary for the current Control Plane Kit language. It
 names the values, interpreters, durable facts, and package boundaries that now
@@ -29,6 +29,10 @@ control-plane-kit-interpreters
   concrete RuntimeEffectRequest -> IO RuntimeEffectResult implementations
   such as DockerRuntimeInterpreter
 
+control-plane-kit-secrets
+  encrypted durable secret custody, scoped resolution, versions, rotation,
+  revocation, and provider-local audit
+
 control-plane-kit-servers
   package-owned server products, descriptors, Dockerfiles, OCI publication,
   cpk-server FastAPI/MCP process wrapper
@@ -40,12 +44,14 @@ The north-star dependency direction is:
 core <- operations <- cpk-server
 core <- interpreters
 core <- server product descriptors
-operations -> interpreter protocol only
-cpk-server -> operations + selected interpreters at process composition
+operations -> interpreter protocols and injected effect capabilities only
+interpreters -> configured secret-provider clients at IO boundaries
+cpk-server -> operations + selected interpreter composition
 ```
 
 `control-plane-kit-core` must remain importable without Docker, FastAPI, HTTPX,
-Postgres drivers, server product code, or concrete runtime packages.
+Postgres drivers, secret-provider clients, server product code, or concrete
+runtime packages. Operations must not import concrete provider SDKs.
 
 ## Whole Pipeline
 

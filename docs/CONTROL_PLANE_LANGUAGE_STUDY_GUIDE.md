@@ -1,7 +1,7 @@
 # Control Plane Kit Language Study Guide
 
 Status: Living guide
-Last updated: 2026-07-24
+Last updated: 2026-08-03
 
 Use this guide with
 [Control Plane Kit Language](CONTROL_PLANE_LANGUAGE.md). The language document
@@ -41,6 +41,12 @@ INTERPRETERS
   RuntimeInterpreterDispatcher
   DockerRuntimeInterpreter
   RuntimeEffectResult
+
+SECRET CUSTODY
+  RegisteredSecretProvider
+  SecretReference
+  SecretUseIntent
+  control-plane-kit-secrets
 
 SERVER SURFACES
   cpk-server HTTP

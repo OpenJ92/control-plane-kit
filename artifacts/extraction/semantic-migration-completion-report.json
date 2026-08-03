@@ -1,15 +1,15 @@
 {
   "counts": {
-    "additional_current_tests": 85,
+    "additional_current_tests": 110,
     "current_live_laws": 31,
-    "current_test_identities": 1310,
+    "current_test_identities": 1336,
     "demo_reviews": 17,
-    "future_owned": 392,
-    "implemented_or_superseded": 715,
+    "future_owned": 368,
+    "implemented_or_superseded": 739,
     "manifest_entries": 1107,
     "mutable_only_reviews": 120,
-    "required_future_owned": 176,
-    "required_implemented_or_superseded": 704,
+    "required_future_owned": 152,
+    "required_implemented_or_superseded": 728,
     "stale_successors": 0,
     "test_reviews": 1090,
     "unowned": 0

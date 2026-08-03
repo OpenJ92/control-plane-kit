@@ -1443,7 +1443,13 @@
       "owner": "control-plane-kit-core",
       "owner_kind": "core",
       "reference": "tests.test_architecture_dependencies.ArchitectureDependencyTests.test_process_and_http_clients_are_adapter_owned",
-      "successors": [],
+      "successors": [
+        {
+          "evidence": "harden-tests-parity-1318-completed-owner-promotion",
+          "id": "control-plane-kit-parity:current_backend.tests.test_contracts.BackendContractTests.test_concrete_interpreter_and_transport_imports_in_operations_fail_closed",
+          "status": "passing"
+        }
+      ],
       "supersession": null
     },
     {
@@ -1535,7 +1541,23 @@
       "owner": "control-plane-kit-core",
       "owner_kind": "core",
       "reference": "tests.test_architecture_dependencies.ArchitectureDependencyTests.test_repository_obeys_declared_dependency_and_transport_ownership",
-      "successors": [],
+      "successors": [
+        {
+          "evidence": "harden-tests-parity-1318-completed-owner-promotion",
+          "id": "control-plane-kit-parity:current_backend.tests.test_contracts.BackendContractTests.test_closed_contract_fixture_is_coherent",
+          "status": "passing"
+        },
+        {
+          "evidence": "harden-tests-parity-1318-completed-owner-promotion",
+          "id": "control-plane-kit-parity:current_backend.tests.test_contracts.BackendContractTests.test_direct_reverse_and_cyclic_dependencies_fail_closed",
+          "status": "passing"
+        },
+        {
+          "evidence": "harden-tests-parity-1318-completed-owner-promotion",
+          "id": "control-plane-kit-parity:current_backend.tests.test_contracts.BackendContractTests.test_concrete_interpreter_and_transport_imports_in_operations_fail_closed",
+          "status": "passing"
+        }
+      ],
       "supersession": null
     },
     {
@@ -1545,7 +1567,13 @@
       "owner": "control-plane-kit-core",
       "owner_kind": "core",
       "reference": "tests.test_architecture_dependencies.ArchitectureDependencyTests.test_reverse_dependency_is_rejected_for_import_and_from_import",
-      "successors": [],
+      "successors": [
+        {
+          "evidence": "harden-tests-parity-1318-completed-owner-promotion",
+          "id": "control-plane-kit-parity:current_backend.tests.test_contracts.BackendContractTests.test_direct_reverse_and_cyclic_dependencies_fail_closed",
+          "status": "passing"
+        }
+      ],
       "supersession": null
     },
     {
@@ -1924,7 +1952,18 @@
       "owner": "control-plane-kit-core",
       "owner_kind": "core",
       "reference": "tests.test_architecture_scenarios.ScenarioArchitectureTests.test_atomic_contract_suites_remain_independent_of_scenario_runner",
-      "successors": [],
+      "successors": [
+        {
+          "evidence": "harden-tests-parity-1318-completed-owner-promotion",
+          "id": "control-plane-kit-parity:current_backend.tests.test_contracts.BackendContractTests.test_closed_contract_fixture_is_coherent",
+          "status": "passing"
+        },
+        {
+          "evidence": "harden-tests-parity-1318-completed-owner-promotion",
+          "id": "control-plane-kit-parity:current_backend.tests.test_runner.BackendGateRunnerTests.test_stages_execute_in_exact_order_and_emit_bounded_report",
+          "status": "passing"
+        }
+      ],
       "supersession": null
     },
     {
@@ -1934,7 +1973,13 @@
       "owner": "control-plane-kit-core",
       "owner_kind": "core",
       "reference": "tests.test_architecture_scenarios.ScenarioArchitectureTests.test_fake_effect_is_a_typed_capability_provider_not_an_application_mock",
-      "successors": [],
+      "successors": [
+        {
+          "evidence": "harden-tests-parity-1318-completed-owner-promotion",
+          "id": "control-plane-kit-parity:current_backend.tests.test_contracts.BackendContractTests.test_source_live_bypass_and_application_mock_fail_closed",
+          "status": "passing"
+        }
+      ],
       "supersession": null
     },
     {
@@ -1944,7 +1989,13 @@
       "owner": "control-plane-kit-core",
       "owner_kind": "core",
       "reference": "tests.test_architecture_scenarios.ScenarioArchitectureTests.test_policy_rejects_store_scheduler_mock_and_private_coordinator_bypass",
-      "successors": [],
+      "successors": [
+        {
+          "evidence": "harden-tests-parity-1318-completed-owner-promotion",
+          "id": "control-plane-kit-parity:current_backend.tests.test_contracts.BackendContractTests.test_source_live_bypass_and_application_mock_fail_closed",
+          "status": "passing"
+        }
+      ],
       "supersession": null
     },
     {
@@ -1964,7 +2015,18 @@
       "owner": "control-plane-kit-core",
       "owner_kind": "core",
       "reference": "tests.test_architecture_scenarios.ScenarioArchitectureTests.test_scenario_modules_obey_application_and_persistence_boundaries",
-      "successors": [],
+      "successors": [
+        {
+          "evidence": "harden-tests-parity-1318-completed-owner-promotion",
+          "id": "control-plane-kit-parity:current_backend.tests.test_contracts.BackendContractTests.test_source_live_bypass_and_application_mock_fail_closed",
+          "status": "passing"
+        },
+        {
+          "evidence": "harden-tests-parity-1318-completed-owner-promotion",
+          "id": "control-plane-kit-parity:current_backend.tests.test_runner.BackendGateRunnerTests.test_stages_execute_in_exact_order_and_emit_bounded_report",
+          "status": "passing"
+        }
+      ],
       "supersession": null
     },
     {
@@ -1974,7 +2036,18 @@
       "owner": "control-plane-kit-core",
       "owner_kind": "core",
       "reference": "tests.test_architecture_test_integrity.ArchitectureTestIntegrityTests.test_allowed_skip_requires_a_reviewable_reason",
-      "successors": [],
+      "successors": [
+        {
+          "evidence": "harden-tests-parity-1318-completed-owner-promotion",
+          "id": "control-plane-kit-parity:test_support.tests.test_package_integrity.PackageIntegrityTests.test_approved_dynamic_conditional_skip_is_accepted",
+          "status": "passing"
+        },
+        {
+          "evidence": "harden-tests-parity-1318-completed-owner-promotion",
+          "id": "control-plane-kit-parity:test_support.tests.test_package_integrity.PackageIntegrityTests.test_blank_skip_reason_is_rejected",
+          "status": "passing"
+        }
+      ],
       "supersession": null
     },
     {
@@ -1984,7 +2057,18 @@
       "owner": "control-plane-kit-core",
       "owner_kind": "core",
       "reference": "tests.test_architecture_test_integrity.ArchitectureTestIntegrityTests.test_duplicate_and_literal_false_approved_skips_fail_closed",
-      "successors": [],
+      "successors": [
+        {
+          "evidence": "harden-tests-parity-1318-completed-owner-promotion",
+          "id": "control-plane-kit-parity:test_support.tests.test_package_integrity.PackageIntegrityTests.test_duplicate_skip_approval_is_rejected",
+          "status": "passing"
+        },
+        {
+          "evidence": "harden-tests-parity-1318-completed-owner-promotion",
+          "id": "control-plane-kit-parity:test_support.tests.test_package_integrity.PackageIntegrityTests.test_literal_skip_condition_is_rejected",
+          "status": "passing"
+        }
+      ],
       "supersession": null
     },
     {
@@ -1994,7 +2078,13 @@
       "owner": "control-plane-kit-core",
       "owner_kind": "core",
       "reference": "tests.test_architecture_test_integrity.ArchitectureTestIntegrityTests.test_mocks_are_reported_without_becoming_automatic_failures",
-      "successors": [],
+      "successors": [
+        {
+          "evidence": "harden-tests-parity-1318-completed-owner-promotion",
+          "id": "control-plane-kit-parity:test_support.tests.test_package_integrity.PackageIntegrityTests.test_mocks_are_reported_without_becoming_findings",
+          "status": "passing"
+        }
+      ],
       "supersession": null
     },
     {
@@ -2004,7 +2094,23 @@
       "owner": "control-plane-kit-core",
       "owner_kind": "core",
       "reference": "tests.test_architecture_test_integrity.ArchitectureTestIntegrityTests.test_placeholders_empty_tests_and_swallowed_exceptions_fail",
-      "successors": [],
+      "successors": [
+        {
+          "evidence": "harden-tests-parity-1318-completed-owner-promotion",
+          "id": "control-plane-kit-parity:test_support.tests.test_package_integrity.PackageIntegrityTests.test_pass_only_test_is_rejected",
+          "status": "passing"
+        },
+        {
+          "evidence": "harden-tests-parity-1318-completed-owner-promotion",
+          "id": "control-plane-kit-parity:test_support.tests.test_package_integrity.PackageIntegrityTests.test_ellipsis_only_test_is_rejected",
+          "status": "passing"
+        },
+        {
+          "evidence": "harden-tests-parity-1318-completed-owner-promotion",
+          "id": "control-plane-kit-parity:test_support.tests.test_package_integrity.PackageIntegrityTests.test_swallowed_exception_is_rejected",
+          "status": "passing"
+        }
+      ],
       "supersession": null
     },
     {
@@ -2014,7 +2120,23 @@
       "owner": "control-plane-kit-core",
       "owner_kind": "core",
       "reference": "tests.test_architecture_test_integrity.ArchitectureTestIntegrityTests.test_repository_has_only_explicit_optional_dependency_skips",
-      "successors": [],
+      "successors": [
+        {
+          "evidence": "harden-tests-parity-1318-completed-owner-promotion",
+          "id": "control-plane-kit-parity:test_support.tests.test_package_integrity.PackageIntegrityTests.test_approved_dynamic_conditional_skip_is_accepted",
+          "status": "passing"
+        },
+        {
+          "evidence": "harden-tests-parity-1318-completed-owner-promotion",
+          "id": "control-plane-kit-parity:test_support.tests.test_package_integrity.PackageIntegrityTests.test_unapproved_conditional_skip_is_rejected",
+          "status": "passing"
+        },
+        {
+          "evidence": "harden-tests-parity-1318-completed-owner-promotion",
+          "id": "control-plane-kit-parity:test_support.tests.test_package_integrity.PackageIntegrityTests.test_proof_changing_gate_option_is_rejected",
+          "status": "passing"
+        }
+      ],
       "supersession": null
     },
     {
@@ -2024,7 +2146,18 @@
       "owner": "control-plane-kit-core",
       "owner_kind": "core",
       "reference": "tests.test_architecture_test_integrity.ArchitectureTestIntegrityTests.test_unconditional_and_unapproved_skips_fail_with_locations",
-      "successors": [],
+      "successors": [
+        {
+          "evidence": "harden-tests-parity-1318-completed-owner-promotion",
+          "id": "control-plane-kit-parity:test_support.tests.test_package_integrity.PackageIntegrityTests.test_unconditional_skip_is_rejected",
+          "status": "passing"
+        },
+        {
+          "evidence": "harden-tests-parity-1318-completed-owner-promotion",
+          "id": "control-plane-kit-parity:test_support.tests.test_package_integrity.PackageIntegrityTests.test_unapproved_conditional_skip_is_rejected",
+          "status": "passing"
+        }
+      ],
       "supersession": null
     },
     {
@@ -12446,7 +12579,13 @@
       "owner": "control-plane-kit-test:cross-repository",
       "owner_kind": "system",
       "reference": "tests.test_package_inventory.PackageModuleInventoryTests.test_domain_inventory_is_exactly_the_admitted_closed_languages",
-      "successors": [],
+      "successors": [
+        {
+          "evidence": "harden-tests-parity-1318-completed-owner-promotion",
+          "id": "control-plane-kit-parity:current_backend.tests.test_contracts.BackendContractTests.test_unowned_and_duplicate_source_inventory_fail_closed",
+          "status": "passing"
+        }
+      ],
       "supersession": null
     },
     {
@@ -12492,7 +12631,13 @@
       "owner": "control-plane-kit-test:cross-repository",
       "owner_kind": "system",
       "reference": "tests.test_package_inventory.PackageModuleInventoryTests.test_inventory_distinguishes_completed_and_deferred_movement",
-      "successors": [],
+      "successors": [
+        {
+          "evidence": "harden-tests-parity-1318-completed-owner-promotion",
+          "id": "control-plane-kit-parity:current_backend.tests.test_source_lock.BackendSourceLockTests.test_one_server_products_lock_derives_all_upstream_commits",
+          "status": "passing"
+        }
+      ],
       "supersession": null
     },
     {
@@ -12502,7 +12647,13 @@
       "owner": "control-plane-kit-test:cross-repository",
       "owner_kind": "system",
       "reference": "tests.test_package_inventory.PackageModuleInventoryTests.test_inventory_is_exhaustive_and_assigns_one_owner",
-      "successors": [],
+      "successors": [
+        {
+          "evidence": "harden-tests-parity-1318-completed-owner-promotion",
+          "id": "control-plane-kit-parity:current_backend.tests.test_contracts.BackendContractTests.test_unowned_and_duplicate_source_inventory_fail_closed",
+          "status": "passing"
+        }
+      ],
       "supersession": null
     },
     {
@@ -13028,7 +13179,18 @@
       "owner": "control-plane-kit-test:cross-repository",
       "owner_kind": "system",
       "reference": "tests.test_package_topology.CurrentPackageTopologyTests.test_current_package_graph_is_acyclic",
-      "successors": [],
+      "successors": [
+        {
+          "evidence": "harden-tests-parity-1318-completed-owner-promotion",
+          "id": "control-plane-kit-parity:current_backend.tests.test_contracts.BackendContractTests.test_closed_contract_fixture_is_coherent",
+          "status": "passing"
+        },
+        {
+          "evidence": "harden-tests-parity-1318-completed-owner-promotion",
+          "id": "control-plane-kit-parity:current_backend.tests.test_contracts.BackendContractTests.test_direct_reverse_and_cyclic_dependencies_fail_closed",
+          "status": "passing"
+        }
+      ],
       "supersession": null
     },
     {
@@ -13038,7 +13200,13 @@
       "owner": "control-plane-kit-test:cross-repository",
       "owner_kind": "system",
       "reference": "tests.test_package_topology.CurrentPackageTopologyTests.test_current_source_has_one_way_recovery_policy_planning_edges",
-      "successors": [],
+      "successors": [
+        {
+          "evidence": "harden-tests-parity-1318-completed-owner-promotion",
+          "id": "control-plane-kit-parity:current_backend.tests.test_contracts.BackendContractTests.test_transitive_forbidden_path_is_rejected_at_its_illegal_edge",
+          "status": "passing"
+        }
+      ],
       "supersession": null
     },
     {
@@ -13080,7 +13248,13 @@
       "owner": "control-plane-kit-test:cross-repository",
       "owner_kind": "system",
       "reference": "tests.test_package_topology.PackageTopologyPolicyTests.test_declared_edges_cannot_hide_direct_or_multi_node_cycles",
-      "successors": [],
+      "successors": [
+        {
+          "evidence": "harden-tests-parity-1318-completed-owner-promotion",
+          "id": "control-plane-kit-parity:current_backend.tests.test_contracts.BackendContractTests.test_direct_reverse_and_cyclic_dependencies_fail_closed",
+          "status": "passing"
+        }
+      ],
       "supersession": null
     },
     {
@@ -13090,7 +13264,18 @@
       "owner": "control-plane-kit-test:cross-repository",
       "owner_kind": "system",
       "reference": "tests.test_package_topology.PackageTopologyPolicyTests.test_domain_language_rejects_operations_products_interpreters_and_entrypoints",
-      "successors": [],
+      "successors": [
+        {
+          "evidence": "harden-tests-parity-1318-completed-owner-promotion",
+          "id": "control-plane-kit-parity:current_backend.tests.test_contracts.BackendContractTests.test_direct_reverse_and_cyclic_dependencies_fail_closed",
+          "status": "passing"
+        },
+        {
+          "evidence": "harden-tests-parity-1318-completed-owner-promotion",
+          "id": "control-plane-kit-parity:current_backend.tests.test_contracts.BackendContractTests.test_concrete_interpreter_and_transport_imports_in_operations_fail_closed",
+          "status": "passing"
+        }
+      ],
       "supersession": null
     },
     {
@@ -13100,7 +13285,13 @@
       "owner": "control-plane-kit-test:cross-repository",
       "owner_kind": "system",
       "reference": "tests.test_package_topology.PackageTopologyPolicyTests.test_legal_acyclic_sibling_dependencies_are_representable",
-      "successors": [],
+      "successors": [
+        {
+          "evidence": "harden-tests-parity-1318-completed-owner-promotion",
+          "id": "control-plane-kit-parity:current_backend.tests.test_contracts.BackendContractTests.test_closed_contract_fixture_is_coherent",
+          "status": "passing"
+        }
+      ],
       "supersession": null
     },
     {
@@ -13110,7 +13301,13 @@
       "owner": "control-plane-kit-test:cross-repository",
       "owner_kind": "system",
       "reference": "tests.test_package_topology.PackageTopologyPolicyTests.test_product_may_project_domain_but_not_registry_or_process",
-      "successors": [],
+      "successors": [
+        {
+          "evidence": "harden-tests-parity-1318-completed-owner-promotion",
+          "id": "control-plane-kit-parity:current_backend.tests.test_contracts.BackendContractTests.test_closed_contract_fixture_is_coherent",
+          "status": "passing"
+        }
+      ],
       "supersession": null
     },
     {
@@ -13120,7 +13317,13 @@
       "owner": "control-plane-kit-test:cross-repository",
       "owner_kind": "system",
       "reference": "tests.test_package_topology.PackageTopologyPolicyTests.test_product_to_domain_projection_does_not_authorize_reverse_edge",
-      "successors": [],
+      "successors": [
+        {
+          "evidence": "harden-tests-parity-1318-completed-owner-promotion",
+          "id": "control-plane-kit-parity:current_backend.tests.test_contracts.BackendContractTests.test_direct_reverse_and_cyclic_dependencies_fail_closed",
+          "status": "passing"
+        }
+      ],
       "supersession": null
     },
     {
@@ -13162,7 +13365,13 @@
       "owner": "control-plane-kit-test:cross-repository",
       "owner_kind": "system",
       "reference": "tests.test_package_topology.PackageTopologyPolicyTests.test_transitive_product_to_process_path_is_rejected",
-      "successors": [],
+      "successors": [
+        {
+          "evidence": "harden-tests-parity-1318-completed-owner-promotion",
+          "id": "control-plane-kit-parity:current_backend.tests.test_contracts.BackendContractTests.test_transitive_forbidden_path_is_rejected_at_its_illegal_edge",
+          "status": "passing"
+        }
+      ],
       "supersession": null
     },
     {
