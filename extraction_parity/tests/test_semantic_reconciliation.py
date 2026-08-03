@@ -7,6 +7,7 @@ import unittest
 
 from extraction_parity.migration_inventory import SourceLane, scan_test_root
 from extraction_parity.reconciliation_builder import (
+    apply_issue_slice,
     _current_test_index,
     _decode_decisions,
 )
@@ -105,6 +106,188 @@ def _document() -> dict[str, object]:
 
 
 class SemanticReconciliationTests(unittest.TestCase):
+    def test_mutable_only_decisions_require_exact_current_or_archive_evidence(
+        self,
+    ) -> None:
+        source_id = "legacy-mutable:tests.test_old.OldTests.test_law"
+        inventory = {
+            "schema": "cpk.semantic-test-migration-inventory",
+            "reference_assignments": [],
+            "mutable_only_methods": [
+                {
+                    "id": source_id,
+                    "method": "test_law",
+                    "provisional_target": {
+                        "issue": 1345,
+                        "distribution": "control-plane-kit-parity",
+                    },
+                }
+            ],
+        }
+        manifest = {
+            "schema": "cpk.parity-manifest",
+            "reference": {"tag": "tag", "commit": "commit"},
+            "entries": [],
+        }
+        reconciliation = {
+            "schema": "cpk.semantic-test-reconciliation",
+            "reviews": [],
+            "mutable_only_reviews": [],
+        }
+
+        def decisions(mutable: dict[str, object]) -> dict[str, object]:
+            return {
+                "schema": "cpk.semantic-test-reconciliation-decisions",
+                "slices": [
+                    {
+                        "issue": 1345,
+                        "current_distributions": ["control-plane-kit-parity"],
+                        "evidence_id": "parity-evidence",
+                        "default_disposition": "current-isomorphic",
+                        "strengthened_references": [],
+                        "successor_overrides": {},
+                        "future_issue_reviews": {},
+                        "non_current_reviews": {},
+                        "mutable_only_reviews": mutable,
+                        "current_review_overrides": {},
+                    }
+                ],
+            }
+
+        with TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            tests = root / "extraction_parity" / "tests"
+            tests.mkdir(parents=True)
+            (tests / "test_current.py").write_text(
+                "import unittest\n\n"
+                "class CurrentTests(unittest.TestCase):\n"
+                "    def test_law(self):\n"
+                "        pass\n",
+                encoding="utf-8",
+            )
+            current_id = (
+                "control-plane-kit-parity:tests.test_current.CurrentTests.test_law"
+            )
+
+            with self.assertRaisesRegex(
+                ReconciliationError,
+                "decisions differ from assigned inputs",
+            ):
+                apply_issue_slice(
+                    root=root,
+                    issue=1345,
+                    inventory=inventory,
+                    manifest=manifest,
+                    reconciliation=reconciliation,
+                    decisions=decisions({}),
+                )
+
+            with self.assertRaisesRegex(
+                ReconciliationError,
+                "nonexistent current tests",
+            ):
+                apply_issue_slice(
+                    root=root,
+                    issue=1345,
+                    inventory=inventory,
+                    manifest=manifest,
+                    reconciliation=reconciliation,
+                    decisions=decisions(
+                        {
+                            source_id: {
+                                "disposition": "current-strengthened",
+                                "current_tests": [current_id + "-missing"],
+                                "rationale": "Moved to the durable parity suite.",
+                                "archive_artifact": None,
+                            }
+                        }
+                    ),
+                )
+
+            with self.assertRaisesRegex(
+                ReconciliationError,
+                "archive artifact does not exist",
+            ):
+                apply_issue_slice(
+                    root=root,
+                    issue=1345,
+                    inventory=inventory,
+                    manifest=manifest,
+                    reconciliation=reconciliation,
+                    decisions=decisions(
+                        {
+                            source_id: {
+                                "disposition": "reviewed-archived",
+                                "current_tests": [],
+                                "rationale": "Completed extraction checkpoint.",
+                                "archive_artifact": "artifacts/missing.json",
+                            }
+                        }
+                    ),
+                )
+
+            _, updated, _ = apply_issue_slice(
+                root=root,
+                issue=1345,
+                inventory=inventory,
+                manifest=manifest,
+                reconciliation=reconciliation,
+                decisions=decisions(
+                    {
+                        source_id: {
+                            "disposition": "current-strengthened",
+                            "current_tests": [current_id],
+                            "rationale": "Moved to the durable parity suite.",
+                            "archive_artifact": None,
+                        }
+                    }
+                ),
+            )
+
+        self.assertEqual(
+            updated["mutable_only_reviews"][0]["current_tests"],
+            [current_id],
+        )
+
+        duplicate = {
+            **updated,
+            "mutable_only_reviews": [
+                updated["mutable_only_reviews"][0],
+                dict(updated["mutable_only_reviews"][0]),
+            ],
+        }
+        with self.assertRaisesRegex(ReconciliationError, "duplicate mutable-only"):
+            decode_reconciliation(duplicate)
+
+    def test_archived_mutable_only_decision_requires_named_artifact(self) -> None:
+        document = {
+            "schema": "cpk.semantic-test-reconciliation-decisions",
+            "slices": [
+                {
+                    "issue": 1345,
+                    "current_distributions": ["control-plane-kit-parity"],
+                    "evidence_id": "parity-evidence",
+                    "default_disposition": "current-isomorphic",
+                    "strengthened_references": [],
+                    "successor_overrides": {},
+                    "future_issue_reviews": {},
+                    "non_current_reviews": {},
+                    "mutable_only_reviews": {
+                        "legacy-mutable:tests.test_old.Case.test_old": {
+                            "disposition": "reviewed-archived",
+                            "current_tests": [],
+                            "rationale": "One-time extraction checkpoint.",
+                            "archive_artifact": None,
+                        }
+                    },
+                    "current_review_overrides": {},
+                }
+            ],
+        }
+
+        with self.assertRaisesRegex(ReconciliationError, "must name an artifact"):
+            _decode_decisions(document)
+
     def test_current_test_index_requires_and_scans_explicit_external_root(self) -> None:
         with TemporaryDirectory() as temporary:
             external_root = Path(temporary)
@@ -205,6 +388,8 @@ class SemanticReconciliationTests(unittest.TestCase):
                     "successor_overrides": {},
                     "future_issue_reviews": {},
                     "non_current_reviews": {},
+                    "mutable_only_reviews": {},
+                    "current_review_overrides": {},
                 }
             ],
         }
@@ -224,6 +409,8 @@ class SemanticReconciliationTests(unittest.TestCase):
                     "successor_overrides": {},
                     "future_issue_reviews": {},
                     "non_current_reviews": {},
+                    "mutable_only_reviews": {},
+                    "current_review_overrides": {},
                 }
             ],
         }
@@ -544,6 +731,43 @@ class SemanticReconciliationTests(unittest.TestCase):
             "e9f19d558026d92af79df81fb9184d29da00110b",
         )
         self.assertEqual(evidence["interpreter"]["tests"], 147)
+
+    def test_issue_1345_artifact_closes_every_mutable_only_law(self) -> None:
+        root = Path(__file__).resolve().parents[2]
+        artifact_root = root / "artifacts" / "extraction"
+        reconciliation = json.loads(
+            (artifact_root / "semantic-test-reconciliation.json").read_text(
+                encoding="utf-8"
+            )
+        )
+        evidence = json.loads(
+            (artifact_root / "harden-tests-parity-1345-evidence.json").read_text(
+                encoding="utf-8"
+            )
+        )
+        reviews = [
+            value
+            for value in reconciliation["mutable_only_reviews"]
+            if value["reviewed_by_issue"] == 1345
+        ]
+
+        self.assertEqual(len(reviews), 118)
+        self.assertEqual(
+            sum(value["disposition"] == "current-strengthened" for value in reviews),
+            52,
+        )
+        self.assertEqual(
+            sum(value["disposition"] == "reviewed-archived" for value in reviews),
+            66,
+        )
+        self.assertTrue(
+            all(
+                value["archive_artifact"] is not None
+                for value in reviews
+                if value["disposition"] == "reviewed-archived"
+            )
+        )
+        self.assertEqual(evidence["standalone_parity_tests"], 76)
 
 
 if __name__ == "__main__":

@@ -1,6 +1,1173 @@
 {
   "mutable_only_reviews": [
     {
+      "archive_artifact": "artifacts/extraction/extract-interpreters-closeout-report.json",
+      "current_tests": [],
+      "disposition": "reviewed-archived",
+      "distribution": "control-plane-kit-parity",
+      "rationale": "This test enforced a completed extraction checkpoint; its historical result remains in artifacts/extraction/extract-interpreters-closeout-report.json.",
+      "reviewed_by_issue": 1345,
+      "source_id": "legacy-mutable:tests.test_activity_live_external_interpreter.ActivityLiveExternalInterpreterTests.test_live_harness_composes_external_docker_interpreter_at_boundary"
+    },
+    {
+      "archive_artifact": "artifacts/extraction/extract-interpreters-closeout-report.json",
+      "current_tests": [],
+      "disposition": "reviewed-archived",
+      "distribution": "control-plane-kit-parity",
+      "rationale": "This test enforced a completed extraction checkpoint; its historical result remains in artifacts/extraction/extract-interpreters-closeout-report.json.",
+      "reviewed_by_issue": 1345,
+      "source_id": "legacy-mutable:tests.test_activity_live_external_interpreter.ActivityLiveExternalInterpreterTests.test_live_script_mounts_interpreters_repo_as_composition_input"
+    },
+    {
+      "archive_artifact": null,
+      "current_tests": [
+        "control-plane-kit-parity:tests.test_differential_language.DifferentialLanguageTests.test_differential_result_rejects_tampered_digest_status_and_normalization"
+      ],
+      "disposition": "current-strengthened",
+      "distribution": "control-plane-kit-parity",
+      "rationale": "The immutable-reference or parity law remains active under the standalone extraction_parity validator suite.",
+      "reviewed_by_issue": 1345,
+      "source_id": "legacy-mutable:tests.test_differential_language.DifferentialLanguageTests.test_differential_result_rejects_tampered_digest_status_and_normalization"
+    },
+    {
+      "archive_artifact": null,
+      "current_tests": [
+        "control-plane-kit-parity:tests.test_differential_language.DifferentialLanguageTests.test_equivalent_incidental_values_compare_equal"
+      ],
+      "disposition": "current-strengthened",
+      "distribution": "control-plane-kit-parity",
+      "rationale": "The immutable-reference or parity law remains active under the standalone extraction_parity validator suite.",
+      "reviewed_by_issue": 1345,
+      "source_id": "legacy-mutable:tests.test_differential_language.DifferentialLanguageTests.test_equivalent_incidental_values_compare_equal"
+    },
+    {
+      "archive_artifact": null,
+      "current_tests": [
+        "control-plane-kit-parity:tests.test_differential_language.DifferentialLanguageTests.test_incidental_values_are_typed_and_policy_is_closed"
+      ],
+      "disposition": "current-strengthened",
+      "distribution": "control-plane-kit-parity",
+      "rationale": "The immutable-reference or parity law remains active under the standalone extraction_parity validator suite.",
+      "reviewed_by_issue": 1345,
+      "source_id": "legacy-mutable:tests.test_differential_language.DifferentialLanguageTests.test_incidental_values_are_typed_and_policy_is_closed"
+    },
+    {
+      "archive_artifact": null,
+      "current_tests": [
+        "control-plane-kit-parity:tests.test_differential_language.DifferentialLanguageTests.test_nonzero_completed_exit_is_comparable_and_output_is_audit_only"
+      ],
+      "disposition": "current-strengthened",
+      "distribution": "control-plane-kit-parity",
+      "rationale": "The immutable-reference or parity law remains active under the standalone extraction_parity validator suite.",
+      "reviewed_by_issue": 1345,
+      "source_id": "legacy-mutable:tests.test_differential_language.DifferentialLanguageTests.test_nonzero_completed_exit_is_comparable_and_output_is_audit_only"
+    },
+    {
+      "archive_artifact": null,
+      "current_tests": [
+        "control-plane-kit-parity:tests.test_differential_language.DifferentialLanguageTests.test_normalization_is_idempotent"
+      ],
+      "disposition": "current-strengthened",
+      "distribution": "control-plane-kit-parity",
+      "rationale": "The immutable-reference or parity law remains active under the standalone extraction_parity validator suite.",
+      "reviewed_by_issue": 1345,
+      "source_id": "legacy-mutable:tests.test_differential_language.DifferentialLanguageTests.test_normalization_is_idempotent"
+    },
+    {
+      "archive_artifact": null,
+      "current_tests": [
+        "control-plane-kit-parity:tests.test_differential_language.DifferentialLanguageTests.test_observation_codec_is_closed_and_pins_source_identity"
+      ],
+      "disposition": "current-strengthened",
+      "distribution": "control-plane-kit-parity",
+      "rationale": "The immutable-reference or parity law remains active under the standalone extraction_parity validator suite.",
+      "reviewed_by_issue": 1345,
+      "source_id": "legacy-mutable:tests.test_differential_language.DifferentialLanguageTests.test_observation_codec_is_closed_and_pins_source_identity"
+    },
+    {
+      "archive_artifact": null,
+      "current_tests": [
+        "control-plane-kit-parity:tests.test_differential_language.DifferentialLanguageTests.test_process_failure_is_not_behavioral_drift"
+      ],
+      "disposition": "current-strengthened",
+      "distribution": "control-plane-kit-parity",
+      "rationale": "The immutable-reference or parity law remains active under the standalone extraction_parity validator suite.",
+      "reviewed_by_issue": 1345,
+      "source_id": "legacy-mutable:tests.test_differential_language.DifferentialLanguageTests.test_process_failure_is_not_behavioral_drift"
+    },
+    {
+      "archive_artifact": null,
+      "current_tests": [
+        "control-plane-kit-parity:tests.test_differential_language.DifferentialLanguageTests.test_untagged_semantic_drift_remains_visible"
+      ],
+      "disposition": "current-strengthened",
+      "distribution": "control-plane-kit-parity",
+      "rationale": "The immutable-reference or parity law remains active under the standalone extraction_parity validator suite.",
+      "reviewed_by_issue": 1345,
+      "source_id": "legacy-mutable:tests.test_differential_language.DifferentialLanguageTests.test_untagged_semantic_drift_remains_visible"
+    },
+    {
+      "archive_artifact": null,
+      "current_tests": [
+        "control-plane-kit-parity:tests.test_differential_runner.DifferentialRunnerTests.test_cli_captures_declared_artifacts_without_hiding_process_identity"
+      ],
+      "disposition": "current-strengthened",
+      "distribution": "control-plane-kit-parity",
+      "rationale": "The immutable-reference or parity law remains active under the standalone extraction_parity validator suite.",
+      "reviewed_by_issue": 1345,
+      "source_id": "legacy-mutable:tests.test_differential_runner.DifferentialRunnerTests.test_cli_captures_declared_artifacts_without_hiding_process_identity"
+    },
+    {
+      "archive_artifact": null,
+      "current_tests": [
+        "control-plane-kit-parity:tests.test_differential_runner.DifferentialRunnerTests.test_completed_command_produces_closed_observation"
+      ],
+      "disposition": "current-strengthened",
+      "distribution": "control-plane-kit-parity",
+      "rationale": "The immutable-reference or parity law remains active under the standalone extraction_parity validator suite.",
+      "reviewed_by_issue": 1345,
+      "source_id": "legacy-mutable:tests.test_differential_runner.DifferentialRunnerTests.test_completed_command_produces_closed_observation"
+    },
+    {
+      "archive_artifact": null,
+      "current_tests": [
+        "control-plane-kit-parity:tests.test_differential_runner.DifferentialRunnerTests.test_declared_secret_is_redacted_before_persistence_and_forbidden_in_behavior"
+      ],
+      "disposition": "current-strengthened",
+      "distribution": "control-plane-kit-parity",
+      "rationale": "The immutable-reference or parity law remains active under the standalone extraction_parity validator suite.",
+      "reviewed_by_issue": 1345,
+      "source_id": "legacy-mutable:tests.test_differential_runner.DifferentialRunnerTests.test_declared_secret_is_redacted_before_persistence_and_forbidden_in_behavior"
+    },
+    {
+      "archive_artifact": null,
+      "current_tests": [
+        "control-plane-kit-parity:tests.test_differential_runner.DifferentialRunnerTests.test_equivalent_result_emits_deterministic_passing_evidence"
+      ],
+      "disposition": "current-strengthened",
+      "distribution": "control-plane-kit-parity",
+      "rationale": "The immutable-reference or parity law remains active under the standalone extraction_parity validator suite.",
+      "reviewed_by_issue": 1345,
+      "source_id": "legacy-mutable:tests.test_differential_runner.DifferentialRunnerTests.test_equivalent_result_emits_deterministic_passing_evidence"
+    },
+    {
+      "archive_artifact": null,
+      "current_tests": [
+        "control-plane-kit-parity:tests.test_differential_runner.DifferentialRunnerTests.test_missing_or_malformed_behavior_is_infrastructure_failure"
+      ],
+      "disposition": "current-strengthened",
+      "distribution": "control-plane-kit-parity",
+      "rationale": "The immutable-reference or parity law remains active under the standalone extraction_parity validator suite.",
+      "reviewed_by_issue": 1345,
+      "source_id": "legacy-mutable:tests.test_differential_runner.DifferentialRunnerTests.test_missing_or_malformed_behavior_is_infrastructure_failure"
+    },
+    {
+      "archive_artifact": null,
+      "current_tests": [
+        "control-plane-kit-parity:tests.test_differential_runner.DifferentialRunnerTests.test_redaction_cannot_expand_output_past_the_declared_bound"
+      ],
+      "disposition": "current-strengthened",
+      "distribution": "control-plane-kit-parity",
+      "rationale": "The immutable-reference or parity law remains active under the standalone extraction_parity validator suite.",
+      "reviewed_by_issue": 1345,
+      "source_id": "legacy-mutable:tests.test_differential_runner.DifferentialRunnerTests.test_redaction_cannot_expand_output_past_the_declared_bound"
+    },
+    {
+      "archive_artifact": null,
+      "current_tests": [
+        "control-plane-kit-parity:tests.test_differential_runner.DifferentialRunnerTests.test_semantic_drift_emits_failed_evidence"
+      ],
+      "disposition": "current-strengthened",
+      "distribution": "control-plane-kit-parity",
+      "rationale": "The immutable-reference or parity law remains active under the standalone extraction_parity validator suite.",
+      "reviewed_by_issue": 1345,
+      "source_id": "legacy-mutable:tests.test_differential_runner.DifferentialRunnerTests.test_semantic_drift_emits_failed_evidence"
+    },
+    {
+      "archive_artifact": null,
+      "current_tests": [
+        "control-plane-kit-parity:tests.test_differential_runner.DifferentialRunnerTests.test_timeout_and_output_limit_are_infrastructure_outcomes"
+      ],
+      "disposition": "current-strengthened",
+      "distribution": "control-plane-kit-parity",
+      "rationale": "The immutable-reference or parity law remains active under the standalone extraction_parity validator suite.",
+      "reviewed_by_issue": 1345,
+      "source_id": "legacy-mutable:tests.test_differential_runner.DifferentialRunnerTests.test_timeout_and_output_limit_are_infrastructure_outcomes"
+    },
+    {
+      "archive_artifact": "artifacts/extraction/extract-interpreters-closeout-report.json",
+      "current_tests": [],
+      "disposition": "reviewed-archived",
+      "distribution": "control-plane-kit-parity",
+      "rationale": "This test enforced a completed extraction checkpoint; its historical result remains in artifacts/extraction/extract-interpreters-closeout-report.json.",
+      "reviewed_by_issue": 1345,
+      "source_id": "legacy-mutable:tests.test_extract_interpreters_closeout.ExtractInterpretersCloseoutTests.test_closeout_keeps_future_runtime_work_deferred"
+    },
+    {
+      "archive_artifact": "artifacts/extraction/extract-interpreters-closeout-report.json",
+      "current_tests": [],
+      "disposition": "reviewed-archived",
+      "distribution": "control-plane-kit-parity",
+      "rationale": "This test enforced a completed extraction checkpoint; its historical result remains in artifacts/extraction/extract-interpreters-closeout-report.json.",
+      "reviewed_by_issue": 1345,
+      "source_id": "legacy-mutable:tests.test_extract_interpreters_closeout.ExtractInterpretersCloseoutTests.test_closeout_records_runtime_interpreter_algebra"
+    },
+    {
+      "archive_artifact": "artifacts/extraction/extract-interpreters-closeout-report.json",
+      "current_tests": [],
+      "disposition": "reviewed-archived",
+      "distribution": "control-plane-kit-parity",
+      "rationale": "This test enforced a completed extraction checkpoint; its historical result remains in artifacts/extraction/extract-interpreters-closeout-report.json.",
+      "reviewed_by_issue": 1345,
+      "source_id": "legacy-mutable:tests.test_extract_interpreters_closeout.ExtractInterpretersCloseoutTests.test_package_ownership_keeps_docker_sdk_out_of_operations_and_core"
+    },
+    {
+      "archive_artifact": "artifacts/extraction/extract-interpreters-closeout-report.json",
+      "current_tests": [],
+      "disposition": "reviewed-archived",
+      "distribution": "control-plane-kit-parity",
+      "rationale": "This test enforced a completed extraction checkpoint; its historical result remains in artifacts/extraction/extract-interpreters-closeout-report.json.",
+      "reviewed_by_issue": 1345,
+      "source_id": "legacy-mutable:tests.test_extract_interpreters_closeout.ExtractInterpretersCloseoutTests.test_published_acceptance_evidence_is_digest_pinned"
+    },
+    {
+      "archive_artifact": "artifacts/extraction/required-core-batch-plan.json",
+      "current_tests": [],
+      "disposition": "reviewed-archived",
+      "distribution": "control-plane-kit-parity",
+      "rationale": "This test enforced a completed extraction checkpoint; its historical result remains in artifacts/extraction/required-core-batch-plan.json.",
+      "reviewed_by_issue": 1345,
+      "source_id": "legacy-mutable:tests.test_extraction_batch_plan.ExtractionBatchPlanTests.test_architecture_test_harness_closeout_maps_all_families_without_supersession"
+    },
+    {
+      "archive_artifact": "artifacts/extraction/required-core-batch-plan.json",
+      "current_tests": [],
+      "disposition": "reviewed-archived",
+      "distribution": "control-plane-kit-parity",
+      "rationale": "This test enforced a completed extraction checkpoint; its historical result remains in artifacts/extraction/required-core-batch-plan.json.",
+      "reviewed_by_issue": 1345,
+      "source_id": "legacy-mutable:tests.test_extraction_batch_plan.ExtractionBatchPlanTests.test_interpreter_runtime_closeout_reviews_effectful_families_without_core_successor_claims"
+    },
+    {
+      "archive_artifact": "artifacts/extraction/required-core-batch-plan.json",
+      "current_tests": [],
+      "disposition": "reviewed-archived",
+      "distribution": "control-plane-kit-parity",
+      "rationale": "This test enforced a completed extraction checkpoint; its historical result remains in artifacts/extraction/required-core-batch-plan.json.",
+      "reviewed_by_issue": 1345,
+      "source_id": "legacy-mutable:tests.test_extraction_batch_plan.ExtractionBatchPlanTests.test_operations_contract_batch_audit_partitions_live_scope"
+    },
+    {
+      "archive_artifact": "artifacts/extraction/required-core-batch-plan.json",
+      "current_tests": [],
+      "disposition": "reviewed-archived",
+      "distribution": "control-plane-kit-parity",
+      "rationale": "This test enforced a completed extraction checkpoint; its historical result remains in artifacts/extraction/required-core-batch-plan.json.",
+      "reviewed_by_issue": 1345,
+      "source_id": "legacy-mutable:tests.test_extraction_batch_plan.ExtractionBatchPlanTests.test_operations_contract_batch_closeout_has_no_unexpected_live_families"
+    },
+    {
+      "archive_artifact": "artifacts/extraction/required-core-batch-plan.json",
+      "current_tests": [],
+      "disposition": "reviewed-archived",
+      "distribution": "control-plane-kit-parity",
+      "rationale": "This test enforced a completed extraction checkpoint; its historical result remains in artifacts/extraction/required-core-batch-plan.json.",
+      "reviewed_by_issue": 1345,
+      "source_id": "legacy-mutable:tests.test_extraction_batch_plan.ExtractionBatchPlanTests.test_planning_saga_batch_audit_retains_only_pure_data_interpreters"
+    },
+    {
+      "archive_artifact": "artifacts/extraction/required-core-batch-plan.json",
+      "current_tests": [],
+      "disposition": "reviewed-archived",
+      "distribution": "control-plane-kit-parity",
+      "rationale": "This test enforced a completed extraction checkpoint; its historical result remains in artifacts/extraction/required-core-batch-plan.json.",
+      "reviewed_by_issue": 1345,
+      "source_id": "legacy-mutable:tests.test_extraction_batch_plan.ExtractionBatchPlanTests.test_planning_saga_batch_closeout_maps_all_retained_families"
+    },
+    {
+      "archive_artifact": "artifacts/extraction/required-core-batch-plan.json",
+      "current_tests": [],
+      "disposition": "reviewed-archived",
+      "distribution": "control-plane-kit-parity",
+      "rationale": "This test enforced a completed extraction checkpoint; its historical result remains in artifacts/extraction/required-core-batch-plan.json.",
+      "reviewed_by_issue": 1345,
+      "source_id": "legacy-mutable:tests.test_extraction_batch_plan.ExtractionBatchPlanTests.test_pure_core_batch_closeout_maps_retained_families_and_keeps_moves_visible"
+    },
+    {
+      "archive_artifact": "artifacts/extraction/required-core-batch-plan.json",
+      "current_tests": [],
+      "disposition": "reviewed-archived",
+      "distribution": "control-plane-kit-parity",
+      "rationale": "This test enforced a completed extraction checkpoint; its historical result remains in artifacts/extraction/required-core-batch-plan.json.",
+      "reviewed_by_issue": 1345,
+      "source_id": "legacy-mutable:tests.test_extraction_batch_plan.ExtractionBatchPlanTests.test_required_core_batch_plan_partitions_inventory_exactly_once"
+    },
+    {
+      "archive_artifact": "artifacts/extraction/required-core-batch-plan.json",
+      "current_tests": [],
+      "disposition": "reviewed-archived",
+      "distribution": "control-plane-kit-parity",
+      "rationale": "This test enforced a completed extraction checkpoint; its historical result remains in artifacts/extraction/required-core-batch-plan.json.",
+      "reviewed_by_issue": 1345,
+      "source_id": "legacy-mutable:tests.test_extraction_batch_plan.ExtractionBatchPlanTests.test_validation_packaging_demo_closeout_splits_core_contracts_from_process_handoffs"
+    },
+    {
+      "archive_artifact": "artifacts/extraction/contract-boundary-classification.json",
+      "current_tests": [],
+      "disposition": "reviewed-archived",
+      "distribution": "control-plane-kit-parity",
+      "rationale": "This test enforced a completed extraction checkpoint; its historical result remains in artifacts/extraction/contract-boundary-classification.json.",
+      "reviewed_by_issue": 1345,
+      "source_id": "legacy-mutable:tests.test_extraction_contract_boundary.ExtractionContractBoundaryTests.test_contract_classification_covers_classified_contract_laws_once"
+    },
+    {
+      "archive_artifact": "artifacts/extraction/contract-boundary-classification.json",
+      "current_tests": [],
+      "disposition": "reviewed-archived",
+      "distribution": "control-plane-kit-parity",
+      "rationale": "This test enforced a completed extraction checkpoint; its historical result remains in artifacts/extraction/contract-boundary-classification.json.",
+      "reviewed_by_issue": 1345,
+      "source_id": "legacy-mutable:tests.test_extraction_contract_boundary.ExtractionContractBoundaryTests.test_contract_classification_has_only_explicit_targets"
+    },
+    {
+      "archive_artifact": "artifacts/extraction/contract-boundary-classification.json",
+      "current_tests": [],
+      "disposition": "reviewed-archived",
+      "distribution": "control-plane-kit-parity",
+      "rationale": "This test enforced a completed extraction checkpoint; its historical result remains in artifacts/extraction/contract-boundary-classification.json.",
+      "reviewed_by_issue": 1345,
+      "source_id": "legacy-mutable:tests.test_extraction_contract_boundary.ExtractionContractBoundaryTests.test_derived_resource_and_publication_laws_are_split_boundaries"
+    },
+    {
+      "archive_artifact": "artifacts/extraction/contract-boundary-classification.json",
+      "current_tests": [],
+      "disposition": "reviewed-archived",
+      "distribution": "control-plane-kit-parity",
+      "rationale": "This test enforced a completed extraction checkpoint; its historical result remains in artifacts/extraction/contract-boundary-classification.json.",
+      "reviewed_by_issue": 1345,
+      "source_id": "legacy-mutable:tests.test_extraction_contract_boundary.ExtractionContractBoundaryTests.test_pure_value_laws_are_reserved_for_control_contract_mapping"
+    },
+    {
+      "archive_artifact": "artifacts/extraction/control-route-boundary-classification.json",
+      "current_tests": [],
+      "disposition": "reviewed-archived",
+      "distribution": "control-plane-kit-parity",
+      "rationale": "This test enforced a completed extraction checkpoint; its historical result remains in artifacts/extraction/control-route-boundary-classification.json.",
+      "reviewed_by_issue": 1345,
+      "source_id": "legacy-mutable:tests.test_extraction_control_route_boundary.ControlRouteBoundaryClassificationTests.test_control_route_boundary_classification_is_closed_and_complete"
+    },
+    {
+      "archive_artifact": "artifacts/extraction/control-route-boundary-classification.json",
+      "current_tests": [],
+      "disposition": "reviewed-archived",
+      "distribution": "control-plane-kit-parity",
+      "rationale": "This test enforced a completed extraction checkpoint; its historical result remains in artifacts/extraction/control-route-boundary-classification.json.",
+      "reviewed_by_issue": 1345,
+      "source_id": "legacy-mutable:tests.test_extraction_control_route_boundary.ControlRouteBoundaryClassificationTests.test_process_and_interpreter_families_are_not_claimed_as_core_successors"
+    },
+    {
+      "archive_artifact": "artifacts/extraction/pure-core-batch-audit.json",
+      "current_tests": [],
+      "disposition": "reviewed-archived",
+      "distribution": "control-plane-kit-parity",
+      "rationale": "This test enforced a completed extraction checkpoint; its historical result remains in artifacts/extraction/pure-core-batch-audit.json.",
+      "reviewed_by_issue": 1345,
+      "source_id": "legacy-mutable:tests.test_extraction_pure_core_audit.ExtractionPureCoreAuditTests.test_pure_core_audit_covers_every_assigned_family_once"
+    },
+    {
+      "archive_artifact": "artifacts/extraction/pure-core-batch-audit.json",
+      "current_tests": [],
+      "disposition": "reviewed-archived",
+      "distribution": "control-plane-kit-parity",
+      "rationale": "This test enforced a completed extraction checkpoint; its historical result remains in artifacts/extraction/pure-core-batch-audit.json.",
+      "reviewed_by_issue": 1345,
+      "source_id": "legacy-mutable:tests.test_extraction_pure_core_audit.ExtractionPureCoreAuditTests.test_pure_core_audit_moves_only_to_active_mapping_batches"
+    },
+    {
+      "archive_artifact": "artifacts/extraction/pure-core-batch-audit.json",
+      "current_tests": [],
+      "disposition": "reviewed-archived",
+      "distribution": "control-plane-kit-parity",
+      "rationale": "This test enforced a completed extraction checkpoint; its historical result remains in artifacts/extraction/pure-core-batch-audit.json.",
+      "reviewed_by_issue": 1345,
+      "source_id": "legacy-mutable:tests.test_extraction_pure_core_audit.ExtractionPureCoreAuditTests.test_pure_core_audit_summary_matches_records"
+    },
+    {
+      "archive_artifact": "artifacts/extraction/extract-e-closeout-report.json",
+      "current_tests": [],
+      "disposition": "reviewed-archived",
+      "distribution": "control-plane-kit-parity",
+      "rationale": "This test enforced a completed extraction checkpoint; its historical result remains in artifacts/extraction/extract-e-closeout-report.json.",
+      "reviewed_by_issue": 1345,
+      "source_id": "legacy-mutable:tests.test_extraction_rollout_topology.ExtractionRolloutTopologyTests.test_extract_e_architecture_review_records_guards_and_future_handoffs"
+    },
+    {
+      "archive_artifact": "artifacts/extraction/extract-e-closeout-report.json",
+      "current_tests": [],
+      "disposition": "reviewed-archived",
+      "distribution": "control-plane-kit-parity",
+      "rationale": "This test enforced a completed extraction checkpoint; its historical result remains in artifacts/extraction/extract-e-closeout-report.json.",
+      "reviewed_by_issue": 1345,
+      "source_id": "legacy-mutable:tests.test_extraction_rollout_topology.ExtractionRolloutTopologyTests.test_extract_e_artifacts_are_core_wheel_not_cpk_server_process"
+    },
+    {
+      "archive_artifact": "artifacts/extraction/extract-e-closeout-report.json",
+      "current_tests": [],
+      "disposition": "reviewed-archived",
+      "distribution": "control-plane-kit-parity",
+      "rationale": "This test enforced a completed extraction checkpoint; its historical result remains in artifacts/extraction/extract-e-closeout-report.json.",
+      "reviewed_by_issue": 1345,
+      "source_id": "legacy-mutable:tests.test_extraction_rollout_topology.ExtractionRolloutTopologyTests.test_extract_e_closeout_stops_before_server_product_migration"
+    },
+    {
+      "archive_artifact": "artifacts/extraction/extract-e-closeout-report.json",
+      "current_tests": [],
+      "disposition": "reviewed-archived",
+      "distribution": "control-plane-kit-parity",
+      "rationale": "This test enforced a completed extraction checkpoint; its historical result remains in artifacts/extraction/extract-e-closeout-report.json.",
+      "reviewed_by_issue": 1345,
+      "source_id": "legacy-mutable:tests.test_extraction_rollout_topology.ExtractionRolloutTopologyTests.test_extract_e_core_release_candidate_evidence_is_wheel_not_server_image"
+    },
+    {
+      "archive_artifact": "artifacts/extraction/extract-e-closeout-report.json",
+      "current_tests": [],
+      "disposition": "reviewed-archived",
+      "distribution": "control-plane-kit-parity",
+      "rationale": "This test enforced a completed extraction checkpoint; its historical result remains in artifacts/extraction/extract-e-closeout-report.json.",
+      "reviewed_by_issue": 1345,
+      "source_id": "legacy-mutable:tests.test_extraction_rollout_topology.ExtractionRolloutTopologyTests.test_extract_e_security_data_supply_chain_review_records_core_evidence"
+    },
+    {
+      "archive_artifact": "artifacts/extraction/extract-e-closeout-report.json",
+      "current_tests": [],
+      "disposition": "reviewed-archived",
+      "distribution": "control-plane-kit-parity",
+      "rationale": "This test enforced a completed extraction checkpoint; its historical result remains in artifacts/extraction/extract-e-closeout-report.json.",
+      "reviewed_by_issue": 1345,
+      "source_id": "legacy-mutable:tests.test_extraction_rollout_topology.ExtractionRolloutTopologyTests.test_extract_e_topology_includes_refresh_before_core_children"
+    },
+    {
+      "archive_artifact": "artifacts/extraction/extract-e-closeout-report.json",
+      "current_tests": [],
+      "disposition": "reviewed-archived",
+      "distribution": "control-plane-kit-parity",
+      "rationale": "This test enforced a completed extraction checkpoint; its historical result remains in artifacts/extraction/extract-e-closeout-report.json.",
+      "reviewed_by_issue": 1345,
+      "source_id": "legacy-mutable:tests.test_extraction_rollout_topology.ExtractionRolloutTopologyTests.test_extract_f_ingests_cpk_server_control_process_handoff"
+    },
+    {
+      "archive_artifact": "artifacts/extraction/extract-e-closeout-report.json",
+      "current_tests": [],
+      "disposition": "reviewed-archived",
+      "distribution": "control-plane-kit-parity",
+      "rationale": "This test enforced a completed extraction checkpoint; its historical result remains in artifacts/extraction/extract-e-closeout-report.json.",
+      "reviewed_by_issue": 1345,
+      "source_id": "legacy-mutable:tests.test_extraction_rollout_topology.ExtractionRolloutTopologyTests.test_rollout_no_longer_assigns_cpi_image_to_core_tests"
+    },
+    {
+      "archive_artifact": "artifacts/extraction/required-core-closeout-report.json",
+      "current_tests": [],
+      "disposition": "reviewed-archived",
+      "distribution": "control-plane-kit-parity",
+      "rationale": "This test enforced a completed extraction checkpoint; its historical result remains in artifacts/extraction/required-core-closeout-report.json.",
+      "reviewed_by_issue": 1345,
+      "source_id": "legacy-mutable:tests.test_extraction_successor_mappings.ExtractionSuccessorMappingTests.test_activity_plan_codec_and_compiler_families_are_fully_mapped"
+    },
+    {
+      "archive_artifact": "artifacts/extraction/required-core-closeout-report.json",
+      "current_tests": [],
+      "disposition": "reviewed-archived",
+      "distribution": "control-plane-kit-parity",
+      "rationale": "This test enforced a completed extraction checkpoint; its historical result remains in artifacts/extraction/required-core-closeout-report.json.",
+      "reviewed_by_issue": 1345,
+      "source_id": "legacy-mutable:tests.test_extraction_successor_mappings.ExtractionSuccessorMappingTests.test_activity_plan_family_is_fully_mapped_to_passing_successor_evidence"
+    },
+    {
+      "archive_artifact": "artifacts/extraction/required-core-closeout-report.json",
+      "current_tests": [],
+      "disposition": "reviewed-archived",
+      "distribution": "control-plane-kit-parity",
+      "rationale": "This test enforced a completed extraction checkpoint; its historical result remains in artifacts/extraction/required-core-closeout-report.json.",
+      "reviewed_by_issue": 1345,
+      "source_id": "legacy-mutable:tests.test_extraction_successor_mappings.ExtractionSuccessorMappingTests.test_admission_lifecycle_recovery_and_advancement_families_are_fully_mapped"
+    },
+    {
+      "archive_artifact": "artifacts/extraction/required-core-closeout-report.json",
+      "current_tests": [],
+      "disposition": "reviewed-archived",
+      "distribution": "control-plane-kit-parity",
+      "rationale": "This test enforced a completed extraction checkpoint; its historical result remains in artifacts/extraction/required-core-closeout-report.json.",
+      "reviewed_by_issue": 1345,
+      "source_id": "legacy-mutable:tests.test_extraction_successor_mappings.ExtractionSuccessorMappingTests.test_architecture_and_test_harness_families_are_fully_mapped_without_supersession"
+    },
+    {
+      "archive_artifact": "artifacts/extraction/required-core-closeout-report.json",
+      "current_tests": [],
+      "disposition": "reviewed-archived",
+      "distribution": "control-plane-kit-parity",
+      "rationale": "This test enforced a completed extraction checkpoint; its historical result remains in artifacts/extraction/required-core-closeout-report.json.",
+      "reviewed_by_issue": 1345,
+      "source_id": "legacy-mutable:tests.test_extraction_successor_mappings.ExtractionSuccessorMappingTests.test_command_workflow_contract_families_are_fully_mapped"
+    },
+    {
+      "archive_artifact": "artifacts/extraction/required-core-closeout-report.json",
+      "current_tests": [],
+      "disposition": "reviewed-archived",
+      "distribution": "control-plane-kit-parity",
+      "rationale": "This test enforced a completed extraction checkpoint; its historical result remains in artifacts/extraction/required-core-closeout-report.json.",
+      "reviewed_by_issue": 1345,
+      "source_id": "legacy-mutable:tests.test_extraction_successor_mappings.ExtractionSuccessorMappingTests.test_compensation_and_recovery_planning_families_are_fully_mapped"
+    },
+    {
+      "archive_artifact": "artifacts/extraction/required-core-closeout-report.json",
+      "current_tests": [],
+      "disposition": "reviewed-archived",
+      "distribution": "control-plane-kit-parity",
+      "rationale": "This test enforced a completed extraction checkpoint; its historical result remains in artifacts/extraction/required-core-closeout-report.json.",
+      "reviewed_by_issue": 1345,
+      "source_id": "legacy-mutable:tests.test_extraction_successor_mappings.ExtractionSuccessorMappingTests.test_control_route_family_is_fully_mapped_to_passing_successor_evidence"
+    },
+    {
+      "archive_artifact": "artifacts/extraction/required-core-closeout-report.json",
+      "current_tests": [],
+      "disposition": "reviewed-archived",
+      "distribution": "control-plane-kit-parity",
+      "rationale": "This test enforced a completed extraction checkpoint; its historical result remains in artifacts/extraction/required-core-closeout-report.json.",
+      "reviewed_by_issue": 1345,
+      "source_id": "legacy-mutable:tests.test_extraction_successor_mappings.ExtractionSuccessorMappingTests.test_core_public_interface_parity_uses_public_boundaries_without_live_process_claims"
+    },
+    {
+      "archive_artifact": "artifacts/extraction/required-core-closeout-report.json",
+      "current_tests": [],
+      "disposition": "reviewed-archived",
+      "distribution": "control-plane-kit-parity",
+      "rationale": "This test enforced a completed extraction checkpoint; its historical result remains in artifacts/extraction/required-core-closeout-report.json.",
+      "reviewed_by_issue": 1345,
+      "source_id": "legacy-mutable:tests.test_extraction_successor_mappings.ExtractionSuccessorMappingTests.test_deployment_program_boundary_families_are_fully_mapped"
+    },
+    {
+      "archive_artifact": "artifacts/extraction/required-core-closeout-report.json",
+      "current_tests": [],
+      "disposition": "reviewed-archived",
+      "distribution": "control-plane-kit-parity",
+      "rationale": "This test enforced a completed extraction checkpoint; its historical result remains in artifacts/extraction/required-core-closeout-report.json.",
+      "reviewed_by_issue": 1345,
+      "source_id": "legacy-mutable:tests.test_extraction_successor_mappings.ExtractionSuccessorMappingTests.test_environment_secret_families_are_fully_mapped_to_passing_successor_evidence"
+    },
+    {
+      "archive_artifact": "artifacts/extraction/required-core-closeout-report.json",
+      "current_tests": [],
+      "disposition": "reviewed-archived",
+      "distribution": "control-plane-kit-parity",
+      "rationale": "This test enforced a completed extraction checkpoint; its historical result remains in artifacts/extraction/required-core-closeout-report.json.",
+      "reviewed_by_issue": 1345,
+      "source_id": "legacy-mutable:tests.test_extraction_successor_mappings.ExtractionSuccessorMappingTests.test_execution_coordinator_and_verification_command_families_are_fully_mapped"
+    },
+    {
+      "archive_artifact": "artifacts/extraction/required-core-closeout-report.json",
+      "current_tests": [],
+      "disposition": "reviewed-archived",
+      "distribution": "control-plane-kit-parity",
+      "rationale": "This test enforced a completed extraction checkpoint; its historical result remains in artifacts/extraction/required-core-closeout-report.json.",
+      "reviewed_by_issue": 1345,
+      "source_id": "legacy-mutable:tests.test_extraction_successor_mappings.ExtractionSuccessorMappingTests.test_interpreter_runtime_families_are_reviewed_handoffs_not_core_successors"
+    },
+    {
+      "archive_artifact": "artifacts/extraction/required-core-closeout-report.json",
+      "current_tests": [],
+      "disposition": "reviewed-archived",
+      "distribution": "control-plane-kit-parity",
+      "rationale": "This test enforced a completed extraction checkpoint; its historical result remains in artifacts/extraction/required-core-closeout-report.json.",
+      "reviewed_by_issue": 1345,
+      "source_id": "legacy-mutable:tests.test_extraction_successor_mappings.ExtractionSuccessorMappingTests.test_planning_scenario_families_are_fully_mapped_or_superseded"
+    },
+    {
+      "archive_artifact": "artifacts/extraction/required-core-closeout-report.json",
+      "current_tests": [],
+      "disposition": "reviewed-archived",
+      "distribution": "control-plane-kit-parity",
+      "rationale": "This test enforced a completed extraction checkpoint; its historical result remains in artifacts/extraction/required-core-closeout-report.json.",
+      "reviewed_by_issue": 1345,
+      "source_id": "legacy-mutable:tests.test_extraction_successor_mappings.ExtractionSuccessorMappingTests.test_policy_family_is_fully_mapped_to_passing_successor_evidence"
+    },
+    {
+      "archive_artifact": "artifacts/extraction/required-core-closeout-report.json",
+      "current_tests": [],
+      "disposition": "reviewed-archived",
+      "distribution": "control-plane-kit-parity",
+      "rationale": "This test enforced a completed extraction checkpoint; its historical result remains in artifacts/extraction/required-core-closeout-report.json.",
+      "reviewed_by_issue": 1345,
+      "source_id": "legacy-mutable:tests.test_extraction_successor_mappings.ExtractionSuccessorMappingTests.test_probe_intent_family_is_fully_mapped_to_passing_successor_evidence"
+    },
+    {
+      "archive_artifact": "artifacts/extraction/required-core-closeout-report.json",
+      "current_tests": [],
+      "disposition": "reviewed-archived",
+      "distribution": "control-plane-kit-parity",
+      "rationale": "This test enforced a completed extraction checkpoint; its historical result remains in artifacts/extraction/required-core-closeout-report.json.",
+      "reviewed_by_issue": 1345,
+      "source_id": "legacy-mutable:tests.test_extraction_successor_mappings.ExtractionSuccessorMappingTests.test_pure_contract_laws_are_mapped_without_claiming_operations_laws"
+    },
+    {
+      "archive_artifact": "artifacts/extraction/required-core-closeout-report.json",
+      "current_tests": [],
+      "disposition": "reviewed-archived",
+      "distribution": "control-plane-kit-parity",
+      "rationale": "This test enforced a completed extraction checkpoint; its historical result remains in artifacts/extraction/required-core-closeout-report.json.",
+      "reviewed_by_issue": 1345,
+      "source_id": "legacy-mutable:tests.test_extraction_successor_mappings.ExtractionSuccessorMappingTests.test_read_projection_contract_families_are_fully_mapped"
+    },
+    {
+      "archive_artifact": "artifacts/extraction/required-core-closeout-report.json",
+      "current_tests": [],
+      "disposition": "reviewed-archived",
+      "distribution": "control-plane-kit-parity",
+      "rationale": "This test enforced a completed extraction checkpoint; its historical result remains in artifacts/extraction/required-core-closeout-report.json.",
+      "reviewed_by_issue": 1345,
+      "source_id": "legacy-mutable:tests.test_extraction_successor_mappings.ExtractionSuccessorMappingTests.test_required_core_closeout_is_zero_without_claiming_non_core_completion"
+    },
+    {
+      "archive_artifact": "artifacts/extraction/required-core-closeout-report.json",
+      "current_tests": [],
+      "disposition": "reviewed-archived",
+      "distribution": "control-plane-kit-parity",
+      "rationale": "This test enforced a completed extraction checkpoint; its historical result remains in artifacts/extraction/required-core-closeout-report.json.",
+      "reviewed_by_issue": 1345,
+      "source_id": "legacy-mutable:tests.test_extraction_successor_mappings.ExtractionSuccessorMappingTests.test_saga_program_state_and_journal_families_are_fully_mapped"
+    },
+    {
+      "archive_artifact": "artifacts/extraction/required-core-closeout-report.json",
+      "current_tests": [],
+      "disposition": "reviewed-archived",
+      "distribution": "control-plane-kit-parity",
+      "rationale": "This test enforced a completed extraction checkpoint; its historical result remains in artifacts/extraction/required-core-closeout-report.json.",
+      "reviewed_by_issue": 1345,
+      "source_id": "legacy-mutable:tests.test_extraction_successor_mappings.ExtractionSuccessorMappingTests.test_scheduling_families_are_fully_mapped"
+    },
+    {
+      "archive_artifact": "artifacts/extraction/required-core-closeout-report.json",
+      "current_tests": [],
+      "disposition": "reviewed-archived",
+      "distribution": "control-plane-kit-parity",
+      "rationale": "This test enforced a completed extraction checkpoint; its historical result remains in artifacts/extraction/required-core-closeout-report.json.",
+      "reviewed_by_issue": 1345,
+      "source_id": "legacy-mutable:tests.test_extraction_successor_mappings.ExtractionSuccessorMappingTests.test_store_uow_postgres_and_mutation_holder_families_are_fully_mapped"
+    },
+    {
+      "archive_artifact": "artifacts/extraction/required-core-closeout-report.json",
+      "current_tests": [],
+      "disposition": "reviewed-archived",
+      "distribution": "control-plane-kit-parity",
+      "rationale": "This test enforced a completed extraction checkpoint; its historical result remains in artifacts/extraction/required-core-closeout-report.json.",
+      "reviewed_by_issue": 1345,
+      "source_id": "legacy-mutable:tests.test_extraction_successor_mappings.ExtractionSuccessorMappingTests.test_validation_packaging_and_demo_families_are_mapped_or_reviewed_handoffs"
+    },
+    {
+      "archive_artifact": "artifacts/extraction/required-core-closeout-report.json",
+      "current_tests": [],
+      "disposition": "reviewed-archived",
+      "distribution": "control-plane-kit-parity",
+      "rationale": "This test enforced a completed extraction checkpoint; its historical result remains in artifacts/extraction/required-core-closeout-report.json.",
+      "reviewed_by_issue": 1345,
+      "source_id": "legacy-mutable:tests.test_extraction_successor_mappings.ExtractionSuccessorMappingTests.test_verification_capability_families_are_fully_mapped_to_passing_successor_evidence"
+    },
+    {
+      "archive_artifact": "artifacts/extraction/supersession-reviews/",
+      "current_tests": [],
+      "disposition": "reviewed-archived",
+      "distribution": "control-plane-kit-parity",
+      "rationale": "This test enforced a completed extraction checkpoint; its historical result remains in artifacts/extraction/supersession-reviews/.",
+      "reviewed_by_issue": 1345,
+      "source_id": "legacy-mutable:tests.test_extraction_supersession_review.ExtractionSupersessionReviewTests.test_reviewed_supersession_artifact_matches_manifest_state"
+    },
+    {
+      "archive_artifact": "artifacts/extraction/interpreter-runtime-dry-run.json",
+      "current_tests": [],
+      "disposition": "reviewed-archived",
+      "distribution": "control-plane-kit-parity",
+      "rationale": "This test enforced a completed extraction checkpoint; its historical result remains in artifacts/extraction/interpreter-runtime-dry-run.json.",
+      "reviewed_by_issue": 1345,
+      "source_id": "legacy-mutable:tests.test_interpreter_runtime_dry_run.InterpreterRuntimeDryRunTests.test_dispatcher_boundary_keeps_effects_out_of_core_and_cpk_server"
+    },
+    {
+      "archive_artifact": "artifacts/extraction/interpreter-runtime-dry-run.json",
+      "current_tests": [],
+      "disposition": "reviewed-archived",
+      "distribution": "control-plane-kit-parity",
+      "rationale": "This test enforced a completed extraction checkpoint; its historical result remains in artifacts/extraction/interpreter-runtime-dry-run.json.",
+      "reviewed_by_issue": 1345,
+      "source_id": "legacy-mutable:tests.test_interpreter_runtime_dry_run.InterpreterRuntimeDryRunTests.test_docker_sdk_coverage_records_unresolved_secret_and_config_materialization"
+    },
+    {
+      "archive_artifact": "artifacts/extraction/interpreter-runtime-dry-run.json",
+      "current_tests": [],
+      "disposition": "reviewed-archived",
+      "distribution": "control-plane-kit-parity",
+      "rationale": "This test enforced a completed extraction checkpoint; its historical result remains in artifacts/extraction/interpreter-runtime-dry-run.json.",
+      "reviewed_by_issue": 1345,
+      "source_id": "legacy-mutable:tests.test_interpreter_runtime_dry_run.InterpreterRuntimeDryRunTests.test_law_cards_cover_dispatch_cpk_server_authority_and_future_cloud"
+    },
+    {
+      "archive_artifact": "artifacts/extraction/interpreter-runtime-dry-run.json",
+      "current_tests": [],
+      "disposition": "reviewed-archived",
+      "distribution": "control-plane-kit-parity",
+      "rationale": "This test enforced a completed extraction checkpoint; its historical result remains in artifacts/extraction/interpreter-runtime-dry-run.json.",
+      "reviewed_by_issue": 1345,
+      "source_id": "legacy-mutable:tests.test_interpreter_runtime_dry_run.InterpreterRuntimeDryRunTests.test_ownership_partition_preserves_operations_context_and_moves_sdk_clients"
+    },
+    {
+      "archive_artifact": "artifacts/extraction/interpreter-runtime-dry-run.json",
+      "current_tests": [],
+      "disposition": "reviewed-archived",
+      "distribution": "control-plane-kit-parity",
+      "rationale": "This test enforced a completed extraction checkpoint; its historical result remains in artifacts/extraction/interpreter-runtime-dry-run.json.",
+      "reviewed_by_issue": 1345,
+      "source_id": "legacy-mutable:tests.test_interpreter_runtime_dry_run.InterpreterRuntimeDryRunTests.test_topology_is_coherent_and_orders_dispatch_before_docker_sdk"
+    },
+    {
+      "archive_artifact": "artifacts/extraction/operations-topology-refresh.json",
+      "current_tests": [],
+      "disposition": "reviewed-archived",
+      "distribution": "control-plane-kit-parity",
+      "rationale": "This test enforced a completed extraction checkpoint; its historical result remains in artifacts/extraction/operations-topology-refresh.json.",
+      "reviewed_by_issue": 1345,
+      "source_id": "legacy-mutable:tests.test_operations_extraction_topology.OperationsExtractionTopologyTests.test_frozen_law_inventory_keeps_data_engineering_precedents_visible"
+    },
+    {
+      "archive_artifact": "artifacts/extraction/operations-topology-refresh.json",
+      "current_tests": [],
+      "disposition": "reviewed-archived",
+      "distribution": "control-plane-kit-parity",
+      "rationale": "This test enforced a completed extraction checkpoint; its historical result remains in artifacts/extraction/operations-topology-refresh.json.",
+      "reviewed_by_issue": 1345,
+      "source_id": "legacy-mutable:tests.test_operations_extraction_topology.OperationsExtractionTopologyTests.test_operations_topology_places_registered_product_after_package_schema_and_uow"
+    },
+    {
+      "archive_artifact": "artifacts/extraction/operations-contract-batch-closeout.json",
+      "current_tests": [],
+      "disposition": "reviewed-archived",
+      "distribution": "control-plane-kit-parity",
+      "rationale": "This test enforced a completed extraction checkpoint; its historical result remains in artifacts/extraction/operations-contract-batch-closeout.json.",
+      "reviewed_by_issue": 1345,
+      "source_id": "legacy-mutable:tests.test_operations_package_foundation.OperationsPackageFoundationTests.test_operations_distribution_exists_as_core_sibling"
+    },
+    {
+      "archive_artifact": "artifacts/extraction/operations-contract-batch-closeout.json",
+      "current_tests": [],
+      "disposition": "reviewed-archived",
+      "distribution": "control-plane-kit-parity",
+      "rationale": "This test enforced a completed extraction checkpoint; its historical result remains in artifacts/extraction/operations-contract-batch-closeout.json.",
+      "reviewed_by_issue": 1345,
+      "source_id": "legacy-mutable:tests.test_operations_package_foundation.OperationsPackageFoundationTests.test_operations_import_boundary_points_inward_to_core_only"
+    },
+    {
+      "archive_artifact": "artifacts/extraction/operations-contract-batch-closeout.json",
+      "current_tests": [],
+      "disposition": "reviewed-archived",
+      "distribution": "control-plane-kit-parity",
+      "rationale": "This test enforced a completed extraction checkpoint; its historical result remains in artifacts/extraction/operations-contract-batch-closeout.json.",
+      "reviewed_by_issue": 1345,
+      "source_id": "legacy-mutable:tests.test_operations_package_foundation.OperationsPackageFoundationTests.test_root_docker_suite_runs_operations_harness"
+    },
+    {
+      "archive_artifact": null,
+      "current_tests": [
+        "control-plane-kit-parity:tests.test_parity_manifest.ParityManifestTests.test_builder_preserves_owner_and_deferred_state"
+      ],
+      "disposition": "current-strengthened",
+      "distribution": "control-plane-kit-parity",
+      "rationale": "The immutable-reference or parity law remains active under the standalone extraction_parity validator suite.",
+      "reviewed_by_issue": 1345,
+      "source_id": "legacy-mutable:tests.test_parity_manifest.ParityManifestTests.test_builder_preserves_owner_and_deferred_state"
+    },
+    {
+      "archive_artifact": null,
+      "current_tests": [
+        "control-plane-kit-parity:tests.test_parity_manifest.ParityManifestTests.test_closed_manifest_round_trips_required_and_deferred_entries"
+      ],
+      "disposition": "current-strengthened",
+      "distribution": "control-plane-kit-parity",
+      "rationale": "The immutable-reference or parity law remains active under the standalone extraction_parity validator suite.",
+      "reviewed_by_issue": 1345,
+      "source_id": "legacy-mutable:tests.test_parity_manifest.ParityManifestTests.test_closed_manifest_round_trips_required_and_deferred_entries"
+    },
+    {
+      "archive_artifact": null,
+      "current_tests": [
+        "control-plane-kit-parity:tests.test_parity_manifest.ParityManifestTests.test_successor_and_supersession_states_are_closed_bounded_and_exclusive"
+      ],
+      "disposition": "current-strengthened",
+      "distribution": "control-plane-kit-parity",
+      "rationale": "The immutable-reference or parity law remains active under the standalone extraction_parity validator suite.",
+      "reviewed_by_issue": 1345,
+      "source_id": "legacy-mutable:tests.test_parity_manifest.ParityManifestTests.test_successor_and_supersession_states_are_closed_bounded_and_exclusive"
+    },
+    {
+      "archive_artifact": null,
+      "current_tests": [
+        "control-plane-kit-parity:tests.test_parity_manifest.ParityManifestTests.test_unknown_fields_duplicates_and_unreviewed_supersession_fail_closed"
+      ],
+      "disposition": "current-strengthened",
+      "distribution": "control-plane-kit-parity",
+      "rationale": "The immutable-reference or parity law remains active under the standalone extraction_parity validator suite.",
+      "reviewed_by_issue": 1345,
+      "source_id": "legacy-mutable:tests.test_parity_manifest.ParityManifestTests.test_unknown_fields_duplicates_and_unreviewed_supersession_fail_closed"
+    },
+    {
+      "archive_artifact": null,
+      "current_tests": [
+        "control-plane-kit-parity:tests.test_parity_manifest.ParityManifestTests.test_writer_is_deterministic_atomic_and_creates_its_parent"
+      ],
+      "disposition": "current-strengthened",
+      "distribution": "control-plane-kit-parity",
+      "rationale": "The immutable-reference or parity law remains active under the standalone extraction_parity validator suite.",
+      "reviewed_by_issue": 1345,
+      "source_id": "legacy-mutable:tests.test_parity_manifest.ParityManifestTests.test_writer_is_deterministic_atomic_and_creates_its_parent"
+    },
+    {
+      "archive_artifact": null,
+      "current_tests": [
+        "control-plane-kit-parity:tests.test_parity_validation.ParityValidationTests.test_evidence_index_is_closed_unique_and_digest_bounded"
+      ],
+      "disposition": "current-strengthened",
+      "distribution": "control-plane-kit-parity",
+      "rationale": "The immutable-reference or parity law remains active under the standalone extraction_parity validator suite.",
+      "reviewed_by_issue": 1345,
+      "source_id": "legacy-mutable:tests.test_parity_validation.ParityValidationTests.test_evidence_index_is_closed_unique_and_digest_bounded"
+    },
+    {
+      "archive_artifact": null,
+      "current_tests": [
+        "control-plane-kit-parity:tests.test_parity_validation.ParityValidationTests.test_foundation_accepts_exhaustive_mapping_without_claiming_migration"
+      ],
+      "disposition": "current-strengthened",
+      "distribution": "control-plane-kit-parity",
+      "rationale": "The immutable-reference or parity law remains active under the standalone extraction_parity validator suite.",
+      "reviewed_by_issue": 1345,
+      "source_id": "legacy-mutable:tests.test_parity_validation.ParityValidationTests.test_foundation_accepts_exhaustive_mapping_without_claiming_migration"
+    },
+    {
+      "archive_artifact": null,
+      "current_tests": [
+        "control-plane-kit-parity:tests.test_parity_validation.ParityValidationTests.test_migration_policy_requires_passing_successor_evidence"
+      ],
+      "disposition": "current-strengthened",
+      "distribution": "control-plane-kit-parity",
+      "rationale": "The immutable-reference or parity law remains active under the standalone extraction_parity validator suite.",
+      "reviewed_by_issue": 1345,
+      "source_id": "legacy-mutable:tests.test_parity_validation.ParityValidationTests.test_migration_policy_requires_passing_successor_evidence"
+    },
+    {
+      "archive_artifact": null,
+      "current_tests": [
+        "control-plane-kit-parity:tests.test_parity_validation.ParityValidationTests.test_missing_and_stale_mappings_fail_closed"
+      ],
+      "disposition": "current-strengthened",
+      "distribution": "control-plane-kit-parity",
+      "rationale": "The immutable-reference or parity law remains active under the standalone extraction_parity validator suite.",
+      "reviewed_by_issue": 1345,
+      "source_id": "legacy-mutable:tests.test_parity_validation.ParityValidationTests.test_missing_and_stale_mappings_fail_closed"
+    },
+    {
+      "archive_artifact": null,
+      "current_tests": [
+        "control-plane-kit-parity:tests.test_parity_validation.ParityValidationTests.test_required_core_closeout_accepts_explicit_successor_or_supersession"
+      ],
+      "disposition": "current-strengthened",
+      "distribution": "control-plane-kit-parity",
+      "rationale": "The immutable-reference or parity law remains active under the standalone extraction_parity validator suite.",
+      "reviewed_by_issue": 1345,
+      "source_id": "legacy-mutable:tests.test_parity_validation.ParityValidationTests.test_required_core_closeout_accepts_explicit_successor_or_supersession"
+    },
+    {
+      "archive_artifact": null,
+      "current_tests": [
+        "control-plane-kit-parity:tests.test_parity_validation.ParityValidationTests.test_required_core_closeout_fails_on_unmapped_core_only"
+      ],
+      "disposition": "current-strengthened",
+      "distribution": "control-plane-kit-parity",
+      "rationale": "The immutable-reference or parity law remains active under the standalone extraction_parity validator suite.",
+      "reviewed_by_issue": 1345,
+      "source_id": "legacy-mutable:tests.test_parity_validation.ParityValidationTests.test_required_core_closeout_fails_on_unmapped_core_only"
+    },
+    {
+      "archive_artifact": null,
+      "current_tests": [
+        "control-plane-kit-parity:tests.test_parity_validation.ParityValidationTests.test_required_core_closeout_rejects_missing_or_failed_successor_evidence"
+      ],
+      "disposition": "current-strengthened",
+      "distribution": "control-plane-kit-parity",
+      "rationale": "The immutable-reference or parity law remains active under the standalone extraction_parity validator suite.",
+      "reviewed_by_issue": 1345,
+      "source_id": "legacy-mutable:tests.test_parity_validation.ParityValidationTests.test_required_core_closeout_rejects_missing_or_failed_successor_evidence"
+    },
+    {
+      "archive_artifact": null,
+      "current_tests": [
+        "control-plane-kit-parity:tests.test_parity_validation.ParityValidationTests.test_required_core_closeout_rejects_non_core_supersession"
+      ],
+      "disposition": "current-strengthened",
+      "distribution": "control-plane-kit-parity",
+      "rationale": "The immutable-reference or parity law remains active under the standalone extraction_parity validator suite.",
+      "reviewed_by_issue": 1345,
+      "source_id": "legacy-mutable:tests.test_parity_validation.ParityValidationTests.test_required_core_closeout_rejects_non_core_supersession"
+    },
+    {
+      "archive_artifact": null,
+      "current_tests": [
+        "control-plane-kit-parity:tests.test_parity_validation.ParityValidationTests.test_required_core_family_inventory_fails_closed_on_invalid_report_shape"
+      ],
+      "disposition": "current-strengthened",
+      "distribution": "control-plane-kit-parity",
+      "rationale": "The immutable-reference or parity law remains active under the standalone extraction_parity validator suite.",
+      "reviewed_by_issue": 1345,
+      "source_id": "legacy-mutable:tests.test_parity_validation.ParityValidationTests.test_required_core_family_inventory_fails_closed_on_invalid_report_shape"
+    },
+    {
+      "archive_artifact": null,
+      "current_tests": [
+        "control-plane-kit-parity:tests.test_parity_validation.ParityValidationTests.test_required_core_family_inventory_groups_unmapped_laws_deterministically"
+      ],
+      "disposition": "current-strengthened",
+      "distribution": "control-plane-kit-parity",
+      "rationale": "The immutable-reference or parity law remains active under the standalone extraction_parity validator suite.",
+      "reviewed_by_issue": 1345,
+      "source_id": "legacy-mutable:tests.test_parity_validation.ParityValidationTests.test_required_core_family_inventory_groups_unmapped_laws_deterministically"
+    },
+    {
+      "archive_artifact": null,
+      "current_tests": [
+        "control-plane-kit-parity:tests.test_parity_validation.ParityValidationTests.test_reviewed_supersession_completes_required_entry_but_not_deferred_work"
+      ],
+      "disposition": "current-strengthened",
+      "distribution": "control-plane-kit-parity",
+      "rationale": "The immutable-reference or parity law remains active under the standalone extraction_parity validator suite.",
+      "reviewed_by_issue": 1345,
+      "source_id": "legacy-mutable:tests.test_parity_validation.ParityValidationTests.test_reviewed_supersession_completes_required_entry_but_not_deferred_work"
+    },
+    {
+      "archive_artifact": null,
+      "current_tests": [
+        "control-plane-kit-parity:tests.test_parity_validation.ParityValidationTests.test_successor_must_resolve_to_matching_passing_evidence"
+      ],
+      "disposition": "current-strengthened",
+      "distribution": "control-plane-kit-parity",
+      "rationale": "The immutable-reference or parity law remains active under the standalone extraction_parity validator suite.",
+      "reviewed_by_issue": 1345,
+      "source_id": "legacy-mutable:tests.test_parity_validation.ParityValidationTests.test_successor_must_resolve_to_matching_passing_evidence"
+    },
+    {
+      "archive_artifact": null,
+      "current_tests": [
+        "control-plane-kit-parity:tests.test_reference_demo_inventory.ReferenceDemoInventoryTests.test_every_discovered_script_is_accounted_for_exactly_once"
+      ],
+      "disposition": "current-strengthened",
+      "distribution": "control-plane-kit-parity",
+      "rationale": "The immutable-reference or parity law remains active under the standalone extraction_parity validator suite.",
+      "reviewed_by_issue": 1345,
+      "source_id": "legacy-mutable:tests.test_reference_demo_inventory.ReferenceDemoInventoryTests.test_every_discovered_script_is_accounted_for_exactly_once"
+    },
+    {
+      "archive_artifact": null,
+      "current_tests": [
+        "control-plane-kit-parity:tests.test_reference_demo_inventory.ReferenceDemoInventoryTests.test_unknown_fields_states_and_semantic_normalization_fail_closed"
+      ],
+      "disposition": "current-strengthened",
+      "distribution": "control-plane-kit-parity",
+      "rationale": "The immutable-reference or parity law remains active under the standalone extraction_parity validator suite.",
+      "reviewed_by_issue": 1345,
+      "source_id": "legacy-mutable:tests.test_reference_demo_inventory.ReferenceDemoInventoryTests.test_unknown_fields_states_and_semantic_normalization_fail_closed"
+    },
+    {
+      "archive_artifact": null,
+      "current_tests": [
+        "control-plane-kit-parity:tests.test_reference_law_ownership.ReferenceLawOwnershipTests.test_closed_owner_kinds_and_named_product"
+      ],
+      "disposition": "current-strengthened",
+      "distribution": "control-plane-kit-parity",
+      "rationale": "The immutable-reference or parity law remains active under the standalone extraction_parity validator suite.",
+      "reviewed_by_issue": 1345,
+      "source_id": "legacy-mutable:tests.test_reference_law_ownership.ReferenceLawOwnershipTests.test_closed_owner_kinds_and_named_product"
+    },
+    {
+      "archive_artifact": null,
+      "current_tests": [
+        "control-plane-kit-parity:tests.test_reference_law_ownership.ReferenceLawOwnershipTests.test_inventory_preserves_occurrences_and_assigns_exactly_one_owner"
+      ],
+      "disposition": "current-strengthened",
+      "distribution": "control-plane-kit-parity",
+      "rationale": "The immutable-reference or parity law remains active under the standalone extraction_parity validator suite.",
+      "reviewed_by_issue": 1345,
+      "source_id": "legacy-mutable:tests.test_reference_law_ownership.ReferenceLawOwnershipTests.test_inventory_preserves_occurrences_and_assigns_exactly_one_owner"
+    },
+    {
+      "archive_artifact": null,
+      "current_tests": [
+        "control-plane-kit-parity:tests.test_reference_law_ownership.ReferenceLawOwnershipTests.test_unlisted_product_vocabulary_cannot_fall_through_to_core"
+      ],
+      "disposition": "current-strengthened",
+      "distribution": "control-plane-kit-parity",
+      "rationale": "The immutable-reference or parity law remains active under the standalone extraction_parity validator suite.",
+      "reviewed_by_issue": 1345,
+      "source_id": "legacy-mutable:tests.test_reference_law_ownership.ReferenceLawOwnershipTests.test_unlisted_product_vocabulary_cannot_fall_through_to_core"
+    },
+    {
+      "archive_artifact": null,
+      "current_tests": [
+        "control-plane-kit-parity:tests.test_reference_parity_evidence.ReferenceParityEvidenceTests.test_evidence_encoding_is_deterministic_and_atomic"
+      ],
+      "disposition": "current-strengthened",
+      "distribution": "control-plane-kit-parity",
+      "rationale": "The immutable-reference or parity law remains active under the standalone extraction_parity validator suite.",
+      "reviewed_by_issue": 1345,
+      "source_id": "legacy-mutable:tests.test_reference_parity_evidence.ReferenceParityEvidenceTests.test_evidence_encoding_is_deterministic_and_atomic"
+    },
+    {
+      "archive_artifact": null,
+      "current_tests": [
+        "control-plane-kit-parity:tests.test_reference_parity_evidence.ReferenceParityEvidenceTests.test_evidence_requires_exact_reference_commit_and_contains_no_raw_log"
+      ],
+      "disposition": "current-strengthened",
+      "distribution": "control-plane-kit-parity",
+      "rationale": "The immutable-reference or parity law remains active under the standalone extraction_parity validator suite.",
+      "reviewed_by_issue": 1345,
+      "source_id": "legacy-mutable:tests.test_reference_parity_evidence.ReferenceParityEvidenceTests.test_evidence_requires_exact_reference_commit_and_contains_no_raw_log"
+    },
+    {
+      "archive_artifact": null,
+      "current_tests": [
+        "control-plane-kit-parity:tests.test_reference_parity_evidence.ReferenceParityEvidenceTests.test_resource_inventory_reports_additions_without_cleanup_instructions"
+      ],
+      "disposition": "current-strengthened",
+      "distribution": "control-plane-kit-parity",
+      "rationale": "The immutable-reference or parity law remains active under the standalone extraction_parity validator suite.",
+      "reviewed_by_issue": 1345,
+      "source_id": "legacy-mutable:tests.test_reference_parity_evidence.ReferenceParityEvidenceTests.test_resource_inventory_reports_additions_without_cleanup_instructions"
+    },
+    {
+      "archive_artifact": null,
+      "current_tests": [
+        "control-plane-kit-parity:tests.test_reference_parity_evidence.ReferenceParityEvidenceTests.test_runner_uses_archived_source_and_has_no_global_cleanup"
+      ],
+      "disposition": "current-strengthened",
+      "distribution": "control-plane-kit-parity",
+      "rationale": "The immutable-reference or parity law remains active under the standalone extraction_parity validator suite.",
+      "reviewed_by_issue": 1345,
+      "source_id": "legacy-mutable:tests.test_reference_parity_evidence.ReferenceParityEvidenceTests.test_runner_uses_archived_source_and_has_no_global_cleanup"
+    },
+    {
+      "archive_artifact": null,
+      "current_tests": [
+        "control-plane-kit-parity:tests.test_reference_parity_evidence.ReferenceParityEvidenceTests.test_successful_unittest_summary_is_closed_and_bounded"
+      ],
+      "disposition": "current-strengthened",
+      "distribution": "control-plane-kit-parity",
+      "rationale": "The immutable-reference or parity law remains active under the standalone extraction_parity validator suite.",
+      "reviewed_by_issue": 1345,
+      "source_id": "legacy-mutable:tests.test_reference_parity_evidence.ReferenceParityEvidenceTests.test_successful_unittest_summary_is_closed_and_bounded"
+    },
+    {
+      "archive_artifact": null,
+      "current_tests": [
+        "control-plane-kit-parity:tests.test_reference_parity_evidence.ReferenceParityEvidenceTests.test_summary_rejects_failure_missing_summary_and_oversized_output"
+      ],
+      "disposition": "current-strengthened",
+      "distribution": "control-plane-kit-parity",
+      "rationale": "The immutable-reference or parity law remains active under the standalone extraction_parity validator suite.",
+      "reviewed_by_issue": 1345,
+      "source_id": "legacy-mutable:tests.test_reference_parity_evidence.ReferenceParityEvidenceTests.test_summary_rejects_failure_missing_summary_and_oversized_output"
+    },
+    {
+      "archive_artifact": null,
+      "current_tests": [
+        "control-plane-kit-parity:tests.test_reference_test_inventory.ReferenceTestInventoryTests.test_ambiguous_or_invalid_test_names_fail_closed"
+      ],
+      "disposition": "current-strengthened",
+      "distribution": "control-plane-kit-parity",
+      "rationale": "The immutable-reference or parity law remains active under the standalone extraction_parity validator suite.",
+      "reviewed_by_issue": 1345,
+      "source_id": "legacy-mutable:tests.test_reference_test_inventory.ReferenceTestInventoryTests.test_ambiguous_or_invalid_test_names_fail_closed"
+    },
+    {
+      "archive_artifact": null,
+      "current_tests": [
+        "control-plane-kit-parity:tests.test_reference_test_inventory.ReferenceTestInventoryTests.test_descriptor_is_sorted_and_closed"
+      ],
+      "disposition": "current-strengthened",
+      "distribution": "control-plane-kit-parity",
+      "rationale": "The immutable-reference or parity law remains active under the standalone extraction_parity validator suite.",
+      "reviewed_by_issue": 1345,
+      "source_id": "legacy-mutable:tests.test_reference_test_inventory.ReferenceTestInventoryTests.test_descriptor_is_sorted_and_closed"
+    },
+    {
+      "archive_artifact": null,
+      "current_tests": [
+        "control-plane-kit-parity:tests.test_reference_test_inventory.ReferenceTestInventoryTests.test_descriptor_preserves_duplicate_collection_as_one_law_with_occurrences"
+      ],
+      "disposition": "current-strengthened",
+      "distribution": "control-plane-kit-parity",
+      "rationale": "The immutable-reference or parity law remains active under the standalone extraction_parity validator suite.",
+      "reviewed_by_issue": 1345,
+      "source_id": "legacy-mutable:tests.test_reference_test_inventory.ReferenceTestInventoryTests.test_descriptor_preserves_duplicate_collection_as_one_law_with_occurrences"
+    },
+    {
+      "archive_artifact": null,
+      "current_tests": [
+        "control-plane-kit-parity:tests.test_reference_test_inventory.ReferenceTestInventoryTests.test_inventory_rejects_duplicate_reference_and_law_identity"
+      ],
+      "disposition": "current-strengthened",
+      "distribution": "control-plane-kit-parity",
+      "rationale": "The immutable-reference or parity law remains active under the standalone extraction_parity validator suite.",
+      "reviewed_by_issue": 1345,
+      "source_id": "legacy-mutable:tests.test_reference_test_inventory.ReferenceTestInventoryTests.test_inventory_rejects_duplicate_reference_and_law_identity"
+    },
+    {
+      "archive_artifact": null,
+      "current_tests": [
+        "control-plane-kit-parity:tests.test_reference_test_inventory.ReferenceTestInventoryTests.test_inventory_runner_uses_the_frozen_archive"
+      ],
+      "disposition": "current-strengthened",
+      "distribution": "control-plane-kit-parity",
+      "rationale": "The immutable-reference or parity law remains active under the standalone extraction_parity validator suite.",
+      "reviewed_by_issue": 1345,
+      "source_id": "legacy-mutable:tests.test_reference_test_inventory.ReferenceTestInventoryTests.test_inventory_runner_uses_the_frozen_archive"
+    },
+    {
+      "archive_artifact": null,
+      "current_tests": [
+        "control-plane-kit-parity:tests.test_reference_test_inventory.ReferenceTestInventoryTests.test_law_identity_uses_behavior_name_not_module_or_class"
+      ],
+      "disposition": "current-strengthened",
+      "distribution": "control-plane-kit-parity",
+      "rationale": "The immutable-reference or parity law remains active under the standalone extraction_parity validator suite.",
+      "reviewed_by_issue": 1345,
+      "source_id": "legacy-mutable:tests.test_reference_test_inventory.ReferenceTestInventoryTests.test_law_identity_uses_behavior_name_not_module_or_class"
+    },
+    {
+      "archive_artifact": null,
+      "current_tests": [
+        "control-plane-kit-parity:tests.test_reference_test_inventory.ReferenceTestInventoryTests.test_optional_discovery_package_prefix_canonicalizes_to_one_reference"
+      ],
+      "disposition": "current-strengthened",
+      "distribution": "control-plane-kit-parity",
+      "rationale": "The immutable-reference or parity law remains active under the standalone extraction_parity validator suite.",
+      "reviewed_by_issue": 1345,
+      "source_id": "legacy-mutable:tests.test_reference_test_inventory.ReferenceTestInventoryTests.test_optional_discovery_package_prefix_canonicalizes_to_one_reference"
+    },
+    {
+      "archive_artifact": null,
+      "current_tests": [
+        "control-plane-kit-parity:tests.test_reference_test_inventory.ReferenceTestInventoryTests.test_subtest_dimensions_preserve_parameter_names"
+      ],
+      "disposition": "current-strengthened",
+      "distribution": "control-plane-kit-parity",
+      "rationale": "The immutable-reference or parity law remains active under the standalone extraction_parity validator suite.",
+      "reviewed_by_issue": 1345,
+      "source_id": "legacy-mutable:tests.test_reference_test_inventory.ReferenceTestInventoryTests.test_subtest_dimensions_preserve_parameter_names"
+    },
+    {
+      "archive_artifact": null,
       "current_tests": [
         "control-plane-kit-core:tests.test_verification_capabilities.VerificationContractTests.test_postgres_authentication_descriptor_fails_closed"
       ],
@@ -11,6 +1178,7 @@
       "source_id": "legacy-mutable:tests.test_verification_contract.VerificationContractTests.test_postgres_authentication_descriptor_fails_closed"
     },
     {
+      "archive_artifact": null,
       "current_tests": [
         "control-plane-kit-core:tests.test_verification_capabilities.VerificationContractTests.test_postgres_authentication_is_explicit_and_secret_free"
       ],

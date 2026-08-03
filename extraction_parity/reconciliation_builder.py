@@ -26,8 +26,11 @@ DECISION_FIELDS = {
     "successor_overrides",
     "future_issue_reviews",
     "non_current_reviews",
+    "mutable_only_reviews",
+    "current_review_overrides",
 }
 CURRENT_TEST_ROOTS = {
+    "control-plane-kit-parity": ("extraction_parity/tests",),
     "control-plane-kit-core": ("control-plane-kit-core/tests",),
     "control-plane-kit-operations": ("control-plane-kit-operations/tests",),
     "control-plane-kit-interpreters": ("tests",),
@@ -119,6 +122,71 @@ def _decode_decisions(document: dict[str, object]) -> dict[str, object]:
                     raise ReconciliationError(
                         f"non-current review {field} must be text"
                     )
+        current_review_overrides = value["current_review_overrides"]
+        if not isinstance(current_review_overrides, dict):
+            raise ReconciliationError("current review overrides must be an object")
+        for reference, review in current_review_overrides.items():
+            if not isinstance(reference, str) or not reference.strip():
+                raise ReconciliationError("current review override reference must be text")
+            if not isinstance(review, dict) or set(review) != {
+                "rationale",
+                "negative_case_disposition",
+                "obsolete_assumption_disposition",
+            }:
+                raise ReconciliationError("current review override is not closed")
+            for field in (
+                "rationale",
+                "negative_case_disposition",
+                "obsolete_assumption_disposition",
+            ):
+                if not isinstance(review[field], str) or not review[field].strip():
+                    raise ReconciliationError(
+                        f"current review override {field} must be text"
+                    )
+        mutable_reviews = value["mutable_only_reviews"]
+        if not isinstance(mutable_reviews, dict):
+            raise ReconciliationError("mutable-only reviews must be an object")
+        for source_id, review in mutable_reviews.items():
+            if not isinstance(source_id, str) or not source_id.strip():
+                raise ReconciliationError("mutable-only source id must be text")
+            if not isinstance(review, dict) or set(review) != {
+                "disposition",
+                "current_tests",
+                "rationale",
+                "archive_artifact",
+            }:
+                raise ReconciliationError("mutable-only decision is not closed")
+            if review["disposition"] not in {
+                "current-new-law",
+                "current-strengthened",
+                "reviewed-archived",
+            }:
+                raise ReconciliationError("mutable-only disposition is invalid")
+            if not isinstance(review["current_tests"], list) or any(
+                not isinstance(test_id, str) or not test_id.strip()
+                for test_id in review["current_tests"]
+            ):
+                raise ReconciliationError("mutable-only current tests must be text")
+            if len(review["current_tests"]) != len(set(review["current_tests"])):
+                raise ReconciliationError("mutable-only current tests must be unique")
+            if not isinstance(review["rationale"], str) or not review[
+                "rationale"
+            ].strip():
+                raise ReconciliationError("mutable-only rationale must be text")
+            archive_artifact = review["archive_artifact"]
+            if review["disposition"] == "reviewed-archived":
+                if not isinstance(archive_artifact, str) or not archive_artifact.strip():
+                    raise ReconciliationError(
+                        "archived mutable-only decision must name an artifact"
+                    )
+                if review["current_tests"]:
+                    raise ReconciliationError(
+                        "archived mutable-only decision cannot name current tests"
+                    )
+            elif archive_artifact is not None or not review["current_tests"]:
+                raise ReconciliationError(
+                    "current mutable-only decision must name tests and no archive artifact"
+                )
     return document
 
 
@@ -166,6 +234,7 @@ def _current_test_index(
             ) from error
         distribution_root = selected_roots.get(distribution, root)
         if distribution not in {
+            "control-plane-kit-parity",
             "control-plane-kit-core",
             "control-plane-kit-operations",
         } and distribution not in selected_roots:
@@ -262,6 +331,7 @@ def apply_issue_slice(
     non_current = decision["non_current_reviews"]
     strengthened = set(decision["strengthened_references"])
     overrides = decision["successor_overrides"]
+    current_review_overrides = decision["current_review_overrides"]
     reviews: list[dict[str, object]] = []
     for assignment in assignments:
         reference = str(assignment["reference"])
@@ -342,6 +412,27 @@ def apply_issue_slice(
             if reference in strengthened
             else str(decision["default_disposition"])
         )
+        review_override = current_review_overrides.get(reference, {})
+        rationale = review_override.get(
+            "rationale",
+            (
+                "The named current tests preserve the observable through a stricter package-owned contract without the frozen implementation coupling."
+                if disposition == "current-strengthened"
+                else "The current package test preserves the frozen behavioral law without its obsolete aggregate imports or fixtures."
+            ),
+        )
+        negative_case_disposition = review_override.get(
+            "negative_case_disposition",
+            _negative_case_disposition(assignment),
+        )
+        obsolete_assumption_disposition = review_override.get(
+            "obsolete_assumption_disposition",
+            (
+                "Frozen aggregate imports and implementation-specific fixtures do not constrain the current package boundary."
+                if disposition == "current-strengthened"
+                else "Frozen aggregate imports, fixtures, and constructor layout do not constrain the current package test."
+            ),
+        )
         reviews.append(
             {
                 "reference": reference,
@@ -358,37 +449,52 @@ def apply_issue_slice(
                 "disposition": disposition,
                 "current_tests": list(successors),
                 "future_issue": None,
-                "rationale": (
-                    "The named current tests preserve the observable through a stricter package-owned contract without the frozen implementation coupling."
-                    if disposition == "current-strengthened"
-                    else "The current package test preserves the frozen behavioral law without its obsolete aggregate imports or fixtures."
-                ),
-                "negative_case_disposition": _negative_case_disposition(assignment),
-                "obsolete_assumption_disposition": (
-                    "Frozen aggregate imports and implementation-specific fixtures do not constrain the current package boundary."
-                    if disposition == "current-strengthened"
-                    else "Frozen aggregate imports, fixtures, and constructor layout do not constrain the current package test."
-                ),
+                "rationale": rationale,
+                "negative_case_disposition": negative_case_disposition,
+                "obsolete_assumption_disposition": obsolete_assumption_disposition,
             }
         )
 
+    mutable_assignments = {
+        str(assignment["id"]): assignment
+        for assignment in inventory["mutable_only_methods"]
+        if assignment["provisional_target"]["issue"] == issue
+    }
+    mutable_decisions = decision["mutable_only_reviews"]
+    if set(mutable_assignments) != set(mutable_decisions):
+        raise ReconciliationError(
+            "mutable-only decisions differ from assigned inputs"
+        )
     mutable_reviews: list[dict[str, object]] = []
-    for assignment in inventory["mutable_only_methods"]:
-        if assignment["provisional_target"]["issue"] != issue:
-            continue
-        candidates = current_by_method.get(str(assignment["method"]), [])
-        if len(candidates) != 1:
+    for source_id, assignment in mutable_assignments.items():
+        mutable_decision = mutable_decisions[source_id]
+        tests = tuple(str(value) for value in mutable_decision["current_tests"])
+        missing = sorted(set(tests) - current_ids)
+        if missing:
             raise ReconciliationError(
-                f"mutable-only successor is ambiguous or missing: {assignment['id']}"
+                f"mutable-only decision names nonexistent current tests for "
+                f"{source_id}: {missing}"
             )
+        archive_artifact = mutable_decision["archive_artifact"]
+        if archive_artifact is not None:
+            artifact_path = Path(str(archive_artifact))
+            if (
+                artifact_path.is_absolute()
+                or ".." in artifact_path.parts
+                or not (root / artifact_path).exists()
+            ):
+                raise ReconciliationError(
+                    f"mutable-only archive artifact does not exist: {archive_artifact}"
+                )
         mutable_reviews.append(
             {
-                "source_id": assignment["id"],
+                "source_id": source_id,
                 "reviewed_by_issue": issue,
-                "distribution": candidates[0].split(":", maxsplit=1)[0],
-                "disposition": "current-strengthened",
-                "current_tests": candidates,
-                "rationale": "The live provider-neutral authentication contract retains this mutable-only hardening law.",
+                "distribution": assignment["provisional_target"]["distribution"],
+                "disposition": mutable_decision["disposition"],
+                "current_tests": list(tests),
+                "rationale": mutable_decision["rationale"],
+                "archive_artifact": archive_artifact,
             }
         )
 

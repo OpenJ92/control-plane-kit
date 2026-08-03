@@ -47,6 +47,7 @@ MUTABLE_REVIEW_FIELDS = {
     "disposition",
     "current_tests",
     "rationale",
+    "archive_artifact",
 }
 
 
@@ -138,6 +139,13 @@ def _decode_mutable_review(value: object) -> dict[str, object]:
         raise ReconciliationError("current mutable-only review must name tests")
     if value["disposition"] == "reviewed-archived" and tests:
         raise ReconciliationError("archived mutable-only review cannot name tests")
+    archive_artifact = value["archive_artifact"]
+    if value["disposition"] == "reviewed-archived":
+        _text(archive_artifact, "mutable_review.archive_artifact")
+    elif archive_artifact is not None:
+        raise ReconciliationError(
+            "current mutable-only review cannot name an archive artifact"
+        )
     return value
 
 
