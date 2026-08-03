@@ -21,7 +21,7 @@
   },
   "owned_cleanup": {
     "volumes": [
-      "e10d18eec254f7272a123bfd84cedf4e67b7d24ec115b7db6ec801052fc84095"
+      "8633cf0bf363405cfa425dfbde24f7a6cfbe412e0c7c77bf9ca4994c2d9a6e57"
     ]
   },
   "reference": {
@@ -30,7 +30,7 @@
   },
   "runtime": {
     "postgres_image": {
-      "id": "sha256:fd1e8d0274f13f5a03a2673a207b28e14823c2f2efc3ca4bb4197c8a9f841bdc",
+      "id": "sha256:57c72fd2a128e416c7fcc499958864df5301e940bca0a56f58fddf30ffc07777",
       "reference": "postgres:16-alpine"
     },
     "python_image": {
@@ -38,7 +38,7 @@
       "reference": "python:3.14-slim"
     },
     "test_image": {
-      "id": "sha256:4ba7e10b4dcf2abfe3d524f07afb251cb599377d9295dbfb1cf70e05f5e12d29"
+      "id": "sha256:60aba4aafb123f88f0e73b09a78a89686f99fe26c2b348f74da3fb0e4dfbae58"
     }
   },
   "schema": "cpk.frozen-reference-evidence",

@@ -2,6 +2,181 @@
   "additional_current_tests": [
     {
       "distribution": "control-plane-kit-parity",
+      "gate": "python3 -m unittest discover -s current_backend/tests -t .",
+      "id": "control-plane-kit-parity:current_backend.tests.test_contracts.BackendContractTests.test_closed_contract_fixture_is_coherent",
+      "path": "current_backend/tests/test_contracts.py",
+      "source_digest": "sha256:6e24b3f00ad836e49650ade2ea3c21f43a7bf1703aba241768f05eaf15858220"
+    },
+    {
+      "distribution": "control-plane-kit-parity",
+      "gate": "python3 -m unittest discover -s current_backend/tests -t .",
+      "id": "control-plane-kit-parity:current_backend.tests.test_contracts.BackendContractTests.test_concrete_interpreter_and_transport_imports_in_operations_fail_closed",
+      "path": "current_backend/tests/test_contracts.py",
+      "source_digest": "sha256:6e24b3f00ad836e49650ade2ea3c21f43a7bf1703aba241768f05eaf15858220"
+    },
+    {
+      "distribution": "control-plane-kit-parity",
+      "gate": "python3 -m unittest discover -s current_backend/tests -t .",
+      "id": "control-plane-kit-parity:current_backend.tests.test_contracts.BackendContractTests.test_direct_reverse_and_cyclic_dependencies_fail_closed",
+      "path": "current_backend/tests/test_contracts.py",
+      "source_digest": "sha256:6e24b3f00ad836e49650ade2ea3c21f43a7bf1703aba241768f05eaf15858220"
+    },
+    {
+      "distribution": "control-plane-kit-parity",
+      "gate": "python3 -m unittest discover -s current_backend/tests -t .",
+      "id": "control-plane-kit-parity:current_backend.tests.test_contracts.BackendContractTests.test_source_live_bypass_and_application_mock_fail_closed",
+      "path": "current_backend/tests/test_contracts.py",
+      "source_digest": "sha256:6e24b3f00ad836e49650ade2ea3c21f43a7bf1703aba241768f05eaf15858220"
+    },
+    {
+      "distribution": "control-plane-kit-parity",
+      "gate": "python3 -m unittest discover -s current_backend/tests -t .",
+      "id": "control-plane-kit-parity:current_backend.tests.test_contracts.BackendContractTests.test_transitive_forbidden_path_is_rejected_at_its_illegal_edge",
+      "path": "current_backend/tests/test_contracts.py",
+      "source_digest": "sha256:6e24b3f00ad836e49650ade2ea3c21f43a7bf1703aba241768f05eaf15858220"
+    },
+    {
+      "distribution": "control-plane-kit-parity",
+      "gate": "python3 -m unittest discover -s current_backend/tests -t .",
+      "id": "control-plane-kit-parity:current_backend.tests.test_contracts.BackendContractTests.test_unowned_and_duplicate_source_inventory_fail_closed",
+      "path": "current_backend/tests/test_contracts.py",
+      "source_digest": "sha256:6e24b3f00ad836e49650ade2ea3c21f43a7bf1703aba241768f05eaf15858220"
+    },
+    {
+      "distribution": "control-plane-kit-parity",
+      "gate": "python3 -m unittest discover -s current_backend/tests -t .",
+      "id": "control-plane-kit-parity:current_backend.tests.test_runner.BackendGateRunnerTests.test_stages_execute_in_exact_order_and_emit_bounded_report",
+      "path": "current_backend/tests/test_runner.py",
+      "source_digest": "sha256:c56724402056cde079da6a01b2eca3cdb2859db2d40128afb3c453ca6b60cd8c"
+    },
+    {
+      "distribution": "control-plane-kit-parity",
+      "gate": "python3 -m unittest discover -s current_backend/tests -t .",
+      "id": "control-plane-kit-parity:current_backend.tests.test_source_lock.BackendSourceLockTests.test_one_server_products_lock_derives_all_upstream_commits",
+      "path": "current_backend/tests/test_source_lock.py",
+      "source_digest": "sha256:087580127aa8c5d5cdc596a6c911fa383c0c1ad9745dd1090942f1d9b7c7b6a1"
+    },
+    {
+      "distribution": "control-plane-kit-parity",
+      "gate": "python3 -m unittest discover -s extraction_parity/tests -t .",
+      "id": "control-plane-kit-parity:extraction_parity.tests.test_legacy_retirement.LegacyRetirementTests.test_completed_owner_promotions_are_exact_and_current",
+      "path": "extraction_parity/tests/test_legacy_retirement.py",
+      "source_digest": "sha256:8f0f060e615f475b9dc88544ca70c475f4855caff84e802eeb72017a6bd611be"
+    },
+    {
+      "distribution": "control-plane-kit-parity",
+      "gate": "python3 -m unittest discover -s extraction_parity/tests -t .",
+      "id": "control-plane-kit-parity:extraction_parity.tests.test_legacy_retirement.LegacyRetirementTests.test_current_instructions_reject_retired_commands",
+      "path": "extraction_parity/tests/test_legacy_retirement.py",
+      "source_digest": "sha256:8f0f060e615f475b9dc88544ca70c475f4855caff84e802eeb72017a6bd611be"
+    },
+    {
+      "distribution": "control-plane-kit-parity",
+      "gate": "python3 -m unittest discover -s extraction_parity/tests -t .",
+      "id": "control-plane-kit-parity:extraction_parity.tests.test_legacy_retirement.LegacyRetirementTests.test_future_owner_refresh_accepts_only_two_implemented_transitions",
+      "path": "extraction_parity/tests/test_legacy_retirement.py",
+      "source_digest": "sha256:8f0f060e615f475b9dc88544ca70c475f4855caff84e802eeb72017a6bd611be"
+    },
+    {
+      "distribution": "control-plane-kit-parity",
+      "gate": "python3 -m unittest discover -s extraction_parity/tests -t .",
+      "id": "control-plane-kit-parity:extraction_parity.tests.test_legacy_retirement.LegacyRetirementTests.test_live_artifact_manifest_covers_every_baseline_path_once",
+      "path": "extraction_parity/tests/test_legacy_retirement.py",
+      "source_digest": "sha256:8f0f060e615f475b9dc88544ca70c475f4855caff84e802eeb72017a6bd611be"
+    },
+    {
+      "distribution": "control-plane-kit-parity",
+      "gate": "python3 -m unittest discover -s extraction_parity/tests -t .",
+      "id": "control-plane-kit-parity:extraction_parity.tests.test_legacy_retirement.LegacyRetirementTests.test_manifest_is_exhaustive_and_validates_pre_and_post_deletion",
+      "path": "extraction_parity/tests/test_legacy_retirement.py",
+      "source_digest": "sha256:8f0f060e615f475b9dc88544ca70c475f4855caff84e802eeb72017a6bd611be"
+    },
+    {
+      "distribution": "control-plane-kit-parity",
+      "gate": "python3 -m unittest discover -s extraction_parity/tests -t .",
+      "id": "control-plane-kit-parity:extraction_parity.tests.test_legacy_retirement.LegacyRetirementTests.test_path_policy_is_closed_and_product_independent",
+      "path": "extraction_parity/tests/test_legacy_retirement.py",
+      "source_digest": "sha256:8f0f060e615f475b9dc88544ca70c475f4855caff84e802eeb72017a6bd611be"
+    },
+    {
+      "distribution": "control-plane-kit-parity",
+      "gate": "PYTHONPATH=test_support python3 -m unittest discover -s test_support/tests",
+      "id": "control-plane-kit-parity:test_support.tests.test_package_integrity.PackageIntegrityTests.test_approved_dynamic_conditional_skip_is_accepted",
+      "path": "test_support/tests/test_package_integrity.py",
+      "source_digest": "sha256:8746507b230a9c66b066b0e83f43e2f974b798cee7e0f3c5759e2f39346ebc20"
+    },
+    {
+      "distribution": "control-plane-kit-parity",
+      "gate": "PYTHONPATH=test_support python3 -m unittest discover -s test_support/tests",
+      "id": "control-plane-kit-parity:test_support.tests.test_package_integrity.PackageIntegrityTests.test_blank_skip_reason_is_rejected",
+      "path": "test_support/tests/test_package_integrity.py",
+      "source_digest": "sha256:8746507b230a9c66b066b0e83f43e2f974b798cee7e0f3c5759e2f39346ebc20"
+    },
+    {
+      "distribution": "control-plane-kit-parity",
+      "gate": "PYTHONPATH=test_support python3 -m unittest discover -s test_support/tests",
+      "id": "control-plane-kit-parity:test_support.tests.test_package_integrity.PackageIntegrityTests.test_duplicate_skip_approval_is_rejected",
+      "path": "test_support/tests/test_package_integrity.py",
+      "source_digest": "sha256:8746507b230a9c66b066b0e83f43e2f974b798cee7e0f3c5759e2f39346ebc20"
+    },
+    {
+      "distribution": "control-plane-kit-parity",
+      "gate": "PYTHONPATH=test_support python3 -m unittest discover -s test_support/tests",
+      "id": "control-plane-kit-parity:test_support.tests.test_package_integrity.PackageIntegrityTests.test_ellipsis_only_test_is_rejected",
+      "path": "test_support/tests/test_package_integrity.py",
+      "source_digest": "sha256:8746507b230a9c66b066b0e83f43e2f974b798cee7e0f3c5759e2f39346ebc20"
+    },
+    {
+      "distribution": "control-plane-kit-parity",
+      "gate": "PYTHONPATH=test_support python3 -m unittest discover -s test_support/tests",
+      "id": "control-plane-kit-parity:test_support.tests.test_package_integrity.PackageIntegrityTests.test_literal_skip_condition_is_rejected",
+      "path": "test_support/tests/test_package_integrity.py",
+      "source_digest": "sha256:8746507b230a9c66b066b0e83f43e2f974b798cee7e0f3c5759e2f39346ebc20"
+    },
+    {
+      "distribution": "control-plane-kit-parity",
+      "gate": "PYTHONPATH=test_support python3 -m unittest discover -s test_support/tests",
+      "id": "control-plane-kit-parity:test_support.tests.test_package_integrity.PackageIntegrityTests.test_mocks_are_reported_without_becoming_findings",
+      "path": "test_support/tests/test_package_integrity.py",
+      "source_digest": "sha256:8746507b230a9c66b066b0e83f43e2f974b798cee7e0f3c5759e2f39346ebc20"
+    },
+    {
+      "distribution": "control-plane-kit-parity",
+      "gate": "PYTHONPATH=test_support python3 -m unittest discover -s test_support/tests",
+      "id": "control-plane-kit-parity:test_support.tests.test_package_integrity.PackageIntegrityTests.test_pass_only_test_is_rejected",
+      "path": "test_support/tests/test_package_integrity.py",
+      "source_digest": "sha256:8746507b230a9c66b066b0e83f43e2f974b798cee7e0f3c5759e2f39346ebc20"
+    },
+    {
+      "distribution": "control-plane-kit-parity",
+      "gate": "PYTHONPATH=test_support python3 -m unittest discover -s test_support/tests",
+      "id": "control-plane-kit-parity:test_support.tests.test_package_integrity.PackageIntegrityTests.test_proof_changing_gate_option_is_rejected",
+      "path": "test_support/tests/test_package_integrity.py",
+      "source_digest": "sha256:8746507b230a9c66b066b0e83f43e2f974b798cee7e0f3c5759e2f39346ebc20"
+    },
+    {
+      "distribution": "control-plane-kit-parity",
+      "gate": "PYTHONPATH=test_support python3 -m unittest discover -s test_support/tests",
+      "id": "control-plane-kit-parity:test_support.tests.test_package_integrity.PackageIntegrityTests.test_swallowed_exception_is_rejected",
+      "path": "test_support/tests/test_package_integrity.py",
+      "source_digest": "sha256:8746507b230a9c66b066b0e83f43e2f974b798cee7e0f3c5759e2f39346ebc20"
+    },
+    {
+      "distribution": "control-plane-kit-parity",
+      "gate": "PYTHONPATH=test_support python3 -m unittest discover -s test_support/tests",
+      "id": "control-plane-kit-parity:test_support.tests.test_package_integrity.PackageIntegrityTests.test_unapproved_conditional_skip_is_rejected",
+      "path": "test_support/tests/test_package_integrity.py",
+      "source_digest": "sha256:8746507b230a9c66b066b0e83f43e2f974b798cee7e0f3c5759e2f39346ebc20"
+    },
+    {
+      "distribution": "control-plane-kit-parity",
+      "gate": "PYTHONPATH=test_support python3 -m unittest discover -s test_support/tests",
+      "id": "control-plane-kit-parity:test_support.tests.test_package_integrity.PackageIntegrityTests.test_unconditional_skip_is_rejected",
+      "path": "test_support/tests/test_package_integrity.py",
+      "source_digest": "sha256:8746507b230a9c66b066b0e83f43e2f974b798cee7e0f3c5759e2f39346ebc20"
+    },
+    {
+      "distribution": "control-plane-kit-parity",
       "gate": "python3 -m unittest discover -s extraction_parity/tests -t .",
       "id": "control-plane-kit-parity:tests.test_differential_language.DifferentialLanguageTests.test_differential_result_rejects_tampered_digest_status_and_normalization",
       "path": "extraction_parity/tests/test_differential_language.py",
@@ -460,140 +635,140 @@
       "gate": "python3 -m unittest discover -s extraction_parity/tests -t .",
       "id": "control-plane-kit-parity:tests.test_semantic_reconciliation.SemanticReconciliationTests.test_archived_mutable_only_decision_requires_named_artifact",
       "path": "extraction_parity/tests/test_semantic_reconciliation.py",
-      "source_digest": "sha256:b4dd5c638f304387fb06134cdfff5ab245a995f5c006beb51d3abed5f272f483"
+      "source_digest": "sha256:3af8087c78805d6a9776aeb25b3178e84dca721b0427a536c3c48829d316ee49"
     },
     {
       "distribution": "control-plane-kit-parity",
       "gate": "python3 -m unittest discover -s extraction_parity/tests -t .",
       "id": "control-plane-kit-parity:tests.test_semantic_reconciliation.SemanticReconciliationTests.test_closed_reconciliation_accepts_current_and_future_dispositions",
       "path": "extraction_parity/tests/test_semantic_reconciliation.py",
-      "source_digest": "sha256:b4dd5c638f304387fb06134cdfff5ab245a995f5c006beb51d3abed5f272f483"
+      "source_digest": "sha256:3af8087c78805d6a9776aeb25b3178e84dca721b0427a536c3c48829d316ee49"
     },
     {
       "distribution": "control-plane-kit-parity",
       "gate": "python3 -m unittest discover -s extraction_parity/tests -t .",
       "id": "control-plane-kit-parity:tests.test_semantic_reconciliation.SemanticReconciliationTests.test_current_test_index_requires_and_scans_explicit_external_root",
       "path": "extraction_parity/tests/test_semantic_reconciliation.py",
-      "source_digest": "sha256:b4dd5c638f304387fb06134cdfff5ab245a995f5c006beb51d3abed5f272f483"
+      "source_digest": "sha256:3af8087c78805d6a9776aeb25b3178e84dca721b0427a536c3c48829d316ee49"
     },
     {
       "distribution": "control-plane-kit-parity",
       "gate": "python3 -m unittest discover -s extraction_parity/tests -t .",
       "id": "control-plane-kit-parity:tests.test_semantic_reconciliation.SemanticReconciliationTests.test_decision_slice_accepts_multiple_unique_current_distributions",
       "path": "extraction_parity/tests/test_semantic_reconciliation.py",
-      "source_digest": "sha256:b4dd5c638f304387fb06134cdfff5ab245a995f5c006beb51d3abed5f272f483"
+      "source_digest": "sha256:3af8087c78805d6a9776aeb25b3178e84dca721b0427a536c3c48829d316ee49"
     },
     {
       "distribution": "control-plane-kit-parity",
       "gate": "python3 -m unittest discover -s extraction_parity/tests -t .",
       "id": "control-plane-kit-parity:tests.test_semantic_reconciliation.SemanticReconciliationTests.test_decision_slice_rejects_empty_or_duplicate_distributions",
       "path": "extraction_parity/tests/test_semantic_reconciliation.py",
-      "source_digest": "sha256:b4dd5c638f304387fb06134cdfff5ab245a995f5c006beb51d3abed5f272f483"
+      "source_digest": "sha256:3af8087c78805d6a9776aeb25b3178e84dca721b0427a536c3c48829d316ee49"
     },
     {
       "distribution": "control-plane-kit-parity",
       "gate": "python3 -m unittest discover -s extraction_parity/tests -t .",
       "id": "control-plane-kit-parity:tests.test_semantic_reconciliation.SemanticReconciliationTests.test_future_issue_must_be_open_and_current_disposition_must_name_tests",
       "path": "extraction_parity/tests/test_semantic_reconciliation.py",
-      "source_digest": "sha256:b4dd5c638f304387fb06134cdfff5ab245a995f5c006beb51d3abed5f272f483"
+      "source_digest": "sha256:3af8087c78805d6a9776aeb25b3178e84dca721b0427a536c3c48829d316ee49"
     },
     {
       "distribution": "control-plane-kit-parity",
       "gate": "python3 -m unittest discover -s extraction_parity/tests -t .",
       "id": "control-plane-kit-parity:tests.test_semantic_reconciliation.SemanticReconciliationTests.test_issue_1320_artifact_names_only_live_core_tests",
       "path": "extraction_parity/tests/test_semantic_reconciliation.py",
-      "source_digest": "sha256:b4dd5c638f304387fb06134cdfff5ab245a995f5c006beb51d3abed5f272f483"
+      "source_digest": "sha256:3af8087c78805d6a9776aeb25b3178e84dca721b0427a536c3c48829d316ee49"
     },
     {
       "distribution": "control-plane-kit-parity",
       "gate": "python3 -m unittest discover -s extraction_parity/tests -t .",
       "id": "control-plane-kit-parity:tests.test_semantic_reconciliation.SemanticReconciliationTests.test_issue_1321_artifact_names_only_live_core_and_operations_tests",
       "path": "extraction_parity/tests/test_semantic_reconciliation.py",
-      "source_digest": "sha256:b4dd5c638f304387fb06134cdfff5ab245a995f5c006beb51d3abed5f272f483"
+      "source_digest": "sha256:3af8087c78805d6a9776aeb25b3178e84dca721b0427a536c3c48829d316ee49"
     },
     {
       "distribution": "control-plane-kit-parity",
       "gate": "python3 -m unittest discover -s extraction_parity/tests -t .",
       "id": "control-plane-kit-parity:tests.test_semantic_reconciliation.SemanticReconciliationTests.test_issue_1322_artifact_records_external_interpreter_evidence",
       "path": "extraction_parity/tests/test_semantic_reconciliation.py",
-      "source_digest": "sha256:b4dd5c638f304387fb06134cdfff5ab245a995f5c006beb51d3abed5f272f483"
+      "source_digest": "sha256:3af8087c78805d6a9776aeb25b3178e84dca721b0427a536c3c48829d316ee49"
     },
     {
       "distribution": "control-plane-kit-parity",
       "gate": "python3 -m unittest discover -s extraction_parity/tests -t .",
       "id": "control-plane-kit-parity:tests.test_semantic_reconciliation.SemanticReconciliationTests.test_issue_1323_artifact_records_server_product_evidence",
       "path": "extraction_parity/tests/test_semantic_reconciliation.py",
-      "source_digest": "sha256:b4dd5c638f304387fb06134cdfff5ab245a995f5c006beb51d3abed5f272f483"
+      "source_digest": "sha256:3af8087c78805d6a9776aeb25b3178e84dca721b0427a536c3c48829d316ee49"
     },
     {
       "distribution": "control-plane-kit-parity",
       "gate": "python3 -m unittest discover -s extraction_parity/tests -t .",
       "id": "control-plane-kit-parity:tests.test_semantic_reconciliation.SemanticReconciliationTests.test_issue_1324_artifact_records_durable_secret_evidence",
       "path": "extraction_parity/tests/test_semantic_reconciliation.py",
-      "source_digest": "sha256:b4dd5c638f304387fb06134cdfff5ab245a995f5c006beb51d3abed5f272f483"
+      "source_digest": "sha256:3af8087c78805d6a9776aeb25b3178e84dca721b0427a536c3c48829d316ee49"
     },
     {
       "distribution": "control-plane-kit-parity",
       "gate": "python3 -m unittest discover -s extraction_parity/tests -t .",
       "id": "control-plane-kit-parity:tests.test_semantic_reconciliation.SemanticReconciliationTests.test_issue_1345_artifact_closes_every_mutable_only_law",
       "path": "extraction_parity/tests/test_semantic_reconciliation.py",
-      "source_digest": "sha256:b4dd5c638f304387fb06134cdfff5ab245a995f5c006beb51d3abed5f272f483"
+      "source_digest": "sha256:3af8087c78805d6a9776aeb25b3178e84dca721b0427a536c3c48829d316ee49"
     },
     {
       "distribution": "control-plane-kit-parity",
       "gate": "python3 -m unittest discover -s extraction_parity/tests -t .",
       "id": "control-plane-kit-parity:tests.test_semantic_reconciliation.SemanticReconciliationTests.test_issue_1346_artifact_closes_architecture_and_package_laws",
       "path": "extraction_parity/tests/test_semantic_reconciliation.py",
-      "source_digest": "sha256:b4dd5c638f304387fb06134cdfff5ab245a995f5c006beb51d3abed5f272f483"
+      "source_digest": "sha256:3af8087c78805d6a9776aeb25b3178e84dca721b0427a536c3c48829d316ee49"
     },
     {
       "distribution": "control-plane-kit-parity",
       "gate": "python3 -m unittest discover -s extraction_parity/tests -t .",
       "id": "control-plane-kit-parity:tests.test_semantic_reconciliation.SemanticReconciliationTests.test_issue_1347_artifacts_close_live_laws_and_legacy_scripts",
       "path": "extraction_parity/tests/test_semantic_reconciliation.py",
-      "source_digest": "sha256:b4dd5c638f304387fb06134cdfff5ab245a995f5c006beb51d3abed5f272f483"
+      "source_digest": "sha256:3af8087c78805d6a9776aeb25b3178e84dca721b0427a536c3c48829d316ee49"
     },
     {
       "distribution": "control-plane-kit-parity",
       "gate": "python3 -m unittest discover -s extraction_parity/tests -t .",
       "id": "control-plane-kit-parity:tests.test_semantic_reconciliation.SemanticReconciliationTests.test_issue_1348_aggregates_every_cross_repository_input",
       "path": "extraction_parity/tests/test_semantic_reconciliation.py",
-      "source_digest": "sha256:b4dd5c638f304387fb06134cdfff5ab245a995f5c006beb51d3abed5f272f483"
+      "source_digest": "sha256:3af8087c78805d6a9776aeb25b3178e84dca721b0427a536c3c48829d316ee49"
     },
     {
       "distribution": "control-plane-kit-parity",
       "gate": "python3 -m unittest discover -s extraction_parity/tests -t .",
       "id": "control-plane-kit-parity:tests.test_semantic_reconciliation.SemanticReconciliationTests.test_issue_slice_requires_exactly_one_review_per_assigned_law",
       "path": "extraction_parity/tests/test_semantic_reconciliation.py",
-      "source_digest": "sha256:b4dd5c638f304387fb06134cdfff5ab245a995f5c006beb51d3abed5f272f483"
+      "source_digest": "sha256:3af8087c78805d6a9776aeb25b3178e84dca721b0427a536c3c48829d316ee49"
     },
     {
       "distribution": "control-plane-kit-parity",
       "gate": "python3 -m unittest discover -s extraction_parity/tests -t .",
       "id": "control-plane-kit-parity:tests.test_semantic_reconciliation.SemanticReconciliationTests.test_mutable_only_decisions_require_exact_current_or_archive_evidence",
       "path": "extraction_parity/tests/test_semantic_reconciliation.py",
-      "source_digest": "sha256:b4dd5c638f304387fb06134cdfff5ab245a995f5c006beb51d3abed5f272f483"
+      "source_digest": "sha256:3af8087c78805d6a9776aeb25b3178e84dca721b0427a536c3c48829d316ee49"
     },
     {
       "distribution": "control-plane-kit-parity",
       "gate": "python3 -m unittest discover -s extraction_parity/tests -t .",
       "id": "control-plane-kit-parity:tests.test_semantic_reconciliation.SemanticReconciliationTests.test_server_index_includes_repository_and_product_owned_tests",
       "path": "extraction_parity/tests/test_semantic_reconciliation.py",
-      "source_digest": "sha256:b4dd5c638f304387fb06134cdfff5ab245a995f5c006beb51d3abed5f272f483"
+      "source_digest": "sha256:3af8087c78805d6a9776aeb25b3178e84dca721b0427a536c3c48829d316ee49"
     },
     {
       "distribution": "control-plane-kit-parity",
       "gate": "python3 -m unittest discover -s extraction_parity/tests -t .",
       "id": "control-plane-kit-parity:tests.test_semantic_reconciliation.SemanticReconciliationTests.test_validation_rejects_law_drift_and_duplicate_ownership",
       "path": "extraction_parity/tests/test_semantic_reconciliation.py",
-      "source_digest": "sha256:b4dd5c638f304387fb06134cdfff5ab245a995f5c006beb51d3abed5f272f483"
+      "source_digest": "sha256:3af8087c78805d6a9776aeb25b3178e84dca721b0427a536c3c48829d316ee49"
     },
     {
       "distribution": "control-plane-kit-parity",
       "gate": "python3 -m unittest discover -s extraction_parity/tests -t .",
       "id": "control-plane-kit-parity:tests.test_semantic_reconciliation.SemanticReconciliationTests.test_validation_rejects_nonexistent_current_test",
       "path": "extraction_parity/tests/test_semantic_reconciliation.py",
-      "source_digest": "sha256:b4dd5c638f304387fb06134cdfff5ab245a995f5c006beb51d3abed5f272f483"
+      "source_digest": "sha256:3af8087c78805d6a9776aeb25b3178e84dca721b0427a536c3c48829d316ee49"
     }
   ],
   "current_live_laws": [
@@ -1076,14 +1251,14 @@
     }
   ],
   "expected_counts": {
-    "additional_current_tests": 85,
+    "additional_current_tests": 110,
     "current_live_laws": 31,
-    "current_test_identities": 1310,
+    "current_test_identities": 1336,
     "demo_reviews": 17,
-    "future_owned": 392,
+    "future_owned": 368,
     "manifest_entries": 1107,
     "mutable_only_reviews": 120,
-    "required_future_owned": 176,
+    "required_future_owned": 152,
     "stale_successors": 0,
     "test_reviews": 1090,
     "unowned": 0
@@ -1546,50 +1721,6 @@
       "url": "https://github.com/OpenJ92/control-plane-kit/issues/1153"
     },
     {
-      "content_digest": "sha256:d5ca2537c6ad4fc4713ffbe5524387df042b8248aaa7bc80447e6df87d20997d",
-      "law_references": [
-        "tests.test_architecture_test_integrity.ArchitectureTestIntegrityTests.test_allowed_skip_requires_a_reviewable_reason",
-        "tests.test_architecture_test_integrity.ArchitectureTestIntegrityTests.test_duplicate_and_literal_false_approved_skips_fail_closed",
-        "tests.test_architecture_test_integrity.ArchitectureTestIntegrityTests.test_mocks_are_reported_without_becoming_automatic_failures",
-        "tests.test_architecture_test_integrity.ArchitectureTestIntegrityTests.test_placeholders_empty_tests_and_swallowed_exceptions_fail",
-        "tests.test_architecture_test_integrity.ArchitectureTestIntegrityTests.test_repository_has_only_explicit_optional_dependency_skips",
-        "tests.test_architecture_test_integrity.ArchitectureTestIntegrityTests.test_unconditional_and_unapproved_skips_fail_with_locations"
-      ],
-      "number": 1316,
-      "repository": "OpenJ92/control-plane-kit",
-      "state": "open",
-      "title": "HARDEN.TESTS.PARITY.1 Make every live distribution test-complete and continuously gated",
-      "url": "https://github.com/OpenJ92/control-plane-kit/issues/1316"
-    },
-    {
-      "content_digest": "sha256:1c87ec63a39072235335e0658281d59b0fbd05fea2a221b7f20e20290b6c2683",
-      "law_references": [
-        "tests.test_architecture_dependencies.ArchitectureDependencyTests.test_process_and_http_clients_are_adapter_owned",
-        "tests.test_architecture_dependencies.ArchitectureDependencyTests.test_repository_obeys_declared_dependency_and_transport_ownership",
-        "tests.test_architecture_dependencies.ArchitectureDependencyTests.test_reverse_dependency_is_rejected_for_import_and_from_import",
-        "tests.test_architecture_scenarios.ScenarioArchitectureTests.test_atomic_contract_suites_remain_independent_of_scenario_runner",
-        "tests.test_architecture_scenarios.ScenarioArchitectureTests.test_fake_effect_is_a_typed_capability_provider_not_an_application_mock",
-        "tests.test_architecture_scenarios.ScenarioArchitectureTests.test_policy_rejects_store_scheduler_mock_and_private_coordinator_bypass",
-        "tests.test_architecture_scenarios.ScenarioArchitectureTests.test_scenario_modules_obey_application_and_persistence_boundaries",
-        "tests.test_package_inventory.PackageModuleInventoryTests.test_domain_inventory_is_exactly_the_admitted_closed_languages",
-        "tests.test_package_inventory.PackageModuleInventoryTests.test_inventory_distinguishes_completed_and_deferred_movement",
-        "tests.test_package_inventory.PackageModuleInventoryTests.test_inventory_is_exhaustive_and_assigns_one_owner",
-        "tests.test_package_topology.CurrentPackageTopologyTests.test_current_package_graph_is_acyclic",
-        "tests.test_package_topology.CurrentPackageTopologyTests.test_current_source_has_one_way_recovery_policy_planning_edges",
-        "tests.test_package_topology.PackageTopologyPolicyTests.test_declared_edges_cannot_hide_direct_or_multi_node_cycles",
-        "tests.test_package_topology.PackageTopologyPolicyTests.test_domain_language_rejects_operations_products_interpreters_and_entrypoints",
-        "tests.test_package_topology.PackageTopologyPolicyTests.test_legal_acyclic_sibling_dependencies_are_representable",
-        "tests.test_package_topology.PackageTopologyPolicyTests.test_product_may_project_domain_but_not_registry_or_process",
-        "tests.test_package_topology.PackageTopologyPolicyTests.test_product_to_domain_projection_does_not_authorize_reverse_edge",
-        "tests.test_package_topology.PackageTopologyPolicyTests.test_transitive_product_to_process_path_is_rejected"
-      ],
-      "number": 1317,
-      "repository": "OpenJ92/control-plane-kit",
-      "state": "open",
-      "title": "HARDEN.TESTS.PARITY.2 Add a current multi-repository backend validation gate",
-      "url": "https://github.com/OpenJ92/control-plane-kit/issues/1317"
-    },
-    {
       "content_digest": "sha256:c0bd4d1e16ae7951284076c9ee853baf906aa88ab02908926a7abf856cdab158",
       "law_references": [
         "tests.test_hello_server_block.HelloServerBlockTests.test_dependencies_expand_to_paired_http_and_postgres_requirements",
@@ -1603,11 +1734,11 @@
     }
   ],
   "input_digests": {
-    "aggregate": "sha256:1273e32da014e73181b31c37bfead5b8101fde6faba9620913abc8ac27b0ebde",
-    "evidence": "sha256:229955bf9b745d36a33abfd90a5b9380da454c3635499765e1c4f591884d55ca",
-    "inventory": "sha256:eb41bda9407f0617ac57d61aaeaafdc5ddfa50211258bd507a1a02a67f661d72",
-    "manifest": "sha256:9b3adf1f7a33b26119c45594f806b8a35d1169b74b1ea1cad77066e3d3991fa0",
-    "reconciliation": "sha256:4e63c389e71249a8f23a400cc74d64db71752eadac378e539341f3f1736e12d2"
+    "aggregate": "sha256:65457a85f9c56100b9b3a663c4c6075e70942613fc0d4b1eec14e2b4809bcd5f",
+    "evidence": "sha256:3eacd335e57025dcc32b14d06352924deac472db6ae7e17216fa5a8da892c2c9",
+    "inventory": "sha256:0f84cd99245ec3c36470cdf6773406fa8fda3c0e0b98368bfd00e9811497459d",
+    "manifest": "sha256:6722cf0867123443d5df76be078c909519d21716382d95a393df2fe1ff76fe8d",
+    "reconciliation": "sha256:3499d725ccc809dff8aa43bfbcb1ee81a3e4ff1671efbd8915cff770efd15d06"
   },
   "issue": 1326,
   "reference": {

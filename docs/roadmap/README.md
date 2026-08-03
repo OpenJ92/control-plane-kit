@@ -1,9 +1,13 @@
 # Control Plane Kit Roadmap
 
-Status: Draft
+Status: Historical pre-extraction roadmap
 Last updated: 2026-07-14
 
-This folder is the execution roadmap for `control-plane-kit`.
+This folder records the roadmap that led to the original aggregate
+`control_plane_kit` implementation. The mutable aggregate package and its root
+test gate have since been retired. Current execution topology lives in GitHub
+issues, and current validation uses package-local gates plus
+`./current-backend-test.sh`.
 
 The architecture document explains what the package wants to become. The
 roadmap explains how to get there in reviewable, testable verticals.
@@ -48,7 +52,7 @@ instance server is then packaged as an ordinary deployable application block;
 visual interfaces consume selectable-instance projections, switch directly to
 advertised public entries, and do not require a second Hub model.
 
-## Definition Of Done For A Roadmap Vertical
+## Historical Definition Of Done For A Roadmap Vertical
 
 A vertical is done when:
 
@@ -56,8 +60,8 @@ A vertical is done when:
 - examples demonstrate the behavior in a small way,
 - tests cover the important failure modes,
 - documentation reflects the new public shape,
-- `./test.sh` passes for code changes,
-- `python3 -m compileall control_plane_kit tests` passes for code changes,
+- the then-current root package gate passed for code changes,
+- the then-current aggregate package compiled successfully,
 - `git diff --check` passes,
 - all child issues have a handoff comment when they affect later work,
 - and the parent issue has a final summary of what changed and what remains.

@@ -1,8 +1,13 @@
 # Control Plane Kit Architecture Design
 
-Status: Draft
+Status: Historical pre-extraction design record
 Audience: maintainers, contributors, early adopters, and future UI/MCP authors
 Last updated: 2026-07-13
+
+> This document describes the original aggregate-package direction. It is kept
+> as design history, not as current package or import guidance. See
+> `docs/CONTROL_PLANE_LANGUAGE.md`, `docs/OPERATING_MODEL.md`, and
+> `docs/root-import-surfaces.md` for the extracted live architecture.
 
 ## Table Of Contents
 

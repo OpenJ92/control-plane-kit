@@ -243,9 +243,9 @@ target public interface. This prevents the old test structure from pulling the
 new architecture back toward obsolete ownership boundaries.
 
 The parity foundation establishes immutable green evidence for the frozen
-baseline. An individual issue does not rerun the complete frozen `./test.sh`
-bundle before its dry run unless the reference evidence is missing, stale, or
-directly disputed.
+baseline. The mutable frozen package and root suite have been retired. An
+individual issue does not rerun `./reference-test.sh` before its dry run unless
+the immutable reference evidence is missing, stale, or directly disputed.
 
 After the dry run and target-interface design, translate or write focused target
 tests on the issue branch before application implementation. Preserve the law,
@@ -256,8 +256,8 @@ evidence belongs in the issue/PR decision log.
 
 Do not merge failing tests, add `xfail`, skip collection, weaken assertions, or
 point translated tests back at the frozen implementation. Run broader package,
-parity, and `./test.sh` validation after focused implementation and at the PR or
-milestone boundaries required by the issue.
+parity, current-backend, and issue-owned live validation after focused
+implementation and at the PR or milestone boundaries required by the issue.
 
 The subsequent dry run must state:
 
@@ -498,13 +498,16 @@ for a walkthrough. The durable artifacts should carry the detail.
 Run the narrowest useful validation before opening a PR. For code changes, use:
 
 ```bash
-./test.sh
-python3 -m compileall control_plane_kit tests
+./control-plane-kit-core/test.sh
+./control-plane-kit-operations/test.sh
+./current-backend-test.sh --report /tmp/current-backend-report.json
 git diff --check
 ```
 
-For documentation-only changes, `git diff --check` is sufficient unless the docs
-include executable examples that should be run.
+External interpreters, servers, and secrets repositories run their own
+package-local `./test.sh`. Use `./reference-test.sh` only for explicit immutable
+historical reproduction. For documentation-only changes, `git diff --check` is
+sufficient unless the docs include executable examples that should be run.
 
 ## Design Constraints
 

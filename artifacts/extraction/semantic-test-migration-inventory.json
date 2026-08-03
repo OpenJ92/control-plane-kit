@@ -1,7 +1,7 @@
 {
   "counts": {
     "current_helpers": 7,
-    "current_methods": 1225,
+    "current_methods": 1226,
     "current_scripts": 31,
     "legacy_helpers": 21,
     "legacy_scripts": 28,
@@ -13680,6 +13680,19 @@
       "subtest_dimensions": []
     },
     {
+      "assertions": [
+        "assertIn"
+      ],
+      "class": "OperationsPackageGateTests",
+      "id": "control-plane-kit-operations:tests.test_package_gate.OperationsPackageGateTests.test_postgres_fixture_uses_ephemeral_storage_and_volume_cleanup",
+      "line": 9,
+      "method": "test_postgres_fixture_uses_ephemeral_storage_and_volume_cleanup",
+      "module": "tests.test_package_gate",
+      "negative_case_hints": [],
+      "path": "control-plane-kit-operations/tests/test_package_gate.py",
+      "subtest_dimensions": []
+    },
+    {
       "assertions": [],
       "class": "PlanningCommandTests",
       "id": "control-plane-kit-operations:tests.test_planning_commands.PlanningCommandTests.test_cancel_lock_owner_rejects_later_planning_without_writes",
@@ -19506,14 +19519,17 @@
     },
     {
       "assertions": [
-        "assertIn"
+        "assertIn",
+        "assertNotIn"
       ],
       "class": "DockerHarnessTests",
-      "id": "control-plane-kit-servers:tests.test_docker_harness.DockerHarnessTests.test_github_actions_run_tests_on_main_and_develop",
-      "line": 171,
-      "method": "test_github_actions_run_tests_on_main_and_develop",
+      "id": "control-plane-kit-servers:tests.test_docker_harness.DockerHarnessTests.test_github_actions_run_authoritative_gate_for_every_pull_request",
+      "line": 173,
+      "method": "test_github_actions_run_authoritative_gate_for_every_pull_request",
       "module": "tests.test_docker_harness",
-      "negative_case_hints": [],
+      "negative_case_hints": [
+        "assertion:assertNotIn"
+      ],
       "path": "tests/test_docker_harness.py",
       "subtest_dimensions": []
     },
@@ -19523,7 +19539,7 @@
       ],
       "class": "DockerHarnessTests",
       "id": "control-plane-kit-servers:tests.test_docker_harness.DockerHarnessTests.test_product_image_lane_reports_cpk_server_image_definition",
-      "line": 40,
+      "line": 41,
       "method": "test_product_image_lane_reports_cpk_server_image_definition",
       "module": "tests.test_docker_harness",
       "negative_case_hints": [],
@@ -19537,7 +19553,7 @@
       ],
       "class": "DockerHarnessTests",
       "id": "control-plane-kit-servers:tests.test_docker_harness.DockerHarnessTests.test_publish_product_image_workflow_is_per_product_and_uses_ghcr",
-      "line": 138,
+      "line": 139,
       "method": "test_publish_product_image_workflow_is_per_product_and_uses_ghcr",
       "module": "tests.test_docker_harness",
       "negative_case_hints": [
@@ -19553,7 +19569,7 @@
       ],
       "class": "DockerHarnessTests",
       "id": "control-plane-kit-servers:tests.test_docker_harness.DockerHarnessTests.test_residue_audit_filters_only_owned_resources",
-      "line": 160,
+      "line": 161,
       "method": "test_residue_audit_filters_only_owned_resources",
       "module": "tests.test_docker_harness",
       "negative_case_hints": [
@@ -19568,7 +19584,7 @@
       ],
       "class": "DockerHarnessTests",
       "id": "control-plane-kit-servers:tests.test_docker_harness.DockerHarnessTests.test_test_image_runs_unittest_and_product_image_lane",
-      "line": 21,
+      "line": 25,
       "method": "test_test_image_runs_unittest_and_product_image_lane",
       "module": "tests.test_docker_harness",
       "negative_case_hints": [],
@@ -22695,7 +22711,7 @@
       }
     }
   ],
-  "parity_manifest_digest": "sha256:9b3adf1f7a33b26119c45594f806b8a35d1169b74b1ea1cad77066e3d3991fa0",
+  "parity_manifest_digest": "sha256:6722cf0867123443d5df76be078c909519d21716382d95a393df2fe1ff76fe8d",
   "provisional_target_counts": [
     {
       "distribution": "control-plane-kit-core",
@@ -22747,9 +22763,9 @@
     }
   ],
   "recorded_parity_counts": {
-    "with_successors": 667,
+    "with_successors": 691,
     "with_supersession": 39,
-    "without_completion_record": 384
+    "without_completion_record": 360
   },
   "reference": {
     "commit": "20129959d3b0f8e8bd5dbdafdf51c0a5d592a9ec",
@@ -45712,7 +45728,7 @@
       "script_count": 18
     },
     {
-      "commit": "211062b6f7bdb3f01855614c88078ac4161940c7",
+      "commit": "f45384e72a79f59c93a715fd08f409f86a91218a",
       "distribution": "legacy-mutable",
       "gate": "./test.sh (migration input only)",
       "helper_count": 21,
@@ -45721,7 +45737,7 @@
       "script_count": 28
     },
     {
-      "commit": "211062b6f7bdb3f01855614c88078ac4161940c7",
+      "commit": "f45384e72a79f59c93a715fd08f409f86a91218a",
       "distribution": "control-plane-kit-core",
       "gate": "./control-plane-kit-core/test.sh",
       "helper_count": 1,
@@ -45730,16 +45746,16 @@
       "script_count": 1
     },
     {
-      "commit": "211062b6f7bdb3f01855614c88078ac4161940c7",
+      "commit": "f45384e72a79f59c93a715fd08f409f86a91218a",
       "distribution": "control-plane-kit-operations",
       "gate": "./control-plane-kit-operations/test.sh",
       "helper_count": 2,
-      "method_count": 377,
+      "method_count": 378,
       "repository": "OpenJ92/control-plane-kit",
       "script_count": 1
     },
     {
-      "commit": "e9f19d558026d92af79df81fb9184d29da00110b",
+      "commit": "2335a21adc5c0b0ae2f592bd15757c6ca1a55e4b",
       "distribution": "control-plane-kit-interpreters",
       "gate": "./test.sh",
       "helper_count": 4,
@@ -45748,7 +45764,7 @@
       "script_count": 1
     },
     {
-      "commit": "d2fe4cbde6766616981d67e87e3e81462a3f58e7",
+      "commit": "43e9f359ca828c83fe4994ed1b62e1be54277ddd",
       "distribution": "control-plane-kit-servers",
       "gate": "./test.sh",
       "helper_count": 0,
@@ -45757,7 +45773,7 @@
       "script_count": 27
     },
     {
-      "commit": "313fd26cb15a362ef5196547a3f6b27122877609",
+      "commit": "96e86dc3248d578780d64d5d7fc5d6359631d1d6",
       "distribution": "control-plane-kit-secrets",
       "gate": "./test.sh",
       "helper_count": 0,
