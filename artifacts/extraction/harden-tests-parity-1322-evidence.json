@@ -1,0 +1,20 @@
+{
+  "core": {
+    "compileall": "passing",
+    "import_check": "passing",
+    "tests": 484
+  },
+  "distribution": "control-plane-kit-core+control-plane-kit-operations+control-plane-kit-interpreters",
+  "interpreter_commit": "e9f19d558026d92af79df81fb9184d29da00110b",
+  "interpreters": {
+    "build": "passing",
+    "compileall": "passing",
+    "import_check": "passing",
+    "tests": 147
+  },
+  "issue": 1322,
+  "operations_evidence_id": "harden-tests-parity-1321.operations.unittest",
+  "roadmap_baseline": "7d4cc1edd73ce11d17ee68833abbd68d68aac8a0",
+  "schema": "cpk.semantic-test-reconciliation-evidence",
+  "status": "passing"
+}
