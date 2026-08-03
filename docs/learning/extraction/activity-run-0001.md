@@ -7471,3 +7471,17 @@ operations gates: the second gate's cleanup removed the first gate's owned
 Postgres network. The run was discarded, all sessions were allowed to finish,
 and the non-overlapping gate passed. This reinforces the project law that
 Docker gates with shared resource names must never overlap.
+
+The exact-coordinate `current-backend-test.sh` gate also passed all stages:
+runner (34), cross-repository contracts (151 source files, 10 products, 6
+protocols), core (484), locked operations (378), interpreters (147), secrets
+(51), server-products (166), authenticated cpk-server HTTP/MCP source-live, and
+Docker residue audit. Its source lock intentionally remained the currently
+published server-products coordinate set: coordination
+`f45384e72a79f59c93a715fd08f409f86a91218a`, interpreters
+`2335a21adc5c0b0ae2f592bd15757c6ca1a55e4b`, secrets
+`96e86dc3248d578780d64d5d7fc5d6359631d1d6`, and server-products
+`43e9f359ca828c83fe4994ed1b62e1be54277ddd`. That integrated result is separate
+from the 389-test branch-specific operations proof above; #1312 changes no
+cpk-server runtime bytes and therefore does not alter publication coordinates.
+Only the five protected Pottery Factory containers remained after validation.
