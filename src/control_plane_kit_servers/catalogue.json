@@ -62,22 +62,22 @@
     },
     {
       "descriptor_path": "products/http_active_router/product.cpk.json",
-      "descriptor_sha256": "73d100169604059258608f17bfe126893075d1ab0927f6b3b7608ff88718e395",
-      "image_digest": "sha256:9edd29c8b62f6413c7acb4009bfa655c065a31a0eac8728ec9d4350122e0a60d",
-      "image_ref": "ghcr.io/openj92/control-plane-kit-servers/http-active-router:server-seed-825",
+      "descriptor_sha256": "2e4c1ca0e0f59844c06bc754b41ca82a31826d3e12760912f49de1f15bd1f18d",
+      "image_digest": "sha256:a58938fdc5c37bfda1b2b0dbd95fc0bf3ba7391f5ce3b8fdfb3956dccf0a01c8",
+      "image_ref": "ghcr.io/openj92/control-plane-kit-servers/http-active-router:harden-tests-parity-1323",
       "owner_directory": "products/http_active_router",
       "product_id": "http-active-router",
-      "source_commit": "918341339b2bbf1c43b6551d4e1222f283b82b5d",
+      "source_commit": "568c2b6d8d8836b02d13f768bded843459339819",
       "status": "completed"
     },
     {
       "descriptor_path": "products/http_multiplexer/product.cpk.json",
-      "descriptor_sha256": "9d1f51488de3c6ba5abb13efd38342d09043fe5c7de01893c68bc42f19970fe7",
-      "image_digest": "sha256:2b6466d87c7642691c4ce2ee52022450d7b7cf1055f1f25a1449adbb5c8131ec",
-      "image_ref": "ghcr.io/openj92/control-plane-kit-servers/http-multiplexer:server-seed-826",
+      "descriptor_sha256": "d6ee8cbe5f78c9991d1644f4f9577db3d144acd5aabc95ba6bad40311464cb5f",
+      "image_digest": "sha256:7fd15d9477db02c122e834d62074268a3b947b49b31fa3cad10d6a7737ca4fcb",
+      "image_ref": "ghcr.io/openj92/control-plane-kit-servers/http-multiplexer:harden-tests-parity-1323",
       "owner_directory": "products/http_multiplexer",
       "product_id": "http-multiplexer",
-      "source_commit": "a7f1e2c534007601cb686d79497930f62333a61f",
+      "source_commit": "568c2b6d8d8836b02d13f768bded843459339819",
       "status": "completed"
     },
     {

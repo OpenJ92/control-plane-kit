@@ -74,8 +74,8 @@ def deliver_observers(
     for index, observer_url in enumerate(settings.observer_urls, start=1):
         try:
             _open(observer_url + path, method, headers, body, MAX_OBSERVER_RESPONSE_BYTES)
-        except Exception as exc:  # noqa: BLE001 - observers are explicitly fail-open.
-            errors.append(f"observer-{index}: {exc}")
+        except Exception:  # noqa: BLE001 - observers are explicitly fail-open.
+            errors.append(f"observer-{index}: upstream-failure")
     return tuple(errors)
 
 
@@ -136,8 +136,8 @@ def handler(settings: MultiplexerSettings) -> type[http.server.BaseHTTPRequestHa
                     self.headers,
                     body,
                 )
-            except Exception as exc:
-                self._send(502, f"primary request failed: {exc}\n".encode("utf-8"), "text/plain")
+            except Exception:
+                self._send(502, b"primary request failed\n", "text/plain")
                 return
             deliver_observers(settings, self.command, self.path, self.headers, body)
             self._send(status, payload, content_type)

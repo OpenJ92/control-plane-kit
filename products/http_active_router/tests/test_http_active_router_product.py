@@ -1,10 +1,13 @@
 from __future__ import annotations
 
 import hashlib
+from http.server import BaseHTTPRequestHandler, HTTPServer
 import importlib
 from pathlib import Path
 import sys
+import threading
 import unittest
+from unittest.mock import patch
 
 from control_plane_kit_core.products import (
     ProductFamily,
@@ -121,6 +124,70 @@ class HttpActiveRouterProductTests(unittest.TestCase):
         self.assertEqual(settings.active_target_url, "http://orders:8000")
         self.assertEqual(settings.port, 18080)
 
+    def test_process_forwards_method_path_headers_and_body_to_active_target(self) -> None:
+        from control_plane_kit_servers_http_active_router.server import (
+            RouterSettings,
+            forward,
+        )
+
+        target = _RecordingServer(b"blue")
+        try:
+            status, body, content_type = forward(
+                RouterSettings(active_target_url=target.url),
+                "POST",
+                "/wax?batch=7",
+                {
+                    "content-type": "text/plain",
+                    "x-cpk-test": "forwarded",
+                    "host": "must-not-forward",
+                },
+                b"payload",
+            )
+
+            self.assertEqual(status, 200)
+            self.assertEqual(body, b"blue")
+            self.assertEqual(content_type, "text/plain")
+            self.assertEqual(
+                target.requests,
+                [
+                    (
+                        "POST",
+                        "/wax?batch=7",
+                        b"payload",
+                        "forwarded",
+                    )
+                ],
+            )
+        finally:
+            target.close()
+
+    def test_process_failure_is_bounded_without_upstream_exception_text(self) -> None:
+        from control_plane_kit_servers_http_active_router.server import (
+            RouterSettings,
+            forward,
+        )
+
+        with patch(
+            "control_plane_kit_servers_http_active_router.server.request.build_opener"
+        ) as build_opener:
+            build_opener.return_value.open.side_effect = RuntimeError(
+                "token=secret target=http://private.internal"
+            )
+
+            status, body, content_type = forward(
+                RouterSettings(active_target_url="http://private.internal"),
+                "GET",
+                "/",
+                {},
+                b"",
+            )
+
+        self.assertEqual(status, 502)
+        self.assertEqual(body, b"upstream request failed\n")
+        self.assertEqual(content_type, "text/plain")
+        self.assertNotIn(b"secret", body)
+        self.assertNotIn(b"private.internal", body)
+
     def test_entrypoint_source_preserves_bounded_no_redirect_forwarding(self) -> None:
         source = (
             PRODUCT_SRC / "control_plane_kit_servers_http_active_router" / "server.py"
@@ -132,6 +199,7 @@ class HttpActiveRouterProductTests(unittest.TestCase):
         self.assertIn('parsed.scheme not in {"http", "https"}', source)
         self.assertNotIn("allow_redirects=True", source)
         self.assertNotIn("subprocess", source)
+        self.assertNotIn('f"upstream request failed:', source)
 
     def test_dockerfile_uses_product_entrypoint_and_non_root_user(self) -> None:
         dockerfile = (PRODUCT / "Dockerfile").read_text(encoding="utf-8")
@@ -148,6 +216,47 @@ class HttpActiveRouterProductTests(unittest.TestCase):
 
         self.assertEqual(len(digest), 64)
         self.assertEqual(ProductDescriptorCodec().decode_document(content).content_digest, digest)
+
+
+class _RecordingServer:
+    def __init__(self, response_body: bytes) -> None:
+        self.requests: list[tuple[str, str, bytes, str | None]] = []
+        parent = self
+
+        class Handler(BaseHTTPRequestHandler):
+            def do_POST(self) -> None:  # noqa: N802
+                length = int(self.headers.get("content-length", "0") or "0")
+                body = self.rfile.read(length) if length else b""
+                parent.requests.append(
+                    (
+                        self.command,
+                        self.path,
+                        body,
+                        self.headers.get("x-cpk-test"),
+                    )
+                )
+                self.send_response(200)
+                self.send_header("content-type", "text/plain")
+                self.send_header("content-length", str(len(response_body)))
+                self.end_headers()
+                self.wfile.write(response_body)
+
+            def log_message(self, format: str, *args: object) -> None:
+                return
+
+        self.server = HTTPServer(("127.0.0.1", 0), Handler)
+        self.thread = threading.Thread(target=self.server.serve_forever, daemon=True)
+        self.thread.start()
+
+    @property
+    def url(self) -> str:
+        host, port = self.server.server_address
+        return f"http://{host}:{port}"
+
+    def close(self) -> None:
+        self.server.shutdown()
+        self.thread.join(timeout=5)
+        self.server.server_close()
 
 
 if __name__ == "__main__":
