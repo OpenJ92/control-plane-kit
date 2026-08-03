@@ -5,7 +5,7 @@ import unittest
 import uuid
 
 import psycopg
-from psycopg.errors import CheckViolation
+from psycopg.errors import CheckViolation, UndefinedColumn
 from psycopg.types.json import Jsonb
 
 from control_plane_kit_core.delegation_keys import DelegationKeyPurpose
@@ -44,6 +44,20 @@ class PostgresSchemaFoundationTests(unittest.TestCase):
             self.connection.autocommit = True
 
         self.assertEqual(self._table_names(), set())
+
+    def test_incompatible_schema_install_rolls_back_partial_ddl(self) -> None:
+        self.connection.execute(
+            "CREATE TABLE cpk_activity_runs (run_id text PRIMARY KEY)"
+        )
+        self.connection.autocommit = False
+        try:
+            with self.assertRaises(UndefinedColumn):
+                install_schema(self.connection)
+            self.connection.rollback()
+        finally:
+            self.connection.autocommit = True
+
+        self.assertEqual(self._table_names(), {"cpk_activity_runs"})
 
     def test_repeated_install_preserves_rows_and_constraint_identities(self) -> None:
         install_schema(self.connection)

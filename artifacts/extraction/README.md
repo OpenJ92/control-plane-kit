@@ -77,3 +77,9 @@ python3 -m extraction_parity.reconciliation_builder --issue 1320 --check
 The #1320 passing package evidence is recorded in
 `harden-tests-parity-1320-evidence.json`; its canonical digest is indexed by
 `successor-evidence.json`.
+
+The #1321 passing operations evidence is recorded in
+`harden-tests-parity-1321-evidence.json`. Its canonical digest is indexed by
+`successor-evidence.json`, and its decision slice deliberately scans both live
+core and operations tests because pure execution contracts and durable
+application behavior have different package owners.

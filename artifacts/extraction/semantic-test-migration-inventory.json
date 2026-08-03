@@ -21713,7 +21713,7 @@
       }
     }
   ],
-  "parity_manifest_digest": "sha256:6a0c581aaef50ab581b004ef2e18dfd668501bcd53c99d9d2c54082de8857a5c",
+  "parity_manifest_digest": "sha256:31007856495f80edd9f31f3ba522b3ebe191571d5650045368ef235c784d21ce",
   "provisional_target_counts": [
     {
       "distribution": "control-plane-kit-core",
@@ -21753,9 +21753,9 @@
     }
   ],
   "recorded_parity_counts": {
-    "with_successors": 599,
-    "with_supersession": 173,
-    "without_completion_record": 318
+    "with_successors": 559,
+    "with_supersession": 148,
+    "without_completion_record": 383
   },
   "reference": {
     "commit": "20129959d3b0f8e8bd5dbdafdf51c0a5d592a9ec",

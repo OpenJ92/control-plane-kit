@@ -375,6 +375,58 @@ class ExecutionCoordinatorTests(unittest.TestCase):
             ["start-api", "start-api"],
         )
 
+    def test_completed_replay_does_not_repeat_effect(self) -> None:
+        with self.unit_of_work() as unit_of_work:
+            stores = unit_of_work.stores
+            base_projection = stores.realized_graphs.save(
+                stores.realized_graphs.identity_for_authored(
+                    "workspace-a",
+                    "graph-current",
+                )
+            )
+            desired_projection = stores.realized_graphs.save(
+                stores.realized_graphs.identity_for_authored(
+                    "workspace-a",
+                    "graph-desired",
+                )
+            )
+            unit_of_work.commit()
+        self.connection.execute(
+            """
+            UPDATE cpk_activity_plans
+            SET base_realized_projection_id = %s,
+                desired_realized_projection_id = %s,
+                desired_graph_revision = 1
+            WHERE plan_id = 'plan-a'
+            """,
+            (base_projection.projection_id, desired_projection.projection_id),
+        )
+        self.claim_and_start()
+        adapter = RecordingAdapter(
+            self.tracker,
+            ActivityExecutionOutcome.succeeded(),
+        )
+        coordinator = self.coordinator(adapter)
+
+        completed = coordinator.execute(self.command())
+        replay = coordinator.execute(self.command())
+
+        self.assertIs(completed.status, CoordinatorStatus.COMPLETED)
+        self.assertIs(replay.status, CoordinatorStatus.COMPLETED)
+        self.assertEqual(adapter.calls, ["start-api"])
+        with self.unit_of_work() as unit_of_work:
+            events = unit_of_work.stores.execution.events_for_run("run-a")
+        self.assertEqual(
+            [event.kind for event in events],
+            [
+                ActivityEventKind.RUN_OPENED,
+                ActivityEventKind.RUN_STARTED,
+                ActivityEventKind.STEP_STARTED,
+                ActivityEventKind.STEP_SUCCEEDED,
+                ActivityEventKind.RUN_SUCCEEDED,
+            ],
+        )
+
     def test_incoherent_pinned_graph_material_fails_before_step_intent(self) -> None:
         self.connection.execute(
             """

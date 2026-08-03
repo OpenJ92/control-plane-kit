@@ -5,6 +5,7 @@ from pathlib import Path
 import unittest
 
 from extraction_parity.migration_inventory import SourceLane, scan_test_root
+from extraction_parity.reconciliation_builder import _decode_decisions
 from extraction_parity.reconciliation import (
     ReconciliationError,
     decode_reconciliation,
@@ -100,6 +101,54 @@ def _document() -> dict[str, object]:
 
 
 class SemanticReconciliationTests(unittest.TestCase):
+    def test_decision_slice_accepts_multiple_unique_current_distributions(self) -> None:
+        document = {
+            "schema": "cpk.semantic-test-reconciliation-decisions",
+            "slices": [
+                {
+                    "issue": 1321,
+                    "current_distributions": [
+                        "control-plane-kit-core",
+                        "control-plane-kit-operations",
+                    ],
+                    "evidence_id": "operations-evidence",
+                    "default_disposition": "current-isomorphic",
+                    "strengthened_references": [],
+                    "successor_overrides": {},
+                    "future_issue_reviews": {},
+                    "non_current_reviews": {},
+                }
+            ],
+        }
+
+        self.assertIs(_decode_decisions(document), document)
+
+    def test_decision_slice_rejects_empty_or_duplicate_distributions(self) -> None:
+        document = {
+            "schema": "cpk.semantic-test-reconciliation-decisions",
+            "slices": [
+                {
+                    "issue": 1321,
+                    "current_distributions": [],
+                    "evidence_id": "operations-evidence",
+                    "default_disposition": "current-isomorphic",
+                    "strengthened_references": [],
+                    "successor_overrides": {},
+                    "future_issue_reviews": {},
+                    "non_current_reviews": {},
+                }
+            ],
+        }
+        with self.assertRaisesRegex(ReconciliationError, "current distributions"):
+            _decode_decisions(document)
+
+        document["slices"][0]["current_distributions"] = [
+            "control-plane-kit-operations",
+            "control-plane-kit-operations",
+        ]
+        with self.assertRaisesRegex(ReconciliationError, "current distributions"):
+            _decode_decisions(document)
+
     def test_closed_reconciliation_accepts_current_and_future_dispositions(self) -> None:
         decoded = decode_reconciliation(_document())
 
@@ -200,6 +249,53 @@ class SemanticReconciliationTests(unittest.TestCase):
                 "current": 227,
                 "future_issue": 4,
                 "reviewed_non_current": 0,
+            },
+        )
+
+    def test_issue_1321_artifact_names_only_live_core_and_operations_tests(
+        self,
+    ) -> None:
+        root = Path(__file__).resolve().parents[2]
+        load = lambda name: json.loads(
+            (root / "artifacts/extraction" / name).read_text(encoding="utf-8")
+        )
+        current_ids = set()
+        for distribution, test_roots in (
+            ("control-plane-kit-core", ("control-plane-kit-core/tests",)),
+            (
+                "control-plane-kit-operations",
+                ("control-plane-kit-operations/tests",),
+            ),
+        ):
+            lane = scan_test_root(
+                SourceLane(
+                    distribution=distribution,
+                    repository="working-tree",
+                    commit="working-tree",
+                    gate="focused-unittest",
+                    root=root,
+                    test_roots=test_roots,
+                )
+            )
+            current_ids.update(str(value["id"]) for value in lane["methods"])
+
+        report = validate_reconciliation(
+            load("semantic-test-reconciliation.json"),
+            load("semantic-test-migration-inventory.json"),
+            load("parity-manifest.json"),
+            current_test_ids=frozenset(current_ids),
+            issue=1321,
+        )
+
+        self.assertTrue(report["valid"])
+        self.assertEqual(
+            report["counts"],
+            {
+                "reviews": 303,
+                "mutable_only_reviews": 0,
+                "current": 239,
+                "future_issue": 63,
+                "reviewed_non_current": 1,
             },
         )
 
