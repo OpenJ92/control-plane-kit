@@ -31,7 +31,7 @@ CURRENT_TEST_ROOTS = {
     "control-plane-kit-core": ("control-plane-kit-core/tests",),
     "control-plane-kit-operations": ("control-plane-kit-operations/tests",),
     "control-plane-kit-interpreters": ("tests",),
-    "control-plane-kit-servers": ("tests",),
+    "control-plane-kit-servers": ("tests", "products"),
     "control-plane-kit-secrets": ("tests",),
 }
 
